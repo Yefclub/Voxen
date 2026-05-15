@@ -63,6 +63,9 @@ jobs:
           ignore-unfixed: true
           exit-code: '1'
           format: table
+          # Apenas vuln scan em imagens; secret-scan rola só no fs scan
+          # (evita falsos positivos em chaves dummy nos extractors do yt-dlp etc.)
+          scanners: vuln,misconfig
 
   bandit:
     name: Bandit (Python)
