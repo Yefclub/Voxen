@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -14,7 +14,7 @@ RUN uv sync --frozen --no-install-project || uv sync --no-install-project
 COPY apps/chat/src ./src
 RUN uv sync --frozen --no-editable || uv sync --no-editable
 
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
