@@ -1,4 +1,4 @@
-FROM oven/bun:1.2-alpine AS deps
+FROM oven/bun:1.3-alpine AS deps
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/
@@ -12,7 +12,7 @@ WORKDIR /app/apps/web
 RUN bunx prisma generate --schema=/app/prisma/schema.prisma
 RUN bun run build || echo "TODO: build front quando existir"
 
-FROM oven/bun:1.2-alpine AS runtime
+FROM oven/bun:1.3-alpine AS runtime
 WORKDIR /app
 
 # Prisma CLI precisa de Node em runtime pra `migrate deploy`
