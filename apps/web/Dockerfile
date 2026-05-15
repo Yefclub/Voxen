@@ -1,9 +1,11 @@
 # ============================================================================
 # Voxen Web — multi-stage Dockerfile
 # ============================================================================
-# Stage `build`: instala deps via pnpm (sem postinstall — evita prisma auto-install)
-# Stage `runtime`: bun:1.3-alpine; prisma generate + migrate deploy no entrypoint
-# Roda como usuário non-root (voxen, uid 1001) por segurança (DS-0002).
+# Stage `build`: instala APENAS deps de produção (--prod). Sem vite/esbuild/
+#   eslint/typescript no image final — reduz tamanho e elimina CVEs em devDeps
+#   que não rodam em produção (esbuild gobinary trazendo Go stdlib antigo etc.)
+# Stage `runtime`: bun:1.3-alpine; USER non-root; prisma generate + migrate
+#   deploy no entrypoint.
 # ============================================================================
 
 FROM node:22-alpine AS build
@@ -11,12 +13,12 @@ WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Deps (cache-friendly). --ignore-scripts evita postinstall do @prisma/client
+# Deps prod apenas. --ignore-scripts evita postinstall do @prisma/client
 # tentar `pnpm add prisma` em workspace (que falha em frozen-lockfile).
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/
 COPY packages/shared-types/package.json packages/shared-types/
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
 # Código + schema
 COPY prisma ./prisma
@@ -24,7 +26,6 @@ COPY apps/web ./apps/web
 COPY packages ./packages
 
 # Prisma client é gerado em runtime pelo entrypoint (junto com `migrate deploy`).
-# Não rodamos `prisma generate` aqui pra evitar quirks de workspace + auto-install.
 
 FROM oven/bun:1.3-alpine AS runtime
 WORKDIR /app
