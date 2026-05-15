@@ -1,0 +1,259 @@
+// ============================================================================
+// Voxen — Prisma schema
+// ============================================================================
+// Princípios:
+//  - Cada user tem seu workspace (escopo por userId)
+//  - Better Auth gerencia User/Session/Account/Verification (4 modelos)
+//  - Secrets em Settings.valueEnc cifrados com master key (AES-256-GCM)
+//  - Transcript tem plainText + searchVector (tsvector via trigger SQL)
+//  - Sem pgvector — abordagem harness/Karpathy
+// ============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// AUTH (better-auth + workflow de aprovação)
+// ============================================================================
+
+enum UserStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISABLED
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+model User {
+  id              String     @id @default(cuid())
+  email           String     @unique
+  emailVerified   Boolean    @default(false)
+  name            String
+  image           String?
+  // Voxen-specific
+  status          UserStatus @default(PENDING)
+  role            UserRole   @default(USER)
+  monthlyBudgetUsd Decimal?  @db.Decimal(10, 4) // null = sem limite
+  approvedAt      DateTime?
+  approvedBy      String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  // Relations
+  sessions        Session[]
+  accounts        Account[]
+  transcripts     Transcript[]
+  jobs            Job[]
+  costEvents      CostEvent[]
+
+  @@index([status])
+  @@index([role])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ============================================================================
+// SETTINGS (cifrado com master key)
+// ============================================================================
+
+enum SettingScope {
+  GLOBAL
+  USER
+}
+
+model Setting {
+  id        String       @id @default(cuid())
+  scope     SettingScope
+  userId    String?      // null se scope=GLOBAL
+  key       String
+  // valueEnc é AES-256-GCM(plaintext, master_key) em base64
+  // formato: <iv_base64>.<ciphertext_base64>.<tag_base64>
+  valueEnc  String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([scope, userId, key])
+  @@index([scope, key])
+}
+
+// ============================================================================
+// TRANSCRIPTS (corpo no Garage; texto + frontmatter espelhado aqui)
+// ============================================================================
+
+enum TranscriptSource {
+  YOUTUBE
+  INSTAGRAM
+  TIKTOK
+}
+
+enum TranscriptionMethod {
+  API           // OpenRouter audio transcription
+  SUBTITLES     // baixou legendas oficiais
+}
+
+model Transcript {
+  id                  String              @id @default(cuid())
+  userId              String              // == workspace_id
+  source              TranscriptSource
+  url                 String
+  title               String
+  channel             String?
+  author              String?
+  durationSec         Int
+  publishedAt         DateTime?
+  thumbnailUrl        String?
+  language            String              // ISO 639-1
+  transcriptionMethod TranscriptionMethod
+  model               String?             // null se SUBTITLES
+  costUsd             Decimal?            @db.Decimal(10, 4)
+  // .md no Garage (key relative ao bucket)
+  mdPath              String
+  // Texto puro pra FTS (sem timestamps, sem frontmatter)
+  plainText           String              @db.Text
+  // Frontmatter como JSONB pra filtros estruturados
+  frontmatter         Json
+  // tsvector gerenciado por trigger SQL (ver migration). Não declarável em Prisma; usar Unsupported.
+  searchVector        Unsupported("tsvector")?
+  checksum            String?             // sha256 do áudio original
+  formatVersion       Int                 @default(1)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  // Relations
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks              Chunk[]
+  job                 Job?
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, source])
+  @@index([userId, language])
+  // Índice GIN no tsvector criado via SQL na migration
+}
+
+// Opcional: chunks granulares pra busca por timestamp range / re-rank
+// MVP pode viver só com Transcript.plainText. Manter modelo pra expansão futura.
+model Chunk {
+  id           String     @id @default(cuid())
+  transcriptId String
+  startSec     Int
+  endSec       Int
+  text         String     @db.Text
+  transcript   Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  @@index([transcriptId, startSec])
+}
+
+// ============================================================================
+// JOBS (download + transcribe)
+// ============================================================================
+
+enum JobType {
+  DOWNLOAD_AND_TRANSCRIBE
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  CANCELLED
+}
+
+model Job {
+  id           String      @id @default(cuid())
+  userId       String
+  type         JobType
+  status       JobStatus   @default(QUEUED)
+  sourceUrl    String
+  transcriptId String?     @unique
+  errorMsg     String?
+  queuedAt     DateTime    @default(now())
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript   Transcript? @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
+
+  @@index([userId, queuedAt(sort: Desc)])
+  @@index([status])
+}
+
+// ============================================================================
+// COST EVENTS (painel de custos)
+// ============================================================================
+
+enum CostEventKind {
+  CHAT
+  TRANSCRIBE
+  EMBED        // não usado no MVP (sem embeddings), mas reservado
+}
+
+model CostEvent {
+  id         String        @id @default(cuid())
+  userId     String
+  ts         DateTime      @default(now())
+  kind       CostEventKind
+  model      String
+  tokensIn   Int           @default(0)
+  tokensOut  Int           @default(0)
+  costUsd    Decimal       @db.Decimal(10, 6)
+  jobId      String?
+  meta       Json?
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts(sort: Desc)])
+  @@index([ts])
+  @@index([kind])
+}

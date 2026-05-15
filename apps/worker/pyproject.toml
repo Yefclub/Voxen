@@ -1,0 +1,42 @@
+[project]
+name = "voxen-worker"
+version = "0.0.0"
+description = "Voxen worker — ARQ + yt-dlp + ffmpeg"
+requires-python = ">=3.13"
+dependencies = [
+    "arq>=0.26.0",
+    "httpx>=0.27.0",
+    "yt-dlp>=2025.1.1",
+    "pydantic>=2.9.0",
+    "asyncpg>=0.30.0",
+    "aiobotocore>=2.15.0",
+    "structlog>=24.4.0",
+    "cryptography>=43.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "B", "UP", "S", "ASYNC"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

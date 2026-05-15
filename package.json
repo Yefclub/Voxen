@@ -1,0 +1,21 @@
+{
+  "name": "voxen",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Plataforma web de knowledge base via transcrição de vídeo com chat-agente",
+  "engines": {
+    "bun": ">=1.2.0",
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "make dev",
+    "down": "make down",
+    "test": "make test",
+    "lint": "make lint",
+    "typecheck": "make typecheck",
+    "migrate": "make migrate"
+  },
+  "license": "MIT"
+}

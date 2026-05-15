@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-ts:
+    name: Lint TS (apps/web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.x
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+      - name: Lint
+        run: bun run lint
+        working-directory: apps/web
+      - name: Format check
+        run: bun run format:check
+        working-directory: apps/web
+        if: false  # habilita quando prettier:check existir
+
+  typecheck-ts:
+    name: Typecheck TS (apps/web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.x
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: bun run typecheck
+        working-directory: apps/web
+
+  test-ts:
+    name: Test TS (apps/web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.x
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - run: pnpm install --frozen-lockfile
+      - name: Test
+        run: bun test
+        working-directory: apps/web
+
+  lint-py-chat:
+    name: Lint Python (apps/chat)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: '3.13'
+      - name: Install deps
+        run: uv sync --frozen
+        working-directory: apps/chat
+      - name: Ruff
+        run: uv run ruff check .
+        working-directory: apps/chat
+      - name: Mypy
+        run: uv run mypy src
+        working-directory: apps/chat
+
+  test-py-chat:
+    name: Test Python (apps/chat)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: '3.13'
+      - run: uv sync --frozen
+        working-directory: apps/chat
+      - run: uv run pytest
+        working-directory: apps/chat
+
+  lint-py-worker:
+    name: Lint Python (apps/worker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: '3.13'
+      - run: uv sync --frozen
+        working-directory: apps/worker
+      - run: uv run ruff check .
+        working-directory: apps/worker
+      - run: uv run mypy src
+        working-directory: apps/worker
+
+  test-py-worker:
+    name: Test Python (apps/worker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: '3.13'
+      - run: uv sync --frozen
+        working-directory: apps/worker
+      - run: uv run pytest
+        working-directory: apps/worker
+
+  docker-build:
+    name: Docker build (todos os apps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build chat
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/chat/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/worker/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  compose-validate:
+    name: docker-compose validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose
+        run: docker compose -f docker-compose.yml config -q

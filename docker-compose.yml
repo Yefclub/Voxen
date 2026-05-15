@@ -1,0 +1,194 @@
+# ============================================================================
+# Voxen — docker compose (dev e prod usam o mesmo arquivo, com overrides)
+# ============================================================================
+# Pré-requisito: docker + docker compose. Nada mais.
+# Sobe: postgres + redis + garage + web + chat + worker
+# Master key e bootstrap do Garage acontecem automaticamente.
+# ============================================================================
+
+name: voxen
+
+services:
+  # ----- Infra -----
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-voxen}
+      POSTGRES_USER: ${POSTGRES_USER:-voxen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_change_me_in_prod}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - voxen-net
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-voxen} -d ${POSTGRES_DB:-voxen}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--requirepass', '${REDIS_PASSWORD:-dev_change_me_in_prod}', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+    networks:
+      - voxen-net
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a ${REDIS_PASSWORD:-dev_change_me_in_prod} ping | grep -q PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  garage:
+    image: dxflrs/garage:v1.0.1
+    restart: unless-stopped
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:-dev_change_me_in_prod_64_hex_chars_padding_padding_padding_padding}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-dev_change_me_in_prod}
+    volumes:
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+      - ./scripts/garage.toml:/etc/garage.toml:ro
+      - ./scripts:/scripts:ro
+      - garage_creds:/creds
+    networks:
+      - voxen-net
+    healthcheck:
+      test: ['CMD', '/garage', 'status']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Init container: roda uma vez, configura cluster + bucket + key, exporta creds em /creds
+  garage-init:
+    image: dxflrs/garage:v1.0.1
+    depends_on:
+      garage:
+        condition: service_healthy
+    entrypoint: ['/bin/sh', '/scripts/garage-init.sh']
+    environment:
+      GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
+    volumes:
+      - ./scripts:/scripts:ro
+      - garage_creds:/creds
+    networks:
+      - voxen-net
+    restart: 'no'
+
+  # Init container: gera master.key se não existir, idempotente
+  master-key-init:
+    image: alpine:3.20
+    entrypoint: ['/bin/sh', '/scripts/master-key-init.sh']
+    volumes:
+      - ./scripts:/scripts:ro
+      - master_key:/data
+    restart: 'no'
+
+  # ----- Apps -----
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      master-key-init:
+        condition: service_completed_successfully
+      garage-init:
+        condition: service_completed_successfully
+    environment:
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-voxen}:${POSTGRES_PASSWORD:-dev_change_me_in_prod}@postgres:5432/${POSTGRES_DB:-voxen}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-dev_change_me_in_prod}@redis:6379/0
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev_change_me_in_prod}
+      MASTER_KEY_PATH: /data/master.key
+      GARAGE_CREDS_PATH: /creds/voxen.env
+      GARAGE_ENDPOINT: http://garage:3900
+      GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
+      CHAT_SERVICE_URL: http://chat:8001
+    volumes:
+      - master_key:/data:ro
+      - garage_creds:/creds:ro
+    ports:
+      - '3000:3000'
+    networks:
+      - voxen-net
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chat:
+    build:
+      context: .
+      dockerfile: apps/chat/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      master-key-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-voxen}:${POSTGRES_PASSWORD:-dev_change_me_in_prod}@postgres:5432/${POSTGRES_DB:-voxen}
+      MASTER_KEY_PATH: /data/master.key
+      GARAGE_CREDS_PATH: /creds/voxen.env
+      GARAGE_ENDPOINT: http://garage:3900
+      GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
+    volumes:
+      - master_key:/data:ro
+      - garage_creds:/creds:ro
+    networks:
+      - voxen-net
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8001/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      master-key-init:
+        condition: service_completed_successfully
+      garage-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-voxen}:${POSTGRES_PASSWORD:-dev_change_me_in_prod}@postgres:5432/${POSTGRES_DB:-voxen}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-dev_change_me_in_prod}@redis:6379/0
+      MASTER_KEY_PATH: /data/master.key
+      GARAGE_CREDS_PATH: /creds/voxen.env
+      GARAGE_ENDPOINT: http://garage:3900
+      GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
+    volumes:
+      - master_key:/data:ro
+      - garage_creds:/creds:ro
+    networks:
+      - voxen-net
+
+networks:
+  voxen-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  garage_meta:
+  garage_data:
+  garage_creds:
+  master_key:

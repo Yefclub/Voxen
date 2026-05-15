@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.uv-cache/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+.next/
+.turbo/
+.vite/
+
+# Test / coverage
+coverage/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+
+# Env / secrets (NUNCA commitar)
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+master.key
+secrets/
+
+# Volumes locais
+data/
+volumes/
+pgdata/
+redisdata/
+garage_meta/
+garage_data/
+
+# Logs
+*.log
+logs/
+
+# IDE / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Claude / agentes locais
+.claude/settings.local.json

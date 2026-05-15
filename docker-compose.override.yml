@@ -1,0 +1,24 @@
+# ============================================================================
+# Voxen — overrides apenas para dev local
+# ============================================================================
+# Auto-aplicado pelo docker compose. Em prod (Easypanel), copiar só o
+# docker-compose.yml principal e SKIPAR esse arquivo.
+# ============================================================================
+
+services:
+  web:
+    volumes:
+      - ./apps/web/src:/app/src:ro
+      - ./prisma:/app/prisma:ro
+    environment:
+      NODE_ENV: development
+
+  chat:
+    volumes:
+      - ./apps/chat/src:/app/src:ro
+    ports:
+      - '8001:8001'   # expor pra debug local; em prod fica fechado na voxen-net
+
+  worker:
+    volumes:
+      - ./apps/worker/src:/app/src:ro
