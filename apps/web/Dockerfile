@@ -2,7 +2,8 @@
 # Voxen Web — multi-stage Dockerfile
 # ============================================================================
 # Stage `build`: instala deps via pnpm (sem postinstall — evita prisma auto-install)
-# Stage `runtime`: bun:1.2-alpine; prisma generate + migrate deploy no entrypoint
+# Stage `runtime`: bun:1.3-alpine; prisma generate + migrate deploy no entrypoint
+# Roda como usuário non-root (voxen, uid 1001) por segurança (DS-0002).
 # ============================================================================
 
 FROM node:22-alpine AS build
@@ -25,19 +26,21 @@ COPY packages ./packages
 # Prisma client é gerado em runtime pelo entrypoint (junto com `migrate deploy`).
 # Não rodamos `prisma generate` aqui pra evitar quirks de workspace + auto-install.
 
-FROM oven/bun:1.2-alpine AS runtime
+FROM oven/bun:1.3-alpine AS runtime
 WORKDIR /app
 
 RUN apk add --no-cache nodejs npm wget && \
-    npm install -g prisma@6.19.3 --omit=dev
+    npm install -g prisma@6.19.3 --omit=dev && \
+    addgroup -S voxen && adduser -S -G voxen -u 1001 voxen
 
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/apps/web ./apps/web
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/prisma ./prisma
-COPY apps/web/entrypoint.sh /entrypoint.sh
+COPY --from=build --chown=voxen:voxen /app/node_modules ./node_modules
+COPY --from=build --chown=voxen:voxen /app/apps/web ./apps/web
+COPY --from=build --chown=voxen:voxen /app/packages ./packages
+COPY --from=build --chown=voxen:voxen /app/prisma ./prisma
+COPY --chown=voxen:voxen apps/web/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+USER voxen
 EXPOSE 3000
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
