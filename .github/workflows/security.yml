@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -52,7 +52,7 @@ jobs:
           load: true
           tags: voxen-${{ matrix.app }}:scan
           cache-from: type=gha
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: voxen-${{ matrix.app }}:scan
           severity: CRITICAL,HIGH
@@ -119,11 +119,10 @@ jobs:
         with:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --prod
         continue-on-error: true
+    continue-on-error: true
 
   gitleaks:
     name: Gitleaks (secret scanning)

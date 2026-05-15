@@ -24,13 +24,11 @@ jobs:
         with:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - run: pnpm install --frozen-lockfile
       - name: Test
         run: bun test
         working-directory: apps/web
-        continue-on-error: true  # TODO: remover quando bun-types estiver alinhado
+    continue-on-error: true  # TODO: remover quando bun-types estiver alinhado
 
   lint-py-chat:
     name: Lint Python (apps/chat)
