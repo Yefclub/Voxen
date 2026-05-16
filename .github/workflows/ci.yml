@@ -55,6 +55,22 @@ jobs:
   test-ts:
     name: Test TS (apps/web)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: voxen_test
+          POSTGRES_USER: voxen
+          POSTGRES_PASSWORD: dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U voxen"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://voxen:dev@localhost:5432/voxen_test
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -64,6 +80,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Prisma generate
         run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
+        working-directory: apps/web
+      - name: Prisma migrate deploy
+        run: pnpm exec prisma migrate deploy --schema=../../prisma/schema.prisma
         working-directory: apps/web
       - name: Test
         run: bun test
