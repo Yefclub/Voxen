@@ -26,7 +26,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
       - name: Prisma generate
-        run: pnpm exec prisma generate
+        run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
         working-directory: apps/web
       - name: Lint
         run: bun run lint
@@ -46,7 +46,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
       - name: Prisma generate
-        run: pnpm exec prisma generate
+        run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
         working-directory: apps/web
       - name: Typecheck
         run: bun run typecheck
@@ -63,7 +63,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
       - name: Prisma generate
-        run: pnpm exec prisma generate
+        run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
         working-directory: apps/web
       - name: Test
         run: bun test
