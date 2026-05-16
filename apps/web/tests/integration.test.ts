@@ -16,6 +16,7 @@ async function wipeDb(): Promise<void> {
   await db.session.deleteMany();
   await db.account.deleteMany();
   await db.verification.deleteMany();
+  await db.setting.deleteMany();
   await db.user.deleteMany();
 }
 
