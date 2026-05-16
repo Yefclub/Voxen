@@ -11,9 +11,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # TODO(spec: linting-typescript): habilitar lint-ts + typecheck-ts quando
-  # eslint flat-config + tsconfig types estiverem alinhados. Por ora, install
-  # via pnpm é validado pelo job test-ts e pelo docker-build.
+  lint-ts:
+    name: Lint TS (apps/web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.x
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: bun run lint
+        working-directory: apps/web
+      - name: Format check
+        run: bun run format:check
+        working-directory: apps/web
+
+  typecheck-ts:
+    name: Typecheck TS (apps/web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.x
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: bun run typecheck
+        working-directory: apps/web
 
   test-ts:
     name: Test TS (apps/web)
@@ -28,7 +55,6 @@ jobs:
       - name: Test
         run: bun test
         working-directory: apps/web
-    continue-on-error: true  # TODO: remover quando bun-types estiver alinhado
 
   lint-py-chat:
     name: Lint Python (apps/chat)
