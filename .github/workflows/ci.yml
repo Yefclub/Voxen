@@ -71,6 +71,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://voxen:dev@localhost:5432/voxen_test
+      MASTER_KEY_PATH: ${{ github.workspace }}/master.key
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -78,6 +79,8 @@ jobs:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
+      - name: Generate test master key
+        run: openssl rand -base64 32 > "$MASTER_KEY_PATH"
       - name: Prisma generate
         run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
         working-directory: apps/web
