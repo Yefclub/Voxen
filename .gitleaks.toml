@@ -1,0 +1,19 @@
+# ============================================================================
+# Gitleaks config — allowlist de placeholders em .env.example
+# ============================================================================
+# Os valores `dev_change_me_in_prod*` no .env.example são placeholders, não
+# secrets reais. Eles sinalizam pro user trocar em prod. Gitleaks os flagga
+# como falsos positivos.
+# ============================================================================
+
+[allowlist]
+description = "Allowlist for Voxen"
+paths = [
+  '''\.env\.example$''',
+]
+
+# Regex pra placeholders óbvios
+regexes = [
+  '''dev_change_me_in_prod[^"\s]*''',
+  '''placeholder''',
+]

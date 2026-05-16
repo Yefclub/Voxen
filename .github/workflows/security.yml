@@ -8,9 +8,18 @@ on:
   schedule:
     - cron: '0 3 * * 1'   # toda segunda 03:00 UTC
 
+# ============================================================================
+# IMPORTANTE: workflows que fariam upload-sarif (CodeQL, SARIF nos scanners)
+# requerem GitHub Advanced Security, PAGO p/ repos privados.
+# Por ora, scanners rodam em modo "fail-on-finding" e printam output legível
+# nos logs do CI. Quando GHAS for adquirido:
+#   - reativar `format: sarif` + `upload-sarif`
+#   - adicionar job codeql-ts
+#   - reativar dependency-review (também GHAS)
+# ============================================================================
+
 permissions:
   contents: read
-  security-events: write
   pull-requests: read
 
 jobs:
@@ -19,19 +28,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          format: sarif
-          output: trivy-fs.sarif
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: trivy-fs.sarif
-          category: trivy-fs
+          exit-code: '1'
+          format: table
 
   trivy-image:
     name: Trivy image scan
@@ -52,30 +56,16 @@ jobs:
           load: true
           tags: voxen-${{ matrix.app }}:scan
           cache-from: type=gha
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: voxen-${{ matrix.app }}:scan
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          format: sarif
-          output: trivy-${{ matrix.app }}.sarif
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: trivy-${{ matrix.app }}.sarif
-          category: trivy-${{ matrix.app }}
-
-  codeql-ts:
-    name: CodeQL (TS/JS)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
-      - uses: github/codeql-action/analyze@v3
-        with:
-          category: codeql-ts
+          exit-code: '1'
+          format: table
+          # Apenas vuln scan em imagens; secret-scan rola só no fs scan
+          # (evita falsos positivos em chaves dummy nos extractors do yt-dlp etc.)
+          scanners: vuln,misconfig
 
   bandit:
     name: Bandit (Python)
@@ -85,13 +75,10 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           python-version: '3.13'
-      - run: uv tool install bandit
-      - run: bandit -r apps/chat/src apps/worker/src -ll -f sarif -o bandit.sarif || true
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: bandit.sarif
-          category: bandit
+      - name: Install bandit
+        run: uv tool install bandit
+      - name: Scan
+        run: bandit -r apps/chat/src apps/worker/src -ll
 
   pip-audit:
     name: pip-audit
@@ -119,11 +106,10 @@ jobs:
         with:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --prod
         continue-on-error: true
+    continue-on-error: true
 
   gitleaks:
     name: Gitleaks (secret scanning)
@@ -132,17 +118,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  dependency-review:
-    name: Dependency review (PR)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
-          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, SSPL-1.0
+      # Roda gitleaks CLI direto (free) ao invés da action v2 (licença paga p/ orgs)
+      - name: Install gitleaks
+        run: |
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/
+      - name: Scan
+        run: gitleaks detect --source=. --config=.gitleaks.toml --redact --verbose --exit-code=1
