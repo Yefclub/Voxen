@@ -57,3 +57,4 @@ Thumbs.db
 
 # Claude / agentes locais
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
