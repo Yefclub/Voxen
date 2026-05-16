@@ -18,7 +18,13 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/
 COPY packages/shared-types/package.json packages/shared-types/
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts && \
+    # pnpm --prod pula symlinks de devDeps mas mantém binários no .pnpm/ store.
+    # Trivy scaneia o store inteiro → removemos manualmente os binários Go
+    # de devDeps que não rodam em runtime (esbuild, vite tooling).
+    find node_modules/.pnpm -maxdepth 1 -type d \
+      \( -name '@esbuild+*' -o -name 'esbuild@*' -o -name 'vite@*' -o -name '@vitejs+*' \) \
+      -exec rm -rf {} +
 
 # Código + schema
 COPY prisma ./prisma
