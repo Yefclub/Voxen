@@ -10,7 +10,15 @@
 // ============================================================================
 
 generator client {
-  provider        = "prisma-client-js"
+  // Novo generator `prisma-client` (v6.x) — output em `apps/web/prisma-generated/`,
+  // evita o auto-install bug do `prisma-client-js` em workspaces pnpm e
+  // garante resolução de `@prisma/client/runtime/library` (que só fica em
+  // `apps/web/node_modules/@prisma/client/` no pnpm workspace).
+  // Output é gitignored (vide .gitignore).
+  provider        = "prisma-client"
+  output          = "../apps/web/prisma-generated"
+  moduleFormat    = "esm"
+  runtime         = "nodejs"
   previewFeatures = ["fullTextSearchPostgres"]
 }
 

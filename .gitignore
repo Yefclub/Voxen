@@ -15,6 +15,7 @@ build/
 .next/
 .turbo/
 .vite/
+apps/web/prisma-generated/
 
 # Test / coverage
 coverage/

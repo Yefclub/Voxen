@@ -10,6 +10,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Secret de teste — NUNCA usar em prod. Em prod vem do .env na raiz.
+  BETTER_AUTH_SECRET: ci-secret-not-for-production-use-at-least-32-bytes-yes-this-is-long-enough
+
 jobs:
   lint-ts:
     name: Lint TS (apps/web)
@@ -21,6 +25,9 @@ jobs:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
+      - name: Prisma generate
+        run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
+        working-directory: apps/web
       - name: Lint
         run: bun run lint
         working-directory: apps/web
@@ -38,6 +45,9 @@ jobs:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
+      - name: Prisma generate
+        run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
+        working-directory: apps/web
       - name: Typecheck
         run: bun run typecheck
         working-directory: apps/web
@@ -52,6 +62,9 @@ jobs:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
+      - name: Prisma generate
+        run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
+        working-directory: apps/web
       - name: Test
         run: bun test
         working-directory: apps/web

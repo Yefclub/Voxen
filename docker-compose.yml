@@ -108,7 +108,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: postgresql://${POSTGRES_USER:-voxen}:${POSTGRES_PASSWORD:-dev_change_me_in_prod}@postgres:5432/${POSTGRES_DB:-voxen}
       REDIS_URL: redis://:${REDIS_PASSWORD:-dev_change_me_in_prod}@redis:6379/0
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev_change_me_in_prod}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev_change_me_in_prod_must_be_at_least_32_chars_long_yes}
       MASTER_KEY_PATH: /data/master.key
       GARAGE_CREDS_PATH: /creds/voxen.env
       GARAGE_ENDPOINT: http://garage:3900
