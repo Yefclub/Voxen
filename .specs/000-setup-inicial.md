@@ -103,3 +103,4 @@ Referências: `docs/ARCHITECTURE.md` (fluxos), `docs/SECURITY.md` (master key, s
 
 > 2026-05-15: spec inicial criada com a fundação do repo novo.
 > 2026-05-16: PR `feat/db-migration-inicial` cumpre os critérios de aceite "migrations Prisma aplicam no entrypoint" e "FTS funcional". Adicionadas 2 migrations (`init` + `add_fts_trigger`) + `prisma/seed.ts` placeholder. Trigger `transcript_search_vector_update` + index GIN `Transcript_searchVector_idx` validados manualmente com `INSERT` + `plainto_tsquery('portuguese', ...)`.
+> 2026-05-16: PR `feat/master-key-crypto` adiciona biblioteca de cifragem AES-256-GCM em TS (`apps/web/src/lib/crypto.ts`) e Python (`apps/{chat,worker}/src/voxen_crypto.py`). Formato compartilhado `iv.ciphertext.tag` em base64. Cobre os requisitos ubiquitous "store all runtime secrets cifrados via AES-256-GCM" e unwanted "master key file missing → exit". 17 testes Bun + 17 testes pytest (chat e worker), cross-compat de formato documentado.
