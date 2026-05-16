@@ -9,21 +9,28 @@ import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { db } from './db';
 
-function requireEnv(name: string): string {
+function requireEnv(name: string, minLength = 0): string {
   const v = process.env[name];
   if (!v || v.length === 0) {
     throw new Error(`Missing required env var: ${name}`);
+  }
+  if (minLength > 0 && v.length < minLength) {
+    throw new Error(`Env var ${name} must be >= ${minLength} chars (got ${v.length})`);
   }
   return v;
 }
 
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: 'postgresql' }),
-  secret: requireEnv('BETTER_AUTH_SECRET'),
+  // Mínimo 32 chars pra HMAC seguro. Em prod, gerar com `openssl rand -base64 32`.
+  secret: requireEnv('BETTER_AUTH_SECRET', 32),
   baseURL: process.env.APP_BASE_URL ?? 'http://localhost:3000',
   emailAndPassword: {
     enabled: true,
-    autoSignIn: true,
+    // autoSignIn: false propositalmente — sem enforcement de status=PENDING
+    // nessa PR, login auto pós-cadastro abriria janela de vulnerabilidade.
+    // Quando `feat/admin-approval` mergear (PR seguinte), reavaliar.
+    autoSignIn: false,
     minPasswordLength: 12,
     maxPasswordLength: 256,
   },
