@@ -39,5 +39,9 @@
     "typescript-eslint": "^8.0.0",
     "vite": "^5.4.0",
     "vitest": "^2.0.0"
+  },
+  "prisma": {
+    "seed": "bun run ../../prisma/seed.ts",
+    "schema": "../../prisma/schema.prisma"
   }
 }

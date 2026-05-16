@@ -102,3 +102,4 @@ Referências: `docs/ARCHITECTURE.md` (fluxos), `docs/SECURITY.md` (master key, s
 ## Histórico
 
 > 2026-05-15: spec inicial criada com a fundação do repo novo.
+> 2026-05-16: PR `feat/db-migration-inicial` cumpre os critérios de aceite "migrations Prisma aplicam no entrypoint" e "FTS funcional". Adicionadas 2 migrations (`init` + `add_fts_trigger`) + `prisma/seed.ts` placeholder. Trigger `transcript_search_vector_update` + index GIN `Transcript_searchVector_idx` validados manualmente com `INSERT` + `plainto_tsquery('portuguese', ...)`.
