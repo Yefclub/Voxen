@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
+import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,6 +58,13 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
             >
               <div className="relative">
                 <Avatar className="bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
+                  {user.image && (
+                    <AvatarPrimitive.Image
+                      src={user.image}
+                      alt={user.name}
+                      className="h-full w-full object-cover"
+                    />
+                  )}
                   <AvatarFallback className="bg-transparent text-zinc-100 font-semibold">
                     {initials(user.name)}
                   </AvatarFallback>

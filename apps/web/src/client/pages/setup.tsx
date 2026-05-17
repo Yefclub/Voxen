@@ -180,7 +180,7 @@ export function SetupPage(): React.ReactElement {
                 Tudo certo com a <span className="text-emerald-accent">OpenRouter</span>
               </>
             }
-            sub="Sua chave está armazenada cifrada (AES-256-GCM). Você pode trocar a chave ou ajustar os modelos default sem precisar reconfigurar tudo."
+            sub="Você pode trocar a chave ou ajustar os modelos default a qualquer momento."
           />
 
           <Card elevated>
@@ -310,9 +310,7 @@ export function SetupPage(): React.ReactElement {
                     Cole sua chave
                   </CardTitle>
                   <CardDescription>
-                    Será validada agora contra a OpenRouter e armazenada{' '}
-                    <span className="text-zinc-200">cifrada em AES-256-GCM</span> com a master key
-                    da instalação.{' '}
+                    Será validada antes de ser salva.{' '}
                     <a
                       href="https://openrouter.ai/keys"
                       target="_blank"

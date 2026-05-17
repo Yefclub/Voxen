@@ -1,5 +1,5 @@
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
-import { Sidebar } from './sidebar';
+import { Sidebar, SidebarSpacer } from './sidebar';
 import { Topbar } from './topbar';
 import { useMe } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
@@ -11,7 +11,7 @@ export function AppLayout(): React.ReactElement {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Spinner className="h-6 w-6 text-zinc-400" />
+        <Spinner size={20} className="text-[var(--color-app-muted)]" />
       </div>
     );
   }
@@ -24,21 +24,26 @@ export function AppLayout(): React.ReactElement {
     return <Navigate to="/pendente" replace />;
   }
 
-  // Admin com setup incompleto → força ir pra /setup
-  if (!data.setupComplete && data.user.role === 'ADMIN' && location.pathname !== '/setup') {
-    return <Navigate to="/setup" replace />;
+  // Admin sem onboarding completo → wizard de onboarding (que já cobre setup)
+  if (!data.onboardingDone && data.user.role === 'ADMIN' && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />;
   }
-  // User comum com setup incompleto → tela de aviso (não pode fazer nada útil)
-  if (!data.setupComplete && data.user.role !== 'ADMIN') {
+  // Admin com onboarding feito mas tentando reentrar → manda pro painel
+  if (data.onboardingDone && location.pathname === '/onboarding') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  // User comum sem onboarding feito → tela de espera (admin precisa terminar)
+  if (!data.onboardingDone && data.user.role !== 'ADMIN') {
     return <Navigate to="/pendente" replace />;
   }
 
   return (
-    <div className="min-h-screen flex bg-zinc-950">
+    <div className="min-h-screen flex bg-[var(--color-app-bg)]">
       <Sidebar user={data.user} />
+      <SidebarSpacer />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar user={data.user} />
-        <main className="flex-1">
+        <main className="flex-1 pb-6">
           <Outlet />
         </main>
       </div>

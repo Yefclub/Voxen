@@ -18,7 +18,9 @@ import { getMasterKey } from './master-key';
 export type GlobalSettingKey =
   | 'openrouter_api_key'
   | 'default_chat_model'
-  | 'default_transcription_model';
+  | 'default_transcription_model'
+  | 'allow_signups'
+  | 'onboarding_done';
 
 export async function getSetting(key: GlobalSettingKey): Promise<string | null> {
   const row = await db.setting.findFirst({

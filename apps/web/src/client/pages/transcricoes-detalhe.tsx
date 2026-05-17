@@ -1,5 +1,4 @@
 import { Link, useParams } from 'react-router-dom';
-import { useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
@@ -10,8 +9,6 @@ import {
   Languages,
   Sparkles,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -19,6 +16,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
 import { formatDateTime, formatDuration, formatUsd } from '../lib/format';
 import { AnimatedPage } from '../components/motion/animated-page';
+import { TranscriptViewer } from '../components/ui/transcript-viewer';
 
 interface TranscriptDetail {
   id: string;
@@ -45,24 +43,9 @@ interface ResponseBody {
   markdown: string;
 }
 
-function stripFrontmatterAndHeader(md: string): string {
-  let body = md;
-  if (body.startsWith('---')) {
-    const end = body.indexOf('\n---', 3);
-    if (end !== -1) body = body.slice(end + 4).trimStart();
-  }
-  body = body.replace(/^!\[thumbnail\][^\n]*\n+/, '');
-  body = body.replace(/^#\s+[^\n]+\n+/, '');
-  body = body.replace(/^>\s+\[Vídeo original\][^\n]*\n+/, '');
-  body = body.replace(/^##\s+Transcrição\s*\n+/m, '');
-  return body.trim();
-}
-
 export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const { data, loading } = useFetch<ResponseBody>(id ? `/api/transcripts/${id}` : null);
-
-  const cleanedBody = useMemo(() => (data ? stripFrontmatterAndHeader(data.markdown) : ''), [data]);
 
   if (loading || !data) {
     return (
@@ -136,28 +119,9 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.1 }}
-            className="prose-voxen min-w-0"
+            className="min-w-0"
           >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: (props) => (
-                  <a
-                    {...props}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-violet-400 font-mono text-xs no-underline hover:text-violet-300 hover:underline transition-colors mr-2 tabular-nums"
-                  >
-                    {props.children}
-                  </a>
-                ),
-                p: ({ children }) => (
-                  <p className="text-[var(--color-app-subtle)] leading-[1.75] mb-3">{children}</p>
-                ),
-              }}
-            >
-              {cleanedBody}
-            </ReactMarkdown>
+            <TranscriptViewer markdown={data.markdown} />
           </motion.article>
 
           {/* Sidebar: metadata + thumbnail */}

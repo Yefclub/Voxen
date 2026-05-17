@@ -7,34 +7,68 @@
 import { Hono } from 'hono';
 import { auth } from './lib/auth';
 import { db } from './lib/db';
-import { isSetupComplete } from './lib/settings';
+import { getSetting, isSetupComplete } from './lib/settings';
 import { adminRoutes } from './routes/admin';
 import { jobsRoutes } from './routes/jobs';
 import { setupRoutes } from './routes/setup';
 import { transcriptsRoutes } from './routes/transcripts';
+import { onboardingRoutes } from './routes/onboarding';
 
 const app = new Hono();
 
 // Healthcheck — sempre 200, mesmo antes do setup (spec 000)
 app.get('/health', (c) => c.json({ ok: true, service: 'web' }));
 
-// Better Auth: aceita TODOS os métodos em /api/auth/*
-app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
+// Endpoint público: estado da instância (signups, primeira instalação)
+// Login page usa isso pra mostrar/esconder "Criar conta".
+app.get('/api/instance', async (c) => {
+  const [allowSignupsRaw, onboardingRaw] = await Promise.all([
+    getSetting('allow_signups').catch(() => null),
+    getSetting('onboarding_done').catch(() => null),
+  ]);
+  // Sem onboarding feito: não há admin ainda OR admin não terminou setup.
+  // Nesse caso o primeiro signup é o do admin → sempre permitido.
+  const userCount = await db.user.count();
+  const onboardingDone = onboardingRaw === 'true';
+  const allowSignups = userCount === 0 || (onboardingDone && allowSignupsRaw !== 'false');
+  return c.json({ allowSignups, hasUsers: userCount > 0, onboardingDone });
+});
+
+// Better Auth: aceita TODOS os métodos em /api/auth/*.
+// Bloqueia sign-up se allow_signups=false (admin desativou).
+app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
+  const path = new URL(c.req.url).pathname;
+  if (path.startsWith('/api/auth/sign-up')) {
+    const userCount = await db.user.count();
+    if (userCount > 0) {
+      const [allowSignupsRaw, onboardingRaw] = await Promise.all([
+        getSetting('allow_signups').catch(() => null),
+        getSetting('onboarding_done').catch(() => null),
+      ]);
+      const onboardingDone = onboardingRaw === 'true';
+      const allowSignups = !onboardingDone || allowSignupsRaw !== 'false';
+      if (!allowSignups) {
+        return c.json({ error: 'Cadastros novos estão desativados nesta instância.' }, 403);
+      }
+    }
+  }
+  return auth.handler(c.req.raw);
+});
 
 // /api/me — devolve session corrente + flag de setupComplete (sempre exposta)
 app.get('/api/me', async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   const setupComplete = await isSetupComplete();
+  const onboardingRaw = await getSetting('onboarding_done').catch(() => null);
+  const onboardingDone = onboardingRaw === 'true';
   if (!session) {
-    return c.json({ user: null, setupComplete });
+    return c.json({ user: null, setupComplete, onboardingDone });
   }
-  // Busca status/role do DB diretamente (additionalFields do better-auth
-  // nem sempre disponíveis no contexto da session).
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true, name: true, status: true, role: true },
+    select: { id: true, email: true, name: true, image: true, status: true, role: true },
   });
-  return c.json({ user, setupComplete });
+  return c.json({ user, setupComplete, onboardingDone });
 });
 
 // Setup endpoints (protegidos por middleware ADMIN no próprio router)
@@ -48,6 +82,58 @@ app.route('/api/jobs', jobsRoutes);
 
 // Transcripts endpoints (lista + viewer .md do Garage)
 app.route('/api/transcripts', transcriptsRoutes);
+
+// Onboarding (admin first-run) + avatar upload
+app.route('/api/onboarding', onboardingRoutes);
+
+// Avatar proxy: serve imagem do Garage de qualquer user autenticado
+app.get('/api/avatar/:userId', async (c) => {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) return c.text('', 401);
+  const userId = c.req.param('userId');
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { image: true },
+  });
+  if (!user?.image) return c.text('', 404);
+  // Tenta as 3 extensões possíveis
+  const { GetObjectCommand, S3Client } = await import('@aws-sdk/client-s3');
+  const { existsSync: ex, readFileSync: rf } = await import('node:fs');
+  function readCreds(key: string): string | undefined {
+    const path = process.env.GARAGE_CREDS_PATH ?? '/creds/voxen.env';
+    if (!ex(path)) return undefined;
+    const content = rf(path, 'utf-8');
+    const line = content.split('\n').find((l) => l.startsWith(`${key}=`));
+    return line?.slice(key.length + 1).trim();
+  }
+  const accessKeyId = process.env.GARAGE_ACCESS_KEY ?? readCreds('GARAGE_ACCESS_KEY');
+  const secretAccessKey = process.env.GARAGE_SECRET_KEY ?? readCreds('GARAGE_SECRET_KEY');
+  if (!accessKeyId || !secretAccessKey) return c.text('', 500);
+  const s3 = new S3Client({
+    endpoint: process.env.GARAGE_ENDPOINT ?? 'http://garage:3900',
+    region: process.env.GARAGE_REGION ?? 'garage',
+    credentials: { accessKeyId, secretAccessKey },
+    forcePathStyle: true,
+  });
+  for (const ext of ['png', 'jpg', 'webp']) {
+    try {
+      const res = await s3.send(
+        new GetObjectCommand({
+          Bucket: process.env.GARAGE_BUCKET ?? 'voxen-transcripts',
+          Key: `workspaces/${userId}/avatar.${ext}`,
+        }),
+      );
+      const buf = Buffer.from(await res.Body!.transformToByteArray());
+      const ctype = ext === 'png' ? 'image/png' : ext === 'jpg' ? 'image/jpeg' : 'image/webp';
+      return new Response(buf, {
+        headers: { 'content-type': ctype, 'cache-control': 'private, max-age=300' },
+      });
+    } catch {
+      // tenta próximo
+    }
+  }
+  return c.text('', 404);
+});
 
 // Static assets do build Vite em produção. Em dev, Vite serve no :5173 e
 // faz proxy de /api → :3000, então este fallback nunca dispara em dev.

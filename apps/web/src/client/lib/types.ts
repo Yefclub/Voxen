@@ -1,5 +1,3 @@
-// Tipos da API (espelhados do server). Em uma próxima PR podem virar do package @voxen/shared-types.
-
 export type UserStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED';
 export type UserRole = 'ADMIN' | 'USER';
 
@@ -7,6 +5,7 @@ export interface MeUser {
   id: string;
   email: string;
   name: string;
+  image: string | null;
   status: UserStatus;
   role: UserRole;
 }
@@ -14,6 +13,13 @@ export interface MeUser {
 export interface MeResponse {
   user: MeUser | null;
   setupComplete: boolean;
+  onboardingDone: boolean;
+}
+
+export interface InstanceState {
+  allowSignups: boolean;
+  hasUsers: boolean;
+  onboardingDone: boolean;
 }
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';

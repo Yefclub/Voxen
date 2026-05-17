@@ -4,6 +4,7 @@ import { AuthLayout } from './components/layout/auth-layout';
 import { LoginPage } from './pages/login';
 import { CadastroPage } from './pages/cadastro';
 import { PendentePage } from './pages/pendente';
+import { OnboardingPage } from './pages/onboarding';
 import { SetupPage } from './pages/setup';
 import { DashboardPage } from './pages/dashboard';
 import { AdminUsuariosPage } from './pages/admin-usuarios';
@@ -21,6 +22,9 @@ export function App(): React.ReactElement {
           <Route path="/entrar" element={<LoginPage />} />
           <Route path="/cadastro" element={<CadastroPage />} />
         </Route>
+
+        {/* Wizard de onboarding do admin (sem sidebar) */}
+        <Route path="/onboarding" element={<OnboardingPage />} />
 
         {/* Estado de espera (sem layout) */}
         <Route path="/pendente" element={<PendentePage />} />
