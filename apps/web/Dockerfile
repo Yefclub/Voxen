@@ -1,37 +1,49 @@
 # ============================================================================
 # Voxen Web — multi-stage Dockerfile
 # ============================================================================
-# Stage `build`: instala APENAS deps de produção (--prod). Sem vite/esbuild/
-#   eslint/typescript no image final — reduz tamanho e elimina CVEs em devDeps
-#   que não rodam em produção (esbuild gobinary trazendo Go stdlib antigo etc.)
+# Stage `build-front`: instala TODAS as deps (inclui vite/tailwind) e roda
+#   `vite build` pra gerar `dist/` com assets. Esta stage é descartada.
+# Stage `build-server`: instala APENAS prod deps. Trivy scaneia o store; sem
+#   devDeps significa sem CVEs em ferramentas de build.
 # Stage `runtime`: bun:1.3-alpine; USER non-root; prisma generate + migrate
-#   deploy no entrypoint.
+#   deploy no entrypoint. Inclui `dist/` do `build-front`.
 # ============================================================================
 
-FROM node:22-alpine AS build
+FROM node:22-alpine AS build-front
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Deps prod apenas. --ignore-scripts evita postinstall do @prisma/client
-# tentar `pnpm add prisma` em workspace (que falha em frozen-lockfile).
+# Workspace skeleton + deps completas (com vite/tailwind/eslint pra buildar)
+COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/
+COPY packages/shared-types/package.json packages/shared-types/
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+# Código do app (server + cliente)
+COPY apps/web ./apps/web
+COPY packages ./packages
+
+# Build do front → apps/web/dist
+RUN cd apps/web && pnpm exec vite build
+
+FROM node:22-alpine AS build-server
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/
 COPY packages/shared-types/package.json packages/shared-types/
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts && \
-    # pnpm --prod pula symlinks de devDeps mas mantém binários no .pnpm/ store.
-    # Trivy scaneia o store inteiro → removemos manualmente os binários Go
-    # de devDeps que não rodam em runtime (esbuild, vite tooling).
     find node_modules/.pnpm -maxdepth 1 -type d \
-      \( -name '@esbuild+*' -o -name 'esbuild@*' -o -name 'vite@*' -o -name '@vitejs+*' \) \
+      \( -name '@esbuild+*' -o -name 'esbuild@*' -o -name 'vite@*' -o -name '@vitejs+*' -o -name '@tailwindcss+*' -o -name 'tailwindcss@*' \) \
       -exec rm -rf {} +
 
-# Código + schema
+# Server source + prisma
 COPY prisma ./prisma
 COPY apps/web ./apps/web
 COPY packages ./packages
-
-# Prisma client é gerado em runtime pelo entrypoint (junto com `migrate deploy`).
 
 FROM oven/bun:1.3-alpine AS runtime
 WORKDIR /app
@@ -40,10 +52,12 @@ RUN apk add --no-cache nodejs npm wget && \
     npm install -g prisma@6.19.3 --omit=dev && \
     addgroup -S voxen && adduser -S -G voxen -u 1001 voxen
 
-COPY --from=build --chown=voxen:voxen /app/node_modules ./node_modules
-COPY --from=build --chown=voxen:voxen /app/apps/web ./apps/web
-COPY --from=build --chown=voxen:voxen /app/packages ./packages
-COPY --from=build --chown=voxen:voxen /app/prisma ./prisma
+COPY --from=build-server --chown=voxen:voxen /app/node_modules ./node_modules
+COPY --from=build-server --chown=voxen:voxen /app/apps/web ./apps/web
+COPY --from=build-server --chown=voxen:voxen /app/packages ./packages
+COPY --from=build-server --chown=voxen:voxen /app/prisma ./prisma
+# Assets do front (dist/) vêm do build-front
+COPY --from=build-front --chown=voxen:voxen /app/apps/web/dist ./apps/web/dist
 COPY --chown=voxen:voxen apps/web/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

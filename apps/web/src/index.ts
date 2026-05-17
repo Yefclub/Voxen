@@ -45,8 +45,34 @@ app.route('/api/admin', adminRoutes);
 // Jobs endpoints (download + transcrição — spec 002)
 app.route('/api/jobs', jobsRoutes);
 
-// Landing placeholder
-app.get('/', (c) => c.text('Voxen — em desenvolvimento. Veja .specs/000-setup-inicial.md.'));
+// Static assets do build Vite em produção. Em dev, Vite serve no :5173 e
+// faz proxy de /api → :3000, então este fallback nunca dispara em dev.
+// `import.meta.dir` é o diretório do arquivo em runtime (Bun).
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+const distDir = join(import.meta.dir, '..', 'dist');
+const distExists = existsSync(distDir);
+
+app.get('*', async (c) => {
+  if (!distExists) {
+    // Dev sem build — devolve hint pro user usar Vite
+    return c.text(
+      'Voxen — front em dev mode. Rode `bun run dev:client` ou abra http://localhost:5173',
+      404,
+    );
+  }
+  const url = new URL(c.req.url);
+  const reqPath = url.pathname === '/' ? '/index.html' : url.pathname;
+  const filePath = join(distDir, reqPath);
+  // SPA fallback: qualquer rota desconhecida vira index.html (React Router)
+  const target = existsSync(filePath) ? filePath : join(distDir, 'index.html');
+  const file = Bun.file(target);
+  if (!(await file.exists())) {
+    return c.text('Not found', 404);
+  }
+  return new Response(file);
+});
 
 const port = Number(process.env.PORT ?? 3000);
 
