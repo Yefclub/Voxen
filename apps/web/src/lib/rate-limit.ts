@@ -16,8 +16,14 @@ export interface RateLimitResult {
 
 /**
  * Conta o hit e retorna se pode prosseguir. Janela fixa (não sliding) — barata
- * e suficiente pra deduplicação de abuso. `INCR` + `EXPIRE` apenas no primeiro
- * hit da janela.
+ * e suficiente pra deduplicação de abuso.
+ *
+ * Atomicidade: `INCR` + `EXPIRE` rodam num único `MULTI` pra evitar TTL drift
+ * — se EXPIRE falhar isoladamente (network blip, processo crash entre os 2
+ * comandos), a chave fica sem TTL e o user vira refém permanente. Com MULTI,
+ * ou os 2 commits passam ou nenhum.
+ *
+ * `EXPIRE NX` (Redis 7+) só seta TTL se não existir — idempotente quando count > 1.
  */
 export async function rateLimit(
   key: string,
@@ -25,11 +31,14 @@ export async function rateLimit(
   windowSec: number,
 ): Promise<RateLimitResult> {
   const redis = getRedisPublisher();
-  const count = await redis.incr(key);
-  if (count === 1) {
-    await redis.expire(key, windowSec);
+  const results = await redis.multi().incr(key).expire(key, windowSec, 'NX').ttl(key).exec();
+  if (!results) {
+    // MULTI/EXEC abortado (raro — connection drop). Falha aberta: permite,
+    // mas não conta — alternativa seria 503, mas single-tenant não compensa.
+    return { allowed: true, count: 0, limit, resetIn: windowSec };
   }
-  const ttl = count === 1 ? windowSec : await redis.ttl(key);
+  const count = (results[0]?.[1] as number) ?? 0;
+  const ttl = (results[2]?.[1] as number) ?? windowSec;
   return {
     allowed: count <= limit,
     count,

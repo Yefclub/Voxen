@@ -236,32 +236,50 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
   let assistantContent = '';
   const tools: Array<{ name: string; preview?: string }> = [];
 
+  // Persiste o que foi acumulado até agora. Usado no done normal E em erros
+  // do upstream — evita perder a mensagem parcial quando chat:8001 cai.
+  const persistPartial = async (): Promise<void> => {
+    if (assistantContent.trim() || tools.length > 0) {
+      try {
+        await db.chatMessage.create({
+          data: {
+            conversationId: id,
+            role: 'ASSISTANT',
+            content: assistantContent,
+            tools: tools.length > 0 ? tools : undefined,
+          },
+        });
+        await db.conversation.update({
+          where: { id },
+          data: { updatedAt: new Date() },
+        });
+      } catch {
+        // Best-effort
+      }
+    }
+  };
+
   const stream = new ReadableStream({
     async pull(controller) {
-      const { value, done } = await reader.read();
-      if (done) {
-        if (assistantContent.trim() || tools.length > 0) {
-          try {
-            await db.chatMessage.create({
-              data: {
-                conversationId: id,
-                role: 'ASSISTANT',
-                content: assistantContent,
-                tools: tools.length > 0 ? tools : undefined,
-              },
-            });
-            await db.conversation.update({
-              where: { id },
-              data: { updatedAt: new Date() },
-            });
-          } catch {
-            // Não interrompe o stream se persistência falhar.
-          }
-        }
+      let value: Uint8Array | undefined;
+      let done = false;
+      try {
+        const r = await reader.read();
+        value = r.value;
+        done = r.done;
+      } catch {
+        // Upstream caiu/abortou. Persiste o parcial e fecha sem propagar erro
+        // pro browser (o frontend já mostra o que recebeu até aqui).
+        await persistPartial();
         controller.close();
         return;
       }
-      const chunk = decoder.decode(value, { stream: true });
+      if (done) {
+        await persistPartial();
+        controller.close();
+        return;
+      }
+      const chunk = decoder.decode(value!, { stream: true });
       buffer += chunk;
       controller.enqueue(encoder.encode(chunk));
 
@@ -320,6 +338,19 @@ chatRoutes.post('/voice', async (c) => {
       },
       429,
     );
+  }
+
+  // Cap pré-formData: Content-Length nem sempre é confiável (client pode mentir),
+  // mas pega 99% e evita Bun carregar GBs em memória antes do file.size check.
+  const contentLengthHeader = c.req.header('content-length');
+  if (contentLengthHeader) {
+    const declared = Number(contentLengthHeader);
+    if (Number.isFinite(declared) && declared > VOICE_MAX_BYTES) {
+      return c.json(
+        { error: `Áudio muito grande (${Math.round(declared / 1024 / 1024)} MB). Máximo: 25 MB.` },
+        413,
+      );
+    }
   }
 
   const form = await c.req.formData();
