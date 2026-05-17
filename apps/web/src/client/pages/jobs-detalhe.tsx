@@ -161,7 +161,7 @@ export function JobDetalhePage(): React.ReactElement {
                     initial={{ width: '0%' }}
                     animate={{ width: `${Math.max(2, percent)}%` }}
                     transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-emerald-400 to-violet-400 shadow-[0_0_12px_oklch(73%_0.16_159_/_0.5)]"
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-emerald-400 to-violet-400"
                   />
                 </div>
 

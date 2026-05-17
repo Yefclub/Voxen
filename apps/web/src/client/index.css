@@ -186,18 +186,6 @@
     opacity: 1;
   }
 
-  /* Texturas de glow direcionado */
-  .glow-emerald {
-    box-shadow:
-      0 0 0 1px oklch(73% 0.16 159 / 0.18),
-      0 8px 32px -8px oklch(73% 0.16 159 / 0.25);
-  }
-  .glow-violet {
-    box-shadow:
-      0 0 0 1px oklch(72% 0.18 290 / 0.2),
-      0 8px 32px -8px oklch(72% 0.18 290 / 0.3);
-  }
-
   /* Texto com gradiente sutil (uso esparso, só em h1 hero) */
   .text-gradient {
     background: linear-gradient(180deg, oklch(98.5% 0 0) 0%, oklch(78% 0.005 250) 100%);

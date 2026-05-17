@@ -75,7 +75,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         <Button variant="ghost" size="sm" asChild className="mb-8 -ml-2">
           <Link to="/transcricoes">
             <ArrowLeft className="h-3.5 w-3.5" />
-            Acervo
+            Biblioteca
           </Link>
         </Button>
 

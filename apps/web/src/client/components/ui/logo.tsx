@@ -23,7 +23,7 @@ export function Logo({ size = 32, withWordmark = true, className }: LogoProps): 
         <div className="flex flex-col leading-none">
           <span className="text-sm font-semibold tracking-tight font-display">Voxen</span>
           <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] mt-1">
-            knowledge base
+            base de conhecimento
           </span>
         </div>
       )}

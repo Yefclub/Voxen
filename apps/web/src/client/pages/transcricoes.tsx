@@ -34,7 +34,7 @@ export function TranscricoesPage(): React.ReactElement {
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <Library className="h-3.5 w-3.5 text-violet-400" />
-            Acervo
+            Biblioteca
           </div>
           <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Transcrições</h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
@@ -58,7 +58,9 @@ export function TranscricoesPage(): React.ReactElement {
                 <Search className="h-5 w-5 text-violet-400" />
               </div>
               <div className="space-y-1.5">
-                <p className="font-display text-lg font-semibold tracking-tight">Acervo vazio</p>
+                <p className="font-display text-lg font-semibold tracking-tight">
+                  Biblioteca vazia
+                </p>
                 <p className="text-sm text-[var(--color-app-muted)]">
                   Suas transcrições aparecerão aqui.
                 </p>
@@ -91,11 +93,7 @@ function TranscriptCard({ t }: { t: TranscriptSummary }): React.ReactElement {
         to={`/transcricoes/${t.id}`}
         className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 rounded-2xl"
       >
-        <Card
-          hoverable
-          elevated
-          className="h-full overflow-hidden p-0 transition-shadow duration-300 group-hover:glow-violet"
-        >
+        <Card hoverable elevated className="h-full overflow-hidden p-0">
           {/* Thumbnail */}
           <div className="relative aspect-video bg-[var(--color-app-bg-elevated)] overflow-hidden">
             {t.thumbnailUrl ? (

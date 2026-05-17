@@ -192,7 +192,7 @@ export function CadastroPage(): React.ReactElement {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-500 py-3.5 font-semibold text-emerald-950 hover:from-emerald-300 hover:to-emerald-400 transition-all shadow-[inset_0_1px_0_oklch(85%_0.18_159_/_0.6),0_8px_28px_-8px_oklch(73%_0.16_159_/_0.5)] active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-60"
+              className="w-full rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-500 py-3.5 font-semibold text-emerald-950 hover:from-emerald-300 hover:to-emerald-400 active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-60"
             >
               {loading ? <Spinner /> : isFirstUser ? 'Criar e configurar' : 'Criar conta'}
               {!loading && <ArrowRight className="h-4 w-4" />}

@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from './components/ui/sonner';
 import { AppLayout } from './components/layout/app-layout';
 import { AuthLayout } from './components/layout/auth-layout';
 import { LoginPage } from './pages/login';
@@ -16,6 +17,7 @@ import { TranscricaoDetalhePage } from './pages/transcricoes-detalhe';
 export function App(): React.ReactElement {
   return (
     <BrowserRouter>
+      <Toaster />
       <Routes>
         {/* Auth (sem login) */}
         <Route element={<AuthLayout />}>

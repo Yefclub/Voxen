@@ -55,16 +55,11 @@ export function OnboardingPage(): React.ReactElement {
   if (data && !data.user) return <Navigate to="/entrar" replace />;
   if (data && data.user && data.user.status !== 'APPROVED')
     return <Navigate to="/pendente" replace />;
-  if (data && data.user && data.user.role !== 'ADMIN')
-    return <Navigate to="/dashboard" replace />;
+  if (data && data.user && data.user.role !== 'ADMIN') return <Navigate to="/dashboard" replace />;
   if (data?.onboardingDone) return <Navigate to="/dashboard" replace />;
 
   return (
-    <OnboardingContent
-      userName={data?.user?.name ?? ''}
-      refresh={refresh}
-      navigate={navigate}
-    />
+    <OnboardingContent userName={data?.user?.name ?? ''} refresh={refresh} navigate={navigate} />
   );
 }
 
@@ -539,7 +534,7 @@ function ModeCard({
       className={cn(
         'group text-left rounded-xl border p-5 transition-all duration-200',
         selected
-          ? 'border-violet-400/50 bg-violet-500/5 shadow-[0_0_0_1px_oklch(72%_0.18_290_/_0.4),0_8px_28px_-8px_oklch(72%_0.18_290_/_0.35)]'
+          ? 'border-violet-400/50 bg-violet-500/5'
           : 'border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
       )}
     >
@@ -576,7 +571,7 @@ function StepDot({
         done
           ? 'bg-emerald-500 border-emerald-400 text-emerald-950'
           : active
-            ? 'bg-zinc-100 border-zinc-100 text-zinc-950 shadow-[0_0_0_4px_oklch(72%_0.18_290_/_0.18)]'
+            ? 'bg-zinc-100 border-zinc-100 text-zinc-950'
             : 'bg-transparent border-[var(--color-app-border-strong)] text-[var(--color-app-muted)]',
       )}
     >
@@ -593,7 +588,7 @@ function PrimaryButton({
     <button
       {...props}
       className={cn(
-        'rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-500 px-5 h-11 font-semibold text-emerald-950 hover:from-emerald-300 hover:to-emerald-400 transition-all shadow-[inset_0_1px_0_oklch(85%_0.18_159_/_0.6),0_8px_28px_-8px_oklch(73%_0.16_159_/_0.5)] active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:pointer-events-none',
+        'rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-500 px-5 h-11 font-semibold text-emerald-950 hover:from-emerald-300 hover:to-emerald-400 active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:pointer-events-none',
       )}
     >
       {children}

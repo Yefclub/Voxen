@@ -4,24 +4,22 @@ import { cn } from '../../lib/utils';
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   /** elevated = leve gradient interno (top → bottom) */
   elevated?: boolean;
-  /** hoverable = pequeno lift + border destacada no hover */
+  /** hoverable = leve translate no hover + border destacada */
   hoverable?: boolean;
-  /** glow = sombra colorida sutil (use raramente, em destaque) */
+  /** glow mantido por compat, ignorado (sem sombras coloridas) */
   glow?: 'emerald' | 'violet' | null;
 }
 
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ className, elevated, hoverable, glow, ...props }, ref) => (
+  ({ className, elevated, hoverable, ...props }, ref) => (
     <div
       ref={ref}
       className={cn(
-        'rounded-2xl text-zinc-100 transition-all duration-300 ease-out',
+        'rounded-2xl text-zinc-100 transition-colors duration-200 ease-out',
         elevated
           ? 'border border-[var(--color-app-border)] bg-gradient-to-b from-[oklch(30%_0.006_250/0.7)] to-[var(--color-app-surface)]'
           : 'border border-[var(--color-app-border)] bg-[var(--color-app-surface)]',
-        hoverable && 'hover:border-[var(--color-app-border-strong)] hover:-translate-y-0.5',
-        glow === 'emerald' && 'glow-emerald',
-        glow === 'violet' && 'glow-violet',
+        hoverable && 'hover:border-[var(--color-app-border-strong)]',
         className,
       )}
       {...props}

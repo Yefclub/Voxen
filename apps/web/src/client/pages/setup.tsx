@@ -548,7 +548,7 @@ function StepDot({
           done
             ? 'bg-emerald-500 border-emerald-400 text-emerald-950'
             : active
-              ? 'bg-zinc-100 border-zinc-100 text-zinc-950 shadow-[0_0_0_4px_oklch(72%_0.18_290_/_0.18)]'
+              ? 'bg-zinc-100 border-zinc-100 text-zinc-950'
               : 'bg-transparent border-[var(--color-app-border-strong)] text-[var(--color-app-muted)]',
         ].join(' ')}
       >

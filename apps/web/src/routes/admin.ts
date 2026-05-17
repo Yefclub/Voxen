@@ -12,6 +12,7 @@
 import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
+import { getSetting, setSetting } from '../lib/settings';
 
 type AdminVariables = {
   adminUserId: string;
@@ -103,4 +104,20 @@ adminRoutes.post('/usuarios/:id/reject', async (c) => {
     select: { id: true, email: true, status: true },
   });
   return c.json({ user: updated });
+});
+
+// GET /api/admin/instance — estado da instância (allow_signups)
+adminRoutes.get('/instance', async (c) => {
+  const allowSignupsRaw = await getSetting('allow_signups').catch(() => null);
+  return c.json({ allowSignups: allowSignupsRaw !== 'false' });
+});
+
+// PATCH /api/admin/instance — atualiza flag de cadastros abertos
+adminRoutes.patch('/instance', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  if (typeof body.allowSignups !== 'boolean') {
+    return c.json({ error: 'Campo "allowSignups" obrigatório (boolean).' }, 400);
+  }
+  await setSetting('allow_signups', body.allowSignups ? 'true' : 'false');
+  return c.json({ allowSignups: body.allowSignups });
 });
