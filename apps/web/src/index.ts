@@ -74,11 +74,16 @@ app.get('*', async (c) => {
   return new Response(file);
 });
 
+// Bun 1.3+ faz auto-serve do `export default` quando rodado via `bun src/index.ts`.
+// O default precisa ter `{ port, fetch }` (formato BunServeOptions).
 const port = Number(process.env.PORT ?? 3000);
 
-if (typeof Bun !== 'undefined') {
-  Bun.serve({ port, fetch: app.fetch });
-  console.warn(`[web] listening on :${port}`);
-}
+export default {
+  port,
+  fetch: app.fetch,
+};
 
-export default app;
+// Em testes, importadores fazem `import app from '../src/index'` e Bun NÃO
+// chama auto-serve (módulo é importado, não executado direto). Os tests
+// usam `app.fetch(new Request(...))` direto.
+export { app };
