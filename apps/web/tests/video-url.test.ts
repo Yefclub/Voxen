@@ -57,6 +57,12 @@ describe('parseVideoUrl - TikTok', () => {
     const r = parseVideoUrl('https://vt.tiktok.com/XyZ123/');
     expect(r?.source).toBe('TIKTOK');
   });
+
+  test('rejeita short link com path adicional', () => {
+    // Short link só aceita 1 segmento de path (o code). Path extra é rejeitado.
+    expect(parseVideoUrl('https://vm.tiktok.com/ZMabc/extra')).toBeNull();
+    expect(parseVideoUrl('https://vt.tiktok.com/Xyz/foo/bar')).toBeNull();
+  });
 });
 
 describe('parseVideoUrl - rejeições', () => {
