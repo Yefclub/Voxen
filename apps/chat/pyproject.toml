@@ -41,6 +41,10 @@ python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+# Bibliotecas sem `py.typed` ou stubs públicos. `ignore_missing_imports` cobre
+# `import-not-found` mas NÃO `import-untyped` (módulo instalado, sem stubs),
+# que mypy strict trata como erro. Desligamos esse código globalmente.
+disable_error_code = ["import-untyped"]
 
 [[tool.mypy.overrides]]
 module = ["asyncpg.*", "aioboto3.*", "botocore.*", "redis.*"]

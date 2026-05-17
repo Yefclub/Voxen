@@ -50,5 +50,5 @@ async def cancel_subscriber(stop: asyncio.Event) -> None:
         await pubsub.aclose()  # type: ignore[no-untyped-call]
 
 
-class CancelledException(Exception):
+class CancelledException(Exception):  # noqa: N818 — nome consagrado, paralelo a asyncio.CancelledError
     """Levantada quando o job é cancelado em pontos de checagem."""

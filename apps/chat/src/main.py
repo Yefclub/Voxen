@@ -117,7 +117,7 @@ async def chat(
                 if extra:
                     kwargs["extra_body"] = extra
 
-                stream = await client.chat.completions.create(**kwargs)  # type: ignore[call-overload]
+                stream = await client.chat.completions.create(**kwargs)
 
                 content_buf = ""
                 tool_calls: list[dict[str, Any]] = []

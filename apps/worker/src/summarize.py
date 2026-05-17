@@ -47,7 +47,7 @@ async def generate_summary(
     title: str,
     api_key: str,
     model: str,
-    timeout: float = 90.0,
+    timeout: float = 90.0,  # noqa: ASYNC109 — passado pro httpx, não substitui asyncio.timeout
 ) -> tuple[str, dict[str, int], Decimal]:
     """Retorna `(summary_md, usage, cost_usd)`.
 

@@ -124,7 +124,10 @@ TOOLS_SPEC: list[dict[str, Any]] = [
                 "properties": {
                     "url": {
                         "type": "string",
-                        "description": "URL do vídeo no YouTube. Aceita youtu.be/ID, youtube.com/watch?v=ID e variações.",
+                        "description": (
+                            "URL do vídeo no YouTube. Aceita youtu.be/ID, "
+                            "youtube.com/watch?v=ID e variações."
+                        ),
                     },
                 },
                 "required": ["url"],
