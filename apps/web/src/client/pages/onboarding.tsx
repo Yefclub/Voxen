@@ -42,22 +42,30 @@ export function OnboardingPage(): React.ReactElement {
   const navigate = useNavigate();
   const { data, loading, refresh } = useMe();
 
-  // Guard: precisa estar autenticado como ADMIN aprovado.
-  // Sem sessão → /entrar; user comum ou pendente → /pendente;
-  // admin com onboarding já feito → /dashboard.
-  if (loading) {
+  // Spinner SÓ no primeiro carregamento (data ainda null) — refetches
+  // subsequentes (após upload de avatar, etc.) não devem desmontar o
+  // wizard e resetar o state interno do <OnboardingContent>.
+  if (loading && !data) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Spin size={20} className="text-[var(--color-app-muted)]" />
       </div>
     );
   }
-  if (!data?.user) return <Navigate to="/entrar" replace />;
-  if (data.user.status !== 'APPROVED') return <Navigate to="/pendente" replace />;
-  if (data.user.role !== 'ADMIN') return <Navigate to="/dashboard" replace />;
-  if (data.onboardingDone) return <Navigate to="/dashboard" replace />;
+  if (data && !data.user) return <Navigate to="/entrar" replace />;
+  if (data && data.user && data.user.status !== 'APPROVED')
+    return <Navigate to="/pendente" replace />;
+  if (data && data.user && data.user.role !== 'ADMIN')
+    return <Navigate to="/dashboard" replace />;
+  if (data?.onboardingDone) return <Navigate to="/dashboard" replace />;
 
-  return <OnboardingContent userName={data.user.name} refresh={refresh} navigate={navigate} />;
+  return (
+    <OnboardingContent
+      userName={data?.user?.name ?? ''}
+      refresh={refresh}
+      navigate={navigate}
+    />
+  );
 }
 
 function OnboardingContent({
