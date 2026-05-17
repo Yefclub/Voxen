@@ -11,6 +11,7 @@ import os
 from typing import Any
 
 import aioboto3
+from botocore.config import Config as BotoConfig
 
 
 def _env(*keys: str, default: str | None = None) -> str | None:
@@ -47,6 +48,12 @@ def s3_region() -> str:
     return _env("S3_REGION", "GARAGE_REGION", default="garage") or "garage"
 
 
+def s3_force_path_style() -> bool:
+    # Default true (Garage e MinIO precisam). AWS S3 puro: defina como false.
+    v = (_env("S3_FORCE_PATH_STYLE", default="true") or "true").lower()
+    return v not in ("false", "0", "no")
+
+
 def s3_session() -> aioboto3.Session:
     return aioboto3.Session(
         aws_access_key_id=s3_access_key(),
@@ -56,9 +63,11 @@ def s3_session() -> aioboto3.Session:
 
 
 def s3_client_kwargs() -> dict[str, Any]:
+    addressing = "path" if s3_force_path_style() else "virtual"
     return {
         "service_name": "s3",
         "endpoint_url": s3_endpoint(),
+        "config": BotoConfig(s3={"addressing_style": addressing}),
     }
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 
 import aioboto3
+from botocore.config import Config as BotoConfig
 
 
 def _env(*keys: str, default: str | None = None) -> str | None:
@@ -49,9 +50,18 @@ def _endpoint() -> str:
     return _env("S3_ENDPOINT", "GARAGE_ENDPOINT", default="http://garage:3900") or ""
 
 
+def _force_path_style() -> bool:
+    v = (_env("S3_FORCE_PATH_STYLE", default="true") or "true").lower()
+    return v not in ("false", "0", "no")
+
+
 async def get_markdown(md_path: str) -> str:
     session = _session()
-    async with session.client(service_name="s3", endpoint_url=_endpoint()) as s3:
+    addressing = "path" if _force_path_style() else "virtual"
+    config = BotoConfig(s3={"addressing_style": addressing})
+    async with session.client(
+        service_name="s3", endpoint_url=_endpoint(), config=config
+    ) as s3:
         res = await s3.get_object(Bucket=_bucket(), Key=md_path)
         body: bytes = await res["Body"].read()
         text: str = body.decode("utf-8")

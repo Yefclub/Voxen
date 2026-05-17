@@ -205,6 +205,7 @@ services:
       S3_BUCKET: ${S3_BUCKET:-}
       S3_REGION: ${S3_REGION:-}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      CHAT_SERVICE_URL: http://chat:8001
     volumes:
       - master_key:/data:ro
       - garage_creds:/creds:ro

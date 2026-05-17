@@ -212,16 +212,6 @@ async def mark_job_failed(job_id: str, error_msg: str) -> None:
         )
 
 
-async def update_transcript_summary(transcript_id: str, summary_md: str) -> None:
-    async with connection() as conn:
-        await conn.execute(
-            'UPDATE "Transcript" SET "summaryMd" = $2, "updatedAt" = $3 WHERE id = $1',
-            transcript_id,
-            summary_md,
-            _utcnow_naive(),
-        )
-
-
 async def insert_cost_event(
     *,
     user_id: str,
