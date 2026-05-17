@@ -91,10 +91,24 @@ Referências:
 
 ## Fora de Escopo
 
-- Instagram e TikTok (fase 2 — extractors yt-dlp para essas plataformas quebram com frequência)
 - Reprocessar transcrição existente (overwrite)
-- Cancelamento manual de job RUNNING (`status=CANCELLED` fica reservado mas sem endpoint MVP)
 - Edição manual da transcrição depois de gerada
+
+## Atualizações pós-implementação
+
+- **2026-05-17** — Instagram e TikTok saíram do "fora de escopo" e foram
+  implementados (PR #45). MVP cobre apenas vídeos **públicos** das 3
+  plataformas (sem cookies/login). Privados/idade-restritos falham com
+  mensagem clara do yt-dlp.
+- Parser unificado: `apps/web/src/lib/video-url.ts` (TS) +
+  `apps/worker/src/video_url.py` (Python) + `apps/chat/src/tools.py::_canonical_video_url`.
+- `_timestamp_link` no `transcript_md.py` degrada graciosamente para
+  Insta/TikTok: como não há deeplink público pra segundo exato, os links
+  caem na URL completa do vídeo (clique abre o vídeo, user procura o
+  trecho). Apenas YouTube tem `?t=N`.
+- **2026-05-17** — Cancelamento manual de RUNNING implementado (PR #18) via
+  `POST /api/jobs/:id/cancel` + canal Redis `jobs:cancel` + checkpoints
+  cooperativos no pipeline. `status=CANCELLED` ativo.
 - Re-transcribe com outro modelo
 - Tradução de transcrição
 - Streaming do áudio (download incremental) — sempre baixa arquivo completo antes

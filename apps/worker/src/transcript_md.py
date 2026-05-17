@@ -46,8 +46,17 @@ def _format_ts(seconds: float) -> str:
     return f"{s // 3600:02d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
 
 
-def _timestamp_link(video_id: str, seconds: float) -> str:
-    return f"https://youtu.be/{video_id}?t={int(seconds)}"
+def _timestamp_link(source: str, url: str, video_id: str, seconds: float) -> str:
+    """Link clicável pro segundo exato. Cada plataforma tem sintaxe própria.
+
+    - YouTube: `?t=Ns` funciona em youtu.be e youtube.com
+    - Instagram/TikTok: NÃO suportam deeplink pra segundo via URL pública;
+      caímos pro `url` da página inteira (o user clica e procura)
+    """
+    if source == "YOUTUBE":
+        return f"https://youtu.be/{video_id}?t={int(seconds)}"
+    # Instagram/TikTok: sem deeplink de timestamp na URL pública
+    return url
 
 
 def build_frontmatter(doc: TranscriptDoc) -> dict[str, Any]:
@@ -104,7 +113,7 @@ def render_markdown(doc: TranscriptDoc) -> str:
 
     for seg in doc.segments:
         ts = _format_ts(seg.start_sec)
-        link = _timestamp_link(doc.video_id, seg.start_sec)
+        link = _timestamp_link(doc.source, doc.url, doc.video_id, seg.start_sec)
         parts.append(f"[{ts}]({link}) {seg.text.strip()}")
         parts.append("")
 

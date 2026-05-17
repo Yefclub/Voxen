@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isSetupComplete } from '../lib/settings';
-import { parseYoutubeUrl } from '../lib/youtube-url';
+import { parseVideoUrl } from '../lib/video-url';
 import { createSubscriber } from '../lib/redis';
 import {
   isTerminalStage,
@@ -70,13 +70,13 @@ jobsRoutes.post('/', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'Payload inválido.' }, 400);
   }
-  const yt = parseYoutubeUrl(parsed.data.url);
-  if (!yt) {
-    return c.json({ error: 'URL não suportada — use um link do YouTube.' }, 400);
+  const video = parseVideoUrl(parsed.data.url);
+  if (!video) {
+    return c.json({ error: 'URL não suportada — use link do YouTube, Instagram ou TikTok.' }, 400);
   }
 
   const existingTranscript = await db.transcript.findFirst({
-    where: { userId, url: yt.canonical },
+    where: { userId, url: video.canonical },
     select: { id: true },
   });
   if (existingTranscript) {
@@ -92,7 +92,7 @@ jobsRoutes.post('/', async (c) => {
   const inflight = await db.job.findFirst({
     where: {
       userId,
-      sourceUrl: yt.canonical,
+      sourceUrl: video.canonical,
       status: { in: ['QUEUED', 'RUNNING'] },
     },
     select: { id: true },
@@ -108,7 +108,7 @@ jobsRoutes.post('/', async (c) => {
         userId,
         type: 'DOWNLOAD_AND_TRANSCRIBE',
         status: 'QUEUED',
-        sourceUrl: yt.canonical,
+        sourceUrl: video.canonical,
       },
       select: { id: true, status: true, sourceUrl: true },
     });

@@ -7,9 +7,15 @@ from typing import Any
 
 from . import db, redis_pub, storage
 
-# YouTube URL canonicalization — espelha apps/web/src/lib/youtube-url.ts.
+# Video URL parsers — espelham apps/web/src/lib/video-url.ts.
 _YT_HOSTS = ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com")
 _YT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+_IG_HOSTS = ("instagram.com", "www.instagram.com", "m.instagram.com")
+_IG_CODE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_TT_HOSTS = ("tiktok.com", "www.tiktok.com", "m.tiktok.com")
+_TT_SHORT_HOSTS = ("vm.tiktok.com", "vt.tiktok.com")
+_TT_ID_RE = re.compile(r"^[0-9]{6,32}$")
+_TT_SHORT_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 _LINE_RE = re.compile(r"^\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]\(.*?\)\s*(.*)$")
 
@@ -136,11 +142,12 @@ TOOLS_SPEC: list[dict[str, Any]] = [
         "function": {
             "name": "transcribe_video",
             "description": (
-                "Dispara a transcrição de um vídeo do YouTube. Recebe a URL e "
-                "agenda um Job no worker. NÃO espera concluir — retorna o "
-                "job_id pra acompanhar. Use quando o usuário pedir pra "
-                "transcrever/baixar/indexar um link novo. Avise no texto que "
-                "vai demorar (curto: ~30s, vídeos longos podem levar minutos)."
+                "Dispara transcrição de um vídeo (YouTube, Instagram Reel ou "
+                "TikTok). Recebe a URL e agenda um Job no worker. NÃO espera "
+                "concluir — retorna o job_id pra acompanhar. Use quando o "
+                "usuário pedir pra transcrever/baixar/indexar um link de "
+                "vídeo. Avise que vai demorar (curto: ~30s, vídeos longos "
+                "podem levar minutos)."
             ),
             "parameters": {
                 "type": "object",
@@ -148,8 +155,10 @@ TOOLS_SPEC: list[dict[str, Any]] = [
                     "url": {
                         "type": "string",
                         "description": (
-                            "URL do vídeo no YouTube. Aceita youtu.be/ID, "
-                            "youtube.com/watch?v=ID e variações."
+                            "URL do vídeo. Aceita YouTube (youtu.be, "
+                            "youtube.com/watch, /shorts), Instagram "
+                            "(instagram.com/reel|/p|/tv) e TikTok "
+                            "(tiktok.com/@user/video, vm/vt.tiktok.com)."
                         ),
                     },
                 },
@@ -268,11 +277,14 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
 
         if name == "transcribe_video":
             url = str(args.get("url", "")).strip()
-            if not url:
-                return {"error": "URL ausente."}
-            canonical = _canonical_youtube_url(url)
+            canonical = _canonical_video_url(url)
             if not canonical:
-                return {"error": "URL não suportada. Use um link válido do YouTube."}
+                return {
+                    "error": (
+                        "URL não suportada. Aceito YouTube, Instagram (reel/p/tv) "
+                        "e TikTok."
+                    ),
+                }
             res = await db.create_transcribe_job(user_id, canonical)
             if res.get("duplicate") == "transcript":
                 return {
@@ -341,11 +353,11 @@ def _normalize_web_url(url: str) -> str | None:
     return urlunparse(u._replace(fragment=""))
 
 
-def _canonical_youtube_url(url: str) -> str | None:
-    """Extrai videoId e devolve forma canônica `https://youtu.be/<id>`.
+def _canonical_video_url(url: str) -> str | None:
+    """Parser unificado YouTube/Instagram/TikTok. Espelha video-url.ts.
 
-    Aceita: youtu.be/ID, youtube.com/watch?v=ID, /shorts/ID, /embed/ID, /v/ID,
-    com ou sem `www.`/`m.`/`music.`. Retorna None se inválido.
+    Retorna a URL canonical pra dedup consistente em todo o sistema.
+    Devolve None se a URL não bate com nenhuma plataforma suportada.
     """
     from urllib.parse import parse_qs, urlparse
 
@@ -353,27 +365,63 @@ def _canonical_youtube_url(url: str) -> str | None:
         u = urlparse(url.strip())
     except ValueError:
         return None
-    if not u.scheme or u.scheme not in ("http", "https"):
+    if u.scheme not in ("http", "https"):
         return None
     host = (u.hostname or "").lower()
-    if host not in _YT_HOSTS:
+    if not host:
         return None
 
-    video_id: str | None = None
-    if host == "youtu.be":
-        video_id = u.path.lstrip("/").split("/")[0] or None
-    else:
-        path_parts = [p for p in u.path.split("/") if p]
-        if path_parts and path_parts[0] in ("shorts", "embed", "v") and len(path_parts) > 1:
-            video_id = path_parts[1]
+    # YouTube
+    if host in _YT_HOSTS:
+        video_id: str | None = None
+        if host == "youtu.be":
+            video_id = u.path.lstrip("/").split("/")[0] or None
         else:
-            qs = parse_qs(u.query)
-            v = qs.get("v")
-            if v:
-                video_id = v[0]
-    if not video_id or not _YT_ID_RE.match(video_id):
+            parts = [p for p in u.path.split("/") if p]
+            if parts and parts[0] in ("shorts", "embed", "v") and len(parts) > 1:
+                video_id = parts[1]
+            else:
+                v = parse_qs(u.query).get("v")
+                if v:
+                    video_id = v[0]
+        if video_id and _YT_ID_RE.match(video_id):
+            return f"https://youtu.be/{video_id}"
         return None
-    return f"https://youtu.be/{video_id}"
+
+    # Instagram (/reel|reels|p|tv/CODE — aceita também /<user>/reel/CODE)
+    if host in _IG_HOSTS:
+        parts = [p for p in u.path.split("/") if p]
+        reel_types = {"reel", "reels", "p", "tv"}
+        for i in range(len(parts) - 1):
+            if parts[i] in reel_types:
+                code = parts[i + 1]
+                if _IG_CODE_RE.match(code):
+                    return f"https://www.instagram.com/reel/{code}/"
+                return None
+        return None
+
+    # TikTok (/@user/video/ID)
+    if host in _TT_HOSTS:
+        parts = [p for p in u.path.split("/") if p]
+        if (
+            len(parts) >= 3
+            and parts[0].startswith("@")
+            and parts[1] == "video"
+            and _TT_ID_RE.match(parts[2])
+        ):
+            return f"https://www.tiktok.com/{parts[0]}/video/{parts[2]}"
+        if len(parts) >= 2 and parts[0] == "video" and _TT_ID_RE.match(parts[1]):
+            return f"https://www.tiktok.com/video/{parts[1]}"
+        return None
+
+    # TikTok short links — preserve como vieram (worker resolve via yt-dlp)
+    if host in _TT_SHORT_HOSTS:
+        code = u.path.strip("/")
+        if code and _TT_SHORT_RE.match(code):
+            return f"https://{host}/{code}"
+        return None
+
+    return None
 
 
 def _extract_section(md: str, from_sec: int, to_sec: int) -> str:

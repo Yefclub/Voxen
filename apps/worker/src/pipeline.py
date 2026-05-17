@@ -15,7 +15,7 @@ import botocore.exceptions
 import structlog
 import yt_dlp.utils
 
-from . import db, events, storage, voxen_settings, ytdl
+from . import db, events, storage, video_url, voxen_settings, ytdl
 from .audio_chunking import AudioChunk, split_audio
 from .cancellation import CancelledException, clear_cancelled, is_cancelled
 from .openrouter import (
@@ -322,10 +322,14 @@ async def _persist(
     # Solução: gerar o id aqui (mesmo padrão do db._generate_cuid) e passar.
     transcript_id = db._generate_cuid()  # noqa: SLF001 — uso interno controlado
 
+    # Detecta plataforma pela URL canonical (YouTube/Instagram/TikTok).
+    # Fallback "YOUTUBE" cobre URLs antigas ou edge cases — não-bloqueador.
+    source = video_url.detect_source(source_url) or "YOUTUBE"
+
     doc = TranscriptDoc(
         transcript_id=transcript_id,
         user_id=user_id,
-        source="YOUTUBE",
+        source=source,
         url=source_url,
         video_id=probe_info.video_id,
         title=probe_info.title,

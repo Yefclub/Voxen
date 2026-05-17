@@ -91,12 +91,12 @@ export function JobsPage(): React.ReactElement {
           </div>
           <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Novo conteúdo</h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Cole um link do YouTube ou de uma página web. O Voxen indexa pra busca e pro chat com o
-            agente.
+            Cole um link do YouTube, Instagram, TikTok ou de uma página web. O Voxen indexa pra
+            busca e pro chat com o agente.
           </p>
         </header>
 
-        {/* Abas: YouTube | Web */}
+        {/* Abas: Vídeo (YT/IG/TT) | Web */}
         <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--color-app-surface)]/60 border border-[var(--color-app-border)] w-fit">
           <button
             type="button"
@@ -112,7 +112,7 @@ export function JobsPage(): React.ReactElement {
             }
           >
             <PlayCircle className="h-3.5 w-3.5" />
-            Vídeo YouTube
+            Vídeo
           </button>
           <button
             type="button"
@@ -164,7 +164,9 @@ export function JobsPage(): React.ReactElement {
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
                         placeholder={
-                          tab === 'web' ? 'https://exemplo.com/artigo' : 'https://youtu.be/...'
+                          tab === 'web'
+                            ? 'https://exemplo.com/artigo'
+                            : 'https://youtu.be/... · instagram.com/reel/... · tiktok.com/@user/video/...'
                         }
                         autoComplete="off"
                         required
@@ -185,7 +187,7 @@ export function JobsPage(): React.ReactElement {
                   <p className="text-xs text-[var(--color-app-muted)]">
                     {tab === 'web'
                       ? 'Aceita blogs, news, docs, wikis. SPAs/JS-heavy podem falhar.'
-                      : 'Aceita youtu.be, youtube.com/watch e shorts.'}
+                      : 'Aceita YouTube (watch/shorts), Instagram (reel/p/tv) e TikTok público.'}
                   </p>
                 </div>
               </form>
