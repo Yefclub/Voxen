@@ -265,7 +265,7 @@ export function ChatPage(): React.ReactElement {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.18 }}
               >
-                <Bubble msg={m} user={me ?? null} />
+                <Bubble msg={m} user={me?.user ?? null} />
               </motion.div>
             ))}
           </AnimatePresence>

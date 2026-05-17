@@ -89,7 +89,6 @@ export const Markdown = memo(function Markdown({ children, className }: Markdown
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // @ts-expect-error — react-markdown injeta inline em runtime
           code: CodeBlock,
         }}
       >
