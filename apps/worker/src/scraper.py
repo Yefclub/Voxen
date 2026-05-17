@@ -6,13 +6,19 @@ docs, wikis). Sites JS-only retornam conteúdo curto → Job FAILED.
 
 Trafilatura: MIT, F1=0.958 em benchmarks (vs Readability 0.947, Newspaper4k
 0.949, Goose3 0.896). Output markdown nativo.
+
+Proteção SSRF: bloqueia hostname privado/loopback/metadata IMDS + DNS interno
+docker; segue redirects manualmente revalidando cada hop.
 """
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
+import socket
 from dataclasses import dataclass
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
 import httpx
@@ -24,7 +30,26 @@ log = structlog.get_logger(__name__)
 
 USER_AGENT = "VoxenBot/1.0 (+https://github.com/YefClub-Org/Voxen)"
 MIN_CONTENT_CHARS = 200
-REQUEST_TIMEOUT = 30.0
+REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=5.0)
+MAX_REDIRECTS = 5
+MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_ROBOTS_BYTES = 256 * 1024  # 256 KB
+
+# Hostnames bloqueados literais — serviços internos do compose voxen-net
+# (impede ataque por DNS interno do docker).
+_BLOCKED_HOSTNAMES = frozenset(
+    {
+        "localhost",
+        "postgres",
+        "redis",
+        "garage",
+        "chat",
+        "web",
+        "worker",
+        "master-key-init",
+        "garage-init",
+    }
+)
 
 
 class ScraperError(Exception):
@@ -36,7 +61,7 @@ class RobotsBlockedError(ScraperError):
 
 
 class FetchBlockedError(ScraperError):
-    """Site retornou 403/429/4xx → não retentar."""
+    """Site retornou 403/429/4xx OU URL aponta pra host privado/interno."""
 
 
 class FetchTransientError(ScraperError):
@@ -45,6 +70,49 @@ class FetchTransientError(ScraperError):
 
 class EmptyContentError(ScraperError):
     """Conteúdo extraído curto demais — provavelmente paywall/JS-heavy."""
+
+
+def _assert_public_host(url: str) -> None:
+    """Bloqueia SSRF — rejeita hosts privados, loopback, metadata IMDS e
+    nomes internos do docker network. Resolve DNS pra detectar redirecionamento
+    pra IPs internos via DNS rebinding (best-effort: TOCTOU vs DNS continua
+    possível, mas o vetor comum é coberto).
+
+    Raises FetchBlockedError com mensagem segura (sem vazar detalhes do alvo).
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError as e:
+        raise FetchBlockedError("URL malformada.") from e
+    if parsed.scheme not in ("http", "https"):
+        raise FetchBlockedError("Esquema não suportado — use http ou https.")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise FetchBlockedError("URL sem hostname.")
+    if host in _BLOCKED_HOSTNAMES:
+        raise FetchBlockedError(
+            "Host interno não permitido. Use URL pública."
+        )
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as e:
+        raise FetchBlockedError(f"Host não resolve: {host}") from e
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise FetchBlockedError(
+                "Host privado/interno não permitido. Use URL pública."
+            )
 
 
 @dataclass(frozen=True)
@@ -61,44 +129,24 @@ class ScrapeResult:
 
 
 async def fetch_and_extract(url: str) -> ScrapeResult:
-    """Baixa a URL, valida robots.txt, extrai via Trafilatura, retorna ScrapeResult.
+    """Baixa a URL (com SSRF protection + redirect manual), valida robots,
+    extrai via Trafilatura.
 
     Raises:
+        FetchBlockedError: URL aponta pra host privado/interno, 4xx do alvo,
+                           ou esquema inválido
         RobotsBlockedError: robots.txt proíbe acesso
-        FetchBlockedError: 403/429/4xx (permanente)
         FetchTransientError: timeout/5xx (retry)
         EmptyContentError: conteúdo < MIN_CONTENT_CHARS
     """
+    _assert_public_host(url)
     await _check_robots(url)
 
-    async with httpx.AsyncClient(
-        timeout=REQUEST_TIMEOUT,
-        follow_redirects=True,
-        headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*;q=0.8"},
-    ) as client:
-        try:
-            res = await client.get(url)
-        except (httpx.TimeoutException, httpx.NetworkError) as e:
-            raise FetchTransientError(f"Rede/timeout: {e}") from e
+    final_url, html = await _fetch_with_manual_redirects(url)
 
-    if res.status_code in (403, 429):
-        raise FetchBlockedError(
-            f"Site bloqueou acesso (HTTP {res.status_code}). "
-            "Sites com proteção anti-bot não são suportados."
-        )
-    if 400 <= res.status_code < 500:
-        raise FetchBlockedError(f"Site retornou HTTP {res.status_code}.")
-    if 500 <= res.status_code < 600:
-        raise FetchTransientError(f"Servidor retornou HTTP {res.status_code}.")
-
-    html = res.text
-    if not html:
-        raise EmptyContentError("HTML vazio.")
-
-    # Trafilatura: extração + metadata em uma chamada só
     extracted_md = trafilatura.extract(
         html,
-        url=url,
+        url=final_url,
         output_format="markdown",
         include_links=True,
         include_images=False,
@@ -112,22 +160,20 @@ async def fetch_and_extract(url: str) -> ScrapeResult:
             "Conteúdo insuficiente — página vazia, paywall, ou JS-heavy."
         )
 
-    # Plain text separado pra FTS (sem markdown syntax)
     plain = trafilatura.extract(
         html,
-        url=url,
+        url=final_url,
         output_format="txt",
         include_links=False,
         include_images=False,
         favor_precision=True,
     ) or extracted_md
 
-    # Metadata estruturada
-    metadata = trafilatura.extract_metadata(html, default_url=url)
-    title, site_name, author, published, thumb, lang = _unpack_metadata(metadata, url)
+    metadata = trafilatura.extract_metadata(html, default_url=final_url)
+    title, site_name, author, published, thumb, lang = _unpack_metadata(metadata, final_url)
 
     return ScrapeResult(
-        url=url,
+        url=final_url,
         title=title,
         site_name=site_name,
         author=author,
@@ -139,10 +185,67 @@ async def fetch_and_extract(url: str) -> ScrapeResult:
     )
 
 
+async def _fetch_with_manual_redirects(url: str) -> tuple[str, str]:
+    """Faz GET seguindo até MAX_REDIRECTS, **revalidando** cada hop contra SSRF.
+
+    Retorna (URL final, body). Limita o body a MAX_BODY_BYTES.
+    """
+    current = url
+    async with httpx.AsyncClient(
+        timeout=REQUEST_TIMEOUT,
+        follow_redirects=False,
+        headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*;q=0.8"},
+    ) as client:
+        for _ in range(MAX_REDIRECTS + 1):
+            try:
+                res = await client.get(current)
+            except (httpx.TimeoutException, httpx.NetworkError) as e:
+                raise FetchTransientError(f"Rede/timeout: {e}") from e
+
+            # Redirect manual (3xx com Location)
+            if res.status_code in (301, 302, 303, 307, 308):
+                location = res.headers.get("Location")
+                if not location:
+                    raise FetchBlockedError("Redirect sem Location.")
+                next_url = urljoin(current, location)
+                _assert_public_host(next_url)
+                current = next_url
+                continue
+
+            if res.status_code in (403, 429):
+                raise FetchBlockedError(
+                    f"Site bloqueou acesso (HTTP {res.status_code}). "
+                    "Sites com proteção anti-bot não são suportados."
+                )
+            if 400 <= res.status_code < 500:
+                raise FetchBlockedError(f"Site retornou HTTP {res.status_code}.")
+            if 500 <= res.status_code < 600:
+                raise FetchTransientError(f"Servidor retornou HTTP {res.status_code}.")
+
+            content_length = res.headers.get("Content-Length")
+            if content_length and int(content_length) > MAX_BODY_BYTES:
+                raise FetchBlockedError(
+                    f"Página grande demais ({content_length} bytes; máx {MAX_BODY_BYTES})."
+                )
+            body = res.content
+            if len(body) > MAX_BODY_BYTES:
+                raise FetchBlockedError(
+                    f"Página grande demais ({len(body)} bytes; máx {MAX_BODY_BYTES})."
+                )
+            try:
+                text = body.decode(res.encoding or "utf-8", errors="replace")
+            except (LookupError, UnicodeDecodeError):
+                text = body.decode("utf-8", errors="replace")
+            if not text.strip():
+                raise EmptyContentError("HTML vazio.")
+            return str(res.url), text
+
+    raise FetchBlockedError(f"Excesso de redirects (>{MAX_REDIRECTS}).")
+
+
 def _unpack_metadata(
     metadata: Document | None, url: str
 ) -> tuple[str, str | None, str | None, datetime | None, str | None, str | None]:
-    """Extrai campos da Document do Trafilatura com defaults."""
     if metadata is None:
         return _hostname_title(url), None, None, None, None, None
     title = (metadata.title or "").strip() or _hostname_title(url)
@@ -153,7 +256,6 @@ def _unpack_metadata(
     published: datetime | None = None
     if metadata.date:
         try:
-            # Trafilatura devolve YYYY-MM-DD; aceita ISO completo também
             published = datetime.fromisoformat(metadata.date)
         except ValueError:
             published = None
@@ -168,29 +270,50 @@ def _hostname_title(url: str) -> str:
 
 
 async def _check_robots(url: str) -> None:
-    """Best-effort robots.txt. Falha silenciosa = permitir (não bloquear por bug)."""
+    """Best-effort robots.txt. SSRF-protected. Falha silenciosa = permitir."""
     try:
         parsed = urlparse(url)
         if not parsed.scheme or not parsed.hostname:
             raise FetchBlockedError("URL malformada.")
         robots_url = f"{parsed.scheme}://{parsed.hostname}/robots.txt"
+        # Re-valida o host explicitamente (já foi validado pelo caller, mas
+        # defensive depth: robots URL pode em teoria diferir se hostname for
+        # mexido — não acontece aqui, mas custa nada).
+        _assert_public_host(robots_url)
         async with httpx.AsyncClient(
-            timeout=5.0,
-            follow_redirects=True,
+            timeout=httpx.Timeout(connect=5.0, read=5.0, write=5.0, pool=5.0),
+            follow_redirects=False,
             headers={"User-Agent": USER_AGENT},
         ) as client:
             try:
                 res = await client.get(robots_url)
             except (httpx.TimeoutException, httpx.NetworkError):
-                return  # falha silenciosa = permite
+                return  # permite
         if res.status_code != 200:
             return
+        body = res.content[:MAX_ROBOTS_BYTES]
+        text = body.decode(res.encoding or "utf-8", errors="replace")
         parser = RobotFileParser()
-        parser.parse(res.text.splitlines())
+        parser.parse(text.splitlines())
         if not parser.can_fetch(USER_AGENT, url):
             raise RobotsBlockedError("robots.txt do site proíbe scraping.")
-    except RobotsBlockedError:
+    except (RobotsBlockedError, FetchBlockedError):
         raise
     except Exception:  # noqa: BLE001 — robots é best-effort
         log.debug("robots-check-failed-silently", url=url)
         return
+
+
+# Compat com tests que possam ter referenciado o helper antigo
+__all__ = [
+    "ScrapeResult",
+    "fetch_and_extract",
+    "ScraperError",
+    "RobotsBlockedError",
+    "FetchBlockedError",
+    "FetchTransientError",
+    "EmptyContentError",
+]
+
+# Silencia warning de import unused (asyncio mantido pra uso futuro de gather)
+_ = asyncio
