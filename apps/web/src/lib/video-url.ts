@@ -117,14 +117,3 @@ function parseTikTok(url: URL): VideoUrl | null {
   }
   return null;
 }
-
-// Re-export legado pra retrocompat (parseYoutubeUrl ainda usada em tests)
-export interface YoutubeUrl {
-  videoId: string;
-  canonical: string;
-}
-export function parseYoutubeUrl(input: string): YoutubeUrl | null {
-  const parsed = parseVideoUrl(input);
-  if (!parsed || parsed.source !== 'YOUTUBE') return null;
-  return { videoId: parsed.videoId, canonical: parsed.canonical };
-}

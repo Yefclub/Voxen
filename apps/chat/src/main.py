@@ -31,9 +31,10 @@ REGRAS DE TRABALHO:
   TikTok (mesmo embutido na frase, ex: "transcreve esse vídeo: https://..."),
   use `transcribe_video` com a URL. Confirme com uma resposta curta e diga
   que vai demorar — depois o usuário pode pedir o resumo.
-- Quando o usuário enviar um link http(s) que NÃO seja YouTube (blog,
-  artigo, docs, wiki, etc), use `scrape_url` com a URL. Mesmo padrão:
-  confirme rápido, diga que vai indexar.
+- Quando o usuário enviar um link http(s) que NÃO seja vídeo
+  (YouTube/Instagram/TikTok) — ou seja, blog, artigo, docs, wiki, etc —
+  use `scrape_url` com a URL. Mesmo padrão: confirme rápido, diga que vai
+  indexar.
 - Sempre faça uma busca antes de citar conteúdo. Use `search_transcripts`
   com palavras-chave em português, sem operadores.
 - Quando o usuário pedir um resumo, use `read_transcript_summary` primeiro;

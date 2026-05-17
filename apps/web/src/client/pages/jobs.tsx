@@ -91,12 +91,12 @@ export function JobsPage(): React.ReactElement {
           </div>
           <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Novo conteúdo</h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Cole um link do YouTube ou de uma página web. O Voxen indexa pra busca e pro chat com o
-            agente.
+            Cole um link do YouTube, Instagram, TikTok ou de uma página web. O Voxen indexa pra
+            busca e pro chat com o agente.
           </p>
         </header>
 
-        {/* Abas: YouTube | Web */}
+        {/* Abas: Vídeo (YT/IG/TT) | Web */}
         <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--color-app-surface)]/60 border border-[var(--color-app-border)] w-fit">
           <button
             type="button"
