@@ -34,7 +34,12 @@ def job_channel(user_id: str, job_id: str) -> str:
     return f"jobs:{user_id}:{job_id}"
 
 
+def user_channel(user_id: str) -> str:
+    return f"user:{user_id}:jobs"
+
+
 JOBS_NEW_CHANNEL = "jobs:new"
+JOBS_CANCEL_CHANNEL = "jobs:cancel"
 
 
 async def publish_job_event(
@@ -61,4 +66,7 @@ async def publish_job_event(
     if error_msg is not None:
         payload["errorMsg"] = error_msg
     client = await get_redis()
-    await client.publish(job_channel(user_id, job_id), json.dumps(payload))
+    body = json.dumps(payload)
+    # canal do job (detalhe + lista) e canal do user (notif global)
+    await client.publish(job_channel(user_id, job_id), body)
+    await client.publish(user_channel(user_id), body)

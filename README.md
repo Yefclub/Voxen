@@ -1,27 +1,26 @@
 # Voxen
 
-Plataforma web self-hosted de **knowledge base** alimentada por transcrição de vídeos de YouTube, Instagram e TikTok, com **chat-agente** que navega o acervo via ferramentas (sem embeddings — abordagem harness/Karpathy).
+Plataforma web self-hosted de **biblioteca de vídeos** com transcrição automática e **chat-agente** que navega o acervo. Sem embeddings — abordagem harness/Karpathy.
 
 ## O que faz
 
-1. Cola um link de YouTube/Instagram/TikTok no painel
-2. Backend baixa o vídeo, extrai áudio, faz chunking com `ffmpeg`, transcreve via OpenRouter
-3. Salva como `.md` com minutagem clicável (`[mm:ss](url?t=Ns)`), thumbnail, título e link original
-4. Chat com agente Agno que lê/busca/navega seus `.md` via Postgres FTS
+1. Cola um link de YouTube no painel
+2. Backend baixa o vídeo, extrai áudio, faz chunking com `ffmpeg`, transcreve via OpenRouter Whisper
+3. Salva como `.md` com timestamps clicáveis, thumbnail, título, link original e **resumo IA** em markdown
+4. Chat com agente Agno que lê / busca / resume / dispara nova transcrição via Postgres FTS + tools
 
 ## Stack
 
 - **Web/API**: Bun + Hono + Vite + React + Tailwind v4 + shadcn/ui (tema zinc)
-- **Chat**: Python + FastAPI + Agno (streaming SSE)
+- **Chat**: Python + FastAPI + tool-calling sobre OpenRouter (streaming SSE)
 - **Worker**: Python + ARQ + `yt-dlp` + `ffmpeg`
 - **Auth**: better-auth (email/senha) com aprovação manual do admin
 - **DB**: Postgres 17 + Prisma + FTS (`tsvector` GIN, dicionário `portuguese`)
 - **Fila**: Redis + ARQ
-- **Storage**: Garage S3 (self-hosted)
-- **LLM/Transcrição**: OpenRouter (chat + audio + embeddings se quiser)
-- **Deploy**: Easypanel (mesmo `docker-compose.yml` do dev)
+- **Storage**: Garage S3 self-hosted (ou MinIO/AWS via `S3_*`)
+- **LLM/Transcrição**: OpenRouter (chat + Whisper unificados)
 
-## Setup
+## Subir em 1 minuto (dev local)
 
 Pré-requisitos: `docker` + `docker compose`. Nada além disso.
 
@@ -31,19 +30,48 @@ cd Voxen
 make dev
 ```
 
-Sobe Postgres, Redis, Garage, web, chat e worker num único comando. Master key gerada automaticamente num volume. Sem env pra preencher.
+Abre em `http://localhost:3000`. Primeiro cadastro vira admin e cai no onboarding (cola OpenRouter API key + escolhe modelos default). Pronto.
 
-Abra `http://localhost:3000` — primeiro cadastro vira admin e cai na tela de setup inicial onde você cola sua API key da OpenRouter e escolhe os modelos default.
+> Master key AES-256-GCM é gerada automaticamente no primeiro boot. Garage S3 faz bootstrap sozinho. Sem `.env` pra editar em dev.
+
+## Subir em produção
+
+Tem guia passo-a-passo pra 4 cenários em [`docs/DEPLOY.md`](docs/DEPLOY.md):
+
+| Cenário | Quando usar |
+|---|---|
+| **Servidor + nginx do host** | VPS Linux com nginx nativo + certbot |
+| **Servidor + nginx em container** | Tudo em Docker, profile `nginx` |
+| **LXC do Proxmox** | Self-hosted, container LXC (`nesting=1`) |
+| **Easypanel** | Plataforma cuida de HTTPS/domínio sozinha |
+
+TL;DR pro cenário mais comum (VPS + nginx + Let's Encrypt):
+
+```bash
+git clone https://github.com/YefClub-Org/Voxen.git /opt/voxen
+cd /opt/voxen
+cp .env.example .env  # edite secrets + APP_BASE_URL
+mv docker-compose.override.yml docker-compose.override.dev.yml
+docker compose up -d --build
+
+# nginx + HTTPS
+sudo cp deploy/nginx/voxen.conf.example /etc/nginx/sites-available/voxen.conf
+# ajuste server_name e:
+sudo ln -s /etc/nginx/sites-available/voxen.conf /etc/nginx/sites-enabled/
+sudo certbot --nginx -d voxen.seudominio.com
+```
 
 ## Documentação
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — diagrama e fluxos
-- [`docs/STACK.md`](docs/STACK.md) — versões fixadas e por quê
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADRs
-- [`docs/SECURITY.md`](docs/SECURITY.md) — threat model
-- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — rodar local, testes, TDD/SDD
-- [`docs/DEPLOY.md`](docs/DEPLOY.md) — Easypanel
-- [`docs/TRANSCRIPT-FORMAT.md`](docs/TRANSCRIPT-FORMAT.md) — schema do `.md`
+| Doc | Tema |
+|---|---|
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Rodar local, testes, TDD/SDD |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | **Deploy em VPS / Proxmox / Easypanel + nginx + HTTPS** |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Diagrama, fluxos, decisões de design |
+| [`docs/STACK.md`](docs/STACK.md) | Versões fixadas e justificativa |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | ADRs |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | Threat model |
+| [`docs/TRANSCRIPT-FORMAT.md`](docs/TRANSCRIPT-FORMAT.md) | Schema do `.md` |
 
 ## Workflow
 

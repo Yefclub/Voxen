@@ -1,54 +1,289 @@
 @import 'tailwindcss';
 
-/* Tema zinc (Voxen). Tailwind v4 usa @theme inline em vez de tailwind.config.js. */
-@theme {
-  --color-brand-50: oklch(98.5% 0 0);
-  --color-brand-100: oklch(96.7% 0 0);
-  --color-brand-500: oklch(70.4% 0 0);
-  --color-brand-900: oklch(27% 0 0);
-  --color-brand-950: oklch(21.5% 0 0);
+/* ============================================================================
+   Voxen — Design system com personalidade
+   ----------------------------------------------------------------------------
+   - Cinza neutro elevado (não preto) com viés azulado sutil
+   - Duas tintas de acento: emerald (vida/ok) + violet (foco/destaque)
+   - Mesh gradient ambiente + noise overlay para textura
+   - Tipografia: Bricolage Grotesque (display) + Inter (UI) + JetBrains Mono
+   - Movimento: spring discreto via Motion (lib motion.dev)
+   ============================================================================ */
 
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif;
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Tons de cinza com leve azul (mais frio + premium que zinc puro) */
+  --color-app-bg: oklch(22% 0.005 250);
+  --color-app-bg-elevated: oklch(25% 0.005 250);
+  --color-app-surface: oklch(27.5% 0.006 250);
+  --color-app-surface-hover: oklch(31% 0.007 250);
+  --color-app-border: oklch(34% 0.008 250);
+  --color-app-border-strong: oklch(42% 0.01 250);
+
+  --color-app-fg: oklch(98.5% 0 0);
+  --color-app-muted: oklch(68% 0.008 250);
+  --color-app-subtle: oklch(78% 0.005 250);
+
+  /* Acentos */
+  --color-accent-emerald: oklch(73% 0.16 159);
+  --color-accent-emerald-soft: oklch(73% 0.16 159 / 0.18);
+  --color-accent-violet: oklch(72% 0.18 290);
+  --color-accent-violet-soft: oklch(72% 0.18 290 / 0.2);
+  --color-accent-amber: oklch(80% 0.16 78);
+  --color-accent-rose: oklch(70% 0.2 18);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* Variáveis de cor inspiradas em shadcn (slate dark) mas mapeadas pra zinc. */
 @layer base {
-  :root {
-    --background: oklch(98.5% 0 0);
-    --foreground: oklch(14.8% 0 0);
-    --card: oklch(98.5% 0 0);
-    --card-foreground: oklch(14.8% 0 0);
-    --border: oklch(90.6% 0 0);
-    --input: oklch(90.6% 0 0);
-    --primary: oklch(20.5% 0 0);
-    --primary-foreground: oklch(98.5% 0 0);
-    --muted: oklch(96.7% 0 0);
-    --muted-foreground: oklch(55.6% 0 0);
-    --accent: oklch(96.7% 0 0);
-    --accent-foreground: oklch(20.5% 0 0);
-    --destructive: oklch(57.7% 0.25 27);
-    --destructive-foreground: oklch(98.5% 0 0);
-    --ring: oklch(70.4% 0 0);
-    --radius: 0.5rem;
+  html {
+    color-scheme: dark;
+    background: var(--color-app-bg);
+    color: var(--color-app-fg);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
-  html.dark {
-    --background: oklch(14.8% 0 0);
-    --foreground: oklch(98.5% 0 0);
-    --card: oklch(20.5% 0 0);
-    --card-foreground: oklch(98.5% 0 0);
-    --border: oklch(27% 0 0);
-    --input: oklch(27% 0 0);
-    --primary: oklch(98.5% 0 0);
-    --primary-foreground: oklch(20.5% 0 0);
-    --muted: oklch(27% 0 0);
-    --muted-foreground: oklch(70.4% 0 0);
-    --accent: oklch(27% 0 0);
-    --accent-foreground: oklch(98.5% 0 0);
-    --destructive: oklch(57.7% 0.25 27);
-    --destructive-foreground: oklch(98.5% 0 0);
-    --ring: oklch(55.6% 0 0);
+  body {
+    background: var(--color-app-bg);
+    color: var(--color-app-fg);
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    letter-spacing: -0.01em;
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
   }
+
+  /* Mesh gradient ambiente — leve, atrás de tudo */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 15% 0%, oklch(72% 0.18 290 / 0.08), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 85% 100%, oklch(73% 0.16 159 / 0.06), transparent 60%),
+      radial-gradient(ellipse 70% 50% at 50% 50%, oklch(28% 0.005 250 / 0.5), transparent 70%);
+  }
+
+  /* Noise grain — dá calor à imagem */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.025;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+  }
+
+  * {
+    border-color: var(--color-app-border);
+  }
+
+  ::selection {
+    background: oklch(72% 0.18 290 / 0.3);
+    color: var(--color-app-fg);
+  }
+
+  /* Scrollbar discreta */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-app-border);
+    border-radius: 999px;
+    border: 2px solid var(--color-app-bg);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-app-border-strong);
+  }
+
+  /* Focus ring elegante */
+  :where(button, a, input, textarea, select, [role='button']):focus-visible {
+    outline: 2px solid oklch(72% 0.18 290 / 0.6);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Tipografia base */
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.03em;
+    font-weight: 600;
+    font-optical-sizing: auto;
+  }
+  h3,
+  h4 {
+    letter-spacing: -0.025em;
+    font-weight: 600;
+  }
+}
+
+@layer utilities {
+  /* Surfaces com borda gradiente sutil (técnica: pseudo + linear) */
+  .surface {
+    background: var(--color-app-surface);
+    border: 1px solid var(--color-app-border);
+    border-radius: var(--radius-lg);
+    position: relative;
+  }
+  .surface-elevated {
+    background: linear-gradient(
+      180deg,
+      oklch(30% 0.006 250 / 0.6) 0%,
+      var(--color-app-surface) 100%
+    );
+    border: 1px solid var(--color-app-border);
+    border-radius: var(--radius-lg);
+  }
+
+  /* Borda gradiente animável (truque conic) */
+  .gradient-border {
+    position: relative;
+    background: var(--color-app-surface);
+    border-radius: var(--radius-lg);
+  }
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: conic-gradient(
+      from 0deg,
+      oklch(72% 0.18 290 / 0.4),
+      oklch(73% 0.16 159 / 0.3),
+      oklch(34% 0.008 250),
+      oklch(34% 0.008 250),
+      oklch(72% 0.18 290 / 0.4)
+    );
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 300ms var(--ease-out);
+  }
+  .gradient-border:hover::before {
+    opacity: 1;
+  }
+
+  /* Texto com gradiente sutil (uso esparso, só em h1 hero) */
+  .text-gradient {
+    background: linear-gradient(180deg, oklch(98.5% 0 0) 0%, oklch(78% 0.005 250) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Highlight emerald no texto (uso em palavras-chave) */
+  .text-emerald-accent {
+    color: var(--color-accent-emerald);
+  }
+  .text-violet-accent {
+    color: var(--color-accent-violet);
+  }
+
+  /* Shimmer skeleton (movimento horizontal) */
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+    background: var(--color-app-surface);
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, oklch(40% 0.008 250 / 0.4), transparent);
+    animation: shimmer-slide 1.6s ease-in-out infinite;
+  }
+  @keyframes shimmer-slide {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  /* Tipografia ajudante */
+  .text-muted {
+    color: var(--color-app-muted);
+  }
+  .text-subtle {
+    color: var(--color-app-subtle);
+  }
+
+  /* Animação de entrada (caso queira sem motion lib) */
+  .anim-in {
+    animation: voxen-in 220ms var(--ease-out);
+  }
+  @keyframes voxen-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.99);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Pulse violet (status "ao vivo") */
+  .pulse-dot {
+    position: relative;
+  }
+  .pulse-dot::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    animation: pulse-ring 2s ease-out infinite;
+    opacity: 0.6;
+  }
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(1);
+      opacity: 0.6;
+    }
+    100% {
+      transform: scale(2.5);
+      opacity: 0;
+    }
+  }
+}
+
+/* ============================================================================
+   Prose para a transcrição (.md viewer)
+   ============================================================================ */
+.prose-voxen {
+  font-size: 0.95rem;
+  line-height: 1.75;
+  color: var(--color-app-subtle);
+}
+.prose-voxen p {
+  margin-bottom: 0.75rem;
+}
+.prose-voxen a {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }

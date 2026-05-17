@@ -24,6 +24,8 @@ import {
   jobChannel,
   notifyNewJob,
   publishJobEvent,
+  requestCancel,
+  userChannel,
   type JobEvent,
 } from '../lib/job-events';
 
@@ -168,6 +170,155 @@ jobsRoutes.get('/:id', async (c) => {
     return c.json({ error: 'Job não encontrado.' }, 404);
   }
   return c.json({ job });
+});
+
+jobsRoutes.post('/:id/retry', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const original = await db.job.findFirst({
+    where: { id, userId },
+    select: { id: true, status: true, sourceUrl: true },
+  });
+  if (!original) {
+    return c.json({ error: 'Job não encontrado.' }, 404);
+  }
+  if (original.status !== 'FAILED' && original.status !== 'CANCELLED') {
+    return c.json({ error: 'Só é possível retentar jobs que falharam ou foram cancelados.' }, 400);
+  }
+
+  // Se já existe Transcript com esta URL pro user, não vale retentar
+  const existingTranscript = await db.transcript.findFirst({
+    where: { userId, url: original.sourceUrl },
+    select: { id: true },
+  });
+  if (existingTranscript) {
+    return c.json(
+      {
+        error: 'Você já transcreveu esta URL.',
+        transcriptId: existingTranscript.id,
+      },
+      409,
+    );
+  }
+
+  // Cria novo job (partial unique index permite porque o original é FAILED)
+  let newJob: { id: string; status: string; sourceUrl: string };
+  try {
+    newJob = await db.job.create({
+      data: {
+        userId,
+        type: 'DOWNLOAD_AND_TRANSCRIBE',
+        status: 'QUEUED',
+        sourceUrl: original.sourceUrl,
+      },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+  } catch (err) {
+    // Race: outro retry já criou um job ativo. Devolve o que existe.
+    if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
+      const active = await db.job.findFirst({
+        where: {
+          userId,
+          sourceUrl: original.sourceUrl,
+          status: { in: ['QUEUED', 'RUNNING'] },
+        },
+        select: { id: true, status: true, sourceUrl: true },
+      });
+      if (active) {
+        return c.json(
+          { jobId: active.id, status: active.status, sourceUrl: active.sourceUrl },
+          200,
+        );
+      }
+      return c.json({ error: 'Esta URL já está sendo processada.' }, 409);
+    }
+    throw err;
+  }
+
+  await notifyNewJob(newJob.id).catch((err) => {
+    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+  });
+  await publishJobEvent(userId, { jobId: newJob.id, stage: 'queued' }).catch(() => undefined);
+
+  return c.json({ jobId: newJob.id, status: newJob.status, sourceUrl: newJob.sourceUrl }, 201);
+});
+
+// POST /api/jobs/:id/cancel — sinaliza cancelamento.
+// QUEUED → vira CANCELLED imediatamente no DB.
+// RUNNING → publica no canal jobs:cancel; worker checa periodicamente
+//   e interrompe. Em ambos os casos, marca no DB pra evitar reconciliação.
+jobsRoutes.post('/:id/cancel', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const job = await db.job.findFirst({
+    where: { id, userId },
+    select: { id: true, status: true },
+  });
+  if (!job) {
+    return c.json({ error: 'Job não encontrado.' }, 404);
+  }
+  if (job.status !== 'QUEUED' && job.status !== 'RUNNING') {
+    return c.json({ error: 'Só é possível cancelar jobs ativos.' }, 400);
+  }
+  await db.job.update({
+    where: { id },
+    data: {
+      status: 'CANCELLED',
+      errorMsg: 'Cancelado pelo usuário.',
+      finishedAt: new Date(),
+    },
+  });
+  await requestCancel(id).catch(() => undefined);
+  await publishJobEvent(userId, {
+    jobId: id,
+    stage: 'cancelled',
+    errorMsg: 'Cancelado pelo usuário.',
+  }).catch(() => undefined);
+  return c.json({ ok: true });
+});
+
+// SSE global por user — toast notification em qualquer página.
+jobsRoutes.get('/events/me', async (c) => {
+  const userId = c.get('userId');
+  return streamSSE(c, async (stream) => {
+    const sub = createSubscriber();
+    let closed = false;
+    let resolveClose!: () => void;
+    const done = new Promise<void>((r) => {
+      resolveClose = r;
+    });
+    const close = async (): Promise<void> => {
+      if (closed) return;
+      closed = true;
+      await sub.quit().catch(() => undefined);
+      resolveClose();
+    };
+    stream.onAbort(() => {
+      void close();
+    });
+
+    await stream.writeSSE({ event: 'connected', data: '{}' });
+    await sub.subscribe(userChannel(userId));
+    sub.on('message', (_chan, raw) => {
+      if (closed) return;
+      void stream.writeSSE({ event: 'progress', data: raw });
+    });
+
+    // Heartbeat 30s
+    const hb = setInterval(() => {
+      if (closed) {
+        clearInterval(hb);
+        return;
+      }
+      void stream.writeSSE({ event: 'ping', data: String(Date.now()) });
+    }, 30_000);
+
+    try {
+      await done;
+    } finally {
+      clearInterval(hb);
+    }
+  });
 });
 
 jobsRoutes.get('/:id/events', async (c) => {

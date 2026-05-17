@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import tempfile
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -16,6 +17,7 @@ import yt_dlp.utils
 
 from . import db, events, storage, voxen_settings, ytdl
 from .audio_chunking import AudioChunk, split_audio
+from .cancellation import CancelledException, clear_cancelled, is_cancelled
 from .openrouter import (
     OpenrouterAuthError,
     OpenrouterTransientError,
@@ -59,10 +61,26 @@ async def process_job(job_id: str) -> None:
     source_url: str = claimed["sourceUrl"]
     log = logger.bind(job_id=job_id, user_id=user_id, url=source_url)
     log.info("job-claimed")
+
+    # Já cancelado antes mesmo de começar (DB já está CANCELLED via endpoint).
+    if is_cancelled(job_id):
+        log.info("job-cancelled-before-start")
+        clear_cancelled(job_id)
+        await events.publish_job_event(
+            user_id, job_id, "cancelled", error_msg="Cancelado pelo usuário."
+        )
+        return
+
     await events.publish_job_event(user_id, job_id, "running", percent=0)
 
     try:
         await _run_pipeline(job_id=job_id, user_id=user_id, source_url=source_url, log=log)
+    except CancelledException:
+        log.info("job-cancelled-mid-pipeline")
+        # DB já foi atualizado para CANCELLED pelo endpoint. Só publica evento final.
+        await events.publish_job_event(
+            user_id, job_id, "cancelled", error_msg="Cancelado pelo usuário."
+        )
     except PermanentError as e:
         log.warning("job-failed-permanent", error=str(e))
         await db.mark_job_failed(job_id, str(e))
@@ -72,15 +90,25 @@ async def process_job(job_id: str) -> None:
         msg = f"Erro inesperado: {e}"
         await db.mark_job_failed(job_id, msg)
         await events.publish_job_event(user_id, job_id, "failed", error_msg=msg)
+    finally:
+        clear_cancelled(job_id)
+
+
+def _check_cancel(job_id: str) -> None:
+    """Levanta CancelledException se o user pediu cancelamento."""
+    if is_cancelled(job_id):
+        raise CancelledException()
 
 
 async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any) -> None:  # noqa: ANN401
+    _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "downloading", percent=5)
 
     probe_info = await _retry_transient(lambda: ytdl.probe(source_url), tries=3)
     if probe_info.duration_sec > ytdl.MAX_DURATION_SEC:
         raise PermanentError("Vídeo excede a duração máxima de 4 horas.")
 
+    _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "choosing_method", percent=10)
     sub_pick = ytdl.pick_subtitle_lang(probe_info)
 
@@ -118,6 +146,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
         if not segments:
             raise PermanentError("Transcrição vazia — nenhum texto extraído.")
 
+        _check_cancel(job_id)
         await events.publish_job_event(user_id, job_id, "uploading", percent=80)
         new_transcript_id = await _persist(
             user_id=user_id,
@@ -133,10 +162,74 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_done(job_id, new_transcript_id)
+
+    # Resumo via IA — best-effort, não bloqueia entrega.
+    await _maybe_generate_summary(
+        user_id=user_id,
+        transcript_id=new_transcript_id,
+        job_id=job_id,
+        log=log,
+    )
+
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
     log.info("job-done", transcript_id=new_transcript_id)
+
+
+async def _maybe_generate_summary(
+    *, user_id: str, transcript_id: str, job_id: str, log: Any  # noqa: ANN401
+) -> None:
+    """Delega geração de summary pro chat service (`/summarize-transcript`).
+
+    O chat service é o owner único do prompt e da chamada ao OpenRouter —
+    isso elimina duplicação entre worker e chat. Worker só fornece o input
+    (title + plainText) e o user_id no header. Chat service grava o
+    summaryMd e o CostEvent.
+
+    Falhas viram warning, não bloqueiam o Job (summary é best-effort).
+    """
+    # Respeita cancel pedido entre link_job_done e o summary (janela curta).
+    if is_cancelled(job_id):
+        log.info("summary-skipped-cancelled")
+        return
+    try:
+        async with db.connection() as conn:
+            row = await conn.fetchrow(
+                'SELECT title, "plainText" FROM "Transcript" WHERE id = $1',
+                transcript_id,
+            )
+        if not row or not row["plainText"]:
+            log.info("summary-skipped-empty-text")
+            return
+
+        import httpx
+
+        chat_url = os.environ.get("CHAT_SERVICE_URL", "http://chat:8001")
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            res = await client.post(
+                f"{chat_url}/summarize-transcript",
+                headers={"X-Voxen-User-Id": user_id},
+                json={
+                    "transcript_id": transcript_id,
+                    "title": row["title"],
+                    "plain_text": row["plainText"],
+                },
+            )
+        if res.status_code != 200:
+            log.warning(
+                "summary-upstream-non-200",
+                status=res.status_code,
+                body=res.text[:200],
+            )
+            return
+        data = res.json()
+        if data.get("summary_md"):
+            log.info("summary-done", transcript_id=transcript_id)
+        else:
+            log.info("summary-empty")
+    except Exception:  # noqa: BLE001 — resumo é melhoria, não bloqueia
+        log.exception("summary-failed", transcript_id=transcript_id)
 
 
 async def _transcribe_via_api(
@@ -161,6 +254,7 @@ async def _transcribe_via_api(
     total_cost = Decimal("0")
 
     for i, chunk in enumerate(chunks):
+        _check_cancel(job_id)
         await events.publish_job_event(
             user_id,
             job_id,
@@ -268,7 +362,9 @@ async def _persist(
             doc.channel,
             doc.author,
             doc.duration_sec,
-            doc.published_at,
+            doc.published_at.replace(tzinfo=None)
+            if doc.published_at and doc.published_at.tzinfo
+            else doc.published_at,
             doc.thumbnail_url,
             doc.language,
             doc.transcription_method,
