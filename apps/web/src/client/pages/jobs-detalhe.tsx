@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, XCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, RotateCw, XCircle } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -12,6 +12,7 @@ import type { JobSummary } from '../lib/types';
 import { formatDateTime } from '../lib/format';
 import { jobStatusBadge, stageLabel } from '../lib/job-display';
 import { AnimatedPage } from '../components/motion/animated-page';
+import { ApiError, apiPost } from '../lib/api';
 
 interface ProgressEvent {
   jobId: string;
@@ -37,9 +38,30 @@ const STAGE_ORDER = [
 
 export function JobDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { data, refresh } = useFetch<{ job: JobSummary }>(id ? `/api/jobs/${id}` : null);
   const [events, setEvents] = useState<ProgressEvent[]>([]);
   const [percent, setPercent] = useState<number>(0);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
+  async function onRetry(): Promise<void> {
+    if (!id) return;
+    setRetryError(null);
+    setRetrying(true);
+    try {
+      const res = await apiPost<{ jobId: string; transcriptId?: string }>(`/api/jobs/${id}/retry`);
+      if (res.transcriptId) {
+        navigate(`/transcricoes/${res.transcriptId}`);
+        return;
+      }
+      navigate(`/jobs/${res.jobId}`);
+    } catch (err) {
+      setRetryError(err instanceof ApiError ? err.message : 'Erro ao retentar.');
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   const isActive = data?.job && (data.job.status === 'QUEUED' || data.job.status === 'RUNNING');
 
@@ -185,10 +207,37 @@ export function JobDetalhePage(): React.ReactElement {
 
             {/* Estado de erro */}
             {job.status === 'FAILED' && (
-              <Alert variant="destructive">
-                <XCircle className="h-4 w-4 text-rose-400 mt-0.5 shrink-0" />
-                <AlertDescription>{job.errorMsg ?? 'Algo deu errado.'}</AlertDescription>
-              </Alert>
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-3"
+              >
+                <Alert variant="destructive">
+                  <XCircle className="h-4 w-4 text-rose-400 mt-0.5 shrink-0" />
+                  <AlertDescription>{job.errorMsg ?? 'Algo deu errado.'}</AlertDescription>
+                </Alert>
+                {retryError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{retryError}</AlertDescription>
+                  </Alert>
+                )}
+                <div className="flex justify-end">
+                  <Button variant="primary" size="default" onClick={onRetry} disabled={retrying}>
+                    {retrying ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />}
+                    Tentar novamente
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Cancelado também permite retry */}
+            {job.status === 'CANCELLED' && (
+              <div className="flex justify-end">
+                <Button variant="secondary" size="default" onClick={onRetry} disabled={retrying}>
+                  {retrying ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />}
+                  Reenviar
+                </Button>
+              </div>
             )}
 
             {/* Timeline de eventos */}

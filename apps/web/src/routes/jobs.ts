@@ -170,6 +170,77 @@ jobsRoutes.get('/:id', async (c) => {
   return c.json({ job });
 });
 
+jobsRoutes.post('/:id/retry', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const original = await db.job.findFirst({
+    where: { id, userId },
+    select: { id: true, status: true, sourceUrl: true },
+  });
+  if (!original) {
+    return c.json({ error: 'Job não encontrado.' }, 404);
+  }
+  if (original.status !== 'FAILED' && original.status !== 'CANCELLED') {
+    return c.json({ error: 'Só é possível retentar jobs que falharam ou foram cancelados.' }, 400);
+  }
+
+  // Se já existe Transcript com esta URL pro user, não vale retentar
+  const existingTranscript = await db.transcript.findFirst({
+    where: { userId, url: original.sourceUrl },
+    select: { id: true },
+  });
+  if (existingTranscript) {
+    return c.json(
+      {
+        error: 'Você já transcreveu esta URL.',
+        transcriptId: existingTranscript.id,
+      },
+      409,
+    );
+  }
+
+  // Cria novo job (partial unique index permite porque o original é FAILED)
+  let newJob: { id: string; status: string; sourceUrl: string };
+  try {
+    newJob = await db.job.create({
+      data: {
+        userId,
+        type: 'DOWNLOAD_AND_TRANSCRIBE',
+        status: 'QUEUED',
+        sourceUrl: original.sourceUrl,
+      },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+  } catch (err) {
+    // Race: outro retry já criou um job ativo. Devolve o que existe.
+    if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
+      const active = await db.job.findFirst({
+        where: {
+          userId,
+          sourceUrl: original.sourceUrl,
+          status: { in: ['QUEUED', 'RUNNING'] },
+        },
+        select: { id: true, status: true, sourceUrl: true },
+      });
+      if (active) {
+        return c.json(
+          { jobId: active.id, status: active.status, sourceUrl: active.sourceUrl },
+          200,
+        );
+      }
+      return c.json({ error: 'Esta URL já está sendo processada.' }, 409);
+    }
+    throw err;
+  }
+
+  await notifyNewJob(newJob.id).catch((err) => {
+    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+  });
+  await publishJobEvent(userId, { jobId: newJob.id, stage: 'queued' }).catch(() => undefined);
+
+  return c.json({ jobId: newJob.id, status: newJob.status, sourceUrl: newJob.sourceUrl }, 201);
+});
+
 jobsRoutes.get('/:id/events', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
