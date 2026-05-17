@@ -50,7 +50,10 @@ WORKDIR /app
 
 RUN apk add --no-cache nodejs npm wget && \
     npm install -g prisma@6.19.3 --omit=dev && \
-    addgroup -S voxen && adduser -S -G voxen -u 1001 voxen
+    addgroup -S voxen && adduser -S -G voxen -u 1001 voxen && \
+    # Prisma 6 precisa escrever no diretório de instalação pra baixar engines
+    # em runtime — dá chown pra voxen senão `prisma generate` falha.
+    chown -R voxen:voxen /usr/local/lib/node_modules/prisma /usr/local/lib/node_modules/@prisma 2>/dev/null || true
 
 COPY --from=build-server --chown=voxen:voxen /app/node_modules ./node_modules
 COPY --from=build-server --chown=voxen:voxen /app/apps/web ./apps/web

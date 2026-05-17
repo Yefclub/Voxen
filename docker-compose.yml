@@ -63,14 +63,20 @@ services:
       retries: 10
 
   # Init container: roda uma vez, configura cluster + bucket + key, exporta creds em /creds
+  # Usa alpine porque a imagem do garage v1.0.1 é distroless (sem /bin/sh).
+  # Conversa com o garage via Admin API HTTP.
   garage-init:
-    image: dxflrs/garage:v1.0.1
+    image: alpine:3.20
     depends_on:
       garage:
         condition: service_healthy
     entrypoint: ['/bin/sh', '/scripts/garage-init.sh']
     environment:
       GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-dev_change_me_in_prod}
+      GARAGE_ADMIN_URL: http://garage:3903
+    # DNS upstream — systemd-resolved 127.0.0.53 do host não é alcançável de dentro do container
+    dns: ['8.8.8.8', '1.1.1.1']
     volumes:
       - ./scripts:/scripts:ro
       - garage_creds:/creds
