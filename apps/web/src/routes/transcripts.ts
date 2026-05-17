@@ -108,27 +108,46 @@ const TRANSCRIPT_LIST_SELECT = {
   createdAt: true,
 } as const;
 
+// S3-compatible storage (Garage default; MinIO/AWS S3 também suportados).
+// Aceita variáveis `S3_*` com fallback pra `GARAGE_*` p/ compat com setup atual.
 let _s3: S3Client | null = null;
+function envOr(...keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = process.env[k];
+    if (v) return v;
+  }
+  return undefined;
+}
+
 function getS3(): S3Client {
   if (_s3) return _s3;
-  const endpoint = process.env.GARAGE_ENDPOINT ?? 'http://garage:3900';
-  const accessKey = process.env.GARAGE_ACCESS_KEY ?? readCredsFile('GARAGE_ACCESS_KEY');
-  const secretKey = process.env.GARAGE_SECRET_KEY ?? readCredsFile('GARAGE_SECRET_KEY');
+  const endpoint = envOr('S3_ENDPOINT', 'GARAGE_ENDPOINT') ?? 'http://garage:3900';
+  const accessKey =
+    envOr('S3_ACCESS_KEY', 'GARAGE_ACCESS_KEY') ??
+    readCredsFile('S3_ACCESS_KEY') ??
+    readCredsFile('GARAGE_ACCESS_KEY');
+  const secretKey =
+    envOr('S3_SECRET_KEY', 'GARAGE_SECRET_KEY') ??
+    readCredsFile('S3_SECRET_KEY') ??
+    readCredsFile('GARAGE_SECRET_KEY');
   if (!accessKey || !secretKey) {
-    throw new Error('Garage credentials ausentes — checar /creds/voxen.env ou env');
+    throw new Error(
+      'Credenciais S3 ausentes — defina S3_ACCESS_KEY/S3_SECRET_KEY (ou GARAGE_*) ou /creds/voxen.env',
+    );
   }
+  const forcePathStyle = (envOr('S3_FORCE_PATH_STYLE') ?? 'true').toLowerCase() !== 'false';
   _s3 = new S3Client({
     endpoint,
-    region: process.env.GARAGE_REGION ?? 'garage',
+    region: envOr('S3_REGION', 'GARAGE_REGION') ?? 'garage',
     credentials: { accessKeyId: accessKey, secretAccessKey: secretKey },
-    forcePathStyle: true,
+    forcePathStyle,
   });
   return _s3;
 }
 
 function readCredsFile(key: string): string | undefined {
   try {
-    const path = process.env.GARAGE_CREDS_PATH ?? '/creds/voxen.env';
+    const path = envOr('S3_CREDS_PATH', 'GARAGE_CREDS_PATH') ?? '/creds/voxen.env';
     if (!existsSync(path)) return undefined;
     const content = readFileSync(path, 'utf-8');
     const line = content.split('\n').find((l) => l.startsWith(`${key}=`));
@@ -174,7 +193,7 @@ transcriptsRoutes.get('/:id', async (c) => {
     const s3 = getS3();
     const res = await s3.send(
       new GetObjectCommand({
-        Bucket: process.env.GARAGE_BUCKET ?? 'voxen-transcripts',
+        Bucket: envOr('S3_BUCKET', 'GARAGE_BUCKET') ?? 'voxen-transcripts',
         Key: transcript.mdPath,
       }),
     );

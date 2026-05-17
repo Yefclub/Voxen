@@ -43,13 +43,18 @@ export function AppLayout(): React.ReactElement {
     return <Navigate to="/pendente" replace />;
   }
 
+  // Em /chat o conteúdo gerencia a própria altura (input fixo no fundo), então
+  // removemos o padding bottom do <main> pra não criar scroll extra na página.
+  const isChat =
+    location.pathname === '/chat' || location.pathname.startsWith('/chat/');
+
   return (
     <div className="min-h-screen flex bg-[var(--color-app-bg)]">
       <Sidebar user={data.user} />
       <SidebarSpacer />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar user={data.user} />
-        <main className="flex-1 pb-6">
+        <main className={isChat ? 'flex-1 min-h-0' : 'flex-1 pb-6'}>
           <Outlet />
         </main>
       </div>

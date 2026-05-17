@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Check, Copy, MessagesSquare, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Spinner } from '../components/ui/spinner';
-import { AnimatedPage } from '../components/motion/animated-page';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import { Markdown } from '../components/ui/markdown';
@@ -243,45 +242,59 @@ export function ChatPage(): React.ReactElement {
   const empty = messages.length === 0 && !active;
 
   return (
-    <AnimatedPage>
-      <div className="flex flex-col h-[calc(100vh-4rem)]">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl px-6 py-8 space-y-5">
-            {empty && <EmptyState onPick={(s) => promptRef.current?.setValue(s)} />}
-            <AnimatePresence initial={false}>
-              {messages.map((m) => (
-                <motion.div
-                  key={m.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.18 }}
-                >
-                  <Bubble msg={m} user={me ?? null} />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        </div>
-
-        <div className="border-t border-[var(--color-app-border)] bg-[var(--color-app-bg)]/60 backdrop-blur-md">
-          <div className="mx-auto max-w-3xl px-6 py-4">
-            <PromptBox
-              ref={promptRef}
-              value={input}
-              onChange={setInput}
-              onSubmit={() => void send()}
-              disabled={streaming}
-              loading={streaming}
-              thinking={thinking}
-              onToggleThinking={() => void toggleThinking()}
-            />
-            <p className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] mt-2 text-center">
-              Enter envia · Shift+Enter quebra linha · Microfone transcreve fala
-            </p>
-          </div>
-        </div>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+      className="flex flex-col h-full"
+    >
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
+        <motion.div
+          key={routeId ?? 'empty'}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          className="mx-auto max-w-3xl px-6 py-8 space-y-5"
+        >
+          {empty && <EmptyState onPick={(s) => promptRef.current?.setValue(s)} />}
+          <AnimatePresence initial={false}>
+            {messages.map((m) => (
+              <motion.div
+                key={m.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.18 }}
+              >
+                <Bubble msg={m} user={me ?? null} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </motion.div>
       </div>
-    </AnimatedPage>
+
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+        className="shrink-0 bg-gradient-to-t from-[var(--color-app-bg)] via-[var(--color-app-bg)]/95 to-transparent pt-4"
+      >
+        <div className="mx-auto max-w-3xl px-6 pb-4">
+          <PromptBox
+            ref={promptRef}
+            value={input}
+            onChange={setInput}
+            onSubmit={() => void send()}
+            disabled={streaming}
+            loading={streaming}
+            thinking={thinking}
+            onToggleThinking={() => void toggleThinking()}
+          />
+          <p className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] mt-2 text-center">
+            Enter envia · Shift+Enter quebra linha · Microfone transcreve fala
+          </p>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -419,8 +432,8 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }): React.ReactEle
   const suggestions = [
     'O que tem na minha biblioteca?',
     'Resuma o vídeo mais recente.',
-    'Transcreva este vídeo: https://youtube.com/watch?v=…',
     'Quais ideias principais dos últimos 3 vídeos?',
+    'Procure por "produtividade" na biblioteca.',
   ];
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">

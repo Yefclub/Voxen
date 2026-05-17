@@ -23,6 +23,9 @@ export function formatUsd(amount: number | string | null | undefined): string {
   const num = typeof amount === 'string' ? parseFloat(amount) : amount;
   if (Number.isNaN(num)) return '—';
   if (num === 0) return '$0,00';
-  if (num < 0.01) return `<$0,01`;
-  return `$${num.toFixed(num < 1 ? 4 : 2).replace('.', ',')}`;
+  // Modelos baratos podem dar custos <$0,0001 — mostrar mais casas para o valor
+  // ainda ser legível em vez de virar '<$0,01' (que escondia a informação).
+  const abs = Math.abs(num);
+  const decimals = abs < 0.0001 ? 6 : abs < 1 ? 4 : 2;
+  return `$${num.toFixed(decimals).replace('.', ',')}`;
 }
