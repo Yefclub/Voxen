@@ -22,6 +22,7 @@ import { formatDateTime, formatDuration, formatUsd } from '../lib/format';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { TranscriptViewer } from '../components/ui/transcript-viewer';
 import { Markdown } from '../components/ui/markdown';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
 
 interface TranscriptDetail {
   id: string;
@@ -53,21 +54,32 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const { data, loading, refresh } = useFetch<ResponseBody>(id ? `/api/transcripts/${id}` : null);
   const [generating, setGenerating] = useState(false);
+  const [confirmRegen, setConfirmRegen] = useState(false);
 
-  async function generateSummary(): Promise<void> {
+  async function generateSummary(force: boolean): Promise<void> {
     if (!id) return;
     setGenerating(true);
     try {
       const res = await fetch(`/api/transcripts/${id}/summary`, {
         method: 'POST',
         credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        existing?: boolean;
+      };
+      if (res.status === 409 && body.existing) {
+        // Já tem resumo → abre confirm modal pra regen
+        setConfirmRegen(true);
+        return;
+      }
       if (!res.ok) {
         toast.error(body.error ?? 'Falha ao gerar resumo.');
         return;
       }
-      toast.success('Resumo gerado.');
+      toast.success(force ? 'Resumo regenerado.' : 'Resumo gerado.');
       refresh();
     } catch (e) {
       toast.error('Erro ao gerar resumo.', {
@@ -161,7 +173,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             <SummaryBlock
               summary={t.summaryMd}
               generating={generating}
-              onGenerate={() => void generateSummary()}
+              onGenerate={() => void generateSummary(false)}
             />
             {t.source === 'WEB' ? (
               <section>
@@ -221,6 +233,16 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           </motion.aside>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmRegen}
+        onOpenChange={setConfirmRegen}
+        title="Regenerar resumo?"
+        description="Vai consumir tokens da OpenRouter pra gerar um resumo novo do zero. O atual será sobrescrito."
+        confirmLabel="Regenerar"
+        cancelLabel="Cancelar"
+        onConfirm={() => generateSummary(true)}
+        loading={generating}
+      />
     </AnimatedPage>
   );
 }
