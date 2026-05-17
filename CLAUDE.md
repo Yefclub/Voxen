@@ -166,30 +166,46 @@ Antes de commitar QUALQUER fix visual ou mudança de UI:
 5. Verificar: alinhamento, contraste, hover states, z-index, animações, overflow de texto, responsividade
 6. Se o usuário enviar prints/screenshots — verificar PRIMEIRO no ambiente local via Playwright. NUNCA assumir que são de outro ambiente. Investigar, não descartar.
 
-## Workflow Git & PR
+## Workflow Git & PR — FLUXO INVIOLÁVEL
 
-- Branch principal: `main`. Branch de desenvolvimento: `dev` (**default no GitHub**)
-- Branches de feature: criadas A PARTIR de `dev`, PRs SEMPRE para `dev`
-- Release: PR de `dev` → `main` com label (`release:patch/minor/major`)
-- **NUNCA** fazer commit/push direto em `dev` ou `main` — TODA alteração via PR
-- **NUNCA** fazer merge de PRs automaticamente — apenas criar e aguardar aprovação humana
-- Título e corpo da PR SEMPRE em PT-BR, sem emojis, sem rodapés de IA
-- Conventional commits no título (em inglês): `feat(scope):`, `fix(scope):`, `chore(scope):`, `docs(scope):`, `refactor(scope):`
-- Após criar PR: aguardar CI rodar, depois `git pull --rebase`
+Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo é mais grave que entregar atrasado.
 
-Sempre espere o CI passar antes de mergear PRs. Nunca mergeie sem checks verdes.
+### Os 7 passos (em ordem)
 
-Nunca execute `git clean -fd` ou qualquer operação destrutiva do git sem aprovação explícita do usuário. Sempre faça commit ou stash do trabalho antes de trocar de branch. Trate trabalho não commitado como sagrado.
+1. **Analisar e conversar** com o owner sobre o que fazer/entender. Confirmar escopo, perguntar se ambíguo, propor abordagem.
+2. **Branch a partir de `dev` SINCRONIZADA**:
+   ```bash
+   git fetch origin && git checkout dev && git pull --ff-only
+   git checkout -b feat/<slug>
+   ```
+   NUNCA branchar de feature anterior. NUNCA branchar de stale.
+3. **Trabalhar + testar** localmente (lint, typecheck, test, build) → **retornar pro owner** com o que foi feito.
+4. **Abrir PR contra `dev`**: `gh pr create --base dev`. Título + corpo em PT-BR, sem emojis, sem rodapés de IA. Conventional commits no título (em inglês): `feat(scope):`, `fix(scope):`, `chore(scope):`, `docs(scope):`, `refactor(scope):`.
+5. **Monitorar CI até verde**: `gh pr checks <num> --watch`. Se vermelho, investigar e corrigir antes de prosseguir.
+6. **Disparar agente Opus 4.7 (skill `review-pr`)** em background pra revisar diffs, segurança, escopo.
+7. **Merge pra `dev` é decisão HUMANA do owner** — só executar `gh pr merge` quando owner mandar explicitamente. Depois → volta pro passo 1.
+
+### Regras inegociáveis
+
+- **NUNCA** acumular mais de 1 feature em uma branch — **uma PR por feature**. Se você acumulou (ex: 12 commits sem PR), pare, abra a PR agora.
+- **NUNCA** commitar/pushar direto em `dev` ou `main`.
+- **NUNCA** mergear sozinho — só owner aprova merge.
+- **NUNCA** branchar de stale. Sempre `git pull --ff-only` em `dev` antes de criar branch.
+- Quando uma PR ainda não mergeou e o owner pedir pra seguir pra próxima feature, **pausar** e perguntar: "PR #X ainda não mergeou. Mergear primeiro pra eu branchar de dev atualizado, ou prefere outra abordagem?"
+- Release: PR de `dev` → `main` com label (`release:patch/minor/major`).
+- Nunca execute `git clean -fd` ou qualquer operação destrutiva do git sem aprovação explícita do usuário. Sempre faça commit ou stash do trabalho antes de trocar de branch. Trate trabalho não commitado como sagrado.
 
 ### Checklist Pre-PR (OBRIGATÓRIO)
 
+0. **Branch criada de `dev` sincronizada** (`git fetch && git checkout dev && git pull --ff-only && git checkout -b feat/<slug>`)
 1. `make lint` — Linting sem erros (eslint, prettier, ruff)
 2. `make typecheck` — TypeScript + mypy sem erros
 3. `make test` — Testes passando (bun test + pytest)
 4. Spec em `.specs/` criada/atualizada se a mudança é não-trivial
 5. Migrations sincronizadas: se mudou `prisma/schema.prisma`, há migration?
 6. `docker compose build` — build real funciona (pega erros que tsc/mypy não pegam)
-7. Só então criar PR via `gh pr create`
+7. Só então criar PR via `gh pr create --base dev`
+8. **Pós-criação**: `gh pr checks <num> --watch` até verde, então disparar skill `review-pr` em background
 
 ### Migrations (CRÍTICO)
 
