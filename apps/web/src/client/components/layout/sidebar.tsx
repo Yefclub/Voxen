@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
+  ArrowLeft,
   ChevronDown,
   DollarSign,
   LayoutDashboard,
@@ -230,7 +231,15 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="p-3 flex flex-col gap-3 shrink-0">
+      <div className="p-3 flex flex-col gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2 h-9 rounded-lg px-3 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Voltar para o painel
+        </button>
         <button
           type="button"
           onClick={() => void onNew()}
