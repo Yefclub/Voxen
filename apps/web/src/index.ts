@@ -9,6 +9,7 @@ import { auth } from './lib/auth';
 import { db } from './lib/db';
 import { isSetupComplete } from './lib/settings';
 import { adminRoutes } from './routes/admin';
+import { jobsRoutes } from './routes/jobs';
 import { setupRoutes } from './routes/setup';
 
 const app = new Hono();
@@ -40,6 +41,9 @@ app.route('/api/setup', setupRoutes);
 
 // Admin endpoints (protegidos por middleware no próprio router)
 app.route('/api/admin', adminRoutes);
+
+// Jobs endpoints (download + transcrição — spec 002)
+app.route('/api/jobs', jobsRoutes);
 
 // Landing placeholder
 app.get('/', (c) => c.text('Voxen — em desenvolvimento. Veja .specs/000-setup-inicial.md.'));
