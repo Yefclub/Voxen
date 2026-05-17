@@ -9,7 +9,15 @@ interface MarkdownProps {
   className?: string;
 }
 
-function CodeBlock({ inline, className, children }: { inline?: boolean; className?: string; children?: React.ReactNode }): React.ReactElement {
+function CodeBlock({
+  inline,
+  className,
+  children,
+}: {
+  inline?: boolean;
+  className?: string;
+  children?: React.ReactNode;
+}): React.ReactElement {
   const [copied, setCopied] = useState(false);
   const raw = String(children ?? '').replace(/\n$/, '');
   const lang = /language-([\w-]+)/.exec(className ?? '')?.[1];
@@ -62,7 +70,10 @@ function CodeBlock({ inline, className, children }: { inline?: boolean; classNam
   );
 }
 
-export const Markdown = memo(function Markdown({ children, className }: MarkdownProps): React.ReactElement {
+export const Markdown = memo(function Markdown({
+  children,
+  className,
+}: MarkdownProps): React.ReactElement {
   return (
     <div
       className={cn(

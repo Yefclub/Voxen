@@ -161,9 +161,7 @@ function ActivityRow({ job }: { job: JobSummary }): React.ReactElement {
           {label}
         </Badge>
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-zinc-200 truncate font-mono tracking-tight">
-            {job.sourceUrl}
-          </p>
+          <p className="text-sm text-zinc-200 truncate font-mono tracking-tight">{job.sourceUrl}</p>
           <p className="text-xs text-[var(--color-app-muted)] mt-0.5">
             {formatRelative(new Date(job.queuedAt))}
           </p>

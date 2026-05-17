@@ -46,47 +46,50 @@ export function ChatPage(): React.ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null);
   const promptRef = useRef<PromptBoxHandle>(null);
 
-  const loadActive = useCallback(async (id: string): Promise<void> => {
-    const res = await fetch(`/api/chat/conversations/${id}`, { credentials: 'include' });
-    if (!res.ok) {
-      toast.error('Conversa não encontrada.');
-      navigate('/chat', { replace: true });
-      return;
-    }
-    const data = (await res.json()) as {
-      conversation: {
-        id: string;
-        title: string;
-        thinking: boolean;
-        updatedAt: string;
-        createdAt: string;
+  const loadActive = useCallback(
+    async (id: string): Promise<void> => {
+      const res = await fetch(`/api/chat/conversations/${id}`, { credentials: 'include' });
+      if (!res.ok) {
+        toast.error('Conversa não encontrada.');
+        navigate('/chat', { replace: true });
+        return;
+      }
+      const data = (await res.json()) as {
+        conversation: {
+          id: string;
+          title: string;
+          thinking: boolean;
+          updatedAt: string;
+          createdAt: string;
+        };
+        messages: {
+          id: string;
+          role: 'user' | 'assistant';
+          content: string;
+          tools?: unknown;
+          createdAt: string;
+        }[];
       };
-      messages: {
-        id: string;
-        role: 'user' | 'assistant';
-        content: string;
-        tools?: unknown;
-        createdAt: string;
-      }[];
-    };
-    setActive({
-      id: data.conversation.id,
-      title: data.conversation.title,
-      thinking: data.conversation.thinking,
-      updatedAt: data.conversation.updatedAt,
-      createdAt: data.conversation.createdAt,
-      messageCount: data.messages.length,
-    });
-    setThinking(data.conversation.thinking);
-    setMessages(
-      data.messages.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
-      })),
-    );
-  }, [navigate]);
+      setActive({
+        id: data.conversation.id,
+        title: data.conversation.title,
+        thinking: data.conversation.thinking,
+        updatedAt: data.conversation.updatedAt,
+        createdAt: data.conversation.createdAt,
+        messageCount: data.messages.length,
+      });
+      setThinking(data.conversation.thinking);
+      setMessages(
+        data.messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
+        })),
+      );
+    },
+    [navigate],
+  );
 
   useEffect(() => {
     if (!routeId) {
@@ -193,9 +196,7 @@ export function ChatPage(): React.ReactElement {
           } else if (ev === 'tool_start') {
             const name = (payload.name as string) ?? '';
             setMessages((m) =>
-              m.map((x) =>
-                x.id === asstId ? { ...x, tools: [...(x.tools ?? []), { name }] } : x,
-              ),
+              m.map((x) => (x.id === asstId ? { ...x, tools: [...(x.tools ?? []), { name }] } : x)),
             );
           } else if (ev === 'tool_end') {
             const name = (payload.name as string) ?? '';
@@ -228,9 +229,7 @@ export function ChatPage(): React.ReactElement {
       const msg = err instanceof Error ? err.message : 'Falha de conexão.';
       setMessages((m) =>
         m.map((x) =>
-          x.id === asstId
-            ? { ...x, pending: false, content: x.content + `\n\n⚠️ ${msg}` }
-            : x,
+          x.id === asstId ? { ...x, pending: false, content: x.content + `\n\n⚠️ ${msg}` } : x,
         ),
       );
     } finally {
@@ -441,10 +440,12 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }): React.ReactEle
         <img src="/voxen-256.png" alt="Voxen" className="h-full w-full object-cover" />
       </div>
       <div className="space-y-1.5 max-w-md">
-        <p className="font-display text-2xl font-semibold tracking-tight">Pergunte qualquer coisa</p>
+        <p className="font-display text-2xl font-semibold tracking-tight">
+          Pergunte qualquer coisa
+        </p>
         <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
-          O agente consulta sua biblioteca e pode transcrever vídeos novos. Sem alucinação, tudo
-          com fonte e timestamp.
+          O agente consulta sua biblioteca e pode transcrever vídeos novos. Sem alucinação, tudo com
+          fonte e timestamp.
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl">

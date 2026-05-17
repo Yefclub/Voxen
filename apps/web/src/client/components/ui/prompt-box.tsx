@@ -204,7 +204,11 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
             aria-label={recording ? 'Parar gravação' : 'Gravar voz'}
             title={recording ? 'Parar gravação' : 'Gravar voz'}
           >
-            {recording ? <Square className="h-4 w-4" fill="currentColor" /> : <Mic className="h-4 w-4" />}
+            {recording ? (
+              <Square className="h-4 w-4" fill="currentColor" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
           </button>
 
           {/* Send */}
@@ -222,7 +226,11 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
             )}
             aria-label="Enviar"
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" strokeWidth={2.5} />}
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+            )}
           </button>
         </div>
       </div>

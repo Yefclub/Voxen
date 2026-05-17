@@ -45,8 +45,7 @@ export function AppLayout(): React.ReactElement {
 
   // Em /chat o conteúdo gerencia a própria altura (input fixo no fundo), então
   // removemos o padding bottom do <main> pra não criar scroll extra na página.
-  const isChat =
-    location.pathname === '/chat' || location.pathname.startsWith('/chat/');
+  const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
 
   return (
     <div className="min-h-screen flex bg-[var(--color-app-bg)]">

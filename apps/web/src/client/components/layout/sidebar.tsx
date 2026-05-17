@@ -130,13 +130,7 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
 // Modo normal — nav items
 // ---------------------------------------------------------------------------
 
-function NavBody({
-  items,
-  pathname,
-}: {
-  items: NavItem[];
-  pathname: string;
-}): React.ReactElement {
+function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): React.ReactElement {
   return (
     <nav className="flex-1 p-3 overflow-y-auto">
       <ul className="space-y-0.5">
@@ -315,8 +309,8 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
           pendingDelete ? (
             <>
               Você vai perder todas as mensagens de{' '}
-              <span className="text-zinc-200 font-medium">“{pendingDelete.title}”</span>. Essa
-              ação não pode ser desfeita.
+              <span className="text-zinc-200 font-medium">“{pendingDelete.title}”</span>. Essa ação
+              não pode ser desfeita.
             </>
           ) : null
         }

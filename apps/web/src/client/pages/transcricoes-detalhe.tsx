@@ -51,9 +51,7 @@ interface ResponseBody {
 
 export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
-  const { data, loading, refresh } = useFetch<ResponseBody>(
-    id ? `/api/transcripts/${id}` : null,
-  );
+  const { data, loading, refresh } = useFetch<ResponseBody>(id ? `/api/transcripts/${id}` : null);
   const [generating, setGenerating] = useState(false);
 
   async function generateSummary(): Promise<void> {
@@ -154,7 +152,11 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             transition={{ duration: 0.45, delay: 0.1 }}
             className="min-w-0 space-y-10"
           >
-            <SummaryBlock summary={t.summaryMd} generating={generating} onGenerate={() => void generateSummary()} />
+            <SummaryBlock
+              summary={t.summaryMd}
+              generating={generating}
+              onGenerate={() => void generateSummary()}
+            />
             <TranscriptViewer markdown={data.markdown} />
           </motion.article>
 
