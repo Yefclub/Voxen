@@ -104,28 +104,38 @@ def _best_subtitle_format(formats: list[dict[str, Any]]) -> str | None:
 
 
 async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path) -> Path:
-    """Baixa apenas a legenda. Retorna path do arquivo .vtt/.srt."""
+    """Baixa apenas a legenda. Retorna path do arquivo .vtt/.srt.
+
+    yt-dlp pode salvar com qualquer das variantes (`pt`, `pt-BR`, `pt-orig`,
+    etc). Tentamos vários lang codes na requisição e fazemos glob amplo
+    `*.{fmt}` no diretório dedicado do job.
+    """
     import asyncio
 
+    # Inclui variantes do lang pedido + base (pt-BR → pt)
+    lang_variants = list(dict.fromkeys([lang, lang.split("-")[0]]))
     out_template = str(out_dir / "%(id)s.%(ext)s")
     opts = {
         "skip_download": True,
         "writesubtitles": True,
         "writeautomaticsub": True,
-        "subtitleslangs": [lang],
+        "subtitleslangs": lang_variants,
         "subtitlesformat": fmt,
         "quiet": True,
         "no_warnings": True,
         "outtmpl": out_template,
     }
-    await asyncio.to_thread(_extract_info, url, opts)
-    # Arquivo gerado: <id>.<lang>.<fmt>
-    candidates = list(out_dir.glob(f"*.{lang}.{fmt}"))
+    # download=True faz o yt-dlp escrever os arquivos de legenda.
+    # Com skip_download=True, NÃO baixa o vídeo, apenas as legendas.
+    await asyncio.to_thread(_run_download, url, opts)
+    # tmpdir é exclusivo do job, então `*.{fmt}` é seguro
+    candidates = sorted(out_dir.glob(f"*.{fmt}"))
     if not candidates:
-        # alguns idiomas geram <id>.<lang>-<region>.<fmt>; pega o primeiro .<fmt>
-        candidates = list(out_dir.glob(f"*.{fmt}"))
-    if not candidates:
-        raise RuntimeError(f"Legenda não baixada (esperado *.{lang}.{fmt})")
+        all_files = sorted(p.name for p in out_dir.iterdir())
+        raise RuntimeError(
+            f"Legenda não baixada (esperado *.{fmt} em {out_dir}). "
+            f"Arquivos: {all_files}"
+        )
     return candidates[0]
 
 

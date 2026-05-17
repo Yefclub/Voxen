@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { LogOut, User as UserIcon } from 'lucide-react';
+import { LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import {
   DropdownMenu,
@@ -35,15 +35,16 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-zinc-800/80 bg-zinc-950/70 backdrop-blur px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[var(--color-app-border)] bg-[var(--color-app-bg)]/70 backdrop-blur-md px-6">
       <div className="flex items-center gap-4">
-        {title && <h1 className="text-base font-semibold tracking-tight">{title}</h1>}
+        {title && <h1 className="text-base font-semibold font-display tracking-tight">{title}</h1>}
       </div>
 
       <div className="flex items-center gap-4">
         {user.role === 'ADMIN' && (
-          <Badge variant="muted" className="hidden sm:inline-flex">
-            <ShieldDot /> Admin
+          <Badge variant="success" className="hidden sm:inline-flex text-[10px]">
+            <ShieldCheck className="h-3 w-3" />
+            Admin
           </Badge>
         )}
 
@@ -51,29 +52,33 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex items-center gap-3 rounded-md py-1.5 pl-2 pr-3 hover:bg-zinc-900/60 transition-colors"
+              className="flex items-center gap-3 rounded-lg py-1.5 pl-1.5 pr-3 hover:bg-[var(--color-app-surface)] transition-colors group"
               aria-label="Menu do usuário"
             >
-              <Avatar>
-                <AvatarFallback>{initials(user.name)}</AvatarFallback>
-              </Avatar>
+              <div className="relative">
+                <Avatar className="bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
+                  <AvatarFallback className="bg-transparent text-zinc-100 font-semibold">
+                    {initials(user.name)}
+                  </AvatarFallback>
+                </Avatar>
+              </div>
               <div className="hidden sm:flex flex-col items-start leading-tight">
                 <span className="text-sm font-medium text-zinc-100">{user.name}</span>
-                <span className="text-[11px] text-zinc-500 truncate max-w-[160px]">
+                <span className="text-[11px] text-[var(--color-app-muted)] truncate max-w-[180px]">
                   {user.email}
                 </span>
               </div>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Conta</DropdownMenuLabel>
+            <DropdownMenuLabel>Sua conta</DropdownMenuLabel>
             <DropdownMenuItem>
-              <UserIcon className="h-4 w-4 text-zinc-500" />
-              {user.email}
+              <UserIcon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
+              <span className="truncate">{user.email}</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem destructive onSelect={onSignOut}>
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-3.5 w-3.5" />
               Sair
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -81,8 +86,4 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
       </div>
     </header>
   );
-}
-
-function ShieldDot(): React.ReactElement {
-  return <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />;
 }

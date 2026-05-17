@@ -1,6 +1,15 @@
 import { Link, useParams } from 'react-router-dom';
 import { useMemo } from 'react';
-import { ArrowLeft, Calendar, Clock, ExternalLink, FileText, Languages } from 'lucide-react';
+import { motion } from 'motion/react';
+import {
+  ArrowLeft,
+  Calendar,
+  Clock,
+  ExternalLink,
+  FileText,
+  Languages,
+  Sparkles,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Button } from '../components/ui/button';
@@ -9,6 +18,7 @@ import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
 import { formatDateTime, formatDuration, formatUsd } from '../lib/format';
+import { AnimatedPage } from '../components/motion/animated-page';
 
 interface TranscriptDetail {
   id: string;
@@ -30,43 +40,44 @@ interface TranscriptDetail {
   createdAt: string;
 }
 
-interface Response {
+interface ResponseBody {
   transcript: TranscriptDetail;
   markdown: string;
 }
 
-// Remove o frontmatter (---...---) e o cabeçalho duplicado (# Title + > meta)
-// porque já mostramos esses dados na barra lateral. Mantém só o corpo.
 function stripFrontmatterAndHeader(md: string): string {
   let body = md;
   if (body.startsWith('---')) {
     const end = body.indexOf('\n---', 3);
     if (end !== -1) body = body.slice(end + 4).trimStart();
   }
-  // Remove ![thumbnail](...) e # Title que vêm duplicados
   body = body.replace(/^!\[thumbnail\][^\n]*\n+/, '');
   body = body.replace(/^#\s+[^\n]+\n+/, '');
-  // Remove a linha "> [Vídeo original]..."
   body = body.replace(/^>\s+\[Vídeo original\][^\n]*\n+/, '');
-  // Remove ## Transcrição
   body = body.replace(/^##\s+Transcrição\s*\n+/m, '');
   return body.trim();
 }
 
 export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
-  const { data, loading } = useFetch<Response>(id ? `/api/transcripts/${id}` : null);
+  const { data, loading } = useFetch<ResponseBody>(id ? `/api/transcripts/${id}` : null);
 
   const cleanedBody = useMemo(() => (data ? stripFrontmatterAndHeader(data.markdown) : ''), [data]);
 
   if (loading || !data) {
     return (
       <div className="px-8 py-10 mx-auto max-w-5xl">
-        <Skeleton className="h-8 w-32 mb-6" />
-        <Skeleton className="h-64 w-full mb-4" />
-        <Skeleton className="h-4 w-full mb-2" />
-        <Skeleton className="h-4 w-5/6 mb-2" />
-        <Skeleton className="h-4 w-4/6" />
+        <Skeleton className="h-7 w-32 mb-8" />
+        <Skeleton className="h-12 w-3/4 mb-3" />
+        <Skeleton className="h-5 w-1/3 mb-10" />
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-8">
+          <div className="space-y-3">
+            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+              <Skeleton key={i} className="h-5 w-full" />
+            ))}
+          </div>
+          <Skeleton className="h-64 rounded-2xl" />
+        </div>
       </div>
     );
   }
@@ -76,93 +87,122 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const published = t.publishedAt ? new Date(t.publishedAt) : null;
 
   return (
-    <div className="px-8 py-10 mx-auto max-w-5xl">
-      <Button variant="ghost" size="sm" asChild className="mb-6">
-        <Link to="/transcricoes">
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Acervo
-        </Link>
-      </Button>
+    <AnimatedPage>
+      <div className="px-8 py-10 mx-auto max-w-5xl">
+        <Button variant="ghost" size="sm" asChild className="mb-8 -ml-2">
+          <Link to="/transcricoes">
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Acervo
+          </Link>
+        </Button>
 
-      <header className="mb-8 space-y-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="muted" className="text-[10px]">
-            {t.source.toLowerCase()}
-          </Badge>
-          <Badge
-            variant={t.transcriptionMethod === 'SUBTITLES' ? 'success' : 'default'}
-            className="text-[10px]"
-          >
-            {t.transcriptionMethod === 'SUBTITLES' ? 'Legendas oficiais' : 'Transcrição via IA'}
-          </Badge>
-          {t.language && (
-            <Badge variant="outline" className="text-[10px] uppercase">
-              {t.language}
+        <motion.header
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="mb-10 space-y-4"
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="muted" className="text-[10px] tracking-wider uppercase">
+              {t.source.toLowerCase()}
             </Badge>
-          )}
-        </div>
-        <h1 className="text-3xl font-semibold tracking-tight text-balance">{t.title}</h1>
-        {t.channel && <p className="text-sm text-zinc-400">{t.channel}</p>}
-      </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-8">
-        {/* Coluna principal: corpo da transcrição */}
-        <article className="prose-voxen min-w-0">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              a: (props) => (
-                <a
-                  {...props}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-emerald-400 font-mono text-xs no-underline hover:underline hover:text-emerald-300 transition-colors mr-2"
-                >
-                  {props.children}
-                </a>
-              ),
-              p: ({ children }) => <p className="text-zinc-300 leading-relaxed mb-3">{children}</p>,
-            }}
-          >
-            {cleanedBody}
-          </ReactMarkdown>
-        </article>
-
-        {/* Coluna lateral: metadata */}
-        <aside className="space-y-3">
-          {t.thumbnailUrl && (
-            <Card className="overflow-hidden p-0">
-              <img
-                src={t.thumbnailUrl}
-                alt=""
-                className="w-full aspect-video object-cover"
-                loading="lazy"
-              />
-            </Card>
-          )}
-
-          <Card>
-            <CardContent className="pt-5 space-y-3 text-sm">
-              <MetaRow Icon={Clock} label="Duração" value={formatDuration(t.durationSec)} />
-              <MetaRow Icon={Languages} label="Idioma" value={t.language.toUpperCase()} />
-              <MetaRow Icon={Calendar} label="Adicionado" value={formatDateTime(created)} />
-              {published && (
-                <MetaRow Icon={Calendar} label="Publicado em" value={formatDateTime(published)} />
+            <Badge
+              variant={t.transcriptionMethod === 'SUBTITLES' ? 'success' : 'default'}
+              className="text-[10px]"
+            >
+              {t.transcriptionMethod === 'SUBTITLES' ? (
+                'Legendas oficiais'
+              ) : (
+                <>
+                  <Sparkles className="h-3 w-3 inline mr-1" /> Transcrição via IA
+                </>
               )}
-              {t.model && <MetaRow Icon={FileText} label="Modelo" value={t.model} mono />}
-              {t.costUsd && <MetaRow Icon={FileText} label="Custo" value={formatUsd(t.costUsd)} />}
-            </CardContent>
-          </Card>
+            </Badge>
+            {t.language && (
+              <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
+                {t.language}
+              </Badge>
+            )}
+          </div>
+          <h1 className="font-display text-4xl lg:text-5xl font-semibold tracking-[-0.035em] leading-[1.05] text-balance">
+            {t.title}
+          </h1>
+          {t.channel && <p className="text-[15px] text-[var(--color-app-muted)]">{t.channel}</p>}
+        </motion.header>
 
-          <Button variant="outline" size="sm" className="w-full" asChild>
-            <a href={t.url} target="_blank" rel="noreferrer">
-              Abrir vídeo original
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </Button>
-        </aside>
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-10">
+          {/* Coluna principal: transcrição */}
+          <motion.article
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: 0.1 }}
+            className="prose-voxen min-w-0"
+          >
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: (props) => (
+                  <a
+                    {...props}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-violet-400 font-mono text-xs no-underline hover:text-violet-300 hover:underline transition-colors mr-2 tabular-nums"
+                  >
+                    {props.children}
+                  </a>
+                ),
+                p: ({ children }) => (
+                  <p className="text-[var(--color-app-subtle)] leading-[1.75] mb-3">{children}</p>
+                ),
+              }}
+            >
+              {cleanedBody}
+            </ReactMarkdown>
+          </motion.article>
+
+          {/* Sidebar: metadata + thumbnail */}
+          <motion.aside
+            initial={{ opacity: 0, x: 8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.45, delay: 0.18 }}
+            className="space-y-4 lg:sticky lg:top-24 self-start"
+          >
+            {t.thumbnailUrl && (
+              <Card className="overflow-hidden p-0" elevated>
+                <img
+                  src={t.thumbnailUrl}
+                  alt=""
+                  className="w-full aspect-video object-cover"
+                  loading="lazy"
+                />
+              </Card>
+            )}
+
+            <Card elevated>
+              <CardContent className="pt-5 pb-5 space-y-4">
+                <MetaRow Icon={Clock} label="Duração" value={formatDuration(t.durationSec)} />
+                <MetaRow Icon={Languages} label="Idioma" value={t.language.toUpperCase()} />
+                <MetaRow Icon={Calendar} label="Adicionado" value={formatDateTime(created)} />
+                {published && (
+                  <MetaRow Icon={Calendar} label="Publicado" value={formatDateTime(published)} />
+                )}
+                {t.model && <MetaRow Icon={FileText} label="Modelo" value={t.model} mono />}
+                {t.costUsd && (
+                  <MetaRow Icon={FileText} label="Custo" value={formatUsd(t.costUsd)} mono />
+                )}
+              </CardContent>
+            </Card>
+
+            <Button variant="outline" size="default" className="w-full" asChild>
+              <a href={t.url} target="_blank" rel="noreferrer">
+                Abrir vídeo original
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </Button>
+          </motion.aside>
+        </div>
       </div>
-    </div>
+    </AnimatedPage>
   );
 }
 
@@ -179,10 +219,21 @@ function MetaRow({
 }): React.ReactElement {
   return (
     <div className="flex items-start gap-3">
-      <Icon className="h-3.5 w-3.5 text-zinc-500 mt-0.5 shrink-0" />
+      <div className="h-7 w-7 rounded-md bg-[var(--color-app-bg-elevated)] border border-[var(--color-app-border)] flex items-center justify-center shrink-0">
+        <Icon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
+      </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-medium">{label}</p>
-        <p className={mono ? 'text-xs font-mono text-zinc-200 truncate' : 'text-sm text-zinc-200'}>
+        <p className="text-[10px] uppercase tracking-[0.15em] text-[var(--color-app-muted)] font-medium">
+          {label}
+        </p>
+        <p
+          className={
+            mono
+              ? 'text-[13px] font-mono text-zinc-200 truncate mt-0.5 tabular-nums'
+              : 'text-sm text-zinc-200 mt-0.5'
+          }
+          title={value}
+        >
           {value}
         </p>
       </div>

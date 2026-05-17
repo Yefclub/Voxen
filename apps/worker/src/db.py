@@ -15,6 +15,13 @@ import asyncpg
 _pool: asyncpg.Pool | None = None
 
 
+def _utcnow_naive() -> datetime:
+    """Postgres `TIMESTAMP(3)` (sem tz) gerado pelo Prisma exige datetime
+    naive em UTC — asyncpg recusa misturar offset-aware com naive.
+    """
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 def database_url() -> str:
     url = os.environ.get("DATABASE_URL")
     if not url:
@@ -71,7 +78,7 @@ async def claim_job(job_id: str) -> dict[str, Any] | None:
                 WHERE id = $1
                 """,
                 job_id,
-                datetime.now(UTC),
+                _utcnow_naive(),
             )
             return dict(row)
 
@@ -135,6 +142,10 @@ async def write_transcript(
     frontmatter: dict[str, Any],
 ) -> str:
     """Insert Transcript. Retorna id."""
+    # published_at pode vir tz-aware (yt-dlp UTC) — Postgres aqui é naive
+    published_at_naive = (
+        published_at.replace(tzinfo=None) if published_at and published_at.tzinfo else published_at
+    )
     async with connection() as conn:
         # cuid() gerado via random — Prisma não está disponível aqui;
         # geramos um id compatível com cuid pattern (25 chars, starts with c).
@@ -160,7 +171,7 @@ async def write_transcript(
             channel,
             author,
             duration_sec,
-            published_at,
+            published_at_naive,
             thumbnail_url,
             language,
             transcription_method,
@@ -183,7 +194,7 @@ async def link_job_done(job_id: str, transcript_id: str) -> None:
             """,
             job_id,
             transcript_id,
-            datetime.now(UTC),
+            _utcnow_naive(),
         )
 
 
@@ -197,7 +208,7 @@ async def mark_job_failed(job_id: str, error_msg: str) -> None:
             """,
             job_id,
             error_msg[:1000],
-            datetime.now(UTC),
+            _utcnow_naive(),
         )
 
 

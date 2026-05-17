@@ -268,7 +268,9 @@ async def _persist(
             doc.channel,
             doc.author,
             doc.duration_sec,
-            doc.published_at,
+            doc.published_at.replace(tzinfo=None)
+            if doc.published_at and doc.published_at.tzinfo
+            else doc.published_at,
             doc.thumbnail_url,
             doc.language,
             doc.transcription_method,
