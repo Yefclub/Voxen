@@ -122,3 +122,5 @@ Referências:
 
 > 2026-05-16: spec rascunhada para co-autoria com o user. Decisões pendentes marcadas no bloco "Riscos / Decisões pendentes".
 > 2026-05-16: decisões aprovadas pelo owner (YT-only no MVP, SSE, 4h, propostas técnicas padrão). Spec finalizada com bloco "Decisões Tomadas" como referência rápida.
+> 2026-05-17: PR `feat/jobs-api` (PR 8a) implementa o **backend web**: `POST /api/jobs`, `GET /api/jobs(/:id)`, SSE em `/api/jobs/:id/events`, dedup atômico (partial unique index), 401/403/404/409/412 conforme spec, 19 testes.
+> 2026-05-17: PR `feat/worker-pipeline` (PR 8b) implementa o **worker fim-a-fim**: subscribe Redis `jobs:new` + reconciliation loop, claim com `SELECT FOR UPDATE SKIP LOCKED`, yt-dlp probe + decisão SUBTITLES vs API, chunking 10min/1s overlap via ffmpeg, OpenRouter audio com retry exp backoff, geração `.md` no formato canônico, upload Garage via aioboto3, insert Transcript + CostEvent por chunk, eventos de progresso em `jobs:<userId>:<jobId>`. Stack Python: asyncpg + aioboto3 + httpx + redis (asyncio) + yt-dlp + pyyaml. 32 testes (transcript_md, parser VTT/SRT, storage mock, crypto).

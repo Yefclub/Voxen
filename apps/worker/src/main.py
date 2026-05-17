@@ -1,47 +1,99 @@
-"""Voxen Worker — ARQ entrypoint.
+"""Voxen Worker — entrypoint asyncio.
 
-Implementação completa virá em PRs subsequentes conforme .specs/.
-MVP atual: settings ARQ + 1 job placeholder pra validar o boot.
+Arquitetura (spec 002):
+  1. Subscribe Redis pub/sub `jobs:new` (publicado pelo web ao criar Job)
+  2. Quando recebe notify, claim job no DB com SKIP LOCKED
+  3. Processa em pipeline.process_job
+  4. Semáforo limita concorrência (max 2 jobs simultâneos)
+
+Reconciliação: ao iniciar e a cada 60s, escaneia Job(status=QUEUED) pra
+pegar jobs perdidos (notify do Redis pode ter sumido).
 """
 
 from __future__ import annotations
 
-import os
-from typing import Any
+import asyncio
+import signal
+from typing import NoReturn
 
 import structlog
-from arq.connections import RedisSettings
+
+from . import db, events
+from .pipeline import process_job
 
 log = structlog.get_logger(__name__)
 
-
-async def placeholder_job(ctx: dict[str, Any], message: str) -> str:
-    """Job placeholder — substituir por download_and_transcribe em PR futuro."""
-    log.info("placeholder_job", message=message)
-    return f"ok: {message}"
+MAX_CONCURRENCY = 2
+RECONCILIATION_INTERVAL_SEC = 60
 
 
-def _redis_settings_from_url(url: str) -> RedisSettings:
-    """Converte redis:// URL em RedisSettings."""
-    # MVP: parser simples. ARQ tem RedisSettings.from_dsn em versões novas.
-    from urllib.parse import urlparse
-
-    parsed = urlparse(url)
-    return RedisSettings(
-        host=parsed.hostname or "redis",
-        port=parsed.port or 6379,
-        password=parsed.password,
-        database=int(parsed.path.lstrip("/") or "0"),
-    )
+async def _process_with_sem(sem: asyncio.Semaphore, job_id: str) -> None:
+    async with sem:
+        try:
+            await process_job(job_id)
+        except Exception:  # noqa: BLE001
+            log.exception("process_job-crashed", job_id=job_id)
 
 
-class WorkerSettings:
-    """ARQ worker settings."""
+async def _subscriber_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> None:
+    client = await events.get_redis()
+    pubsub = client.pubsub()
+    await pubsub.subscribe(events.JOBS_NEW_CHANNEL)
+    log.info("subscribed", channel=events.JOBS_NEW_CHANNEL)
+    try:
+        while not stop.is_set():
+            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if msg is None:
+                continue
+            job_id = msg.get("data")
+            if not isinstance(job_id, str) or not job_id:
+                continue
+            log.info("notify-received", job_id=job_id)
+            asyncio.create_task(_process_with_sem(sem, job_id))
+    finally:
+        await pubsub.unsubscribe(events.JOBS_NEW_CHANNEL)
+        await pubsub.aclose()  # type: ignore[no-untyped-call]
 
-    functions = [placeholder_job]
-    redis_settings = _redis_settings_from_url(
-        os.environ.get("REDIS_URL", "redis://redis:6379/0")
-    )
-    max_jobs = 4
-    job_timeout = 1800  # 30 min — chunking + transcribe pode demorar
-    keep_result = 3600
+
+async def _reconciliation_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> None:
+    """Garante que jobs órfãos em QUEUED são processados mesmo se notify se perdeu."""
+    while not stop.is_set():
+        try:
+            ids = await db.list_queued_job_ids(limit=10)
+            for job_id in ids:
+                asyncio.create_task(_process_with_sem(sem, job_id))
+        except Exception:  # noqa: BLE001
+            log.exception("reconciliation-failed")
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=RECONCILIATION_INTERVAL_SEC)
+        except TimeoutError:
+            continue
+
+
+async def amain() -> None:
+    sem = asyncio.Semaphore(MAX_CONCURRENCY)
+    stop = asyncio.Event()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, stop.set)
+
+    log.info("worker-starting", max_concurrency=MAX_CONCURRENCY)
+    try:
+        await asyncio.gather(
+            _subscriber_loop(sem, stop),
+            _reconciliation_loop(sem, stop),
+        )
+    finally:
+        await db.close_pool()
+        await events.close_redis()
+        log.info("worker-stopped")
+
+
+def main() -> NoReturn:
+    asyncio.run(amain())
+    raise SystemExit(0)
+
+
+if __name__ == "__main__":
+    main()

@@ -31,8 +31,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Healthcheck do worker: processo arq vivo
+# Healthcheck: o processo main vivo (subscriber + reconciliation loops)
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD pgrep -f arq || exit 1
+  CMD pgrep -f "src.main" || exit 1
 
-CMD ["arq", "src.main.WorkerSettings"]
+CMD ["python", "-m", "src.main"]
