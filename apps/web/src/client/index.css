@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+
+/* Tema zinc (Voxen). Tailwind v4 usa @theme inline em vez de tailwind.config.js. */
+@theme {
+  --color-brand-50: oklch(98.5% 0 0);
+  --color-brand-100: oklch(96.7% 0 0);
+  --color-brand-500: oklch(70.4% 0 0);
+  --color-brand-900: oklch(27% 0 0);
+  --color-brand-950: oklch(21.5% 0 0);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
+}
+
+/* Variáveis de cor inspiradas em shadcn (slate dark) mas mapeadas pra zinc. */
+@layer base {
+  :root {
+    --background: oklch(98.5% 0 0);
+    --foreground: oklch(14.8% 0 0);
+    --card: oklch(98.5% 0 0);
+    --card-foreground: oklch(14.8% 0 0);
+    --border: oklch(90.6% 0 0);
+    --input: oklch(90.6% 0 0);
+    --primary: oklch(20.5% 0 0);
+    --primary-foreground: oklch(98.5% 0 0);
+    --muted: oklch(96.7% 0 0);
+    --muted-foreground: oklch(55.6% 0 0);
+    --accent: oklch(96.7% 0 0);
+    --accent-foreground: oklch(20.5% 0 0);
+    --destructive: oklch(57.7% 0.25 27);
+    --destructive-foreground: oklch(98.5% 0 0);
+    --ring: oklch(70.4% 0 0);
+    --radius: 0.5rem;
+  }
+
+  html.dark {
+    --background: oklch(14.8% 0 0);
+    --foreground: oklch(98.5% 0 0);
+    --card: oklch(20.5% 0 0);
+    --card-foreground: oklch(98.5% 0 0);
+    --border: oklch(27% 0 0);
+    --input: oklch(27% 0 0);
+    --primary: oklch(98.5% 0 0);
+    --primary-foreground: oklch(20.5% 0 0);
+    --muted: oklch(27% 0 0);
+    --muted-foreground: oklch(70.4% 0 0);
+    --accent: oklch(27% 0 0);
+    --accent-foreground: oklch(98.5% 0 0);
+    --destructive: oklch(57.7% 0.25 27);
+    --destructive-foreground: oklch(98.5% 0 0);
+    --ring: oklch(55.6% 0 0);
+  }
+}
