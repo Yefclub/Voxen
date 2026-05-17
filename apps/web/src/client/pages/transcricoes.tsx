@@ -1,5 +1,6 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Library, Search } from 'lucide-react';
+import { Library, Loader2, Search, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -22,11 +23,34 @@ interface TranscriptSummary {
   thumbnailUrl: string | null;
   costUsd: string | null;
   createdAt: string;
+  snippet?: string;
+}
+
+interface SearchResponse {
+  transcripts: TranscriptSummary[];
+  query: string;
+}
+
+function useDebounced<T>(value: T, ms = 250): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
 }
 
 export function TranscricoesPage(): React.ReactElement {
-  const { data, loading } = useFetch<{ transcripts: TranscriptSummary[] }>('/api/transcripts');
+  const [q, setQ] = useState('');
+  const debouncedQ = useDebounced(q, 250);
+  const url = useMemo(
+    () => `/api/transcripts${debouncedQ ? `?q=${encodeURIComponent(debouncedQ)}` : ''}`,
+    [debouncedQ],
+  );
+  const { data, loading } = useFetch<SearchResponse>(url);
   const transcripts = data?.transcripts ?? [];
+  const isSearching = debouncedQ.length > 0;
+  const queryChanging = q !== debouncedQ;
 
   return (
     <AnimatedPage>
@@ -38,10 +62,43 @@ export function TranscricoesPage(): React.ReactElement {
           </div>
           <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Transcrições</h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Todas as transcrições do seu workspace. Em breve: busca full-text e conversa com o
-            agente.
+            Busque por palavras-chave em todas as transcrições. Indexação full-text em português,
+            ordenada por relevância.
           </p>
         </header>
+
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar nas transcrições…"
+            className="w-full h-12 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 backdrop-blur-sm pl-11 pr-12 text-[15px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15 transition-colors"
+          />
+          {q.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setQ('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)] transition-colors"
+              aria-label="Limpar busca"
+            >
+              {queryChanging ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <X className="h-3.5 w-3.5" />
+              )}
+            </button>
+          )}
+        </div>
+
+        {isSearching && !loading && (
+          <p className="text-xs text-[var(--color-app-muted)] -mt-6">
+            <span className="tabular-nums">{transcripts.length}</span>{' '}
+            {transcripts.length === 1 ? 'resultado' : 'resultados'} para “
+            <span className="text-zinc-200">{debouncedQ}</span>”
+          </p>
+        )}
 
         {loading && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -59,15 +116,19 @@ export function TranscricoesPage(): React.ReactElement {
               </div>
               <div className="space-y-1.5">
                 <p className="font-display text-lg font-semibold tracking-tight">
-                  Biblioteca vazia
+                  {isSearching ? 'Nada encontrado' : 'Biblioteca vazia'}
                 </p>
                 <p className="text-sm text-[var(--color-app-muted)]">
-                  Suas transcrições aparecerão aqui.
+                  {isSearching
+                    ? 'Tente outras palavras-chave.'
+                    : 'Suas transcrições aparecerão aqui.'}
                 </p>
               </div>
-              <Button variant="primary" size="lg" asChild className="mt-3">
-                <Link to="/jobs">Transcrever primeiro vídeo</Link>
-              </Button>
+              {!isSearching && (
+                <Button variant="primary" size="lg" asChild className="mt-3">
+                  <Link to="/jobs">Transcrever primeiro vídeo</Link>
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}
@@ -76,7 +137,7 @@ export function TranscricoesPage(): React.ReactElement {
           <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {transcripts.map((t) => (
               <StaggerItem key={t.id}>
-                <TranscriptCard t={t} />
+                <TranscriptCard t={t} highlightQuery={debouncedQ} />
               </StaggerItem>
             ))}
           </StaggerContainer>
@@ -86,15 +147,24 @@ export function TranscricoesPage(): React.ReactElement {
   );
 }
 
-function TranscriptCard({ t }: { t: TranscriptSummary }): React.ReactElement {
+function TranscriptCard({
+  t,
+  highlightQuery,
+}: {
+  t: TranscriptSummary;
+  highlightQuery: string;
+}): React.ReactElement {
   return (
     <motion.div whileHover={{ y: -3 }} transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}>
       <Link
         to={`/transcricoes/${t.id}`}
         className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 rounded-2xl"
       >
-        <Card hoverable elevated className="h-full overflow-hidden p-0">
-          {/* Thumbnail */}
+        <Card
+          hoverable
+          elevated
+          className="h-full overflow-hidden p-0 transition-colors duration-200"
+        >
           <div className="relative aspect-video bg-[var(--color-app-bg-elevated)] overflow-hidden">
             {t.thumbnailUrl ? (
               <img
@@ -110,7 +180,6 @@ function TranscriptCard({ t }: { t: TranscriptSummary }): React.ReactElement {
                 </span>
               </div>
             )}
-            {/* Overlay gradiente inferior pra legibilidade do badge de duração */}
             <div
               aria-hidden
               className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent"
@@ -128,12 +197,18 @@ function TranscriptCard({ t }: { t: TranscriptSummary }): React.ReactElement {
           <CardContent className="pt-4 pb-5 space-y-3">
             <div>
               <h3 className="text-[15px] font-semibold leading-snug tracking-tight line-clamp-2 group-hover:text-violet-300 transition-colors font-display">
-                {t.title}
+                {highlightInText(t.title, highlightQuery)}
               </h3>
               {t.channel && (
                 <p className="text-xs text-[var(--color-app-muted)] mt-1.5 truncate">{t.channel}</p>
               )}
             </div>
+
+            {t.snippet && (
+              <p className="text-xs text-[var(--color-app-subtle)] leading-relaxed line-clamp-3">
+                {renderSnippet(t.snippet)}
+              </p>
+            )}
 
             <div className="flex items-center gap-2 flex-wrap pt-1">
               <Badge
@@ -158,6 +233,44 @@ function TranscriptCard({ t }: { t: TranscriptSummary }): React.ReactElement {
       </Link>
     </motion.div>
   );
+}
+
+function highlightInText(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const tokens = query
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t.length >= 2);
+  if (tokens.length === 0) return text;
+  const re = new RegExp(`(${tokens.map(escapeRegex).join('|')})`, 'gi');
+  const parts = text.split(re);
+  return parts.map((p, i) =>
+    new RegExp(`^(${tokens.map(escapeRegex).join('|')})$`, 'i').test(p) ? (
+      <mark key={i} className="bg-violet-500/20 text-violet-200 rounded-sm px-0.5 -mx-0.5">
+        {p}
+      </mark>
+    ) : (
+      <span key={i}>{p}</span>
+    ),
+  );
+}
+
+function renderSnippet(snippet: string): React.ReactNode {
+  const parts = snippet.split(/(«[^»]*»)/g);
+  return parts.map((p, i) => {
+    if (p.startsWith('«') && p.endsWith('»')) {
+      return (
+        <mark key={i} className="bg-violet-500/20 text-violet-200 rounded-sm px-0.5">
+          {p.slice(1, -1)}
+        </mark>
+      );
+    }
+    return <span key={i}>{p}</span>;
+  });
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export type { JobStatus };

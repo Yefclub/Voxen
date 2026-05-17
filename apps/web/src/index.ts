@@ -13,6 +13,8 @@ import { jobsRoutes } from './routes/jobs';
 import { setupRoutes } from './routes/setup';
 import { transcriptsRoutes } from './routes/transcripts';
 import { onboardingRoutes } from './routes/onboarding';
+import { accountRoutes } from './routes/account';
+import { costRoutes } from './routes/cost';
 
 const app = new Hono();
 
@@ -85,6 +87,12 @@ app.route('/api/transcripts', transcriptsRoutes);
 
 // Onboarding (admin first-run) + avatar upload
 app.route('/api/onboarding', onboardingRoutes);
+
+// Conta do user (perfil + senha)
+app.route('/api/account', accountRoutes);
+
+// Painel de custos (admin)
+app.route('/api/admin/custos', costRoutes);
 
 // Avatar proxy: serve imagem do Garage de qualquer user autenticado
 app.get('/api/avatar/:userId', async (c) => {

@@ -9,6 +9,8 @@ import { OnboardingPage } from './pages/onboarding';
 import { SetupPage } from './pages/setup';
 import { DashboardPage } from './pages/dashboard';
 import { AdminUsuariosPage } from './pages/admin-usuarios';
+import { AdminCustosPage } from './pages/admin-custos';
+import { ContaPage } from './pages/conta';
 import { JobsPage } from './pages/jobs';
 import { JobDetalhePage } from './pages/jobs-detalhe';
 import { TranscricoesPage } from './pages/transcricoes';
@@ -37,6 +39,8 @@ export function App(): React.ReactElement {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
+          <Route path="/admin/custos" element={<AdminCustosPage />} />
+          <Route path="/conta" element={<ContaPage />} />
           <Route path="/jobs" element={<JobsPage />} />
           <Route path="/jobs/:id" element={<JobDetalhePage />} />
           <Route path="/transcricoes" element={<TranscricoesPage />} />

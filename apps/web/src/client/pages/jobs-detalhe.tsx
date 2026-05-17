@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, RotateCw, XCircle } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  ExternalLink,
+  RotateCw,
+  X,
+  XCircle,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -44,6 +53,24 @@ export function JobDetalhePage(): React.ReactElement {
   const [percent, setPercent] = useState<number>(0);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  async function onCancel(): Promise<void> {
+    if (!id) return;
+    if (!window.confirm('Cancelar este job? Não dá pra voltar atrás.')) return;
+    setCancelling(true);
+    try {
+      await apiPost(`/api/jobs/${id}/cancel`);
+      toast('Cancelamento solicitado.', {
+        description: 'O worker vai parar na próxima etapa.',
+      });
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Falha ao cancelar.');
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   async function onRetry(): Promise<void> {
     if (!id) return;
@@ -165,12 +192,20 @@ export function JobDetalhePage(): React.ReactElement {
                   />
                 </div>
 
-                {connected && (
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-400/80 flex items-center gap-2">
-                    <span className="h-1 w-1 rounded-full bg-emerald-400 animate-pulse" />
-                    Recebendo eventos em tempo real
-                  </p>
-                )}
+                <div className="flex items-center justify-between gap-3">
+                  {connected ? (
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-400/80 flex items-center gap-2">
+                      <span className="h-1 w-1 rounded-full bg-emerald-400 animate-pulse" />
+                      Recebendo eventos em tempo real
+                    </p>
+                  ) : (
+                    <span />
+                  )}
+                  <Button variant="destructive" size="sm" onClick={onCancel} disabled={cancelling}>
+                    {cancelling ? <Spinner /> : <X className="h-3.5 w-3.5" />}
+                    Cancelar
+                  </Button>
+                </div>
               </div>
             )}
 

@@ -1,12 +1,18 @@
-import { Outlet, Navigate, useLocation } from 'react-router-dom';
+import { Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar, SidebarSpacer } from './sidebar';
 import { Topbar } from './topbar';
 import { useMe } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
+import { useJobsWatcher } from '../../lib/use-jobs-watcher';
 
 export function AppLayout(): React.ReactElement {
   const { data, loading } = useMe();
   const location = useLocation();
+  const navigate = useNavigate();
+  // Watcher global de jobs do user logado (toast em qualquer página)
+  useJobsWatcher(!!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone), (path) =>
+    navigate(path),
+  );
 
   if (loading) {
     return (

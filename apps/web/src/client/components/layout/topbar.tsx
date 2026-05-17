@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
@@ -80,9 +80,11 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>Sua conta</DropdownMenuLabel>
-            <DropdownMenuItem>
-              <UserIcon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
-              <span className="truncate">{user.email}</span>
+            <DropdownMenuItem asChild>
+              <Link to="/conta" className="flex items-center gap-2 cursor-pointer">
+                <UserIcon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
+                <span className="truncate">Perfil</span>
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem destructive onSelect={onSignOut}>

@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
+  DollarSign,
   LayoutDashboard,
   ListVideo,
   PlayCircle,
@@ -25,6 +26,7 @@ const NAV: NavItem[] = [
   { to: '/jobs', label: 'Transcrever', Icon: PlayCircle },
   { to: '/transcricoes', label: 'Biblioteca', Icon: ListVideo },
   { to: '/admin/usuarios', label: 'Usuários', Icon: ShieldCheck, adminOnly: true },
+  { to: '/admin/custos', label: 'Custos', Icon: DollarSign, adminOnly: true },
   { to: '/setup', label: 'Configuração', Icon: SettingsIcon, adminOnly: true },
 ];
 

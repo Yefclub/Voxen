@@ -39,13 +39,42 @@ export function jobsNewChannel(): string {
   return 'jobs:new';
 }
 
+// Canal de cancelamento — worker assina e interrompe o job
+export function jobCancelChannel(): string {
+  return 'jobs:cancel';
+}
+
+// Canal por user (qualquer evento de seus jobs) — usado por toast global
+export function userChannel(userId: string): string {
+  return `user:${userId}:jobs`;
+}
+
+export async function publishUserJobEvent(
+  userId: string,
+  evt: Omit<JobEvent, 'ts'>,
+  pub: Redis = getRedisPublisher(),
+): Promise<void> {
+  const payload: JobEvent = { ...evt, ts: new Date().toISOString() };
+  await pub.publish(userChannel(userId), JSON.stringify(payload));
+}
+
+export async function requestCancel(
+  jobId: string,
+  pub: Redis = getRedisPublisher(),
+): Promise<void> {
+  await pub.publish(jobCancelChannel(), jobId);
+}
+
 export async function publishJobEvent(
   userId: string,
   evt: Omit<JobEvent, 'ts'>,
   pub: Redis = getRedisPublisher(),
 ): Promise<void> {
   const payload: JobEvent = { ...evt, ts: new Date().toISOString() };
+  // canal do job (assinado pelo detalhe do job + lista de jobs)
   await pub.publish(jobChannel(userId, evt.jobId), JSON.stringify(payload));
+  // canal do user (assinado pela notif global em qualquer página)
+  await pub.publish(userChannel(userId), JSON.stringify(payload));
 }
 
 export async function notifyNewJob(jobId: string, pub: Redis = getRedisPublisher()): Promise<void> {

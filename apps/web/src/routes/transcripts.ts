@@ -34,26 +34,79 @@ transcriptsRoutes.use('*', async (c, next) => {
 
 transcriptsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
-  const transcripts = await db.transcript.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    take: 100,
-    select: {
-      id: true,
-      source: true,
-      url: true,
-      title: true,
-      channel: true,
-      durationSec: true,
-      language: true,
-      transcriptionMethod: true,
-      thumbnailUrl: true,
-      costUsd: true,
-      createdAt: true,
-    },
-  });
-  return c.json({ transcripts });
+  const query = (c.req.query('q') ?? '').trim();
+
+  if (query.length === 0) {
+    const transcripts = await db.transcript.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: TRANSCRIPT_LIST_SELECT,
+    });
+    return c.json({ transcripts, query: '' });
+  }
+
+  // Busca FTS em portuguese — o trigger SQL mantém o tsvector "searchVector"
+  // sincronizado com `plainText`. ts_rank ordena por relevância.
+  // Usamos plainto_tsquery (sanitiza input, não exige operadores) e
+  // limitamos a 100 resultados.
+  type Row = {
+    id: string;
+    source: string;
+    url: string;
+    title: string;
+    channel: string | null;
+    durationSec: number;
+    language: string;
+    transcriptionMethod: string;
+    thumbnailUrl: string | null;
+    costUsd: string | null;
+    createdAt: Date;
+    snippet: string;
+    rank: number;
+  };
+  const rows = await db.$queryRaw<Row[]>`
+    SELECT
+      id,
+      source::text AS source,
+      url,
+      title,
+      channel,
+      "durationSec",
+      language,
+      "transcriptionMethod"::text AS "transcriptionMethod",
+      "thumbnailUrl",
+      "costUsd"::text AS "costUsd",
+      "createdAt",
+      ts_headline(
+        'portuguese',
+        "plainText",
+        plainto_tsquery('portuguese', ${query}),
+        'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1, FragmentDelimiter=" … "'
+      ) AS snippet,
+      ts_rank("searchVector", plainto_tsquery('portuguese', ${query})) AS rank
+    FROM "Transcript"
+    WHERE "userId" = ${userId}
+      AND "searchVector" @@ plainto_tsquery('portuguese', ${query})
+    ORDER BY rank DESC, "createdAt" DESC
+    LIMIT 100
+  `;
+  return c.json({ transcripts: rows, query });
 });
+
+const TRANSCRIPT_LIST_SELECT = {
+  id: true,
+  source: true,
+  url: true,
+  title: true,
+  channel: true,
+  durationSec: true,
+  language: true,
+  transcriptionMethod: true,
+  thumbnailUrl: true,
+  costUsd: true,
+  createdAt: true,
+} as const;
 
 let _s3: S3Client | null = null;
 function getS3(): S3Client {

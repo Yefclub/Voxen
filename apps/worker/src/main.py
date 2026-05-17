@@ -19,6 +19,7 @@ from typing import NoReturn
 import structlog
 
 from . import db, events
+from .cancellation import cancel_subscriber
 from .pipeline import process_job
 
 log = structlog.get_logger(__name__)
@@ -83,6 +84,7 @@ async def amain() -> None:
         await asyncio.gather(
             _subscriber_loop(sem, stop),
             _reconciliation_loop(sem, stop),
+            cancel_subscriber(stop),
         )
     finally:
         await db.close_pool()

@@ -24,6 +24,8 @@ import {
   jobChannel,
   notifyNewJob,
   publishJobEvent,
+  requestCancel,
+  userChannel,
   type JobEvent,
 } from '../lib/job-events';
 
@@ -239,6 +241,84 @@ jobsRoutes.post('/:id/retry', async (c) => {
   await publishJobEvent(userId, { jobId: newJob.id, stage: 'queued' }).catch(() => undefined);
 
   return c.json({ jobId: newJob.id, status: newJob.status, sourceUrl: newJob.sourceUrl }, 201);
+});
+
+// POST /api/jobs/:id/cancel — sinaliza cancelamento.
+// QUEUED → vira CANCELLED imediatamente no DB.
+// RUNNING → publica no canal jobs:cancel; worker checa periodicamente
+//   e interrompe. Em ambos os casos, marca no DB pra evitar reconciliação.
+jobsRoutes.post('/:id/cancel', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const job = await db.job.findFirst({
+    where: { id, userId },
+    select: { id: true, status: true },
+  });
+  if (!job) {
+    return c.json({ error: 'Job não encontrado.' }, 404);
+  }
+  if (job.status !== 'QUEUED' && job.status !== 'RUNNING') {
+    return c.json({ error: 'Só é possível cancelar jobs ativos.' }, 400);
+  }
+  await db.job.update({
+    where: { id },
+    data: {
+      status: 'CANCELLED',
+      errorMsg: 'Cancelado pelo usuário.',
+      finishedAt: new Date(),
+    },
+  });
+  await requestCancel(id).catch(() => undefined);
+  await publishJobEvent(userId, {
+    jobId: id,
+    stage: 'cancelled',
+    errorMsg: 'Cancelado pelo usuário.',
+  }).catch(() => undefined);
+  return c.json({ ok: true });
+});
+
+// SSE global por user — toast notification em qualquer página.
+jobsRoutes.get('/events/me', async (c) => {
+  const userId = c.get('userId');
+  return streamSSE(c, async (stream) => {
+    const sub = createSubscriber();
+    let closed = false;
+    let resolveClose!: () => void;
+    const done = new Promise<void>((r) => {
+      resolveClose = r;
+    });
+    const close = async (): Promise<void> => {
+      if (closed) return;
+      closed = true;
+      await sub.quit().catch(() => undefined);
+      resolveClose();
+    };
+    stream.onAbort(() => {
+      void close();
+    });
+
+    await stream.writeSSE({ event: 'connected', data: '{}' });
+    await sub.subscribe(userChannel(userId));
+    sub.on('message', (_chan, raw) => {
+      if (closed) return;
+      void stream.writeSSE({ event: 'progress', data: raw });
+    });
+
+    // Heartbeat 30s
+    const hb = setInterval(() => {
+      if (closed) {
+        clearInterval(hb);
+        return;
+      }
+      void stream.writeSSE({ event: 'ping', data: String(Date.now()) });
+    }, 30_000);
+
+    try {
+      await done;
+    } finally {
+      clearInterval(hb);
+    }
+  });
 });
 
 jobsRoutes.get('/:id/events', async (c) => {
