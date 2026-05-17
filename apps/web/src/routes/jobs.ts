@@ -18,7 +18,7 @@ import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isSetupComplete } from '../lib/settings';
 import { parseYoutubeUrl } from '../lib/youtube-url';
-import { createSubscriber, getRedisPublisher } from '../lib/redis';
+import { createSubscriber } from '../lib/redis';
 import {
   isTerminalStage,
   jobChannel,
@@ -99,15 +99,25 @@ jobsRoutes.post('/', async (c) => {
     return c.json({ error: 'Esta URL já está sendo processada.' }, 409);
   }
 
-  const job = await db.job.create({
-    data: {
-      userId,
-      type: 'DOWNLOAD_AND_TRANSCRIBE',
-      status: 'QUEUED',
-      sourceUrl: yt.canonical,
-    },
-    select: { id: true, status: true, sourceUrl: true, queuedAt: true },
-  });
+  let job: { id: string; status: string; sourceUrl: string };
+  try {
+    job = await db.job.create({
+      data: {
+        userId,
+        type: 'DOWNLOAD_AND_TRANSCRIBE',
+        status: 'QUEUED',
+        sourceUrl: yt.canonical,
+      },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+  } catch (err) {
+    // Partial unique index `Job_user_url_active_unique` cobre a race entre
+    // 2 POSTs simultâneos da mesma URL: o primeiro cria, o segundo cai aqui.
+    if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
+      return c.json({ error: 'Esta URL já está sendo processada.' }, 409);
+    }
+    throw err;
+  }
 
   await notifyNewJob(job.id).catch((err) => {
     console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
@@ -174,14 +184,25 @@ jobsRoutes.get('/:id/events', async (c) => {
   return streamSSE(c, async (stream) => {
     const sub = createSubscriber();
     let closed = false;
+    let resolveClose!: () => void;
+    const done = new Promise<void>((r) => {
+      resolveClose = r;
+    });
     const close = async (): Promise<void> => {
       if (closed) return;
       closed = true;
       await sub.quit().catch(() => undefined);
+      resolveClose();
     };
 
     stream.onAbort(() => {
       void close();
+    });
+
+    // Evento inicial pra confirmar conexão (facilita debug e UI)
+    await stream.writeSSE({
+      event: 'connected',
+      data: JSON.stringify({ jobId: job.id }),
     });
 
     // Job já em estado terminal: manda 1 evento e fecha
@@ -218,21 +239,10 @@ jobsRoutes.get('/:id/events', async (c) => {
       void stream.writeSSE({ event: 'ping', data: String(Date.now()) });
     }, 15_000);
 
-    // Mantém handler aberto enquanto não fechou
-    await new Promise<void>((resolve) => {
-      const check = setInterval(() => {
-        if (closed) {
-          clearInterval(check);
-          clearInterval(heartbeat);
-          resolve();
-        }
-      }, 250);
-    });
+    try {
+      await done;
+    } finally {
+      clearInterval(heartbeat);
+    }
   });
 });
-
-// Helper só pros testes — não exportado pra uso de produção via fora do módulo.
-export {
-  publishJobEvent as __publishJobEventForTests,
-  getRedisPublisher as __getPublisherForTests,
-};
