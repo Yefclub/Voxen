@@ -17,7 +17,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
-import { isSetupComplete, setSetting } from '../lib/settings';
+import { getSetting, isSetupComplete, setSetting } from '../lib/settings';
 import { validateApiKey, listModels, OpenrouterError } from '../lib/openrouter';
 
 type SetupVariables = {
@@ -49,28 +49,55 @@ setupRoutes.use('*', async (c, next) => {
 
 setupRoutes.get('/', async (c) => {
   const complete = await isSetupComplete();
-  return c.json({ complete });
+  if (!complete) {
+    return c.json({ complete, chatModel: null, transcriptionModel: null, hasApiKey: false });
+  }
+  // Modelos não são segredo (são identificadores públicos da OR).
+  // A api_key continua cifrada e nunca é exposta — só dizemos que existe.
+  const [chatModel, transcriptionModel, apiKey] = await Promise.all([
+    getSetting('default_chat_model'),
+    getSetting('default_transcription_model'),
+    getSetting('openrouter_api_key'),
+  ]);
+  return c.json({
+    complete,
+    chatModel,
+    transcriptionModel,
+    hasApiKey: !!apiKey,
+  });
 });
 
 const ModelsBody = z.object({
-  openrouter_api_key: z.string().min(20),
+  // opcional: se vier, usa a key nova; senão, usa a já cifrada no DB
+  openrouter_api_key: z.string().min(20).optional(),
 });
 
 setupRoutes.post('/models', async (c) => {
-  const parsed = ModelsBody.safeParse(await c.req.json().catch(() => null));
+  const parsed = ModelsBody.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) {
     return c.json({ error: 'Payload inválido.' }, 400);
   }
-  const { openrouter_api_key: key } = parsed.data;
-  const valid = await validateApiKey(key).catch((err) => {
-    if (err instanceof OpenrouterError) return null;
-    throw err;
-  });
-  if (valid === false) {
-    return c.json({ error: 'Chave da OpenRouter inválida — verifique e tente novamente.' }, 400);
-  }
-  if (valid === null) {
-    return c.json({ error: 'Falha ao contatar a OpenRouter. Tente novamente.' }, 502);
+  // Se admin não enviou key nova, usamos a já configurada (re-listar modelos
+  // sem precisar redigitar a chave — caso comum quando quer trocar modelo).
+  let key = parsed.data.openrouter_api_key;
+  if (!key) {
+    const existing = await getSetting('openrouter_api_key');
+    if (!existing) {
+      return c.json({ error: 'Nenhuma chave configurada. Envie openrouter_api_key.' }, 400);
+    }
+    key = existing;
+  } else {
+    // key nova → valida antes de listar
+    const valid = await validateApiKey(key).catch((err) => {
+      if (err instanceof OpenrouterError) return null;
+      throw err;
+    });
+    if (valid === false) {
+      return c.json({ error: 'Chave da OpenRouter inválida — verifique e tente novamente.' }, 400);
+    }
+    if (valid === null) {
+      return c.json({ error: 'Falha ao contatar a OpenRouter. Tente novamente.' }, 502);
+    }
   }
   try {
     const [chat, transcription] = await Promise.all([
@@ -87,7 +114,8 @@ setupRoutes.post('/models', async (c) => {
 });
 
 const SaveBody = z.object({
-  openrouter_api_key: z.string().min(20),
+  // opcional pra permitir trocar só os modelos sem reenviar a key
+  openrouter_api_key: z.string().min(20).optional(),
   default_chat_model: z.string().min(1),
   default_transcription_model: z.string().min(1),
 });
@@ -99,19 +127,31 @@ setupRoutes.post('/', async (c) => {
   }
   const { openrouter_api_key, default_chat_model, default_transcription_model } = parsed.data;
 
-  const valid = await validateApiKey(openrouter_api_key).catch((err) => {
-    if (err instanceof OpenrouterError) return null;
-    throw err;
-  });
-  if (valid === false) {
-    return c.json({ error: 'Chave da OpenRouter inválida — verifique e tente novamente.' }, 400);
-  }
-  if (valid === null) {
-    return c.json({ error: 'Falha ao contatar a OpenRouter. Tente novamente.' }, 502);
+  // Se a key veio no payload, valida + persiste. Senão, usa a já cifrada
+  // (admin está só atualizando os modelos default).
+  if (openrouter_api_key) {
+    const valid = await validateApiKey(openrouter_api_key).catch((err) => {
+      if (err instanceof OpenrouterError) return null;
+      throw err;
+    });
+    if (valid === false) {
+      return c.json({ error: 'Chave da OpenRouter inválida — verifique e tente novamente.' }, 400);
+    }
+    if (valid === null) {
+      return c.json({ error: 'Falha ao contatar a OpenRouter. Tente novamente.' }, 502);
+    }
+    await setSetting('openrouter_api_key', openrouter_api_key);
+  } else {
+    // Sem key no payload — precisa existir uma cifrada de antes
+    const existing = await getSetting('openrouter_api_key');
+    if (!existing) {
+      return c.json(
+        { error: 'Nenhuma chave configurada. Envie openrouter_api_key na primeira vez.' },
+        400,
+      );
+    }
   }
 
-  // Persiste cifrado dentro de uma transação implícita por chave.
-  await setSetting('openrouter_api_key', openrouter_api_key);
   await setSetting('default_chat_model', default_chat_model);
   await setSetting('default_transcription_model', default_transcription_model);
 

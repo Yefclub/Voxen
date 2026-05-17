@@ -1,14 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, ExternalLink, KeyRound, Sparkles, ArrowRight } from 'lucide-react';
+import {
+  CheckCircle2,
+  ExternalLink,
+  KeyRound,
+  Pencil,
+  RotateCw,
+  Sparkles,
+  ArrowRight,
+} from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Spinner } from '../components/ui/spinner';
-import { ApiError, apiPost } from '../lib/api';
+import { Badge } from '../components/ui/badge';
+import { ApiError, apiGet, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import type { OrModel } from '../lib/types';
 import { AnimatedPage } from '../components/motion/animated-page';
@@ -18,9 +27,20 @@ interface ModelsResponse {
   transcription: OrModel[];
 }
 
+interface SetupStatus {
+  complete: boolean;
+  chatModel: string | null;
+  transcriptionModel: string | null;
+  hasApiKey: boolean;
+}
+
+type Step = 'loading' | 'overview' | 'key' | 'modelos' | 'done';
+
 export function SetupPage(): React.ReactElement {
-  const [step, setStep] = useState<'key' | 'modelos' | 'done'>('key');
+  const [step, setStep] = useState<Step>('loading');
+  const [status, setStatus] = useState<SetupStatus | null>(null);
   const [apiKey, setApiKey] = useState('');
+  const [keepExistingKey, setKeepExistingKey] = useState(true);
   const [chatModel, setChatModel] = useState('');
   const [transcriptionModel, setTranscriptionModel] = useState('');
   const [models, setModels] = useState<ModelsResponse | null>(null);
@@ -28,6 +48,32 @@ export function SetupPage(): React.ReactElement {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { refresh } = useMe();
+
+  // Carrega estado atual ao montar
+  useEffect(() => {
+    apiGet<SetupStatus>('/api/setup')
+      .then((s) => {
+        setStatus(s);
+        if (s.complete && s.chatModel) setChatModel(s.chatModel);
+        if (s.complete && s.transcriptionModel) setTranscriptionModel(s.transcriptionModel);
+        setStep(s.complete ? 'overview' : 'key');
+      })
+      .catch(() => setStep('key'));
+  }, []);
+
+  async function loadModelsWithExistingKey(): Promise<void> {
+    setError(null);
+    setLoading(true);
+    try {
+      const data = await apiPost<ModelsResponse>('/api/setup/models', {});
+      setModels(data);
+      setStep('modelos');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Erro ao listar modelos.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function validateAndListModels(e: React.FormEvent): Promise<void> {
     e.preventDefault();
@@ -40,8 +86,10 @@ export function SetupPage(): React.ReactElement {
       setModels(data);
       const whisper = data.transcription.find((m) => m.id.toLowerCase().includes('whisper'));
       const sonnet = data.chat.find((m) => m.id.toLowerCase().includes('sonnet'));
-      setTranscriptionModel(whisper?.id ?? data.transcription[0]?.id ?? '');
-      setChatModel(sonnet?.id ?? data.chat[0]?.id ?? '');
+      if (!transcriptionModel) {
+        setTranscriptionModel(whisper?.id ?? data.transcription[0]?.id ?? '');
+      }
+      if (!chatModel) setChatModel(sonnet?.id ?? data.chat[0]?.id ?? '');
       setStep('modelos');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao validar chave.');
@@ -55,19 +103,33 @@ export function SetupPage(): React.ReactElement {
     setError(null);
     setLoading(true);
     try {
-      await apiPost('/api/setup', {
-        openrouter_api_key: apiKey,
+      const body: Record<string, string> = {
         default_chat_model: chatModel,
         default_transcription_model: transcriptionModel,
-      });
+      };
+      // Só envia api_key se for nova (admin escolheu trocar)
+      if (apiKey && !keepExistingKey) {
+        body.openrouter_api_key = apiKey;
+      } else if (apiKey && !status?.complete) {
+        body.openrouter_api_key = apiKey;
+      }
+      await apiPost('/api/setup', body);
       await refresh();
       setStep('done');
       setTimeout(() => navigate('/dashboard'), 1500);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao salvar configuração.');
+      setError(err instanceof ApiError ? err.message : 'Erro ao salvar.');
     } finally {
       setLoading(false);
     }
+  }
+
+  if (step === 'loading') {
+    return (
+      <div className="px-8 py-24 flex justify-center">
+        <Spinner size={22} className="text-[var(--color-app-muted)]" />
+      </div>
+    );
   }
 
   if (step === 'done') {
@@ -91,7 +153,7 @@ export function SetupPage(): React.ReactElement {
             transition={{ delay: 0.15 }}
             className="font-display text-3xl font-semibold tracking-[-0.03em] mt-8"
           >
-            Tudo pronto.
+            Salvo.
           </motion.h2>
           <motion.p
             initial={{ opacity: 0, y: 6 }}
@@ -99,41 +161,103 @@ export function SetupPage(): React.ReactElement {
             transition={{ delay: 0.22 }}
             className="text-[15px] text-[var(--color-app-muted)] mt-3"
           >
-            Configuração salva. Levando você ao painel…
+            Configuração atualizada. Levando você ao painel…
           </motion.p>
-          <div className="mt-6">
-            <Spinner className="text-emerald-400" />
-          </div>
         </div>
       </AnimatedPage>
     );
   }
 
+  // Overview: setup já existe — mostra valores e oferece edição
+  if (step === 'overview' && status) {
+    return (
+      <AnimatedPage>
+        <div className="mx-auto max-w-2xl px-6 py-12">
+          <PageHeader
+            badge="Configuração"
+            title={
+              <>
+                Tudo certo com a <span className="text-emerald-accent">OpenRouter</span>
+              </>
+            }
+            sub="Sua chave está armazenada cifrada (AES-256-GCM). Você pode trocar a chave ou ajustar os modelos default sem precisar reconfigurar tudo."
+          />
+
+          <Card elevated>
+            <CardContent className="pt-6 space-y-5">
+              <SettingRow
+                label="Chave da OpenRouter"
+                value="••••••••••••••••••••"
+                mono
+                badge="Cifrada"
+              />
+              <SettingRow label="Modelo de chat" value={status.chatModel ?? '—'} mono />
+              <SettingRow
+                label="Modelo de transcrição"
+                value={status.transcriptionModel ?? '—'}
+                mono
+              />
+
+              <div className="pt-3 border-t border-[var(--color-app-border)] flex flex-wrap gap-2.5">
+                <Button
+                  variant="primary"
+                  size="default"
+                  onClick={() => {
+                    setKeepExistingKey(true);
+                    void loadModelsWithExistingKey();
+                  }}
+                  disabled={loading}
+                >
+                  {loading ? <Spinner /> : <Pencil className="h-3.5 w-3.5" />}
+                  Trocar modelos
+                </Button>
+                <Button
+                  variant="outline"
+                  size="default"
+                  onClick={() => {
+                    setKeepExistingKey(false);
+                    setStep('key');
+                    setApiKey('');
+                  }}
+                >
+                  <RotateCw className="h-3.5 w-3.5" />
+                  Substituir chave
+                </Button>
+              </div>
+
+              {error && (
+                <Alert variant="destructive" className="mt-2">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </AnimatedPage>
+    );
+  }
+
+  // Wizard (primeira vez OU trocar chave)
   return (
     <AnimatedPage>
       <div className="mx-auto max-w-2xl px-6 py-12">
-        <header className="mb-10 space-y-3">
-          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-violet-400 font-medium">
-            <Sparkles className="h-3.5 w-3.5" />
-            Configuração inicial
-          </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
-            Conecte com a <span className="text-emerald-accent">OpenRouter</span>
-          </h1>
-          <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-            Uma chave da OpenRouter dá acesso a Whisper para transcrição e a vários modelos de chat.
-            É a única dependência externa do Voxen.{' '}
-            <a
-              href="https://openrouter.ai/keys"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-zinc-100 underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
-            >
-              Gerar chave
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </p>
-        </header>
+        <PageHeader
+          badge={status?.complete ? 'Substituir chave' : 'Configuração inicial'}
+          title={
+            status?.complete ? (
+              'Trocar chave da OpenRouter'
+            ) : (
+              <>
+                Conecte com a <span className="text-emerald-accent">OpenRouter</span>
+              </>
+            )
+          }
+          sub={
+            status?.complete
+              ? 'A chave antiga será sobrescrita após validação.'
+              : 'Uma chave da OpenRouter dá acesso a Whisper para transcrição e a vários modelos de chat. É a única dependência externa do Voxen.'
+          }
+        />
 
         {/* Stepper */}
         <div className="mb-8 flex items-center gap-3">
@@ -150,7 +274,7 @@ export function SetupPage(): React.ReactElement {
           <StepDot
             index={2}
             active={step === 'modelos'}
-            done={(step as 'modelos' | 'done') === 'done'}
+            done={(step as Step) === 'done'}
             label="Modelos"
           />
         </div>
@@ -188,7 +312,16 @@ export function SetupPage(): React.ReactElement {
                   <CardDescription>
                     Será validada agora contra a OpenRouter e armazenada{' '}
                     <span className="text-zinc-200">cifrada em AES-256-GCM</span> com a master key
-                    da instalação. Não vai para o disco em texto puro.
+                    da instalação.{' '}
+                    <a
+                      href="https://openrouter.ai/keys"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-zinc-100 underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
+                    >
+                      Gerar chave
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -208,16 +341,28 @@ export function SetupPage(): React.ReactElement {
                         className="font-mono h-11 text-[15px]"
                       />
                     </div>
-                    <Button
-                      type="submit"
-                      variant="primary"
-                      size="lg"
-                      disabled={loading}
-                      className="w-full h-11"
-                    >
-                      {loading ? <Spinner /> : 'Validar e continuar'}
-                      {!loading && <ArrowRight className="h-4 w-4" />}
-                    </Button>
+                    <div className="flex justify-between items-center">
+                      {status?.complete && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setStep('overview')}
+                        >
+                          Cancelar
+                        </Button>
+                      )}
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        size="lg"
+                        disabled={loading}
+                        className={status?.complete ? '' : 'w-full h-11'}
+                      >
+                        {loading ? <Spinner /> : 'Validar e continuar'}
+                        {!loading && <ArrowRight className="h-4 w-4" />}
+                      </Button>
+                    </div>
                   </form>
                 </CardContent>
               </Card>
@@ -236,9 +381,8 @@ export function SetupPage(): React.ReactElement {
                 <CardHeader>
                   <CardTitle className="font-display">Modelos padrão</CardTitle>
                   <CardDescription>
-                    Whisper Large v3 Turbo costuma ser a melhor relação custo/qualidade para
-                    transcrição. Para o chat, prefira modelos com contexto grande (Sonnet, Gemini
-                    Pro).
+                    Escolha um modelo de transcrição (áudio → texto) e um de chat (agente sobre o
+                    acervo).
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -262,7 +406,11 @@ export function SetupPage(): React.ReactElement {
                         type="button"
                         variant="ghost"
                         onClick={() => {
-                          setStep('key');
+                          if (status?.complete && !apiKey) {
+                            setStep('overview');
+                          } else {
+                            setStep('key');
+                          }
                           setError(null);
                         }}
                       >
@@ -284,6 +432,65 @@ export function SetupPage(): React.ReactElement {
   );
 }
 
+function PageHeader({
+  badge,
+  title,
+  sub,
+}: {
+  badge: string;
+  title: React.ReactNode;
+  sub: string;
+}): React.ReactElement {
+  return (
+    <header className="mb-10 space-y-3">
+      <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-violet-400 font-medium">
+        <Sparkles className="h-3.5 w-3.5" />
+        {badge}
+      </div>
+      <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">{title}</h1>
+      <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">{sub}</p>
+    </header>
+  );
+}
+
+function SettingRow({
+  label,
+  value,
+  mono,
+  badge,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  badge?: string;
+}): React.ReactElement {
+  return (
+    <div className="flex items-start gap-4">
+      <div className="min-w-[180px]">
+        <p className="text-[10px] uppercase tracking-[0.15em] text-[var(--color-app-muted)] font-medium">
+          {label}
+        </p>
+      </div>
+      <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+        <span
+          className={
+            mono
+              ? 'text-[13px] font-mono text-zinc-200 tabular-nums truncate'
+              : 'text-sm text-zinc-200'
+          }
+        >
+          {value}
+        </span>
+        {badge && (
+          <Badge variant="success" className="text-[10px]">
+            {badge}
+          </Badge>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StepDot({
   index,
   active,
@@ -298,9 +505,7 @@ function StepDot({
   return (
     <div className="flex items-center gap-2.5">
       <motion.div
-        animate={{
-          scale: active ? 1.05 : 1,
-        }}
+        animate={{ scale: active ? 1.05 : 1 }}
         className={[
           'h-7 w-7 rounded-full border flex items-center justify-center text-[11px] font-bold transition-all duration-300',
           done
