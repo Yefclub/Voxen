@@ -69,8 +69,18 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://voxen:dev@localhost:5432/voxen_test
+      REDIS_URL: redis://localhost:6379
       MASTER_KEY_PATH: ${{ github.workspace }}/master.key
     steps:
       - uses: actions/checkout@v4
