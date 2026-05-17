@@ -10,7 +10,9 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import botocore.exceptions
 import structlog
+import yt_dlp.utils
 
 from . import db, events, storage, voxen_settings, ytdl
 from .audio_chunking import AudioChunk, split_audio
@@ -30,6 +32,20 @@ class PermanentError(Exception):
 
 class TransientError(Exception):
     """Erro retentável (rede, 5xx)."""
+
+
+# Exceptions externas tratadas como transientes pelo `_retry_transient`.
+# yt-dlp e botocore herdam direto de `Exception`, NÃO de OSError/RuntimeError —
+# sem este wrapper, o retry helper viraria no-op para yt-dlp e Garage.
+# Spec 002 L61 (yt-dlp retry) e L64 (Garage retry) dependem disso.
+_TRANSIENT_EXC: tuple[type[BaseException], ...] = (
+    TransientError,
+    OSError,
+    RuntimeError,  # ffmpeg subprocess + RuntimeErrors levantados nos wrappers
+    yt_dlp.utils.YoutubeDLError,
+    botocore.exceptions.BotoCoreError,
+    botocore.exceptions.ClientError,
+)
 
 
 async def process_job(job_id: str) -> None:
@@ -281,16 +297,17 @@ def _frontmatter_json(doc: TranscriptDoc) -> str:
 async def _retry_transient[T](
     fn: Callable[[], Awaitable[T]], *, tries: int = 3, base_delay: float = 1.0
 ) -> T:
-    """Retry exp backoff (1/2/4 s) para erros transientes genéricos.
+    """Retry exp backoff (1/2/4 s) para erros transientes externos.
 
-    yt-dlp e Garage erros viram TransientError ao chegar aqui; OR já vem com
-    OpenrouterTransientError e é tratado separado em `_retry_transient_or`.
+    Captura `_TRANSIENT_EXC` (TransientError, OSError, yt-dlp YoutubeDLError,
+    botocore BotoCoreError/ClientError). OpenRouter usa `_retry_transient_or`
+    separado porque distingue auth (permanente) de 5xx (transiente).
     """
-    last_exc: Exception | None = None
+    last_exc: BaseException | None = None
     for attempt in range(tries):
         try:
             return await fn()
-        except (TransientError, OSError, RuntimeError) as e:
+        except _TRANSIENT_EXC as e:
             last_exc = e
             if attempt < tries - 1:
                 await asyncio.sleep(base_delay * (2**attempt))
