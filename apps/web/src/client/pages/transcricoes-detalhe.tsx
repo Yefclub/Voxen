@@ -25,7 +25,7 @@ import { Markdown } from '../components/ui/markdown';
 
 interface TranscriptDetail {
   id: string;
-  source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK';
+  source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'WEB';
   url: string;
   title: string;
   channel: string | null;
@@ -34,7 +34,7 @@ interface TranscriptDetail {
   publishedAt: string | null;
   thumbnailUrl: string | null;
   language: string;
-  transcriptionMethod: 'API' | 'SUBTITLES';
+  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE';
   model: string | null;
   costUsd: string | null;
   mdPath: string;
@@ -121,12 +121,18 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               {t.source.toLowerCase()}
             </Badge>
             <Badge
-              variant={t.transcriptionMethod === 'SUBTITLES' ? 'success' : 'default'}
+              variant={
+                t.transcriptionMethod === 'SUBTITLES'
+                  ? 'success'
+                  : t.transcriptionMethod === 'SCRAPE'
+                    ? 'muted'
+                    : 'default'
+              }
               className="text-[10px]"
             >
-              {t.transcriptionMethod === 'SUBTITLES' ? (
-                'Legendas oficiais'
-              ) : (
+              {t.transcriptionMethod === 'SUBTITLES' && 'Legendas oficiais'}
+              {t.transcriptionMethod === 'SCRAPE' && 'Página web'}
+              {t.transcriptionMethod === 'API' && (
                 <>
                   <Sparkles className="h-3 w-3 inline mr-1" /> Transcrição via IA
                 </>
@@ -157,7 +163,20 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               generating={generating}
               onGenerate={() => void generateSummary()}
             />
-            <TranscriptViewer markdown={data.markdown} />
+            {t.source === 'WEB' ? (
+              <section>
+                <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-200 mb-4">
+                  Conteúdo
+                </h2>
+                <Card elevated>
+                  <CardContent className="px-6 py-5">
+                    <Markdown>{data.markdown}</Markdown>
+                  </CardContent>
+                </Card>
+              </section>
+            ) : (
+              <TranscriptViewer markdown={data.markdown} />
+            )}
           </motion.article>
 
           {/* Sidebar: metadata + thumbnail */}
@@ -195,7 +214,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
             <Button variant="outline" size="default" className="w-full" asChild>
               <a href={t.url} target="_blank" rel="noreferrer">
-                Abrir vídeo original
+                {t.source === 'WEB' ? 'Abrir página original' : 'Abrir vídeo original'}
                 <ExternalLink className="h-3 w-3" />
               </a>
             </Button>

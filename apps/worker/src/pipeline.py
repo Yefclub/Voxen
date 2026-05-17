@@ -59,7 +59,8 @@ async def process_job(job_id: str) -> None:
 
     user_id: str = claimed["userId"]
     source_url: str = claimed["sourceUrl"]
-    log = logger.bind(job_id=job_id, user_id=user_id, url=source_url)
+    job_type: str = claimed["type"]
+    log = logger.bind(job_id=job_id, user_id=user_id, url=source_url, type=job_type)
     log.info("job-claimed")
 
     # Já cancelado antes mesmo de começar (DB já está CANCELLED via endpoint).
@@ -74,7 +75,16 @@ async def process_job(job_id: str) -> None:
     await events.publish_job_event(user_id, job_id, "running", percent=0)
 
     try:
-        await _run_pipeline(job_id=job_id, user_id=user_id, source_url=source_url, log=log)
+        if job_type == "SCRAPE_WEB":
+            from . import scrape_pipeline
+
+            await scrape_pipeline.run(
+                job_id=job_id, user_id=user_id, source_url=source_url, log=log
+            )
+        else:
+            await _run_pipeline(
+                job_id=job_id, user_id=user_id, source_url=source_url, log=log
+            )
     except CancelledException:
         log.info("job-cancelled-mid-pipeline")
         # DB já foi atualizado para CANCELLED pelo endpoint. Só publica evento final.

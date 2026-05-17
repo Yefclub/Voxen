@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Library, Loader2, Search, X } from 'lucide-react';
+import { Globe, Library, Loader2, Search, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -13,13 +13,13 @@ import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motio
 
 interface TranscriptSummary {
   id: string;
-  source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK';
+  source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'WEB';
   url: string;
   title: string;
   channel: string | null;
   durationSec: number;
   language: string;
-  transcriptionMethod: 'API' | 'SUBTITLES';
+  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE';
   thumbnailUrl: string | null;
   costUsd: string | null;
   createdAt: string;
@@ -175,9 +175,13 @@ function TranscriptCard({
               />
             ) : (
               <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900">
-                <span className="font-display text-5xl font-semibold text-zinc-700 tracking-tight">
-                  {t.title[0]?.toUpperCase()}
-                </span>
+                {t.source === 'WEB' ? (
+                  <Globe className="h-10 w-10 text-zinc-600" />
+                ) : (
+                  <span className="font-display text-5xl font-semibold text-zinc-700 tracking-tight">
+                    {t.title[0]?.toUpperCase()}
+                  </span>
+                )}
               </div>
             )}
             <div
@@ -189,7 +193,7 @@ function TranscriptCard({
                 variant="default"
                 className="bg-black/60 backdrop-blur-sm border-white/10 text-[10px] tabular-nums"
               >
-                {formatDuration(t.durationSec)}
+                {t.source === 'WEB' ? 'Web' : formatDuration(t.durationSec)}
               </Badge>
             </div>
           </div>
@@ -212,10 +216,18 @@ function TranscriptCard({
 
             <div className="flex items-center gap-2 flex-wrap pt-1">
               <Badge
-                variant={t.transcriptionMethod === 'SUBTITLES' ? 'success' : 'default'}
+                variant={
+                  t.transcriptionMethod === 'SUBTITLES'
+                    ? 'success'
+                    : t.transcriptionMethod === 'SCRAPE'
+                      ? 'muted'
+                      : 'default'
+                }
                 className="text-[10px]"
               >
-                {t.transcriptionMethod === 'SUBTITLES' ? 'Legendas' : 'IA'}
+                {t.transcriptionMethod === 'SUBTITLES' && 'Legendas'}
+                {t.transcriptionMethod === 'SCRAPE' && 'Página'}
+                {t.transcriptionMethod === 'API' && 'IA'}
               </Badge>
               {t.language && (
                 <Badge variant="outline" className="text-[10px] uppercase tracking-wider">

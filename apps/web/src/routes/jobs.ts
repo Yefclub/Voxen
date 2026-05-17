@@ -129,6 +129,85 @@ jobsRoutes.post('/', async (c) => {
   return c.json({ jobId: job.id, status: job.status, sourceUrl: job.sourceUrl }, 201);
 });
 
+// POST /api/jobs/scrape — agenda scraping de página web (spec 004)
+jobsRoutes.post('/scrape', async (c) => {
+  const userId = c.get('userId');
+
+  if (!(await isSetupComplete())) {
+    return c.json(
+      { error: 'Setup incompleto. Aguarde o administrador concluir a configuração.' },
+      412,
+    );
+  }
+
+  const body = (await c.req.json().catch(() => null)) as { url?: string } | null;
+  const rawUrl = body?.url?.trim();
+  if (!rawUrl) {
+    return c.json({ error: 'URL ausente.' }, 400);
+  }
+  const normalized = normalizeWebUrl(rawUrl);
+  if (!normalized) {
+    return c.json({ error: 'URL inválida — informe um link http(s) válido.' }, 400);
+  }
+
+  const existingTranscript = await db.transcript.findFirst({
+    where: { userId, url: normalized },
+    select: { id: true },
+  });
+  if (existingTranscript) {
+    return c.json(
+      { error: 'Você já indexou esta página.', transcriptId: existingTranscript.id },
+      409,
+    );
+  }
+
+  const inflight = await db.job.findFirst({
+    where: { userId, sourceUrl: normalized, status: { in: ['QUEUED', 'RUNNING'] } },
+    select: { id: true },
+  });
+  if (inflight) {
+    return c.json({ error: 'Esta URL já está sendo processada.', jobId: inflight.id }, 409);
+  }
+
+  let job: { id: string; status: string; sourceUrl: string };
+  try {
+    job = await db.job.create({
+      data: {
+        userId,
+        type: 'SCRAPE_WEB',
+        status: 'QUEUED',
+        sourceUrl: normalized,
+      },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
+      return c.json({ error: 'Esta URL já está sendo processada.' }, 409);
+    }
+    throw err;
+  }
+
+  await notifyNewJob(job.id).catch((err) => {
+    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+  });
+  await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
+
+  return c.json({ jobId: job.id, status: job.status, sourceUrl: job.sourceUrl }, 201);
+});
+
+function normalizeWebUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    if (!u.hostname) return null;
+    // Remove fragments (#anchor) — não afetam o conteúdo extraído.
+    u.hash = '';
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
 jobsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const jobs = await db.job.findMany({

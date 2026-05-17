@@ -1,8 +1,9 @@
 # Spec 004 — Scraper de páginas web
 
-**Status:** Draft
+**Status:** Implementada (MVP Trafilatura)
 **Owner:** Carlos Kalyel (Yef)
 **Criado:** 2026-05-17
+**Implementada:** 2026-05-17 (feat/scraper-web)
 
 ## Contexto
 
