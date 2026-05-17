@@ -125,7 +125,17 @@ def _utcnow_naive() -> Any:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+async def create_scrape_job(user_id: str, source_url: str) -> dict[str, Any]:
+    """Cria Job SCRAPE_WEB QUEUED. Dedup igual ao transcribe."""
+    return await _create_job(user_id, source_url, "SCRAPE_WEB")
+
+
 async def create_transcribe_job(user_id: str, source_url: str) -> dict[str, Any]:
+    """Cria Job DOWNLOAD_AND_TRANSCRIBE QUEUED. Dedup contra transcript e job ativo."""
+    return await _create_job(user_id, source_url, "DOWNLOAD_AND_TRANSCRIBE")
+
+
+async def _create_job(user_id: str, source_url: str, job_type: str) -> dict[str, Any]:
     """Cria Job QUEUED pra worker processar.
 
     Retorna: { id, status, sourceUrl, duplicate?: 'transcript'|'job', transcript_id? }
@@ -160,11 +170,11 @@ async def create_transcribe_job(user_id: str, source_url: str) -> dict[str, Any]
             INSERT INTO "Job" (
                 id, "userId", type, status, "sourceUrl", "queuedAt"
             ) VALUES (
-                $1, $2, 'DOWNLOAD_AND_TRANSCRIBE'::"JobType",
-                'QUEUED'::"JobStatus", $3, $4
+                $1, $2, $3::"JobType",
+                'QUEUED'::"JobStatus", $4, $5
             )
             """,
-            new_id, user_id, source_url, _utcnow_naive(),
+            new_id, user_id, job_type, source_url, _utcnow_naive(),
         )
         return {"id": new_id, "status": "QUEUED", "sourceUrl": source_url}
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Link2, PlayCircle, Plus, RefreshCw } from 'lucide-react';
+import { ArrowRight, Globe, Link2, PlayCircle, Plus, RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
@@ -28,7 +28,10 @@ interface ProgressEvent {
   ts: string;
 }
 
+type SourceTab = 'youtube' | 'web';
+
 export function JobsPage(): React.ReactElement {
+  const [tab, setTab] = useState<SourceTab>('youtube');
   const [url, setUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,13 +43,14 @@ export function JobsPage(): React.ReactElement {
     setError(null);
     setSubmitting(true);
     try {
-      const res = await apiPost<{ jobId: string; status: JobStatus; sourceUrl: string }>(
-        '/api/jobs',
-        { url },
-      );
+      const endpoint = tab === 'web' ? '/api/jobs/scrape' : '/api/jobs';
+      const res = await apiPost<{ jobId: string; status: JobStatus; sourceUrl: string }>(endpoint, {
+        url,
+      });
       setUrl('');
       refresh();
-      toast.success('Vídeo na fila.', {
+      const successMsg = tab === 'web' ? 'Página na fila.' : 'Vídeo na fila.';
+      toast.success(successMsg, {
         description: 'Acompanhe o progresso em tempo real.',
         action: {
           label: 'Abrir',
@@ -56,11 +60,10 @@ export function JobsPage(): React.ReactElement {
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
-        // 409 quando já tem transcrição pronta: oferece abrir direto
         if (err.status === 409 && err.body && typeof err.body === 'object') {
           const transcriptId = (err.body as { transcriptId?: string }).transcriptId;
           if (transcriptId) {
-            toast('Você já transcreveu esta URL.', {
+            toast('Já indexado.', {
               action: {
                 label: 'Abrir',
                 onClick: () => navigate(`/transcricoes/${transcriptId}`),
@@ -84,13 +87,50 @@ export function JobsPage(): React.ReactElement {
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <PlayCircle className="h-3.5 w-3.5 text-rose-400" />
-            Transcrever
+            Indexar conteúdo
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Novo vídeo</h1>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Novo conteúdo</h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Cole um link do YouTube. O Voxen baixa, transcreve e indexa pra busca.
+            Cole um link do YouTube ou de uma página web. O Voxen indexa pra busca e pro chat com o
+            agente.
           </p>
         </header>
+
+        {/* Abas: YouTube | Web */}
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--color-app-surface)]/60 border border-[var(--color-app-border)] w-fit">
+          <button
+            type="button"
+            onClick={() => {
+              setTab('youtube');
+              setError(null);
+              setUrl('');
+            }}
+            className={
+              tab === 'youtube'
+                ? 'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium bg-[var(--color-app-bg-elevated)] text-zinc-100 border border-[var(--color-app-border-strong)]'
+                : 'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors'
+            }
+          >
+            <PlayCircle className="h-3.5 w-3.5" />
+            Vídeo YouTube
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTab('web');
+              setError(null);
+              setUrl('');
+            }}
+            className={
+              tab === 'web'
+                ? 'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium bg-[var(--color-app-bg-elevated)] text-zinc-100 border border-[var(--color-app-border-strong)]'
+                : 'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors'
+            }
+          >
+            <Globe className="h-3.5 w-3.5" />
+            Página web
+          </button>
+        </div>
 
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -114,7 +154,7 @@ export function JobsPage(): React.ReactElement {
                   </Alert>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="url">URL do vídeo</Label>
+                  <Label htmlFor="url">{tab === 'web' ? 'URL da página' : 'URL do vídeo'}</Label>
                   <div className="flex gap-2.5">
                     <div className="relative flex-1">
                       <Link2 className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
@@ -123,7 +163,9 @@ export function JobsPage(): React.ReactElement {
                         type="url"
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
-                        placeholder="https://youtu.be/..."
+                        placeholder={
+                          tab === 'web' ? 'https://exemplo.com/artigo' : 'https://youtu.be/...'
+                        }
                         autoComplete="off"
                         required
                         className="pl-10 font-mono h-11 text-[15px]"
@@ -141,7 +183,9 @@ export function JobsPage(): React.ReactElement {
                     </Button>
                   </div>
                   <p className="text-xs text-[var(--color-app-muted)]">
-                    Aceita youtu.be, youtube.com/watch e shorts.
+                    {tab === 'web'
+                      ? 'Aceita blogs, news, docs, wikis. SPAs/JS-heavy podem falhar.'
+                      : 'Aceita youtu.be, youtube.com/watch e shorts.'}
                   </p>
                 </div>
               </form>

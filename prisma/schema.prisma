@@ -147,11 +147,13 @@ enum TranscriptSource {
   YOUTUBE
   INSTAGRAM
   TIKTOK
+  WEB           // página web (scraper Trafilatura)
 }
 
 enum TranscriptionMethod {
   API           // OpenRouter audio transcription
   SUBTITLES     // baixou legendas oficiais
+  SCRAPE        // extração de página web via Trafilatura
 }
 
 model Transcript {
@@ -213,6 +215,7 @@ model Chunk {
 
 enum JobType {
   DOWNLOAD_AND_TRANSCRIBE
+  SCRAPE_WEB
 }
 
 enum JobStatus {

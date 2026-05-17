@@ -111,6 +111,29 @@ TOOLS_SPEC: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "scrape_url",
+            "description": (
+                "Baixa e indexa uma página web (blog, artigo, docs, wiki). "
+                "Cria um Job que extrai o conteúdo principal via Trafilatura "
+                "e salva como Transcript do tipo WEB. NÃO espera concluir — "
+                "retorna o job_id. Use quando o usuário enviar um link de "
+                "página web (não-YouTube). Avise que vai levar uns segundos."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "URL http(s) da página a indexar.",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "transcribe_video",
             "description": (
                 "Dispara a transcrição de um vídeo do YouTube. Recebe a URL e "
@@ -214,6 +237,35 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                 return {"error": "Transcrição não encontrada."}
             return {"id": t["id"], "metadata": t.get("frontmatter") or {}}
 
+        if name == "scrape_url":
+            url = str(args.get("url", "")).strip()
+            normalized = _normalize_web_url(url)
+            if not normalized:
+                return {"error": "URL inválida. Informe um link http(s) válido."}
+            res = await db.create_scrape_job(user_id, normalized)
+            if res.get("duplicate") == "transcript":
+                return {
+                    "status": "already_indexed",
+                    "transcript_id": res["transcript_id"],
+                    "message": "Essa página já está na biblioteca.",
+                }
+            if res.get("duplicate") == "job":
+                return {
+                    "status": "already_queued",
+                    "job_id": res["id"],
+                    "message": "Essa página já está sendo indexada.",
+                }
+            await redis_pub.publish_new_job(res["id"])
+            return {
+                "status": "queued",
+                "job_id": res["id"],
+                "source_url": normalized,
+                "message": (
+                    "Página agendada. O worker vai baixar e extrair o "
+                    "conteúdo — acompanhe em /jobs/" + res["id"] + "."
+                ),
+            }
+
         if name == "transcribe_video":
             url = str(args.get("url", "")).strip()
             if not url:
@@ -274,6 +326,19 @@ def _serialize(row: dict[str, Any]) -> dict[str, Any]:
         "source": row["source"],
         "createdAt": row["createdAt"].isoformat() if row.get("createdAt") else None,
     }
+
+
+def _normalize_web_url(url: str) -> str | None:
+    """Valida URL http(s) e remove fragments (#anchor não afeta conteúdo)."""
+    from urllib.parse import urlparse, urlunparse
+
+    try:
+        u = urlparse(url.strip())
+    except ValueError:
+        return None
+    if u.scheme not in ("http", "https") or not u.hostname:
+        return None
+    return urlunparse(u._replace(fragment=""))
 
 
 def _canonical_youtube_url(url: str) -> str | None:
