@@ -49,7 +49,14 @@ Antes de implementar qualquer coisa, confirme seu entendimento do pedido em 1-2 
 
 ## Visão Geral do Projeto
 
-Voxen é uma plataforma web self-hosted de **knowledge base** alimentada por transcrição de vídeos do YouTube/Instagram/TikTok, com chat-agente que navega o acervo via ferramentas (sem embeddings — abordagem harness/Karpathy).
+Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecimento** alimentada por transcrição de vídeos (YouTube/Instagram/TikTok) e scraping de páginas web, com chat-agente que navega o acervo via ferramentas (sem embeddings — abordagem harness/Karpathy).
+
+**Posicionamento (importante).** Voxen **NÃO é SaaS comercial**, não é multi-tenant pago, não tem planos free/pago. É um produto pra usuários (indivíduos ou pequenos times) instalarem **no próprio servidor** e construírem sua KB interna de conteúdos. Owner do deploy controla tudo (chaves, modelos, usuários aprovados via better-auth).
+
+**Implicações na hora de propor features:**
+- ❌ NÃO propor: budget mensal por usuário, billing, planos, multi-tenancy, rate limiting agressivo "anti-abuso de usuário pago", quotas comerciais
+- ✅ Priorizar: DX da instalação self-hosted, docs multi-cenário (VPS/Proxmox/Easypanel), profile compose pra nginx/HTTPS, backups, paridade dev/prod, agente útil e ferramentas determinísticas
+- Critério de "pronto pra prod" = self-hosted estável pra uso interno, NÃO SaaS pronto pra cadastro público
 
 ### Stack
 
