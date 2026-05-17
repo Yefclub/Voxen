@@ -15,24 +15,38 @@ Cada vídeo transcrito vira um arquivo Markdown com:
 
 ```yaml
 ---
-id: 01J0K1A2B3C4D5E6F7G8H9J0K1                # ULID
+id: 01J0K1A2B3C4D5E6F7G8H9J0K1                # cuid gerado pelo worker
 workspace_id: <userId>
-source: youtube | instagram | tiktok
-url: https://youtu.be/abc123                  # URL original
+source: youtube | instagram | tiktok | web    # web = página HTML via Trafilatura (spec 004)
+url: https://youtu.be/abc123                  # URL canonical (parseVideoUrl em web/chat, detect_source em worker)
+video_id: dQw4w9WgXcQ                          # ver "Semântica do video_id" abaixo
 title: Como configurar Postgres FTS
-channel: Canal do Dev                          # se aplicável
+channel: Canal do Dev                          # YouTube channel, site name pra WEB, ou null
 author: nome do autor                          # se aplicável
-duration_sec: 738                              # 12m18s
+duration_sec: 738                              # 12m18s — para WEB é sempre 0
 published_at: 2026-04-20T15:30:00Z             # se disponível
-thumbnail: https://i.ytimg.com/vi/abc123/maxresdefault.jpg
+thumbnail: https://i.ytimg.com/vi/abc123/maxresdefault.jpg  # OpenGraph image pra WEB
 language: pt                                   # ISO 639-1
-model: openai/whisper-large-v3-turbo           # modelo usado
-transcription_method: api | subtitles          # api=transcrito via OpenRouter; subtitles=baixou legendas oficiais
+model: openai/whisper-large-v3-turbo           # null se source=web ou method=subtitles
+transcription_method: api | subtitles | scrape # api=OpenRouter audio; subtitles=legendas oficiais; scrape=Trafilatura HTML
 transcribed_at: 2026-05-15T20:42:11Z
-cost_usd: 0.0042                               # custo dessa transcrição (somente se method=api)
-checksum: sha256:abc123...                     # do arquivo de áudio original
+cost_usd: 0.0042                               # custo (0 para web/subtitles)
+checksum: sha256:abc123...                     # do arquivo de áudio original (omitido para web)
 ---
 ```
+
+### Semântica do `video_id` por source
+
+O campo `video_id` muda de **formato e significado** conforme a plataforma:
+
+| source     | formato                  | exemplo                | extraído de                              |
+|------------|--------------------------|------------------------|------------------------------------------|
+| `youtube`  | 11 chars `[A-Za-z0-9_-]` | `dQw4w9WgXcQ`          | canonical `youtu.be/<id>`                |
+| `instagram`| shortcode variável       | `Abc123_XYZ`           | `instagram.com/reel/<code>/`             |
+| `tiktok`   | numeric 6-32 chars       | `7123456789012345678`  | `tiktok.com/@user/video/<id>`            |
+| `web`      | (campo vazio ou ausente) | `""`                   | sem ID semântico — usa hash da URL se precisar |
+
+Use o `source` como **discriminador** antes de fazer parsing/dedup pelo `video_id`. Para cross-source uniqueness, prefira o `url` (que já vem canonical).
 
 ### Campos obrigatórios
 
