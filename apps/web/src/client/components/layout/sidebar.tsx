@@ -37,17 +37,25 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
 
   return (
     <>
-      {/* Botão flutuante de abrir (visível só quando colapsada) */}
+      {/* Botão flutuante de abrir (visível só quando colapsada). Entra
+          DEPOIS que a sidebar termina de sair (delay 0.2s no initial). */}
       <AnimatePresence>
         {collapsed && (
           <motion.button
             type="button"
             onClick={toggle}
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -8 }}
-            transition={{ duration: 0.18 }}
-            className="hidden md:flex fixed top-4 left-4 z-50 h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+            initial={{ opacity: 0, scale: 0.6, x: -12 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            exit={{ opacity: 0, scale: 0.6, x: -12 }}
+            transition={{
+              type: 'spring',
+              stiffness: 360,
+              damping: 26,
+              delay: 0.18,
+            }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="hidden md:flex fixed top-4 left-4 z-50 h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] transition-colors"
             aria-label="Abrir menu"
             title="Abrir menu"
           >
@@ -150,13 +158,19 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
  * Espaçador que reserva o espaço horizontal ocupado pela sidebar.
  * Quando colapsada → 0px (conteúdo ocupa tudo).
  * Quando aberta → SIDEBAR_WIDTH + 2× margem (left-4 + right offset).
+ *
+ * Anima junto com a sidebar (mesmo timing/easing) graças ao store
+ * singleton em useSidebarCollapsed — Sidebar e Spacer recebem o
+ * mesmo `collapsed` simultaneamente.
  */
 export function SidebarSpacer(): React.ReactElement {
   const { collapsed } = useSidebarCollapsed();
   return (
-    <div
-      className="hidden md:block shrink-0 transition-[width] duration-300"
-      style={{ width: collapsed ? 0 : SIDEBAR_WIDTH + 32 }}
+    <motion.div
+      className="hidden md:block shrink-0"
+      animate={{ width: collapsed ? 0 : SIDEBAR_WIDTH + 32 }}
+      initial={false}
+      transition={{ type: 'spring', stiffness: 320, damping: 32 }}
       aria-hidden
     />
   );
