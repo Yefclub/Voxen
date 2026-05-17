@@ -149,7 +149,7 @@ async def write_transcript(
     async with connection() as conn:
         # cuid() gerado via random — Prisma não está disponível aqui;
         # geramos um id compatível com cuid pattern (25 chars, starts with c).
-        new_id = _generate_cuid()
+        new_id = generate_cuid()
         await conn.execute(
             """
             INSERT INTO "Transcript" (
@@ -233,7 +233,7 @@ async def insert_cost_event(
                 $1, $2, NOW(), $3::"CostEventKind", $4, $5, $6, $7, $8, $9::jsonb
             )
             """,
-            _generate_cuid(),
+            generate_cuid(),
             user_id,
             kind,
             model,
@@ -245,7 +245,7 @@ async def insert_cost_event(
         )
 
 
-def _generate_cuid() -> str:
+def generate_cuid() -> str:
     """Gera um id estilo cuid (25 chars, começa com 'c').
     Prisma client TS é o gerador canônico; aqui no Python só precisamos
     de ids únicos com mesma cara — Postgres é a fonte da verdade.
