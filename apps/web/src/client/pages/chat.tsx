@@ -1,15 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  Check,
-  Copy,
-  MessagesSquare,
-  Plus,
-  Search,
-  Trash2,
-  Wand2,
-} from 'lucide-react';
+import { Check, Copy, MessagesSquare, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Spinner } from '../components/ui/spinner';
 import { AnimatedPage } from '../components/motion/animated-page';
@@ -19,6 +11,12 @@ import { Markdown } from '../components/ui/markdown';
 import { PromptBox, type PromptBoxHandle } from '../components/ui/prompt-box';
 import { useMe } from '../lib/hooks';
 import { cn } from '../lib/utils';
+import {
+  type ConvSummary,
+  createConversation,
+  patchLocalConversation,
+  refreshConversations,
+} from '../lib/use-conversations';
 
 interface Msg {
   id: string;
@@ -28,15 +26,6 @@ interface Msg {
   pending?: boolean;
 }
 
-interface ConvSummary {
-  id: string;
-  title: string;
-  thinking: boolean;
-  updatedAt: string;
-  createdAt: string;
-  messageCount: number;
-}
-
 const THINKING_KEY = 'voxen:chat:thinking';
 
 export function ChatPage(): React.ReactElement {
@@ -44,12 +33,10 @@ export function ChatPage(): React.ReactElement {
   const navigate = useNavigate();
   const { data: me } = useMe();
 
-  const [conversations, setConversations] = useState<ConvSummary[]>([]);
   const [active, setActive] = useState<ConvSummary | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
-  const [loadingList, setLoadingList] = useState(true);
   const [thinking, setThinking] = useState<boolean>(() => {
     try {
       return window.localStorage.getItem(THINKING_KEY) === '1';
@@ -60,21 +47,47 @@ export function ChatPage(): React.ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null);
   const promptRef = useRef<PromptBoxHandle>(null);
 
-  const loadList = useCallback(async (): Promise<ConvSummary[]> => {
-    setLoadingList(true);
-    try {
-      const res = await fetch('/api/chat/conversations', { credentials: 'include' });
-      const data = (await res.json()) as { conversations: ConvSummary[] };
-      setConversations(data.conversations);
-      return data.conversations;
-    } finally {
-      setLoadingList(false);
+  const loadActive = useCallback(async (id: string): Promise<void> => {
+    const res = await fetch(`/api/chat/conversations/${id}`, { credentials: 'include' });
+    if (!res.ok) {
+      toast.error('Conversa não encontrada.');
+      navigate('/chat', { replace: true });
+      return;
     }
-  }, []);
-
-  useEffect(() => {
-    void loadList();
-  }, [loadList]);
+    const data = (await res.json()) as {
+      conversation: {
+        id: string;
+        title: string;
+        thinking: boolean;
+        updatedAt: string;
+        createdAt: string;
+      };
+      messages: {
+        id: string;
+        role: 'user' | 'assistant';
+        content: string;
+        tools?: unknown;
+        createdAt: string;
+      }[];
+    };
+    setActive({
+      id: data.conversation.id,
+      title: data.conversation.title,
+      thinking: data.conversation.thinking,
+      updatedAt: data.conversation.updatedAt,
+      createdAt: data.conversation.createdAt,
+      messageCount: data.messages.length,
+    });
+    setThinking(data.conversation.thinking);
+    setMessages(
+      data.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
+      })),
+    );
+  }, [navigate]);
 
   useEffect(() => {
     if (!routeId) {
@@ -82,41 +95,8 @@ export function ChatPage(): React.ReactElement {
       setMessages([]);
       return;
     }
-    let cancelled = false;
-    (async () => {
-      const res = await fetch(`/api/chat/conversations/${routeId}`, { credentials: 'include' });
-      if (!res.ok) {
-        toast.error('Conversa não encontrada.');
-        navigate('/chat', { replace: true });
-        return;
-      }
-      const data = (await res.json()) as {
-        conversation: { id: string; title: string; thinking: boolean; updatedAt: string; createdAt: string };
-        messages: { id: string; role: 'user' | 'assistant'; content: string; tools?: unknown; createdAt: string }[];
-      };
-      if (cancelled) return;
-      setActive({
-        id: data.conversation.id,
-        title: data.conversation.title,
-        thinking: data.conversation.thinking,
-        updatedAt: data.conversation.updatedAt,
-        createdAt: data.conversation.createdAt,
-        messageCount: data.messages.length,
-      });
-      setThinking(data.conversation.thinking);
-      setMessages(
-        data.messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
-        })),
-      );
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [routeId, navigate]);
+    void loadActive(routeId);
+  }, [routeId, loadActive]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -130,40 +110,11 @@ export function ChatPage(): React.ReactElement {
     }
   }, [thinking]);
 
-  async function newConversation(): Promise<void> {
-    const res = await fetch('/api/chat/conversations', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    if (!res.ok) {
-      toast.error('Falha ao criar conversa.');
-      return;
-    }
-    const data = (await res.json()) as { conversation: ConvSummary };
-    setConversations((prev) => [data.conversation, ...prev]);
-    navigate(`/chat/${data.conversation.id}`);
-  }
-
-  async function deleteConversation(id: string): Promise<void> {
-    if (!confirm('Apagar esta conversa? Não dá pra desfazer.')) return;
-    const res = await fetch(`/api/chat/conversations/${id}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-    if (!res.ok) {
-      toast.error('Falha ao apagar conversa.');
-      return;
-    }
-    setConversations((prev) => prev.filter((c) => c.id !== id));
-    if (routeId === id) navigate('/chat', { replace: true });
-  }
-
   async function toggleThinking(): Promise<void> {
     const next = !thinking;
     setThinking(next);
     if (active) {
+      patchLocalConversation(active.id, { thinking: next });
       await fetch(`/api/chat/conversations/${active.id}`, {
         method: 'PATCH',
         credentials: 'include',
@@ -179,20 +130,13 @@ export function ChatPage(): React.ReactElement {
 
     let convId = active?.id;
     if (!convId) {
-      const res = await fetch('/api/chat/conversations', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: text.slice(0, 60) }),
-      });
-      if (!res.ok) {
+      const created = await createConversation(text.slice(0, 60));
+      if (!created) {
         toast.error('Falha ao iniciar conversa.');
         return;
       }
-      const data = (await res.json()) as { conversation: ConvSummary };
-      setConversations((prev) => [data.conversation, ...prev]);
-      setActive(data.conversation);
-      convId = data.conversation.id;
+      setActive(created);
+      convId = created.id;
       window.history.replaceState(null, '', `/chat/${convId}`);
     }
 
@@ -292,7 +236,7 @@ export function ChatPage(): React.ReactElement {
       );
     } finally {
       setStreaming(false);
-      void loadList();
+      void refreshConversations();
     }
   }
 
@@ -300,152 +244,44 @@ export function ChatPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="flex h-[calc(100vh-4rem)]">
-        <ConversationsSidebar
-          conversations={conversations}
-          loading={loadingList}
-          activeId={routeId ?? null}
-          onNew={() => void newConversation()}
-          onPick={(id) => navigate(`/chat/${id}`)}
-          onDelete={(id) => void deleteConversation(id)}
-        />
-
-        <div className="flex-1 flex flex-col min-w-0">
-          <div ref={scrollRef} className="flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-3xl px-6 py-8 space-y-5">
-              {empty && <EmptyState onPick={(s) => promptRef.current?.setValue(s)} />}
-              <AnimatePresence initial={false}>
-                {messages.map((m) => (
-                  <motion.div
-                    key={m.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.18 }}
-                  >
-                    <Bubble msg={m} user={me ?? null} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
+      <div className="flex flex-col h-[calc(100vh-4rem)]">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-6 py-8 space-y-5">
+            {empty && <EmptyState onPick={(s) => promptRef.current?.setValue(s)} />}
+            <AnimatePresence initial={false}>
+              {messages.map((m) => (
+                <motion.div
+                  key={m.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <Bubble msg={m} user={me ?? null} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
+        </div>
 
-          <div className="border-t border-[var(--color-app-border)] bg-[var(--color-app-bg)]/60 backdrop-blur-md">
-            <div className="mx-auto max-w-3xl px-6 py-4">
-              <PromptBox
-                ref={promptRef}
-                value={input}
-                onChange={setInput}
-                onSubmit={() => void send()}
-                disabled={streaming}
-                loading={streaming}
-                thinking={thinking}
-                onToggleThinking={() => void toggleThinking()}
-              />
-              <p className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] mt-2 text-center">
-                Enter envia · Shift+Enter quebra linha · Microfone transcreve fala
-              </p>
-            </div>
+        <div className="border-t border-[var(--color-app-border)] bg-[var(--color-app-bg)]/60 backdrop-blur-md">
+          <div className="mx-auto max-w-3xl px-6 py-4">
+            <PromptBox
+              ref={promptRef}
+              value={input}
+              onChange={setInput}
+              onSubmit={() => void send()}
+              disabled={streaming}
+              loading={streaming}
+              thinking={thinking}
+              onToggleThinking={() => void toggleThinking()}
+            />
+            <p className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] mt-2 text-center">
+              Enter envia · Shift+Enter quebra linha · Microfone transcreve fala
+            </p>
           </div>
         </div>
       </div>
     </AnimatedPage>
-  );
-}
-
-function ConversationsSidebar({
-  conversations,
-  loading,
-  activeId,
-  onNew,
-  onPick,
-  onDelete,
-}: {
-  conversations: ConvSummary[];
-  loading: boolean;
-  activeId: string | null;
-  onNew: () => void;
-  onPick: (id: string) => void;
-  onDelete: (id: string) => void;
-}): React.ReactElement {
-  const [q, setQ] = useState('');
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return conversations;
-    return conversations.filter((c) => c.title.toLowerCase().includes(needle));
-  }, [conversations, q]);
-
-  return (
-    <aside className="hidden lg:flex w-72 flex-col border-r border-[var(--color-app-border)] bg-[var(--color-app-bg)]/40 backdrop-blur-sm">
-      <div className="p-3 flex flex-col gap-3">
-        <button
-          type="button"
-          onClick={onNew}
-          className="flex items-center justify-center gap-2 h-10 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-sm font-medium text-zinc-100 hover:border-violet-500/40 hover:bg-violet-500/5 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Nova conversa
-        </button>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none" />
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar conversas…"
-            className="w-full h-9 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 pl-8 pr-3 text-[13px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
-          />
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5">
-        {loading && (
-          <div className="px-3 py-6 text-center text-xs text-[var(--color-app-muted)]">
-            Carregando…
-          </div>
-        )}
-        {!loading && filtered.length === 0 && (
-          <div className="px-3 py-6 text-center text-xs text-[var(--color-app-muted)]">
-            {q ? 'Nada encontrado.' : 'Nenhuma conversa ainda.'}
-          </div>
-        )}
-        {filtered.map((c) => {
-          const isActive = c.id === activeId;
-          return (
-            <div
-              key={c.id}
-              className={cn(
-                'group relative rounded-lg transition-colors',
-                isActive
-                  ? 'bg-[var(--color-app-surface-hover)] border border-[var(--color-app-border-strong)]'
-                  : 'border border-transparent hover:bg-[var(--color-app-surface)]',
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => onPick(c.id)}
-                className="w-full text-left px-3 py-2.5 pr-9 min-w-0"
-              >
-                <p className="text-[13px] font-medium text-zinc-100 truncate">{c.title}</p>
-                <p className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] mt-0.5">
-                  {c.messageCount} {c.messageCount === 1 ? 'mensagem' : 'mensagens'}
-                </p>
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(c.id);
-                }}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-[var(--color-app-muted)] opacity-0 group-hover:opacity-100 hover:text-rose-300 hover:bg-rose-500/10 transition-all flex items-center justify-center"
-                aria-label="Apagar conversa"
-                title="Apagar conversa"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </aside>
   );
 }
 
@@ -538,7 +374,11 @@ function Bubble({
   );
 }
 
-function UserAvatar({ user }: { user: { name: string; image?: string | null } | null }): React.ReactElement {
+function UserAvatar({
+  user,
+}: {
+  user: { name: string; image?: string | null } | null;
+}): React.ReactElement {
   const initials = (user?.name ?? 'U')
     .split(/\s+/)
     .map((p) => p[0])
@@ -549,7 +389,11 @@ function UserAvatar({ user }: { user: { name: string; image?: string | null } | 
   return (
     <Avatar className="h-7 w-7 shrink-0 mt-0.5 bg-zinc-100 border border-[var(--color-app-border-strong)]">
       {user?.image && (
-        <AvatarPrimitive.Image src={user.image} alt={user.name} className="h-full w-full object-cover" />
+        <AvatarPrimitive.Image
+          src={user.image}
+          alt={user.name}
+          className="h-full w-full object-cover"
+        />
       )}
       <AvatarFallback className="bg-zinc-100 text-zinc-900 text-[10px] font-bold tracking-wider">
         {initials}
@@ -561,7 +405,12 @@ function UserAvatar({ user }: { user: { name: string; image?: string | null } | 
 function VoxenAvatar(): React.ReactElement {
   return (
     <div className="h-7 w-7 shrink-0 mt-0.5 rounded-lg overflow-hidden border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/40 to-emerald-500/40">
-      <img src="/voxen-256.png" alt="Voxen" className="h-full w-full object-cover" draggable={false} />
+      <img
+        src="/voxen-256.png"
+        alt="Voxen"
+        className="h-full w-full object-cover"
+        draggable={false}
+      />
     </div>
   );
 }
@@ -570,8 +419,8 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }): React.ReactEle
   const suggestions = [
     'O que tem na minha biblioteca?',
     'Resuma o vídeo mais recente.',
+    'Transcreva este vídeo: https://youtube.com/watch?v=…',
     'Quais ideias principais dos últimos 3 vídeos?',
-    'Procure por "produtividade" na biblioteca.',
   ];
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
@@ -581,8 +430,8 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }): React.ReactEle
       <div className="space-y-1.5 max-w-md">
         <p className="font-display text-2xl font-semibold tracking-tight">Pergunte qualquer coisa</p>
         <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
-          O agente consulta sua biblioteca usando tools determinísticas. Sem alucinação, tudo com
-          fonte e timestamp.
+          O agente consulta sua biblioteca e pode transcrever vídeos novos. Sem alucinação, tudo
+          com fonte e timestamp.
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl">

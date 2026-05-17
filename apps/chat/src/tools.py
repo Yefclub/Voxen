@@ -1,11 +1,15 @@
-"""5 tools determinísticas escopadas por userId (spec 003)."""
+"""Tools determinísticas escopadas por userId (spec 003)."""
 
 from __future__ import annotations
 
 import re
 from typing import Any
 
-from . import db, storage
+from . import db, redis_pub, storage
+
+# YouTube URL canonicalization — espelha apps/web/src/lib/youtube-url.ts.
+_YT_HOSTS = ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com")
+_YT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 _LINE_RE = re.compile(r"^\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]\(.*?\)\s*(.*)$")
 
@@ -107,6 +111,29 @@ TOOLS_SPEC: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "transcribe_video",
+            "description": (
+                "Dispara a transcrição de um vídeo do YouTube. Recebe a URL e "
+                "agenda um Job no worker. NÃO espera concluir — retorna o "
+                "job_id pra acompanhar. Use quando o usuário pedir pra "
+                "transcrever/baixar/indexar um link novo. Avise no texto que "
+                "vai demorar (curto: ~30s, vídeos longos podem levar minutos)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "URL do vídeo no YouTube. Aceita youtu.be/ID, youtube.com/watch?v=ID e variações.",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "read_transcript_summary",
             "description": (
                 "Lê o resumo em markdown da transcrição (gerado pela IA na ingestão). "
@@ -184,6 +211,38 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                 return {"error": "Transcrição não encontrada."}
             return {"id": t["id"], "metadata": t.get("frontmatter") or {}}
 
+        if name == "transcribe_video":
+            url = str(args.get("url", "")).strip()
+            if not url:
+                return {"error": "URL ausente."}
+            canonical = _canonical_youtube_url(url)
+            if not canonical:
+                return {"error": "URL não suportada. Use um link válido do YouTube."}
+            res = await db.create_transcribe_job(user_id, canonical)
+            if res.get("duplicate") == "transcript":
+                return {
+                    "status": "already_transcribed",
+                    "transcript_id": res["transcript_id"],
+                    "message": "Esse vídeo já está na biblioteca.",
+                }
+            if res.get("duplicate") == "job":
+                return {
+                    "status": "already_queued",
+                    "job_id": res["id"],
+                    "job_status": res["status"],
+                    "message": "Esse vídeo já está em processamento.",
+                }
+            await redis_pub.publish_new_job(res["id"])
+            return {
+                "status": "queued",
+                "job_id": res["id"],
+                "source_url": canonical,
+                "message": (
+                    "Job criado. Worker vai baixar áudio e transcrever — "
+                    "acompanhe em /jobs/" + res["id"] + "."
+                ),
+            }
+
         if name == "read_transcript_summary":
             tid = str(args.get("transcript_id", ""))
             t = await db.get_user_transcript(user_id, tid)
@@ -212,6 +271,41 @@ def _serialize(row: dict[str, Any]) -> dict[str, Any]:
         "source": row["source"],
         "createdAt": row["createdAt"].isoformat() if row.get("createdAt") else None,
     }
+
+
+def _canonical_youtube_url(url: str) -> str | None:
+    """Extrai videoId e devolve forma canônica `https://youtu.be/<id>`.
+
+    Aceita: youtu.be/ID, youtube.com/watch?v=ID, /shorts/ID, /embed/ID, /v/ID,
+    com ou sem `www.`/`m.`/`music.`. Retorna None se inválido.
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    try:
+        u = urlparse(url.strip())
+    except ValueError:
+        return None
+    if not u.scheme or u.scheme not in ("http", "https"):
+        return None
+    host = (u.hostname or "").lower()
+    if host not in _YT_HOSTS:
+        return None
+
+    video_id: str | None = None
+    if host == "youtu.be":
+        video_id = u.path.lstrip("/").split("/")[0] or None
+    else:
+        path_parts = [p for p in u.path.split("/") if p]
+        if path_parts and path_parts[0] in ("shorts", "embed", "v") and len(path_parts) > 1:
+            video_id = path_parts[1]
+        else:
+            qs = parse_qs(u.query)
+            v = qs.get("v")
+            if v:
+                video_id = v[0]
+    if not video_id or not _YT_ID_RE.match(video_id):
+        return None
+    return f"https://youtu.be/{video_id}"
 
 
 def _extract_section(md: str, from_sec: int, to_sec: int) -> str:

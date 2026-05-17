@@ -125,6 +125,50 @@ def _utcnow_naive() -> Any:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+async def create_transcribe_job(user_id: str, source_url: str) -> dict[str, Any]:
+    """Cria Job QUEUED pra worker processar.
+
+    Retorna: { id, status, sourceUrl, duplicate?: 'transcript'|'job', transcript_id? }
+    """
+    import secrets
+    import time
+
+    async with connection() as conn:
+        existing_t = await conn.fetchrow(
+            'SELECT id FROM "Transcript" WHERE "userId" = $1 AND url = $2',
+            user_id, source_url,
+        )
+        if existing_t:
+            return {"duplicate": "transcript", "transcript_id": existing_t["id"]}
+
+        existing_j = await conn.fetchrow(
+            'SELECT id, status::text AS status FROM "Job" '
+            'WHERE "userId" = $1 AND "sourceUrl" = $2 AND status IN (\'QUEUED\', \'RUNNING\')',
+            user_id, source_url,
+        )
+        if existing_j:
+            return {
+                "duplicate": "job",
+                "id": existing_j["id"],
+                "status": existing_j["status"],
+                "sourceUrl": source_url,
+            }
+
+        new_id = f"c{format(int(time.time() * 1000), 'x')[-8:]}{secrets.token_hex(8)}"
+        await conn.execute(
+            """
+            INSERT INTO "Job" (
+                id, "userId", type, status, "sourceUrl", "queuedAt"
+            ) VALUES (
+                $1, $2, 'DOWNLOAD_AND_TRANSCRIBE'::"JobType",
+                'QUEUED'::"JobStatus", $3, $4
+            )
+            """,
+            new_id, user_id, source_url, _utcnow_naive(),
+        )
+        return {"id": new_id, "status": "QUEUED", "sourceUrl": source_url}
+
+
 async def insert_cost_event(
     *,
     user_id: str,
