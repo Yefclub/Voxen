@@ -1,0 +1,109 @@
+"""Testes dos parsers de URL no chat service (espelham video-url.ts).
+
+Não testamos execute_tool fim-a-fim — requer DB + Redis. Aqui só os helpers
+puros (_canonical_video_url, _normalize_web_url) que são pure functions.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from src.tools import _canonical_video_url, _normalize_web_url
+
+# ---------------------------------------------------------------------------
+# _canonical_video_url
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("https://youtu.be/dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ"),
+        ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ"),
+        ("https://m.youtube.com/watch?v=dQw4w9WgXcQ&t=42", "https://youtu.be/dQw4w9WgXcQ"),
+        ("https://www.youtube.com/shorts/dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ"),
+        ("https://www.youtube.com/embed/dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ"),
+        ("https://music.youtube.com/watch?v=dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ"),
+    ],
+)
+def test_youtube_canonical(url: str, expected: str) -> None:
+    assert _canonical_video_url(url) == expected
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("https://www.instagram.com/reel/Abc123_XYZ/", "https://www.instagram.com/reel/Abc123_XYZ/"),
+        ("https://instagram.com/p/Abc123/", "https://www.instagram.com/reel/Abc123/"),
+        ("https://www.instagram.com/tv/Code/", "https://www.instagram.com/reel/Code/"),
+        ("https://www.instagram.com/someuser/reel/Code/", "https://www.instagram.com/reel/Code/"),
+    ],
+)
+def test_instagram_canonical(url: str, expected: str) -> None:
+    assert _canonical_video_url(url) == expected
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        (
+            "https://www.tiktok.com/@user/video/7123456789012345678",
+            "https://www.tiktok.com/@user/video/7123456789012345678",
+        ),
+        ("https://vm.tiktok.com/ZMabc/", "https://vm.tiktok.com/ZMabc"),
+        ("https://vt.tiktok.com/Xyz/", "https://vt.tiktok.com/Xyz"),
+    ],
+)
+def test_tiktok_canonical(url: str, expected: str) -> None:
+    assert _canonical_video_url(url) == expected
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://vimeo.com/12345",
+        "https://twitter.com/user/status/123",
+        "https://example.com/video",
+        "ftp://youtu.be/dQw4w9WgXcQ",
+        "",
+        "not a url",
+        "https://youtu.be/short",  # id curto demais
+        "https://www.instagram.com/notreel/",  # path sem reel/p/tv
+        "https://www.tiktok.com/justpath",  # sem @user/video
+    ],
+)
+def test_video_canonical_rejects(url: str) -> None:
+    assert _canonical_video_url(url) is None
+
+
+# ---------------------------------------------------------------------------
+# _normalize_web_url (scraper)
+# ---------------------------------------------------------------------------
+
+
+def test_web_url_remove_fragment() -> None:
+    # Fragment não afeta o conteúdo extraído — remove pra dedup consistente
+    assert (
+        _normalize_web_url("https://blog.example.com/post#section-2")
+        == "https://blog.example.com/post"
+    )
+
+
+def test_web_url_preserve_query() -> None:
+    # Query string PODE afetar conteúdo — preservar
+    result = _normalize_web_url("https://blog.example.com/post?id=42")
+    assert result == "https://blog.example.com/post?id=42"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ftp://example.com/file.txt",
+        "file:///etc/passwd",
+        "",
+        "not a url",
+        "//no-scheme.com",
+    ],
+)
+def test_web_url_rejects(url: str) -> None:
+    assert _normalize_web_url(url) is None
