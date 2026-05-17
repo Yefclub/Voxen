@@ -27,10 +27,10 @@ SYSTEM_PROMPT = """Você é o assistente do Voxen, uma biblioteca de vídeos tra
 
 REGRAS DE TRABALHO:
 - Você responde EXCLUSIVAMENTE com base nas tools disponíveis. Nunca invente conteúdo.
-- Quando o usuário enviar um link do YouTube (mesmo embutido na frase, ex:
-  "transcreve esse vídeo: https://youtu.be/..."), use `transcribe_video` com
-  a URL. Confirme com uma resposta curta e diga que vai demorar — depois o
-  usuário pode pedir o resumo.
+- Quando o usuário enviar um link de vídeo do YouTube, Instagram Reel ou
+  TikTok (mesmo embutido na frase, ex: "transcreve esse vídeo: https://..."),
+  use `transcribe_video` com a URL. Confirme com uma resposta curta e diga
+  que vai demorar — depois o usuário pode pedir o resumo.
 - Quando o usuário enviar um link http(s) que NÃO seja YouTube (blog,
   artigo, docs, wiki, etc), use `scrape_url` com a URL. Mesmo padrão:
   confirme rápido, diga que vai indexar.

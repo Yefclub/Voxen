@@ -112,7 +112,7 @@ export function JobsPage(): React.ReactElement {
             }
           >
             <PlayCircle className="h-3.5 w-3.5" />
-            Vídeo YouTube
+            Vídeo
           </button>
           <button
             type="button"
@@ -164,7 +164,9 @@ export function JobsPage(): React.ReactElement {
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
                         placeholder={
-                          tab === 'web' ? 'https://exemplo.com/artigo' : 'https://youtu.be/...'
+                          tab === 'web'
+                            ? 'https://exemplo.com/artigo'
+                            : 'https://youtu.be/... · instagram.com/reel/... · tiktok.com/@user/video/...'
                         }
                         autoComplete="off"
                         required
@@ -185,7 +187,7 @@ export function JobsPage(): React.ReactElement {
                   <p className="text-xs text-[var(--color-app-muted)]">
                     {tab === 'web'
                       ? 'Aceita blogs, news, docs, wikis. SPAs/JS-heavy podem falhar.'
-                      : 'Aceita youtu.be, youtube.com/watch e shorts.'}
+                      : 'Aceita YouTube (watch/shorts), Instagram (reel/p/tv) e TikTok público.'}
                   </p>
                 </div>
               </form>
