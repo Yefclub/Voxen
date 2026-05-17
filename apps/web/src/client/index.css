@@ -1,54 +1,127 @@
 @import 'tailwindcss';
 
-/* Tema zinc (Voxen). Tailwind v4 usa @theme inline em vez de tailwind.config.js. */
-@theme {
-  --color-brand-50: oklch(98.5% 0 0);
-  --color-brand-100: oklch(96.7% 0 0);
-  --color-brand-500: oklch(70.4% 0 0);
-  --color-brand-900: oklch(27% 0 0);
-  --color-brand-950: oklch(21.5% 0 0);
+/* ============================================================================
+   Voxen — Design tokens
+   ----------------------------------------------------------------------------
+   Filosofia:
+   - zinc puro como base; sem gradientes, sem glassmorphism
+   - acentos somente em estados (emerald=ok, red=erro, amber=atenção)
+   - bordas finas 1px; sombras quase nulas; raios moderados (8/10/12px)
+   - tipografia Inter (UI) e JetBrains Mono (código/timestamps)
+   - movimento sutil: 150ms ease-out
+   ============================================================================ */
 
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif;
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --color-app-bg: oklch(14.5% 0 0);
+  --color-app-fg: oklch(98.5% 0 0);
+  --color-app-muted: oklch(63% 0 0);
+  --color-app-subtle: oklch(70% 0 0);
+  --color-app-border: oklch(27% 0 0);
+  --color-app-border-strong: oklch(33% 0 0);
+  --color-app-surface: oklch(17.5% 0 0);
+  --color-app-surface-hover: oklch(21% 0 0);
+  --color-app-accent: oklch(73% 0.16 159);
+  --color-app-accent-fg: oklch(20% 0.04 159);
+  --color-app-danger: oklch(64% 0.21 24);
+  --color-app-warn: oklch(78% 0.16 78);
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Variáveis de cor inspiradas em shadcn (slate dark) mas mapeadas pra zinc. */
 @layer base {
-  :root {
-    --background: oklch(98.5% 0 0);
-    --foreground: oklch(14.8% 0 0);
-    --card: oklch(98.5% 0 0);
-    --card-foreground: oklch(14.8% 0 0);
-    --border: oklch(90.6% 0 0);
-    --input: oklch(90.6% 0 0);
-    --primary: oklch(20.5% 0 0);
-    --primary-foreground: oklch(98.5% 0 0);
-    --muted: oklch(96.7% 0 0);
-    --muted-foreground: oklch(55.6% 0 0);
-    --accent: oklch(96.7% 0 0);
-    --accent-foreground: oklch(20.5% 0 0);
-    --destructive: oklch(57.7% 0.25 27);
-    --destructive-foreground: oklch(98.5% 0 0);
-    --ring: oklch(70.4% 0 0);
-    --radius: 0.5rem;
+  html {
+    color-scheme: dark;
+    background: var(--color-app-bg);
+    color: var(--color-app-fg);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
-  html.dark {
-    --background: oklch(14.8% 0 0);
-    --foreground: oklch(98.5% 0 0);
-    --card: oklch(20.5% 0 0);
-    --card-foreground: oklch(98.5% 0 0);
-    --border: oklch(27% 0 0);
-    --input: oklch(27% 0 0);
-    --primary: oklch(98.5% 0 0);
-    --primary-foreground: oklch(20.5% 0 0);
-    --muted: oklch(27% 0 0);
-    --muted-foreground: oklch(70.4% 0 0);
-    --accent: oklch(27% 0 0);
-    --accent-foreground: oklch(98.5% 0 0);
-    --destructive: oklch(57.7% 0.25 27);
-    --destructive-foreground: oklch(98.5% 0 0);
-    --ring: oklch(55.6% 0 0);
+  body {
+    background: var(--color-app-bg);
+    color: var(--color-app-fg);
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    letter-spacing: -0.01em;
+  }
+
+  * {
+    border-color: var(--color-app-border);
+  }
+
+  ::selection {
+    background: oklch(73% 0.16 159 / 0.25);
+    color: var(--color-app-fg);
+  }
+
+  /* Scrollbar discreta */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(27% 0 0);
+    border-radius: 999px;
+    border: 2px solid var(--color-app-bg);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(35% 0 0);
+  }
+
+  /* Focus ring consistente — usar em qualquer elemento interativo */
+  :where(button, a, input, textarea, select, [role='button']):focus-visible {
+    outline: 2px solid oklch(73% 0.16 159 / 0.55);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Tipografia base */
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.025em;
+    font-weight: 600;
+  }
+}
+
+@layer utilities {
+  .surface {
+    background: var(--color-app-surface);
+    border: 1px solid var(--color-app-border);
+  }
+  .surface-hover:hover {
+    background: var(--color-app-surface-hover);
+  }
+  .text-muted {
+    color: var(--color-app-muted);
+  }
+  .text-subtle {
+    color: var(--color-app-subtle);
+  }
+
+  /* Animação sutil de entrada (usar com data-state=open) */
+  .anim-in {
+    animation: voxen-in 180ms var(--ease-out);
+  }
+  @keyframes voxen-in {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }

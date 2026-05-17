@@ -11,6 +11,7 @@ import { isSetupComplete } from './lib/settings';
 import { adminRoutes } from './routes/admin';
 import { jobsRoutes } from './routes/jobs';
 import { setupRoutes } from './routes/setup';
+import { transcriptsRoutes } from './routes/transcripts';
 
 const app = new Hono();
 
@@ -44,6 +45,9 @@ app.route('/api/admin', adminRoutes);
 
 // Jobs endpoints (download + transcrição — spec 002)
 app.route('/api/jobs', jobsRoutes);
+
+// Transcripts endpoints (lista + viewer .md do Garage)
+app.route('/api/transcripts', transcriptsRoutes);
 
 // Static assets do build Vite em produção. Em dev, Vite serve no :5173 e
 // faz proxy de /api → :3000, então este fallback nunca dispara em dev.
