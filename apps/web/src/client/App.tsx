@@ -11,6 +11,7 @@ import { DashboardPage } from './pages/dashboard';
 import { AdminUsuariosPage } from './pages/admin-usuarios';
 import { AdminCustosPage } from './pages/admin-custos';
 import { ContaPage } from './pages/conta';
+import { ChatPage } from './pages/chat';
 import { JobsPage } from './pages/jobs';
 import { JobDetalhePage } from './pages/jobs-detalhe';
 import { TranscricoesPage } from './pages/transcricoes';
@@ -37,6 +38,7 @@ export function App(): React.ReactElement {
         <Route element={<AppLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/chat" element={<ChatPage />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
           <Route path="/admin/custos" element={<AdminCustosPage />} />

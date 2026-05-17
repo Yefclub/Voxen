@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.9.0",
     "cryptography>=43.0.0",
     "structlog>=24.4.0",
+    "aioboto3>=15.5.0",
 ]
 
 [dependency-groups]
@@ -39,6 +40,10 @@ python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["asyncpg.*", "aioboto3.*", "botocore.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

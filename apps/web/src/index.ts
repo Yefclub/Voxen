@@ -15,6 +15,7 @@ import { transcriptsRoutes } from './routes/transcripts';
 import { onboardingRoutes } from './routes/onboarding';
 import { accountRoutes } from './routes/account';
 import { costRoutes } from './routes/cost';
+import { chatRoutes } from './routes/chat';
 
 const app = new Hono();
 
@@ -93,6 +94,9 @@ app.route('/api/account', accountRoutes);
 
 // Painel de custos (admin)
 app.route('/api/admin/custos', costRoutes);
+
+// Chat (proxy autenticado pro serviço chat:8001)
+app.route('/api/chat', chatRoutes);
 
 // Avatar proxy: serve imagem do Garage de qualquer user autenticado
 app.get('/api/avatar/:userId', async (c) => {

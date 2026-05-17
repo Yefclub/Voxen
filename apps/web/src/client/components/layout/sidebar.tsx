@@ -4,6 +4,7 @@ import {
   DollarSign,
   LayoutDashboard,
   ListVideo,
+  MessagesSquare,
   PlayCircle,
   PanelLeftClose,
   PanelLeftOpen,
@@ -23,6 +24,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Painel', Icon: LayoutDashboard },
+  { to: '/chat', label: 'Conversar', Icon: MessagesSquare },
   { to: '/jobs', label: 'Transcrever', Icon: PlayCircle },
   { to: '/transcricoes', label: 'Biblioteca', Icon: ListVideo },
   { to: '/admin/usuarios', label: 'Usuários', Icon: ShieldCheck, adminOnly: true },
