@@ -273,7 +273,7 @@ function HeroPanel(): React.ReactElement {
             Sua biblioteca de vídeos, <span className="text-gradient">na ponta da pergunta.</span>
           </h2>
           <p className="text-[15px] leading-relaxed text-[var(--color-app-subtle)] max-w-sm">
-            Cole um link, o Voxen transcreve e indexa. Depois, converse com seu acervo como se fosse
+            Cole um link, o Voxen transcreve e indexa. Depois, converse com sua biblioteca como se fosse
             um colega que já assistiu tudo.
           </p>
         </motion.div>

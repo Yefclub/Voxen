@@ -39,6 +39,7 @@ export function App(): React.ReactElement {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/chat" element={<ChatPage />} />
+          <Route path="/chat/:id" element={<ChatPage />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
           <Route path="/admin/custos" element={<AdminCustosPage />} />

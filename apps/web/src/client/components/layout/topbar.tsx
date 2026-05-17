@@ -42,44 +42,45 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
       </div>
 
       <div className="flex items-center gap-4">
-        {user.role === 'ADMIN' && (
-          <Badge variant="success" className="hidden sm:inline-flex text-[10px]">
-            <ShieldCheck className="h-3 w-3" />
-            Admin
-          </Badge>
-        )}
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex items-center gap-3 rounded-lg py-1.5 pl-1.5 pr-3 hover:bg-[var(--color-app-surface)] transition-colors group"
+              className="rounded-full ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 hover:opacity-90 transition-opacity"
               aria-label="Menu do usuário"
             >
-              <div className="relative">
-                <Avatar className="bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
-                  {user.image && (
-                    <AvatarPrimitive.Image
-                      src={user.image}
-                      alt={user.name}
-                      className="h-full w-full object-cover"
-                    />
-                  )}
-                  <AvatarFallback className="bg-transparent text-zinc-100 font-semibold">
-                    {initials(user.name)}
-                  </AvatarFallback>
-                </Avatar>
-              </div>
-              <div className="hidden sm:flex flex-col items-start leading-tight">
-                <span className="text-sm font-medium text-zinc-100">{user.name}</span>
-                <span className="text-[11px] text-[var(--color-app-muted)] truncate max-w-[180px]">
-                  {user.email}
-                </span>
-              </div>
+              <Avatar className="h-9 w-9 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
+                {user.image && (
+                  <AvatarPrimitive.Image
+                    src={user.image}
+                    alt={user.name}
+                    className="h-full w-full object-cover"
+                  />
+                )}
+                <AvatarFallback className="bg-transparent text-zinc-100 font-semibold text-xs">
+                  {initials(user.name)}
+                </AvatarFallback>
+              </Avatar>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Sua conta</DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuLabel className="flex flex-col items-start gap-0.5 py-2.5">
+              <div className="flex items-center gap-2 w-full">
+                <span className="text-sm font-medium text-zinc-100 truncate flex-1">
+                  {user.name}
+                </span>
+                {user.role === 'ADMIN' && (
+                  <Badge variant="success" className="text-[9px] shrink-0">
+                    <ShieldCheck className="h-2.5 w-2.5" />
+                    Admin
+                  </Badge>
+                )}
+              </div>
+              <span className="text-[11px] text-[var(--color-app-muted)] truncate w-full font-normal">
+                {user.email}
+              </span>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link to="/conta" className="flex items-center gap-2 cursor-pointer">
                 <UserIcon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />

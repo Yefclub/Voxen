@@ -226,7 +226,7 @@ export function JobDetalhePage(): React.ReactElement {
                         Transcrição concluída
                       </p>
                       <p className="text-xs text-emerald-300/70 mt-0.5">
-                        Já está no seu acervo, pronta para consultar.
+                        Já está no sua biblioteca, pronta para consultar.
                       </p>
                     </div>
                   </div>

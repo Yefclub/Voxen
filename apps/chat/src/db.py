@@ -110,7 +110,7 @@ async def get_user_transcript(user_id: str, transcript_id: str) -> dict[str, Any
             """
             SELECT id, title, channel, url, "mdPath", "plainText", frontmatter,
                    "durationSec", language, "transcriptionMethod"::text AS "transcriptionMethod",
-                   model, source::text AS source, "thumbnailUrl"
+                   model, source::text AS source, "thumbnailUrl", "summaryMd"
             FROM "Transcript"
             WHERE id = $1 AND "userId" = $2
             """,
@@ -132,6 +132,7 @@ async def insert_cost_event(
     tokens_in: int,
     tokens_out: int,
     cost_usd: Decimal,
+    kind: str = "CHAT",
     meta: dict[str, Any] | None = None,
 ) -> None:
     import json
@@ -146,9 +147,9 @@ async def insert_cost_event(
                 id, "userId", ts, kind, model, "tokensIn", "tokensOut",
                 "costUsd", meta
             ) VALUES (
-                $1, $2, $3, 'CHAT'::"CostEventKind", $4, $5, $6, $7, $8::jsonb
+                $1, $2, $3, $4::"CostEventKind", $5, $6, $7, $8, $9::jsonb
             )
             """,
-            new_id, user_id, _utcnow_naive(), model, tokens_in, tokens_out, cost_usd,
+            new_id, user_id, _utcnow_naive(), kind, model, tokens_in, tokens_out, cost_usd,
             json.dumps(meta or {}, default=str),
         )

@@ -176,7 +176,7 @@ function EmptyState(): React.ReactElement {
           <PlayCircle className="h-5 w-5 text-emerald-400" />
         </div>
         <div className="space-y-1.5">
-          <p className="font-display text-lg font-semibold tracking-tight">Comece seu acervo</p>
+          <p className="font-display text-lg font-semibold tracking-tight">Comece sua biblioteca</p>
           <p className="text-sm text-[var(--color-app-muted)] max-w-sm mx-auto leading-relaxed">
             Cole um link de vídeo para o Voxen transcrever e indexar. Tudo fica disponível para
             conversar com o agente depois.

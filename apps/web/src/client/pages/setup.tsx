@@ -419,7 +419,7 @@ export function SetupPage(): React.ReactElement {
                   <CardTitle className="font-display">Modelos padrão</CardTitle>
                   <CardDescription>
                     Escolha um modelo de transcrição (áudio → texto) e um de chat (agente sobre o
-                    acervo).
+                    biblioteca).
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

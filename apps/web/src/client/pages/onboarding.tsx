@@ -238,7 +238,7 @@ function OnboardingContent({
               <Heading
                 eyebrow="01 · Conexão"
                 title="Conecte com a OpenRouter"
-                sub="Uma chave dá acesso aos modelos de transcrição (Whisper) e ao agente que conversa com seu acervo."
+                sub="Uma chave dá acesso aos modelos de transcrição (Whisper) e ao agente que conversa com sua biblioteca."
               />
               <form onSubmit={submitKey} className="space-y-5">
                 <FieldLabel htmlFor="key">OpenRouter API key</FieldLabel>

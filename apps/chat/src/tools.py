@@ -104,6 +104,24 @@ TOOLS_SPEC: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_transcript_summary",
+            "description": (
+                "Lê o resumo em markdown da transcrição (gerado pela IA na ingestão). "
+                "Mais barato e direto que `read_transcript`. Use quando o usuário "
+                "pedir resumo/visão geral. Se retornar vazio/erro, caia pro read_transcript."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "transcript_id": {"type": "string", "description": "ID da transcrição."},
+                },
+                "required": ["transcript_id"],
+            },
+        },
+    },
 ]
 
 
@@ -165,6 +183,20 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
             if not t:
                 return {"error": "Transcrição não encontrada."}
             return {"id": t["id"], "metadata": t.get("frontmatter") or {}}
+
+        if name == "read_transcript_summary":
+            tid = str(args.get("transcript_id", ""))
+            t = await db.get_user_transcript(user_id, tid)
+            if not t:
+                return {"error": "Transcrição não encontrada."}
+            summary = t.get("summaryMd")
+            if not summary:
+                return {
+                    "id": t["id"],
+                    "summary": None,
+                    "hint": "Resumo ainda não gerado — use read_transcript.",
+                }
+            return {"id": t["id"], "title": t["title"], "summary": summary}
 
         return {"error": f"Tool desconhecida: {name}"}
     except Exception as e:  # noqa: BLE001 — agente decide como reagir
