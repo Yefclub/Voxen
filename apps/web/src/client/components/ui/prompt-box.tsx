@@ -54,7 +54,11 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
     const ta = textareaRef.current;
     if (!ta) return;
     ta.style.height = 'auto';
-    ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`;
+    const next = Math.min(ta.scrollHeight, 220);
+    ta.style.height = `${next}px`;
+    // Só mostra a scrollbar quando o conteúdo ultrapassa o cap. Sem isso, o
+    // browser pinta uma scrollbar fantasma assim que o textarea ganha foco.
+    ta.style.overflowY = ta.scrollHeight > 220 ? 'auto' : 'hidden';
   }, [value]);
 
   async function toggleRecord(): Promise<void> {
@@ -134,7 +138,7 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
         }}
         placeholder={placeholder}
         rows={1}
-        className="custom-scrollbar w-full resize-none border-0 bg-transparent px-5 pt-4 pb-2 text-[15px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none leading-relaxed min-h-[44px]"
+        className="w-full resize-none border-0 bg-transparent px-5 pt-4 pb-2 text-[15px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none leading-relaxed overflow-hidden"
         disabled={disabled}
       />
       <div className="flex items-center gap-2 px-3 pb-3 pt-1">

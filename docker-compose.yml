@@ -211,6 +211,35 @@ services:
     networks:
       - voxen-net
 
+  # ---------------------------------------------------------------------------
+  # nginx — reverse proxy opcional (profile `nginx`)
+  # Uso:
+  #   docker compose --profile nginx up -d
+  # Pré-requisitos:
+  #   - certificados em ./deploy/nginx/certs/live/voxen/{fullchain,privkey}.pem
+  #     (gere com certbot --standalone na primeira vez)
+  #   - DNS apontado pro host
+  # Se você já tem nginx no host, NÃO use este serviço — use
+  # deploy/nginx/voxen.conf.example como referência pra config nativa.
+  # ---------------------------------------------------------------------------
+  nginx:
+    profiles: [nginx]
+    build:
+      context: .
+      dockerfile: deploy/nginx/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/nginx/certs:/etc/letsencrypt:ro
+      - ./deploy/nginx/certbot-www:/var/www/certbot:ro
+    networks:
+      - voxen-net
+
 networks:
   voxen-net:
     driver: bridge

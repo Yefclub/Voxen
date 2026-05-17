@@ -115,41 +115,11 @@ export function DashboardPage(): React.ReactElement {
             <Card>
               <StaggerContainer delay={0.1}>
                 <ul className="divide-y divide-[var(--color-app-border)]">
-                  {jobs.slice(0, 5).map((j) => {
-                    const { variant, label } = jobStatusBadge(j.status);
-                    return (
-                      <StaggerItem key={j.id}>
-                        <li className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50">
-                          <Badge variant={variant} className="shrink-0 w-28 justify-center">
-                            {label}
-                          </Badge>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-zinc-200 truncate font-mono tracking-tight">
-                              {j.sourceUrl}
-                            </p>
-                            <p className="text-xs text-[var(--color-app-muted)] mt-0.5">
-                              {formatRelative(new Date(j.queuedAt))}
-                            </p>
-                          </div>
-                          {j.transcriptId ? (
-                            <Button variant="ghost" size="sm" asChild>
-                              <Link to={`/transcricoes/${j.transcriptId}`}>
-                                Ver
-                                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                              </Link>
-                            </Button>
-                          ) : (
-                            <Button variant="ghost" size="sm" asChild>
-                              <Link to={`/jobs/${j.id}`}>
-                                Detalhes
-                                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                              </Link>
-                            </Button>
-                          )}
-                        </li>
-                      </StaggerItem>
-                    );
-                  })}
+                  {jobs.slice(0, 5).map((j) => (
+                    <StaggerItem key={j.id}>
+                      <ActivityRow job={j} />
+                    </StaggerItem>
+                  ))}
                 </ul>
               </StaggerContainer>
             </Card>
@@ -158,6 +128,76 @@ export function DashboardPage(): React.ReactElement {
       </div>
     </AnimatedPage>
   );
+}
+
+function ActivityRow({ job }: { job: JobSummary }): React.ReactElement {
+  const { variant, label } = jobStatusBadge(job.status);
+  const to = job.transcriptId ? `/transcricoes/${job.transcriptId}` : `/jobs/${job.id}`;
+  const thumb = youtubeThumb(job.sourceUrl);
+  return (
+    <li className="group">
+      <Link
+        to={to}
+        className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 focus:outline-none focus-visible:bg-[var(--color-app-surface-hover)]"
+      >
+        <div className="shrink-0 h-14 w-24 rounded-lg overflow-hidden bg-[var(--color-app-bg-elevated)] border border-[var(--color-app-border)] relative">
+          {thumb ? (
+            <img
+              src={thumb}
+              alt=""
+              loading="lazy"
+              className="h-full w-full object-cover"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          ) : (
+            <div className="h-full w-full flex items-center justify-center">
+              <PlayCircle className="h-5 w-5 text-[var(--color-app-muted)]" />
+            </div>
+          )}
+        </div>
+        <Badge variant={variant} className="shrink-0 w-28 justify-center">
+          {label}
+        </Badge>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-zinc-200 truncate font-mono tracking-tight">
+            {job.sourceUrl}
+          </p>
+          <p className="text-xs text-[var(--color-app-muted)] mt-0.5">
+            {formatRelative(new Date(job.queuedAt))}
+          </p>
+        </div>
+        <ArrowRight className="h-4 w-4 text-[var(--color-app-muted)] transition-all opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 shrink-0" />
+      </Link>
+    </li>
+  );
+}
+
+function youtubeThumb(url: string): string | null {
+  // Extrai videoId pra forma curta `youtu.be/<ID>` (canonical) ou
+  // `youtube.com/watch?v=<ID>` (input do user). Falha → null.
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\.|^m\.|^music\./, '');
+    let id: string | null = null;
+    if (host === 'youtu.be') {
+      id = u.pathname.replace(/^\//, '').split('/')[0] ?? null;
+    } else if (host === 'youtube.com') {
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts[0] === 'shorts' || parts[0] === 'embed' || parts[0] === 'v') {
+        id = parts[1] ?? null;
+      } else {
+        id = u.searchParams.get('v');
+      }
+    }
+    if (id && /^[A-Za-z0-9_-]{11}$/.test(id)) {
+      return `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
+    }
+  } catch {
+    // url inválida
+  }
+  return null;
 }
 
 function EmptyState(): React.ReactElement {

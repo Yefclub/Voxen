@@ -20,7 +20,8 @@ import { toast } from 'sonner';
 import type { MeUser } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
-import { useConversations } from '../../lib/use-conversations';
+import { useConversations, type ConvSummary } from '../../lib/use-conversations';
+import { ConfirmDialog } from '../ui/confirm-dialog';
 
 interface NavItem {
   to: string;
@@ -189,6 +190,7 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
   const { conversations, loading, create, remove } = useConversations();
   const [q, setQ] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<ConvSummary | null>(null);
   const location = useLocation();
   const activeId = useMemo(() => {
     const m = location.pathname.match(/^\/chat\/([^/]+)/);
@@ -210,9 +212,14 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
     navigate(`/chat/${conv.id}`);
   }
 
-  async function onDelete(id: string, e: React.MouseEvent): Promise<void> {
+  function askDelete(c: ConvSummary, e: React.MouseEvent): void {
     e.stopPropagation();
-    if (!confirm('Apagar esta conversa? Não dá pra desfazer.')) return;
+    setPendingDelete(c);
+  }
+
+  async function confirmDelete(): Promise<void> {
+    if (!pendingDelete) return;
+    const id = pendingDelete.id;
     const ok = await remove(id);
     if (!ok) {
       toast.error('Falha ao apagar.');
@@ -279,7 +286,7 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
               </button>
               <button
                 type="button"
-                onClick={(e) => void onDelete(c.id, e)}
+                onClick={(e) => askDelete(c, e)}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-[var(--color-app-muted)] opacity-0 group-hover:opacity-100 hover:text-rose-300 hover:bg-rose-500/10 transition-all flex items-center justify-center"
                 aria-label="Apagar conversa"
                 title="Apagar conversa"
@@ -290,6 +297,25 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
           );
         })}
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Apagar esta conversa?"
+        description={
+          pendingDelete ? (
+            <>
+              Você vai perder todas as mensagens de{' '}
+              <span className="text-zinc-200 font-medium">“{pendingDelete.title}”</span>. Essa
+              ação não pode ser desfeita.
+            </>
+          ) : null
+        }
+        confirmLabel="Apagar"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={confirmDelete}
+      />
 
       {/* Menu colapsável no rodapé */}
       <div className="border-t border-[var(--color-app-border)] shrink-0">
