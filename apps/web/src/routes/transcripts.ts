@@ -13,6 +13,10 @@ import { Hono } from 'hono';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
+import { rateLimit } from '../lib/rate-limit';
+
+// Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
+const SUMMARY_MIN_INTERVAL_SEC = 60;
 
 type Vars = { userId: string };
 
@@ -207,17 +211,45 @@ transcriptsRoutes.get('/:id', async (c) => {
   return c.json({ transcript, markdown });
 });
 
-// POST /api/transcripts/:id/summary — regenerar resumo via chat service.
+// POST /api/transcripts/:id/summary — gerar / regenerar resumo via chat service.
+// Anti-abuso: throttle 1/min por transcript + se já tem summary, exige
+// { force: true } pra não queimar tokens da OR num clique acidental.
 transcriptsRoutes.post('/:id/summary', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
+  const body = (await c.req.json().catch(() => ({}))) as { force?: boolean };
+  const force = body.force === true;
+
   const transcript = await db.transcript.findFirst({
     where: { id, userId },
-    select: { id: true, title: true, plainText: true },
+    select: { id: true, title: true, plainText: true, summaryMd: true },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
   if (!transcript.plainText?.trim()) {
     return c.json({ error: 'Transcrição sem texto para resumir.' }, 422);
+  }
+
+  // Já tem resumo → exige force=true (confirmação explícita do user)
+  if (transcript.summaryMd && !force) {
+    return c.json(
+      {
+        error: 'Resumo já existe. Use { "force": true } pra regenerar.',
+        existing: true,
+      },
+      409,
+    );
+  }
+
+  // Throttle: 1 req por minuto por transcript (qualquer user/qualquer caller)
+  const rl = await rateLimit(`voxen:rl:summary:${transcript.id}`, 1, SUMMARY_MIN_INTERVAL_SEC);
+  if (!rl.allowed) {
+    return c.json(
+      {
+        error: `Aguarde ${rl.resetIn}s antes de regenerar este resumo.`,
+        retryAfter: rl.resetIn,
+      },
+      429,
+    );
   }
 
   const upstreamUrl =
