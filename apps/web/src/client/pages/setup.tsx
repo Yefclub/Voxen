@@ -21,6 +21,13 @@ import { ApiError, apiGet, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import type { OrModel } from '../lib/types';
 import { AnimatedPage } from '../components/motion/animated-page';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 
 interface ModelsResponse {
   chat: OrModel[];
@@ -85,11 +92,16 @@ export function SetupPage(): React.ReactElement {
       });
       setModels(data);
       const whisper = data.transcription.find((m) => m.id.toLowerCase().includes('whisper'));
-      const sonnet = data.chat.find((m) => m.id.toLowerCase().includes('sonnet'));
+      const preferred =
+        data.chat.find((m) => m.id === 'google/gemini-3.1-flash-lite') ??
+        data.chat.find(
+          (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
+        ) ??
+        data.chat.find((m) => m.id.toLowerCase().includes('sonnet'));
       if (!transcriptionModel) {
         setTranscriptionModel(whisper?.id ?? data.transcription[0]?.id ?? '');
       }
-      if (!chatModel) setChatModel(sonnet?.id ?? data.chat[0]?.id ?? '');
+      if (!chatModel) setChatModel(preferred?.id ?? data.chat[0]?.id ?? '');
       setStep('modelos');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao validar chave.');
@@ -307,25 +319,52 @@ export function SetupPage(): React.ReactElement {
                     <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                       <KeyRound className="h-3.5 w-3.5 text-emerald-400" />
                     </span>
-                    Cole sua chave
+                    {status?.complete ? 'Substituir chave' : 'Cole sua chave'}
                   </CardTitle>
                   <CardDescription>
-                    Será validada antes de ser salva.{' '}
-                    <a
-                      href="https://openrouter.ai/keys"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-zinc-100 underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
-                    >
-                      Gerar chave
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
+                    {status?.complete ? (
+                      <>
+                        Há uma chave configurada. Cole uma nova para substituir, ou{' '}
+                        <button
+                          type="button"
+                          onClick={() => setStep('overview')}
+                          className="text-zinc-100 underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
+                        >
+                          mantenha a atual
+                        </button>
+                        .
+                      </>
+                    ) : (
+                      <>
+                        Será validada antes de ser salva.{' '}
+                        <a
+                          href="https://openrouter.ai/keys"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-zinc-100 underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
+                        >
+                          Gerar chave
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </>
+                    )}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
+                  {status?.complete && (
+                    <div className="mb-4 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-3.5 py-2.5 flex items-center gap-3">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                      <span className="text-xs text-emerald-200">Chave atual ativa.</span>
+                      <span className="ml-auto font-mono text-[11px] tracking-widest text-emerald-300/80">
+                        ••••••••••••
+                      </span>
+                    </div>
+                  )}
                   <form onSubmit={validateAndListModels} className="space-y-5">
                     <div className="space-y-2">
-                      <Label htmlFor="key">OpenRouter API key</Label>
+                      <Label htmlFor="key">
+                        {status?.complete ? 'Nova chave' : 'OpenRouter API key'}
+                      </Label>
                       <Input
                         id="key"
                         type="password"
@@ -549,21 +588,25 @@ function ModelSelect({
           {count} disponíveis
         </span>
       </div>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="flex h-11 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-[oklch(72%_0.18_290_/_0.6)] focus:ring-2 focus:ring-[oklch(72%_0.18_290_/_0.15)] transition-colors"
-        required
-      >
-        <option value="" disabled>
-          Selecionar modelo…
-        </option>
-        {options.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.name || m.id}
-          </option>
-        ))}
-      </select>
+      <Select value={value || undefined} onValueChange={onChange}>
+        <SelectTrigger>
+          <SelectValue placeholder="Selecionar modelo…" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((m) => (
+            <SelectItem key={m.id} value={m.id}>
+              <div className="flex flex-col py-0.5">
+                <span className="font-medium">{m.name || m.id}</span>
+                {m.name && m.name !== m.id && (
+                  <span className="text-[11px] font-mono text-[var(--color-app-muted)]">
+                    {m.id}
+                  </span>
+                )}
+              </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

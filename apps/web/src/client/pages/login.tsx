@@ -226,7 +226,7 @@ function GlassInputWrapper({ children }: { children: React.ReactNode }): React.R
 
 function HeroPanel(): React.ReactElement {
   return (
-    <div className="relative h-full rounded-3xl overflow-hidden border border-[var(--color-app-border)]">
+    <div className="relative h-full rounded-3xl overflow-hidden">
       {/* Gradiente principal */}
       <div
         aria-hidden

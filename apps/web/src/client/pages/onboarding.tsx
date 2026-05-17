@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -22,6 +22,14 @@ import { cn } from '../lib/utils';
 import { ApiError, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import type { OrModel } from '../lib/types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import { Spinner as Spin } from '../components/ui/spinner';
 
 interface ModelsResponse {
   chat: OrModel[];
@@ -32,18 +40,44 @@ type Step = 'key' | 'modelos' | 'modo' | 'perfil' | 'pronto';
 
 export function OnboardingPage(): React.ReactElement {
   const navigate = useNavigate();
-  const { data, refresh } = useMe();
+  const { data, loading, refresh } = useMe();
+
+  // Guard: precisa estar autenticado como ADMIN aprovado.
+  // Sem sessão → /entrar; user comum ou pendente → /pendente;
+  // admin com onboarding já feito → /dashboard.
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Spin size={20} className="text-[var(--color-app-muted)]" />
+      </div>
+    );
+  }
+  if (!data?.user) return <Navigate to="/entrar" replace />;
+  if (data.user.status !== 'APPROVED') return <Navigate to="/pendente" replace />;
+  if (data.user.role !== 'ADMIN') return <Navigate to="/dashboard" replace />;
+  if (data.onboardingDone) return <Navigate to="/dashboard" replace />;
+
+  return <OnboardingContent userName={data.user.name} refresh={refresh} navigate={navigate} />;
+}
+
+function OnboardingContent({
+  userName,
+  refresh,
+  navigate,
+}: {
+  userName: string;
+  refresh: () => Promise<void>;
+  navigate: ReturnType<typeof useNavigate>;
+}): React.ReactElement {
   const [step, setStep] = useState<Step>('key');
   const [apiKey, setApiKey] = useState('');
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [chatModel, setChatModel] = useState('');
   const [transcriptionModel, setTranscriptionModel] = useState('');
   const [allowSignups, setAllowSignups] = useState<boolean>(true);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(data?.user?.image ?? null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const userName = data?.user?.name ?? '';
 
   async function submitKey(e: React.FormEvent): Promise<void> {
     e.preventDefault();
@@ -55,9 +89,15 @@ export function OnboardingPage(): React.ReactElement {
       });
       setModels(res);
       const whisper = res.transcription.find((m) => m.id.toLowerCase().includes('whisper'));
-      const sonnet = res.chat.find((m) => m.id.toLowerCase().includes('sonnet'));
+      // Default preferido: google/gemini-3.1-flash-lite. Cai em sonnet / primeiro.
+      const preferred =
+        res.chat.find((m) => m.id === 'google/gemini-3.1-flash-lite') ??
+        res.chat.find(
+          (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
+        ) ??
+        res.chat.find((m) => m.id.toLowerCase().includes('sonnet'));
       setTranscriptionModel(whisper?.id ?? res.transcription[0]?.id ?? '');
-      setChatModel(sonnet?.id ?? res.chat[0]?.id ?? '');
+      setChatModel(preferred?.id ?? res.chat[0]?.id ?? '');
       setStep('modelos');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao validar chave.');
@@ -442,23 +482,31 @@ function ModelSelect({
 }): React.ReactElement {
   return (
     <div className="space-y-2">
-      <FieldLabel htmlFor={`select-${label}`}>{label}</FieldLabel>
-      <select
-        id={`select-${label}`}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="flex h-11 w-full rounded-xl border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15 transition-colors"
-        required
-      >
-        <option value="" disabled>
-          Selecionar…
-        </option>
-        {options.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.name || m.id}
-          </option>
-        ))}
-      </select>
+      <div className="flex items-center justify-between">
+        <FieldLabel htmlFor={`select-${label}`}>{label}</FieldLabel>
+        <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] tabular-nums">
+          {options.length} disponíveis
+        </span>
+      </div>
+      <Select value={value || undefined} onValueChange={onChange}>
+        <SelectTrigger id={`select-${label}`}>
+          <SelectValue placeholder="Selecionar modelo…" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((m) => (
+            <SelectItem key={m.id} value={m.id}>
+              <div className="flex flex-col py-0.5">
+                <span className="font-medium">{m.name || m.id}</span>
+                {m.name && m.name !== m.id && (
+                  <span className="text-[11px] font-mono text-[var(--color-app-muted)]">
+                    {m.id}
+                  </span>
+                )}
+              </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
