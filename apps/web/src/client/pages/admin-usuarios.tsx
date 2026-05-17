@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, X } from 'lucide-react';
+import { Check, ShieldCheck, X } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Skeleton } from '../components/ui/skeleton';
@@ -9,6 +9,7 @@ import { apiPost } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import type { AdminUser } from '../lib/types';
 import { formatRelative } from '../lib/format';
+import { AnimatedPage } from '../components/motion/animated-page';
 
 export function AdminUsuariosPage(): React.ReactElement {
   const { data, loading, refresh } = useFetch<{ users: AdminUser[] }>('/api/admin/usuarios');
@@ -39,122 +40,129 @@ export function AdminUsuariosPage(): React.ReactElement {
   const others = users.filter((u) => u.status !== 'PENDING');
 
   return (
-    <div className="px-8 py-10 mx-auto max-w-6xl space-y-8">
-      <header className="space-y-1">
-        <p className="text-xs uppercase tracking-wider text-zinc-500 font-medium">Administração</p>
-        <h1 className="text-3xl font-semibold tracking-tight">Usuários</h1>
-        <p className="text-sm text-zinc-400 mt-2">Aprove novos cadastros e gerencie permissões.</p>
-      </header>
+    <AnimatedPage>
+      <div className="px-8 py-12 mx-auto max-w-6xl space-y-10">
+        <header className="space-y-3">
+          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+            Administração
+          </div>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Usuários</h1>
+          <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
+            Aprove novos cadastros e gerencie permissões.
+          </p>
+        </header>
 
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold tracking-tight text-zinc-300">
-          Aguardando aprovação
-          {pending.length > 0 && (
-            <Badge variant="warning" className="ml-2">
-              {pending.length}
-            </Badge>
+        <section className="space-y-4">
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-300">
+            Aguardando aprovação
+            {pending.length > 0 && (
+              <Badge variant="warning" className="ml-2">
+                {pending.length}
+              </Badge>
+            )}
+          </h2>
+
+          {loading && <Skeleton className="h-32 w-full" />}
+
+          {!loading && pending.length === 0 && (
+            <Card>
+              <CardContent className="py-8 text-center text-sm text-zinc-500">
+                Nenhum cadastro pendente.
+              </CardContent>
+            </Card>
           )}
-        </h2>
 
-        {loading && <Skeleton className="h-32 w-full" />}
-
-        {!loading && pending.length === 0 && (
-          <Card>
-            <CardContent className="py-8 text-center text-sm text-zinc-500">
-              Nenhum cadastro pendente.
-            </CardContent>
-          </Card>
-        )}
-
-        {!loading && pending.length > 0 && (
-          <Card>
-            <ul className="divide-y divide-zinc-800/80">
-              {pending.map((u) => (
-                <li
-                  key={u.id}
-                  className="flex items-center gap-4 px-5 py-4 hover:bg-zinc-900/40 transition-colors"
-                >
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium text-zinc-100">{u.name}</span>
-                      <span className="text-sm text-zinc-500">{u.email}</span>
+          {!loading && pending.length > 0 && (
+            <Card>
+              <ul className="divide-y divide-zinc-800/80">
+                {pending.map((u) => (
+                  <li
+                    key={u.id}
+                    className="flex items-center gap-4 px-5 py-4 hover:bg-zinc-900/40 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-3">
+                        <span className="font-medium text-zinc-100">{u.name}</span>
+                        <span className="text-sm text-zinc-500">{u.email}</span>
+                      </div>
+                      <p className="text-xs text-zinc-500">
+                        Cadastrou-se {formatRelative(new Date(u.createdAt))}
+                      </p>
                     </div>
-                    <p className="text-xs text-zinc-500">
-                      Cadastrou-se {formatRelative(new Date(u.createdAt))}
-                    </p>
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={pendingId === u.id}
-                      onClick={() => reject(u.id)}
-                    >
-                      {pendingId === u.id ? <Spinner /> : <X className="h-3.5 w-3.5" />}
-                      Recusar
-                    </Button>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      disabled={pendingId === u.id}
-                      onClick={() => approve(u.id)}
-                    >
-                      {pendingId === u.id ? <Spinner /> : <Check className="h-3.5 w-3.5" />}
-                      Aprovar
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        )}
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold tracking-tight text-zinc-300">Todos os usuários</h2>
-
-        {!loading && others.length === 0 && (
-          <Card>
-            <CardContent className="py-8 text-center text-sm text-zinc-500">
-              Você é o primeiro usuário do sistema.
-            </CardContent>
-          </Card>
-        )}
-
-        {!loading && others.length > 0 && (
-          <Card>
-            <ul className="divide-y divide-zinc-800/80">
-              {others.map((u) => (
-                <li
-                  key={u.id}
-                  className="flex items-center gap-4 px-5 py-4 hover:bg-zinc-900/40 transition-colors"
-                >
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="font-medium text-zinc-100">{u.name}</span>
-                      <span className="text-sm text-zinc-500">{u.email}</span>
-                      {u.role === 'ADMIN' && (
-                        <Badge variant="success" className="text-[10px]">
-                          Admin
-                        </Badge>
-                      )}
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={pendingId === u.id}
+                        onClick={() => reject(u.id)}
+                      >
+                        {pendingId === u.id ? <Spinner /> : <X className="h-3.5 w-3.5" />}
+                        Recusar
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        disabled={pendingId === u.id}
+                        onClick={() => approve(u.id)}
+                      >
+                        {pendingId === u.id ? <Spinner /> : <Check className="h-3.5 w-3.5" />}
+                        Aprovar
+                      </Button>
                     </div>
-                    <p className="text-xs text-zinc-500">
-                      {u.status === 'APPROVED' && u.approvedAt
-                        ? `Aprovado ${formatRelative(new Date(u.approvedAt))}`
-                        : u.status === 'REJECTED'
-                          ? 'Cadastro recusado'
-                          : 'Desativado'}
-                    </p>
-                  </div>
-                  <StatusBadge status={u.status} />
-                </li>
-              ))}
-            </ul>
-          </Card>
-        )}
-      </section>
-    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-300">Todos os usuários</h2>
+
+          {!loading && others.length === 0 && (
+            <Card>
+              <CardContent className="py-8 text-center text-sm text-zinc-500">
+                Você é o primeiro usuário do sistema.
+              </CardContent>
+            </Card>
+          )}
+
+          {!loading && others.length > 0 && (
+            <Card>
+              <ul className="divide-y divide-zinc-800/80">
+                {others.map((u) => (
+                  <li
+                    key={u.id}
+                    className="flex items-center gap-4 px-5 py-4 hover:bg-zinc-900/40 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="font-medium text-zinc-100">{u.name}</span>
+                        <span className="text-sm text-zinc-500">{u.email}</span>
+                        {u.role === 'ADMIN' && (
+                          <Badge variant="success" className="text-[10px]">
+                            Admin
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-zinc-500">
+                        {u.status === 'APPROVED' && u.approvedAt
+                          ? `Aprovado ${formatRelative(new Date(u.approvedAt))}`
+                          : u.status === 'REJECTED'
+                            ? 'Cadastro recusado'
+                            : 'Desativado'}
+                      </p>
+                    </div>
+                    <StatusBadge status={u.status} />
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+        </section>
+      </div>
+    </AnimatedPage>
   );
 }
 

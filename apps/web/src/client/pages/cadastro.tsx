@@ -6,7 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Spinner } from '../components/ui/spinner';
-import { apiPost, ApiError } from '../lib/api';
+import { ApiError, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 
 export function CadastroPage(): React.ReactElement {
@@ -29,8 +29,6 @@ export function CadastroPage(): React.ReactElement {
     try {
       await apiPost('/api/auth/sign-up/email', { name, email, password });
       await refresh();
-      // autoSignIn=false → user precisa logar manualmente. Mas se foi o
-      // primeiro user (vira ADMIN), o login a seguir vai funcionar.
       navigate('/entrar', { state: { justSignedUp: true } });
     } catch (err) {
       if (err instanceof ApiError) {
@@ -44,16 +42,18 @@ export function CadastroPage(): React.ReactElement {
   }
 
   return (
-    <div className="w-full max-w-sm">
-      <div className="mb-8 space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Criar conta no Voxen</h1>
-        <p className="text-sm text-zinc-400 leading-relaxed">
+    <div className="w-full max-w-sm space-y-8">
+      <div className="space-y-3">
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">
+          Criar conta no Voxen
+        </h1>
+        <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
           O primeiro cadastro vira administrador automaticamente. Os próximos ficam pendentes até
           serem aprovados.
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      <form onSubmit={onSubmit} className="space-y-5" noValidate>
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
@@ -98,18 +98,18 @@ export function CadastroPage(): React.ReactElement {
             minLength={12}
             required
           />
-          <p className="text-xs text-zinc-500 leading-relaxed">
+          <p className="text-xs text-[var(--color-app-muted)] leading-relaxed">
             Use uma senha forte — esta é a única forma de acessar sua workspace.
           </p>
         </div>
 
-        <Button type="submit" variant="primary" size="lg" className="w-full" disabled={loading}>
+        <Button type="submit" variant="primary" size="xl" className="w-full" disabled={loading}>
           {loading ? <Spinner /> : 'Criar conta'}
           {!loading && <ArrowRight className="h-4 w-4" />}
         </Button>
       </form>
 
-      <div className="mt-8 pt-6 border-t border-zinc-800/60 text-center text-sm text-zinc-400">
+      <div className="pt-6 border-t border-[var(--color-app-border)] text-center text-sm text-[var(--color-app-muted)]">
         Já tem conta?{' '}
         <Link
           to="/entrar"

@@ -1,13 +1,27 @@
 import * as React from 'react';
 import { cn } from '../../lib/utils';
 
-export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** elevated = leve gradient interno (top → bottom) */
+  elevated?: boolean;
+  /** hoverable = pequeno lift + border destacada no hover */
+  hoverable?: boolean;
+  /** glow = sombra colorida sutil (use raramente, em destaque) */
+  glow?: 'emerald' | 'violet' | null;
+}
+
+export const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, elevated, hoverable, glow, ...props }, ref) => (
     <div
       ref={ref}
       className={cn(
-        'rounded-xl border border-zinc-800 bg-zinc-900/40 text-zinc-100',
-        'transition-colors duration-150 ease-out',
+        'rounded-2xl text-zinc-100 transition-all duration-300 ease-out',
+        elevated
+          ? 'border border-[var(--color-app-border)] bg-gradient-to-b from-[oklch(30%_0.006_250/0.7)] to-[var(--color-app-surface)]'
+          : 'border border-[var(--color-app-border)] bg-[var(--color-app-surface)]',
+        hoverable && 'hover:border-[var(--color-app-border-strong)] hover:-translate-y-0.5',
+        glow === 'emerald' && 'glow-emerald',
+        glow === 'violet' && 'glow-violet',
         className,
       )}
       {...props}
@@ -35,7 +49,11 @@ export const CardDescription = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, ...props }, ref) => (
-  <p ref={ref} className={cn('text-sm text-zinc-400 leading-relaxed', className)} {...props} />
+  <p
+    ref={ref}
+    className={cn('text-sm text-[var(--color-app-muted)] leading-relaxed', className)}
+    {...props}
+  />
 ));
 CardDescription.displayName = 'CardDescription';
 

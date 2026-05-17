@@ -6,7 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Spinner } from '../components/ui/spinner';
-import { apiPost, ApiError } from '../lib/api';
+import { ApiError, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 
 export function LoginPage(): React.ReactElement {
@@ -39,15 +39,15 @@ export function LoginPage(): React.ReactElement {
   }
 
   return (
-    <div className="w-full max-w-sm">
-      <div className="mb-8 space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Entrar no Voxen</h1>
-        <p className="text-sm text-zinc-400 leading-relaxed">
+    <div className="w-full max-w-sm space-y-8">
+      <div className="space-y-3">
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">Entrar no Voxen</h1>
+        <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
           Acesse sua knowledge base de vídeos transcritos.
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      <form onSubmit={onSubmit} className="space-y-5" noValidate>
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
@@ -74,20 +74,20 @@ export function LoginPage(): React.ReactElement {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Mínimo 12 caracteres"
+            placeholder="••••••••••••"
             autoComplete="current-password"
             minLength={12}
             required
           />
         </div>
 
-        <Button type="submit" variant="primary" size="lg" className="w-full" disabled={loading}>
+        <Button type="submit" variant="primary" size="xl" className="w-full" disabled={loading}>
           {loading ? <Spinner /> : 'Entrar'}
           {!loading && <ArrowRight className="h-4 w-4" />}
         </Button>
       </form>
 
-      <div className="mt-8 pt-6 border-t border-zinc-800/60 text-center text-sm text-zinc-400">
+      <div className="pt-6 border-t border-[var(--color-app-border)] text-center text-sm text-[var(--color-app-muted)]">
         Ainda não tem conta?{' '}
         <Link
           to="/cadastro"

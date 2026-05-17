@@ -1,39 +1,47 @@
 @import 'tailwindcss';
 
 /* ============================================================================
-   Voxen — Design tokens
+   Voxen — Design system com personalidade
    ----------------------------------------------------------------------------
-   Filosofia:
-   - zinc puro como base; sem gradientes, sem glassmorphism
-   - acentos somente em estados (emerald=ok, red=erro, amber=atenção)
-   - bordas finas 1px; sombras quase nulas; raios moderados (8/10/12px)
-   - tipografia Inter (UI) e JetBrains Mono (código/timestamps)
-   - movimento sutil: 150ms ease-out
+   - Cinza neutro elevado (não preto) com viés azulado sutil
+   - Duas tintas de acento: emerald (vida/ok) + violet (foco/destaque)
+   - Mesh gradient ambiente + noise overlay para textura
+   - Tipografia: Bricolage Grotesque (display) + Inter (UI) + JetBrains Mono
+   - Movimento: spring discreto via Motion (lib motion.dev)
    ============================================================================ */
 
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  --color-app-bg: oklch(14.5% 0 0);
+  /* Tons de cinza com leve azul (mais frio + premium que zinc puro) */
+  --color-app-bg: oklch(22% 0.005 250);
+  --color-app-bg-elevated: oklch(25% 0.005 250);
+  --color-app-surface: oklch(27.5% 0.006 250);
+  --color-app-surface-hover: oklch(31% 0.007 250);
+  --color-app-border: oklch(34% 0.008 250);
+  --color-app-border-strong: oklch(42% 0.01 250);
+
   --color-app-fg: oklch(98.5% 0 0);
-  --color-app-muted: oklch(63% 0 0);
-  --color-app-subtle: oklch(70% 0 0);
-  --color-app-border: oklch(27% 0 0);
-  --color-app-border-strong: oklch(33% 0 0);
-  --color-app-surface: oklch(17.5% 0 0);
-  --color-app-surface-hover: oklch(21% 0 0);
-  --color-app-accent: oklch(73% 0.16 159);
-  --color-app-accent-fg: oklch(20% 0.04 159);
-  --color-app-danger: oklch(64% 0.21 24);
-  --color-app-warn: oklch(78% 0.16 78);
+  --color-app-muted: oklch(68% 0.008 250);
+  --color-app-subtle: oklch(78% 0.005 250);
+
+  /* Acentos */
+  --color-accent-emerald: oklch(73% 0.16 159);
+  --color-accent-emerald-soft: oklch(73% 0.16 159 / 0.18);
+  --color-accent-violet: oklch(72% 0.18 290);
+  --color-accent-violet-soft: oklch(72% 0.18 290 / 0.2);
+  --color-accent-amber: oklch(80% 0.16 78);
+  --color-accent-rose: oklch(70% 0.2 18);
 
   --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @layer base {
@@ -50,6 +58,39 @@
     color: var(--color-app-fg);
     font-feature-settings: 'cv11', 'ss01', 'ss03';
     letter-spacing: -0.01em;
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* Mesh gradient ambiente — leve, atrás de tudo */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 15% 0%, oklch(72% 0.18 290 / 0.08), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 85% 100%, oklch(73% 0.16 159 / 0.06), transparent 60%),
+      radial-gradient(ellipse 70% 50% at 50% 50%, oklch(28% 0.005 250 / 0.5), transparent 70%);
+  }
+
+  /* Noise grain — dá calor à imagem */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.025;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
   }
 
   * {
@@ -57,7 +98,7 @@
   }
 
   ::selection {
-    background: oklch(73% 0.16 159 / 0.25);
+    background: oklch(72% 0.18 290 / 0.3);
     color: var(--color-app-fg);
   }
 
@@ -70,24 +111,29 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: oklch(27% 0 0);
+    background: var(--color-app-border);
     border-radius: 999px;
     border: 2px solid var(--color-app-bg);
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: oklch(35% 0 0);
+    background: var(--color-app-border-strong);
   }
 
-  /* Focus ring consistente — usar em qualquer elemento interativo */
+  /* Focus ring elegante */
   :where(button, a, input, textarea, select, [role='button']):focus-visible {
-    outline: 2px solid oklch(73% 0.16 159 / 0.55);
+    outline: 2px solid oklch(72% 0.18 290 / 0.6);
     outline-offset: 2px;
     border-radius: 4px;
   }
 
   /* Tipografia base */
   h1,
-  h2,
+  h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.03em;
+    font-weight: 600;
+    font-optical-sizing: auto;
+  }
   h3,
   h4 {
     letter-spacing: -0.025em;
@@ -96,13 +142,101 @@
 }
 
 @layer utilities {
+  /* Surfaces com borda gradiente sutil (técnica: pseudo + linear) */
   .surface {
     background: var(--color-app-surface);
     border: 1px solid var(--color-app-border);
+    border-radius: var(--radius-lg);
+    position: relative;
   }
-  .surface-hover:hover {
-    background: var(--color-app-surface-hover);
+  .surface-elevated {
+    background: linear-gradient(
+      180deg,
+      oklch(30% 0.006 250 / 0.6) 0%,
+      var(--color-app-surface) 100%
+    );
+    border: 1px solid var(--color-app-border);
+    border-radius: var(--radius-lg);
   }
+
+  /* Borda gradiente animável (truque conic) */
+  .gradient-border {
+    position: relative;
+    background: var(--color-app-surface);
+    border-radius: var(--radius-lg);
+  }
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: conic-gradient(
+      from 0deg,
+      oklch(72% 0.18 290 / 0.4),
+      oklch(73% 0.16 159 / 0.3),
+      oklch(34% 0.008 250),
+      oklch(34% 0.008 250),
+      oklch(72% 0.18 290 / 0.4)
+    );
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 300ms var(--ease-out);
+  }
+  .gradient-border:hover::before {
+    opacity: 1;
+  }
+
+  /* Texturas de glow direcionado */
+  .glow-emerald {
+    box-shadow:
+      0 0 0 1px oklch(73% 0.16 159 / 0.18),
+      0 8px 32px -8px oklch(73% 0.16 159 / 0.25);
+  }
+  .glow-violet {
+    box-shadow:
+      0 0 0 1px oklch(72% 0.18 290 / 0.2),
+      0 8px 32px -8px oklch(72% 0.18 290 / 0.3);
+  }
+
+  /* Texto com gradiente sutil (uso esparso, só em h1 hero) */
+  .text-gradient {
+    background: linear-gradient(180deg, oklch(98.5% 0 0) 0%, oklch(78% 0.005 250) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Highlight emerald no texto (uso em palavras-chave) */
+  .text-emerald-accent {
+    color: var(--color-accent-emerald);
+  }
+  .text-violet-accent {
+    color: var(--color-accent-violet);
+  }
+
+  /* Shimmer skeleton (movimento horizontal) */
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+    background: var(--color-app-surface);
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, oklch(40% 0.008 250 / 0.4), transparent);
+    animation: shimmer-slide 1.6s ease-in-out infinite;
+  }
+  @keyframes shimmer-slide {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  /* Tipografia ajudante */
   .text-muted {
     color: var(--color-app-muted);
   }
@@ -110,18 +244,58 @@
     color: var(--color-app-subtle);
   }
 
-  /* Animação sutil de entrada (usar com data-state=open) */
+  /* Animação de entrada (caso queira sem motion lib) */
   .anim-in {
-    animation: voxen-in 180ms var(--ease-out);
+    animation: voxen-in 220ms var(--ease-out);
   }
   @keyframes voxen-in {
     from {
       opacity: 0;
-      transform: translateY(-2px);
+      transform: translateY(-4px) scale(0.99);
     }
     to {
       opacity: 1;
-      transform: translateY(0);
+      transform: translateY(0) scale(1);
     }
   }
+
+  /* Pulse violet (status "ao vivo") */
+  .pulse-dot {
+    position: relative;
+  }
+  .pulse-dot::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    animation: pulse-ring 2s ease-out infinite;
+    opacity: 0.6;
+  }
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(1);
+      opacity: 0.6;
+    }
+    100% {
+      transform: scale(2.5);
+      opacity: 0;
+    }
+  }
+}
+
+/* ============================================================================
+   Prose para a transcrição (.md viewer)
+   ============================================================================ */
+.prose-voxen {
+  font-size: 0.95rem;
+  line-height: 1.75;
+  color: var(--color-app-subtle);
+}
+.prose-voxen p {
+  margin-bottom: 0.75rem;
+}
+.prose-voxen a {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
