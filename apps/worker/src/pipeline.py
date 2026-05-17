@@ -14,7 +14,7 @@ import botocore.exceptions
 import structlog
 import yt_dlp.utils
 
-from . import db, events, storage, voxen_settings, ytdl
+from . import db, events, storage, summarize, voxen_settings, ytdl
 from .audio_chunking import AudioChunk, split_audio
 from .cancellation import CancelledException, clear_cancelled, is_cancelled
 from .openrouter import (
@@ -161,10 +161,67 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_done(job_id, new_transcript_id)
+
+    # Resumo via IA — best-effort, não bloqueia entrega.
+    await _maybe_generate_summary(
+        user_id=user_id,
+        transcript_id=new_transcript_id,
+        job_id=job_id,
+        log=log,
+    )
+
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
     log.info("job-done", transcript_id=new_transcript_id)
+
+
+async def _maybe_generate_summary(
+    *, user_id: str, transcript_id: str, job_id: str, log: Any  # noqa: ANN401
+) -> None:
+    """Gera summaryMd via OpenRouter; falhas viram warning, não erro."""
+    try:
+        api_key = await voxen_settings.get_openrouter_api_key()
+        chat_model = await voxen_settings.get_default_chat_model()
+        if not api_key or not chat_model:
+            log.info("summary-skipped-no-config")
+            return
+        async with db.connection() as conn:
+            row = await conn.fetchrow(
+                'SELECT title, "plainText" FROM "Transcript" WHERE id = $1',
+                transcript_id,
+            )
+        if not row or not row["plainText"]:
+            log.info("summary-skipped-empty-text")
+            return
+        summary_md, tokens, _ = await summarize.generate_summary(
+            plain_text=row["plainText"],
+            title=row["title"],
+            api_key=api_key,
+            model=chat_model,
+        )
+        if not summary_md:
+            log.info("summary-empty")
+            return
+        await db.update_transcript_summary(transcript_id, summary_md)
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="CHAT",
+            model=chat_model,
+            tokens_in=tokens["tokens_in"],
+            tokens_out=tokens["tokens_out"],
+            cost_usd=Decimal("0"),
+            job_id=job_id,
+            meta={"source": "transcript_summary", "transcript_id": transcript_id},
+        )
+        log.info(
+            "summary-done",
+            transcript_id=transcript_id,
+            tokens_in=tokens["tokens_in"],
+            tokens_out=tokens["tokens_out"],
+        )
+    except Exception:  # noqa: BLE001 — resumo é melhoria, não bloqueia
+        log.exception("summary-failed", transcript_id=transcript_id)
 
 
 async def _transcribe_via_api(

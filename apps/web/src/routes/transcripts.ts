@@ -159,6 +159,7 @@ transcriptsRoutes.get('/:id', async (c) => {
       costUsd: true,
       mdPath: true,
       plainText: true,
+      summaryMd: true,
       frontmatter: true,
       createdAt: true,
     },
@@ -185,4 +186,41 @@ transcriptsRoutes.get('/:id', async (c) => {
   }
 
   return c.json({ transcript, markdown });
+});
+
+// POST /api/transcripts/:id/summary — regenerar resumo via chat service.
+transcriptsRoutes.post('/:id/summary', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId },
+    select: { id: true, title: true, plainText: true },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+  if (!transcript.plainText?.trim()) {
+    return c.json({ error: 'Transcrição sem texto para resumir.' }, 422);
+  }
+
+  const upstreamUrl =
+    (process.env.CHAT_SERVICE_URL ?? 'http://chat:8001') + '/summarize-transcript';
+  const upstream = await fetch(upstreamUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Voxen-User-Id': userId,
+    },
+    body: JSON.stringify({
+      transcript_id: transcript.id,
+      title: transcript.title,
+      plain_text: transcript.plainText,
+    }),
+  });
+  const data = (await upstream.json().catch(() => ({}))) as {
+    summary_md?: string;
+    detail?: string;
+  };
+  if (!upstream.ok) {
+    return c.json({ error: data.detail ?? 'Falha ao gerar resumo.' }, upstream.status as 200);
+  }
+  return c.json({ summaryMd: data.summary_md ?? null });
 });

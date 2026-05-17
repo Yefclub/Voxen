@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
@@ -7,8 +8,11 @@ import {
   ExternalLink,
   FileText,
   Languages,
+  Loader2,
   Sparkles,
+  Wand2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -17,6 +21,7 @@ import { useFetch } from '../lib/hooks';
 import { formatDateTime, formatDuration, formatUsd } from '../lib/format';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { TranscriptViewer } from '../components/ui/transcript-viewer';
+import { Markdown } from '../components/ui/markdown';
 
 interface TranscriptDetail {
   id: string;
@@ -34,6 +39,7 @@ interface TranscriptDetail {
   costUsd: string | null;
   mdPath: string;
   plainText: string;
+  summaryMd: string | null;
   frontmatter: unknown;
   createdAt: string;
 }
@@ -45,7 +51,34 @@ interface ResponseBody {
 
 export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
-  const { data, loading } = useFetch<ResponseBody>(id ? `/api/transcripts/${id}` : null);
+  const { data, loading, refresh } = useFetch<ResponseBody>(
+    id ? `/api/transcripts/${id}` : null,
+  );
+  const [generating, setGenerating] = useState(false);
+
+  async function generateSummary(): Promise<void> {
+    if (!id) return;
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/transcripts/${id}/summary`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(body.error ?? 'Falha ao gerar resumo.');
+        return;
+      }
+      toast.success('Resumo gerado.');
+      refresh();
+    } catch (e) {
+      toast.error('Erro ao gerar resumo.', {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   if (loading || !data) {
     return (
@@ -114,13 +147,14 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         </motion.header>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-10">
-          {/* Coluna principal: transcrição */}
+          {/* Coluna principal: resumo + transcrição */}
           <motion.article
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.1 }}
-            className="min-w-0"
+            className="min-w-0 space-y-10"
           >
+            <SummaryBlock summary={t.summaryMd} generating={generating} onGenerate={() => void generateSummary()} />
             <TranscriptViewer markdown={data.markdown} />
           </motion.article>
 
@@ -167,6 +201,83 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         </div>
       </div>
     </AnimatedPage>
+  );
+}
+
+function SummaryBlock({
+  summary,
+  generating,
+  onGenerate,
+}: {
+  summary: string | null;
+  generating: boolean;
+  onGenerate: () => void;
+}): React.ReactElement {
+  if (!summary) {
+    return (
+      <Card elevated>
+        <CardContent className="py-8 px-6 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
+              <Wand2 className="h-4 w-4 text-violet-300" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-100">
+                Resumo do vídeo
+              </h2>
+              <p className="text-sm text-[var(--color-app-muted)]">
+                Use a IA para criar um resumo estruturado em markdown.
+              </p>
+            </div>
+            <Button onClick={onGenerate} disabled={generating} variant="primary" size="sm">
+              {generating ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Gerando…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Gerar resumo
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
+            <Wand2 className="h-3.5 w-3.5 text-violet-300" />
+          </div>
+          <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-100">
+            Resumo
+          </h2>
+        </div>
+        <Button onClick={onGenerate} disabled={generating} variant="ghost" size="sm">
+          {generating ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Regenerando…
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-3 w-3" />
+              Regenerar
+            </>
+          )}
+        </Button>
+      </div>
+      <Card elevated>
+        <CardContent className="px-6 py-5">
+          <Markdown>{summary}</Markdown>
+        </CardContent>
+      </Card>
+    </section>
   );
 }
 

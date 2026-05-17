@@ -279,6 +279,103 @@ async def voice_transcribe(
     return JSONResponse({"text": text})
 
 
+SUMMARIZE_PROMPT = """Você recebe a transcrição de um vídeo. Produza um RESUMO em markdown,
+em português brasileiro, estruturado assim:
+
+## TL;DR
+2-3 frases capturando a essência do vídeo.
+
+## Principais pontos
+- Lista de 4 a 8 bullets, cada um com a ideia central. Quando útil, cite o
+  trecho referenciando o minuto no formato `[mm:ss]` (ou `[hh:mm:ss]` se > 1h).
+
+## Conclusão
+Parágrafo curto com a mensagem principal ou take-away.
+
+REGRAS:
+- Não invente conteúdo. Só use o que está na transcrição.
+- Português direto, sem rodeios. Sem emojis.
+- Não adicione cabeçalho extra; comece direto pelo "## TL;DR"."""
+
+
+class SummarizeRequest(BaseModel):
+    transcript_id: str
+    title: str
+    plain_text: str
+
+
+@app.post("/summarize-transcript")
+async def summarize_transcript(
+    body: SummarizeRequest,
+    x_voxen_user_id: str | None = Header(default=None, alias="X-Voxen-User-Id"),
+) -> JSONResponse:
+    if not x_voxen_user_id:
+        raise HTTPException(status_code=401, detail="Header X-Voxen-User-Id ausente.")
+    api_key = await voxen_settings.get_openrouter_api_key()
+    if not api_key:
+        raise HTTPException(status_code=412, detail="Setup incompleto — chave OpenRouter ausente.")
+    model = await voxen_settings.get_default_chat_model()
+    if not model:
+        raise HTTPException(status_code=412, detail="Setup incompleto — modelo de chat ausente.")
+
+    text = body.plain_text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Texto vazio.")
+    if len(text) > 60_000:
+        text = text[:60_000] + "\n\n[…transcrição truncada para resumo…]"
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SUMMARIZE_PROMPT},
+            {
+                "role": "user",
+                "content": f"Título do vídeo: {body.title}\n\nTranscrição:\n\n{text}",
+            },
+        ],
+        "stream": False,
+    }
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        res = await client.post(
+            f"{OR_BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json=payload,
+        )
+    if res.status_code >= 400:
+        log.warning("summarize-failed", status=res.status_code, body=res.text[:200])
+        raise HTTPException(status_code=502, detail=f"OpenRouter {res.status_code}.")
+
+    data = res.json()
+    summary = ((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
+    usage = data.get("usage") or {}
+    tokens_in = int(usage.get("prompt_tokens") or 0)
+    tokens_out = int(usage.get("completion_tokens") or 0)
+
+    if summary:
+        try:
+            async with db.connection() as conn:
+                await conn.execute(
+                    'UPDATE "Transcript" SET "summaryMd" = $2, "updatedAt" = NOW() '
+                    'WHERE id = $1 AND "userId" = $3',
+                    body.transcript_id, summary, x_voxen_user_id,
+                )
+        except Exception:  # noqa: BLE001
+            log.exception("summary-persist-failed")
+        try:
+            await db.insert_cost_event(
+                user_id=x_voxen_user_id,
+                model=model,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=Decimal("0"),
+                meta={"source": "transcript_summary", "transcript_id": body.transcript_id},
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("summary-cost-event-failed")
+
+    return JSONResponse({"summary_md": summary})
+
+
 def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 

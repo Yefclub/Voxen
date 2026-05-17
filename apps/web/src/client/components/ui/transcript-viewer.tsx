@@ -1,11 +1,11 @@
-import { useMemo } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Check, Copy, ExternalLink } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 
 /**
- * Texto contínuo da transcrição. Cada segmento é um <span> que mostra um
- * tooltip Radix (posicionamento via Floating UI) com a minutagem clicável
- * ao passar o mouse — abre o YouTube no segundo exato.
+ * Texto contínuo da transcrição. Cada segmento é um <a> clicável (abre o vídeo
+ * no segundo exato) e mostra um tooltip com o timestamp ao passar o mouse.
+ * O segmento inteiro é o gatilho de clique — usuário não precisa mirar no chip.
  */
 
 interface Segment {
@@ -16,8 +16,41 @@ interface Segment {
 
 export function TranscriptViewer({ markdown }: { markdown: string }): React.ReactElement {
   const segments = useMemo(() => parseSegments(markdown), [markdown]);
+  const [copied, setCopied] = useState(false);
+  const plainText = useMemo(() => segments.map((s) => s.text).join(' '), [segments]);
+
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(plainText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignora
+    }
+  }
+
   return (
     <TooltipProvider delayDuration={120} skipDelayDuration={300}>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-200">
+          Transcrição
+        </h2>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="flex items-center gap-1.5 text-[11px] text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors px-2.5 py-1.5 rounded-md border border-[var(--color-app-border)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface)]"
+        >
+          {copied ? (
+            <>
+              <Check className="h-3 w-3 text-emerald-400" /> Copiado
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" /> Copiar tudo
+            </>
+          )}
+        </button>
+      </div>
       <article className="prose-voxen">
         <p className="leading-[1.85] text-[15.5px] text-[var(--color-app-subtle)] text-pretty">
           {segments.map((seg, i) => (
@@ -30,16 +63,29 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
 }
 
 function SegmentSpan({ seg }: { seg: Segment }): React.ReactElement {
+  const content = (
+    <span className="rounded-sm transition-colors duration-150 hover:bg-violet-500/[0.14] hover:text-zinc-100 focus:outline-none focus-visible:bg-violet-500/[0.18] focus-visible:text-zinc-100">
+      {seg.text}
+    </span>
+  );
   return (
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span
-            tabIndex={0}
-            className="rounded-sm transition-colors duration-150 hover:bg-violet-500/[0.12] hover:text-zinc-100 focus:outline-none focus-visible:bg-violet-500/[0.18] focus-visible:text-zinc-100 cursor-default"
-          >
-            {seg.text}
-          </span>
+          {seg.link ? (
+            <a
+              href={seg.link}
+              target="_blank"
+              rel="noreferrer"
+              className="cursor-pointer no-underline text-inherit"
+            >
+              {content}
+            </a>
+          ) : (
+            <span tabIndex={0} className="cursor-default">
+              {content}
+            </span>
+          )}
         </TooltipTrigger>
         <TooltipContent side="top" align="center" className="p-0">
           {seg.link ? (
