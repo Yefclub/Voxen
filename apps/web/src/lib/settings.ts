@@ -33,7 +33,12 @@ export type GlobalSettingKey =
   | 'admin_email'
   // Opcional: timeout (segundos) da chamada de summarize-transcript no chat
   // service. Default 90s. Útil pra textos muito longos ou modelos lentos.
-  | 'summary_timeout_sec';
+  | 'summary_timeout_sec'
+  // MCP server token (formato `<userId>:<token>`). Endpoint /mcp aceita
+  // Bearer <token> e mapeia pro userId. Apenas 1 token por instância no MVP.
+  | 'mcp_api_token'
+  // Telegram bot token (cifrado). Quando setado, worker telegram conecta.
+  | 'telegram_bot_token';
 
 export async function getSetting(key: GlobalSettingKey): Promise<string | null> {
   const row = await db.setting.findFirst({
