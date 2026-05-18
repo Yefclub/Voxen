@@ -240,9 +240,9 @@ async def chat(
         messages: list[dict[str, Any]] = msg_list
 
         # === Compactação de memória ===
-        # Se a conversa está perto do limite do modelo (>= 80%), gera um
+        # Se a conversa está perto do limite do modelo (>= 70%), gera um
         # resumo detalhado e substitui as mensagens antigas por ele.
-        # Emite eventos SSE pra UI mostrar progresso.
+        # Emite eventos SSE pra UI mostrar progresso/falhas.
         from .compaction import maybe_compact_messages
         from .token_limits import estimate_messages_tokens, get_context_limit
 
@@ -261,17 +261,29 @@ async def chat(
             messages=messages,
         )
         if compact_info:
-            messages = compacted
-            yield _sse(
-                "compaction_done",
-                {
-                    "summary": compact_info["summary"],
-                    "tokens_before": compact_info["tokens_before"],
-                    "tokens_after": compact_info["tokens_after"],
-                    "limit": compact_info["limit"],
-                    "cost_usd": compact_info["cost_usd"],
-                },
-            )
+            if compact_info.get("triggered"):
+                messages = compacted
+                yield _sse(
+                    "compaction_done",
+                    {
+                        "summary": compact_info["summary"],
+                        "tokens_before": compact_info["tokens_before"],
+                        "tokens_after": compact_info["tokens_after"],
+                        "limit": compact_info["limit"],
+                        "cost_usd": compact_info["cost_usd"],
+                    },
+                )
+            else:
+                # Compactação tentada mas falhou — UI avisa user que próxima
+                # resposta pode estourar contexto.
+                yield _sse(
+                    "compaction_failed",
+                    {
+                        "error": compact_info.get("error", "Falha desconhecida."),
+                        "tokens_before": compact_info["tokens_before"],
+                        "limit": compact_info["limit"],
+                    },
+                )
         # === Fim compactação ===
 
         extra: dict[str, Any] = {}

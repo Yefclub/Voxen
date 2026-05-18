@@ -45,7 +45,11 @@ MODEL_CONTEXT_LIMITS: dict[str, int] = {
 }
 
 DEFAULT_LIMIT = 32_000
-DEFAULT_THRESHOLD = 0.80  # auto-compacta em 80% do contexto
+# Threshold deliberadamente conservador: 70% deixa ~30% de headroom para
+# tool loops (MAX_TOOL_LOOPS=5 no main.py) que injetam resultados grandes
+# (read_transcript pode trazer 5k+ tokens por chamada) + a resposta final
+# em streaming. 80% estoura na prática quando o agente encadeia tools.
+DEFAULT_THRESHOLD = 0.70
 
 
 def get_context_limit(model: str) -> int:

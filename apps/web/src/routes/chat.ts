@@ -205,7 +205,12 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
 
   const conv = await db.conversation.findFirst({
     where: { id, userId: uid },
-    include: { messages: { orderBy: { createdAt: 'asc' } } },
+    include: {
+      messages: {
+        orderBy: { createdAt: 'asc' },
+        where: { compactedAt: null },
+      },
+    },
   });
   if (!conv) return c.json({ error: 'Conversa não encontrada.' }, 404);
 

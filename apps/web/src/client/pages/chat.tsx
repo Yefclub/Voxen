@@ -104,10 +104,12 @@ export function ChatPage(): React.ReactElement {
           thinking: boolean;
           updatedAt: string;
           createdAt: string;
+          compactionCount?: number;
         };
         messages: {
           id: string;
-          role: 'user' | 'assistant';
+          role: 'user' | 'assistant' | 'system';
+          kind?: 'NORMAL' | 'COMPACTION_SUMMARY';
           content: string;
           tools?: unknown;
           createdAt: string;
@@ -122,13 +124,31 @@ export function ChatPage(): React.ReactElement {
         messageCount: data.messages.length,
       });
       setThinking(data.conversation.thinking);
+      // Mensagens role=system kind=COMPACTION_SUMMARY são meta — não viram bubble.
+      // A mais recente alimenta `lastCompaction` pra o botão "Ver resumo".
+      const summaries = data.messages.filter((m) => m.kind === 'COMPACTION_SUMMARY');
+      const latestSummary = summaries[summaries.length - 1];
+      if (latestSummary) {
+        setLastCompaction({
+          summary: latestSummary.content,
+          tokens_before: 0,
+          tokens_after: 0,
+          limit: 0,
+          cost_usd: '0',
+        });
+      } else {
+        setLastCompaction(null);
+      }
       setMessages(
-        data.messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
-        })),
+        data.messages
+          .filter((m) => m.kind !== 'COMPACTION_SUMMARY')
+          .map((m) => ({
+            id: m.id,
+            role: m.role,
+            kind: m.kind,
+            content: m.content,
+            tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
+          })),
       );
     },
     [navigate],
@@ -316,6 +336,14 @@ export function ChatPage(): React.ReactElement {
                 label: 'Ver resumo',
                 onClick: () => setCompactionModalOpen(true),
               },
+            });
+          } else if (ev === 'compaction_failed') {
+            // Tentou compactar mas falhou — provavelmente vai estourar contexto
+            // na próxima chamada ao modelo. Avisa o user.
+            toast.warning('Não consegui compactar a memória.', {
+              description:
+                (payload.error as string) ??
+                'Sua próxima resposta pode falhar por exceder o limite do modelo.',
             });
           }
         }

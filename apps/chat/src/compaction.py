@@ -78,12 +78,13 @@ async def maybe_compact_messages(
     messages: list[dict[str, Any]],
     threshold: float = DEFAULT_THRESHOLD,
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
-    """Decide se compacta. Retorna (mensagens_pra_or, info_compaction).
+    """Decide se compacta. Retorna (mensagens_pra_or, info).
 
     - mensagens_pra_or: lista que vai ser enviada ao modelo (possivelmente já
       compactada — substituiu mensagens antigas pelo resumo).
-    - info_compaction: dict com {triggered, summary, tokens_before, tokens_after,
-      cost_usd} ou None se não compactou.
+    - info: dict com `triggered=True` + métricas quando compactou,
+      `triggered=False, error="..."` quando tentou e falhou, ou `None`
+      quando nem tentou (abaixo do threshold).
     """
     tokens_before = estimate_messages_tokens(messages)
     if not should_compact(tokens_before, model, threshold):
@@ -92,7 +93,12 @@ async def maybe_compact_messages(
         # Sem conversation persistente não dá pra marcar mensagens como
         # compactadas — apenas seguimos (modelo pode estourar).
         log.warning("compaction-skipped-no-conv-id")
-        return messages, None
+        return messages, {
+            "triggered": False,
+            "error": "Sem conversa persistente.",
+            "tokens_before": tokens_before,
+            "limit": get_context_limit(model),
+        }
 
     # Separa: [system] + [old...] + [recent]
     # system prompt é a primeira mensagem (role=system). Vai junto sempre.
@@ -106,7 +112,12 @@ async def maybe_compact_messages(
             messages=len(chat_msgs),
             tokens=tokens_before,
         )
-        return messages, None
+        return messages, {
+            "triggered": False,
+            "error": "Conversa muito curta para compactar.",
+            "tokens_before": tokens_before,
+            "limit": get_context_limit(model),
+        }
 
     old = chat_msgs[:-K_KEEP_RECENT]
     recent = chat_msgs[-K_KEEP_RECENT:]
@@ -137,12 +148,22 @@ async def maybe_compact_messages(
         )
     except Exception as e:  # noqa: BLE001
         log.exception("compaction-failed", error=str(e))
-        return messages, None
+        return messages, {
+            "triggered": False,
+            "error": "Falha ao chamar o modelo para compactação.",
+            "tokens_before": tokens_before,
+            "limit": get_context_limit(model),
+        }
 
     summary = (resp.choices[0].message.content or "").strip()
     if not summary:
         log.warning("compaction-empty-summary")
-        return messages, None
+        return messages, {
+            "triggered": False,
+            "error": "Modelo retornou resumo vazio.",
+            "tokens_before": tokens_before,
+            "limit": get_context_limit(model),
+        }
 
     # Custo
     cost_usd = Decimal("0")
@@ -157,10 +178,15 @@ async def maybe_compact_messages(
     # Persiste o summary como ChatMessage SYSTEM kind=COMPACTION_SUMMARY +
     # marca as antigas como compactedAt (soft-delete pro contexto futuro).
     try:
-        await _persist_compaction(conversation_id, summary)
+        await _persist_compaction(conversation_id, user_id, summary)
     except Exception as e:  # noqa: BLE001
         log.exception("compaction-persist-failed", error=str(e))
-        return messages, None
+        return messages, {
+            "triggered": False,
+            "error": "Falha ao persistir resumo no DB.",
+            "tokens_before": tokens_before,
+            "limit": get_context_limit(model),
+        }
 
     # Registra custo
     try:
@@ -212,15 +238,32 @@ def _extract_text(content: Any) -> str:
     return str(content)
 
 
-async def _persist_compaction(conversation_id: str, summary: str) -> None:
+async def _persist_compaction(conversation_id: str, user_id: str, summary: str) -> None:
     """Insere o SYSTEM message + marca todas as outras (não compactadas
-    ainda) como compactadas. Executa em transação."""
+    ainda) como compactadas. Executa em transação.
+
+    Cruza `userId` em toda query como defesa em profundidade — o
+    `conversation_id` já chega validado pelo middleware do Node API, mas
+    se um caller futuro pular esse middleware, esta camada também impede
+    compactar conversa de outro user.
+    """
     import secrets
     import time
 
     new_id = f"c{format(int(time.time() * 1000), 'x')[-8:]}{secrets.token_hex(8)}"
     async with db.connection() as conn:
         async with conn.transaction():
+            # Valida que a conversa pertence ao user — se não, raise.
+            owner = await conn.fetchrow(
+                """
+                SELECT "userId" FROM "Conversation" WHERE id = $1
+                """,
+                conversation_id,
+            )
+            if owner is None or owner["userId"] != user_id:
+                raise PermissionError(
+                    f"conversation {conversation_id} not owned by {user_id}"
+                )
             # Cria a mensagem SYSTEM kind=COMPACTION_SUMMARY
             await conn.execute(
                 """
@@ -254,7 +297,8 @@ async def _persist_compaction(conversation_id: str, summary: str) -> None:
                 UPDATE "Conversation"
                 SET "compactionCount" = "compactionCount" + 1,
                     "updatedAt" = NOW()
-                WHERE id = $1
+                WHERE id = $1 AND "userId" = $2
                 """,
                 conversation_id,
+                user_id,
             )
