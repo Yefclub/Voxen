@@ -183,7 +183,8 @@ Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo �
 4. **Abrir PR contra `dev`**: `gh pr create --base dev`. Título + corpo em PT-BR, sem emojis, sem rodapés de IA. Conventional commits no título (em inglês): `feat(scope):`, `fix(scope):`, `chore(scope):`, `docs(scope):`, `refactor(scope):`.
 5. **Monitorar CI até verde**: `gh pr checks <num> --watch`. Se vermelho, investigar e corrigir antes de prosseguir.
 6. **Disparar agente Opus 4.7 (skill `review-pr`)** em background pra revisar diffs, segurança, escopo.
-7. **Se CI verde + review APROVADO (com ou sem ressalvas) → MERGEAR sozinho** via `gh pr merge <num> --squash --delete-branch`. O critério é objetivo (CI verde + veredito do agente), não pede intervenção humana. **Esperar confirmação aqui é violar o fluxo.** Exceção: review retornou "MUDANÇAS NECESSÁRIAS" → corrige antes de mergear. PR de release (`dev→main`) sim aguarda owner. Depois → volta pro passo 1.
+7. **Se CI verde + review APROVADO (com ou sem ressalvas) → MERGEAR sozinho** via `gh pr merge <num> --squash --delete-branch`. O critério é objetivo (CI verde + veredito do agente), não pede intervenção humana. **Esperar confirmação aqui é violar o fluxo.** Exceção: review retornou "MUDANÇAS NECESSÁRIAS" → corrige antes de mergear. PR de release (`dev→main`) sim aguarda owner.
+8. **Pós-merge OBRIGATÓRIO** — `git fetch && git checkout dev && git pull --ff-only` + `docker compose build <serviços-afetados>` + `docker compose up -d <serviços>`. Owner roda na VM 192.168.22.252; se o ambiente local não atualizar, o GitHub diverge do que owner vê. Skipa só PRs docs-only (que não mudam runtime). Depois → volta pro passo 1.
 
 ### Regras inegociáveis
 
