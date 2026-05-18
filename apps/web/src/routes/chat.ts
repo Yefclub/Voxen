@@ -15,6 +15,8 @@ import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { rateLimit } from '../lib/rate-limit';
+import { getSetting } from '../lib/settings';
+import { estimateMessagesTokens, getContextLimit } from '../lib/token-estimate';
 
 // Limites do endpoint /voice — limite Whisper da OpenAI é 25 MB;
 // allowlist cobre formatos que MediaRecorder produz nos browsers.
@@ -123,6 +125,15 @@ chatRoutes.get('/conversations/:id', async (c) => {
     },
   });
   if (!conv) return c.json({ error: 'Conversa não encontrada.' }, 404);
+  // Estimativa de uso de contexto pra popular o ContextBar do Topbar
+  // IMEDIATAMENTE ao abrir a conversa, sem esperar o user enviar nova
+  // mensagem. O servidor já sabe o modelo configurado e tem as msgs
+  // ativas em mão — basta espelhar o cálculo de tokens do chat service.
+  const model = await getSetting('default_chat_model');
+  const contents = conv.messages.map((m) => m.content);
+  const tokensEstimate = estimateMessagesTokens(contents);
+  const ctxLimit = getContextLimit(model);
+
   return c.json({
     conversation: {
       id: conv.id,
@@ -141,6 +152,7 @@ chatRoutes.get('/conversations/:id', async (c) => {
       compactedAt: m.compactedAt?.toISOString() ?? null,
       createdAt: m.createdAt.toISOString(),
     })),
+    contextUsage: { tokens: tokensEstimate, limit: ctxLimit },
   });
 });
 

@@ -38,6 +38,9 @@ interface Msg {
   // sem precisar parsear o JSON do preview (que pode estar truncado).
   tools?: { name: string; preview?: string; actionSummary?: string }[];
   pending?: boolean;
+  // Raciocínio em streaming (thinking mode). Renderizado num bloco
+  // colapsável antes do content final.
+  reasoning?: string;
 }
 
 interface CompactionInfo {
@@ -127,7 +130,13 @@ export function ChatPage(): React.ReactElement {
           tools?: unknown;
           createdAt: string;
         }[];
+        contextUsage?: { tokens: number; limit: number };
       };
+      // Popula o ContextBar do Topbar IMEDIATAMENTE com a estimativa
+      // server-side — não espera o user mandar nova msg (SSE context_usage).
+      if (data.contextUsage) {
+        setContextUsage(data.contextUsage);
+      }
       setActive({
         id: data.conversation.id,
         title: data.conversation.title,
@@ -301,6 +310,15 @@ export function ChatPage(): React.ReactElement {
             setMessages((m) =>
               m.map((x) =>
                 x.id === asstId ? { ...x, pending: false, content: x.content + t } : x,
+              ),
+            );
+          } else if (ev === 'reasoning_token') {
+            // Raciocínio do modelo (thinking mode). Renderiza num bloco
+            // colapsável dentro da bubble, antes do content final.
+            const t = (payload.text as string) ?? '';
+            setMessages((m) =>
+              m.map((x) =>
+                x.id === asstId ? { ...x, pending: false, reasoning: (x.reasoning ?? '') + t } : x,
               ),
             );
           } else if (ev === 'tool_start') {
@@ -705,6 +723,9 @@ function Bubble({
                   />
                 );
               })()}
+              {msg.reasoning && msg.reasoning.length > 0 && (
+                <ReasoningBlock text={msg.reasoning} streaming={!!msg.pending} />
+              )}
               <Markdown>{msg.content}</Markdown>
               {msg.content.length > 0 && (
                 <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-[var(--color-app-border)] opacity-60 hover:opacity-100 transition-opacity">
@@ -815,6 +836,34 @@ function ConfirmationPrompt({
         </div>
       </div>
     </div>
+  );
+}
+
+function ReasoningBlock({
+  text,
+  streaming,
+}: {
+  text: string;
+  streaming: boolean;
+}): React.ReactElement {
+  const [open, setOpen] = useState(streaming);
+  return (
+    <details
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+      className="not-prose mb-3 rounded-xl border border-violet-500/25 bg-violet-500/5 overflow-hidden"
+    >
+      <summary className="px-3 py-2 text-[11px] uppercase tracking-wider text-violet-300 cursor-pointer select-none flex items-center gap-2 hover:bg-violet-500/10">
+        <Sparkles className="h-3 w-3" />
+        {streaming ? 'Pensando…' : 'Raciocínio'}
+        <span className="ml-auto text-[10px] text-violet-300/60 font-mono">
+          {text.length.toLocaleString()} chars
+        </span>
+      </summary>
+      <pre className="text-[12.5px] text-violet-100/80 px-3 py-2 whitespace-pre-wrap font-mono leading-relaxed border-t border-violet-500/20 max-h-72 overflow-y-auto">
+        {text}
+      </pre>
+    </details>
   );
 }
 
