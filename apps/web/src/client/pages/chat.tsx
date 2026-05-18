@@ -26,6 +26,7 @@ import {
   patchLocalConversation,
   refreshConversations,
 } from '../lib/use-conversations';
+import { useChatContextState } from '../lib/chat-context-ctx';
 
 interface Msg {
   id: string;
@@ -37,11 +38,6 @@ interface Msg {
   // sem precisar parsear o JSON do preview (que pode estar truncado).
   tools?: { name: string; preview?: string; actionSummary?: string }[];
   pending?: boolean;
-}
-
-interface ContextUsage {
-  tokens: number;
-  limit: number;
 }
 
 interface CompactionInfo {
@@ -65,9 +61,26 @@ export function ChatPage(): React.ReactElement {
   const [streaming, setStreaming] = useState(false);
   // Contexto/compactação — atualizado via SSE events. Modal mostra o
   // último resumo de compactação.
-  const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
-  const [lastCompaction, setLastCompaction] = useState<CompactionInfo | null>(null);
+  // Estado de contexto/compactação fica em ChatContextProvider — Topbar
+  // consome direto pra mostrar a barrinha ao lado do avatar do user.
+  const {
+    setUsage: setContextUsage,
+    lastCompaction,
+    setLastCompaction,
+    openSummarySignal,
+  } = useChatContextState();
   const [compactionModalOpen, setCompactionModalOpen] = useState(false);
+  // Quando user clica "Ver resumo" no Topbar, abre o modal aqui.
+  useEffect(() => {
+    if (openSummarySignal > 0) setCompactionModalOpen(true);
+  }, [openSummarySignal]);
+  // Limpa o usage quando a página /chat desmonta — senão fica residual em
+  // outras páginas.
+  useEffect(() => {
+    return () => {
+      setContextUsage(null);
+    };
+  }, [setContextUsage]);
   // Vision: imagem anexada (data URL). Quando setada, é enviada no body do
   // send → chat service usa default_vision_model. Limpa após envio.
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
@@ -370,14 +383,6 @@ export function ChatPage(): React.ReactElement {
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
       className="flex flex-col h-full"
     >
-      {/* Barra de contexto — mostra tokens da conversa atual.
-          Aparece só quando há conversa ativa + algum dado de uso. */}
-      {active && contextUsage && (
-        <ContextBar
-          usage={contextUsage}
-          onShowSummary={lastCompaction ? () => setCompactionModalOpen(true) : undefined}
-        />
-      )}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
         <motion.div
           key={routeId ?? 'empty'}
@@ -440,53 +445,6 @@ export function ChatPage(): React.ReactElement {
         info={lastCompaction}
       />
     </motion.div>
-  );
-}
-
-function ContextBar({
-  usage,
-  onShowSummary,
-}: {
-  usage: ContextUsage;
-  onShowSummary?: () => void;
-}): React.ReactElement {
-  const pct = usage.limit > 0 ? (usage.tokens / usage.limit) * 100 : 0;
-  // Cores: verde <60, amber 60-80, rose >80
-  const tone = pct >= 80 ? 'rose' : pct >= 60 ? 'amber' : 'emerald';
-  const colorMap = {
-    emerald: { bg: 'bg-emerald-500', text: 'text-emerald-300' },
-    amber: { bg: 'bg-amber-500', text: 'text-amber-300' },
-    rose: { bg: 'bg-rose-500', text: 'text-rose-300' },
-  } as const;
-  const c = colorMap[tone];
-  return (
-    <div className="px-6 py-2 border-b border-[var(--color-app-border)]/50 bg-[var(--color-app-bg-elevated)]/40 backdrop-blur-sm">
-      <div className="mx-auto max-w-3xl flex items-center gap-3">
-        <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] font-medium shrink-0">
-          Contexto
-        </span>
-        <div className="flex-1 h-1.5 rounded-full bg-[var(--color-app-bg-elevated)] overflow-hidden">
-          <motion.div
-            className={cn('h-full rounded-full transition-colors', c.bg)}
-            initial={{ width: 0 }}
-            animate={{ width: `${Math.min(100, Math.max(2, pct))}%` }}
-            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          />
-        </div>
-        <span className={cn('text-[11px] tabular-nums font-mono', c.text)}>
-          {usage.tokens.toLocaleString()} / {usage.limit.toLocaleString()} · {pct.toFixed(0)}%
-        </span>
-        {onShowSummary && (
-          <button
-            type="button"
-            onClick={onShowSummary}
-            className="text-[10px] uppercase tracking-wider text-violet-300 hover:text-violet-200 transition-colors px-2 py-0.5 rounded border border-violet-500/30 hover:border-violet-500/50"
-          >
-            Ver resumo
-          </button>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -705,29 +663,15 @@ function UserAvatar({
 }
 
 function VoxAvatar(): React.ReactElement {
-  // Avatar SVG inline da Vox — V estilizado em gradient violet→emerald.
-  // Independente de asset externo pra evitar 404 antes do build de imagens.
+  // Logo Voxen oficial — mesma do empty state e do favicon, sem fundo.
   return (
-    <div className="h-7 w-7 shrink-0 mt-0.5 rounded-lg overflow-hidden border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/40 to-emerald-500/40 flex items-center justify-center">
-      <svg
-        viewBox="0 0 24 24"
-        className="h-4 w-4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-label="Vox"
-      >
-        <defs>
-          <linearGradient id="vox-grad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="oklch(72% 0.18 290)" />
-            <stop offset="100%" stopColor="oklch(73% 0.16 159)" />
-          </linearGradient>
-        </defs>
-        <path d="M4 5l6 14 4-10 6-4" stroke="url(#vox-grad)" />
-      </svg>
-    </div>
+    <img
+      src="/voxen-256.png"
+      alt="Vox"
+      draggable={false}
+      className="h-7 w-7 shrink-0 mt-0.5 select-none pointer-events-none"
+      style={{ height: 28, width: 28 }}
+    />
   );
 }
 

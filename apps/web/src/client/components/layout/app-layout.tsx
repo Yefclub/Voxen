@@ -4,6 +4,7 @@ import { Topbar } from './topbar';
 import { useMe, useFetch } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
 import { useJobsWatcher } from '../../lib/use-jobs-watcher';
+import { ChatContextProvider } from '../../lib/chat-context-ctx';
 
 export function AppLayout(): React.ReactElement {
   const { data, loading } = useMe();
@@ -48,17 +49,19 @@ export function AppLayout(): React.ReactElement {
   const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
 
   return (
-    <div className="min-h-screen flex bg-[var(--color-app-bg)]">
-      <Sidebar user={data.user} />
-      <SidebarSpacer />
-      <div className="flex-1 flex flex-col min-w-0">
-        <Topbar user={data.user} />
-        <main className={isChat ? 'flex-1 min-h-0' : 'flex-1 pb-6'}>
-          <Outlet />
-        </main>
-        {!isChat && <VersionFooter />}
+    <ChatContextProvider>
+      <div className="h-screen flex bg-[var(--color-app-bg)] overflow-hidden">
+        <Sidebar user={data.user} />
+        <SidebarSpacer />
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          <Topbar user={data.user} />
+          <main className={isChat ? 'flex-1 min-h-0' : 'flex-1 min-h-0 overflow-y-auto pb-6'}>
+            <Outlet />
+          </main>
+          {!isChat && <VersionFooter />}
+        </div>
       </div>
-    </div>
+    </ChatContextProvider>
   );
 }
 
