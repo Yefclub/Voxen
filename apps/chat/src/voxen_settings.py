@@ -57,6 +57,14 @@ async def get_default_vision_model() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_telegram_bot_token() -> str | None:
+    """Token do bot Telegram. Sem setting → worker fica idle aguardando config."""
+    enc = await db.get_setting_enc("telegram_bot_token")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
 async def get_summary_timeout_sec(default: float = 90.0) -> float:
     """Timeout do call summarize-transcript pra OpenRouter. Opcional via setting.
 
