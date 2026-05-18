@@ -359,7 +359,7 @@ function Bubble({
 
   return (
     <div className={cn('flex gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
-      {isUser ? <UserAvatar user={user} /> : <VoxenAvatar />}
+      {isUser ? <UserAvatar user={user} /> : <VoxAvatar />}
 
       <div
         className={cn(
@@ -479,15 +479,29 @@ function UserAvatar({
   );
 }
 
-function VoxenAvatar(): React.ReactElement {
+function VoxAvatar(): React.ReactElement {
+  // Avatar SVG inline da Vox — V estilizado em gradient violet→emerald.
+  // Independente de asset externo pra evitar 404 antes do build de imagens.
   return (
-    <div className="h-7 w-7 shrink-0 mt-0.5 rounded-lg overflow-hidden border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/40 to-emerald-500/40">
-      <img
-        src="/voxen-256.png"
-        alt="Voxen"
-        className="h-full w-full object-cover"
-        draggable={false}
-      />
+    <div className="h-7 w-7 shrink-0 mt-0.5 rounded-lg overflow-hidden border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/40 to-emerald-500/40 flex items-center justify-center">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-label="Vox"
+      >
+        <defs>
+          <linearGradient id="vox-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="oklch(72% 0.18 290)" />
+            <stop offset="100%" stopColor="oklch(73% 0.16 159)" />
+          </linearGradient>
+        </defs>
+        <path d="M4 5l6 14 4-10 6-4" stroke="url(#vox-grad)" />
+      </svg>
     </div>
   );
 }
@@ -586,15 +600,32 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }): React.ReactEle
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center space-y-8">
       <div className="space-y-4">
-        <div className="mx-auto h-14 w-14 rounded-2xl overflow-hidden border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/20 flex items-center justify-center">
-          <img src="/voxen-256.png" alt="Voxen" className="h-full w-full object-cover" />
+        <div className="mx-auto h-14 w-14 rounded-2xl overflow-hidden border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/30 to-emerald-500/30 flex items-center justify-center">
+          <svg
+            viewBox="0 0 24 24"
+            className="h-8 w-8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-label="Vox"
+          >
+            <defs>
+              <linearGradient id="vox-grad-lg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="oklch(72% 0.18 290)" />
+                <stop offset="100%" stopColor="oklch(73% 0.16 159)" />
+              </linearGradient>
+            </defs>
+            <path d="M4 5l6 14 4-10 6-4" stroke="url(#vox-grad-lg)" />
+          </svg>
         </div>
         <div className="space-y-1.5 max-w-md mx-auto">
           <p className="font-display text-2xl font-semibold tracking-tight">
-            Pergunte qualquer coisa
+            Oi, sou a <span className="text-violet-accent">Vox</span>
           </p>
           <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
-            Consulto sua base de conhecimento e posso indexar conteúdo novo. Tudo com fonte e
+            Consulto sua base de conhecimento, indexo conteúdo novo e crio notas. Tudo com fonte e
             timestamp — sem alucinação.
           </p>
         </div>

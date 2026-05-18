@@ -1,7 +1,7 @@
 import { Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar, SidebarSpacer } from './sidebar';
 import { Topbar } from './topbar';
-import { useMe } from '../../lib/hooks';
+import { useMe, useFetch } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
 import { useJobsWatcher } from '../../lib/use-jobs-watcher';
 
@@ -56,7 +56,21 @@ export function AppLayout(): React.ReactElement {
         <main className={isChat ? 'flex-1 min-h-0' : 'flex-1 pb-6'}>
           <Outlet />
         </main>
+        {!isChat && <VersionFooter />}
       </div>
     </div>
+  );
+}
+
+function VersionFooter(): React.ReactElement | null {
+  const { data } = useFetch<{ version: string; gitSha: string | null; builtAt: string }>(
+    '/api/version',
+  );
+  if (!data?.version) return null;
+  return (
+    <footer className="pointer-events-none fixed bottom-2 right-3 z-10 text-[10px] uppercase tracking-[0.12em] text-[var(--color-app-muted)]/60 font-mono select-none">
+      Voxen v{data.version}
+      {data.gitSha && <span className="ml-1.5 opacity-70">·{data.gitSha.slice(0, 7)}</span>}
+    </footer>
   );
 }
