@@ -32,12 +32,16 @@ import {
 interface ModelsResponse {
   chat: OrModel[];
   transcription: OrModel[];
+  vision: OrModel[];
+  web: OrModel[];
 }
 
 interface SetupStatus {
   complete: boolean;
   chatModel: string | null;
   transcriptionModel: string | null;
+  webSearchModel: string | null;
+  visionModel: string | null;
   hasApiKey: boolean;
 }
 
@@ -50,6 +54,8 @@ export function SetupPage(): React.ReactElement {
   const [keepExistingKey, setKeepExistingKey] = useState(true);
   const [chatModel, setChatModel] = useState('');
   const [transcriptionModel, setTranscriptionModel] = useState('');
+  const [webSearchModel, setWebSearchModel] = useState('');
+  const [visionModel, setVisionModel] = useState('');
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -63,6 +69,8 @@ export function SetupPage(): React.ReactElement {
         setStatus(s);
         if (s.complete && s.chatModel) setChatModel(s.chatModel);
         if (s.complete && s.transcriptionModel) setTranscriptionModel(s.transcriptionModel);
+        if (s.complete && s.webSearchModel) setWebSearchModel(s.webSearchModel);
+        if (s.complete && s.visionModel) setVisionModel(s.visionModel);
         setStep(s.complete ? 'overview' : 'key');
       })
       .catch(() => setStep('key'));
@@ -119,6 +127,8 @@ export function SetupPage(): React.ReactElement {
         default_chat_model: chatModel,
         default_transcription_model: transcriptionModel,
       };
+      if (webSearchModel) body.default_web_search_model = webSearchModel;
+      if (visionModel) body.default_vision_model = visionModel;
       // Só envia api_key se for nova (admin escolheu trocar)
       if (apiKey && !keepExistingKey) {
         body.openrouter_api_key = apiKey;
@@ -438,6 +448,22 @@ export function SetupPage(): React.ReactElement {
                       options={models.chat}
                       count={models.chat.length}
                     />
+                    <ModelSelect
+                      label="Modelo de pesquisa web (opcional)"
+                      value={webSearchModel}
+                      onChange={setWebSearchModel}
+                      options={models.web}
+                      count={models.web.length}
+                      hint="Tool web_search usa este modelo com sufixo :online (plugin Perplexity). Vazio = usa o de chat."
+                    />
+                    <ModelSelect
+                      label="Modelo de visão (opcional)"
+                      value={visionModel}
+                      onChange={setVisionModel}
+                      options={models.vision}
+                      count={models.vision.length}
+                      hint="Pra entender imagens enviadas no chat. Vazio = uploads ficam desabilitados."
+                    />
                     <div className="flex justify-end gap-3 pt-2">
                       <Button
                         type="button"
@@ -573,12 +599,14 @@ function ModelSelect({
   onChange,
   options,
   count,
+  hint,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: OrModel[];
   count: number;
+  hint?: string;
 }): React.ReactElement {
   return (
     <div className="space-y-2">
@@ -607,6 +635,7 @@ function ModelSelect({
           ))}
         </SelectContent>
       </Select>
+      {hint && <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">{hint}</p>}
     </div>
   );
 }

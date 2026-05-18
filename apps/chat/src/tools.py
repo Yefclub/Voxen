@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from typing import Any
 
-from . import db, redis_pub, storage
+import httpx
+import structlog
+
+from . import db, redis_pub, storage, voxen_settings
+
+OR_BASE_URL = "https://openrouter.ai/api/v1"
+_log = structlog.get_logger()
+# Cap pra evitar query absurdamente longa explodindo tokens da OR
+WEB_SEARCH_MAX_QUERY_CHARS = 1000
 
 # Video URL parsers — espelham apps/web/src/lib/video-url.ts.
 _YT_HOSTS = ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com")
@@ -184,6 +193,57 @@ TOOLS_SPEC: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": (
+                "Pesquisa na web ao vivo via OpenRouter (plugin :online). "
+                "Use APENAS quando a base de conhecimento não tem a info, "
+                "ou para confirmar dados atualizados (datas, números, fatos "
+                "que mudam). NÃO use pra navegação genérica nem em vez de "
+                "search_transcripts. Retorna texto sintetizado com fontes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Pergunta clara em português ou inglês.",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "request_user_confirmation",
+            "description": (
+                "Solicita confirmação explícita do usuário ANTES de uma ação "
+                "potencialmente destrutiva ou criativa (ex: excluir nota, "
+                "criar nota com X texto, sobrescrever conteúdo). NÃO use pra "
+                "ler, listar ou pesquisar — só pra ações que modificam dados. "
+                "Após chamar, ESPERE a próxima mensagem do usuário; ele vai "
+                "responder 'sim' ou 'não' textualmente. Não chame em loop."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action_summary": {
+                        "type": "string",
+                        "description": (
+                            "Resumo curto e direto do que vai fazer "
+                            "(ex: 'Criar nota \"Reunião 2026-05-18\" com 3 "
+                            "parágrafos sobre X'). Em português."
+                        ),
+                    },
+                },
+                "required": ["action_summary"],
+            },
+        },
+    },
 ]
 
 
@@ -324,6 +384,29 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                 }
             return {"id": t["id"], "title": t["title"], "summary": summary}
 
+        if name == "web_search":
+            query = str(args.get("query", "")).strip()
+            if not query:
+                return {"error": "Parâmetro 'query' vazio."}
+            return await _web_search(user_id, query)
+
+        if name == "request_user_confirmation":
+            # HITL: o agente sinaliza que precisa de aprovação humana antes
+            # de uma ação destrutiva/criativa. A UI detecta o nome dessa tool
+            # via SSE tool_start e renderiza um banner próprio — o retorno aqui
+            # é só metadado de instrução pro agente terminar a resposta.
+            summary = str(args.get("action_summary", "")).strip()
+            if not summary:
+                return {"error": "action_summary vazio."}
+            return {
+                "status": "pending_user_response",
+                "action_summary": summary,
+                "instruction": (
+                    "Você JÁ pediu confirmação ao usuário. Termine sua resposta "
+                    "atual sem executar a ação. Aguarde a próxima mensagem dele."
+                ),
+            }
+
         return {"error": f"Tool desconhecida: {name}"}
     except Exception as e:  # noqa: BLE001 — agente decide como reagir
         return {"error": f"Falha ao executar {name}: {e}"}
@@ -338,6 +421,87 @@ def _serialize(row: dict[str, Any]) -> dict[str, Any]:
         "source": row["source"],
         "createdAt": row["createdAt"].isoformat() if row.get("createdAt") else None,
     }
+
+
+async def _web_search(user_id: str, query: str) -> dict[str, Any]:
+    """Pesquisa na web via OpenRouter.
+
+    Estratégia:
+      1) Setting `default_web_search_model` configurada → usa esse modelo
+         direto (deve ter `:online` ou suportar web nativamente).
+      2) Senão, usa `default_chat_model + ":online"` (plugin Perplexity).
+      3) Sem API key OR → erro claro.
+    Custo é registrado em CostEvent kind=CHAT (somando ao painel do user).
+    """
+    api_key = await voxen_settings.get_openrouter_api_key()
+    if not api_key:
+        return {"error": "OpenRouter sem configuração. Avise o admin."}
+
+    model = await voxen_settings.get_default_web_search_model()
+    if not model:
+        base = await voxen_settings.get_default_chat_model()
+        if not base:
+            return {"error": "Modelo de chat não configurado."}
+        # Sufixo `:online` ativa o plugin web da Perplexity em qualquer modelo
+        model = base if base.endswith(":online") else f"{base}:online"
+
+    # Cap query length antes de enviar ao OR (e ao registrar em CostEvent.meta)
+    safe_query = query[:WEB_SEARCH_MAX_QUERY_CHARS]
+
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Você é um buscador. Responda à pergunta usando informação "
+                    "atualizada da web. Cite fontes (URLs) entre parênteses. "
+                    "Seja conciso (até 6 parágrafos curtos)."
+                ),
+            },
+            {"role": "user", "content": safe_query},
+        ],
+        "stream": False,
+        "usage": {"include": True},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            res = await client.post(
+                f"{OR_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json=payload,
+            )
+    except httpx.HTTPError as e:
+        return {"error": f"Falha ao contactar OpenRouter: {e}"}
+
+    if res.status_code >= 400:
+        # Não vazamos body do OR pro agente (pode conter info sensível);
+        # log interno tem o detalhe.
+        _log.warning("web-search-or-error", status=res.status_code, body=res.text[:300])
+        return {"error": f"OpenRouter retornou {res.status_code}."}
+
+    data = res.json()
+    text = ((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
+    usage = data.get("usage") or {}
+    cost_raw = usage.get("cost")
+    try:
+        cost_usd = Decimal(str(cost_raw)) if cost_raw is not None else Decimal("0")
+    except (ValueError, ArithmeticError):
+        cost_usd = Decimal("0")
+    # Registra custo no painel — falha aqui não invalida a resposta da pesquisa
+    try:
+        await db.insert_cost_event(
+            user_id=user_id,
+            model=model,
+            tokens_in=int(usage.get("prompt_tokens") or 0),
+            tokens_out=int(usage.get("completion_tokens") or 0),
+            cost_usd=cost_usd,
+            meta={"source": "web_search", "query": safe_query[:200]},
+        )
+    except Exception as e:  # noqa: BLE001
+        _log.warning("web-search-cost-event-failed", error=str(e))
+
+    return {"answer": text or "Sem resposta da pesquisa.", "model": model}
 
 
 def _normalize_web_url(url: str) -> str | None:

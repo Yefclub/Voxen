@@ -24,29 +24,67 @@ app = FastAPI(title="Voxen Chat", version="1.0.0")
 MAX_TOOL_LOOPS = 5
 OR_BASE_URL = "https://openrouter.ai/api/v1"
 
-SYSTEM_PROMPT = """Você é o assistente do Voxen, uma biblioteca de vídeos transcritos.
+SYSTEM_PROMPT_BASE = """Você é a Vox, assistente do Voxen — base de conhecimento pessoal.
+
+IDENTIDADE:
+- Você é a "Vox" (identificação feminina). Apresente-se como Vox quando perguntada.
+- O Voxen é a plataforma; a Vox é VOCÊ, a assistente.
+- O usuário se chama: {user_name}.
+- Data e hora atual: {current_datetime} ({user_timezone}).
+- Idioma de resposta padrão: português brasileiro.
 
 REGRAS DE TRABALHO:
-- Você responde EXCLUSIVAMENTE com base nas tools disponíveis. Nunca invente conteúdo.
-- Quando o usuário enviar um link de vídeo do YouTube, Instagram Reel ou
-  TikTok (mesmo embutido na frase, ex: "transcreve esse vídeo: https://..."),
-  use `transcribe_video` com a URL. Confirme com uma resposta curta e diga
-  que vai demorar — depois o usuário pode pedir o resumo.
-- Quando o usuário enviar um link http(s) que NÃO seja vídeo
-  (YouTube/Instagram/TikTok) — ou seja, blog, artigo, docs, wiki, etc —
-  use `scrape_url` com a URL. Mesmo padrão: confirme rápido, diga que vai
-  indexar.
-- Sempre faça uma busca antes de citar conteúdo. Use `search_transcripts`
-  com palavras-chave em português, sem operadores.
-- Quando o usuário pedir um resumo, use `read_transcript_summary` primeiro;
-  só leia o markdown completo via `read_transcript` se o resumo for insuficiente.
-- Cite fontes incluindo o id da transcrição e o timestamp (se aplicável).
-- Use markdown na resposta: títulos curtos, listas, ênfase. Sem HTML.
-- Quando citar um trecho, use a forma `[mm:ss](id) texto` para a UI conseguir
-  linkar diretamente para o minuto do vídeo.
-- Responda em português brasileiro, de forma direta e útil.
-- Se a biblioteca está vazia, diga isso e sugira o usuário transcrever um vídeo primeiro.
+- Responda EXCLUSIVAMENTE com base nas tools disponíveis e no contexto. Nunca invente.
+- Sempre faça `search_transcripts` antes de citar conteúdo. Use palavras-chave em pt-br.
+- Quando o usuário pedir resumo, use `read_transcript_summary` primeiro; só leia o markdown
+  completo via `read_transcript` se o resumo for insuficiente.
+- Cite fontes incluindo o id da transcrição e timestamps. Use `[mm:ss](id) texto` pra UI linkar.
+- Markdown na resposta: títulos curtos, listas, ênfase. Sem HTML.
+- Se a base está vazia, diga e sugira indexar conteúdo.
+
+INDEXAÇÃO:
+- Link de vídeo (YouTube/Instagram Reel/TikTok) — chame `transcribe_video`. Confirme rápido,
+  avise que demora (curto: ~30s, longo: minutos).
+- Link http(s) que NÃO é vídeo (blog, artigo, docs, wiki) — chame `scrape_url`. Confirme rápido.
+
+PESQUISA WEB:
+- Use `web_search` APENAS pra info atual que não está na base (datas, fatos voláteis, notícias).
+- Não use `web_search` em vez de `search_transcripts` — base interna é primária.
+
+AÇÕES MODIFICATÓRIAS (HITL):
+- Antes de ações que MODIFICAM dados (criar/editar/excluir nota, sobrescrever conteúdo),
+  chame `request_user_confirmation` com resumo claro do que vai fazer.
+- Após chamar, ESPERE a próxima mensagem do usuário. Não executa em loop.
+- Ações apenas LEITORAS (listar, ler, buscar) não precisam de confirmação.
+
+ESTILO:
+- Direta, útil, sem rodeios. Tom profissional mas humano.
+- Se não souber, diga "não sei" + sugira tool/caminho.
 """
+
+
+def build_system_prompt(user_name: str, user_timezone: str) -> str:
+    """Renderiza o system prompt injetando variáveis de contexto.
+
+    `user_name` cai pra "usuário" se vazio. Timezone IANA (ex: "America/Sao_Paulo");
+    se inválido vira UTC. A data é calculada com zoneinfo na hora da chamada
+    pra refletir o momento real (não o do boot do container).
+    """
+    import datetime as _dt
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    try:
+        tz = ZoneInfo(user_timezone) if user_timezone else ZoneInfo("UTC")
+    except ZoneInfoNotFoundError:
+        tz = ZoneInfo("UTC")
+        user_timezone = "UTC"
+    now = _dt.datetime.now(tz)
+    formatted = now.strftime("%A, %d de %B de %Y, %H:%M")
+    return SYSTEM_PROMPT_BASE.format(
+        user_name=user_name or "usuário",
+        current_datetime=formatted,
+        user_timezone=user_timezone,
+    )
 
 
 @app.get("/health")
@@ -101,6 +139,9 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     thinking: bool = False
+    # Nome do user vem no body (não header) pra suportar unicode — fetch valida
+    # headers como Latin-1 e lançaria em nomes com CJK/emoji/acentos exóticos.
+    user_name: str = ""
 
 
 @app.post("/chat")
@@ -110,6 +151,9 @@ async def chat(
     x_voxen_user_id: str | None = Header(default=None, alias="X-Voxen-User-Id"),
     x_voxen_conversation_id: str | None = Header(
         default=None, alias="X-Voxen-Conversation-Id"
+    ),
+    x_voxen_user_timezone: str | None = Header(
+        default=None, alias="X-Voxen-User-Timezone"
     ),
 ) -> StreamingResponse:
     if not x_voxen_user_id:
@@ -127,6 +171,10 @@ async def chat(
     user_id = x_voxen_user_id
     conversation_id = x_voxen_conversation_id
     thinking = body.thinking
+    system_prompt = build_system_prompt(
+        user_name=body.user_name,
+        user_timezone=x_voxen_user_timezone or "UTC",
+    )
 
     async def event_stream() -> AsyncIterator[str]:
         client = AsyncOpenAI(
@@ -134,7 +182,7 @@ async def chat(
             base_url=OR_BASE_URL,
         )
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             *[{"role": m.role, "content": m.content} for m in body.messages],
         ]
         extra: dict[str, Any] = {}
@@ -228,7 +276,19 @@ async def chat(
                             fn_args = {}
                         yield _sse("tool_start", {"name": fn_name, "args": fn_args})
                         result = await execute_tool(fn_name, fn_args, user_id)
-                        yield _sse("tool_end", {"name": fn_name, "preview": _short(result)})
+                        # Pra HITL, devolve `action_summary` cru no payload SSE
+                        # alem do preview truncado — UI usa o campo dedicado
+                        # pra renderizar o banner sem depender de parsear o
+                        # preview (que pode estar truncado por _short).
+                        event_payload: dict[str, Any] = {
+                            "name": fn_name,
+                            "preview": _short(result),
+                        }
+                        if fn_name == "request_user_confirmation" and isinstance(result, dict):
+                            summary = result.get("action_summary")
+                            if isinstance(summary, str) and summary:
+                                event_payload["action_summary"] = summary
+                        yield _sse("tool_end", event_payload)
                         messages.append(
                             {
                                 "role": "tool",
