@@ -18,7 +18,7 @@ from typing import NoReturn
 
 import structlog
 
-from . import db, events
+from . import automation, db, events
 from .cancellation import cancel_subscriber
 from .pipeline import process_job
 
@@ -26,6 +26,8 @@ log = structlog.get_logger(__name__)
 
 MAX_CONCURRENCY = 2
 RECONCILIATION_INTERVAL_SEC = 60
+AUTOMATION_SCHEDULER_INTERVAL_SEC = 60
+AUTOMATION_MAX_CONCURRENCY = 2
 
 
 async def _process_with_sem(sem: asyncio.Semaphore, job_id: str) -> None:
@@ -71,20 +73,76 @@ async def _reconciliation_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> N
             continue
 
 
+async def _process_automation_run(sem: asyncio.Semaphore, run_id: str) -> None:
+    async with sem:
+        try:
+            await automation.process_run(run_id)
+        except Exception:  # noqa: BLE001
+            log.exception("process-automation-run-crashed", run_id=run_id)
+
+
+async def _automation_subscriber_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> None:
+    """Subscribe Redis pub/sub `automations:run` — manual triggers + scheduler."""
+    client = await events.get_redis()
+    pubsub = client.pubsub()
+    await pubsub.subscribe(events.AUTOMATION_RUN_CHANNEL)
+    log.info("subscribed-automations", channel=events.AUTOMATION_RUN_CHANNEL)
+    try:
+        while not stop.is_set():
+            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if msg is None:
+                continue
+            run_id = msg.get("data")
+            if not isinstance(run_id, str) or not run_id:
+                continue
+            log.info("automation-notify-received", run_id=run_id)
+            asyncio.create_task(_process_automation_run(sem, run_id))
+    finally:
+        await pubsub.unsubscribe(events.AUTOMATION_RUN_CHANNEL)
+        await pubsub.aclose()  # type: ignore[no-untyped-call]
+
+
+async def _automation_scheduler_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> None:
+    """A cada 60s: (a) dispara scheduler_tick que cria runs de automações
+    vencidas; (b) faz reconciliation de runs PENDING órfãos."""
+    while not stop.is_set():
+        try:
+            await automation.scheduler_tick()
+        except Exception:  # noqa: BLE001
+            log.exception("automation-scheduler-failed")
+        try:
+            pending = await automation.list_pending_run_ids(limit=10)
+            for run_id in pending:
+                asyncio.create_task(_process_automation_run(sem, run_id))
+        except Exception:  # noqa: BLE001
+            log.exception("automation-reconciliation-failed")
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=AUTOMATION_SCHEDULER_INTERVAL_SEC)
+        except TimeoutError:
+            continue
+
+
 async def amain() -> None:
     sem = asyncio.Semaphore(MAX_CONCURRENCY)
+    automation_sem = asyncio.Semaphore(AUTOMATION_MAX_CONCURRENCY)
     stop = asyncio.Event()
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
 
-    log.info("worker-starting", max_concurrency=MAX_CONCURRENCY)
+    log.info(
+        "worker-starting",
+        max_concurrency=MAX_CONCURRENCY,
+        automation_max_concurrency=AUTOMATION_MAX_CONCURRENCY,
+    )
     try:
         await asyncio.gather(
             _subscriber_loop(sem, stop),
             _reconciliation_loop(sem, stop),
             cancel_subscriber(stop),
+            _automation_subscriber_loop(automation_sem, stop),
+            _automation_scheduler_loop(automation_sem, stop),
         )
     finally:
         await db.close_pool()

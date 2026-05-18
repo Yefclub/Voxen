@@ -41,3 +41,12 @@ async def get_admin_email() -> str | None:
     if enc is None:
         return None
     return decrypt(enc, get_master_key())
+
+
+async def get_telegram_bot_token() -> str | None:
+    """Bot Telegram token (cifrado em Settings). Necessário pra automations
+    com delivery=TELEGRAM."""
+    enc = await db.get_setting_enc("telegram_bot_token")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())

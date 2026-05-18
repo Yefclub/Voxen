@@ -341,6 +341,31 @@ TOOLS_SPEC: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_automation_runs",
+            "description": (
+                "Lista execuções recentes das automações do user. Use quando "
+                "o user referenciar uma automação ('aquele resumo que me "
+                "mandou', 'a pesquisa de quarta') pra puxar o conteúdo como "
+                "contexto. Pode filtrar por automation_id específico."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "automation_id": {
+                        "type": "string",
+                        "description": "Filtra por uma automação específica (opcional).",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Máx execuções (padrão 5, máx 20).",
+                    },
+                },
+            },
+        },
+    },
 ]
 
 
@@ -600,6 +625,30 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                 return {"error": "Nota não encontrada."}
             return {"status": "deleted", "id": nid}
 
+        if name == "list_automation_runs":
+            automation_id = args.get("automation_id")
+            limit = min(int(args.get("limit", 5)), 20)
+            rows = await db.list_user_automation_runs(
+                user_id,
+                automation_id=str(automation_id) if automation_id else None,
+                limit=limit,
+            )
+            return {
+                "runs": [
+                    {
+                        "id": r["id"],
+                        "automation_id": r["automationId"],
+                        "automation_name": r["automation_name"],
+                        "status": r["status"],
+                        "started_at": r["startedAt"].isoformat() if r.get("startedAt") else None,
+                        "finished_at": r["finishedAt"].isoformat() if r.get("finishedAt") else None,
+                        # Trunca pra não estourar contexto da Vox
+                        "output_md": (r.get("outputMd") or "")[:2000],
+                        "note_id": r.get("noteId"),
+                    }
+                    for r in rows
+                ]
+            }
 
         return {"error": f"Tool desconhecida: {name}"}
     except Exception as e:  # noqa: BLE001 — agente decide como reagir

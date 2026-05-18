@@ -18,6 +18,7 @@ import { JobDetalhePage } from './pages/jobs-detalhe';
 import { TranscricoesPage } from './pages/transcricoes';
 import { TranscricaoDetalhePage } from './pages/transcricoes-detalhe';
 import { NotasPage } from './pages/notas';
+import { AutomacoesPage } from './pages/automacoes';
 import { GrafoPage } from './pages/grafo';
 
 export function App(): React.ReactElement {
@@ -54,6 +55,7 @@ export function App(): React.ReactElement {
           <Route path="/transcricoes/:id" element={<TranscricaoDetalhePage />} />
           <Route path="/notas" element={<NotasPage />} />
           <Route path="/notas/:id" element={<NotasPage />} />
+          <Route path="/automacoes" element={<AutomacoesPage />} />
           <Route path="/grafo" element={<GrafoPage />} />
         </Route>
 

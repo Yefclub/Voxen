@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Trash2,
   Settings as SettingsIcon,
+  Workflow,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { MeUser } from '../../lib/types';
@@ -43,6 +44,7 @@ const NAV: NavItem[] = [
   { to: '/jobs', label: 'Transcrever', Icon: PlayCircle },
   { to: '/transcricoes', label: 'Biblioteca', Icon: ListVideo },
   { to: '/notas', label: 'Notas', Icon: Notebook },
+  { to: '/automacoes', label: 'Automações', Icon: Workflow },
   { to: '/grafo', label: 'Grafo', Icon: Network },
   { to: '/admin/usuarios', label: 'Usuários', Icon: ShieldCheck, adminOnly: true },
   { to: '/admin/custos', label: 'Custos', Icon: DollarSign, adminOnly: true },

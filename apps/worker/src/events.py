@@ -40,6 +40,7 @@ def user_channel(user_id: str) -> str:
 
 JOBS_NEW_CHANNEL = "jobs:new"
 JOBS_CANCEL_CHANNEL = "jobs:cancel"
+AUTOMATION_RUN_CHANNEL = "automations:run"
 
 
 async def publish_job_event(

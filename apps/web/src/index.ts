@@ -17,6 +17,7 @@ import { accountRoutes } from './routes/account';
 import { costRoutes } from './routes/cost';
 import { chatRoutes } from './routes/chat';
 import { notesRoutes } from './routes/notes';
+import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
 import { graphRoutes } from './routes/graph';
 import { getRedisPublisher } from './lib/redis';
@@ -181,6 +182,8 @@ app.route('/api/admin/custos', costRoutes);
 app.route('/api/chat', chatRoutes);
 // KB manual de notas (CRUD + FTS + tree)
 app.route('/api/notes', notesRoutes);
+// Automações (jobs periódicos com continuidade — spec 008)
+app.route('/api/automations', automationsRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
 // Graph view (visualização Obsidian-like da KB)
