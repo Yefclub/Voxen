@@ -7,6 +7,7 @@ import {
   Clock,
   ExternalLink,
   FileText,
+  Globe,
   Languages,
   Loader2,
   Sparkles,
@@ -129,27 +130,33 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           className="mb-10 space-y-4"
         >
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="muted" className="text-[10px] tracking-wider uppercase">
-              {t.source.toLowerCase()}
-            </Badge>
-            <Badge
-              variant={
-                t.transcriptionMethod === 'SUBTITLES'
-                  ? 'success'
-                  : t.transcriptionMethod === 'SCRAPE'
-                    ? 'muted'
-                    : 'default'
-              }
-              className="text-[10px]"
-            >
-              {t.transcriptionMethod === 'SUBTITLES' && 'Legendas oficiais'}
-              {t.transcriptionMethod === 'SCRAPE' && 'Página web'}
-              {t.transcriptionMethod === 'API' && (
+            {/* Source primário — clarifica origem do conteúdo */}
+            <Badge variant={t.source === 'WEB' ? 'muted' : 'success'} className="text-[10px]">
+              {t.source === 'WEB' && (
                 <>
-                  <Sparkles className="h-3 w-3 inline mr-1" /> Transcrição via IA
+                  <Globe className="h-3 w-3" />
+                  Página web
                 </>
               )}
+              {t.source === 'YOUTUBE' && 'YouTube'}
+              {t.source === 'INSTAGRAM' && 'Instagram Reel'}
+              {t.source === 'TIKTOK' && 'TikTok'}
             </Badge>
+            {/* Método de extração — só faz sentido pra vídeos */}
+            {t.source !== 'WEB' && (
+              <Badge
+                variant={t.transcriptionMethod === 'SUBTITLES' ? 'success' : 'default'}
+                className="text-[10px]"
+              >
+                {t.transcriptionMethod === 'SUBTITLES' ? (
+                  'Legendas oficiais'
+                ) : (
+                  <>
+                    <Sparkles className="h-3 w-3 inline mr-1" /> Transcrição via IA
+                  </>
+                )}
+              </Badge>
+            )}
             {t.language && (
               <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
                 {t.language}
@@ -211,7 +218,13 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
             <Card elevated>
               <CardContent className="pt-5 pb-5 space-y-4">
-                <MetaRow Icon={Clock} label="Duração" value={formatDuration(t.durationSec)} />
+                {/* Duração só faz sentido pra vídeos */}
+                {t.source !== 'WEB' && (
+                  <MetaRow Icon={Clock} label="Duração" value={formatDuration(t.durationSec)} />
+                )}
+                {t.channel && t.source === 'WEB' && (
+                  <MetaRow Icon={Globe} label="Site" value={t.channel} />
+                )}
                 <MetaRow Icon={Languages} label="Idioma" value={t.language.toUpperCase()} />
                 <MetaRow Icon={Calendar} label="Adicionado" value={formatDateTime(created)} />
                 {published && (

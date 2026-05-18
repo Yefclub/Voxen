@@ -82,11 +82,33 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
             style={{ width: SIDEBAR_WIDTH }}
           >
             <SidebarHeader onCollapse={toggle} />
-            {inChat ? (
-              <ChatModeBody items={items} />
-            ) : (
-              <NavBody items={items} pathname={location.pathname} />
-            )}
+            {/* Cross-fade entre modo nav e modo chat — entrar/sair de /chat
+                anima a transição entre as duas bodies em vez de trocar duro */}
+            <AnimatePresence mode="wait" initial={false}>
+              {inChat ? (
+                <motion.div
+                  key="chat-mode"
+                  initial={{ opacity: 0, x: 12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -12 }}
+                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                  className="flex-1 flex flex-col min-h-0"
+                >
+                  <ChatModeBody items={items} />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="nav-mode"
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 12 }}
+                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                  className="flex-1 flex flex-col min-h-0"
+                >
+                  <NavBody items={items} pathname={location.pathname} />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.aside>
         )}
       </AnimatePresence>
@@ -243,12 +265,14 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
           Nova conversa
         </button>
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none z-10" />
           <input
-            type="search"
+            type="text"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar conversas…"
+            autoComplete="off"
+            spellCheck={false}
             className="w-full h-9 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 pl-8 pr-3 text-[13px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
           />
         </div>
