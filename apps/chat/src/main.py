@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
@@ -16,10 +17,32 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from . import db, voxen_settings
+from .telegram_bot import telegram_loop
 from .tools import TOOLS_SPEC, execute_tool
 
 log = structlog.get_logger(__name__)
 app = FastAPI(title="Voxen Chat", version="1.0.0")
+
+# Telegram bot worker — spawnado no startup, sobrevive ao boot inteiro do
+# processo. Se setting `telegram_bot_token` ausente, fica dormindo até admin
+# configurar (sem reiniciar o chat service).
+_telegram_task: asyncio.Task[None] | None = None
+
+
+@app.on_event("startup")
+async def _start_telegram() -> None:
+    global _telegram_task
+    _telegram_task = asyncio.create_task(telegram_loop(), name="telegram-bot")
+
+
+@app.on_event("shutdown")
+async def _stop_telegram() -> None:
+    if _telegram_task and not _telegram_task.done():
+        _telegram_task.cancel()
+        try:
+            await _telegram_task
+        except asyncio.CancelledError:
+            pass
 
 MAX_TOOL_LOOPS = 5
 OR_BASE_URL = "https://openrouter.ai/api/v1"

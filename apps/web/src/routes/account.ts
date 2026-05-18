@@ -11,6 +11,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
+import { getRedisPublisher } from '../lib/redis';
 
 type Vars = { userId: string };
 
@@ -92,4 +93,45 @@ accountRoutes.post('/password', async (c) => {
     // Better-auth APIError tem statusCode em alguns casos; ignoramos e devolvemos 400
     return c.json({ error: msg || 'Senha atual incorreta.' }, 400);
   }
+});
+
+// ----------------------------------------------------------------------------
+// Telegram linking
+// ----------------------------------------------------------------------------
+// User gera código de 6 dígitos em /conta → envia /start <code> no bot →
+// worker telegram resolve e cria TelegramLink. Códigos vivem em Redis com
+// TTL de 10min pra evitar replay/colisão.
+
+accountRoutes.post('/telegram/code', async (c) => {
+  const uid = c.get('userId');
+  // 6 dígitos zero-padded, gerado via crypto pra evitar colisão
+  const buf = new Uint8Array(4);
+  crypto.getRandomValues(buf);
+  const num = ((buf[0]! << 24) | (buf[1]! << 16) | (buf[2]! << 8) | buf[3]!) >>> 0;
+  const code = String(num % 1_000_000).padStart(6, '0');
+  // Grava em Redis: key tg:link:<code> = userId, expira em 600s
+  const redis = getRedisPublisher();
+  await redis.set(`tg:link:${code}`, uid, 'EX', 600);
+  return c.json({ code, expiresInSec: 600 });
+});
+
+accountRoutes.delete('/telegram', async (c) => {
+  const uid = c.get('userId');
+  await db.telegramLink.deleteMany({ where: { userId: uid } });
+  return c.json({ ok: true });
+});
+
+accountRoutes.get('/telegram', async (c) => {
+  const uid = c.get('userId');
+  const link = await db.telegramLink.findUnique({
+    where: { userId: uid },
+    select: { chatId: true, username: true, linkedAt: true },
+  });
+  if (!link) return c.json({ linked: false });
+  return c.json({
+    linked: true,
+    username: link.username,
+    chatId: link.chatId.toString(),
+    linkedAt: link.linkedAt,
+  });
 });

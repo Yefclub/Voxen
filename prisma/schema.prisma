@@ -65,9 +65,24 @@ model User {
   costEvents      CostEvent[]
   conversations   Conversation[]
   notes           Note[]
+  telegramLink    TelegramLink?
 
   @@index([status])
   @@index([role])
+}
+
+// Vínculo Telegram chat_id ↔ Voxen userId.
+// Setup feito via código de 6 dígitos gerado em /conta → user envia /start
+// <código> no bot → worker resolve e cria o link.
+model TelegramLink {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  chatId    BigInt   @unique
+  username  String?
+  linkedAt  DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
 }
 
 model Session {
