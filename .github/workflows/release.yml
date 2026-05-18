@@ -2,7 +2,10 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    # Só tags estáveis vX.Y.Z disparam release.
+    # Pre-release (vX.Y.Z-dev.N) é criado pelo version-dev.yml e NÃO dispara
+    # build de imagens — fica visível só no histórico de tags.
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
 
 permissions:
   contents: write

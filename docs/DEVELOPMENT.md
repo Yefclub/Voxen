@@ -148,15 +148,24 @@ docs(spec): adiciona .specs/003-painel-custos.md
 
 ### Release
 
-**Pre-release em `dev`**: cada merge em `dev` dispara `version-dev.yml`, que bumpa
-a versão pra `X.(Y+1).0-dev.1` (se vinha de estável) ou `X.Y.Z-dev.(N+1)` (se
-já era dev). Commit `chore: pre-release vX.Y.Z-dev.N` é pushed em `dev`.
-**Não cria tag** — só identifica builds em ambiente de dev.
+**Pre-release em `dev` (somente tag)**: cada merge em `dev` dispara
+`version-dev.yml`, que **cria a tag** `vX.Y.Z-dev.N` (sem mexer no
+`package.json`). A tag NÃO dispara o `release.yml` — esse filtra
+`v[0-9]+.[0-9]+.[0-9]+` (sem hífen). Só serve pra marcar o histórico
+de builds em dev.
 
 **Release estável em `main`**: PR de `dev` → `main` com label
 `release:patch|minor|major`. `version-main.yml` limpa o sufixo `-dev.N`,
 bumpa o componente correspondente, commita `chore: release vX.Y.Z` e cria a
 tag `vX.Y.Z`. A tag dispara `release.yml` (build + push de imagens pro ghcr).
+
+> **Nota sobre branch protection**: `dev` exige PR (não aceita push direto
+> do `GITHUB_TOKEN`). Por isso o version-dev.yml usa só tag — tags fluem
+> mesmo com proteção de branches. Quando o `version-main.yml` for usado,
+> ele também tenta push direto em `main`; se houver branch protection em
+> `main` configurada com `Restrict who can push` sem incluir o bot, o
+> push falha. Solução: adicionar `github-actions[bot]` à allowlist de
+> bypass do `main` ruleset, ou usar um PAT em `secrets.RELEASE_TOKEN`.
 
 ## Estilo de código
 

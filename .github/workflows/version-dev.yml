@@ -1,13 +1,16 @@
 # ============================================================================
-# version-dev — bumpa pre-release vX.Y.Z-dev.N a cada merge em dev
+# version-dev — cria tag pre-release vX.Y.Z-dev.N em cada merge em dev
 # ============================================================================
 # Estratégia:
 #  - Roda em push pra `dev` (depois de merge de PR)
-#  - Se a versão atual já tem `-dev.N`, incrementa N
-#  - Se não tem (versão estável vinda do main), bumpa minor + começa `dev.1`
-#    Ex: 0.1.0 → 0.2.0-dev.1
-#  - Commit `chore: pre-release vX.Y.Z-dev.N` + push pra dev (NÃO cria tag)
-#  - Tag oficial só é criada pelo version-main.yml ao mergear dev→main
+#  - Lê última tag pre-release (vX.Y.Z-dev.N) ou versão estável do main
+#  - Se já tem `-dev.N`, incrementa N; se não, bumpa minor + começa `dev.1`
+#  - Cria SÓ TAG (não commit) — branch protection do dev exige PR pra push;
+#    tags fluem normalmente. Tag não dispara `release.yml` (esse só roda em
+#    tags estáveis `vX.Y.Z` SEM o sufixo, via condição startsWith(tag, 'v')
+#    + sem hífen — mas como nossa tag tem hífen, é seguro).
+#  - Versão visível: `git describe --tags --abbrev=0` no host, ou via
+#    api/version (lê VOXEN_VERSION env injetado no build).
 # ============================================================================
 
 name: Version dev on merge
@@ -22,7 +25,7 @@ permissions:
 jobs:
   version-dev:
     runs-on: ubuntu-latest
-    # Evita loop: ignora o próprio commit que esta action cria
+    # Evita loop: ignora o commit que esta action cria (pre-release/release)
     if: "${{ !startsWith(github.event.head_commit.message, 'chore: pre-release v') && !startsWith(github.event.head_commit.message, 'chore: release v') }}"
     steps:
       - uses: actions/checkout@v4
@@ -31,55 +34,46 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Compute new pre-release version
+      - name: Compute new pre-release tag
         id: version
         run: |
           set -euo pipefail
-          VER=$(node -p "require('./package.json').version")
-          NEW_VER=$(VER="$VER" node -e "
-            const cur = process.env.VER;
-            const m = cur.match(/^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$/);
-            if (!m) {
-              console.error('Versão inválida: ' + cur);
-              process.exit(1);
-            }
-            const [, major, minor, patch, devN] = m;
-            if (devN) {
-              console.log(\`\${major}.\${minor}.\${patch}-dev.\${Number(devN) + 1}\`);
-            } else {
-              // Versão estável → próximo minor + dev.1
-              console.log(\`\${major}.\${Number(minor) + 1}.0-dev.1\`);
-            }
-          ")
+          # Última tag (qualquer formato vX.Y.Z*)
+          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [[ -z "$LAST_TAG" ]]; then
+            BASE="0.1.0"
+            NEW_VER="0.2.0-dev.1"
+          else
+            VER="${LAST_TAG#v}"
+            if [[ "$VER" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)-dev\.([0-9]+)$ ]]; then
+              # Já é pre-release — bumpa o N
+              MAJ="${BASH_REMATCH[1]}"
+              MIN="${BASH_REMATCH[2]}"
+              PAT="${BASH_REMATCH[3]}"
+              DEV="${BASH_REMATCH[4]}"
+              NEW_VER="${MAJ}.${MIN}.${PAT}-dev.$((DEV + 1))"
+            elif [[ "$VER" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              # Tag estável → próximo minor + dev.1
+              MAJ="${BASH_REMATCH[1]}"
+              MIN="${BASH_REMATCH[2]}"
+              NEW_VER="${MAJ}.$((MIN + 1)).0-dev.1"
+            else
+              echo "Tag inesperada: $LAST_TAG" >&2
+              exit 1
+            fi
+          fi
           echo "new_version=$NEW_VER" >> "$GITHUB_OUTPUT"
-          export NEW_VER
-          node -e "
-            const fs = require('fs');
-            const files = ['./package.json', './apps/web/package.json'];
-            for (const f of files) {
-              const j = JSON.parse(fs.readFileSync(f, 'utf8'));
-              j.version = process.env.NEW_VER;
-              fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
-            }
-          "
-          echo "Bumped dev to $NEW_VER"
+          echo "new_tag=v$NEW_VER" >> "$GITHUB_OUTPUT"
+          echo "Bumping dev to v$NEW_VER (last: $LAST_TAG)"
 
-      - name: Commit + push
+      - name: Create + push tag
         env:
-          NEW_VER: ${{ steps.version.outputs.new_version }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json apps/web/package.json
-          if git diff --staged --quiet; then
-            echo "No version change to commit"
-            exit 0
-          fi
-          git commit -m "chore: pre-release v$NEW_VER"
-          git push origin dev
-          echo "Pushed v$NEW_VER to dev"
+          # Tag anotada com referência ao commit que disparou
+          git tag -a "$NEW_TAG" -m "Pre-release $NEW_TAG (merge: ${{ github.event.head_commit.message }})"
+          git push origin "$NEW_TAG"
+          echo "Pushed $NEW_TAG"
