@@ -1,8 +1,6 @@
 # ============================================================================
 # pr-release-labels — exige release:patch|minor|major em PRs pra main
 # ============================================================================
-# Inspirado em Grupo-Potencial-IA-e-Inovacao/workflows/pr-release-labels.yml.
-#
 # PRs de dev→main DEVEM ter uma das labels release:* — o workflow
 # `version-main.yml` lê essa label pra decidir o bump semver. Sem label,
 # falha o check (não bloqueia merge se PR é dispensável de release, mas

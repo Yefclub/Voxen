@@ -1,8 +1,6 @@
 # ============================================================================
 # version-main — semver bump no merge dev→main + tag pra disparar release
 # ============================================================================
-# Adaptado de Grupo-Potencial-IA-e-Inovacao/workflows/release.yml@main.
-#
 # Estratégia:
 #  - Roda em push pra main (depois de merge da PR de release dev→main)
 #  - Detecta PR_NUM via mensagem do squash commit "Title (#N)"

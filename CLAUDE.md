@@ -291,22 +291,12 @@ Pesquisa na web é uma ferramenta central, não opcional. Usar ativamente para:
 - Comparar abordagens e trazer referências concretas
 - Acompanhar novas técnicas e padrões da indústria
 
-## Contexto Empresarial
+## Contexto
 
-### YefClub-Org
-
-Organização GitHub onde Voxen vive (`YefClub-Org/Voxen`). Repositório private. Owner principal: Yef (Carlos Kalyel).
-
-### Grupo Potencial — IA e Inovação
-
-Organização-mãe, onde vivem:
-- **Template org-wide**: `Grupo-Potencial-IA-e-Inovacao/ai-coding-rules` (este CLAUDE.md vem dele)
-- **Referência arquitetural**: `Grupo-Potencial-IA-e-Inovacao/Transit` (padrão monorepo + Dockerfile + Easypanel)
-
-Voxen é produto da casa: web self-hosted, container-first, deploy via Easypanel.
+Projeto pessoal do Yef (Carlos Kalyel) hospedado em `YefClub-Org/Voxen` (private). Owner único.
 
 **Ecossistema de software**:
-- **Deploy**: Easypanel (mesmo `docker-compose.yml` do dev — princípio de paridade dev/prod)
+- **Deploy**: Easypanel ou Docker Compose direto (mesmo `docker-compose.yml` do dev — paridade dev/prod)
 - **Auth**: better-auth com workflow de aprovação manual do admin (modelo restrito de adoção)
 - **Storage**: Garage S3 self-hosted (sem dependência de cloud externa)
 - **LLM**: OpenRouter como agregador único (1 chave, billing unificado)
