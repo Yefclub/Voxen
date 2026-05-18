@@ -293,15 +293,18 @@ model CostEvent {
 // ============================================================================
 
 model Conversation {
-  id         String        @id @default(cuid())
-  userId     String
-  title      String        @default("Nova conversa")
-  thinking   Boolean       @default(false)
-  archivedAt DateTime?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages   ChatMessage[]
+  id              String        @id @default(cuid())
+  userId          String
+  title           String        @default("Nova conversa")
+  thinking        Boolean       @default(false)
+  archivedAt      DateTime?
+  // Quantas vezes a conversa já foi compactada. Útil pra debug + UI exibir
+  // "compactada N vezes" quando relevante.
+  compactionCount Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages       ChatMessage[]
 
   @@index([userId, updatedAt(sort: Desc)])
 }
@@ -309,19 +312,38 @@ model Conversation {
 enum ChatRole {
   USER
   ASSISTANT
+  // SYSTEM: mensagens auto-geradas pelo Voxen (resumo de compactação,
+  // resultado de job de automação, etc). Não foram digitadas pelo user
+  // nem geradas pelo agente em resposta direta.
+  SYSTEM
+}
+
+enum ChatMessageKind {
+  NORMAL
+  COMPACTION_SUMMARY
 }
 
 model ChatMessage {
-  id             String       @id @default(cuid())
+  id             String          @id @default(cuid())
   conversationId String
   role           ChatRole
-  content        String       @db.Text
+  // NORMAL = mensagem regular do chat
+  // COMPACTION_SUMMARY = mensagem-resumo que substitui um lote de mensagens
+  //   antigas após compactação automática de memória. Tem role=SYSTEM.
+  kind           ChatMessageKind @default(NORMAL)
+  content        String          @db.Text
   // tools usadas pela resposta (array de {name, args, preview}) — JSONB
   tools          Json?
-  createdAt      DateTime     @default(now())
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  // Quando setado, esta mensagem foi "compactada" — significa que seu
+  // conteúdo já foi substituído por uma COMPACTION_SUMMARY mais recente.
+  // Fica no DB pra histórico (user pode expandir e ver), mas NÃO é enviada
+  // mais no contexto da próxima chamada ao modelo.
+  compactedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+  @@index([conversationId, compactedAt])
 }
 
 // ============================================================================
