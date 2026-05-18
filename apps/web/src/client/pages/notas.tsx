@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Markdown } from '../components/ui/markdown';
+import { MarkdownEditor } from '../components/notes/markdown-editor';
 import { Spinner } from '../components/ui/spinner';
 import { useFetch } from '../lib/hooks';
 import { useNotes } from '../lib/use-notes';
@@ -214,16 +215,16 @@ function NoteEditor({
               )}
             </div>
           ) : (
-            <textarea
-              value={content}
-              onChange={(e) => {
-                setContent(e.target.value);
-                setDirty(true);
-              }}
-              placeholder="Comece a escrever em markdown…"
-              className="w-full min-h-[55vh] bg-transparent text-[14.5px] leading-relaxed text-zinc-100 placeholder:text-[var(--color-app-muted)] font-mono focus:outline-none resize-none"
-              spellCheck
-            />
+            <div className="min-h-[55vh] h-full">
+              <MarkdownEditor
+                value={content}
+                onChange={(v) => {
+                  setContent(v);
+                  setDirty(true);
+                }}
+                placeholder="Comece a escrever em markdown…"
+              />
+            </div>
           )}
         </div>
       </Card>
