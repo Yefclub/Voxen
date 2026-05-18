@@ -18,6 +18,7 @@ import { costRoutes } from './routes/cost';
 import { chatRoutes } from './routes/chat';
 import { notesRoutes } from './routes/notes';
 import { mcpRoutes } from './routes/mcp';
+import { graphRoutes } from './routes/graph';
 import { getRedisPublisher } from './lib/redis';
 import { rateLimit } from './lib/rate-limit';
 
@@ -182,6 +183,8 @@ app.route('/api/chat', chatRoutes);
 app.route('/api/notes', notesRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
+// Graph view (visualização Obsidian-like da KB)
+app.route('/api/graph', graphRoutes);
 
 // Avatar proxy: serve imagem do Garage de qualquer user autenticado
 app.get('/api/avatar/:userId', async (c) => {
