@@ -1,0 +1,86 @@
+# ============================================================================
+# version-dev — auto-bump pra X.Y.Z-dev.<timestamp> no push pra dev
+# ============================================================================
+# Inspirado em Grupo-Potencial-IA-e-Inovacao/workflows/version-dev.yml@main.
+#
+# Estratégia:
+#  - Roda em push pra dev (depois de cada PR mergeada)
+#  - Lê base version do package.json raiz (strip -dev.* se existir)
+#  - Escreve <base>-dev.<unix_ts> em package.json + apps/web/package.json
+#  - Commit + push como github-actions[bot]
+#  - Concurrency group por branch — serializa pushes
+#  - Skip se commit message contém "chore: set version" (evita loop)
+# ============================================================================
+
+name: Version dev on merge
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: version-dev-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  version-dev:
+    runs-on: ubuntu-latest
+    # Evita loop infinito — esse workflow faz push, que dispararia ele de novo
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore: set version') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Bump version with -dev timestamp
+        id: version
+        run: |
+          set -euo pipefail
+          VER=$(node -p "require('./package.json').version")
+          BASE_VER=${VER%-dev*}
+          TS=$(date +%s)
+          NEW_VER="${BASE_VER}-dev.${TS}"
+          echo "version=$NEW_VER" >> "$GITHUB_OUTPUT"
+          export NEW_VER
+          node -e "
+            const fs = require('fs');
+            const files = ['./package.json', './apps/web/package.json'];
+            for (const f of files) {
+              const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+              j.version = process.env.NEW_VER;
+              fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
+            }
+          "
+          echo "Set version to $NEW_VER"
+
+      - name: Commit and push
+        env:
+          NEW_VER: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json apps/web/package.json
+          if git diff --staged --quiet; then
+            echo "No version change, skip"
+            exit 0
+          fi
+          git commit -m "chore: set version to $NEW_VER for dev"
+          # Retry com rebase em caso de race com outro push concorrente
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin "${{ github.ref_name }}" \
+              && git push origin "HEAD:${{ github.ref_name }}"; then
+              exit 0
+            fi
+            sleep "$((attempt * 3))"
+          done
+          exit 1

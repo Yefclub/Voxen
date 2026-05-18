@@ -32,6 +32,13 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
+      - name: Build args (versão/sha/timestamp) injetados na image
+        id: bargs
+        run: |
+          REF=${GITHUB_REF#refs/tags/v}
+          echo "version=$REF" >> $GITHUB_OUTPUT
+          echo "sha=${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -41,6 +48,10 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            VOXEN_VERSION=${{ steps.bargs.outputs.version }}
+            VOXEN_GIT_SHA=${{ steps.bargs.outputs.sha }}
+            VOXEN_BUILT_AT=${{ steps.bargs.outputs.built_at }}
 
   github-release:
     name: GitHub Release
