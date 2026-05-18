@@ -125,3 +125,54 @@ def test_web_url_preserve_query() -> None:
 )
 def test_web_url_rejects(url: str) -> None:
     assert _normalize_web_url(url) is None
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        # Repo root → README via HEAD
+        (
+            "https://github.com/vercel/next.js",
+            "https://raw.githubusercontent.com/vercel/next.js/HEAD/README.md",
+        ),
+        (
+            "https://www.github.com/anthropics/sdk",
+            "https://raw.githubusercontent.com/anthropics/sdk/HEAD/README.md",
+        ),
+        # /blob/<branch>/<path>
+        (
+            "https://github.com/facebook/react/blob/main/README.md",
+            "https://raw.githubusercontent.com/facebook/react/main/README.md",
+        ),
+        (
+            "https://github.com/owner/repo/blob/dev/docs/intro.md",
+            "https://raw.githubusercontent.com/owner/repo/dev/docs/intro.md",
+        ),
+        # /tree/<branch>/<path> → README do dir
+        (
+            "https://github.com/owner/repo/tree/main/packages/cli",
+            "https://raw.githubusercontent.com/owner/repo/main/packages/cli/README.md",
+        ),
+        # Gist
+        (
+            "https://gist.github.com/octocat/abc123def456",
+            "https://gist.githubusercontent.com/octocat/abc123def456/raw",
+        ),
+    ],
+)
+def test_web_url_github_normalizes_to_raw(url: str, expected: str) -> None:
+    assert _normalize_web_url(url) == expected
+
+
+def test_web_url_news_sites_unchanged() -> None:
+    """Sites de notícias estáticos passam sem normalização — Trafilatura
+    extrai bem deles."""
+    cases = [
+        "https://g1.globo.com/tecnologia/noticia/2026/01/01/foo.ghtml",
+        "https://www1.folha.uol.com.br/colunas/foo.shtml",
+        "https://www.bbc.com/portuguese/foo",
+        "https://techcrunch.com/2026/01/01/post/",
+    ]
+    for url in cases:
+        # Espera retorno = input (apenas fragment removido se houver)
+        assert _normalize_web_url(url) == url

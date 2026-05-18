@@ -138,11 +138,14 @@ TOOLS_SPEC: list[dict[str, Any]] = [
         "function": {
             "name": "scrape_url",
             "description": (
-                "Baixa e indexa uma página web (blog, artigo, docs, wiki). "
-                "Cria um Job que extrai o conteúdo principal via Trafilatura "
-                "e salva como Transcript do tipo WEB. NÃO espera concluir — "
-                "retorna o job_id. Use quando o usuário enviar um link de "
-                "página web (não-YouTube). Avise que vai levar uns segundos."
+                "Baixa e indexa uma página web (blog, artigo, docs, wiki, "
+                "notícias, README do GitHub, gist). Cria um Job que extrai o "
+                "conteúdo principal via Trafilatura e salva como Transcript "
+                "WEB. NÃO espera concluir — retorna o job_id. Use pra "
+                "qualquer link de página HTML estática. URLs do GitHub "
+                "(github.com/user/repo, /blob, /tree) são auto-redirecionadas "
+                "pra raw.githubusercontent.com (markdown puro). NÃO funciona "
+                "em LinkedIn/Facebook/Instagram web (requer auth + JS)."
             ),
             "parameters": {
                 "type": "object",
@@ -445,6 +448,25 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
             normalized = _normalize_web_url(url)
             if not normalized:
                 return {"error": "URL inválida. Informe um link http(s) válido."}
+            # Plataformas que servem conteúdo via JS e bloqueiam scrapers
+            # sem auth. Avisa o user em vez de criar job que falharia.
+            from urllib.parse import urlparse as _up
+
+            _host = (_up(normalized).hostname or "").lower()
+            _hostless = _host.removeprefix("www.").removeprefix("m.")
+            if _hostless in (
+                "linkedin.com",
+                "facebook.com",
+                "instagram.com",
+            ):
+                return {
+                    "error": (
+                        f"{_hostless} requer autenticação pra ler — Trafilatura "
+                        "não executa JS nem mantém sessão. Tente o link público "
+                        "alternativo (ex: substack, blog do autor) ou copie o "
+                        "conteúdo manualmente numa nova nota."
+                    ),
+                }
             res = await db.create_scrape_job(user_id, normalized)
             if res.get("duplicate") == "transcript":
                 return {
@@ -760,7 +782,16 @@ async def _web_search(user_id: str, query: str) -> dict[str, Any]:
 
 
 def _normalize_web_url(url: str) -> str | None:
-    """Valida URL http(s) e remove fragments (#anchor não afeta conteúdo)."""
+    """Valida URL http(s) e remove fragments. Também normaliza plataformas
+    com conteúdo carregado via JS (Trafilatura não executa JS) — redireciona
+    pra endpoints estáticos equivalentes:
+
+    - github.com/<user>/<repo>                       → raw README na default
+                                                       branch
+    - github.com/<user>/<repo>/blob/<branch>/<path>  → raw.githubusercontent
+    - github.com/<user>/<repo>/tree/<branch>/<path>  → raw README do dir
+    - gist.github.com/<user>/<id>                    → raw do gist
+    """
     from urllib.parse import urlparse, urlunparse
 
     try:
@@ -769,7 +800,44 @@ def _normalize_web_url(url: str) -> str | None:
         return None
     if u.scheme not in ("http", "https") or not u.hostname:
         return None
-    return urlunparse(u._replace(fragment=""))
+    host_raw = u.hostname  # tipo `str` aqui — narrowing já aplicado
+    u = u._replace(fragment="")
+
+    host = host_raw.lower()
+    # Strip prefixes pra comparação
+    for prefix in ("www.", "m."):
+        if host.startswith(prefix):
+            host = host[len(prefix) :]
+            break
+
+    # === GitHub ===
+    if host == "github.com":
+        parts = [p for p in u.path.split("/") if p]
+        if len(parts) >= 2 and not parts[0].startswith("."):
+            owner, repo = parts[0], parts[1]
+            if len(parts) == 2:
+                # Repo root → raw README.md na default branch via HEAD
+                return f"https://raw.githubusercontent.com/{owner}/{repo}/HEAD/README.md"
+            if len(parts) >= 4 and parts[2] in ("blob", "raw"):
+                # /blob/<branch>/<path> → raw.githubusercontent.com/<branch>/<path>
+                branch = parts[3]
+                file_path = "/".join(parts[4:])
+                return f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{file_path}"
+            if len(parts) >= 4 and parts[2] == "tree":
+                # /tree/<branch>/<path>: assume README.md do dir
+                branch = parts[3]
+                dir_path = "/".join(parts[4:])
+                base = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}"
+                return f"{base}/{dir_path}/README.md" if dir_path else f"{base}/README.md"
+
+    # === Gist ===
+    if host == "gist.github.com":
+        parts = [p for p in u.path.split("/") if p]
+        if len(parts) >= 2:
+            owner, gid = parts[0], parts[1]
+            return f"https://gist.githubusercontent.com/{owner}/{gid}/raw"
+
+    return urlunparse(u)
 
 
 def _canonical_video_url(url: str) -> str | None:
