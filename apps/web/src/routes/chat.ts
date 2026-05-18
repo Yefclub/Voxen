@@ -110,9 +110,17 @@ chatRoutes.post('/conversations', async (c) => {
 chatRoutes.get('/conversations/:id', async (c) => {
   const uid = userId(c);
   const id = c.req.param('id');
+  const includeCompacted = c.req.query('includeCompacted') === '1';
   const conv = await db.conversation.findFirst({
     where: { id, userId: uid },
-    include: { messages: { orderBy: { createdAt: 'asc' } } },
+    include: {
+      messages: {
+        orderBy: { createdAt: 'asc' },
+        // Filtra mensagens compactadas por padrão — só mostra as ativas.
+        // Cliente pode passar ?includeCompacted=1 pra ver histórico antigo.
+        where: includeCompacted ? undefined : { compactedAt: null },
+      },
+    },
   });
   if (!conv) return c.json({ error: 'Conversa não encontrada.' }, 404);
   return c.json({
@@ -120,14 +128,17 @@ chatRoutes.get('/conversations/:id', async (c) => {
       id: conv.id,
       title: conv.title,
       thinking: conv.thinking,
+      compactionCount: conv.compactionCount,
       createdAt: conv.createdAt.toISOString(),
       updatedAt: conv.updatedAt.toISOString(),
     },
     messages: conv.messages.map((m) => ({
       id: m.id,
       role: m.role.toLowerCase(),
+      kind: m.kind,
       content: m.content,
       tools: m.tools as unknown,
+      compactedAt: m.compactedAt?.toISOString() ?? null,
       createdAt: m.createdAt.toISOString(),
     })),
   });
@@ -194,7 +205,12 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
 
   const conv = await db.conversation.findFirst({
     where: { id, userId: uid },
-    include: { messages: { orderBy: { createdAt: 'asc' } } },
+    include: {
+      messages: {
+        orderBy: { createdAt: 'asc' },
+        where: { compactedAt: null },
+      },
+    },
   });
   if (!conv) return c.json({ error: 'Conversa não encontrada.' }, 404);
 

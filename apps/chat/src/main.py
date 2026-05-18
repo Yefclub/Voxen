@@ -44,6 +44,7 @@ async def _stop_telegram() -> None:
         except asyncio.CancelledError:
             pass
 
+
 MAX_TOOL_LOOPS = 5
 OR_BASE_URL = "https://openrouter.ai/api/v1"
 
@@ -176,12 +177,8 @@ async def chat(
     body: ChatRequest,
     request: Request,
     x_voxen_user_id: str | None = Header(default=None, alias="X-Voxen-User-Id"),
-    x_voxen_conversation_id: str | None = Header(
-        default=None, alias="X-Voxen-Conversation-Id"
-    ),
-    x_voxen_user_timezone: str | None = Header(
-        default=None, alias="X-Voxen-User-Timezone"
-    ),
+    x_voxen_conversation_id: str | None = Header(default=None, alias="X-Voxen-Conversation-Id"),
+    x_voxen_user_timezone: str | None = Header(default=None, alias="X-Voxen-User-Timezone"),
 ) -> StreamingResponse:
     if not x_voxen_user_id:
         raise HTTPException(status_code=401, detail="Header X-Voxen-User-Id ausente.")
@@ -223,9 +220,7 @@ async def chat(
         ]
         for i, m in enumerate(body.messages):
             is_last_user = (
-                i == len(body.messages) - 1
-                and m.role == "user"
-                and body.image_data_url is not None
+                i == len(body.messages) - 1 and m.role == "user" and body.image_data_url is not None
             )
             if is_last_user:
                 msg_list.append(
@@ -243,6 +238,54 @@ async def chat(
             else:
                 msg_list.append({"role": m.role, "content": m.content})
         messages: list[dict[str, Any]] = msg_list
+
+        # === Compactação de memória ===
+        # Se a conversa está perto do limite do modelo (>= 70%), gera um
+        # resumo detalhado e substitui as mensagens antigas por ele.
+        # Emite eventos SSE pra UI mostrar progresso/falhas.
+        from .compaction import maybe_compact_messages
+        from .token_limits import estimate_messages_tokens, get_context_limit
+
+        tokens_before = estimate_messages_tokens(messages)
+        ctx_limit = get_context_limit(model)
+        # Notifica estado atual de uso ANTES de qualquer chamada
+        yield _sse(
+            "context_usage",
+            {"tokens": tokens_before, "limit": ctx_limit},
+        )
+        compacted, compact_info = await maybe_compact_messages(
+            api_key=api_key,
+            model=model,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            messages=messages,
+        )
+        if compact_info:
+            if compact_info.get("triggered"):
+                messages = compacted
+                yield _sse(
+                    "compaction_done",
+                    {
+                        "summary": compact_info["summary"],
+                        "tokens_before": compact_info["tokens_before"],
+                        "tokens_after": compact_info["tokens_after"],
+                        "limit": compact_info["limit"],
+                        "cost_usd": compact_info["cost_usd"],
+                    },
+                )
+            else:
+                # Compactação tentada mas falhou — UI avisa user que próxima
+                # resposta pode estourar contexto.
+                yield _sse(
+                    "compaction_failed",
+                    {
+                        "error": compact_info.get("error", "Falha desconhecida."),
+                        "tokens_before": compact_info["tokens_before"],
+                        "limit": compact_info["limit"],
+                    },
+                )
+        # === Fim compactação ===
+
         extra: dict[str, Any] = {}
         if thinking:
             extra["reasoning"] = {"effort": "medium"}
@@ -400,9 +443,7 @@ async def chat(
 async def voice_transcribe(
     request: Request,
     x_voxen_user_id: str | None = Header(default=None, alias="X-Voxen-User-Id"),
-    x_voxen_audio_name: str = Header(
-        default="voice.webm", alias="X-Voxen-Audio-Name"
-    ),
+    x_voxen_audio_name: str = Header(default="voice.webm", alias="X-Voxen-Audio-Name"),
 ) -> JSONResponse:
     if not x_voxen_user_id:
         raise HTTPException(status_code=401, detail="Header X-Voxen-User-Id ausente.")
@@ -435,9 +476,7 @@ async def voice_transcribe(
         raise HTTPException(status_code=412, detail="Chave OpenRouter rejeitada.")
     if res.status_code >= 400:
         log.warning("voice-transcribe-failed", status=res.status_code, body=res.text[:200])
-        raise HTTPException(
-            status_code=502, detail=f"OpenRouter retornou {res.status_code}."
-        )
+        raise HTTPException(status_code=502, detail=f"OpenRouter retornou {res.status_code}.")
     payload = res.json()
     text = (payload.get("text") or "").strip()
 
@@ -547,7 +586,9 @@ async def summarize_transcript(
                 await conn.execute(
                     'UPDATE "Transcript" SET "summaryMd" = $2, "updatedAt" = NOW() '
                     'WHERE id = $1 AND "userId" = $3',
-                    body.transcript_id, summary, x_voxen_user_id,
+                    body.transcript_id,
+                    summary,
+                    x_voxen_user_id,
                 )
         except Exception:  # noqa: BLE001
             log.exception("summary-persist-failed")

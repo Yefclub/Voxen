@@ -29,13 +29,27 @@ import {
 
 interface Msg {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
+  kind?: 'NORMAL' | 'COMPACTION_SUMMARY';
   content: string;
   // `actionSummary` é populado quando a tool é request_user_confirmation —
   // o backend envia o resumo cru no SSE pra UI renderizar o banner HITL
   // sem precisar parsear o JSON do preview (que pode estar truncado).
   tools?: { name: string; preview?: string; actionSummary?: string }[];
   pending?: boolean;
+}
+
+interface ContextUsage {
+  tokens: number;
+  limit: number;
+}
+
+interface CompactionInfo {
+  summary: string;
+  tokens_before: number;
+  tokens_after: number;
+  limit: number;
+  cost_usd: string;
 }
 
 const THINKING_KEY = 'voxen:chat:thinking';
@@ -49,6 +63,11 @@ export function ChatPage(): React.ReactElement {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
+  // Contexto/compactação — atualizado via SSE events. Modal mostra o
+  // último resumo de compactação.
+  const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
+  const [lastCompaction, setLastCompaction] = useState<CompactionInfo | null>(null);
+  const [compactionModalOpen, setCompactionModalOpen] = useState(false);
   // Vision: imagem anexada (data URL). Quando setada, é enviada no body do
   // send → chat service usa default_vision_model. Limpa após envio.
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
@@ -85,10 +104,12 @@ export function ChatPage(): React.ReactElement {
           thinking: boolean;
           updatedAt: string;
           createdAt: string;
+          compactionCount?: number;
         };
         messages: {
           id: string;
-          role: 'user' | 'assistant';
+          role: 'user' | 'assistant' | 'system';
+          kind?: 'NORMAL' | 'COMPACTION_SUMMARY';
           content: string;
           tools?: unknown;
           createdAt: string;
@@ -103,13 +124,31 @@ export function ChatPage(): React.ReactElement {
         messageCount: data.messages.length,
       });
       setThinking(data.conversation.thinking);
+      // Mensagens role=system kind=COMPACTION_SUMMARY são meta — não viram bubble.
+      // A mais recente alimenta `lastCompaction` pra o botão "Ver resumo".
+      const summaries = data.messages.filter((m) => m.kind === 'COMPACTION_SUMMARY');
+      const latestSummary = summaries[summaries.length - 1];
+      if (latestSummary) {
+        setLastCompaction({
+          summary: latestSummary.content,
+          tokens_before: 0,
+          tokens_after: 0,
+          limit: 0,
+          cost_usd: '0',
+        });
+      } else {
+        setLastCompaction(null);
+      }
       setMessages(
-        data.messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
-        })),
+        data.messages
+          .filter((m) => m.kind !== 'COMPACTION_SUMMARY')
+          .map((m) => ({
+            id: m.id,
+            role: m.role,
+            kind: m.kind,
+            content: m.content,
+            tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
+          })),
       );
     },
     [navigate],
@@ -276,6 +315,36 @@ export function ChatPage(): React.ReactElement {
                   : x,
               ),
             );
+          } else if (ev === 'context_usage') {
+            setContextUsage({
+              tokens: Number(payload.tokens ?? 0),
+              limit: Number(payload.limit ?? 0),
+            });
+          } else if (ev === 'compaction_done') {
+            const info: CompactionInfo = {
+              summary: String(payload.summary ?? ''),
+              tokens_before: Number(payload.tokens_before ?? 0),
+              tokens_after: Number(payload.tokens_after ?? 0),
+              limit: Number(payload.limit ?? 0),
+              cost_usd: String(payload.cost_usd ?? '0'),
+            };
+            setLastCompaction(info);
+            setContextUsage({ tokens: info.tokens_after, limit: info.limit });
+            toast.success('Memória compactada.', {
+              description: `Reduziu de ${info.tokens_before.toLocaleString()} pra ${info.tokens_after.toLocaleString()} tokens.`,
+              action: {
+                label: 'Ver resumo',
+                onClick: () => setCompactionModalOpen(true),
+              },
+            });
+          } else if (ev === 'compaction_failed') {
+            // Tentou compactar mas falhou — provavelmente vai estourar contexto
+            // na próxima chamada ao modelo. Avisa o user.
+            toast.warning('Não consegui compactar a memória.', {
+              description:
+                (payload.error as string) ??
+                'Sua próxima resposta pode falhar por exceder o limite do modelo.',
+            });
           }
         }
       }
@@ -301,6 +370,14 @@ export function ChatPage(): React.ReactElement {
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
       className="flex flex-col h-full"
     >
+      {/* Barra de contexto — mostra tokens da conversa atual.
+          Aparece só quando há conversa ativa + algum dado de uso. */}
+      {active && contextUsage && (
+        <ContextBar
+          usage={contextUsage}
+          onShowSummary={lastCompaction ? () => setCompactionModalOpen(true) : undefined}
+        />
+      )}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
         <motion.div
           key={routeId ?? 'empty'}
@@ -355,8 +432,132 @@ export function ChatPage(): React.ReactElement {
           </p>
         </div>
       </motion.div>
+
+      {/* Modal de resumo da última compactação */}
+      <CompactionModal
+        open={compactionModalOpen}
+        onOpenChange={setCompactionModalOpen}
+        info={lastCompaction}
+      />
     </motion.div>
   );
+}
+
+function ContextBar({
+  usage,
+  onShowSummary,
+}: {
+  usage: ContextUsage;
+  onShowSummary?: () => void;
+}): React.ReactElement {
+  const pct = usage.limit > 0 ? (usage.tokens / usage.limit) * 100 : 0;
+  // Cores: verde <60, amber 60-80, rose >80
+  const tone = pct >= 80 ? 'rose' : pct >= 60 ? 'amber' : 'emerald';
+  const colorMap = {
+    emerald: { bg: 'bg-emerald-500', text: 'text-emerald-300' },
+    amber: { bg: 'bg-amber-500', text: 'text-amber-300' },
+    rose: { bg: 'bg-rose-500', text: 'text-rose-300' },
+  } as const;
+  const c = colorMap[tone];
+  return (
+    <div className="px-6 py-2 border-b border-[var(--color-app-border)]/50 bg-[var(--color-app-bg-elevated)]/40 backdrop-blur-sm">
+      <div className="mx-auto max-w-3xl flex items-center gap-3">
+        <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] font-medium shrink-0">
+          Contexto
+        </span>
+        <div className="flex-1 h-1.5 rounded-full bg-[var(--color-app-bg-elevated)] overflow-hidden">
+          <motion.div
+            className={cn('h-full rounded-full transition-colors', c.bg)}
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(100, Math.max(2, pct))}%` }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          />
+        </div>
+        <span className={cn('text-[11px] tabular-nums font-mono', c.text)}>
+          {usage.tokens.toLocaleString()} / {usage.limit.toLocaleString()} · {pct.toFixed(0)}%
+        </span>
+        {onShowSummary && (
+          <button
+            type="button"
+            onClick={onShowSummary}
+            className="text-[10px] uppercase tracking-wider text-violet-300 hover:text-violet-200 transition-colors px-2 py-0.5 rounded border border-violet-500/30 hover:border-violet-500/50"
+          >
+            Ver resumo
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CompactionModal({
+  open,
+  onOpenChange,
+  info,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  info: CompactionInfo | null;
+}): React.ReactElement | null {
+  if (!info) return null;
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={() => onOpenChange(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.94, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 12 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-3xl max-h-[85vh] rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] overflow-hidden flex flex-col"
+          >
+            <header className="px-6 py-4 border-b border-[var(--color-app-border)] flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
+                <Sparkles className="h-4 w-4 text-violet-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="font-display text-lg font-semibold tracking-tight">
+                  Resumo da memória compactada
+                </h2>
+                <p className="text-[11px] text-[var(--color-app-muted)] tabular-nums">
+                  {info.tokens_before.toLocaleString()} → {info.tokens_after.toLocaleString()}{' '}
+                  tokens
+                  {' · '}
+                  custo {formatCost(info.cost_usd)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="h-7 w-7 flex items-center justify-center rounded-md text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+                aria-label="Fechar"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </header>
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+              <Markdown>{info.summary}</Markdown>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function formatCost(usd: string): string {
+  const n = parseFloat(usd);
+  if (!isFinite(n) || n === 0) return '$0';
+  if (n < 0.001) return `$${n.toFixed(6)}`;
+  if (n < 0.1) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
 }
 
 function Bubble({
