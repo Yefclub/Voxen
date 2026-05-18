@@ -114,7 +114,7 @@ async def _handle_update(
         )
         return
 
-    # Texto livre → confirma vínculo + responde via Vox (mensagem curta)
+    # Texto livre → confirma vínculo + responde via Vox
     link = await _resolve_link(chat_id)
     if not link:
         await _send(
@@ -125,16 +125,18 @@ async def _handle_update(
             "/start <código>.",
         )
         return
-    # TODO: integrar com /chat endpoint pra resposta com tools. Por enquanto
-    # responde stub. Implementação completa requer call interno ao /chat
-    # service com user_id sintético + acumular resposta SSE.
-    await _send(
-        client,
-        token,
-        chat_id,
-        f"Recebi sua mensagem: «{text[:200]}». A integração com a Vox via Telegram está em "
-        "construção — por enquanto use /buscar <termo>.",
-    )
+    user_id = link["userId"]
+    # Mostra typing pra UX enquanto processa (cap em 30s)
+    await _send_chat_action(client, token, chat_id, "typing")
+    try:
+        reply = await _ask_vox(user_id, text)
+    except Exception as e:  # noqa: BLE001
+        log.exception("telegram-vox-failed", error=str(e))
+        await _send(client, token, chat_id, f"⚠️ Erro ao consultar a Vox: {e}")
+        return
+    # Telegram limit 4096 chars — split em partes se precisa
+    for chunk in _split_telegram(reply, 3900):
+        await _send(client, token, chat_id, chunk, parse_mode="Markdown")
 
 
 async def _handle_start(
@@ -228,6 +230,52 @@ async def _resolve_link(chat_id: int) -> dict[str, Any] | None:
             int(chat_id),
         )
     return dict(row) if row else None
+
+
+async def _ask_vox(user_id: str, user_text: str) -> str:
+    """Chama a Vox sem SSE — acumula resposta + cost e devolve texto final.
+
+    Mantém uma Conversation por user (title "Telegram") pra preservar
+    histórico cross-session do bot. Loop multi-tool igual ao /chat endpoint
+    com cap em MAX_TOOL_LOOPS (5).
+    """
+    from .agent_core import run_chat_completion
+
+    return await run_chat_completion(user_id=user_id, user_text=user_text, source="telegram")
+
+
+async def _send_chat_action(
+    client: httpx.AsyncClient, token: str, chat_id: int, action: str
+) -> None:
+    """Mostra "digitando…" na conversa do user enquanto a IA processa."""
+    url = TG_BASE.format(token=token) + "/sendChatAction"
+    try:
+        await client.post(url, json={"chat_id": chat_id, "action": action})
+    except httpx.HTTPError:
+        pass
+
+
+def _split_telegram(text: str, limit: int) -> list[str]:
+    """Divide texto longo em chunks respeitando o limite de 4096 chars do
+    Telegram. Prefere quebrar em parágrafos; se não couber, quebra cru."""
+    if len(text) <= limit:
+        return [text]
+    chunks: list[str] = []
+    remaining = text
+    while len(remaining) > limit:
+        # Tenta quebrar em \n\n próximo do limite
+        idx = remaining.rfind("\n\n", 0, limit)
+        if idx <= 0:
+            idx = remaining.rfind("\n", 0, limit)
+        if idx <= 0:
+            idx = remaining.rfind(" ", 0, limit)
+        if idx <= 0:
+            idx = limit
+        chunks.append(remaining[:idx].rstrip())
+        remaining = remaining[idx:].lstrip()
+    if remaining:
+        chunks.append(remaining)
+    return chunks
 
 
 async def _send(
