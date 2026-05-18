@@ -155,7 +155,7 @@ Transcrições viram `.md` que precisam ser persistidos fora do DB (pra não inc
 
 ### Decisão
 
-**Garage S3** (mesma escolha do `Grupo-Potencial-IA-e-Inovacao/Transit`). 1 nó standalone (replication_factor=1) é suficiente pra self-hosted. Bootstrap automático via init container.
+**Garage S3** — implementação leve do protocolo S3 compatível com AWS SDK, sem dependência de cloud externa. 1 nó standalone (replication_factor=1) é suficiente pra self-hosted. Bootstrap automático via init container.
 
 ### Consequências
 

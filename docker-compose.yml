@@ -63,14 +63,20 @@ services:
       retries: 10
 
   # Init container: roda uma vez, configura cluster + bucket + key, exporta creds em /creds
+  # Usa alpine porque a imagem do garage v1.0.1 é distroless (sem /bin/sh).
+  # Conversa com o garage via Admin API HTTP.
   garage-init:
-    image: dxflrs/garage:v1.0.1
+    image: alpine:3.20
     depends_on:
       garage:
         condition: service_healthy
     entrypoint: ['/bin/sh', '/scripts/garage-init.sh']
     environment:
       GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-dev_change_me_in_prod}
+      GARAGE_ADMIN_URL: http://garage:3903
+    # DNS upstream — systemd-resolved 127.0.0.53 do host não é alcançável de dentro do container
+    dns: ['8.8.8.8', '1.1.1.1']
     volumes:
       - ./scripts:/scripts:ro
       - garage_creds:/creds
@@ -93,6 +99,13 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        # Versão e SHA injetados no build. Em local, vêm de `git describe`
+        # se o repo estiver clonado; em CI release, vêm da tag (`v1.2.3`).
+        # Fallback null → Dockerfile usa default 0.1.0/empty.
+        VOXEN_VERSION: ${VOXEN_VERSION:-}
+        VOXEN_GIT_SHA: ${VOXEN_GIT_SHA:-}
+        VOXEN_BUILT_AT: ${VOXEN_BUILT_AT:-}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -108,11 +121,19 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: postgresql://${POSTGRES_USER:-voxen}:${POSTGRES_PASSWORD:-dev_change_me_in_prod}@postgres:5432/${POSTGRES_DB:-voxen}
       REDIS_URL: redis://:${REDIS_PASSWORD:-dev_change_me_in_prod}@redis:6379/0
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev_change_me_in_prod}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev_change_me_in_prod_must_be_at_least_32_chars_long_yes}
       MASTER_KEY_PATH: /data/master.key
       GARAGE_CREDS_PATH: /creds/voxen.env
       GARAGE_ENDPOINT: http://garage:3900
       GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
+      # S3 genérico (MinIO/AWS/etc) — se definidos no .env, têm precedência
+      # sobre GARAGE_*. Deixe vazio pra usar Garage local.
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
       CHAT_SERVICE_URL: http://chat:8001
     volumes:
       - master_key:/data:ro
@@ -143,6 +164,14 @@ services:
       GARAGE_CREDS_PATH: /creds/voxen.env
       GARAGE_ENDPOINT: http://garage:3900
       GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
+      # S3 genérico (MinIO/AWS/etc) — se definidos no .env, têm precedência
+      # sobre GARAGE_*. Deixe vazio pra usar Garage local.
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
     volumes:
       - master_key:/data:ro
       - garage_creds:/creds:ro
@@ -175,9 +204,47 @@ services:
       GARAGE_CREDS_PATH: /creds/voxen.env
       GARAGE_ENDPOINT: http://garage:3900
       GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
+      # S3 genérico (MinIO/AWS/etc) — se definidos no .env, têm precedência
+      # sobre GARAGE_*. Deixe vazio pra usar Garage local.
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      CHAT_SERVICE_URL: http://chat:8001
     volumes:
       - master_key:/data:ro
       - garage_creds:/creds:ro
+    networks:
+      - voxen-net
+
+  # ---------------------------------------------------------------------------
+  # nginx — reverse proxy opcional (profile `nginx`)
+  # Uso:
+  #   docker compose --profile nginx up -d
+  # Pré-requisitos:
+  #   - certificados em ./deploy/nginx/certs/live/voxen/{fullchain,privkey}.pem
+  #     (gere com certbot --standalone na primeira vez)
+  #   - DNS apontado pro host
+  # Se você já tem nginx no host, NÃO use este serviço — use
+  # deploy/nginx/voxen.conf.example como referência pra config nativa.
+  # ---------------------------------------------------------------------------
+  nginx:
+    profiles: [nginx]
+    build:
+      context: .
+      dockerfile: deploy/nginx/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/nginx/certs:/etc/letsencrypt:ro
+      - ./deploy/nginx/certbot-www:/var/www/certbot:ro
     networks:
       - voxen-net
 

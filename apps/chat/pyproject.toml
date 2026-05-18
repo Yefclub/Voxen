@@ -13,6 +13,8 @@ dependencies = [
     "pydantic>=2.9.0",
     "cryptography>=43.0.0",
     "structlog>=24.4.0",
+    "aioboto3>=15.5.0",
+    "redis>=5.0.0",
 ]
 
 [dependency-groups]
@@ -39,6 +41,14 @@ python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+# Bibliotecas sem `py.typed` ou stubs públicos. `ignore_missing_imports` cobre
+# `import-not-found` mas NÃO `import-untyped` (módulo instalado, sem stubs),
+# que mypy strict trata como erro. Desligamos esse código globalmente.
+disable_error_code = ["import-untyped"]
+
+[[tool.mypy.overrides]]
+module = ["asyncpg.*", "aioboto3.*", "botocore.*", "redis.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

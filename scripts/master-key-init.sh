@@ -18,6 +18,9 @@ mkdir -p "$(dirname "$KEY_PATH")"
 # Gera 32 bytes aleatórios e codifica em base64 (sem newline)
 # Alpine tem /dev/urandom e busybox base64
 head -c 32 /dev/urandom | base64 -w 0 > "$KEY_PATH"
-chmod 0400 "$KEY_PATH"
+# 0444 (world-readable) porque web/worker/chat rodam como users non-root
+# em containers separados. Containers já isolam o volume — a chave nunca
+# sai do volume `master_key` montado read-only nos serviços que precisam.
+chmod 0444 "$KEY_PATH"
 
 echo "[master-key-init] gerada em $KEY_PATH ($(wc -c < "$KEY_PATH") bytes)"

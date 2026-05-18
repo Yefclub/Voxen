@@ -1,0 +1,126 @@
+# ============================================================================
+# version-dev — bumpa pre-release vX.Y.Z-dev.N a cada merge em dev
+# ============================================================================
+# Estratégia:
+#  - Roda em push pra `dev` (depois de merge de PR)
+#  - Bumpa a versão em package.json + apps/web/package.json:
+#    * 0.1.0           → 0.2.0-dev.1  (estável → próximo minor + dev.1)
+#    * 0.2.0-dev.5     → 0.2.0-dev.6  (incrementa N)
+#  - Tenta commitar em `dev` usando RELEASE_TOKEN (PAT do owner) que tem
+#    bypass de branch protection. Se a secret não existir, fallback pra
+#    criar APENAS a tag (sem commit) — mantém o histórico de builds mas
+#    package.json fica intocado.
+#  - Cria tag `vX.Y.Z-dev.N` sempre (loop-safe via condição abaixo).
+#  - Tag pre-release NÃO dispara release.yml (esse exige vX.Y.Z sem
+#    hífen via regex restrita).
+#
+# Como ativar o commit (modo recomendado):
+#   1. Owner gera PAT em github.com/settings/tokens com escopo `repo`
+#      (ou fine-grained com Contents: write + Workflows: read no Voxen).
+#   2. Settings → Branch protection rules → dev → Bypass list → adiciona
+#      o usuário do PAT, OU configure o PAT como `secrets.RELEASE_TOKEN`
+#      (este workflow usa ele se presente).
+# ============================================================================
+
+name: Version dev on merge
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: write
+
+jobs:
+  version-dev:
+    runs-on: ubuntu-latest
+    # Evita loop: ignora o commit que esta action cria
+    if: "${{ !startsWith(github.event.head_commit.message, 'chore: pre-release v') && !startsWith(github.event.head_commit.message, 'chore: release v') }}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          # Usa PAT se disponível pra bypass branch protection; fallback
+          # pro GITHUB_TOKEN padrão (que só consegue criar tag).
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compute new pre-release version
+        id: version
+        run: |
+          set -euo pipefail
+          VER=$(node -p "require('./package.json').version")
+          NEW_VER=$(VER="$VER" node -e "
+            const cur = process.env.VER;
+            const m = cur.match(/^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$/);
+            if (!m) {
+              console.error('Versão inválida: ' + cur);
+              process.exit(1);
+            }
+            const [, major, minor, patch, devN] = m;
+            if (devN) {
+              console.log(\`\${major}.\${minor}.\${patch}-dev.\${Number(devN) + 1}\`);
+            } else {
+              console.log(\`\${major}.\${Number(minor) + 1}.0-dev.1\`);
+            }
+          ")
+          echo "new_version=$NEW_VER" >> "$GITHUB_OUTPUT"
+          echo "new_tag=v$NEW_VER" >> "$GITHUB_OUTPUT"
+          echo "Bumping dev to v$NEW_VER (from $VER)"
+
+      - name: Write new version to package.json
+        env:
+          NEW_VER: ${{ steps.version.outputs.new_version }}
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs = require('fs');
+            const files = ['./package.json', './apps/web/package.json'];
+            for (const f of files) {
+              const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+              j.version = process.env.NEW_VER;
+              fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
+            }
+          "
+
+      - name: Commit + push (if RELEASE_TOKEN available)
+        id: commit
+        env:
+          NEW_VER: ${{ steps.version.outputs.new_version }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+          HAS_PAT: ${{ secrets.RELEASE_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json apps/web/package.json
+          if git diff --staged --quiet; then
+            echo "No version change to commit"
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "chore: pre-release v$NEW_VER"
+          # Tenta push (com PAT funciona; sem PAT pode falhar por branch protection)
+          if git push origin dev; then
+            echo "Commit pushed to dev (vX.Y.Z-dev.N reflete no package.json)"
+            echo "committed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Push do commit falhou (branch protection?). Criando só a tag."
+            git reset --hard HEAD~1
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create + push tag
+        env:
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$NEW_TAG" -m "Pre-release $NEW_TAG"
+          git push origin "$NEW_TAG"
+          echo "Pushed $NEW_TAG"

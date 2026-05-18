@@ -10,6 +10,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Secret de teste — NUNCA usar em prod. Em prod vem do .env na raiz.
+  BETTER_AUTH_SECRET: ci-secret-not-for-production-use-at-least-32-bytes-yes-this-is-long-enough
+
 jobs:
   lint-ts:
     name: Lint TS (apps/web)
@@ -20,18 +24,16 @@ jobs:
         with:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-      - name: Install
-        run: pnpm install --frozen-lockfile
-        working-directory: .
+      - run: pnpm install --frozen-lockfile
+      - name: Prisma generate
+        run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
+        working-directory: apps/web
       - name: Lint
         run: bun run lint
         working-directory: apps/web
       - name: Format check
         run: bun run format:check
         working-directory: apps/web
-        if: false  # habilita quando prettier:check existir
 
   typecheck-ts:
     name: Typecheck TS (apps/web)
@@ -42,9 +44,10 @@ jobs:
         with:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - run: pnpm install --frozen-lockfile
+      - name: Prisma generate
+        run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
+        working-directory: apps/web
       - name: Typecheck
         run: bun run typecheck
         working-directory: apps/web
@@ -52,15 +55,48 @@ jobs:
   test-ts:
     name: Test TS (apps/web)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: voxen_test
+          POSTGRES_USER: voxen
+          POSTGRES_PASSWORD: dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U voxen"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://voxen:dev@localhost:5432/voxen_test
+      REDIS_URL: redis://localhost:6379
+      MASTER_KEY_PATH: ${{ github.workspace }}/master.key
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - run: pnpm install --frozen-lockfile
+      - name: Generate test master key
+        run: openssl rand -base64 32 > "$MASTER_KEY_PATH"
+      - name: Prisma generate
+        run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
+        working-directory: apps/web
+      - name: Prisma migrate deploy
+        run: pnpm exec prisma migrate deploy --schema=../../prisma/schema.prisma
+        working-directory: apps/web
       - name: Test
         run: bun test
         working-directory: apps/web

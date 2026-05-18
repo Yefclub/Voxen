@@ -17,12 +17,17 @@ RUN uv sync --frozen --no-editable || uv sync --no-editable
 FROM python:3.13-slim AS runtime
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
+# apt-get upgrade pega CVEs HIGH/CRITICAL em libs base (libcap2, libsystemd0,
+# libudev1) que já têm fix upstream mas vêm desatualizadas na tag slim.
+RUN apt-get update \
+    && apt-get -y upgrade \
+    && apt-get install -y --no-install-recommends wget \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/src /app/src
+COPY apps/chat/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
@@ -33,4 +38,5 @@ EXPOSE 8001
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
   CMD wget -qO- http://localhost:8001/health || exit 1
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8001"]

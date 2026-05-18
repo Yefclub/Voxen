@@ -10,7 +10,15 @@
 // ============================================================================
 
 generator client {
-  provider        = "prisma-client-js"
+  // Novo generator `prisma-client` (v6.x) — output em `apps/web/prisma-generated/`,
+  // evita o auto-install bug do `prisma-client-js` em workspaces pnpm e
+  // garante resolução de `@prisma/client/runtime/library` (que só fica em
+  // `apps/web/node_modules/@prisma/client/` no pnpm workspace).
+  // Output é gitignored (vide .gitignore).
+  provider        = "prisma-client"
+  output          = "../apps/web/prisma-generated"
+  moduleFormat    = "esm"
+  runtime         = "nodejs"
   previewFeatures = ["fullTextSearchPostgres"]
 }
 
@@ -55,9 +63,28 @@ model User {
   transcripts     Transcript[]
   jobs            Job[]
   costEvents      CostEvent[]
+  conversations   Conversation[]
+  notes           Note[]
+  telegramLink    TelegramLink?
+  automations     Automation[]
+  automationRuns  AutomationRun[]
 
   @@index([status])
   @@index([role])
+}
+
+// Vínculo Telegram chat_id ↔ Voxen userId.
+// Setup feito via código de 6 dígitos gerado em /conta → user envia /start
+// <código> no bot → worker resolve e cria o link.
+model TelegramLink {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  chatId    BigInt   @unique
+  username  String?
+  linkedAt  DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
 }
 
 model Session {
@@ -138,11 +165,14 @@ enum TranscriptSource {
   YOUTUBE
   INSTAGRAM
   TIKTOK
+  X             // x.com / twitter.com (yt-dlp suporta nativamente)
+  WEB           // página web (scraper Trafilatura)
 }
 
 enum TranscriptionMethod {
   API           // OpenRouter audio transcription
   SUBTITLES     // baixou legendas oficiais
+  SCRAPE        // extração de página web via Trafilatura
 }
 
 model Transcript {
@@ -164,6 +194,8 @@ model Transcript {
   mdPath              String
   // Texto puro pra FTS (sem timestamps, sem frontmatter)
   plainText           String              @db.Text
+  // Resumo gerado pela IA em markdown (pode ser null se ainda não gerado)
+  summaryMd           String?             @db.Text
   // Frontmatter como JSONB pra filtros estruturados
   frontmatter         Json
   // tsvector gerenciado por trigger SQL (ver migration). Não declarável em Prisma; usar Unsupported.
@@ -202,6 +234,7 @@ model Chunk {
 
 enum JobType {
   DOWNLOAD_AND_TRANSCRIBE
+  SCRAPE_WEB
 }
 
 enum JobStatus {
@@ -256,4 +289,177 @@ model CostEvent {
   @@index([userId, ts(sort: Desc)])
   @@index([ts])
   @@index([kind])
+}
+
+// ============================================================================
+// CHAT (conversas persistidas)
+// ============================================================================
+
+model Conversation {
+  id              String        @id @default(cuid())
+  userId          String
+  title           String        @default("Nova conversa")
+  thinking        Boolean       @default(false)
+  archivedAt      DateTime?
+  // Quantas vezes a conversa já foi compactada. Útil pra debug + UI exibir
+  // "compactada N vezes" quando relevante.
+  compactionCount Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages       ChatMessage[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  // SYSTEM: mensagens auto-geradas pelo Voxen (resumo de compactação,
+  // resultado de job de automação, etc). Não foram digitadas pelo user
+  // nem geradas pelo agente em resposta direta.
+  SYSTEM
+}
+
+enum ChatMessageKind {
+  NORMAL
+  COMPACTION_SUMMARY
+  HITL_RESPONSE
+}
+
+model ChatMessage {
+  id             String          @id @default(cuid())
+  conversationId String
+  role           ChatRole
+  // NORMAL = mensagem regular do chat
+  // COMPACTION_SUMMARY = mensagem-resumo que substitui um lote de mensagens
+  //   antigas após compactação automática de memória. Tem role=SYSTEM.
+  kind           ChatMessageKind @default(NORMAL)
+  content        String          @db.Text
+  // tools usadas pela resposta (array de {name, args, preview}) — JSONB
+  tools          Json?
+  // Quando setado, esta mensagem foi "compactada" — significa que seu
+  // conteúdo já foi substituído por uma COMPACTION_SUMMARY mais recente.
+  // Fica no DB pra histórico (user pode expandir e ver), mas NÃO é enviada
+  // mais no contexto da próxima chamada ao modelo.
+  compactedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([conversationId, compactedAt])
+}
+
+// ============================================================================
+// NOTES — KB manual escrita pelo user ou pela Vox (via tools)
+// ============================================================================
+// Estrutura em árvore: kind=FOLDER agrupa, kind=NOTE tem conteúdo markdown.
+// FTS via tsvector na coluna `searchVector` (mantida por trigger SQL).
+
+enum NoteKind {
+  NOTE
+  FOLDER
+}
+
+model Note {
+  id           String                  @id @default(cuid())
+  userId       String
+  parentId     String?
+  kind         NoteKind                @default(NOTE)
+  title        String
+  // Conteúdo markdown. FOLDER ignora este campo.
+  content      String                  @default("") @db.Text
+  // tsvector mantido por trigger SQL (sync com title+content).
+  searchVector Unsupported("tsvector")?
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent       Note?                   @relation("NoteTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children     Note[]                  @relation("NoteTree")
+
+  @@index([userId, parentId])
+  @@index([userId, updatedAt(sort: Desc)])
+}
+
+// ============================================================================
+// AUTOMAÇÕES (jobs periódicos com continuidade — spec .specs/008-automacoes.md)
+// ============================================================================
+
+enum AutomationType {
+  PERIODIC_SUMMARY  // resumo periódico (puxa transcrições/notas via tools)
+  WEB_RESEARCH      // pesquisa web sobre um tema e cria nota
+}
+
+enum AutomationFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum AutomationStatus {
+  ACTIVE
+  PAUSED
+}
+
+enum AutomationDelivery {
+  IN_APP
+  TELEGRAM
+  BOTH
+}
+
+enum AutomationRunStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model Automation {
+  id          String              @id @default(cuid())
+  userId      String
+  name        String
+  type        AutomationType
+  prompt      String              @db.Text
+  frequency   AutomationFrequency
+  hour        Int                 // 0-23 (no timezone do automation)
+  minute      Int                 // 0-59
+  dayOfWeek   Int?                // 0=segunda..6=domingo (só WEEKLY)
+  dayOfMonth  Int?                // 1-31 (só MONTHLY; clampa último dia do mês)
+  timezone    String              @default("America/Sao_Paulo")
+  delivery    AutomationDelivery  @default(IN_APP)
+  status      AutomationStatus    @default(ACTIVE)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs        AutomationRun[]
+
+  @@index([userId])
+  @@index([status, nextRunAt])
+}
+
+model AutomationRun {
+  id            String              @id @default(cuid())
+  automationId  String
+  userId        String              // duplicado p/ scoping rápido em queries de tool
+  status        AutomationRunStatus @default(PENDING)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  outputMd      String?             @db.Text
+  errorMessage  String?             @db.Text
+  tokensIn      Int                 @default(0)
+  tokensOut     Int                 @default(0)
+  costUsd       Decimal             @default(0) @db.Decimal(12, 6)
+  noteId        String?             // se WEB_RESEARCH criou nota
+  telegramSent  Boolean             @default(false)
+  triggeredBy   String              @default("scheduler") // scheduler | manual
+  createdAt     DateTime            @default(now())
+
+  automation    Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([automationId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
 }

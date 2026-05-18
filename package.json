@@ -1,8 +1,8 @@
 {
   "name": "voxen",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Plataforma web de knowledge base via transcrição de vídeo com chat-agente",
+  "description": "Voxen — base de conhecimento self-hosted com Vox, sua assistente IA",
   "engines": {
     "bun": ">=1.2.0",
     "node": ">=22.0.0",
