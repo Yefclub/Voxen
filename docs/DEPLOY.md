@@ -374,6 +374,52 @@ Outras ferramentas:
 
 ---
 
+## Reset de senha
+
+Voxen **não tem SMTP nem reset por email** — decisão de design pra evitar complexidade desnecessária em deploys self-hosted single-tenant. Quando um user esquece a senha, você (owner do deploy) reseta via SSH no servidor.
+
+### Comando
+
+```bash
+cd /opt/voxen
+
+# Recomendado: via Make
+make reset-password EMAIL=user@exemplo.com PASSWORD='novaSenhaForte12chars'
+
+# Ou direto via docker compose
+docker compose exec web bun apps/web/src/scripts/reset-password.ts \
+  user@exemplo.com 'novaSenhaForte12chars'
+```
+
+### O que o script faz
+
+1. Localiza o `User` pelo email (case-insensitive)
+2. Localiza a `Account` com `providerId='credential'` (email/senha)
+3. Gera hash da senha com **scrypt** (mesmo algoritmo do `/sign-up` — better-auth)
+4. Atualiza `Account.password`
+5. **Revoga TODAS as sessões ativas** do user (segurança — qualquer sessão aberta cai)
+
+### Regras
+
+- Senha mínima: **12 caracteres** (mesmo limite do `/conta` UI)
+- Email é normalizado pra lowercase
+- Sem confirmação interativa (intencional — owner sabe o que tá fazendo via SSH)
+- Sem rate limit (intencional — script local, owner controla quem roda)
+
+### Quando falha
+
+| Erro | Causa | Fix |
+|---|---|---|
+| `nenhum user com email "X"` | email errado ou user nunca cadastrou | Listar users: `docker compose exec postgres psql -U voxen voxen -c 'SELECT email FROM "User";'` |
+| `user não tem credential account` | user só tem login social/OAuth (futuro) | OAuth login não tem senha pra resetar |
+| `senha mínima de 12 caracteres` | senha curta | Use 12+ chars |
+
+### Por que não via UI/email?
+
+Self-hosted single-tenant não justifica overhead de fluxo email→link→form. Owner tem SSH no servidor. Reset via email implicaria SMTP configurado, domínio com SPF/DKIM, deliverability — tudo isso pra resolver algo que `make reset-password` resolve em 1 comando.
+
+---
+
 ## Troubleshooting
 
 | Sintoma | Causa | Fix |
