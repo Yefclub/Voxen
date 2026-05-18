@@ -220,6 +220,19 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { force?: boolean };
   const force = body.force === true;
 
+  // Throttle ANTES do DB — clique repetido (loop UI) bloqueia em Redis sem
+  // tocar Postgres. SELECT é cheap mas em volume isso multiplica.
+  const rl = await rateLimit(`voxen:rl:summary:${id}`, 1, SUMMARY_MIN_INTERVAL_SEC);
+  if (!rl.allowed) {
+    return c.json(
+      {
+        error: `Aguarde ${rl.resetIn}s antes de regenerar este resumo.`,
+        retryAfter: rl.resetIn,
+      },
+      429,
+    );
+  }
+
   const transcript = await db.transcript.findFirst({
     where: { id, userId },
     select: { id: true, title: true, plainText: true, summaryMd: true },
@@ -237,18 +250,6 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
         existing: true,
       },
       409,
-    );
-  }
-
-  // Throttle: 1 req por minuto por transcript (qualquer user/qualquer caller)
-  const rl = await rateLimit(`voxen:rl:summary:${transcript.id}`, 1, SUMMARY_MIN_INTERVAL_SEC);
-  if (!rl.allowed) {
-    return c.json(
-      {
-        error: `Aguarde ${rl.resetIn}s antes de regenerar este resumo.`,
-        retryAfter: rl.resetIn,
-      },
-      429,
     );
   }
 
