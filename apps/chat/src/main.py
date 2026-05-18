@@ -143,6 +143,7 @@ async def chat(
 
         total_in = 0
         total_out = 0
+        total_cost = Decimal("0")
         loops = 0
 
         try:
@@ -151,15 +152,19 @@ async def chat(
                 if await request.is_disconnected():
                     return
 
+                # `usage.include` no extra_body faz OR retornar custo $ real
+                # no campo `usage.cost` (https://openrouter.ai/docs/use-cases/usage-accounting).
+                # Sem isso o usage.cost vem 0/None e o painel mostra $0,00.
+                completion_extra = dict(extra)
+                completion_extra["usage"] = {"include": True}
                 kwargs: dict[str, Any] = dict(
                     model=model,
                     messages=messages,
                     tools=TOOLS_SPEC,
                     stream=True,
                     stream_options={"include_usage": True},
+                    extra_body=completion_extra,
                 )
-                if extra:
-                    kwargs["extra_body"] = extra
 
                 stream = await client.chat.completions.create(**kwargs)
 
@@ -172,6 +177,13 @@ async def chat(
                         if chunk.usage:
                             total_in += chunk.usage.prompt_tokens or 0
                             total_out += chunk.usage.completion_tokens or 0
+                            # OR injeta `cost` no usage quando `usage.include=true`
+                            cost = getattr(chunk.usage, "cost", None)
+                            if cost is not None:
+                                try:
+                                    total_cost += Decimal(str(cost))
+                                except (ValueError, ArithmeticError):
+                                    pass
                         continue
 
                     delta = chunk.choices[0].delta
@@ -236,7 +248,7 @@ async def chat(
                     model=model,
                     tokens_in=total_in,
                     tokens_out=total_out,
-                    cost_usd=Decimal("0"),
+                    cost_usd=total_cost,
                     meta={
                         "loops": loops,
                         "conversation_id": conversation_id,
@@ -311,6 +323,9 @@ async def voice_transcribe(
     payload = res.json()
     text = (payload.get("text") or "").strip()
 
+    # Limitação conhecida: /audio/transcriptions do OpenRouter não devolve
+    # `usage.cost` (a flag usage.include só funciona em /chat/completions).
+    # Cost fica 0 aqui — custo real é refletido no painel da OR.
     try:
         await db.insert_cost_event(
             user_id=x_voxen_user_id,
@@ -382,6 +397,9 @@ async def summarize_transcript(
             },
         ],
         "stream": False,
+        # OpenRouter retorna usage.cost (USD) só quando solicitamos via
+        # usage.include=true. Sem isso o painel mostra $0,00 mesmo gastando.
+        "usage": {"include": True},
     }
     timeout = await voxen_settings.get_summary_timeout_sec()
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -399,6 +417,11 @@ async def summarize_transcript(
     usage = data.get("usage") or {}
     tokens_in = int(usage.get("prompt_tokens") or 0)
     tokens_out = int(usage.get("completion_tokens") or 0)
+    cost_raw = usage.get("cost")
+    try:
+        cost_usd = Decimal(str(cost_raw)) if cost_raw is not None else Decimal("0")
+    except (ValueError, ArithmeticError):
+        cost_usd = Decimal("0")
 
     if summary:
         try:
@@ -416,7 +439,7 @@ async def summarize_transcript(
                 model=model,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
-                cost_usd=Decimal("0"),
+                cost_usd=cost_usd,
                 meta={"source": "transcript_summary", "transcript_id": body.transcript_id},
             )
         except Exception:  # noqa: BLE001
