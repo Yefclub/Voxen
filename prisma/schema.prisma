@@ -66,6 +66,8 @@ model User {
   conversations   Conversation[]
   notes           Note[]
   telegramLink    TelegramLink?
+  automations     Automation[]
+  automationRuns  AutomationRun[]
 
   @@index([status])
   @@index([role])
@@ -375,4 +377,87 @@ model Note {
 
   @@index([userId, parentId])
   @@index([userId, updatedAt(sort: Desc)])
+}
+
+// ============================================================================
+// AUTOMAÇÕES (jobs periódicos com continuidade — spec .specs/008-automacoes.md)
+// ============================================================================
+
+enum AutomationType {
+  PERIODIC_SUMMARY  // resumo periódico (puxa transcrições/notas via tools)
+  WEB_RESEARCH      // pesquisa web sobre um tema e cria nota
+}
+
+enum AutomationFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum AutomationStatus {
+  ACTIVE
+  PAUSED
+}
+
+enum AutomationDelivery {
+  IN_APP
+  TELEGRAM
+  BOTH
+}
+
+enum AutomationRunStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model Automation {
+  id          String              @id @default(cuid())
+  userId      String
+  name        String
+  type        AutomationType
+  prompt      String              @db.Text
+  frequency   AutomationFrequency
+  hour        Int                 // 0-23 (no timezone do automation)
+  minute      Int                 // 0-59
+  dayOfWeek   Int?                // 0=segunda..6=domingo (só WEEKLY)
+  dayOfMonth  Int?                // 1-31 (só MONTHLY; clampa último dia do mês)
+  timezone    String              @default("America/Sao_Paulo")
+  delivery    AutomationDelivery  @default(IN_APP)
+  status      AutomationStatus    @default(ACTIVE)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs        AutomationRun[]
+
+  @@index([userId])
+  @@index([status, nextRunAt])
+}
+
+model AutomationRun {
+  id            String              @id @default(cuid())
+  automationId  String
+  userId        String              // duplicado p/ scoping rápido em queries de tool
+  status        AutomationRunStatus @default(PENDING)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  outputMd      String?             @db.Text
+  errorMessage  String?             @db.Text
+  tokensIn      Int                 @default(0)
+  tokensOut     Int                 @default(0)
+  costUsd       Decimal             @default(0) @db.Decimal(12, 6)
+  noteId        String?             // se WEB_RESEARCH criou nota
+  telegramSent  Boolean             @default(false)
+  triggeredBy   String              @default("scheduler") // scheduler | manual
+  createdAt     DateTime            @default(now())
+
+  automation    Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([automationId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
 }

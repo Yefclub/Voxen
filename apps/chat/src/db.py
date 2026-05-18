@@ -311,6 +311,45 @@ async def delete_user_note(user_id: str, note_id: str) -> bool:
     return n > 0
 
 
+async def list_user_automation_runs(
+    user_id: str,
+    *,
+    automation_id: str | None = None,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    """Lista runs recentes de automação do user. Escopado por userId."""
+    async with connection() as conn:
+        if automation_id:
+            rows = await conn.fetch(
+                """
+                SELECT r.id, r."automationId", r.status, r."startedAt",
+                       r."finishedAt", r."outputMd", r."noteId", r."createdAt",
+                       a.name AS automation_name
+                FROM "AutomationRun" r
+                JOIN "Automation" a ON a.id = r."automationId"
+                WHERE r."userId" = $1 AND r."automationId" = $2
+                ORDER BY r."createdAt" DESC
+                LIMIT $3
+                """,
+                user_id, automation_id, limit,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT r.id, r."automationId", r.status, r."startedAt",
+                       r."finishedAt", r."outputMd", r."noteId", r."createdAt",
+                       a.name AS automation_name
+                FROM "AutomationRun" r
+                JOIN "Automation" a ON a.id = r."automationId"
+                WHERE r."userId" = $1
+                ORDER BY r."createdAt" DESC
+                LIMIT $2
+                """,
+                user_id, limit,
+            )
+    return [dict(r) for r in rows]
+
+
 async def insert_cost_event(
     *,
     user_id: str,

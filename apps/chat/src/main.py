@@ -607,6 +607,193 @@ async def summarize_transcript(
     return JSONResponse({"summary_md": summary})
 
 
+# ----------------------------------------------------------------------------
+# Automation run (non-streaming) — chamado pelo worker (spec 008)
+# ----------------------------------------------------------------------------
+
+AUTOMATION_SYSTEM_PROMPTS: dict[str, str] = {
+    "PERIODIC_SUMMARY": """Você é a Vox executando uma automação periódica de RESUMO da \
+base de conhecimento de um usuário do Voxen.
+
+Tools disponíveis pra você buscar conteúdo do user:
+- list_transcripts(limit) — vídeos transcritos recentes (com dates)
+- list_notes(limit) — notas criadas/atualizadas recentemente
+- read_transcript(id) — markdown completo de um vídeo
+- read_note(id) — markdown completo de uma nota
+- search_transcripts(query), search_notes(query)
+
+Seu trabalho:
+1. Use as tools pra coletar o material relevante do período pedido pelo usuário.
+2. Sintetize um RESUMO ESTRUTURADO em markdown bem formatado.
+3. Cite os items que resumiu com seus IDs/títulos pra rastreabilidade.
+
+Saída deve ser SÓ o markdown do resumo final — sem preâmbulos tipo "aqui está".
+Tom: profissional mas amigável. PT-BR.""",
+    "WEB_RESEARCH": """Você é a Vox executando uma automação periódica de PESQUISA WEB \
+sobre um tema configurado pelo usuário do Voxen.
+
+Tools disponíveis:
+- web_search(query) — busca real na internet
+- create_note(title, content, parent_id?) — cria nova nota com markdown
+
+Seu trabalho:
+1. Use web_search uma ou mais vezes pra coletar fontes recentes sobre o tema.
+2. Sintetize os achados em markdown estruturado com:
+   - Visão geral do tema
+   - Principais achados (com links das fontes)
+   - Tópicos para aprofundar
+3. CHAME create_note() com o markdown completo — título deve ser descritivo
+   incluindo data/período da pesquisa.
+4. Sua resposta final deve mencionar que a nota foi criada e listar os
+   tópicos principais brevemente.
+
+Tom: profissional, com curiosidade jornalística. PT-BR.""",
+}
+
+
+class AutomationRunRequest(BaseModel):
+    automation_type: str  # PERIODIC_SUMMARY | WEB_RESEARCH
+    prompt: str
+    automation_id: str  # pra logs/cost meta
+    user_name: str | None = None
+    user_timezone: str | None = None
+
+
+@app.post("/automation/run")
+async def automation_run(
+    body: AutomationRunRequest,
+    x_voxen_user_id: str | None = Header(default=None, alias="X-Voxen-User-Id"),
+) -> JSONResponse:
+    """Executa um run de automação non-streaming. Reutiliza o agent loop
+    com tools mas retorna JSON quando termina (pra worker consumir)."""
+    if not x_voxen_user_id:
+        raise HTTPException(status_code=401, detail="Header X-Voxen-User-Id ausente.")
+    api_key = await voxen_settings.get_openrouter_api_key()
+    if not api_key:
+        raise HTTPException(status_code=412, detail="Setup incompleto — chave OpenRouter ausente.")
+    model = await voxen_settings.get_default_chat_model()
+    if not model:
+        raise HTTPException(status_code=412, detail="Setup incompleto — modelo de chat ausente.")
+
+    system_prompt = AUTOMATION_SYSTEM_PROMPTS.get(body.automation_type)
+    if not system_prompt:
+        raise HTTPException(status_code=400, detail=f"Tipo desconhecido: {body.automation_type}")
+
+    base_prompt = build_system_prompt(
+        user_name=body.user_name or "usuário",
+        user_timezone=body.user_timezone or "America/Sao_Paulo",
+    )
+    full_system = f"{base_prompt}\n\n---\n\n{system_prompt}"
+
+    user_id = x_voxen_user_id
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": full_system},
+        {"role": "user", "content": body.prompt},
+    ]
+
+    total_in = 0
+    total_out = 0
+    total_cost = Decimal("0")
+    tools_used: list[str] = []
+    created_note_id: str | None = None
+    final_content = ""
+
+    client = AsyncOpenAI(api_key=api_key, base_url=OR_BASE_URL)
+    loops = 0
+    try:
+        while loops < MAX_TOOL_LOOPS:
+            loops += 1
+            resp: Any = await client.chat.completions.create(
+                model=model,
+                messages=messages,  # type: ignore[arg-type]
+                tools=TOOLS_SPEC,  # type: ignore[arg-type]
+                stream=False,
+                extra_body={"usage": {"include": True}},
+            )
+            usage = getattr(resp, "usage", None)
+            if usage:
+                total_in += getattr(usage, "prompt_tokens", 0) or 0
+                total_out += getattr(usage, "completion_tokens", 0) or 0
+                cost_raw = getattr(usage, "cost", None)
+                if cost_raw is not None:
+                    try:
+                        total_cost += Decimal(str(cost_raw))
+                    except (ValueError, ArithmeticError):
+                        pass
+
+            choice = resp.choices[0]
+            msg = choice.message
+            finish_reason = choice.finish_reason
+
+            if finish_reason == "tool_calls" and msg.tool_calls:
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": msg.content,
+                        "tool_calls": [tc.model_dump() for tc in msg.tool_calls],
+                    }
+                )
+                for tc in msg.tool_calls:
+                    fn_name = tc.function.name
+                    tools_used.append(fn_name)
+                    try:
+                        fn_args = json.loads(tc.function.arguments or "{}")
+                    except Exception:  # noqa: BLE001
+                        fn_args = {}
+                    result = await execute_tool(fn_name, fn_args, user_id)
+                    # Detecta create_note bem-sucedida pra reportar noteId
+                    if (
+                        fn_name == "create_note"
+                        and isinstance(result, dict)
+                        and result.get("id")
+                    ):
+                        created_note_id = str(result["id"])
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps(result, default=str, ensure_ascii=False),
+                        }
+                    )
+                continue
+
+            # Sem mais tool_calls — resposta final
+            final_content = (msg.content or "").strip()
+            break
+    except Exception as e:  # noqa: BLE001
+        log.exception("automation-run-failed", automation_id=body.automation_id)
+        raise HTTPException(status_code=502, detail=f"Falha na execução: {e}") from e
+
+    try:
+        await db.insert_cost_event(
+            user_id=user_id,
+            model=model,
+            tokens_in=total_in,
+            tokens_out=total_out,
+            cost_usd=total_cost,
+            meta={
+                "source": "automation",
+                "automation_id": body.automation_id,
+                "type": body.automation_type,
+                "loops": loops,
+            },
+        )
+    except Exception:  # noqa: BLE001
+        log.exception("automation-cost-event-failed")
+
+    return JSONResponse(
+        {
+            "output_md": final_content,
+            "tokens_in": total_in,
+            "tokens_out": total_out,
+            "cost_usd": str(total_cost),
+            "tools_used": tools_used,
+            "note_id": created_note_id,
+            "loops": loops,
+        }
+    )
+
+
 def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
