@@ -68,12 +68,17 @@ export function TranscricoesPage(): React.ReactElement {
         </header>
 
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none z-10" />
+          {/* type="text" em vez de "search" — o type=search injeta um botão
+              nativo de clear no Chrome/Safari que sobrepõe a lupa após digitar.
+              Mantemos UX equivalente com nosso próprio botão (X à direita). */}
           <input
-            type="search"
+            type="text"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar nas transcrições…"
+            autoComplete="off"
+            spellCheck={false}
             className="w-full h-12 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 backdrop-blur-sm pl-11 pr-12 text-[15px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15 transition-colors"
           />
           {q.length > 0 && (
@@ -188,14 +193,16 @@ function TranscriptCard({
               aria-hidden
               className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent"
             />
-            <div className="absolute bottom-2 right-2">
-              <Badge
-                variant="default"
-                className="bg-black/60 backdrop-blur-sm border-white/10 text-[10px] tabular-nums"
-              >
-                {t.source === 'WEB' ? 'Web' : formatDuration(t.durationSec)}
-              </Badge>
-            </div>
+            {t.source !== 'WEB' && (
+              <div className="absolute bottom-2 right-2">
+                <Badge
+                  variant="default"
+                  className="bg-black/60 backdrop-blur-sm border-white/10 text-[10px] tabular-nums"
+                >
+                  {formatDuration(t.durationSec)}
+                </Badge>
+              </div>
+            )}
           </div>
 
           <CardContent className="pt-4 pb-5 space-y-3">
@@ -215,20 +222,27 @@ function TranscriptCard({
             )}
 
             <div className="flex items-center gap-2 flex-wrap pt-1">
-              <Badge
-                variant={
-                  t.transcriptionMethod === 'SUBTITLES'
-                    ? 'success'
-                    : t.transcriptionMethod === 'SCRAPE'
-                      ? 'muted'
-                      : 'default'
-                }
-                className="text-[10px]"
-              >
-                {t.transcriptionMethod === 'SUBTITLES' && 'Legendas'}
-                {t.transcriptionMethod === 'SCRAPE' && 'Página'}
-                {t.transcriptionMethod === 'API' && 'IA'}
+              {/* Source primário — diferencia Vídeo / Web e plataforma */}
+              <Badge variant={t.source === 'WEB' ? 'muted' : 'success'} className="text-[10px]">
+                {t.source === 'WEB' && (
+                  <>
+                    <Globe className="h-2.5 w-2.5" />
+                    Página web
+                  </>
+                )}
+                {t.source === 'YOUTUBE' && 'YouTube'}
+                {t.source === 'INSTAGRAM' && 'Instagram'}
+                {t.source === 'TIKTOK' && 'TikTok'}
               </Badge>
+              {/* Método (só faz sentido pra vídeos) */}
+              {t.source !== 'WEB' && (
+                <Badge
+                  variant={t.transcriptionMethod === 'SUBTITLES' ? 'success' : 'default'}
+                  className="text-[10px]"
+                >
+                  {t.transcriptionMethod === 'SUBTITLES' ? 'Legendas' : 'IA'}
+                </Badge>
+              )}
               {t.language && (
                 <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
                   {t.language}
