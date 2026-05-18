@@ -624,26 +624,15 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }): React.ReactEle
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center space-y-8">
       <div className="space-y-4">
-        <div className="mx-auto h-14 w-14 rounded-2xl overflow-hidden border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/30 to-emerald-500/30 flex items-center justify-center">
-          <svg
-            viewBox="0 0 24 24"
-            className="h-8 w-8"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-label="Vox"
-          >
-            <defs>
-              <linearGradient id="vox-grad-lg" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="oklch(72% 0.18 290)" />
-                <stop offset="100%" stopColor="oklch(73% 0.16 159)" />
-              </linearGradient>
-            </defs>
-            <path d="M4 5l6 14 4-10 6-4" stroke="url(#vox-grad-lg)" />
-          </svg>
-        </div>
+        <img
+          src="/voxen-256.png"
+          alt="Voxen"
+          width={88}
+          height={88}
+          draggable={false}
+          className="mx-auto h-22 w-22 select-none pointer-events-none drop-shadow-[0_0_40px_rgba(139,92,246,0.25)]"
+          style={{ height: 88, width: 88 }}
+        />
         <div className="space-y-1.5 max-w-md mx-auto">
           <p className="font-display text-2xl font-semibold tracking-tight">
             Oi, sou a <span className="text-violet-accent">Vox</span>
