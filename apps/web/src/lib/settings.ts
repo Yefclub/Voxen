@@ -59,6 +59,10 @@ export async function setSetting(key: GlobalSettingKey, value: string): Promise<
   });
 }
 
+export async function deleteSetting(key: GlobalSettingKey): Promise<void> {
+  await db.setting.deleteMany({ where: { scope: 'GLOBAL', userId: null, key } });
+}
+
 export async function isSetupComplete(): Promise<boolean> {
   const row = await db.setting.findFirst({
     where: { scope: 'GLOBAL', userId: null, key: 'openrouter_api_key' },

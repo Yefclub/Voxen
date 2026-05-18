@@ -7,10 +7,14 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
+import structlog
 
 from . import db, redis_pub, storage, voxen_settings
 
 OR_BASE_URL = "https://openrouter.ai/api/v1"
+_log = structlog.get_logger()
+# Cap pra evitar query absurdamente longa explodindo tokens da OR
+WEB_SEARCH_MAX_QUERY_CHARS = 1000
 
 # Video URL parsers — espelham apps/web/src/lib/video-url.ts.
 _YT_HOSTS = ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com")
@@ -441,6 +445,9 @@ async def _web_search(user_id: str, query: str) -> dict[str, Any]:
         # Sufixo `:online` ativa o plugin web da Perplexity em qualquer modelo
         model = base if base.endswith(":online") else f"{base}:online"
 
+    # Cap query length antes de enviar ao OR (e ao registrar em CostEvent.meta)
+    safe_query = query[:WEB_SEARCH_MAX_QUERY_CHARS]
+
     payload = {
         "model": model,
         "messages": [
@@ -452,7 +459,7 @@ async def _web_search(user_id: str, query: str) -> dict[str, Any]:
                     "Seja conciso (até 6 parágrafos curtos)."
                 ),
             },
-            {"role": "user", "content": query},
+            {"role": "user", "content": safe_query},
         ],
         "stream": False,
         "usage": {"include": True},
@@ -468,7 +475,10 @@ async def _web_search(user_id: str, query: str) -> dict[str, Any]:
         return {"error": f"Falha ao contactar OpenRouter: {e}"}
 
     if res.status_code >= 400:
-        return {"error": f"OpenRouter retornou {res.status_code}.", "body": res.text[:200]}
+        # Não vazamos body do OR pro agente (pode conter info sensível);
+        # log interno tem o detalhe.
+        _log.warning("web-search-or-error", status=res.status_code, body=res.text[:300])
+        return {"error": f"OpenRouter retornou {res.status_code}."}
 
     data = res.json()
     text = ((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
@@ -486,12 +496,10 @@ async def _web_search(user_id: str, query: str) -> dict[str, Any]:
             tokens_in=int(usage.get("prompt_tokens") or 0),
             tokens_out=int(usage.get("completion_tokens") or 0),
             cost_usd=cost_usd,
-            meta={"source": "web_search", "query": query[:200]},
+            meta={"source": "web_search", "query": safe_query[:200]},
         )
     except Exception as e:  # noqa: BLE001
-        import structlog
-
-        structlog.get_logger().warning("web-search-cost-event-failed", error=str(e))
+        _log.warning("web-search-cost-event-failed", error=str(e))
 
     return {"answer": text or "Sem resposta da pesquisa.", "model": model}
 

@@ -17,7 +17,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
-import { getSetting, isSetupComplete, setSetting } from '../lib/settings';
+import { deleteSetting, getSetting, isSetupComplete, setSetting } from '../lib/settings';
 import { validateApiKey, listModels, listVisionModels, OpenrouterError } from '../lib/openrouter';
 
 type SetupVariables = {
@@ -134,10 +134,10 @@ const SaveBody = z.object({
   default_chat_model: z.string().min(1),
   default_transcription_model: z.string().min(1),
   // Opcional: modelo dedicado a pesquisa web. Fallback é
-  // `default_chat_model:online` no chat service.
-  default_web_search_model: z.string().min(1).optional(),
-  // Opcional: modelo multimodal pra entender imagens (vision).
-  default_vision_model: z.string().min(1).optional(),
+  // `default_chat_model:online` no chat service. String vazia = limpar setting.
+  default_web_search_model: z.string().optional(),
+  // Opcional: modelo multimodal pra entender imagens (vision). Vazio = limpar.
+  default_vision_model: z.string().optional(),
 });
 
 setupRoutes.post('/', async (c) => {
@@ -180,11 +180,21 @@ setupRoutes.post('/', async (c) => {
 
   await setSetting('default_chat_model', default_chat_model);
   await setSetting('default_transcription_model', default_transcription_model);
-  if (default_web_search_model) {
-    await setSetting('default_web_search_model', default_web_search_model);
+  // Modelos opcionais: string vazia/undefined = limpar (volta pro fallback);
+  // qualquer outra = persiste.
+  if (default_web_search_model !== undefined) {
+    if (default_web_search_model.trim() === '') {
+      await deleteSetting('default_web_search_model');
+    } else {
+      await setSetting('default_web_search_model', default_web_search_model);
+    }
   }
-  if (default_vision_model) {
-    await setSetting('default_vision_model', default_vision_model);
+  if (default_vision_model !== undefined) {
+    if (default_vision_model.trim() === '') {
+      await deleteSetting('default_vision_model');
+    } else {
+      await setSetting('default_vision_model', default_vision_model);
+    }
   }
 
   return c.json({ complete: true });

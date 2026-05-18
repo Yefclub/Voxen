@@ -31,7 +31,10 @@ interface Msg {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  tools?: { name: string; preview?: string }[];
+  // `actionSummary` é populado quando a tool é request_user_confirmation —
+  // o backend envia o resumo cru no SSE pra UI renderizar o banner HITL
+  // sem precisar parsear o JSON do preview (que pode estar truncado).
+  tools?: { name: string; preview?: string; actionSummary?: string }[];
   pending?: boolean;
 }
 
@@ -229,13 +232,16 @@ export function ChatPage(): React.ReactElement {
           } else if (ev === 'tool_end') {
             const name = (payload.name as string) ?? '';
             const preview = (payload.preview as string) ?? '';
+            const actionSummary = (payload.action_summary as string | undefined) ?? undefined;
             setMessages((m) =>
               m.map((x) =>
                 x.id === asstId
                   ? {
                       ...x,
                       tools: (x.tools ?? []).map((t, i, arr) =>
-                        i === arr.length - 1 && t.name === name ? { ...t, preview } : t,
+                        i === arr.length - 1 && t.name === name
+                          ? { ...t, preview, actionSummary }
+                          : t,
                       ),
                     }
                   : x,
@@ -392,17 +398,21 @@ function Bubble({
             <p className="whitespace-pre-wrap">{msg.content}</p>
           ) : (
             <>
-              {/* HITL: tool request_user_confirmation gera banner com botões.
-                  preview vem como JSON da tool — extraímos action_summary. */}
+              {/* HITL: tool request_user_confirmation gera banner. Backend
+                  envia `action_summary` cru no payload SSE — não dependemos
+                  do preview (truncado) pra renderizar. Fallback de parse só
+                  se actionSummary ausente (compat com server antigo). */}
               {(() => {
                 const conf = (msg.tools ?? []).find((t) => t.name === 'request_user_confirmation');
-                if (!conf?.preview) return null;
-                let action = '';
-                try {
-                  const parsed = JSON.parse(conf.preview) as { action_summary?: string };
-                  action = parsed.action_summary ?? '';
-                } catch {
-                  action = conf.preview;
+                if (!conf) return null;
+                let action = conf.actionSummary ?? '';
+                if (!action && conf.preview) {
+                  try {
+                    const parsed = JSON.parse(conf.preview) as { action_summary?: string };
+                    action = parsed.action_summary ?? '';
+                  } catch {
+                    // preview truncado/inválido — ignora
+                  }
                 }
                 if (!action) return null;
                 return (

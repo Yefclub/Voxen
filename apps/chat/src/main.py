@@ -139,6 +139,9 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     thinking: bool = False
+    # Nome do user vem no body (não header) pra suportar unicode — fetch valida
+    # headers como Latin-1 e lançaria em nomes com CJK/emoji/acentos exóticos.
+    user_name: str = ""
 
 
 @app.post("/chat")
@@ -149,7 +152,6 @@ async def chat(
     x_voxen_conversation_id: str | None = Header(
         default=None, alias="X-Voxen-Conversation-Id"
     ),
-    x_voxen_user_name: str | None = Header(default=None, alias="X-Voxen-User-Name"),
     x_voxen_user_timezone: str | None = Header(
         default=None, alias="X-Voxen-User-Timezone"
     ),
@@ -170,7 +172,7 @@ async def chat(
     conversation_id = x_voxen_conversation_id
     thinking = body.thinking
     system_prompt = build_system_prompt(
-        user_name=x_voxen_user_name or "",
+        user_name=body.user_name,
         user_timezone=x_voxen_user_timezone or "UTC",
     )
 
@@ -274,7 +276,19 @@ async def chat(
                             fn_args = {}
                         yield _sse("tool_start", {"name": fn_name, "args": fn_args})
                         result = await execute_tool(fn_name, fn_args, user_id)
-                        yield _sse("tool_end", {"name": fn_name, "preview": _short(result)})
+                        # Pra HITL, devolve `action_summary` cru no payload SSE
+                        # alem do preview truncado — UI usa o campo dedicado
+                        # pra renderizar o banner sem depender de parsear o
+                        # preview (que pode estar truncado por _short).
+                        event_payload: dict[str, Any] = {
+                            "name": fn_name,
+                            "preview": _short(result),
+                        }
+                        if fn_name == "request_user_confirmation" and isinstance(result, dict):
+                            summary = result.get("action_summary")
+                            if isinstance(summary, str) and summary:
+                                event_payload["action_summary"] = summary
+                        yield _sse("tool_end", event_payload)
                         messages.append(
                             {
                                 "role": "tool",

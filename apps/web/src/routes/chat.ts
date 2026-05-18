@@ -207,8 +207,11 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
     { role: 'user', content },
   ];
 
-  // Busca dados do user pra contexto do agente — name é exibido no system prompt
-  // ("Você está conversando com Carlos.") e tz reflete a data/hora real do user.
+  // Busca dados do user pra contexto do agente — name é exibido no system
+  // prompt e tz reflete a data/hora real do user.
+  // Name vai no BODY (não header) pra suportar nomes com unicode (CJK, emoji,
+  // acentos extras): fetch valida headers como Latin-1 e lança em chars fora
+  // dessa faixa, quebrando todo o chat pra esse user.
   const userInfo = await db.user.findUnique({
     where: { id: uid },
     select: { name: true },
@@ -224,11 +227,14 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
       'Content-Type': 'application/json',
       'X-Voxen-User-Id': uid,
       'X-Voxen-Conversation-Id': id,
-      'X-Voxen-User-Name': userInfo?.name ?? '',
       'X-Voxen-User-Timezone': userTimezone,
       Accept: 'text/event-stream',
     },
-    body: JSON.stringify({ messages: history, thinking: conv.thinking }),
+    body: JSON.stringify({
+      messages: history,
+      thinking: conv.thinking,
+      user_name: userInfo?.name ?? '',
+    }),
     signal: upstreamAbort.signal,
   });
 
