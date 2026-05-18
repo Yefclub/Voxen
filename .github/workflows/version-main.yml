@@ -1,0 +1,112 @@
+# ============================================================================
+# version-main — semver bump no merge dev→main + tag pra disparar release
+# ============================================================================
+# Adaptado de Grupo-Potencial-IA-e-Inovacao/workflows/release.yml@main.
+#
+# Estratégia:
+#  - Roda em push pra main (depois de merge da PR de release dev→main)
+#  - Detecta PR_NUM via mensagem do squash commit "Title (#N)"
+#  - Lê labels da PR: release:major | release:minor | release:patch (default)
+#  - Bump semver no package.json + apps/web/package.json
+#  - Commit "chore: release vX.Y.Z" + tag vX.Y.Z + push
+#  - Tag dispara o workflow release.yml existente (build+push imagens)
+# ============================================================================
+
+name: Version main on merge
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  version-main:
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore: release v') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Detect bump type from PR labels
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          PR_NUM=""
+          # Squash commit: "Title (#N)" no fim da primeira linha
+          FIRST_LINE=$(printf '%s\n' "$COMMIT_MSG" | head -n 1)
+          if [[ "$FIRST_LINE" =~ \(#([0-9]+)\)[[:space:]]*$ ]]; then
+            PR_NUM="${BASH_REMATCH[1]}"
+          fi
+          # Fallback: última PR mergeada
+          if [[ -z "$PR_NUM" ]]; then
+            PR_NUM=$(gh pr list --base main --state merged --limit 1 \
+              --json number --jq '.[0].number' 2>/dev/null || echo "")
+          fi
+          echo "pr_number=$PR_NUM" >> "$GITHUB_OUTPUT"
+          BUMP="patch"
+          if [[ -n "$PR_NUM" ]]; then
+            LABELS=$(gh pr view "$PR_NUM" --json labels --jq '.labels[].name' 2>/dev/null || true)
+            if echo "$LABELS" | grep -q "release:major"; then BUMP="major"
+            elif echo "$LABELS" | grep -q "release:minor"; then BUMP="minor"
+            fi
+          fi
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+          echo "Detected bump: $BUMP (PR #$PR_NUM)"
+
+      - name: Compute new version + write files
+        id: version
+        run: |
+          set -euo pipefail
+          VER=$(node -p "require('./package.json').version")
+          BASE_VER=${VER%-dev*}
+          BUMP="${{ steps.bump.outputs.bump }}"
+          NEW_VER=$(BASE_VER="$BASE_VER" BUMP="$BUMP" node -e "
+            const v = process.env.BASE_VER.split('.').map(Number);
+            if (process.env.BUMP === 'major') { v[0]++; v[1]=0; v[2]=0; }
+            else if (process.env.BUMP === 'minor') { v[1]++; v[2]=0; }
+            else { v[2]++; }
+            console.log(v.join('.'));
+          ")
+          echo "new_version=$NEW_VER" >> "$GITHUB_OUTPUT"
+          export NEW_VER
+          node -e "
+            const fs = require('fs');
+            const files = ['./package.json', './apps/web/package.json'];
+            for (const f of files) {
+              const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+              j.version = process.env.NEW_VER;
+              fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
+            }
+          "
+          echo "Bumped to $NEW_VER"
+
+      - name: Commit, tag, push
+        env:
+          NEW_VER: ${{ steps.version.outputs.new_version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json apps/web/package.json
+          if git diff --staged --quiet; then
+            echo "No version change to commit"
+            exit 0
+          fi
+          git commit -m "chore: release v$NEW_VER"
+          git tag "v$NEW_VER"
+          git push origin main
+          git push origin "v$NEW_VER"
+          echo "Released v$NEW_VER — release.yml será disparado pela tag."
