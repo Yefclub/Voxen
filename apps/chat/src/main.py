@@ -338,6 +338,16 @@ async def chat(
                     delta = chunk.choices[0].delta
                     finish_reason = chunk.choices[0].finish_reason or finish_reason
 
+                    # Thinking/reasoning: OpenRouter expõe o raciocínio do
+                    # modelo em campos `reasoning` (texto) ou `reasoning_details`
+                    # (estruturado) no delta. Quando o user ativa o toggle
+                    # `thinking`, mandamos `reasoning.effort=medium` e captamos
+                    # esses tokens aqui pra UI renderizar como bloco separado.
+                    # https://openrouter.ai/docs/use-cases/reasoning-tokens
+                    reasoning_text = getattr(delta, "reasoning", None)
+                    if reasoning_text:
+                        yield _sse("reasoning_token", {"text": reasoning_text})
+
                     if delta.content:
                         content_buf += delta.content
                         yield _sse("token", {"text": delta.content})
