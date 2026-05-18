@@ -206,7 +206,7 @@ function SourcePreview({
     },
   } as const;
   const { Icon, cls } =
-    source === null ? map.null : map[source as Exclude<typeof source, null>] ?? map.null;
+    source === null ? map.null : (map[source as Exclude<typeof source, null>] ?? map.null);
   return (
     <div
       className={`shrink-0 h-14 w-24 rounded-lg overflow-hidden border bg-gradient-to-br flex items-center justify-center ${cls}`}
