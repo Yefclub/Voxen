@@ -52,16 +52,21 @@ async def _fake_get(html: str, status: int = 200) -> AsyncMock:
 
 @pytest.fixture
 def _no_robots(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Pula robots.txt + SSRF check (testes não-SSRF não dependem de DNS real)."""
+    """Pula robots.txt + SSRF check (testes não-SSRF não dependem de DNS real).
+
+    `_assert_public_host` retorna set fixo de IPs válidos pra que o peer-check
+    pós-GET (defesa DNS rebinding) tenha contra-o-quê validar — testes que
+    quiserem testar rebinding sobrescrevem com IPs diferentes.
+    """
 
     async def _noop(url: str) -> None:
         return
 
-    def _public_noop(url: str) -> None:
-        return
+    def _public_stub(url: str) -> set[str]:
+        return {"1.2.3.4"}
 
     monkeypatch.setattr(scraper, "_check_robots", _noop)
-    monkeypatch.setattr(scraper, "_assert_public_host", _public_noop)
+    monkeypatch.setattr(scraper, "_assert_public_host", _public_stub)
 
 
 async def test_fetch_and_extract_happy_path(_no_robots: None) -> None:
@@ -151,6 +156,66 @@ async def test_ssrf_blocks_non_http_scheme() -> None:
         await scraper.fetch_and_extract("file:///etc/passwd")
     with pytest.raises(scraper.FetchBlockedError):
         await scraper.fetch_and_extract("ftp://example.com/")
+
+
+async def test_dns_rebinding_detected_post_get(
+    monkeypatch: pytest.MonkeyPatch, _no_robots: None
+) -> None:
+    """SSRF check vê IP público mas o GET conecta em IP privado — bloqueia."""
+    import socket
+
+    # DNS check vê 1.2.3.4 (público)
+    def fake_getaddrinfo(host: str, *args: object, **kw: object) -> list:
+        return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("1.2.3.4", 0))]
+
+    monkeypatch.setattr(scraper.socket, "getaddrinfo", fake_getaddrinfo)
+
+    # Mas o GET resolve pra 10.0.0.1 (peer IP — rebinding)
+    fake_stream = MagicMock()
+    fake_stream.get_extra_info = MagicMock(return_value=("10.0.0.1", 443))
+    fake_response = MagicMock()
+    fake_response.status_code = 200
+    fake_response.headers = {"Content-Length": "100"}
+    fake_response.content = b"x" * 100
+    fake_response.encoding = "utf-8"
+    fake_response.url = "https://example.com/"
+    fake_response.extensions = {"network_stream": fake_stream}
+
+    async def fake_get(self: httpx.AsyncClient, url: str) -> object:
+        return fake_response
+
+    with patch.object(httpx.AsyncClient, "get", fake_get):
+        with pytest.raises(scraper.FetchBlockedError, match="DNS rebinding"):
+            await scraper.fetch_and_extract("https://example.com/")
+
+
+async def test_dns_rebinding_different_public_ip_blocked(
+    monkeypatch: pytest.MonkeyPatch, _no_robots: None
+) -> None:
+    """Peer IP é público mas diferente do pré-validado — bloqueia (defesa em profundidade)."""
+    import socket
+
+    def fake_getaddrinfo(host: str, *args: object, **kw: object) -> list:
+        return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("1.2.3.4", 0))]
+
+    monkeypatch.setattr(scraper.socket, "getaddrinfo", fake_getaddrinfo)
+
+    fake_stream = MagicMock()
+    fake_stream.get_extra_info = MagicMock(return_value=("8.8.8.8", 443))  # público mas outro
+    fake_response = MagicMock()
+    fake_response.status_code = 200
+    fake_response.headers = {"Content-Length": "100"}
+    fake_response.content = b"x" * 100
+    fake_response.encoding = "utf-8"
+    fake_response.url = "https://example.com/"
+    fake_response.extensions = {"network_stream": fake_stream}
+
+    async def fake_get(self: httpx.AsyncClient, url: str) -> object:
+        return fake_response
+
+    with patch.object(httpx.AsyncClient, "get", fake_get):
+        with pytest.raises(scraper.FetchBlockedError, match="DNS rebinding"):
+            await scraper.fetch_and_extract("https://example.com/")
 
 
 async def test_redirect_to_private_ip_is_blocked(
