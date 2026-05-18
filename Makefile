@@ -1,4 +1,4 @@
-.PHONY: help dev down restart logs ps test test-ts test-py lint lint-ts lint-py typecheck migrate seed shell-db shell-redis garage-init master-key-show clean
+.PHONY: help dev down restart logs ps test test-ts test-py lint lint-ts lint-py typecheck migrate seed shell-db shell-redis garage-init master-key-show reset-password clean
 
 # ============================================================================
 # Voxen — one-command development
@@ -71,6 +71,14 @@ garage-init: ## Reroda bootstrap do Garage (idempotente)
 
 master-key-show: ## Mostra a master key (cuidado — secret)
 	docker compose exec web cat /data/master.key
+
+reset-password: ## Reseta senha do user via CLI: make reset-password EMAIL=x@y.com PASSWORD=novaSenha12chars
+	@if [ -z "$(EMAIL)" ] || [ -z "$(PASSWORD)" ]; then \
+		echo "Erro: defina EMAIL e PASSWORD."; \
+		echo "Exemplo: make reset-password EMAIL=user@exemplo.com PASSWORD='novaSenhaForte123!'"; \
+		exit 2; \
+	fi
+	docker compose exec -T web bun apps/web/src/scripts/reset-password.ts "$(EMAIL)" "$(PASSWORD)"
 
 clean: ## Remove volumes (PERDE DADOS)
 	docker compose down -v

@@ -61,6 +61,27 @@ sudo ln -s /etc/nginx/sites-available/voxen.conf /etc/nginx/sites-enabled/
 sudo certbot --nginx -d voxen.seudominio.com
 ```
 
+## Operação — reset de senha
+
+Voxen **não tem SMTP nem reset por email** (decisão deliberada — self-hosted single-tenant não compensa SMTP). Quando um user esquece a senha, o owner do deploy roda no servidor:
+
+```bash
+# Via Make (recomendado)
+make reset-password EMAIL=user@exemplo.com PASSWORD='novaSenhaForte12chars'
+
+# Ou direto via docker compose
+docker compose exec web bun apps/web/src/scripts/reset-password.ts \
+  user@exemplo.com 'novaSenhaForte12chars'
+```
+
+O script:
+1. Localiza o user pelo email
+2. Gera hash da nova senha (mesmo algoritmo do `/sign-up` — better-auth scrypt)
+3. Atualiza `Account.password`
+4. **Revoga todas as sessões ativas** (forçando re-login)
+
+Mínimo 12 caracteres. Mais detalhes em [`docs/DEPLOY.md`](docs/DEPLOY.md#reset-de-senha).
+
 ## Documentação
 
 | Doc | Tema |
