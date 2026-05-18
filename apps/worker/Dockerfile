@@ -33,9 +33,11 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Healthcheck: o processo main vivo (subscriber + reconciliation loops)
+# Healthcheck: ping no Redis (worker depende dele pra pub/sub de jobs).
+# `pgrep` não está disponível em python:3.13-slim e instalar procps puxa CVEs.
+# Usar o próprio Python (já no PATH) com a lib redis (dep do worker).
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD pgrep -f "src.main" || exit 1
+  CMD python -c "import os,redis; assert redis.Redis.from_url(os.environ['REDIS_URL']).ping()" || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-m", "src.main"]
