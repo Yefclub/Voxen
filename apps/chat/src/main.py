@@ -383,7 +383,8 @@ async def summarize_transcript(
         ],
         "stream": False,
     }
-    async with httpx.AsyncClient(timeout=90.0) as client:
+    timeout = await voxen_settings.get_summary_timeout_sec()
+    async with httpx.AsyncClient(timeout=timeout) as client:
         res = await client.post(
             f"{OR_BASE_URL}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},

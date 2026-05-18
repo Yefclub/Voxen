@@ -72,13 +72,15 @@ garage-init: ## Reroda bootstrap do Garage (idempotente)
 master-key-show: ## Mostra a master key (cuidado — secret)
 	docker compose exec web cat /data/master.key
 
-reset-password: ## Reseta senha do user via CLI: make reset-password EMAIL=x@y.com PASSWORD=novaSenha12chars
+reset-password: ## Reseta senha via CLI: make reset-password EMAIL=x@y.com PASSWORD=novaSenha12chars
 	@if [ -z "$(EMAIL)" ] || [ -z "$(PASSWORD)" ]; then \
 		echo "Erro: defina EMAIL e PASSWORD."; \
 		echo "Exemplo: make reset-password EMAIL=user@exemplo.com PASSWORD='novaSenhaForte123!'"; \
 		exit 2; \
 	fi
-	docker compose exec -T web bun apps/web/src/scripts/reset-password.ts "$(EMAIL)" "$(PASSWORD)"
+	@# Passa PASSWORD via env var (não arg) pra evitar exposição em ps do container
+	docker compose exec -T -e VOXEN_NEW_PASSWORD="$(PASSWORD)" web \
+		bun apps/web/src/scripts/reset-password.ts "$(EMAIL)"
 
 clean: ## Remove volumes (PERDE DADOS)
 	docker compose down -v

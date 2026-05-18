@@ -140,9 +140,21 @@ async def fetch_and_extract(url: str) -> ScrapeResult:
         EmptyContentError: conteúdo < MIN_CONTENT_CHARS
     """
     _assert_public_host(url)
+
+    # Lê admin_email opcional pra header `From:` (RFC 7231 §5.5.1 — boa-prática
+    # pra sites identificarem o operador do bot). Best-effort: se settings DB
+    # estiver inacessível, segue sem o header.
+    admin_email: str | None = None
+    try:
+        from . import voxen_settings
+
+        admin_email = await voxen_settings.get_admin_email()
+    except Exception:  # noqa: BLE001
+        admin_email = None
+
     await _check_robots(url)
 
-    final_url, html = await _fetch_with_manual_redirects(url)
+    final_url, html = await _fetch_with_manual_redirects(url, admin_email=admin_email)
 
     extracted_md = trafilatura.extract(
         html,
@@ -185,16 +197,25 @@ async def fetch_and_extract(url: str) -> ScrapeResult:
     )
 
 
-async def _fetch_with_manual_redirects(url: str) -> tuple[str, str]:
+async def _fetch_with_manual_redirects(
+    url: str, *, admin_email: str | None = None
+) -> tuple[str, str]:
     """Faz GET seguindo até MAX_REDIRECTS, **revalidando** cada hop contra SSRF.
 
     Retorna (URL final, body). Limita o body a MAX_BODY_BYTES.
+    `admin_email`, se passado, vira header `From:` (boa-prática RFC 7231).
     """
     current = url
+    headers: dict[str, str] = {
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,*/*;q=0.8",
+    }
+    if admin_email:
+        headers["From"] = admin_email
     async with httpx.AsyncClient(
         timeout=REQUEST_TIMEOUT,
         follow_redirects=False,
-        headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*;q=0.8"},
+        headers=headers,
     ) as client:
         for _ in range(MAX_REDIRECTS + 1):
             try:

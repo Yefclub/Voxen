@@ -66,10 +66,14 @@ sudo certbot --nginx -d voxen.seudominio.com
 Voxen **não tem SMTP nem reset por email** (decisão deliberada — self-hosted single-tenant não compensa SMTP). Quando um user esquece a senha, o owner do deploy roda no servidor:
 
 ```bash
-# Via Make (recomendado)
+# Via Make (recomendado — passa PASSWORD via env var, não vaza no `ps`)
 make reset-password EMAIL=user@exemplo.com PASSWORD='novaSenhaForte12chars'
 
-# Ou direto via docker compose
+# Direto via env var
+docker compose exec -e VOXEN_NEW_PASSWORD='novaSenhaForte12chars' web \
+  bun apps/web/src/scripts/reset-password.ts user@exemplo.com
+
+# Direto via arg (senha aparece em `ps` e shell history — pra debug rápido)
 docker compose exec web bun apps/web/src/scripts/reset-password.ts \
   user@exemplo.com 'novaSenhaForte12chars'
 ```
