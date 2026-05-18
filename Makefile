@@ -1,4 +1,4 @@
-.PHONY: help dev down restart logs ps test test-ts test-py lint lint-ts lint-py typecheck migrate seed shell-db shell-redis garage-init master-key-show reset-password clean
+.PHONY: help dev update build down restart logs ps test test-ts test-py lint lint-ts lint-py typecheck migrate seed shell-db shell-redis garage-init master-key-show reset-password backup clean
 
 # ============================================================================
 # Voxen — one-command development
@@ -16,10 +16,21 @@ dev: ## Sobe tudo localmente (postgres, redis, garage, web, chat, worker)
 	@echo "  Logs: make logs"
 	@echo "  Parar: make down"
 
-down: ## Para tudo (preserva volumes)
+update: ## Atualiza (rolling restart sem perda de dados — recomendado pra prod)
+	@# Rebuild + recriação dos containers sem mexer em volumes (DB preservado).
+	@# Diferente de `restart` que faz down+up — esse não para os containers
+	@# antes do novo estar pronto, então não há janela de downtime perceptível.
+	docker compose up -d --build --remove-orphans
+	@echo ""
+	@echo "✓ Voxen atualizado. Containers recriados, volumes preservados."
+
+build: ## Rebuild de imagens sem recriar containers
+	docker compose build
+
+down: ## Para tudo (preserva volumes — dados intactos)
 	docker compose down
 
-restart: down dev ## Reinicia tudo
+restart: down dev ## Reinicia tudo (down + up; volumes preservados)
 
 logs: ## Tail dos logs (Ctrl+C pra sair)
 	docker compose logs -f --tail=100
@@ -82,5 +93,20 @@ reset-password: ## Reseta senha via CLI: make reset-password EMAIL=x@y.com PASSW
 	docker compose exec -T -e VOXEN_NEW_PASSWORD="$(PASSWORD)" web \
 		bun apps/web/src/scripts/reset-password.ts "$(EMAIL)"
 
-clean: ## Remove volumes (PERDE DADOS)
+backup: ## Backup dos volumes críticos (postgres, master_key, garage) em ./backups/
+	@mkdir -p backups
+	@DATE=$$(date +%Y-%m-%d_%H%M); \
+	echo "→ Postgres → backups/db-$$DATE.sql.gz"; \
+	docker compose exec -T postgres pg_dump -U voxen voxen | gzip > "backups/db-$$DATE.sql.gz"; \
+	echo "→ Master key → backups/master-key-$$DATE.tar.gz"; \
+	docker run --rm -v voxen_master_key:/data alpine tar czf - -C /data . > "backups/master-key-$$DATE.tar.gz"; \
+	echo "→ Garage data → backups/garage-$$DATE.tar.gz"; \
+	docker run --rm -v voxen_garage_data:/data alpine tar czf - -C /data . > "backups/garage-$$DATE.tar.gz"; \
+	echo ""; \
+	echo "✓ Backup completo em ./backups/ (timestamp $$DATE)"; \
+	ls -lh backups/ | tail -3
+
+clean: ## ⚠️  REMOVE VOLUMES (PERDE TODOS OS DADOS — postgres, garage, master key)
+	@echo "⚠️  ATENÇÃO: vai remover postgres, garage, master_key. Dados perdidos sem backup."
+	@read -p "Digite 'sim' pra confirmar: " confirm && [ "$$confirm" = "sim" ] || (echo "Cancelado." && exit 1)
 	docker compose down -v

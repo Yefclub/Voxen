@@ -86,6 +86,21 @@ O script:
 
 Mínimo 12 caracteres. Mais detalhes em [`docs/DEPLOY.md`](docs/DEPLOY.md#reset-de-senha).
 
+## Operação — atualizar sem perder dados
+
+Comandos seguros que preservam volumes (postgres, garage, master_key):
+
+```bash
+make update          # rolling restart com rebuild (zero downtime perceptível)
+make build           # rebuild de imagens (sem reiniciar)
+make restart         # down + up (curta indisponibilidade, dados preservados)
+make backup          # snapshot postgres + master_key + garage em ./backups/
+```
+
+**NUNCA** use `make clean` em produção — ele remove TODOS os volumes e perde os dados. O target já pede confirmação interativa.
+
+Migrations rodam automaticamente no entrypoint do `web` (Prisma `migrate deploy`).
+
 ## Documentação
 
 | Doc | Tema |
