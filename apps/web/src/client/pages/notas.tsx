@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
+import { Card, CardContent } from '../components/ui/card';
 import { Markdown } from '../components/ui/markdown';
 import { Spinner } from '../components/ui/spinner';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
@@ -117,15 +118,24 @@ export function NotasPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="flex h-full">
-        {/* Tree sidebar */}
-        <aside className="w-72 border-r border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 flex flex-col">
-          <div className="p-4 border-b border-[var(--color-app-border)]">
-            <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium mb-2">
-              <Library className="h-3.5 w-3.5 text-violet-400" />
-              Notas
-            </div>
-            <div className="flex gap-1.5">
+      <div className="px-8 py-10 mx-auto max-w-7xl space-y-8">
+        {/* Header padrão alinhado com /transcricoes, /jobs, /dashboard */}
+        <header className="space-y-3">
+          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
+            <Library className="h-3.5 w-3.5 text-violet-400" />
+            Base manual
+          </div>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Notas</h1>
+          <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
+            Sua base de conhecimento escrita à mão. Organize em pastas, escreva em markdown e a Vox
+            também pode criar/editar via chat com confirmação.
+          </p>
+        </header>
+
+        <div className="grid grid-cols-[280px_1fr] gap-5 min-h-[calc(100vh-280px)]">
+          {/* Tree sidebar — em Card pra ficar consistente */}
+          <Card elevated className="overflow-hidden p-0 flex flex-col self-start sticky top-6">
+            <div className="p-3 border-b border-[var(--color-app-border)] flex gap-1.5">
               <Button
                 size="sm"
                 variant="primary"
@@ -134,46 +144,52 @@ export function NotasPage(): React.ReactElement {
                 className="flex-1"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Nota
+                Nova nota
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => void createNew('FOLDER')}
                 disabled={creating}
+                aria-label="Nova pasta"
+                title="Nova pasta"
               >
                 <FolderPlus className="h-3.5 w-3.5" />
               </Button>
             </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-            {loading && (
-              <div className="px-3 py-6 text-center text-xs text-[var(--color-app-muted)]">
-                Carregando…
-              </div>
-            )}
-            {!loading && notes.length === 0 && (
-              <div className="px-3 py-6 text-center text-xs text-[var(--color-app-muted)]">
-                Crie sua primeira nota.
-              </div>
-            )}
-            {rootNotes.map((n) => (
-              <TreeNode
-                key={n.id}
-                node={n}
-                childrenByParent={childrenByParent}
-                activeId={id}
-                onDelete={(node) => setConfirmDelete(node)}
-                level={0}
-              />
-            ))}
-          </div>
-        </aside>
+            <div className="overflow-y-auto p-2 space-y-0.5 max-h-[70vh]">
+              {loading && (
+                <div className="px-3 py-6 text-center text-xs text-[var(--color-app-muted)]">
+                  Carregando…
+                </div>
+              )}
+              {!loading && notes.length === 0 && (
+                <div className="px-3 py-8 text-center space-y-2">
+                  <FileText className="mx-auto h-5 w-5 text-[var(--color-app-muted)]" />
+                  <p className="text-xs text-[var(--color-app-muted)] leading-relaxed">
+                    Sem notas ainda.
+                    <br />
+                    Crie uma acima.
+                  </p>
+                </div>
+              )}
+              {rootNotes.map((n) => (
+                <TreeNode
+                  key={n.id}
+                  node={n}
+                  childrenByParent={childrenByParent}
+                  activeId={id}
+                  onDelete={(node) => setConfirmDelete(node)}
+                  level={0}
+                />
+              ))}
+            </div>
+          </Card>
 
-        {/* Editor area */}
-        <main className="flex-1 min-w-0 overflow-y-auto">
+          {/* Editor area — Card pra parity com tree */}
           {id ? (
             <NoteEditor
+              key={id}
               noteId={id}
               previewMode={previewMode}
               onTogglePreview={() => setPreviewMode((v) => !v)}
@@ -184,20 +200,25 @@ export function NotasPage(): React.ReactElement {
               }}
             />
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center mb-4">
-                <FileText className="h-6 w-6 text-violet-400" />
-              </div>
-              <p className="font-display text-xl font-semibold tracking-tight mb-1">
-                Selecione uma nota
-              </p>
-              <p className="text-sm text-[var(--color-app-muted)] max-w-sm">
-                Sua base de conhecimento manual. Crie pastas, escreva em markdown, ou peça pra Vox
-                criar via chat.
-              </p>
-            </div>
+            <Card elevated className="flex items-center justify-center min-h-[400px]">
+              <CardContent className="py-20 text-center space-y-4 max-w-md">
+                <div className="mx-auto h-14 w-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
+                  <FileText className="h-6 w-6 text-violet-400" />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="font-display text-xl font-semibold tracking-tight">
+                    {notes.length === 0 ? 'Comece sua base manual' : 'Selecione uma nota'}
+                  </p>
+                  <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
+                    {notes.length === 0
+                      ? 'Crie sua primeira nota ou pasta na coluna ao lado. Você também pode pedir pra Vox criar via chat (com confirmação antes).'
+                      : 'Clique numa nota da árvore pra abrir o editor.'}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           )}
-        </main>
+        </div>
       </div>
 
       <ConfirmDialog
@@ -369,9 +390,11 @@ function NoteEditor({
 
   if (loading || !data) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Spinner />
-      </div>
+      <Card elevated className="flex items-center justify-center min-h-[400px]">
+        <CardContent>
+          <Spinner />
+        </CardContent>
+      </Card>
     );
   }
 
@@ -381,74 +404,80 @@ function NoteEditor({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="flex flex-col h-full"
     >
-      {/* Header */}
-      <div className="flex items-center gap-3 px-8 py-4 border-b border-[var(--color-app-border)]">
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => {
-            setTitle(e.target.value);
-            setDirty(true);
-          }}
-          onBlur={() => void save()}
-          placeholder="Sem título"
-          className="flex-1 bg-transparent text-2xl font-display font-semibold tracking-tight text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none"
-        />
-        <span className="text-[11px] text-[var(--color-app-muted)] tabular-nums">
-          {saving ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Loader2 className="h-3 w-3 animate-spin" /> Salvando
-            </span>
-          ) : dirty ? (
-            'Mudanças pendentes'
-          ) : (
-            'Salvo'
-          )}
-        </span>
-        <Button size="sm" variant="ghost" onClick={onTogglePreview}>
-          {previewMode ? (
-            <>
-              <EyeOff className="h-3.5 w-3.5" />
-              Editar
-            </>
-          ) : (
-            <>
-              <Eye className="h-3.5 w-3.5" />
-              Preview
-            </>
-          )}
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => void save()} disabled={!dirty || saving}>
-          <Save className="h-3.5 w-3.5" />
-          Salvar
-        </Button>
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
-        {previewMode ? (
-          <div className="prose-voxen max-w-3xl">
-            {content.trim() ? (
-              <Markdown>{content}</Markdown>
-            ) : (
-              <p className="text-[var(--color-app-muted)] italic">Sem conteúdo ainda.</p>
-            )}
-          </div>
-        ) : (
-          <textarea
-            value={content}
+      <Card elevated className="overflow-hidden p-0 flex flex-col min-h-[calc(100vh-280px)]">
+        {/* Header — toolbar do editor */}
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-[var(--color-app-border)]">
+          <input
+            type="text"
+            value={title}
             onChange={(e) => {
-              setContent(e.target.value);
+              setTitle(e.target.value);
               setDirty(true);
             }}
-            placeholder="Comece a escrever em markdown…"
-            className="w-full max-w-3xl min-h-[60vh] bg-transparent text-[15px] leading-relaxed text-zinc-100 placeholder:text-[var(--color-app-muted)] font-mono focus:outline-none resize-none"
-            spellCheck
+            onBlur={() => void save()}
+            placeholder="Sem título"
+            className="flex-1 bg-transparent text-xl font-display font-semibold tracking-tight text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none"
           />
-        )}
-      </div>
+          <span className="text-[11px] uppercase tracking-wider text-[var(--color-app-muted)] tabular-nums">
+            {saving ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin" /> Salvando
+              </span>
+            ) : dirty ? (
+              <span className="text-amber-300">Pendente</span>
+            ) : (
+              <span className="text-emerald-300">Salvo</span>
+            )}
+          </span>
+          <Button size="sm" variant="ghost" onClick={onTogglePreview}>
+            {previewMode ? (
+              <>
+                <EyeOff className="h-3.5 w-3.5" />
+                Editar
+              </>
+            ) : (
+              <>
+                <Eye className="h-3.5 w-3.5" />
+                Preview
+              </>
+            )}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void save()}
+            disabled={!dirty || saving}
+          >
+            <Save className="h-3.5 w-3.5" />
+            Salvar
+          </Button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+          {previewMode ? (
+            <div className="prose-voxen">
+              {content.trim() ? (
+                <Markdown>{content}</Markdown>
+              ) : (
+                <p className="text-[var(--color-app-muted)] italic">Sem conteúdo ainda.</p>
+              )}
+            </div>
+          ) : (
+            <textarea
+              value={content}
+              onChange={(e) => {
+                setContent(e.target.value);
+                setDirty(true);
+              }}
+              placeholder="Comece a escrever em markdown…"
+              className="w-full min-h-[55vh] bg-transparent text-[14.5px] leading-relaxed text-zinc-100 placeholder:text-[var(--color-app-muted)] font-mono focus:outline-none resize-none"
+              spellCheck
+            />
+          )}
+        </div>
+      </Card>
     </motion.div>
   );
 }
