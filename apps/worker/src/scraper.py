@@ -132,18 +132,27 @@ def _assert_public_host(url: str) -> set[str]:
 
 
 def _assert_peer_ip_public(response: httpx.Response, expected_ips: set[str]) -> None:
-    """Pós-GET: extrai o IP do peer e revalida.
+    """Pós-GET: extrai o IP do peer e bloqueia se for privado.
 
-    Defesa contra DNS rebinding TOCTOU: entre _assert_public_host (que resolveu
-    e validou) e o GET real do httpx (que resolveu de novo), o atacante pode
-    ter feito o DNS apontar pra IP privado. Aqui pegamos o IP REAL usado.
+    Defesa contra DNS rebinding: o atacante faz domínio público resolver
+    momentaneamente pra IP privado/interno. Aqui pegamos o IP REAL usado pela
+    conexão e bloqueamos se for privado — esse é o vetor que importa.
+
+    **NÃO** comparamos contra `expected_ips` (set pré-resolvido):
+    - Sites grandes (CDN/load balancer) têm N IPs públicos via round-robin
+    - getaddrinfo pode retornar subset diferente a cada call
+    - Peer IP fora do set inicial mas público = legítimo, não rebinding
+    - Comparação estrita gerava false positives bloqueando sites reais
+
+    `expected_ips` mantido na assinatura por compat (logado pra debug).
 
     httpx 0.27+ expõe `response.extensions['network_stream']` que tem
     `get_extra_info('server_addr')` → (ip, port).
     """
+    _ = expected_ips  # mantido por compat
     stream = response.extensions.get("network_stream")
     if stream is None:
-        return  # versão antiga ou conexão fechada; não bloqueia (false-negative ok)
+        return
     try:
         server_addr = stream.get_extra_info("server_addr")
     except Exception:  # noqa: BLE001
@@ -155,16 +164,9 @@ def _assert_peer_ip_public(response: httpx.Response, expected_ips: set[str]) -> 
         peer_ip = ipaddress.ip_address(peer_ip_str)
     except (ValueError, TypeError):
         return
-    # 1) Bloqueia se peer caiu em ranges privados
     if _is_private_ip(peer_ip):
         raise FetchBlockedError(
             "DNS rebinding detectado — conexão caiu em IP privado/interno."
-        )
-    # 2) Bloqueia se peer NÃO está no set pré-validado (mudou no meio)
-    if str(peer_ip) not in expected_ips:
-        raise FetchBlockedError(
-            f"DNS rebinding detectado — IP usado ({peer_ip}) difere dos "
-            f"validados ({sorted(expected_ips)})."
         )
 
 
