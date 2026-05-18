@@ -103,6 +103,20 @@ app.get('/api/instance', async (c) => {
   return c.json({ allowSignups, hasUsers: userCount > 0, onboardingDone });
 });
 
+// Capabilities: features opcionais que o admin pode habilitar/desabilitar.
+// UI consulta pra mostrar/esconder botões (ex: upload de imagem só aparece
+// se admin configurou modelo de visão).
+app.get('/api/capabilities', async (c) => {
+  const [visionModel, webSearchModel] = await Promise.all([
+    getSetting('default_vision_model').catch(() => null),
+    getSetting('default_web_search_model').catch(() => null),
+  ]);
+  return c.json({
+    vision: !!visionModel,
+    webSearch: !!webSearchModel,
+  });
+});
+
 // Better Auth: aceita TODOS os métodos em /api/auth/*.
 // Bloqueia sign-up se allow_signups=false (admin desativou).
 app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
