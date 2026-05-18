@@ -234,13 +234,110 @@ TOOLS_SPEC: list[dict[str, Any]] = [
                     "action_summary": {
                         "type": "string",
                         "description": (
-                            "Resumo curto e direto do que vai fazer "
-                            "(ex: 'Criar nota \"Reunião 2026-05-18\" com 3 "
-                            "parágrafos sobre X'). Em português."
+                            "Resumo curto e direto do que vai fazer."
                         ),
                     },
                 },
                 "required": ["action_summary"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_notes",
+            "description": (
+                "Lista as notas e pastas do usuário (mais recentes primeiro). "
+                "Use pra ver o que está na base manual antes de criar nota nova."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Máx itens (padrão 30, máx 100)."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_notes",
+            "description": (
+                "Busca FTS nas notas (title+content). Palavras-chave em português."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_note",
+            "description": "Lê o conteúdo markdown completo de uma nota.",
+            "parameters": {
+                "type": "object",
+                "properties": {"note_id": {"type": "string"}},
+                "required": ["note_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_note",
+            "description": (
+                "Cria uma nota markdown nova na base do usuário. SEMPRE chame "
+                "request_user_confirmation antes (informe título + resumo do "
+                "conteúdo). parent_id opcional pra colocar dentro de pasta."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Título (1-200 chars)."},
+                    "content": {"type": "string", "description": "Conteúdo markdown."},
+                    "parent_id": {"type": "string", "description": "ID da pasta pai (opcional)."},
+                },
+                "required": ["title", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_note",
+            "description": (
+                "Edita título ou conteúdo de nota existente. SEMPRE chame "
+                "request_user_confirmation antes (informe o que vai mudar)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "note_id": {"type": "string"},
+                    "title": {"type": "string"},
+                    "content": {"type": "string"},
+                },
+                "required": ["note_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_note",
+            "description": (
+                "Apaga nota/pasta (pasta cascata pra filhos). SEMPRE chame "
+                "request_user_confirmation antes — destrutivo."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"note_id": {"type": "string"}},
+                "required": ["note_id"],
             },
         },
     },
@@ -406,6 +503,103 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                     "atual sem executar a ação. Aguarde a próxima mensagem dele."
                 ),
             }
+
+
+        if name == "list_notes":
+            limit = min(int(args.get("limit", 30)), 100)
+            rows = await db.list_user_notes(user_id, limit=limit)
+            return {
+                "notes": [
+                    {
+                        "id": r["id"],
+                        "parentId": r["parentId"],
+                        "kind": r["kind"],
+                        "title": r["title"],
+                        "updatedAt": r["updatedAt"].isoformat() if r.get("updatedAt") else None,
+                    }
+                    for r in rows
+                ]
+            }
+
+        if name == "search_notes":
+            query = str(args.get("query", "")).strip()
+            if not query:
+                return {"error": "Parâmetro 'query' vazio."}
+            limit = min(int(args.get("limit", 8)), 25)
+            rows = await db.search_user_notes(user_id, query, limit=limit)
+            return {
+                "results": [
+                    {
+                        "id": r["id"],
+                        "title": r["title"],
+                        "snippet": r["snippet"],
+                        "rank": float(r["rank"]),
+                    }
+                    for r in rows
+                ]
+            }
+
+        if name == "read_note":
+            nid = str(args.get("note_id", ""))
+            note = await db.get_user_note(user_id, nid)
+            if not note:
+                return {"error": "Nota não encontrada."}
+            return {
+                "id": note["id"],
+                "title": note["title"],
+                "content": note["content"],
+                "kind": note["kind"],
+            }
+
+        if name == "create_note":
+            title = str(args.get("title", "")).strip()
+            content = str(args.get("content", ""))
+            parent_id = args.get("parent_id")
+            if not title:
+                return {"error": "Título obrigatório."}
+            if len(title) > 200:
+                return {"error": "Título muito longo (máx 200 chars)."}
+            if len(content) > 200_000:
+                return {"error": "Conteúdo muito longo (máx 200k chars)."}
+            if parent_id:
+                parent = await db.get_user_note(user_id, str(parent_id))
+                if not parent:
+                    return {"error": "Pasta pai não encontrada."}
+                if parent.get("kind") != "FOLDER":
+                    return {"error": "parent_id precisa ser uma pasta (FOLDER)."}
+            note = await db.create_user_note(
+                user_id, title=title, content=content, parent_id=parent_id, kind="NOTE"
+            )
+            return {
+                "status": "created",
+                "id": note["id"],
+                "title": note["title"],
+                "message": "Nota criada com sucesso.",
+            }
+
+        if name == "edit_note":
+            nid = str(args.get("note_id", ""))
+            new_title = args.get("title")
+            new_content = args.get("content")
+            if new_title is None and new_content is None:
+                return {"error": "Forneça title ou content pra editar."}
+            updated = await db.update_user_note(
+                user_id,
+                nid,
+                title=str(new_title) if new_title is not None else None,
+                content=str(new_content) if new_content is not None else None,
+            )
+            if not updated:
+                return {"error": "Nota não encontrada."}
+            return {"status": "updated", "id": updated["id"], "title": updated["title"]}
+
+        if name == "delete_note":
+            nid = str(args.get("note_id", ""))
+            ok = await db.delete_user_note(user_id, nid)
+            if not ok:
+                return {"error": "Nota não encontrada."}
+            return {"status": "deleted", "id": nid}
+
 
         return {"error": f"Tool desconhecida: {name}"}
     except Exception as e:  # noqa: BLE001 — agente decide como reagir

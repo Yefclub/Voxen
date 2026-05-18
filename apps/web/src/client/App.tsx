@@ -16,6 +16,7 @@ import { JobsPage } from './pages/jobs';
 import { JobDetalhePage } from './pages/jobs-detalhe';
 import { TranscricoesPage } from './pages/transcricoes';
 import { TranscricaoDetalhePage } from './pages/transcricoes-detalhe';
+import { NotasPage } from './pages/notas';
 
 export function App(): React.ReactElement {
   return (
@@ -48,6 +49,8 @@ export function App(): React.ReactElement {
           <Route path="/jobs/:id" element={<JobDetalhePage />} />
           <Route path="/transcricoes" element={<TranscricoesPage />} />
           <Route path="/transcricoes/:id" element={<TranscricaoDetalhePage />} />
+          <Route path="/notas" element={<NotasPage />} />
+          <Route path="/notas/:id" element={<NotasPage />} />
         </Route>
 
         {/* Fallback */}

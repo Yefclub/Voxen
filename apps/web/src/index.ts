@@ -16,6 +16,7 @@ import { onboardingRoutes } from './routes/onboarding';
 import { accountRoutes } from './routes/account';
 import { costRoutes } from './routes/cost';
 import { chatRoutes } from './routes/chat';
+import { notesRoutes } from './routes/notes';
 import { getRedisPublisher } from './lib/redis';
 import { rateLimit } from './lib/rate-limit';
 
@@ -148,6 +149,7 @@ app.route('/api/admin/custos', costRoutes);
 
 // Chat (proxy autenticado pro serviço chat:8001)
 app.route('/api/chat', chatRoutes);
+app.route('/api/notes', notesRoutes);
 
 // Avatar proxy: serve imagem do Garage de qualquer user autenticado
 app.get('/api/avatar/:userId', async (c) => {
