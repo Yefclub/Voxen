@@ -176,9 +176,21 @@ chatRoutes.delete('/conversations/:id', async (c) => {
 chatRoutes.post('/conversations/:id/send', async (c) => {
   const uid = userId(c);
   const id = c.req.param('id');
-  const body = (await c.req.json().catch(() => ({}))) as { content?: string };
-  const content = body.content?.trim();
-  if (!content) return c.json({ error: 'Mensagem vazia.' }, 400);
+  const body = (await c.req.json().catch(() => ({}))) as {
+    content?: string;
+    image_data_url?: string;
+  };
+  const content = body.content?.trim() ?? '';
+  const imageDataUrl = body.image_data_url?.trim();
+  // Aceita mensagem só com imagem (sem texto) — vision flow comum
+  if (!content && !imageDataUrl) return c.json({ error: 'Mensagem vazia.' }, 400);
+  // Cap servidor pra evitar payloads gigantes (≈5MB base64 + overhead)
+  if (imageDataUrl && imageDataUrl.length > 7 * 1024 * 1024) {
+    return c.json({ error: 'Imagem muito grande (limite 5MB).' }, 413);
+  }
+  if (imageDataUrl && !/^data:image\/(png|jpeg|webp|gif);base64,/.test(imageDataUrl)) {
+    return c.json({ error: 'Formato de imagem inválido.' }, 400);
+  }
 
   const conv = await db.conversation.findFirst({
     where: { id, userId: uid },
@@ -186,9 +198,12 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
   });
   if (!conv) return c.json({ error: 'Conversa não encontrada.' }, 404);
 
-  // Persiste mensagem do usuário antes de chamar o agente.
+  // Texto persistido inclui marcador da imagem (UX: histórico mostra que
+  // teve anexo). A data URL real fica no upstream pra economizar storage.
+  const persistedContent =
+    content + (imageDataUrl ? (content ? '\n\n📎 [imagem anexada]' : '📎 [imagem anexada]') : '');
   await db.chatMessage.create({
-    data: { conversationId: id, role: 'USER', content },
+    data: { conversationId: id, role: 'USER', content: persistedContent },
   });
 
   // Bumpa updatedAt e (se for a primeira) define um título auto.
@@ -197,14 +212,14 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
     data: {
       updatedAt: new Date(),
       ...(conv.messages.length === 0 && conv.title === 'Nova conversa'
-        ? { title: content.slice(0, 60) }
+        ? { title: (content || 'Imagem').slice(0, 60) }
         : {}),
     },
   });
 
   const history = [
     ...conv.messages.map((m) => ({ role: m.role.toLowerCase(), content: m.content })),
-    { role: 'user', content },
+    { role: 'user', content: persistedContent },
   ];
 
   // Busca dados do user pra contexto do agente — name é exibido no system
@@ -234,6 +249,7 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
       messages: history,
       thinking: conv.thinking,
       user_name: userInfo?.name ?? '',
+      ...(imageDataUrl ? { image_data_url: imageDataUrl } : {}),
     }),
     signal: upstreamAbort.signal,
   });

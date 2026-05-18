@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowUp, Brain, Loader2, Mic, Square } from 'lucide-react';
+import { ArrowUp, Brain, ImageIcon, Loader2, Mic, Square, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { createVoiceRecorder } from '../../lib/voice-recorder';
 import { toast } from 'sonner';
@@ -18,9 +18,19 @@ interface PromptBoxProps {
   loading?: boolean;
   thinking: boolean;
   onToggleThinking: () => void;
+  // Vision: imagem anexada como data URL (base64). Quando setada, prompt-box
+  // mostra preview; envio inclui no payload e o chat service usa o modelo
+  // de visão. Vazio = chat text-only normal.
+  attachedImage?: string | null;
+  onAttachImage?: (dataUrl: string) => void;
+  onClearImage?: () => void;
+  visionEnabled?: boolean;
   placeholder?: string;
   className?: string;
 }
+
+const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const IMAGE_ALLOWED_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 
 export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function PromptBox(
   {
@@ -31,16 +41,21 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
     loading,
     thinking,
     onToggleThinking,
-    placeholder = 'Pergunte algo sobre seus vídeos…',
+    attachedImage,
+    onAttachImage,
+    onClearImage,
+    visionEnabled = false,
+    placeholder = 'Pergunte qualquer coisa pra Vox…',
     className,
   },
   ref,
 ) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<ReturnType<typeof createVoiceRecorder> | null>(null);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
-  const hasValue = value.trim().length > 0;
+  const hasValue = value.trim().length > 0 || !!attachedImage;
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -118,6 +133,43 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
     }
   }
 
+  function onPickImage(): void {
+    if (!visionEnabled) {
+      toast.warning('Visão não configurada.', {
+        description: 'Admin precisa escolher um modelo de visão em /setup.',
+      });
+      return;
+    }
+    fileInputRef.current?.click();
+  }
+
+  function onImageChange(e: React.ChangeEvent<HTMLInputElement>): void {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite re-selecionar mesmo arquivo
+    if (!file) return;
+    if (!IMAGE_ALLOWED_MIMES.has(file.type)) {
+      toast.error('Formato não suportado.', {
+        description: 'Aceito: PNG, JPEG, WebP, GIF.',
+      });
+      return;
+    }
+    if (file.size > IMAGE_MAX_BYTES) {
+      toast.error('Imagem muito grande.', { description: 'Limite de 5MB.' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      if (typeof dataUrl === 'string') {
+        onAttachImage?.(dataUrl);
+      }
+    };
+    reader.onerror = () => {
+      toast.error('Falha ao ler imagem.');
+    };
+    reader.readAsDataURL(file);
+  }
+
   return (
     <div
       className={cn(
@@ -126,6 +178,44 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
         className,
       )}
     >
+      {/* Preview da imagem anexada */}
+      <AnimatePresence>
+        {attachedImage && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="px-4 pt-3 overflow-hidden"
+          >
+            <div className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] p-1.5 pr-2.5">
+              <img src={attachedImage} alt="Anexo" className="h-12 w-12 rounded-md object-cover" />
+              <div className="flex flex-col">
+                <span className="text-[11px] uppercase tracking-wider text-violet-300 font-medium">
+                  Imagem anexada
+                </span>
+                <span className="text-[10px] text-[var(--color-app-muted)]">
+                  Vox vai analisar com modelo de visão
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onClearImage?.()}
+                className="ml-2 h-6 w-6 flex items-center justify-center rounded-md text-[var(--color-app-muted)] hover:text-rose-300 hover:bg-rose-500/10 transition-colors"
+                aria-label="Remover imagem"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        onChange={onImageChange}
+      />
       <textarea
         ref={textareaRef}
         value={value}
@@ -189,6 +279,29 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
         </AnimatePresence>
 
         <div className="ml-auto flex items-center gap-1.5">
+          {/* Image upload */}
+          <button
+            type="button"
+            onClick={onPickImage}
+            disabled={loading || !!attachedImage}
+            className={cn(
+              'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
+              visionEnabled
+                ? 'text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]'
+                : 'text-[var(--color-app-muted)]/40 cursor-not-allowed',
+              attachedImage && 'opacity-40 cursor-not-allowed',
+              loading && 'opacity-40 cursor-not-allowed',
+            )}
+            aria-label="Anexar imagem"
+            title={
+              visionEnabled
+                ? 'Anexar imagem (PNG/JPEG/WebP/GIF, máx 5MB)'
+                : 'Modelo de visão não configurado'
+            }
+          >
+            <ImageIcon className="h-4 w-4" />
+          </button>
+
           {/* Mic */}
           <button
             type="button"

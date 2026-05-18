@@ -49,6 +49,17 @@ export function ChatPage(): React.ReactElement {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
+  // Vision: imagem anexada (data URL). Quando setada, é enviada no body do
+  // send → chat service usa default_vision_model. Limpa após envio.
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [visionEnabled, setVisionEnabled] = useState(false);
+  useEffect(() => {
+    // Detecta se o admin configurou modelo de visão pra habilitar o botão
+    fetch('/api/capabilities', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((d: { vision?: boolean }) => setVisionEnabled(!!d.vision))
+      .catch(() => setVisionEnabled(false));
+  }, []);
   const [thinking, setThinking] = useState<boolean>(() => {
     try {
       return window.localStorage.getItem(THINKING_KEY) === '1';
@@ -151,7 +162,9 @@ export function ChatPage(): React.ReactElement {
 
   async function send(overrideText?: string): Promise<void> {
     const text = (overrideText ?? input).trim();
-    if (!text || streaming) return;
+    // Permite enviar só imagem com texto curto ou apenas imagem (vision)
+    if (!text && !attachedImage) return;
+    if (streaming) return;
 
     let convId = active?.id;
     if (!convId) {
@@ -180,6 +193,10 @@ export function ChatPage(): React.ReactElement {
       // encaminha pro chat service injetar no system prompt (data/hora real).
       const userTz =
         typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
+      const sentImage = attachedImage;
+      // Limpa o anexo local antes do request — UX: imagem some assim que
+      // user envia, sem precisar esperar streaming terminar.
+      setAttachedImage(null);
       const res = await fetch(`/api/chat/conversations/${convId}/send`, {
         method: 'POST',
         credentials: 'include',
@@ -188,7 +205,10 @@ export function ChatPage(): React.ReactElement {
           Accept: 'text/event-stream',
           'X-User-Timezone': userTz,
         },
-        body: JSON.stringify({ content: text }),
+        body: JSON.stringify({
+          content: text,
+          ...(sentImage ? { image_data_url: sentImage } : {}),
+        }),
       });
       if (!res.ok || !res.body) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
@@ -325,9 +345,13 @@ export function ChatPage(): React.ReactElement {
             loading={streaming}
             thinking={thinking}
             onToggleThinking={() => void toggleThinking()}
+            attachedImage={attachedImage}
+            onAttachImage={(d) => setAttachedImage(d)}
+            onClearImage={() => setAttachedImage(null)}
+            visionEnabled={visionEnabled}
           />
           <p className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] mt-2 text-center">
-            Enter envia · Shift+Enter quebra linha · Microfone transcreve fala
+            Enter envia · Shift+Enter quebra linha · Microfone transcreve · Imagem aceita PNG/JPEG
           </p>
         </div>
       </motion.div>

@@ -142,6 +142,10 @@ class ChatRequest(BaseModel):
     # Nome do user vem no body (não header) pra suportar unicode — fetch valida
     # headers como Latin-1 e lançaria em nomes com CJK/emoji/acentos exóticos.
     user_name: str = ""
+    # Imagem anexada à última mensagem do user (data URL base64). Quando
+    # presente, o agente usa default_vision_model em vez de default_chat_model
+    # e injeta a imagem no content multimodal da última mensagem.
+    image_data_url: str | None = None
 
 
 @app.post("/chat")
@@ -176,15 +180,46 @@ async def chat(
         user_timezone=x_voxen_user_timezone or "UTC",
     )
 
+    # Se mandou imagem, troca pro vision model (se configurado).
+    if body.image_data_url:
+        vision_model = await voxen_settings.get_default_vision_model()
+        if vision_model:
+            model = vision_model
+        # Sem vision_model setting: continua com chat model (alguns aceitam
+        # imagens nativamente, ex: gpt-4o; OpenRouter retorna erro se não).
+
     async def event_stream() -> AsyncIterator[str]:
         client = AsyncOpenAI(
             api_key=api_key,
             base_url=OR_BASE_URL,
         )
-        messages: list[dict[str, Any]] = [
+        # Última mensagem do user pode receber imagem inline (multimodal).
+        # Demais ficam com content string puro.
+        msg_list: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
-            *[{"role": m.role, "content": m.content} for m in body.messages],
         ]
+        for i, m in enumerate(body.messages):
+            is_last_user = (
+                i == len(body.messages) - 1
+                and m.role == "user"
+                and body.image_data_url is not None
+            )
+            if is_last_user:
+                msg_list.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": m.content or "Descreva esta imagem."},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": body.image_data_url},
+                            },
+                        ],
+                    }
+                )
+            else:
+                msg_list.append({"role": m.role, "content": m.content})
+        messages: list[dict[str, Any]] = msg_list
         extra: dict[str, Any] = {}
         if thinking:
             extra["reasoning"] = {"effort": "medium"}
