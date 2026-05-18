@@ -31,7 +31,7 @@ import { useChatContextState } from '../lib/chat-context-ctx';
 interface Msg {
   id: string;
   role: 'user' | 'assistant' | 'system';
-  kind?: 'NORMAL' | 'COMPACTION_SUMMARY';
+  kind?: 'NORMAL' | 'COMPACTION_SUMMARY' | 'HITL_RESPONSE';
   content: string;
   // `actionSummary` é populado quando a tool é request_user_confirmation —
   // o backend envia o resumo cru no SSE pra UI renderizar o banner HITL
@@ -122,7 +122,7 @@ export function ChatPage(): React.ReactElement {
         messages: {
           id: string;
           role: 'user' | 'assistant' | 'system';
-          kind?: 'NORMAL' | 'COMPACTION_SUMMARY';
+          kind?: 'NORMAL' | 'COMPACTION_SUMMARY' | 'HITL_RESPONSE';
           content: string;
           tools?: unknown;
           createdAt: string;
@@ -202,17 +202,18 @@ export function ChatPage(): React.ReactElement {
     }
   }
 
-  // HITL: clique nos botões do ConfirmationPrompt envia mensagem automática
-  // de aprovação/negação na conversa, que o agente lê e prossegue/aborta.
+  // HITL: clique nos botões do ConfirmationPrompt envia uma mensagem com
+  // flag hitl=true. Backend marca kind=HITL_RESPONSE; UI renderiza como
+  // chip "✓ Aprovado" / "✗ Cancelado" em vez de bubble cheio.
   async function respondToConfirmation(approved: boolean): Promise<void> {
     if (streaming) return;
     const reply = approved
       ? 'Sim, pode prosseguir com a ação proposta.'
       : 'Não, cancele essa ação.';
-    void send(reply);
+    void send(reply, { hitl: true });
   }
 
-  async function send(overrideText?: string): Promise<void> {
+  async function send(overrideText?: string, options?: { hitl?: boolean }): Promise<void> {
     const text = (overrideText ?? input).trim();
     // Permite enviar só imagem com texto curto ou apenas imagem (vision)
     if (!text && !attachedImage) return;
@@ -230,7 +231,12 @@ export function ChatPage(): React.ReactElement {
       window.history.replaceState(null, '', `/chat/${convId}`);
     }
 
-    const userMsg: Msg = { id: `u-${Date.now()}`, role: 'user', content: text };
+    const userMsg: Msg = {
+      id: `u-${Date.now()}`,
+      role: 'user',
+      content: text,
+      kind: options?.hitl ? 'HITL_RESPONSE' : 'NORMAL',
+    };
     const asstId = `a-${Date.now()}`;
     setMessages((m) => [
       ...m,
@@ -260,6 +266,7 @@ export function ChatPage(): React.ReactElement {
         body: JSON.stringify({
           content: text,
           ...(sentImage ? { image_data_url: sentImage } : {}),
+          ...(options?.hitl ? { hitl: true } : {}),
         }),
       });
       if (!res.ok || !res.body) {
@@ -376,12 +383,63 @@ export function ChatPage(): React.ReactElement {
 
   const empty = messages.length === 0 && !active;
 
+  // === Drag-and-drop de imagens ===
+  // Aceita só image/* (PNG/JPEG/WEBP/GIF) com no máx 5MB pra bater com o cap
+  // do backend (apps/web/src/routes/chat.ts). Pinta um overlay durante drag.
+  const [isDragging, setIsDragging] = useState(false);
+
+  function handleImageFile(file: File): void {
+    if (!visionEnabled) {
+      toast.error('Visão não está habilitada — admin precisa configurar um modelo de visão.');
+      return;
+    }
+    if (!/^image\/(png|jpeg|webp|gif)$/i.test(file.type)) {
+      toast.error('Formato não suportado.', {
+        description: 'Aceito: PNG, JPEG, WEBP, GIF.',
+      });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Imagem muito grande.', { description: 'Limite: 5 MB.' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') setAttachedImage(result);
+    };
+    reader.onerror = () => toast.error('Falha ao ler arquivo.');
+    reader.readAsDataURL(file);
+  }
+
+  function onDragOver(e: React.DragEvent<HTMLDivElement>): void {
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isDragging) setIsDragging(true);
+    }
+  }
+  function onDragLeave(e: React.DragEvent<HTMLDivElement>): void {
+    // Só apaga quando o leave for do container raiz, não de filhos
+    if (e.currentTarget === e.target) setIsDragging(false);
+  }
+  function onDrop(e: React.DragEvent<HTMLDivElement>): void {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleImageFile(file);
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-      className="flex flex-col h-full"
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className="flex flex-col h-full relative"
     >
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
         <motion.div
@@ -444,6 +502,24 @@ export function ChatPage(): React.ReactElement {
         onOpenChange={setCompactionModalOpen}
         info={lastCompaction}
       />
+
+      {/* Overlay durante drag-and-drop de imagem */}
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-violet-500/10 backdrop-blur-sm"
+          >
+            <div className="rounded-2xl border-2 border-dashed border-violet-400/60 bg-zinc-950/80 px-8 py-6 text-center">
+              <p className="text-base font-medium text-violet-200">Solte aqui pra anexar</p>
+              <p className="text-xs text-zinc-400 mt-1">PNG · JPEG · WEBP · GIF — até 5 MB</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -530,6 +606,29 @@ function Bubble({
   const isUser = msg.role === 'user';
   const [copied, setCopied] = useState(false);
 
+  // HITL response: clique nos botões do ConfirmationPrompt. Renderiza como
+  // chip compacto à direita em vez de bubble cheio — evita poluir a conversa
+  // com texto "Sim, pode prosseguir...".
+  if (msg.kind === 'HITL_RESPONSE') {
+    const approved = msg.content.toLowerCase().startsWith('sim');
+    return (
+      <div className="flex justify-end pr-1 -my-1.5">
+        <span
+          className={cn(
+            'inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border',
+            approved
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+              : 'border-rose-500/30 bg-rose-500/10 text-rose-300',
+          )}
+          title={msg.content}
+        >
+          {approved ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+          {approved ? 'Aprovado' : 'Cancelado'}
+        </span>
+      </div>
+    );
+  }
+
   async function copy(): Promise<void> {
     try {
       await navigator.clipboard.writeText(msg.content);
@@ -567,10 +666,10 @@ function Bubble({
 
         <div
           className={cn(
-            'group rounded-2xl px-4 py-3 leading-relaxed',
-            isUser
-              ? 'bg-zinc-100 text-zinc-900 text-[14.5px]'
-              : 'bg-[var(--color-app-surface)] border border-[var(--color-app-border)] text-zinc-100',
+            'group rounded-2xl leading-relaxed',
+            // User mantém bubble visual com fundo claro; IA fica sem fundo,
+            // só texto puro — pedido do owner pra reduzir poluição visual.
+            isUser ? 'bg-zinc-100 text-zinc-900 text-[14.5px] px-4 py-3' : 'text-zinc-100 py-1',
           )}
         >
           {msg.pending && !msg.content ? (

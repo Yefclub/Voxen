@@ -323,6 +323,7 @@ enum ChatRole {
 enum ChatMessageKind {
   NORMAL
   COMPACTION_SUMMARY
+  HITL_RESPONSE
 }
 
 model ChatMessage {

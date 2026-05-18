@@ -190,9 +190,14 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as {
     content?: string;
     image_data_url?: string;
+    // Quando true, a mensagem é resposta de HITL via clique nos botões do
+    // ConfirmationPrompt — marca kind=HITL_RESPONSE pra UI renderizar como
+    // chip compacto em vez de bubble cheio (não polui a conversa).
+    hitl?: boolean;
   };
   const content = body.content?.trim() ?? '';
   const imageDataUrl = body.image_data_url?.trim();
+  const isHitl = body.hitl === true;
   // Aceita mensagem só com imagem (sem texto) — vision flow comum
   if (!content && !imageDataUrl) return c.json({ error: 'Mensagem vazia.' }, 400);
   // Cap servidor pra evitar payloads gigantes (≈5MB base64 + overhead)
@@ -219,7 +224,12 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
   const persistedContent =
     content + (imageDataUrl ? (content ? '\n\n📎 [imagem anexada]' : '📎 [imagem anexada]') : '');
   await db.chatMessage.create({
-    data: { conversationId: id, role: 'USER', content: persistedContent },
+    data: {
+      conversationId: id,
+      role: 'USER',
+      content: persistedContent,
+      kind: isHitl ? 'HITL_RESPONSE' : 'NORMAL',
+    },
   });
 
   // Bumpa updatedAt e (se for a primeira) define um título auto.
