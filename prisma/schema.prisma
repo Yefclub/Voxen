@@ -165,6 +165,7 @@ enum TranscriptSource {
   YOUTUBE
   INSTAGRAM
   TIKTOK
+  X             // x.com / twitter.com (yt-dlp suporta nativamente)
   WEB           // página web (scraper Trafilatura)
 }
 

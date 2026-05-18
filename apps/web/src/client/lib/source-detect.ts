@@ -6,7 +6,7 @@
 // sync com `apps/web/src/lib/video-url.ts` (server-side).
 // ============================================================================
 
-export type DetectedSource = 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'WEB';
+export type DetectedSource = 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB';
 
 export function detectSourceFromUrl(raw: string): DetectedSource | null {
   let url: URL;
@@ -17,12 +17,13 @@ export function detectSourceFromUrl(raw: string): DetectedSource | null {
   }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
 
-  const host = url.hostname.replace(/^www\.|^m\.|^music\./, '');
+  const host = url.hostname.replace(/^www\.|^m\.|^mobile\.|^music\./, '');
 
   if (host === 'youtu.be' || host === 'youtube.com') return 'YOUTUBE';
   if (host === 'instagram.com') return 'INSTAGRAM';
   if (host === 'tiktok.com' || host === 'vm.tiktok.com' || host === 'vt.tiktok.com')
     return 'TIKTOK';
+  if (host === 'x.com' || host === 'twitter.com') return 'X';
 
   // Qualquer outra http(s) é tratada como página web pra scrape
   return 'WEB';

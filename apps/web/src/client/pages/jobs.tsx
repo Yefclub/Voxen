@@ -294,6 +294,7 @@ function DetectedBadge({ source }: { source: DetectedSource }): React.ReactEleme
       cls: 'text-fuchsia-300 border-fuchsia-500/40 bg-fuchsia-500/10',
     },
     TIKTOK: { label: 'TikTok', cls: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' },
+    X: { label: 'Post do X', cls: 'text-sky-300 border-sky-500/40 bg-sky-500/10' },
     WEB: { label: 'Página web', cls: 'text-zinc-300 border-zinc-500/40 bg-zinc-500/10' },
   } as const;
   const { label, cls } = map[source];

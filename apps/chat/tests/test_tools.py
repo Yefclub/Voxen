@@ -59,10 +59,25 @@ def test_tiktok_canonical(url: str, expected: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "url,expected",
+    [
+        # status_id deve ter 6-32 dígitos (regex)
+        ("https://x.com/jack/status/123456789012345", "https://x.com/i/status/123456789012345"),
+        ("https://x.com/i/status/123456", "https://x.com/i/status/123456"),
+        ("https://x.com/i/web/status/987654", "https://x.com/i/status/987654"),
+        ("https://twitter.com/elon/status/424242", "https://x.com/i/status/424242"),
+        ("https://mobile.twitter.com/u/status/111111", "https://x.com/i/status/111111"),
+        ("https://www.x.com/u/status/777777", "https://x.com/i/status/777777"),
+    ],
+)
+def test_x_canonical(url: str, expected: str) -> None:
+    assert _canonical_video_url(url) == expected
+
+
+@pytest.mark.parametrize(
     "url",
     [
         "https://vimeo.com/12345",
-        "https://twitter.com/user/status/123",
         "https://example.com/video",
         "ftp://youtu.be/dQw4w9WgXcQ",
         "",
@@ -70,6 +85,9 @@ def test_tiktok_canonical(url: str, expected: str) -> None:
         "https://youtu.be/short",  # id curto demais
         "https://www.instagram.com/notreel/",  # path sem reel/p/tv
         "https://www.tiktok.com/justpath",  # sem @user/video
+        "https://x.com/jack",  # sem status
+        "https://twitter.com/home",  # sem status
+        "https://x.com/jack/status/abc",  # status_id não numérico
     ],
 )
 def test_video_canonical_rejects(url: str) -> None:

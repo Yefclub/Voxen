@@ -25,6 +25,16 @@ _TT_HOSTS = ("tiktok.com", "www.tiktok.com", "m.tiktok.com")
 _TT_SHORT_HOSTS = ("vm.tiktok.com", "vt.tiktok.com")
 _TT_ID_RE = re.compile(r"^[0-9]{6,32}$")
 _TT_SHORT_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+# X (Twitter) — x.com e twitter.com (legacy). yt-dlp suporta nativamente.
+_X_HOSTS = (
+    "x.com",
+    "www.x.com",
+    "mobile.x.com",
+    "twitter.com",
+    "www.twitter.com",
+    "mobile.twitter.com",
+)
+_X_STATUS_ID_RE = re.compile(r"^[0-9]{6,32}$")
 
 _LINE_RE = re.compile(r"^\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]\(.*?\)\s*(.*)$")
 
@@ -151,12 +161,12 @@ TOOLS_SPEC: list[dict[str, Any]] = [
         "function": {
             "name": "transcribe_video",
             "description": (
-                "Dispara transcrição de um vídeo (YouTube, Instagram Reel ou "
-                "TikTok). Recebe a URL e agenda um Job no worker. NÃO espera "
-                "concluir — retorna o job_id pra acompanhar. Use quando o "
-                "usuário pedir pra transcrever/baixar/indexar um link de "
-                "vídeo. Avise que vai demorar (curto: ~30s, vídeos longos "
-                "podem levar minutos)."
+                "Dispara transcrição de um vídeo (YouTube, Instagram Reel, "
+                "TikTok ou X/Twitter). Recebe a URL e agenda um Job no "
+                "worker. NÃO espera concluir — retorna o job_id pra "
+                "acompanhar. Use quando o usuário pedir pra transcrever/"
+                "baixar/indexar um link de vídeo. Avise que vai demorar "
+                "(curto: ~30s, vídeos longos podem levar minutos)."
             ),
             "parameters": {
                 "type": "object",
@@ -166,8 +176,10 @@ TOOLS_SPEC: list[dict[str, Any]] = [
                         "description": (
                             "URL do vídeo. Aceita YouTube (youtu.be, "
                             "youtube.com/watch, /shorts), Instagram "
-                            "(instagram.com/reel|/p|/tv) e TikTok "
-                            "(tiktok.com/@user/video, vm/vt.tiktok.com)."
+                            "(instagram.com/reel|/p|/tv), TikTok "
+                            "(tiktok.com/@user/video, vm/vt.tiktok.com) e "
+                            "X/Twitter (x.com/<user>/status/<id> ou "
+                            "twitter.com/<user>/status/<id>)."
                         ),
                     },
                 },
@@ -463,8 +475,8 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
             if not canonical:
                 return {
                     "error": (
-                        "URL não suportada. Aceito YouTube, Instagram (reel/p/tv) "
-                        "e TikTok."
+                        "URL não suportada. Aceito YouTube, Instagram (reel/p/tv), "
+                        "TikTok e X/Twitter (x.com|twitter.com/.../status/<id>)."
                     ),
                 }
             res = await db.create_transcribe_job(user_id, canonical)
@@ -826,6 +838,18 @@ def _canonical_video_url(url: str) -> str | None:
         code = u.path.strip("/")
         if code and _TT_SHORT_RE.match(code):
             return f"https://{host}/{code}"
+        return None
+
+    # X (Twitter) — /<user>/status/<id>, /i/status/<id>, /i/web/status/<id>
+    if host in _X_HOSTS:
+        parts = [p for p in u.path.split("/") if p]
+        if "status" in parts:
+            idx = parts.index("status")
+            if idx + 1 < len(parts):
+                status_id = parts[idx + 1]
+                if _X_STATUS_ID_RE.match(status_id):
+                    # Forma canônica minimalista que yt-dlp aceita
+                    return f"https://x.com/i/status/{status_id}"
         return None
 
     return None

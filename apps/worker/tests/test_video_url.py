@@ -18,6 +18,10 @@ from src import video_url
         ("https://www.tiktok.com/@user/video/7123456789012345678", "TIKTOK"),
         ("https://vm.tiktok.com/ZMabc/", "TIKTOK"),
         ("https://vt.tiktok.com/Xyz/", "TIKTOK"),
+        ("https://x.com/i/status/123456789012345", "X"),
+        ("https://twitter.com/jack/status/123", "X"),
+        ("https://www.x.com/elon/status/9876", "X"),
+        ("https://mobile.twitter.com/user/status/123", "X"),
     ],
 )
 def test_detects_source(url: str, expected: str) -> None:

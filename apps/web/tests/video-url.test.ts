@@ -65,10 +65,25 @@ describe('parseVideoUrl - TikTok', () => {
   });
 });
 
+describe('parseVideoUrl - X (Twitter)', () => {
+  test.each([
+    ['https://x.com/jack/status/123456789012345', '123456789012345'],
+    ['https://x.com/i/status/123456789012345', '123456789012345'],
+    ['https://x.com/i/web/status/123456789012345', '123456789012345'],
+    ['https://twitter.com/jack/status/123456789012345', '123456789012345'],
+    ['https://mobile.twitter.com/jack/status/123456789012345', '123456789012345'],
+    ['https://www.x.com/elonmusk/status/9876543210987', '9876543210987'],
+  ])('canonicaliza %s', (input, expectedId) => {
+    const r = parseVideoUrl(input);
+    expect(r?.source).toBe('X');
+    expect(r?.videoId).toBe(expectedId);
+    expect(r?.canonical).toBe(`https://x.com/i/status/${expectedId}`);
+  });
+});
+
 describe('parseVideoUrl - rejeições', () => {
   test.each([
     'https://vimeo.com/12345',
-    'https://twitter.com/user/status/123',
     'https://facebook.com/watch/?v=123',
     'https://example.com/video',
     'ftp://youtube.com/watch?v=abc',
@@ -78,6 +93,11 @@ describe('parseVideoUrl - rejeições', () => {
     'https://youtu.be/too_long_id_xx',
     'https://www.instagram.com/notreel/',
     'https://www.tiktok.com/just/path',
+    // X sem status
+    'https://x.com/jack',
+    'https://twitter.com/home',
+    // X com id inválido (não-numérico)
+    'https://x.com/jack/status/abc',
   ])('rejeita %s', (input) => {
     expect(parseVideoUrl(input)).toBeNull();
   });

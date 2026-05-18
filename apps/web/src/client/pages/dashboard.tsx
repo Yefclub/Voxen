@@ -192,6 +192,10 @@ function SourcePreview({
       Icon: PlayCircle,
       cls: 'from-emerald-500/15 to-cyan-500/5 text-emerald-300/80 border-emerald-500/20',
     },
+    X: {
+      Icon: PlayCircle,
+      cls: 'from-sky-500/15 to-blue-500/5 text-sky-300/80 border-sky-500/20',
+    },
     WEB: {
       Icon: Globe,
       cls: 'from-zinc-500/10 to-zinc-500/5 text-zinc-400 border-zinc-500/20',
