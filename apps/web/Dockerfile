@@ -48,6 +48,15 @@ COPY packages ./packages
 FROM oven/bun:1.3-alpine AS runtime
 WORKDIR /app
 
+# Build args injetados pelo CI/Compose pra mostrar versão no /api/version e
+# no footer da UI. Não-blocking (default vai pro env do servidor).
+ARG VOXEN_VERSION
+ARG VOXEN_GIT_SHA
+ARG VOXEN_BUILT_AT
+ENV VOXEN_VERSION=${VOXEN_VERSION:-0.1.0}
+ENV VOXEN_GIT_SHA=${VOXEN_GIT_SHA:-}
+ENV VOXEN_BUILT_AT=${VOXEN_BUILT_AT:-}
+
 RUN apk add --no-cache nodejs npm wget && \
     npm install -g prisma@6.19.3 --omit=dev && \
     addgroup -S voxen && adduser -S -G voxen -u 1001 voxen && \

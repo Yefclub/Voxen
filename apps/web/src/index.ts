@@ -25,6 +25,20 @@ const app = new Hono();
 // Healthcheck liveness — sempre 200, mesmo antes do setup (spec 000)
 app.get('/health', (c) => c.json({ ok: true, service: 'web' }));
 
+// Versão da build — semver do package.json + git SHA (curto) injetados via
+// env no Dockerfile/CI. UI mostra no footer pra debug rápido e o client
+// detecta versão nova pra invalidar service worker / forçar reload.
+const VOXEN_VERSION = process.env.VOXEN_VERSION ?? '0.1.0';
+const VOXEN_GIT_SHA = process.env.VOXEN_GIT_SHA ?? '';
+const VOXEN_BUILT_AT = process.env.VOXEN_BUILT_AT ?? new Date().toISOString();
+app.get('/api/version', (c) => {
+  return c.json({
+    version: VOXEN_VERSION,
+    gitSha: VOXEN_GIT_SHA || null,
+    builtAt: VOXEN_BUILT_AT,
+  });
+});
+
 // Healthcheck deep — checa DB + Redis + chat service + S3 em paralelo.
 // 200 se todos ok, 503 se algum falhar. Pra monitoramento externo (Uptime
 // Kuma, Healthchecks.io). Rate-limit por IP pra evitar DoS amplificado
@@ -226,7 +240,29 @@ app.get('*', async (c) => {
   if (!(await file.exists())) {
     return c.text('Not found', 404);
   }
-  return new Response(file);
+  // Cache strategy:
+  // - HTML (index.html, fallback SPA): no-store. Garante que browser sempre
+  //   pega versão fresca após deploy — assets hashados do Vite são linkados
+  //   pelo HTML e mudam de path a cada build, então cache de HTML bloqueia
+  //   a invalidação automática.
+  // - Assets hashados (/assets/[name].[hash].js|css|svg|woff2): max-age=1y
+  //   immutable. Vite garante que mudaram → mudou o filename, cache antigo
+  //   continua válido em paralelo.
+  // - Outros estáticos sem hash (/favicon.ico, /voxen-256.png): 1h
+  //   (balance entre frescor e load).
+  const headers = new Headers();
+  const isHtml = target.endsWith('.html');
+  const isHashedAsset = /\/assets\/[^/]+\.[A-Za-z0-9_-]{8,}\.(js|css|svg|woff2?|ttf|otf)$/.test(
+    reqPath,
+  );
+  if (isHtml) {
+    headers.set('Cache-Control', 'no-store, must-revalidate');
+  } else if (isHashedAsset) {
+    headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  } else {
+    headers.set('Cache-Control', 'public, max-age=3600');
+  }
+  return new Response(file, { headers });
 });
 
 // Bun 1.3+ faz auto-serve do `export default` quando rodado via `bun src/index.ts`.
