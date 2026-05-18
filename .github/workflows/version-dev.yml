@@ -1,0 +1,85 @@
+# ============================================================================
+# version-dev — bumpa pre-release vX.Y.Z-dev.N a cada merge em dev
+# ============================================================================
+# Estratégia:
+#  - Roda em push pra `dev` (depois de merge de PR)
+#  - Se a versão atual já tem `-dev.N`, incrementa N
+#  - Se não tem (versão estável vinda do main), bumpa minor + começa `dev.1`
+#    Ex: 0.1.0 → 0.2.0-dev.1
+#  - Commit `chore: pre-release vX.Y.Z-dev.N` + push pra dev (NÃO cria tag)
+#  - Tag oficial só é criada pelo version-main.yml ao mergear dev→main
+# ============================================================================
+
+name: Version dev on merge
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: write
+
+jobs:
+  version-dev:
+    runs-on: ubuntu-latest
+    # Evita loop: ignora o próprio commit que esta action cria
+    if: "${{ !startsWith(github.event.head_commit.message, 'chore: pre-release v') && !startsWith(github.event.head_commit.message, 'chore: release v') }}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compute new pre-release version
+        id: version
+        run: |
+          set -euo pipefail
+          VER=$(node -p "require('./package.json').version")
+          NEW_VER=$(VER="$VER" node -e "
+            const cur = process.env.VER;
+            const m = cur.match(/^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$/);
+            if (!m) {
+              console.error('Versão inválida: ' + cur);
+              process.exit(1);
+            }
+            const [, major, minor, patch, devN] = m;
+            if (devN) {
+              console.log(\`\${major}.\${minor}.\${patch}-dev.\${Number(devN) + 1}\`);
+            } else {
+              // Versão estável → próximo minor + dev.1
+              console.log(\`\${major}.\${Number(minor) + 1}.0-dev.1\`);
+            }
+          ")
+          echo "new_version=$NEW_VER" >> "$GITHUB_OUTPUT"
+          export NEW_VER
+          node -e "
+            const fs = require('fs');
+            const files = ['./package.json', './apps/web/package.json'];
+            for (const f of files) {
+              const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+              j.version = process.env.NEW_VER;
+              fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
+            }
+          "
+          echo "Bumped dev to $NEW_VER"
+
+      - name: Commit + push
+        env:
+          NEW_VER: ${{ steps.version.outputs.new_version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json apps/web/package.json
+          if git diff --staged --quiet; then
+            echo "No version change to commit"
+            exit 0
+          fi
+          git commit -m "chore: pre-release v$NEW_VER"
+          git push origin dev
+          echo "Pushed v$NEW_VER to dev"
