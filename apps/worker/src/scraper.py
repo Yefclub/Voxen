@@ -72,11 +72,46 @@ class EmptyContentError(ScraperError):
     """Conteúdo extraído curto demais — provavelmente paywall/JS-heavy."""
 
 
-def _assert_public_host(url: str) -> None:
+def _is_private_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _resolve_and_validate(host: str) -> set[str]:
+    """Resolve hostname → set de IPs públicos. Levanta FetchBlockedError se
+    algum IP for privado/interno. Retorna o set pra ser usado em validação
+    pós-GET (detectar DNS rebinding via response.extensions).
+    """
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as e:
+        raise FetchBlockedError(f"Host não resolve: {host}") from e
+    ips: set[str] = set()
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if _is_private_ip(ip):
+            raise FetchBlockedError(
+                "Host privado/interno não permitido. Use URL pública."
+            )
+        ips.add(str(ip))
+    if not ips:
+        raise FetchBlockedError(f"Nenhum IP resolvido pra {host}.")
+    return ips
+
+
+def _assert_public_host(url: str) -> set[str]:
     """Bloqueia SSRF — rejeita hosts privados, loopback, metadata IMDS e
-    nomes internos do docker network. Resolve DNS pra detectar redirecionamento
-    pra IPs internos via DNS rebinding (best-effort: TOCTOU vs DNS continua
-    possível, mas o vetor comum é coberto).
+    nomes internos do docker network. Retorna o set de IPs públicos resolvidos
+    (pra validação pós-GET contra DNS rebinding).
 
     Raises FetchBlockedError com mensagem segura (sem vazar detalhes do alvo).
     """
@@ -93,26 +128,44 @@ def _assert_public_host(url: str) -> None:
         raise FetchBlockedError(
             "Host interno não permitido. Use URL pública."
         )
+    return _resolve_and_validate(host)
+
+
+def _assert_peer_ip_public(response: httpx.Response, expected_ips: set[str]) -> None:
+    """Pós-GET: extrai o IP do peer e revalida.
+
+    Defesa contra DNS rebinding TOCTOU: entre _assert_public_host (que resolveu
+    e validou) e o GET real do httpx (que resolveu de novo), o atacante pode
+    ter feito o DNS apontar pra IP privado. Aqui pegamos o IP REAL usado.
+
+    httpx 0.27+ expõe `response.extensions['network_stream']` que tem
+    `get_extra_info('server_addr')` → (ip, port).
+    """
+    stream = response.extensions.get("network_stream")
+    if stream is None:
+        return  # versão antiga ou conexão fechada; não bloqueia (false-negative ok)
     try:
-        infos = socket.getaddrinfo(host, None)
-    except socket.gaierror as e:
-        raise FetchBlockedError(f"Host não resolve: {host}") from e
-    for info in infos:
-        try:
-            ip = ipaddress.ip_address(info[4][0])
-        except ValueError:
-            continue
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-        ):
-            raise FetchBlockedError(
-                "Host privado/interno não permitido. Use URL pública."
-            )
+        server_addr = stream.get_extra_info("server_addr")
+    except Exception:  # noqa: BLE001
+        return
+    if not server_addr:
+        return
+    peer_ip_str = server_addr[0] if isinstance(server_addr, tuple) else server_addr
+    try:
+        peer_ip = ipaddress.ip_address(peer_ip_str)
+    except (ValueError, TypeError):
+        return
+    # 1) Bloqueia se peer caiu em ranges privados
+    if _is_private_ip(peer_ip):
+        raise FetchBlockedError(
+            "DNS rebinding detectado — conexão caiu em IP privado/interno."
+        )
+    # 2) Bloqueia se peer NÃO está no set pré-validado (mudou no meio)
+    if str(peer_ip) not in expected_ips:
+        raise FetchBlockedError(
+            f"DNS rebinding detectado — IP usado ({peer_ip}) difere dos "
+            f"validados ({sorted(expected_ips)})."
+        )
 
 
 @dataclass(frozen=True)
@@ -139,7 +192,7 @@ async def fetch_and_extract(url: str) -> ScrapeResult:
         FetchTransientError: timeout/5xx (retry)
         EmptyContentError: conteúdo < MIN_CONTENT_CHARS
     """
-    _assert_public_host(url)
+    expected_ips = _assert_public_host(url)
 
     # Lê admin_email opcional pra header `From:` (RFC 7231 §5.5.1 — boa-prática
     # pra sites identificarem o operador do bot). Best-effort: se settings DB
@@ -154,7 +207,9 @@ async def fetch_and_extract(url: str) -> ScrapeResult:
 
     await _check_robots(url)
 
-    final_url, html = await _fetch_with_manual_redirects(url, admin_email=admin_email)
+    final_url, html = await _fetch_with_manual_redirects(
+        url, admin_email=admin_email, expected_ips=expected_ips
+    )
 
     extracted_md = trafilatura.extract(
         html,
@@ -198,14 +253,20 @@ async def fetch_and_extract(url: str) -> ScrapeResult:
 
 
 async def _fetch_with_manual_redirects(
-    url: str, *, admin_email: str | None = None
+    url: str,
+    *,
+    admin_email: str | None = None,
+    expected_ips: set[str] | None = None,
 ) -> tuple[str, str]:
     """Faz GET seguindo até MAX_REDIRECTS, **revalidando** cada hop contra SSRF.
 
     Retorna (URL final, body). Limita o body a MAX_BODY_BYTES.
     `admin_email`, se passado, vira header `From:` (boa-prática RFC 7231).
+    `expected_ips`: set de IPs pré-validados pra detecção de DNS rebinding
+    pós-GET (response.extensions.network_stream). Se None, pula a checagem.
     """
     current = url
+    current_expected = expected_ips
     headers: dict[str, str] = {
         "User-Agent": USER_AGENT,
         "Accept": "text/html,*/*;q=0.8",
@@ -223,13 +284,17 @@ async def _fetch_with_manual_redirects(
             except (httpx.TimeoutException, httpx.NetworkError) as e:
                 raise FetchTransientError(f"Rede/timeout: {e}") from e
 
+            # Pós-GET: detecta DNS rebinding TOCTOU (peer IP ≠ IPs validados)
+            if current_expected is not None:
+                _assert_peer_ip_public(res, current_expected)
+
             # Redirect manual (3xx com Location)
             if res.status_code in (301, 302, 303, 307, 308):
                 location = res.headers.get("Location")
                 if not location:
                     raise FetchBlockedError("Redirect sem Location.")
                 next_url = urljoin(current, location)
-                _assert_public_host(next_url)
+                current_expected = _assert_public_host(next_url)
                 current = next_url
                 continue
 
@@ -297,10 +362,8 @@ async def _check_robots(url: str) -> None:
         if not parsed.scheme or not parsed.hostname:
             raise FetchBlockedError("URL malformada.")
         robots_url = f"{parsed.scheme}://{parsed.hostname}/robots.txt"
-        # Re-valida o host explicitamente (já foi validado pelo caller, mas
-        # defensive depth: robots URL pode em teoria diferir se hostname for
-        # mexido — não acontece aqui, mas custa nada).
-        _assert_public_host(robots_url)
+        # Re-valida o host (retorna IPs pra detecção pós-GET de DNS rebinding)
+        robots_ips = _assert_public_host(robots_url)
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(connect=5.0, read=5.0, write=5.0, pool=5.0),
             follow_redirects=False,
@@ -310,6 +373,8 @@ async def _check_robots(url: str) -> None:
                 res = await client.get(robots_url)
             except (httpx.TimeoutException, httpx.NetworkError):
                 return  # permite
+            # Detecta rebinding tb no robots fetch (defesa em profundidade)
+            _assert_peer_ip_public(res, robots_ips)
         if res.status_code != 200:
             return
         body = res.content[:MAX_ROBOTS_BYTES]
