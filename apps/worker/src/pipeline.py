@@ -123,18 +123,36 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
 
     with tempfile.TemporaryDirectory(prefix="voxen-") as tmp:
         tmpdir = Path(tmp)
+        subtitle_segments: tuple[Segment, ...] | None = None
+        subtitle_lang: str | None = None
+
         if sub_pick is not None:
             lang, fmt = sub_pick
             log.info("path-subtitles", lang=lang, fmt=fmt)
-            sub_path = await _retry_transient(
-                lambda: ytdl.download_subtitle(source_url, lang, fmt, tmpdir), tries=3
-            )
-            content = sub_path.read_text(encoding="utf-8")
-            segments = ytdl.parse_vtt_or_srt(content)
+            try:
+                sub_path = await _retry_transient(
+                    lambda: ytdl.download_subtitle(source_url, lang, fmt, tmpdir),
+                    tries=3,
+                )
+                content = sub_path.read_text(encoding="utf-8")
+                subtitle_segments = ytdl.parse_vtt_or_srt(content)
+                subtitle_lang = lang
+            except _TRANSIENT_EXC as e:
+                # YouTube rate-limita download de subtitles (HTTP 429) com
+                # frequência. Em vez de FAILED, caímos pro path API (Whisper) —
+                # é mais caro mas funciona. Probe já passou, vídeo existe.
+                log.warning(
+                    "subtitle-failed-fallback-api",
+                    lang=lang,
+                    error=str(e)[:200],
+                )
+
+        if subtitle_segments is not None and subtitle_lang is not None:
+            segments = subtitle_segments
             method = "SUBTITLES"
             model = None
             cost_total = Decimal("0")
-            language = lang.split("-")[0]
+            language = subtitle_lang.split("-")[0]
         else:
             log.info("path-api")
             audio_path = await _retry_transient(
