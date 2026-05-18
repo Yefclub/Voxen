@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 from decimal import Decimal
 from typing import Any
@@ -55,9 +56,13 @@ async def health() -> dict[str, object]:
 
 @app.get("/health/deep")
 async def health_deep() -> JSONResponse:
-    """Checa DB + master key + voxen_settings carregáveis. 200 se ok, 503 se não."""
-    import time
+    """Checa DB + setting cifrado decifrável. 200 se ok, 503 se não.
 
+    O check de 'settings_decryptable' tenta carregar+decifrar 'openrouter_api_key'
+    do DB usando a master key. Cobre 2 coisas em 1: (a) master key existe e é
+    válida, (b) DB tem row de setting acessível. É mais honesto que checar só
+    se o arquivo de master key carrega (que é cached e sempre passa após boot).
+    """
     checks: dict[str, dict[str, object]] = {}
     all_ok = True
 
@@ -71,17 +76,19 @@ async def health_deep() -> JSONResponse:
         all_ok = False
         checks["postgres"] = {"ok": False, "error": str(e)}
 
-    # Master key
+    # Setting decryptable — testa master key + DB + cifragem fim-a-fim.
+    # Retorna ok mesmo se a setting não existe (setup incompleto não é falha
+    # de health) — só falha se decrypt der erro.
     t = time.perf_counter()
     try:
-        voxen_settings.get_master_key()
-        checks["master_key"] = {
+        await voxen_settings.get_openrouter_api_key()
+        checks["settings_decryptable"] = {
             "ok": True,
             "latencyMs": round((time.perf_counter() - t) * 1000),
         }
     except Exception as e:  # noqa: BLE001
         all_ok = False
-        checks["master_key"] = {"ok": False, "error": str(e)}
+        checks["settings_decryptable"] = {"ok": False, "error": str(e)}
 
     return JSONResponse({"ok": all_ok, "checks": checks}, status_code=200 if all_ok else 503)
 

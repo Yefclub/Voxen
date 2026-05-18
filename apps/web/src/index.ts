@@ -17,67 +17,59 @@ import { accountRoutes } from './routes/account';
 import { costRoutes } from './routes/cost';
 import { chatRoutes } from './routes/chat';
 import { getRedisPublisher } from './lib/redis';
+import { rateLimit } from './lib/rate-limit';
 
 const app = new Hono();
 
 // Healthcheck liveness — sempre 200, mesmo antes do setup (spec 000)
 app.get('/health', (c) => c.json({ ok: true, service: 'web' }));
 
-// Healthcheck deep — checa DB + Redis + chat service. 200 se todos ok, 503 se
-// algum falhar. Pensado pra monitoramento externo (Uptime Kuma, Healthchecks).
+// Healthcheck deep — checa DB + Redis + chat service + S3 em paralelo.
+// 200 se todos ok, 503 se algum falhar. Pra monitoramento externo (Uptime
+// Kuma, Healthchecks.io). Rate-limit por IP pra evitar DoS amplificado
+// (cada hit gera 4 round-trips reais).
 app.get('/health/deep', async (c) => {
-  const checks: Record<string, { ok: boolean; latencyMs?: number; error?: string }> = {};
-  let allOk = true;
-
-  // Postgres
-  const tDb = performance.now();
-  try {
-    await db.$queryRaw`SELECT 1`;
-    checks.postgres = { ok: true, latencyMs: Math.round(performance.now() - tDb) };
-  } catch (e) {
-    allOk = false;
-    checks.postgres = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  const ip =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
+    c.req.header('x-real-ip') ??
+    'unknown';
+  const rl = await rateLimit(`voxen:rl:health-deep:${ip}`, 30, 60);
+  if (!rl.allowed) {
+    return c.json({ error: 'Rate limit. Tente em alguns segundos.' }, 429);
   }
 
-  // Redis
-  const tRedis = performance.now();
-  try {
-    const pong = await getRedisPublisher().ping();
-    const ok = pong === 'PONG';
-    if (!ok) allOk = false;
-    checks.redis = { ok, latencyMs: Math.round(performance.now() - tRedis) };
-  } catch (e) {
-    allOk = false;
-    checks.redis = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
-  }
+  type Check = { ok: boolean; latencyMs?: number; error?: string };
+  const timed = async (fn: () => Promise<void>): Promise<Check> => {
+    const t = performance.now();
+    try {
+      await fn();
+      return { ok: true, latencyMs: Math.round(performance.now() - t) };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+    }
+  };
 
-  // Chat service (FastAPI interno)
-  const tChat = performance.now();
-  try {
-    const chatUrl = (process.env.CHAT_SERVICE_URL ?? 'http://chat:8001') + '/health';
-    const res = await fetch(chatUrl, { signal: AbortSignal.timeout(3000) });
-    const ok = res.ok;
-    if (!ok) allOk = false;
-    checks.chat = { ok, latencyMs: Math.round(performance.now() - tChat) };
-  } catch (e) {
-    allOk = false;
-    checks.chat = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
-  }
+  const [postgres, redis, chat, s3] = await Promise.all([
+    timed(async () => {
+      await db.$queryRaw`SELECT 1`;
+    }),
+    timed(async () => {
+      const pong = await getRedisPublisher().ping();
+      if (pong !== 'PONG') throw new Error(`Resposta inesperada: ${pong}`);
+    }),
+    timed(async () => {
+      const chatUrl = (process.env.CHAT_SERVICE_URL ?? 'http://chat:8001') + '/health';
+      const res = await fetch(chatUrl, { signal: AbortSignal.timeout(3000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    }),
+    timed(async () => {
+      const { headBucket } = await import('./lib/s3-health');
+      await headBucket();
+    }),
+  ]);
 
-  // S3/Garage (HEAD no bucket) — best-effort: skipa se faltar credencial em vez
-  // de falhar (storage é dependência mas alguns setups podem ter S3 externo).
-  // Importação tardia pra não pagar custo de init em /health/deep quando bucket
-  // não estiver configurado.
-  const tS3 = performance.now();
-  try {
-    const { headBucket } = await import('./lib/s3-health');
-    await headBucket();
-    checks.s3 = { ok: true, latencyMs: Math.round(performance.now() - tS3) };
-  } catch (e) {
-    allOk = false;
-    checks.s3 = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
-  }
-
+  const checks = { postgres, redis, chat, s3 };
+  const allOk = Object.values(checks).every((c) => c.ok);
   return c.json({ ok: allOk, checks }, allOk ? 200 : 503);
 });
 
