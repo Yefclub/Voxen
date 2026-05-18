@@ -239,7 +239,7 @@ Siga os passos da seção [Servidor + nginx do host](#servidor--nginx-do-host) a
 
 ## Easypanel
 
-Easypanel cuida automaticamente de HTTPS, domínio, backups e renovação. Mais fácil se você já usa.
+Easypanel cuida automaticamente de HTTPS, domínio, backups e renovação. Recomendado.
 
 ### 1. Configurar projeto
 
@@ -275,25 +275,113 @@ Easypanel UI → Deploy. Acompanhe os logs.
 
 Configure backups dos volumes:
 - `pgdata` (Postgres)
-- `garage_data` + `garage_meta` (transcrições .md)
+- `garage_data` + `garage_meta` (transcrições .md — se usar Garage embarcado)
 - `master_key` (chave AES — sem ela, perde acesso a todos os secrets cifrados)
 
 ---
 
-## Storage alternativo (MinIO/AWS)
+## Easypanel + MinIO externo (recomendado pra produção)
 
-Por padrão Voxen sobe um Garage S3 self-hosted no compose. Pra usar outro backend S3-compatível, defina no `.env`:
+Easypanel já oferece um app **MinIO** pronto. Em vez de rodar o Garage embarcado no compose, plugue um MinIO dedicado (separação de armazenamento + escala independente).
+
+### Passo a passo
+
+**1. Provisionar MinIO no Easypanel**
+
+- Easypanel UI → New service → **MinIO** (template oficial)
+- Anote:
+  - `MINIO_ROOT_USER` (ex: `admin`)
+  - `MINIO_ROOT_PASSWORD` (gere com `openssl rand -base64 32`)
+  - Endpoint interno: `http://<projeto>_minio:9000` (URL interna do Easypanel)
+  - Console (UI MinIO): porta 9001, opcional pro admin debugar
+
+**2. Criar bucket e access key**
+
+- Abra a console MinIO (porta 9001, pode expor temporariamente)
+- Login com `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`
+- **Buckets → Create Bucket**: `voxen-transcripts`
+- **Access Keys → Create**:
+  - Salve `Access Key` e `Secret Key` — vão pro `.env` do Voxen
+  - Policy: default (full access ao bucket é suficiente)
+
+**3. Configurar Voxen pra usar o MinIO**
+
+Easypanel UI → Voxen → Environment. Adicione:
 
 ```env
-S3_ENDPOINT=https://minio.exemplo.com:9000
-S3_ACCESS_KEY=...
-S3_SECRET_KEY=...
+# Storage S3 externo (precedência sobre GARAGE_*)
+S3_ENDPOINT=http://<projeto>_minio:9000
+S3_ACCESS_KEY=<da etapa 2>
+S3_SECRET_KEY=<da etapa 2>
 S3_BUCKET=voxen-transcripts
 S3_REGION=us-east-1
-S3_FORCE_PATH_STYLE=true   # MinIO precisa; AWS S3 não
+S3_FORCE_PATH_STYLE=true   # MinIO precisa
 ```
 
-Quando `S3_*` está definido, ele tem precedência sobre `GARAGE_*`. Você pode até remover o serviço `garage` do compose se quiser usar só o backend externo.
+**4. Remover o serviço Garage do compose (opcional)**
+
+Como você está usando MinIO, pode remover o serviço `garage` do `docker-compose.yml` pra economizar recursos. Edite no fork:
+
+```yaml
+# REMOVER as seções:
+# - garage:
+# - garage-init:
+# E nos depends_on de web/worker/chat, tire `garage-init`
+```
+
+Ou mantenha — o Voxen prefere `S3_*` quando presente e ignora `garage`, então não há conflito (só fica idle).
+
+**5. Validar**
+
+Após deploy, valide:
+
+```bash
+# Healthcheck profundo confere conectividade S3
+curl https://voxen.seudominio.com/health/deep | jq
+
+# Deve retornar:
+# { "checks": { "postgres": true, "redis": true, "chat": true, "s3": true } }
+```
+
+Se `s3: false`, verifique logs do worker — geralmente é credencial errada ou bucket inexistente.
+
+### Troubleshooting S3
+
+| Sintoma | Causa provável | Fix |
+|---------|----------------|-----|
+| `SignatureDoesNotMatch` | Secret errado ou clock skew | Recopie a secret; sincronize NTP |
+| `NoSuchBucket` | Bucket não criado | Crie na console MinIO |
+| `403 Forbidden` | Access key sem policy | Default policy ou attach `readwrite` |
+| `Connection refused` | Endpoint errado | Use URL interna do Easypanel (não localhost) |
+| `MalformedXML` | Falta `S3_FORCE_PATH_STYLE=true` | Sempre `true` pra MinIO |
+
+### Migrar do Garage embarcado pra MinIO
+
+Se você já tem dados no Garage e quer migrar:
+
+```bash
+# 1. Liste objetos no Garage
+aws --endpoint-url=http://localhost:3900 s3 ls s3://voxen-transcripts/ --recursive
+
+# 2. Sync pra MinIO usando rclone (ou mc):
+rclone sync garage:voxen-transcripts minio:voxen-transcripts --progress
+
+# 3. Troque as envs S3_* no Easypanel e redeploy
+# 4. Confira `health/deep` antes de remover o Garage
+```
+
+### Variantes
+
+Se preferir hospedar MinIO fora do Easypanel ou usar AWS S3 real, o setup é idêntico — só troca o endpoint:
+
+```env
+# AWS S3 real
+S3_ENDPOINT=https://s3.amazonaws.com   # ou region-specific
+S3_REGION=us-east-1
+S3_FORCE_PATH_STYLE=false   # AWS NÃO precisa path-style
+```
+
+Veja [`.env.example`](../.env.example) seção S3 pra todas as variáveis suportadas.
 
 ---
 
