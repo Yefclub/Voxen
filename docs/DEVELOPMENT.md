@@ -148,7 +148,15 @@ docs(spec): adiciona .specs/003-painel-custos.md
 
 ### Release
 
-PR de `dev` → `main` com label `release:patch|minor|major`. Tag `v*` no `main` dispara `release.yml`.
+**Pre-release em `dev`**: cada merge em `dev` dispara `version-dev.yml`, que bumpa
+a versão pra `X.(Y+1).0-dev.1` (se vinha de estável) ou `X.Y.Z-dev.(N+1)` (se
+já era dev). Commit `chore: pre-release vX.Y.Z-dev.N` é pushed em `dev`.
+**Não cria tag** — só identifica builds em ambiente de dev.
+
+**Release estável em `main`**: PR de `dev` → `main` com label
+`release:patch|minor|major`. `version-main.yml` limpa o sufixo `-dev.N`,
+bumpa o componente correspondente, commita `chore: release vX.Y.Z` e cria a
+tag `vX.Y.Z`. A tag dispara `release.yml` (build + push de imagens pro ghcr).
 
 ## Estilo de código
 
