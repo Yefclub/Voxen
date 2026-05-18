@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, ArrowUpRight, ListVideo, PlayCircle, Sparkles } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Globe, ListVideo, PlayCircle, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -9,6 +9,7 @@ import { useFetch, useMe } from '../lib/hooks';
 import type { JobSummary } from '../lib/types';
 import { formatRelative } from '../lib/format';
 import { jobStatusBadge } from '../lib/job-display';
+import { detectSourceFromUrl, youtubeVideoId } from '../lib/source-detect';
 import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motion/animated-page';
 import { NumberTicker } from '../components/motion/number-ticker';
 
@@ -133,30 +134,15 @@ export function DashboardPage(): React.ReactElement {
 function ActivityRow({ job }: { job: JobSummary }): React.ReactElement {
   const { variant, label } = jobStatusBadge(job.status);
   const to = job.transcriptId ? `/transcricoes/${job.transcriptId}` : `/jobs/${job.id}`;
-  const thumb = youtubeThumb(job.sourceUrl);
+  const source = detectSourceFromUrl(job.sourceUrl);
+  const ytId = source === 'YOUTUBE' ? youtubeVideoId(job.sourceUrl) : null;
   return (
     <li className="group">
       <Link
         to={to}
         className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 focus:outline-none focus-visible:bg-[var(--color-app-surface-hover)]"
       >
-        <div className="shrink-0 h-14 w-24 rounded-lg overflow-hidden bg-[var(--color-app-bg-elevated)] border border-[var(--color-app-border)] relative">
-          {thumb ? (
-            <img
-              src={thumb}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-cover"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          ) : (
-            <div className="h-full w-full flex items-center justify-center">
-              <PlayCircle className="h-5 w-5 text-[var(--color-app-muted)]" />
-            </div>
-          )}
-        </div>
+        <SourcePreview source={source} ytId={ytId} />
         <Badge variant={variant} className="shrink-0 w-28 justify-center">
           {label}
         </Badge>
@@ -172,30 +158,62 @@ function ActivityRow({ job }: { job: JobSummary }): React.ReactElement {
   );
 }
 
-function youtubeThumb(url: string): string | null {
-  // Extrai videoId pra forma curta `youtu.be/<ID>` (canonical) ou
-  // `youtube.com/watch?v=<ID>` (input do user). Falha → null.
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^www\.|^m\.|^music\./, '');
-    let id: string | null = null;
-    if (host === 'youtu.be') {
-      id = u.pathname.replace(/^\//, '').split('/')[0] ?? null;
-    } else if (host === 'youtube.com') {
-      const parts = u.pathname.split('/').filter(Boolean);
-      if (parts[0] === 'shorts' || parts[0] === 'embed' || parts[0] === 'v') {
-        id = parts[1] ?? null;
-      } else {
-        id = u.searchParams.get('v');
-      }
-    }
-    if (id && /^[A-Za-z0-9_-]{11}$/.test(id)) {
-      return `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
-    }
-  } catch {
-    // url inválida
+function SourcePreview({
+  source,
+  ytId,
+}: {
+  source: ReturnType<typeof detectSourceFromUrl>;
+  ytId: string | null;
+}): React.ReactElement {
+  if (source === 'YOUTUBE' && ytId) {
+    return (
+      <div className="shrink-0 h-14 w-24 rounded-lg overflow-hidden bg-[var(--color-app-bg-elevated)] border border-[var(--color-app-border)]">
+        <img
+          src={`https://i.ytimg.com/vi/${ytId}/mqdefault.jpg`}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-cover"
+          onError={(e) => {
+            const img = e.currentTarget as HTMLImageElement;
+            img.style.display = 'none';
+          }}
+        />
+      </div>
+    );
   }
-  return null;
+  // Sem thumbnail real (IG/TT precisariam fetch externo, web não tem). Fallback
+  // visual com ícone temático por fonte — preserva consistência da grid.
+  const map = {
+    INSTAGRAM: {
+      Icon: PlayCircle,
+      cls: 'from-fuchsia-500/15 to-pink-500/5 text-fuchsia-300/80 border-fuchsia-500/20',
+    },
+    TIKTOK: {
+      Icon: PlayCircle,
+      cls: 'from-emerald-500/15 to-cyan-500/5 text-emerald-300/80 border-emerald-500/20',
+    },
+    WEB: {
+      Icon: Globe,
+      cls: 'from-zinc-500/10 to-zinc-500/5 text-zinc-400 border-zinc-500/20',
+    },
+    YOUTUBE: {
+      Icon: PlayCircle,
+      cls: 'from-rose-500/15 to-rose-500/5 text-rose-300/80 border-rose-500/20',
+    },
+    null: {
+      Icon: PlayCircle,
+      cls: 'from-zinc-500/10 to-zinc-500/5 text-zinc-400 border-zinc-500/20',
+    },
+  } as const;
+  const { Icon, cls } =
+    source === null ? map.null : map[source as Exclude<typeof source, null>] ?? map.null;
+  return (
+    <div
+      className={`shrink-0 h-14 w-24 rounded-lg overflow-hidden border bg-gradient-to-br flex items-center justify-center ${cls}`}
+    >
+      <Icon className="h-5 w-5" />
+    </div>
+  );
 }
 
 function EmptyState(): React.ReactElement {

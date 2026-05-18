@@ -82,33 +82,22 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
             style={{ width: SIDEBAR_WIDTH }}
           >
             <SidebarHeader onCollapse={toggle} />
-            {/* Cross-fade entre modo nav e modo chat — entrar/sair de /chat
-                anima a transição entre as duas bodies em vez de trocar duro */}
-            <AnimatePresence mode="wait" initial={false}>
+            {/* Troca entre nav e chat sem AnimatePresence — `key` no motion.div
+                força remount limpo. AnimatePresence mode="wait" interno aqui
+                acumulava estados pendentes em cliques rápidos e travava. */}
+            <motion.div
+              key={inChat ? 'chat-mode' : 'nav-mode'}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              className="flex-1 flex flex-col min-h-0"
+            >
               {inChat ? (
-                <motion.div
-                  key="chat-mode"
-                  initial={{ opacity: 0, x: 12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -12 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="flex-1 flex flex-col min-h-0"
-                >
-                  <ChatModeBody items={items} />
-                </motion.div>
+                <ChatModeBody items={items} />
               ) : (
-                <motion.div
-                  key="nav-mode"
-                  initial={{ opacity: 0, x: -12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 12 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="flex-1 flex flex-col min-h-0"
-                >
-                  <NavBody items={items} pathname={location.pathname} />
-                </motion.div>
+                <NavBody items={items} pathname={location.pathname} />
               )}
-            </AnimatePresence>
+            </motion.div>
           </motion.aside>
         )}
       </AnimatePresence>
@@ -131,8 +120,11 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
       </div>
       <div className="ml-3 flex flex-col leading-none min-w-0">
         <span className="text-sm font-semibold tracking-tight font-display">Voxen</span>
-        <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] mt-1 truncate">
-          base de conhecimento
+        {/* Tracking reduzido + leading-tight pra caber em 1 linha sem corte
+            no slot de ~140px disponível. Removido truncate; sufficient width
+            assegurada pela tipografia compacta. */}
+        <span className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-app-muted)] mt-1 leading-tight">
+          Base de conhecimento
         </span>
       </div>
       <button

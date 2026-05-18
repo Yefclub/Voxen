@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check, Copy, MessagesSquare, Wand2 } from 'lucide-react';
+import { Check, Copy, Library, ListVideo, Search, Sparkles, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Spinner } from '../components/ui/spinner';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
@@ -428,36 +428,90 @@ function VoxenAvatar(): React.ReactElement {
 }
 
 function EmptyState({ onPick }: { onPick: (s: string) => void }): React.ReactElement {
-  const suggestions = [
-    'O que tem na minha biblioteca?',
-    'Resuma o vídeo mais recente.',
-    'Quais ideias principais dos últimos 3 vídeos?',
-    'Procure por "produtividade" na biblioteca.',
+  // 4 atalhos com ícones temáticos diferentes — sugestões fixas viraram cards
+  // categorizados pra reduzir poluição visual e dar afford clara de "exemplo".
+  const cards: {
+    icon: typeof Sparkles;
+    title: string;
+    hint: string;
+    prompt: string;
+    accent: 'violet' | 'emerald' | 'amber' | 'rose';
+  }[] = [
+    {
+      icon: Library,
+      title: 'Explorar biblioteca',
+      hint: 'Veja o que está indexado',
+      prompt: 'O que tem na minha biblioteca?',
+      accent: 'violet',
+    },
+    {
+      icon: Sparkles,
+      title: 'Resumo do último',
+      hint: 'Síntese rápida',
+      prompt: 'Resuma o conteúdo mais recente da minha biblioteca.',
+      accent: 'emerald',
+    },
+    {
+      icon: ListVideo,
+      title: 'Ideias dos últimos 3',
+      hint: 'Conexões e padrões',
+      prompt: 'Quais ideias principais dos últimos 3 conteúdos?',
+      accent: 'amber',
+    },
+    {
+      icon: Search,
+      title: 'Procurar tema',
+      hint: 'Busca FTS por palavra-chave',
+      prompt: 'Busque "produtividade" na minha biblioteca.',
+      accent: 'rose',
+    },
   ];
+
+  const accentMap = {
+    violet: 'from-violet-500/30 to-violet-500/5 border-violet-500/40 text-violet-300',
+    emerald: 'from-emerald-500/30 to-emerald-500/5 border-emerald-500/40 text-emerald-300',
+    amber: 'from-amber-500/30 to-amber-500/5 border-amber-500/40 text-amber-300',
+    rose: 'from-rose-500/30 to-rose-500/5 border-rose-500/40 text-rose-300',
+  } as const;
+
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
-      <div className="h-14 w-14 rounded-2xl overflow-hidden border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/20 flex items-center justify-center">
-        <img src="/voxen-256.png" alt="Voxen" className="h-full w-full object-cover" />
+    <div className="flex flex-col items-center justify-center py-16 text-center space-y-8">
+      <div className="space-y-4">
+        <div className="mx-auto h-14 w-14 rounded-2xl overflow-hidden border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/20 flex items-center justify-center">
+          <img src="/voxen-256.png" alt="Voxen" className="h-full w-full object-cover" />
+        </div>
+        <div className="space-y-1.5 max-w-md mx-auto">
+          <p className="font-display text-2xl font-semibold tracking-tight">
+            Pergunte qualquer coisa
+          </p>
+          <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
+            Consulto sua base de conhecimento e posso indexar conteúdo novo. Tudo com fonte e
+            timestamp — sem alucinação.
+          </p>
+        </div>
       </div>
-      <div className="space-y-1.5 max-w-md">
-        <p className="font-display text-2xl font-semibold tracking-tight">
-          Pergunte qualquer coisa
-        </p>
-        <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
-          O agente consulta sua biblioteca e pode transcrever vídeos novos. Sem alucinação, tudo com
-          fonte e timestamp.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl">
-        {suggestions.map((s) => (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-xl">
+        {cards.map(({ icon: Icon, title, hint, prompt, accent }) => (
           <button
-            key={s}
+            key={title}
             type="button"
-            onClick={() => onPick(s)}
-            className="text-left text-xs px-3.5 py-3 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/40 text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] hover:text-zinc-100 transition-colors"
+            onClick={() => onPick(prompt)}
+            className="group relative text-left rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/50 backdrop-blur-sm p-3.5 transition-all hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface)] hover:-translate-y-0.5"
           >
-            <MessagesSquare className="inline h-3 w-3 mr-1.5 text-violet-400" />
-            {s}
+            <div className="flex items-center gap-3">
+              <div
+                className={cn(
+                  'shrink-0 h-9 w-9 rounded-lg border bg-gradient-to-br flex items-center justify-center transition-transform group-hover:scale-110',
+                  accentMap[accent],
+                )}
+              >
+                <Icon className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-zinc-100 leading-tight">{title}</p>
+                <p className="text-[11px] text-[var(--color-app-muted)] mt-0.5 truncate">{hint}</p>
+              </div>
+            </div>
           </button>
         ))}
       </div>
