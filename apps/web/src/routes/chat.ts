@@ -293,7 +293,7 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
   const stream = new ReadableStream({
     async pull(controller) {
       let value: Uint8Array | undefined;
-      let done = false;
+      let done: boolean;
       try {
         const r = await reader.read();
         value = r.value;

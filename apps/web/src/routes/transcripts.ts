@@ -204,22 +204,22 @@ transcriptsRoutes.get('/:id', async (c) => {
   const baseCost = transcript.costUsd ? parseFloat(transcript.costUsd.toString()) : 0;
   const totalCostUsd = (baseCost + summarySum).toFixed(6);
 
-  // Busca o .md no Garage
-  let markdown = '';
-  try {
-    const s3 = getS3();
-    const res = await s3.send(
-      new GetObjectCommand({
-        Bucket: envOr('S3_BUCKET', 'GARAGE_BUCKET') ?? 'voxen-transcripts',
-        Key: transcript.mdPath,
-      }),
-    );
-    markdown = (await res.Body?.transformToString('utf-8')) ?? '';
-  } catch (err) {
-    console.error('[transcripts] erro ao baixar .md:', err);
-    // Fallback: monta o markdown a partir do plainText (sem timestamps)
-    markdown = `# ${transcript.title}\n\n${transcript.plainText}`;
-  }
+  // Busca o .md no Garage com fallback pro plainText em caso de erro
+  const markdown = await (async (): Promise<string> => {
+    try {
+      const s3 = getS3();
+      const res = await s3.send(
+        new GetObjectCommand({
+          Bucket: envOr('S3_BUCKET', 'GARAGE_BUCKET') ?? 'voxen-transcripts',
+          Key: transcript.mdPath,
+        }),
+      );
+      return (await res.Body?.transformToString('utf-8')) ?? '';
+    } catch (err) {
+      console.error('[transcripts] erro ao baixar .md:', err);
+      return `# ${transcript.title}\n\n${transcript.plainText}`;
+    }
+  })();
 
   return c.json({ transcript: { ...transcript, totalCostUsd }, markdown });
 });
