@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Globe, Link2, PlayCircle, Plus, RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -16,6 +16,7 @@ import { useFetch, useSse } from '../lib/hooks';
 import { formatRelative } from '../lib/format';
 import { jobStatusBadge, stageLabel } from '../lib/job-display';
 import type { JobStatus, JobSummary } from '../lib/types';
+import { detectSourceFromUrl, type DetectedSource } from '../lib/source-detect';
 import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motion/animated-page';
 
 interface ProgressEvent {
@@ -28,28 +29,34 @@ interface ProgressEvent {
   ts: string;
 }
 
-type SourceTab = 'youtube' | 'web';
-
 export function JobsPage(): React.ReactElement {
-  const [tab, setTab] = useState<SourceTab>('youtube');
   const [url, setUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { data, loading, refresh } = useFetch<{ jobs: JobSummary[] }>('/api/jobs');
   const navigate = useNavigate();
 
+  // Detecta tipo enquanto user digita — UI mostra badge "Vídeo do YouTube",
+  // "Página web", etc. Reaproveita o mesmo regex do back (parseVideoUrl).
+  const detected: DetectedSource | null = useMemo(
+    () => (url.trim() ? detectSourceFromUrl(url.trim()) : null),
+    [url],
+  );
+
   async function onSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      const endpoint = tab === 'web' ? '/api/jobs/scrape' : '/api/jobs';
-      const res = await apiPost<{ jobId: string; status: JobStatus; sourceUrl: string }>(endpoint, {
-        url,
-      });
+      const res = await apiPost<{
+        jobId: string;
+        status: JobStatus;
+        sourceUrl: string;
+        kind: 'video' | 'web';
+      }>('/api/jobs/auto', { url });
       setUrl('');
       refresh();
-      const successMsg = tab === 'web' ? 'Página na fila.' : 'Vídeo na fila.';
+      const successMsg = res.kind === 'web' ? 'Página na fila.' : 'Vídeo na fila.';
       toast.success(successMsg, {
         description: 'Acompanhe o progresso em tempo real.',
         action: {
@@ -91,46 +98,10 @@ export function JobsPage(): React.ReactElement {
           </div>
           <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Novo conteúdo</h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Cole um link do YouTube, Instagram, TikTok ou de uma página web. O Voxen indexa pra
-            busca e pro chat com o agente.
+            Cole qualquer link — YouTube, Instagram, TikTok ou página web. O Voxen detecta o tipo e
+            indexa pra busca e pro chat.
           </p>
         </header>
-
-        {/* Abas: Vídeo (YT/IG/TT) | Web */}
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--color-app-surface)]/60 border border-[var(--color-app-border)] w-fit">
-          <button
-            type="button"
-            onClick={() => {
-              setTab('youtube');
-              setError(null);
-              setUrl('');
-            }}
-            className={
-              tab === 'youtube'
-                ? 'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium bg-[var(--color-app-bg-elevated)] text-zinc-100 border border-[var(--color-app-border-strong)]'
-                : 'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors'
-            }
-          >
-            <PlayCircle className="h-3.5 w-3.5" />
-            Vídeo
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTab('web');
-              setError(null);
-              setUrl('');
-            }}
-            className={
-              tab === 'web'
-                ? 'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium bg-[var(--color-app-bg-elevated)] text-zinc-100 border border-[var(--color-app-border-strong)]'
-                : 'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors'
-            }
-          >
-            <Globe className="h-3.5 w-3.5" />
-            Página web
-          </button>
-        </div>
 
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -154,7 +125,18 @@ export function JobsPage(): React.ReactElement {
                   </Alert>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="url">{tab === 'web' ? 'URL da página' : 'URL do vídeo'}</Label>
+                  <div className="flex items-center justify-between min-h-[20px]">
+                    <Label htmlFor="url">Link</Label>
+                    {detected && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -2 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.18 }}
+                      >
+                        <DetectedBadge source={detected} />
+                      </motion.div>
+                    )}
+                  </div>
                   <div className="flex gap-2.5">
                     <div className="relative flex-1">
                       <Link2 className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
@@ -163,11 +145,7 @@ export function JobsPage(): React.ReactElement {
                         type="url"
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
-                        placeholder={
-                          tab === 'web'
-                            ? 'https://exemplo.com/artigo'
-                            : 'https://youtu.be/... · instagram.com/reel/... · tiktok.com/@user/video/...'
-                        }
+                        placeholder="https://youtu.be/... · instagram.com/reel/... · tiktok.com/... · exemplo.com/artigo"
                         autoComplete="off"
                         required
                         className="pl-10 font-mono h-11 text-[15px]"
@@ -185,9 +163,8 @@ export function JobsPage(): React.ReactElement {
                     </Button>
                   </div>
                   <p className="text-xs text-[var(--color-app-muted)]">
-                    {tab === 'web'
-                      ? 'Aceita blogs, news, docs, wikis. SPAs/JS-heavy podem falhar.'
-                      : 'Aceita YouTube (watch/shorts), Instagram (reel/p/tv) e TikTok público.'}
+                    Aceita YouTube (watch/shorts), Instagram (reel/p/tv), TikTok público e qualquer
+                    página web (blogs, news, docs, wikis). SPAs JS-heavy podem falhar no scrape.
                   </p>
                 </div>
               </form>
@@ -306,5 +283,27 @@ function JobRow({ job, onUpdate }: { job: JobSummary; onUpdate: () => void }): R
         </Button>
       )}
     </li>
+  );
+}
+
+function DetectedBadge({ source }: { source: DetectedSource }): React.ReactElement {
+  const map = {
+    YOUTUBE: { label: 'Vídeo do YouTube', cls: 'text-rose-300 border-rose-500/40 bg-rose-500/10' },
+    INSTAGRAM: {
+      label: 'Reel do Instagram',
+      cls: 'text-fuchsia-300 border-fuchsia-500/40 bg-fuchsia-500/10',
+    },
+    TIKTOK: { label: 'TikTok', cls: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' },
+    WEB: { label: 'Página web', cls: 'text-zinc-300 border-zinc-500/40 bg-zinc-500/10' },
+  } as const;
+  const { label, cls } = map[source];
+  const Icon = source === 'WEB' ? Globe : PlayCircle;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] uppercase tracking-wider font-medium ${cls}`}
+    >
+      <Icon className="h-2.5 w-2.5" />
+      {label}
+    </span>
   );
 }

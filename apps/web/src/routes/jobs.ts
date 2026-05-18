@@ -129,6 +129,123 @@ jobsRoutes.post('/', async (c) => {
   return c.json({ jobId: job.id, status: job.status, sourceUrl: job.sourceUrl }, 201);
 });
 
+// POST /api/jobs/auto — dispatcher unificado.
+// Detecta se a URL é vídeo (YouTube/Instagram/TikTok) ou página web e
+// roteia internamente. UI usa só este endpoint pra evitar duplicidade
+// de campos / abas. Mantém /api/jobs e /api/jobs/scrape pra
+// compatibilidade com clients externos / scripts.
+jobsRoutes.post('/auto', async (c) => {
+  const userId = c.get('userId');
+
+  if (!(await isSetupComplete())) {
+    return c.json(
+      { error: 'Setup incompleto. Aguarde o administrador concluir a configuração.' },
+      412,
+    );
+  }
+
+  const parsed = PostBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ error: 'Payload inválido.' }, 400);
+  }
+  const raw = parsed.data.url.trim();
+
+  // 1) Tenta vídeo primeiro (mais específico — YT/IG/TT)
+  const video = parseVideoUrl(raw);
+  if (video) {
+    const existing = await db.transcript.findFirst({
+      where: { userId, url: video.canonical },
+      select: { id: true },
+    });
+    if (existing) {
+      return c.json(
+        { error: 'Você já transcreveu esta URL.', transcriptId: existing.id, kind: 'video' },
+        409,
+      );
+    }
+    const inflight = await db.job.findFirst({
+      where: { userId, sourceUrl: video.canonical, status: { in: ['QUEUED', 'RUNNING'] } },
+      select: { id: true },
+    });
+    if (inflight) {
+      return c.json(
+        { error: 'Esta URL já está sendo processada.', jobId: inflight.id, kind: 'video' },
+        409,
+      );
+    }
+    let job: { id: string; status: string; sourceUrl: string };
+    try {
+      job = await db.job.create({
+        data: {
+          userId,
+          type: 'DOWNLOAD_AND_TRANSCRIBE',
+          status: 'QUEUED',
+          sourceUrl: video.canonical,
+        },
+        select: { id: true, status: true, sourceUrl: true },
+      });
+    } catch (err) {
+      if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
+        return c.json({ error: 'Esta URL já está sendo processada.', kind: 'video' }, 409);
+      }
+      throw err;
+    }
+    await notifyNewJob(job.id).catch((err) => {
+      console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    });
+    await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
+    return c.json(
+      { jobId: job.id, status: job.status, sourceUrl: job.sourceUrl, kind: 'video' },
+      201,
+    );
+  }
+  // 2) Fallback: trata como página web (qualquer http(s))
+  const normalized = normalizeWebUrl(raw);
+  if (!normalized) {
+    return c.json({ error: 'URL inválida — informe um link http(s) válido.' }, 400);
+  }
+  const existingWeb = await db.transcript.findFirst({
+    where: { userId, url: normalized },
+    select: { id: true },
+  });
+  if (existingWeb) {
+    return c.json(
+      { error: 'Você já indexou esta página.', transcriptId: existingWeb.id, kind: 'web' },
+      409,
+    );
+  }
+  const inflightWeb = await db.job.findFirst({
+    where: { userId, sourceUrl: normalized, status: { in: ['QUEUED', 'RUNNING'] } },
+    select: { id: true },
+  });
+  if (inflightWeb) {
+    return c.json(
+      { error: 'Esta URL já está sendo processada.', jobId: inflightWeb.id, kind: 'web' },
+      409,
+    );
+  }
+  let webJob: { id: string; status: string; sourceUrl: string };
+  try {
+    webJob = await db.job.create({
+      data: { userId, type: 'SCRAPE_WEB', status: 'QUEUED', sourceUrl: normalized },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
+      return c.json({ error: 'Esta URL já está sendo processada.', kind: 'web' }, 409);
+    }
+    throw err;
+  }
+  await notifyNewJob(webJob.id).catch((err) => {
+    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+  });
+  await publishJobEvent(userId, { jobId: webJob.id, stage: 'queued' }).catch(() => undefined);
+  return c.json(
+    { jobId: webJob.id, status: webJob.status, sourceUrl: webJob.sourceUrl, kind: 'web' },
+    201,
+  );
+});
+
 // POST /api/jobs/scrape — agenda scraping de página web (spec 004)
 jobsRoutes.post('/scrape', async (c) => {
   const userId = c.get('userId');

@@ -39,6 +39,9 @@ interface TranscriptDetail {
   transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE';
   model: string | null;
   costUsd: string | null;
+  // Soma de costUsd da transcrição + custos de resumos/regenerações.
+  // Backend calcula a partir de CostEvent.meta.transcript_id.
+  totalCostUsd: string | null;
   mdPath: string;
   plainText: string;
   summaryMd: string | null;
@@ -231,8 +234,10 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                   <MetaRow Icon={Calendar} label="Publicado" value={formatDateTime(published)} />
                 )}
                 {t.model && <MetaRow Icon={FileText} label="Modelo" value={t.model} mono />}
-                {t.costUsd && (
-                  <MetaRow Icon={FileText} label="Custo" value={formatUsd(t.costUsd)} mono />
+                {/* Mostra apenas se houve custo de fato (>0). totalCostUsd
+                    agrega transcrição + summary/regenerações. */}
+                {parseFloat(t.totalCostUsd ?? '0') > 0 && (
+                  <MetaRow Icon={FileText} label="Custo" value={formatUsd(t.totalCostUsd)} mono />
                 )}
               </CardContent>
             </Card>
