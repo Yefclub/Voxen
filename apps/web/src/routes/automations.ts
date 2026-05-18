@@ -44,6 +44,18 @@ const TypeEnum = z.enum(['PERIODIC_SUMMARY', 'WEB_RESEARCH']);
 const DeliveryEnum = z.enum(['IN_APP', 'TELEGRAM', 'BOTH']);
 const StatusEnum = z.enum(['ACTIVE', 'PAUSED']);
 
+// Valida que `tz` é uma zona IANA reconhecida pelo runtime. Sem isso,
+// Intl.DateTimeFormat lança RangeError em `computeNextRun`, propagando como
+// 500 com stack vazada. Cliente malicioso pode mandar "Foo/Bar" via devtools.
+function isValidTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const CreateBody = z.object({
   name: z.string().min(1).max(120),
   type: TypeEnum,
@@ -53,7 +65,11 @@ const CreateBody = z.object({
   minute: z.number().int().min(0).max(59),
   dayOfWeek: z.number().int().min(0).max(6).nullable().optional(),
   dayOfMonth: z.number().int().min(1).max(31).nullable().optional(),
-  timezone: z.string().max(64).default('America/Sao_Paulo'),
+  timezone: z
+    .string()
+    .max(64)
+    .default('America/Sao_Paulo')
+    .refine(isValidTimezone, { message: 'Timezone IANA inválido.' }),
   delivery: DeliveryEnum.default('IN_APP'),
 });
 

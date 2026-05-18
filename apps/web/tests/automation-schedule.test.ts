@@ -157,3 +157,17 @@ describe('computeNextRun — fuso UTC (timezone identidade)', () => {
     expect(next.toISOString()).toBe('2026-05-18T14:30:00.000Z');
   });
 });
+
+describe('computeNextRun — timezone inválido', () => {
+  // Bloqueador da review: client manda tz arbitrário → Intl.DateTimeFormat
+  // lança RangeError. A route faz refine() no Zod pra rejeitar antes, mas
+  // garanta que a função em si propaga o erro pra ninguém engolir.
+  test('tz inexistente lança RangeError', () => {
+    expect(() =>
+      computeNextRun(
+        { frequency: 'DAILY', hour: 9, minute: 0, timezone: 'Foo/Bar' },
+        utc('2026-05-18T12:00:00Z'),
+      ),
+    ).toThrow();
+  });
+});

@@ -6,6 +6,9 @@ Espelha apps/web/tests/automation-schedule.test.ts. Mudar nos dois lados.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfoNotFoundError
+
+import pytest
 
 from src.automation_schedule import compute_next_run
 
@@ -163,3 +166,21 @@ def test_utc_simple() -> None:
         from_dt=utc("2026-05-18T08:00:00Z"),
     )
     assert next_run.isoformat() == "2026-05-18T14:30:00+00:00"
+
+
+# ---------------------------------------------------------------------------
+# Validação de timezone
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_timezone_raises() -> None:
+    """Tz arbitrário (cliente malicioso) deve falhar — scheduler captura
+    e pausa a automation em vez de deixar com nextRunAt=NULL."""
+    with pytest.raises(ZoneInfoNotFoundError):
+        compute_next_run(
+            frequency="DAILY",
+            hour=9,
+            minute=0,
+            timezone="Foo/Bar",
+            from_dt=utc("2026-05-18T12:00:00Z"),
+        )

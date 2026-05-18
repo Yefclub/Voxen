@@ -103,8 +103,11 @@ async def _automation_subscriber_loop(sem: asyncio.Semaphore, stop: asyncio.Even
 
 
 async def _automation_scheduler_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> None:
-    """A cada 60s: (a) dispara scheduler_tick que cria runs de automações
-    vencidas; (b) faz reconciliation de runs PENDING órfãos."""
+    """A cada 60s:
+    (a) dispara scheduler_tick que cria runs de automações vencidas;
+    (b) faz reconciliation de runs PENDING órfãos;
+    (c) reap de RUNNING zumbis (worker crashou entre claim e finish).
+    """
     while not stop.is_set():
         try:
             await automation.scheduler_tick()
@@ -116,6 +119,10 @@ async def _automation_scheduler_loop(sem: asyncio.Semaphore, stop: asyncio.Event
                 asyncio.create_task(_process_automation_run(sem, run_id))
         except Exception:  # noqa: BLE001
             log.exception("automation-reconciliation-failed")
+        try:
+            await automation.reap_stale_running_runs()
+        except Exception:  # noqa: BLE001
+            log.exception("automation-stale-reaper-failed")
         try:
             await asyncio.wait_for(stop.wait(), timeout=AUTOMATION_SCHEDULER_INTERVAL_SEC)
         except TimeoutError:

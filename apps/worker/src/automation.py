@@ -60,6 +60,8 @@ async def scheduler_tick() -> int:
                     run_id, a["id"], a["userId"],
                 )
                 # Recalcula próximo run
+                next_run = None
+                schedule_error = False
                 try:
                     next_run = compute_next_run(
                         frequency=a["frequency"],
@@ -71,16 +73,35 @@ async def scheduler_tick() -> int:
                         from_dt=datetime.now(UTC),
                     )
                 except Exception:  # noqa: BLE001
-                    log.exception("compute-next-run-failed", automation_id=a["id"])
-                    next_run = None
-                await conn.execute(
-                    """
-                    UPDATE "Automation"
-                    SET "lastRunAt" = NOW(), "nextRunAt" = $2, "updatedAt" = NOW()
-                    WHERE id = $1
-                    """,
-                    a["id"], next_run.replace(tzinfo=None) if next_run else None,
-                )
+                    log.exception(
+                        "compute-next-run-failed",
+                        automation_id=a["id"],
+                        timezone=a["timezone"],
+                    )
+                    schedule_error = True
+                if schedule_error:
+                    # Timezone inválido ou outro erro de schedule → pausa a
+                    # automação em vez de deixar com nextRunAt=NULL (que
+                    # parece "ACTIVE mas sem agendar" — confuso pro user).
+                    await conn.execute(
+                        """
+                        UPDATE "Automation"
+                        SET status = 'PAUSED', "nextRunAt" = NULL,
+                            "lastRunAt" = NOW(), "updatedAt" = NOW()
+                        WHERE id = $1
+                        """,
+                        a["id"],
+                    )
+                else:
+                    await conn.execute(
+                        """
+                        UPDATE "Automation"
+                        SET "lastRunAt" = NOW(), "nextRunAt" = $2, "updatedAt" = NOW()
+                        WHERE id = $1
+                        """,
+                        a["id"],
+                        next_run.replace(tzinfo=None) if next_run else None,
+                    )
                 created_count += 1
                 # Publica fora da transação seria mais correto, mas Redis
                 # publish é best-effort — reconciliation pega o que falhar.
@@ -107,6 +128,38 @@ async def list_pending_run_ids(limit: int = 10) -> list[str]:
             limit,
         )
     return [r["id"] for r in rows]
+
+
+# Runs em RUNNING há mais que isto sem terminar são consideradas órfãs
+# (worker crashou entre claim e finish). AUTOMATION_TIMEOUT_SEC é 300s, então
+# 900s = 15min dá folga generosa pra latência de OR + tools.
+STALE_RUNNING_THRESHOLD_SEC = 900
+
+
+async def reap_stale_running_runs() -> int:
+    """Marca como FAILED runs presas em RUNNING há mais que o threshold.
+    Evita que crash do worker (OOM, SIGKILL, container restart entre claim
+    e write final) deixe runs zumbis sem feedback pro user.
+
+    Retorna a quantidade de runs marcadas.
+    """
+    async with db.connection() as conn:
+        result = await conn.fetch(
+            """
+            UPDATE "AutomationRun"
+            SET status = 'FAILED',
+                "finishedAt" = NOW(),
+                "errorMessage" = 'Timeout — worker pode ter crashado durante o processamento.'
+            WHERE status = 'RUNNING'
+              AND "startedAt" IS NOT NULL
+              AND "startedAt" < NOW() - ($1 || ' seconds')::interval
+            RETURNING id
+            """,
+            str(STALE_RUNNING_THRESHOLD_SEC),
+        )
+    if result:
+        log.warning("automation-stale-running-reaped", count=len(result))
+    return len(result)
 
 
 async def process_run(run_id: str) -> None:
