@@ -189,10 +189,15 @@ async def test_dns_rebinding_detected_post_get(
             await scraper.fetch_and_extract("https://example.com/")
 
 
-async def test_dns_rebinding_different_public_ip_blocked(
+async def test_peer_public_ip_different_from_set_is_allowed(
     monkeypatch: pytest.MonkeyPatch, _no_robots: None
 ) -> None:
-    """Peer IP é público mas diferente do pré-validado — bloqueia (defesa em profundidade)."""
+    """Peer IP público fora do set pré-resolvido é OK (load balancer / CDN).
+
+    Sites com round-robin DNS (tecmundo, cloudflare, etc) podem responder
+    com IPs diferentes a cada call. Bloquear "IP fora do set" gerava false
+    positive. Defesa real é só contra IP privado (rebinding malicioso).
+    """
     import socket
 
     def fake_getaddrinfo(host: str, *args: object, **kw: object) -> list:
@@ -201,11 +206,13 @@ async def test_dns_rebinding_different_public_ip_blocked(
     monkeypatch.setattr(scraper.socket, "getaddrinfo", fake_getaddrinfo)
 
     fake_stream = MagicMock()
-    fake_stream.get_extra_info = MagicMock(return_value=("8.8.8.8", 443))  # público mas outro
+    fake_stream.get_extra_info = MagicMock(return_value=("8.8.8.8", 443))  # outro IP público
     fake_response = MagicMock()
     fake_response.status_code = 200
-    fake_response.headers = {"Content-Length": "100"}
-    fake_response.content = b"x" * 100
+    # HTML mínimo extraível
+    body = SAMPLE_HTML.encode("utf-8")
+    fake_response.headers = {"Content-Length": str(len(body))}
+    fake_response.content = body
     fake_response.encoding = "utf-8"
     fake_response.url = "https://example.com/"
     fake_response.extensions = {"network_stream": fake_stream}
@@ -214,8 +221,9 @@ async def test_dns_rebinding_different_public_ip_blocked(
         return fake_response
 
     with patch.object(httpx.AsyncClient, "get", fake_get):
-        with pytest.raises(scraper.FetchBlockedError, match="DNS rebinding"):
-            await scraper.fetch_and_extract("https://example.com/")
+        result = await scraper.fetch_and_extract("https://example.com/")
+        # Não levanta — peer público é OK mesmo fora do set inicial
+        assert "Python" in result.markdown
 
 
 async def test_redirect_to_private_ip_is_blocked(
