@@ -18,13 +18,12 @@ import { rateLimit } from '../lib/rate-limit';
 
 // Limites do endpoint /voice — limite Whisper da OpenAI é 25 MB;
 // allowlist cobre formatos que MediaRecorder produz nos browsers.
+// Só listamos base types — split do ';codecs=...' faz a normalização.
 const VOICE_MAX_BYTES = 25 * 1024 * 1024;
 const VOICE_MAX_PER_HOUR = 30;
 const VOICE_ALLOWED_MIMES = new Set([
   'audio/webm',
-  'audio/webm;codecs=opus',
   'audio/ogg',
-  'audio/ogg;codecs=opus',
   'audio/mp4',
   'audio/mpeg',
   'audio/mp3',
@@ -359,15 +358,17 @@ chatRoutes.post('/voice', async (c) => {
     return c.json({ error: 'Arquivo de áudio ausente.' }, 400);
   }
 
-  // Content-Type allowlist (anti-abuso: rejeita application/* etc)
+  // Content-Type allowlist estrito (anti-abuso: rejeita application/* etc).
+  // Decisão: Content-Type vazio é REJEITADO — MediaRecorder sempre seta MIME
+  // válido; sem MIME = caller artesanal/malicioso. Pra single-tenant é razoável.
   const declaredType = (file.type || '').toLowerCase().split(';')[0]?.trim() ?? '';
-  if (
-    declaredType &&
-    !VOICE_ALLOWED_MIMES.has(file.type.toLowerCase()) &&
-    !VOICE_ALLOWED_MIMES.has(declaredType)
-  ) {
+  if (!declaredType || !VOICE_ALLOWED_MIMES.has(declaredType)) {
     return c.json(
-      { error: `Tipo de áudio não permitido: ${file.type}. Aceitos: webm, ogg, mp4, mpeg.` },
+      {
+        error: declaredType
+          ? `Tipo de áudio não permitido: ${declaredType}. Aceitos: webm, ogg, mp4, mpeg.`
+          : 'Content-Type do áudio é obrigatório.',
+      },
       415,
     );
   }
