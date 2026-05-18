@@ -20,14 +20,22 @@ import { hashPassword } from 'better-auth/crypto';
 import { db } from '../lib/db';
 
 async function main(): Promise<void> {
-  const [, , email, newPassword] = process.argv;
+  const [, , email, passwordArg] = process.argv;
+  // Senha pode vir por arg OR env var VOXEN_NEW_PASSWORD (anti shell history).
+  // Recomendado em prod: usar env var pra não vazar em `ps`/.bash_history.
+  const newPassword = passwordArg ?? process.env.VOXEN_NEW_PASSWORD;
 
   if (!email || !newPassword) {
-    console.error('Uso: bun apps/web/src/scripts/reset-password.ts <email> <nova-senha>');
+    console.error('Uso:');
+    console.error('  Recomendado (sem expor senha em ps/history):');
+    console.error('    VOXEN_NEW_PASSWORD="novaSenha12chars" \\');
+    console.error('      bun apps/web/src/scripts/reset-password.ts <email>');
     console.error('');
-    console.error('Exemplo:');
-    console.error('  docker compose exec web bun apps/web/src/scripts/reset-password.ts \\');
-    console.error('    user@exemplo.com "novaSenhaForte123!"');
+    console.error('  Direto (senha em arg — exposta no `ps` e shell history):');
+    console.error('    bun apps/web/src/scripts/reset-password.ts <email> <nova-senha>');
+    console.error('');
+    console.error('Via Make:');
+    console.error('  make reset-password EMAIL=user@exemplo.com PASSWORD="senha12chars"');
     process.exit(2);
   }
 

@@ -20,7 +20,13 @@ export type GlobalSettingKey =
   | 'default_chat_model'
   | 'default_transcription_model'
   | 'allow_signups'
-  | 'onboarding_done';
+  | 'onboarding_done'
+  // Opcional: email do admin do deploy. Quando setado, scraper inclui
+  // `From: <email>` no User-Agent (boa-prática pra sites identificarem o operador).
+  | 'admin_email'
+  // Opcional: timeout (segundos) da chamada de summarize-transcript no chat
+  // service. Default 90s. Útil pra textos muito longos ou modelos lentos.
+  | 'summary_timeout_sec';
 
 export async function getSetting(key: GlobalSettingKey): Promise<string | null> {
   const row = await db.setting.findFirst({

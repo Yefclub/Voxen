@@ -38,3 +38,19 @@ async def get_default_transcription_model() -> str | None:
     if enc is None:
         return None
     return decrypt(enc, get_master_key())
+
+
+async def get_summary_timeout_sec(default: float = 90.0) -> float:
+    """Timeout do call summarize-transcript pra OpenRouter. Opcional via setting.
+
+    Útil pra modelos lentos ou textos longos. Retorna default (90s) se setting
+    ausente ou inválida.
+    """
+    enc = await db.get_setting_enc("summary_timeout_sec")
+    if enc is None:
+        return default
+    try:
+        value = decrypt(enc, get_master_key())
+        return float(value)
+    except (ValueError, Exception):  # noqa: BLE001
+        return default

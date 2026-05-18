@@ -380,13 +380,21 @@ Voxen **não tem SMTP nem reset por email** — decisão de design pra evitar co
 
 ### Comando
 
+Recomendado (passa senha via env var, não vaza no `ps`/shell history):
+
 ```bash
 cd /opt/voxen
-
-# Recomendado: via Make
 make reset-password EMAIL=user@exemplo.com PASSWORD='novaSenhaForte12chars'
+```
 
-# Ou direto via docker compose
+Alternativa direta:
+
+```bash
+# Via env var (seguro)
+docker compose exec -e VOXEN_NEW_PASSWORD='novaSenhaForte12chars' web \
+  bun apps/web/src/scripts/reset-password.ts user@exemplo.com
+
+# Via arg (senha exposta em ps/.bash_history — só pra debug rápido)
 docker compose exec web bun apps/web/src/scripts/reset-password.ts \
   user@exemplo.com 'novaSenhaForte12chars'
 ```
