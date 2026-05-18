@@ -219,6 +219,18 @@ export function SetupPage(): React.ReactElement {
                 value={status.transcriptionModel ?? '—'}
                 mono
               />
+              <SettingRow
+                label="Modelo de pesquisa web"
+                value={status.webSearchModel ?? 'Não configurado'}
+                badge={status.webSearchModel ? undefined : 'Opcional'}
+                mono={!!status.webSearchModel}
+              />
+              <SettingRow
+                label="Modelo de visão"
+                value={status.visionModel ?? 'Não configurado'}
+                badge={status.visionModel ? undefined : 'Opcional'}
+                mono={!!status.visionModel}
+              />
 
               <div className="pt-3 border-t border-[var(--color-app-border)] flex flex-wrap gap-2.5">
                 <Button
@@ -527,6 +539,9 @@ function SettingRow({
   mono?: boolean;
   badge?: string;
 }): React.ReactElement {
+  // Badge "Opcional" usa cor muted; "Cifrada" e outros usam success
+  const badgeVariant = badge === 'Opcional' ? 'muted' : 'success';
+  const isUnset = value === 'Não configurado';
   return (
     <div className="flex items-start gap-4">
       <div className="min-w-[180px]">
@@ -539,13 +554,15 @@ function SettingRow({
           className={
             mono
               ? 'text-[13px] font-mono text-zinc-200 tabular-nums truncate'
-              : 'text-sm text-zinc-200'
+              : isUnset
+                ? 'text-sm text-[var(--color-app-muted)] italic'
+                : 'text-sm text-zinc-200'
           }
         >
           {value}
         </span>
         {badge && (
-          <Badge variant="success" className="text-[10px]">
+          <Badge variant={badgeVariant} className="text-[10px]">
             {badge}
           </Badge>
         )}
