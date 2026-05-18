@@ -6,6 +6,7 @@ import {
   ChevronDown,
   DollarSign,
   LayoutDashboard,
+  FolderPlus,
   ListVideo,
   MessagesSquare,
   Network,
@@ -25,7 +26,9 @@ import type { MeUser } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
 import { useConversations, type ConvSummary } from '../../lib/use-conversations';
+import { useNotes } from '../../lib/use-notes';
 import { ConfirmDialog } from '../ui/confirm-dialog';
+import { NotesTree } from '../notes/notes-tree';
 
 interface NavItem {
   to: string;
@@ -54,6 +57,9 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN');
   const { collapsed, toggle } = useSidebarCollapsed();
   const inChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
+  const inNotas = location.pathname === '/notas' || location.pathname.startsWith('/notas/');
+  // Modo da sidebar: nav (default) | chat (em /chat) | notas (em /notas)
+  const mode: 'nav' | 'chat' | 'notas' = inChat ? 'chat' : inNotas ? 'notas' : 'nav';
 
   return (
     <>
@@ -92,14 +98,16 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
                 força remount limpo. AnimatePresence mode="wait" interno aqui
                 acumulava estados pendentes em cliques rápidos e travava. */}
             <motion.div
-              key={inChat ? 'chat-mode' : 'nav-mode'}
+              key={`${mode}-mode`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
               className="flex-1 flex flex-col min-h-0"
             >
-              {inChat ? (
+              {mode === 'chat' ? (
                 <ChatModeBody items={items} />
+              ) : mode === 'notas' ? (
+                <NotasModeBody items={items} pathname={location.pathname} />
               ) : (
                 <NavBody items={items} pathname={location.pathname} />
               )}
@@ -365,6 +373,118 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
             >
               {items
                 .filter((n) => n.to !== '/chat')
+                .map(({ to, label, Icon }) => (
+                  <li key={to}>
+                    <NavLink
+                      to={to}
+                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{label}</span>
+                    </NavLink>
+                  </li>
+                ))}
+            </motion.ul>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Modo notas — tree de notas/pastas + criar + voltar pra nav
+// ---------------------------------------------------------------------------
+
+function NotasModeBody({
+  items,
+  pathname,
+}: {
+  items: NavItem[];
+  pathname: string;
+}): React.ReactElement {
+  const navigate = useNavigate();
+  const { create } = useNotes();
+  const [creating, setCreating] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const activeId = useMemo(() => {
+    const m = pathname.match(/^\/notas\/([^/]+)/);
+    return m?.[1] ?? undefined;
+  }, [pathname]);
+
+  async function onCreate(kind: 'NOTE' | 'FOLDER'): Promise<void> {
+    setCreating(true);
+    try {
+      const note = await create(kind);
+      if (note && kind === 'NOTE') {
+        navigate(`/notas/${note.id}`);
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="p-3 flex flex-col gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2 h-9 rounded-lg px-3 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Voltar para o painel
+        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => void onCreate('NOTE')}
+            disabled={creating}
+            className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-sm font-medium text-zinc-100 hover:border-violet-500/40 hover:bg-violet-500/5 transition-colors disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" />
+            Nova nota
+          </button>
+          <button
+            type="button"
+            onClick={() => void onCreate('FOLDER')}
+            disabled={creating}
+            className="flex items-center justify-center h-10 w-10 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:border-amber-500/40 hover:text-amber-300 hover:bg-amber-500/5 transition-colors disabled:opacity-50"
+            aria-label="Nova pasta"
+            title="Nova pasta"
+          >
+            <FolderPlus className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
+        <NotesTree activeId={activeId} variant="sidebar" />
+      </div>
+
+      {/* Menu colapsável no rodapé (mesmo padrão do chat-mode) */}
+      <div className="border-t border-[var(--color-app-border)] shrink-0">
+        <button
+          type="button"
+          onClick={() => setMenuOpen((v) => !v)}
+          className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors"
+        >
+          <ChevronDown
+            className={cn('h-3 w-3 transition-transform', menuOpen ? 'rotate-180' : '')}
+          />
+          Menu
+        </button>
+        <AnimatePresence initial={false}>
+          {menuOpen && (
+            <motion.ul
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden px-3 pb-3 space-y-0.5"
+            >
+              {items
+                .filter((n) => n.to !== '/notas')
                 .map(({ to, label, Icon }) => (
                   <li key={to}>
                     <NavLink

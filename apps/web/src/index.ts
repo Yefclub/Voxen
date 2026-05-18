@@ -273,7 +273,9 @@ app.get('*', async (c) => {
   //   (balance entre frescor e load).
   const headers = new Headers();
   const isHtml = target.endsWith('.html');
-  const isHashedAsset = /\/assets\/[^/]+\.[A-Za-z0-9_-]{8,}\.(js|css|svg|woff2?|ttf|otf)$/.test(
+  // Vite default usa `[name]-[hash].ext` (hífen) ou `[name].[hash].ext` (ponto).
+  // Cobrimos as duas formas — separador `[.-]` antes do hash base62 ≥8 chars.
+  const isHashedAsset = /\/assets\/[^/]+[.-][A-Za-z0-9_-]{8,}\.(js|css|svg|woff2?|ttf|otf)$/.test(
     reqPath,
   );
   if (isHtml) {

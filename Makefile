@@ -9,10 +9,17 @@
 help: ## Lista alvos disponíveis
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
+# Versão e SHA detectados do git (passados como build-args via compose).
+# Versão prefere a tag mais recente (`v0.1.2` → `0.1.2-dev.<n_commits>+<sha>`);
+# se não houver tag, lê de package.json.
+export VOXEN_GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null)
+export VOXEN_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || node -p "require('./package.json').version" 2>/dev/null)
+export VOXEN_BUILT_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
 dev: ## Sobe tudo localmente (postgres, redis, garage, web, chat, worker)
 	docker compose up -d --build
 	@echo ""
-	@echo "✓ Voxen rodando em http://localhost:3000"
+	@echo "✓ Voxen rodando em http://localhost:3000 (v$(VOXEN_VERSION))"
 	@echo "  Logs: make logs"
 	@echo "  Parar: make down"
 
@@ -22,7 +29,7 @@ update: ## Atualiza (rolling restart sem perda de dados — recomendado pra prod
 	@# antes do novo estar pronto, então não há janela de downtime perceptível.
 	docker compose up -d --build --remove-orphans
 	@echo ""
-	@echo "✓ Voxen atualizado. Containers recriados, volumes preservados."
+	@echo "✓ Voxen atualizado pra v$(VOXEN_VERSION). Volumes preservados."
 
 build: ## Rebuild de imagens sem recriar containers
 	docker compose build

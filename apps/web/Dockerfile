@@ -49,7 +49,9 @@ FROM oven/bun:1.3-alpine AS runtime
 WORKDIR /app
 
 # Build args injetados pelo CI/Compose pra mostrar versão no /api/version e
-# no footer da UI. Não-blocking (default vai pro env do servidor).
+# no footer da UI. Compose passa via build.args (ver docker-compose.yml).
+# Em CI release, o release.yml extrai do nome da tag (`v1.2.3` → 1.2.3) e
+# injeta. Em local dev sem build.args, fallback usa version do package.json.
 ARG VOXEN_VERSION
 ARG VOXEN_GIT_SHA
 ARG VOXEN_BUILT_AT

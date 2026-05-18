@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
+  ArrowRight,
   CheckCircle2,
   ExternalLink,
   KeyRound,
   Pencil,
   RotateCw,
+  Search,
   Sparkles,
-  ArrowRight,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -218,6 +219,18 @@ export function SetupPage(): React.ReactElement {
                 label="Modelo de transcrição"
                 value={status.transcriptionModel ?? '—'}
                 mono
+              />
+              <SettingRow
+                label="Modelo de pesquisa web"
+                value={status.webSearchModel ?? 'Não configurado'}
+                badge={status.webSearchModel ? undefined : 'Opcional'}
+                mono={!!status.webSearchModel}
+              />
+              <SettingRow
+                label="Modelo de visão"
+                value={status.visionModel ?? 'Não configurado'}
+                badge={status.visionModel ? undefined : 'Opcional'}
+                mono={!!status.visionModel}
               />
 
               <div className="pt-3 border-t border-[var(--color-app-border)] flex flex-wrap gap-2.5">
@@ -527,6 +540,9 @@ function SettingRow({
   mono?: boolean;
   badge?: string;
 }): React.ReactElement {
+  // Badge "Opcional" usa cor muted; "Cifrada" e outros usam success
+  const badgeVariant = badge === 'Opcional' ? 'muted' : 'success';
+  const isUnset = value === 'Não configurado';
   return (
     <div className="flex items-start gap-4">
       <div className="min-w-[180px]">
@@ -539,13 +555,15 @@ function SettingRow({
           className={
             mono
               ? 'text-[13px] font-mono text-zinc-200 tabular-nums truncate'
-              : 'text-sm text-zinc-200'
+              : isUnset
+                ? 'text-sm text-[var(--color-app-muted)] italic'
+                : 'text-sm text-zinc-200'
           }
         >
           {value}
         </span>
         {badge && (
-          <Badge variant="success" className="text-[10px]">
+          <Badge variant={badgeVariant} className="text-[10px]">
             {badge}
           </Badge>
         )}
@@ -608,31 +626,75 @@ function ModelSelect({
   count: number;
   hint?: string;
 }): React.ReactElement {
+  // Lista de modelos da OpenRouter tem 300+ entradas — busca é essencial.
+  // Estado por componente: filtro de texto + reset ao fechar dropdown.
+  const [query, setQuery] = useState('');
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(
+      (m) => m.id.toLowerCase().includes(q) || (m.name ?? '').toLowerCase().includes(q),
+    );
+  }, [options, query]);
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <Label>{label}</Label>
         <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] tabular-nums">
-          {count} disponíveis
+          {query.trim() ? `${filtered.length} / ${count}` : `${count} disponíveis`}
         </span>
       </div>
-      <Select value={value || undefined} onValueChange={onChange}>
+      <Select
+        value={value || undefined}
+        onValueChange={onChange}
+        onOpenChange={(open) => {
+          if (!open) setQuery('');
+        }}
+      >
         <SelectTrigger>
           <SelectValue placeholder="Selecionar modelo…" />
         </SelectTrigger>
         <SelectContent>
-          {options.map((m) => (
-            <SelectItem key={m.id} value={m.id}>
-              <div className="flex flex-col py-0.5">
-                <span className="font-medium">{m.name || m.id}</span>
-                {m.name && m.name !== m.id && (
-                  <span className="text-[11px] font-mono text-[var(--color-app-muted)]">
-                    {m.id}
-                  </span>
-                )}
-              </div>
-            </SelectItem>
-          ))}
+          {/* Search bar — sticky no topo do dropdown, fora do Item pra não
+              ser clicável como opção. onKeyDown impede Radix de capturar
+              espaços/letras como atalho de navegação. */}
+          <div
+            className="sticky top-0 z-10 bg-[var(--color-app-bg-elevated)] border-b border-[var(--color-app-border)] p-1.5"
+            onKeyDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Filtrar por nome ou ID…"
+                spellCheck={false}
+                autoComplete="off"
+                className="w-full h-8 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 pl-8 pr-2 text-[12.5px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
+              />
+            </div>
+          </div>
+          {filtered.length === 0 ? (
+            <div className="px-3 py-6 text-center text-xs text-[var(--color-app-muted)]">
+              Nenhum modelo bate com «{query}».
+            </div>
+          ) : (
+            filtered.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                <div className="flex flex-col py-0.5">
+                  <span className="font-medium">{m.name || m.id}</span>
+                  {m.name && m.name !== m.id && (
+                    <span className="text-[11px] font-mono text-[var(--color-app-muted)]">
+                      {m.id}
+                    </span>
+                  )}
+                </div>
+              </SelectItem>
+            ))
+          )}
         </SelectContent>
       </Select>
       {hint && <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">{hint}</p>}
