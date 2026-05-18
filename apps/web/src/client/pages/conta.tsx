@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff, KeyRound, Upload, User as UserIcon } from 'lucide-react';
+import {
+  Check,
+  Copy as CopyIcon,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Send,
+  Unlink,
+  Upload,
+  User as UserIcon,
+} from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -297,6 +307,8 @@ export function ContaPage(): React.ReactElement {
           </CardContent>
         </Card>
 
+        <TelegramLinkCard />
+
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -307,5 +319,189 @@ export function ContaPage(): React.ReactElement {
         </motion.p>
       </div>
     </AnimatedPage>
+  );
+}
+
+interface TelegramStatus {
+  linked: boolean;
+  username?: string | null;
+  chatId?: string;
+  linkedAt?: string;
+}
+
+function TelegramLinkCard(): React.ReactElement {
+  const [status, setStatus] = useState<TelegramStatus | null>(null);
+  const [code, setCode] = useState<string | null>(null);
+  const [codeExpiresAt, setCodeExpiresAt] = useState<number | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  async function refresh(): Promise<void> {
+    try {
+      const s = await apiGet<TelegramStatus>('/api/account/telegram');
+      setStatus(s);
+    } catch {
+      setStatus({ linked: false });
+    }
+  }
+
+  async function genCode(): Promise<void> {
+    setGenerating(true);
+    try {
+      const r = await apiPost<{ code: string; expiresInSec: number }>(
+        '/api/account/telegram/code',
+        {},
+      );
+      setCode(r.code);
+      setCodeExpiresAt(Date.now() + r.expiresInSec * 1000);
+      toast.success('Código gerado. Mande no bot dentro de 10 minutos.');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Erro ao gerar código.');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function copyCode(): Promise<void> {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(`/start ${code}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignora
+    }
+  }
+
+  async function unlink(): Promise<void> {
+    setUnlinking(true);
+    try {
+      const res = await fetch('/api/account/telegram', {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Falha ao desvincular.');
+      toast.success('Telegram desvinculado.');
+      setStatus({ linked: false });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro.');
+    } finally {
+      setUnlinking(false);
+    }
+  }
+
+  // Poll status quando código está ativo — detecta vínculo automaticamente
+  useEffect(() => {
+    if (!code) return;
+    const timer = setInterval(() => {
+      void apiGet<TelegramStatus>('/api/account/telegram')
+        .then((s) => {
+          if (s.linked) {
+            setStatus(s);
+            setCode(null);
+            setCodeExpiresAt(null);
+            toast.success('Telegram vinculado!');
+          } else if (codeExpiresAt && Date.now() > codeExpiresAt) {
+            setCode(null);
+            setCodeExpiresAt(null);
+            toast.warning('Código expirou.');
+          }
+        })
+        .catch(() => undefined);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [code, codeExpiresAt]);
+
+  if (!status) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <Spinner />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 font-display">
+          <Send className="h-4 w-4 text-violet-400" />
+          Telegram
+        </CardTitle>
+        <CardDescription>
+          Vincule sua conta pra falar com a Vox e buscar na biblioteca pelo bot do Telegram.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {status.linked ? (
+          <div className="space-y-3">
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
+              <Check className="h-4 w-4 text-emerald-400" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-zinc-100">
+                  Vinculado {status.username ? `como @${status.username}` : ''}
+                </p>
+                <p className="text-[11px] text-[var(--color-app-muted)] tabular-nums">
+                  chat_id <span className="font-mono">{status.chatId}</span>
+                  {status.linkedAt && (
+                    <>
+                      {' · '}
+                      desde {formatDateTime(new Date(status.linkedAt))}
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => void unlink()} disabled={unlinking}>
+              {unlinking ? <Spinner /> : <Unlink className="h-3.5 w-3.5" />}
+              Desvincular
+            </Button>
+          </div>
+        ) : code ? (
+          <div className="space-y-3">
+            <div className="rounded-lg border border-violet-500/30 bg-violet-500/5 px-4 py-4">
+              <p className="text-[11px] uppercase tracking-wider text-violet-300 font-medium mb-2">
+                No bot do Voxen no Telegram, envie:
+              </p>
+              <code className="block font-mono text-2xl font-bold tracking-wider text-zinc-100 tabular-nums">
+                /start {code}
+              </code>
+              <p className="text-[11px] text-[var(--color-app-muted)] mt-2">
+                Expira em 10 minutos. Detecto o vínculo automaticamente.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => void copyCode()}>
+              {copied ? (
+                <>
+                  <Check className="h-3.5 w-3.5" />
+                  Copiado
+                </>
+              ) : (
+                <>
+                  <CopyIcon className="h-3.5 w-3.5" />
+                  Copiar comando
+                </>
+              )}
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="primary"
+            size="default"
+            onClick={() => void genCode()}
+            disabled={generating}
+          >
+            {generating ? <Spinner /> : <Send className="h-3.5 w-3.5" />}
+            Gerar código de vínculo
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }

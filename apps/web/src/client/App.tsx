@@ -10,6 +10,7 @@ import { SetupPage } from './pages/setup';
 import { DashboardPage } from './pages/dashboard';
 import { AdminUsuariosPage } from './pages/admin-usuarios';
 import { AdminCustosPage } from './pages/admin-custos';
+import { AdminIntegracoesPage } from './pages/admin-integracoes';
 import { ContaPage } from './pages/conta';
 import { ChatPage } from './pages/chat';
 import { JobsPage } from './pages/jobs';
@@ -44,6 +45,7 @@ export function App(): React.ReactElement {
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
           <Route path="/admin/custos" element={<AdminCustosPage />} />
+          <Route path="/admin/integracoes" element={<AdminIntegracoesPage />} />
           <Route path="/conta" element={<ContaPage />} />
           <Route path="/jobs" element={<JobsPage />} />
           <Route path="/jobs/:id" element={<JobDetalhePage />} />

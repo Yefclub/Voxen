@@ -10,6 +10,7 @@ import {
   MessagesSquare,
   Notebook,
   PlayCircle,
+  Plug,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -40,6 +41,7 @@ const NAV: NavItem[] = [
   { to: '/notas', label: 'Notas', Icon: Notebook },
   { to: '/admin/usuarios', label: 'Usuários', Icon: ShieldCheck, adminOnly: true },
   { to: '/admin/custos', label: 'Custos', Icon: DollarSign, adminOnly: true },
+  { to: '/admin/integracoes', label: 'Integrações', Icon: Plug, adminOnly: true },
   { to: '/setup', label: 'Configuração', Icon: SettingsIcon, adminOnly: true },
 ];
 
