@@ -53,6 +53,39 @@ async def health() -> dict[str, object]:
     return {"ok": True, "service": "chat"}
 
 
+@app.get("/health/deep")
+async def health_deep() -> JSONResponse:
+    """Checa DB + master key + voxen_settings carregáveis. 200 se ok, 503 se não."""
+    import time
+
+    checks: dict[str, dict[str, object]] = {}
+    all_ok = True
+
+    # Postgres
+    t = time.perf_counter()
+    try:
+        async with db.connection() as conn:
+            await conn.fetchval("SELECT 1")
+        checks["postgres"] = {"ok": True, "latencyMs": round((time.perf_counter() - t) * 1000)}
+    except Exception as e:  # noqa: BLE001
+        all_ok = False
+        checks["postgres"] = {"ok": False, "error": str(e)}
+
+    # Master key
+    t = time.perf_counter()
+    try:
+        voxen_settings.get_master_key()
+        checks["master_key"] = {
+            "ok": True,
+            "latencyMs": round((time.perf_counter() - t) * 1000),
+        }
+    except Exception as e:  # noqa: BLE001
+        all_ok = False
+        checks["master_key"] = {"ok": False, "error": str(e)}
+
+    return JSONResponse({"ok": all_ok, "checks": checks}, status_code=200 if all_ok else 503)
+
+
 class ChatMessage(BaseModel):
     role: str
     content: str

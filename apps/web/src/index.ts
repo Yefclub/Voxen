@@ -16,11 +16,70 @@ import { onboardingRoutes } from './routes/onboarding';
 import { accountRoutes } from './routes/account';
 import { costRoutes } from './routes/cost';
 import { chatRoutes } from './routes/chat';
+import { getRedisPublisher } from './lib/redis';
 
 const app = new Hono();
 
-// Healthcheck — sempre 200, mesmo antes do setup (spec 000)
+// Healthcheck liveness — sempre 200, mesmo antes do setup (spec 000)
 app.get('/health', (c) => c.json({ ok: true, service: 'web' }));
+
+// Healthcheck deep — checa DB + Redis + chat service. 200 se todos ok, 503 se
+// algum falhar. Pensado pra monitoramento externo (Uptime Kuma, Healthchecks).
+app.get('/health/deep', async (c) => {
+  const checks: Record<string, { ok: boolean; latencyMs?: number; error?: string }> = {};
+  let allOk = true;
+
+  // Postgres
+  const tDb = performance.now();
+  try {
+    await db.$queryRaw`SELECT 1`;
+    checks.postgres = { ok: true, latencyMs: Math.round(performance.now() - tDb) };
+  } catch (e) {
+    allOk = false;
+    checks.postgres = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  }
+
+  // Redis
+  const tRedis = performance.now();
+  try {
+    const pong = await getRedisPublisher().ping();
+    const ok = pong === 'PONG';
+    if (!ok) allOk = false;
+    checks.redis = { ok, latencyMs: Math.round(performance.now() - tRedis) };
+  } catch (e) {
+    allOk = false;
+    checks.redis = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  }
+
+  // Chat service (FastAPI interno)
+  const tChat = performance.now();
+  try {
+    const chatUrl = (process.env.CHAT_SERVICE_URL ?? 'http://chat:8001') + '/health';
+    const res = await fetch(chatUrl, { signal: AbortSignal.timeout(3000) });
+    const ok = res.ok;
+    if (!ok) allOk = false;
+    checks.chat = { ok, latencyMs: Math.round(performance.now() - tChat) };
+  } catch (e) {
+    allOk = false;
+    checks.chat = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  }
+
+  // S3/Garage (HEAD no bucket) — best-effort: skipa se faltar credencial em vez
+  // de falhar (storage é dependência mas alguns setups podem ter S3 externo).
+  // Importação tardia pra não pagar custo de init em /health/deep quando bucket
+  // não estiver configurado.
+  const tS3 = performance.now();
+  try {
+    const { headBucket } = await import('./lib/s3-health');
+    await headBucket();
+    checks.s3 = { ok: true, latencyMs: Math.round(performance.now() - tS3) };
+  } catch (e) {
+    allOk = false;
+    checks.s3 = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  }
+
+  return c.json({ ok: allOk, checks }, allOk ? 200 : 503);
+});
 
 // Endpoint público: estado da instância (signups, primeira instalação)
 // Login page usa isso pra mostrar/esconder "Criar conta".

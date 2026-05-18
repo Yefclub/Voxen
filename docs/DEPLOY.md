@@ -339,14 +339,38 @@ Rode via cron diário. **A master.key é o mais crítico** — sem ela, os secre
 
 ## Monitoramento
 
-Endpoints úteis:
+Endpoints de health:
 
-- `GET /health` (web, porta 3000) — status do app
-- `GET /health` (chat, porta 8001 — fica internamente na rede `voxen-net`)
+| Endpoint | Service | Propósito | Resposta |
+|---|---|---|---|
+| `GET /health` | web (3000) | **Liveness** — proxy/reverse-proxy. Sempre 200 se processo vivo | `{"ok":true,"service":"web"}` |
+| `GET /health/deep` | web (3000) | **Readiness** — checa DB + Redis + chat service + S3/Garage | 200 com checks ou 503 se algum falhar |
+| `GET /health` | chat (8001, interno) | Liveness do FastAPI | `{"ok":true,"service":"chat"}` |
+| `GET /health/deep` | chat (8001, interno) | Checa DB + master key carregável | 200/503 com latências |
+
+Exemplo de resposta do `/health/deep` (web):
+```json
+{
+  "ok": true,
+  "checks": {
+    "postgres": { "ok": true, "latencyMs": 4 },
+    "redis":    { "ok": true, "latencyMs": 1 },
+    "chat":     { "ok": true, "latencyMs": 12 },
+    "s3":       { "ok": true, "latencyMs": 8 }
+  }
+}
+```
+
+Quando algum check falhar, o endpoint retorna **HTTP 503** com `ok: false`
+e o erro no check correspondente — perfeito pra alerta automático.
+
+**Uptime Kuma / Healthchecks.io:**
+- Liveness simples → `https://voxen.seudominio.com/health`
+- Status real → `https://voxen.seudominio.com/health/deep` com check de HTTP 200
+
+Outras ferramentas:
 - `docker compose ps` — status dos containers
 - `docker compose logs -f web chat worker` — logs ao vivo
-
-Pra integrar com Uptime Kuma / Healthchecks.io: monitore `https://voxen.seudominio.com/health`.
 
 ---
 
