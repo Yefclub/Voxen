@@ -8,12 +8,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import cytoscape, { type Core, type NodeSingular } from 'cytoscape';
-import { motion } from 'motion/react';
 import { Network, RotateCw, Search } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Spinner } from '../components/ui/spinner';
 import { Card, CardContent } from '../components/ui/card';
 import { useFetch } from '../lib/hooks';
+import { cn } from '../lib/utils';
 import { AnimatedPage } from '../components/motion/animated-page';
 
 interface GraphNode {
@@ -165,78 +165,87 @@ export function GrafoPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="flex flex-col h-full">
-        <header className="flex items-center justify-between px-8 py-5 border-b border-[var(--color-app-border)] gap-4 flex-wrap">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
-              <Network className="h-3.5 w-3.5 text-violet-400" />
-              Grafo da biblioteca
-            </div>
-            <h1 className="font-display text-2xl font-semibold tracking-tight">Mapa visual</h1>
+      <div className="px-8 py-10 mx-auto max-w-7xl space-y-8">
+        {/* Header padrão (igual /transcricoes, /jobs, /dashboard) */}
+        <header className="space-y-3">
+          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
+            <Network className="h-3.5 w-3.5 text-violet-400" />
+            Visualização
           </div>
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Filtrar nós…"
-                className="h-9 w-56 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 pl-9 pr-3 text-[13px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
-              />
-            </div>
-            <Button variant="ghost" size="sm" onClick={refresh}>
-              <RotateCw className="h-3.5 w-3.5" />
-              Atualizar
-            </Button>
-          </div>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Grafo</h1>
+          <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
+            Mapa visual de toda sua biblioteca. Transcrições e notas conectadas por wiki-links
+            <code className="text-zinc-300 mx-1">[[título]]</code> e por hierarquia de pastas.
+            Clique num nó pra abrir.
+          </p>
         </header>
 
-        <div className="flex-1 min-h-0 relative">
-          {loading && !data && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Spinner />
-            </div>
-          )}
-          {!loading && data && data.nodes.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Card>
-                <CardContent className="py-10 px-8 text-center space-y-2">
-                  <Network className="mx-auto h-8 w-8 text-violet-400" />
-                  <p className="font-display text-lg font-semibold">Biblioteca vazia</p>
-                  <p className="text-sm text-[var(--color-app-muted)]">
-                    Crie uma nota ou transcreva um conteúdo pra começar a ver o grafo.
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-          <div ref={containerRef} className="absolute inset-0" />
-
+        {/* Controles em barra acima do canvas */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filtrar nós e vizinhos…"
+              className="w-full h-11 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 backdrop-blur-sm pl-10 pr-4 text-[14px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15 transition-colors"
+            />
+          </div>
+          <Button variant="outline" size="default" onClick={refresh} disabled={loading}>
+            <RotateCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+            Atualizar
+          </Button>
           {stats && stats.nodes.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="absolute bottom-4 left-4 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-sm px-3.5 py-2.5 text-[11px] space-y-1"
-            >
-              <div className="flex items-center gap-2 text-[var(--color-app-muted)]">
+            <div className="ml-auto inline-flex items-center gap-3 text-[11px] tabular-nums text-[var(--color-app-muted)]">
+              <span className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-violet-400" />
-                <span>Transcrição</span>
-              </div>
-              <div className="flex items-center gap-2 text-[var(--color-app-muted)]">
+                {stats.nodes.filter((n) => n.type === 'transcript').length} transcrições
+              </span>
+              <span className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                <span>Nota</span>
-              </div>
-              <div className="flex items-center gap-2 text-[var(--color-app-muted)]">
+                {stats.nodes.filter((n) => n.type === 'note').length} notas
+              </span>
+              <span className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-sm bg-amber-400" />
-                <span>Pasta</span>
-              </div>
-              <div className="pt-1 text-[10px] tabular-nums text-[var(--color-app-muted)] border-t border-[var(--color-app-border)]">
-                {stats.nodes.length} nós · {stats.edges.length} conexões
-              </div>
-            </motion.div>
+                {stats.nodes.filter((n) => n.type === 'folder').length} pastas
+              </span>
+              <span className="text-[var(--color-app-muted)]/60">
+                · {stats.edges.length} conexões
+              </span>
+            </div>
           )}
         </div>
+
+        {/* Canvas — Card elevated com altura fixa (consistente com /transcricoes/:id detail) */}
+        <Card elevated className="overflow-hidden p-0 relative">
+          <div className="relative h-[calc(100vh-360px)] min-h-[500px]">
+            {loading && !data && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Spinner />
+              </div>
+            )}
+            {!loading && data && data.nodes.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <CardContent className="py-12 text-center space-y-3 max-w-md">
+                  <div className="mx-auto h-12 w-12 rounded-2xl bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
+                    <Network className="h-5 w-5 text-violet-400" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="font-display text-lg font-semibold tracking-tight">
+                      Biblioteca vazia
+                    </p>
+                    <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
+                      Crie uma nota em <code className="text-zinc-300">/notas</code> ou transcreva
+                      conteúdo em <code className="text-zinc-300">/jobs</code> pra começar.
+                    </p>
+                  </div>
+                </CardContent>
+              </div>
+            )}
+            <div ref={containerRef} className="absolute inset-0" />
+          </div>
+        </Card>
       </div>
     </AnimatedPage>
   );
