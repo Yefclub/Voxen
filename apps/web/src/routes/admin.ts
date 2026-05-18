@@ -121,3 +121,41 @@ adminRoutes.patch('/instance', async (c) => {
   await setSetting('allow_signups', body.allowSignups ? 'true' : 'false');
   return c.json({ allowSignups: body.allowSignups });
 });
+
+// GET /api/admin/mcp — estado do MCP server (token configurado? qual user?).
+// Não retorna o token bruto (não há "ver token de novo" — só rotacionar).
+adminRoutes.get('/mcp', async (c) => {
+  const stored = await getSetting('mcp_api_token').catch(() => null);
+  if (!stored) {
+    return c.json({ enabled: false, userId: null, tokenPreview: null });
+  }
+  const [userId, token] = stored.split(':');
+  return c.json({
+    enabled: !!(userId && token),
+    userId: userId ?? null,
+    tokenPreview: token ? token.slice(0, 8) + '…' : null,
+  });
+});
+
+// POST /api/admin/mcp/rotate — gera novo token MCP pra o admin chamando.
+// Retorna o token UMA vez (não é recuperável depois). Sobrescreve o anterior.
+adminRoutes.post('/mcp/rotate', async (c) => {
+  const adminUserId = c.get('adminUserId');
+  // 32 bytes hex = 64 chars, entropia adequada pra Bearer token.
+  const tokenBytes = new Uint8Array(32);
+  crypto.getRandomValues(tokenBytes);
+  const token = Array.from(tokenBytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  await setSetting('mcp_api_token', `${adminUserId}:${token}`);
+  return c.json({
+    token,
+    userId: adminUserId,
+    warning: 'Salve este token agora — não será exibido novamente.',
+  });
+});
+
+// DELETE /api/admin/mcp — revoga o token (apaga setting)
+adminRoutes.delete('/mcp', async (c) => {
+  const { deleteSetting } = await import('../lib/settings');
+  await deleteSetting('mcp_api_token');
+  return c.json({ ok: true });
+});

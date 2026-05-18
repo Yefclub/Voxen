@@ -17,6 +17,7 @@ import { accountRoutes } from './routes/account';
 import { costRoutes } from './routes/cost';
 import { chatRoutes } from './routes/chat';
 import { notesRoutes } from './routes/notes';
+import { mcpRoutes } from './routes/mcp';
 import { getRedisPublisher } from './lib/redis';
 import { rateLimit } from './lib/rate-limit';
 
@@ -177,7 +178,10 @@ app.route('/api/admin/custos', costRoutes);
 
 // Chat (proxy autenticado pro serviço chat:8001)
 app.route('/api/chat', chatRoutes);
+// KB manual de notas (CRUD + FTS + tree)
 app.route('/api/notes', notesRoutes);
+// MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
+app.route('/mcp', mcpRoutes);
 
 // Avatar proxy: serve imagem do Garage de qualquer user autenticado
 app.get('/api/avatar/:userId', async (c) => {
