@@ -102,7 +102,13 @@ function toLocalParts(date: Date, timezone: string): LocalParts {
   // hourCycle h23 (00-23) — em alguns runtimes vem '24'; normaliza
   let h = get('hour');
   if (h === 24) h = 0;
-  return { year: get('year'), month: get('month'), day: get('day'), hour: h, minute: get('minute') };
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour: h,
+    minute: get('minute'),
+  };
 }
 
 // Cria um Date UTC tal que, no timezone informado, o calendário mostre

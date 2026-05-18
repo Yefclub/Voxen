@@ -121,7 +121,8 @@ export function AutomacoesPage(): React.ReactElement {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast.success('Execução enfileirada.', {
-        description: 'Em até 1 min a Vox processa essa automação. Atualize a página pra ver o resultado.',
+        description:
+          'Em até 1 min a Vox processa essa automação. Atualize a página pra ver o resultado.',
       });
       await fetchAutomations();
     } catch (err) {
@@ -149,7 +150,8 @@ export function AutomacoesPage(): React.ReactElement {
   }
 
   async function remove(a: Automation): Promise<void> {
-    if (!confirm(`Apagar a automação "${a.name}"? Histórico de execuções também será removido.`)) return;
+    if (!confirm(`Apagar a automação "${a.name}"? Histórico de execuções também será removido.`))
+      return;
     try {
       const res = await fetch(`/api/automations/${a.id}`, {
         method: 'DELETE',
@@ -406,7 +408,10 @@ function IconButton({
 }
 
 function RunStatusBadge({ status }: { status: RunStatus }): React.ReactElement {
-  const map: Record<RunStatus, { label: string; cls: string; Icon: React.ComponentType<{ className?: string }> }> = {
+  const map: Record<
+    RunStatus,
+    { label: string; cls: string; Icon: React.ComponentType<{ className?: string }> }
+  > = {
     PENDING: { label: 'pendente', cls: 'text-zinc-600 bg-zinc-100 dark:bg-zinc-900', Icon: Clock },
     RUNNING: {
       label: 'rodando',
@@ -426,7 +431,9 @@ function RunStatusBadge({ status }: { status: RunStatus }): React.ReactElement {
   };
   const { label, cls, Icon } = map[status];
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded ${cls}`}>
+    <span
+      className={`inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded ${cls}`}
+    >
       <Icon className={`size-3 ${status === 'RUNNING' ? 'animate-spin' : ''}`} />
       {label}
     </span>
@@ -681,13 +688,15 @@ function AutomationForm({
 
           <Field label="Entrega">
             <div className="space-y-1.5">
-              {(
-                [
-                  { v: 'IN_APP' as const, label: 'Aparece em /automacoes (padrão)', requiresTg: false },
-                  { v: 'TELEGRAM' as const, label: 'Envia pro meu Telegram', requiresTg: true },
-                  { v: 'BOTH' as const, label: 'Ambos', requiresTg: true },
-                ]
-              ).map((opt) => {
+              {[
+                {
+                  v: 'IN_APP' as const,
+                  label: 'Aparece em /automacoes (padrão)',
+                  requiresTg: false,
+                },
+                { v: 'TELEGRAM' as const, label: 'Envia pro meu Telegram', requiresTg: true },
+                { v: 'BOTH' as const, label: 'Ambos', requiresTg: true },
+              ].map((opt) => {
                 const disabled = opt.requiresTg && !hasTelegram;
                 return (
                   <label
@@ -740,7 +749,9 @@ function Field({
 }): React.ReactElement {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">{label}</span>
+      <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
+        {label}
+      </span>
       {children}
     </label>
   );

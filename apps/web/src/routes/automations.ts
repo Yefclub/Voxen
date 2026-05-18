@@ -103,13 +103,14 @@ automationsRoutes.get('/', async (c) => {
 automationsRoutes.post('/', async (c) => {
   const userId = c.get('userId');
   const parsed = CreateBody.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: 'Payload inválido.', details: parsed.error.issues }, 400);
+  if (!parsed.success)
+    return c.json({ error: 'Payload inválido.', details: parsed.error.issues }, 400);
   const data = parsed.data;
   // Validações cruzadas
-  if (data.frequency === 'WEEKLY' && (data.dayOfWeek == null)) {
+  if (data.frequency === 'WEEKLY' && data.dayOfWeek == null) {
     return c.json({ error: 'Frequência WEEKLY exige dayOfWeek.' }, 400);
   }
-  if (data.frequency === 'MONTHLY' && (data.dayOfMonth == null)) {
+  if (data.frequency === 'MONTHLY' && data.dayOfMonth == null) {
     return c.json({ error: 'Frequência MONTHLY exige dayOfMonth.' }, 400);
   }
   // Se delivery exige Telegram mas user não linkou, rejeita
@@ -163,7 +164,8 @@ automationsRoutes.patch('/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
   const parsed = UpdateBody.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: 'Payload inválido.', details: parsed.error.issues }, 400);
+  if (!parsed.success)
+    return c.json({ error: 'Payload inválido.', details: parsed.error.issues }, 400);
   const a = await db.automation.findFirst({ where: { id, userId } });
   if (!a) return c.json({ error: 'Automação não encontrada.' }, 404);
 
