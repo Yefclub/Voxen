@@ -207,6 +207,14 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
     { role: 'user', content },
   ];
 
+  // Busca dados do user pra contexto do agente — name é exibido no system prompt
+  // ("Você está conversando com Carlos.") e tz reflete a data/hora real do user.
+  const userInfo = await db.user.findUnique({
+    where: { id: uid },
+    select: { name: true },
+  });
+  const userTimezone = c.req.header('X-User-Timezone') ?? 'UTC';
+
   // AbortController liga downstream → upstream. Se o client cancelar (fechar
   // aba, navegar), abortamos a conexão com chat:8001 em vez de deixar pendurada.
   const upstreamAbort = new AbortController();
@@ -216,6 +224,8 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
       'Content-Type': 'application/json',
       'X-Voxen-User-Id': uid,
       'X-Voxen-Conversation-Id': id,
+      'X-Voxen-User-Name': userInfo?.name ?? '',
+      'X-Voxen-User-Timezone': userTimezone,
       Accept: 'text/event-stream',
     },
     body: JSON.stringify({ messages: history, thinking: conv.thinking }),

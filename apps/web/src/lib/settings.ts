@@ -19,6 +19,13 @@ export type GlobalSettingKey =
   | 'openrouter_api_key'
   | 'default_chat_model'
   | 'default_transcription_model'
+  // Modelo dedicado a pesquisa na web — OpenRouter aceita `:online` em
+  // qualquer modelo (plugin web da Perplexity) ou modelos nativos com
+  // `web_search_options`. Tool `web_search` no agente usa este modelo.
+  | 'default_web_search_model'
+  // Modelo multimodal pra entender imagens (upload via chat/telegram).
+  // Filtrado por modalities=['image'] no /api/openrouter/models.
+  | 'default_vision_model'
   | 'allow_signups'
   | 'onboarding_done'
   // Opcional: email do admin do deploy. Quando setado, scraper inclui

@@ -75,3 +75,26 @@ export async function listModels(
   const body = (await res.json()) as { data?: OrModel[] };
   return Array.isArray(body.data) ? body.data : [];
 }
+
+/**
+ * Lista modelos multimodais (aceitam imagem como entrada). Usado pelo agente
+ * pra entender imagens enviadas no chat ou no telegram. Filtra
+ * `input_modalities=image,text` direto na OR.
+ */
+export async function listVisionModels(key: string, fetcher: Fetcher = fetch): Promise<OrModel[]> {
+  let res: Response;
+  try {
+    res = await fetcher(`${OR_BASE_URL}/models?input_modalities=image,text`, {
+      headers: { authorization: `Bearer ${key}` },
+    });
+  } catch (err) {
+    throw new OpenrouterError(
+      `Falha ao contatar OpenRouter: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (!res.ok) {
+    throw new OpenrouterError(`OpenRouter retornou status ${res.status}`, res.status);
+  }
+  const body = (await res.json()) as { data?: OrModel[] };
+  return Array.isArray(body.data) ? body.data : [];
+}

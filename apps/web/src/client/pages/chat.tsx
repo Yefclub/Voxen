@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check, Copy, Library, ListVideo, Search, Sparkles, Wand2 } from 'lucide-react';
+import {
+  AlertCircle,
+  Check,
+  Copy,
+  Library,
+  ListVideo,
+  Search,
+  Sparkles,
+  Wand2,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Spinner } from '../components/ui/spinner';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
@@ -126,8 +136,18 @@ export function ChatPage(): React.ReactElement {
     }
   }
 
-  async function send(): Promise<void> {
-    const text = input.trim();
+  // HITL: clique nos botões do ConfirmationPrompt envia mensagem automática
+  // de aprovação/negação na conversa, que o agente lê e prossegue/aborta.
+  async function respondToConfirmation(approved: boolean): Promise<void> {
+    if (streaming) return;
+    const reply = approved
+      ? 'Sim, pode prosseguir com a ação proposta.'
+      : 'Não, cancele essa ação.';
+    void send(reply);
+  }
+
+  async function send(overrideText?: string): Promise<void> {
+    const text = (overrideText ?? input).trim();
     if (!text || streaming) return;
 
     let convId = active?.id;
@@ -153,10 +173,18 @@ export function ChatPage(): React.ReactElement {
     setStreaming(true);
 
     try {
+      // Intl detecta o timezone IANA do user (ex: "America/Sao_Paulo"). Server
+      // encaminha pro chat service injetar no system prompt (data/hora real).
+      const userTz =
+        typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
       const res = await fetch(`/api/chat/conversations/${convId}/send`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          'X-User-Timezone': userTz,
+        },
         body: JSON.stringify({ content: text }),
       });
       if (!res.ok || !res.body) {
@@ -264,7 +292,11 @@ export function ChatPage(): React.ReactElement {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.18 }}
               >
-                <Bubble msg={m} user={me?.user ?? null} />
+                <Bubble
+                  msg={m}
+                  user={me?.user ?? null}
+                  onConfirmAction={(approved) => void respondToConfirmation(approved)}
+                />
               </motion.div>
             ))}
           </AnimatePresence>
@@ -300,9 +332,11 @@ export function ChatPage(): React.ReactElement {
 function Bubble({
   msg,
   user,
+  onConfirmAction,
 }: {
   msg: Msg;
   user: { name: string; image?: string | null } | null;
+  onConfirmAction?: (approved: boolean) => void;
 }): React.ReactElement {
   const isUser = msg.role === 'user';
   const [copied, setCopied] = useState(false);
@@ -358,6 +392,27 @@ function Bubble({
             <p className="whitespace-pre-wrap">{msg.content}</p>
           ) : (
             <>
+              {/* HITL: tool request_user_confirmation gera banner com botões.
+                  preview vem como JSON da tool — extraímos action_summary. */}
+              {(() => {
+                const conf = (msg.tools ?? []).find((t) => t.name === 'request_user_confirmation');
+                if (!conf?.preview) return null;
+                let action = '';
+                try {
+                  const parsed = JSON.parse(conf.preview) as { action_summary?: string };
+                  action = parsed.action_summary ?? '';
+                } catch {
+                  action = conf.preview;
+                }
+                if (!action) return null;
+                return (
+                  <ConfirmationPrompt
+                    action={action}
+                    onConfirm={() => onConfirmAction?.(true)}
+                    onReject={() => onConfirmAction?.(false)}
+                  />
+                );
+              })()}
               <Markdown>{msg.content}</Markdown>
               {msg.content.length > 0 && (
                 <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-[var(--color-app-border)] opacity-60 hover:opacity-100 transition-opacity">
@@ -423,6 +478,50 @@ function VoxenAvatar(): React.ReactElement {
         className="h-full w-full object-cover"
         draggable={false}
       />
+    </div>
+  );
+}
+
+function ConfirmationPrompt({
+  action,
+  onConfirm,
+  onReject,
+}: {
+  action: string;
+  onConfirm: () => void;
+  onReject: () => void;
+}): React.ReactElement {
+  return (
+    <div className="mb-3 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3.5 not-prose">
+      <div className="flex items-start gap-2.5">
+        <div className="shrink-0 h-7 w-7 rounded-md bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
+          <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] uppercase tracking-wider font-medium text-amber-300/90 mb-1">
+            A Vox pede confirmação
+          </p>
+          <p className="text-[13.5px] text-zinc-100 leading-snug">{action}</p>
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-100 text-[12px] font-medium hover:bg-emerald-500/30 transition-colors"
+            >
+              <Check className="h-3 w-3" />
+              Confirmar
+            </button>
+            <button
+              type="button"
+              onClick={onReject}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-rose-500/15 border border-rose-500/40 text-rose-100 text-[12px] font-medium hover:bg-rose-500/25 transition-colors"
+            >
+              <X className="h-3 w-3" />
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -40,6 +40,23 @@ async def get_default_transcription_model() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_default_web_search_model() -> str | None:
+    """Modelo dedicado pra tool web_search. Fallback ao default_chat_model
+    com sufixo ":online" se não configurado (qualquer modelo OR aceita)."""
+    enc = await db.get_setting_enc("default_web_search_model")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
+async def get_default_vision_model() -> str | None:
+    """Modelo multimodal pra entender imagens. Sem setting → vision desabilitado."""
+    enc = await db.get_setting_enc("default_vision_model")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
 async def get_summary_timeout_sec(default: float = 90.0) -> float:
     """Timeout do call summarize-transcript pra OpenRouter. Opcional via setting.
 
