@@ -27,7 +27,7 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog';
 
 interface TranscriptDetail {
   id: string;
-  source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'WEB';
+  source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB';
   url: string;
   title: string;
   channel: string | null;

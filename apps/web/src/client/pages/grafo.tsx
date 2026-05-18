@@ -20,7 +20,7 @@ interface GraphNode {
   id: string;
   label: string;
   type: 'transcript' | 'note' | 'folder';
-  source?: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'WEB';
+  source?: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB';
   weight: number;
 }
 interface GraphEdge {

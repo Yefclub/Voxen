@@ -1,14 +1,15 @@
 // ============================================================================
-// Video URL — parser + canonicalização (YouTube / Instagram / TikTok)
+// Video URL — parser + canonicalização (YouTube / Instagram / TikTok / X)
 // ============================================================================
 // Detecta a plataforma pela URL e devolve forma canônica + source enum.
 // Plataformas suportadas no MVP (público only, sem cookies):
 //   YOUTUBE   — youtu.be/<id>, youtube.com/watch?v=<id>, /shorts/<id>, /embed/<id>
 //   INSTAGRAM — instagram.com/{reel|reels|p|tv}/<code>
 //   TIKTOK    — tiktok.com/@user/video/<id>, vm.tiktok.com/<short>, vt.tiktok.com/<short>
+//   X         — x.com/<user>/status/<id>, twitter.com/<user>/status/<id>
 // ============================================================================
 
-export type VideoSource = 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK';
+export type VideoSource = 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X';
 
 export interface VideoUrl {
   source: VideoSource;
@@ -20,6 +21,7 @@ const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 const IG_CODE = /^[A-Za-z0-9_-]+$/;
 const TT_ID = /^[0-9]{6,32}$/;
 const TT_SHORT = /^[A-Za-z0-9_-]+$/;
+const X_STATUS_ID = /^[0-9]{6,32}$/;
 
 export function parseVideoUrl(input: string): VideoUrl | null {
   if (typeof input !== 'string' || input.length === 0) return null;
@@ -31,7 +33,7 @@ export function parseVideoUrl(input: string): VideoUrl | null {
   }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
 
-  return parseYouTube(url) ?? parseInstagram(url) ?? parseTikTok(url);
+  return parseYouTube(url) ?? parseInstagram(url) ?? parseTikTok(url) ?? parseX(url);
 }
 
 function parseYouTube(url: URL): VideoUrl | null {
@@ -116,4 +118,22 @@ function parseTikTok(url: URL): VideoUrl | null {
     };
   }
   return null;
+}
+
+function parseX(url: URL): VideoUrl | null {
+  // x.com (novo domínio) e twitter.com (legacy). Aceita também www. e mobile.
+  const host = url.hostname.replace(/^www\.|^mobile\.|^m\./, '');
+  if (host !== 'x.com' && host !== 'twitter.com') return null;
+  // Formato: /<user>/status/<id>  ou  /i/status/<id>  ou  /i/web/status/<id>
+  const parts = url.pathname.split('/').filter(Boolean);
+  // Procura "status" e pega o próximo segmento
+  const idx = parts.indexOf('status');
+  const statusId = idx >= 0 ? parts[idx + 1] : undefined;
+  if (!statusId || !X_STATUS_ID.test(statusId)) return null;
+  // yt-dlp aceita https://x.com/i/status/<id> (forma minimalista)
+  return {
+    source: 'X',
+    videoId: statusId,
+    canonical: `https://x.com/i/status/${statusId}`,
+  };
 }
