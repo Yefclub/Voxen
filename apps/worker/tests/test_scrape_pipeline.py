@@ -1,0 +1,177 @@
+"""Testes do scrape_pipeline.run (mocked: scraper + storage + db + events + summary)."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from src import scrape_pipeline, scraper
+from src.cancellation import CancelledException
+from src.pipeline import PermanentError
+
+
+class _FakeLogger:
+    def info(self, *_a: object, **_kw: object) -> None:
+        pass
+
+    def warning(self, *_a: object, **_kw: object) -> None:
+        pass
+
+    def exception(self, *_a: object, **_kw: object) -> None:
+        pass
+
+
+def _scrape_result() -> scraper.ScrapeResult:
+    return scraper.ScrapeResult(
+        url="https://example.com/post",
+        title="Como aprender Python",
+        site_name="Blog Tech",
+        author="João Silva",
+        published_at=datetime(2026, 1, 15),
+        thumbnail_url="https://example.com/cover.jpg",
+        language="pt",
+        markdown="# Como aprender Python\n\nPython é...",
+        plain_text="Como aprender Python. Python é...",
+    )
+
+
+async def test_happy_path_persists_and_publishes_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pipeline completo: fetch → persist → link_job_done → summary → publica done."""
+    # Mock scraper.fetch_and_extract → retorna ScrapeResult válido
+    monkeypatch.setattr(
+        scrape_pipeline.scraper,
+        "fetch_and_extract",
+        AsyncMock(return_value=_scrape_result()),
+    )
+
+    # Mock storage.put_markdown
+    monkeypatch.setattr(
+        scrape_pipeline.storage,
+        "put_markdown",
+        AsyncMock(return_value=None),
+    )
+
+    # Mock events.publish_job_event — coleta os stages publicados
+    events_published: list[str] = []
+
+    async def fake_publish(uid: str, jid: str, stage: str, **kw: object) -> None:
+        events_published.append(stage)
+
+    monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", fake_publish)
+
+    # Mock db: connection() + link_job_done
+    fake_conn = MagicMock()
+    fake_conn.execute = AsyncMock(return_value=None)
+    fake_ctx = MagicMock()
+    fake_ctx.__aenter__ = AsyncMock(return_value=fake_conn)
+    fake_ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(scrape_pipeline.db, "connection", lambda: fake_ctx)
+    monkeypatch.setattr(scrape_pipeline.db, "generate_cuid", lambda: "ctest123")
+    monkeypatch.setattr(scrape_pipeline.db, "link_job_done", AsyncMock(return_value=None))
+
+    # Mock summary.maybe_generate (best-effort, não precisa testar aqui)
+    monkeypatch.setattr(
+        scrape_pipeline.summary,
+        "maybe_generate",
+        AsyncMock(return_value=None),
+    )
+
+    # cancel = false
+    monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
+
+    await scrape_pipeline.run(
+        job_id="job1",
+        user_id="user1",
+        source_url="https://example.com/post",
+        log=_FakeLogger(),
+    )
+
+    # Eventos esperados na ordem
+    assert "downloading" in events_published
+    assert "uploading" in events_published
+    assert "indexing" in events_published
+    assert "done" in events_published
+
+    # link_job_done foi chamado com o transcript_id gerado
+    scrape_pipeline.db.link_job_done.assert_awaited_once_with("job1", "ctest123")  # type: ignore[attr-defined]
+
+
+async def test_robots_blocked_raises_permanent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """robots.txt proíbe → PermanentError (Job FAILED)."""
+    monkeypatch.setattr(
+        scrape_pipeline.scraper,
+        "fetch_and_extract",
+        AsyncMock(side_effect=scraper.RobotsBlockedError("robots blocked")),
+    )
+    monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
+    monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
+
+    with pytest.raises(PermanentError, match="robots"):
+        await scrape_pipeline.run(
+            job_id="job1",
+            user_id="user1",
+            source_url="https://blocked.example.com/",
+            log=_FakeLogger(),
+        )
+
+
+async def test_fetch_blocked_raises_permanent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """4xx no fetch → PermanentError."""
+    monkeypatch.setattr(
+        scrape_pipeline.scraper,
+        "fetch_and_extract",
+        AsyncMock(side_effect=scraper.FetchBlockedError("HTTP 403")),
+    )
+    monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
+    monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
+
+    with pytest.raises(PermanentError, match="403"):
+        await scrape_pipeline.run(
+            job_id="job1",
+            user_id="user1",
+            source_url="https://example.com/",
+            log=_FakeLogger(),
+        )
+
+
+async def test_empty_content_raises_permanent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Conteúdo curto/paywall/JS-heavy → PermanentError."""
+    monkeypatch.setattr(
+        scrape_pipeline.scraper,
+        "fetch_and_extract",
+        AsyncMock(side_effect=scraper.EmptyContentError("vazio")),
+    )
+    monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
+    monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
+
+    with pytest.raises(PermanentError, match="vazio"):
+        await scrape_pipeline.run(
+            job_id="job1",
+            user_id="user1",
+            source_url="https://paywall.example.com/",
+            log=_FakeLogger(),
+        )
+
+
+async def test_cancel_before_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cancel pré-fetch → CancelledException."""
+    monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: True)
+    monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
+
+    with pytest.raises(CancelledException):
+        await scrape_pipeline.run(
+            job_id="job1",
+            user_id="user1",
+            source_url="https://example.com/",
+            log=_FakeLogger(),
+        )
