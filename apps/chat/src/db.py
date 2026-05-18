@@ -179,6 +179,138 @@ async def _create_job(user_id: str, source_url: str, job_type: str) -> dict[str,
         return {"id": new_id, "status": "QUEUED", "sourceUrl": source_url}
 
 
+# ============================================================================
+# Notes — KB manual (NOTE/FOLDER em árvore)
+# ============================================================================
+
+
+async def list_user_notes(
+    user_id: str, limit: int = 50, kind: str | None = None
+) -> list[dict[str, Any]]:
+    async with connection() as conn:
+        if kind:
+            rows = await conn.fetch(
+                """
+                SELECT id, "parentId", kind::text AS kind, title, "createdAt", "updatedAt"
+                FROM "Note"
+                WHERE "userId" = $1 AND kind = $2::"NoteKind"
+                ORDER BY "updatedAt" DESC
+                LIMIT $3
+                """,
+                user_id, kind, limit,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT id, "parentId", kind::text AS kind, title, "createdAt", "updatedAt"
+                FROM "Note"
+                WHERE "userId" = $1
+                ORDER BY "updatedAt" DESC
+                LIMIT $2
+                """,
+                user_id, limit,
+            )
+    return [dict(r) for r in rows]
+
+
+async def search_user_notes(user_id: str, query: str, limit: int = 8) -> list[dict[str, Any]]:
+    """FTS sobre title+content. Retorna trechos com headline."""
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+              id, title, "parentId",
+              ts_headline(
+                'portuguese',
+                coalesce(content, ''),
+                plainto_tsquery('portuguese', $2),
+                'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1'
+              ) AS snippet,
+              ts_rank("searchVector", plainto_tsquery('portuguese', $2)) AS rank
+            FROM "Note"
+            WHERE "userId" = $1
+              AND kind = 'NOTE'
+              AND "searchVector" @@ plainto_tsquery('portuguese', $2)
+            ORDER BY rank DESC, "updatedAt" DESC
+            LIMIT $3
+            """,
+            user_id, query, limit,
+        )
+    return [dict(r) for r in rows]
+
+
+async def get_user_note(user_id: str, note_id: str) -> dict[str, Any] | None:
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, "parentId", kind::text AS kind, title, content, "createdAt", "updatedAt"
+            FROM "Note"
+            WHERE id = $1 AND "userId" = $2
+            """,
+            note_id, user_id,
+        )
+    return dict(row) if row else None
+
+
+async def create_user_note(
+    user_id: str,
+    *,
+    title: str,
+    content: str = "",
+    parent_id: str | None = None,
+    kind: str = "NOTE",
+) -> dict[str, Any]:
+    import secrets
+    import time
+
+    new_id = f"n{format(int(time.time() * 1000), 'x')[-8:]}{secrets.token_hex(8)}"
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO "Note" (
+                id, "userId", "parentId", kind, title, content,
+                "createdAt", "updatedAt"
+            )
+            VALUES ($1, $2, $3, $4::"NoteKind", $5, $6, $7, $7)
+            RETURNING id, "parentId", kind::text AS kind, title, "updatedAt"
+            """,
+            new_id, user_id, parent_id, kind, title, content, _utcnow_naive(),
+        )
+    return dict(row) if row else {"id": new_id}
+
+
+async def update_user_note(
+    user_id: str, note_id: str, *, title: str | None = None, content: str | None = None
+) -> dict[str, Any] | None:
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE "Note"
+            SET title = COALESCE($3, title),
+                content = COALESCE($4, content),
+                "updatedAt" = NOW()
+            WHERE id = $1 AND "userId" = $2
+            RETURNING id, title, "updatedAt"
+            """,
+            note_id, user_id, title, content,
+        )
+    return dict(row) if row else None
+
+
+async def delete_user_note(user_id: str, note_id: str) -> bool:
+    async with connection() as conn:
+        result = await conn.execute(
+            'DELETE FROM "Note" WHERE id = $1 AND "userId" = $2',
+            note_id, user_id,
+        )
+    # asyncpg retorna "DELETE N" — parse pra inteiro
+    try:
+        n = int(result.split()[-1])
+    except (ValueError, IndexError):
+        n = 0
+    return n > 0
+
+
 async def insert_cost_event(
     *,
     user_id: str,
