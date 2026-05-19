@@ -293,7 +293,7 @@ Pesquisa na web é uma ferramenta central, não opcional. Usar ativamente para:
 
 ## Contexto
 
-Projeto pessoal do Yef (Carlos Kalyel) hospedado em `YefClub-Org/Voxen` (private). Owner único.
+Projeto pessoal do Yef (Carlos Kalyel) hospedado em `Yefclub/Voxen` (private). Owner único.
 
 **Ecossistema de software**:
 - **Deploy**: Easypanel ou Docker Compose direto (mesmo `docker-compose.yml` do dev — paridade dev/prod)

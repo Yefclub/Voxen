@@ -25,7 +25,7 @@ Plataforma web self-hosted de **biblioteca de vídeos** com transcrição autom�
 Pré-requisitos: `docker` + `docker compose`. Nada além disso.
 
 ```bash
-git clone https://github.com/YefClub-Org/Voxen.git
+git clone https://github.com/Yefclub/Voxen.git
 cd Voxen
 make dev
 ```
@@ -48,7 +48,7 @@ Tem guia passo-a-passo pra 4 cenários em [`docs/DEPLOY.md`](docs/DEPLOY.md):
 TL;DR pro cenário mais comum (VPS + nginx + Let's Encrypt):
 
 ```bash
-git clone https://github.com/YefClub-Org/Voxen.git /opt/voxen
+git clone https://github.com/Yefclub/Voxen.git /opt/voxen
 cd /opt/voxen
 cp .env.example .env  # edite secrets + APP_BASE_URL
 mv docker-compose.override.yml docker-compose.override.dev.yml

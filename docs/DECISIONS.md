@@ -20,7 +20,7 @@ Voxen começou como aplicação Electron desktop com Python sidecar pra transcri
 
 ### Decisão
 
-Reescrever como **plataforma web self-hosted**, deployável em container único via Docker Compose. Repositório anterior arquivado como `YefClub-Org/Voxen-electron-legacy` (private, read-only). Nova base começou em 2026-05-15.
+Reescrever como **plataforma web self-hosted**, deployável em container único via Docker Compose. Repositório anterior arquivado como `Voxen-electron-legacy` (private, read-only). Nova base começou em 2026-05-15.
 
 ### Consequências
 

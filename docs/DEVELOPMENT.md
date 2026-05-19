@@ -16,7 +16,7 @@ Opcional (pra rodar tooling fora do container, ex: prisma generate, lint local):
 ## Setup inicial
 
 ```bash
-git clone https://github.com/YefClub-Org/Voxen.git
+git clone https://github.com/Yefclub/Voxen.git
 cd Voxen
 make dev
 ```
@@ -24,6 +24,8 @@ make dev
 Sobe tudo (postgres, redis, garage, web, chat, worker). Master key gerada automaticamente. Garage bootstrap automático.
 
 Acessa `http://localhost:3000`. Primeiro cadastro vira admin → tela de setup pede OpenRouter API key + modelos default.
+
+> Repositório atual: `Yefclub/Voxen` (private durante a preparação para abertura pública). Enquanto estiver privado em conta pessoal Free, branch protection pode não estar disponível; ao tornar público, revisar required status checks e regras de branch.
 
 ## Comandos do dia-a-dia (via Makefile)
 
