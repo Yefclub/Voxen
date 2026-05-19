@@ -13,7 +13,7 @@ import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motio
 
 interface TranscriptSummary {
   id: string;
-  source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB';
+  source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB' | 'UPLOAD';
   url: string;
   title: string;
   channel: string | null;
@@ -131,7 +131,7 @@ export function TranscricoesPage(): React.ReactElement {
               </div>
               {!isSearching && (
                 <Button variant="primary" size="lg" asChild className="mt-3">
-                  <Link to="/jobs">Transcrever primeiro vídeo</Link>
+                  <Link to="/jobs">Adicionar primeiro conteúdo</Link>
                 </Button>
               )}
             </CardContent>

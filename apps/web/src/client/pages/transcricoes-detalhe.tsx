@@ -27,7 +27,7 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog';
 
 interface TranscriptDetail {
   id: string;
-  source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB';
+  source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB' | 'UPLOAD';
   url: string;
   title: string;
   channel: string | null;
@@ -144,6 +144,8 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               {t.source === 'YOUTUBE' && 'YouTube'}
               {t.source === 'INSTAGRAM' && 'Instagram Reel'}
               {t.source === 'TIKTOK' && 'TikTok'}
+              {t.source === 'X' && 'X'}
+              {t.source === 'UPLOAD' && 'Upload'}
             </Badge>
             {/* Método de extração — só faz sentido pra vídeos */}
             {t.source !== 'WEB' && (
@@ -242,12 +244,14 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </CardContent>
             </Card>
 
-            <Button variant="outline" size="default" className="w-full" asChild>
-              <a href={t.url} target="_blank" rel="noreferrer">
-                {t.source === 'WEB' ? 'Abrir página original' : 'Abrir vídeo original'}
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </Button>
+            {t.source !== 'UPLOAD' && (
+              <Button variant="outline" size="default" className="w-full" asChild>
+                <a href={t.url} target="_blank" rel="noreferrer">
+                  {t.source === 'WEB' ? 'Abrir página original' : 'Abrir vídeo original'}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
           </motion.aside>
         </div>
       </div>
@@ -284,7 +288,7 @@ function SummaryBlock({
             </div>
             <div className="flex-1 space-y-1">
               <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-100">
-                Resumo do vídeo
+                Resumo
               </h2>
               <p className="text-sm text-[var(--color-app-muted)]">
                 Use a IA para criar um resumo estruturado em markdown.

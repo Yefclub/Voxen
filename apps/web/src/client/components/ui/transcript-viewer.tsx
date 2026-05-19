@@ -133,7 +133,7 @@ function parseSegments(markdown: string): Segment[] {
 
   const lines = body.split('\n').filter((l) => l.trim().length > 0);
   const segments: Segment[] = [];
-  const lineRe = /^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\((https?:\/\/[^)]+)\)\s*(.*)$/;
+  const lineRe = /^\[(\d{1,2}:\d{2}(?::\d{2})?)\](?:\((https?:\/\/[^)]+)\))?\s*(.*)$/;
 
   for (const line of lines) {
     const m = line.match(lineRe);

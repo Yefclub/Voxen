@@ -167,6 +167,7 @@ enum TranscriptSource {
   TIKTOK
   X             // x.com / twitter.com (yt-dlp suporta nativamente)
   WEB           // página web (scraper Trafilatura)
+  UPLOAD        // arquivo de áudio/vídeo enviado pelo usuário
 }
 
 enum TranscriptionMethod {
@@ -235,6 +236,7 @@ model Chunk {
 enum JobType {
   DOWNLOAD_AND_TRANSCRIBE
   SCRAPE_WEB
+  UPLOAD_AND_TRANSCRIBE
 }
 
 enum JobStatus {

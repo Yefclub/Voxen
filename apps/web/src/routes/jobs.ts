@@ -18,6 +18,14 @@ import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isSetupComplete } from '../lib/settings';
 import { parseVideoUrl } from '../lib/video-url';
+import {
+  MAX_MEDIA_UPLOAD_BYTES,
+  MAX_MEDIA_UPLOAD_REQUEST_BYTES,
+  isSupportedMediaFile,
+  putUploadFile,
+  sanitizeUploadFilename,
+  uploadSourceUrl,
+} from '../lib/media-upload';
 import { createSubscriber } from '../lib/redis';
 import {
   isTerminalStage,
@@ -78,7 +86,10 @@ jobsRoutes.post('/', async (c) => {
   }
   const video = parseVideoUrl(parsed.data.url);
   if (!video) {
-    return c.json({ error: 'URL não suportada — use link do YouTube, Instagram ou TikTok.' }, 400);
+    return c.json(
+      { error: 'URL não suportada — use link do YouTube, Instagram, TikTok ou X.' },
+      400,
+    );
   }
 
   const existingTranscript = await db.transcript.findFirst({
@@ -136,7 +147,7 @@ jobsRoutes.post('/', async (c) => {
 });
 
 // POST /api/jobs/auto — dispatcher unificado.
-// Detecta se a URL é vídeo (YouTube/Instagram/TikTok) ou página web e
+// Detecta se a URL é vídeo (YouTube/Instagram/TikTok/X) ou página web e
 // roteia internamente. UI usa só este endpoint pra evitar duplicidade
 // de campos / abas. Mantém /api/jobs e /api/jobs/scrape pra
 // compatibilidade com clients externos / scripts.
@@ -248,6 +259,76 @@ jobsRoutes.post('/auto', async (c) => {
   await publishJobEvent(userId, { jobId: webJob.id, stage: 'queued' }).catch(() => undefined);
   return c.json(
     { jobId: webJob.id, status: webJob.status, sourceUrl: webJob.sourceUrl, kind: 'web' },
+    201,
+  );
+});
+
+// POST /api/jobs/upload — envia áudio/vídeo bruto para S3 e agenda transcrição.
+jobsRoutes.post('/upload', async (c) => {
+  const userId = c.get('userId');
+
+  if (!(await isSetupComplete())) {
+    return c.json(
+      { error: 'Setup incompleto. Aguarde o administrador concluir a configuração.' },
+      412,
+    );
+  }
+
+  const contentLength = Number(c.req.header('content-length') ?? '0');
+  if (contentLength > MAX_MEDIA_UPLOAD_REQUEST_BYTES) {
+    return c.json({ error: 'Arquivo muito grande. O limite é 500 MiB.' }, 413);
+  }
+
+  const form = await c.req.formData().catch(() => null);
+  const media = form?.get('media');
+  if (!(media instanceof File)) {
+    return c.json({ error: 'Arquivo de mídia ausente.' }, 400);
+  }
+
+  const filename = sanitizeUploadFilename(media.name);
+  const contentType = media.type || 'application/octet-stream';
+  if (media.size <= 0) {
+    return c.json({ error: 'Arquivo vazio.' }, 400);
+  }
+  if (media.size > MAX_MEDIA_UPLOAD_BYTES) {
+    return c.json({ error: 'Arquivo muito grande. O limite é 500 MiB.' }, 413);
+  }
+  if (!isSupportedMediaFile(filename, contentType)) {
+    return c.json({ error: 'Formato não suportado. Envie áudio ou vídeo.' }, 400);
+  }
+
+  const uploadId = crypto.randomUUID();
+  const sourceUrl = uploadSourceUrl(uploadId, filename);
+  try {
+    await putUploadFile({
+      userId,
+      uploadId,
+      filename,
+      body: new Uint8Array(await media.arrayBuffer()),
+      contentType,
+    });
+  } catch (err) {
+    console.error('[jobs] upload to S3 failed:', err instanceof Error ? err.message : err);
+    return c.json({ error: 'Falha ao enviar arquivo para o armazenamento S3.' }, 502);
+  }
+
+  const job = await db.job.create({
+    data: {
+      userId,
+      type: 'UPLOAD_AND_TRANSCRIBE',
+      status: 'QUEUED',
+      sourceUrl,
+    },
+    select: { id: true, status: true, sourceUrl: true },
+  });
+
+  await notifyNewJob(job.id).catch((err) => {
+    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+  });
+  await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
+
+  return c.json(
+    { jobId: job.id, status: job.status, sourceUrl: job.sourceUrl, kind: 'upload' },
     201,
   );
 });
@@ -379,7 +460,7 @@ jobsRoutes.post('/:id/retry', async (c) => {
   const id = c.req.param('id');
   const original = await db.job.findFirst({
     where: { id, userId },
-    select: { id: true, status: true, sourceUrl: true },
+    select: { id: true, status: true, sourceUrl: true, type: true },
   });
   if (!original) {
     return c.json({ error: 'Job não encontrado.' }, 404);
@@ -409,7 +490,7 @@ jobsRoutes.post('/:id/retry', async (c) => {
     newJob = await db.job.create({
       data: {
         userId,
-        type: 'DOWNLOAD_AND_TRANSCRIBE',
+        type: original.type,
         status: 'QUEUED',
         sourceUrl: original.sourceUrl,
       },

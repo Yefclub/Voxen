@@ -267,6 +267,35 @@ describeIfDb('jobs API', () => {
     expect(body.jobs).toHaveLength(0);
   });
 
+  it('POST /api/jobs/:id/retry preserva tipo original do job', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+
+    const failed = await db.job.create({
+      data: {
+        userId: admin.id,
+        type: 'SCRAPE_WEB',
+        status: 'FAILED',
+        sourceUrl: 'https://example.com/artigo',
+        errorMsg: 'falhou',
+      },
+    });
+
+    const res = await app.fetch(
+      new Request(`http://localhost/api/jobs/${failed.id}/retry`, {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { jobId: string };
+    const retry = await db.job.findUniqueOrThrow({ where: { id: body.jobId } });
+    expect(retry.type).toBe('SCRAPE_WEB');
+  });
+
   it('SSE entrega evento publicado no canal e fecha em stage terminal', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
