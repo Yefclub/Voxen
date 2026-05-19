@@ -66,7 +66,7 @@ Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecime
 - **Auth**: better-auth (Prisma adapter), email/senha, workflow de aprovação admin
 - **DB**: Postgres 17 + Prisma 6 + FTS (`tsvector` GIN, dicionário `portuguese`)
 - **Fila/cache**: Redis 7
-- **Storage**: Garage S3 v1.0 (self-hosted)
+- **Storage**: MinIO/S3-compatible (`S3_*`)
 - **LLM/Transcrição**: OpenRouter (chat + audio + embeddings via API unificada)
 - **Infra**: Docker + Docker Compose
 - **Deploy**: Easypanel App via Dockerfile ou Docker Compose direto
@@ -86,7 +86,7 @@ voxen/
 ├── .specs/             # specs EARS por feature
 ├── .claude/            # config + agents + skills
 ├── .github/workflows/  # ci.yml, security.yml, release.yml
-├── scripts/            # master-key-init.sh, garage-init.sh
+├── scripts/            # ensure-env.sh, easypanel-entrypoint.sh
 ├── docker-compose.yml
 ├── Makefile
 └── .env.example        # APENAS na raiz; nunca em apps/*
@@ -95,7 +95,7 @@ voxen/
 ### Docker Compose (dev)
 
 ```bash
-make dev   # docker compose up -d --build (postgres, redis, garage, web, chat, worker)
+make dev   # docker compose up -d --build (postgres, redis, minio, web, chat, worker)
 ```
 
 Serviços e portas (dev):
@@ -103,7 +103,7 @@ Serviços e portas (dev):
 - chat: `http://localhost:8001` (só exposto em dev via override)
 - postgres: interno na rede `voxen-net`
 - redis: interno
-- garage: interno (API S3 em :3900, admin em :3903)
+- minio: `http://localhost:9000` (S3) e `http://localhost:9001` (console)
 
 ## Comandos do Projeto
 
@@ -127,8 +127,8 @@ make seed              # Seed de dev
 
 make shell-db          # psql no postgres
 make shell-redis       # redis-cli
-make garage-init       # Reroda bootstrap do Garage
-make master-key-show   # Mostra a master key (cuidado — secret)
+make minio-init        # Reroda criação do bucket MinIO
+make master-key-show   # Mostra MASTER_KEY (cuidado — secret)
 make clean             # Remove volumes (PERDE DADOS)
 ```
 
@@ -223,11 +223,11 @@ Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo �
 
 - **`.env` APENAS na raiz do projeto**. NUNCA em `apps/web/`, `apps/chat/`, `apps/worker/`
 - O `.env` na raiz contém SÓ o mínimo essencial:
-  - URLs de infra (`DATABASE_URL`, `REDIS_URL`, `GARAGE_ENDPOINT`)
-  - Secrets de infra (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `GARAGE_RPC_SECRET`, `GARAGE_ADMIN_TOKEN`, `BETTER_AUTH_SECRET`)
+  - URLs de infra (`DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`)
+  - Secrets de infra (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `BETTER_AUTH_SECRET`, `MASTER_KEY`)
   - `APP_BASE_URL` e `NODE_ENV`
 - **TUDO O MAIS** vai em DB (tabela `settings`), cifrado com a master key
-- A **master key** vem de `MASTER_KEY` no Easypanel App; no Compose local é gerada em `/data/master.key` via init container.
+- A **master key** vem de `MASTER_KEY` em todos os modos documentados; formato `openssl rand -base64 32`.
 - Secrets cifrados em DB incluem: OpenRouter API key, modelos default, config SMTP (futuro)
 - Se você precisa adicionar config nova: pergunta-se "muda em runtime?" — se sim, vai pra DB; se é infra, vai pra `.env` na raiz
 
@@ -298,7 +298,7 @@ Projeto pessoal do Yef (Carlos Kalyel) hospedado em `Yefclub/Voxen` (private). O
 **Ecossistema de software**:
 - **Deploy**: Easypanel App via Dockerfile ou Docker Compose direto
 - **Auth**: better-auth com workflow de aprovação manual do admin (modelo restrito de adoção)
-- **Storage**: Garage S3 self-hosted (sem dependência de cloud externa)
+- **Storage**: MinIO/S3-compatible (sem dependência obrigatória de cloud externa)
 - **LLM**: OpenRouter como agregador único (1 chave, billing unificado)
 - **CI/CD**: GitHub Actions com foco em segurança (Trivy, CodeQL, Bandit, gitleaks)
 

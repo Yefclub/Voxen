@@ -75,7 +75,7 @@ def decrypt(encrypted: str, key: bytes) -> str:
 
 
 def load_master_key(path: str | Path) -> bytes:
-    """Carrega master key de `path` (base64 do raw 32 bytes, vide master-key-init.sh)."""
+    """Carrega master key legada de `path` (base64 do raw 32 bytes)."""
     p = Path(path)
     try:
         content = p.read_text(encoding="utf-8").strip()

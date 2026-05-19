@@ -2,8 +2,8 @@
 // Master key loader (singleton)
 // ============================================================================
 // Carrega a master key uma única vez por processo. `MASTER_KEY` (base64 de
-// 32 bytes) tem prioridade e é o formato recomendado para Easypanel App.
-// `MASTER_KEY_PATH` permanece como fallback para o Compose local.
+// 32 bytes) é o formato canônico para todos os modos documentados.
+// `MASTER_KEY_PATH` permanece apenas como fallback legado.
 //
 // Spec 000: "If the master key file is missing or unreadable when an app
 // starts, the app shall exit with non-zero code and log

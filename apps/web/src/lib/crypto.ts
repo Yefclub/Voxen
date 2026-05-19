@@ -85,8 +85,7 @@ export function decrypt(encrypted: string, key: Buffer): string {
 }
 
 /**
- * Carrega master key de `path`. Arquivo é base64 do raw key (32 bytes)
- * — formato gerado por `scripts/master-key-init.sh`.
+ * Carrega master key legada de `path`. Arquivo é base64 do raw key (32 bytes).
  */
 export function loadMasterKey(path: string): Buffer {
   let content: string;

@@ -32,7 +32,7 @@ Aguarde a propagação (`dig voxen.seudominio.com` deve retornar o IP).
 - Ubuntu 22.04+ / Debian 12+ / qualquer Linux com kernel 5.x+
 - Docker Engine **24+** e Docker Compose **v2**
 - 2 GB RAM mínimo, 4 GB recomendado (worker + ffmpeg + chat agent)
-- 20 GB de disco (DB + Garage + imagens)
+- 20 GB de disco (DB + MinIO + imagens)
 - Portas 80 e 443 livres (se for usar HTTPS direto)
 
 Instalar Docker no Ubuntu/Debian:
@@ -55,12 +55,23 @@ NODE_ENV=production
 # Trocar TODOS os secrets abaixo. Sugestão: openssl rand -base64 32
 POSTGRES_PASSWORD=...
 REDIS_PASSWORD=...
-GARAGE_RPC_SECRET=...     # 64 hex chars — openssl rand -hex 32
-GARAGE_ADMIN_TOKEN=...
 BETTER_AUTH_SECRET=...    # min 32 chars
+MASTER_KEY=...            # openssl rand -base64 32
+
+# MinIO/S3 local do compose
+MINIO_ROOT_USER=voxen
+MINIO_ROOT_PASSWORD=...
+S3_ENDPOINT=http://minio:9000
+S3_ACCESS_KEY=voxen
+S3_SECRET_KEY=<mesmo valor de MINIO_ROOT_PASSWORD, ou access key dedicada>
+S3_BUCKET=voxen-transcripts
+S3_REGION=us-east-1
+S3_FORCE_PATH_STYLE=true
 ```
 
-> No Compose, a `master.key` (AES-256-GCM) é **gerada automaticamente** no primeiro boot dentro de `/data/master.key` (volume Docker). No Easypanel App, use `MASTER_KEY` no Environment.
+> `MASTER_KEY` é a chave AES-256-GCM que cifra secrets salvos no banco. O
+> formato é o mesmo em todos os modos: `openssl rand -base64 32`. Faça backup
+> desse valor junto com Postgres e MinIO.
 
 ---
 
@@ -233,7 +244,7 @@ Siga os passos da seção [Servidor + nginx do host](#servidor--nginx-do-host) a
 
 - **Docker não inicia**: confira `nesting=1` nas features do CT. Se for unprivileged, talvez precise habilitar `keyctl=1` também.
 - **ffmpeg lento**: aumente CPU/RAM do CT. Worker faz chunking + transcrição em paralelo, gosta de cores.
-- **Garage não persiste**: cheque se o volume `garage_data` está no rootfs do CT (não em mountpoint NFS lento).
+- **MinIO não persiste**: cheque se o volume `minio_data` está no rootfs do CT (não em mountpoint NFS lento).
 
 ---
 
@@ -241,7 +252,8 @@ Siga os passos da seção [Servidor + nginx do host](#servidor--nginx-do-host) a
 
 Easypanel cuida automaticamente de HTTPS, domínio, backups e renovação. Para
 Easypanel, o caminho recomendado é **App via Dockerfile** com Postgres, Redis e
-MinIO como serviços separados do próprio painel.
+MinIO como serviços separados do próprio painel. Esse é o fluxo mais parecido
+com o Orbital: um App principal via `Dockerfile`, infra gerenciada separada.
 
 ### 1. Provisionar dependências
 
@@ -251,8 +263,13 @@ No mesmo projeto do Easypanel, crie:
 - **Redis**
 - **MinIO**
 
-No MinIO, crie o bucket `voxen-transcripts` e uma access key com permissão de
-leitura/escrita nesse bucket.
+No MinIO:
+
+1. Abra a console do MinIO.
+2. Crie o bucket `voxen-transcripts`.
+3. Crie uma access key com permissão de leitura/escrita nesse bucket.
+4. Guarde `Access Key` e `Secret Key`; elas entram em `S3_ACCESS_KEY` e
+   `S3_SECRET_KEY`.
 
 ### 2. Configurar App
 
@@ -262,6 +279,7 @@ leitura/escrita nesse bucket.
 4. **Build path:** `/`
 5. **Dockerfile:** `Dockerfile`
 6. **Porta:** `3000`
+7. **Health check path:** `/health`
 
 ### 3. Variáveis de ambiente
 
@@ -276,7 +294,7 @@ MASTER_KEY=<openssl rand -base64 32>
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB
 REDIS_URL=redis://:PASSWORD@HOST:6379/0
 
-S3_ENDPOINT=http://<projeto>_minio:9000
+S3_ENDPOINT=http://<host-interno-do-minio>:9000
 S3_ACCESS_KEY=<access key do MinIO>
 S3_SECRET_KEY=<secret key do MinIO>
 S3_BUCKET=voxen-transcripts
@@ -284,9 +302,13 @@ S3_REGION=us-east-1
 S3_FORCE_PATH_STYLE=true
 ```
 
+Use o host interno que o Easypanel mostra para o serviço MinIO; no projeto
+`taskivus`, por exemplo, normalmente fica parecido com
+`http://taskivus-minio:9000`.
+
 `MASTER_KEY` é a chave AES-256-GCM que cifra secrets salvos no banco. **Faça
-backup desse valor** junto com o Postgres; sem ele, API keys e settings cifrados
-ficam ilegíveis.
+backup desse valor** junto com Postgres e MinIO; sem ele, API keys e settings
+cifrados ficam ilegíveis.
 
 ### 4. Domínio
 
@@ -300,6 +322,16 @@ Easypanel UI → Deploy. Acompanhe os logs.
 No startup, a imagem roda `prisma generate`, `prisma migrate deploy` e sobe
 `chat`, `worker` e `web` no mesmo container.
 
+Validação pós-deploy:
+
+```bash
+curl https://voxen.seudominio.com/health
+curl https://voxen.seudominio.com/health/deep
+```
+
+`/health/deep` precisa retornar `ok: true`; ele valida Postgres, Redis, chat
+interno e MinIO/S3.
+
 ### 6. Backups
 
 Configure backups de:
@@ -309,96 +341,30 @@ Configure backups de:
 
 ---
 
-## Easypanel Compose + MinIO externo
+## Easypanel Compose (alternativo)
 
-Este modo é mantido como alternativa para quem quer rodar o `docker-compose.yml`
-completo. Para novos deploys no Easypanel, prefira a seção **Easypanel App**.
+O Compose atual também funciona, porque já sobe Postgres, Redis, MinIO, web,
+chat e worker. No Easypanel, porém, prefira **Easypanel App**: o painel gerencia
+melhor porta, domínio, logs e serviços separados.
 
-### Passo a passo
+Se usar Compose mesmo assim:
 
-**1. Provisionar MinIO no Easypanel**
+1. Crie um serviço **Compose**.
+2. Use o repo `Yefclub/Voxen`, branch `dev` ou `main`.
+3. Use `docker-compose.yml` e não use `docker-compose.override.yml`.
+4. Defina no Environment os mesmos valores de `.env.example`, principalmente
+   `MASTER_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `MINIO_ROOT_PASSWORD` e
+   `S3_SECRET_KEY`.
 
-- Easypanel UI → New service → **MinIO** (template oficial)
-- Anote:
-  - `MINIO_ROOT_USER` (ex: `admin`)
-  - `MINIO_ROOT_PASSWORD` (gere com `openssl rand -base64 32`)
-  - Endpoint interno: `http://<projeto>_minio:9000` (URL interna do Easypanel)
-  - Console (UI MinIO): porta 9001, opcional pro admin debugar
-
-**2. Criar bucket e access key**
-
-- Abra a console MinIO (porta 9001, pode expor temporariamente)
-- Login com `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`
-- **Buckets → Create Bucket**: `voxen-transcripts`
-- **Access Keys → Create**:
-  - Salve `Access Key` e `Secret Key` — vão pro `.env` do Voxen
-  - Policy: default (full access ao bucket é suficiente)
-
-**3. Configurar Voxen pra usar o MinIO**
-
-Easypanel UI → Voxen → Environment. Adicione:
-
-```env
-# Storage S3 externo (precedência sobre GARAGE_*)
-S3_ENDPOINT=http://<projeto>_minio:9000
-S3_ACCESS_KEY=<da etapa 2>
-S3_SECRET_KEY=<da etapa 2>
-S3_BUCKET=voxen-transcripts
-S3_REGION=us-east-1
-S3_FORCE_PATH_STYLE=true   # MinIO precisa
-```
-
-**4. Remover o serviço Garage do compose (opcional)**
-
-Como você está usando MinIO, pode remover o serviço `garage` do `docker-compose.yml` pra economizar recursos. Edite no fork:
-
-```yaml
-# REMOVER as seções:
-# - garage:
-# - garage-init:
-# E nos depends_on de web/worker/chat, tire `garage-init`
-```
-
-Ou mantenha — o Voxen prefere `S3_*` quando presente e ignora `garage`, então não há conflito (só fica idle).
-
-**5. Validar**
-
-Após deploy, valide:
-
-```bash
-# Healthcheck profundo confere conectividade S3
-curl https://voxen.seudominio.com/health/deep | jq
-
-# Deve retornar:
-# { "checks": { "postgres": true, "redis": true, "chat": true, "s3": true } }
-```
-
-Se `s3: false`, verifique logs do worker — geralmente é credencial errada ou bucket inexistente.
-
-### Troubleshooting S3
+### Troubleshooting S3/MinIO
 
 | Sintoma | Causa provável | Fix |
 |---------|----------------|-----|
 | `SignatureDoesNotMatch` | Secret errado ou clock skew | Recopie a secret; sincronize NTP |
 | `NoSuchBucket` | Bucket não criado | Crie na console MinIO |
 | `403 Forbidden` | Access key sem policy | Default policy ou attach `readwrite` |
-| `Connection refused` | Endpoint errado | Use URL interna do Easypanel (não localhost) |
+| `Connection refused` | Endpoint errado | No App use URL interna do Easypanel; no Compose use `http://minio:9000` |
 | `MalformedXML` | Falta `S3_FORCE_PATH_STYLE=true` | Sempre `true` pra MinIO |
-
-### Migrar do Garage embarcado pra MinIO
-
-Se você já tem dados no Garage e quer migrar:
-
-```bash
-# 1. Liste objetos no Garage
-aws --endpoint-url=http://localhost:3900 s3 ls s3://voxen-transcripts/ --recursive
-
-# 2. Sync pra MinIO usando rclone (ou mc):
-rclone sync garage:voxen-transcripts minio:voxen-transcripts --progress
-
-# 3. Troque as envs S3_* no Easypanel e redeploy
-# 4. Confira `health/deep` antes de remover o Garage
-```
 
 ### Variantes
 
@@ -445,12 +411,11 @@ mkdir -p $BACKUP_DIR
 docker compose exec -T postgres pg_dump -U voxen voxen | gzip > $BACKUP_DIR/db-$DATE.sql.gz
 
 # Master key (NUNCA perca isso)
-# Easypanel App: salve o valor do env MASTER_KEY em cofre de senhas.
-# Compose legado: faça backup do volume voxen_master_key.
-docker run --rm -v voxen_master_key:/data alpine tar czf - -C /data . > $BACKUP_DIR/master-key-$DATE.tar.gz
+grep '^MASTER_KEY=' .env > $BACKUP_DIR/master-key-$DATE.env
+chmod 0600 $BACKUP_DIR/master-key-$DATE.env
 
-# Garage (transcrições .md)
-docker run --rm -v voxen_garage_data:/data alpine tar czf - -C /data . > $BACKUP_DIR/garage-$DATE.tar.gz
+# MinIO (transcrições .md e avatars)
+docker run --rm -v voxen_minio_data:/data alpine tar czf - -C /data . > $BACKUP_DIR/minio-$DATE.tar.gz
 ```
 
 Rode via cron diário. **A master key é o mais crítico** — sem ela, os secrets cifrados (OpenRouter key, modelos default) viram lixo.
@@ -464,7 +429,7 @@ Endpoints de health:
 | Endpoint | Service | Propósito | Resposta |
 |---|---|---|---|
 | `GET /health` | web (3000) | **Liveness** — proxy/reverse-proxy. Sempre 200 se processo vivo | `{"ok":true,"service":"web"}` |
-| `GET /health/deep` | web (3000) | **Readiness** — checa DB + Redis + chat service + S3/Garage | 200 com checks ou 503 se algum falhar |
+| `GET /health/deep` | web (3000) | **Readiness** — checa DB + Redis + chat service + S3/MinIO | 200 com checks ou 503 se algum falhar |
 | `GET /health` | chat (8001, interno) | Liveness do FastAPI | `{"ok":true,"service":"chat"}` |
 | `GET /health/deep` | chat (8001, interno) | Checa DB + master key carregável | 200/503 com latências |
 
@@ -557,7 +522,7 @@ Self-hosted single-tenant não justifica overhead de fluxo email→link→form. 
 | Chat retorna 412 "Setup incompleto" | Admin não fez onboarding | Login como admin → `/onboarding` → cola OpenRouter key |
 | Job fica eternamente RUNNING | Worker travou | `docker compose restart worker`. Job vira FAILED após uns minutos via reconciliation |
 | SSE corta a cada 60s | nginx com `proxy_buffering on` | Garanta `proxy_buffering off` no location (já vem no `voxen.conf.example`) |
-| `MASTER_KEY não definido` | Easypanel App sem master key | Gere com `openssl rand -base64 32` e salve no Environment |
-| `master.key not found` | Compose com volume novo sem init container | `docker compose up -d master-key-init` |
+| `MASTER_KEY não definido` | Environment sem master key | Gere com `openssl rand -base64 32` e salve no `.env`/Environment |
+| `NoSuchBucket` no `/health/deep` | Bucket MinIO não criado | `make minio-init` ou crie `voxen-transcripts` na console |
 
 Pra debug profundo, leia [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) e [`docs/SECURITY.md`](SECURITY.md).

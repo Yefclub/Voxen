@@ -2,7 +2,7 @@
 
 ## Contexto
 
-O Voxen permite **conversar com o acervo** via agente que usa tools determinísticas (abordagem Karpathy/harness — sem embeddings). O agente roda no `apps/chat` (Python + FastAPI), chama o OpenRouter usando o modelo `default_chat_model` configurado no setup, e tem acesso a 5 tools que leem do Postgres + Garage do user logado.
+O Voxen permite **conversar com o acervo** via agente que usa tools determinísticas (abordagem Karpathy/harness — sem embeddings). O agente roda no `apps/chat` (Python + FastAPI), chama o OpenRouter usando o modelo `default_chat_model` configurado no setup, e tem acesso a tools que leem do Postgres + storage S3-compatible do user logado.
 
 Sem RAG vetorial. Sem chunking. Sem embeddings. Tools simples, determinísticas, escopadas por `userId`.
 
@@ -14,7 +14,7 @@ Referências: ADR-004 (no embeddings), `docs/TRANSCRIPT-FORMAT.md`, Spec 000 (se
 |---|---|---|
 | `list_transcripts` | (limit?, source?) | array de `{id, title, channel, durationSec, source, createdAt}` |
 | `search_transcripts` | (query, limit?) | array de `{id, title, snippet, rank}` via Postgres FTS |
-| `read_transcript` | (transcript_id) | markdown completo do .md no Garage |
+| `read_transcript` | (transcript_id) | markdown completo do .md no S3-compatible storage |
 | `read_transcript_section` | (transcript_id, from_sec, to_sec) | recorte do markdown entre dois timestamps |
 | `get_metadata` | (transcript_id) | frontmatter JSON |
 
@@ -50,7 +50,7 @@ Todas as tools recebem `userId` injetado pelo handler — agente nunca decide es
 
 - [ ] `POST /api/chat` autenticado → SSE com tokens em tempo real
 - [ ] Tool `search_transcripts` retorna resultados via FTS escopado pelo `userId`
-- [ ] Tool `read_transcript` busca .md do Garage do user correto
+- [ ] Tool `read_transcript` busca .md do S3-compatible storage do user correto
 - [ ] CostEvent registrado após cada resposta completa
 - [ ] UI `/chat` renderiza mensagens (user + assistant + tool calls coletados) com streaming visual
 - [ ] Mensagens persistem em DB (`Conversation` + `ChatMessage`) — atualizado pós-PR #33

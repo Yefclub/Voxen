@@ -19,6 +19,55 @@ require_env S3_ACCESS_KEY
 require_env S3_SECRET_KEY
 require_env S3_BUCKET
 
+wait_for_url_host() {
+  local name="$1"
+  local value="$2"
+  local default_port="$3"
+  local host_port
+
+  host_port="$(
+    TARGET_URL="$value" DEFAULT_PORT="$default_port" python - <<'PY'
+import os
+from urllib.parse import urlparse
+
+url = os.environ["TARGET_URL"]
+default_port = int(os.environ["DEFAULT_PORT"])
+parsed = urlparse(url)
+host = parsed.hostname
+port = parsed.port or default_port
+if not host:
+    raise SystemExit(1)
+print(f"{host}:{port}")
+PY
+  )"
+
+  local host="${host_port%:*}"
+  local port="${host_port##*:}"
+  echo "[easypanel] aguardando $name em $host:$port..."
+  TARGET_HOST="$host" TARGET_PORT="$port" TARGET_NAME="$name" python - <<'PY'
+import os
+import socket
+import sys
+import time
+
+host = os.environ["TARGET_HOST"]
+port = int(os.environ["TARGET_PORT"])
+name = os.environ["TARGET_NAME"]
+
+for attempt in range(1, 31):
+    try:
+        with socket.create_connection((host, port), timeout=2):
+            print(f"[easypanel] {name} pronto (tentativa {attempt}/30)")
+            sys.exit(0)
+    except OSError:
+        print(f"[easypanel] {name} ainda indisponível (tentativa {attempt}/30)")
+        time.sleep(2)
+
+print(f"[easypanel] FATAL: {name} indisponível em {host}:{port}", file=sys.stderr)
+sys.exit(1)
+PY
+}
+
 python - <<'PY'
 import base64
 import os
@@ -40,6 +89,10 @@ export PORT="${PORT:-3000}"
 export CHAT_SERVICE_URL="${CHAT_SERVICE_URL:-http://127.0.0.1:8001}"
 export S3_REGION="${S3_REGION:-us-east-1}"
 export S3_FORCE_PATH_STYLE="${S3_FORCE_PATH_STYLE:-true}"
+
+wait_for_url_host "Postgres" "$DATABASE_URL" 5432
+wait_for_url_host "Redis" "$REDIS_URL" 6379
+wait_for_url_host "S3" "$S3_ENDPOINT" 9000
 
 echo "[easypanel] generating Prisma Client..."
 prisma generate --schema=/app/prisma/schema.prisma

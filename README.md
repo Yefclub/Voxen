@@ -17,7 +17,7 @@ Plataforma web self-hosted de **biblioteca de vídeos** com transcrição autom�
 - **Auth**: better-auth (email/senha) com aprovação manual do admin
 - **DB**: Postgres 17 + Prisma + FTS (`tsvector` GIN, dicionário `portuguese`)
 - **Fila**: Redis + ARQ
-- **Storage**: Garage S3 self-hosted (ou MinIO/AWS via `S3_*`)
+- **Storage**: MinIO/S3-compatible (`S3_*`)
 - **LLM/Transcrição**: OpenRouter (chat + Whisper unificados)
 
 ## Subir em 1 minuto (dev local)
@@ -32,7 +32,7 @@ make dev
 
 Abre em `http://localhost:3000`. Primeiro cadastro vira admin e cai no onboarding (cola OpenRouter API key + escolhe modelos default). Pronto.
 
-> Master key AES-256-GCM é gerada automaticamente no primeiro boot. Garage S3 faz bootstrap sozinho. Sem `.env` pra editar em dev.
+`make dev` cria/completa `.env` se necessário, sobe Postgres, Redis, MinIO, web, chat e worker. MinIO fica em `http://localhost:9001`.
 
 ## Subir em produção
 
@@ -88,13 +88,13 @@ Mínimo 12 caracteres. Mais detalhes em [`docs/DEPLOY.md`](docs/DEPLOY.md#reset-
 
 ## Operação — atualizar sem perder dados
 
-Comandos seguros que preservam volumes (postgres, garage, master_key):
+Comandos seguros que preservam volumes (postgres, redis, minio):
 
 ```bash
 make update          # rolling restart com rebuild (zero downtime perceptível)
 make build           # rebuild de imagens (sem reiniciar)
 make restart         # down + up (curta indisponibilidade, dados preservados)
-make backup          # snapshot postgres + master_key + garage em ./backups/
+make backup          # snapshot postgres + MASTER_KEY + minio em ./backups/
 ```
 
 **NUNCA** use `make clean` em produção — ele remove TODOS os volumes e perde os dados. O target já pede confirmação interativa.

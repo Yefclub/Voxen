@@ -38,7 +38,7 @@ Voxen é uma plataforma web self-hosted composta por **3 apps** e **3 serviços 
                                                                    │
                                                                    ▼
                                                     ┌──────────────────────────┐
-                                                    │       Garage S3          │
+                                                    │       MinIO / S3         │
                                                     │   .md transcripts +      │
                                                     │   thumbnails             │
                                                     └──────────────────────────┘
@@ -73,7 +73,7 @@ Serviço interno (porta 8001, só na rede `voxen-net`). Responsabilidades:
 - Agente Agno configurado com tools (sem embeddings):
   - `list_transcripts(workspace_id)` → metadata
   - `search_transcripts(workspace_id, query)` → Postgres FTS com `ts_headline`
-  - `read_transcript(id)` → Markdown completo do Garage
+  - `read_transcript(id)` → Markdown completo do storage S3
   - `read_transcript_section(id, from_sec, to_sec)` → recorte
   - `get_metadata(id)` → frontmatter
 - Cada chamada loga `cost_events` no Postgres (modelo, tokens, custo OpenRouter)
@@ -89,7 +89,7 @@ Worker assíncrono que consome jobs via Redis (ARQ). Responsabilidades:
   4. Se não → baixa áudio, `ffmpeg` segmenta em chunks de ~5min com overlap
   5. Pra cada chunk → OpenRouter `/audio/transcriptions` (modelo escolhido pelo admin)
   6. Concatena resultado com timestamps, gera `.md` com frontmatter
-  7. Upload `.md` pro Garage S3
+  7. Upload `.md` pro MinIO/S3
   8. Insere `transcripts` no Postgres (texto + frontmatter + `tsvector` via trigger)
   9. Deleta vídeo + áudio local (cleanup)
   10. Loga `cost_events`
@@ -111,12 +111,12 @@ Worker assíncrono que consome jobs via Redis (ARQ). Responsabilidades:
 - Backend de rate-limit do better-auth (futuro)
 - Backend de cache de sessões (opcional)
 
-### Garage S3
+### MinIO / S3-compatible
 
-- 1 nó standalone (replication_factor=1) — suficiente pra self-hosted simples
+- MinIO local no Compose e MinIO externo no Easypanel
 - Bucket `voxen-transcripts` armazena `.md` e thumbnails
-- Bootstrap automático via init container (`scripts/garage-init.sh`)
-- Credenciais exportadas em `/creds/voxen.env` (volume compartilhado, read-only nos apps)
+- Bucket criado automaticamente no Compose via `minio-init`
+- Credenciais via `S3_*` no `.env` ou Environment do Easypanel
 
 ## Fluxos principais
 
@@ -154,7 +154,7 @@ Spec completa: `.specs/000-setup-inicial.md`.
    - yt-dlp tenta legendas oficiais
    - Se não, baixa áudio + ffmpeg chunking + OpenRouter transcribe
    - Gera .md com frontmatter + timestamps clicáveis
-   - Upload .md pro Garage (key: workspaces/<userId>/transcripts/<id>.md)
+   - Upload .md pro S3 (key: workspaces/<userId>/transcripts/<id>.md)
    - INSERT Transcript no Postgres (plain_text + frontmatter)
    - Trigger SQL atualiza search_vector
    - Cleanup local (deleta video/audio)
@@ -197,7 +197,7 @@ Cada decisão grande é documentada como ADR em `docs/DECISIONS.md`. Resumo:
 3. **Agno > AI SDK** — multi-agent, memória, RAG nativos no Python
 4. **Postgres FTS > pgvector** (harness/Karpathy) — agente usa tools, não vector RAG
 5. **ARQ > BullMQ** — worker em Python (yt-dlp+ffmpeg nativo)
-6. **Garage S3** — self-hosted, alinha com Transit
+6. **MinIO/S3-compatible** — padrão único para local, VPS e Easypanel
 7. **better-auth + workflow aprovação** — adoção restrita por design
-8. **Master key por modo de deploy** — env `MASTER_KEY` no Easypanel App; volume auto-gerado no Compose
+8. **Master key via env** — `MASTER_KEY` em todos os modos documentados
 9. **Cliente SSE custom no front** (sem AI SDK) — Agno não tem stream protocol compat

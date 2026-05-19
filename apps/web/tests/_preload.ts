@@ -2,7 +2,7 @@
 // Bun test preload — garante master key disponível antes dos imports
 // ============================================================================
 // Roda antes de QUALQUER teste; cria uma master key efêmera se nenhuma chave
-// estiver definida. Em prod/Easypanel a fonte recomendada é MASTER_KEY.
+// estiver definida. Em deploys reais a fonte canônica é MASTER_KEY.
 // ============================================================================
 
 import { existsSync } from 'node:fs';

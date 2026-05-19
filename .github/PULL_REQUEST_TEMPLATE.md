@@ -21,6 +21,7 @@ Decisões, trade-offs, partes complicadas. Liste arquivos críticos modificados.
 - [ ] `make typecheck` verde
 - [ ] `make test` verde
 - [ ] `docker compose build` verde
+- [ ] Dockerfile Easypanel validado pelo CI (`Docker build (apps + Easypanel)`)
 - [ ] Spec atualizada/criada: `.specs/NNN-slug.md` (se aplicável)
 - [ ] Migration Prisma criada (se mudou schema)
 - [ ] Testado manualmente: <descrever cenários>

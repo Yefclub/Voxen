@@ -5,15 +5,15 @@
 //   GET  /api/transcripts          — lista (paginada)
 //   GET  /api/transcripts/:id      — metadata + plainText + markdown content
 //
-// .md content é lido do Garage S3. Em prod, considerar cache; MVP busca direto.
+// .md content é lido do storage S3. Em prod, considerar cache; MVP busca direto.
 // ============================================================================
 
-import { existsSync, readFileSync } from 'node:fs';
 import { Hono } from 'hono';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { rateLimit } from '../lib/rate-limit';
+import { s3Bucket, s3Client } from '../lib/s3';
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
@@ -112,55 +112,6 @@ const TRANSCRIPT_LIST_SELECT = {
   createdAt: true,
 } as const;
 
-// S3-compatible storage (Garage default; MinIO/AWS S3 também suportados).
-// Aceita variáveis `S3_*` com fallback pra `GARAGE_*` p/ compat com setup atual.
-let _s3: S3Client | null = null;
-function envOr(...keys: string[]): string | undefined {
-  for (const k of keys) {
-    const v = process.env[k];
-    if (v) return v;
-  }
-  return undefined;
-}
-
-function getS3(): S3Client {
-  if (_s3) return _s3;
-  const endpoint = envOr('S3_ENDPOINT', 'GARAGE_ENDPOINT') ?? 'http://garage:3900';
-  const accessKey =
-    envOr('S3_ACCESS_KEY', 'GARAGE_ACCESS_KEY') ??
-    readCredsFile('S3_ACCESS_KEY') ??
-    readCredsFile('GARAGE_ACCESS_KEY');
-  const secretKey =
-    envOr('S3_SECRET_KEY', 'GARAGE_SECRET_KEY') ??
-    readCredsFile('S3_SECRET_KEY') ??
-    readCredsFile('GARAGE_SECRET_KEY');
-  if (!accessKey || !secretKey) {
-    throw new Error(
-      'Credenciais S3 ausentes — defina S3_ACCESS_KEY/S3_SECRET_KEY (ou GARAGE_*) ou /creds/voxen.env',
-    );
-  }
-  const forcePathStyle = (envOr('S3_FORCE_PATH_STYLE') ?? 'true').toLowerCase() !== 'false';
-  _s3 = new S3Client({
-    endpoint,
-    region: envOr('S3_REGION', 'GARAGE_REGION') ?? 'garage',
-    credentials: { accessKeyId: accessKey, secretAccessKey: secretKey },
-    forcePathStyle,
-  });
-  return _s3;
-}
-
-function readCredsFile(key: string): string | undefined {
-  try {
-    const path = envOr('S3_CREDS_PATH', 'GARAGE_CREDS_PATH') ?? '/creds/voxen.env';
-    if (!existsSync(path)) return undefined;
-    const content = readFileSync(path, 'utf-8');
-    const line = content.split('\n').find((l) => l.startsWith(`${key}=`));
-    return line?.slice(key.length + 1).trim();
-  } catch {
-    return undefined;
-  }
-}
-
 transcriptsRoutes.get('/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
@@ -204,13 +155,12 @@ transcriptsRoutes.get('/:id', async (c) => {
   const baseCost = transcript.costUsd ? parseFloat(transcript.costUsd.toString()) : 0;
   const totalCostUsd = (baseCost + summarySum).toFixed(6);
 
-  // Busca o .md no Garage com fallback pro plainText em caso de erro
+  // Busca o .md no S3 com fallback pro plainText em caso de erro
   const markdown = await (async (): Promise<string> => {
     try {
-      const s3 = getS3();
-      const res = await s3.send(
+      const res = await s3Client().send(
         new GetObjectCommand({
-          Bucket: envOr('S3_BUCKET', 'GARAGE_BUCKET') ?? 'voxen-transcripts',
+          Bucket: s3Bucket(),
           Key: transcript.mdPath,
         }),
       );
