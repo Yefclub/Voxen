@@ -32,11 +32,18 @@ from urllib.parse import urlparse
 
 url = os.environ["TARGET_URL"]
 default_port = int(os.environ["DEFAULT_PORT"])
-parsed = urlparse(url)
+parsed = urlparse(url if "://" in url else f"//{url}")
 host = parsed.hostname
-port = parsed.port or default_port
 if not host:
     raise SystemExit(1)
+port = parsed.port
+if port is None:
+    if parsed.scheme == "http":
+        port = 80
+    elif parsed.scheme == "https":
+        port = 443
+    else:
+        port = default_port
 print(f"{host}:{port}")
 PY
   )"
@@ -54,13 +61,19 @@ host = os.environ["TARGET_HOST"]
 port = int(os.environ["TARGET_PORT"])
 name = os.environ["TARGET_NAME"]
 
-for attempt in range(1, 31):
+max_attempts = 30
+
+for attempt in range(1, max_attempts + 1):
     try:
         with socket.create_connection((host, port), timeout=2):
-            print(f"[easypanel] {name} pronto (tentativa {attempt}/30)")
+            print(f"[easypanel] {name} pronto (tentativa {attempt}/{max_attempts})")
             sys.exit(0)
-    except OSError:
-        print(f"[easypanel] {name} ainda indisponível (tentativa {attempt}/30)")
+    except OSError as exc:
+        if attempt == 1 or attempt % 5 == 0 or attempt == max_attempts:
+            print(
+                f"[easypanel] {name} ainda indisponível "
+                f"(tentativa {attempt}/{max_attempts}): {exc}"
+            )
         time.sleep(2)
 
 print(f"[easypanel] FATAL: {name} indisponível em {host}:{port}", file=sys.stderr)

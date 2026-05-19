@@ -332,6 +332,12 @@ Use o host interno que o Easypanel mostra para o serviço MinIO; no projeto
 `taskivus`, por exemplo, normalmente fica parecido com
 `http://taskivus-minio:9000`.
 
+Se o MinIO/S3 estiver atrás de um domínio ou proxy, use a URL pública/proxy
+com esquema e sem forçar `:9000`, por exemplo `https://s3.seudominio.com` ou
+`http://s3.seudominio.com`. O startup infere a porta pela URL: `http` usa `80`,
+`https` usa `443` e endpoints internos com porta explícita continuam usando a
+porta informada.
+
 `MASTER_KEY` é a chave AES-256-GCM que cifra secrets salvos no banco. **Faça
 backup desse valor** junto com Postgres e MinIO; sem ele, API keys e settings
 cifrados ficam ilegíveis.
@@ -390,6 +396,7 @@ Se usar Compose mesmo assim:
 | `NoSuchBucket` | Bucket não criado | Crie na console MinIO |
 | `403 Forbidden` | Access key sem policy | Default policy ou attach `readwrite` |
 | `Connection refused` | Endpoint errado | No App use URL interna do Easypanel; no Compose use `http://minio:9000` |
+| Startup preso em `S3 ainda indisponível` | Porta do endpoint S3 errada ou domínio sem proxy para S3 | Para domínio/proxy use `https://s3.seudominio.com`; para MinIO interno use `http://host-interno:9000` |
 | `MalformedXML` | Falta `S3_FORCE_PATH_STYLE=true` | Sempre `true` pra MinIO |
 
 ### Variantes
