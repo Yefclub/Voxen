@@ -28,18 +28,21 @@ const app = new Hono();
 // Healthcheck liveness — sempre 200, mesmo antes do setup (spec 000)
 app.get('/health', (c) => c.json({ ok: true, service: 'web' }));
 
-// Versão da build — lê do package.json em runtime pra refletir SEMPRE
-// o que está na imagem (sem depender de build arg). Git SHA e built-at
-// continuam via env (injetados no Dockerfile).
+// Versão da build — fonte canônica em ordem de prioridade:
+//   1. env VOXEN_VERSION (release.yml injeta da tag git; Makefile injeta
+//      via `git describe --tags --always --dirty` no dev local)
+//   2. package.json (fallback se build foi feito sem injeção)
+// Tag git é a verdade no Voxen — package.json fica como fallback estável.
 async function loadAppVersion(): Promise<string> {
+  if (process.env.VOXEN_VERSION) return process.env.VOXEN_VERSION;
   try {
     const pkg = await Bun.file(new URL('../package.json', import.meta.url)).json();
     return typeof pkg.version === 'string' ? pkg.version : '0.1.0';
   } catch {
-    return process.env.VOXEN_VERSION ?? '0.1.0';
+    return '0.1.0';
   }
 }
-const VOXEN_VERSION = process.env.VOXEN_VERSION || (await loadAppVersion());
+const VOXEN_VERSION = await loadAppVersion();
 const VOXEN_GIT_SHA = process.env.VOXEN_GIT_SHA ?? '';
 const VOXEN_BUILT_AT = process.env.VOXEN_BUILT_AT ?? new Date().toISOString();
 app.get('/api/version', (c) => {

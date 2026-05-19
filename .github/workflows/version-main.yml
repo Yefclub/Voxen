@@ -1,13 +1,14 @@
 # ============================================================================
-# version-main — semver bump no merge dev→main + tag pra disparar release
+# version-main — cria tag estável vX.Y.Z em cada merge dev→main
 # ============================================================================
-# Estratégia:
-#  - Roda em push pra main (depois de merge da PR de release dev→main)
-#  - Detecta PR_NUM via mensagem do squash commit "Title (#N)"
-#  - Lê labels da PR: release:major | release:minor | release:patch (default)
-#  - Bump semver no package.json + apps/web/package.json
-#  - Commit "chore: release vX.Y.Z" + tag vX.Y.Z + push
-#  - Tag dispara o workflow release.yml existente (build+push imagens)
+# Estratégia OSS-friendly (sem PAT, sem bypass):
+#  - Roda em push pra `main` (após merge da PR de release dev→main).
+#  - Detecta o número da PR pelo squash commit "Title (#N)".
+#  - Lê labels da PR: release:major | release:minor | release:patch (default).
+#  - Lê última tag estável + bumpa o componente correspondente.
+#  - Cria SÓ TAG. NÃO modifica `package.json` nem faz commit em main.
+#    Tag não esbarra em branch protection. Funciona com `GITHUB_TOKEN`.
+#  - Tag estável dispara `release.yml` que builda e pusha imagens pro ghcr.
 # ============================================================================
 
 name: Version main on merge
@@ -23,20 +24,12 @@ permissions:
 jobs:
   version-main:
     runs-on: ubuntu-latest
-    if: "${{ !startsWith(github.event.head_commit.message, 'chore: release v') }}"
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
-          # PAT do owner (com bypass de branch protection do main).
-          # Sem ele, o push do release commit + tag falha em main.
-          # Configure em Settings → Secrets → Actions → RELEASE_TOKEN.
-          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Detect bump type from PR labels
         id: bump
@@ -46,18 +39,15 @@ jobs:
         run: |
           set -euo pipefail
           PR_NUM=""
-          # Squash commit: "Title (#N)" no fim da primeira linha.
-          # Usa parameter expansion (sem pipe) pra evitar SIGPIPE em msgs gigantes.
+          # Parameter expansion (sem pipe → sem SIGPIPE em msgs gigantes).
           FIRST_LINE="${COMMIT_MSG%%$'\n'*}"
           if [[ "$FIRST_LINE" =~ \(#([0-9]+)\)[[:space:]]*$ ]]; then
             PR_NUM="${BASH_REMATCH[1]}"
           fi
-          # Fallback: última PR mergeada
           if [[ -z "$PR_NUM" ]]; then
             PR_NUM=$(gh pr list --base main --state merged --limit 1 \
               --json number --jq '.[0].number' 2>/dev/null || echo "")
           fi
-          echo "pr_number=$PR_NUM" >> "$GITHUB_OUTPUT"
           BUMP="patch"
           if [[ -n "$PR_NUM" ]]; then
             LABELS=$(gh pr view "$PR_NUM" --json labels --jq '.labels[].name' 2>/dev/null || true)
@@ -68,12 +58,17 @@ jobs:
           echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
           echo "Detected bump: $BUMP (PR #$PR_NUM)"
 
-      - name: Compute new version + write files
+      - name: Compute new stable tag
         id: version
         run: |
           set -euo pipefail
-          VER=$(node -p "require('./package.json').version")
-          BASE_VER=${VER%-dev*}
+          # Última tag estável (sem -dev.N). Se nenhuma, fallback ao pkg.json.
+          LAST_STABLE=$(git tag --list 'v*' --sort=-v:refname | grep -v -- '-dev\.' | head -n1 || true)
+          if [[ -z "$LAST_STABLE" ]]; then
+            BASE_VER=$(node -p "require('./package.json').version")
+          else
+            BASE_VER="${LAST_STABLE#v}"
+          fi
           BUMP="${{ steps.bump.outputs.bump }}"
           NEW_VER=$(BASE_VER="$BASE_VER" BUMP="$BUMP" node -e "
             const v = process.env.BASE_VER.split('.').map(Number);
@@ -82,33 +77,20 @@ jobs:
             else { v[2]++; }
             console.log(v.join('.'));
           ")
-          echo "new_version=$NEW_VER" >> "$GITHUB_OUTPUT"
-          export NEW_VER
-          node -e "
-            const fs = require('fs');
-            const files = ['./package.json', './apps/web/package.json'];
-            for (const f of files) {
-              const j = JSON.parse(fs.readFileSync(f, 'utf8'));
-              j.version = process.env.NEW_VER;
-              fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
-            }
-          "
-          echo "Bumped to $NEW_VER"
+          echo "new_tag=v$NEW_VER" >> "$GITHUB_OUTPUT"
+          echo "Bumping main to v$NEW_VER (last stable: $LAST_STABLE)"
 
-      - name: Commit, tag, push
+      - name: Create + push tag
         env:
-          NEW_VER: ${{ steps.version.outputs.new_version }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json apps/web/package.json
-          if git diff --staged --quiet; then
-            echo "No version change to commit"
+          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            echo "Tag $NEW_TAG já existe, pulando."
             exit 0
           fi
-          git commit -m "chore: release v$NEW_VER"
-          git tag "v$NEW_VER"
-          git push origin main
-          git push origin "v$NEW_VER"
-          echo "Released v$NEW_VER — release.yml será disparado pela tag."
+          git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
+          git push origin "$NEW_TAG"
+          echo "Released $NEW_TAG — release.yml será disparado pela tag."
