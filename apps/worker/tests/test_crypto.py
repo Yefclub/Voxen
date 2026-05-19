@@ -12,7 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from src.voxen_crypto import CryptoError, decrypt, encrypt, load_master_key
+from src.voxen_crypto import (
+    CryptoError,
+    decrypt,
+    encrypt,
+    load_master_key,
+    load_master_key_value,
+)
 
 KEY = secrets.token_bytes(32)
 
@@ -102,6 +108,14 @@ class TestLoadMasterKey:
         path.write_text(base64.b64encode(b"only-16-bytes-xx").decode())
         with pytest.raises(CryptoError, match="bytes; expected 32"):
             load_master_key(path)
+
+    def test_valid_key_from_env_value(self) -> None:
+        key = secrets.token_bytes(32)
+        assert load_master_key_value(base64.b64encode(key).decode()) == key
+
+    def test_wrong_size_env_value(self) -> None:
+        with pytest.raises(CryptoError, match="MASTER_KEY must be base64-encoded 32 bytes"):
+            load_master_key_value(base64.b64encode(b"short").decode())
 
 
 def test_cross_compat_format() -> None:

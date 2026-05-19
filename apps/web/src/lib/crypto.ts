@@ -103,3 +103,15 @@ export function loadMasterKey(path: string): Buffer {
   }
   return key;
 }
+
+/**
+ * Carrega master key direto de uma env var. Valor esperado: base64 do raw key
+ * de 32 bytes (`openssl rand -base64 32`).
+ */
+export function loadMasterKeyFromEnv(value: string, name = 'MASTER_KEY'): Buffer {
+  const key = Buffer.from(value.trim(), 'base64');
+  if (key.length !== KEY_LEN) {
+    throw new CryptoError(`FATAL: ${name} must be base64-encoded ${KEY_LEN} bytes`);
+  }
+  return key;
+}

@@ -9,7 +9,7 @@ Escolha o seu cenário:
 | **Servidor próprio + nginx do host** | VPS, dedicated, máquina local. Você já tem (ou quer) nginx instalado. | [Servidor + nginx host](#servidor--nginx-do-host) |
 | **Servidor próprio + nginx em container** | Mesmo cenário, mas prefere tudo dockerizado. | [Servidor + nginx container](#servidor--nginx-em-container) |
 | **LXC do Proxmox** | Container LXC do Proxmox. Self-hosted, energia eficiente. | [Proxmox CT](#proxmox-ct) |
-| **Easypanel** | Plataforma já cuida de HTTPS e domínio. | [Easypanel](#easypanel) |
+| **Easypanel** | Plataforma já cuida de HTTPS e domínio. | [Easypanel App](#easypanel-app) |
 
 > **Antes de qualquer cenário** — leia [Pré-requisitos comuns](#pré-requisitos-comuns).
 
@@ -60,7 +60,7 @@ GARAGE_ADMIN_TOKEN=...
 BETTER_AUTH_SECRET=...    # min 32 chars
 ```
 
-> A `master.key` (AES-256-GCM) é **gerada automaticamente** no primeiro boot dentro de `/data/master.key` (volume Docker). Não toque nisso, mas faça backup do volume.
+> No Compose, a `master.key` (AES-256-GCM) é **gerada automaticamente** no primeiro boot dentro de `/data/master.key` (volume Docker). No Easypanel App, use `MASTER_KEY` no Environment.
 
 ---
 
@@ -237,54 +237,82 @@ Siga os passos da seção [Servidor + nginx do host](#servidor--nginx-do-host) a
 
 ---
 
-## Easypanel
+## Easypanel App
 
-Easypanel cuida automaticamente de HTTPS, domínio, backups e renovação. Recomendado.
+Easypanel cuida automaticamente de HTTPS, domínio, backups e renovação. Para
+Easypanel, o caminho recomendado é **App via Dockerfile** com Postgres, Redis e
+MinIO como serviços separados do próprio painel.
 
-### 1. Configurar projeto
+### 1. Provisionar dependências
 
-1. **Criar projeto:** `Voxen`
-2. **Adicionar serviço:** tipo **Compose**
-3. **Source:** GitHub → `Yefclub/Voxen` → branch `main`
-4. **Compose file:** `docker-compose.yml`
-5. **NÃO usar** `docker-compose.override.yml` (esse é só de dev)
+No mesmo projeto do Easypanel, crie:
 
-> Enquanto o repo estiver privado, confirme que o GitHub app/integração do Easypanel tem acesso ao repositório `Yefclub/Voxen`.
+- **Postgres**
+- **Redis**
+- **MinIO**
 
-### 2. Variáveis de ambiente
+No MinIO, crie o bucket `voxen-transcripts` e uma access key com permissão de
+leitura/escrita nesse bucket.
 
-Easypanel UI → Environment. **NÃO usar defaults do `.env.example`**:
+### 2. Configurar App
+
+1. **Criar serviço:** tipo **App**
+2. **Source:** GitHub → `Yefclub/Voxen`
+3. **Branch:** `dev` (ou `main` para release estável)
+4. **Build path:** `/`
+5. **Dockerfile:** `Dockerfile`
+6. **Porta:** `3000`
+
+### 3. Variáveis de ambiente
+
+Easypanel UI → Voxen App → Environment. **NÃO usar defaults de dev**:
 
 ```env
 APP_BASE_URL=https://voxen.seudominio.com
 NODE_ENV=production
-POSTGRES_PASSWORD=<openssl rand -base64 32>
-REDIS_PASSWORD=<openssl rand -base64 32>
-GARAGE_RPC_SECRET=<openssl rand -hex 32>
-GARAGE_ADMIN_TOKEN=<openssl rand -base64 32>
 BETTER_AUTH_SECRET=<openssl rand -base64 32>
+MASTER_KEY=<openssl rand -base64 32>
+
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB
+REDIS_URL=redis://:PASSWORD@HOST:6379/0
+
+S3_ENDPOINT=http://<projeto>_minio:9000
+S3_ACCESS_KEY=<access key do MinIO>
+S3_SECRET_KEY=<secret key do MinIO>
+S3_BUCKET=voxen-transcripts
+S3_REGION=us-east-1
+S3_FORCE_PATH_STYLE=true
 ```
 
-### 3. Domínio
+`MASTER_KEY` é a chave AES-256-GCM que cifra secrets salvos no banco. **Faça
+backup desse valor** junto com o Postgres; sem ele, API keys e settings cifrados
+ficam ilegíveis.
 
-Easypanel UI → Domains. Adicione `voxen.seudominio.com` apontando pro serviço `web` (porta 3000). HTTPS automático via Let's Encrypt.
+### 4. Domínio
 
-### 4. Deploy
+Easypanel UI → Domains. Adicione `voxen.seudominio.com` apontando para a porta
+`3000` do App. HTTPS automático via Let's Encrypt.
+
+### 5. Deploy
 
 Easypanel UI → Deploy. Acompanhe os logs.
 
-### 5. Volumes / Backups
+No startup, a imagem roda `prisma generate`, `prisma migrate deploy` e sobe
+`chat`, `worker` e `web` no mesmo container.
 
-Configure backups dos volumes:
-- `pgdata` (Postgres)
-- `garage_data` + `garage_meta` (transcrições .md — se usar Garage embarcado)
-- `master_key` (chave AES — sem ela, perde acesso a todos os secrets cifrados)
+### 6. Backups
+
+Configure backups de:
+- Postgres
+- MinIO bucket `voxen-transcripts`
+- Valor do env `MASTER_KEY`
 
 ---
 
-## Easypanel + MinIO externo (recomendado pra produção)
+## Easypanel Compose + MinIO externo
 
-Easypanel já oferece um app **MinIO** pronto. Em vez de rodar o Garage embarcado no compose, plugue um MinIO dedicado (separação de armazenamento + escala independente).
+Este modo é mantido como alternativa para quem quer rodar o `docker-compose.yml`
+completo. Para novos deploys no Easypanel, prefira a seção **Easypanel App**.
 
 ### Passo a passo
 
@@ -417,13 +445,15 @@ mkdir -p $BACKUP_DIR
 docker compose exec -T postgres pg_dump -U voxen voxen | gzip > $BACKUP_DIR/db-$DATE.sql.gz
 
 # Master key (NUNCA perca isso)
+# Easypanel App: salve o valor do env MASTER_KEY em cofre de senhas.
+# Compose legado: faça backup do volume voxen_master_key.
 docker run --rm -v voxen_master_key:/data alpine tar czf - -C /data . > $BACKUP_DIR/master-key-$DATE.tar.gz
 
 # Garage (transcrições .md)
 docker run --rm -v voxen_garage_data:/data alpine tar czf - -C /data . > $BACKUP_DIR/garage-$DATE.tar.gz
 ```
 
-Rode via cron diário. **A master.key é o mais crítico** — sem ela, os secrets cifrados (OpenRouter key, modelos default) viram lixo.
+Rode via cron diário. **A master key é o mais crítico** — sem ela, os secrets cifrados (OpenRouter key, modelos default) viram lixo.
 
 ---
 
@@ -527,6 +557,7 @@ Self-hosted single-tenant não justifica overhead de fluxo email→link→form. 
 | Chat retorna 412 "Setup incompleto" | Admin não fez onboarding | Login como admin → `/onboarding` → cola OpenRouter key |
 | Job fica eternamente RUNNING | Worker travou | `docker compose restart worker`. Job vira FAILED após uns minutos via reconciliation |
 | SSE corta a cada 60s | nginx com `proxy_buffering on` | Garanta `proxy_buffering off` no location (já vem no `voxen.conf.example`) |
-| `master.key not found` | Volume novo sem init container | `docker compose up -d master-key-init` |
+| `MASTER_KEY não definido` | Easypanel App sem master key | Gere com `openssl rand -base64 32` e salve no Environment |
+| `master.key not found` | Compose com volume novo sem init container | `docker compose up -d master-key-init` |
 
 Pra debug profundo, leia [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) e [`docs/SECURITY.md`](SECURITY.md).

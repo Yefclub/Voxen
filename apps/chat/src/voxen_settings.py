@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from . import db
-from .voxen_crypto import decrypt, load_master_key
+from .voxen_crypto import decrypt, load_master_key, load_master_key_value
 
 _master_key: bytes | None = None
 
@@ -14,8 +14,12 @@ _master_key: bytes | None = None
 def get_master_key() -> bytes:
     global _master_key
     if _master_key is None:
-        path = os.environ.get("MASTER_KEY_PATH", "/data/master.key")
-        _master_key = load_master_key(Path(path))
+        env_key = os.environ.get("MASTER_KEY", "").strip()
+        if env_key:
+            _master_key = load_master_key_value(env_key)
+        else:
+            path = os.environ.get("MASTER_KEY_PATH", "/data/master.key")
+            _master_key = load_master_key(Path(path))
     return _master_key
 
 

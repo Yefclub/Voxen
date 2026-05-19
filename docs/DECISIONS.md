@@ -215,6 +215,14 @@ Owner pediu "extremamente low env" — apenas o estritamente necessário em `.en
 - Backup do volume = backup da master key (importante pra recovery)
 - Se perder o volume, perde acesso aos secrets cifrados (mas o `.env` na raiz é o backup mínimo de infra)
 
+### Atualização — Easypanel App
+
+No modo Easypanel App via `Dockerfile`, Postgres/Redis/MinIO são serviços
+externos do painel e não há init container para gerar arquivo. Nesse modo, a
+master key vem de `MASTER_KEY` no Environment (base64 de 32 bytes, gerado com
+`openssl rand -base64 32`). O fallback `MASTER_KEY_PATH` permanece para o
+Compose local/legado.
+
 ---
 
 ## ADR-009 — Cliente SSE custom no front (sem AI SDK)

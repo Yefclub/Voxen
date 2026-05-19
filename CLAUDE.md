@@ -69,7 +69,7 @@ Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecime
 - **Storage**: Garage S3 v1.0 (self-hosted)
 - **LLM/Transcrição**: OpenRouter (chat + audio + embeddings via API unificada)
 - **Infra**: Docker + Docker Compose
-- **Deploy**: Easypanel (mesmo `docker-compose.yml` do dev)
+- **Deploy**: Easypanel App via Dockerfile ou Docker Compose direto
 
 ### Estrutura do Projeto
 
@@ -211,7 +211,7 @@ Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo �
 ### Migrations (CRÍTICO)
 
 - Mudou `prisma/schema.prisma`? Criar migration: `pnpm prisma migrate dev --name <nome>`
-- Em prod (Easypanel): `prisma migrate deploy` roda no entrypoint do `web`
+- Em prod: `prisma migrate deploy` roda no startup do App Easypanel ou no entrypoint do `web` no Compose
 - Colunas no schema sem migration passam no dev mas QUEBRAM no deploy
 - Para mudanças complexas, SQL manual em migration: SEMPRE com `IF NOT EXISTS` / `IF EXISTS`
 - SQL deve ser idempotente; usar locks para prevenir operações concorrentes
@@ -227,7 +227,7 @@ Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo �
   - Secrets de infra (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `GARAGE_RPC_SECRET`, `GARAGE_ADMIN_TOKEN`, `BETTER_AUTH_SECRET`)
   - `APP_BASE_URL` e `NODE_ENV`
 - **TUDO O MAIS** vai em DB (tabela `settings`), cifrado com a master key
-- A **master key** é gerada automaticamente em `/data/master.key` (volume Docker) no primeiro boot via init container. Usuário não toca nela.
+- A **master key** vem de `MASTER_KEY` no Easypanel App; no Compose local é gerada em `/data/master.key` via init container.
 - Secrets cifrados em DB incluem: OpenRouter API key, modelos default, config SMTP (futuro)
 - Se você precisa adicionar config nova: pergunta-se "muda em runtime?" — se sim, vai pra DB; se é infra, vai pra `.env` na raiz
 
@@ -296,7 +296,7 @@ Pesquisa na web é uma ferramenta central, não opcional. Usar ativamente para:
 Projeto pessoal do Yef (Carlos Kalyel) hospedado em `Yefclub/Voxen` (private). Owner único.
 
 **Ecossistema de software**:
-- **Deploy**: Easypanel ou Docker Compose direto (mesmo `docker-compose.yml` do dev — paridade dev/prod)
+- **Deploy**: Easypanel App via Dockerfile ou Docker Compose direto
 - **Auth**: better-auth com workflow de aprovação manual do admin (modelo restrito de adoção)
 - **Storage**: Garage S3 self-hosted (sem dependência de cloud externa)
 - **LLM**: OpenRouter como agregador único (1 chave, billing unificado)

@@ -9,9 +9,9 @@ Voxen é self-hosted, multi-user com adoção restrita. Este documento descreve 
 | Externo (internet) | Brute-force login | Rate limit no `/api/auth/*` (better-auth), senhas hash via Argon2 (default better-auth) |
 | Externo | SSRF via URL maliciosa nos jobs | Allowlist de hosts no worker antes de invocar yt-dlp |
 | Externo | Upload de URL que causa download grande/abusivo | (futuro) limite de duração/tamanho — owner pediu "sem limite" no MVP, mas budget por user atua de freio econômico |
-| Externo | Roubo de master key se acessar disco | Master key em volume Docker, chmod 0400, fora de `.env` |
+| Externo | Roubo de master key se acessar disco/env | Master key em `MASTER_KEY` (Easypanel App) ou volume Docker (Compose); nunca logar |
 | Interno (user) | Acesso a transcrição de outro user | Query-time scoping por `userId` em TODA query; rotas admin protegidas por role |
-| Interno | Exfil de secrets via DB dump | Secrets em `settings.valueEnc` cifrados com master key — dump do DB sem volume não vaza |
+| Interno | Exfil de secrets via DB dump | Secrets em `settings.valueEnc` cifrados com master key — dump do DB sem master key não vaza |
 | Interno (admin) | Abuso de privilégio | Admin é o owner (1 pessoa); ações administrativas logadas |
 | Supply chain | Pacote npm/pip malicioso | Dependabot + audits (npm audit, pip-audit) + lockfile commitado |
 | Supply chain | Imagem Docker maliciosa | Trivy scan no CI em cada PR |
@@ -33,12 +33,13 @@ Vários layers, falha de um não compromete o sistema:
 - Postgres user da aplicação (`voxen`) tem permissão apenas no DB `voxen`, sem CREATEDB/SUPERUSER
 - Redis password obrigatório
 - Garage key tem permissão apenas no bucket `voxen-transcripts`
-- Volumes de master key e creds são mount **read-only** nos apps
+- No Compose, volumes de master key e creds são mount **read-only** nos apps
 
 ### Secrets management
 
 - **`.env` na raiz**: APENAS infra (DB password, Redis password, Garage RPC, Better Auth secret, App base URL)
-- **Master key** (`/data/master.key`): auto-gerada em volume, fora de env
+- **Master key**: em Easypanel App vem de `MASTER_KEY` (env secret); no Compose
+  local fica em `/data/master.key` auto-gerado em volume
 - **Secrets de app** (OpenRouter API key, SMTP, etc.): cifrados em `settings.valueEnc` via AES-256-GCM com master key
 - **NUNCA** logar secret value (logs em produção devem mascarar)
 - **NUNCA** commitar `.env` (já no `.gitignore`)

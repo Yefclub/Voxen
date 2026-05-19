@@ -199,5 +199,5 @@ Cada decisão grande é documentada como ADR em `docs/DECISIONS.md`. Resumo:
 5. **ARQ > BullMQ** — worker em Python (yt-dlp+ffmpeg nativo)
 6. **Garage S3** — self-hosted, alinha com Transit
 7. **better-auth + workflow aprovação** — adoção restrita por design
-8. **Master key auto-gerada em volume** — sem env pro user preencher
+8. **Master key por modo de deploy** — env `MASTER_KEY` no Easypanel App; volume auto-gerado no Compose
 9. **Cliente SSE custom no front** (sem AI SDK) — Agno não tem stream protocol compat

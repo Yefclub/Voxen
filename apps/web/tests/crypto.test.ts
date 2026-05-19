@@ -3,7 +3,13 @@ import { randomBytes } from 'node:crypto';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CryptoError, decrypt, encrypt, loadMasterKey } from '../src/lib/crypto';
+import {
+  CryptoError,
+  decrypt,
+  encrypt,
+  loadMasterKey,
+  loadMasterKeyFromEnv,
+} from '../src/lib/crypto';
 
 const KEY = randomBytes(32);
 
@@ -102,5 +108,19 @@ describe('loadMasterKey', () => {
     const path = join(dir, 'master.key');
     writeFileSync(path, Buffer.from('only-16-bytes-xx').toString('base64'));
     expect(() => loadMasterKey(path)).toThrow(/bytes; expected 32/);
+  });
+});
+
+describe('loadMasterKeyFromEnv', () => {
+  it('loads valid 32-byte base64 key from env value', () => {
+    const key = randomBytes(32);
+    const loaded = loadMasterKeyFromEnv(key.toString('base64'));
+    expect(loaded.equals(key)).toBe(true);
+  });
+
+  it('throws CryptoError on wrong-size env key', () => {
+    expect(() => loadMasterKeyFromEnv(Buffer.from('short').toString('base64'))).toThrow(
+      /MASTER_KEY must be base64-encoded 32 bytes/,
+    );
   });
 });
