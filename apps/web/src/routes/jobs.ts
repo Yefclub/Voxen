@@ -11,7 +11,7 @@
 // Outro user pedindo job alheio → 404 (não 403 — não vaza existência).
 // ============================================================================
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
@@ -34,6 +34,12 @@ type JobsVariables = {
 };
 
 export const jobsRoutes = new Hono<{ Variables: JobsVariables }>();
+
+function setSseProxyHeaders(c: Context): void {
+  c.header('Content-Type', 'text/event-stream; charset=utf-8');
+  c.header('Cache-Control', 'no-cache, no-transform');
+  c.header('X-Accel-Buffering', 'no');
+}
 
 // Guard: session + status=APPROVED
 jobsRoutes.use('*', async (c, next) => {
@@ -476,6 +482,7 @@ jobsRoutes.post('/:id/cancel', async (c) => {
 // SSE global por user — toast notification em qualquer página.
 jobsRoutes.get('/events/me', async (c) => {
   const userId = c.get('userId');
+  setSseProxyHeaders(c);
   return streamSSE(c, async (stream) => {
     const sub = createSubscriber();
     let closed = false;
@@ -528,6 +535,7 @@ jobsRoutes.get('/:id/events', async (c) => {
     return c.json({ error: 'Job não encontrado.' }, 404);
   }
 
+  setSseProxyHeaders(c);
   return streamSSE(c, async (stream) => {
     const sub = createSubscriber();
     let closed = false;
