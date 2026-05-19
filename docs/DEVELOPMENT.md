@@ -146,26 +146,37 @@ chore(infra): bump garage 1.0.0 → 1.0.1
 docs(spec): adiciona .specs/003-painel-custos.md
 ```
 
-### Release
+### Versioning — tag-only (OSS-friendly)
 
-**Pre-release em `dev` (somente tag)**: cada merge em `dev` dispara
-`version-dev.yml`, que **cria a tag** `vX.Y.Z-dev.N` (sem mexer no
-`package.json`). A tag NÃO dispara o `release.yml` — esse filtra
-`v[0-9]+.[0-9]+.[0-9]+` (sem hífen). Só serve pra marcar o histórico
-de builds em dev.
+A fonte da verdade é **a tag git**, não `package.json`. Workflows só
+criam tags — nunca commitam em `dev` ou `main`. Por consequência:
+
+- **Funciona com branch protection ativa** em qualquer cenário (privado
+  ou público), sem PAT, sem bypass — tags não esbarram em protection.
+- `package.json` fica congelado em `0.1.0` no histórico — não tem
+  importância, só serve como fallback se nada injetar versão.
+- A versão real aparece nas imagens via build arg `VOXEN_VERSION`
+  (release.yml injeta da tag; Makefile injeta de `git describe`).
+
+**Pre-release em `dev`**: cada merge em `dev` dispara `version-dev.yml`,
+que cria a tag `vX.Y.Z-dev.N`:
+- Lê a última tag (`git tag --list 'v*' --sort=-v:refname | head -n1`)
+- Se for pre-release → incrementa `N`
+- Se for estável → começa nova série `vX.(Y+1).0-dev.1`
+
+Pre-release NÃO dispara o `release.yml` (filtro `v[0-9]+.[0-9]+.[0-9]+`).
 
 **Release estável em `main`**: PR de `dev` → `main` com label
-`release:patch|minor|major`. `version-main.yml` limpa o sufixo `-dev.N`,
-bumpa o componente correspondente, commita `chore: release vX.Y.Z` e cria a
-tag `vX.Y.Z`. A tag dispara `release.yml` (build + push de imagens pro ghcr).
+`release:patch|minor|major`. `version-main.yml`:
+- Lê a última tag estável (sem `-dev.N`)
+- Bumpa o componente conforme o label
+- Cria a tag `vX.Y.Z`
 
-> **Nota sobre branch protection**: `dev` exige PR (não aceita push direto
-> do `GITHUB_TOKEN`). Por isso o version-dev.yml usa só tag — tags fluem
-> mesmo com proteção de branches. Quando o `version-main.yml` for usado,
-> ele também tenta push direto em `main`; se houver branch protection em
-> `main` configurada com `Restrict who can push` sem incluir o bot, o
-> push falha. Solução: adicionar `github-actions[bot]` à allowlist de
-> bypass do `main` ruleset, ou usar um PAT em `secrets.RELEASE_TOKEN`.
+A tag dispara `release.yml` (build + push de imagens pro ghcr).
+
+**Versão visível na UI**: `/api/version` retorna a versão do env
+`VOXEN_VERSION` (injetada no build), fallback pra `package.json`. Em dev
+local com Makefile, `make dev` injeta `git describe` automaticamente.
 
 ## Estilo de código
 
