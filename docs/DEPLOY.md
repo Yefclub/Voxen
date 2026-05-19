@@ -71,7 +71,7 @@ Cenário mais simples se você tem um VPS Linux com nginx instalado nativamente.
 ### 1. Clone e suba
 
 ```bash
-git clone https://github.com/YefClub-Org/Voxen.git /opt/voxen
+git clone https://github.com/Yefclub/Voxen.git /opt/voxen
 cd /opt/voxen
 cp .env.example .env
 # edite o .env conforme acima
@@ -131,7 +131,7 @@ Mesma ideia, mas o nginx roda dentro do Docker. Útil se você quer só `docker 
 ### 1. Clone e prepare certificados
 
 ```bash
-git clone https://github.com/YefClub-Org/Voxen.git /opt/voxen
+git clone https://github.com/Yefclub/Voxen.git /opt/voxen
 cd /opt/voxen
 cp .env.example .env  # edite
 mv docker-compose.override.yml docker-compose.override.dev.yml
@@ -217,7 +217,7 @@ curl -fsSL https://get.docker.com | sh
 ### 3. Deploy
 
 ```bash
-git clone https://github.com/YefClub-Org/Voxen.git /opt/voxen
+git clone https://github.com/Yefclub/Voxen.git /opt/voxen
 cd /opt/voxen
 cp .env.example .env  # edite com APP_BASE_URL=https://voxen.seudominio.com e secrets
 mv docker-compose.override.yml docker-compose.override.dev.yml
@@ -245,9 +245,11 @@ Easypanel cuida automaticamente de HTTPS, domínio, backups e renovação. Recom
 
 1. **Criar projeto:** `Voxen`
 2. **Adicionar serviço:** tipo **Compose**
-3. **Source:** GitHub → `YefClub-Org/Voxen` → branch `main`
+3. **Source:** GitHub → `Yefclub/Voxen` → branch `main`
 4. **Compose file:** `docker-compose.yml`
 5. **NÃO usar** `docker-compose.override.yml` (esse é só de dev)
+
+> Enquanto o repo estiver privado, confirme que o GitHub app/integração do Easypanel tem acesso ao repositório `Yefclub/Voxen`.
 
 ### 2. Variáveis de ambiente
 

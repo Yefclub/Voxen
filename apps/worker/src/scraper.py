@@ -28,7 +28,7 @@ from trafilatura.metadata import Document
 
 log = structlog.get_logger(__name__)
 
-USER_AGENT = "VoxenBot/1.0 (+https://github.com/YefClub-Org/Voxen)"
+USER_AGENT = "VoxenBot/1.0 (+https://github.com/Yefclub/Voxen)"
 MIN_CONTENT_CHARS = 200
 REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=5.0)
 MAX_REDIRECTS = 5
