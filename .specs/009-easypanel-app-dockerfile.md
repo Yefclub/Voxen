@@ -13,6 +13,8 @@ usando serviços gerenciados/separados do Easypanel para Postgres, Redis e MinIO
 - Usar `MASTER_KEY` como secret em env para todos os modos documentados.
 - Usar MinIO como S3 padrão no Compose local/prod, alinhado ao Easypanel.
 - Manter fallback de `MASTER_KEY_PATH` apenas para instalações legadas.
+- Publicar imagem única `ghcr.io/yefclub/voxen` para permitir Source Docker
+  image no Easypanel sem secrets em build args/logs.
 
 ## Requisitos
 
@@ -33,6 +35,12 @@ usando serviços gerenciados/separados do Easypanel para Postgres, Redis e MinIO
   com `make dev`, criando/completando `.env` local quando necessário.
 - REQ-009: O CI deve construir o Dockerfile raiz e executar smoke test com
   Postgres, Redis e MinIO reais antes de considerar o PR verde.
+- REQ-010: Em push para `dev`, `main` ou tag estável, o GitHub Actions deve
+  publicar a imagem App raiz em `ghcr.io/yefclub/voxen` usando apenas build args
+  públicos (`VOXEN_VERSION`, `VOXEN_GIT_SHA`, `VOXEN_BUILT_AT`).
+- REQ-011: A documentação do Easypanel deve recomendar Source Docker image para
+  produção, porque Source GitHub/Dockerfile expõe Environment no build-time do
+  Easypanel e pode mostrar secrets como `--build-arg` nos logs de build.
 
 ## Fora de escopo
 

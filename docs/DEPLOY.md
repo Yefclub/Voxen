@@ -273,17 +273,43 @@ No MinIO:
 
 ### 2. Configurar App
 
-1. **Criar serviço:** tipo **App**
-2. **Source:** GitHub → `Yefclub/Voxen`
-3. **Branch:** `dev` (ou `main` para release estável)
-4. **Build path:** `/`
-5. **Dockerfile:** `Dockerfile`
-6. **Porta:** `3000`
-7. **Health check path:** `/health`
+Crie um serviço **App**. Para produção, prefira **Source → Docker image**:
+
+```txt
+Image: ghcr.io/yefclub/voxen:dev      # homologação/dev
+Image: ghcr.io/yefclub/voxen:latest   # main/release estável
+Port: 3000
+Health check path: /health
+```
+
+O workflow `Easypanel Image` publica essa imagem automaticamente quando há push
+em `dev`, `main` ou tag `vX.Y.Z`. A imagem já contém `web`, `chat` e `worker`.
+
+Por que essa é a opção recomendada: no Source **GitHub repository**, o Easypanel
+constrói a imagem no servidor e, conforme a
+[documentação do App Service](https://easypanel.io/docs/services/app), as
+variáveis de `Environment` ficam disponíveis em build-time e run-time. Na
+prática, secrets podem aparecer como `--build-arg` nos logs de build do
+Easypanel. No Source **Docker image**, o Easypanel só baixa a imagem já
+construída; os secrets entram apenas como env de runtime.
+
+Se quiser usar GitHub/Dockerfile em ambiente de teste:
+
+1. **Source:** GitHub → `Yefclub/Voxen`
+2. **Branch:** `dev` (ou `main` para release estável)
+3. **Build path:** `/`
+4. **Dockerfile:** `Dockerfile`
+5. **Porta:** `3000`
+6. **Health check path:** `/health`
+
+Trate logs de build desse modo como sensíveis. Não cole logs públicos sem
+redigir `BETTER_AUTH_SECRET`, `MASTER_KEY`, `DATABASE_URL`, `REDIS_URL` e
+`S3_*`.
 
 ### 3. Variáveis de ambiente
 
-Easypanel UI → Voxen App → Environment. **NÃO usar defaults de dev**:
+Easypanel UI → Voxen App → Environment. **NÃO usar defaults de dev**.
+No modo Docker image, esses valores não participam do build:
 
 ```env
 APP_BASE_URL=https://voxen.seudominio.com

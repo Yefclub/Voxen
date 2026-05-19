@@ -45,6 +45,11 @@ Tem guia passo-a-passo pra 4 cenários em [`docs/DEPLOY.md`](docs/DEPLOY.md):
 | **LXC do Proxmox** | Self-hosted, container LXC (`nesting=1`) |
 | **Easypanel** | Plataforma cuida de HTTPS/domínio sozinha |
 
+Para Easypanel em produção, prefira Source **Docker image** com
+`ghcr.io/yefclub/voxen:dev` ou `ghcr.io/yefclub/voxen:latest`. O modo
+GitHub/Dockerfile também funciona, mas o Easypanel expõe Environment no
+build-time; isso pode mostrar secrets como build args no log de build.
+
 TL;DR pro cenário mais comum (VPS + nginx + Let's Encrypt):
 
 ```bash
