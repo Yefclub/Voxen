@@ -146,37 +146,41 @@ chore(infra): bump garage 1.0.0 → 1.0.1
 docs(spec): adiciona .specs/003-painel-custos.md
 ```
 
-### Versioning — tag-only (OSS-friendly)
+### Versioning — padrão Orbital (commit em pkg.json + tag)
 
-A fonte da verdade é **a tag git**, não `package.json`. Workflows só
-criam tags — nunca commitam em `dev` ou `main`. Por consequência:
+A versão fica **no estado do repo** — `package.json` em `dev` e `main`
+sempre refletem a versão corrente. Workflows commitam e pusham
+diretamente, igual a Orbital.
 
-- **Funciona com branch protection ativa** em qualquer cenário (privado
-  ou público), sem PAT, sem bypass — tags não esbarram em protection.
-- `package.json` fica congelado em `0.1.0` no histórico — não tem
-  importância, só serve como fallback se nada injetar versão.
-- A versão real aparece nas imagens via build arg `VOXEN_VERSION`
-  (release.yml injeta da tag; Makefile injeta de `git describe`).
+**Pré-requisito**: branches `dev` e `main` SEM `required_pull_request_reviews`
+(protections de branch não devem bloquear push do `GITHUB_TOKEN`). Em
+repo público OSS, recomenda-se manter required status checks (CI verde)
+mas não required reviews — workflows precisam pushar bumps.
 
-**Pre-release em `dev`**: cada merge em `dev` dispara `version-dev.yml`,
-que cria a tag `vX.Y.Z-dev.N`:
-- Lê a última tag (`git tag --list 'v*' --sort=-v:refname | head -n1`)
-- Se for pre-release → incrementa `N`
-- Se for estável → começa nova série `vX.(Y+1).0-dev.1`
-
-Pre-release NÃO dispara o `release.yml` (filtro `v[0-9]+.[0-9]+.[0-9]+`).
+**Pre-release em `dev`**: cada merge em `dev` dispara `version-dev.yml`:
+- Lê última tag git (fonte de sequência)
+- Se for pre-release `vX.Y.Z-dev.N` → incrementa `N`
+- Se for estável `vX.Y.Z` → começa nova série `vX.(Y+1).0-dev.1`
+- Atualiza `package.json` + `apps/web/package.json`
+- Commit `chore: pre-release vX.Y.Z-dev.N` + tag + push
+- Retry loop (5 tentativas com rebase) pra lidar com pushes concorrentes
+- Pre-release NÃO dispara `release.yml` (filtro `v[0-9]+.[0-9]+.[0-9]+`)
 
 **Release estável em `main`**: PR de `dev` → `main` com label
 `release:patch|minor|major`. `version-main.yml`:
-- Lê a última tag estável (sem `-dev.N`)
+- Lê última tag estável (sem `-dev.N`)
 - Bumpa o componente conforme o label
-- Cria a tag `vX.Y.Z`
+- Atualiza `package.json` + `apps/web/package.json`
+- Commit `chore: release vX.Y.Z` + tag + push
+- Tag dispara `release.yml` (build + push imagens pro ghcr)
 
-A tag dispara `release.yml` (build + push de imagens pro ghcr).
+Loop-safe: ambos os workflows skipam commits que começam com
+`chore: pre-release v` ou `chore: release v` (não disparam a si mesmos).
 
-**Versão visível na UI**: `/api/version` retorna a versão do env
-`VOXEN_VERSION` (injetada no build), fallback pra `package.json`. Em dev
-local com Makefile, `make dev` injeta `git describe` automaticamente.
+**Versão visível na UI**: `/api/version` retorna em ordem:
+1. env `VOXEN_VERSION` (release.yml injeta via build arg em CI; Makefile
+   injeta via `git describe --tags --always --dirty` em dev local)
+2. `package.json` (fallback — sempre coerente com o estado do repo)
 
 ## Estilo de código
 

@@ -1,19 +1,22 @@
 # ============================================================================
-# version-dev — cria tag pre-release vX.Y.Z-dev.N em cada merge em dev
+# version-dev — bumpa pre-release vX.Y.Z-dev.N + commita em dev
 # ============================================================================
-# Estratégia OSS-friendly (sem PAT, sem bypass de branch protection):
-#  - Roda em push pra `dev` (depois de merge de PR).
-#  - Lê a última tag do repo via `git tag --list 'v*' --sort=-v:refname`.
-#  - Se for pre-release `vX.Y.Z-dev.N` → incrementa N.
-#  - Se for estável `vX.Y.Z` → começa nova série `vX.(Y+1).0-dev.1`.
-#  - Cria SÓ TAG. NÃO modifica `package.json` nem faz commit em dev.
-#    Tag não esbarra em branch protection (protections cobrem branches,
-#    não tags). Funciona com `GITHUB_TOKEN` padrão.
-#  - A versão é lida pelas imagens via `git describe --tags --abbrev=0`
-#    durante o build (apps/*/Dockerfile) e exposta em runtime via
-#    `/api/version` (apps/web/src/index.ts).
-#  - Pre-release NÃO dispara release.yml (esse filtra `v[0-9]+.[0-9]+.[0-9]+`
-#    sem hífen).
+# Padrão Orbital: estado do commit em `dev` reflete a versão atual em
+# package.json. Workflow modifica package.json + apps/web/package.json,
+# commita "chore: pre-release vX.Y.Z-dev.N" e pusha em dev.
+#
+# Estratégia:
+#  - Lê última tag git (fonte de verdade pra sequência)
+#  - Se for pre-release `vX.Y.Z-dev.N` → incrementa N
+#  - Se for estável `vX.Y.Z` → começa nova série `vX.(Y+1).0-dev.1`
+#  - Atualiza package.json + apps/web/package.json
+#  - Commit + tag + push (até 5 tentativas com rebase entre retries)
+#
+# Loop-safe: condition skipa commits que começam com "chore: pre-release v"
+# ou "chore: release v".
+#
+# Pré-requisito: branch `dev` SEM required_pull_request_reviews. Tags fluem
+# em qualquer cenário; commit só funciona se o GITHUB_TOKEN puder pushar.
 # ============================================================================
 
 name: Version dev on merge
@@ -25,9 +28,15 @@ on:
 permissions:
   contents: write
 
+# Serializa pushes — evita non-fast-forward em merges concorrentes.
+concurrency:
+  group: version-dev-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   version-dev:
     runs-on: ubuntu-latest
+    if: "${{ !startsWith(github.event.head_commit.message, 'chore: pre-release v') && !startsWith(github.event.head_commit.message, 'chore: release v') }}"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,11 +44,15 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute new pre-release tag
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compute new pre-release version
         id: version
         run: |
           set -euo pipefail
-          # Fonte da verdade = última tag do repo. Funciona em qualquer cenário.
+          # Fonte da verdade = última tag git
           LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
           if [[ -z "$LAST_TAG" ]]; then
             BASE_VER=$(node -p "require('./package.json').version")
@@ -57,20 +70,48 @@ jobs:
               console.log(\`\${major}.\${Number(minor) + 1}.0-dev.1\`);
             }
           ")
+          echo "new_version=$NEW_VER" >> "$GITHUB_OUTPUT"
           echo "new_tag=v$NEW_VER" >> "$GITHUB_OUTPUT"
           echo "Bumping dev to v$NEW_VER (last tag: $LAST_TAG)"
 
-      - name: Create + push tag
+      - name: Write new version to package.json
         env:
+          NEW_VER: ${{ steps.version.outputs.new_version }}
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs = require('fs');
+            const files = ['./package.json', './apps/web/package.json'];
+            for (const f of files) {
+              const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+              j.version = process.env.NEW_VER;
+              fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
+            }
+          "
+
+      - name: Commit + tag + push
+        env:
+          NEW_VER: ${{ steps.version.outputs.new_version }}
           NEW_TAG: ${{ steps.version.outputs.new_tag }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
-            echo "Tag $NEW_TAG já existe, pulando."
+          git add package.json apps/web/package.json
+          if git diff --staged --quiet; then
+            echo "No version change to commit"
             exit 0
           fi
-          git tag -a "$NEW_TAG" -m "Pre-release $NEW_TAG"
-          git push origin "$NEW_TAG"
-          echo "Pushed $NEW_TAG"
+          git commit -m "chore: pre-release v$NEW_VER"
+          if ! git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            git tag -a "$NEW_TAG" -m "Pre-release $NEW_TAG"
+          fi
+          # Retry loop pra lidar com pushes concorrentes (rebase entre tentativas)
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin dev && git push origin dev && git push origin "$NEW_TAG" 2>&1; then
+              echo "Pushed v$NEW_VER"
+              exit 0
+            fi
+            sleep "$((attempt * 3))"
+          done
+          exit 1
