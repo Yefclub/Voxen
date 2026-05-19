@@ -29,7 +29,10 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # PAT do owner (com bypass de branch protection do main).
+          # Sem ele, o push do release commit + tag falha em main.
+          # Configure em Settings → Secrets → Actions → RELEASE_TOKEN.
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
@@ -43,8 +46,9 @@ jobs:
         run: |
           set -euo pipefail
           PR_NUM=""
-          # Squash commit: "Title (#N)" no fim da primeira linha
-          FIRST_LINE=$(printf '%s\n' "$COMMIT_MSG" | head -n 1)
+          # Squash commit: "Title (#N)" no fim da primeira linha.
+          # Usa parameter expansion (sem pipe) pra evitar SIGPIPE em msgs gigantes.
+          FIRST_LINE="${COMMIT_MSG%%$'\n'*}"
           if [[ "$FIRST_LINE" =~ \(#([0-9]+)\)[[:space:]]*$ ]]; then
             PR_NUM="${BASH_REMATCH[1]}"
           fi
