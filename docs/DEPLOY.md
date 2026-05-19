@@ -336,7 +336,9 @@ Se o MinIO/S3 estiver atrás de um domínio ou proxy, use a URL pública/proxy
 com esquema e sem forçar `:9000`, por exemplo `https://s3.seudominio.com` ou
 `http://s3.seudominio.com`. O startup infere a porta pela URL: `http` usa `80`,
 `https` usa `443` e endpoints internos com porta explícita continuam usando a
-porta informada.
+porta informada. Esse domínio/proxy precisa aceitar a API S3 completa
+(`HEAD Bucket` e `PUT Object`); se ele só servir a console ou bloquear métodos,
+use o endpoint interno do MinIO no App.
 
 `MASTER_KEY` é a chave AES-256-GCM que cifra secrets salvos no banco. **Faça
 backup desse valor** junto com Postgres e MinIO; sem ele, API keys e settings
@@ -352,7 +354,8 @@ Easypanel UI → Domains. Adicione `voxen.seudominio.com` apontando para a porta
 Easypanel UI → Deploy. Acompanhe os logs.
 
 No startup, a imagem roda `prisma generate`, `prisma migrate deploy` e sobe
-`chat`, `worker` e `web` no mesmo container.
+`chat`, `worker` e `web` no mesmo container. Antes disso ela valida Postgres,
+Redis e S3/MinIO, incluindo escrita de um objeto `.voxen/healthcheck` no bucket.
 
 Validação pós-deploy:
 
@@ -397,6 +400,9 @@ Se usar Compose mesmo assim:
 | `403 Forbidden` | Access key sem policy | Default policy ou attach `readwrite` |
 | `Connection refused` | Endpoint errado | No App use URL interna do Easypanel; no Compose use `http://minio:9000` |
 | Startup preso em `S3 ainda indisponível` | Porta do endpoint S3 errada ou domínio sem proxy para S3 | Para domínio/proxy use `https://s3.seudominio.com`; para MinIO interno use `http://host-interno:9000` |
+| Startup falha em `S3 bucket ... sem escrita` | Bucket não existe, endpoint não aceita API S3 ou access key sem escrita | Crie o bucket, revise credenciais/policy ou troque para o endpoint interno do MinIO |
+| Upload de avatar retorna 502 | Falha de escrita no bucket | Use `/health/deep` e logs do App; o bucket precisa aceitar `PUT Object` |
+| `/api/jobs/events/me` com `ERR_HTTP2_PROTOCOL_ERROR` | Proxy/HTTP2 bufferizando SSE | Verifique se o deploy está na versão com headers `no-transform` e `X-Accel-Buffering: no` |
 | `MalformedXML` | Falta `S3_FORCE_PATH_STYLE=true` | Sempre `true` pra MinIO |
 
 ### Variantes

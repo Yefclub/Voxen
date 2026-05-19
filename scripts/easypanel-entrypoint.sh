@@ -81,6 +81,40 @@ sys.exit(1)
 PY
 }
 
+validate_s3_bucket() {
+  echo "[easypanel] validando bucket S3 ${S3_BUCKET}..."
+  bun --cwd /app/apps/web - <<'JS'
+import { HeadBucketCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { s3Bucket, s3Client } from "./src/lib/s3.ts";
+
+const bucket = s3Bucket();
+const key = ".voxen/healthcheck";
+
+try {
+  const client = s3Client();
+  await client.send(new HeadBucketCommand({ Bucket: bucket }));
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: `ok ${new Date().toISOString()}\n`,
+      ContentType: "text/plain; charset=utf-8",
+    }),
+  );
+  console.log(`[easypanel] S3 bucket pronto: ${bucket}`);
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err);
+  const name = err instanceof Error ? err.name : "Error";
+  console.error(`[easypanel] FATAL: S3 bucket ${bucket} indisponível ou sem escrita`);
+  console.error(`[easypanel] S3 erro: ${name}: ${message}`);
+  console.error(
+    "[easypanel] Revise S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY e S3_FORCE_PATH_STYLE.",
+  );
+  process.exit(1);
+}
+JS
+}
+
 python - <<'PY'
 import base64
 import os
@@ -106,6 +140,7 @@ export S3_FORCE_PATH_STYLE="${S3_FORCE_PATH_STYLE:-true}"
 wait_for_url_host "Postgres" "$DATABASE_URL" 5432
 wait_for_url_host "Redis" "$REDIS_URL" 6379
 wait_for_url_host "S3" "$S3_ENDPOINT" 9000
+validate_s3_bucket
 
 echo "[easypanel] generating Prisma Client..."
 prisma generate --schema=/app/prisma/schema.prisma

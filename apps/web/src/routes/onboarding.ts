@@ -66,14 +66,27 @@ onboardingRoutes.post('/avatar', async (c) => {
   const ext = file.type === 'image/png' ? 'png' : file.type === 'image/jpeg' ? 'jpg' : 'webp';
   const key = `workspaces/${userId}/avatar.${ext}`;
   const buf = Buffer.from(await file.arrayBuffer());
-  await s3Client().send(
-    new PutObjectCommand({
-      Bucket: s3Bucket(),
-      Key: key,
-      Body: buf,
-      ContentType: file.type,
-    }),
-  );
+  const bucket = s3Bucket();
+  try {
+    await s3Client().send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buf,
+        ContentType: file.type,
+      }),
+    );
+  } catch (err) {
+    console.error('[onboarding] falha ao salvar avatar no S3:', err);
+    return c.json(
+      {
+        error:
+          `Falha ao salvar avatar no S3/MinIO (bucket "${bucket}"). ` +
+          'Verifique endpoint, bucket e permissões de escrita.',
+      },
+      502,
+    );
+  }
   // Salva path no User.image; o endpoint /api/avatar/:userId serve o arquivo
   // via proxy (storage S3 não precisa ser público).
   const imageUrl = `/api/avatar/${userId}?v=${Date.now()}`;

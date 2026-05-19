@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ExternalLink,
   KeyRound,
+  Search,
   Sparkles,
   Upload,
   Users,
@@ -34,6 +35,8 @@ import { Spinner as Spin } from '../components/ui/spinner';
 interface ModelsResponse {
   chat: OrModel[];
   transcription: OrModel[];
+  vision: OrModel[];
+  web: OrModel[];
 }
 
 type Step = 'key' | 'modelos' | 'modo' | 'perfil' | 'pronto';
@@ -77,6 +80,8 @@ function OnboardingContent({
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [chatModel, setChatModel] = useState('');
   const [transcriptionModel, setTranscriptionModel] = useState('');
+  const [webSearchModel, setWebSearchModel] = useState('');
+  const [visionModel, setVisionModel] = useState('');
   const [allowSignups, setAllowSignups] = useState<boolean>(true);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,8 +104,16 @@ function OnboardingContent({
           (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
         ) ??
         res.chat.find((m) => m.id.toLowerCase().includes('sonnet'));
+      const preferredVision =
+        res.vision.find((m) => m.id === 'google/gemini-3.1-flash-lite') ??
+        res.vision.find(
+          (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
+        ) ??
+        res.vision.find((m) => m.id.toLowerCase().includes('vision'));
       setTranscriptionModel(whisper?.id ?? res.transcription[0]?.id ?? '');
       setChatModel(preferred?.id ?? res.chat[0]?.id ?? '');
+      setWebSearchModel(preferred?.id ?? res.chat[0]?.id ?? '');
+      setVisionModel(preferredVision?.id ?? res.vision[0]?.id ?? '');
       setStep('modelos');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao validar chave.');
@@ -114,11 +127,14 @@ function OnboardingContent({
     setError(null);
     setLoading(true);
     try {
-      await apiPost('/api/setup', {
+      const body: Record<string, string> = {
         openrouter_api_key: apiKey,
         default_chat_model: chatModel,
         default_transcription_model: transcriptionModel,
-      });
+      };
+      if (webSearchModel) body.default_web_search_model = webSearchModel;
+      if (visionModel) body.default_vision_model = visionModel;
+      await apiPost('/api/setup', body);
       setStep('modo');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao salvar configuração.');
@@ -291,12 +307,30 @@ function OnboardingContent({
                   value={transcriptionModel}
                   onChange={setTranscriptionModel}
                   options={models.transcription}
+                  count={models.transcription.length}
                 />
                 <ModelSelect
                   label="Chat"
                   value={chatModel}
                   onChange={setChatModel}
                   options={models.chat}
+                  count={models.chat.length}
+                />
+                <ModelSelect
+                  label="Pesquisa web"
+                  value={webSearchModel}
+                  onChange={setWebSearchModel}
+                  options={models.web}
+                  count={models.web.length}
+                  hint="Usado pela tool web_search com sufixo :online. Vazio = usa o modelo de chat."
+                />
+                <ModelSelect
+                  label="Visão"
+                  value={visionModel}
+                  onChange={setVisionModel}
+                  options={models.vision}
+                  count={models.vision.length}
+                  hint="Habilita envio de imagens no chat e no Telegram. Vazio = recurso desabilitado."
                 />
                 <div className="flex justify-between pt-2">
                   <GhostButton type="button" onClick={() => setStep('key')}>
@@ -477,39 +511,83 @@ function ModelSelect({
   value,
   onChange,
   options,
+  count,
+  hint,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: OrModel[];
+  count: number;
+  hint?: string;
 }): React.ReactElement {
+  const [query, setQuery] = useState('');
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(
+      (m) => m.id.toLowerCase().includes(q) || (m.name ?? '').toLowerCase().includes(q),
+    );
+  }, [options, query]);
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <FieldLabel htmlFor={`select-${label}`}>{label}</FieldLabel>
         <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] tabular-nums">
-          {options.length} disponíveis
+          {query.trim() ? `${filtered.length} / ${count}` : `${count} disponíveis`}
         </span>
       </div>
-      <Select value={value || undefined} onValueChange={onChange}>
+      <Select
+        value={value || undefined}
+        onValueChange={onChange}
+        onOpenChange={(open) => {
+          if (!open) setQuery('');
+        }}
+      >
         <SelectTrigger id={`select-${label}`}>
           <SelectValue placeholder="Selecionar modelo…" />
         </SelectTrigger>
         <SelectContent>
-          {options.map((m) => (
-            <SelectItem key={m.id} value={m.id}>
-              <div className="flex flex-col py-0.5">
-                <span className="font-medium">{m.name || m.id}</span>
-                {m.name && m.name !== m.id && (
-                  <span className="text-[11px] font-mono text-[var(--color-app-muted)]">
-                    {m.id}
-                  </span>
-                )}
-              </div>
-            </SelectItem>
-          ))}
+          <div
+            className="sticky top-0 z-10 bg-[var(--color-app-bg-elevated)] border-b border-[var(--color-app-border)] p-1.5"
+            onKeyDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Filtrar por nome ou ID…"
+                spellCheck={false}
+                autoComplete="off"
+                className="w-full h-8 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 pl-8 pr-2 text-[12.5px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
+              />
+            </div>
+          </div>
+          {filtered.length === 0 ? (
+            <div className="px-3 py-6 text-center text-xs text-[var(--color-app-muted)]">
+              Nenhum modelo bate com «{query}».
+            </div>
+          ) : (
+            filtered.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                <div className="flex flex-col py-0.5">
+                  <span className="font-medium">{m.name || m.id}</span>
+                  {m.name && m.name !== m.id && (
+                    <span className="text-[11px] font-mono text-[var(--color-app-muted)]">
+                      {m.id}
+                    </span>
+                  )}
+                </div>
+              </SelectItem>
+            ))
+          )}
         </SelectContent>
       </Select>
+      {hint && <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">{hint}</p>}
     </div>
   );
 }
