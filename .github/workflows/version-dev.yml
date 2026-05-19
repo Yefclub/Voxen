@@ -53,9 +53,18 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          VER=$(node -p "require('./package.json').version")
-          NEW_VER=$(VER="$VER" node -e "
-            const cur = process.env.VER;
+          # Fonte da verdade = última tag (git), NÃO package.json. Sem PAT,
+          # package.json em dev fica congelado em 0.1.0 — usar ele como
+          # base sempre calcularia 0.2.0-dev.1 (colidindo com tag existente).
+          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [[ -z "$LAST_TAG" ]]; then
+            # Sem tags: começa do package.json
+            BASE_VER=$(node -p "require('./package.json').version")
+          else
+            BASE_VER="${LAST_TAG#v}"
+          fi
+          NEW_VER=$(BASE_VER="$BASE_VER" node -e "
+            const cur = process.env.BASE_VER;
             const m = cur.match(/^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$/);
             if (!m) {
               console.error('Versão inválida: ' + cur);
@@ -65,12 +74,13 @@ jobs:
             if (devN) {
               console.log(\`\${major}.\${minor}.\${patch}-dev.\${Number(devN) + 1}\`);
             } else {
+              // Última tag é estável → próximo minor + dev.1
               console.log(\`\${major}.\${Number(minor) + 1}.0-dev.1\`);
             }
           ")
           echo "new_version=$NEW_VER" >> "$GITHUB_OUTPUT"
           echo "new_tag=v$NEW_VER" >> "$GITHUB_OUTPUT"
-          echo "Bumping dev to v$NEW_VER (from $VER)"
+          echo "Bumping dev to v$NEW_VER (last tag: $LAST_TAG, pkg: $(node -p 'require(\"./package.json\").version'))"
 
       - name: Write new version to package.json
         env:
