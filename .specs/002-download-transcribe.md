@@ -4,7 +4,7 @@
 
 A funcionalidade central do Voxen: o user cola uma URL de vídeo (YouTube no MVP) num formulário web; o sistema enfileira um job; o worker baixa o áudio, decide entre baixar legendas oficiais OU transcrever via OpenRouter audio, e gera um `.md` no formato canônico (vide `docs/TRANSCRIPT-FORMAT.md`). O resultado fica disponível na knowledge-base do user para que o chat-agente Agno (PR seguinte) navegue via tools.
 
-Esta spec cobre o pipeline **fim-a-fim**: submissão → fila → download → escolha de método → transcrição/fallback → upload Garage → registro Postgres → notificação de progresso em tempo real via SSE.
+Esta spec cobre o pipeline **fim-a-fim**: submissão → fila → download → escolha de método → transcrição/fallback → upload S3-compatible (MinIO no padrão local/Easypanel) → registro Postgres → notificação de progresso em tempo real via SSE.
 
 Referências:
 - `docs/TRANSCRIPT-FORMAT.md` — formato do `.md` e layout S3 (`workspaces/<userId>/transcripts/<transcriptId>.md`)
@@ -15,7 +15,7 @@ Referências:
 ## Glossário
 
 - **Job**: linha em `Job` com `type=DOWNLOAD_AND_TRANSCRIBE`, status `QUEUED|RUNNING|DONE|FAILED|CANCELLED`
-- **Transcript**: linha em `Transcript` + `.md` no Garage; criado quando o job termina com sucesso
+- **Transcript**: linha em `Transcript` + `.md` no storage S3-compatible; criado quando o job termina com sucesso
 - **Método de transcrição**: `SUBTITLES` (legendas oficiais baixadas direto via yt-dlp) ou `API` (áudio enviado pra OpenRouter)
 - **Workspace**: `userId`; toda transcrição/job/CostEvent é amarrado a um user
 - **Chunk**: janela de 10 minutos de áudio com 1s de overlap com o próximo
@@ -27,7 +27,7 @@ Referências:
 
 - The system shall accept job submissions only from authenticated users with `status=APPROVED`.
 - The system shall scope every job, transcript and cost event to the submitting `userId`; cross-workspace reads are forbidden.
-- The system shall persist the canonical transcript as a Markdown file in Garage under `workspaces/<userId>/transcripts/<transcriptId>.md`, following the schema in `docs/TRANSCRIPT-FORMAT.md`.
+- The system shall persist the canonical transcript as a Markdown file in S3-compatible storage under `workspaces/<userId>/transcripts/<transcriptId>.md`, following the schema in `docs/TRANSCRIPT-FORMAT.md`.
 - The system shall mirror the transcript's `plainText` (untimestamped body) and `frontmatter` (YAML parsed as JSON) into Postgres `Transcript`, keeping the FTS `tsvector` in sync via the existing SQL trigger.
 - The system shall record one `CostEvent` per OpenRouter audio call (one per chunk for chunked videos), with `kind=TRANSCRIBE`, the model used, the USD cost reported by OpenRouter, and `jobId` populated.
 - The system shall use `Settings.GLOBAL.default_transcription_model` for every transcription; per-job model override is not exposed in the MVP.
@@ -61,7 +61,7 @@ Referências:
 - **If** yt-dlp fails to download (private, geoblocked, removed, or network), the system shall retry up to 3 times with exponential backoff (1 s, 2 s, 4 s), and on permanent failure set `status=FAILED` with `errorMsg` reflecting the upstream cause.
 - **If** the OpenRouter API returns 401/403, the system shall set the job `status=FAILED` with `errorMsg="Chave da OpenRouter rejeitada — admin precisa revalidar."` and shall not retry.
 - **If** the OpenRouter API returns 5xx or times out, the system shall retry up to 3 times with exponential backoff.
-- **If** the upload to Garage fails, the system shall retry up to 3 times with exponential backoff; on permanent failure the system shall set `status=FAILED`, populate `errorMsg`, and shall not create the `Transcript` row.
+- **If** the upload to S3-compatible storage fails, the system shall retry up to 3 times with exponential backoff; on permanent failure the system shall set `status=FAILED`, populate `errorMsg`, and shall not create the `Transcript` row.
 - **If** a user submits a URL while a `RUNNING` or `QUEUED` job already exists for that `(userId, url)`, the system shall return HTTP 409 `{ error: "Esta URL já está sendo processada." }` and shall not enqueue a duplicate.
 - **If** the same URL already has a `Transcript` for the user, the system shall return HTTP 409 `{ error: "Você já transcreveu esta URL.", transcriptId: <id> }`.
 - **If** an unauthenticated request hits `POST /api/jobs` or `GET /api/jobs/:id` or `GET /api/jobs/:id/events`, the system shall return HTTP 401.
@@ -74,7 +74,7 @@ Referências:
 - [ ] URL do YouTube com legendas oficiais: gera `.md` com `transcription_method=SUBTITLES`, SEM CostEvent, SEM chamada à OpenRouter
 - [ ] URL sem legendas: extrai áudio opus 16 kHz mono 32 kbps, chama OpenRouter com Whisper (sem hint de idioma), monta `.md` com timestamps clicáveis, cria CostEvent por chunk
 - [ ] Vídeo longo (> 10 min): chunking em janelas de 10 min com 1 s overlap; timestamps no `.md` são globais e crescentes
-- [ ] `.md` no Garage segue `docs/TRANSCRIPT-FORMAT.md` (frontmatter completo, corpo `[hh:mm:ss](youtu.be/<id>?t=<s>)`)
+- [ ] `.md` no S3-compatible storage segue `docs/TRANSCRIPT-FORMAT.md` (frontmatter completo, corpo `[hh:mm:ss](youtu.be/<id>?t=<s>)`)
 - [ ] Postgres `Transcript.plainText` populada (corpo sem timestamps nem frontmatter); `Transcript_searchVector_idx` retorna a transcrição em `plainto_tsquery('portuguese', ...)`
 - [ ] `GET /api/jobs/:id` autenticado + escopado por `userId` retorna status + last progress event
 - [ ] `GET /api/jobs/:id/events` (SSE) entrega eventos em tempo real do Redis pub/sub `jobs:<userId>:<jobId>` até o job terminar; outros users → 404
@@ -82,12 +82,12 @@ Referências:
 - [ ] URL não-YouTube → 400; URL malformada → 400
 - [ ] OpenRouter 401/403 → FAILED + mensagem admin-action, sem retry
 - [ ] OpenRouter 5xx → retry 3x com backoff 1/2/4 s; persistência de erro só após esgotar tentativas
-- [ ] yt-dlp / Garage erros transientes → mesmo retry
+- [ ] yt-dlp / S3-compatible storage erros transientes → mesmo retry
 - [ ] Setup incompleto → 412 ao submeter
 - [ ] Budget excedido (se `monthlyBudgetUsd` setado) → 402
 - [ ] Vídeo > 4h → FAILED com mensagem PT-BR específica
 - [ ] Outro user tenta acessar Job → 404 (não 403)
-- [ ] Testes: unit (parser de URL YouTube, chunking de timestamps, montagem de `.md`), integration (job lifecycle com yt-dlp mockado + OR mockada + Garage local/mock), e2e parcial (submit → ver evento SSE chegando — fora de PR 8 se UI não estiver pronta; nesse caso curl simulando o cliente)
+- [ ] Testes: unit (parser de URL YouTube, chunking de timestamps, montagem de `.md`), integration (job lifecycle com yt-dlp mockado + OR mockada + S3 local/mock), e2e parcial (submit → ver evento SSE chegando — fora de PR 8 se UI não estiver pronta; nesse caso curl simulando o cliente)
 
 ## Fora de Escopo
 
@@ -137,4 +137,5 @@ Referências:
 > 2026-05-16: spec rascunhada para co-autoria com o user. Decisões pendentes marcadas no bloco "Riscos / Decisões pendentes".
 > 2026-05-16: decisões aprovadas pelo owner (YT-only no MVP, SSE, 4h, propostas técnicas padrão). Spec finalizada com bloco "Decisões Tomadas" como referência rápida.
 > 2026-05-17: PR `feat/jobs-api` (PR 8a) implementa o **backend web**: `POST /api/jobs`, `GET /api/jobs(/:id)`, SSE em `/api/jobs/:id/events`, dedup atômico (partial unique index), 401/403/404/409/412 conforme spec, 19 testes.
-> 2026-05-17: PR `feat/worker-pipeline` (PR 8b) implementa o **worker fim-a-fim**: subscribe Redis `jobs:new` + reconciliation loop, claim com `SELECT FOR UPDATE SKIP LOCKED`, yt-dlp probe + decisão SUBTITLES vs API, chunking 10min/1s overlap via ffmpeg, OpenRouter audio com retry exp backoff, geração `.md` no formato canônico, upload Garage via aioboto3, insert Transcript + CostEvent por chunk, eventos de progresso em `jobs:<userId>:<jobId>`. Stack Python: asyncpg + aioboto3 + httpx + redis (asyncio) + yt-dlp + pyyaml. 32 testes (transcript_md, parser VTT/SRT, storage mock, crypto).
+> 2026-05-17: PR `feat/worker-pipeline` (PR 8b) implementa o **worker fim-a-fim**: subscribe Redis `jobs:new` + reconciliation loop, claim com `SELECT FOR UPDATE SKIP LOCKED`, yt-dlp probe + decisão SUBTITLES vs API, chunking 10min/1s overlap via ffmpeg, OpenRouter audio com retry exp backoff, geração `.md` no formato canônico, upload S3-compatible via aioboto3, insert Transcript + CostEvent por chunk, eventos de progresso em `jobs:<userId>:<jobId>`. Stack Python: asyncpg + aioboto3 + httpx + redis (asyncio) + yt-dlp + pyyaml. 32 testes (transcript_md, parser VTT/SRT, storage mock, crypto).
+> 2026-05-19: Storage documentado passa a ser S3-compatible com MinIO como padrão local/Easypanel. `GARAGE_*` permanece somente como fallback legado no código.

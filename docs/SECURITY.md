@@ -9,9 +9,9 @@ Voxen é self-hosted, multi-user com adoção restrita. Este documento descreve 
 | Externo (internet) | Brute-force login | Rate limit no `/api/auth/*` (better-auth), senhas hash via Argon2 (default better-auth) |
 | Externo | SSRF via URL maliciosa nos jobs | Allowlist de hosts no worker antes de invocar yt-dlp |
 | Externo | Upload de URL que causa download grande/abusivo | (futuro) limite de duração/tamanho — owner pediu "sem limite" no MVP, mas budget por user atua de freio econômico |
-| Externo | Roubo de master key se acessar disco | Master key em volume Docker, chmod 0400, fora de `.env` |
+| Externo | Roubo de master key se acessar env/host | Master key em `MASTER_KEY`; nunca logar e manter backup fora do servidor |
 | Interno (user) | Acesso a transcrição de outro user | Query-time scoping por `userId` em TODA query; rotas admin protegidas por role |
-| Interno | Exfil de secrets via DB dump | Secrets em `settings.valueEnc` cifrados com master key — dump do DB sem volume não vaza |
+| Interno | Exfil de secrets via DB dump | Secrets em `settings.valueEnc` cifrados com master key — dump do DB sem master key não vaza |
 | Interno (admin) | Abuso de privilégio | Admin é o owner (1 pessoa); ações administrativas logadas |
 | Supply chain | Pacote npm/pip malicioso | Dependabot + audits (npm audit, pip-audit) + lockfile commitado |
 | Supply chain | Imagem Docker maliciosa | Trivy scan no CI em cada PR |
@@ -32,13 +32,13 @@ Vários layers, falha de um não compromete o sistema:
 
 - Postgres user da aplicação (`voxen`) tem permissão apenas no DB `voxen`, sem CREATEDB/SUPERUSER
 - Redis password obrigatório
-- Garage key tem permissão apenas no bucket `voxen-transcripts`
-- Volumes de master key e creds são mount **read-only** nos apps
+- Access key S3/MinIO tem permissão apenas no bucket `voxen-transcripts`
 
 ### Secrets management
 
-- **`.env` na raiz**: APENAS infra (DB password, Redis password, Garage RPC, Better Auth secret, App base URL)
-- **Master key** (`/data/master.key`): auto-gerada em volume, fora de env
+- **`.env` na raiz**: APENAS infra (DB password, Redis password, MinIO/S3, Better Auth secret, App base URL, `MASTER_KEY`)
+- **Master key**: `MASTER_KEY` em todos os modos documentados, com formato
+  base64 de 32 bytes (`openssl rand -base64 32`)
 - **Secrets de app** (OpenRouter API key, SMTP, etc.): cifrados em `settings.valueEnc` via AES-256-GCM com master key
 - **NUNCA** logar secret value (logs em produção devem mascarar)
 - **NUNCA** commitar `.env` (já no `.gitignore`)
@@ -117,7 +117,7 @@ CREATE TRIGGER transcript_search_vector_update
 BEFORE INSERT OR UPDATE OF plain_text ON "Transcript"
 FOR EACH ROW EXECUTE FUNCTION update_transcript_search_vector();
 ```
-- Backup: dump diário do Postgres + snapshot do volume Garage (responsabilidade do operador no Easypanel)
+- Backup: dump diário do Postgres + snapshot/export do bucket MinIO/S3 + backup do valor `MASTER_KEY`
 
 ## Logs
 
@@ -147,7 +147,7 @@ Roda em: PR (todos), push em `dev`/`main`, schedule semanal.
 1. Revogar credenciais comprometidas (rotacionar `.env` e via UI rotacionar OpenRouter key)
 2. Auditar `cost_events` e `Session` por anomalias
 3. `make down && make clean` + reaplicar `.env` novo (se necessário)
-4. Restore de backup Postgres + Garage do volume
+4. Restore de backup Postgres + MinIO/S3 + `MASTER_KEY`
 
 ## Roadmap de segurança (não MVP)
 

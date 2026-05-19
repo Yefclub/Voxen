@@ -37,8 +37,8 @@ class TransientError(Exception):
 
 # Exceptions externas tratadas como transientes pelo `_retry_transient`.
 # yt-dlp e botocore herdam direto de `Exception`, NÃO de OSError/RuntimeError —
-# sem este wrapper, o retry helper viraria no-op para yt-dlp e Garage.
-# Spec 002 L61 (yt-dlp retry) e L64 (Garage retry) dependem disso.
+# sem este wrapper, o retry helper viraria no-op para yt-dlp e S3.
+# Spec 002 L61 (yt-dlp retry) e L64 (S3 retry) dependem disso.
 _TRANSIENT_EXC: tuple[type[BaseException], ...] = (
     TransientError,
     OSError,
@@ -279,7 +279,7 @@ async def _persist(
 ) -> str:
     # Gera transcript_id e doc completo
     transcribed_at = datetime.now(UTC)
-    # Reservamos id antecipado pra usar no path do Garage; db.write_transcript
+    # Reservamos id antecipado pra usar no path do S3; db.write_transcript
     # gera o id e o devolve, mas precisamos do md ANTES do insert.
     # Solução: gerar o id aqui (mesmo padrão do db.generate_cuid) e passar.
     transcript_id = db.generate_cuid()
@@ -319,7 +319,7 @@ async def _persist(
         lambda: storage.put_markdown(key=md_key, content=md_content), tries=3
     )
 
-    # Insert no Postgres (passamos o mesmo id usado no path do Garage)
+    # Insert no Postgres (passamos o mesmo id usado no path do S3)
     async with db.connection() as conn:
         await conn.execute(
             """

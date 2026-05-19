@@ -1,7 +1,7 @@
 """Storage S3 reader — busca .md de transcripts.
 
 Aceita variáveis `S3_*` como primeira opção, com fallback pra `GARAGE_*`.
-Suporta qualquer backend S3-compatível (Garage, MinIO, AWS S3).
+Suporta qualquer backend S3-compatível (MinIO, Garage, AWS S3).
 """
 
 from __future__ import annotations
@@ -38,7 +38,8 @@ def _session() -> aioboto3.Session:
     return aioboto3.Session(
         aws_access_key_id=_access_key(),
         aws_secret_access_key=_secret_key(),
-        region_name=_env("S3_REGION", "GARAGE_REGION", default="garage") or "garage",
+        region_name=_env("S3_REGION", "GARAGE_REGION", default="us-east-1")
+        or "us-east-1",
     )
 
 
@@ -47,7 +48,7 @@ def _bucket() -> str:
 
 
 def _endpoint() -> str:
-    return _env("S3_ENDPOINT", "GARAGE_ENDPOINT", default="http://garage:3900") or ""
+    return _env("S3_ENDPOINT", "GARAGE_ENDPOINT", default="http://minio:9000") or ""
 
 
 def _force_path_style() -> bool:

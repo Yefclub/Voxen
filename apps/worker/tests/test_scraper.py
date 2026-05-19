@@ -144,7 +144,7 @@ async def test_ssrf_blocks_private_ips(monkeypatch: pytest.MonkeyPatch, ip: str)
 
 
 @pytest.mark.parametrize(
-    "host", ["localhost", "chat", "postgres", "redis", "garage", "web", "worker"]
+    "host", ["localhost", "chat", "postgres", "redis", "minio", "web", "worker"]
 )
 async def test_ssrf_blocks_internal_hostnames(host: str) -> None:
     with pytest.raises(scraper.FetchBlockedError):

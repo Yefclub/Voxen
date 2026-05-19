@@ -82,7 +82,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://voxen:dev@localhost:5432/voxen_test
       REDIS_URL: redis://localhost:6379
-      MASTER_KEY_PATH: ${{ github.workspace }}/master.key
+      MASTER_KEY: dm94ZW5fY2lfbWFzdGVyX2tleV8zMl9ieXRlcyEhISE=
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -90,8 +90,6 @@ jobs:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
-      - name: Generate test master key
-        run: openssl rand -base64 32 > "$MASTER_KEY_PATH"
       - name: Prisma generate
         run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
         working-directory: apps/web
@@ -162,7 +160,7 @@ jobs:
         working-directory: apps/worker
 
   docker-build:
-    name: Docker build (todos os apps)
+    name: Docker build (apps + Easypanel)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -191,6 +189,81 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build Easypanel App image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: voxen-easypanel:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test Easypanel App image
+        run: |
+          set -eux
+          docker network create voxen-smoke
+
+          docker run -d --name smoke-postgres --network voxen-smoke --network-alias postgres \
+            -e POSTGRES_DB=voxen \
+            -e POSTGRES_USER=voxen \
+            -e POSTGRES_PASSWORD=dev \
+            postgres:17-alpine
+
+          docker run -d --name smoke-redis --network voxen-smoke --network-alias redis \
+            redis:7-alpine redis-server --requirepass dev
+
+          docker run -d --name smoke-minio --network voxen-smoke --network-alias minio \
+            -e MINIO_ROOT_USER=voxen \
+            -e MINIO_ROOT_PASSWORD=voxen_dev_minio_password \
+            minio/minio:latest server /data
+
+          for i in $(seq 1 30); do
+            docker exec smoke-postgres pg_isready -U voxen -d voxen && break
+            test "$i" != 30
+            sleep 2
+          done
+
+          for i in $(seq 1 30); do
+            docker exec smoke-redis redis-cli -a dev ping | grep -q PONG && break
+            test "$i" != 30
+            sleep 2
+          done
+
+          for i in $(seq 1 30); do
+            docker run --rm --network voxen-smoke curlimages/curl:latest \
+              -fsS http://minio:9000/minio/health/ready && break
+            test "$i" != 30
+            sleep 2
+          done
+
+          docker run --rm --network voxen-smoke --entrypoint sh minio/mc:latest -c \
+            'mc alias set voxen http://minio:9000 voxen voxen_dev_minio_password && mc mb --ignore-existing voxen/voxen-transcripts'
+
+          docker run -d --name voxen-easypanel --network voxen-smoke -p 3000:3000 \
+            -e APP_BASE_URL=http://localhost:3000 \
+            -e DATABASE_URL=postgresql://voxen:dev@postgres:5432/voxen \
+            -e REDIS_URL=redis://:dev@redis:6379/0 \
+            -e BETTER_AUTH_SECRET=ci-secret-not-for-production-use-at-least-32-bytes-yes-this-is-long-enough \
+            -e MASTER_KEY=dm94ZW5fY2lfbWFzdGVyX2tleV8zMl9ieXRlcyEhISE= \
+            -e S3_ENDPOINT=http://minio:9000 \
+            -e S3_ACCESS_KEY=voxen \
+            -e S3_SECRET_KEY=voxen_dev_minio_password \
+            -e S3_BUCKET=voxen-transcripts \
+            -e S3_REGION=us-east-1 \
+            -e S3_FORCE_PATH_STYLE=true \
+            voxen-easypanel:ci
+
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/health/deep; then
+              exit 0
+            fi
+            docker logs --tail=80 voxen-easypanel
+            sleep 3
+          done
+
+          docker logs voxen-easypanel
+          exit 1
 
   compose-validate:
     name: docker-compose validate

@@ -1,8 +1,7 @@
-"""Storage S3 (Garage ou MinIO ou outro S3-compatível) — uploads via aioboto3.
+"""Storage S3 (MinIO, Garage ou outro S3-compatível) — uploads via aioboto3.
 
 Aceita variáveis `S3_*` como primeira opção, com fallback pra `GARAGE_*`
-para compatibilidade com a instalação atual. Permite trocar pra MinIO sem
-mudar código — basta apontar S3_ENDPOINT pro endpoint do MinIO.
+para compatibilidade com instalações antigas.
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ def _env(*keys: str, default: str | None = None) -> str | None:
 
 
 def s3_endpoint() -> str:
-    return _env("S3_ENDPOINT", "GARAGE_ENDPOINT", default="http://garage:3900") or ""
+    return _env("S3_ENDPOINT", "GARAGE_ENDPOINT", default="http://minio:9000") or ""
 
 
 def s3_bucket() -> str:
@@ -45,7 +44,7 @@ def s3_secret_key() -> str:
 
 
 def s3_region() -> str:
-    return _env("S3_REGION", "GARAGE_REGION", default="garage") or "garage"
+    return _env("S3_REGION", "GARAGE_REGION", default="us-east-1") or "us-east-1"
 
 
 def s3_force_path_style() -> bool:

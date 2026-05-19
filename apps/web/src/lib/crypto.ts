@@ -85,8 +85,7 @@ export function decrypt(encrypted: string, key: Buffer): string {
 }
 
 /**
- * Carrega master key de `path`. Arquivo é base64 do raw key (32 bytes)
- * — formato gerado por `scripts/master-key-init.sh`.
+ * Carrega master key legada de `path`. Arquivo é base64 do raw key (32 bytes).
  */
 export function loadMasterKey(path: string): Buffer {
   let content: string;
@@ -100,6 +99,18 @@ export function loadMasterKey(path: string): Buffer {
   const key = Buffer.from(content, 'base64');
   if (key.length !== KEY_LEN) {
     throw new CryptoError(`Master key at ${path} is ${key.length} bytes; expected ${KEY_LEN}`);
+  }
+  return key;
+}
+
+/**
+ * Carrega master key direto de uma env var. Valor esperado: base64 do raw key
+ * de 32 bytes (`openssl rand -base64 32`).
+ */
+export function loadMasterKeyFromEnv(value: string, name = 'MASTER_KEY'): Buffer {
+  const key = Buffer.from(value.trim(), 'base64');
+  if (key.length !== KEY_LEN) {
+    throw new CryptoError(`FATAL: ${name} must be base64-encoded ${KEY_LEN} bytes`);
   }
   return key;
 }

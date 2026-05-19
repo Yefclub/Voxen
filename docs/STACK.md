@@ -58,7 +58,7 @@ Versões fixadas e justificativas. Atualizar este arquivo SEMPRE que mudar uma v
 | `httpx` | `^0.27` | Chamadas OpenRouter |
 | `asyncpg` | `^0.30` | Postgres driver |
 | `pydantic` | `^2` | Schemas |
-| `boto3` ou `aiobotocore` | latest | Cliente S3 (Garage compat S3 API) |
+| `boto3` ou `aiobotocore` | latest | Cliente S3-compatible (MinIO/Garage/AWS) |
 | `structlog` | latest | Logs estruturados |
 | `cryptography` | latest | Decrypt secrets |
 | `ruff`, `mypy`, `pytest` | latest | Tooling |
@@ -75,7 +75,7 @@ Versões fixadas e justificativas. Atualizar este arquivo SEMPRE que mudar uma v
 |---|---|---|---|
 | Postgres | `postgres:17-alpine` | 17.x | DB principal |
 | Redis | `redis:7-alpine` | 7.x | Fila ARQ + cache |
-| Garage S3 | `dxflrs/garage` | `v1.0.1` | Object storage S3-compatible |
+| MinIO | `minio/minio` | latest | Object storage S3-compatible |
 
 ## Tooling de CI
 

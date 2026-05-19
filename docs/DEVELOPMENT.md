@@ -6,7 +6,7 @@ Como rodar localmente, testar, fazer TDD/SDD, e contribuir.
 
 - `docker` + `docker compose` v2
 - `git`
-- Nada mais. Bun, Python, Postgres, Redis, Garage — tudo em containers.
+- Nada mais. Bun, Python, Postgres, Redis, MinIO — tudo em containers.
 
 Opcional (pra rodar tooling fora do container, ex: prisma generate, lint local):
 - `bun` 1.2+
@@ -21,9 +21,11 @@ cd Voxen
 make dev
 ```
 
-Sobe tudo (postgres, redis, garage, web, chat, worker). Master key gerada automaticamente. Garage bootstrap automático.
+`make dev` cria/completa `.env` se necessário e sobe tudo (postgres, redis,
+minio, web, chat, worker). O bucket `voxen-transcripts` é criado
+automaticamente.
 
-Acessa `http://localhost:3000`. Primeiro cadastro vira admin → tela de setup pede OpenRouter API key + modelos default.
+Acessa `http://localhost:3000`. Primeiro cadastro vira admin → tela de setup pede OpenRouter API key + modelos default. Console MinIO: `http://localhost:9001`.
 
 > Repositório atual: `Yefclub/Voxen` (private durante a preparação para abertura pública). Enquanto estiver privado em conta pessoal Free, branch protection pode não estar disponível; ao tornar público, revisar required status checks e regras de branch.
 
@@ -50,8 +52,8 @@ make seed                  # seed de dev (TBD)
 make shell-db              # psql no postgres
 make shell-redis           # redis-cli
 
-make garage-init           # reroda bootstrap do garage (idempotente)
-make master-key-show       # mostra master key (cuidado — secret)
+make minio-init            # reroda criação do bucket MinIO (idempotente)
+make master-key-show       # mostra MASTER_KEY do .env (cuidado — secret)
 
 make clean                 # remove volumes (PERDE DADOS)
 ```
@@ -144,7 +146,7 @@ Exemplos:
 ```
 feat(transcribe): salva timestamps em formato clicável no .md
 fix(auth): corrige redirect após aprovação do admin
-chore(infra): bump garage 1.0.0 → 1.0.1
+chore(infra): atualiza imagem do MinIO
 docs(spec): adiciona .specs/003-painel-custos.md
 ```
 
@@ -210,7 +212,7 @@ Loop-safe: ambos os workflows skipam commits que começam com
 - Hot reload: `apps/web/src` é bind-mountado em dev (override compose); editar local reflete no container
 - DB inspect: `make shell-db`
 - Redis inspect: `make shell-redis`
-- Garage inspect: `docker compose exec garage /garage status`
+- MinIO console: `http://localhost:9001`
 
 ## Trabalhando com a IA (Claude/Codex)
 
@@ -225,8 +227,8 @@ Loop-safe: ambos os workflows skipam commits que começam com
 
 | Sintoma | Causa provável | Fix |
 |---|---|---|
-| `make dev` falha no Garage | RPC secret muito curto | Garage exige RPC secret de 64 hex chars. Gere com `openssl rand -hex 32` |
-| Web container reinicia em loop | Master key não montou | `docker compose logs master-key-init` — verifica se rodou OK |
+| `make dev` falha no MinIO | bucket/init falhou | `docker compose logs minio minio-init` |
+| Web container reinicia em loop | `MASTER_KEY` ausente/inválida | `make master-key-show` e confira se é base64 de 32 bytes |
 | Worker não pega jobs | Redis password errado | Conferir `REDIS_URL` no compose vs `REDIS_PASSWORD` |
 | Migration falha | Schema drift | `pnpm prisma migrate reset` (DEV ONLY — perde dados) |
 | FTS retorna vazio | Trigger não rodou | Verificar trigger `transcript_search_vector_update` no DB |

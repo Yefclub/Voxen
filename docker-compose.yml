@@ -2,8 +2,8 @@
 # Voxen — docker compose (dev e prod usam o mesmo arquivo, com overrides)
 # ============================================================================
 # Pré-requisito: docker + docker compose. Nada mais.
-# Sobe: postgres + redis + garage + web + chat + worker
-# Master key e bootstrap do Garage acontecem automaticamente.
+# Sobe: postgres + redis + minio + web + chat + worker
+# Bucket MinIO é criado automaticamente; secrets vêm do .env da raiz.
 # ============================================================================
 
 name: voxen
@@ -42,55 +42,44 @@ services:
       timeout: 5s
       retries: 10
 
-  garage:
-    image: dxflrs/garage:v1.0.1
+  minio:
+    image: minio/minio:latest
     restart: unless-stopped
     environment:
-      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:-dev_change_me_in_prod_64_hex_chars_padding_padding_padding_padding}
-      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-dev_change_me_in_prod}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-voxen}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-voxen_dev_minio_password}
+    command: server /data --console-address ":9001"
     volumes:
-      - garage_meta:/var/lib/garage/meta
-      - garage_data:/var/lib/garage/data
-      - ./scripts/garage.toml:/etc/garage.toml:ro
-      - ./scripts:/scripts:ro
-      - garage_creds:/creds
+      - minio_data:/data
+    ports:
+      - '127.0.0.1:9000:9000'
+      - '127.0.0.1:9001:9001'
     networks:
       - voxen-net
     healthcheck:
-      test: ['CMD', '/garage', 'status']
-      interval: 10s
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
       timeout: 5s
       retries: 10
 
-  # Init container: roda uma vez, configura cluster + bucket + key, exporta creds em /creds
-  # Usa alpine porque a imagem do garage v1.0.1 é distroless (sem /bin/sh).
-  # Conversa com o garage via Admin API HTTP.
-  garage-init:
-    image: alpine:3.20
+  minio-init:
+    image: minio/mc:latest
     depends_on:
-      garage:
+      minio:
         condition: service_healthy
-    entrypoint: ['/bin/sh', '/scripts/garage-init.sh']
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set voxen http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing "voxen/$$S3_BUCKET"
+        mc anonymous set none "voxen/$$S3_BUCKET" >/dev/null 2>&1 || true
     environment:
-      GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
-      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-dev_change_me_in_prod}
-      GARAGE_ADMIN_URL: http://garage:3903
-    # DNS upstream — systemd-resolved 127.0.0.53 do host não é alcançável de dentro do container
-    dns: ['8.8.8.8', '1.1.1.1']
-    volumes:
-      - ./scripts:/scripts:ro
-      - garage_creds:/creds
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-voxen}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-voxen_dev_minio_password}
+      S3_BUCKET: ${S3_BUCKET:-voxen-transcripts}
     networks:
       - voxen-net
-    restart: 'no'
-
-  # Init container: gera master.key se não existir, idempotente
-  master-key-init:
-    image: alpine:3.20
-    entrypoint: ['/bin/sh', '/scripts/master-key-init.sh']
-    volumes:
-      - ./scripts:/scripts:ro
-      - master_key:/data
     restart: 'no'
 
   # ----- Apps -----
@@ -112,9 +101,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      master-key-init:
-        condition: service_completed_successfully
-      garage-init:
+      minio-init:
         condition: service_completed_successfully
     environment:
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
@@ -122,22 +109,14 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-voxen}:${POSTGRES_PASSWORD:-dev_change_me_in_prod}@postgres:5432/${POSTGRES_DB:-voxen}
       REDIS_URL: redis://:${REDIS_PASSWORD:-dev_change_me_in_prod}@redis:6379/0
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev_change_me_in_prod_must_be_at_least_32_chars_long_yes}
-      MASTER_KEY_PATH: /data/master.key
-      GARAGE_CREDS_PATH: /creds/voxen.env
-      GARAGE_ENDPOINT: http://garage:3900
-      GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
-      # S3 genérico (MinIO/AWS/etc) — se definidos no .env, têm precedência
-      # sobre GARAGE_*. Deixe vazio pra usar Garage local.
-      S3_ENDPOINT: ${S3_ENDPOINT:-}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
-      S3_BUCKET: ${S3_BUCKET:-}
-      S3_REGION: ${S3_REGION:-}
-      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      MASTER_KEY: ${MASTER_KEY:-dm94ZW5fZGV2X21hc3Rlcl9rZXlfMzJfYnl0ZXMhISE=}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-voxen}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-voxen_dev_minio_password}
+      S3_BUCKET: ${S3_BUCKET:-voxen-transcripts}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
       CHAT_SERVICE_URL: http://chat:8001
-    volumes:
-      - master_key:/data:ro
-      - garage_creds:/creds:ro
     ports:
       - '3000:3000'
     networks:
@@ -156,25 +135,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      master-key-init:
+      minio-init:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-voxen}:${POSTGRES_PASSWORD:-dev_change_me_in_prod}@postgres:5432/${POSTGRES_DB:-voxen}
-      MASTER_KEY_PATH: /data/master.key
-      GARAGE_CREDS_PATH: /creds/voxen.env
-      GARAGE_ENDPOINT: http://garage:3900
-      GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
-      # S3 genérico (MinIO/AWS/etc) — se definidos no .env, têm precedência
-      # sobre GARAGE_*. Deixe vazio pra usar Garage local.
-      S3_ENDPOINT: ${S3_ENDPOINT:-}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
-      S3_BUCKET: ${S3_BUCKET:-}
-      S3_REGION: ${S3_REGION:-}
-      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
-    volumes:
-      - master_key:/data:ro
-      - garage_creds:/creds:ro
+      MASTER_KEY: ${MASTER_KEY:-dm94ZW5fZGV2X21hc3Rlcl9rZXlfMzJfYnl0ZXMhISE=}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-voxen}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-voxen_dev_minio_password}
+      S3_BUCKET: ${S3_BUCKET:-voxen-transcripts}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
     networks:
       - voxen-net
     healthcheck:
@@ -193,29 +164,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      master-key-init:
-        condition: service_completed_successfully
-      garage-init:
+      minio-init:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-voxen}:${POSTGRES_PASSWORD:-dev_change_me_in_prod}@postgres:5432/${POSTGRES_DB:-voxen}
       REDIS_URL: redis://:${REDIS_PASSWORD:-dev_change_me_in_prod}@redis:6379/0
-      MASTER_KEY_PATH: /data/master.key
-      GARAGE_CREDS_PATH: /creds/voxen.env
-      GARAGE_ENDPOINT: http://garage:3900
-      GARAGE_BUCKET: ${GARAGE_BUCKET:-voxen-transcripts}
-      # S3 genérico (MinIO/AWS/etc) — se definidos no .env, têm precedência
-      # sobre GARAGE_*. Deixe vazio pra usar Garage local.
-      S3_ENDPOINT: ${S3_ENDPOINT:-}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
-      S3_BUCKET: ${S3_BUCKET:-}
-      S3_REGION: ${S3_REGION:-}
-      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      MASTER_KEY: ${MASTER_KEY:-dm94ZW5fZGV2X21hc3Rlcl9rZXlfMzJfYnl0ZXMhISE=}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-voxen}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-voxen_dev_minio_password}
+      S3_BUCKET: ${S3_BUCKET:-voxen-transcripts}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
       CHAT_SERVICE_URL: http://chat:8001
-    volumes:
-      - master_key:/data:ro
-      - garage_creds:/creds:ro
     networks:
       - voxen-net
 
@@ -255,7 +216,4 @@ networks:
 volumes:
   pgdata:
   redisdata:
-  garage_meta:
-  garage_data:
-  garage_creds:
-  master_key:
+  minio_data:

@@ -42,12 +42,11 @@ _BLOCKED_HOSTNAMES = frozenset(
         "localhost",
         "postgres",
         "redis",
-        "garage",
+        "minio",
         "chat",
         "web",
         "worker",
-        "master-key-init",
-        "garage-init",
+        "minio-init",
     }
 )
 

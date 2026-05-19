@@ -2,9 +2,8 @@
 # ============================================================================
 # Voxen worker entrypoint
 # ============================================================================
-# Carrega credenciais do Garage de /creds/voxen.env (gerado pelo garage-init)
-# como env vars antes de exec o processo principal. O arquivo é montado
-# read-only via volume garage_creds.
+# Compatibilidade legada: instalações antigas com Garage gravavam credenciais
+# em /creds/voxen.env. Instalações novas usam S3_* direto no .env.
 # ============================================================================
 set -eu
 
@@ -14,9 +13,9 @@ if [ -r "$CREDS" ]; then
   # shellcheck disable=SC1090
   . "$CREDS"
   set +a
-  echo "[worker] garage creds carregadas de $CREDS"
-else
-  echo "[worker] WARN: $CREDS não legível — Garage upload pode falhar" >&2
+  echo "[worker] credenciais S3 legadas carregadas de $CREDS"
+elif [ -z "${S3_ACCESS_KEY:-}" ] || [ -z "${S3_SECRET_KEY:-}" ]; then
+  echo "[worker] WARN: S3_ACCESS_KEY/S3_SECRET_KEY não definidos" >&2
 fi
 
 exec "$@"
