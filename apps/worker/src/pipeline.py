@@ -20,6 +20,7 @@ from .cancellation import CancelledException, clear_cancelled, is_cancelled
 from .openrouter import (
     OpenrouterAuthError,
     OpenrouterTransientError,
+    analyze_image,
     transcribe_audio,
 )
 from .transcript_md import Segment, TranscriptDoc, render_markdown, render_plain_text
@@ -82,6 +83,10 @@ async def process_job(job_id: str) -> None:
             )
         elif job_type == "UPLOAD_AND_TRANSCRIBE":
             await _run_upload_pipeline(
+                job_id=job_id, user_id=user_id, source_url=source_url, log=log
+            )
+        elif job_type == "UPLOAD_AND_ANALYZE_IMAGE":
+            await _run_image_pipeline(
                 job_id=job_id, user_id=user_id, source_url=source_url, log=log
             )
         else:
@@ -321,6 +326,98 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
     log.info("upload-job-done", transcript_id=new_transcript_id)
+
+
+async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any) -> None:  # noqa: ANN401
+    ref = uploaded_media.parse_upload_source_url(source_url)
+    if ref is None:
+        raise PermanentError("Upload inválido ou corrompido.")
+
+    api_key = await voxen_settings.get_openrouter_api_key()
+    if not api_key:
+        raise PermanentError("Setup incompleto — chave da OpenRouter ausente.")
+    model = await voxen_settings.get_default_vision_model()
+    if not model:
+        raise PermanentError("Setup incompleto — modelo de visão padrão ausente.")
+
+    _check_cancel(job_id)
+    await events.publish_job_event(user_id, job_id, "preparing_upload", percent=5)
+
+    with tempfile.TemporaryDirectory(prefix="voxen-image-") as tmp:
+        tmpdir = Path(tmp)
+        image_path = tmpdir / ref.filename
+        key = storage.upload_key(user_id, ref.upload_id, ref.filename)
+        await _retry_transient(lambda: storage.download_to_file(key=key, dest=image_path), tries=3)
+
+        _check_cancel(job_id)
+        await events.publish_job_event(user_id, job_id, "analyzing_image", percent=35)
+        prompt = (
+            "Analise esta imagem para uma base de conhecimento. "
+            "Descreva o conteúdo visual, liste texto legível/OCR, identifique contexto, "
+            "objetos, pessoas, interfaces, marcas ou dados relevantes. "
+            "Use markdown curto e pesquisável."
+        )
+
+        async def _do_call() -> Any:
+            return await analyze_image(
+                image_path=image_path,
+                api_key=api_key,
+                model=model,
+                prompt=prompt,
+            )
+
+        result = await _retry_transient_or(_do_call, tries=3)
+        if not result.text:
+            raise PermanentError("Análise vazia — nenhum conteúdo foi descrito.")
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="CHAT",
+            model=model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+            job_id=job_id,
+            meta={"source": "image_upload", "filename": ref.filename},
+        )
+
+        probe_info = ytdl.VideoProbe(
+            video_id=ref.upload_id,
+            title=Path(ref.filename).stem or ref.filename,
+            channel="Imagem enviada",
+            duration_sec=0,
+            published_at=None,
+            thumbnail_url=None,
+            language_hint=None,
+            available_subtitles={},
+            automatic_captions={},
+        )
+        _check_cancel(job_id)
+        await events.publish_job_event(user_id, job_id, "uploading", percent=80)
+        new_transcript_id = await _persist(
+            user_id=user_id,
+            job_id=job_id,
+            probe_info=probe_info,
+            source_url=source_url,
+            segments=(Segment(start_sec=0.0, text=result.text),),
+            method="VISION",
+            model=model,
+            cost_usd=result.cost_usd,
+            language="pt",
+            source_override="UPLOAD",
+        )
+
+    await events.publish_job_event(user_id, job_id, "indexing", percent=95)
+    await db.link_job_done(job_id, new_transcript_id)
+    await summary.maybe_generate(
+        user_id=user_id,
+        transcript_id=new_transcript_id,
+        job_id=job_id,
+        log=log,
+    )
+    await events.publish_job_event(
+        user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
+    )
+    log.info("image-job-done", transcript_id=new_transcript_id)
 
 
 async def _transcribe_via_api(

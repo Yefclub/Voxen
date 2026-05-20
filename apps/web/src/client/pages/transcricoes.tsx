@@ -19,7 +19,7 @@ interface TranscriptSummary {
   channel: string | null;
   durationSec: number;
   language: string;
-  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE';
+  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION';
   thumbnailUrl: string | null;
   costUsd: string | null;
   createdAt: string;
@@ -159,6 +159,7 @@ function TranscriptCard({
   t: TranscriptSummary;
   highlightQuery: string;
 }): React.ReactElement {
+  const isVisualTranscript = t.transcriptionMethod === 'VISION';
   return (
     <motion.div whileHover={{ y: -3 }} transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}>
       <Link
@@ -180,7 +181,7 @@ function TranscriptCard({
               />
             ) : (
               <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900">
-                {t.source === 'WEB' ? (
+                {t.source === 'WEB' || isVisualTranscript ? (
                   <Globe className="h-10 w-10 text-zinc-600" />
                 ) : (
                   <span className="font-display text-5xl font-semibold text-zinc-700 tracking-tight">
@@ -193,7 +194,7 @@ function TranscriptCard({
               aria-hidden
               className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent"
             />
-            {t.source !== 'WEB' && (
+            {t.source !== 'WEB' && !isVisualTranscript && (
               <div className="absolute bottom-2 right-2">
                 <Badge
                   variant="default"
@@ -224,15 +225,8 @@ function TranscriptCard({
             <div className="flex items-center gap-2 flex-wrap pt-1">
               {/* Source primário — diferencia Vídeo / Web e plataforma */}
               <Badge variant={t.source === 'WEB' ? 'muted' : 'success'} className="text-[10px]">
-                {t.source === 'WEB' && (
-                  <>
-                    <Globe className="h-2.5 w-2.5" />
-                    Página web
-                  </>
-                )}
-                {t.source === 'YOUTUBE' && 'YouTube'}
-                {t.source === 'INSTAGRAM' && 'Instagram'}
-                {t.source === 'TIKTOK' && 'TikTok'}
+                {t.source === 'WEB' && <Globe className="h-2.5 w-2.5" />}
+                {displaySource(t.source)}
               </Badge>
               {/* Método (só faz sentido pra vídeos) */}
               {t.source !== 'WEB' && (
@@ -240,7 +234,7 @@ function TranscriptCard({
                   variant={t.transcriptionMethod === 'SUBTITLES' ? 'success' : 'default'}
                   className="text-[10px]"
                 >
-                  {t.transcriptionMethod === 'SUBTITLES' ? 'Legendas' : 'IA'}
+                  {displayMethod(t.transcriptionMethod)}
                 </Badge>
               )}
               {t.language && (
@@ -259,6 +253,36 @@ function TranscriptCard({
       </Link>
     </motion.div>
   );
+}
+
+function displaySource(source: TranscriptSummary['source']): string {
+  switch (source) {
+    case 'YOUTUBE':
+      return 'YouTube';
+    case 'INSTAGRAM':
+      return 'Instagram';
+    case 'TIKTOK':
+      return 'TikTok';
+    case 'X':
+      return 'X';
+    case 'WEB':
+      return 'Página web';
+    case 'UPLOAD':
+      return 'Upload';
+  }
+}
+
+function displayMethod(method: TranscriptSummary['transcriptionMethod']): string {
+  switch (method) {
+    case 'SUBTITLES':
+      return 'Legendas';
+    case 'VISION':
+      return 'Imagem';
+    case 'SCRAPE':
+      return 'Web';
+    case 'API':
+      return 'IA';
+  }
 }
 
 function highlightInText(text: string, query: string): React.ReactNode {
