@@ -7,7 +7,7 @@
 import { Hono } from 'hono';
 import { auth } from './lib/auth';
 import { db } from './lib/db';
-import { getSetting, isSetupComplete } from './lib/settings';
+import { getDefaultXAnalysisModel, getSetting, isSetupComplete } from './lib/settings';
 import { adminRoutes } from './routes/admin';
 import { jobsRoutes } from './routes/jobs';
 import { setupRoutes } from './routes/setup';
@@ -126,7 +126,7 @@ app.get('/api/capabilities', async (c) => {
     getSetting('default_vision_model').catch(() => null),
     getSetting('default_web_search_model').catch(() => null),
     getSetting('default_document_model').catch(() => null),
-    getSetting('default_x_analysis_model').catch(() => null),
+    getDefaultXAnalysisModel().catch(() => null),
   ]);
   return c.json({
     vision: !!visionModel,

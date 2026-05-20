@@ -3,15 +3,24 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowRight,
+  AtSign,
+  Bot,
   CheckCircle2,
   DownloadCloud,
   ExternalLink,
+  FileText,
+  Globe2,
+  Image,
   KeyRound,
   Mail,
+  MessageSquareText,
+  Mic2,
   Pencil,
   RotateCw,
   Sparkles,
   Timer,
+  Wrench,
+  type LucideIcon,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -51,6 +60,7 @@ interface SetupStatus {
     proxies: boolean;
     userAgent: boolean;
     youtubeClients: boolean;
+    poTokens: boolean;
   };
 }
 
@@ -73,6 +83,7 @@ export function SetupPage(): React.ReactElement {
   const [ytDlpProxyUrls, setYtDlpProxyUrls] = useState('');
   const [ytDlpUserAgent, setYtDlpUserAgent] = useState('');
   const [ytDlpYoutubeClients, setYtDlpYoutubeClients] = useState('');
+  const [ytDlpYoutubePoTokens, setYtDlpYoutubePoTokens] = useState('');
   const [clearYtDlpCookies, setClearYtDlpCookies] = useState(false);
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -165,6 +176,7 @@ export function SetupPage(): React.ReactElement {
       if (ytDlpProxyUrls.trim()) body.yt_dlp_proxy_urls = ytDlpProxyUrls;
       if (ytDlpUserAgent.trim()) body.yt_dlp_user_agent = ytDlpUserAgent;
       if (ytDlpYoutubeClients.trim()) body.yt_dlp_youtube_clients = ytDlpYoutubeClients;
+      if (ytDlpYoutubePoTokens.trim()) body.yt_dlp_youtube_po_tokens = ytDlpYoutubePoTokens;
       if (ytDlpCookies.trim()) body.yt_dlp_cookies_txt = ytDlpCookies;
       if (clearYtDlpCookies) body.clear_yt_dlp_cookies = true;
       // Só envia api_key se for nova (admin escolheu trocar)
@@ -211,7 +223,7 @@ export function SetupPage(): React.ReactElement {
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="font-display text-3xl font-semibold tracking-[-0.03em] mt-8"
+            className="font-display text-3xl font-semibold mt-8"
           >
             Salvo.
           </motion.h2>
@@ -230,95 +242,149 @@ export function SetupPage(): React.ReactElement {
 
   // Overview: setup já existe — mostra valores e oferece edição
   if (step === 'overview' && status) {
+    const mediaItems = getMediaExtractionItems(status.ytDlp);
+
     return (
       <AnimatedPage>
-        <div className="mx-auto max-w-3xl px-6 py-12">
+        <div className="mx-auto max-w-5xl px-6 py-10">
           <PageHeader
             badge="Configuração"
-            title={
-              <>
-                Tudo certo com a <span className="text-emerald-accent">OpenRouter</span>
-              </>
-            }
-            sub="Você pode trocar a chave ou ajustar os modelos default a qualquer momento."
+            title="Configuração da instância"
+            sub="OpenRouter conectado. Ajuste modelos, operação e resiliência de extração por área."
           />
 
-          <Card elevated>
-            <CardContent className="pt-6 space-y-5">
-              <SettingRow
-                label="Chave da OpenRouter"
-                value="••••••••••••••••••••"
-                mono
-                badge="Cifrada"
-              />
-              <SettingRow label="Modelo de chat" value={status.chatModel ?? '—'} mono />
-              <SettingRow
-                label="Modelo de transcrição"
-                value={status.transcriptionModel ?? '—'}
-                mono
-              />
-              <SettingRow
-                label="Modelo de pesquisa web"
-                value={status.webSearchModel ?? 'Não configurado'}
-                badge={status.webSearchModel ? undefined : 'Opcional'}
-                mono={!!status.webSearchModel}
-              />
-              <SettingRow
-                label="Modelo de visão"
-                value={status.visionModel ?? 'Não configurado'}
-                badge={status.visionModel ? undefined : 'Opcional'}
-                mono={!!status.visionModel}
-              />
-              <SettingRow
-                label="Modelo de documentos"
-                value={status.documentModel ?? 'Não configurado'}
-                badge={status.documentModel ? undefined : 'Opcional'}
-                mono={!!status.documentModel}
-              />
-              <SettingRow
-                label="Modelo de análise do X"
-                value={status.xAnalysisModel ?? 'Não configurado'}
-                badge={status.xAnalysisModel ? undefined : 'Opcional'}
-                mono={!!status.xAnalysisModel}
-              />
-              <SettingRow
-                label="Email do operador"
-                value={status.adminEmail ?? 'Não configurado'}
-                badge={status.adminEmail ? undefined : 'Opcional'}
-              />
-              <SettingRow
-                label="Timeout de resumo"
-                value={status.summaryTimeoutSec ? `${status.summaryTimeoutSec}s` : 'Padrão'}
-                badge={status.summaryTimeoutSec ? undefined : 'Opcional'}
-              />
-              <SettingRow
-                label="Extração de mídia"
-                value={
-                  status.ytDlp?.cookies ||
-                  status.ytDlp?.proxies ||
-                  status.ytDlp?.userAgent ||
-                  status.ytDlp?.youtubeClients
-                    ? [
-                        status.ytDlp.cookies ? 'cookies' : null,
-                        status.ytDlp.proxies ? 'proxy' : null,
-                        status.ytDlp.userAgent ? 'user-agent' : null,
-                        status.ytDlp.youtubeClients ? 'clientes YouTube' : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')
-                    : 'Não configurado'
-                }
-                badge={
-                  status.ytDlp?.cookies ||
-                  status.ytDlp?.proxies ||
-                  status.ytDlp?.userAgent ||
-                  status.ytDlp?.youtubeClients
-                    ? undefined
-                    : 'Opcional'
-                }
-              />
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-4">
+              <ConfigGroup
+                title="Modelos de IA"
+                description="Padrões usados pelas filas, chat, uploads e análise de links."
+              >
+                <div className="grid gap-3 md:grid-cols-2">
+                  <ConfigItem
+                    icon={MessageSquareText}
+                    label="Chat"
+                    value={status.chatModel}
+                    required
+                    mono
+                  />
+                  <ConfigItem
+                    icon={Mic2}
+                    label="Transcrição"
+                    value={status.transcriptionModel}
+                    required
+                    mono
+                  />
+                  <ConfigItem
+                    icon={Globe2}
+                    label="Pesquisa web"
+                    value={status.webSearchModel}
+                    fallback="Usa o modelo de chat"
+                    mono
+                  />
+                  <ConfigItem
+                    icon={Image}
+                    label="Visão"
+                    value={status.visionModel}
+                    fallback="Uploads de imagem desativados"
+                    mono
+                  />
+                  <ConfigItem
+                    icon={FileText}
+                    label="Documentos/PDF"
+                    value={status.documentModel}
+                    fallback="Uploads de documentos desativados"
+                    mono
+                  />
+                  <ConfigItem
+                    icon={Bot}
+                    label="Análise do X"
+                    value={status.xAnalysisModel}
+                    fallback="Sem modelo Grok dedicado"
+                    mono
+                  />
+                </div>
+              </ConfigGroup>
 
-              <div className="pt-3 border-t border-[var(--color-app-border)] flex flex-wrap gap-2.5">
+              <ConfigGroup
+                title="Operação"
+                description="Parâmetros administrativos que afetam scraping, resumos e suporte."
+              >
+                <div className="grid gap-3 md:grid-cols-2">
+                  <ConfigItem
+                    icon={AtSign}
+                    label="Email do operador"
+                    value={status.adminEmail}
+                    fallback="Não configurado"
+                  />
+                  <ConfigItem
+                    icon={Timer}
+                    label="Timeout de resumo"
+                    value={status.summaryTimeoutSec ? `${status.summaryTimeoutSec}s` : null}
+                    fallback="Padrão do serviço"
+                  />
+                </div>
+              </ConfigGroup>
+            </div>
+
+            <aside className="space-y-4">
+              <Card elevated>
+                <CardHeader className="pb-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <CardTitle className="text-base">OpenRouter</CardTitle>
+                      <CardDescription>Chave ativa e armazenada cifrada.</CardDescription>
+                    </div>
+                    <Badge variant="success">Cifrada</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center gap-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/45 px-3 py-2 font-mono text-sm text-zinc-200">
+                    <KeyRound className="h-4 w-4 text-emerald-400" />
+                    <span className="truncate">••••••••••••••••••••</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-[var(--color-app-muted)]">
+                    A chave nunca é exibida de volta pela API.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card elevated>
+                <CardHeader className="pb-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <CardTitle className="text-base">Extração de mídia</CardTitle>
+                      <CardDescription>
+                        Estratégias adicionais para ambientes restritos.
+                      </CardDescription>
+                    </div>
+                    <Wrench className="mt-0.5 h-4 w-4 text-[var(--color-app-muted)]" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {mediaItems.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {mediaItems.map((item) => (
+                        <Badge key={item} variant="success">
+                          {item}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-[var(--color-app-border)] px-3 py-3 text-sm text-[var(--color-app-muted)]">
+                      Nenhuma estratégia extra configurada.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </aside>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-[var(--color-app-muted)]">
+                Altere modelos ou substitua a chave quando mudar de provedor, custo ou capacidade.
+              </p>
+              <div className="flex flex-wrap gap-2.5">
                 <Button
                   variant="primary"
                   size="default"
@@ -344,14 +410,14 @@ export function SetupPage(): React.ReactElement {
                   Substituir chave
                 </Button>
               </div>
+            </div>
+          </div>
 
-              {error && (
-                <Alert variant="destructive" className="mt-2">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-            </CardContent>
-          </Card>
+          {error && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
         </div>
       </AnimatedPage>
     );
@@ -702,6 +768,21 @@ export function SetupPage(): React.ReactElement {
                             clientes específicos.
                           </p>
                         </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <Label>PO Tokens YouTube</Label>
+                          <textarea
+                            value={ytDlpYoutubePoTokens}
+                            onChange={(e) => setYtDlpYoutubePoTokens(e.target.value)}
+                            placeholder="mweb.gvs+TOKEN&#10;web.subs+TOKEN"
+                            rows={3}
+                            spellCheck={false}
+                            className="min-h-20 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
+                          />
+                          <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
+                            Use com provider/gerador de PO Token quando o YouTube exigir prova de
+                            origem para GVS, player ou legendas.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </CardContent>
@@ -755,58 +836,108 @@ function PageHeader({
   sub: string;
 }): React.ReactElement {
   return (
-    <header className="mb-10 space-y-3">
+    <header className="mb-7 space-y-3">
       <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-violet-400 font-medium">
         <Sparkles className="h-3.5 w-3.5" />
         {badge}
       </div>
-      <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">{title}</h1>
-      <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">{sub}</p>
+      <h1 className="font-display text-3xl font-semibold text-zinc-100">{title}</h1>
+      <p className="max-w-2xl text-sm text-[var(--color-app-muted)] leading-relaxed">{sub}</p>
     </header>
   );
 }
 
-function SettingRow({
+function ConfigGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <Card elevated>
+      <CardHeader className="pb-4">
+        <CardTitle className="text-base">{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+function ConfigItem({
+  icon: Icon,
   label,
   value,
+  fallback,
   mono,
-  badge,
+  required,
 }: {
+  icon: LucideIcon;
   label: string;
-  value: string;
+  value: string | null;
+  fallback?: string;
   mono?: boolean;
-  badge?: string;
+  required?: boolean;
 }): React.ReactElement {
-  // Badge "Opcional" usa cor muted; "Cifrada" e outros usam success
-  const badgeVariant = badge === 'Opcional' ? 'muted' : 'success';
-  const isUnset = value === 'Não configurado';
+  const configured = !!value;
   return (
-    <div className="flex items-start gap-4">
-      <div className="min-w-[180px]">
-        <p className="text-[10px] uppercase tracking-[0.15em] text-[var(--color-app-muted)] font-medium">
-          {label}
-        </p>
+    <div className="flex min-h-[76px] items-start gap-3 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/35 px-3 py-3">
+      <div
+        className={[
+          'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border',
+          configured
+            ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+            : 'border-zinc-700/70 bg-zinc-900/70 text-[var(--color-app-muted)]',
+        ].join(' ')}
+      >
+        <Icon className="h-4 w-4" />
       </div>
-      <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-        <span
-          className={
-            mono
-              ? 'text-[13px] font-mono text-zinc-200 tabular-nums truncate'
-              : isUnset
-                ? 'text-sm text-[var(--color-app-muted)] italic'
-                : 'text-sm text-zinc-200'
-          }
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+            {label}
+          </p>
+          {required && (
+            <Badge variant="outline" className="px-2 py-0 text-[10px]">
+              Obrigatório
+            </Badge>
+          )}
+          {!required && !configured && (
+            <Badge variant="muted" className="px-2 py-0 text-[10px]">
+              Opcional
+            </Badge>
+          )}
+        </div>
+        <p
+          className={[
+            'truncate text-sm',
+            configured
+              ? mono
+                ? 'font-mono text-zinc-100'
+                : 'text-zinc-100'
+              : 'text-[var(--color-app-muted)]',
+          ].join(' ')}
+          title={value ?? fallback ?? undefined}
         >
-          {value}
-        </span>
-        {badge && (
-          <Badge variant={badgeVariant} className="text-[10px]">
-            {badge}
-          </Badge>
-        )}
+          {value ?? fallback ?? 'Não configurado'}
+        </p>
       </div>
     </div>
   );
+}
+
+function getMediaExtractionItems(status: SetupStatus['ytDlp']): string[] {
+  if (!status) return [];
+  return [
+    status.cookies ? 'cookies Netscape' : null,
+    status.proxies ? 'proxies próprios' : null,
+    status.userAgent ? 'user-agent real' : null,
+    status.youtubeClients ? 'clientes YouTube' : null,
+    status.poTokens ? 'PO Tokens' : null,
+  ].filter((item): item is string => Boolean(item));
 }
 
 function StepDot({

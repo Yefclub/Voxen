@@ -13,7 +13,7 @@ import pytest
 import yt_dlp.utils
 
 from src.pipeline import PermanentError, TransientError, _retry_transient
-from src.ytdl import _parse_youtube_clients
+from src.ytdl import _parse_youtube_clients, _parse_youtube_po_tokens
 
 
 async def test_retry_succeeds_on_third_attempt() -> None:
@@ -105,3 +105,11 @@ def test_parse_youtube_clients_keeps_allowed_unique_values() -> None:
         "android",
     ]
     assert _parse_youtube_clients("") == []
+
+
+def test_parse_youtube_po_tokens_keeps_context_tokens_only() -> None:
+    assert _parse_youtube_po_tokens("mweb.gvs+AAA\nweb.subs+BBB,invalid,mweb.gvs+AAA") == [
+        "mweb.gvs+AAA",
+        "web.subs+BBB",
+    ]
+    assert _parse_youtube_po_tokens("") == []

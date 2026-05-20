@@ -10,8 +10,10 @@
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import app from '../src/index';
+import { encrypt } from '../src/lib/crypto';
 import { db } from '../src/lib/db';
-import { getSetting } from '../src/lib/settings';
+import { getMasterKey } from '../src/lib/master-key';
+import { getSetting, setSetting } from '../src/lib/settings';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -136,6 +138,49 @@ describeIfDb('setup flow', () => {
     expect(status.summaryTimeoutSec).toBe('180');
     await expect(getSetting('admin_email')).resolves.toBe('admin@voxen.local');
     await expect(getSetting('summary_timeout_sec')).resolves.toBe('180');
+  });
+
+  it('status reconhece aliases legados do modelo de análise do X', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    await setSetting('openrouter_api_key', VALID_KEY);
+    await setSetting('default_chat_model', 'openrouter/auto');
+    await setSetting('default_transcription_model', 'openai/whisper-1');
+    await db.setting.create({
+      data: {
+        scope: 'GLOBAL',
+        key: 'default_grok_model',
+        valueEnc: encrypt('x-ai/grok-4-fast', getMasterKey()),
+      },
+    });
+
+    const statusRes = await app.fetch(
+      new Request('http://localhost/api/setup', { headers: { cookie } }),
+    );
+    const status = (await statusRes.json()) as { xAnalysisModel: string | null };
+
+    expect(status.xAnalysisModel).toBe('x-ai/grok-4-fast');
+
+    const clearRes = await app.fetch(
+      new Request('http://localhost/api/setup', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          default_chat_model: 'openrouter/auto',
+          default_transcription_model: 'openai/whisper-1',
+          default_x_analysis_model: '',
+        }),
+      }),
+    );
+    expect(clearRes.status).toBe(200);
+
+    const clearedStatusRes = await app.fetch(
+      new Request('http://localhost/api/setup', { headers: { cookie } }),
+    );
+    const clearedStatus = (await clearedStatusRes.json()) as { xAnalysisModel: string | null };
+    expect(clearedStatus.xAnalysisModel).toBeNull();
   });
 
   it('admin não persiste operação da instância com email inválido', async () => {
