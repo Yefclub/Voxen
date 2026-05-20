@@ -243,16 +243,13 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
         )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
-    await db.link_job_done(job_id, new_transcript_id)
+    await db.link_job_transcript(job_id, new_transcript_id)
 
-    # Resumo via IA — best-effort, não bloqueia entrega.
-    await summary.maybe_generate(
-        user_id=user_id,
-        transcript_id=new_transcript_id,
-        job_id=job_id,
-        log=log,
+    await _generate_summary_with_progress(
+        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
 
+    await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
@@ -338,13 +335,11 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
         )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
-    await db.link_job_done(job_id, new_transcript_id)
-    await summary.maybe_generate(
-        user_id=user_id,
-        transcript_id=new_transcript_id,
-        job_id=job_id,
-        log=log,
+    await db.link_job_transcript(job_id, new_transcript_id)
+    await _generate_summary_with_progress(
+        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
+    await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
@@ -430,13 +425,11 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
         )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
-    await db.link_job_done(job_id, new_transcript_id)
-    await summary.maybe_generate(
-        user_id=user_id,
-        transcript_id=new_transcript_id,
-        job_id=job_id,
-        log=log,
+    await db.link_job_transcript(job_id, new_transcript_id)
+    await _generate_summary_with_progress(
+        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
+    await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
@@ -564,13 +557,11 @@ async def _run_document_pipeline(
         )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
-    await db.link_job_done(job_id, new_transcript_id)
-    await summary.maybe_generate(
-        user_id=user_id,
-        transcript_id=new_transcript_id,
-        job_id=job_id,
-        log=log,
+    await db.link_job_transcript(job_id, new_transcript_id)
+    await _generate_summary_with_progress(
+        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
+    await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
@@ -643,17 +634,33 @@ async def _run_x_analysis_pipeline(
     )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
-    await db.link_job_done(job_id, new_transcript_id)
-    await summary.maybe_generate(
-        user_id=user_id,
-        transcript_id=new_transcript_id,
-        job_id=job_id,
-        log=log,
+    await db.link_job_transcript(job_id, new_transcript_id)
+    await _generate_summary_with_progress(
+        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
+    await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
     log.info("x-analysis-job-done", transcript_id=new_transcript_id)
+
+
+async def _generate_summary_with_progress(
+    *,
+    user_id: str,
+    transcript_id: str,
+    job_id: str,
+    log: Any,  # noqa: ANN401
+) -> None:
+    # Resumo via IA — best-effort, mas agora visível no realtime da UI.
+    _check_cancel(job_id)
+    await events.publish_job_event(user_id, job_id, "summarizing", percent=98)
+    await summary.maybe_generate(
+        user_id=user_id,
+        transcript_id=transcript_id,
+        job_id=job_id,
+        log=log,
+    )
 
 
 async def _transcribe_via_api(

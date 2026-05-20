@@ -48,6 +48,7 @@ const STAGE_ORDER = [
   'transcribing',
   'uploading',
   'indexing',
+  'summarizing',
   'done',
 ];
 
@@ -112,6 +113,14 @@ export function JobDetalhePage(): React.ReactElement {
   useEffect(() => {
     if (closed && isActive) refresh();
   }, [closed, isActive, refresh]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const intervalId = window.setInterval(() => {
+      refresh();
+    }, 6_000);
+    return () => window.clearInterval(intervalId);
+  }, [isActive, refresh]);
 
   if (!data?.job) {
     return (

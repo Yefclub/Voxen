@@ -38,6 +38,7 @@ export type GlobalSettingKey =
   | 'yt_dlp_user_agent'
   | 'yt_dlp_youtube_clients'
   | 'yt_dlp_youtube_po_tokens'
+  | 'yt_dlp_pot_provider_url'
   | 'allow_signups'
   | 'onboarding_done'
   // Opcional: email do admin do deploy. Quando setado, scraper inclui

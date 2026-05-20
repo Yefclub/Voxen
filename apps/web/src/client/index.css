@@ -53,11 +53,7 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     overflow-x: hidden;
-    /* scrollbar-gutter: reserva espaço da scrollbar permanentemente.
-       Sem isso, a página "pula" 12-15px quando aparece/some uma scrollbar
-       (modais, transições, carregamento de listas). Padrão moderno de UI.
-       https://developer.mozilla.org/en-US/docs/Web/CSS/scrollbar-gutter */
-    scrollbar-gutter: stable;
+    scrollbar-gutter: auto;
   }
 
   body {
@@ -72,22 +68,20 @@
 
   /* Scrollbar estética em containers que rolam internamente (chat, sidebar) */
   *::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
   }
   *::-webkit-scrollbar-track {
     background: transparent;
   }
   *::-webkit-scrollbar-thumb {
     background: var(--color-app-border);
-    border-radius: 8px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
+    border-radius: 999px;
+    border: 0;
   }
   *::-webkit-scrollbar-thumb:hover {
     background: var(--color-app-border-strong);
-    background-clip: padding-box;
-    border: 2px solid transparent;
+    border: 0;
   }
 
   /* Mesh gradient ambiente — leve, atrás de tudo */
