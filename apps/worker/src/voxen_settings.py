@@ -51,11 +51,23 @@ async def get_default_document_model() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_first_setting(keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        enc = await db.get_setting_enc(key)
+        if enc is not None:
+            return decrypt(enc, get_master_key())
+    return None
+
+
 async def get_default_x_analysis_model() -> str | None:
-    enc = await db.get_setting_enc("default_x_analysis_model")
-    if enc is None:
-        return None
-    return decrypt(enc, get_master_key())
+    return await get_first_setting(
+        (
+            "default_x_analysis_model",
+            "default_grok_model",
+            "default_x_model",
+            "x_analysis_model",
+        )
+    )
 
 
 async def get_yt_dlp_cookies_txt() -> str | None:
@@ -81,6 +93,13 @@ async def get_yt_dlp_user_agent() -> str | None:
 
 async def get_yt_dlp_youtube_clients() -> str | None:
     enc = await db.get_setting_enc("yt_dlp_youtube_clients")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
+async def get_yt_dlp_youtube_po_tokens() -> str | None:
+    enc = await db.get_setting_enc("yt_dlp_youtube_po_tokens")
     if enc is None:
         return None
     return decrypt(enc, get_master_key())

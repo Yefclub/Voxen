@@ -17,7 +17,15 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
-import { deleteSetting, getSetting, isSetupComplete, setSetting } from '../lib/settings';
+import {
+  deleteDefaultXAnalysisModel,
+  deleteSetting,
+  getDefaultXAnalysisModel,
+  getSetting,
+  isSetupComplete,
+  setDefaultXAnalysisModel,
+  setSetting,
+} from '../lib/settings';
 import {
   validateApiKey,
   listModels,
@@ -88,7 +96,7 @@ setupRoutes.get('/', async (c) => {
     getSetting('default_web_search_model'),
     getSetting('default_vision_model'),
     getSetting('default_document_model'),
-    getSetting('default_x_analysis_model'),
+    getDefaultXAnalysisModel(),
     getSetting('admin_email'),
     getSetting('summary_timeout_sec'),
     getSetting('openrouter_api_key'),
@@ -109,6 +117,7 @@ setupRoutes.get('/', async (c) => {
       proxies: !!(await getSetting('yt_dlp_proxy_urls')),
       userAgent: !!(await getSetting('yt_dlp_user_agent')),
       youtubeClients: !!(await getSetting('yt_dlp_youtube_clients')),
+      poTokens: !!(await getSetting('yt_dlp_youtube_po_tokens')),
     },
   });
 });
@@ -183,6 +192,7 @@ const SaveBody = z.object({
   yt_dlp_proxy_urls: z.string().optional(),
   yt_dlp_user_agent: z.string().optional(),
   yt_dlp_youtube_clients: z.string().optional(),
+  yt_dlp_youtube_po_tokens: z.string().optional(),
   clear_yt_dlp_cookies: z.boolean().optional(),
   admin_email: z.string().optional(),
   summary_timeout_sec: z.string().optional(),
@@ -205,6 +215,7 @@ setupRoutes.post('/', async (c) => {
     yt_dlp_proxy_urls,
     yt_dlp_user_agent,
     yt_dlp_youtube_clients,
+    yt_dlp_youtube_po_tokens,
     clear_yt_dlp_cookies,
     admin_email,
     summary_timeout_sec,
@@ -285,9 +296,9 @@ setupRoutes.post('/', async (c) => {
   }
   if (default_x_analysis_model !== undefined) {
     if (default_x_analysis_model.trim() === '') {
-      await deleteSetting('default_x_analysis_model');
+      await deleteDefaultXAnalysisModel();
     } else {
-      await setSetting('default_x_analysis_model', default_x_analysis_model);
+      await setDefaultXAnalysisModel(default_x_analysis_model);
     }
   }
   if (yt_dlp_proxy_urls !== undefined) {
@@ -309,6 +320,13 @@ setupRoutes.post('/', async (c) => {
       await deleteSetting('yt_dlp_youtube_clients');
     } else {
       await setSetting('yt_dlp_youtube_clients', yt_dlp_youtube_clients);
+    }
+  }
+  if (yt_dlp_youtube_po_tokens !== undefined) {
+    if (yt_dlp_youtube_po_tokens.trim() === '') {
+      await deleteSetting('yt_dlp_youtube_po_tokens');
+    } else {
+      await setSetting('yt_dlp_youtube_po_tokens', yt_dlp_youtube_po_tokens);
     }
   }
   if (clear_yt_dlp_cookies) {
