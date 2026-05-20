@@ -1,5 +1,5 @@
 # ============================================================================
-# version-main — bumpa estável vX.Y.Z + commita em main + tag pra release
+# version-main — bumpa estável vX.Y.Z + commita em main + despacha release
 # ============================================================================
 # Regra de release: só `main` cria versão estável. Workflow:
 #  - Roda em push pra `main` (após merge da PR de release dev→main).
@@ -9,7 +9,7 @@
 #  - Bumpa o componente conforme label.
 #  - Atualiza package.json + apps/web/package.json.
 #  - Commit "chore: release vX.Y.Z" + tag vX.Y.Z + push.
-#  - Tag dispara release.yml (build + push imagens pro ghcr).
+#  - Despacha release.yml para a tag (build + push imagens pro ghcr).
 #  - Sincroniza main de volta para dev com um merge de release.
 #
 # Loop-safe: condition skipa commits que começam com "chore: release v".
@@ -26,6 +26,7 @@ on:
 permissions:
   contents: write
   pull-requests: read
+  actions: write
 
 concurrency:
   group: version-main-${{ github.repository }}-${{ github.ref_name }}
@@ -117,8 +118,13 @@ jobs:
         env:
           NEW_VER: ${{ steps.version.outputs.new_version }}
           NEW_TAG: ${{ steps.version.outputs.new_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          dispatch_release() {
+            gh workflow run release.yml --ref "$NEW_TAG"
+            echo "Dispatched release.yml for $NEW_TAG"
+          }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package.json apps/web/package.json
@@ -133,7 +139,8 @@ jobs:
               # commit antigo caso haja concorrência e o commit seja reescrito.
               git tag -fa "$NEW_TAG" -m "Release $NEW_TAG"
               if git push origin "$NEW_TAG" 2>&1; then
-                echo "Released v$NEW_VER — release.yml será disparado pela tag."
+                dispatch_release
+                echo "Released v$NEW_VER — release.yml despachado para a tag."
                 exit 0
               fi
             else
@@ -141,7 +148,8 @@ jobs:
             fi
             REMOTE_TAG_SHA=$(git ls-remote origin "refs/tags/$NEW_TAG^{}" | cut -f1 || true)
             if [[ -n "$REMOTE_TAG_SHA" && "$REMOTE_TAG_SHA" == "$(git rev-parse HEAD)" ]]; then
-              echo "Released v$NEW_VER — release.yml será disparado pela tag."
+              dispatch_release
+              echo "Released v$NEW_VER — release.yml despachado para a tag."
               exit 0
             fi
             sleep "$((attempt * 3))"
