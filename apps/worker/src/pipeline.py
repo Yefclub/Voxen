@@ -14,13 +14,25 @@ import botocore.exceptions
 import structlog
 import yt_dlp.utils
 
-from . import db, events, storage, summary, uploaded_media, video_url, voxen_settings, ytdl
+from . import (
+    db,
+    document_ingest,
+    events,
+    storage,
+    summary,
+    uploaded_media,
+    video_url,
+    voxen_settings,
+    ytdl,
+)
 from .audio_chunking import AudioChunk, split_audio
 from .cancellation import CancelledException, clear_cancelled, is_cancelled
 from .openrouter import (
     OpenrouterAuthError,
     OpenrouterTransientError,
+    analyze_document_text,
     analyze_image,
+    analyze_pdf_native,
     transcribe_audio,
 )
 from .transcript_md import Segment, TranscriptDoc, render_markdown, render_plain_text
@@ -89,6 +101,10 @@ async def process_job(job_id: str) -> None:
             await _run_image_pipeline(
                 job_id=job_id, user_id=user_id, source_url=source_url, log=log
             )
+        elif job_type == "UPLOAD_AND_ANALYZE_DOCUMENT":
+            await _run_document_pipeline(
+                job_id=job_id, user_id=user_id, source_url=source_url, log=log
+            )
         else:
             await _run_pipeline(job_id=job_id, user_id=user_id, source_url=source_url, log=log)
     except CancelledException:
@@ -120,7 +136,8 @@ def _friendly_external_error(exc: BaseException) -> str | None:
     ):
         return (
             "O YouTube bloqueou o download automatizado deste vídeo. "
-            "Tente outro link público ou envie o arquivo por upload."
+            "O admin pode configurar cookies/proxy do yt-dlp nas settings da instância; "
+            "como alternativa, envie o arquivo por upload."
         )
     if "private video" in text or "login required" in text or "members-only" in text:
         return (
@@ -418,6 +435,140 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
     log.info("image-job-done", transcript_id=new_transcript_id)
+
+
+async def _run_document_pipeline(
+    *,
+    job_id: str,
+    user_id: str,
+    source_url: str,
+    log: Any,  # noqa: ANN401
+) -> None:
+    ref = uploaded_media.parse_upload_source_url(source_url)
+    if ref is None:
+        raise PermanentError("Upload inválido ou corrompido.")
+
+    api_key = await voxen_settings.get_openrouter_api_key()
+    if not api_key:
+        raise PermanentError("Setup incompleto — chave da OpenRouter ausente.")
+    model = await voxen_settings.get_default_document_model()
+    if not model:
+        raise PermanentError("Setup incompleto — modelo de documentos padrão ausente.")
+
+    _check_cancel(job_id)
+    await events.publish_job_event(user_id, job_id, "preparing_upload", percent=5)
+
+    with tempfile.TemporaryDirectory(prefix="voxen-doc-") as tmp:
+        tmpdir = Path(tmp)
+        doc_path = tmpdir / ref.filename
+        key = storage.upload_key(user_id, ref.upload_id, ref.filename)
+        await _retry_transient(lambda: storage.download_to_file(key=key, dest=doc_path), tries=3)
+
+        _check_cancel(job_id)
+        await events.publish_job_event(user_id, job_id, "analyzing_document", percent=30)
+        result: Any
+        parser = "openrouter-native-pdf"
+        if document_ingest.is_pdf(doc_path):
+
+            async def _do_native_pdf() -> Any:
+                return await analyze_pdf_native(pdf_path=doc_path, api_key=api_key, model=model)
+
+            try:
+                result = await _retry_transient_or(_do_native_pdf, tries=2)
+            except RuntimeError as e:
+                log.warning("document-native-pdf-fallback-markitdown", error=str(e)[:240])
+                await events.publish_job_event(user_id, job_id, "converting_document", percent=25)
+                try:
+                    extracted = await document_ingest.convert_to_markdown(doc_path)
+                except RuntimeError as e:
+                    raise PermanentError(
+                        "Não foi possível extrair texto deste PDF. "
+                        "Tente um PDF com texto selecionável ou envie outro formato."
+                    ) from e
+                parser = "markitdown"
+
+                async def _do_text_pdf() -> Any:
+                    return await analyze_document_text(
+                        markdown=extracted.markdown,
+                        filename=ref.filename,
+                        api_key=api_key,
+                        model=model,
+                    )
+
+                result = await _retry_transient_or(_do_text_pdf, tries=3)
+        else:
+            await events.publish_job_event(user_id, job_id, "converting_document", percent=20)
+            try:
+                extracted = await document_ingest.convert_to_markdown(doc_path)
+            except RuntimeError as e:
+                raise PermanentError(
+                    "Não foi possível extrair texto deste documento. "
+                    "Confirme se o arquivo não está corrompido ou protegido."
+                ) from e
+            parser = "markitdown"
+
+            async def _do_text_doc() -> Any:
+                return await analyze_document_text(
+                    markdown=extracted.markdown,
+                    filename=ref.filename,
+                    api_key=api_key,
+                    model=model,
+                )
+
+            result = await _retry_transient_or(_do_text_doc, tries=3)
+
+        if not result.text:
+            raise PermanentError("Análise vazia — nenhum conteúdo foi extraído do documento.")
+
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="DOCUMENT",
+            model=model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+            job_id=job_id,
+            meta={"source": "document_upload", "filename": ref.filename, "parser": parser},
+        )
+
+        probe_info = ytdl.VideoProbe(
+            video_id=ref.upload_id,
+            title=Path(ref.filename).stem or ref.filename,
+            channel="Documento enviado",
+            duration_sec=0,
+            published_at=None,
+            thumbnail_url=None,
+            language_hint=None,
+            available_subtitles={},
+            automatic_captions={},
+        )
+        _check_cancel(job_id)
+        await events.publish_job_event(user_id, job_id, "uploading", percent=80)
+        new_transcript_id = await _persist(
+            user_id=user_id,
+            job_id=job_id,
+            probe_info=probe_info,
+            source_url=source_url,
+            segments=(Segment(start_sec=0.0, text=result.text),),
+            method="DOCUMENT",
+            model=model,
+            cost_usd=result.cost_usd,
+            language="pt",
+            source_override="UPLOAD",
+        )
+
+    await events.publish_job_event(user_id, job_id, "indexing", percent=95)
+    await db.link_job_done(job_id, new_transcript_id)
+    await summary.maybe_generate(
+        user_id=user_id,
+        transcript_id=new_transcript_id,
+        job_id=job_id,
+        log=log,
+    )
+    await events.publish_job_event(
+        user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
+    )
+    log.info("document-job-done", transcript_id=new_transcript_id)
 
 
 async def _transcribe_via_api(

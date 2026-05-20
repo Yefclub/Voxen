@@ -153,3 +153,28 @@ def test_render_vision_markdown_uses_visual_description_without_timestamps() -> 
     assert "[00:00:00]" not in md
     assert "0m00s" not in md
     assert "A imagem mostra um painel" in md
+
+
+def test_render_document_markdown_uses_document_section_without_timestamps() -> None:
+    doc = _doc(
+        source="UPLOAD",
+        url="upload://123e4567-e89b-12d3-a456-426614174000/relatorio.pdf",
+        video_id="123e4567-e89b-12d3-a456-426614174000",
+        title="relatorio",
+        channel="Documento enviado",
+        duration_sec=0,
+        published_at=None,
+        thumbnail_url=None,
+        transcription_method="DOCUMENT",
+        model="google/gemini-2.5-pro",
+        segments=(Segment(start_sec=0.0, text="Resumo do relatório financeiro."),),
+    )
+    md = render_markdown(doc)
+    fm_end = md.index("\n---\n", 4)
+    fm = yaml.safe_load(md[4:fm_end])
+    assert fm["transcription_method"] == "document"
+    assert "## Análise do documento" in md
+    assert "## Transcrição" not in md
+    assert "[00:00:00]" not in md
+    assert "0m00s" not in md
+    assert "Resumo do relatório financeiro." in md

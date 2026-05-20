@@ -105,9 +105,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - uses: astral-sh/setup-uv@v3
       - name: Install deps
         run: uv sync --frozen
         working-directory: apps/chat
@@ -123,9 +124,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - uses: astral-sh/setup-uv@v3
       - run: uv sync --frozen
         working-directory: apps/chat
       - run: uv run pytest
@@ -136,9 +138,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - uses: astral-sh/setup-uv@v3
       - run: uv sync --frozen
         working-directory: apps/worker
       - run: uv run ruff check .
@@ -151,9 +154,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - uses: astral-sh/setup-uv@v3
       - run: uv sync --frozen
         working-directory: apps/worker
       - run: uv run pytest

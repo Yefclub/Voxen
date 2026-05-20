@@ -73,9 +73,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - uses: astral-sh/setup-uv@v3
       - name: Install bandit
         run: uv tool install bandit
       - name: Scan
@@ -89,13 +90,17 @@ jobs:
         app: [chat, worker]
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - uses: astral-sh/setup-uv@v3
       - run: uv sync --frozen
         working-directory: apps/${{ matrix.app }}
       - run: uv tool install pip-audit
-      - run: pip-audit --requirement apps/${{ matrix.app }}/uv.lock --strict
+      - name: Export requirements
+        run: uv export --frozen --format requirements.txt --no-hashes --output-file /tmp/${{ matrix.app }}-requirements.txt
+        working-directory: apps/${{ matrix.app }}
+      - run: pip-audit --requirement /tmp/${{ matrix.app }}-requirements.txt --strict
         continue-on-error: true  # remove once green
 
   bun-audit:

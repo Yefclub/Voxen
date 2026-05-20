@@ -7,6 +7,7 @@
 //  GET    /api/chat/conversations/:id       conversa + mensagens
 //  PATCH  /api/chat/conversations/:id       renomear / toggle thinking
 //  DELETE /api/chat/conversations/:id       apaga
+//  POST   /api/chat/conversations/:id/file-message registra upload feito no chat
 //  POST   /api/chat/conversations/:id/send  envia mensagem (SSE)
 //  POST   /api/chat/voice                   transcreve áudio do mic → texto
 // ============================================================================
@@ -30,6 +31,8 @@ const VOICE_ALLOWED_MIMES = new Set([
   'audio/mpeg',
   'audio/mp3',
 ]);
+const MAX_LIBRARY_MENTIONS = 8;
+const MAX_LIBRARY_MENTION_CHARS = 12_000;
 
 export const chatRoutes = new Hono();
 
@@ -55,6 +58,70 @@ function userId(c: { get: (k: string) => unknown }): string {
 function chatUrl(path: string): string {
   return (process.env.CHAT_SERVICE_URL ?? 'http://chat:8001') + path;
 }
+
+interface LibraryMentionInput {
+  type: 'transcript' | 'note';
+  id: string;
+  label?: string;
+}
+
+interface LibraryMentionContext {
+  type: 'transcript' | 'note';
+  id: string;
+  label: string;
+  subtitle?: string;
+  content: string;
+}
+
+// Autocomplete de menções @ no chat. Só retorna itens do user autenticado.
+chatRoutes.get('/library-mentions', async (c) => {
+  const uid = userId(c);
+  const q = (c.req.query('q') ?? '').trim().slice(0, 80);
+  const [transcripts, notes] = await Promise.all([
+    db.transcript.findMany({
+      where: {
+        userId: uid,
+        ...(q
+          ? {
+              OR: [
+                { title: { contains: q, mode: 'insensitive' } },
+                { channel: { contains: q, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true, title: true, source: true, channel: true },
+      take: 6,
+    }),
+    db.note.findMany({
+      where: {
+        userId: uid,
+        kind: 'NOTE',
+        ...(q ? { title: { contains: q, mode: 'insensitive' } } : {}),
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true, title: true },
+      take: 6,
+    }),
+  ]);
+
+  const items = [
+    ...transcripts.map((t) => ({
+      type: 'transcript' as const,
+      id: t.id,
+      label: t.title,
+      subtitle: [t.source, t.channel].filter(Boolean).join(' · '),
+    })),
+    ...notes.map((n) => ({
+      type: 'note' as const,
+      id: n.id,
+      label: n.title,
+      subtitle: 'Nota',
+    })),
+  ].slice(0, 10);
+  return c.json({ items });
+});
 
 // ----------------------------------------------------------------------------
 // Conversations CRUD
@@ -192,6 +259,74 @@ chatRoutes.delete('/conversations/:id', async (c) => {
   return c.json({ ok: true });
 });
 
+chatRoutes.post('/conversations/:id/file-message', async (c) => {
+  const uid = userId(c);
+  const id = c.req.param('id');
+  const body = (await c.req.json().catch(() => ({}))) as {
+    filename?: string;
+    jobId?: string;
+    kind?: string;
+  };
+  const filename = body.filename?.trim().slice(0, 160) || 'arquivo';
+  const jobId = body.jobId?.trim() ?? '';
+  if (!jobId) return c.json({ error: 'Job ausente.' }, 400);
+
+  const [conv, job] = await Promise.all([
+    db.conversation.findFirst({
+      where: { id, userId: uid },
+      select: { id: true, title: true, _count: { select: { messages: true } } },
+    }),
+    db.job.findFirst({
+      where: { id: jobId, userId: uid },
+      select: { id: true, type: true },
+    }),
+  ]);
+  if (!conv) return c.json({ error: 'Conversa não encontrada.' }, 404);
+  if (!job) return c.json({ error: 'Job não encontrado.' }, 404);
+
+  const label =
+    job.type === 'UPLOAD_AND_TRANSCRIBE'
+      ? 'arquivo de mídia'
+      : job.type === 'UPLOAD_AND_ANALYZE_IMAGE'
+        ? 'imagem'
+        : 'documento';
+  const userMessage = await db.chatMessage.create({
+    data: {
+      conversationId: id,
+      role: 'USER',
+      content: `Enviei o ${label} "${filename}" para análise.`,
+    },
+  });
+  const assistantMessage = await db.chatMessage.create({
+    data: {
+      conversationId: id,
+      role: 'ASSISTANT',
+      content: `Recebi o ${label} e coloquei na fila. Acompanhe em [/jobs/${job.id}](/jobs/${job.id}).`,
+    },
+  });
+
+  await db.conversation.update({
+    where: { id },
+    data: {
+      updatedAt: new Date(),
+      ...(conv._count.messages === 0 && conv.title === 'Nova conversa'
+        ? { title: `Upload: ${filename}`.slice(0, 60) }
+        : {}),
+    },
+  });
+
+  return c.json({
+    messages: [userMessage, assistantMessage].map((m) => ({
+      id: m.id,
+      role: m.role.toLowerCase(),
+      kind: m.kind,
+      content: m.content,
+      tools: null,
+      createdAt: m.createdAt.toISOString(),
+    })),
+  });
+});
+
 // ----------------------------------------------------------------------------
 // Send message → SSE stream do chat service
 // ----------------------------------------------------------------------------
@@ -202,6 +337,7 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as {
     content?: string;
     image_data_url?: string;
+    mentions?: unknown;
     // Quando true, a mensagem é resposta de HITL via clique nos botões do
     // ConfirmationPrompt — marca kind=HITL_RESPONSE pra UI renderizar como
     // chip compacto em vez de bubble cheio (não polui a conversa).
@@ -230,6 +366,8 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
     },
   });
   if (!conv) return c.json({ error: 'Conversa não encontrada.' }, 404);
+
+  const libraryMentions = await resolveLibraryMentions(uid, body.mentions);
 
   // Texto persistido inclui marcador da imagem (UX: histórico mostra que
   // teve anexo). A data URL real fica no upstream pra economizar storage.
@@ -288,6 +426,7 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
       thinking: conv.thinking,
       user_name: userInfo?.name ?? '',
       ...(imageDataUrl ? { image_data_url: imageDataUrl } : {}),
+      ...(libraryMentions.length > 0 ? { library_mentions: libraryMentions } : {}),
     }),
     signal: upstreamAbort.signal,
   });
@@ -390,6 +529,82 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
     },
   });
 });
+
+async function resolveLibraryMentions(uid: string, raw: unknown): Promise<LibraryMentionContext[]> {
+  if (!Array.isArray(raw)) return [];
+  const parsed: LibraryMentionInput[] = [];
+  const seen = new Set<string>();
+  for (const item of raw.slice(0, MAX_LIBRARY_MENTIONS)) {
+    if (!item || typeof item !== 'object') continue;
+    const obj = item as Record<string, unknown>;
+    const type = obj.type === 'note' ? 'note' : obj.type === 'transcript' ? 'transcript' : null;
+    const id = typeof obj.id === 'string' ? obj.id : '';
+    if (!type || !id) continue;
+    const key = `${type}:${id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    parsed.push({ type, id, label: typeof obj.label === 'string' ? obj.label : undefined });
+  }
+  if (parsed.length === 0) return [];
+
+  const transcriptIds = parsed.filter((m) => m.type === 'transcript').map((m) => m.id);
+  const noteIds = parsed.filter((m) => m.type === 'note').map((m) => m.id);
+  const [transcripts, notes] = await Promise.all([
+    transcriptIds.length
+      ? db.transcript.findMany({
+          where: { userId: uid, id: { in: transcriptIds } },
+          select: {
+            id: true,
+            title: true,
+            source: true,
+            channel: true,
+            summaryMd: true,
+            plainText: true,
+          },
+        })
+      : Promise.resolve([]),
+    noteIds.length
+      ? db.note.findMany({
+          where: { userId: uid, kind: 'NOTE', id: { in: noteIds } },
+          select: { id: true, title: true, content: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const transcriptMap = new Map(transcripts.map((t) => [t.id, t]));
+  const noteMap = new Map(notes.map((n) => [n.id, n]));
+
+  const contexts: LibraryMentionContext[] = [];
+  for (const mention of parsed) {
+    if (mention.type === 'transcript') {
+      const t = transcriptMap.get(mention.id);
+      if (!t) continue;
+      contexts.push({
+        type: 'transcript',
+        id: t.id,
+        label: t.title,
+        subtitle: [t.source, t.channel].filter(Boolean).join(' · '),
+        content: truncateMentionContent(t.summaryMd || t.plainText),
+      });
+    } else {
+      const n = noteMap.get(mention.id);
+      if (!n) continue;
+      contexts.push({
+        type: 'note',
+        id: n.id,
+        label: n.title,
+        subtitle: 'Nota',
+        content: truncateMentionContent(n.content),
+      });
+    }
+  }
+  return contexts;
+}
+
+function truncateMentionContent(text: string): string {
+  const clean = text.trim();
+  if (clean.length <= MAX_LIBRARY_MENTION_CHARS) return clean;
+  return `${clean.slice(0, MAX_LIBRARY_MENTION_CHARS).trim()}\n\n[conteúdo truncado]`;
+}
 
 // ----------------------------------------------------------------------------
 // Voice → text (proxy para o chat service)

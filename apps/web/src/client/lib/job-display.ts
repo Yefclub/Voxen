@@ -24,6 +24,8 @@ export function stageLabel(stage: string): string {
     downloading: 'Baixando vídeo',
     preparing_upload: 'Preparando arquivo',
     analyzing_image: 'Analisando imagem',
+    converting_document: 'Convertendo documento',
+    analyzing_document: 'Analisando documento',
     extracting_audio: 'Extraindo áudio',
     choosing_method: 'Escolhendo método',
     transcribing: 'Transcrevendo',

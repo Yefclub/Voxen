@@ -18,7 +18,13 @@ import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { deleteSetting, getSetting, isSetupComplete, setSetting } from '../lib/settings';
-import { validateApiKey, listModels, listVisionModels, OpenrouterError } from '../lib/openrouter';
+import {
+  validateApiKey,
+  listModels,
+  listVisionModels,
+  listDocumentModels,
+  OpenrouterError,
+} from '../lib/openrouter';
 
 type SetupVariables = {
   adminUserId: string;
@@ -56,25 +62,34 @@ setupRoutes.get('/', async (c) => {
       transcriptionModel: null,
       webSearchModel: null,
       visionModel: null,
+      documentModel: null,
       hasApiKey: false,
     });
   }
   // Modelos não são segredo (são identificadores públicos da OR).
   // A api_key continua cifrada e nunca é exposta — só dizemos que existe.
-  const [chatModel, transcriptionModel, webSearchModel, visionModel, apiKey] = await Promise.all([
-    getSetting('default_chat_model'),
-    getSetting('default_transcription_model'),
-    getSetting('default_web_search_model'),
-    getSetting('default_vision_model'),
-    getSetting('openrouter_api_key'),
-  ]);
+  const [chatModel, transcriptionModel, webSearchModel, visionModel, documentModel, apiKey] =
+    await Promise.all([
+      getSetting('default_chat_model'),
+      getSetting('default_transcription_model'),
+      getSetting('default_web_search_model'),
+      getSetting('default_vision_model'),
+      getSetting('default_document_model'),
+      getSetting('openrouter_api_key'),
+    ]);
   return c.json({
     complete,
     chatModel,
     transcriptionModel,
     webSearchModel,
     visionModel,
+    documentModel,
     hasApiKey: !!apiKey,
+    ytDlp: {
+      cookies: !!(await getSetting('yt_dlp_cookies_txt')),
+      proxies: !!(await getSetting('yt_dlp_proxy_urls')),
+      userAgent: !!(await getSetting('yt_dlp_user_agent')),
+    },
   });
 });
 
@@ -111,15 +126,16 @@ setupRoutes.post('/models', async (c) => {
     }
   }
   try {
-    const [chat, transcription, vision] = await Promise.all([
+    const [chat, transcription, vision, document] = await Promise.all([
       listModels(key, 'text'),
       listModels(key, 'transcription'),
       listVisionModels(key),
+      listDocumentModels(key),
     ]);
     // Web search: qualquer modelo de chat aceita o sufixo `:online` no OR
     // (plugin Perplexity). Devolvemos a lista de chat repetida — UI deixa
     // claro que o modelo escolhido vai ter `:online` agregado automaticamente.
-    return c.json({ chat, transcription, vision, web: chat });
+    return c.json({ chat, transcription, vision, document, web: chat });
   } catch (err) {
     if (err instanceof OpenrouterError) {
       return c.json({ error: 'Falha ao listar modelos da OpenRouter.' }, 502);
@@ -138,6 +154,12 @@ const SaveBody = z.object({
   default_web_search_model: z.string().optional(),
   // Opcional: modelo multimodal pra entender imagens (vision). Vazio = limpar.
   default_vision_model: z.string().optional(),
+  // Opcional: modelo que aceita PDF/arquivo nativamente para documentos.
+  default_document_model: z.string().optional(),
+  yt_dlp_cookies_txt: z.string().optional(),
+  yt_dlp_proxy_urls: z.string().optional(),
+  yt_dlp_user_agent: z.string().optional(),
+  clear_yt_dlp_cookies: z.boolean().optional(),
 });
 
 setupRoutes.post('/', async (c) => {
@@ -151,6 +173,11 @@ setupRoutes.post('/', async (c) => {
     default_transcription_model,
     default_web_search_model,
     default_vision_model,
+    default_document_model,
+    yt_dlp_cookies_txt,
+    yt_dlp_proxy_urls,
+    yt_dlp_user_agent,
+    clear_yt_dlp_cookies,
   } = parsed.data;
 
   // Se a key veio no payload, valida + persiste. Senão, usa a já cifrada
@@ -195,6 +222,32 @@ setupRoutes.post('/', async (c) => {
     } else {
       await setSetting('default_vision_model', default_vision_model);
     }
+  }
+  if (default_document_model !== undefined) {
+    if (default_document_model.trim() === '') {
+      await deleteSetting('default_document_model');
+    } else {
+      await setSetting('default_document_model', default_document_model);
+    }
+  }
+  if (yt_dlp_proxy_urls !== undefined) {
+    if (yt_dlp_proxy_urls.trim() === '') {
+      await deleteSetting('yt_dlp_proxy_urls');
+    } else {
+      await setSetting('yt_dlp_proxy_urls', yt_dlp_proxy_urls);
+    }
+  }
+  if (yt_dlp_user_agent !== undefined) {
+    if (yt_dlp_user_agent.trim() === '') {
+      await deleteSetting('yt_dlp_user_agent');
+    } else {
+      await setSetting('yt_dlp_user_agent', yt_dlp_user_agent);
+    }
+  }
+  if (clear_yt_dlp_cookies) {
+    await deleteSetting('yt_dlp_cookies_txt');
+  } else if (yt_dlp_cookies_txt !== undefined && yt_dlp_cookies_txt.trim() !== '') {
+    await setSetting('yt_dlp_cookies_txt', yt_dlp_cookies_txt);
   }
 
   return c.json({ complete: true });

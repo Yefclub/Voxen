@@ -106,7 +106,7 @@ export function JobsPage(): React.ReactElement {
         jobId?: string;
         status?: JobStatus;
         sourceUrl?: string;
-        kind?: 'media' | 'image';
+        kind?: 'media' | 'image' | 'document';
         error?: string;
       };
       if (!res.ok || !body.jobId) {
@@ -114,16 +114,25 @@ export function JobsPage(): React.ReactElement {
       }
       setMediaFile(null);
       refresh();
-      toast.success(body.kind === 'image' ? 'Imagem na fila.' : 'Arquivo na fila.', {
-        description:
-          body.kind === 'image'
-            ? 'A análise visual será feita pelo modelo configurado.'
-            : 'A transcrição será feita pelo modelo configurado.',
-        action: {
-          label: 'Abrir',
-          onClick: () => navigate(`/jobs/${body.jobId}`),
+      toast.success(
+        body.kind === 'image'
+          ? 'Imagem na fila.'
+          : body.kind === 'document'
+            ? 'Documento na fila.'
+            : 'Arquivo na fila.',
+        {
+          description:
+            body.kind === 'image'
+              ? 'A análise visual será feita pelo modelo configurado.'
+              : body.kind === 'document'
+                ? 'A análise documental será feita pelo modelo configurado.'
+                : 'A transcrição será feita pelo modelo configurado.',
+          action: {
+            label: 'Abrir',
+            onClick: () => navigate(`/jobs/${body.jobId}`),
+          },
         },
-      });
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro inesperado.');
     } finally {
@@ -144,8 +153,8 @@ export function JobsPage(): React.ReactElement {
           <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Novo conteúdo</h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
             Cole links do YouTube, Instagram, TikTok, X ou páginas web. Também dá para enviar um
-            arquivo de áudio, vídeo ou imagem quando a plataforma bloquear o download ou quando o
-            conteúdo estiver local.
+            arquivo de áudio, vídeo, imagem ou documento quando a plataforma bloquear o download ou
+            quando o conteúdo estiver local.
           </p>
         </header>
 
@@ -246,7 +255,7 @@ export function JobsPage(): React.ReactElement {
                   </form>
                 ) : (
                   <form onSubmit={onUploadSubmit} className="space-y-3">
-                    <Label htmlFor="media">Áudio, vídeo ou imagem</Label>
+                    <Label htmlFor="media">Áudio, vídeo, imagem ou documento</Label>
                     <div className="space-y-2.5 sm:flex sm:gap-2.5 sm:space-y-0">
                       <div className="flex gap-2.5 sm:flex-1">
                         <label className="relative flex h-11 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 text-sm text-[var(--color-app-muted)] transition-colors hover:border-emerald-400/50 hover:text-zinc-100">
@@ -257,7 +266,7 @@ export function JobsPage(): React.ReactElement {
                           <input
                             id="media"
                             type="file"
-                            accept="audio/*,video/*,image/png,image/jpeg,image/webp,image/gif,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.mp4,.mov,.m4v,.webm,.mkv,.avi,.png,.jpg,.jpeg,.webp,.gif"
+                            accept="audio/*,video/*,image/png,image/jpeg,image/webp,image/gif,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/markdown,text/csv,text/html,application/json,application/xml,application/epub+zip,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.mp4,.mov,.m4v,.webm,.mkv,.avi,.png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.pptx,.xls,.xlsx,.csv,.txt,.md,.json,.xml,.html,.htm,.epub"
                             className="sr-only"
                             onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)}
                           />
@@ -289,7 +298,7 @@ export function JobsPage(): React.ReactElement {
                     {mediaFile && (
                       <p className="text-xs text-[var(--color-app-muted)]">
                         {(mediaFile.size / 1024 / 1024).toFixed(1)} MiB · imagens até 20 MiB,
-                        áudio/vídeo até 500 MiB
+                        documentos até 50 MiB, áudio/vídeo até 500 MiB
                       </p>
                     )}
                   </form>
