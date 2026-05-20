@@ -96,6 +96,18 @@ costRoutes.get('/', async (c) => {
     ORDER BY SUM(ce."costUsd") DESC
   `;
 
+  type KindRow = { kind: string; total: string; events: bigint };
+  const byKind = await db.$queryRaw<KindRow[]>`
+    SELECT
+      kind::text AS kind,
+      SUM("costUsd")::text AS total,
+      COUNT(*)::bigint AS events
+    FROM "CostEvent"
+    WHERE ts >= ${since}
+    GROUP BY kind
+    ORDER BY SUM("costUsd") DESC
+  `;
+
   // Histórico diário dos últimos 30 dias (pra gráfico simples)
   type DayRow = { day: Date; total: string };
   const daily = await db.$queryRaw<DayRow[]>`
@@ -127,6 +139,11 @@ costRoutes.get('/', async (c) => {
       name: u.name,
       total: u.total,
       events: Number(u.events),
+    })),
+    byKind: byKind.map((k) => ({
+      kind: k.kind,
+      total: k.total,
+      events: Number(k.events),
     })),
     daily: daily.map((d) => ({
       day: d.day.toISOString().slice(0, 10),

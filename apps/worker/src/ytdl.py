@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import re
+import secrets
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +13,7 @@ from typing import Any
 
 import yt_dlp
 
+from . import voxen_settings
 from .transcript_md import Segment
 
 MAX_DURATION_SEC = 4 * 60 * 60  # 4h conforme spec 002
@@ -28,6 +32,19 @@ class VideoProbe:
     automatic_captions: dict[str, list[dict[str, Any]]]
 
 
+@dataclass
+class RuntimeYtdlpOptions:
+    opts: dict[str, Any]
+    cookie_file: Path | None = None
+
+    def cleanup(self) -> None:
+        if self.cookie_file:
+            try:
+                self.cookie_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 def _parse_upload_date(raw: str | None) -> datetime | None:
     if not raw or len(raw) != 8:
         return None
@@ -39,7 +56,9 @@ def _parse_upload_date(raw: str | None) -> datetime | None:
 
 async def probe(url: str) -> VideoProbe:
     """Extrai metadata SEM baixar áudio (`skip_download=True`)."""
+    runtime = await _runtime_options()
     opts = {
+        **runtime.opts,
         "skip_download": True,
         "quiet": True,
         "no_warnings": True,
@@ -49,7 +68,10 @@ async def probe(url: str) -> VideoProbe:
     # yt-dlp é sync — chamamos em thread pra não bloquear o loop
     import asyncio
 
-    info = await asyncio.to_thread(_extract_info, url, opts)
+    try:
+        info = await asyncio.to_thread(_extract_info, url, opts)
+    finally:
+        runtime.cleanup()
     return VideoProbe(
         video_id=info["id"],
         title=info.get("title") or "(sem título)",
@@ -113,9 +135,11 @@ async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path) -> Pat
     import asyncio
 
     # Inclui variantes do lang pedido + base (pt-BR → pt)
+    runtime = await _runtime_options(cookie_dir=out_dir)
     lang_variants = list(dict.fromkeys([lang, lang.split("-")[0]]))
     out_template = str(out_dir / "%(id)s.%(ext)s")
     opts = {
+        **runtime.opts,
         "skip_download": True,
         "writesubtitles": True,
         "writeautomaticsub": True,
@@ -127,14 +151,16 @@ async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path) -> Pat
     }
     # download=True faz o yt-dlp escrever os arquivos de legenda.
     # Com skip_download=True, NÃO baixa o vídeo, apenas as legendas.
-    await asyncio.to_thread(_run_download, url, opts)
+    try:
+        await asyncio.to_thread(_run_download, url, opts)
+    finally:
+        runtime.cleanup()
     # tmpdir é exclusivo do job, então `*.{fmt}` é seguro
     candidates = sorted(out_dir.glob(f"*.{fmt}"))
     if not candidates:
         all_files = sorted(p.name for p in out_dir.iterdir())
         raise RuntimeError(
-            f"Legenda não baixada (esperado *.{fmt} em {out_dir}). "
-            f"Arquivos: {all_files}"
+            f"Legenda não baixada (esperado *.{fmt} em {out_dir}). Arquivos: {all_files}"
         )
     return candidates[0]
 
@@ -143,8 +169,10 @@ async def download_audio_opus(url: str, out_dir: Path) -> Path:
     """Extrai áudio como opus mono 16kHz 32kbps (spec 002)."""
     import asyncio
 
+    runtime = await _runtime_options(cookie_dir=out_dir)
     out_template = str(out_dir / "%(id)s.%(ext)s")
     opts = {
+        **runtime.opts,
         "format": "bestaudio/best",
         "outtmpl": out_template,
         "quiet": True,
@@ -165,7 +193,10 @@ async def download_audio_opus(url: str, out_dir: Path) -> Path:
             "32k",
         ],
     }
-    await asyncio.to_thread(_run_download, url, opts)
+    try:
+        await asyncio.to_thread(_run_download, url, opts)
+    finally:
+        runtime.cleanup()
     files = list(out_dir.glob("*.opus")) + list(out_dir.glob("*.ogg"))
     if not files:
         raise RuntimeError("Áudio opus não foi gerado")
@@ -175,6 +206,76 @@ async def download_audio_opus(url: str, out_dir: Path) -> Path:
 def _run_download(url: str, opts: dict[str, Any]) -> None:
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([url])
+
+
+async def _runtime_options(cookie_dir: Path | None = None) -> RuntimeYtdlpOptions:
+    """Opções comuns do yt-dlp, com config runtime cifrada no DB.
+
+    Proxies/cookies são opcionais e controlados pelo operador do deploy. Não
+    usamos listas públicas automáticas: elas são instáveis, inseguras e tendem
+    a piorar bloqueios do YouTube.
+    """
+    opts: dict[str, Any] = {
+        "retries": 3,
+        "fragment_retries": 3,
+        "extractor_retries": 3,
+        "socket_timeout": 30,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["web", "mweb", "android", "ios"],
+            }
+        },
+    }
+
+    user_agent = (
+        await voxen_settings.get_yt_dlp_user_agent() or os.environ.get("YTDLP_USER_AGENT") or ""
+    ).strip()
+    if user_agent:
+        opts["http_headers"] = {"User-Agent": user_agent}
+
+    proxy_urls_raw = (
+        await voxen_settings.get_yt_dlp_proxy_urls()
+        or os.environ.get("YTDLP_PROXY_URLS")
+        or os.environ.get("YTDLP_PROXY_URL")
+        or ""
+    )
+    proxy_urls = [line.strip() for line in re.split(r"[\n,]+", proxy_urls_raw) if line.strip()]
+    if proxy_urls:
+        opts["proxy"] = secrets.choice(proxy_urls)
+
+    cookie_file_env = os.environ.get("YTDLP_COOKIES_FILE", "").strip()
+    if cookie_file_env:
+        opts["cookiefile"] = cookie_file_env
+        return RuntimeYtdlpOptions(opts=opts)
+
+    cookies_txt = (await voxen_settings.get_yt_dlp_cookies_txt() or "").strip()
+    if not cookies_txt:
+        return RuntimeYtdlpOptions(opts=opts)
+
+    cookie_path: Path
+    if cookie_dir is None:
+        tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
+            mode="w",
+            encoding="utf-8",
+            prefix="voxen-ytdlp-cookies-",
+            suffix=".txt",
+            delete=False,
+        )
+        with tmp:
+            tmp.write(_normalize_cookie_text(cookies_txt))
+        cookie_path = Path(tmp.name)
+    else:
+        cookie_path = cookie_dir / "cookies.txt"
+        cookie_path.write_text(_normalize_cookie_text(cookies_txt), encoding="utf-8")
+    opts["cookiefile"] = str(cookie_path)
+    return RuntimeYtdlpOptions(opts=opts, cookie_file=cookie_path)
+
+
+def _normalize_cookie_text(cookies_txt: str) -> str:
+    normalized = cookies_txt.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized.startswith(("# HTTP Cookie File", "# Netscape HTTP Cookie File")):
+        normalized = "# Netscape HTTP Cookie File\n" + normalized
+    return normalized + "\n"
 
 
 # ============================================================================

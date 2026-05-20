@@ -36,6 +36,7 @@ interface ModelsResponse {
   chat: OrModel[];
   transcription: OrModel[];
   vision: OrModel[];
+  document: OrModel[];
   web: OrModel[];
 }
 
@@ -82,6 +83,7 @@ function OnboardingContent({
   const [transcriptionModel, setTranscriptionModel] = useState('');
   const [webSearchModel, setWebSearchModel] = useState('');
   const [visionModel, setVisionModel] = useState('');
+  const [documentModel, setDocumentModel] = useState('');
   const [allowSignups, setAllowSignups] = useState<boolean>(true);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -110,10 +112,17 @@ function OnboardingContent({
           (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
         ) ??
         res.vision.find((m) => m.id.toLowerCase().includes('vision'));
+      const preferredDocument =
+        res.document.find((m) => m.id === 'google/gemini-3.1-flash-lite') ??
+        res.document.find(
+          (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
+        ) ??
+        res.document.find((m) => m.id.toLowerCase().includes('claude'));
       setTranscriptionModel(whisper?.id ?? res.transcription[0]?.id ?? '');
       setChatModel(preferred?.id ?? res.chat[0]?.id ?? '');
       setWebSearchModel(preferred?.id ?? res.chat[0]?.id ?? '');
       setVisionModel(preferredVision?.id ?? res.vision[0]?.id ?? '');
+      setDocumentModel(preferredDocument?.id ?? res.document[0]?.id ?? '');
       setStep('modelos');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao validar chave.');
@@ -134,6 +143,7 @@ function OnboardingContent({
       };
       if (webSearchModel) body.default_web_search_model = webSearchModel;
       if (visionModel) body.default_vision_model = visionModel;
+      if (documentModel) body.default_document_model = documentModel;
       await apiPost('/api/setup', body);
       setStep('modo');
     } catch (err) {
@@ -331,6 +341,14 @@ function OnboardingContent({
                   options={models.vision}
                   count={models.vision.length}
                   hint="Habilita envio de imagens no chat e no Telegram. Vazio = recurso desabilitado."
+                />
+                <ModelSelect
+                  label="Documentos"
+                  value={documentModel}
+                  onChange={setDocumentModel}
+                  options={models.document}
+                  count={models.document.length}
+                  hint="Modelos OpenRouter com input nativo de arquivo/PDF. Vazio = análise documental desabilitada."
                 />
                 <div className="flex justify-between pt-2">
                   <GhostButton type="button" onClick={() => setStep('key')}>

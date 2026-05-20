@@ -122,13 +122,15 @@ app.get('/api/instance', async (c) => {
 // UI consulta pra mostrar/esconder botões (ex: upload de imagem só aparece
 // se admin configurou modelo de visão).
 app.get('/api/capabilities', async (c) => {
-  const [visionModel, webSearchModel] = await Promise.all([
+  const [visionModel, webSearchModel, documentModel] = await Promise.all([
     getSetting('default_vision_model').catch(() => null),
     getSetting('default_web_search_model').catch(() => null),
+    getSetting('default_document_model').catch(() => null),
   ]);
   return c.json({
     vision: !!visionModel,
     webSearch: !!webSearchModel,
+    document: !!documentModel,
   });
 });
 

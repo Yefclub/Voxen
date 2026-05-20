@@ -22,6 +22,7 @@ interface CostResponse {
     total: string;
     events: number;
   }[];
+  byKind: { kind: string; total: string; events: number }[];
   daily: { day: string; total: string }[];
 }
 
@@ -39,7 +40,7 @@ export function AdminCustosPage(): React.ReactElement {
           </div>
           <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Custos</h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Quanto a instância está gastando com transcrição via OpenRouter.
+            Quanto a instância está gastando com chat, transcrição e análise via OpenRouter.
           </p>
         </header>
 
@@ -138,6 +139,38 @@ export function AdminCustosPage(): React.ReactElement {
           )}
         </section>
 
+        {/* Por uso */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-200">Por uso</h2>
+          {loading || !data ? (
+            <Skeleton className="h-28 w-full" />
+          ) : data.byKind.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
+                Nada por aqui ainda.
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <ul className="divide-y divide-[var(--color-app-border)]">
+                {data.byKind.map((k) => (
+                  <li key={k.kind} className="flex items-center gap-4 px-5 py-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-zinc-200 truncate">{kindLabel(k.kind)}</p>
+                      <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
+                        {k.events} {k.events === 1 ? 'evento' : 'eventos'}
+                      </p>
+                    </div>
+                    <span className="text-base font-display font-semibold tabular-nums">
+                      {formatUsd(k.total)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+        </section>
+
         {/* Por user */}
         <section className="space-y-3">
           <h2 className="text-sm font-semibold tracking-tight text-zinc-200">Por usuário</h2>
@@ -173,6 +206,16 @@ export function AdminCustosPage(): React.ReactElement {
       </div>
     </AnimatedPage>
   );
+}
+
+function kindLabel(kind: string): string {
+  const labels: Record<string, string> = {
+    CHAT: 'Chat',
+    TRANSCRIBE: 'Transcrição',
+    DOCUMENT: 'Documentos',
+    EMBED: 'Embeddings',
+  };
+  return labels[kind] ?? kind;
 }
 
 function SummaryCard({

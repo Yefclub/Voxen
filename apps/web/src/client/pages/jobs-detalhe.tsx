@@ -40,6 +40,8 @@ const STAGE_ORDER = [
   'downloading',
   'preparing_upload',
   'analyzing_image',
+  'converting_document',
+  'analyzing_document',
   'extracting_audio',
   'choosing_method',
   'transcribing',

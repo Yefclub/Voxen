@@ -13,6 +13,12 @@ export interface OrModel {
   id: string;
   name: string;
   context_length?: number;
+  architecture?: {
+    input_modalities?: string[];
+    output_modalities?: string[];
+    modality?: string;
+  };
+  pricing?: Record<string, string>;
 }
 
 export class OpenrouterError extends Error {
@@ -97,4 +103,35 @@ export async function listVisionModels(key: string, fetcher: Fetcher = fetch): P
   }
   const body = (await res.json()) as { data?: OrModel[] };
   return Array.isArray(body.data) ? body.data : [];
+}
+
+/**
+ * Lista modelos que aceitam entrada nativa de arquivo/PDF. OpenRouter expõe
+ * isso em `architecture.input_modalities`; mantemos filtro local porque nem
+ * todos os filtros de query são documentados para input modality.
+ */
+export async function listDocumentModels(
+  key: string,
+  fetcher: Fetcher = fetch,
+): Promise<OrModel[]> {
+  let res: Response;
+  try {
+    res = await fetcher(`${OR_BASE_URL}/models?output_modalities=text`, {
+      headers: { authorization: `Bearer ${key}` },
+    });
+  } catch (err) {
+    throw new OpenrouterError(
+      `Falha ao contatar OpenRouter: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (!res.ok) {
+    throw new OpenrouterError(`OpenRouter retornou status ${res.status}`, res.status);
+  }
+  const body = (await res.json()) as { data?: OrModel[] };
+  const data = Array.isArray(body.data) ? body.data : [];
+  return data.filter((m) => {
+    const inputs = m.architecture?.input_modalities ?? [];
+    const outputs = m.architecture?.output_modalities ?? [];
+    return inputs.includes('file') && (outputs.length === 0 || outputs.includes('text'));
+  });
 }

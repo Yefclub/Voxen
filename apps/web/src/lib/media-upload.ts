@@ -8,8 +8,9 @@ import { s3Bucket, s3Client } from './s3';
 export const MAX_MEDIA_UPLOAD_BYTES = 500 * 1024 * 1024;
 export const MAX_MEDIA_UPLOAD_REQUEST_BYTES = MAX_MEDIA_UPLOAD_BYTES + 10 * 1024 * 1024;
 export const MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024;
+export const MAX_DOCUMENT_UPLOAD_BYTES = 50 * 1024 * 1024;
 
-export type UploadKind = 'media' | 'image';
+export type UploadKind = 'media' | 'image' | 'document';
 
 const MEDIA_EXTENSIONS = new Set([
   'aac',
@@ -32,6 +33,39 @@ const MEDIA_EXTENSIONS = new Set([
 ]);
 
 const IMAGE_EXTENSIONS = new Set(['gif', 'jpeg', 'jpg', 'png', 'webp']);
+
+const DOCUMENT_EXTENSIONS = new Set([
+  'csv',
+  'docx',
+  'epub',
+  'htm',
+  'html',
+  'json',
+  'md',
+  'pdf',
+  'pptx',
+  'txt',
+  'xls',
+  'xlsx',
+  'xml',
+]);
+
+const DOCUMENT_MIME_TYPES = new Set([
+  'application/csv',
+  'application/epub+zip',
+  'application/json',
+  'application/pdf',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/xml',
+  'text/csv',
+  'text/html',
+  'text/markdown',
+  'text/plain',
+  'text/xml',
+]);
 
 export function sanitizeUploadFilename(raw: string): string {
   const name = raw.split(/[\\/]/).pop()?.trim() || 'arquivo';
@@ -61,9 +95,16 @@ export function isSupportedImageFile(filename: string, contentType: string): boo
   return IMAGE_EXTENSIONS.has(uploadExtension(filename));
 }
 
+export function isSupportedDocumentFile(filename: string, contentType: string): boolean {
+  const type = contentType.toLowerCase().split(';', 1)[0]?.trim() ?? '';
+  if (DOCUMENT_MIME_TYPES.has(type)) return true;
+  return DOCUMENT_EXTENSIONS.has(uploadExtension(filename));
+}
+
 export function detectUploadKind(filename: string, contentType: string): UploadKind | null {
   if (isSupportedImageFile(filename, contentType)) return 'image';
   if (isSupportedMediaFile(filename, contentType)) return 'media';
+  if (isSupportedDocumentFile(filename, contentType)) return 'document';
   return null;
 }
 

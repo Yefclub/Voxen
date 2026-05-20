@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Globe, Library, Loader2, Search, X } from 'lucide-react';
+import { FileText, Globe, Library, Loader2, Search, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -19,7 +19,7 @@ interface TranscriptSummary {
   channel: string | null;
   durationSec: number;
   language: string;
-  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION';
+  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION' | 'DOCUMENT';
   thumbnailUrl: string | null;
   costUsd: string | null;
   createdAt: string;
@@ -160,6 +160,7 @@ function TranscriptCard({
   highlightQuery: string;
 }): React.ReactElement {
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
+  const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   return (
     <motion.div whileHover={{ y: -3 }} transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}>
       <Link
@@ -181,7 +182,9 @@ function TranscriptCard({
               />
             ) : (
               <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900">
-                {t.source === 'WEB' || isVisualTranscript ? (
+                {isDocumentTranscript ? (
+                  <FileText className="h-10 w-10 text-zinc-600" />
+                ) : t.source === 'WEB' || isVisualTranscript ? (
                   <Globe className="h-10 w-10 text-zinc-600" />
                 ) : (
                   <span className="font-display text-5xl font-semibold text-zinc-700 tracking-tight">
@@ -194,7 +197,7 @@ function TranscriptCard({
               aria-hidden
               className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent"
             />
-            {t.source !== 'WEB' && !isVisualTranscript && (
+            {t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript && (
               <div className="absolute bottom-2 right-2">
                 <Badge
                   variant="default"
@@ -278,6 +281,8 @@ function displayMethod(method: TranscriptSummary['transcriptionMethod']): string
       return 'Legendas';
     case 'VISION':
       return 'Imagem';
+    case 'DOCUMENT':
+      return 'Documento';
     case 'SCRAPE':
       return 'Web';
     case 'API':

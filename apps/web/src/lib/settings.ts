@@ -26,6 +26,14 @@ export type GlobalSettingKey =
   // Modelo multimodal pra entender imagens (upload via chat/telegram).
   // Filtrado por modalities=['image'] no /api/openrouter/models.
   | 'default_vision_model'
+  // Modelo multimodal/documental pra PDF nativo e análise de documentos.
+  // Filtrado por architecture.input_modalities=['file'] na OpenRouter.
+  | 'default_document_model'
+  // Configurações opcionais do yt-dlp para ambientes onde YouTube aplica
+  // soft-block anti-bot. Mantidas cifradas por poderem conter cookies/proxies.
+  | 'yt_dlp_cookies_txt'
+  | 'yt_dlp_proxy_urls'
+  | 'yt_dlp_user_agent'
   | 'allow_signups'
   | 'onboarding_done'
   // Opcional: email do admin do deploy. Quando setado, scraper inclui

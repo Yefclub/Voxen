@@ -183,7 +183,7 @@ export function GrafoPage(): React.ReactElement {
         {/* Controles em barra acima do canvas */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px] max-w-md">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
+            <Search className="absolute left-3.5 top-1/2 z-10 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
             <input
               type="text"
               value={search}

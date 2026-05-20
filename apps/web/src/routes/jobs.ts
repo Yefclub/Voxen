@@ -16,12 +16,13 @@ import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
-import { isSetupComplete } from '../lib/settings';
+import { getSetting, isSetupComplete } from '../lib/settings';
 import { parseVideoUrl } from '../lib/video-url';
 import {
   MAX_IMAGE_UPLOAD_BYTES,
   MAX_MEDIA_UPLOAD_BYTES,
   MAX_MEDIA_UPLOAD_REQUEST_BYTES,
+  MAX_DOCUMENT_UPLOAD_BYTES,
   detectUploadKind,
   putUploadFile,
   sanitizeUploadFilename,
@@ -264,7 +265,7 @@ jobsRoutes.post('/auto', async (c) => {
   );
 });
 
-// POST /api/jobs/upload — envia áudio/vídeo/imagem para S3 e agenda processamento.
+// POST /api/jobs/upload — envia áudio/vídeo/imagem/documento para S3 e agenda processamento.
 jobsRoutes.post('/upload', async (c) => {
   const userId = c.get('userId');
 
@@ -293,10 +294,25 @@ jobsRoutes.post('/upload', async (c) => {
     return c.json({ error: 'Arquivo vazio.' }, 400);
   }
   if (!kind) {
-    return c.json({ error: 'Formato não suportado. Envie áudio, vídeo ou imagem.' }, 400);
+    return c.json(
+      { error: 'Formato não suportado. Envie áudio, vídeo, imagem ou documento.' },
+      400,
+    );
   }
   if (kind === 'image' && media.size > MAX_IMAGE_UPLOAD_BYTES) {
     return c.json({ error: 'Imagem muito grande. O limite é 20 MiB.' }, 413);
+  }
+  if (kind === 'document' && media.size > MAX_DOCUMENT_UPLOAD_BYTES) {
+    return c.json({ error: 'Documento muito grande. O limite é 50 MiB.' }, 413);
+  }
+  if (kind === 'document') {
+    const documentModel = await getSetting('default_document_model').catch(() => null);
+    if (!documentModel) {
+      return c.json(
+        { error: 'Análise documental ainda não está configurada. Defina um modelo de documento.' },
+        412,
+      );
+    }
   }
   if (kind === 'media' && media.size > MAX_MEDIA_UPLOAD_BYTES) {
     return c.json({ error: 'Arquivo muito grande. O limite é 500 MiB.' }, 413);
@@ -320,7 +336,12 @@ jobsRoutes.post('/upload', async (c) => {
   const job = await db.job.create({
     data: {
       userId,
-      type: kind === 'image' ? 'UPLOAD_AND_ANALYZE_IMAGE' : 'UPLOAD_AND_TRANSCRIBE',
+      type:
+        kind === 'image'
+          ? 'UPLOAD_AND_ANALYZE_IMAGE'
+          : kind === 'document'
+            ? 'UPLOAD_AND_ANALYZE_DOCUMENT'
+            : 'UPLOAD_AND_TRANSCRIBE',
       status: 'QUEUED',
       sourceUrl,
     },

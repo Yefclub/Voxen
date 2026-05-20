@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   detectUploadKind,
+  isSupportedDocumentFile,
   isSupportedImageFile,
   isSupportedMediaFile,
   parseUploadSourceUrl,
@@ -26,7 +27,19 @@ describe('media-upload helpers', () => {
     expect(isSupportedImageFile('vetor.svg', 'image/svg+xml')).toBe(false);
     expect(detectUploadKind('print.png', 'image/png')).toBe('image');
     expect(detectUploadKind('aula.mp4', 'video/mp4')).toBe('media');
-    expect(detectUploadKind('arquivo.txt', 'text/plain')).toBe(null);
+    expect(detectUploadKind('programa.exe', 'application/octet-stream')).toBe(null);
+  });
+
+  test('aceita documentos suportados e classifica upload', () => {
+    expect(isSupportedDocumentFile('relatorio.pdf', 'application/pdf')).toBe(true);
+    expect(isSupportedDocumentFile('planilha.xlsx', 'application/octet-stream')).toBe(true);
+    expect(isSupportedDocumentFile('dados.csv', 'text/csv; charset=utf-8')).toBe(true);
+    expect(isSupportedDocumentFile('arquivo.zip', 'application/zip')).toBe(false);
+    expect(isSupportedDocumentFile('apresentacao.ppt', 'application/octet-stream')).toBe(false);
+    expect(isSupportedDocumentFile('texto.rtf', 'application/rtf')).toBe(false);
+    expect(isSupportedDocumentFile('script.exe', 'application/octet-stream')).toBe(false);
+    expect(detectUploadKind('relatorio.pdf', 'application/pdf')).toBe('document');
+    expect(detectUploadKind('notas.md', 'text/markdown')).toBe('document');
   });
 
   test('monta e lê sourceUrl interno de upload', () => {

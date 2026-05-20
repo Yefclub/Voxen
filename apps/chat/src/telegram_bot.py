@@ -47,6 +47,7 @@ RETRY_MAX_SEC = 60.0
 HITL_REDIS_TTL_SEC = 3600  # 1h pra resolver
 MAX_TELEGRAM_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_TELEGRAM_MEDIA_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_TELEGRAM_DOCUMENT_UPLOAD_BYTES = 50 * 1024 * 1024
 
 MEDIA_EXTENSIONS = {
     "aac",
@@ -68,6 +69,37 @@ MEDIA_EXTENSIONS = {
     "wma",
 }
 IMAGE_EXTENSIONS = {"gif", "jpeg", "jpg", "png", "webp"}
+DOCUMENT_EXTENSIONS = {
+    "csv",
+    "docx",
+    "epub",
+    "htm",
+    "html",
+    "json",
+    "md",
+    "pdf",
+    "pptx",
+    "txt",
+    "xls",
+    "xlsx",
+    "xml",
+}
+DOCUMENT_MIME_TYPES = {
+    "application/csv",
+    "application/epub+zip",
+    "application/json",
+    "application/pdf",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/xml",
+    "text/csv",
+    "text/html",
+    "text/markdown",
+    "text/plain",
+    "text/xml",
+}
 
 
 @dataclass(frozen=True)
@@ -172,6 +204,7 @@ async def _handle_update(client: httpx.AsyncClient, token: str, upd: dict[str, A
                 "• texto livre — pergunte qualquer coisa\n"
                 "• fotos/arquivos de imagem — eu envio para a Biblioteca e analiso\n"
                 "• áudio/vídeo — eu envio para a Biblioteca e transcrevo\n"
+                "• PDF/DOCX/PPTX/XLSX/CSV/TXT — eu envio para análise documental\n"
                 "• ações que peçam confirmação aparecem com botões."
             ),
         )
@@ -197,12 +230,24 @@ async def _handle_upload_attachment(
         )
         return
 
-    limit = (
-        MAX_TELEGRAM_IMAGE_UPLOAD_BYTES if spec.kind == "image" else MAX_TELEGRAM_MEDIA_UPLOAD_BYTES
-    )
+    if spec.kind == "image":
+        limit = MAX_TELEGRAM_IMAGE_UPLOAD_BYTES
+    elif spec.kind == "document":
+        limit = MAX_TELEGRAM_DOCUMENT_UPLOAD_BYTES
+    else:
+        limit = MAX_TELEGRAM_MEDIA_UPLOAD_BYTES
     if spec.file_size > limit:
         limit_mib = limit // (1024 * 1024)
         await _send(client, token, chat_id, f"⚠️ Arquivo muito grande (limite {limit_mib} MiB).")
+        return
+    if spec.kind == "document" and not await voxen_settings.get_default_document_model():
+        await _send(
+            client,
+            token,
+            chat_id,
+            "⚠️ Análise documental ainda não está configurada. "
+            "Defina um modelo de documento no setup da Voxen.",
+        )
         return
 
     await _send_chat_action(client, token, chat_id, "upload_document")
@@ -251,6 +296,8 @@ async def _handle_upload_attachment(
     label = (
         "Imagem enviada para análise"
         if spec.kind == "image"
+        else "Documento enviado para análise"
+        if spec.kind == "document"
         else "Arquivo enviado para transcrição"
     )
     await _send(client, token, chat_id, f"{label}. Acompanhe em /jobs/{res['id']}.")
@@ -332,6 +379,15 @@ def _telegram_upload_spec_from_payload(
             kind="media",
             job_type="UPLOAD_AND_TRANSCRIBE",
         )
+    if _is_document_file(content_type, ext):
+        return TelegramUploadSpec(
+            file_id=file_id,
+            filename=filename,
+            content_type=content_type,
+            file_size=int(payload.get("file_size") or 0),
+            kind="document",
+            job_type="UPLOAD_AND_ANALYZE_DOCUMENT",
+        )
     return None
 
 
@@ -344,7 +400,10 @@ def _telegram_upload_filename(
 ) -> str:
     if raw.strip():
         return storage.sanitize_upload_filename(raw)
-    ext = (mimetypes.guess_extension(content_type.split(";")[0].strip()) or "").lstrip(".")
+    normalized_content_type = content_type.split(";")[0].strip().lower()
+    ext = "ogg" if normalized_content_type == "audio/ogg" else (
+        mimetypes.guess_extension(normalized_content_type) or ""
+    ).lstrip(".")
     if not ext:
         ext = "bin"
     return storage.sanitize_upload_filename(f"{default_prefix}-{file_id[:10]}.{ext}")
@@ -375,6 +434,11 @@ def _is_image_file(content_type: str, ext: str) -> bool:
 def _is_media_file(content_type: str, ext: str) -> bool:
     type_norm = content_type.split(";", 1)[0].strip().lower()
     return type_norm.startswith(("audio/", "video/")) or ext in MEDIA_EXTENSIONS
+
+
+def _is_document_file(content_type: str, ext: str) -> bool:
+    type_norm = content_type.split(";", 1)[0].strip().lower()
+    return type_norm in DOCUMENT_MIME_TYPES or ext in DOCUMENT_EXTENSIONS
 
 
 async def _ask_vox_and_reply(

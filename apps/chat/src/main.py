@@ -14,7 +14,7 @@ import structlog
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from openai import AsyncOpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import db, voxen_settings
 from .telegram_bot import telegram_loop
@@ -160,6 +160,14 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class LibraryMention(BaseModel):
+    type: str
+    id: str
+    label: str
+    subtitle: str | None = None
+    content: str
+
+
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     thinking: bool = False
@@ -170,6 +178,10 @@ class ChatRequest(BaseModel):
     # presente, o agente usa default_vision_model em vez de default_chat_model
     # e injeta a imagem no content multimodal da última mensagem.
     image_data_url: str | None = None
+    # Contexto resolvido pelo web backend a partir de menções @ na biblioteca.
+    # O chat service não consulta DB para isso; recebe só itens já validados
+    # pelo userId da sessão.
+    library_mentions: list[LibraryMention] = Field(default_factory=list)
 
 
 @app.post("/chat")
@@ -218,6 +230,13 @@ async def chat(
         msg_list: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
         ]
+        if body.library_mentions:
+            msg_list.append(
+                {
+                    "role": "system",
+                    "content": _format_library_mentions(body.library_mentions),
+                }
+            )
         for i, m in enumerate(body.messages):
             is_last_user = (
                 i == len(body.messages) - 1 and m.role == "user" and body.image_data_url is not None
@@ -442,6 +461,20 @@ async def chat(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+def _format_library_mentions(mentions: list[LibraryMention]) -> str:
+    parts = [
+        "O usuário mencionou explicitamente os itens abaixo da biblioteca. "
+        "Use este contexto como fonte autorizada nesta resposta, citando ids quando relevante."
+    ]
+    for item in mentions:
+        kind = "Transcrição" if item.type == "transcript" else "Nota"
+        subtitle = f" ({item.subtitle})" if item.subtitle else ""
+        parts.append(
+            f"\n## {kind}: {item.label}{subtitle}\nid: {item.id}\n\n{item.content.strip()}"
+        )
+    return "\n".join(parts)
 
 
 # ----------------------------------------------------------------------------
@@ -752,11 +785,7 @@ async def automation_run(
                         fn_args = {}
                     result = await execute_tool(fn_name, fn_args, user_id)
                     # Detecta create_note bem-sucedida pra reportar noteId
-                    if (
-                        fn_name == "create_note"
-                        and isinstance(result, dict)
-                        and result.get("id")
-                    ):
+                    if fn_name == "create_note" and isinstance(result, dict) and result.get("id"):
                         created_note_id = str(result["id"])
                     messages.append(
                         {
