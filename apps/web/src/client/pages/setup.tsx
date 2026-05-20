@@ -46,12 +46,7 @@ interface SetupStatus {
   summaryTimeoutSec: string | null;
   hasApiKey: boolean;
   ytDlp?: {
-    cookies: boolean;
     proxies: boolean;
-    userAgent: boolean;
-    youtubeClients: boolean;
-    poTokens: boolean;
-    potProvider: boolean;
   };
 }
 
@@ -69,13 +64,7 @@ export function SetupPage(): React.ReactElement {
   const [xAnalysisModel, setXAnalysisModel] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [summaryTimeoutSec, setSummaryTimeoutSec] = useState('');
-  const [ytDlpCookies, setYtDlpCookies] = useState('');
   const [ytDlpProxyUrls, setYtDlpProxyUrls] = useState('');
-  const [ytDlpUserAgent, setYtDlpUserAgent] = useState('');
-  const [ytDlpYoutubeClients, setYtDlpYoutubeClients] = useState('');
-  const [ytDlpYoutubePoTokens, setYtDlpYoutubePoTokens] = useState('');
-  const [ytDlpPotProviderUrl, setYtDlpPotProviderUrl] = useState('');
-  const [clearYtDlpCookies, setClearYtDlpCookies] = useState(false);
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -218,13 +207,7 @@ export function SetupPage(): React.ReactElement {
       body.default_x_analysis_model = xAnalysisModel;
       body.admin_email = adminEmail.trim();
       body.summary_timeout_sec = summaryTimeoutSec.trim();
-      if (ytDlpProxyUrls.trim()) body.yt_dlp_proxy_urls = ytDlpProxyUrls;
-      if (ytDlpUserAgent.trim()) body.yt_dlp_user_agent = ytDlpUserAgent;
-      if (ytDlpYoutubeClients.trim()) body.yt_dlp_youtube_clients = ytDlpYoutubeClients;
-      if (ytDlpYoutubePoTokens.trim()) body.yt_dlp_youtube_po_tokens = ytDlpYoutubePoTokens;
-      if (ytDlpPotProviderUrl.trim()) body.yt_dlp_pot_provider_url = ytDlpPotProviderUrl.trim();
-      if (ytDlpCookies.trim()) body.yt_dlp_cookies_txt = ytDlpCookies;
-      if (clearYtDlpCookies) body.clear_yt_dlp_cookies = true;
+      body.yt_dlp_proxy_urls = ytDlpProxyUrls.trim();
       if (apiKey.trim()) {
         body.openrouter_api_key = apiKey.trim();
       }
@@ -613,102 +596,30 @@ export function SetupPage(): React.ReactElement {
                       <div className="space-y-2">
                         <Label>Extração de mídia</Label>
                         <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
-                          Use cookies Netscape, proxies próprios e user-agent real quando
-                          plataformas aplicarem soft-block no servidor. Não use proxies públicos
-                          aleatórios.
+                          Em deploys home-lab (IP residencial) o YouTube praticamente não bloqueia
+                          downloads. Em VPS é comum cair em soft-block: configure um proxy
+                          residencial próprio abaixo ou use o upload manual quando precisar.
                         </p>
                       </div>
                       <div className="space-y-2">
-                        <Label>Cookies Netscape</Label>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Label>Proxy de extração (opcional)</Label>
+                          {status?.ytDlp?.proxies && (
+                            <Badge variant="success">Proxy configurado</Badge>
+                          )}
+                        </div>
                         <textarea
-                          value={ytDlpCookies}
-                          onChange={(e) => {
-                            setYtDlpCookies(e.target.value);
-                            if (e.target.value.trim()) setClearYtDlpCookies(false);
-                          }}
-                          placeholder="# Netscape HTTP Cookie File…"
-                          rows={4}
+                          value={ytDlpProxyUrls}
+                          onChange={(e) => setYtDlpProxyUrls(e.target.value)}
+                          placeholder="http://usuario:senha@host:porta&#10;socks5://host:porta"
+                          rows={3}
                           spellCheck={false}
-                          className="min-h-24 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
+                          className="min-h-20 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
                         />
-                        {status?.ytDlp?.cookies && (
-                          <label className="flex items-center gap-2 text-xs text-[var(--color-app-muted)]">
-                            <input
-                              type="checkbox"
-                              checked={clearYtDlpCookies}
-                              onChange={(e) => setClearYtDlpCookies(e.target.checked)}
-                            />
-                            Remover cookies salvos
-                          </label>
-                        )}
-                      </div>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label>Proxies próprios</Label>
-                          <textarea
-                            value={ytDlpProxyUrls}
-                            onChange={(e) => setYtDlpProxyUrls(e.target.value)}
-                            placeholder="http://usuario:senha@host:porta&#10;socks5://host:porta"
-                            rows={3}
-                            spellCheck={false}
-                            className="min-h-20 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>User-Agent</Label>
-                          <Input
-                            value={ytDlpUserAgent}
-                            onChange={(e) => setYtDlpUserAgent(e.target.value)}
-                            placeholder="Mozilla/5.0 …"
-                            className="font-mono text-xs"
-                          />
-                        </div>
-                        <div className="space-y-2 md:col-span-2">
-                          <Label>Clientes YouTube</Label>
-                          <Input
-                            value={ytDlpYoutubeClients}
-                            onChange={(e) => setYtDlpYoutubeClients(e.target.value)}
-                            placeholder="web,mweb"
-                            className="font-mono text-xs"
-                          />
-                          <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
-                            Vazio usa a estratégia padrão do extrator. Preencha só para testar
-                            clientes específicos.
-                          </p>
-                        </div>
-                        <div className="space-y-2 md:col-span-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Label>PO Token Provider URL</Label>
-                            {status?.ytDlp?.potProvider && (
-                              <Badge variant="success">Provider configurado</Badge>
-                            )}
-                          </div>
-                          <Input
-                            value={ytDlpPotProviderUrl}
-                            onChange={(e) => setYtDlpPotProviderUrl(e.target.value)}
-                            placeholder="http://bgutil-provider:4416"
-                            className="font-mono text-xs"
-                          />
-                          <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
-                            Opcional. Use com o bgutil-ytdlp-pot-provider para gerar tokens por
-                            vídeo automaticamente.
-                          </p>
-                        </div>
-                        <div className="space-y-2 md:col-span-2">
-                          <Label>PO Tokens YouTube</Label>
-                          <textarea
-                            value={ytDlpYoutubePoTokens}
-                            onChange={(e) => setYtDlpYoutubePoTokens(e.target.value)}
-                            placeholder="mweb.gvs+TOKEN&#10;web.subs+TOKEN"
-                            rows={3}
-                            spellCheck={false}
-                            className="min-h-20 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
-                          />
-                          <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
-                            Use com provider/gerador de PO Token quando o YouTube exigir prova de
-                            origem para GVS, player ou legendas.
-                          </p>
-                        </div>
+                        <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
+                          Uma URL por linha. Use apenas proxies controlados por você (próprios ou
+                          residenciais contratados). Vazio = sem proxy.
+                        </p>
                       </div>
                     </div>
                   </CardContent>

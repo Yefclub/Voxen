@@ -16,7 +16,6 @@ import yt_dlp.utils
 
 from src import ytdl
 from src.pipeline import PermanentError, TransientError, _retry_transient
-from src.ytdl import _parse_youtube_clients, _parse_youtube_po_tokens
 
 
 async def test_retry_succeeds_on_third_attempt() -> None:
@@ -101,42 +100,29 @@ async def test_retry_turns_youtube_antibot_into_permanent_error() -> None:
     assert attempts == 1
 
 
-def test_parse_youtube_clients_keeps_allowed_unique_values() -> None:
-    assert _parse_youtube_clients("web,mweb,android,unknown,web") == [
-        "web",
-        "mweb",
-        "android",
-    ]
-    assert _parse_youtube_clients("") == []
-
-
-def test_parse_youtube_po_tokens_keeps_context_tokens_only() -> None:
-    assert _parse_youtube_po_tokens("mweb.gvs+AAA\nweb.subs+BBB,invalid,mweb.gvs+AAA") == [
-        "mweb.gvs+AAA",
-        "web.subs+BBB",
-    ]
-    assert _parse_youtube_po_tokens("") == []
-
-
-async def test_runtime_options_includes_configured_pot_provider(
+async def test_runtime_options_without_proxy_returns_base_opts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("YTDLP_POT_PROVIDER_URL", "http://bgutil-provider:4416")
-    monkeypatch.setattr(
-        ytdl.voxen_settings, "get_yt_dlp_youtube_clients", AsyncMock(return_value=None)
-    )
-    monkeypatch.setattr(
-        ytdl.voxen_settings, "get_yt_dlp_youtube_po_tokens", AsyncMock(return_value=None)
-    )
-    monkeypatch.setattr(
-        ytdl.voxen_settings, "get_yt_dlp_pot_provider_url", AsyncMock(return_value=None)
-    )
-    monkeypatch.setattr(ytdl.voxen_settings, "get_yt_dlp_user_agent", AsyncMock(return_value=None))
+    monkeypatch.delenv("YTDLP_PROXY_URLS", raising=False)
+    monkeypatch.delenv("YTDLP_PROXY_URL", raising=False)
     monkeypatch.setattr(ytdl.voxen_settings, "get_yt_dlp_proxy_urls", AsyncMock(return_value=None))
-    monkeypatch.setattr(ytdl.voxen_settings, "get_yt_dlp_cookies_txt", AsyncMock(return_value=None))
 
-    runtime = await ytdl._runtime_options()
+    opts = await ytdl._runtime_options()
 
-    assert runtime.opts["extractor_args"]["youtubepot-bgutilhttp"]["base_url"] == [
-        "http://bgutil-provider:4416"
-    ]
+    assert opts["retries"] == 3
+    assert opts["geo_bypass"] is True
+    assert "proxy" not in opts
+
+
+async def test_runtime_options_applies_configured_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("YTDLP_PROXY_URLS", raising=False)
+    monkeypatch.delenv("YTDLP_PROXY_URL", raising=False)
+    monkeypatch.setattr(
+        ytdl.voxen_settings,
+        "get_yt_dlp_proxy_urls",
+        AsyncMock(return_value="http://user:pass@proxy.example:8080"),
+    )
+
+    opts = await ytdl._runtime_options()
+
+    assert opts["proxy"] == "http://user:pass@proxy.example:8080"
