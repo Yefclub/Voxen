@@ -183,13 +183,15 @@ export function GrafoPage(): React.ReactElement {
         {/* Controles em barra acima do canvas */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px] max-w-md">
-            <Search className="absolute left-3.5 top-1/2 z-10 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
+            <span className="pointer-events-none absolute left-3.5 top-1/2 z-10 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-zinc-400">
+              <Search className="h-4 w-4" />
+            </span>
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Filtrar nós e vizinhos…"
-              className="w-full h-11 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 backdrop-blur-sm pl-10 pr-4 text-[14px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15 transition-colors"
+              className="relative w-full h-11 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/70 backdrop-blur-sm pl-10 pr-4 text-[14px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15 transition-colors"
             />
           </div>
           <Button variant="outline" size="default" onClick={refresh} disabled={loading}>

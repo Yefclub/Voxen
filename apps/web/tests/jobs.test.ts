@@ -216,6 +216,112 @@ describeIfDb('jobs API', () => {
     expect(body.transcriptId).toBe(t.id);
   });
 
+  it('POST /api/jobs/scrape URL inválida → 400', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    await completeSetup();
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/jobs/scrape', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ url: 'file:///etc/passwd' }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/URL inválida/i);
+  });
+
+  it('POST /api/jobs/scrape URL válida → 201 + Job SCRAPE_WEB normalizado', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    await completeSetup();
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/jobs/scrape', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ url: 'https://example.com/artigo#secao' }),
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { jobId: string; status: string; sourceUrl: string };
+    expect(body.status).toBe('QUEUED');
+    expect(body.sourceUrl).toBe('https://example.com/artigo');
+    const job = await db.job.findUniqueOrThrow({ where: { id: body.jobId } });
+    expect(job.type).toBe('SCRAPE_WEB');
+    expect(job.sourceUrl).toBe('https://example.com/artigo');
+  });
+
+  it('POST /api/jobs/scrape quando já existe Transcript → 409 com transcriptId', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    await completeSetup();
+
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: admin.id,
+        source: 'WEB',
+        url: 'https://example.com/artigo',
+        title: 'Artigo',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${admin.id}/transcripts/artigo.md`,
+        plainText: 'texto',
+        frontmatter: {},
+      },
+    });
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/jobs/scrape', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ url: 'https://example.com/artigo#outra' }),
+      }),
+    );
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { transcriptId: string };
+    expect(body.transcriptId).toBe(transcript.id);
+  });
+
+  it('POST /api/jobs/scrape duplicado ativo → 409 com jobId', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    await completeSetup();
+
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const job = await db.job.create({
+      data: {
+        userId: admin.id,
+        type: 'SCRAPE_WEB',
+        status: 'QUEUED',
+        sourceUrl: 'https://example.com/artigo',
+      },
+    });
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/jobs/scrape', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ url: 'https://example.com/artigo' }),
+      }),
+    );
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { jobId: string };
+    expect(body.jobId).toBe(job.id);
+  });
+
   it('GET /api/jobs/:id de outro user → 404 (não 403)', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     await signUp('outro@voxen.local', 'senha-super-segura-456', 'Outro');

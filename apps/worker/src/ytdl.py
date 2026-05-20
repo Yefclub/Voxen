@@ -1,4 +1,4 @@
-"""Wrapper yt-dlp: probe, subtitles, download de áudio opus."""
+"""Extrator de mídia via yt-dlp: probe, subtitles, download de áudio opus."""
 
 from __future__ import annotations
 

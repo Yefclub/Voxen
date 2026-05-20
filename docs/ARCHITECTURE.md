@@ -33,7 +33,8 @@ Voxen é uma plataforma web self-hosted composta por **3 apps** e **3 serviços 
                 │                        │              ┌───────────────────────┐
                 │                        │              │      apps/worker      │
                 └────────────────────────┴──────────────┤   Python + ARQ +      │
-                                                        │   yt-dlp + ffmpeg     │
+                                                        │   media extractor     │
+                                                        │   + ffmpeg            │
                                                         └──────────┬────────────┘
                                                                    │
                                                                    ▼
@@ -78,13 +79,13 @@ Serviço interno (porta 8001, só na rede `voxen-net`). Responsabilidades:
   - `get_metadata(id)` → frontmatter
 - Cada chamada loga `cost_events` no Postgres (modelo, tokens, custo OpenRouter)
 
-### `apps/worker` — Python + ARQ + yt-dlp + ffmpeg
+### `apps/worker` — Python + ARQ + extração de mídia + ffmpeg
 
 Worker assíncrono que consome jobs via Redis (ARQ). Responsabilidades:
 
 - Job `download_and_transcribe(job_id)`:
   1. Carrega job do DB → URL, userId
-  2. `yt-dlp --write-subs --sub-langs pt,pt-BR,en,auto-...` tenta legendas oficiais primeiro
+  2. O extrator de mídia tenta legendas oficiais primeiro
   3. Se legenda OK → pula transcrição, gera `.md` direto
   4. Se não → baixa áudio, `ffmpeg` segmenta em chunks de ~5min com overlap
   5. Pra cada chunk → OpenRouter `/audio/transcriptions` (modelo escolhido pelo admin)
@@ -151,7 +152,7 @@ Spec completa: `.specs/000-setup-inicial.md`.
 3. apps/web enfileira em ARQ (Redis): "download_and_transcribe", jobId
 4. apps/worker consome:
    - Valida URL (allowlist hosts → previne SSRF)
-   - yt-dlp tenta legendas oficiais
+   - extrator de mídia tenta legendas oficiais
    - Se não, baixa áudio + ffmpeg chunking + OpenRouter transcribe
    - Gera .md com frontmatter + timestamps clicáveis
    - Upload .md pro S3 (key: workspaces/<userId>/transcripts/<id>.md)
@@ -196,7 +197,7 @@ Cada decisão grande é documentada como ADR em `docs/DECISIONS.md`. Resumo:
 2. **Monorepo pnpm + Makefile** — TS+Python sem Turbo
 3. **Agno > AI SDK** — multi-agent, memória, RAG nativos no Python
 4. **Postgres FTS > pgvector** (harness/Karpathy) — agente usa tools, não vector RAG
-5. **ARQ > BullMQ** — worker em Python (yt-dlp+ffmpeg nativo)
+5. **ARQ > BullMQ** — worker em Python (extração de mídia + ffmpeg nativos)
 6. **MinIO/S3-compatible** — padrão único para local, VPS e Easypanel
 7. **better-auth + workflow aprovação** — adoção restrita por design
 8. **Master key via env** — `MASTER_KEY` em todos os modos documentados

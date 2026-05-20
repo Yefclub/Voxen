@@ -67,13 +67,13 @@ export function ModelPicker({
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          'group w-full rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/70 px-4 py-3 text-left transition-colors',
-          'hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
+          'group w-full rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/55 px-3.5 py-3 text-left transition-colors',
+          'shadow-[inset_0_1px_0_oklch(100%_0_0/0.04)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60',
         )}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-emerald-300">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-zinc-950/30 text-emerald-300">
             <SlidersHorizontal className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
@@ -96,9 +96,9 @@ export function ModelPicker({
           if (!next) setQuery('');
         }}
       >
-        <DialogContent className="max-h-[82vh] max-w-3xl overflow-hidden p-0">
-          <DialogHeader className="border-b border-[var(--color-app-border)] px-5 py-4">
-            <DialogTitle>{label}</DialogTitle>
+        <DialogContent className="max-h-[86vh] max-w-3xl overflow-hidden p-0">
+          <DialogHeader className="border-b border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-5 py-4">
+            <DialogTitle className="font-display text-xl">{label}</DialogTitle>
             <DialogDescription>
               {total} modelos disponíveis{optional ? ' · opcional' : ''}
             </DialogDescription>
@@ -118,16 +118,16 @@ export function ModelPicker({
             </div>
           </div>
 
-          <div className="max-h-[52vh] overflow-y-auto px-2 py-2">
+          <div className="max-h-[56vh] overflow-y-auto overscroll-contain px-2 py-2">
             {optional && (
               <button
                 type="button"
                 onClick={clearModel}
                 className={cn(
-                  'mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors',
+                  'mb-1 flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors',
                   !value
-                    ? 'bg-emerald-500/10 text-emerald-200'
-                    : 'text-zinc-300 hover:bg-[var(--color-app-surface-hover)]',
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                    : 'border-transparent text-zinc-300 hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)]',
                 )}
               >
                 <span className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-app-border)]">
@@ -159,7 +159,7 @@ export function ModelPicker({
             )}
           </div>
 
-          <div className="flex justify-end border-t border-[var(--color-app-border)] px-5 py-3">
+          <div className="flex justify-end border-t border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/70 px-5 py-3">
             <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
               Fechar
             </Button>
@@ -188,13 +188,13 @@ function ModelRow({
       type="button"
       onClick={onSelect}
       className={cn(
-        'flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors',
+        'flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors',
         selected
-          ? 'bg-emerald-500/10 text-emerald-200'
-          : 'text-zinc-300 hover:bg-[var(--color-app-surface-hover)]',
+          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+          : 'border-transparent text-zinc-300 hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)]',
       )}
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-xs font-semibold uppercase text-zinc-300">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--color-app-border)] bg-zinc-950/25 text-xs font-semibold uppercase text-zinc-300">
         {provider.slice(0, 2)}
       </span>
       <span className="min-w-0 flex-1">

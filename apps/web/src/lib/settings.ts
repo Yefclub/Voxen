@@ -31,8 +31,8 @@ export type GlobalSettingKey =
   | 'default_document_model'
   // Modelo Grok/xAI dedicado a análise de posts e threads do X via OpenRouter.
   | 'default_x_analysis_model'
-  // Configurações opcionais do yt-dlp para ambientes onde YouTube aplica
-  // soft-block anti-bot. Mantidas cifradas por poderem conter cookies/proxies.
+  // Configurações opcionais do extrator de mídia para ambientes onde YouTube
+  // aplica soft-block anti-bot. Chaves `yt_dlp_*` ficam por compatibilidade.
   | 'yt_dlp_cookies_txt'
   | 'yt_dlp_proxy_urls'
   | 'yt_dlp_user_agent'

@@ -469,16 +469,18 @@ function OnboardingContent({
 
 function FullScreenShell({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 py-12 relative">
-      <div
-        aria-hidden
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            'radial-gradient(ellipse 70% 50% at 50% 0%, oklch(72% 0.18 290 / 0.08), transparent 70%)',
-        }}
-      />
-      <div className="relative w-full flex justify-center">{children}</div>
+    <div className="h-dvh overflow-y-auto overscroll-contain">
+      <div className="min-h-full flex items-center justify-center px-6 py-12 relative">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 50% at 50% 0%, oklch(72% 0.18 290 / 0.08), transparent 70%)',
+          }}
+        />
+        <div className="relative w-full flex justify-center">{children}</div>
+      </div>
     </div>
   );
 }

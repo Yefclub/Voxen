@@ -1,117 +1,54 @@
 # ============================================================================
-# version-dev — bumpa pre-release vX.Y.Z-dev.N + commita em dev
+# version-dev — metadata de build para dev, sem mutar package.json
 # ============================================================================
-# Padrão Orbital: estado do commit em `dev` reflete a versão atual em
-# package.json. Workflow modifica package.json + apps/web/package.json,
-# commita "chore: pre-release vX.Y.Z-dev.N" e pusha em dev.
-#
-# Estratégia:
-#  - Lê última tag git (fonte de verdade pra sequência)
-#  - Se for pre-release `vX.Y.Z-dev.N` → incrementa N
-#  - Se for estável `vX.Y.Z` → começa nova série `vX.(Y+1).0-dev.1`
-#  - Atualiza package.json + apps/web/package.json
-#  - Commit + tag + push (até 5 tentativas com rebase entre retries)
-#
-# Loop-safe: condition skipa commits que começam com "chore: pre-release v"
-# ou "chore: release v".
-#
-# Pré-requisito: branch `dev` SEM required_pull_request_reviews. Tags fluem
-# em qualquer cenário; commit só funciona se o GITHUB_TOKEN puder pushar.
+# Regra: `dev` não ganha commit/tag automático de pre-release. A versão estável
+# vive em package.json e tags vX.Y.Z; builds de dev usam metadata efêmera
+# `X.Y.Z-dev.<run>+<sha>` ou o build arg VOXEN_VERSION do deploy.
 # ============================================================================
 
-name: Version dev on merge
+name: Dev version metadata
 
 on:
   push:
     branches: [dev]
+  workflow_dispatch:
 
 permissions:
-  contents: write
-
-# Serializa pushes — evita non-fast-forward em merges concorrentes.
-concurrency:
-  group: version-dev-${{ github.repository }}-${{ github.ref_name }}
-  cancel-in-progress: false
+  contents: read
 
 jobs:
   version-dev:
     runs-on: ubuntu-latest
-    if: "${{ !startsWith(github.event.head_commit.message, 'chore: pre-release v') && !startsWith(github.event.head_commit.message, 'chore: release v') }}"
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: dev
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Compute new pre-release version
+      - name: Compute dev metadata
         id: version
         run: |
           set -euo pipefail
-          # Fonte da verdade = última tag git
-          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
-          if [[ -z "$LAST_TAG" ]]; then
-            BASE_VER=$(node -p "require('./package.json').version")
+          LAST_STABLE=$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -Ev -- '-(dev|alpha|beta|rc)\.' | head -n1 || true)
+          if [[ -n "$LAST_STABLE" ]]; then
+            BASE_VER="${LAST_STABLE#v}"
           else
-            BASE_VER="${LAST_TAG#v}"
+            BASE_VER=$(node -p "require('./package.json').version.split('-')[0]")
           fi
-          NEW_VER=$(BASE_VER="$BASE_VER" node -e "
-            const cur = process.env.BASE_VER;
-            const m = cur.match(/^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$/);
-            if (!m) { console.error('Versão inválida: ' + cur); process.exit(1); }
-            const [, major, minor, patch, devN] = m;
-            if (devN) {
-              console.log(\`\${major}.\${minor}.\${patch}-dev.\${Number(devN) + 1}\`);
-            } else {
-              console.log(\`\${major}.\${Number(minor) + 1}.0-dev.1\`);
-            }
-          ")
-          echo "new_version=$NEW_VER" >> "$GITHUB_OUTPUT"
-          echo "new_tag=v$NEW_VER" >> "$GITHUB_OUTPUT"
-          echo "Bumping dev to v$NEW_VER (last tag: $LAST_TAG)"
-
-      - name: Write new version to package.json
-        env:
-          NEW_VER: ${{ steps.version.outputs.new_version }}
-        run: |
-          set -euo pipefail
-          node -e "
-            const fs = require('fs');
-            const files = ['./package.json', './apps/web/package.json'];
-            for (const f of files) {
-              const j = JSON.parse(fs.readFileSync(f, 'utf8'));
-              j.version = process.env.NEW_VER;
-              fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
-            }
-          "
-
-      - name: Commit + tag + push
-        env:
-          NEW_VER: ${{ steps.version.outputs.new_version }}
-          NEW_TAG: ${{ steps.version.outputs.new_tag }}
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json apps/web/package.json
-          if git diff --staged --quiet; then
-            echo "No version change to commit"
-            exit 0
-          fi
-          git commit -m "chore: pre-release v$NEW_VER"
-          if ! git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
-            git tag -a "$NEW_TAG" -m "Pre-release $NEW_TAG"
-          fi
-          # Retry loop pra lidar com pushes concorrentes (rebase entre tentativas)
-          for attempt in 1 2 3 4 5; do
-            if git pull --rebase origin dev && git push origin dev && git push origin "$NEW_TAG" 2>&1; then
-              echo "Pushed v$NEW_VER"
-              exit 0
-            fi
-            sleep "$((attempt * 3))"
-          done
-          exit 1
+          SHORT_SHA="${GITHUB_SHA::7}"
+          DEV_VER="${BASE_VER}-dev.${GITHUB_RUN_NUMBER}+${SHORT_SHA}"
+          echo "base_version=$BASE_VER" >> "$GITHUB_OUTPUT"
+          echo "dev_version=$DEV_VER" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Dev version"
+            echo ""
+            echo "- Base estável: \`$BASE_VER\`"
+            echo "- Metadata dev: \`$DEV_VER\`"
+            echo "- Commit: \`$SHORT_SHA\`"
+            echo ""
+            echo "Nenhum arquivo, commit ou tag foi criado por este workflow."
+          } >> "$GITHUB_STEP_SUMMARY"

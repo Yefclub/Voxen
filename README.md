@@ -1,19 +1,19 @@
 # Voxen
 
-Plataforma web self-hosted de **biblioteca de vídeos** com transcrição automática e **chat-agente** que navega o acervo. Sem embeddings — abordagem harness/Karpathy.
+Plataforma web self-hosted de **biblioteca multimodal** com transcrição, análise de documentos/imagens e **chat-agente** que navega o acervo. Sem embeddings — abordagem harness/Karpathy.
 
 ## O que faz
 
-1. Cola um link de YouTube no painel
-2. Backend baixa o vídeo, extrai áudio, faz chunking com `ffmpeg`, transcreve via OpenRouter Whisper
-3. Salva como `.md` com timestamps clicáveis, thumbnail, título, link original e **resumo IA** em markdown
-4. Chat com agente Agno que lê / busca / resume / dispara nova transcrição via Postgres FTS + tools
+1. Cola um link ou envia um arquivo de áudio, vídeo, imagem ou documento
+2. Backend extrai conteúdo, faz chunking/transcrição quando necessário e usa OpenRouter para análise
+3. Salva como `.md` com metadados, timestamps quando existirem, link original e **resumo IA** em markdown
+4. Chat com agente Agno que lê / busca / resume / dispara novas análises via Postgres FTS + tools
 
 ## Stack
 
 - **Web/API**: Bun + Hono + Vite + React + Tailwind v4 + shadcn/ui (tema zinc)
 - **Chat**: Python + FastAPI + tool-calling sobre OpenRouter (streaming SSE)
-- **Worker**: Python + ARQ + `yt-dlp` + `ffmpeg`
+- **Worker**: Python + ARQ + extrator de mídia (`yt-dlp` internamente) + `ffmpeg`
 - **Auth**: better-auth (email/senha) com aprovação manual do admin
 - **DB**: Postgres 17 + Prisma + FTS (`tsvector` GIN, dicionário `portuguese`)
 - **Fila**: Redis + ARQ

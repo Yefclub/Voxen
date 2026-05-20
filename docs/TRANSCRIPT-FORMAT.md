@@ -97,14 +97,14 @@ Use o `source` como **discriminador** antes de fazer parsing/dedup pelo `video_i
 
 ### Quando vem de legendas oficiais (`transcription_method=subtitles`)
 
-- yt-dlp baixa `.vtt`
+- o extrator de mídia baixa `.vtt`
 - Parser converte VTT → linhas timestamped no formato do Voxen
 - Frontmatter: `transcription_method: subtitles`, `model: <plataforma> auto-generated` ou `<plataforma> manual` se for closed caption manual
 - `cost_usd` não se aplica (omitir ou 0)
 
 ### Quando vem de transcrição via API (`transcription_method=api`)
 
-- yt-dlp baixa áudio
+- o extrator de mídia baixa áudio
 - ffmpeg segmenta em chunks (~5min com overlap 5s pra não cortar palavras)
 - Cada chunk vai pra OpenRouter `/audio/transcriptions` com `response_format=verbose_json` (retorna segments com timestamps)
 - Worker concatena segments, ajusta offsets por chunk, deduplica regiões de overlap

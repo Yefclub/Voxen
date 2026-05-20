@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
-import { rateLimit } from '../src/lib/rate-limit';
+import { rateLimit, rateLimitWithRedis } from '../src/lib/rate-limit';
 import { closeRedis, getRedisPublisher } from '../src/lib/redis';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
@@ -68,5 +68,22 @@ describeIfDb('rateLimit', () => {
     const r3 = await rateLimit(TEST_KEY, 1, 1);
     expect(r3.allowed).toBe(true);
     expect(r3.count).toBe(1);
+  });
+});
+
+describe('rateLimitWithRedis', () => {
+  it('falha aberta quando MULTI/EXEC aborta', async () => {
+    const pipeline = {
+      incr: () => pipeline,
+      expire: () => pipeline,
+      ttl: () => pipeline,
+      exec: async () => null,
+    };
+    const redis = {
+      multi: () => pipeline,
+    };
+
+    const result = await rateLimitWithRedis(redis, 'voxen:test:abort', 3, 60);
+    expect(result).toEqual({ allowed: true, count: 0, limit: 3, resetIn: 60 });
   });
 });
