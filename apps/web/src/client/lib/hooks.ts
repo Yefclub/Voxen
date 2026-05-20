@@ -102,7 +102,10 @@ export function useSse<T>(
     setClosed(false);
 
     const es = new EventSource(url, { withCredentials: true });
-    es.addEventListener('connected', () => setConnected(true));
+    es.addEventListener('connected', () => {
+      setConnected(true);
+      setClosed(false);
+    });
     es.addEventListener('progress', (e) => {
       try {
         const data = JSON.parse((e as MessageEvent).data) as T;
@@ -120,8 +123,8 @@ export function useSse<T>(
       }
     });
     es.addEventListener('error', () => {
+      setConnected(false);
       setClosed(true);
-      es.close();
     });
 
     return () => {

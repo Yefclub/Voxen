@@ -32,6 +32,7 @@ export function stageLabel(stage: string): string {
     transcribing: 'Transcrevendo',
     uploading: 'Enviando para armazenamento',
     indexing: 'Indexando',
+    summarizing: 'Gerando resumo',
     done: 'Concluído',
     failed: 'Falhou',
     cancelled: 'Cancelado',

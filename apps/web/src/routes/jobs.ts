@@ -16,7 +16,7 @@ import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
-import { getSetting, isSetupComplete } from '../lib/settings';
+import { getDefaultXAnalysisModel, getSetting, isSetupComplete } from '../lib/settings';
 import { parseVideoUrl } from '../lib/video-url';
 import {
   MAX_IMAGE_UPLOAD_BYTES,
@@ -55,7 +55,7 @@ async function jobTypeForVideo(
   video: ReturnType<typeof parseVideoUrl>,
 ): Promise<'DOWNLOAD_AND_TRANSCRIBE' | 'ANALYZE_X'> {
   if (video?.source !== 'X') return 'DOWNLOAD_AND_TRANSCRIBE';
-  const xModel = await getSetting('default_x_analysis_model').catch(() => null);
+  const xModel = await getDefaultXAnalysisModel().catch(() => null);
   return xModel ? 'ANALYZE_X' : 'DOWNLOAD_AND_TRANSCRIBE';
 }
 

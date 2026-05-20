@@ -38,13 +38,16 @@ async def run(*, job_id: str, user_id: str, source_url: str, log: Any) -> None: 
     )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=92)
-    await db.link_job_done(job_id, new_transcript_id)
+    await db.link_job_transcript(job_id, new_transcript_id)
 
     # Resumo via IA — best-effort, delega pro chat service (mesmo padrão do vídeo)
+    _check_cancel(job_id)
+    await events.publish_job_event(user_id, job_id, "summarizing", percent=98)
     await summary.maybe_generate(
         user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
 
+    await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
@@ -66,9 +69,7 @@ async def _scrape_with_retry(url: str, tries: int = 3) -> scraper.ScrapeResult:
     raise last_exc
 
 
-async def _persist(
-    *, user_id: str, source_url: str, result: scraper.ScrapeResult
-) -> str:
+async def _persist(*, user_id: str, source_url: str, result: scraper.ScrapeResult) -> str:
     """Persiste o resultado como Transcript (source=WEB, method=SCRAPE)."""
     import json
 

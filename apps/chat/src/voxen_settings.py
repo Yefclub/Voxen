@@ -69,12 +69,24 @@ async def get_default_document_model() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_first_setting(keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        enc = await db.get_setting_enc(key)
+        if enc is not None:
+            return decrypt(enc, get_master_key())
+    return None
+
+
 async def get_default_x_analysis_model() -> str | None:
     """Modelo Grok/xAI configurado para análise de posts do X."""
-    enc = await db.get_setting_enc("default_x_analysis_model")
-    if enc is None:
-        return None
-    return decrypt(enc, get_master_key())
+    return await get_first_setting(
+        (
+            "default_x_analysis_model",
+            "default_grok_model",
+            "default_x_model",
+            "x_analysis_model",
+        )
+    )
 
 
 async def get_telegram_bot_token() -> str | None:

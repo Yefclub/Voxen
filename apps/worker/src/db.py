@@ -184,18 +184,35 @@ async def write_transcript(
         return new_id
 
 
-async def link_job_done(job_id: str, transcript_id: str) -> None:
+async def link_job_transcript(job_id: str, transcript_id: str) -> None:
     async with connection() as conn:
         await conn.execute(
             """
             UPDATE "Job"
-            SET status = 'DONE', "transcriptId" = $2, "finishedAt" = $3
+            SET "transcriptId" = $2
             WHERE id = $1
             """,
             job_id,
             transcript_id,
+        )
+
+
+async def mark_job_done(job_id: str) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE "Job"
+            SET status = 'DONE', "finishedAt" = $2
+            WHERE id = $1
+            """,
+            job_id,
             _utcnow_naive(),
         )
+
+
+async def link_job_done(job_id: str, transcript_id: str) -> None:
+    await link_job_transcript(job_id, transcript_id)
+    await mark_job_done(job_id)
 
 
 async def mark_job_failed(job_id: str, error_msg: str) -> None:

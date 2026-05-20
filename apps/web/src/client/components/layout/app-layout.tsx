@@ -48,18 +48,22 @@ export function AppLayout(): React.ReactElement {
   // removemos o padding bottom do <main> pra não criar scroll extra na página.
   const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
 
+  const shellClass = isChat
+    ? 'h-dvh flex bg-[var(--color-app-bg)] overflow-hidden'
+    : 'min-h-dvh flex bg-[var(--color-app-bg)]';
+  const contentClass = isChat
+    ? 'flex-1 flex flex-col min-w-0 min-h-0'
+    : 'flex-1 flex flex-col min-w-0 min-h-dvh';
+  const mainClass = isChat ? 'flex-1 min-h-0' : 'flex-1 pb-6';
+
   return (
     <ChatContextProvider>
-      <div className="h-dvh flex bg-[var(--color-app-bg)] overflow-hidden">
+      <div className={shellClass}>
         <Sidebar user={data.user} />
         <SidebarSpacer />
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        <div className={contentClass}>
           <Topbar user={data.user} />
-          <main
-            className={
-              isChat ? 'flex-1 min-h-0' : 'flex-1 min-h-0 overflow-y-auto overscroll-contain pb-6'
-            }
-          >
+          <main className={mainClass}>
             <Outlet />
           </main>
           {!isChat && <VersionFooter />}

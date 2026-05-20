@@ -37,6 +37,8 @@ export type GlobalSettingKey =
   | 'yt_dlp_proxy_urls'
   | 'yt_dlp_user_agent'
   | 'yt_dlp_youtube_clients'
+  | 'yt_dlp_youtube_po_tokens'
+  | 'yt_dlp_pot_provider_url'
   | 'allow_signups'
   | 'onboarding_done'
   // Opcional: email do admin do deploy. Quando setado, scraper inclui
@@ -51,13 +53,36 @@ export type GlobalSettingKey =
   // Telegram bot token (cifrado). Quando setado, worker telegram conecta.
   | 'telegram_bot_token';
 
+const X_ANALYSIS_SETTING_KEYS = [
+  'default_x_analysis_model',
+  'default_grok_model',
+  'default_x_model',
+  'x_analysis_model',
+] as const;
+
 export async function getSetting(key: GlobalSettingKey): Promise<string | null> {
+  return getSettingByKey(key);
+}
+
+export async function getSettingByKey(key: string): Promise<string | null> {
   const row = await db.setting.findFirst({
     where: { scope: 'GLOBAL', userId: null, key },
     select: { valueEnc: true },
   });
   if (!row) return null;
   return decrypt(row.valueEnc, getMasterKey());
+}
+
+export async function getFirstSettingByKey(keys: readonly string[]): Promise<string | null> {
+  for (const key of keys) {
+    const value = await getSettingByKey(key);
+    if (value) return value;
+  }
+  return null;
+}
+
+export async function getDefaultXAnalysisModel(): Promise<string | null> {
+  return getFirstSettingByKey(X_ANALYSIS_SETTING_KEYS);
 }
 
 export async function setSetting(key: GlobalSettingKey, value: string): Promise<void> {
@@ -76,7 +101,24 @@ export async function setSetting(key: GlobalSettingKey, value: string): Promise<
 }
 
 export async function deleteSetting(key: GlobalSettingKey): Promise<void> {
+  await deleteSettingByKey(key);
+}
+
+export async function deleteSettingByKey(key: string): Promise<void> {
   await db.setting.deleteMany({ where: { scope: 'GLOBAL', userId: null, key } });
+}
+
+export async function setDefaultXAnalysisModel(value: string): Promise<void> {
+  for (const key of X_ANALYSIS_SETTING_KEYS) {
+    if (key !== 'default_x_analysis_model') await deleteSettingByKey(key);
+  }
+  await setSetting('default_x_analysis_model', value);
+}
+
+export async function deleteDefaultXAnalysisModel(): Promise<void> {
+  for (const key of X_ANALYSIS_SETTING_KEYS) {
+    await deleteSettingByKey(key);
+  }
 }
 
 export async function isSetupComplete(): Promise<boolean> {

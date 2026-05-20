@@ -25,7 +25,7 @@ async def maybe_generate(
     job_id: str,
     log: Any,  # noqa: ANN401
 ) -> None:
-    # Respeita cancel pedido entre link_job_done e o summary (janela curta).
+    # Respeita cancel pedido entre persistência do transcript e summary.
     if is_cancelled(job_id):
         log.info("summary-skipped-cancelled")
         return

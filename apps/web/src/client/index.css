@@ -46,48 +46,42 @@
 
 @layer base {
   html {
-    height: 100%;
+    min-height: 100%;
     color-scheme: dark;
     background: var(--color-app-bg);
     color: var(--color-app-fg);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    overflow: hidden;
-    /* scrollbar-gutter: reserva espaço da scrollbar permanentemente.
-       Sem isso, a página "pula" 12-15px quando aparece/some uma scrollbar
-       (modais, transições, carregamento de listas). Padrão moderno de UI.
-       https://developer.mozilla.org/en-US/docs/Web/CSS/scrollbar-gutter */
-    scrollbar-gutter: stable;
+    overflow-x: hidden;
+    scrollbar-gutter: auto;
   }
 
   body {
-    height: 100%;
+    min-height: 100%;
     background: var(--color-app-bg);
     color: var(--color-app-fg);
     font-feature-settings: 'cv11', 'ss01', 'ss03';
     letter-spacing: 0;
     position: relative;
-    overflow: hidden;
+    overflow-x: hidden;
   }
 
   /* Scrollbar estética em containers que rolam internamente (chat, sidebar) */
   *::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
   }
   *::-webkit-scrollbar-track {
     background: transparent;
   }
   *::-webkit-scrollbar-thumb {
     background: var(--color-app-border);
-    border-radius: 8px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
+    border-radius: 999px;
+    border: 0;
   }
   *::-webkit-scrollbar-thumb:hover {
     background: var(--color-app-border-strong);
-    background-clip: padding-box;
-    border: 2px solid transparent;
+    border: 0;
   }
 
   /* Mesh gradient ambiente — leve, atrás de tudo */
@@ -116,8 +110,7 @@
   }
 
   #root {
-    height: 100%;
-    overflow: hidden;
+    min-height: 100%;
     position: relative;
     z-index: 1;
   }
