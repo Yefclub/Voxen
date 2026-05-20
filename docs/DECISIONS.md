@@ -125,12 +125,12 @@ Postgres FTS (`tsvector` GIN, dicionário `portuguese`) é o motor de busca. Sem
 
 ### Contexto
 
-Workers que rodam yt-dlp + ffmpeg + transcrição precisam consumir fila. BullMQ (Node) é o canônico no ecossistema TS. Mas:
-- yt-dlp é Python nativo
+Workers que rodam extração de mídia + ffmpeg + transcrição precisam consumir fila. BullMQ (Node) é o canônico no ecossistema TS. Mas:
+- o extrator usado hoje é Python nativo
 - ffmpeg-python e bindings Python são maduros
 - Agno também é Python
 
-Manter o worker em TS exigiria subprocess pra yt-dlp e perder integração natural. Manter em Python implica fila Python-friendly.
+Manter o worker em TS exigiria subprocess para extração de mídia e perderia integração natural. Manter em Python implica fila Python-friendly.
 
 ### Decisão
 

@@ -4,11 +4,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowRight,
   CheckCircle2,
+  DownloadCloud,
   ExternalLink,
   KeyRound,
+  Mail,
   Pencil,
   RotateCw,
   Sparkles,
+  Timer,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -40,6 +43,8 @@ interface SetupStatus {
   visionModel: string | null;
   documentModel: string | null;
   xAnalysisModel: string | null;
+  adminEmail: string | null;
+  summaryTimeoutSec: string | null;
   hasApiKey: boolean;
   ytDlp?: {
     cookies: boolean;
@@ -62,6 +67,8 @@ export function SetupPage(): React.ReactElement {
   const [visionModel, setVisionModel] = useState('');
   const [documentModel, setDocumentModel] = useState('');
   const [xAnalysisModel, setXAnalysisModel] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [summaryTimeoutSec, setSummaryTimeoutSec] = useState('');
   const [ytDlpCookies, setYtDlpCookies] = useState('');
   const [ytDlpProxyUrls, setYtDlpProxyUrls] = useState('');
   const [ytDlpUserAgent, setYtDlpUserAgent] = useState('');
@@ -84,6 +91,8 @@ export function SetupPage(): React.ReactElement {
         if (s.complete && s.visionModel) setVisionModel(s.visionModel);
         if (s.complete && s.documentModel) setDocumentModel(s.documentModel);
         if (s.complete && s.xAnalysisModel) setXAnalysisModel(s.xAnalysisModel);
+        if (s.complete && s.adminEmail) setAdminEmail(s.adminEmail);
+        if (s.complete && s.summaryTimeoutSec) setSummaryTimeoutSec(s.summaryTimeoutSec);
         setStep(s.complete ? 'overview' : 'key');
       })
       .catch(() => setStep('key'));
@@ -151,6 +160,8 @@ export function SetupPage(): React.ReactElement {
       body.default_vision_model = visionModel;
       body.default_document_model = documentModel;
       body.default_x_analysis_model = xAnalysisModel;
+      body.admin_email = adminEmail.trim();
+      body.summary_timeout_sec = summaryTimeoutSec.trim();
       if (ytDlpProxyUrls.trim()) body.yt_dlp_proxy_urls = ytDlpProxyUrls;
       if (ytDlpUserAgent.trim()) body.yt_dlp_user_agent = ytDlpUserAgent;
       if (ytDlpYoutubeClients.trim()) body.yt_dlp_youtube_clients = ytDlpYoutubeClients;
@@ -184,7 +195,7 @@ export function SetupPage(): React.ReactElement {
   if (step === 'done') {
     return (
       <AnimatedPage>
-        <div className="mx-auto max-w-2xl px-6 py-20 flex flex-col items-center text-center">
+        <div className="mx-auto max-w-3xl px-6 py-20 flex flex-col items-center text-center">
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -221,7 +232,7 @@ export function SetupPage(): React.ReactElement {
   if (step === 'overview' && status) {
     return (
       <AnimatedPage>
-        <div className="mx-auto max-w-2xl px-6 py-12">
+        <div className="mx-auto max-w-3xl px-6 py-12">
           <PageHeader
             badge="Configuração"
             title={
@@ -271,7 +282,17 @@ export function SetupPage(): React.ReactElement {
                 mono={!!status.xAnalysisModel}
               />
               <SettingRow
-                label="Anti-bot YouTube"
+                label="Email do operador"
+                value={status.adminEmail ?? 'Não configurado'}
+                badge={status.adminEmail ? undefined : 'Opcional'}
+              />
+              <SettingRow
+                label="Timeout de resumo"
+                value={status.summaryTimeoutSec ? `${status.summaryTimeoutSec}s` : 'Padrão'}
+                badge={status.summaryTimeoutSec ? undefined : 'Opcional'}
+              />
+              <SettingRow
+                label="Extração de mídia"
                 value={
                   status.ytDlp?.cookies ||
                   status.ytDlp?.proxies ||
@@ -281,7 +302,7 @@ export function SetupPage(): React.ReactElement {
                         status.ytDlp.cookies ? 'cookies' : null,
                         status.ytDlp.proxies ? 'proxy' : null,
                         status.ytDlp.userAgent ? 'user-agent' : null,
-                        status.ytDlp.youtubeClients ? 'clients' : null,
+                        status.ytDlp.youtubeClients ? 'clientes YouTube' : null,
                       ]
                         .filter(Boolean)
                         .join(' · ')
@@ -339,7 +360,7 @@ export function SetupPage(): React.ReactElement {
   // Wizard (primeira vez OU trocar chave)
   return (
     <AnimatedPage>
-      <div className="mx-auto max-w-2xl px-6 py-12">
+      <div className="mx-auto max-w-3xl px-6 py-12">
         <PageHeader
           badge={status?.complete ? 'Substituir chave' : 'Configuração inicial'}
           title={
@@ -501,16 +522,16 @@ export function SetupPage(): React.ReactElement {
               exit={{ opacity: 0, x: -12 }}
               transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             >
-              <Card elevated>
-                <CardHeader>
-                  <CardTitle className="font-display">Modelos padrão</CardTitle>
-                  <CardDescription>
-                    Escolha um modelo de transcrição (áudio → texto) e um de chat (agente sobre o
-                    acervo da biblioteca).
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={saveSetup} className="space-y-5">
+              <form onSubmit={saveSetup} className="space-y-5">
+                <Card elevated>
+                  <CardHeader>
+                    <CardTitle className="font-display">Modelos padrão</CardTitle>
+                    <CardDescription>
+                      Escolha os modelos que a instância usa para chat, transcrição, visão,
+                      documentos, pesquisa web e análise do X.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
                     <ModelPicker
                       label="Modelo de transcrição"
                       value={transcriptionModel}
@@ -559,14 +580,68 @@ export function SetupPage(): React.ReactElement {
                       options={models.xAnalysis}
                       count={models.xAnalysis.length}
                       optional
-                      hint="Posts do X usam Grok/xAI com busca nativa no X. Vazio = tenta o caminho antigo por yt-dlp quando houver mídia."
+                      hint="Posts do X usam Grok/xAI com busca nativa no X. Vazio = tenta análise pela extração de mídia quando houver mídia pública."
                     />
-                    <div className="space-y-4 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 p-4">
-                      <div>
-                        <Label>Anti-bot YouTube (opcional)</Label>
+                  </CardContent>
+                </Card>
+
+                <Card elevated>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 font-display">
+                      <DownloadCloud className="h-4 w-4 text-emerald-400" />
+                      Operação da instância
+                    </CardTitle>
+                    <CardDescription>
+                      Ajustes de operação que não são modelos: identificação do bot, timeout de
+                      resumo e resiliência da extração de mídia.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Email do operador</Label>
+                        <div className="relative">
+                          <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-app-muted)]" />
+                          <Input
+                            type="email"
+                            value={adminEmail}
+                            onChange={(e) => setAdminEmail(e.target.value)}
+                            placeholder="admin@seudominio.com"
+                            className="pl-9"
+                          />
+                        </div>
                         <p className="mt-1 text-[11px] text-[var(--color-app-muted)] leading-snug">
-                          Use cookies Netscape, proxies próprios e user-agent real quando o YouTube
-                          aplicar soft-block no servidor. Não use proxies públicos aleatórios.
+                          Usado no header From do scraper quando configurado.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Timeout de resumo</Label>
+                        <div className="relative">
+                          <Timer className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-app-muted)]" />
+                          <Input
+                            type="number"
+                            min={30}
+                            max={600}
+                            step={5}
+                            value={summaryTimeoutSec}
+                            onChange={(e) => setSummaryTimeoutSec(e.target.value)}
+                            placeholder="90"
+                            className="pl-9"
+                          />
+                        </div>
+                        <p className="mt-1 text-[11px] text-[var(--color-app-muted)] leading-snug">
+                          Em segundos. Vazio usa o padrão do serviço.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 p-4">
+                      <div className="space-y-2">
+                        <Label>Extração de mídia</Label>
+                        <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
+                          Use cookies Netscape, proxies próprios e user-agent real quando
+                          plataformas aplicarem soft-block no servidor. Não use proxies públicos
+                          aleatórios.
                         </p>
                       </div>
                       <div className="space-y-2">
@@ -593,62 +668,66 @@ export function SetupPage(): React.ReactElement {
                           </label>
                         )}
                       </div>
-                      <div className="space-y-2">
-                        <Label>Proxies próprios</Label>
-                        <textarea
-                          value={ytDlpProxyUrls}
-                          onChange={(e) => setYtDlpProxyUrls(e.target.value)}
-                          placeholder="http://usuario:senha@host:porta&#10;socks5://host:porta"
-                          rows={3}
-                          spellCheck={false}
-                          className="min-h-20 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>User-Agent</Label>
-                        <Input
-                          value={ytDlpUserAgent}
-                          onChange={(e) => setYtDlpUserAgent(e.target.value)}
-                          placeholder="Mozilla/5.0 …"
-                          className="font-mono text-xs"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Clientes YouTube</Label>
-                        <Input
-                          value={ytDlpYoutubeClients}
-                          onChange={(e) => setYtDlpYoutubeClients(e.target.value)}
-                          placeholder="web,mweb"
-                          className="font-mono text-xs"
-                        />
-                        <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
-                          Vazio = padrão do yt-dlp. Preencha só para testar clients específicos.
-                        </p>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Proxies próprios</Label>
+                          <textarea
+                            value={ytDlpProxyUrls}
+                            onChange={(e) => setYtDlpProxyUrls(e.target.value)}
+                            placeholder="http://usuario:senha@host:porta&#10;socks5://host:porta"
+                            rows={3}
+                            spellCheck={false}
+                            className="min-h-20 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>User-Agent</Label>
+                          <Input
+                            value={ytDlpUserAgent}
+                            onChange={(e) => setYtDlpUserAgent(e.target.value)}
+                            placeholder="Mozilla/5.0 …"
+                            className="font-mono text-xs"
+                          />
+                        </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <Label>Clientes YouTube</Label>
+                          <Input
+                            value={ytDlpYoutubeClients}
+                            onChange={(e) => setYtDlpYoutubeClients(e.target.value)}
+                            placeholder="web,mweb"
+                            className="font-mono text-xs"
+                          />
+                          <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
+                            Vazio usa a estratégia padrão do extrator. Preencha só para testar
+                            clientes específicos.
+                          </p>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex justify-end gap-3 pt-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => {
-                          if (status?.complete && !apiKey) {
-                            setStep('overview');
-                          } else {
-                            setStep('key');
-                          }
-                          setError(null);
-                        }}
-                      >
-                        Voltar
-                      </Button>
-                      <Button type="submit" variant="primary" size="lg" disabled={loading}>
-                        {loading ? <Spinner /> : 'Salvar e continuar'}
-                        {!loading && <ArrowRight className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      if (status?.complete && !apiKey) {
+                        setStep('overview');
+                      } else {
+                        setStep('key');
+                      }
+                      setError(null);
+                    }}
+                  >
+                    Voltar
+                  </Button>
+                  <Button type="submit" variant="primary" size="lg" disabled={loading}>
+                    {loading ? <Spinner /> : 'Salvar e continuar'}
+                    {!loading && <ArrowRight className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </form>
             </motion.div>
           )}
         </AnimatePresence>

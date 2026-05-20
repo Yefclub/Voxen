@@ -8,7 +8,7 @@ Versões fixadas e justificativas. Atualizar este arquivo SEMPRE que mudar uma v
 |---|---|---|
 | Bun | `1.2.x` | Runtime do `apps/web`. Rápido, suporta TS nativo, ótimo dev experience |
 | Node | `22 LTS` | Compatibilidade com tooling que ainda não cobre Bun (Prisma CLI roda melhor em Node) |
-| Python | `3.13` | Latest stable. `apps/chat` (Agno) e `apps/worker` (yt-dlp + ARQ) |
+| Python | `3.13` | Latest stable. `apps/chat` (Agno) e `apps/worker` (extração de mídia + ARQ) |
 | pnpm | `9.x` | Package manager monorepo TS |
 | uv | latest | Package manager Python (substitui pip/poetry — mais rápido e moderno) |
 
@@ -54,7 +54,7 @@ Versões fixadas e justificativas. Atualizar este arquivo SEMPRE que mudar uma v
 | Lib | Versão | Função |
 |---|---|---|
 | `arq` | `^0.26` | Async Redis queue |
-| `yt-dlp` | latest | Downloader multi-plataforma |
+| `yt-dlp` | latest | Motor interno atual do extrator de mídia multi-plataforma |
 | `httpx` | `^0.27` | Chamadas OpenRouter |
 | `asyncpg` | `^0.30` | Postgres driver |
 | `pydantic` | `^2` | Schemas |
