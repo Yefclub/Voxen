@@ -63,6 +63,11 @@ async def test_skip_when_plain_text_empty(monkeypatch: pytest.MonkeyPatch) -> No
 
 async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_summary_timeout_sec",
+        AsyncMock(return_value=42.0),
+    )
 
     fake_conn = MagicMock()
     fake_conn.fetchrow = AsyncMock(return_value={"title": "T", "plainText": "lorem ipsum"})
@@ -74,18 +79,34 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
     fake_response = MagicMock()
     fake_response.status_code = 200
     fake_response.json = MagicMock(return_value={"summary_md": "## TL;DR\nfoo"})
+    seen_timeout: dict[str, object] = {}
 
     async def fake_post(self: httpx.AsyncClient, *args: object, **kw: object) -> object:
         return fake_response
 
-    with patch.object(httpx.AsyncClient, "post", fake_post):
+    original_init = httpx.AsyncClient.__init__
+
+    def fake_init(self: httpx.AsyncClient, *args: object, **kw: object) -> None:
+        seen_timeout["value"] = kw.get("timeout")
+        original_init(self, *args, **kw)
+
+    with (
+        patch.object(httpx.AsyncClient, "__init__", fake_init),
+        patch.object(httpx.AsyncClient, "post", fake_post),
+    ):
         log = _FakeLogger()
         await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
     assert ("info", "summary-done") in log.events
+    assert seen_timeout["value"] == 42.0
 
 
 async def test_logs_empty_when_200_without_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_summary_timeout_sec",
+        AsyncMock(return_value=120.0),
+    )
 
     fake_conn = MagicMock()
     fake_conn.fetchrow = AsyncMock(return_value={"title": "T", "plainText": "lorem"})
@@ -109,6 +130,11 @@ async def test_logs_empty_when_200_without_summary(monkeypatch: pytest.MonkeyPat
 
 async def test_warns_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_summary_timeout_sec",
+        AsyncMock(return_value=120.0),
+    )
 
     fake_conn = MagicMock()
     fake_conn.fetchrow = AsyncMock(return_value={"title": "T", "plainText": "lorem"})

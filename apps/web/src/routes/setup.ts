@@ -23,6 +23,7 @@ import {
   listModels,
   listVisionModels,
   listDocumentModels,
+  listXAnalysisModels,
   OpenrouterError,
 } from '../lib/openrouter';
 
@@ -63,20 +64,35 @@ setupRoutes.get('/', async (c) => {
       webSearchModel: null,
       visionModel: null,
       documentModel: null,
+      xAnalysisModel: null,
+      adminEmail: null,
+      summaryTimeoutSec: null,
       hasApiKey: false,
     });
   }
   // Modelos não são segredo (são identificadores públicos da OR).
   // A api_key continua cifrada e nunca é exposta — só dizemos que existe.
-  const [chatModel, transcriptionModel, webSearchModel, visionModel, documentModel, apiKey] =
-    await Promise.all([
-      getSetting('default_chat_model'),
-      getSetting('default_transcription_model'),
-      getSetting('default_web_search_model'),
-      getSetting('default_vision_model'),
-      getSetting('default_document_model'),
-      getSetting('openrouter_api_key'),
-    ]);
+  const [
+    chatModel,
+    transcriptionModel,
+    webSearchModel,
+    visionModel,
+    documentModel,
+    xAnalysisModel,
+    adminEmail,
+    summaryTimeoutSec,
+    apiKey,
+  ] = await Promise.all([
+    getSetting('default_chat_model'),
+    getSetting('default_transcription_model'),
+    getSetting('default_web_search_model'),
+    getSetting('default_vision_model'),
+    getSetting('default_document_model'),
+    getSetting('default_x_analysis_model'),
+    getSetting('admin_email'),
+    getSetting('summary_timeout_sec'),
+    getSetting('openrouter_api_key'),
+  ]);
   return c.json({
     complete,
     chatModel,
@@ -84,11 +100,15 @@ setupRoutes.get('/', async (c) => {
     webSearchModel,
     visionModel,
     documentModel,
+    xAnalysisModel,
+    adminEmail,
+    summaryTimeoutSec,
     hasApiKey: !!apiKey,
     ytDlp: {
       cookies: !!(await getSetting('yt_dlp_cookies_txt')),
       proxies: !!(await getSetting('yt_dlp_proxy_urls')),
       userAgent: !!(await getSetting('yt_dlp_user_agent')),
+      youtubeClients: !!(await getSetting('yt_dlp_youtube_clients')),
     },
   });
 });
@@ -126,16 +146,17 @@ setupRoutes.post('/models', async (c) => {
     }
   }
   try {
-    const [chat, transcription, vision, document] = await Promise.all([
+    const [chat, transcription, vision, document, xAnalysis] = await Promise.all([
       listModels(key, 'text'),
       listModels(key, 'transcription'),
       listVisionModels(key),
       listDocumentModels(key),
+      listXAnalysisModels(key),
     ]);
     // Web search: qualquer modelo de chat aceita o sufixo `:online` no OR
     // (plugin Perplexity). Devolvemos a lista de chat repetida — UI deixa
     // claro que o modelo escolhido vai ter `:online` agregado automaticamente.
-    return c.json({ chat, transcription, vision, document, web: chat });
+    return c.json({ chat, transcription, vision, document, xAnalysis, web: chat });
   } catch (err) {
     if (err instanceof OpenrouterError) {
       return c.json({ error: 'Falha ao listar modelos da OpenRouter.' }, 502);
@@ -156,10 +177,15 @@ const SaveBody = z.object({
   default_vision_model: z.string().optional(),
   // Opcional: modelo que aceita PDF/arquivo nativamente para documentos.
   default_document_model: z.string().optional(),
+  // Opcional: modelo Grok/xAI para analisar posts/threads do X via busca nativa.
+  default_x_analysis_model: z.string().optional(),
   yt_dlp_cookies_txt: z.string().optional(),
   yt_dlp_proxy_urls: z.string().optional(),
   yt_dlp_user_agent: z.string().optional(),
+  yt_dlp_youtube_clients: z.string().optional(),
   clear_yt_dlp_cookies: z.boolean().optional(),
+  admin_email: z.string().optional(),
+  summary_timeout_sec: z.string().optional(),
 });
 
 setupRoutes.post('/', async (c) => {
@@ -174,11 +200,38 @@ setupRoutes.post('/', async (c) => {
     default_web_search_model,
     default_vision_model,
     default_document_model,
+    default_x_analysis_model,
     yt_dlp_cookies_txt,
     yt_dlp_proxy_urls,
     yt_dlp_user_agent,
+    yt_dlp_youtube_clients,
     clear_yt_dlp_cookies,
+    admin_email,
+    summary_timeout_sec,
   } = parsed.data;
+
+  const normalizedAdminEmail = admin_email?.trim();
+  if (
+    normalizedAdminEmail !== undefined &&
+    normalizedAdminEmail !== '' &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedAdminEmail)
+  ) {
+    return c.json({ error: 'Email do operador inválido.' }, 400);
+  }
+
+  const normalizedSummaryTimeout = summary_timeout_sec?.trim();
+  let summaryTimeoutToSave: string | null | undefined;
+  if (normalizedSummaryTimeout !== undefined) {
+    if (normalizedSummaryTimeout === '') {
+      summaryTimeoutToSave = null;
+    } else {
+      const parsedTimeout = Number(normalizedSummaryTimeout);
+      if (!Number.isFinite(parsedTimeout) || parsedTimeout < 30 || parsedTimeout > 600) {
+        return c.json({ error: 'Timeout de resumo deve ficar entre 30 e 600 segundos.' }, 400);
+      }
+      summaryTimeoutToSave = String(Math.round(parsedTimeout));
+    }
+  }
 
   // Se a key veio no payload, valida + persiste. Senão, usa a já cifrada
   // (admin está só atualizando os modelos default).
@@ -230,6 +283,13 @@ setupRoutes.post('/', async (c) => {
       await setSetting('default_document_model', default_document_model);
     }
   }
+  if (default_x_analysis_model !== undefined) {
+    if (default_x_analysis_model.trim() === '') {
+      await deleteSetting('default_x_analysis_model');
+    } else {
+      await setSetting('default_x_analysis_model', default_x_analysis_model);
+    }
+  }
   if (yt_dlp_proxy_urls !== undefined) {
     if (yt_dlp_proxy_urls.trim() === '') {
       await deleteSetting('yt_dlp_proxy_urls');
@@ -244,10 +304,31 @@ setupRoutes.post('/', async (c) => {
       await setSetting('yt_dlp_user_agent', yt_dlp_user_agent);
     }
   }
+  if (yt_dlp_youtube_clients !== undefined) {
+    if (yt_dlp_youtube_clients.trim() === '') {
+      await deleteSetting('yt_dlp_youtube_clients');
+    } else {
+      await setSetting('yt_dlp_youtube_clients', yt_dlp_youtube_clients);
+    }
+  }
   if (clear_yt_dlp_cookies) {
     await deleteSetting('yt_dlp_cookies_txt');
   } else if (yt_dlp_cookies_txt !== undefined && yt_dlp_cookies_txt.trim() !== '') {
     await setSetting('yt_dlp_cookies_txt', yt_dlp_cookies_txt);
+  }
+  if (normalizedAdminEmail !== undefined) {
+    if (normalizedAdminEmail === '') {
+      await deleteSetting('admin_email');
+    } else {
+      await setSetting('admin_email', normalizedAdminEmail);
+    }
+  }
+  if (summaryTimeoutToSave !== undefined) {
+    if (summaryTimeoutToSave === null) {
+      await deleteSetting('summary_timeout_sec');
+    } else {
+      await setSetting('summary_timeout_sec', summaryTimeoutToSave);
+    }
   }
 
   return c.json({ complete: true });

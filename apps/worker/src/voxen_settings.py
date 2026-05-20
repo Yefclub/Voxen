@@ -51,6 +51,13 @@ async def get_default_document_model() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_default_x_analysis_model() -> str | None:
+    enc = await db.get_setting_enc("default_x_analysis_model")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
 async def get_yt_dlp_cookies_txt() -> str | None:
     enc = await db.get_setting_enc("yt_dlp_cookies_txt")
     if enc is None:
@@ -72,6 +79,13 @@ async def get_yt_dlp_user_agent() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_yt_dlp_youtube_clients() -> str | None:
+    enc = await db.get_setting_enc("yt_dlp_youtube_clients")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
 async def get_admin_email() -> str | None:
     """Email do admin do deploy — opcional. Quando setado, scraper inclui
     `From: <email>` no User-Agent (boa-prática RFC 7231 §5.5.1).
@@ -80,6 +94,20 @@ async def get_admin_email() -> str | None:
     if enc is None:
         return None
     return decrypt(enc, get_master_key())
+
+
+async def get_summary_timeout_sec(default: float = 120.0) -> float:
+    """Timeout da chamada worker → chat service para resumo best-effort."""
+    enc = await db.get_setting_enc("summary_timeout_sec")
+    if enc is None:
+        return default
+    try:
+        value = float(decrypt(enc, get_master_key()).strip())
+    except ValueError:
+        return default
+    if value < 30 or value > 600:
+        return default
+    return value
 
 
 async def get_telegram_bot_token() -> str | None:

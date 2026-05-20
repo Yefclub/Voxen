@@ -51,6 +51,14 @@ function setSseProxyHeaders(c: Context): void {
   c.header('X-Accel-Buffering', 'no');
 }
 
+async function jobTypeForVideo(
+  video: ReturnType<typeof parseVideoUrl>,
+): Promise<'DOWNLOAD_AND_TRANSCRIBE' | 'ANALYZE_X'> {
+  if (video?.source !== 'X') return 'DOWNLOAD_AND_TRANSCRIBE';
+  const xModel = await getSetting('default_x_analysis_model').catch(() => null);
+  return xModel ? 'ANALYZE_X' : 'DOWNLOAD_AND_TRANSCRIBE';
+}
+
 // Guard: session + status=APPROVED
 jobsRoutes.use('*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -93,6 +101,7 @@ jobsRoutes.post('/', async (c) => {
       400,
     );
   }
+  const jobType = await jobTypeForVideo(video);
 
   const existingTranscript = await db.transcript.findFirst({
     where: { userId, url: video.canonical },
@@ -125,7 +134,7 @@ jobsRoutes.post('/', async (c) => {
     job = await db.job.create({
       data: {
         userId,
-        type: 'DOWNLOAD_AND_TRANSCRIBE',
+        type: jobType,
         status: 'QUEUED',
         sourceUrl: video.canonical,
       },
@@ -172,13 +181,15 @@ jobsRoutes.post('/auto', async (c) => {
   // 1) Tenta vídeo primeiro (mais específico — YT/IG/TT)
   const video = parseVideoUrl(raw);
   if (video) {
+    const jobType = await jobTypeForVideo(video);
+    const kind = jobType === 'ANALYZE_X' ? 'x' : 'video';
     const existing = await db.transcript.findFirst({
       where: { userId, url: video.canonical },
       select: { id: true },
     });
     if (existing) {
       return c.json(
-        { error: 'Você já transcreveu esta URL.', transcriptId: existing.id, kind: 'video' },
+        { error: 'Você já transcreveu esta URL.', transcriptId: existing.id, kind },
         409,
       );
     }
@@ -187,17 +198,14 @@ jobsRoutes.post('/auto', async (c) => {
       select: { id: true },
     });
     if (inflight) {
-      return c.json(
-        { error: 'Esta URL já está sendo processada.', jobId: inflight.id, kind: 'video' },
-        409,
-      );
+      return c.json({ error: 'Esta URL já está sendo processada.', jobId: inflight.id, kind }, 409);
     }
     let job: { id: string; status: string; sourceUrl: string };
     try {
       job = await db.job.create({
         data: {
           userId,
-          type: 'DOWNLOAD_AND_TRANSCRIBE',
+          type: jobType,
           status: 'QUEUED',
           sourceUrl: video.canonical,
         },
@@ -205,7 +213,7 @@ jobsRoutes.post('/auto', async (c) => {
       });
     } catch (err) {
       if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
-        return c.json({ error: 'Esta URL já está sendo processada.', kind: 'video' }, 409);
+        return c.json({ error: 'Esta URL já está sendo processada.', kind }, 409);
       }
       throw err;
     }
@@ -213,10 +221,7 @@ jobsRoutes.post('/auto', async (c) => {
       console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
     });
     await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
-    return c.json(
-      { jobId: job.id, status: job.status, sourceUrl: job.sourceUrl, kind: 'video' },
-      201,
-    );
+    return c.json({ jobId: job.id, status: job.status, sourceUrl: job.sourceUrl, kind }, 201);
   }
   // 2) Fallback: trata como página web (qualquer http(s))
   const normalized = normalizeWebUrl(raw);

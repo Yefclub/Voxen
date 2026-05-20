@@ -22,6 +22,11 @@ export function AuthLayout(): React.ReactElement {
     return <Navigate to="/dashboard" replace />;
   }
 
-  // /entrar e /cadastro já são páginas full-screen com layout próprio
-  return <Outlet key={location.pathname} />;
+  // /entrar e /cadastro são telas full-screen fora da app shell. Como o body
+  // fica travado pra evitar scroll duplicado na aplicação, elas rolam aqui.
+  return (
+    <div className="h-dvh overflow-y-auto overscroll-contain">
+      <Outlet key={location.pathname} />
+    </div>
+  );
 }

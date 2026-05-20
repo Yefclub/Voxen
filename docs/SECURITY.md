@@ -7,7 +7,7 @@ Voxen é self-hosted, multi-user com adoção restrita. Este documento descreve 
 | Atacante | Vetor | Mitigação |
 |---|---|---|
 | Externo (internet) | Brute-force login | Rate limit no `/api/auth/*` (better-auth), senhas hash via Argon2 (default better-auth) |
-| Externo | SSRF via URL maliciosa nos jobs | Allowlist de hosts no worker antes de invocar yt-dlp |
+| Externo | SSRF via URL maliciosa nos jobs | Allowlist de hosts no worker antes de invocar o extrator de mídia |
 | Externo | Upload de URL que causa download grande/abusivo | (futuro) limite de duração/tamanho — owner pediu "sem limite" no MVP, mas budget por user atua de freio econômico |
 | Externo | Roubo de master key se acessar env/host | Master key em `MASTER_KEY`; nunca logar e manter backup fora do servidor |
 | Interno (user) | Acesso a transcrição de outro user | Query-time scoping por `userId` em TODA query; rotas admin protegidas por role |
@@ -74,7 +74,7 @@ frame-src https://www.youtube.com;
 
 ## SSRF prevention (worker)
 
-`apps/worker` valida URL antes de invocar yt-dlp:
+`apps/worker` valida URL antes de invocar o extrator de mídia:
 
 ```python
 ALLOWED_HOSTS = {
@@ -90,12 +90,12 @@ def validate_url(url: str) -> bool:
     return parsed.hostname.lower() in ALLOWED_HOSTS
 ```
 
-Sem allowlist, yt-dlp + ffmpeg poderiam baixar de qualquer URL — vetor SSRF clássico.
+Sem allowlist, o extrator de mídia + ffmpeg poderiam baixar de qualquer URL — vetor SSRF clássico.
 
 ## Subprocess safety (worker)
 
-`yt-dlp` e `ffmpeg` rodam via subprocess. Regras:
-- Timeout obrigatório (yt-dlp: 30min; ffmpeg: 30min) — `subprocess.run(..., timeout=1800)`
+O extrator de mídia e `ffmpeg` rodam via subprocess. Regras:
+- Timeout obrigatório (extrator: 30min; ffmpeg: 30min) — `subprocess.run(..., timeout=1800)`
 - Argumentos sempre via lista (nunca `shell=True`)
 - Diretório de download isolado por job: `/tmp/voxen-jobs/<job_id>/`
 - Limpeza forçada após job (sucesso ou falha)

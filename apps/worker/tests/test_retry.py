@@ -13,6 +13,7 @@ import pytest
 import yt_dlp.utils
 
 from src.pipeline import PermanentError, TransientError, _retry_transient
+from src.ytdl import _parse_youtube_clients
 
 
 async def test_retry_succeeds_on_third_attempt() -> None:
@@ -95,3 +96,12 @@ async def test_retry_turns_youtube_antibot_into_permanent_error() -> None:
     with pytest.raises(PermanentError, match="YouTube bloqueou"):
         await _retry_transient(fn, tries=3, base_delay=0)
     assert attempts == 1
+
+
+def test_parse_youtube_clients_keeps_allowed_unique_values() -> None:
+    assert _parse_youtube_clients("web,mweb,android,unknown,web") == [
+        "web",
+        "mweb",
+        "android",
+    ]
+    assert _parse_youtube_clients("") == []

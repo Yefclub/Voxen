@@ -1,8 +1,7 @@
 # ============================================================================
 # version-main — bumpa estável vX.Y.Z + commita em main + tag pra release
 # ============================================================================
-# Padrão Orbital: estado do commit em `main` reflete a versão atual em
-# package.json. Workflow:
+# Regra de release: só `main` cria versão estável. Workflow:
 #  - Roda em push pra `main` (após merge da PR de release dev→main).
 #  - Detecta PR_NUM via mensagem do squash commit "Title (#N)".
 #  - Lê labels: release:major | release:minor | release:patch (default).
@@ -11,6 +10,7 @@
 #  - Atualiza package.json + apps/web/package.json.
 #  - Commit "chore: release vX.Y.Z" + tag vX.Y.Z + push.
 #  - Tag dispara release.yml (build + push imagens pro ghcr).
+#  - Sincroniza main de volta para dev com um merge de release.
 #
 # Loop-safe: condition skipa commits que começam com "chore: release v".
 #
@@ -127,14 +127,35 @@ jobs:
             exit 0
           fi
           git commit -m "chore: release v$NEW_VER"
-          if ! git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
-            git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
-          fi
           for attempt in 1 2 3 4 5; do
-            if git pull --rebase origin main && git push origin main && git push origin "$NEW_TAG" 2>&1; then
+            if git push origin main; then
+              # Tag só depois do push/rebase final, para não apontar para
+              # commit antigo caso haja concorrência e o commit seja reescrito.
+              git tag -fa "$NEW_TAG" -m "Release $NEW_TAG"
+              if git push origin "$NEW_TAG" 2>&1; then
+                echo "Released v$NEW_VER — release.yml será disparado pela tag."
+                exit 0
+              fi
+            else
+              git pull --rebase origin main
+            fi
+            REMOTE_TAG_SHA=$(git ls-remote origin "refs/tags/$NEW_TAG^{}" | cut -f1 || true)
+            if [[ -n "$REMOTE_TAG_SHA" && "$REMOTE_TAG_SHA" == "$(git rev-parse HEAD)" ]]; then
               echo "Released v$NEW_VER — release.yml será disparado pela tag."
               exit 0
             fi
             sleep "$((attempt * 3))"
           done
           exit 1
+
+      - name: Sync stable release back to dev
+        run: |
+          set -euo pipefail
+          git fetch origin main dev
+          git checkout -B dev origin/dev
+          if git merge --no-ff origin/main -m "chore: sync main release ${{ steps.version.outputs.new_tag }} into dev"; then
+            git push origin dev
+          else
+            echo "Conflito ao sincronizar main em dev. Resolva manualmente."
+            exit 1
+          fi

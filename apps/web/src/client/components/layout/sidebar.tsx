@@ -52,7 +52,7 @@ const NAV: NavItem[] = [
   { to: '/setup', label: 'Configuração', Icon: SettingsIcon, adminOnly: true },
 ];
 
-const SIDEBAR_WIDTH = 248;
+const SIDEBAR_WIDTH = 264;
 
 export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
   const location = useLocation();
@@ -134,12 +134,9 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
           className="rounded-lg select-none pointer-events-none"
         />
       </div>
-      <div className="ml-3 flex flex-col leading-none min-w-0">
+      <div className="ml-3 flex min-w-0 flex-col leading-none">
         <span className="text-sm font-semibold tracking-tight font-display">Voxen</span>
-        {/* Tracking reduzido + leading-tight pra caber em 1 linha sem corte
-            no slot de ~140px disponível. Removido truncate; sufficient width
-            assegurada pela tipografia compacta. */}
-        <span className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-app-muted)] mt-1 leading-tight">
+        <span className="mt-1 whitespace-nowrap text-[9px] uppercase tracking-[0.04em] text-[var(--color-app-muted)]">
           Base de conhecimento
         </span>
       </div>

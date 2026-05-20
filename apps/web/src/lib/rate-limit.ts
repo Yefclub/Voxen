@@ -14,6 +14,19 @@ export interface RateLimitResult {
   resetIn: number;
 }
 
+type RedisExecResult = Array<[Error | null, unknown]> | null;
+
+interface RateLimitPipeline {
+  incr(key: string): RateLimitPipeline;
+  expire(key: string, seconds: number, mode: 'NX'): RateLimitPipeline;
+  ttl(key: string): RateLimitPipeline;
+  exec(): Promise<RedisExecResult>;
+}
+
+export interface RateLimitRedis {
+  multi(): RateLimitPipeline;
+}
+
 /**
  * Conta o hit e retorna se pode prosseguir. Janela fixa (não sliding) — barata
  * e suficiente pra deduplicação de abuso.
@@ -30,7 +43,15 @@ export async function rateLimit(
   limit: number,
   windowSec: number,
 ): Promise<RateLimitResult> {
-  const redis = getRedisPublisher();
+  return rateLimitWithRedis(getRedisPublisher(), key, limit, windowSec);
+}
+
+export async function rateLimitWithRedis(
+  redis: RateLimitRedis,
+  key: string,
+  limit: number,
+  windowSec: number,
+): Promise<RateLimitResult> {
   const results = await redis.multi().incr(key).expire(key, windowSec, 'NX').ttl(key).exec();
   if (!results) {
     // MULTI/EXEC abortado (raro — connection drop). Falha aberta: permite,

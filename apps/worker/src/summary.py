@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from . import db
+from . import db, voxen_settings
 from .cancellation import is_cancelled
 
 
@@ -40,7 +40,8 @@ async def maybe_generate(
             return
 
         chat_url = os.environ.get("CHAT_SERVICE_URL", "http://chat:8001")
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        timeout = await voxen_settings.get_summary_timeout_sec()
+        async with httpx.AsyncClient(timeout=timeout) as client:
             res = await client.post(
                 f"{chat_url}/summarize-transcript",
                 headers={"X-Voxen-User-Id": user_id},

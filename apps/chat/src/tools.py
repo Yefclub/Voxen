@@ -57,7 +57,7 @@ TOOLS_SPEC: list[dict[str, Any]] = [
                     },
                     "source": {
                         "type": "string",
-                        "enum": ["YOUTUBE", "INSTAGRAM", "TIKTOK"],
+                        "enum": ["YOUTUBE", "INSTAGRAM", "TIKTOK", "X", "WEB", "UPLOAD"],
                         "description": "Filtrar por plataforma de origem.",
                     },
                 },
@@ -165,7 +165,8 @@ TOOLS_SPEC: list[dict[str, Any]] = [
             "name": "transcribe_video",
             "description": (
                 "Dispara transcrição de um vídeo (YouTube, Instagram Reel, "
-                "TikTok ou X/Twitter). Recebe a URL e agenda um Job no "
+                "TikTok) ou análise de post/thread do X quando o modelo Grok "
+                "estiver configurado. Recebe a URL e agenda um Job no "
                 "worker. NÃO espera concluir — retorna o job_id pra "
                 "acompanhar. Use quando o usuário pedir pra transcrever/"
                 "baixar/indexar um link de vídeo. Avise que vai demorar "
@@ -501,29 +502,42 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                         "TikTok e X/Twitter (x.com|twitter.com/.../status/<id>)."
                     ),
                 }
-            res = await db.create_transcribe_job(user_id, canonical)
+            is_x_status = canonical.startswith("https://x.com/i/status/")
+            if is_x_status and await voxen_settings.get_default_x_analysis_model():
+                res = await db.create_x_analysis_job(user_id, canonical)
+                queued_message = (
+                    "Job criado. Worker vai analisar o post/thread do X com o modelo "
+                    "Grok configurado — acompanhe em /jobs/" + res.get("id", "") + "."
+                )
+                already_message = "Esse post do X já está na biblioteca."
+                processing_message = "Esse post do X já está em análise."
+            else:
+                res = await db.create_transcribe_job(user_id, canonical)
+                queued_message = (
+                    "Job criado. Worker vai baixar áudio e transcrever — "
+                    "acompanhe em /jobs/" + res.get("id", "") + "."
+                )
+                already_message = "Esse vídeo já está na biblioteca."
+                processing_message = "Esse vídeo já está em processamento."
             if res.get("duplicate") == "transcript":
                 return {
                     "status": "already_transcribed",
                     "transcript_id": res["transcript_id"],
-                    "message": "Esse vídeo já está na biblioteca.",
+                    "message": already_message,
                 }
             if res.get("duplicate") == "job":
                 return {
                     "status": "already_queued",
                     "job_id": res["id"],
                     "job_status": res["status"],
-                    "message": "Esse vídeo já está em processamento.",
+                    "message": processing_message,
                 }
             await redis_pub.publish_new_job(res["id"])
             return {
                 "status": "queued",
                 "job_id": res["id"],
                 "source_url": canonical,
-                "message": (
-                    "Job criado. Worker vai baixar áudio e transcrever — "
-                    "acompanhe em /jobs/" + res["id"] + "."
-                ),
+                "message": queued_message,
             }
 
         if name == "read_transcript_summary":

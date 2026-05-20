@@ -178,3 +178,29 @@ def test_render_document_markdown_uses_document_section_without_timestamps() -> 
     assert "[00:00:00]" not in md
     assert "0m00s" not in md
     assert "Resumo do relatório financeiro." in md
+
+
+def test_render_x_search_markdown_uses_x_analysis_section_without_timestamps() -> None:
+    doc = _doc(
+        source="X",
+        url="https://x.com/i/status/1234567890",
+        video_id="1234567890",
+        title="Post do X 1234567890",
+        channel="X",
+        duration_sec=0,
+        published_at=None,
+        thumbnail_url=None,
+        transcription_method="X_SEARCH",
+        model="x-ai/grok-4-fast",
+        segments=(Segment(start_sec=0.0, text="Resumo do post e contexto público."),),
+    )
+    md = render_markdown(doc)
+    fm_end = md.index("\n---\n", 4)
+    fm = yaml.safe_load(md[4:fm_end])
+    assert fm["source"] == "x"
+    assert fm["transcription_method"] == "x_search"
+    assert "[Post original](https://x.com/i/status/1234567890)" in md
+    assert "## Análise do X" in md
+    assert "## Transcrição" not in md
+    assert "[00:00:00]" not in md
+    assert "0m00s" not in md

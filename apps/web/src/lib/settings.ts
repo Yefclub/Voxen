@@ -29,11 +29,14 @@ export type GlobalSettingKey =
   // Modelo multimodal/documental pra PDF nativo e análise de documentos.
   // Filtrado por architecture.input_modalities=['file'] na OpenRouter.
   | 'default_document_model'
-  // Configurações opcionais do yt-dlp para ambientes onde YouTube aplica
-  // soft-block anti-bot. Mantidas cifradas por poderem conter cookies/proxies.
+  // Modelo Grok/xAI dedicado a análise de posts e threads do X via OpenRouter.
+  | 'default_x_analysis_model'
+  // Configurações opcionais do extrator de mídia para ambientes onde YouTube
+  // aplica soft-block anti-bot. Chaves `yt_dlp_*` ficam por compatibilidade.
   | 'yt_dlp_cookies_txt'
   | 'yt_dlp_proxy_urls'
   | 'yt_dlp_user_agent'
+  | 'yt_dlp_youtube_clients'
   | 'allow_signups'
   | 'onboarding_done'
   // Opcional: email do admin do deploy. Quando setado, scraper inclui
