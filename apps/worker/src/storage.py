@@ -7,6 +7,7 @@ para compatibilidade com instalações antigas.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 import aioboto3
@@ -89,3 +90,26 @@ async def put_markdown(
 
 def transcript_key(user_id: str, transcript_id: str) -> str:
     return f"workspaces/{user_id}/transcripts/{transcript_id}.md"
+
+
+def upload_key(user_id: str, upload_id: str, filename: str) -> str:
+    return f"workspaces/{user_id}/uploads/{upload_id}/{filename}"
+
+
+async def download_to_file(*, key: str, dest: Path, bucket: str | None = None) -> None:
+    """Baixa um objeto S3 para `dest`."""
+    session = s3_session()
+    async with session.client(**s3_client_kwargs()) as s3:
+        response = await s3.get_object(Bucket=bucket or s3_bucket(), Key=key)
+        body = response["Body"]
+        try:
+            with dest.open("wb") as fh:
+                while True:
+                    chunk = await body.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+        finally:
+            close = getattr(body, "close", None)
+            if close is not None:
+                close()

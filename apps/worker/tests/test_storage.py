@@ -28,6 +28,13 @@ def test_transcript_key_format() -> None:
     )
 
 
+def test_upload_key_format() -> None:
+    assert (
+        storage.upload_key("cuser01", "123e4567-e89b-12d3-a456-426614174000", "aula.mp4")
+        == "workspaces/cuser01/uploads/123e4567-e89b-12d3-a456-426614174000/aula.mp4"
+    )
+
+
 def test_env_helpers_fallback_garage() -> None:
     assert storage.s3_bucket() == "voxen-test-bucket"
     assert storage.s3_endpoint() == "http://garage:3900"

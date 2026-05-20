@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Globe, Link2, PlayCircle, Plus, RefreshCw } from 'lucide-react';
+import { ArrowRight, Globe, Link2, PlayCircle, Plus, RefreshCw, Upload, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
@@ -16,7 +16,7 @@ import { useFetch, useSse } from '../lib/hooks';
 import { formatRelative } from '../lib/format';
 import { jobStatusBadge, stageLabel } from '../lib/job-display';
 import type { JobStatus, JobSummary } from '../lib/types';
-import { detectSourceFromUrl, type DetectedSource } from '../lib/source-detect';
+import { detectSourceFromUrl, displayJobSource, type DetectedSource } from '../lib/source-detect';
 import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motion/animated-page';
 
 interface ProgressEvent {
@@ -30,8 +30,11 @@ interface ProgressEvent {
 }
 
 export function JobsPage(): React.ReactElement {
+  const [mode, setMode] = useState<'link' | 'upload'>('link');
   const [url, setUrl] = useState('');
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { data, loading, refresh } = useFetch<{ jobs: JobSummary[] }>('/api/jobs');
   const navigate = useNavigate();
@@ -86,6 +89,44 @@ export function JobsPage(): React.ReactElement {
     }
   }
 
+  async function onUploadSubmit(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!mediaFile) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('media', mediaFile);
+      const res = await fetch('/api/jobs/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        jobId?: string;
+        status?: JobStatus;
+        sourceUrl?: string;
+        error?: string;
+      };
+      if (!res.ok || !body.jobId) {
+        throw new ApiError(body.error ?? 'Falha ao enviar arquivo.', res.status, body);
+      }
+      setMediaFile(null);
+      refresh();
+      toast.success('Arquivo na fila.', {
+        description: 'A transcrição será feita pelo modelo configurado.',
+        action: {
+          label: 'Abrir',
+          onClick: () => navigate(`/jobs/${body.jobId}`),
+        },
+      });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Erro inesperado.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
   const jobs = data?.jobs ?? [];
 
   return (
@@ -98,8 +139,8 @@ export function JobsPage(): React.ReactElement {
           </div>
           <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Novo conteúdo</h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Cole qualquer link — YouTube, Instagram, TikTok ou página web. O Voxen detecta o tipo e
-            indexa pra busca e pro chat.
+            Cole links do YouTube, Instagram, TikTok, X ou páginas web. Também dá para enviar um
+            arquivo de áudio ou vídeo quando a plataforma bloquear o download.
           </p>
         </header>
 
@@ -118,56 +159,136 @@ export function JobsPage(): React.ReactElement {
               }}
             />
             <CardContent className="pt-6 relative">
-              <form onSubmit={onSubmit} className="space-y-4">
+              <div className="space-y-4">
+                <div className="inline-flex rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] p-1">
+                  <button
+                    type="button"
+                    onClick={() => setMode('link')}
+                    className={[
+                      'inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors',
+                      mode === 'link'
+                        ? 'bg-[var(--color-app-surface)] text-zinc-100 shadow-sm'
+                        : 'text-[var(--color-app-muted)] hover:text-zinc-100',
+                    ].join(' ')}
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                    Link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode('upload')}
+                    className={[
+                      'inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors',
+                      mode === 'upload'
+                        ? 'bg-[var(--color-app-surface)] text-zinc-100 shadow-sm'
+                        : 'text-[var(--color-app-muted)] hover:text-zinc-100',
+                    ].join(' ')}
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    Arquivo
+                  </button>
+                </div>
+
                 {error && (
                   <Alert variant="destructive">
-                    <AlertDescription>{error}</AlertDescription>
+                    <AlertDescription className="break-words">{error}</AlertDescription>
                   </Alert>
                 )}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between min-h-[20px]">
-                    <Label htmlFor="url">Link</Label>
-                    {detected && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -2 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.18 }}
-                      >
-                        <DetectedBadge source={detected} />
-                      </motion.div>
-                    )}
-                  </div>
-                  <div className="flex gap-2.5">
-                    <div className="relative flex-1">
-                      <Link2 className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
-                      <Input
-                        id="url"
-                        type="url"
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        placeholder="https://youtu.be/... · instagram.com/reel/... · tiktok.com/... · exemplo.com/artigo"
-                        autoComplete="off"
-                        required
-                        className="pl-10 font-mono h-11 text-[15px]"
-                      />
+
+                {mode === 'link' ? (
+                  <form onSubmit={onSubmit} className="space-y-2">
+                    <div className="flex items-center justify-between min-h-[20px]">
+                      <Label htmlFor="url">Link</Label>
+                      {detected && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.18 }}
+                        >
+                          <DetectedBadge source={detected} />
+                        </motion.div>
+                      )}
                     </div>
-                    <Button
-                      type="submit"
-                      variant="primary"
-                      size="lg"
-                      disabled={submitting || url.trim().length === 0}
-                      className="h-11 px-5"
-                    >
-                      {submitting ? <Spinner /> : <Plus className="h-4 w-4" />}
-                      Adicionar
-                    </Button>
-                  </div>
-                  <p className="text-xs text-[var(--color-app-muted)]">
-                    Aceita YouTube (watch/shorts), Instagram (reel/p/tv), TikTok público e qualquer
-                    página web (blogs, news, docs, wikis). SPAs JS-heavy podem falhar no scrape.
-                  </p>
-                </div>
-              </form>
+                    <div className="flex flex-col gap-2.5 sm:flex-row">
+                      <div className="relative flex-1">
+                        <Link2 className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
+                        <Input
+                          id="url"
+                          type="url"
+                          value={url}
+                          onChange={(e) => setUrl(e.target.value)}
+                          placeholder="https://youtu.be/... · x.com/.../status/... · exemplo.com/artigo"
+                          autoComplete="off"
+                          required
+                          className="pl-10 font-mono h-11 text-[15px]"
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        size="lg"
+                        disabled={submitting || url.trim().length === 0}
+                        className="h-11 px-5 sm:w-auto"
+                      >
+                        {submitting ? <Spinner /> : <Plus className="h-4 w-4" />}
+                        Adicionar
+                      </Button>
+                    </div>
+                    <p className="text-xs text-[var(--color-app-muted)]">
+                      Aceita vídeos públicos, posts do X com mídia e páginas web. Conteúdos com
+                      bloqueio anti-bot podem ser enviados como arquivo.
+                    </p>
+                  </form>
+                ) : (
+                  <form onSubmit={onUploadSubmit} className="space-y-3">
+                    <Label htmlFor="media">Áudio ou vídeo</Label>
+                    <div className="space-y-2.5 sm:flex sm:gap-2.5 sm:space-y-0">
+                      <div className="flex gap-2.5 sm:flex-1">
+                        <label className="relative flex h-11 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 text-sm text-[var(--color-app-muted)] transition-colors hover:border-emerald-400/50 hover:text-zinc-100">
+                          <Upload className="h-4 w-4 shrink-0" />
+                          <span className="truncate">
+                            {mediaFile ? mediaFile.name : 'Selecionar arquivo de mídia'}
+                          </span>
+                          <input
+                            id="media"
+                            type="file"
+                            accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.mp4,.mov,.m4v,.webm,.mkv,.avi"
+                            className="sr-only"
+                            onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)}
+                          />
+                        </label>
+                        {mediaFile && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11"
+                            onClick={() => setMediaFile(null)}
+                            aria-label="Remover arquivo"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        size="lg"
+                        disabled={uploading || !mediaFile}
+                        className="h-11 w-full px-5 sm:w-auto"
+                      >
+                        {uploading ? <Spinner /> : <Upload className="h-4 w-4" />}
+                        Enviar
+                      </Button>
+                    </div>
+                    {mediaFile && (
+                      <p className="text-xs text-[var(--color-app-muted)]">
+                        {(mediaFile.size / 1024 / 1024).toFixed(1)} MiB · limite de 500 MiB
+                      </p>
+                    )}
+                  </form>
+                )}
+              </div>
             </CardContent>
           </Card>
         </motion.div>
@@ -199,7 +320,8 @@ export function JobsPage(): React.ReactElement {
           {!loading && jobs.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center text-sm text-[var(--color-app-muted)]">
-                Você ainda não enviou nenhum vídeo. Cole um link acima para começar.
+                Você ainda não enviou nenhum conteúdo. Cole um link ou envie um arquivo para
+                começar.
               </CardContent>
             </Card>
           )}
@@ -244,7 +366,9 @@ function JobRow({ job, onUpdate }: { job: JobSummary; onUpdate: () => void }): R
         {isActive ? stageLabel(stage) : label}
       </Badge>
       <div className="flex-1 min-w-0 space-y-1.5">
-        <p className="text-sm text-zinc-200 truncate font-mono tracking-tight">{job.sourceUrl}</p>
+        <p className="text-sm text-zinc-200 truncate font-mono tracking-tight">
+          {displayJobSource(job.sourceUrl)}
+        </p>
         {isActive ? (
           <div className="flex items-center gap-2.5">
             <div className="h-1 flex-1 max-w-[280px] rounded-full bg-[var(--color-app-bg-elevated)] overflow-hidden">
@@ -265,7 +389,9 @@ function JobRow({ job, onUpdate }: { job: JobSummary; onUpdate: () => void }): R
               : `Enfileirado ${formatRelative(new Date(job.queuedAt))}`}
           </p>
         )}
-        {job.errorMsg && !isActive && <p className="text-xs text-rose-300 mt-1">{job.errorMsg}</p>}
+        {job.errorMsg && !isActive && (
+          <p className="text-xs text-rose-300 mt-1 line-clamp-2 break-words">{job.errorMsg}</p>
+        )}
       </div>
       {job.transcriptId ? (
         <Button variant="ghost" size="sm" asChild>

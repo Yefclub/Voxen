@@ -24,7 +24,7 @@ class TranscriptDoc:
 
     transcript_id: str
     user_id: str
-    source: str  # YOUTUBE | INSTAGRAM | TIKTOK
+    source: str  # YOUTUBE | INSTAGRAM | TIKTOK | X | WEB | UPLOAD
     url: str
     video_id: str
     title: str
@@ -46,7 +46,7 @@ def _format_ts(seconds: float) -> str:
     return f"{s // 3600:02d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
 
 
-def _timestamp_link(source: str, url: str, video_id: str, seconds: float) -> str:
+def _timestamp_link(source: str, url: str, video_id: str, seconds: float) -> str | None:
     """Link clicável pro segundo exato. Cada plataforma tem sintaxe própria.
 
     - YouTube: `?t=Ns` funciona em youtu.be e youtube.com
@@ -55,6 +55,8 @@ def _timestamp_link(source: str, url: str, video_id: str, seconds: float) -> str
     """
     if source == "YOUTUBE":
         return f"https://youtu.be/{video_id}?t={int(seconds)}"
+    if source == "UPLOAD":
+        return None
     # Instagram/TikTok: sem deeplink de timestamp na URL pública
     return url
 
@@ -98,7 +100,12 @@ def render_markdown(doc: TranscriptDoc) -> str:
 
     parts.append(f"# {doc.title}")
     parts.append("")
-    meta_bits: list[str] = [f"[Vídeo original]({doc.url})"]
+    if doc.source == "UPLOAD":
+        meta_bits: list[str] = ["Arquivo enviado"]
+    elif doc.source == "WEB":
+        meta_bits = [f"[Página original]({doc.url})"]
+    else:
+        meta_bits = [f"[Vídeo original]({doc.url})"]
     if doc.channel:
         meta_bits.append(doc.channel)
     duration_min = doc.duration_sec // 60
@@ -114,7 +121,10 @@ def render_markdown(doc: TranscriptDoc) -> str:
     for seg in doc.segments:
         ts = _format_ts(seg.start_sec)
         link = _timestamp_link(doc.source, doc.url, doc.video_id, seg.start_sec)
-        parts.append(f"[{ts}]({link}) {seg.text.strip()}")
+        if link:
+            parts.append(f"[{ts}]({link}) {seg.text.strip()}")
+        else:
+            parts.append(f"[{ts}] {seg.text.strip()}")
         parts.append("")
 
     return "\n".join(parts).rstrip() + "\n"

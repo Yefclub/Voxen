@@ -22,6 +22,7 @@ export function stageLabel(stage: string): string {
     queued: 'Na fila',
     running: 'Iniciando',
     downloading: 'Baixando vídeo',
+    preparing_upload: 'Preparando arquivo',
     extracting_audio: 'Extraindo áudio',
     choosing_method: 'Escolhendo método',
     transcribing: 'Transcrevendo',

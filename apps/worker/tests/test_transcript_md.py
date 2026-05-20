@@ -49,8 +49,17 @@ def test_render_markdown_has_frontmatter_with_required_fields() -> None:
     assert md.startswith("---\n")
     fm_end = md.index("\n---\n", 4)
     fm = yaml.safe_load(md[4:fm_end])
-    for k in ("id", "workspace_id", "source", "url", "title", "duration_sec",
-              "language", "transcription_method", "transcribed_at"):
+    for k in (
+        "id",
+        "workspace_id",
+        "source",
+        "url",
+        "title",
+        "duration_sec",
+        "language",
+        "transcription_method",
+        "transcribed_at",
+    ):
         assert k in fm, f"frontmatter sem campo obrigatório {k}"
     assert fm["source"] == "youtube"
     assert fm["transcription_method"] == "api"
@@ -103,3 +112,19 @@ def test_build_frontmatter_cost_is_float_not_decimal() -> None:
     json.dumps(fm)  # não deve estourar
     assert isinstance(fm["cost_usd"], float)
     assert fm["cost_usd"] == 0.0042
+
+
+def test_render_upload_markdown_has_no_external_timestamp_links() -> None:
+    md = render_markdown(
+        _doc(
+            source="UPLOAD",
+            url="upload://123e4567-e89b-12d3-a456-426614174000/aula.mp4",
+            video_id="123e4567-e89b-12d3-a456-426614174000",
+            title="aula",
+            channel="Upload local",
+            thumbnail_url=None,
+        )
+    )
+    assert "Arquivo enviado" in md
+    assert "[Vídeo original]" not in md
+    assert "[00:00:00] Olá pessoal" in md
