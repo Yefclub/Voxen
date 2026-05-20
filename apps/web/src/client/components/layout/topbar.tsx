@@ -89,7 +89,7 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
   };
 
   return (
-    <header className="shrink-0 z-30 flex h-16 items-center justify-between border-b border-[var(--color-app-border)] bg-[var(--color-app-bg)]/70 backdrop-blur-md px-6">
+    <header className="sticky top-0 shrink-0 z-30 flex h-16 items-center justify-between border-b border-[var(--color-app-border)] bg-[var(--color-app-bg)]/70 backdrop-blur-md px-6">
       <div className="flex items-center gap-4">
         {title && <h1 className="text-base font-semibold font-display tracking-tight">{title}</h1>}
       </div>
