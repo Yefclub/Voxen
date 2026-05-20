@@ -63,7 +63,7 @@ async def test_happy_path_persists_and_publishes_events(
 
     monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", fake_publish)
 
-    # Mock db: connection() + link_job_done
+    # Mock db: connection() + link_job_transcript/mark_job_done
     fake_conn = MagicMock()
     fake_conn.execute = AsyncMock(return_value=None)
     fake_ctx = MagicMock()
@@ -71,7 +71,8 @@ async def test_happy_path_persists_and_publishes_events(
     fake_ctx.__aexit__ = AsyncMock(return_value=False)
     monkeypatch.setattr(scrape_pipeline.db, "connection", lambda: fake_ctx)
     monkeypatch.setattr(scrape_pipeline.db, "generate_cuid", lambda: "ctest123")
-    monkeypatch.setattr(scrape_pipeline.db, "link_job_done", AsyncMock(return_value=None))
+    monkeypatch.setattr(scrape_pipeline.db, "link_job_transcript", AsyncMock(return_value=None))
+    monkeypatch.setattr(scrape_pipeline.db, "mark_job_done", AsyncMock(return_value=None))
 
     # Mock summary.maybe_generate (best-effort, não precisa testar aqui)
     monkeypatch.setattr(
@@ -94,10 +95,12 @@ async def test_happy_path_persists_and_publishes_events(
     assert "downloading" in events_published
     assert "uploading" in events_published
     assert "indexing" in events_published
+    assert "summarizing" in events_published
     assert "done" in events_published
 
-    # link_job_done foi chamado com o transcript_id gerado
-    scrape_pipeline.db.link_job_done.assert_awaited_once_with("job1", "ctest123")  # type: ignore[attr-defined]
+    # Job só vira DONE depois da tentativa de resumo.
+    scrape_pipeline.db.link_job_transcript.assert_awaited_once_with("job1", "ctest123")  # type: ignore[attr-defined]
+    scrape_pipeline.db.mark_job_done.assert_awaited_once_with("job1")  # type: ignore[attr-defined]
 
 
 async def test_robots_blocked_raises_permanent(

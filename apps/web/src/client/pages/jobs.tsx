@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Globe, Link2, PlayCircle, Plus, RefreshCw, Upload, X } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -141,6 +141,15 @@ export function JobsPage(): React.ReactElement {
   }
 
   const jobs = data?.jobs ?? [];
+  const hasActiveJobs = jobs.some((job) => job.status === 'QUEUED' || job.status === 'RUNNING');
+
+  useEffect(() => {
+    if (!hasActiveJobs) return;
+    const id = window.setInterval(() => {
+      refresh();
+    }, 6_000);
+    return () => window.clearInterval(id);
+  }, [hasActiveJobs, refresh]);
 
   return (
     <AnimatedPage>
@@ -365,13 +374,25 @@ function JobRow({ job, onUpdate }: { job: JobSummary; onUpdate: () => void }): R
   const [stage, setStage] = useState<string>(job.status === 'RUNNING' ? 'running' : 'queued');
   const [percent, setPercent] = useState<number>(0);
 
-  useSse<ProgressEvent>(isActive ? `/api/jobs/${job.id}/events` : null, (evt) => {
-    setStage(evt.stage);
-    if (typeof evt.percent === 'number') setPercent(evt.percent);
-    if (evt.stage === 'done' || evt.stage === 'failed') {
-      setTimeout(onUpdate, 400);
-    }
-  });
+  const { closed } = useSse<ProgressEvent>(
+    isActive ? `/api/jobs/${job.id}/events` : null,
+    (evt) => {
+      setStage(evt.stage);
+      if (typeof evt.percent === 'number') setPercent(evt.percent);
+      if (evt.stage === 'done' || evt.stage === 'failed' || evt.stage === 'cancelled') {
+        setTimeout(onUpdate, 400);
+      }
+    },
+  );
+
+  useEffect(() => {
+    setStage(job.status === 'RUNNING' ? 'running' : 'queued');
+    setPercent(0);
+  }, [job.id, job.status]);
+
+  useEffect(() => {
+    if (closed && isActive) onUpdate();
+  }, [closed, isActive, onUpdate]);
 
   const { variant, label } = jobStatusBadge(job.status);
 

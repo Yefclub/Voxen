@@ -211,9 +211,9 @@ def _run_download(url: str, opts: dict[str, Any]) -> None:
 async def _runtime_options(cookie_dir: Path | None = None) -> RuntimeYtdlpOptions:
     """Opções comuns do yt-dlp, com config runtime cifrada no DB.
 
-    Proxies/cookies são opcionais e controlados pelo operador do deploy. Não
-    usamos listas públicas automáticas: elas são instáveis, inseguras e tendem
-    a piorar bloqueios do YouTube.
+    Proxies/cookies/PO Token Provider são opcionais e controlados pelo operador
+    do deploy. Não usamos listas públicas automáticas: elas são instáveis,
+    inseguras e tendem a piorar bloqueios do YouTube.
     """
     opts: dict[str, Any] = {
         "retries": 3,
@@ -231,6 +231,7 @@ async def _runtime_options(cookie_dir: Path | None = None) -> RuntimeYtdlpOption
     )
     youtube_clients = _parse_youtube_clients(youtube_clients_raw)
     youtube_args: dict[str, list[str]] = {}
+    extractor_args: dict[str, dict[str, list[str]]] = {}
     if youtube_clients:
         youtube_args["player_client"] = youtube_clients
 
@@ -244,7 +245,19 @@ async def _runtime_options(cookie_dir: Path | None = None) -> RuntimeYtdlpOption
         youtube_args["po_token"] = po_tokens
 
     if youtube_args:
-        opts["extractor_args"] = {"youtube": youtube_args}
+        extractor_args["youtube"] = youtube_args
+
+    pot_provider_url = (
+        await voxen_settings.get_yt_dlp_pot_provider_url()
+        or os.environ.get("YTDLP_POT_PROVIDER_URL")
+        or os.environ.get("YTDLP_BGUTIL_POT_PROVIDER_URL")
+        or ""
+    ).strip()
+    if pot_provider_url:
+        extractor_args["youtubepot-bgutilhttp"] = {"base_url": [pot_provider_url]}
+
+    if extractor_args:
+        opts["extractor_args"] = extractor_args
 
     user_agent = (
         await voxen_settings.get_yt_dlp_user_agent() or os.environ.get("YTDLP_USER_AGENT") or ""

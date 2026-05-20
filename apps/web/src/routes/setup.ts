@@ -118,6 +118,7 @@ setupRoutes.get('/', async (c) => {
       userAgent: !!(await getSetting('yt_dlp_user_agent')),
       youtubeClients: !!(await getSetting('yt_dlp_youtube_clients')),
       poTokens: !!(await getSetting('yt_dlp_youtube_po_tokens')),
+      potProvider: !!(await getSetting('yt_dlp_pot_provider_url')),
     },
   });
 });
@@ -193,6 +194,7 @@ const SaveBody = z.object({
   yt_dlp_user_agent: z.string().optional(),
   yt_dlp_youtube_clients: z.string().optional(),
   yt_dlp_youtube_po_tokens: z.string().optional(),
+  yt_dlp_pot_provider_url: z.string().optional(),
   clear_yt_dlp_cookies: z.boolean().optional(),
   admin_email: z.string().optional(),
   summary_timeout_sec: z.string().optional(),
@@ -216,6 +218,7 @@ setupRoutes.post('/', async (c) => {
     yt_dlp_user_agent,
     yt_dlp_youtube_clients,
     yt_dlp_youtube_po_tokens,
+    yt_dlp_pot_provider_url,
     clear_yt_dlp_cookies,
     admin_email,
     summary_timeout_sec,
@@ -327,6 +330,13 @@ setupRoutes.post('/', async (c) => {
       await deleteSetting('yt_dlp_youtube_po_tokens');
     } else {
       await setSetting('yt_dlp_youtube_po_tokens', yt_dlp_youtube_po_tokens);
+    }
+  }
+  if (yt_dlp_pot_provider_url !== undefined) {
+    if (yt_dlp_pot_provider_url.trim() === '') {
+      await deleteSetting('yt_dlp_pot_provider_url');
+    } else {
+      await setSetting('yt_dlp_pot_provider_url', yt_dlp_pot_provider_url.trim());
     }
   }
   if (clear_yt_dlp_cookies) {

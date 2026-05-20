@@ -6,7 +6,9 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import app from '../src/index';
+import { encrypt } from '../src/lib/crypto';
 import { db } from '../src/lib/db';
+import { getMasterKey } from '../src/lib/master-key';
 import { setSetting } from '../src/lib/settings';
 import { closeRedis, getRedisPublisher } from '../src/lib/redis';
 import { publishJobEvent } from '../src/lib/job-events';
@@ -152,6 +154,34 @@ describeIfDb('jobs API', () => {
     expect(job).not.toBeNull();
     expect(job!.sourceUrl).toBe(CANONICAL);
     expect(job!.status).toBe('QUEUED');
+  });
+
+  it('POST /api/jobs com link do X e modelo Grok configurado → cria ANALYZE_X', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    await completeSetup();
+    await db.setting.create({
+      data: {
+        scope: 'GLOBAL',
+        key: 'default_grok_model',
+        valueEnc: encrypt('x-ai/grok-4-fast', getMasterKey()),
+      },
+    });
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/jobs', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ url: 'https://x.com/openai/status/1234567890123456789' }),
+      }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { jobId: string; sourceUrl: string };
+    expect(body.sourceUrl).toBe('https://x.com/i/status/1234567890123456789');
+
+    const job = await db.job.findUniqueOrThrow({ where: { id: body.jobId } });
+    expect(job.type).toBe('ANALYZE_X');
   });
 
   it('POST /api/jobs duplicado (QUEUED) → 409', async () => {
