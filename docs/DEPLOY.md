@@ -2,14 +2,21 @@
 
 Guia prático pra colocar Voxen rodando em produção. Os arquivos do dev são os mesmos do prod — princípio de paridade.
 
+> **Recomendação geral: rode Voxen em home-lab** (mini-PC, NAS, Proxmox em
+> casa). O IP residencial evita o soft-block do YouTube em downloads, o custo
+> mensal é praticamente zero, e seus dados ficam fisicamente com você. VPS
+> continua suportada, mas exige cuidado extra com bloqueio de mídia — veja
+> [Home-lab vs VPS](#home-lab-vs-vps).
+
 Escolha o seu cenário:
 
 | Cenário | Quando usar | Seção |
 |---|---|---|
-| **Servidor próprio + nginx do host** | VPS, dedicated, máquina local. Você já tem (ou quer) nginx instalado. | [Servidor + nginx host](#servidor--nginx-do-host) |
-| **Servidor próprio + nginx em container** | Mesmo cenário, mas prefere tudo dockerizado. | [Servidor + nginx container](#servidor--nginx-em-container) |
-| **LXC do Proxmox** | Container LXC do Proxmox. Self-hosted, energia eficiente. | [Proxmox CT](#proxmox-ct) |
-| **Easypanel** | Plataforma já cuida de HTTPS e domínio. | [Easypanel App](#easypanel-app) |
+| **Home-lab (recomendado)** | Mini-PC, NAS ou Proxmox em casa. IP residencial, sem bloqueio do YouTube. | [Home-lab](#home-lab) |
+| **Servidor próprio + nginx do host** | VPS, dedicated, máquina local. Você já tem (ou quer) nginx instalado. ⚠ Veja aviso sobre VPS. | [Servidor + nginx host](#servidor--nginx-do-host) |
+| **Servidor próprio + nginx em container** | Mesmo cenário, mas prefere tudo dockerizado. ⚠ Veja aviso sobre VPS. | [Servidor + nginx container](#servidor--nginx-em-container) |
+| **LXC do Proxmox** | Container LXC do Proxmox (em casa ou no homelab). | [Proxmox CT](#proxmox-ct) |
+| **Easypanel** | Plataforma já cuida de HTTPS e domínio. Pode rodar em VPS (com avisos) ou em servidor próprio. | [Easypanel App](#easypanel-app) |
 
 > **Antes de qualquer cenário** — leia [Pré-requisitos comuns](#pré-requisitos-comuns).
 
@@ -75,9 +82,80 @@ S3_FORCE_PATH_STYLE=true
 
 ---
 
+## Home-lab
+
+Cenário recomendado: hardware doméstico (mini-PC, NAS, antigo desktop,
+Raspberry Pi 5) com IP residencial. O YouTube não bloqueia downloads de IPs
+residenciais com a mesma agressividade que aplica em datacenters, então a
+extração de mídia funciona "out of the box" sem cookies, PO Tokens ou proxy.
+
+### Hardware mínimo
+
+- 2 cores x86_64 ou ARM64
+- 4 GB RAM
+- 20 GB de disco
+- Conexão de internet residencial estável
+- Energia 24/7 (UPS recomendado em regiões com queda frequente)
+
+Recomendados: mini-PCs Intel N100/N305, Raspberry Pi 5 8GB, NAS Synology/QNAP
+com Container Manager, ou um desktop antigo dedicado.
+
+### 1. Sistema base + Docker
+
+Instale Debian 12, Ubuntu 24.04 LTS ou outro Linux moderno. Em seguida:
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER
+# logout/login pra ativar o grupo
+```
+
+### 2. Deploy
+
+```bash
+git clone https://github.com/Yefclub/Voxen.git ~/voxen
+cd ~/voxen
+cp .env.example .env
+# edite .env conforme [Pré-requisitos comuns](#pré-requisitos-comuns)
+mv docker-compose.override.yml docker-compose.override.dev.yml
+
+docker compose up -d --build
+```
+
+### 3. Acesso externo
+
+Em home-lab, o IP público costuma ser dinâmico e a porta 80/443 pode estar
+bloqueada pelo provedor. Duas estratégias funcionam bem:
+
+- **Cloudflare Tunnel (mais simples)**: instale `cloudflared` no host,
+  conecte sua conta Cloudflare e exponha `localhost:3000` em um subdomínio
+  seu. Sem porta aberta no roteador, sem IP fixo.
+- **DDNS + port forwarding**: configure DuckDNS, no-ip ou Cloudflare DNS API
+  com IP dinâmico; abra portas 80 e 443 do roteador apontando pro host;
+  siga a seção [Servidor + nginx do host](#servidor--nginx-do-host) a partir
+  do item 2 para HTTPS via Let's Encrypt.
+
+### Cuidados
+
+- Backup regular dos volumes Docker (`pgdata`, `redisdata`, `minio_data`) e
+  do `.env` — preferencialmente para storage externo (NAS separado, S3 ou
+  drive externo).
+- Se o ISP bloquear porta 80 (caso comum no Brasil), opte por Cloudflare
+  Tunnel — não há como contornar o bloqueio com DDNS sozinho.
+- Energia: nobreak/UPS para evitar corrupção de Postgres durante queda.
+
+---
+
 ## Servidor + nginx do host
 
-Cenário mais simples se você tem um VPS Linux com nginx instalado nativamente.
+> ⚠ **Aviso para VPS/cloud**: o YouTube aplica soft-block agressivo em IPs de
+> datacenter desde 2025. Você provavelmente vai precisar configurar um proxy
+> residencial nas configurações da instância (Setup → Extração de mídia) ou
+> orientar usuários a usarem o upload manual quando o download for bloqueado.
+> Detalhes em [Home-lab vs VPS](#home-lab-vs-vps).
+
+Cenário comum em VPS Linux com nginx instalado nativamente, ou em servidor
+físico próprio.
 
 ### 1. Clone e suba
 
@@ -552,6 +630,55 @@ Self-hosted single-tenant não justifica overhead de fluxo email→link→form. 
 
 ---
 
+## Home-lab vs VPS
+
+### Por que home-lab é a recomendação
+
+YouTube e plataformas similares aplicam bloqueio agressivo em IPs de
+datacenter (provedores como Hostinger, DigitalOcean, AWS, Hetzner etc.) desde
+2025. Mesmo com cookies, PO Tokens e player clients alternativos, esses
+bypasses são frágeis e podem causar banimento de contas Google usadas como
+fonte de cookies.
+
+Em home-lab, o IP é residencial, fornecido pelo seu ISP doméstico, e o
+YouTube trata-o como usuário humano comum. Resultado prático: downloads
+funcionam direto, sem necessidade de configurações extras de mitigação.
+
+### O que muda na operação
+
+| Aspecto | Home-lab | VPS |
+|---|---|---|
+| Download direto do YouTube | Funciona | Frequentemente bloqueado |
+| Custo mensal | Eletricidade (~R$5-15) | R$25-100+ |
+| Uptime | Dependente da rede/energia da casa | Geralmente 99,9%+ |
+| Soberania dos dados | Em casa | Em servidor de terceiros |
+| IP fixo / portas 80-443 | Geralmente não — use Cloudflare Tunnel | Sim, padrão |
+| Hardware | Você compra/reaproveita | Provisionado pelo provedor |
+
+### Mitigações em VPS quando home-lab não é opção
+
+1. **Upload manual**: continua funcionando 100%. Quando um link do YouTube
+   for bloqueado, o usuário baixa pelo navegador (com ferramenta local de
+   sua preferência) e faz upload pelo Voxen.
+2. **Proxy residencial controlado**: contrate um proxy residencial pago
+   (ex.: Bright Data, Oxylabs, Scrapeless) e cole a(s) URL(s) em Setup →
+   Extração de mídia. O Voxen escolhe aleatoriamente uma URL por download.
+   Use apenas proxies que você controla; proxies públicos gratuitos são
+   instáveis e podem ser maliciosos.
+3. **Híbrido**: rode Voxen no VPS (uptime, HTTPS gerenciado) e direcione o
+   tráfego do worker por um proxy/VPN residencial. Avançado, requer
+   configuração de rede mais cuidadosa.
+
+### Decisão arquitetural
+
+Voxen é self-hosted single-tenant focado em construir uma base de
+conhecimento pessoal/de pequenos times. O modelo casa naturalmente com
+home-lab: 1-10 usuários, hardware modesto, dados em casa. VPS continua
+suportada para quem precisa de uptime ou não tem hardware doméstico, com a
+ressalva acima.
+
+---
+
 ## Troubleshooting
 
 | Sintoma | Causa | Fix |
@@ -563,5 +690,6 @@ Self-hosted single-tenant não justifica overhead de fluxo email→link→form. 
 | SSE corta a cada 60s | nginx com `proxy_buffering on` | Garanta `proxy_buffering off` no location (já vem no `voxen.conf.example`) |
 | `MASTER_KEY não definido` | Environment sem master key | Gere com `openssl rand -base64 32` e salve no `.env`/Environment |
 | `NoSuchBucket` no `/health/deep` | Bucket MinIO não criado | `make minio-init` ou crie `voxen-transcripts` na console |
+| "YouTube bloqueou o download" em VPS | IP de datacenter marcado pelo YouTube | Veja [Home-lab vs VPS](#home-lab-vs-vps). Opções: migrar pra home-lab, configurar proxy residencial em Setup, ou usar upload manual |
 
 Pra debug profundo, leia [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) e [`docs/SECURITY.md`](SECURITY.md).
