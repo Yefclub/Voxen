@@ -31,14 +31,11 @@ export type GlobalSettingKey =
   | 'default_document_model'
   // Modelo Grok/xAI dedicado a análise de posts e threads do X via OpenRouter.
   | 'default_x_analysis_model'
-  // Configurações opcionais do extrator de mídia para ambientes onde YouTube
-  // aplica soft-block anti-bot. Chaves `yt_dlp_*` ficam por compatibilidade.
-  | 'yt_dlp_cookies_txt'
+  // Proxy opcional usado pelo extrator de mídia. Em deploys home-lab (IP
+  // residencial) normalmente desnecessário; em VPS pode ajudar quando o
+  // YouTube bloqueia downloads de datacenter (proxy residencial controlado
+  // pelo operador).
   | 'yt_dlp_proxy_urls'
-  | 'yt_dlp_user_agent'
-  | 'yt_dlp_youtube_clients'
-  | 'yt_dlp_youtube_po_tokens'
-  | 'yt_dlp_pot_provider_url'
   | 'allow_signups'
   | 'onboarding_done'
   // Opcional: email do admin do deploy. Quando setado, scraper inclui

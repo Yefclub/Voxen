@@ -113,12 +113,7 @@ setupRoutes.get('/', async (c) => {
     summaryTimeoutSec,
     hasApiKey: !!apiKey,
     ytDlp: {
-      cookies: !!(await getSetting('yt_dlp_cookies_txt')),
       proxies: !!(await getSetting('yt_dlp_proxy_urls')),
-      userAgent: !!(await getSetting('yt_dlp_user_agent')),
-      youtubeClients: !!(await getSetting('yt_dlp_youtube_clients')),
-      poTokens: !!(await getSetting('yt_dlp_youtube_po_tokens')),
-      potProvider: !!(await getSetting('yt_dlp_pot_provider_url')),
     },
   });
 });
@@ -189,13 +184,7 @@ const SaveBody = z.object({
   default_document_model: z.string().optional(),
   // Opcional: modelo Grok/xAI para analisar posts/threads do X via busca nativa.
   default_x_analysis_model: z.string().optional(),
-  yt_dlp_cookies_txt: z.string().optional(),
   yt_dlp_proxy_urls: z.string().optional(),
-  yt_dlp_user_agent: z.string().optional(),
-  yt_dlp_youtube_clients: z.string().optional(),
-  yt_dlp_youtube_po_tokens: z.string().optional(),
-  yt_dlp_pot_provider_url: z.string().optional(),
-  clear_yt_dlp_cookies: z.boolean().optional(),
   admin_email: z.string().optional(),
   summary_timeout_sec: z.string().optional(),
 });
@@ -213,13 +202,7 @@ setupRoutes.post('/', async (c) => {
     default_vision_model,
     default_document_model,
     default_x_analysis_model,
-    yt_dlp_cookies_txt,
     yt_dlp_proxy_urls,
-    yt_dlp_user_agent,
-    yt_dlp_youtube_clients,
-    yt_dlp_youtube_po_tokens,
-    yt_dlp_pot_provider_url,
-    clear_yt_dlp_cookies,
     admin_email,
     summary_timeout_sec,
   } = parsed.data;
@@ -310,39 +293,6 @@ setupRoutes.post('/', async (c) => {
     } else {
       await setSetting('yt_dlp_proxy_urls', yt_dlp_proxy_urls);
     }
-  }
-  if (yt_dlp_user_agent !== undefined) {
-    if (yt_dlp_user_agent.trim() === '') {
-      await deleteSetting('yt_dlp_user_agent');
-    } else {
-      await setSetting('yt_dlp_user_agent', yt_dlp_user_agent);
-    }
-  }
-  if (yt_dlp_youtube_clients !== undefined) {
-    if (yt_dlp_youtube_clients.trim() === '') {
-      await deleteSetting('yt_dlp_youtube_clients');
-    } else {
-      await setSetting('yt_dlp_youtube_clients', yt_dlp_youtube_clients);
-    }
-  }
-  if (yt_dlp_youtube_po_tokens !== undefined) {
-    if (yt_dlp_youtube_po_tokens.trim() === '') {
-      await deleteSetting('yt_dlp_youtube_po_tokens');
-    } else {
-      await setSetting('yt_dlp_youtube_po_tokens', yt_dlp_youtube_po_tokens);
-    }
-  }
-  if (yt_dlp_pot_provider_url !== undefined) {
-    if (yt_dlp_pot_provider_url.trim() === '') {
-      await deleteSetting('yt_dlp_pot_provider_url');
-    } else {
-      await setSetting('yt_dlp_pot_provider_url', yt_dlp_pot_provider_url.trim());
-    }
-  }
-  if (clear_yt_dlp_cookies) {
-    await deleteSetting('yt_dlp_cookies_txt');
-  } else if (yt_dlp_cookies_txt !== undefined && yt_dlp_cookies_txt.trim() !== '') {
-    await setSetting('yt_dlp_cookies_txt', yt_dlp_cookies_txt);
   }
   if (normalizedAdminEmail !== undefined) {
     if (normalizedAdminEmail === '') {

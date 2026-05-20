@@ -141,9 +141,9 @@ def _friendly_external_error(exc: BaseException) -> str | None:
     ):
         return (
             "O YouTube bloqueou o download automatizado deste vídeo. "
-            "O admin pode configurar cookies, proxy, clientes ou PO Tokens da extração de mídia "
-            "nas configurações da instância; "
-            "como alternativa, envie o arquivo por upload."
+            "Opções: envie o arquivo por upload manual, "
+            "ou peça ao admin para configurar um proxy residencial nas configurações da instância. "
+            "Por que isso acontece em VPS? Veja docs/DEPLOY.md (Home-lab vs VPS)."
         )
     if "private video" in text or "login required" in text or "members-only" in text:
         return (

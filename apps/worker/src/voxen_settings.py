@@ -70,43 +70,8 @@ async def get_default_x_analysis_model() -> str | None:
     )
 
 
-async def get_yt_dlp_cookies_txt() -> str | None:
-    enc = await db.get_setting_enc("yt_dlp_cookies_txt")
-    if enc is None:
-        return None
-    return decrypt(enc, get_master_key())
-
-
 async def get_yt_dlp_proxy_urls() -> str | None:
     enc = await db.get_setting_enc("yt_dlp_proxy_urls")
-    if enc is None:
-        return None
-    return decrypt(enc, get_master_key())
-
-
-async def get_yt_dlp_user_agent() -> str | None:
-    enc = await db.get_setting_enc("yt_dlp_user_agent")
-    if enc is None:
-        return None
-    return decrypt(enc, get_master_key())
-
-
-async def get_yt_dlp_youtube_clients() -> str | None:
-    enc = await db.get_setting_enc("yt_dlp_youtube_clients")
-    if enc is None:
-        return None
-    return decrypt(enc, get_master_key())
-
-
-async def get_yt_dlp_youtube_po_tokens() -> str | None:
-    enc = await db.get_setting_enc("yt_dlp_youtube_po_tokens")
-    if enc is None:
-        return None
-    return decrypt(enc, get_master_key())
-
-
-async def get_yt_dlp_pot_provider_url() -> str | None:
-    enc = await db.get_setting_enc("yt_dlp_pot_provider_url")
     if enc is None:
         return None
     return decrypt(enc, get_master_key())

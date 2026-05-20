@@ -36,13 +36,20 @@ Abre em `http://localhost:3000`. Primeiro cadastro vira admin e cai no onboardin
 
 ## Subir em produção
 
-Tem guia passo-a-passo pra 4 cenários em [`docs/DEPLOY.md`](docs/DEPLOY.md):
+> **Recomendado: rode em home-lab** (mini-PC, NAS, Proxmox em casa). IP
+> residencial evita o bloqueio do YouTube em downloads, custo mensal é
+> praticamente zero e seus dados ficam fisicamente com você. VPS continua
+> suportada, mas exige cuidado extra com extração de mídia — detalhes em
+> [`docs/DEPLOY.md#home-lab-vs-vps`](docs/DEPLOY.md#home-lab-vs-vps).
+
+Tem guia passo-a-passo pra cada cenário em [`docs/DEPLOY.md`](docs/DEPLOY.md):
 
 | Cenário | Quando usar |
 |---|---|
-| **Servidor + nginx do host** | VPS Linux com nginx nativo + certbot |
-| **Servidor + nginx em container** | Tudo em Docker, profile `nginx` |
-| **LXC do Proxmox** | Self-hosted, container LXC (`nesting=1`) |
+| **Home-lab (recomendado)** | Mini-PC, NAS ou Proxmox em casa, IP residencial |
+| **LXC do Proxmox** | Self-hosted, container LXC (`nesting=1`) — em casa ou em servidor |
+| **Servidor + nginx do host** | VPS Linux com nginx nativo + certbot (⚠ ver aviso VPS) |
+| **Servidor + nginx em container** | Tudo em Docker, profile `nginx` (⚠ ver aviso VPS) |
 | **Easypanel** | Plataforma cuida de HTTPS/domínio sozinha |
 
 Para Easypanel em produção, prefira Source **Docker image** com
@@ -50,20 +57,17 @@ Para Easypanel em produção, prefira Source **Docker image** com
 GitHub/Dockerfile também funciona, mas o Easypanel expõe Environment no
 build-time; isso pode mostrar secrets como build args no log de build.
 
-TL;DR pro cenário mais comum (VPS + nginx + Let's Encrypt):
+TL;DR home-lab (Debian/Ubuntu com Docker):
 
 ```bash
-git clone https://github.com/Yefclub/Voxen.git /opt/voxen
-cd /opt/voxen
+git clone https://github.com/Yefclub/Voxen.git ~/voxen
+cd ~/voxen
 cp .env.example .env  # edite secrets + APP_BASE_URL
 mv docker-compose.override.yml docker-compose.override.dev.yml
 docker compose up -d --build
 
-# nginx + HTTPS
-sudo cp deploy/nginx/voxen.conf.example /etc/nginx/sites-available/voxen.conf
-# ajuste server_name e:
-sudo ln -s /etc/nginx/sites-available/voxen.conf /etc/nginx/sites-enabled/
-sudo certbot --nginx -d voxen.seudominio.com
+# Acesso externo: Cloudflare Tunnel é o caminho mais simples em home-lab.
+# Veja docs/DEPLOY.md#home-lab pra detalhes (DDNS, port forwarding, Let's Encrypt).
 ```
 
 ## Operação — reset de senha
@@ -111,7 +115,7 @@ Migrations rodam automaticamente no entrypoint do `web` (Prisma `migrate deploy`
 | Doc | Tema |
 |---|---|
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Rodar local, testes, TDD/SDD |
-| [`docs/DEPLOY.md`](docs/DEPLOY.md) | **Deploy em VPS / Proxmox / Easypanel + nginx + HTTPS** |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | **Deploy em home-lab / VPS / Proxmox / Easypanel + nginx + HTTPS** |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Diagrama, fluxos, decisões de design |
 | [`docs/STACK.md`](docs/STACK.md) | Versões fixadas e justificativa |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | ADRs |
