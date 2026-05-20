@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   ExternalLink,
   KeyRound,
-  Search,
   Sparkles,
   Upload,
   Users,
@@ -23,20 +22,15 @@ import { cn } from '../lib/utils';
 import { ApiError, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import type { OrModel } from '../lib/types';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
 import { Spinner as Spin } from '../components/ui/spinner';
+import { ModelPicker } from '../components/model-picker';
 
 interface ModelsResponse {
   chat: OrModel[];
   transcription: OrModel[];
   vision: OrModel[];
   document: OrModel[];
+  xAnalysis: OrModel[];
   web: OrModel[];
 }
 
@@ -84,6 +78,7 @@ function OnboardingContent({
   const [webSearchModel, setWebSearchModel] = useState('');
   const [visionModel, setVisionModel] = useState('');
   const [documentModel, setDocumentModel] = useState('');
+  const [xAnalysisModel, setXAnalysisModel] = useState('');
   const [allowSignups, setAllowSignups] = useState<boolean>(true);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -118,11 +113,13 @@ function OnboardingContent({
           (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
         ) ??
         res.document.find((m) => m.id.toLowerCase().includes('claude'));
+      const preferredX = preferredXModel(res.xAnalysis);
       setTranscriptionModel(whisper?.id ?? res.transcription[0]?.id ?? '');
       setChatModel(preferred?.id ?? res.chat[0]?.id ?? '');
       setWebSearchModel(preferred?.id ?? res.chat[0]?.id ?? '');
       setVisionModel(preferredVision?.id ?? res.vision[0]?.id ?? '');
       setDocumentModel(preferredDocument?.id ?? res.document[0]?.id ?? '');
+      setXAnalysisModel(preferredX?.id ?? res.xAnalysis[0]?.id ?? '');
       setStep('modelos');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao validar chave.');
@@ -144,6 +141,7 @@ function OnboardingContent({
       if (webSearchModel) body.default_web_search_model = webSearchModel;
       if (visionModel) body.default_vision_model = visionModel;
       if (documentModel) body.default_document_model = documentModel;
+      if (xAnalysisModel) body.default_x_analysis_model = xAnalysisModel;
       await apiPost('/api/setup', body);
       setStep('modo');
     } catch (err) {
@@ -312,43 +310,55 @@ function OnboardingContent({
                 sub="Whisper Large Turbo é a melhor relação custo/qualidade para transcrição. Para o chat, prefira modelos com contexto grande."
               />
               <form onSubmit={saveModels} className="space-y-5">
-                <ModelSelect
+                <ModelPicker
                   label="Transcrição"
                   value={transcriptionModel}
                   onChange={setTranscriptionModel}
                   options={models.transcription}
                   count={models.transcription.length}
                 />
-                <ModelSelect
+                <ModelPicker
                   label="Chat"
                   value={chatModel}
                   onChange={setChatModel}
                   options={models.chat}
                   count={models.chat.length}
                 />
-                <ModelSelect
+                <ModelPicker
                   label="Pesquisa web"
                   value={webSearchModel}
                   onChange={setWebSearchModel}
                   options={models.web}
                   count={models.web.length}
+                  optional
                   hint="Usado pela tool web_search com sufixo :online. Vazio = usa o modelo de chat."
                 />
-                <ModelSelect
+                <ModelPicker
                   label="Visão"
                   value={visionModel}
                   onChange={setVisionModel}
                   options={models.vision}
                   count={models.vision.length}
+                  optional
                   hint="Habilita envio de imagens no chat e no Telegram. Vazio = recurso desabilitado."
                 />
-                <ModelSelect
+                <ModelPicker
                   label="Documentos"
                   value={documentModel}
                   onChange={setDocumentModel}
                   options={models.document}
                   count={models.document.length}
+                  optional
                   hint="Modelos OpenRouter com input nativo de arquivo/PDF. Vazio = análise documental desabilitada."
+                />
+                <ModelPicker
+                  label="X / Grok"
+                  value={xAnalysisModel}
+                  onChange={setXAnalysisModel}
+                  options={models.xAnalysis}
+                  count={models.xAnalysis.length}
+                  optional
+                  hint="Analisa posts e threads do X com Grok/xAI e busca nativa no X."
                 />
                 <div className="flex justify-between pt-2">
                   <GhostButton type="button" onClick={() => setStep('key')}>
@@ -524,89 +534,12 @@ function FieldLabel({
   );
 }
 
-function ModelSelect({
-  label,
-  value,
-  onChange,
-  options,
-  count,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: OrModel[];
-  count: number;
-  hint?: string;
-}): React.ReactElement {
-  const [query, setQuery] = useState('');
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter(
-      (m) => m.id.toLowerCase().includes(q) || (m.name ?? '').toLowerCase().includes(q),
-    );
-  }, [options, query]);
-
+function preferredXModel(models: OrModel[]): OrModel | undefined {
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <FieldLabel htmlFor={`select-${label}`}>{label}</FieldLabel>
-        <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] tabular-nums">
-          {query.trim() ? `${filtered.length} / ${count}` : `${count} disponíveis`}
-        </span>
-      </div>
-      <Select
-        value={value || undefined}
-        onValueChange={onChange}
-        onOpenChange={(open) => {
-          if (!open) setQuery('');
-        }}
-      >
-        <SelectTrigger id={`select-${label}`}>
-          <SelectValue placeholder="Selecionar modelo…" />
-        </SelectTrigger>
-        <SelectContent>
-          <div
-            className="sticky top-0 z-10 bg-[var(--color-app-bg-elevated)] border-b border-[var(--color-app-border)] p-1.5"
-            onKeyDown={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Filtrar por nome ou ID…"
-                spellCheck={false}
-                autoComplete="off"
-                className="w-full h-8 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 pl-8 pr-2 text-[12.5px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
-              />
-            </div>
-          </div>
-          {filtered.length === 0 ? (
-            <div className="px-3 py-6 text-center text-xs text-[var(--color-app-muted)]">
-              Nenhum modelo bate com «{query}».
-            </div>
-          ) : (
-            filtered.map((m) => (
-              <SelectItem key={m.id} value={m.id}>
-                <div className="flex flex-col py-0.5">
-                  <span className="font-medium">{m.name || m.id}</span>
-                  {m.name && m.name !== m.id && (
-                    <span className="text-[11px] font-mono text-[var(--color-app-muted)]">
-                      {m.id}
-                    </span>
-                  )}
-                </div>
-              </SelectItem>
-            ))
-          )}
-        </SelectContent>
-      </Select>
-      {hint && <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">{hint}</p>}
-    </div>
+    models.find((m) => m.id === 'x-ai/grok-4-fast:free') ??
+    models.find((m) => m.id.toLowerCase().includes('grok-4-fast')) ??
+    models.find((m) => m.id.toLowerCase().includes('grok-4')) ??
+    models.find((m) => m.id.toLowerCase().includes('grok'))
   );
 }
 

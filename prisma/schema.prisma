@@ -176,6 +176,7 @@ enum TranscriptionMethod {
   SCRAPE        // extração de página web via Trafilatura
   VISION        // análise de imagem via modelo multimodal
   DOCUMENT      // análise de documento via MarkItDown/OpenRouter PDF
+  X_SEARCH      // análise de post/thread do X via Grok/OpenRouter search
 }
 
 model Transcript {
@@ -241,6 +242,7 @@ enum JobType {
   UPLOAD_AND_TRANSCRIBE
   UPLOAD_AND_ANALYZE_IMAGE
   UPLOAD_AND_ANALYZE_DOCUMENT
+  ANALYZE_X
 }
 
 enum JobStatus {
@@ -277,6 +279,7 @@ enum CostEventKind {
   CHAT
   TRANSCRIBE
   DOCUMENT
+  X_SEARCH
   EMBED        // não usado no MVP (sem embeddings), mas reservado
 }
 

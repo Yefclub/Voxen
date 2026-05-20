@@ -249,8 +249,8 @@ export function JobsPage(): React.ReactElement {
                       </Button>
                     </div>
                     <p className="text-xs text-[var(--color-app-muted)]">
-                      Aceita vídeos públicos, posts do X com mídia e páginas web. Conteúdos com
-                      bloqueio anti-bot podem ser enviados como arquivo.
+                      Aceita vídeos públicos, posts do X e páginas web. Conteúdos com bloqueio
+                      anti-bot podem ser enviados como arquivo.
                     </p>
                   </form>
                 ) : (

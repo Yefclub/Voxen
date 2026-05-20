@@ -34,7 +34,7 @@ class TranscriptDoc:
     published_at: datetime | None
     thumbnail_url: str | None
     language: str
-    transcription_method: str  # API | SUBTITLES | SCRAPE | VISION | DOCUMENT
+    transcription_method: str  # API | SUBTITLES | SCRAPE | VISION | DOCUMENT | X_SEARCH
     model: str | None
     cost_usd: Decimal | None
     segments: tuple[Segment, ...]
@@ -104,11 +104,13 @@ def render_markdown(doc: TranscriptDoc) -> str:
         meta_bits: list[str] = ["Arquivo enviado"]
     elif doc.source == "WEB":
         meta_bits = [f"[Página original]({doc.url})"]
+    elif doc.source == "X" and doc.transcription_method == "X_SEARCH":
+        meta_bits = [f"[Post original]({doc.url})"]
     else:
         meta_bits = [f"[Vídeo original]({doc.url})"]
     if doc.channel:
         meta_bits.append(doc.channel)
-    if doc.transcription_method not in {"VISION", "DOCUMENT"}:
+    if doc.transcription_method not in {"VISION", "DOCUMENT", "X_SEARCH"}:
         duration_min = doc.duration_sec // 60
         duration_rem = doc.duration_sec % 60
         meta_bits.append(f"{duration_min}m{duration_rem:02d}s")
@@ -128,6 +130,16 @@ def render_markdown(doc: TranscriptDoc) -> str:
 
     if doc.transcription_method == "DOCUMENT":
         parts.append("## Análise do documento")
+        parts.append("")
+        for seg in doc.segments:
+            text = seg.text.strip()
+            if text:
+                parts.append(text)
+                parts.append("")
+        return "\n".join(parts).rstrip() + "\n"
+
+    if doc.transcription_method == "X_SEARCH":
+        parts.append("## Análise do X")
         parts.append("")
         for seg in doc.segments:
             text = seg.text.strip()

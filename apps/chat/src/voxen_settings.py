@@ -69,6 +69,14 @@ async def get_default_document_model() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_default_x_analysis_model() -> str | None:
+    """Modelo Grok/xAI configurado para análise de posts do X."""
+    enc = await db.get_setting_enc("default_x_analysis_model")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
 async def get_telegram_bot_token() -> str | None:
     """Token do bot Telegram. Sem setting → worker fica idle aguardando config."""
     enc = await db.get_setting_enc("telegram_bot_token")
