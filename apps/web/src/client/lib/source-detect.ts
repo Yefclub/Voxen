@@ -70,7 +70,10 @@ export function isUploadSourceUrl(raw: string): boolean {
 
 export function displayJobSource(raw: string): string {
   const uploadName = uploadFilenameFromSourceUrl(raw);
-  return uploadName ? `Arquivo enviado: ${uploadName}` : raw;
+  if (!uploadName) return raw;
+  return isImageUploadName(uploadName)
+    ? `Imagem enviada: ${uploadName}`
+    : `Arquivo enviado: ${uploadName}`;
 }
 
 export function isExternalSourceUrl(raw: string): boolean {
@@ -80,4 +83,8 @@ export function isExternalSourceUrl(raw: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isImageUploadName(filename: string): boolean {
+  return /\.(png|jpe?g|webp|gif)$/i.test(filename);
 }

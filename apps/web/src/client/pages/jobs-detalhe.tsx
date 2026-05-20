@@ -39,6 +39,7 @@ const STAGE_ORDER = [
   'running',
   'downloading',
   'preparing_upload',
+  'analyzing_image',
   'extracting_audio',
   'choosing_method',
   'transcribing',
@@ -227,10 +228,10 @@ export function JobDetalhePage(): React.ReactElement {
                     </div>
                     <div>
                       <p className="font-display text-base font-semibold text-emerald-200">
-                        Transcrição concluída
+                        Processamento concluído
                       </p>
                       <p className="text-xs text-emerald-300/70 mt-0.5">
-                        Já está no sua biblioteca, pronta para consultar.
+                        Já está na sua biblioteca, pronta para consultar.
                       </p>
                     </div>
                   </div>

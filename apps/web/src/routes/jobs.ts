@@ -19,9 +19,10 @@ import { db } from '../lib/db';
 import { isSetupComplete } from '../lib/settings';
 import { parseVideoUrl } from '../lib/video-url';
 import {
+  MAX_IMAGE_UPLOAD_BYTES,
   MAX_MEDIA_UPLOAD_BYTES,
   MAX_MEDIA_UPLOAD_REQUEST_BYTES,
-  isSupportedMediaFile,
+  detectUploadKind,
   putUploadFile,
   sanitizeUploadFilename,
   uploadSourceUrl,
@@ -263,7 +264,7 @@ jobsRoutes.post('/auto', async (c) => {
   );
 });
 
-// POST /api/jobs/upload — envia áudio/vídeo bruto para S3 e agenda transcrição.
+// POST /api/jobs/upload — envia áudio/vídeo/imagem para S3 e agenda processamento.
 jobsRoutes.post('/upload', async (c) => {
   const userId = c.get('userId');
 
@@ -287,14 +288,18 @@ jobsRoutes.post('/upload', async (c) => {
 
   const filename = sanitizeUploadFilename(media.name);
   const contentType = media.type || 'application/octet-stream';
+  const kind = detectUploadKind(filename, contentType);
   if (media.size <= 0) {
     return c.json({ error: 'Arquivo vazio.' }, 400);
   }
-  if (media.size > MAX_MEDIA_UPLOAD_BYTES) {
-    return c.json({ error: 'Arquivo muito grande. O limite é 500 MiB.' }, 413);
+  if (!kind) {
+    return c.json({ error: 'Formato não suportado. Envie áudio, vídeo ou imagem.' }, 400);
   }
-  if (!isSupportedMediaFile(filename, contentType)) {
-    return c.json({ error: 'Formato não suportado. Envie áudio ou vídeo.' }, 400);
+  if (kind === 'image' && media.size > MAX_IMAGE_UPLOAD_BYTES) {
+    return c.json({ error: 'Imagem muito grande. O limite é 20 MiB.' }, 413);
+  }
+  if (kind === 'media' && media.size > MAX_MEDIA_UPLOAD_BYTES) {
+    return c.json({ error: 'Arquivo muito grande. O limite é 500 MiB.' }, 413);
   }
 
   const uploadId = crypto.randomUUID();
@@ -315,7 +320,7 @@ jobsRoutes.post('/upload', async (c) => {
   const job = await db.job.create({
     data: {
       userId,
-      type: 'UPLOAD_AND_TRANSCRIBE',
+      type: kind === 'image' ? 'UPLOAD_AND_ANALYZE_IMAGE' : 'UPLOAD_AND_TRANSCRIBE',
       status: 'QUEUED',
       sourceUrl,
     },
@@ -327,10 +332,7 @@ jobsRoutes.post('/upload', async (c) => {
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
-  return c.json(
-    { jobId: job.id, status: job.status, sourceUrl: job.sourceUrl, kind: 'upload' },
-    201,
-  );
+  return c.json({ jobId: job.id, status: job.status, sourceUrl: job.sourceUrl, kind }, 201);
 });
 
 // POST /api/jobs/scrape — agenda scraping de página web (spec 004)

@@ -34,7 +34,7 @@ class TranscriptDoc:
     published_at: datetime | None
     thumbnail_url: str | None
     language: str
-    transcription_method: str  # API | SUBTITLES
+    transcription_method: str  # API | SUBTITLES | SCRAPE | VISION
     model: str | None
     cost_usd: Decimal | None
     segments: tuple[Segment, ...]
@@ -89,7 +89,7 @@ def build_frontmatter(doc: TranscriptDoc) -> dict[str, Any]:
 
 
 def render_markdown(doc: TranscriptDoc) -> str:
-    """Monta o `.md` completo (frontmatter + cabeçalho + corpo com timestamps)."""
+    """Monta o `.md` completo (frontmatter + cabeçalho + corpo)."""
     fm = build_frontmatter(doc)
     fm_yaml = yaml.safe_dump(fm, allow_unicode=True, sort_keys=False).rstrip()
     parts: list[str] = [f"---\n{fm_yaml}\n---", ""]
@@ -108,13 +108,24 @@ def render_markdown(doc: TranscriptDoc) -> str:
         meta_bits = [f"[Vídeo original]({doc.url})"]
     if doc.channel:
         meta_bits.append(doc.channel)
-    duration_min = doc.duration_sec // 60
-    duration_rem = doc.duration_sec % 60
-    meta_bits.append(f"{duration_min}m{duration_rem:02d}s")
+    if doc.transcription_method != "VISION":
+        duration_min = doc.duration_sec // 60
+        duration_rem = doc.duration_sec % 60
+        meta_bits.append(f"{duration_min}m{duration_rem:02d}s")
     if doc.published_at:
         meta_bits.append(f"publicado em {doc.published_at.date().isoformat()}")
     parts.append("> " + " — ".join(meta_bits))
     parts.append("")
+    if doc.transcription_method == "VISION":
+        parts.append("## Descrição visual")
+        parts.append("")
+        for seg in doc.segments:
+            text = seg.text.strip()
+            if text:
+                parts.append(text)
+                parts.append("")
+        return "\n".join(parts).rstrip() + "\n"
+
     parts.append("## Transcrição")
     parts.append("")
 

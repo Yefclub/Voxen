@@ -36,7 +36,7 @@ interface TranscriptDetail {
   publishedAt: string | null;
   thumbnailUrl: string | null;
   language: string;
-  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE';
+  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION';
   model: string | null;
   costUsd: string | null;
   // Soma de costUsd da transcrição + custos de resumos/regenerações.
@@ -115,6 +115,8 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const t = data.transcript;
   const created = new Date(t.createdAt);
   const published = t.publishedAt ? new Date(t.publishedAt) : null;
+  const isVisualTranscript = t.transcriptionMethod === 'VISION';
+  const contentMarkdown = stripMarkdownFrontmatter(data.markdown);
 
   return (
     <AnimatedPage>
@@ -153,7 +155,9 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 variant={t.transcriptionMethod === 'SUBTITLES' ? 'success' : 'default'}
                 className="text-[10px]"
               >
-                {t.transcriptionMethod === 'SUBTITLES' ? (
+                {isVisualTranscript ? (
+                  'Análise visual'
+                ) : t.transcriptionMethod === 'SUBTITLES' ? (
                   'Legendas oficiais'
                 ) : (
                   <>
@@ -187,14 +191,14 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               generating={generating}
               onGenerate={() => void generateSummary(false)}
             />
-            {t.source === 'WEB' ? (
+            {t.source === 'WEB' || isVisualTranscript ? (
               <section>
                 <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-200 mb-4">
-                  Conteúdo
+                  {isVisualTranscript ? 'Análise' : 'Conteúdo'}
                 </h2>
                 <Card elevated>
                   <CardContent className="px-6 py-5">
-                    <Markdown>{data.markdown}</Markdown>
+                    <Markdown>{contentMarkdown}</Markdown>
                   </CardContent>
                 </Card>
               </section>
@@ -224,7 +228,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             <Card elevated>
               <CardContent className="pt-5 pb-5 space-y-4">
                 {/* Duração só faz sentido pra vídeos */}
-                {t.source !== 'WEB' && (
+                {t.source !== 'WEB' && !isVisualTranscript && (
                   <MetaRow Icon={Clock} label="Duração" value={formatDuration(t.durationSec)} />
                 )}
                 {t.channel && t.source === 'WEB' && (
@@ -267,6 +271,11 @@ export function TranscricaoDetalhePage(): React.ReactElement {
       />
     </AnimatedPage>
   );
+}
+
+function stripMarkdownFrontmatter(markdown: string): string {
+  const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdown);
+  return match ? markdown.slice(match[0].length).trimStart() : markdown;
 }
 
 function SummaryBlock({

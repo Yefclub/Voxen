@@ -1,5 +1,5 @@
 // ============================================================================
-// Upload de mídia para transcrição
+// Upload de arquivos para processamento assíncrono
 // ============================================================================
 
 import { PutObjectCommand } from '@aws-sdk/client-s3';
@@ -7,6 +7,9 @@ import { s3Bucket, s3Client } from './s3';
 
 export const MAX_MEDIA_UPLOAD_BYTES = 500 * 1024 * 1024;
 export const MAX_MEDIA_UPLOAD_REQUEST_BYTES = MAX_MEDIA_UPLOAD_BYTES + 10 * 1024 * 1024;
+export const MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024;
+
+export type UploadKind = 'media' | 'image';
 
 const MEDIA_EXTENSIONS = new Set([
   'aac',
@@ -28,6 +31,8 @@ const MEDIA_EXTENSIONS = new Set([
   'wma',
 ]);
 
+const IMAGE_EXTENSIONS = new Set(['gif', 'jpeg', 'jpg', 'png', 'webp']);
+
 export function sanitizeUploadFilename(raw: string): string {
   const name = raw.split(/[\\/]/).pop()?.trim() || 'arquivo';
   const normalized = name
@@ -48,6 +53,18 @@ export function isSupportedMediaFile(filename: string, contentType: string): boo
   const type = contentType.toLowerCase();
   if (type.startsWith('audio/') || type.startsWith('video/')) return true;
   return MEDIA_EXTENSIONS.has(uploadExtension(filename));
+}
+
+export function isSupportedImageFile(filename: string, contentType: string): boolean {
+  const type = contentType.toLowerCase();
+  if (['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(type)) return true;
+  return IMAGE_EXTENSIONS.has(uploadExtension(filename));
+}
+
+export function detectUploadKind(filename: string, contentType: string): UploadKind | null {
+  if (isSupportedImageFile(filename, contentType)) return 'image';
+  if (isSupportedMediaFile(filename, contentType)) return 'media';
+  return null;
 }
 
 export function uploadSourceUrl(uploadId: string, filename: string): string {

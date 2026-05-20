@@ -128,3 +128,28 @@ def test_render_upload_markdown_has_no_external_timestamp_links() -> None:
     assert "Arquivo enviado" in md
     assert "[Vídeo original]" not in md
     assert "[00:00:00] Olá pessoal" in md
+
+
+def test_render_vision_markdown_uses_visual_description_without_timestamps() -> None:
+    doc = _doc(
+        source="UPLOAD",
+        url="upload://123e4567-e89b-12d3-a456-426614174000/print.png",
+        video_id="123e4567-e89b-12d3-a456-426614174000",
+        title="print",
+        channel="Imagem enviada",
+        duration_sec=0,
+        published_at=None,
+        thumbnail_url=None,
+        transcription_method="VISION",
+        model="openai/gpt-4.1-mini",
+        segments=(Segment(start_sec=0.0, text="A imagem mostra um painel com erro 502."),),
+    )
+    md = render_markdown(doc)
+    fm_end = md.index("\n---\n", 4)
+    fm = yaml.safe_load(md[4:fm_end])
+    assert fm["transcription_method"] == "vision"
+    assert "## Descrição visual" in md
+    assert "## Transcrição" not in md
+    assert "[00:00:00]" not in md
+    assert "0m00s" not in md
+    assert "A imagem mostra um painel" in md
