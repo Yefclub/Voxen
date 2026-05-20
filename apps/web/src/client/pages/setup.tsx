@@ -34,6 +34,7 @@ interface ModelsResponse {
   chat: OrModel[];
   transcription: OrModel[];
   vision: OrModel[];
+  document: OrModel[];
   web: OrModel[];
 }
 
@@ -43,7 +44,13 @@ interface SetupStatus {
   transcriptionModel: string | null;
   webSearchModel: string | null;
   visionModel: string | null;
+  documentModel: string | null;
   hasApiKey: boolean;
+  ytDlp?: {
+    cookies: boolean;
+    proxies: boolean;
+    userAgent: boolean;
+  };
 }
 
 type Step = 'loading' | 'overview' | 'key' | 'modelos' | 'done';
@@ -57,6 +64,11 @@ export function SetupPage(): React.ReactElement {
   const [transcriptionModel, setTranscriptionModel] = useState('');
   const [webSearchModel, setWebSearchModel] = useState('');
   const [visionModel, setVisionModel] = useState('');
+  const [documentModel, setDocumentModel] = useState('');
+  const [ytDlpCookies, setYtDlpCookies] = useState('');
+  const [ytDlpProxyUrls, setYtDlpProxyUrls] = useState('');
+  const [ytDlpUserAgent, setYtDlpUserAgent] = useState('');
+  const [clearYtDlpCookies, setClearYtDlpCookies] = useState(false);
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -72,6 +84,7 @@ export function SetupPage(): React.ReactElement {
         if (s.complete && s.transcriptionModel) setTranscriptionModel(s.transcriptionModel);
         if (s.complete && s.webSearchModel) setWebSearchModel(s.webSearchModel);
         if (s.complete && s.visionModel) setVisionModel(s.visionModel);
+        if (s.complete && s.documentModel) setDocumentModel(s.documentModel);
         setStep(s.complete ? 'overview' : 'key');
       })
       .catch(() => setStep('key'));
@@ -111,6 +124,7 @@ export function SetupPage(): React.ReactElement {
         setTranscriptionModel(whisper?.id ?? data.transcription[0]?.id ?? '');
       }
       if (!chatModel) setChatModel(preferred?.id ?? data.chat[0]?.id ?? '');
+      if (!documentModel) setDocumentModel(data.document[0]?.id ?? '');
       setStep('modelos');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao validar chave.');
@@ -124,12 +138,17 @@ export function SetupPage(): React.ReactElement {
     setError(null);
     setLoading(true);
     try {
-      const body: Record<string, string> = {
+      const body: Record<string, string | boolean> = {
         default_chat_model: chatModel,
         default_transcription_model: transcriptionModel,
       };
       if (webSearchModel) body.default_web_search_model = webSearchModel;
       if (visionModel) body.default_vision_model = visionModel;
+      if (documentModel) body.default_document_model = documentModel;
+      if (ytDlpProxyUrls.trim()) body.yt_dlp_proxy_urls = ytDlpProxyUrls;
+      if (ytDlpUserAgent.trim()) body.yt_dlp_user_agent = ytDlpUserAgent;
+      if (ytDlpCookies.trim()) body.yt_dlp_cookies_txt = ytDlpCookies;
+      if (clearYtDlpCookies) body.clear_yt_dlp_cookies = true;
       // Só envia api_key se for nova (admin escolheu trocar)
       if (apiKey && !keepExistingKey) {
         body.openrouter_api_key = apiKey;
@@ -231,6 +250,31 @@ export function SetupPage(): React.ReactElement {
                 value={status.visionModel ?? 'Não configurado'}
                 badge={status.visionModel ? undefined : 'Opcional'}
                 mono={!!status.visionModel}
+              />
+              <SettingRow
+                label="Modelo de documentos"
+                value={status.documentModel ?? 'Não configurado'}
+                badge={status.documentModel ? undefined : 'Opcional'}
+                mono={!!status.documentModel}
+              />
+              <SettingRow
+                label="Anti-bot YouTube"
+                value={
+                  status.ytDlp?.cookies || status.ytDlp?.proxies || status.ytDlp?.userAgent
+                    ? [
+                        status.ytDlp.cookies ? 'cookies' : null,
+                        status.ytDlp.proxies ? 'proxy' : null,
+                        status.ytDlp.userAgent ? 'user-agent' : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')
+                    : 'Não configurado'
+                }
+                badge={
+                  status.ytDlp?.cookies || status.ytDlp?.proxies || status.ytDlp?.userAgent
+                    ? undefined
+                    : 'Opcional'
+                }
               />
 
               <div className="pt-3 border-t border-[var(--color-app-border)] flex flex-wrap gap-2.5">
@@ -477,6 +521,67 @@ export function SetupPage(): React.ReactElement {
                       count={models.vision.length}
                       hint="Pra entender imagens enviadas no chat. Vazio = uploads ficam desabilitados."
                     />
+                    <ModelSelect
+                      label="Modelo de documentos/PDF (opcional)"
+                      value={documentModel}
+                      onChange={setDocumentModel}
+                      options={models.document}
+                      count={models.document.length}
+                      hint="Filtrado por modelos OpenRouter com entrada nativa de arquivo/PDF. Vazio = upload de documentos fica desabilitado."
+                    />
+                    <div className="space-y-4 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 p-4">
+                      <div>
+                        <Label>Anti-bot YouTube (opcional)</Label>
+                        <p className="mt-1 text-[11px] text-[var(--color-app-muted)] leading-snug">
+                          Use cookies Netscape, proxies próprios e user-agent real quando o YouTube
+                          aplicar soft-block no servidor. Não use proxies públicos aleatórios.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Cookies Netscape</Label>
+                        <textarea
+                          value={ytDlpCookies}
+                          onChange={(e) => {
+                            setYtDlpCookies(e.target.value);
+                            if (e.target.value.trim()) setClearYtDlpCookies(false);
+                          }}
+                          placeholder="# Netscape HTTP Cookie File…"
+                          rows={4}
+                          spellCheck={false}
+                          className="min-h-24 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
+                        />
+                        {status?.ytDlp?.cookies && (
+                          <label className="flex items-center gap-2 text-xs text-[var(--color-app-muted)]">
+                            <input
+                              type="checkbox"
+                              checked={clearYtDlpCookies}
+                              onChange={(e) => setClearYtDlpCookies(e.target.checked)}
+                            />
+                            Remover cookies salvos
+                          </label>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Proxies próprios</Label>
+                        <textarea
+                          value={ytDlpProxyUrls}
+                          onChange={(e) => setYtDlpProxyUrls(e.target.value)}
+                          placeholder="http://usuario:senha@host:porta&#10;socks5://host:porta"
+                          rows={3}
+                          spellCheck={false}
+                          className="min-h-20 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>User-Agent</Label>
+                        <Input
+                          value={ytDlpUserAgent}
+                          onChange={(e) => setYtDlpUserAgent(e.target.value)}
+                          placeholder="Mozilla/5.0 …"
+                          className="font-mono text-xs"
+                        />
+                      </div>
+                    </div>
                     <div className="flex justify-end gap-3 pt-2">
                       <Button
                         type="button"

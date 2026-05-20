@@ -17,7 +17,11 @@ import { Spinner } from '../components/ui/spinner';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import { Markdown } from '../components/ui/markdown';
-import { PromptBox, type PromptBoxHandle } from '../components/ui/prompt-box';
+import {
+  PromptBox,
+  type LibraryMentionItem,
+  type PromptBoxHandle,
+} from '../components/ui/prompt-box';
 import { useMe } from '../lib/hooks';
 import { cn } from '../lib/utils';
 import {
@@ -52,6 +56,20 @@ interface CompactionInfo {
 }
 
 const THINKING_KEY = 'voxen:chat:thinking';
+const DOCUMENT_UPLOAD_LIMIT_BYTES = 50 * 1024 * 1024;
+
+interface UploadJobResponse {
+  jobId: string;
+  kind: 'media' | 'image' | 'document';
+}
+
+interface PersistedChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  kind?: 'NORMAL' | 'COMPACTION_SUMMARY' | 'HITL_RESPONSE';
+  content: string;
+  tools?: unknown;
+}
 
 export function ChatPage(): React.ReactElement {
   const { id: routeId } = useParams<{ id: string }>();
@@ -61,6 +79,7 @@ export function ChatPage(): React.ReactElement {
   const [active, setActive] = useState<ConvSummary | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
+  const [selectedMentions, setSelectedMentions] = useState<LibraryMentionItem[]>([]);
   const [streaming, setStreaming] = useState(false);
   // Contexto/compactação — atualizado via SSE events. Modal mostra o
   // último resumo de compactação.
@@ -88,12 +107,20 @@ export function ChatPage(): React.ReactElement {
   // send → chat service usa default_vision_model. Limpa após envio.
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [visionEnabled, setVisionEnabled] = useState(false);
+  const [documentEnabled, setDocumentEnabled] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   useEffect(() => {
     // Detecta se o admin configurou modelo de visão pra habilitar o botão
     fetch('/api/capabilities', { credentials: 'include' })
       .then((r) => r.json())
-      .then((d: { vision?: boolean }) => setVisionEnabled(!!d.vision))
-      .catch(() => setVisionEnabled(false));
+      .then((d: { vision?: boolean; document?: boolean }) => {
+        setVisionEnabled(!!d.vision);
+        setDocumentEnabled(!!d.document);
+      })
+      .catch(() => {
+        setVisionEnabled(false);
+        setDocumentEnabled(false);
+      });
   }, []);
   const [thinking, setThinking] = useState<boolean>(() => {
     try {
@@ -261,9 +288,11 @@ export function ChatPage(): React.ReactElement {
       const userTz =
         typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
       const sentImage = attachedImage;
+      const sentMentions = selectedMentions.filter((m) => text.includes(`@${m.label}`));
       // Limpa o anexo local antes do request — UX: imagem some assim que
       // user envia, sem precisar esperar streaming terminar.
       setAttachedImage(null);
+      setSelectedMentions([]);
       const res = await fetch(`/api/chat/conversations/${convId}/send`, {
         method: 'POST',
         credentials: 'include',
@@ -275,6 +304,7 @@ export function ChatPage(): React.ReactElement {
         body: JSON.stringify({
           content: text,
           ...(sentImage ? { image_data_url: sentImage } : {}),
+          ...(sentMentions.length > 0 ? { mentions: sentMentions } : {}),
           ...(options?.hitl ? { hitl: true } : {}),
         }),
       });
@@ -430,6 +460,93 @@ export function ChatPage(): React.ReactElement {
     reader.readAsDataURL(file);
   }
 
+  async function uploadFileFromChat(file: File): Promise<void> {
+    if (streaming || uploadingFile) return;
+    if (!documentEnabled) {
+      toast.error('Documentos não estão habilitados.', {
+        description: 'Admin precisa configurar um modelo de documentos em /setup.',
+      });
+      return;
+    }
+    if (file.size > DOCUMENT_UPLOAD_LIMIT_BYTES) {
+      toast.error('Documento muito grande.', { description: 'Limite: 50 MB.' });
+      return;
+    }
+
+    let convId = active?.id;
+    if (!convId) {
+      const created = await createConversation(`Upload: ${file.name}`.slice(0, 60));
+      if (!created) {
+        toast.error('Falha ao iniciar conversa.');
+        return;
+      }
+      setActive(created);
+      convId = created.id;
+      window.history.replaceState(null, '', `/chat/${convId}`);
+    }
+
+    setUploadingFile(true);
+    try {
+      const fd = new FormData();
+      fd.append('media', file);
+      const uploadRes = await fetch('/api/jobs/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      });
+      const uploadBody = (await uploadRes.json().catch(() => ({}))) as
+        | UploadJobResponse
+        | { error?: string };
+      if (!uploadRes.ok || !('jobId' in uploadBody)) {
+        const error = 'error' in uploadBody ? uploadBody.error : undefined;
+        toast.error(error ?? 'Falha ao enviar documento.');
+        return;
+      }
+
+      const msgRes = await fetch(`/api/chat/conversations/${convId}/file-message`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          jobId: uploadBody.jobId,
+          kind: uploadBody.kind,
+        }),
+      });
+      const msgBody = (await msgRes.json().catch(() => ({}))) as {
+        messages?: PersistedChatMessage[];
+        error?: string;
+      };
+      if (!msgRes.ok || !Array.isArray(msgBody.messages)) {
+        toast.error(msgBody.error ?? 'Documento enviado, mas falhei ao registrar no chat.');
+        return;
+      }
+      setMessages((items) => [
+        ...items,
+        ...msgBody.messages!.map((m) => ({
+          id: m.id,
+          role: m.role,
+          kind: m.kind,
+          content: m.content,
+          tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
+        })),
+      ]);
+      toast.success('Documento enviado para análise.', {
+        action: {
+          label: 'Abrir fila',
+          onClick: () => navigate(`/jobs/${uploadBody.jobId}`),
+        },
+      });
+      void refreshConversations();
+    } catch (err) {
+      toast.error('Erro ao enviar documento.', {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setUploadingFile(false);
+    }
+  }
+
   function onDragOver(e: React.DragEvent<HTMLDivElement>): void {
     if (e.dataTransfer.types.includes('Files')) {
       e.preventDefault();
@@ -446,7 +563,12 @@ export function ChatPage(): React.ReactElement {
     e.stopPropagation();
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
-    if (file) handleImageFile(file);
+    if (!file) return;
+    if (file.type.startsWith('image/')) {
+      handleImageFile(file);
+      return;
+    }
+    void uploadFileFromChat(file);
   }
 
   return (
@@ -507,9 +629,26 @@ export function ChatPage(): React.ReactElement {
             onAttachImage={(d) => setAttachedImage(d)}
             onClearImage={() => setAttachedImage(null)}
             visionEnabled={visionEnabled}
+            uploadEnabled={documentEnabled}
+            uploadingFile={uploadingFile}
+            onUploadFile={(file) => void uploadFileFromChat(file)}
+            selectedMentions={selectedMentions}
+            onMentionSelect={(item) =>
+              setSelectedMentions((items) => {
+                if (items.some((x) => x.type === item.type && x.id === item.id)) return items;
+                return [...items, item].slice(-8);
+              })
+            }
+            onMentionRemove={(item) => {
+              setSelectedMentions((items) =>
+                items.filter((x) => !(x.type === item.type && x.id === item.id)),
+              );
+              setInput((current) => current.replace(`@${item.label}`, '').replace(/\s{2,}/g, ' '));
+            }}
           />
           <p className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] mt-2 text-center">
-            Enter envia · Shift+Enter quebra linha · Microfone transcreve · Imagem aceita PNG/JPEG
+            Enter envia · Shift+Enter quebra linha · Microfone transcreve · Imagem ou documento
+            anexado
           </p>
         </div>
       </motion.div>
@@ -521,7 +660,7 @@ export function ChatPage(): React.ReactElement {
         info={lastCompaction}
       />
 
-      {/* Overlay durante drag-and-drop de imagem */}
+      {/* Overlay durante drag-and-drop de imagem/documento */}
       <AnimatePresence>
         {isDragging && (
           <motion.div
@@ -533,7 +672,7 @@ export function ChatPage(): React.ReactElement {
           >
             <div className="rounded-2xl border-2 border-dashed border-violet-400/60 bg-zinc-950/80 px-8 py-6 text-center">
               <p className="text-base font-medium text-violet-200">Solte aqui pra anexar</p>
-              <p className="text-xs text-zinc-400 mt-1">PNG · JPEG · WEBP · GIF — até 5 MB</p>
+              <p className="text-xs text-zinc-400 mt-1">Imagens até 5 MB · Documentos até 50 MB</p>
             </div>
           </motion.div>
         )}

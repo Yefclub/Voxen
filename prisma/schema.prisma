@@ -175,6 +175,7 @@ enum TranscriptionMethod {
   SUBTITLES     // baixou legendas oficiais
   SCRAPE        // extração de página web via Trafilatura
   VISION        // análise de imagem via modelo multimodal
+  DOCUMENT      // análise de documento via MarkItDown/OpenRouter PDF
 }
 
 model Transcript {
@@ -239,6 +240,7 @@ enum JobType {
   SCRAPE_WEB
   UPLOAD_AND_TRANSCRIBE
   UPLOAD_AND_ANALYZE_IMAGE
+  UPLOAD_AND_ANALYZE_DOCUMENT
 }
 
 enum JobStatus {
@@ -274,6 +276,7 @@ model Job {
 enum CostEventKind {
   CHAT
   TRANSCRIBE
+  DOCUMENT
   EMBED        // não usado no MVP (sem embeddings), mas reservado
 }
 

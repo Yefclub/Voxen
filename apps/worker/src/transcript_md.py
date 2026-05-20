@@ -34,7 +34,7 @@ class TranscriptDoc:
     published_at: datetime | None
     thumbnail_url: str | None
     language: str
-    transcription_method: str  # API | SUBTITLES | SCRAPE | VISION
+    transcription_method: str  # API | SUBTITLES | SCRAPE | VISION | DOCUMENT
     model: str | None
     cost_usd: Decimal | None
     segments: tuple[Segment, ...]
@@ -108,7 +108,7 @@ def render_markdown(doc: TranscriptDoc) -> str:
         meta_bits = [f"[Vídeo original]({doc.url})"]
     if doc.channel:
         meta_bits.append(doc.channel)
-    if doc.transcription_method != "VISION":
+    if doc.transcription_method not in {"VISION", "DOCUMENT"}:
         duration_min = doc.duration_sec // 60
         duration_rem = doc.duration_sec % 60
         meta_bits.append(f"{duration_min}m{duration_rem:02d}s")
@@ -118,6 +118,16 @@ def render_markdown(doc: TranscriptDoc) -> str:
     parts.append("")
     if doc.transcription_method == "VISION":
         parts.append("## Descrição visual")
+        parts.append("")
+        for seg in doc.segments:
+            text = seg.text.strip()
+            if text:
+                parts.append(text)
+                parts.append("")
+        return "\n".join(parts).rstrip() + "\n"
+
+    if doc.transcription_method == "DOCUMENT":
+        parts.append("## Análise do documento")
         parts.append("")
         for seg in doc.segments:
             text = seg.text.strip()

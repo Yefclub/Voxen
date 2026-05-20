@@ -44,6 +44,34 @@ async def get_default_vision_model() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_default_document_model() -> str | None:
+    enc = await db.get_setting_enc("default_document_model")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
+async def get_yt_dlp_cookies_txt() -> str | None:
+    enc = await db.get_setting_enc("yt_dlp_cookies_txt")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
+async def get_yt_dlp_proxy_urls() -> str | None:
+    enc = await db.get_setting_enc("yt_dlp_proxy_urls")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
+async def get_yt_dlp_user_agent() -> str | None:
+    enc = await db.get_setting_enc("yt_dlp_user_agent")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
 async def get_admin_email() -> str | None:
     """Email do admin do deploy — opcional. Quando setado, scraper inclui
     `From: <email>` no User-Agent (boa-prática RFC 7231 §5.5.1).

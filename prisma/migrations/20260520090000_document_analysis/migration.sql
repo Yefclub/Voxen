@@ -1,0 +1,4 @@
+-- Upload de documentos para análise textual/PDF.
+ALTER TYPE "TranscriptionMethod" ADD VALUE IF NOT EXISTS 'DOCUMENT';
+ALTER TYPE "JobType" ADD VALUE IF NOT EXISTS 'UPLOAD_AND_ANALYZE_DOCUMENT';
+ALTER TYPE "CostEventKind" ADD VALUE IF NOT EXISTS 'DOCUMENT';

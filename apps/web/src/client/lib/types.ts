@@ -51,4 +51,10 @@ export interface OrModel {
   id: string;
   name: string;
   context_length?: number;
+  architecture?: {
+    input_modalities?: string[];
+    output_modalities?: string[];
+    modality?: string;
+  };
+  pricing?: Record<string, string>;
 }

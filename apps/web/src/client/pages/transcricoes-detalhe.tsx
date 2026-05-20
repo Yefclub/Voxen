@@ -36,7 +36,7 @@ interface TranscriptDetail {
   publishedAt: string | null;
   thumbnailUrl: string | null;
   language: string;
-  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION';
+  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION' | 'DOCUMENT';
   model: string | null;
   costUsd: string | null;
   // Soma de costUsd da transcrição + custos de resumos/regenerações.
@@ -116,6 +116,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const created = new Date(t.createdAt);
   const published = t.publishedAt ? new Date(t.publishedAt) : null;
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
+  const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   const contentMarkdown = stripMarkdownFrontmatter(data.markdown);
 
   return (
@@ -155,7 +156,9 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 variant={t.transcriptionMethod === 'SUBTITLES' ? 'success' : 'default'}
                 className="text-[10px]"
               >
-                {isVisualTranscript ? (
+                {isDocumentTranscript ? (
+                  'Documento'
+                ) : isVisualTranscript ? (
                   'Análise visual'
                 ) : t.transcriptionMethod === 'SUBTITLES' ? (
                   'Legendas oficiais'
@@ -191,10 +194,14 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               generating={generating}
               onGenerate={() => void generateSummary(false)}
             />
-            {t.source === 'WEB' || isVisualTranscript ? (
+            {t.source === 'WEB' || isVisualTranscript || isDocumentTranscript ? (
               <section>
                 <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-200 mb-4">
-                  {isVisualTranscript ? 'Análise' : 'Conteúdo'}
+                  {isDocumentTranscript
+                    ? 'Análise do documento'
+                    : isVisualTranscript
+                      ? 'Análise'
+                      : 'Conteúdo'}
                 </h2>
                 <Card elevated>
                   <CardContent className="px-6 py-5">
@@ -228,7 +235,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             <Card elevated>
               <CardContent className="pt-5 pb-5 space-y-4">
                 {/* Duração só faz sentido pra vídeos */}
-                {t.source !== 'WEB' && !isVisualTranscript && (
+                {t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript && (
                   <MetaRow Icon={Clock} label="Duração" value={formatDuration(t.durationSec)} />
                 )}
                 {t.channel && t.source === 'WEB' && (

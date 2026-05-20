@@ -66,7 +66,7 @@ def test_telegram_photo_becomes_visual_job() -> None:
     assert spec.filename == "foto-largest_ph.jpg"
 
 
-def test_telegram_unsupported_document_is_ignored() -> None:
+def test_telegram_pdf_document_becomes_document_job() -> None:
     spec = _telegram_upload_spec_from_message(
         {
             "document": {
@@ -77,4 +77,26 @@ def test_telegram_unsupported_document_is_ignored() -> None:
             }
         }
     )
-    assert spec is None
+    assert spec is not None
+    assert spec.kind == "document"
+    assert spec.job_type == "UPLOAD_AND_ANALYZE_DOCUMENT"
+    assert spec.filename == "relatorio.pdf"
+
+
+def test_telegram_rejects_zip_and_legacy_document_formats() -> None:
+    for filename, mime_type in (
+        ("pacote.zip", "application/zip"),
+        ("apresentacao.ppt", "application/vnd.ms-powerpoint"),
+        ("texto.rtf", "application/rtf"),
+    ):
+        spec = _telegram_upload_spec_from_message(
+            {
+                "document": {
+                    "file_id": f"file-{filename}",
+                    "file_name": filename,
+                    "mime_type": mime_type,
+                    "file_size": 4096,
+                }
+            }
+        )
+        assert spec is None

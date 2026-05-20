@@ -2,7 +2,7 @@
 name = "voxen-chat"
 version = "0.0.0"
 description = "Voxen chat service — FastAPI + Agno"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
