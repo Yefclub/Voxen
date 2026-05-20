@@ -135,3 +135,31 @@ export async function listDocumentModels(
     return inputs.includes('file') && (outputs.length === 0 || outputs.includes('text'));
   });
 }
+
+/**
+ * Lista modelos xAI/Grok que podem usar busca nativa no X via OpenRouter.
+ * A análise de X depende do `plugins: [{ id: "web", engine: "native" }]`
+ * e da camada x_search nativa exposta pelos modelos Grok.
+ */
+export async function listXAnalysisModels(
+  key: string,
+  fetcher: Fetcher = fetch,
+): Promise<OrModel[]> {
+  const models = await listModels(key, 'text', fetcher);
+  return models
+    .filter((m) => {
+      const id = m.id.toLowerCase();
+      const name = (m.name ?? '').toLowerCase();
+      const outputs = m.architecture?.output_modalities ?? [];
+      const textOutput = outputs.length === 0 || outputs.includes('text');
+      return textOutput && (id.startsWith('x-ai/grok') || name.includes('grok'));
+    })
+    .sort((a, b) => {
+      const aId = a.id.toLowerCase();
+      const bId = b.id.toLowerCase();
+      const aFast = aId.includes('fast') ? 0 : 1;
+      const bFast = bId.includes('fast') ? 0 : 1;
+      if (aFast !== bFast) return aFast - bFast;
+      return a.id.localeCompare(b.id);
+    });
+}

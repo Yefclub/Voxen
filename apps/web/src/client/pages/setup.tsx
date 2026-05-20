@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -8,7 +8,6 @@ import {
   KeyRound,
   Pencil,
   RotateCw,
-  Search,
   Sparkles,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -22,19 +21,14 @@ import { ApiError, apiGet, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import type { OrModel } from '../lib/types';
 import { AnimatedPage } from '../components/motion/animated-page';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
+import { ModelPicker } from '../components/model-picker';
 
 interface ModelsResponse {
   chat: OrModel[];
   transcription: OrModel[];
   vision: OrModel[];
   document: OrModel[];
+  xAnalysis: OrModel[];
   web: OrModel[];
 }
 
@@ -45,11 +39,13 @@ interface SetupStatus {
   webSearchModel: string | null;
   visionModel: string | null;
   documentModel: string | null;
+  xAnalysisModel: string | null;
   hasApiKey: boolean;
   ytDlp?: {
     cookies: boolean;
     proxies: boolean;
     userAgent: boolean;
+    youtubeClients: boolean;
   };
 }
 
@@ -65,9 +61,11 @@ export function SetupPage(): React.ReactElement {
   const [webSearchModel, setWebSearchModel] = useState('');
   const [visionModel, setVisionModel] = useState('');
   const [documentModel, setDocumentModel] = useState('');
+  const [xAnalysisModel, setXAnalysisModel] = useState('');
   const [ytDlpCookies, setYtDlpCookies] = useState('');
   const [ytDlpProxyUrls, setYtDlpProxyUrls] = useState('');
   const [ytDlpUserAgent, setYtDlpUserAgent] = useState('');
+  const [ytDlpYoutubeClients, setYtDlpYoutubeClients] = useState('');
   const [clearYtDlpCookies, setClearYtDlpCookies] = useState(false);
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +83,7 @@ export function SetupPage(): React.ReactElement {
         if (s.complete && s.webSearchModel) setWebSearchModel(s.webSearchModel);
         if (s.complete && s.visionModel) setVisionModel(s.visionModel);
         if (s.complete && s.documentModel) setDocumentModel(s.documentModel);
+        if (s.complete && s.xAnalysisModel) setXAnalysisModel(s.xAnalysisModel);
         setStep(s.complete ? 'overview' : 'key');
       })
       .catch(() => setStep('key'));
@@ -96,6 +95,9 @@ export function SetupPage(): React.ReactElement {
     try {
       const data = await apiPost<ModelsResponse>('/api/setup/models', {});
       setModels(data);
+      if (!xAnalysisModel) {
+        setXAnalysisModel(preferredXModel(data.xAnalysis)?.id ?? data.xAnalysis[0]?.id ?? '');
+      }
       setStep('modelos');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao listar modelos.');
@@ -125,6 +127,9 @@ export function SetupPage(): React.ReactElement {
       }
       if (!chatModel) setChatModel(preferred?.id ?? data.chat[0]?.id ?? '');
       if (!documentModel) setDocumentModel(data.document[0]?.id ?? '');
+      if (!xAnalysisModel) {
+        setXAnalysisModel(preferredXModel(data.xAnalysis)?.id ?? data.xAnalysis[0]?.id ?? '');
+      }
       setStep('modelos');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao validar chave.');
@@ -142,11 +147,13 @@ export function SetupPage(): React.ReactElement {
         default_chat_model: chatModel,
         default_transcription_model: transcriptionModel,
       };
-      if (webSearchModel) body.default_web_search_model = webSearchModel;
-      if (visionModel) body.default_vision_model = visionModel;
-      if (documentModel) body.default_document_model = documentModel;
+      body.default_web_search_model = webSearchModel;
+      body.default_vision_model = visionModel;
+      body.default_document_model = documentModel;
+      body.default_x_analysis_model = xAnalysisModel;
       if (ytDlpProxyUrls.trim()) body.yt_dlp_proxy_urls = ytDlpProxyUrls;
       if (ytDlpUserAgent.trim()) body.yt_dlp_user_agent = ytDlpUserAgent;
+      if (ytDlpYoutubeClients.trim()) body.yt_dlp_youtube_clients = ytDlpYoutubeClients;
       if (ytDlpCookies.trim()) body.yt_dlp_cookies_txt = ytDlpCookies;
       if (clearYtDlpCookies) body.clear_yt_dlp_cookies = true;
       // Só envia api_key se for nova (admin escolheu trocar)
@@ -258,20 +265,33 @@ export function SetupPage(): React.ReactElement {
                 mono={!!status.documentModel}
               />
               <SettingRow
+                label="Modelo de análise do X"
+                value={status.xAnalysisModel ?? 'Não configurado'}
+                badge={status.xAnalysisModel ? undefined : 'Opcional'}
+                mono={!!status.xAnalysisModel}
+              />
+              <SettingRow
                 label="Anti-bot YouTube"
                 value={
-                  status.ytDlp?.cookies || status.ytDlp?.proxies || status.ytDlp?.userAgent
+                  status.ytDlp?.cookies ||
+                  status.ytDlp?.proxies ||
+                  status.ytDlp?.userAgent ||
+                  status.ytDlp?.youtubeClients
                     ? [
                         status.ytDlp.cookies ? 'cookies' : null,
                         status.ytDlp.proxies ? 'proxy' : null,
                         status.ytDlp.userAgent ? 'user-agent' : null,
+                        status.ytDlp.youtubeClients ? 'clients' : null,
                       ]
                         .filter(Boolean)
                         .join(' · ')
                     : 'Não configurado'
                 }
                 badge={
-                  status.ytDlp?.cookies || status.ytDlp?.proxies || status.ytDlp?.userAgent
+                  status.ytDlp?.cookies ||
+                  status.ytDlp?.proxies ||
+                  status.ytDlp?.userAgent ||
+                  status.ytDlp?.youtubeClients
                     ? undefined
                     : 'Opcional'
                 }
@@ -486,48 +506,60 @@ export function SetupPage(): React.ReactElement {
                   <CardTitle className="font-display">Modelos padrão</CardTitle>
                   <CardDescription>
                     Escolha um modelo de transcrição (áudio → texto) e um de chat (agente sobre o
-                    biblioteca).
+                    acervo da biblioteca).
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <form onSubmit={saveSetup} className="space-y-5">
-                    <ModelSelect
+                    <ModelPicker
                       label="Modelo de transcrição"
                       value={transcriptionModel}
                       onChange={setTranscriptionModel}
                       options={models.transcription}
                       count={models.transcription.length}
                     />
-                    <ModelSelect
+                    <ModelPicker
                       label="Modelo de chat"
                       value={chatModel}
                       onChange={setChatModel}
                       options={models.chat}
                       count={models.chat.length}
                     />
-                    <ModelSelect
+                    <ModelPicker
                       label="Modelo de pesquisa web (opcional)"
                       value={webSearchModel}
                       onChange={setWebSearchModel}
                       options={models.web}
                       count={models.web.length}
+                      optional
                       hint="Tool web_search usa este modelo com sufixo :online (plugin Perplexity). Vazio = usa o de chat."
                     />
-                    <ModelSelect
+                    <ModelPicker
                       label="Modelo de visão (opcional)"
                       value={visionModel}
                       onChange={setVisionModel}
                       options={models.vision}
                       count={models.vision.length}
+                      optional
                       hint="Pra entender imagens enviadas no chat. Vazio = uploads ficam desabilitados."
                     />
-                    <ModelSelect
+                    <ModelPicker
                       label="Modelo de documentos/PDF (opcional)"
                       value={documentModel}
                       onChange={setDocumentModel}
                       options={models.document}
                       count={models.document.length}
+                      optional
                       hint="Filtrado por modelos OpenRouter com entrada nativa de arquivo/PDF. Vazio = upload de documentos fica desabilitado."
+                    />
+                    <ModelPicker
+                      label="Modelo de análise do X (Grok)"
+                      value={xAnalysisModel}
+                      onChange={setXAnalysisModel}
+                      options={models.xAnalysis}
+                      count={models.xAnalysis.length}
+                      optional
+                      hint="Posts do X usam Grok/xAI com busca nativa no X. Vazio = tenta o caminho antigo por yt-dlp quando houver mídia."
                     />
                     <div className="space-y-4 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 p-4">
                       <div>
@@ -581,6 +613,18 @@ export function SetupPage(): React.ReactElement {
                           className="font-mono text-xs"
                         />
                       </div>
+                      <div className="space-y-2">
+                        <Label>Clientes YouTube</Label>
+                        <Input
+                          value={ytDlpYoutubeClients}
+                          onChange={(e) => setYtDlpYoutubeClients(e.target.value)}
+                          placeholder="web,mweb"
+                          className="font-mono text-xs"
+                        />
+                        <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
+                          Vazio = padrão do yt-dlp. Preencha só para testar clients específicos.
+                        </p>
+                      </div>
                     </div>
                     <div className="flex justify-end gap-3 pt-2">
                       <Button
@@ -610,6 +654,15 @@ export function SetupPage(): React.ReactElement {
         </AnimatePresence>
       </div>
     </AnimatedPage>
+  );
+}
+
+function preferredXModel(models: OrModel[]): OrModel | undefined {
+  return (
+    models.find((m) => m.id === 'x-ai/grok-4-fast:free') ??
+    models.find((m) => m.id.toLowerCase().includes('grok-4-fast')) ??
+    models.find((m) => m.id.toLowerCase().includes('grok-4')) ??
+    models.find((m) => m.id.toLowerCase().includes('grok'))
   );
 }
 
@@ -712,97 +765,6 @@ function StepDot({
       >
         {label}
       </span>
-    </div>
-  );
-}
-
-function ModelSelect({
-  label,
-  value,
-  onChange,
-  options,
-  count,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: OrModel[];
-  count: number;
-  hint?: string;
-}): React.ReactElement {
-  // Lista de modelos da OpenRouter tem 300+ entradas — busca é essencial.
-  // Estado por componente: filtro de texto + reset ao fechar dropdown.
-  const [query, setQuery] = useState('');
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter(
-      (m) => m.id.toLowerCase().includes(q) || (m.name ?? '').toLowerCase().includes(q),
-    );
-  }, [options, query]);
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label>{label}</Label>
-        <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] tabular-nums">
-          {query.trim() ? `${filtered.length} / ${count}` : `${count} disponíveis`}
-        </span>
-      </div>
-      <Select
-        value={value || undefined}
-        onValueChange={onChange}
-        onOpenChange={(open) => {
-          if (!open) setQuery('');
-        }}
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Selecionar modelo…" />
-        </SelectTrigger>
-        <SelectContent>
-          {/* Search bar — sticky no topo do dropdown, fora do Item pra não
-              ser clicável como opção. onKeyDown impede Radix de capturar
-              espaços/letras como atalho de navegação. */}
-          <div
-            className="sticky top-0 z-10 bg-[var(--color-app-bg-elevated)] border-b border-[var(--color-app-border)] p-1.5"
-            onKeyDown={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Filtrar por nome ou ID…"
-                spellCheck={false}
-                autoComplete="off"
-                className="w-full h-8 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 pl-8 pr-2 text-[12.5px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
-              />
-            </div>
-          </div>
-          {filtered.length === 0 ? (
-            <div className="px-3 py-6 text-center text-xs text-[var(--color-app-muted)]">
-              Nenhum modelo bate com «{query}».
-            </div>
-          ) : (
-            filtered.map((m) => (
-              <SelectItem key={m.id} value={m.id}>
-                <div className="flex flex-col py-0.5">
-                  <span className="font-medium">{m.name || m.id}</span>
-                  {m.name && m.name !== m.id && (
-                    <span className="text-[11px] font-mono text-[var(--color-app-muted)]">
-                      {m.id}
-                    </span>
-                  )}
-                </div>
-              </SelectItem>
-            ))
-          )}
-        </SelectContent>
-      </Select>
-      {hint && <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">{hint}</p>}
     </div>
   );
 }

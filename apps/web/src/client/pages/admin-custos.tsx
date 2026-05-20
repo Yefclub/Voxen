@@ -213,6 +213,7 @@ function kindLabel(kind: string): string {
     CHAT: 'Chat',
     TRANSCRIBE: 'Transcrição',
     DOCUMENT: 'Documentos',
+    X_SEARCH: 'Análise do X',
     EMBED: 'Embeddings',
   };
   return labels[kind] ?? kind;

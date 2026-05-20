@@ -220,12 +220,18 @@ async def _runtime_options(cookie_dir: Path | None = None) -> RuntimeYtdlpOption
         "fragment_retries": 3,
         "extractor_retries": 3,
         "socket_timeout": 30,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["web", "mweb", "android", "ios"],
-            }
-        },
+        "noplaylist": True,
+        "geo_bypass": True,
     }
+
+    youtube_clients_raw = (
+        await voxen_settings.get_yt_dlp_youtube_clients()
+        or os.environ.get("YTDLP_YOUTUBE_CLIENTS")
+        or ""
+    )
+    youtube_clients = _parse_youtube_clients(youtube_clients_raw)
+    if youtube_clients:
+        opts["extractor_args"] = {"youtube": {"player_client": youtube_clients}}
 
     user_agent = (
         await voxen_settings.get_yt_dlp_user_agent() or os.environ.get("YTDLP_USER_AGENT") or ""
@@ -269,6 +275,15 @@ async def _runtime_options(cookie_dir: Path | None = None) -> RuntimeYtdlpOption
         cookie_path.write_text(_normalize_cookie_text(cookies_txt), encoding="utf-8")
     opts["cookiefile"] = str(cookie_path)
     return RuntimeYtdlpOptions(opts=opts, cookie_file=cookie_path)
+
+
+def _parse_youtube_clients(raw: str) -> list[str]:
+    allowed = {"web", "mweb", "android", "ios", "tv", "tv_embedded", "web_embedded"}
+    clients = []
+    for item in re.split(r"[\s,;]+", raw.strip().lower()):
+        if item in allowed and item not in clients:
+            clients.append(item)
+    return clients
 
 
 def _normalize_cookie_text(cookies_txt: str) -> str:

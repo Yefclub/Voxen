@@ -33,6 +33,7 @@ from .openrouter import (
     analyze_document_text,
     analyze_image,
     analyze_pdf_native,
+    analyze_x_url,
     transcribe_audio,
 )
 from .transcript_md import Segment, TranscriptDoc, render_markdown, render_plain_text
@@ -105,6 +106,10 @@ async def process_job(job_id: str) -> None:
             await _run_document_pipeline(
                 job_id=job_id, user_id=user_id, source_url=source_url, log=log
             )
+        elif job_type == "ANALYZE_X":
+            await _run_x_analysis_pipeline(
+                job_id=job_id, user_id=user_id, source_url=source_url, log=log
+            )
         else:
             await _run_pipeline(job_id=job_id, user_id=user_id, source_url=source_url, log=log)
     except CancelledException:
@@ -136,7 +141,8 @@ def _friendly_external_error(exc: BaseException) -> str | None:
     ):
         return (
             "O YouTube bloqueou o download automatizado deste vídeo. "
-            "O admin pode configurar cookies/proxy do yt-dlp nas settings da instância; "
+            "O admin pode configurar cookies, proxy ou clients do yt-dlp nas settings "
+            "da instância; "
             "como alternativa, envie o arquivo por upload."
         )
     if "private video" in text or "login required" in text or "members-only" in text:
@@ -569,6 +575,85 @@ async def _run_document_pipeline(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
     log.info("document-job-done", transcript_id=new_transcript_id)
+
+
+async def _run_x_analysis_pipeline(
+    *,
+    job_id: str,
+    user_id: str,
+    source_url: str,
+    log: Any,  # noqa: ANN401
+) -> None:
+    if video_url.detect_source(source_url) != "X":
+        raise PermanentError("Job de análise do X recebeu uma URL que não é do X.")
+
+    api_key = await voxen_settings.get_openrouter_api_key()
+    if not api_key:
+        raise PermanentError("Setup incompleto — chave da OpenRouter ausente.")
+    model = await voxen_settings.get_default_x_analysis_model()
+    if not model:
+        raise PermanentError("Setup incompleto — modelo de análise do X ausente.")
+
+    _check_cancel(job_id)
+    await events.publish_job_event(user_id, job_id, "analyzing_x", percent=30)
+
+    async def _do_call() -> Any:
+        return await analyze_x_url(url=source_url, api_key=api_key, model=model)
+
+    result = await _retry_transient_or(_do_call, tries=3)
+    if not result.text:
+        raise PermanentError("Análise vazia — o conteúdo do X não pôde ser recuperado.")
+
+    await db.insert_cost_event(
+        user_id=user_id,
+        kind="X_SEARCH",
+        model=model,
+        tokens_in=result.tokens_in,
+        tokens_out=result.tokens_out,
+        cost_usd=result.cost_usd,
+        job_id=job_id,
+        meta={"source": "x_analysis", "url": source_url},
+    )
+
+    status_id = source_url.rstrip("/").split("/")[-1]
+    probe_info = ytdl.VideoProbe(
+        video_id=status_id,
+        title=f"Post do X {status_id}",
+        channel="X",
+        duration_sec=0,
+        published_at=None,
+        thumbnail_url=None,
+        language_hint=None,
+        available_subtitles={},
+        automatic_captions={},
+    )
+
+    _check_cancel(job_id)
+    await events.publish_job_event(user_id, job_id, "uploading", percent=80)
+    new_transcript_id = await _persist(
+        user_id=user_id,
+        job_id=job_id,
+        probe_info=probe_info,
+        source_url=source_url,
+        segments=(Segment(start_sec=0.0, text=result.text),),
+        method="X_SEARCH",
+        model=model,
+        cost_usd=result.cost_usd,
+        language="pt",
+    )
+
+    await events.publish_job_event(user_id, job_id, "indexing", percent=95)
+    await db.link_job_done(job_id, new_transcript_id)
+    await summary.maybe_generate(
+        user_id=user_id,
+        transcript_id=new_transcript_id,
+        job_id=job_id,
+        log=log,
+    )
+    await events.publish_job_event(
+        user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
+    )
+    log.info("x-analysis-job-done", transcript_id=new_transcript_id)
 
 
 async def _transcribe_via_api(
