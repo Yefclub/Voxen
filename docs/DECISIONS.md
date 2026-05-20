@@ -20,7 +20,7 @@ Voxen começou como aplicação Electron desktop com Python sidecar pra transcri
 
 ### Decisão
 
-Reescrever como **plataforma web self-hosted**, deployável em container único via Docker Compose. Repositório anterior arquivado como `YefClub-Org/Voxen-electron-legacy` (private, read-only). Nova base começou em 2026-05-15.
+Reescrever como **plataforma web self-hosted**, deployável em container único via Docker Compose. Repositório anterior arquivado como `Voxen-electron-legacy` (private, read-only). Nova base começou em 2026-05-15.
 
 ### Consequências
 
@@ -144,25 +144,28 @@ Manter o worker em TS exigiria subprocess pra yt-dlp e perder integração natur
 
 ---
 
-## ADR-006 — Garage S3 como object storage
+## ADR-006 — MinIO/S3-compatible como object storage
 
 **Data**: 2026-05-15
 **Status**: Aceita
 
 ### Contexto
 
-Transcrições viram `.md` que precisam ser persistidos fora do DB (pra não inchar Postgres com texto que vai pra Garage). Opções: filesystem local, MinIO, Garage S3, S3 externo.
+Transcrições viram `.md` que precisam ser persistidos fora do DB. Opções:
+filesystem local, MinIO, Garage S3, S3 externo.
 
 ### Decisão
 
-**Garage S3** — implementação leve do protocolo S3 compatível com AWS SDK, sem dependência de cloud externa. 1 nó standalone (replication_factor=1) é suficiente pra self-hosted. Bootstrap automático via init container.
+**S3-compatible via `S3_*`**, com **MinIO como padrão** no Compose local/VPS e
+no Easypanel. O código mantém fallback `GARAGE_*` para instalações antigas, mas
+novos deploys usam MinIO ou outro S3 compatível configurado por env.
 
 ### Consequências
 
 - Self-hosted, sem dependência de cloud externa
 - API S3-compatible (`boto3`/`aiobotocore` funcionam)
-- Setup mais complexo que filesystem local mas paga em paridade dev/prod
-- Em produção com HA real: aumentar `replication_factor` e múltiplos nós
+- Paridade entre local, VPS e Easypanel: mesmo bucket e mesmas variáveis `S3_*`
+- Em produção com HA real: usar MinIO gerenciado/replicado ou S3 externo
 
 ---
 
@@ -192,28 +195,29 @@ Plataforma é multi-user, mas adoção é restrita por design — não é servi�
 
 ---
 
-## ADR-008 — Master key auto-gerada em volume
+## ADR-008 — Master key via `MASTER_KEY` no `.env`
 
 **Data**: 2026-05-15
 **Status**: Aceita
 
 ### Contexto
 
-Owner pediu "extremamente low env" — apenas o estritamente necessário em `.env` na raiz. Mas precisamos cifrar secrets em DB (OpenRouter API key, etc.) com uma master key. Como manter low env sem perder segurança?
+Precisamos cifrar secrets em DB (OpenRouter API key, tokens, etc.) com uma
+master key. A primeira versão gerava essa chave em volume Docker, mas isso
+criava diferença entre Compose e Easypanel e complicava backup/migração.
 
 ### Decisão
 
-- Init container `master-key-init` (rode antes dos apps) gera 32 bytes aleatórios em `/data/master.key` (volume Docker) na primeira execução
-- Idempotente: se já existe, não toca
-- `chmod 0400`
-- Apps lêem como read-only mount
-- `.env` na raiz não contém master key — ela vive no volume
+- Todos os modos documentados usam `MASTER_KEY` no `.env`/Environment.
+- Formato único: base64 de 32 bytes (`openssl rand -base64 32`).
+- `make dev` cria/completa `.env` local se necessário.
+- `MASTER_KEY_PATH` permanece apenas como fallback legado no código.
 
 ### Consequências
 
-- User não toca em master key
-- Backup do volume = backup da master key (importante pra recovery)
-- Se perder o volume, perde acesso aos secrets cifrados (mas o `.env` na raiz é o backup mínimo de infra)
+- Mesmo formato em local, VPS, Proxmox e Easypanel.
+- Backup fica simples: Postgres + MinIO + valor de `MASTER_KEY`.
+- Se perder `MASTER_KEY`, secrets cifrados em DB ficam inacessíveis.
 
 ---
 

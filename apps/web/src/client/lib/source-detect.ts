@@ -51,3 +51,40 @@ export function youtubeVideoId(raw: string): string | null {
   }
   return null;
 }
+
+export function uploadFilenameFromSourceUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'upload:') return null;
+    const encoded = url.pathname.replace(/^\//, '');
+    if (!encoded) return null;
+    return decodeURIComponent(encoded);
+  } catch {
+    return null;
+  }
+}
+
+export function isUploadSourceUrl(raw: string): boolean {
+  return uploadFilenameFromSourceUrl(raw) !== null;
+}
+
+export function displayJobSource(raw: string): string {
+  const uploadName = uploadFilenameFromSourceUrl(raw);
+  if (!uploadName) return raw;
+  return isImageUploadName(uploadName)
+    ? `Imagem enviada: ${uploadName}`
+    : `Arquivo enviado: ${uploadName}`;
+}
+
+export function isExternalSourceUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isImageUploadName(filename: string): boolean {
+  return /\.(png|jpe?g|webp|gif)$/i.test(filename);
+}

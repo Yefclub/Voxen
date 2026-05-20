@@ -64,7 +64,7 @@ async def test_retry_catches_botocore_endpoint_connection_error() -> None:
     async def fn() -> None:
         nonlocal attempts
         attempts += 1
-        raise botocore.exceptions.EndpointConnectionError(endpoint_url="http://garage:3900")
+        raise botocore.exceptions.EndpointConnectionError(endpoint_url="http://minio:9000")
 
     with pytest.raises(botocore.exceptions.EndpointConnectionError):
         await _retry_transient(fn, tries=3, base_delay=0)
@@ -82,3 +82,16 @@ async def test_retry_does_not_catch_permanent_error() -> None:
     with pytest.raises(PermanentError):
         await _retry_transient(fn, tries=3, base_delay=0)
     assert attempts == 1, "PermanentError não deve retentar"
+
+
+async def test_retry_turns_youtube_antibot_into_permanent_error() -> None:
+    attempts = 0
+
+    async def fn() -> None:
+        nonlocal attempts
+        attempts += 1
+        raise yt_dlp.utils.DownloadError("Sign in to confirm you’re not a bot. Use cookies.")
+
+    with pytest.raises(PermanentError, match="YouTube bloqueou"):
+        await _retry_transient(fn, tries=3, base_delay=0)
+    assert attempts == 1

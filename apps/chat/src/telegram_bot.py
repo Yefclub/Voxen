@@ -7,7 +7,8 @@ setado em Setting, conecta no Bot API e processa updates:
 - /buscar <termo>     → search_transcripts + search_notes scoped por userId
 - /help               → ajuda
 - texto livre         → forward pra Vox via agent_core (HITL via inline_keyboard)
-- foto (photo)        → baixa via Bot API + envia pra Vox (vision pipeline)
+- foto (photo)        → grava no S3 + enfileira job de análise visual
+- áudio/vídeo/docs    → grava no S3 + enfileira job de transcrição/análise
 - callback_query      → resolve HITL pendente (sim/não) usando state no Redis
 
 HITL: quando a Vox chama request_user_confirmation, o bot recebe state +
@@ -18,14 +19,17 @@ e envia mensagem com inline_keyboard. Clique resolve com resume_chat_completion.
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
+import mimetypes
+import uuid
+from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 import structlog
 
-from . import db, voxen_settings
+from . import db, redis_pub, storage, voxen_settings
 from .agent_core import (
     AgentTurnResult,
     resume_chat_completion,
@@ -41,7 +45,39 @@ POLL_TIMEOUT = 25
 RETRY_BASE_SEC = 2.0
 RETRY_MAX_SEC = 60.0
 HITL_REDIS_TTL_SEC = 3600  # 1h pra resolver
-MAX_PHOTO_SIZE = 5 * 1024 * 1024  # 5 MB (bate com cap web)
+MAX_TELEGRAM_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_TELEGRAM_MEDIA_UPLOAD_BYTES = 50 * 1024 * 1024
+
+MEDIA_EXTENSIONS = {
+    "aac",
+    "aiff",
+    "avi",
+    "flac",
+    "m4a",
+    "m4v",
+    "mkv",
+    "mov",
+    "mp3",
+    "mp4",
+    "mpeg",
+    "mpga",
+    "ogg",
+    "opus",
+    "wav",
+    "webm",
+    "wma",
+}
+IMAGE_EXTENSIONS = {"gif", "jpeg", "jpg", "png", "webp"}
+
+
+@dataclass(frozen=True)
+class TelegramUploadSpec:
+    file_id: str
+    filename: str
+    content_type: str
+    file_size: int
+    kind: str
+    job_type: str
 
 
 async def telegram_loop() -> None:
@@ -73,9 +109,7 @@ async def telegram_loop() -> None:
             backoff = min(backoff * 2, RETRY_MAX_SEC)
 
 
-async def _get_updates(
-    client: httpx.AsyncClient, token: str, offset: int
-) -> list[dict[str, Any]]:
+async def _get_updates(client: httpx.AsyncClient, token: str, offset: int) -> list[dict[str, Any]]:
     url = TG_BASE.format(token=token) + "/getUpdates"
     res = await client.get(
         url,
@@ -94,9 +128,7 @@ async def _get_updates(
     return list(data.get("result") or [])
 
 
-async def _handle_update(
-    client: httpx.AsyncClient, token: str, upd: dict[str, Any]
-) -> None:
+async def _handle_update(client: httpx.AsyncClient, token: str, upd: dict[str, Any]) -> None:
     # 1. Callback query (botões inline)
     callback = upd.get("callback_query")
     if callback:
@@ -109,11 +141,9 @@ async def _handle_update(
     if not chat_id:
         return
 
-    # 2. Foto (com ou sem caption)
-    photos = msg.get("photo")
-    if photos:
-        caption = (msg.get("caption") or "").strip()
-        await _handle_photo(client, token, chat_id, photos, caption)
+    upload_spec = _telegram_upload_spec_from_message(msg)
+    if upload_spec:
+        await _handle_upload_attachment(client, token, chat_id, upload_spec)
         return
 
     # 3. Texto
@@ -140,7 +170,8 @@ async def _handle_update(
                 "/help — esta mensagem\n\n"
                 "Você também pode me mandar:\n"
                 "• texto livre — pergunte qualquer coisa\n"
-                "• fotos — eu analiso a imagem\n"
+                "• fotos/arquivos de imagem — eu envio para a Biblioteca e analiso\n"
+                "• áudio/vídeo — eu envio para a Biblioteca e transcrevo\n"
                 "• ações que peçam confirmação aparecem com botões."
             ),
         )
@@ -149,15 +180,13 @@ async def _handle_update(
     await _ask_vox_and_reply(client, token, chat_id, user_text=text)
 
 
-async def _handle_photo(
+async def _handle_upload_attachment(
     client: httpx.AsyncClient,
     token: str,
     chat_id: int,
-    photos: list[dict[str, Any]],
-    caption: str,
+    spec: TelegramUploadSpec,
 ) -> None:
-    """Baixa a melhor resolução da foto via Bot API, converte pra data URL
-    e envia pra Vox com vision pipeline."""
+    """Grava anexo do Telegram no S3 e cria job compatível com o worker."""
     link = await _resolve_link(chat_id)
     if not link:
         await _send(
@@ -168,51 +197,184 @@ async def _handle_photo(
         )
         return
 
-    # Telegram envia várias resoluções; pega a maior
-    largest = max(photos, key=lambda p: int(p.get("file_size") or 0))
-    file_id = largest.get("file_id")
-    file_size = int(largest.get("file_size") or 0)
-    if not file_id:
-        await _send(client, token, chat_id, "⚠️ Foto sem file_id, não consigo baixar.")
-        return
-    if file_size > MAX_PHOTO_SIZE:
-        await _send(client, token, chat_id, "⚠️ Imagem muito grande (limite 5 MB).")
-        return
-
-    # getFile → file_path
-    try:
-        file_info = await client.get(
-            TG_BASE.format(token=token) + "/getFile",
-            params={"file_id": file_id},
-            timeout=30.0,
-        )
-        file_info.raise_for_status()
-        file_path = ((file_info.json().get("result") or {}).get("file_path")) or ""
-        if not file_path:
-            raise ValueError("file_path ausente")
-    except Exception as e:  # noqa: BLE001
-        log.warning("telegram-getfile-failed", error=str(e))
-        await _send(client, token, chat_id, "⚠️ Falha ao obter a foto.")
-        return
-
-    # Download do binário
-    try:
-        bin_res = await client.get(
-            f"{TG_FILE_BASE.format(token=token)}/{file_path}", timeout=60.0
-        )
-        bin_res.raise_for_status()
-    except Exception as e:  # noqa: BLE001
-        log.warning("telegram-download-failed", error=str(e))
-        await _send(client, token, chat_id, "⚠️ Falha ao baixar a foto.")
-        return
-
-    # Telegram sempre serve fotos como JPEG após processamento
-    b64 = base64.b64encode(bin_res.content).decode("ascii")
-    data_url = f"data:image/jpeg;base64,{b64}"
-    user_text = caption or "Descreva esta imagem em detalhes."
-    await _ask_vox_and_reply(
-        client, token, chat_id, user_text=user_text, image_data_url=data_url
+    limit = (
+        MAX_TELEGRAM_IMAGE_UPLOAD_BYTES if spec.kind == "image" else MAX_TELEGRAM_MEDIA_UPLOAD_BYTES
     )
+    if spec.file_size > limit:
+        limit_mib = limit // (1024 * 1024)
+        await _send(client, token, chat_id, f"⚠️ Arquivo muito grande (limite {limit_mib} MiB).")
+        return
+
+    await _send_chat_action(client, token, chat_id, "upload_document")
+    try:
+        body = await _download_bot_file(client, token, spec.file_id)
+    except Exception as e:  # noqa: BLE001
+        log.warning("telegram-upload-download-failed", error=str(e))
+        await _send(client, token, chat_id, "⚠️ Falha ao baixar o arquivo do Telegram.")
+        return
+    if len(body) > limit:
+        limit_mib = limit // (1024 * 1024)
+        await _send(client, token, chat_id, f"⚠️ Arquivo muito grande (limite {limit_mib} MiB).")
+        return
+
+    user_id = str(link["userId"])
+    upload_id = str(uuid.uuid4())
+    filename = storage.sanitize_upload_filename(spec.filename)
+    key = storage.upload_key(user_id, upload_id, filename)
+    source_url = f"upload://{upload_id}/{quote(filename)}"
+    try:
+        await storage.put_bytes(key=key, body=body, content_type=spec.content_type)
+        res = await db.create_upload_job(user_id, source_url, spec.job_type)
+    except Exception as e:  # noqa: BLE001
+        log.exception("telegram-upload-create-job-failed", error=str(e))
+        await _send(client, token, chat_id, "⚠️ Falha ao enviar o arquivo para a Biblioteca.")
+        return
+
+    if res.get("duplicate") == "transcript":
+        await _send(
+            client,
+            token,
+            chat_id,
+            "Esse arquivo já está na Biblioteca.",
+        )
+        return
+    if res.get("duplicate") == "job":
+        await _send(
+            client,
+            token,
+            chat_id,
+            f"Esse arquivo já está em processamento: /jobs/{res['id']}.",
+        )
+        return
+
+    await redis_pub.publish_new_job(str(res["id"]))
+    label = (
+        "Imagem enviada para análise"
+        if spec.kind == "image"
+        else "Arquivo enviado para transcrição"
+    )
+    await _send(client, token, chat_id, f"{label}. Acompanhe em /jobs/{res['id']}.")
+
+
+async def _download_bot_file(client: httpx.AsyncClient, token: str, file_id: str) -> bytes:
+    file_info = await client.get(
+        TG_BASE.format(token=token) + "/getFile",
+        params={"file_id": file_id},
+        timeout=30.0,
+    )
+    file_info.raise_for_status()
+    file_path = ((file_info.json().get("result") or {}).get("file_path")) or ""
+    if not file_path:
+        raise ValueError("file_path ausente")
+    bin_res = await client.get(f"{TG_FILE_BASE.format(token=token)}/{file_path}", timeout=120.0)
+    bin_res.raise_for_status()
+    return bytes(bin_res.content)
+
+
+def _telegram_upload_spec_from_message(msg: dict[str, Any]) -> TelegramUploadSpec | None:
+    photos = msg.get("photo")
+    if isinstance(photos, list) and photos:
+        largest = max(photos, key=lambda p: int(p.get("file_size") or 0))
+        file_id = str(largest.get("file_id") or "")
+        if file_id:
+            return TelegramUploadSpec(
+                file_id=file_id,
+                filename=storage.sanitize_upload_filename(f"foto-{file_id[:10]}.jpg"),
+                content_type="image/jpeg",
+                file_size=int(largest.get("file_size") or 0),
+                kind="image",
+                job_type="UPLOAD_AND_ANALYZE_IMAGE",
+            )
+
+    for field, default_prefix in (
+        ("audio", "audio"),
+        ("voice", "voz"),
+        ("video", "video"),
+        ("video_note", "video"),
+        ("document", "arquivo"),
+    ):
+        payload = msg.get(field)
+        if isinstance(payload, dict):
+            return _telegram_upload_spec_from_payload(payload, default_prefix)
+    return None
+
+
+def _telegram_upload_spec_from_payload(
+    payload: dict[str, Any],
+    default_prefix: str,
+) -> TelegramUploadSpec | None:
+    file_id = str(payload.get("file_id") or "")
+    if not file_id:
+        return None
+    content_type = str(payload.get("mime_type") or _fallback_content_type(default_prefix))
+    filename = _telegram_upload_filename(
+        raw=str(payload.get("file_name") or ""),
+        file_id=file_id,
+        content_type=content_type,
+        default_prefix=default_prefix,
+    )
+    ext = _extension(filename)
+    if _is_image_file(content_type, ext):
+        return TelegramUploadSpec(
+            file_id=file_id,
+            filename=filename,
+            content_type=content_type,
+            file_size=int(payload.get("file_size") or 0),
+            kind="image",
+            job_type="UPLOAD_AND_ANALYZE_IMAGE",
+        )
+    if _is_media_file(content_type, ext):
+        return TelegramUploadSpec(
+            file_id=file_id,
+            filename=filename,
+            content_type=content_type,
+            file_size=int(payload.get("file_size") or 0),
+            kind="media",
+            job_type="UPLOAD_AND_TRANSCRIBE",
+        )
+    return None
+
+
+def _telegram_upload_filename(
+    *,
+    raw: str,
+    file_id: str,
+    content_type: str,
+    default_prefix: str,
+) -> str:
+    if raw.strip():
+        return storage.sanitize_upload_filename(raw)
+    ext = (mimetypes.guess_extension(content_type.split(";")[0].strip()) or "").lstrip(".")
+    if not ext:
+        ext = "bin"
+    return storage.sanitize_upload_filename(f"{default_prefix}-{file_id[:10]}.{ext}")
+
+
+def _fallback_content_type(default_prefix: str) -> str:
+    if default_prefix == "voz":
+        return "audio/ogg"
+    if default_prefix == "video":
+        return "video/mp4"
+    return "application/octet-stream"
+
+
+def _extension(filename: str) -> str:
+    if "." not in filename:
+        return ""
+    return filename.rsplit(".", 1)[-1].lower()
+
+
+def _is_image_file(content_type: str, ext: str) -> bool:
+    type_norm = content_type.split(";", 1)[0].strip().lower()
+    return (
+        type_norm in {"image/png", "image/jpeg", "image/webp", "image/gif"}
+        or ext in IMAGE_EXTENSIONS
+    )
+
+
+def _is_media_file(content_type: str, ext: str) -> bool:
+    type_norm = content_type.split(";", 1)[0].strip().lower()
+    return type_norm.startswith(("audio/", "video/")) or ext in MEDIA_EXTENSIONS
 
 
 async def _ask_vox_and_reply(
@@ -311,9 +473,7 @@ async def _send_hitl_prompt(
     await _send(client, token, chat_id, body, parse_mode="Markdown", reply_markup=keyboard)
 
 
-async def _handle_callback(
-    client: httpx.AsyncClient, token: str, callback: dict[str, Any]
-) -> None:
+async def _handle_callback(client: httpx.AsyncClient, token: str, callback: dict[str, Any]) -> None:
     """User clicou em botão inline. Resolve HITL pendente."""
     cb_id = callback.get("id")
     data = callback.get("data") or ""
@@ -456,9 +616,7 @@ async def _handle_start(
     )
 
 
-async def _handle_search(
-    client: httpx.AsyncClient, token: str, chat_id: int, query: str
-) -> None:
+async def _handle_search(client: httpx.AsyncClient, token: str, chat_id: int, query: str) -> None:
     if not query:
         await _send(client, token, chat_id, "Use /buscar <termo>.")
         return

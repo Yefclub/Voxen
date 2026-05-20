@@ -1,25 +1,22 @@
 # ============================================================================
-# version-dev — bumpa pre-release vX.Y.Z-dev.N a cada merge em dev
+# version-dev — bumpa pre-release vX.Y.Z-dev.N + commita em dev
 # ============================================================================
-# Estratégia:
-#  - Roda em push pra `dev` (depois de merge de PR)
-#  - Bumpa a versão em package.json + apps/web/package.json:
-#    * 0.1.0           → 0.2.0-dev.1  (estável → próximo minor + dev.1)
-#    * 0.2.0-dev.5     → 0.2.0-dev.6  (incrementa N)
-#  - Tenta commitar em `dev` usando RELEASE_TOKEN (PAT do owner) que tem
-#    bypass de branch protection. Se a secret não existir, fallback pra
-#    criar APENAS a tag (sem commit) — mantém o histórico de builds mas
-#    package.json fica intocado.
-#  - Cria tag `vX.Y.Z-dev.N` sempre (loop-safe via condição abaixo).
-#  - Tag pre-release NÃO dispara release.yml (esse exige vX.Y.Z sem
-#    hífen via regex restrita).
+# Padrão Orbital: estado do commit em `dev` reflete a versão atual em
+# package.json. Workflow modifica package.json + apps/web/package.json,
+# commita "chore: pre-release vX.Y.Z-dev.N" e pusha em dev.
 #
-# Como ativar o commit (modo recomendado):
-#   1. Owner gera PAT em github.com/settings/tokens com escopo `repo`
-#      (ou fine-grained com Contents: write + Workflows: read no Voxen).
-#   2. Settings → Branch protection rules → dev → Bypass list → adiciona
-#      o usuário do PAT, OU configure o PAT como `secrets.RELEASE_TOKEN`
-#      (este workflow usa ele se presente).
+# Estratégia:
+#  - Lê última tag git (fonte de verdade pra sequência)
+#  - Se for pre-release `vX.Y.Z-dev.N` → incrementa N
+#  - Se for estável `vX.Y.Z` → começa nova série `vX.(Y+1).0-dev.1`
+#  - Atualiza package.json + apps/web/package.json
+#  - Commit + tag + push (até 5 tentativas com rebase entre retries)
+#
+# Loop-safe: condition skipa commits que começam com "chore: pre-release v"
+# ou "chore: release v".
+#
+# Pré-requisito: branch `dev` SEM required_pull_request_reviews. Tags fluem
+# em qualquer cenário; commit só funciona se o GITHUB_TOKEN puder pushar.
 # ============================================================================
 
 name: Version dev on merge
@@ -31,19 +28,21 @@ on:
 permissions:
   contents: write
 
+# Serializa pushes — evita non-fast-forward em merges concorrentes.
+concurrency:
+  group: version-dev-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   version-dev:
     runs-on: ubuntu-latest
-    # Evita loop: ignora o commit que esta action cria
     if: "${{ !startsWith(github.event.head_commit.message, 'chore: pre-release v') && !startsWith(github.event.head_commit.message, 'chore: release v') }}"
     steps:
       - uses: actions/checkout@v4
         with:
           ref: dev
           fetch-depth: 0
-          # Usa PAT se disponível pra bypass branch protection; fallback
-          # pro GITHUB_TOKEN padrão (que só consegue criar tag).
-          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
@@ -53,14 +52,17 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          VER=$(node -p "require('./package.json').version")
-          NEW_VER=$(VER="$VER" node -e "
-            const cur = process.env.VER;
+          # Fonte da verdade = última tag git
+          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [[ -z "$LAST_TAG" ]]; then
+            BASE_VER=$(node -p "require('./package.json').version")
+          else
+            BASE_VER="${LAST_TAG#v}"
+          fi
+          NEW_VER=$(BASE_VER="$BASE_VER" node -e "
+            const cur = process.env.BASE_VER;
             const m = cur.match(/^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$/);
-            if (!m) {
-              console.error('Versão inválida: ' + cur);
-              process.exit(1);
-            }
+            if (!m) { console.error('Versão inválida: ' + cur); process.exit(1); }
             const [, major, minor, patch, devN] = m;
             if (devN) {
               console.log(\`\${major}.\${minor}.\${patch}-dev.\${Number(devN) + 1}\`);
@@ -70,7 +72,7 @@ jobs:
           ")
           echo "new_version=$NEW_VER" >> "$GITHUB_OUTPUT"
           echo "new_tag=v$NEW_VER" >> "$GITHUB_OUTPUT"
-          echo "Bumping dev to v$NEW_VER (from $VER)"
+          echo "Bumping dev to v$NEW_VER (last tag: $LAST_TAG)"
 
       - name: Write new version to package.json
         env:
@@ -87,12 +89,10 @@ jobs:
             }
           "
 
-      - name: Commit + push (if RELEASE_TOKEN available)
-        id: commit
+      - name: Commit + tag + push
         env:
           NEW_VER: ${{ steps.version.outputs.new_version }}
           NEW_TAG: ${{ steps.version.outputs.new_tag }}
-          HAS_PAT: ${{ secrets.RELEASE_TOKEN != '' }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -100,27 +100,18 @@ jobs:
           git add package.json apps/web/package.json
           if git diff --staged --quiet; then
             echo "No version change to commit"
-            echo "committed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git commit -m "chore: pre-release v$NEW_VER"
-          # Tenta push (com PAT funciona; sem PAT pode falhar por branch protection)
-          if git push origin dev; then
-            echo "Commit pushed to dev (vX.Y.Z-dev.N reflete no package.json)"
-            echo "committed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::Push do commit falhou (branch protection?). Criando só a tag."
-            git reset --hard HEAD~1
-            echo "committed=false" >> "$GITHUB_OUTPUT"
+          if ! git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            git tag -a "$NEW_TAG" -m "Pre-release $NEW_TAG"
           fi
-
-      - name: Create + push tag
-        env:
-          NEW_TAG: ${{ steps.version.outputs.new_tag }}
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$NEW_TAG" -m "Pre-release $NEW_TAG"
-          git push origin "$NEW_TAG"
-          echo "Pushed $NEW_TAG"
+          # Retry loop pra lidar com pushes concorrentes (rebase entre tentativas)
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin dev && git push origin dev && git push origin "$NEW_TAG" 2>&1; then
+              echo "Pushed v$NEW_VER"
+              exit 0
+            fi
+            sleep "$((attempt * 3))"
+          done
+          exit 1

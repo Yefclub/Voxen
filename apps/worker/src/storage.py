@@ -1,13 +1,13 @@
-"""Storage S3 (Garage ou MinIO ou outro S3-compatível) — uploads via aioboto3.
+"""Storage S3 (MinIO, Garage ou outro S3-compatível) — uploads via aioboto3.
 
 Aceita variáveis `S3_*` como primeira opção, com fallback pra `GARAGE_*`
-para compatibilidade com a instalação atual. Permite trocar pra MinIO sem
-mudar código — basta apontar S3_ENDPOINT pro endpoint do MinIO.
+para compatibilidade com instalações antigas.
 """
 
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 import aioboto3
@@ -23,7 +23,7 @@ def _env(*keys: str, default: str | None = None) -> str | None:
 
 
 def s3_endpoint() -> str:
-    return _env("S3_ENDPOINT", "GARAGE_ENDPOINT", default="http://garage:3900") or ""
+    return _env("S3_ENDPOINT", "GARAGE_ENDPOINT", default="http://minio:9000") or ""
 
 
 def s3_bucket() -> str:
@@ -45,7 +45,7 @@ def s3_secret_key() -> str:
 
 
 def s3_region() -> str:
-    return _env("S3_REGION", "GARAGE_REGION", default="garage") or "garage"
+    return _env("S3_REGION", "GARAGE_REGION", default="us-east-1") or "us-east-1"
 
 
 def s3_force_path_style() -> bool:
@@ -90,3 +90,26 @@ async def put_markdown(
 
 def transcript_key(user_id: str, transcript_id: str) -> str:
     return f"workspaces/{user_id}/transcripts/{transcript_id}.md"
+
+
+def upload_key(user_id: str, upload_id: str, filename: str) -> str:
+    return f"workspaces/{user_id}/uploads/{upload_id}/{filename}"
+
+
+async def download_to_file(*, key: str, dest: Path, bucket: str | None = None) -> None:
+    """Baixa um objeto S3 para `dest`."""
+    session = s3_session()
+    async with session.client(**s3_client_kwargs()) as s3:
+        response = await s3.get_object(Bucket=bucket or s3_bucket(), Key=key)
+        body = response["Body"]
+        try:
+            with dest.open("wb") as fh:
+                while True:
+                    chunk = await body.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+        finally:
+            close = getattr(body, "close", None)
+            if close is not None:
+                close()

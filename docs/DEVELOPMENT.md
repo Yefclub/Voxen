@@ -6,7 +6,7 @@ Como rodar localmente, testar, fazer TDD/SDD, e contribuir.
 
 - `docker` + `docker compose` v2
 - `git`
-- Nada mais. Bun, Python, Postgres, Redis, Garage — tudo em containers.
+- Nada mais. Bun, Python, Postgres, Redis, MinIO — tudo em containers.
 
 Opcional (pra rodar tooling fora do container, ex: prisma generate, lint local):
 - `bun` 1.2+
@@ -16,14 +16,18 @@ Opcional (pra rodar tooling fora do container, ex: prisma generate, lint local):
 ## Setup inicial
 
 ```bash
-git clone https://github.com/YefClub-Org/Voxen.git
+git clone https://github.com/Yefclub/Voxen.git
 cd Voxen
 make dev
 ```
 
-Sobe tudo (postgres, redis, garage, web, chat, worker). Master key gerada automaticamente. Garage bootstrap automático.
+`make dev` cria/completa `.env` se necessário e sobe tudo (postgres, redis,
+minio, web, chat, worker). O bucket `voxen-transcripts` é criado
+automaticamente.
 
-Acessa `http://localhost:3000`. Primeiro cadastro vira admin → tela de setup pede OpenRouter API key + modelos default.
+Acessa `http://localhost:3000`. Primeiro cadastro vira admin → tela de setup pede OpenRouter API key + modelos default. Console MinIO: `http://localhost:9001`.
+
+> Repositório atual: `Yefclub/Voxen` (private durante a preparação para abertura pública). Enquanto estiver privado em conta pessoal Free, branch protection pode não estar disponível; ao tornar público, revisar required status checks e regras de branch.
 
 ## Comandos do dia-a-dia (via Makefile)
 
@@ -48,8 +52,8 @@ make seed                  # seed de dev (TBD)
 make shell-db              # psql no postgres
 make shell-redis           # redis-cli
 
-make garage-init           # reroda bootstrap do garage (idempotente)
-make master-key-show       # mostra master key (cuidado — secret)
+make minio-init            # reroda criação do bucket MinIO (idempotente)
+make master-key-show       # mostra MASTER_KEY do .env (cuidado — secret)
 
 make clean                 # remove volumes (PERDE DADOS)
 ```
@@ -142,30 +146,45 @@ Exemplos:
 ```
 feat(transcribe): salva timestamps em formato clicável no .md
 fix(auth): corrige redirect após aprovação do admin
-chore(infra): bump garage 1.0.0 → 1.0.1
+chore(infra): atualiza imagem do MinIO
 docs(spec): adiciona .specs/003-painel-custos.md
 ```
 
-### Release
+### Versioning — padrão Orbital (commit em pkg.json + tag)
 
-**Pre-release em `dev` (somente tag)**: cada merge em `dev` dispara
-`version-dev.yml`, que **cria a tag** `vX.Y.Z-dev.N` (sem mexer no
-`package.json`). A tag NÃO dispara o `release.yml` — esse filtra
-`v[0-9]+.[0-9]+.[0-9]+` (sem hífen). Só serve pra marcar o histórico
-de builds em dev.
+A versão fica **no estado do repo** — `package.json` em `dev` e `main`
+sempre refletem a versão corrente. Workflows commitam e pusham
+diretamente, igual a Orbital.
+
+**Pré-requisito**: branches `dev` e `main` SEM `required_pull_request_reviews`
+(protections de branch não devem bloquear push do `GITHUB_TOKEN`). Em
+repo público OSS, recomenda-se manter required status checks (CI verde)
+mas não required reviews — workflows precisam pushar bumps.
+
+**Pre-release em `dev`**: cada merge em `dev` dispara `version-dev.yml`:
+- Lê última tag git (fonte de sequência)
+- Se for pre-release `vX.Y.Z-dev.N` → incrementa `N`
+- Se for estável `vX.Y.Z` → começa nova série `vX.(Y+1).0-dev.1`
+- Atualiza `package.json` + `apps/web/package.json`
+- Commit `chore: pre-release vX.Y.Z-dev.N` + tag + push
+- Retry loop (5 tentativas com rebase) pra lidar com pushes concorrentes
+- Pre-release NÃO dispara `release.yml` (filtro `v[0-9]+.[0-9]+.[0-9]+`)
 
 **Release estável em `main`**: PR de `dev` → `main` com label
-`release:patch|minor|major`. `version-main.yml` limpa o sufixo `-dev.N`,
-bumpa o componente correspondente, commita `chore: release vX.Y.Z` e cria a
-tag `vX.Y.Z`. A tag dispara `release.yml` (build + push de imagens pro ghcr).
+`release:patch|minor|major`. `version-main.yml`:
+- Lê última tag estável (sem `-dev.N`)
+- Bumpa o componente conforme o label
+- Atualiza `package.json` + `apps/web/package.json`
+- Commit `chore: release vX.Y.Z` + tag + push
+- Tag dispara `release.yml` (build + push imagens pro ghcr)
 
-> **Nota sobre branch protection**: `dev` exige PR (não aceita push direto
-> do `GITHUB_TOKEN`). Por isso o version-dev.yml usa só tag — tags fluem
-> mesmo com proteção de branches. Quando o `version-main.yml` for usado,
-> ele também tenta push direto em `main`; se houver branch protection em
-> `main` configurada com `Restrict who can push` sem incluir o bot, o
-> push falha. Solução: adicionar `github-actions[bot]` à allowlist de
-> bypass do `main` ruleset, ou usar um PAT em `secrets.RELEASE_TOKEN`.
+Loop-safe: ambos os workflows skipam commits que começam com
+`chore: pre-release v` ou `chore: release v` (não disparam a si mesmos).
+
+**Versão visível na UI**: `/api/version` retorna em ordem:
+1. env `VOXEN_VERSION` (release.yml injeta via build arg em CI; Makefile
+   injeta via `git describe --tags --always --dirty` em dev local)
+2. `package.json` (fallback — sempre coerente com o estado do repo)
 
 ## Estilo de código
 
@@ -193,7 +212,7 @@ tag `vX.Y.Z`. A tag dispara `release.yml` (build + push de imagens pro ghcr).
 - Hot reload: `apps/web/src` é bind-mountado em dev (override compose); editar local reflete no container
 - DB inspect: `make shell-db`
 - Redis inspect: `make shell-redis`
-- Garage inspect: `docker compose exec garage /garage status`
+- MinIO console: `http://localhost:9001`
 
 ## Trabalhando com a IA (Claude/Codex)
 
@@ -208,8 +227,8 @@ tag `vX.Y.Z`. A tag dispara `release.yml` (build + push de imagens pro ghcr).
 
 | Sintoma | Causa provável | Fix |
 |---|---|---|
-| `make dev` falha no Garage | RPC secret muito curto | Garage exige RPC secret de 64 hex chars. Gere com `openssl rand -hex 32` |
-| Web container reinicia em loop | Master key não montou | `docker compose logs master-key-init` — verifica se rodou OK |
+| `make dev` falha no MinIO | bucket/init falhou | `docker compose logs minio minio-init` |
+| Web container reinicia em loop | `MASTER_KEY` ausente/inválida | `make master-key-show` e confira se é base64 de 32 bytes |
 | Worker não pega jobs | Redis password errado | Conferir `REDIS_URL` no compose vs `REDIS_PASSWORD` |
 | Migration falha | Schema drift | `pnpm prisma migrate reset` (DEV ONLY — perde dados) |
 | FTS retorna vazio | Trigger não rodou | Verificar trigger `transcript_search_vector_update` no DB |

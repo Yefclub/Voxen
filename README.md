@@ -17,7 +17,7 @@ Plataforma web self-hosted de **biblioteca de vídeos** com transcrição autom�
 - **Auth**: better-auth (email/senha) com aprovação manual do admin
 - **DB**: Postgres 17 + Prisma + FTS (`tsvector` GIN, dicionário `portuguese`)
 - **Fila**: Redis + ARQ
-- **Storage**: Garage S3 self-hosted (ou MinIO/AWS via `S3_*`)
+- **Storage**: MinIO/S3-compatible (`S3_*`)
 - **LLM/Transcrição**: OpenRouter (chat + Whisper unificados)
 
 ## Subir em 1 minuto (dev local)
@@ -25,14 +25,14 @@ Plataforma web self-hosted de **biblioteca de vídeos** com transcrição autom�
 Pré-requisitos: `docker` + `docker compose`. Nada além disso.
 
 ```bash
-git clone https://github.com/YefClub-Org/Voxen.git
+git clone https://github.com/Yefclub/Voxen.git
 cd Voxen
 make dev
 ```
 
 Abre em `http://localhost:3000`. Primeiro cadastro vira admin e cai no onboarding (cola OpenRouter API key + escolhe modelos default). Pronto.
 
-> Master key AES-256-GCM é gerada automaticamente no primeiro boot. Garage S3 faz bootstrap sozinho. Sem `.env` pra editar em dev.
+`make dev` cria/completa `.env` se necessário, sobe Postgres, Redis, MinIO, web, chat e worker. MinIO fica em `http://localhost:9001`.
 
 ## Subir em produção
 
@@ -45,10 +45,15 @@ Tem guia passo-a-passo pra 4 cenários em [`docs/DEPLOY.md`](docs/DEPLOY.md):
 | **LXC do Proxmox** | Self-hosted, container LXC (`nesting=1`) |
 | **Easypanel** | Plataforma cuida de HTTPS/domínio sozinha |
 
+Para Easypanel em produção, prefira Source **Docker image** com
+`ghcr.io/yefclub/voxen:dev` ou `ghcr.io/yefclub/voxen:latest`. O modo
+GitHub/Dockerfile também funciona, mas o Easypanel expõe Environment no
+build-time; isso pode mostrar secrets como build args no log de build.
+
 TL;DR pro cenário mais comum (VPS + nginx + Let's Encrypt):
 
 ```bash
-git clone https://github.com/YefClub-Org/Voxen.git /opt/voxen
+git clone https://github.com/Yefclub/Voxen.git /opt/voxen
 cd /opt/voxen
 cp .env.example .env  # edite secrets + APP_BASE_URL
 mv docker-compose.override.yml docker-compose.override.dev.yml
@@ -88,13 +93,13 @@ Mínimo 12 caracteres. Mais detalhes em [`docs/DEPLOY.md`](docs/DEPLOY.md#reset-
 
 ## Operação — atualizar sem perder dados
 
-Comandos seguros que preservam volumes (postgres, garage, master_key):
+Comandos seguros que preservam volumes (postgres, redis, minio):
 
 ```bash
 make update          # rolling restart com rebuild (zero downtime perceptível)
 make build           # rebuild de imagens (sem reiniciar)
 make restart         # down + up (curta indisponibilidade, dados preservados)
-make backup          # snapshot postgres + master_key + garage em ./backups/
+make backup          # snapshot postgres + MASTER_KEY + minio em ./backups/
 ```
 
 **NUNCA** use `make clean` em produção — ele remove TODOS os volumes e perde os dados. O target já pede confirmação interativa.

@@ -7,10 +7,10 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { existsSync, readFileSync } from 'node:fs';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
+import { s3Bucket, s3Client } from '../lib/s3';
 import { setSetting } from '../lib/settings';
 
 type Vars = { userId: string };
@@ -50,30 +50,6 @@ onboardingRoutes.post('/', async (c) => {
   return c.json({ ok: true });
 });
 
-let _s3: S3Client | null = null;
-function readCreds(key: string): string | undefined {
-  const path = process.env.GARAGE_CREDS_PATH ?? '/creds/voxen.env';
-  if (!existsSync(path)) return undefined;
-  const content = readFileSync(path, 'utf-8');
-  const line = content.split('\n').find((l) => l.startsWith(`${key}=`));
-  return line?.slice(key.length + 1).trim();
-}
-function s3(): S3Client {
-  if (_s3) return _s3;
-  const accessKeyId = process.env.GARAGE_ACCESS_KEY ?? readCreds('GARAGE_ACCESS_KEY');
-  const secretAccessKey = process.env.GARAGE_SECRET_KEY ?? readCreds('GARAGE_SECRET_KEY');
-  if (!accessKeyId || !secretAccessKey) {
-    throw new Error('Garage credentials ausentes');
-  }
-  _s3 = new S3Client({
-    endpoint: process.env.GARAGE_ENDPOINT ?? 'http://garage:3900',
-    region: process.env.GARAGE_REGION ?? 'garage',
-    credentials: { accessKeyId, secretAccessKey },
-    forcePathStyle: true,
-  });
-  return _s3;
-}
-
 onboardingRoutes.post('/avatar', async (c) => {
   const userId = c.get('userId');
   const form = await c.req.formData().catch(() => null);
@@ -90,16 +66,29 @@ onboardingRoutes.post('/avatar', async (c) => {
   const ext = file.type === 'image/png' ? 'png' : file.type === 'image/jpeg' ? 'jpg' : 'webp';
   const key = `workspaces/${userId}/avatar.${ext}`;
   const buf = Buffer.from(await file.arrayBuffer());
-  await s3().send(
-    new PutObjectCommand({
-      Bucket: process.env.GARAGE_BUCKET ?? 'voxen-transcripts',
-      Key: key,
-      Body: buf,
-      ContentType: file.type,
-    }),
-  );
+  const bucket = s3Bucket();
+  try {
+    await s3Client().send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buf,
+        ContentType: file.type,
+      }),
+    );
+  } catch (err) {
+    console.error('[onboarding] falha ao salvar avatar no S3:', err);
+    return c.json(
+      {
+        error:
+          `Falha ao salvar avatar no S3/MinIO (bucket "${bucket}"). ` +
+          'Verifique endpoint, bucket e permissões de escrita.',
+      },
+      502,
+    );
+  }
   // Salva path no User.image; o endpoint /api/avatar/:userId serve o arquivo
-  // via proxy (Garage não é público).
+  // via proxy (storage S3 não precisa ser público).
   const imageUrl = `/api/avatar/${userId}?v=${Date.now()}`;
   await db.user.update({ where: { id: userId }, data: { image: imageUrl } });
   return c.json({ image: imageUrl });

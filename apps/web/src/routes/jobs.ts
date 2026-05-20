@@ -11,13 +11,22 @@
 // Outro user pedindo job alheio → 404 (não 403 — não vaza existência).
 // ============================================================================
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isSetupComplete } from '../lib/settings';
 import { parseVideoUrl } from '../lib/video-url';
+import {
+  MAX_IMAGE_UPLOAD_BYTES,
+  MAX_MEDIA_UPLOAD_BYTES,
+  MAX_MEDIA_UPLOAD_REQUEST_BYTES,
+  detectUploadKind,
+  putUploadFile,
+  sanitizeUploadFilename,
+  uploadSourceUrl,
+} from '../lib/media-upload';
 import { createSubscriber } from '../lib/redis';
 import {
   isTerminalStage,
@@ -34,6 +43,12 @@ type JobsVariables = {
 };
 
 export const jobsRoutes = new Hono<{ Variables: JobsVariables }>();
+
+function setSseProxyHeaders(c: Context): void {
+  c.header('Content-Type', 'text/event-stream; charset=utf-8');
+  c.header('Cache-Control', 'no-cache, no-transform');
+  c.header('X-Accel-Buffering', 'no');
+}
 
 // Guard: session + status=APPROVED
 jobsRoutes.use('*', async (c, next) => {
@@ -72,7 +87,10 @@ jobsRoutes.post('/', async (c) => {
   }
   const video = parseVideoUrl(parsed.data.url);
   if (!video) {
-    return c.json({ error: 'URL não suportada — use link do YouTube, Instagram ou TikTok.' }, 400);
+    return c.json(
+      { error: 'URL não suportada — use link do YouTube, Instagram, TikTok ou X.' },
+      400,
+    );
   }
 
   const existingTranscript = await db.transcript.findFirst({
@@ -130,7 +148,7 @@ jobsRoutes.post('/', async (c) => {
 });
 
 // POST /api/jobs/auto — dispatcher unificado.
-// Detecta se a URL é vídeo (YouTube/Instagram/TikTok) ou página web e
+// Detecta se a URL é vídeo (YouTube/Instagram/TikTok/X) ou página web e
 // roteia internamente. UI usa só este endpoint pra evitar duplicidade
 // de campos / abas. Mantém /api/jobs e /api/jobs/scrape pra
 // compatibilidade com clients externos / scripts.
@@ -244,6 +262,77 @@ jobsRoutes.post('/auto', async (c) => {
     { jobId: webJob.id, status: webJob.status, sourceUrl: webJob.sourceUrl, kind: 'web' },
     201,
   );
+});
+
+// POST /api/jobs/upload — envia áudio/vídeo/imagem para S3 e agenda processamento.
+jobsRoutes.post('/upload', async (c) => {
+  const userId = c.get('userId');
+
+  if (!(await isSetupComplete())) {
+    return c.json(
+      { error: 'Setup incompleto. Aguarde o administrador concluir a configuração.' },
+      412,
+    );
+  }
+
+  const contentLength = Number(c.req.header('content-length') ?? '0');
+  if (contentLength > MAX_MEDIA_UPLOAD_REQUEST_BYTES) {
+    return c.json({ error: 'Arquivo muito grande. O limite é 500 MiB.' }, 413);
+  }
+
+  const form = await c.req.formData().catch(() => null);
+  const media = form?.get('media');
+  if (!(media instanceof File)) {
+    return c.json({ error: 'Arquivo de mídia ausente.' }, 400);
+  }
+
+  const filename = sanitizeUploadFilename(media.name);
+  const contentType = media.type || 'application/octet-stream';
+  const kind = detectUploadKind(filename, contentType);
+  if (media.size <= 0) {
+    return c.json({ error: 'Arquivo vazio.' }, 400);
+  }
+  if (!kind) {
+    return c.json({ error: 'Formato não suportado. Envie áudio, vídeo ou imagem.' }, 400);
+  }
+  if (kind === 'image' && media.size > MAX_IMAGE_UPLOAD_BYTES) {
+    return c.json({ error: 'Imagem muito grande. O limite é 20 MiB.' }, 413);
+  }
+  if (kind === 'media' && media.size > MAX_MEDIA_UPLOAD_BYTES) {
+    return c.json({ error: 'Arquivo muito grande. O limite é 500 MiB.' }, 413);
+  }
+
+  const uploadId = crypto.randomUUID();
+  const sourceUrl = uploadSourceUrl(uploadId, filename);
+  try {
+    await putUploadFile({
+      userId,
+      uploadId,
+      filename,
+      body: new Uint8Array(await media.arrayBuffer()),
+      contentType,
+    });
+  } catch (err) {
+    console.error('[jobs] upload to S3 failed:', err instanceof Error ? err.message : err);
+    return c.json({ error: 'Falha ao enviar arquivo para o armazenamento S3.' }, 502);
+  }
+
+  const job = await db.job.create({
+    data: {
+      userId,
+      type: kind === 'image' ? 'UPLOAD_AND_ANALYZE_IMAGE' : 'UPLOAD_AND_TRANSCRIBE',
+      status: 'QUEUED',
+      sourceUrl,
+    },
+    select: { id: true, status: true, sourceUrl: true },
+  });
+
+  await notifyNewJob(job.id).catch((err) => {
+    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+  });
+  await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
+
+  return c.json({ jobId: job.id, status: job.status, sourceUrl: job.sourceUrl, kind }, 201);
 });
 
 // POST /api/jobs/scrape — agenda scraping de página web (spec 004)
@@ -373,7 +462,7 @@ jobsRoutes.post('/:id/retry', async (c) => {
   const id = c.req.param('id');
   const original = await db.job.findFirst({
     where: { id, userId },
-    select: { id: true, status: true, sourceUrl: true },
+    select: { id: true, status: true, sourceUrl: true, type: true },
   });
   if (!original) {
     return c.json({ error: 'Job não encontrado.' }, 404);
@@ -403,7 +492,7 @@ jobsRoutes.post('/:id/retry', async (c) => {
     newJob = await db.job.create({
       data: {
         userId,
-        type: 'DOWNLOAD_AND_TRANSCRIBE',
+        type: original.type,
         status: 'QUEUED',
         sourceUrl: original.sourceUrl,
       },
@@ -476,6 +565,7 @@ jobsRoutes.post('/:id/cancel', async (c) => {
 // SSE global por user — toast notification em qualquer página.
 jobsRoutes.get('/events/me', async (c) => {
   const userId = c.get('userId');
+  setSseProxyHeaders(c);
   return streamSSE(c, async (stream) => {
     const sub = createSubscriber();
     let closed = false;
@@ -528,6 +618,7 @@ jobsRoutes.get('/:id/events', async (c) => {
     return c.json({ error: 'Job não encontrado.' }, 404);
   }
 
+  setSseProxyHeaders(c);
   return streamSSE(c, async (stream) => {
     const sub = createSubscriber();
     let closed = false;

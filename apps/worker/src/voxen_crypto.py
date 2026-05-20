@@ -75,7 +75,7 @@ def decrypt(encrypted: str, key: bytes) -> str:
 
 
 def load_master_key(path: str | Path) -> bytes:
-    """Carrega master key de `path` (base64 do raw 32 bytes, vide master-key-init.sh)."""
+    """Carrega master key legada de `path` (base64 do raw 32 bytes)."""
     p = Path(path)
     try:
         content = p.read_text(encoding="utf-8").strip()
@@ -93,4 +93,15 @@ def load_master_key(path: str | Path) -> bytes:
         raise CryptoError(
             f"Master key at {path} is {len(key)} bytes; expected {KEY_LEN}"
         )
+    return key
+
+
+def load_master_key_value(value: str, name: str = "MASTER_KEY") -> bytes:
+    """Carrega master key direto de env var (base64 do raw 32 bytes)."""
+    try:
+        key = base64.b64decode(value.strip(), validate=True)
+    except Exception as exc:
+        raise CryptoError(f"FATAL: {name} is not valid base64") from exc
+    if len(key) != KEY_LEN:
+        raise CryptoError(f"FATAL: {name} must be base64-encoded {KEY_LEN} bytes")
     return key

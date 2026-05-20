@@ -135,6 +135,11 @@ async def create_transcribe_job(user_id: str, source_url: str) -> dict[str, Any]
     return await _create_job(user_id, source_url, "DOWNLOAD_AND_TRANSCRIBE")
 
 
+async def create_upload_job(user_id: str, source_url: str, job_type: str) -> dict[str, Any]:
+    """Cria Job de upload QUEUED para o worker processar."""
+    return await _create_job(user_id, source_url, job_type)
+
+
 async def _create_job(user_id: str, source_url: str, job_type: str) -> dict[str, Any]:
     """Cria Job QUEUED pra worker processar.
 

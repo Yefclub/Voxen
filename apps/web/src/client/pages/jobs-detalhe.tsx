@@ -20,6 +20,7 @@ import { useFetch, useSse } from '../lib/hooks';
 import type { JobSummary } from '../lib/types';
 import { formatDateTime } from '../lib/format';
 import { jobStatusBadge, stageLabel } from '../lib/job-display';
+import { displayJobSource, isExternalSourceUrl, isUploadSourceUrl } from '../lib/source-detect';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ApiError, apiPost } from '../lib/api';
 
@@ -37,6 +38,8 @@ const STAGE_ORDER = [
   'queued',
   'running',
   'downloading',
+  'preparing_upload',
+  'analyzing_image',
   'extracting_audio',
   'choosing_method',
   'transcribing',
@@ -119,6 +122,8 @@ export function JobDetalhePage(): React.ReactElement {
   const { variant, label } = jobStatusBadge(job.status);
   const currentStage = events[events.length - 1]?.stage ?? 'queued';
   const currentStageIdx = STAGE_ORDER.indexOf(currentStage);
+  const externalSource = isExternalSourceUrl(job.sourceUrl);
+  const uploadedSource = isUploadSourceUrl(job.sourceUrl);
 
   return (
     <AnimatedPage>
@@ -150,7 +155,7 @@ export function JobDetalhePage(): React.ReactElement {
                   Job · {job.id.slice(0, 12)}
                 </p>
                 <h2 className="font-mono text-[15px] font-medium tracking-tight text-zinc-100 truncate">
-                  {job.sourceUrl}
+                  {displayJobSource(job.sourceUrl)}
                 </h2>
               </div>
               <Badge variant={variant} className="text-xs">
@@ -223,10 +228,10 @@ export function JobDetalhePage(): React.ReactElement {
                     </div>
                     <div>
                       <p className="font-display text-base font-semibold text-emerald-200">
-                        Transcrição concluída
+                        Processamento concluído
                       </p>
                       <p className="text-xs text-emerald-300/70 mt-0.5">
-                        Já está no sua biblioteca, pronta para consultar.
+                        Já está na sua biblioteca, pronta para consultar.
                       </p>
                     </div>
                   </div>
@@ -249,7 +254,9 @@ export function JobDetalhePage(): React.ReactElement {
               >
                 <Alert variant="destructive">
                   <XCircle className="h-4 w-4 text-rose-400 mt-0.5 shrink-0" />
-                  <AlertDescription>{job.errorMsg ?? 'Algo deu errado.'}</AlertDescription>
+                  <AlertDescription className="break-words whitespace-pre-wrap">
+                    {job.errorMsg ?? 'Algo deu errado.'}
+                  </AlertDescription>
                 </Alert>
                 {retryError && (
                   <Alert variant="destructive">
@@ -321,17 +328,20 @@ export function JobDetalhePage(): React.ReactElement {
               </div>
             )}
 
-            {/* Link original */}
             <div className="pt-4 border-t border-[var(--color-app-border)]">
-              <a
-                href={job.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-[var(--color-app-muted)] hover:text-zinc-100 inline-flex items-center gap-1.5 transition-colors group"
-              >
-                Abrir vídeo original
-                <ExternalLink className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-              </a>
+              {externalSource ? (
+                <a
+                  href={job.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-[var(--color-app-muted)] hover:text-zinc-100 inline-flex items-center gap-1.5 transition-colors group"
+                >
+                  Abrir conteúdo original
+                  <ExternalLink className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                </a>
+              ) : uploadedSource ? (
+                <span className="text-xs text-[var(--color-app-muted)]">Arquivo enviado</span>
+              ) : null}
             </div>
           </CardContent>
         </Card>

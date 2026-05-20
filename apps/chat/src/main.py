@@ -123,7 +123,7 @@ async def health_deep() -> JSONResponse:
     O check de 'settings_decryptable' tenta carregar+decifrar 'openrouter_api_key'
     do DB usando a master key. Cobre 2 coisas em 1: (a) master key existe e é
     válida, (b) DB tem row de setting acessível. É mais honesto que checar só
-    se o arquivo de master key carrega (que é cached e sempre passa após boot).
+    se a master key carrega (que é cached e sempre passa após boot).
     """
     checks: dict[str, dict[str, object]] = {}
     all_ok = True

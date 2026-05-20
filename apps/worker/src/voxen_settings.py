@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from . import db
-from .voxen_crypto import decrypt, load_master_key
+from .voxen_crypto import decrypt, load_master_key, load_master_key_value
 
 _master_key_cache: bytes | None = None
 
@@ -14,8 +14,12 @@ _master_key_cache: bytes | None = None
 def get_master_key() -> bytes:
     global _master_key_cache
     if _master_key_cache is None:
-        path = os.environ.get("MASTER_KEY_PATH", "/data/master.key")
-        _master_key_cache = load_master_key(Path(path))
+        env_key = os.environ.get("MASTER_KEY", "").strip()
+        if env_key:
+            _master_key_cache = load_master_key_value(env_key)
+        else:
+            path = os.environ.get("MASTER_KEY_PATH", "/data/master.key")
+            _master_key_cache = load_master_key(Path(path))
     return _master_key_cache
 
 
@@ -28,6 +32,13 @@ async def get_openrouter_api_key() -> str | None:
 
 async def get_default_transcription_model() -> str | None:
     enc = await db.get_setting_enc("default_transcription_model")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
+async def get_default_vision_model() -> str | None:
+    enc = await db.get_setting_enc("default_vision_model")
     if enc is None:
         return None
     return decrypt(enc, get_master_key())

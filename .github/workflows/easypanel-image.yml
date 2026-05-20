@@ -1,0 +1,80 @@
+name: Easypanel Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev, main]
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: easypanel-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/yefclub/voxen
+
+jobs:
+  build-and-push:
+    name: Build & push Easypanel image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute tags
+        id: meta
+        run: |
+          set -eu
+          short_sha="${GITHUB_SHA::7}"
+          tags_file="$(mktemp)"
+          printf '%s\n' "${IMAGE_NAME}:sha-${short_sha}" > "$tags_file"
+
+          case "$GITHUB_REF" in
+            refs/heads/dev)
+              version="dev-${short_sha}"
+              printf '%s\n' "${IMAGE_NAME}:dev" >> "$tags_file"
+              ;;
+            refs/heads/main)
+              version="$(node -p "require('./package.json').version")"
+              printf '%s\n' "${IMAGE_NAME}:latest" >> "$tags_file"
+              ;;
+            refs/tags/v*)
+              version="${GITHUB_REF_NAME#v}"
+              printf '%s\n' "${IMAGE_NAME}:${GITHUB_REF_NAME}" >> "$tags_file"
+              printf '%s\n' "${IMAGE_NAME}:${version}" >> "$tags_file"
+              ;;
+            *)
+              version="manual-${short_sha}"
+              ;;
+          esac
+
+          {
+            echo "tags<<EOF"
+            cat "$tags_file"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "sha=${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VOXEN_VERSION=${{ steps.meta.outputs.version }}
+            VOXEN_GIT_SHA=${{ steps.meta.outputs.sha }}
+            VOXEN_BUILT_AT=${{ steps.meta.outputs.built_at }}

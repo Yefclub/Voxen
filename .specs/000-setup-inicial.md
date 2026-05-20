@@ -4,7 +4,7 @@
 
 Voxen é uma plataforma web multi-user com adoção restrita. O **primeiro user** que se cadastrar precisa virar admin automaticamente e configurar o sistema (cola OpenRouter API key + escolhe modelos default) antes que qualquer outro user possa entrar. Cadastros subsequentes ficam pendentes até o admin aprovar.
 
-Esta spec cobre toda a inicialização: geração de master key, criação do bucket Garage, aplicação de migrations, criação do primeiro admin, tela de setup, fluxo de cadastro/aprovação.
+Esta spec cobre toda a inicialização: configuração da master key, criação do bucket S3-compatible (MinIO no padrão local/Easypanel), aplicação de migrations, criação do primeiro admin, tela de setup, fluxo de cadastro/aprovação.
 
 Referências: `docs/ARCHITECTURE.md` (fluxos), `docs/SECURITY.md` (master key, secrets cifrados), ADR-007 (better-auth + aprovação), ADR-008 (master key auto-gerada).
 
@@ -16,14 +16,15 @@ Referências: `docs/ARCHITECTURE.md` (fluxos), `docs/SECURITY.md` (master key, s
 - **Pendente**: `status=PENDING` — não pode logar
 - **Aprovado**: `status=APPROVED` — pode logar
 - **Workspace**: escopo de dados de um user; identificado por `userId`
-- **Master key**: chave AES-256 em `/data/master.key` (volume) usada pra cifrar `settings.valueEnc`
+- **Master key**: chave AES-256 em `MASTER_KEY` no `.env`/env do deploy, em base64 de 32 bytes, usada pra cifrar `settings.valueEnc`
 
 ## Requisitos
 
 ### Ubiquitous (sempre verdadeiros)
 
-- The system shall generate a master key at `/data/master.key` on first boot if absent, 32 random bytes encoded as base64, chmod 0400.
-- The system shall create the Garage bucket `voxen-transcripts` on first boot if absent, with a key `voxen-key` granted read+write+owner permissions, and write credentials to `/creds/voxen.env`.
+- The documented install modes shall configure the master key via `MASTER_KEY`, 32 random bytes encoded as base64 (`openssl rand -base64 32`).
+- The local dev flow shall create/complete `.env` without overwriting existing secrets, including `MASTER_KEY` and S3/MinIO variables.
+- The system shall create the S3-compatible bucket `voxen-transcripts` on first boot if absent (MinIO in the default local/Easypanel flow), using `S3_*` credentials from env.
 - The system shall apply all pending Prisma migrations on `apps/web` startup before serving traffic.
 - The system shall store all runtime secrets (OpenRouter API key, default models, SMTP config) cifrados via AES-256-GCM com a master key, in `Settings.valueEnc`.
 - The system shall expose `/health` returning `200 OK` always, even before setup is complete.
@@ -54,18 +55,18 @@ Referências: `docs/ARCHITECTURE.md` (fluxos), `docs/SECURITY.md` (master key, s
 - **If** the OpenRouter API key validation fails during setup, the system shall reject the form with HTTP 400 and message `"Chave da OpenRouter inválida — verifique e tente novamente."`, and shall **not** persist any field of the form.
 - **If** an unauthenticated request hits `/setup` or `/api/setup`, the system shall redirect (web) or return 401 (API).
 - **If** a non-admin authenticated user requests `/setup` or `/api/setup`, the system shall return 403.
-- **If** the master key file is missing or unreadable when an app starts, the app shall exit with non-zero code and log `"FATAL: master key not accessible at <path>"`.
-- **If** the Garage credentials file `/creds/voxen.env` is missing when an app starts, the app shall exit with non-zero code.
+- **If** `MASTER_KEY` is missing or invalid in a documented install mode, the app shall exit with non-zero code and log a fatal master-key error.
+- **If** required S3 credentials (`S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`) are missing when an app starts or performs storage IO, the operation shall fail explicitly.
 - **If** the Prisma migrations fail to apply, the `apps/web` container shall exit and **not** serve traffic.
 
 ## Critérios de Aceite
 
 - [ ] `docker compose up -d` sobe sem intervenção manual em ambiente limpo
-- [ ] Master key é gerada em `/data/master.key` no primeiro boot e tem permissão `0400`
-- [ ] Em re-boot, master key existente NÃO é regerada
-- [ ] Bucket `voxen-transcripts` é criado no Garage no primeiro boot
+- [ ] `.env` local é criado/completado com `MASTER_KEY` no primeiro `make dev`
+- [ ] Em re-boot, `MASTER_KEY` existente NÃO é sobrescrita
+- [ ] Bucket `voxen-transcripts` é criado no MinIO/S3 no primeiro boot
 - [ ] Em re-boot, bucket existente NÃO é recriado
-- [ ] Arquivo `/creds/voxen.env` é populado com `GARAGE_ACCESS_KEY` e `GARAGE_SECRET_KEY` válidos
+- [ ] Variáveis `S3_ACCESS_KEY` e `S3_SECRET_KEY` válidas são usadas por web/chat/worker
 - [ ] Migrations Prisma aplicam no entrypoint do `apps/web`; container falha (exit non-zero) se migration der erro
 - [ ] DB vazio + acesso a `/` redireciona pra `/cadastro`
 - [ ] Cadastro do primeiro user retorna sucesso e o user é criado com `role=ADMIN, status=APPROVED`
@@ -107,3 +108,4 @@ Referências: `docs/ARCHITECTURE.md` (fluxos), `docs/SECURITY.md` (master key, s
 > 2026-05-16: PR `feat/auth-basic` adiciona better-auth (email+senha) com `prismaAdapter`. Endpoints `/api/auth/*` (sign-up, sign-in, sign-out) + `/api/me`. SEM workflow de aprovação ainda — `status`/`role` mostrados como additionalFields placeholder, validação de status virá na PR seguinte. Generator Prisma migra pro novo `prisma-client` (output em `apps/web/prisma-generated/`) pra contornar bug de auto-install do `prisma-client-js` em workspaces pnpm.
 > 2026-05-16: PR `feat/admin-approval` cumpre os event-driven "primeiro cadastro vira ADMIN+APPROVED", "demais ficam PENDING", "login PENDING/REJECTED/DISABLED retorna 403". Adiciona `/api/admin/usuarios` (listar) + `/api/admin/usuarios/:id/approve` + `/api/admin/usuarios/:id/reject`, guard de role ADMIN no router. `/api/me` agora expõe status+role. CI test-ts ganha service postgres + `prisma migrate deploy`. 7 testes integration validam o fluxo completo (signup→pending→admin aprova→login OK).
 > 2026-05-16: PR `feat/setup-form` cobre o **backend do setup inicial**: endpoints `/api/setup` (GET status, POST salvar, POST `/models` preview), validação real da OpenRouter (`GET /api/v1/key`), persistência cifrada em `Setting` (scope=GLOBAL, AES-256-GCM via master key). `/api/me` agora expõe `setupComplete`. Cumpre os event-driven "admin submete setup → valida → persiste cifrado" e "key inválida → 400 + nada persiste" + unwanted "master key ausente → fatal". Cobre o requirement ubiquitous "store all runtime secrets cifrados". 5 testes integration novos (admin OK, key inválida, user comum 403, não-autenticado 401, /api/me reflete setupComplete). CI ganhou geração de master key efêmera (`openssl rand -base64 32`) antes dos testes; `bunfig.toml` com preload garante master key local. **UI da `/setup` (Vite + React + shadcn) fica em PR separado** — apps/web ainda é só Hono API; scaffolding do front virá quando a base houver a primeira tela.
+> 2026-05-19: Padrão de instalação atualizado para `MASTER_KEY` via `.env`/env em todos os modos documentados e MinIO/S3-compatible como storage padrão local/Easypanel. `MASTER_KEY_PATH` e credenciais `GARAGE_*` ficam apenas como compatibilidade legada no código, não como caminho de instalação novo.

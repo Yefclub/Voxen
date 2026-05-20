@@ -9,7 +9,12 @@ import { useFetch, useMe } from '../lib/hooks';
 import type { JobSummary } from '../lib/types';
 import { formatRelative } from '../lib/format';
 import { jobStatusBadge } from '../lib/job-display';
-import { detectSourceFromUrl, youtubeVideoId } from '../lib/source-detect';
+import {
+  detectSourceFromUrl,
+  displayJobSource,
+  isUploadSourceUrl,
+  youtubeVideoId,
+} from '../lib/source-detect';
 import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motion/animated-page';
 import { NumberTicker } from '../components/motion/number-ticker';
 
@@ -43,7 +48,7 @@ export function DashboardPage(): React.ReactElement {
           </div>
           <Button variant="primary" size="lg" asChild>
             <Link to="/jobs">
-              Transcrever vídeo
+              Novo conteúdo
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
@@ -135,6 +140,7 @@ function ActivityRow({ job }: { job: JobSummary }): React.ReactElement {
   const { variant, label } = jobStatusBadge(job.status);
   const to = job.transcriptId ? `/transcricoes/${job.transcriptId}` : `/jobs/${job.id}`;
   const source = detectSourceFromUrl(job.sourceUrl);
+  const isUpload = isUploadSourceUrl(job.sourceUrl);
   const ytId = source === 'YOUTUBE' ? youtubeVideoId(job.sourceUrl) : null;
   return (
     <li className="group">
@@ -142,12 +148,14 @@ function ActivityRow({ job }: { job: JobSummary }): React.ReactElement {
         to={to}
         className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 focus:outline-none focus-visible:bg-[var(--color-app-surface-hover)]"
       >
-        <SourcePreview source={source} ytId={ytId} />
+        <SourcePreview source={source} ytId={ytId} isUpload={isUpload} />
         <Badge variant={variant} className="shrink-0 w-28 justify-center">
           {label}
         </Badge>
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-zinc-200 truncate font-mono tracking-tight">{job.sourceUrl}</p>
+          <p className="text-sm text-zinc-200 truncate font-mono tracking-tight">
+            {displayJobSource(job.sourceUrl)}
+          </p>
           <p className="text-xs text-[var(--color-app-muted)] mt-0.5">
             {formatRelative(new Date(job.queuedAt))}
           </p>
@@ -161,9 +169,11 @@ function ActivityRow({ job }: { job: JobSummary }): React.ReactElement {
 function SourcePreview({
   source,
   ytId,
+  isUpload,
 }: {
   source: ReturnType<typeof detectSourceFromUrl>;
   ytId: string | null;
+  isUpload: boolean;
 }): React.ReactElement {
   if (source === 'YOUTUBE' && ytId) {
     return (
@@ -209,6 +219,13 @@ function SourcePreview({
       cls: 'from-zinc-500/10 to-zinc-500/5 text-zinc-400 border-zinc-500/20',
     },
   } as const;
+  if (isUpload) {
+    return (
+      <div className="shrink-0 h-14 w-24 rounded-lg overflow-hidden border bg-gradient-to-br from-emerald-500/15 to-violet-500/5 text-emerald-300/80 border-emerald-500/20 flex items-center justify-center">
+        <PlayCircle className="h-5 w-5" />
+      </div>
+    );
+  }
   const { Icon, cls } =
     source === null ? map.null : (map[source as Exclude<typeof source, null>] ?? map.null);
   return (
@@ -238,8 +255,8 @@ function EmptyState(): React.ReactElement {
         <div className="space-y-1.5">
           <p className="font-display text-lg font-semibold tracking-tight">Comece sua biblioteca</p>
           <p className="text-sm text-[var(--color-app-muted)] max-w-sm mx-auto leading-relaxed">
-            Cole um link de vídeo para o Voxen transcrever e indexar. Tudo fica disponível para
-            conversar com o agente depois.
+            Cole um link ou envie um arquivo para o Voxen transcrever e indexar. Tudo fica
+            disponível para conversar com o agente depois.
           </p>
         </div>
         <Button variant="primary" size="lg" asChild className="mt-2">

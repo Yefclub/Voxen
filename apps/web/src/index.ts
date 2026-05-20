@@ -22,24 +22,28 @@ import { mcpRoutes } from './routes/mcp';
 import { graphRoutes } from './routes/graph';
 import { getRedisPublisher } from './lib/redis';
 import { rateLimit } from './lib/rate-limit';
+import { s3Bucket, s3Client } from './lib/s3';
 
 const app = new Hono();
 
 // Healthcheck liveness — sempre 200, mesmo antes do setup (spec 000)
 app.get('/health', (c) => c.json({ ok: true, service: 'web' }));
 
-// Versão da build — lê do package.json em runtime pra refletir SEMPRE
-// o que está na imagem (sem depender de build arg). Git SHA e built-at
-// continuam via env (injetados no Dockerfile).
+// Versão da build — fonte canônica em ordem de prioridade:
+//   1. env VOXEN_VERSION (release.yml injeta da tag git; Makefile injeta
+//      via `git describe --tags --always --dirty` no dev local)
+//   2. package.json (fallback se build foi feito sem injeção)
+// Tag git é a verdade no Voxen — package.json fica como fallback estável.
 async function loadAppVersion(): Promise<string> {
+  if (process.env.VOXEN_VERSION) return process.env.VOXEN_VERSION;
   try {
     const pkg = await Bun.file(new URL('../package.json', import.meta.url)).json();
     return typeof pkg.version === 'string' ? pkg.version : '0.1.0';
   } catch {
-    return process.env.VOXEN_VERSION ?? '0.1.0';
+    return '0.1.0';
   }
 }
-const VOXEN_VERSION = process.env.VOXEN_VERSION || (await loadAppVersion());
+const VOXEN_VERSION = await loadAppVersion();
 const VOXEN_GIT_SHA = process.env.VOXEN_GIT_SHA ?? '';
 const VOXEN_BUILT_AT = process.env.VOXEN_BUILT_AT ?? new Date().toISOString();
 app.get('/api/version', (c) => {
@@ -174,7 +178,7 @@ app.route('/api/admin', adminRoutes);
 // Jobs endpoints (download + transcrição — spec 002)
 app.route('/api/jobs', jobsRoutes);
 
-// Transcripts endpoints (lista + viewer .md do Garage)
+// Transcripts endpoints (lista + viewer .md do storage S3)
 app.route('/api/transcripts', transcriptsRoutes);
 
 // Onboarding (admin first-run) + avatar upload
@@ -197,7 +201,7 @@ app.route('/mcp', mcpRoutes);
 // Graph view (visualização Obsidian-like da KB)
 app.route('/api/graph', graphRoutes);
 
-// Avatar proxy: serve imagem do Garage de qualquer user autenticado
+// Avatar proxy: serve imagem do storage S3 de qualquer user autenticado
 app.get('/api/avatar/:userId', async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.text('', 401);
@@ -208,29 +212,12 @@ app.get('/api/avatar/:userId', async (c) => {
   });
   if (!user?.image) return c.text('', 404);
   // Tenta as 3 extensões possíveis
-  const { GetObjectCommand, S3Client } = await import('@aws-sdk/client-s3');
-  const { existsSync: ex, readFileSync: rf } = await import('node:fs');
-  function readCreds(key: string): string | undefined {
-    const path = process.env.GARAGE_CREDS_PATH ?? '/creds/voxen.env';
-    if (!ex(path)) return undefined;
-    const content = rf(path, 'utf-8');
-    const line = content.split('\n').find((l) => l.startsWith(`${key}=`));
-    return line?.slice(key.length + 1).trim();
-  }
-  const accessKeyId = process.env.GARAGE_ACCESS_KEY ?? readCreds('GARAGE_ACCESS_KEY');
-  const secretAccessKey = process.env.GARAGE_SECRET_KEY ?? readCreds('GARAGE_SECRET_KEY');
-  if (!accessKeyId || !secretAccessKey) return c.text('', 500);
-  const s3 = new S3Client({
-    endpoint: process.env.GARAGE_ENDPOINT ?? 'http://garage:3900',
-    region: process.env.GARAGE_REGION ?? 'garage',
-    credentials: { accessKeyId, secretAccessKey },
-    forcePathStyle: true,
-  });
+  const { GetObjectCommand } = await import('@aws-sdk/client-s3');
   for (const ext of ['png', 'jpg', 'webp']) {
     try {
-      const res = await s3.send(
+      const res = await s3Client().send(
         new GetObjectCommand({
-          Bucket: process.env.GARAGE_BUCKET ?? 'voxen-transcripts',
+          Bucket: s3Bucket(),
           Key: `workspaces/${userId}/avatar.${ext}`,
         }),
       );

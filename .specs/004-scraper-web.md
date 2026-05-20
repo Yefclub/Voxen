@@ -67,7 +67,7 @@ Sem migration de coluna nova — só extensão dos enums.
    - Extrair conteúdo via Trafilatura (`output_format='markdown'`, `with_metadata=True`, `include_links=True`, `include_images=False`)
    - **IF** o conteúdo extraído tiver < 200 caracteres, **THEN** marcar Job como `FAILED` com `errorMsg = "Conteúdo insuficiente — página vazia, paywall, ou JS-heavy."`
    - Persistir como `Transcript` com `source = 'WEB'`, `transcriptionMethod = 'SCRAPE'`
-   - Salvar `.md` no Garage S3 com key `workspaces/{userId}/transcripts/{transcriptId}.md`
+   - Salvar `.md` no S3-compatible storage com key `workspaces/{userId}/transcripts/{transcriptId}.md`
    - Publicar eventos SSE de progresso (`downloading`, `extracting`, `uploading`, `indexing`, `done`)
    - Disparar geração de `summaryMd` IA best-effort (mesmo fluxo de vídeo)
 
