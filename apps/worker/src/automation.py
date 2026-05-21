@@ -57,7 +57,9 @@ async def scheduler_tick() -> int:
                         (id, "automationId", "userId", status, "createdAt", "triggeredBy")
                     VALUES ($1, $2, $3, 'PENDING', NOW(), 'scheduler')
                     """,
-                    run_id, a["id"], a["userId"],
+                    run_id,
+                    a["id"],
+                    a["userId"],
                 )
                 # Recalcula próximo run
                 next_run = None
@@ -241,7 +243,12 @@ async def process_run(run_id: str) -> None:
                 "costUsd" = $5, "noteId" = $6
             WHERE id = $1
             """,
-            run_id, output_md, tokens_in, tokens_out, cost_usd, note_id,
+            run_id,
+            output_md,
+            tokens_in,
+            tokens_out,
+            cost_usd,
+            note_id,
         )
     log.info("automation-run-success", run_id=run_id, tokens_in=tokens_in, tokens_out=tokens_out)
 
@@ -263,7 +270,8 @@ async def _mark_failed(run_id: str, error_msg: str) -> None:
             SET status = 'FAILED', "finishedAt" = NOW(), "errorMessage" = $2
             WHERE id = $1
             """,
-            run_id, error_msg[:1000],
+            run_id,
+            error_msg[:1000],
         )
     log.warning("automation-run-failed", run_id=run_id, error=error_msg[:200])
 

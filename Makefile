@@ -1,4 +1,4 @@
-.PHONY: help ensure-env dev update build down restart logs ps test test-ts test-py lint lint-ts lint-py typecheck migrate seed shell-db shell-redis minio-init master-key-show reset-password backup clean
+.PHONY: help ensure-env dev update build down restart logs ps test test-ts test-py lint lint-ts lint-py format format-ts format-py format-check format-check-ts format-check-py typecheck migrate seed shell-db shell-redis minio-init master-key-show reset-password backup clean
 
 # ============================================================================
 # Voxen — one-command development
@@ -59,7 +59,7 @@ test-py: ## Testes do chat e worker (pytest via uv)
 	cd apps/chat && uv run pytest
 	cd apps/worker && uv run pytest
 
-# --- Lint / typecheck ---
+# --- Lint / format / typecheck ---
 lint: lint-ts lint-py ## Lint completo
 
 lint-ts:
@@ -68,6 +68,24 @@ lint-ts:
 lint-py:
 	cd apps/chat && uv run ruff check .
 	cd apps/worker && uv run ruff check .
+
+format: format-ts format-py ## Aplica formatacao (Prettier + Ruff)
+
+format-ts:
+	cd apps/web && bun run format
+
+format-py:
+	cd apps/chat && uv run ruff format .
+	cd apps/worker && uv run ruff format .
+
+format-check: format-check-ts format-check-py ## Verifica formatacao sem alterar arquivos
+
+format-check-ts:
+	cd apps/web && bun run format:check
+
+format-check-py:
+	cd apps/chat && uv run ruff format --check .
+	cd apps/worker && uv run ruff format --check .
 
 typecheck:
 	cd apps/web && bun run typecheck

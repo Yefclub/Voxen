@@ -1,0 +1,51 @@
+name: Feature request
+description: Proponha uma melhoria ou nova capacidade.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Problema ou oportunidade
+      description: Que dor isso resolve? Para quem?
+      placeholder: Hoje, quando ..., fica dificil porque ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposta
+    attributes:
+      label: Proposta
+      description: Como voce imagina a solucao?
+    validations:
+      required: true
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Alternativas consideradas
+      description: Existem caminhos mais simples ou solucoes externas?
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area principal
+      options:
+        - Web/API
+        - Chat
+        - Worker/transcricao
+        - Deploy/infra
+        - Seguranca
+        - Documentacao
+        - Outra
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: Procurei issues existentes antes de abrir esta.
+          required: true
+        - label: Entendo que features maiores podem precisar de spec antes da implementacao.
+          required: true
+

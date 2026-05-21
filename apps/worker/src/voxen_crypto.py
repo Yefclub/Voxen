@@ -42,9 +42,7 @@ def encrypt(plaintext: str, key: bytes) -> str:
     ct_with_tag = aesgcm.encrypt(iv, plaintext.encode("utf-8"), None)
     ciphertext = ct_with_tag[:-TAG_LEN]
     tag = ct_with_tag[-TAG_LEN:]
-    return ".".join(
-        base64.b64encode(part).decode("ascii") for part in (iv, ciphertext, tag)
-    )
+    return ".".join(base64.b64encode(part).decode("ascii") for part in (iv, ciphertext, tag))
 
 
 def decrypt(encrypted: str, key: bytes) -> str:
@@ -53,9 +51,7 @@ def decrypt(encrypted: str, key: bytes) -> str:
         raise CryptoError(f"Master key must be {KEY_LEN} bytes, got {len(key)}")
     parts = encrypted.split(".")
     if len(parts) != 3:
-        raise CryptoError(
-            f"Invalid ciphertext format (expected 3 parts, got {len(parts)})"
-        )
+        raise CryptoError(f"Invalid ciphertext format (expected 3 parts, got {len(parts)})")
     try:
         iv = base64.b64decode(parts[0])
         ciphertext = base64.b64decode(parts[1])
@@ -80,19 +76,13 @@ def load_master_key(path: str | Path) -> bytes:
     try:
         content = p.read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise CryptoError(
-            f"FATAL: master key not accessible at {path}: {exc}"
-        ) from exc
+        raise CryptoError(f"FATAL: master key not accessible at {path}: {exc}") from exc
     try:
         key = base64.b64decode(content)
     except Exception as exc:
-        raise CryptoError(
-            f"FATAL: master key at {path} is not valid base64"
-        ) from exc
+        raise CryptoError(f"FATAL: master key at {path} is not valid base64") from exc
     if len(key) != KEY_LEN:
-        raise CryptoError(
-            f"Master key at {path} is {len(key)} bytes; expected {KEY_LEN}"
-        )
+        raise CryptoError(f"Master key at {path} is {len(key)} bytes; expected {KEY_LEN}")
     return key
 
 

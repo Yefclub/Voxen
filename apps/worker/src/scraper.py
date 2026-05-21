@@ -98,9 +98,7 @@ def _resolve_and_validate(host: str) -> set[str]:
         except ValueError:
             continue
         if _is_private_ip(ip):
-            raise FetchBlockedError(
-                "Host privado/interno não permitido. Use URL pública."
-            )
+            raise FetchBlockedError("Host privado/interno não permitido. Use URL pública.")
         ips.add(str(ip))
     if not ips:
         raise FetchBlockedError(f"Nenhum IP resolvido pra {host}.")
@@ -124,9 +122,7 @@ def _assert_public_host(url: str) -> set[str]:
     if not host:
         raise FetchBlockedError("URL sem hostname.")
     if host in _BLOCKED_HOSTNAMES:
-        raise FetchBlockedError(
-            "Host interno não permitido. Use URL pública."
-        )
+        raise FetchBlockedError("Host interno não permitido. Use URL pública.")
     return _resolve_and_validate(host)
 
 
@@ -164,9 +160,7 @@ def _assert_peer_ip_public(response: httpx.Response, expected_ips: set[str]) -> 
     except (ValueError, TypeError):
         return
     if _is_private_ip(peer_ip):
-        raise FetchBlockedError(
-            "DNS rebinding detectado — conexão caiu em IP privado/interno."
-        )
+        raise FetchBlockedError("DNS rebinding detectado — conexão caiu em IP privado/interno.")
 
 
 @dataclass(frozen=True)
@@ -224,18 +218,19 @@ async def fetch_and_extract(url: str) -> ScrapeResult:
         with_metadata=True,
     )
     if not extracted_md or len(extracted_md.strip()) < MIN_CONTENT_CHARS:
-        raise EmptyContentError(
-            "Conteúdo insuficiente — página vazia, paywall, ou JS-heavy."
-        )
+        raise EmptyContentError("Conteúdo insuficiente — página vazia, paywall, ou JS-heavy.")
 
-    plain = trafilatura.extract(
-        html,
-        url=final_url,
-        output_format="txt",
-        include_links=False,
-        include_images=False,
-        favor_precision=True,
-    ) or extracted_md
+    plain = (
+        trafilatura.extract(
+            html,
+            url=final_url,
+            output_format="txt",
+            include_links=False,
+            include_images=False,
+            favor_precision=True,
+        )
+        or extracted_md
+    )
 
     metadata = trafilatura.extract_metadata(html, default_url=final_url)
     title, site_name, author, published, thumb, lang = _unpack_metadata(metadata, final_url)
