@@ -2,6 +2,7 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
       day: monday
@@ -24,6 +25,7 @@ updates:
 
   - package-ecosystem: npm
     directory: /apps/web
+    target-branch: dev
     schedule:
       interval: weekly
       day: monday
@@ -31,6 +33,7 @@ updates:
 
   - package-ecosystem: pip
     directory: /apps/chat
+    target-branch: dev
     schedule:
       interval: weekly
       day: monday
@@ -44,6 +47,7 @@ updates:
 
   - package-ecosystem: pip
     directory: /apps/worker
+    target-branch: dev
     schedule:
       interval: weekly
       day: monday
@@ -51,24 +55,28 @@ updates:
 
   - package-ecosystem: docker
     directory: /apps/web
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
 
   - package-ecosystem: docker
     directory: /apps/chat
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
 
   - package-ecosystem: docker
     directory: /apps/worker
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
 
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
