@@ -1,27 +1,18 @@
 # ============================================================================
-# version-main — bumpa estável vX.Y.Z + commita em main + despacha release
+# version-main — publica tag estável vX.Y.Z a partir de main
 # ============================================================================
-# Regra de release: só `main` cria versão estável. Workflow:
-#  - Roda em push pra `main` (após merge da PR de release dev→main).
-#  - Detecta PR_NUM via mensagem do squash commit "Title (#N)".
-#  - Lê labels: release:major | release:minor | release:patch (default).
-#  - Lê última tag estável (sem -dev.N) ou package.json como base.
-#  - Bumpa o componente conforme label.
-#  - Atualiza package.json + apps/web/package.json.
-#  - Commit "chore: release vX.Y.Z" + tag vX.Y.Z + push.
-#  - Despacha release.yml para a tag (build + push imagens pro ghcr).
-#  - Sincroniza main de volta para dev com um merge de release.
-#
-# Loop-safe: condition skipa commits que começam com "chore: release v".
-#
-# Pré-requisito: branch `main` SEM required_pull_request_reviews.
+# Branch-protection friendly:
+#  - a PR de release já deve trazer package.json em X.Y.Z estável;
+#  - este workflow não commita em main nem em dev;
+#  - se a tag vX.Y.Z ainda não existir, cria a tag e despacha release.yml.
 # ============================================================================
 
-name: Version main on merge
+name: Publish stable release
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -35,7 +26,6 @@ concurrency:
 jobs:
   version-main:
     runs-on: ubuntu-latest
-    if: "${{ !startsWith(github.event.head_commit.message, 'chore: release v') }}"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,123 +37,52 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Detect bump type from PR labels
-        id: bump
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-        run: |
-          set -euo pipefail
-          PR_NUM=""
-          # Parameter expansion (sem pipe → sem SIGPIPE em msgs gigantes).
-          FIRST_LINE="${COMMIT_MSG%%$'\n'*}"
-          if [[ "$FIRST_LINE" =~ \(#([0-9]+)\)[[:space:]]*$ ]]; then
-            PR_NUM="${BASH_REMATCH[1]}"
-          fi
-          if [[ -z "$PR_NUM" ]]; then
-            PR_NUM=$(gh pr list --base main --state merged --limit 1 \
-              --json number --jq '.[0].number' 2>/dev/null || echo "")
-          fi
-          BUMP="patch"
-          if [[ -n "$PR_NUM" ]]; then
-            LABELS=$(gh pr view "$PR_NUM" --json labels --jq '.labels[].name' 2>/dev/null || true)
-            if echo "$LABELS" | grep -q "release:major"; then BUMP="major"
-            elif echo "$LABELS" | grep -q "release:minor"; then BUMP="minor"
-            fi
-          fi
-          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
-          echo "Detected bump: $BUMP (PR #$PR_NUM)"
-
-      - name: Compute new stable version
+      - name: Read stable version
         id: version
         run: |
           set -euo pipefail
-          # Última tag estável (sem -dev.N). Fallback: package.json.
-          LAST_STABLE=$(git tag --list 'v*' --sort=-v:refname | grep -v -- '-dev\.' | head -n1 || true)
-          if [[ -z "$LAST_STABLE" ]]; then
-            BASE_VER=$(node -p "require('./package.json').version")
-          else
-            BASE_VER="${LAST_STABLE#v}"
+          ROOT_VER=$(node -p "require('./package.json').version")
+          WEB_VER=$(node -p "require('./apps/web/package.json').version")
+          if ! echo "$ROOT_VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "package.json precisa estar em SemVer estável X.Y.Z; atual: $ROOT_VER"
+            exit 1
           fi
-          # Limpa qualquer sufixo -dev caso venha do pkg.json
-          BASE_VER="${BASE_VER%-dev*}"
-          BUMP="${{ steps.bump.outputs.bump }}"
-          NEW_VER=$(BASE_VER="$BASE_VER" BUMP="$BUMP" node -e "
-            const v = process.env.BASE_VER.split('.').map(Number);
-            if (process.env.BUMP === 'major') { v[0]++; v[1]=0; v[2]=0; }
-            else if (process.env.BUMP === 'minor') { v[1]++; v[2]=0; }
-            else { v[2]++; }
-            console.log(v.join('.'));
-          ")
-          echo "new_version=$NEW_VER" >> "$GITHUB_OUTPUT"
-          echo "new_tag=v$NEW_VER" >> "$GITHUB_OUTPUT"
-          echo "Bumping main to v$NEW_VER (last stable: $LAST_STABLE)"
+          if [ "$ROOT_VER" != "$WEB_VER" ]; then
+            echo "Versões divergentes: package.json=$ROOT_VER apps/web/package.json=$WEB_VER"
+            exit 1
+          fi
+          echo "version=$ROOT_VER" >> "$GITHUB_OUTPUT"
+          echo "tag=v$ROOT_VER" >> "$GITHUB_OUTPUT"
 
-      - name: Write new version to package.json
+      - name: Create tag and dispatch release
         env:
-          NEW_VER: ${{ steps.version.outputs.new_version }}
-        run: |
-          set -euo pipefail
-          node -e "
-            const fs = require('fs');
-            const files = ['./package.json', './apps/web/package.json'];
-            for (const f of files) {
-              const j = JSON.parse(fs.readFileSync(f, 'utf8'));
-              j.version = process.env.NEW_VER;
-              fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
-            }
-          "
-
-      - name: Commit + tag + push
-        env:
-          NEW_VER: ${{ steps.version.outputs.new_version }}
-          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          dispatch_release() {
-            gh workflow run release.yml --ref "$NEW_TAG"
-            echo "Dispatched release.yml for $NEW_TAG"
-          }
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json apps/web/package.json
-          if git diff --staged --quiet; then
-            echo "No version change to commit"
-            exit 0
-          fi
-          git commit -m "chore: release v$NEW_VER"
-          for attempt in 1 2 3 4 5; do
-            if git push origin main; then
-              # Tag só depois do push/rebase final, para não apontar para
-              # commit antigo caso haja concorrência e o commit seja reescrito.
-              git tag -fa "$NEW_TAG" -m "Release $NEW_TAG"
-              if git push origin "$NEW_TAG" 2>&1; then
-                dispatch_release
-                echo "Released v$NEW_VER — release.yml despachado para a tag."
-                exit 0
-              fi
-            else
-              git pull --rebase origin main
-            fi
-            REMOTE_TAG_SHA=$(git ls-remote origin "refs/tags/$NEW_TAG^{}" | cut -f1 || true)
-            if [[ -n "$REMOTE_TAG_SHA" && "$REMOTE_TAG_SHA" == "$(git rev-parse HEAD)" ]]; then
-              dispatch_release
-              echo "Released v$NEW_VER — release.yml despachado para a tag."
+
+          existing_sha=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1 || true)
+          if [ -n "$existing_sha" ]; then
+            if [ "$existing_sha" = "$(git rev-parse HEAD)" ]; then
+              echo "Tag $TAG já aponta para HEAD. Nada para publicar."
               exit 0
             fi
-            sleep "$((attempt * 3))"
-          done
-          exit 1
-
-      - name: Sync stable release back to dev
-        run: |
-          set -euo pipefail
-          git fetch origin main dev
-          git checkout -B dev origin/dev
-          if git merge --no-ff origin/main -m "chore: sync main release ${{ steps.version.outputs.new_tag }} into dev"; then
-            git push origin dev
-          else
-            echo "Conflito ao sincronizar main em dev. Resolva manualmente."
-            exit 1
+            echo "Tag $TAG já existe em outro commit ($existing_sha). Nenhuma nova release será criada."
+            exit 0
           fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          gh workflow run release.yml --ref "$TAG"
+
+          {
+            echo "## Release publicada"
+            echo ""
+            echo "- Tag: \`$TAG\`"
+            echo "- Versão: \`$VERSION\`"
+            echo ""
+            echo "Abra uma PR de sync \`main → dev\` se dev ainda não contém o commit de release."
+          } >> "$GITHUB_STEP_SUMMARY"

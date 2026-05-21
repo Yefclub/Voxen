@@ -124,7 +124,7 @@ Migrations rodam automaticamente no entrypoint do `web` (Prisma `migrate deploy`
 
 ## Workflow
 
-Branch default: `dev`. Toda mudança via PR pra `dev`. Release: PR `dev → main` com label `release:patch|minor|major`. Detalhes em `CLAUDE.md` e `docs/DEVELOPMENT.md`.
+Branch default: `main`. Desenvolvimento entra por PR em `dev`; releases saem por PR para `main` com label `release:patch|minor|major` e versão SemVer já preparada. Detalhes em `CLAUDE.md` e `docs/DEVELOPMENT.md`.
 
 ## Licença
 

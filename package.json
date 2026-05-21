@@ -1,6 +1,6 @@
 {
   "name": "voxen",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Voxen — base de conhecimento self-hosted com Vox, sua assistente IA",
   "engines": {
@@ -15,7 +15,8 @@
     "test": "make test",
     "lint": "make lint",
     "typecheck": "make typecheck",
-    "migrate": "make migrate"
+    "migrate": "make migrate",
+    "release:prepare": "node scripts/prepare-release.mjs"
   },
   "license": "MIT"
 }
