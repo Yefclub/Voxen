@@ -150,26 +150,33 @@ chore(infra): atualiza imagem do MinIO
 docs(spec): adiciona .specs/003-painel-custos.md
 ```
 
-### Versioning — SemVer estável em main, metadata em dev
+### Versioning — SemVer estável em main, prerelease em dev
 
-`package.json` guarda a última versão estável do produto. A branch `dev` não
-gera mais commits/tags `-dev.N` a cada merge, porque isso polui histórico,
-diverge `dev` de `main` e dificulta PRs de release. Builds de dev usam metadata
-efêmera como `0.4.0-dev.<run>+<sha>` ou o `VOXEN_VERSION` injetado pelo deploy.
+`package.json` guarda a última versão estável do produto. Tags estáveis usam
+SemVer completo: `vX.Y.Z`. A branch `dev` não cria commits/tags automáticos de
+pré-release a cada merge; builds de dev usam uma versão efêmera SemVer ligada à
+próxima patch estável: `X.Y.Z-dev.YYYYMMDD.HHMMSS+sha.<shortsha>`.
 
 **Branch `dev`**:
 - Toda feature entra por PR para `dev`.
-- `version-dev.yml` calcula e publica metadata no summary do workflow.
+- `version-dev.yml` calcula e publica a versão dev no summary do workflow.
+- A imagem Easypanel em `dev` recebe tags `dev`, `dev-X.Y.Z-dev.<timestamp>.sha.<shortsha>` e `X.Y.Z-dev.<timestamp>.sha.<shortsha>`.
 - O workflow não altera arquivos, não commita e não cria tag.
 
 **Release estável em `main`**:
-- Abra PR `dev → main` com label `release:patch`, `release:minor` ou `release:major`.
-- Após o merge, `version-main.yml` lê a última tag estável, calcula o bump,
-  atualiza `package.json` + `apps/web/package.json`, commita `chore: release vX.Y.Z`
-  e cria a tag `vX.Y.Z`.
-- A tag dispara `release.yml`, que publica as imagens e cria GitHub Release.
-- Depois do bump, `version-main.yml` sincroniza `main` de volta em `dev` com
-  `chore: sync main release vX.Y.Z into dev`.
+- Prepare uma branch de release a partir de `dev`: `pnpm release:prepare patch`
+  (ou `minor`/`major`) e commite `package.json` + `apps/web/package.json`.
+- Abra PR para `main` com label `release:patch`, `release:minor` ou
+  `release:major`.
+- `pr-release-labels.yml` valida que a versão preparada bate com a label e com
+  a última tag estável.
+- Após o merge, `version-main.yml` cria a tag `vX.Y.Z` se ela ainda não existir
+  e despacha `release.yml`, que publica imagens e GitHub Release.
+- Sincronize `main` de volta em `dev` por PR normal quando houver commit de
+  release que `dev` ainda não contém.
+
+Esse fluxo é compatível com branch protection: nenhum workflow precisa commitar
+direto em `main` ou `dev`.
 
 **Versão visível na UI**: `/api/version` retorna em ordem:
 1. env `VOXEN_VERSION` (CI/deploy injeta build arg; dev local pode usar

@@ -1,9 +1,9 @@
 # ============================================================================
-# version-dev — metadata de build para dev, sem mutar package.json
+# version-dev — metadata SemVer para dev, sem mutar package.json
 # ============================================================================
 # Regra: `dev` não ganha commit/tag automático de pre-release. A versão estável
 # vive em package.json e tags vX.Y.Z; builds de dev usam metadata efêmera
-# `X.Y.Z-dev.<run>+<sha>` ou o build arg VOXEN_VERSION do deploy.
+# ligada à próxima versão patch: `X.Y.Z-dev.YYYYMMDD.HHMMSS+sha.<shortsha>`.
 # ============================================================================
 
 name: Dev version metadata
@@ -32,22 +32,31 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          LAST_STABLE=$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -Ev -- '-(dev|alpha|beta|rc)\.' | head -n1 || true)
+          LAST_STABLE=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -Em1 '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
           if [[ -n "$LAST_STABLE" ]]; then
             BASE_VER="${LAST_STABLE#v}"
           else
             BASE_VER=$(node -p "require('./package.json').version.split('-')[0]")
           fi
+          NEXT_VER=$(BASE_VER="$BASE_VER" node -e "
+            const v = process.env.BASE_VER.split('.').map(Number);
+            if (v.length !== 3 || v.some(Number.isNaN)) throw new Error('Invalid base version: ' + process.env.BASE_VER);
+            v[2] += 1;
+            console.log(v.join('.'));
+          ")
+          STAMP=$(date -u +%Y%m%d.%H%M%S)
           SHORT_SHA="${GITHUB_SHA::7}"
-          DEV_VER="${BASE_VER}-dev.${GITHUB_RUN_NUMBER}+${SHORT_SHA}"
+          DEV_VER="${NEXT_VER}-dev.${STAMP}+sha.${SHORT_SHA}"
           echo "base_version=$BASE_VER" >> "$GITHUB_OUTPUT"
+          echo "next_version=$NEXT_VER" >> "$GITHUB_OUTPUT"
           echo "dev_version=$DEV_VER" >> "$GITHUB_OUTPUT"
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
           {
             echo "## Dev version"
             echo ""
-            echo "- Base estável: \`$BASE_VER\`"
-            echo "- Metadata dev: \`$DEV_VER\`"
+            echo "- Última estável: \`$BASE_VER\`"
+            echo "- Próxima patch base: \`$NEXT_VER\`"
+            echo "- Versão dev: \`$DEV_VER\`"
             echo "- Commit: \`$SHORT_SHA\`"
             echo ""
             echo "Nenhum arquivo, commit ou tag foi criado por este workflow."
