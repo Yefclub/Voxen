@@ -1,10 +1,9 @@
 # ============================================================================
-# pr-release-labels — exige release:patch|minor|major em PRs pra main
+# pr-release-labels — valida SemVer em PRs pra main
 # ============================================================================
-# PRs de dev→main DEVEM ter uma das labels release:* — o workflow
-# `version-main.yml` lê essa label pra decidir o bump semver. Sem label,
-# falha o check (não bloqueia merge se PR é dispensável de release, mas
-# faz o owner pensar antes).
+# PRs para main devem ser release PRs: uma label release:* e package.json já
+# bumpado para a próxima versão esperada. Assim main pode ser protegida sem
+# workflow tentando commitar direto nela após o merge.
 # ============================================================================
 
 name: PR release labels
@@ -19,17 +18,74 @@ permissions:
 
 jobs:
   check-label:
+    name: Release label gate
     runs-on: ubuntu-latest
     steps:
-      - name: Exige uma label release:*
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate release label and version bump
         env:
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           set -euo pipefail
-          if echo ",$LABELS," | grep -q ",release:patch,\|,release:minor,\|,release:major,"; then
-            echo "✅ PR tem label release:* — bump será aplicado no merge."
-            exit 0
+
+          count=0
+          bump=""
+          for candidate in patch minor major; do
+            if echo ",$LABELS," | grep -q ",release:${candidate},"; then
+              count=$((count + 1))
+              bump="$candidate"
+            fi
+          done
+
+          if [ "$count" -ne 1 ]; then
+            echo "PR para main precisa de exatamente uma label: release:patch, release:minor ou release:major."
+            exit 1
           fi
-          echo "❌ PR pra main precisa de uma das labels: release:patch, release:minor, release:major"
-          echo "   Adicione a label apropriada antes de mergear."
-          exit 1
+
+          last_stable=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -Em1 '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          if [ -n "$last_stable" ]; then
+            base_version="${last_stable#v}"
+          else
+            base_version="$(node -p "require('./package.json').version.split('-')[0]")"
+          fi
+
+          expected="$(BASE_VER="$base_version" BUMP="$bump" node -e "
+            const v = process.env.BASE_VER.split('.').map(Number);
+            if (v.length !== 3 || v.some(Number.isNaN)) throw new Error('Invalid base version: ' + process.env.BASE_VER);
+            if (process.env.BUMP === 'major') { v[0] += 1; v[1] = 0; v[2] = 0; }
+            else if (process.env.BUMP === 'minor') { v[1] += 1; v[2] = 0; }
+            else { v[2] += 1; }
+            console.log(v.join('.'));
+          ")"
+
+          root_version="$(node -p "require('./package.json').version")"
+          web_version="$(node -p "require('./apps/web/package.json').version")"
+
+          if ! echo "$root_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "package.json precisa estar em SemVer estável X.Y.Z; atual: $root_version"
+            exit 1
+          fi
+          if [ "$root_version" != "$web_version" ]; then
+            echo "Versões divergentes: package.json=$root_version apps/web/package.json=$web_version"
+            exit 1
+          fi
+          if [ "$root_version" != "$expected" ]; then
+            echo "Versão esperada para release:$bump a partir de $base_version: $expected; atual: $root_version"
+            echo "Rode: pnpm release:prepare $bump"
+            exit 1
+          fi
+
+          {
+            echo "## Release gate"
+            echo ""
+            echo "- Bump: \`$bump\`"
+            echo "- Última estável: \`$base_version\`"
+            echo "- Próxima release: \`$expected\`"
+          } >> "$GITHUB_STEP_SUMMARY"

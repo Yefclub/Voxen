@@ -41,8 +41,24 @@ jobs:
 
           case "$GITHUB_REF" in
             refs/heads/dev)
-              version="dev-${short_sha}"
+              last_stable=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -Em1 '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+              if [ -n "$last_stable" ]; then
+                base_version="${last_stable#v}"
+              else
+                base_version="$(node -p "require('./package.json').version.split('-')[0]")"
+              fi
+              next_version="$(BASE_VER="$base_version" node -e "
+                const v = process.env.BASE_VER.split('.').map(Number);
+                if (v.length !== 3 || v.some(Number.isNaN)) throw new Error('Invalid base version: ' + process.env.BASE_VER);
+                v[2] += 1;
+                console.log(v.join('.'));
+              ")"
+              stamp="$(date -u +%Y%m%d.%H%M%S)"
+              version="${next_version}-dev.${stamp}+sha.${short_sha}"
+              docker_version="${next_version}-dev.${stamp}.sha.${short_sha}"
               printf '%s\n' "${IMAGE_NAME}:dev" >> "$tags_file"
+              printf '%s\n' "${IMAGE_NAME}:dev-${docker_version}" >> "$tags_file"
+              printf '%s\n' "${IMAGE_NAME}:${docker_version}" >> "$tags_file"
               ;;
             refs/heads/main)
               version="$(node -p "require('./package.json').version")"
