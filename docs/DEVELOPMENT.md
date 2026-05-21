@@ -27,7 +27,8 @@ automaticamente.
 
 Acessa `http://localhost:3000`. Primeiro cadastro vira admin → tela de setup pede OpenRouter API key + modelos default. Console MinIO: `http://localhost:9001`.
 
-> Repositório atual: `Yefclub/Voxen` (private durante a preparação para abertura pública). Enquanto estiver privado em conta pessoal Free, branch protection pode não estar disponível; ao tornar público, revisar required status checks e regras de branch.
+> Repositório atual: `Yefclub/Voxen` (público/open source). `main` e `dev`
+> são protegidas; contribuições normais entram por PR para `dev`.
 
 ## Comandos do dia-a-dia (via Makefile)
 
@@ -43,7 +44,9 @@ make test                  # roda testes TS + Python
 make test-ts               # só TS (apps/web)
 make test-py               # só Python (chat + worker)
 
-make lint                  # eslint + prettier + ruff
+make lint                  # eslint + ruff check
+make format                # aplica prettier + ruff format
+make format-check          # verifica formatação sem alterar arquivos
 make typecheck             # tsc + mypy
 
 make migrate               # aplica migrations Prisma (cd no container web)
@@ -112,8 +115,8 @@ cd apps/chat && uv run pytest   # só chat
 
 ### Branches
 
-- `main` — branch de release (protegida, só recebe PR de `dev`)
-- `dev` — **branch default**, alvo de todas PRs de feature
+- `main` — branch default e de release (protegida, só recebe PR de release a partir de `dev`)
+- `dev` — branch de integração (protegida), alvo de PRs de feature/correção
 - `feat/<slug>`, `fix/<slug>`, `chore/<slug>`, `refactor/<slug>`, `docs/<slug>` — branches de feature criadas A PARTIR DE `dev`
 
 ### Fluxo
@@ -122,7 +125,7 @@ cd apps/chat && uv run pytest   # só chat
 2. `git checkout -b feat/<slug>`
 3. Criar/atualizar `.specs/NNN-slug.md` se necessário
 4. Implementar com TDD
-5. `make lint && make typecheck && make test && docker compose build`
+5. `make format-check && make lint && make typecheck && make test && docker compose build`
 6. Commit com conventional message (título em inglês):
    ```
    feat(scope): descrição concisa do que mudou
@@ -187,7 +190,7 @@ direto em `main` ou `dev`.
 
 ### TypeScript (`apps/web`)
 
-- **ESLint** + **Prettier** (configs no `apps/web/`)
+- **ESLint** + **Prettier** (configs no `apps/web/`; comandos via `make lint`, `make format` e `make format-check`)
 - Async/await sobre Promises
 - Sem `any` — usar `unknown` + narrowing
 - Validação de input com Zod em TODOS os handlers

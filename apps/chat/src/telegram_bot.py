@@ -401,9 +401,11 @@ def _telegram_upload_filename(
     if raw.strip():
         return storage.sanitize_upload_filename(raw)
     normalized_content_type = content_type.split(";")[0].strip().lower()
-    ext = "ogg" if normalized_content_type == "audio/ogg" else (
-        mimetypes.guess_extension(normalized_content_type) or ""
-    ).lstrip(".")
+    ext = (
+        "ogg"
+        if normalized_content_type == "audio/ogg"
+        else (mimetypes.guess_extension(normalized_content_type) or "").lstrip(".")
+    )
     if not ext:
         ext = "bin"
     return storage.sanitize_upload_filename(f"{default_prefix}-{file_id[:10]}.{ext}")
