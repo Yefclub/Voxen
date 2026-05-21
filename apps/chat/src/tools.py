@@ -249,9 +249,7 @@ TOOLS_SPEC: list[dict[str, Any]] = [
                 "properties": {
                     "action_summary": {
                         "type": "string",
-                        "description": (
-                            "Resumo curto e direto do que vai fazer."
-                        ),
+                        "description": ("Resumo curto e direto do que vai fazer."),
                     },
                 },
                 "required": ["action_summary"],
@@ -278,9 +276,7 @@ TOOLS_SPEC: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "search_notes",
-            "description": (
-                "Busca FTS nas notas (title+content). Palavras-chave em português."
-            ),
+            "description": ("Busca FTS nas notas (title+content). Palavras-chave em português."),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -576,7 +572,6 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                     "atual sem executar a ação. Aguarde a próxima mensagem dele."
                 ),
             }
-
 
         if name == "list_notes":
             limit = min(int(args.get("limit", 30)), 100)

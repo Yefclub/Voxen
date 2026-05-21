@@ -9,21 +9,32 @@ on:
   schedule:
     - cron: '0 3 * * 1'   # toda segunda 03:00 UTC
 
-# ============================================================================
-# IMPORTANTE: workflows que fariam upload-sarif (CodeQL, SARIF nos scanners)
-# requerem GitHub Advanced Security, PAGO p/ repos privados.
-# Por ora, scanners rodam em modo "fail-on-finding" e printam output legível
-# nos logs do CI. Quando GHAS for adquirido:
-#   - reativar `format: sarif` + `upload-sarif`
-#   - adicionar job codeql-ts
-#   - reativar dependency-review (também GHAS)
-# ============================================================================
-
 permissions:
   contents: read
   pull-requests: read
+  security-events: write
 
 jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  codeql:
+    name: CodeQL (JS/TS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v4
+
   trivy-fs:
     name: Trivy filesystem scan
     runs-on: ubuntu-latest
@@ -103,8 +114,8 @@ jobs:
       - run: pip-audit --requirement /tmp/${{ matrix.app }}-requirements.txt --strict
         continue-on-error: true  # remove once green
 
-  bun-audit:
-    name: bun audit
+  pnpm-audit:
+    name: pnpm audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,0 +1,72 @@
+name: Bug report
+description: Reporte um bug reproduzivel no Voxen.
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por reportar. Nao inclua secrets, tokens, cookies ou valores reais do `.env`.
+  - type: textarea
+    id: resumo
+    attributes:
+      label: Resumo
+      description: O que aconteceu?
+      placeholder: Descreva o problema em poucas frases.
+    validations:
+      required: true
+  - type: textarea
+    id: passos
+    attributes:
+      label: Passos para reproduzir
+      description: Liste o menor caminho para reproduzir o bug.
+      placeholder: |
+        1. Subir com `make dev`
+        2. Acessar ...
+        3. Clicar em ...
+        4. Ver erro ...
+    validations:
+      required: true
+  - type: textarea
+    id: esperado
+    attributes:
+      label: Comportamento esperado
+      description: O que deveria acontecer?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs relevantes
+      description: Cole logs sem secrets. Use blocos de codigo.
+      render: shell
+    validations:
+      required: false
+  - type: dropdown
+    id: ambiente
+    attributes:
+      label: Ambiente
+      options:
+        - Docker local
+        - Proxmox CT/LXC
+        - Home-lab
+        - VPS/servidor dedicado
+        - Easypanel
+        - Outro
+    validations:
+      required: true
+  - type: input
+    id: versao
+    attributes:
+      label: Versao ou commit
+      placeholder: v0.7.2 ou SHA
+    validations:
+      required: true
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto adicional
+      description: Prints, links, configuracoes nao sensiveis ou hipoteses.
+    validations:
+      required: false
+

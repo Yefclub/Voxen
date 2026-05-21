@@ -293,26 +293,26 @@ Pesquisa na web é uma ferramenta central, não opcional. Usar ativamente para:
 
 ## Contexto
 
-Projeto pessoal do Yef (Carlos Kalyel) hospedado em `Yefclub/Voxen` (private). Owner único.
+Projeto open source do Yef (Carlos Kalyel) hospedado em `Yefclub/Voxen`. Owner/mantenedor principal único.
 
 **Ecossistema de software**:
 - **Deploy**: Easypanel App via Dockerfile ou Docker Compose direto
 - **Auth**: better-auth com workflow de aprovação manual do admin (modelo restrito de adoção)
 - **Storage**: MinIO/S3-compatible (sem dependência obrigatória de cloud externa)
 - **LLM**: OpenRouter como agregador único (1 chave, billing unificado)
-- **CI/CD**: GitHub Actions com foco em segurança (Trivy, CodeQL, Bandit, gitleaks)
+- **CI/CD**: GitHub Actions com CI, release e segurança (Trivy, CodeQL, Dependency Review, Bandit, gitleaks)
 
 Decisões técnicas devem considerar: segurança self-hosted, soberania de dados, escalabilidade horizontal modesta (poucos users, muitos vídeos), e fácil deploy num único container/host.
 
 ## CI/CD (GitHub Actions)
 
-- `.github/workflows/ci.yml` — Lint (eslint, prettier, ruff), typecheck (tsc, mypy), test (bun test, pytest), build (docker build cada app). Roda em PR pra `dev` e `main`
-- `.github/workflows/security.yml` — Trivy (FS + container), CodeQL (TS/JS), Bandit (Python), pip-audit, bun audit, gitleaks (secrets). Roda em PR + push + schedule semanal
+- `.github/workflows/ci.yml` — Lint (eslint, prettier, ruff), format check, typecheck (tsc, mypy), test (bun test, pytest), build (docker build cada app). Roda em PR pra `dev` e `main`
+- `.github/workflows/security.yml` — Dependency Review, CodeQL (TS/JS), Trivy (FS + container), Bandit (Python), pip-audit, pnpm audit, gitleaks (secrets). Roda em PR + push + schedule semanal
 - `.github/workflows/release.yml` — Trigger em tag `v*` no `main`. Build imagens, push pra `ghcr.io`, cria GitHub Release com changelog
 
 Branch protection em `dev` e `main`:
-- Require PR + 1 review
-- Require status checks (ci.yml + security.yml)
+- Require PR
+- Required status checks do CI
 - No force push
 - No delete
 
