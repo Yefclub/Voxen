@@ -14,6 +14,8 @@
     "down": "make down",
     "test": "make test",
     "lint": "make lint",
+    "format": "make format",
+    "format:check": "make format-check",
     "typecheck": "make typecheck",
     "migrate": "make migrate",
     "release:prepare": "node scripts/prepare-release.mjs"

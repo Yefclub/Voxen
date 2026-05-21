@@ -2,6 +2,8 @@
 
 Voxen é self-hosted, multi-user com adoção restrita. Este documento descreve o modelo de ameaças, decisões de segurança, e onde estão os guards.
 
+Para reportar vulnerabilidades, siga a política pública em [`../SECURITY.md`](../SECURITY.md).
+
 ## Threat model (resumido)
 
 | Atacante | Vetor | Mitigação |
@@ -13,7 +15,7 @@ Voxen é self-hosted, multi-user com adoção restrita. Este documento descreve 
 | Interno (user) | Acesso a transcrição de outro user | Query-time scoping por `userId` em TODA query; rotas admin protegidas por role |
 | Interno | Exfil de secrets via DB dump | Secrets em `settings.valueEnc` cifrados com master key — dump do DB sem master key não vaza |
 | Interno (admin) | Abuso de privilégio | Admin é o owner (1 pessoa); ações administrativas logadas |
-| Supply chain | Pacote npm/pip malicioso | Dependabot + audits (npm audit, pip-audit) + lockfile commitado |
+| Supply chain | Pacote npm/pip malicioso | Dependabot + audits (pnpm audit, pip-audit) + lockfile commitado |
 | Supply chain | Imagem Docker maliciosa | Trivy scan no CI em cada PR |
 
 ## Princípios
@@ -121,7 +123,7 @@ FOR EACH ROW EXECUTE FUNCTION update_transcript_search_vector();
 
 ## Logs
 
-- Apps emitem JSON estruturado (structlog em Python, biome em TS — TBD)
+- Apps evitam logar secrets; Python usa `structlog` e o web/API mantém logs operacionais sem valores sensíveis
 - **NUNCA** logar: senhas, API keys, master key, body com secrets
 - Em produção: log retention 30 dias
 - Eventos a logar: auth (login OK/fail), aprovações de user, jobs criados/concluídos/falhados, custos por user/dia
@@ -132,15 +134,15 @@ Workflows em `.github/workflows/security.yml`:
 
 | Scanner | Cobertura |
 |---|---|
+| **Dependency Review** | Mudanças de dependências em PRs |
+| **CodeQL** | SAST TS/JS |
 | **Trivy** | Filesystem + container images (CVE em deps + binários) |
-| **CodeQL** | SAST TS/JS (taint analysis, common vulns) |
 | **Bandit** | SAST Python (subprocess, eval, etc.) |
-| **pip-audit** | CVE em deps Python |
-| **bun audit** / `npm audit` | CVE em deps TS |
+| **pip-audit** | CVE em deps Python (advisory enquanto houver findings conhecidos) |
+| **pnpm audit** | CVE em deps TS (advisory enquanto houver findings conhecidos) |
 | **gitleaks** | Secrets em commits/PRs |
-| **dependency-review** | Análise de novas deps em PRs (GitHub Action nativa) |
 
-Roda em: PR (todos), push em `dev`/`main`, schedule semanal.
+Roda em: PR, push em `dev`/`main` e schedule semanal. Dependency Review roda apenas em PR.
 
 ## Resposta a incidentes
 

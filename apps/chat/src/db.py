@@ -64,7 +64,9 @@ async def list_user_transcripts(
                 WHERE "userId" = $1 AND source = $2::"TranscriptSource"
                 ORDER BY "createdAt" DESC LIMIT $3
                 """,
-                user_id, source, limit,
+                user_id,
+                source,
+                limit,
             )
         else:
             rows = await conn.fetch(
@@ -74,7 +76,8 @@ async def list_user_transcripts(
                 WHERE "userId" = $1
                 ORDER BY "createdAt" DESC LIMIT $2
                 """,
-                user_id, limit,
+                user_id,
+                limit,
             )
         return [dict(r) for r in rows]
 
@@ -99,7 +102,9 @@ async def search_user_transcripts(
             ORDER BY rank DESC, "createdAt" DESC
             LIMIT $3
             """,
-            user_id, query, limit,
+            user_id,
+            query,
+            limit,
         )
         return [dict(r) for r in rows]
 
@@ -114,7 +119,8 @@ async def get_user_transcript(user_id: str, transcript_id: str) -> dict[str, Any
             FROM "Transcript"
             WHERE id = $1 AND "userId" = $2
             """,
-            transcript_id, user_id,
+            transcript_id,
+            user_id,
         )
         return dict(row) if row else None
 
@@ -156,15 +162,17 @@ async def _create_job(user_id: str, source_url: str, job_type: str) -> dict[str,
     async with connection() as conn:
         existing_t = await conn.fetchrow(
             'SELECT id FROM "Transcript" WHERE "userId" = $1 AND url = $2',
-            user_id, source_url,
+            user_id,
+            source_url,
         )
         if existing_t:
             return {"duplicate": "transcript", "transcript_id": existing_t["id"]}
 
         existing_j = await conn.fetchrow(
             'SELECT id, status::text AS status FROM "Job" '
-            'WHERE "userId" = $1 AND "sourceUrl" = $2 AND status IN (\'QUEUED\', \'RUNNING\')',
-            user_id, source_url,
+            "WHERE \"userId\" = $1 AND \"sourceUrl\" = $2 AND status IN ('QUEUED', 'RUNNING')",
+            user_id,
+            source_url,
         )
         if existing_j:
             return {
@@ -184,7 +192,11 @@ async def _create_job(user_id: str, source_url: str, job_type: str) -> dict[str,
                 'QUEUED'::"JobStatus", $4, $5
             )
             """,
-            new_id, user_id, job_type, source_url, _utcnow_naive(),
+            new_id,
+            user_id,
+            job_type,
+            source_url,
+            _utcnow_naive(),
         )
         return {"id": new_id, "status": "QUEUED", "sourceUrl": source_url}
 
@@ -207,7 +219,9 @@ async def list_user_notes(
                 ORDER BY "updatedAt" DESC
                 LIMIT $3
                 """,
-                user_id, kind, limit,
+                user_id,
+                kind,
+                limit,
             )
         else:
             rows = await conn.fetch(
@@ -218,7 +232,8 @@ async def list_user_notes(
                 ORDER BY "updatedAt" DESC
                 LIMIT $2
                 """,
-                user_id, limit,
+                user_id,
+                limit,
             )
     return [dict(r) for r in rows]
 
@@ -244,7 +259,9 @@ async def search_user_notes(user_id: str, query: str, limit: int = 8) -> list[di
             ORDER BY rank DESC, "updatedAt" DESC
             LIMIT $3
             """,
-            user_id, query, limit,
+            user_id,
+            query,
+            limit,
         )
     return [dict(r) for r in rows]
 
@@ -257,7 +274,8 @@ async def get_user_note(user_id: str, note_id: str) -> dict[str, Any] | None:
             FROM "Note"
             WHERE id = $1 AND "userId" = $2
             """,
-            note_id, user_id,
+            note_id,
+            user_id,
         )
     return dict(row) if row else None
 
@@ -284,7 +302,13 @@ async def create_user_note(
             VALUES ($1, $2, $3, $4::"NoteKind", $5, $6, $7, $7)
             RETURNING id, "parentId", kind::text AS kind, title, "updatedAt"
             """,
-            new_id, user_id, parent_id, kind, title, content, _utcnow_naive(),
+            new_id,
+            user_id,
+            parent_id,
+            kind,
+            title,
+            content,
+            _utcnow_naive(),
         )
     return dict(row) if row else {"id": new_id}
 
@@ -302,7 +326,10 @@ async def update_user_note(
             WHERE id = $1 AND "userId" = $2
             RETURNING id, title, "updatedAt"
             """,
-            note_id, user_id, title, content,
+            note_id,
+            user_id,
+            title,
+            content,
         )
     return dict(row) if row else None
 
@@ -311,7 +338,8 @@ async def delete_user_note(user_id: str, note_id: str) -> bool:
     async with connection() as conn:
         result = await conn.execute(
             'DELETE FROM "Note" WHERE id = $1 AND "userId" = $2',
-            note_id, user_id,
+            note_id,
+            user_id,
         )
     # asyncpg retorna "DELETE N" — parse pra inteiro
     try:
@@ -341,7 +369,9 @@ async def list_user_automation_runs(
                 ORDER BY r."createdAt" DESC
                 LIMIT $3
                 """,
-                user_id, automation_id, limit,
+                user_id,
+                automation_id,
+                limit,
             )
         else:
             rows = await conn.fetch(
@@ -355,7 +385,8 @@ async def list_user_automation_runs(
                 ORDER BY r."createdAt" DESC
                 LIMIT $2
                 """,
-                user_id, limit,
+                user_id,
+                limit,
             )
     return [dict(r) for r in rows]
 
@@ -385,6 +416,13 @@ async def insert_cost_event(
                 $1, $2, $3, $4::"CostEventKind", $5, $6, $7, $8, $9::jsonb
             )
             """,
-            new_id, user_id, _utcnow_naive(), kind, model, tokens_in, tokens_out, cost_usd,
+            new_id,
+            user_id,
+            _utcnow_naive(),
+            kind,
+            model,
+            tokens_in,
+            tokens_out,
+            cost_usd,
             json.dumps(meta or {}, default=str),
         )

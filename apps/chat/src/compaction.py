@@ -261,9 +261,7 @@ async def _persist_compaction(conversation_id: str, user_id: str, summary: str) 
                 conversation_id,
             )
             if owner is None or owner["userId"] != user_id:
-                raise PermissionError(
-                    f"conversation {conversation_id} not owned by {user_id}"
-                )
+                raise PermissionError(f"conversation {conversation_id} not owned by {user_id}")
             # Cria a mensagem SYSTEM kind=COMPACTION_SUMMARY
             await conn.execute(
                 """

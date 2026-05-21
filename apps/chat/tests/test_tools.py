@@ -33,7 +33,10 @@ def test_youtube_canonical(url: str, expected: str) -> None:
 @pytest.mark.parametrize(
     "url,expected",
     [
-        ("https://www.instagram.com/reel/Abc123_XYZ/", "https://www.instagram.com/reel/Abc123_XYZ/"),
+        (
+            "https://www.instagram.com/reel/Abc123_XYZ/",
+            "https://www.instagram.com/reel/Abc123_XYZ/",
+        ),
         ("https://instagram.com/p/Abc123/", "https://www.instagram.com/reel/Abc123/"),
         ("https://www.instagram.com/tv/Code/", "https://www.instagram.com/reel/Code/"),
         ("https://www.instagram.com/someuser/reel/Code/", "https://www.instagram.com/reel/Code/"),

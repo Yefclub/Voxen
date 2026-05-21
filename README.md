@@ -121,6 +121,10 @@ Migrations rodam automaticamente no entrypoint do `web` (Prisma `migrate deploy`
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | ADRs |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Threat model |
 | [`docs/TRANSCRIPT-FORMAT.md`](docs/TRANSCRIPT-FORMAT.md) | Schema do `.md` |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Como contribuir |
+| [`SECURITY.md`](SECURITY.md) | Como reportar vulnerabilidades |
+| [`SUPPORT.md`](SUPPORT.md) | Onde pedir ajuda |
+| [`CHANGELOG.md`](CHANGELOG.md) | Politica de changelog/releases |
 
 ## Workflow
 

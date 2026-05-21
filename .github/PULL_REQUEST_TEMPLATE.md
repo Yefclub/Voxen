@@ -17,6 +17,7 @@ Decisões, trade-offs, partes complicadas. Liste arquivos críticos modificados.
 
 ## Plano de testes
 
+- [ ] `make format-check` verde
 - [ ] `make lint` verde
 - [ ] `make typecheck` verde
 - [ ] `make test` verde

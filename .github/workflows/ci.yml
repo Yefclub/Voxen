@@ -115,6 +115,9 @@ jobs:
       - name: Ruff
         run: uv run ruff check .
         working-directory: apps/chat
+      - name: Ruff format check
+        run: uv run ruff format --check .
+        working-directory: apps/chat
       - name: Mypy
         run: uv run mypy src
         working-directory: apps/chat
@@ -145,6 +148,8 @@ jobs:
       - run: uv sync --frozen
         working-directory: apps/worker
       - run: uv run ruff check .
+        working-directory: apps/worker
+      - run: uv run ruff format --check .
         working-directory: apps/worker
       - run: uv run mypy src
         working-directory: apps/worker

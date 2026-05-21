@@ -115,9 +115,7 @@ def _build_long_conv(n: int = 12) -> list[dict[str, Any]]:
     big = "x" * 10_000
     out: list[dict[str, Any]] = [{"role": "system", "content": "system prompt"}]
     for i in range(n):
-        out.append(
-            {"role": "user" if i % 2 == 0 else "assistant", "content": big}
-        )
+        out.append({"role": "user" if i % 2 == 0 else "assistant", "content": big})
     return out
 
 
@@ -125,9 +123,7 @@ def _build_long_conv(n: int = 12) -> list[dict[str, Any]]:
 async def test_openai_call_failure_returns_error_info() -> None:
     msgs = _build_long_conv()
     fake_client = MagicMock()
-    fake_client.chat.completions.create = AsyncMock(
-        side_effect=RuntimeError("network error")
-    )
+    fake_client.chat.completions.create = AsyncMock(side_effect=RuntimeError("network error"))
 
     with patch("src.compaction.AsyncOpenAI", return_value=fake_client):
         out, info = await maybe_compact_messages(
