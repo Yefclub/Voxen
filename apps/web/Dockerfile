@@ -9,7 +9,7 @@
 #   deploy no entrypoint. Inclui `dist/` do `build-front`.
 # ============================================================================
 
-FROM node:22-alpine AS build-front
+FROM node:26-alpine AS build-front
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
@@ -27,7 +27,7 @@ COPY packages ./packages
 # Build do front → apps/web/dist
 RUN cd apps/web && pnpm exec vite build
 
-FROM node:22-alpine AS build-server
+FROM node:26-alpine AS build-server
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
