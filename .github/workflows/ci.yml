@@ -20,11 +20,11 @@ jobs:
     name: Lint TS (apps/web)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.x
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
       - name: Prisma generate
         run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
@@ -40,11 +40,11 @@ jobs:
     name: Typecheck TS (apps/web)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.x
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
       - name: Prisma generate
         run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
@@ -84,11 +84,11 @@ jobs:
       REDIS_URL: redis://localhost:6379
       MASTER_KEY: dm94ZW5fY2lfbWFzdGVyX2tleV8zMl9ieXRlcyEhISE=
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.x
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
       - name: Prisma generate
         run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
@@ -104,11 +104,11 @@ jobs:
     name: Lint Python (apps/chat)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v8.1.0
       - name: Install deps
         run: uv sync --frozen
         working-directory: apps/chat
@@ -126,11 +126,11 @@ jobs:
     name: Test Python (apps/chat)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --frozen
         working-directory: apps/chat
       - run: uv run pytest
@@ -140,11 +140,11 @@ jobs:
     name: Lint Python (apps/worker)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --frozen
         working-directory: apps/worker
       - run: uv run ruff check .
@@ -158,11 +158,11 @@ jobs:
     name: Test Python (apps/worker)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --frozen
         working-directory: apps/worker
       - run: uv run pytest
@@ -172,10 +172,10 @@ jobs:
     name: Docker build (apps + Easypanel)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
       - name: Build web
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/web/Dockerfile
@@ -183,7 +183,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Build chat
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/chat/Dockerfile
@@ -191,7 +191,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Build worker
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/worker/Dockerfile
@@ -199,7 +199,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Build Easypanel App image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
@@ -278,6 +278,6 @@ jobs:
     name: docker-compose validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Validate compose
         run: docker compose -f docker-compose.yml config -q
