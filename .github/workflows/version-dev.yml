@@ -20,11 +20,11 @@ jobs:
   version-dev:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
 
@@ -47,10 +47,12 @@ jobs:
           STAMP=$(date -u +%Y%m%d.%H%M%S)
           SHORT_SHA="${GITHUB_SHA::7}"
           DEV_VER="${NEXT_VER}-dev.${STAMP}+sha.${SHORT_SHA}"
-          echo "base_version=$BASE_VER" >> "$GITHUB_OUTPUT"
-          echo "next_version=$NEXT_VER" >> "$GITHUB_OUTPUT"
-          echo "dev_version=$DEV_VER" >> "$GITHUB_OUTPUT"
-          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "base_version=$BASE_VER"
+            echo "next_version=$NEXT_VER"
+            echo "dev_version=$DEV_VER"
+            echo "short_sha=$SHORT_SHA"
+          } >> "$GITHUB_OUTPUT"
           {
             echo "## Dev version"
             echo ""
