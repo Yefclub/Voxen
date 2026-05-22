@@ -49,8 +49,8 @@ async function loadAppVersion(): Promise<string> {
   }
 }
 const VOXEN_VERSION = await loadAppVersion();
-const VOXEN_GIT_SHA = process.env.VOXEN_GIT_SHA ?? '';
-const VOXEN_BUILT_AT = process.env.VOXEN_BUILT_AT ?? new Date().toISOString();
+const VOXEN_GIT_SHA = process.env.VOXEN_GIT_SHA || '';
+const VOXEN_BUILT_AT = process.env.VOXEN_BUILT_AT || new Date().toISOString();
 app.get('/api/version', (c) => {
   return c.json({
     version: VOXEN_VERSION,
