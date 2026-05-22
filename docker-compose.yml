@@ -91,7 +91,7 @@ services:
       args:
         # Versão e SHA injetados no build. Em local, vêm de `git describe`
         # se o repo estiver clonado; em CI release, vêm da tag (`v1.2.3`).
-        # Fallback null → Dockerfile usa default 0.1.0/empty.
+        # Fallback vazio → app lê apps/web/package.json e gera builtAt em runtime.
         VOXEN_VERSION: ${VOXEN_VERSION:-}
         VOXEN_GIT_SHA: ${VOXEN_GIT_SHA:-}
         VOXEN_BUILT_AT: ${VOXEN_BUILT_AT:-}
