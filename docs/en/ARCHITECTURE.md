@@ -99,4 +99,3 @@ Postgres stores durable relational data and full-text search vectors. Redis back
 ## Design Direction
 
 Voxen favors simple, inspectable infrastructure over opaque managed systems. The most important architectural choice is the harness approach: agents use deterministic tools over plain data instead of a vector embedding pipeline.
-
