@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -11,6 +11,7 @@ import {
   Upload,
   Users,
   Lock,
+  Languages,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -24,6 +25,7 @@ import { useMe } from '../lib/hooks';
 import type { OrModel } from '../lib/types';
 import { Spinner as Spin } from '../components/ui/spinner';
 import { ModelPicker } from '../components/model-picker';
+import { LOCALES, useI18n, type Locale } from '../lib/i18n';
 
 interface ModelsResponse {
   chat: OrModel[];
@@ -34,7 +36,7 @@ interface ModelsResponse {
   web: OrModel[];
 }
 
-type Step = 'key' | 'modelos' | 'modo' | 'perfil' | 'pronto';
+type Step = 'idioma' | 'key' | 'modelos' | 'modo' | 'perfil' | 'pronto';
 
 export function OnboardingPage(): React.ReactElement {
   const navigate = useNavigate();
@@ -70,7 +72,9 @@ function OnboardingContent({
   refresh: () => Promise<void>;
   navigate: ReturnType<typeof useNavigate>;
 }): React.ReactElement {
-  const [step, setStep] = useState<Step>('key');
+  const { locale, setLocale, t } = useI18n();
+  const [step, setStep] = useState<Step>('idioma');
+  const [appLanguage, setAppLanguage] = useState<Locale>(locale);
   const [apiKey, setApiKey] = useState('');
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [chatModel, setChatModel] = useState('');
@@ -83,6 +87,16 @@ function OnboardingContent({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (step === 'idioma') setAppLanguage(locale);
+  }, [locale, step]);
+
+  function chooseLanguage(next: Locale): void {
+    setAppLanguage(next);
+    setLocale(next);
+    setStep('key');
+  }
 
   async function submitKey(e: React.FormEvent): Promise<void> {
     e.preventDefault();
@@ -122,7 +136,7 @@ function OnboardingContent({
       setXAnalysisModel(preferredX?.id ?? res.xAnalysis[0]?.id ?? '');
       setStep('modelos');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao validar chave.');
+      setError(err instanceof ApiError ? err.message : t('onboarding.error.key'));
     } finally {
       setLoading(false);
     }
@@ -145,7 +159,7 @@ function OnboardingContent({
       await apiPost('/api/setup', body);
       setStep('modo');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao salvar configuração.');
+      setError(err instanceof ApiError ? err.message : t('onboarding.error.save'));
     } finally {
       setLoading(false);
     }
@@ -175,7 +189,7 @@ function OnboardingContent({
       setAvatarPreview(data.image);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao enviar imagem.');
+      setError(err instanceof Error ? err.message : t('onboarding.error.avatar'));
     } finally {
       setLoading(false);
     }
@@ -185,18 +199,21 @@ function OnboardingContent({
     setError(null);
     setLoading(true);
     try {
-      await apiPost('/api/onboarding', { allow_signups: allowSignups });
+      await apiPost('/api/onboarding', {
+        allow_signups: allowSignups,
+        app_language: appLanguage,
+      });
       await refresh();
       setStep('pronto');
       setTimeout(() => navigate('/dashboard'), 1400);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao finalizar.');
+      setError(err instanceof ApiError ? err.message : t('onboarding.error.finish'));
     } finally {
       setLoading(false);
     }
   }
 
-  const stepOrder: Step[] = ['key', 'modelos', 'modo', 'perfil'];
+  const stepOrder: Step[] = ['idioma', 'key', 'modelos', 'modo', 'perfil'];
   const currentIdx = stepOrder.indexOf(step);
 
   if (step === 'pronto') {
@@ -215,9 +232,11 @@ function OnboardingContent({
             </div>
           </div>
           <h2 className="font-display text-3xl font-semibold tracking-[-0.03em] mt-8">
-            Tudo pronto, {userName.split(' ')[0]}.
+            {t('onboarding.done.title', { name: userName.split(' ')[0] || 'admin' })}
           </h2>
-          <p className="text-[15px] text-[var(--color-app-muted)] mt-3">Levando você ao painel…</p>
+          <p className="text-[15px] text-[var(--color-app-muted)] mt-3">
+            {t('onboarding.done.sub')}
+          </p>
         </motion.div>
       </FullScreenShell>
     );
@@ -257,12 +276,38 @@ function OnboardingContent({
         )}
 
         <AnimatePresence mode="wait">
+          {step === 'idioma' && (
+            <Slide key="idioma">
+              <Heading
+                eyebrow={t('onboarding.language.eyebrow')}
+                title={t('onboarding.language.title')}
+                sub={t('onboarding.language.sub')}
+              />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <ModeCard
+                  Icon={Languages}
+                  title={LOCALES['pt-BR'].nativeName}
+                  desc={t('onboarding.language.ptHint')}
+                  selected={appLanguage === 'pt-BR'}
+                  onClick={() => chooseLanguage('pt-BR')}
+                />
+                <ModeCard
+                  Icon={Languages}
+                  title={LOCALES.en.nativeName}
+                  desc={t('onboarding.language.enHint')}
+                  selected={appLanguage === 'en'}
+                  onClick={() => chooseLanguage('en')}
+                />
+              </div>
+            </Slide>
+          )}
+
           {step === 'key' && (
             <Slide key="key">
               <Heading
-                eyebrow="01 · Conexão"
-                title="Conecte com a OpenRouter"
-                sub="Uma chave dá acesso aos modelos de transcrição (Whisper) e ao agente que conversa com sua biblioteca."
+                eyebrow={t('onboarding.connection.eyebrow')}
+                title={t('onboarding.connection.title')}
+                sub={t('onboarding.connection.sub')}
               />
               <form onSubmit={submitKey} className="space-y-5">
                 <FieldLabel htmlFor="key">OpenRouter API key</FieldLabel>
@@ -289,12 +334,16 @@ function OnboardingContent({
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 text-xs text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors"
                 >
-                  Não tem chave? Gerar agora
+                  {t('onboarding.keyCta')}
                   <ExternalLink className="h-3 w-3" />
                 </a>
-                <div className="flex justify-end pt-2">
+                <div className="flex justify-between pt-2">
+                  <GhostButton type="button" onClick={() => setStep('idioma')}>
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    {t('common.back')}
+                  </GhostButton>
                   <PrimaryButton type="submit" disabled={loading || apiKey.length < 20}>
-                    {loading ? <Spinner /> : 'Validar e continuar'}
+                    {loading ? <Spinner /> : t('onboarding.validateContinue')}
                     {!loading && <ArrowRight className="h-4 w-4" />}
                   </PrimaryButton>
                 </div>
@@ -305,68 +354,68 @@ function OnboardingContent({
           {step === 'modelos' && models && (
             <Slide key="modelos">
               <Heading
-                eyebrow="02 · Modelos"
-                title="Escolha os modelos padrão"
-                sub="Whisper Large Turbo é a melhor relação custo/qualidade para transcrição. Para o chat, prefira modelos com contexto grande."
+                eyebrow={t('onboarding.models.eyebrow')}
+                title={t('onboarding.models.title')}
+                sub={t('onboarding.models.sub')}
               />
               <form onSubmit={saveModels} className="space-y-5">
                 <ModelPicker
-                  label="Transcrição"
+                  label={t('onboarding.models.transcription')}
                   value={transcriptionModel}
                   onChange={setTranscriptionModel}
                   options={models.transcription}
                   count={models.transcription.length}
                 />
                 <ModelPicker
-                  label="Chat"
+                  label={t('onboarding.models.chat')}
                   value={chatModel}
                   onChange={setChatModel}
                   options={models.chat}
                   count={models.chat.length}
                 />
                 <ModelPicker
-                  label="Pesquisa web"
+                  label={t('onboarding.models.web')}
                   value={webSearchModel}
                   onChange={setWebSearchModel}
                   options={models.web}
                   count={models.web.length}
                   optional
-                  hint="Usado pela tool web_search com sufixo :online. Vazio = usa o modelo de chat."
+                  hint={t('onboarding.models.webHint')}
                 />
                 <ModelPicker
-                  label="Visão"
+                  label={t('onboarding.models.vision')}
                   value={visionModel}
                   onChange={setVisionModel}
                   options={models.vision}
                   count={models.vision.length}
                   optional
-                  hint="Habilita envio de imagens no chat e no Telegram. Vazio = recurso desabilitado."
+                  hint={t('onboarding.models.visionHint')}
                 />
                 <ModelPicker
-                  label="Documentos"
+                  label={t('onboarding.models.documents')}
                   value={documentModel}
                   onChange={setDocumentModel}
                   options={models.document}
                   count={models.document.length}
                   optional
-                  hint="Modelos OpenRouter com input nativo de arquivo/PDF. Vazio = análise documental desabilitada."
+                  hint={t('onboarding.models.documentsHint')}
                 />
                 <ModelPicker
-                  label="X / Grok"
+                  label={t('onboarding.models.x')}
                   value={xAnalysisModel}
                   onChange={setXAnalysisModel}
                   options={models.xAnalysis}
                   count={models.xAnalysis.length}
                   optional
-                  hint="Analisa posts e threads do X com Grok/xAI e busca nativa no X."
+                  hint={t('onboarding.models.xHint')}
                 />
                 <div className="flex justify-between pt-2">
                   <GhostButton type="button" onClick={() => setStep('key')}>
                     <ArrowLeft className="h-3.5 w-3.5" />
-                    Voltar
+                    {t('common.back')}
                   </GhostButton>
                   <PrimaryButton type="submit" disabled={loading}>
-                    {loading ? <Spinner /> : 'Salvar e continuar'}
+                    {loading ? <Spinner /> : t('common.saveContinue')}
                     {!loading && <ArrowRight className="h-4 w-4" />}
                   </PrimaryButton>
                 </div>
@@ -377,22 +426,22 @@ function OnboardingContent({
           {step === 'modo' && (
             <Slide key="modo">
               <Heading
-                eyebrow="03 · Modo de uso"
-                title="Quem vai usar esta instância?"
-                sub="Você pode mudar essa configuração depois nas configurações administrativas."
+                eyebrow={t('onboarding.mode.eyebrow')}
+                title={t('onboarding.mode.title')}
+                sub={t('onboarding.mode.sub')}
               />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <ModeCard
                   Icon={Users}
-                  title="Equipe"
-                  desc="Permitir que outros usuários se cadastrem (você aprova cada um)."
+                  title={t('onboarding.mode.team')}
+                  desc={t('onboarding.mode.teamDesc')}
                   selected={allowSignups}
                   onClick={() => chooseModo(true)}
                 />
                 <ModeCard
                   Icon={Lock}
-                  title="Apenas você"
-                  desc="Fechar cadastros novos. Ninguém mais consegue criar conta."
+                  title={t('onboarding.mode.solo')}
+                  desc={t('onboarding.mode.soloDesc')}
                   selected={!allowSignups}
                   onClick={() => chooseModo(false)}
                 />
@@ -400,7 +449,7 @@ function OnboardingContent({
               <div className="flex justify-between pt-2 mt-6">
                 <GhostButton type="button" onClick={() => setStep('modelos')}>
                   <ArrowLeft className="h-3.5 w-3.5" />
-                  Voltar
+                  {t('common.back')}
                 </GhostButton>
               </div>
             </Slide>
@@ -409,9 +458,9 @@ function OnboardingContent({
           {step === 'perfil' && (
             <Slide key="perfil">
               <Heading
-                eyebrow="04 · Perfil (opcional)"
-                title="Coloque sua cara nisso"
-                sub="Adicione uma foto se quiser — ou pule e termine agora."
+                eyebrow={t('onboarding.profile.eyebrow')}
+                title={t('onboarding.profile.title')}
+                sub={t('onboarding.profile.sub')}
               />
               <div className="flex items-center gap-6 mb-6">
                 <Avatar className="h-20 w-20 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
@@ -435,7 +484,7 @@ function OnboardingContent({
                 <div className="space-y-2">
                   <label className="inline-flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface)] hover:bg-[var(--color-app-surface-hover)] px-3.5 py-2 text-sm font-medium transition-colors">
                     {loading ? <Spinner /> : <Upload className="h-3.5 w-3.5" />}
-                    Enviar imagem
+                    {t('onboarding.profile.upload')}
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
@@ -446,16 +495,18 @@ function OnboardingContent({
                       }}
                     />
                   </label>
-                  <p className="text-xs text-[var(--color-app-muted)]">PNG, JPG ou WebP até 5MB</p>
+                  <p className="text-xs text-[var(--color-app-muted)]">
+                    {t('onboarding.profile.fileHint')}
+                  </p>
                 </div>
               </div>
               <div className="flex justify-between pt-2">
                 <GhostButton type="button" onClick={() => setStep('modo')}>
                   <ArrowLeft className="h-3.5 w-3.5" />
-                  Voltar
+                  {t('common.back')}
                 </GhostButton>
                 <PrimaryButton type="button" onClick={finishOnboarding} disabled={loading}>
-                  {loading ? <Spinner /> : 'Concluir'}
+                  {loading ? <Spinner /> : t('onboarding.profile.finish')}
                   {!loading && <Sparkles className="h-4 w-4" />}
                 </PrimaryButton>
               </div>

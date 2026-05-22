@@ -8,8 +8,10 @@ import { ApiError, apiGet, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import type { InstanceState } from '../lib/types';
 import { Logo } from '../components/ui/logo';
+import { useI18n } from '../lib/i18n';
 
 export function LoginPage(): React.ReactElement {
+  const { setLocale, t } = useI18n();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -21,9 +23,12 @@ export function LoginPage(): React.ReactElement {
 
   useEffect(() => {
     apiGet<InstanceState>('/api/instance')
-      .then(setInstance)
+      .then((next) => {
+        setInstance(next);
+        setLocale(next.language);
+      })
       .catch(() => undefined);
-  }, []);
+  }, [setLocale]);
 
   async function onSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
@@ -37,9 +42,9 @@ export function LoginPage(): React.ReactElement {
       if (err instanceof ApiError && err.status === 403) {
         setError(err.message);
       } else if (err instanceof ApiError) {
-        setError('E-mail ou senha incorretos.');
+        setError(t('auth.signInError'));
       } else {
-        setError('Erro inesperado. Tente novamente.');
+        setError(t('auth.unexpectedError'));
       }
     } finally {
       setLoading(false);
@@ -79,10 +84,10 @@ export function LoginPage(): React.ReactElement {
             <>
               <div className="space-y-2.5">
                 <h1 className="font-display text-[40px] font-semibold leading-[1.05] tracking-[-0.04em]">
-                  Bem-vindo de volta
+                  {t('auth.signInTitle')}
                 </h1>
                 <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-                  Acesse sua biblioteca de vídeos transcritos.
+                  {t('auth.signInSubtitle')}
                 </p>
               </div>
 
@@ -93,7 +98,7 @@ export function LoginPage(): React.ReactElement {
                   </Alert>
                 )}
 
-                <FieldLabel htmlFor="email">E-mail</FieldLabel>
+                <FieldLabel htmlFor="email">{t('auth.email')}</FieldLabel>
                 <GlassInputWrapper>
                   <input
                     id="email"
@@ -103,12 +108,12 @@ export function LoginPage(): React.ReactElement {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="voce@exemplo.com"
+                    placeholder={t('auth.emailPlaceholder')}
                     className="w-full bg-transparent text-sm px-4 py-3.5 rounded-xl focus:outline-none placeholder:text-zinc-600"
                   />
                 </GlassInputWrapper>
 
-                <FieldLabel htmlFor="password">Senha</FieldLabel>
+                <FieldLabel htmlFor="password">{t('auth.password')}</FieldLabel>
                 <GlassInputWrapper>
                   <div className="relative">
                     <input
@@ -139,19 +144,19 @@ export function LoginPage(): React.ReactElement {
                   disabled={loading}
                   className="w-full rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-500 py-3.5 font-semibold text-emerald-950 hover:from-emerald-300 hover:to-emerald-400 active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-60"
                 >
-                  {loading ? <Spinner /> : 'Entrar'}
+                  {loading ? <Spinner /> : t('auth.signIn')}
                   {!loading && <ArrowRight className="h-4 w-4" />}
                 </button>
               </form>
 
               {canSignUp && (
                 <p className="text-center text-sm text-[var(--color-app-muted)] pt-2 border-t border-[var(--color-app-border)]/60">
-                  Ainda não tem conta?{' '}
+                  {t('auth.noAccount')}{' '}
                   <Link
                     to="/cadastro"
                     className="text-violet-400 font-medium hover:text-violet-300 hover:underline transition-colors"
                   >
-                    Criar conta
+                    {t('auth.createAccount')}
                   </Link>
                 </p>
               )}
@@ -159,7 +164,7 @@ export function LoginPage(): React.ReactElement {
               {!canSignUp && (
                 <p className="text-center text-xs text-[var(--color-app-muted)] pt-2 border-t border-[var(--color-app-border)]/60 inline-flex items-center justify-center gap-1.5 w-full">
                   <Lock className="h-3 w-3" />
-                  Cadastros novos estão fechados nesta instância
+                  {t('auth.signupsClosed')}
                 </p>
               )}
             </>
@@ -176,15 +181,15 @@ export function LoginPage(): React.ReactElement {
 }
 
 function FirstRunCallout({ onContinue }: { onContinue: () => void }): React.ReactElement {
+  const { t } = useI18n();
   return (
     <div className="space-y-6">
       <div className="space-y-2.5">
         <h1 className="font-display text-[40px] font-semibold leading-[1.05] tracking-[-0.04em]">
-          Primeira vez por aqui
+          {t('auth.firstRunTitle')}
         </h1>
         <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-          Nenhum usuário cadastrado ainda. Crie a conta principal — ela será a administradora desta
-          instância.
+          {t('auth.firstRunSubtitle')}
         </p>
       </div>
       <button
@@ -192,7 +197,7 @@ function FirstRunCallout({ onContinue }: { onContinue: () => void }): React.Reac
         onClick={onContinue}
         className="w-full rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-500 py-3.5 font-semibold text-emerald-950 hover:from-emerald-300 hover:to-emerald-400 active:scale-[0.98] inline-flex items-center justify-center gap-2"
       >
-        Criar conta administradora
+        {t('auth.createAdmin')}
         <ArrowRight className="h-4 w-4" />
       </button>
     </div>
@@ -225,6 +230,7 @@ function GlassInputWrapper({ children }: { children: React.ReactNode }): React.R
 }
 
 function HeroPanel(): React.ReactElement {
+  const { t } = useI18n();
   return (
     <div className="relative h-full rounded-3xl overflow-hidden">
       {/* Gradiente principal */}
@@ -270,11 +276,11 @@ function HeroPanel(): React.ReactElement {
           className="max-w-md space-y-6"
         >
           <h2 className="font-display text-5xl xl:text-6xl font-semibold leading-[0.98] tracking-[-0.04em] text-balance">
-            Sua biblioteca de vídeos, <span className="text-gradient">na ponta da pergunta.</span>
+            {t('auth.heroTitle.prefix')}{' '}
+            <span className="text-gradient">{t('auth.heroTitle.highlight')}</span>
           </h2>
           <p className="text-[15px] leading-relaxed text-[var(--color-app-subtle)] max-w-sm">
-            Cole um link, o Voxen transcreve e indexa. Depois, converse com sua biblioteca como se
-            fosse um colega que já assistiu tudo.
+            {t('auth.heroSubtitle')}
           </p>
         </motion.div>
       </div>
