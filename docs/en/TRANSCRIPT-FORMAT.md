@@ -106,4 +106,3 @@ transcript_format_version: 2
 ```
 
 Migration jobs should preserve existing files and write upgraded versions deterministically.
-

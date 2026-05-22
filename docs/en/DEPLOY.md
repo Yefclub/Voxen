@@ -132,4 +132,3 @@ make reset-password EMAIL=user@example.com PASSWORD='newStrongPassword12'
 ```
 
 The script updates the password hash and revokes active sessions.
-

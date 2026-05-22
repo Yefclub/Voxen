@@ -83,4 +83,3 @@ Security automation should support the `dev` to `main` release flow. Auto-fixes 
 3. Inspect auth, job, and cost events for anomalies.
 4. Restore from Postgres, object storage, and `MASTER_KEY` backups when needed.
 5. Publish a patch release if code changes are required.
-

@@ -55,4 +55,3 @@ Application secrets stored in the database are encrypted with a master key from 
 ## ADR-009: Custom SSE Client
 
 Agno streaming does not use the Vercel AI SDK protocol. Voxen uses a small custom SSE client in the front-end instead of adding an adapter layer too early.
-
