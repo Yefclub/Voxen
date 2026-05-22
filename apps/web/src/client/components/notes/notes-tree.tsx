@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronRight, FileText, Folder, Trash2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useNotes, type NoteListItem } from '../../lib/use-notes';
+import { useI18n } from '../../lib/i18n';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 
 interface Props {
@@ -19,6 +20,7 @@ interface Props {
 
 export function NotesTree({ activeId, variant = 'card' }: Props): React.ReactElement {
   const { notes, loading, remove } = useNotes();
+  const { t } = useI18n();
   const [pendingDelete, setPendingDelete] = useState<NoteListItem | null>(null);
   const navigate = useNavigate();
 
@@ -49,7 +51,7 @@ export function NotesTree({ activeId, variant = 'card' }: Props): React.ReactEle
           variant === 'sidebar' && 'text-[11px]',
         )}
       >
-        Carregando…
+        {t('common.loading')}
       </div>
     );
   }
@@ -59,9 +61,9 @@ export function NotesTree({ activeId, variant = 'card' }: Props): React.ReactEle
       <div className="px-3 py-8 text-center space-y-2">
         <FileText className="mx-auto h-5 w-5 text-[var(--color-app-muted)]" />
         <p className="text-xs text-[var(--color-app-muted)] leading-relaxed">
-          Sem notas ainda.
+          {t('notes.emptyTree')}
           <br />
-          Use o botão acima.
+          {t('notes.useButtonAbove')}
         </p>
       </div>
     );
@@ -85,13 +87,17 @@ export function NotesTree({ activeId, variant = 'card' }: Props): React.ReactEle
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
-        title={pendingDelete?.kind === 'FOLDER' ? 'Apagar pasta?' : 'Apagar nota?'}
+        title={
+          pendingDelete?.kind === 'FOLDER'
+            ? t('notes.deleteFolderTitle')
+            : t('notes.deleteNoteTitle')
+        }
         description={
           pendingDelete?.kind === 'FOLDER'
-            ? 'Tudo dentro dela será apagado também. Ação irreversível.'
-            : 'A nota e seu conteúdo serão apagados. Ação irreversível.'
+            ? t('notes.deleteFolderDescription')
+            : t('notes.deleteNoteDescription')
         }
-        confirmLabel="Apagar"
+        confirmLabel={t('common.delete')}
         variant="destructive"
         onConfirm={confirmDelete}
       />
@@ -114,6 +120,7 @@ function TreeNode({
   level: number;
   variant: 'sidebar' | 'card';
 }): React.ReactElement {
+  const { t } = useI18n();
   const children = childrenByParent.get(node.id) ?? [];
   const [expanded, setExpanded] = useState(true);
   const isActive = activeId === node.id;
@@ -147,7 +154,7 @@ function TreeNode({
               onDelete(node);
             }}
             className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-[var(--color-app-muted)] hover:text-rose-400"
-            aria-label="Apagar"
+            aria-label={t('common.delete')}
           >
             <Trash2 className="h-3 w-3" />
           </button>
@@ -193,7 +200,7 @@ function TreeNode({
           onDelete(node);
         }}
         className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-[var(--color-app-muted)] hover:text-rose-400"
-        aria-label="Apagar"
+        aria-label={t('common.delete')}
       >
         <Trash2 className="h-3 w-3" />
       </button>

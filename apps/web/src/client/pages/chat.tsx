@@ -31,6 +31,7 @@ import {
   refreshConversations,
 } from '../lib/use-conversations';
 import { useChatContextState } from '../lib/chat-context-ctx';
+import { useI18n, type TranslateFn } from '../lib/i18n';
 
 interface Msg {
   id: string;
@@ -75,6 +76,7 @@ export function ChatPage(): React.ReactElement {
   const { id: routeId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: me } = useMe();
+  const { t } = useI18n();
 
   const [active, setActive] = useState<ConvSummary | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -136,7 +138,7 @@ export function ChatPage(): React.ReactElement {
     async (id: string): Promise<void> => {
       const res = await fetch(`/api/chat/conversations/${id}`, { credentials: 'include' });
       if (!res.ok) {
-        toast.error('Conversa não encontrada.');
+        toast.error(t('chat.notFound'));
         navigate('/chat', { replace: true });
         return;
       }
@@ -200,7 +202,7 @@ export function ChatPage(): React.ReactElement {
           })),
       );
     },
-    [navigate],
+    [navigate, t],
   );
 
   useEffect(() => {
@@ -243,9 +245,7 @@ export function ChatPage(): React.ReactElement {
   // chip "✓ Aprovado" / "✗ Cancelado" em vez de bubble cheio.
   async function respondToConfirmation(approved: boolean): Promise<void> {
     if (streaming) return;
-    const reply = approved
-      ? 'Sim, pode prosseguir com a ação proposta.'
-      : 'Não, cancele essa ação.';
+    const reply = approved ? t('chat.hitlApproveMessage') : t('chat.hitlRejectMessage');
     void send(reply, { hitl: true });
   }
 
@@ -259,7 +259,7 @@ export function ChatPage(): React.ReactElement {
     if (!convId) {
       const created = await createConversation(text.slice(0, 60));
       if (!created) {
-        toast.error('Falha ao iniciar conversa.');
+        toast.error(t('chat.startError'));
         return;
       }
       setActive(created);
@@ -313,7 +313,7 @@ export function ChatPage(): React.ReactElement {
         setMessages((m) =>
           m.map((x) =>
             x.id === asstId
-              ? { ...x, pending: false, content: `⚠️ ${err.error ?? 'Erro na requisição.'}` }
+              ? { ...x, pending: false, content: `⚠️ ${err.error ?? t('chat.requestError')}` }
               : x,
           ),
         );
@@ -375,7 +375,7 @@ export function ChatPage(): React.ReactElement {
               ),
             );
           } else if (ev === 'error') {
-            const msg = (payload.message as string) ?? 'Erro inesperado.';
+            const msg = (payload.message as string) ?? t('chat.unexpectedError');
             setMessages((m) =>
               m.map((x) =>
                 x.id === asstId
@@ -398,26 +398,27 @@ export function ChatPage(): React.ReactElement {
             };
             setLastCompaction(info);
             setContextUsage({ tokens: info.tokens_after, limit: info.limit });
-            toast.success('Memória compactada.', {
-              description: `Reduziu de ${info.tokens_before.toLocaleString()} pra ${info.tokens_after.toLocaleString()} tokens.`,
+            toast.success(t('chat.compacted'), {
+              description: t('chat.compactedDescription', {
+                before: info.tokens_before.toLocaleString(),
+                after: info.tokens_after.toLocaleString(),
+              }),
               action: {
-                label: 'Ver resumo',
+                label: t('chat.viewSummary'),
                 onClick: () => setCompactionModalOpen(true),
               },
             });
           } else if (ev === 'compaction_failed') {
             // Tentou compactar mas falhou — provavelmente vai estourar contexto
             // na próxima chamada ao modelo. Avisa o user.
-            toast.warning('Não consegui compactar a memória.', {
-              description:
-                (payload.error as string) ??
-                'Sua próxima resposta pode falhar por exceder o limite do modelo.',
+            toast.warning(t('chat.compactionFailed'), {
+              description: (payload.error as string) ?? t('chat.compactionFailedDescription'),
             });
           }
         }
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Falha de conexão.';
+      const msg = err instanceof Error ? err.message : t('chat.connectionError');
       setMessages((m) =>
         m.map((x) =>
           x.id === asstId ? { ...x, pending: false, content: x.content + `\n\n⚠️ ${msg}` } : x,
@@ -438,17 +439,17 @@ export function ChatPage(): React.ReactElement {
 
   function handleImageFile(file: File): void {
     if (!visionEnabled) {
-      toast.error('Visão não está habilitada — admin precisa configurar um modelo de visão.');
+      toast.error(t('chat.visionDisabled'));
       return;
     }
     if (!/^image\/(png|jpeg|webp|gif)$/i.test(file.type)) {
-      toast.error('Formato não suportado.', {
-        description: 'Aceito: PNG, JPEG, WEBP, GIF.',
+      toast.error(t('chat.unsupportedFormat'), {
+        description: t('chat.acceptedImages'),
       });
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('Imagem muito grande.', { description: 'Limite: 5 MB.' });
+      toast.error(t('chat.imageTooLarge'), { description: t('chat.imageLimit') });
       return;
     }
     const reader = new FileReader();
@@ -456,20 +457,20 @@ export function ChatPage(): React.ReactElement {
       const result = reader.result;
       if (typeof result === 'string') setAttachedImage(result);
     };
-    reader.onerror = () => toast.error('Falha ao ler arquivo.');
+    reader.onerror = () => toast.error(t('chat.readFileError'));
     reader.readAsDataURL(file);
   }
 
   async function uploadFileFromChat(file: File): Promise<void> {
     if (streaming || uploadingFile) return;
     if (!documentEnabled) {
-      toast.error('Documentos não estão habilitados.', {
-        description: 'Admin precisa configurar um modelo de documentos em /setup.',
+      toast.error(t('chat.documentsDisabled'), {
+        description: t('chat.documentsDisabledDescription'),
       });
       return;
     }
     if (file.size > DOCUMENT_UPLOAD_LIMIT_BYTES) {
-      toast.error('Documento muito grande.', { description: 'Limite: 50 MB.' });
+      toast.error(t('chat.documentTooLarge'), { description: t('chat.documentLimit') });
       return;
     }
 
@@ -477,7 +478,7 @@ export function ChatPage(): React.ReactElement {
     if (!convId) {
       const created = await createConversation(`Upload: ${file.name}`.slice(0, 60));
       if (!created) {
-        toast.error('Falha ao iniciar conversa.');
+        toast.error(t('chat.startError'));
         return;
       }
       setActive(created);
@@ -499,7 +500,7 @@ export function ChatPage(): React.ReactElement {
         | { error?: string };
       if (!uploadRes.ok || !('jobId' in uploadBody)) {
         const error = 'error' in uploadBody ? uploadBody.error : undefined;
-        toast.error(error ?? 'Falha ao enviar documento.');
+        toast.error(error ?? t('chat.documentSendError'));
         return;
       }
 
@@ -518,7 +519,7 @@ export function ChatPage(): React.ReactElement {
         error?: string;
       };
       if (!msgRes.ok || !Array.isArray(msgBody.messages)) {
-        toast.error(msgBody.error ?? 'Documento enviado, mas falhei ao registrar no chat.');
+        toast.error(msgBody.error ?? t('chat.documentRegisterError'));
         return;
       }
       setMessages((items) => [
@@ -531,15 +532,15 @@ export function ChatPage(): React.ReactElement {
           tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
         })),
       ]);
-      toast.success('Documento enviado para análise.', {
+      toast.success(t('chat.documentSent'), {
         action: {
-          label: 'Abrir fila',
+          label: t('chat.openQueue'),
           onClick: () => navigate(`/jobs/${uploadBody.jobId}`),
         },
       });
       void refreshConversations();
     } catch (err) {
-      toast.error('Erro ao enviar documento.', {
+      toast.error(t('chat.documentUploadError'), {
         description: err instanceof Error ? err.message : undefined,
       });
     } finally {
@@ -589,7 +590,7 @@ export function ChatPage(): React.ReactElement {
           transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
           className="mx-auto max-w-3xl px-6 py-8 space-y-5"
         >
-          {empty && <EmptyState onPick={(s) => promptRef.current?.setValue(s)} />}
+          {empty && <EmptyState onPick={(s) => promptRef.current?.setValue(s)} t={t} />}
           <AnimatePresence initial={false}>
             {messages.map((m) => (
               <motion.div
@@ -601,6 +602,7 @@ export function ChatPage(): React.ReactElement {
                 <Bubble
                   msg={m}
                   user={me?.user ?? null}
+                  t={t}
                   onConfirmAction={(approved) => void respondToConfirmation(approved)}
                 />
               </motion.div>
@@ -647,8 +649,7 @@ export function ChatPage(): React.ReactElement {
             }}
           />
           <p className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] mt-2 text-center">
-            Enter envia · Shift+Enter quebra linha · Microfone transcreve · Imagem ou documento
-            anexado
+            {t('chat.inputHint')}
           </p>
         </div>
       </motion.div>
@@ -658,6 +659,7 @@ export function ChatPage(): React.ReactElement {
         open={compactionModalOpen}
         onOpenChange={setCompactionModalOpen}
         info={lastCompaction}
+        t={t}
       />
 
       {/* Overlay durante drag-and-drop de imagem/documento */}
@@ -671,8 +673,8 @@ export function ChatPage(): React.ReactElement {
             className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-violet-500/10 backdrop-blur-sm"
           >
             <div className="rounded-2xl border-2 border-dashed border-violet-400/60 bg-zinc-950/80 px-8 py-6 text-center">
-              <p className="text-base font-medium text-violet-200">Solte aqui pra anexar</p>
-              <p className="text-xs text-zinc-400 mt-1">Imagens até 5 MB · Documentos até 50 MB</p>
+              <p className="text-base font-medium text-violet-200">{t('chat.dropTitle')}</p>
+              <p className="text-xs text-zinc-400 mt-1">{t('chat.dropDescription')}</p>
             </div>
           </motion.div>
         )}
@@ -685,10 +687,12 @@ function CompactionModal({
   open,
   onOpenChange,
   info,
+  t,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   info: CompactionInfo | null;
+  t: TranslateFn;
 }): React.ReactElement | null {
   if (!info) return null;
   return (
@@ -715,20 +719,20 @@ function CompactionModal({
               </div>
               <div className="flex-1 min-w-0">
                 <h2 className="font-display text-lg font-semibold tracking-tight">
-                  Resumo da memória compactada
+                  {t('chat.summaryTitle')}
                 </h2>
                 <p className="text-[11px] text-[var(--color-app-muted)] tabular-nums">
                   {info.tokens_before.toLocaleString()} → {info.tokens_after.toLocaleString()}{' '}
                   tokens
                   {' · '}
-                  custo {formatCost(info.cost_usd)}
+                  {t('chat.summaryCost', { cost: formatCost(info.cost_usd) })}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => onOpenChange(false)}
                 className="h-7 w-7 flex items-center justify-center rounded-md text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
-                aria-label="Fechar"
+                aria-label={t('common.close')}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -754,10 +758,12 @@ function formatCost(usd: string): string {
 function Bubble({
   msg,
   user,
+  t,
   onConfirmAction,
 }: {
   msg: Msg;
   user: { name: string; image?: string | null } | null;
+  t: TranslateFn;
   onConfirmAction?: (approved: boolean) => void;
 }): React.ReactElement {
   const isUser = msg.role === 'user';
@@ -767,7 +773,8 @@ function Bubble({
   // chip compacto à direita em vez de bubble cheio — evita poluir a conversa
   // com texto "Sim, pode prosseguir...".
   if (msg.kind === 'HITL_RESPONSE') {
-    const approved = msg.content.toLowerCase().startsWith('sim');
+    const lowerContent = msg.content.toLowerCase();
+    const approved = lowerContent.startsWith('sim') || lowerContent.startsWith('yes');
     return (
       <div className="flex justify-end pr-1 -my-1.5">
         <span
@@ -780,7 +787,7 @@ function Bubble({
           title={msg.content}
         >
           {approved ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
-          {approved ? 'Aprovado' : 'Cancelado'}
+          {approved ? t('chat.approved') : t('chat.cancelled')}
         </span>
       </div>
     );
@@ -831,7 +838,7 @@ function Bubble({
         >
           {msg.pending && !msg.content ? (
             <span className="inline-flex items-center gap-2 text-[var(--color-app-muted)] text-[14px]">
-              <Spinner /> Pensando…
+              <Spinner /> {t('chat.thinking')}
             </span>
           ) : isUser ? (
             <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -859,11 +866,12 @@ function Bubble({
                     action={action}
                     onConfirm={() => onConfirmAction?.(true)}
                     onReject={() => onConfirmAction?.(false)}
+                    t={t}
                   />
                 );
               })()}
               {msg.reasoning && msg.reasoning.length > 0 && (
-                <ReasoningBlock text={msg.reasoning} streaming={!!msg.pending} />
+                <ReasoningBlock text={msg.reasoning} streaming={!!msg.pending} t={t} />
               )}
               <Markdown>{msg.content}</Markdown>
               {msg.content.length > 0 && (
@@ -875,11 +883,11 @@ function Bubble({
                   >
                     {copied ? (
                       <>
-                        <Check className="h-3 w-3 text-emerald-400" /> Copiado
+                        <Check className="h-3 w-3 text-emerald-400" /> {t('common.copied')}
                       </>
                     ) : (
                       <>
-                        <Copy className="h-3 w-3" /> Copiar
+                        <Copy className="h-3 w-3" /> {t('common.copy')}
                       </>
                     )}
                   </button>
@@ -938,10 +946,12 @@ function ConfirmationPrompt({
   action,
   onConfirm,
   onReject,
+  t,
 }: {
   action: string;
   onConfirm: () => void;
   onReject: () => void;
+  t: TranslateFn;
 }): React.ReactElement {
   return (
     <div className="mb-3 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3.5 not-prose">
@@ -951,7 +961,7 @@ function ConfirmationPrompt({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-[11px] uppercase tracking-wider font-medium text-amber-300/90 mb-1">
-            A Vox pede confirmação
+            {t('chat.confirmationTitle')}
           </p>
           <p className="text-[13.5px] text-zinc-100 leading-snug">{action}</p>
           <div className="flex items-center gap-2 mt-3">
@@ -961,7 +971,7 @@ function ConfirmationPrompt({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-100 text-[12px] font-medium hover:bg-emerald-500/30 transition-colors"
             >
               <Check className="h-3 w-3" />
-              Confirmar
+              {t('chat.confirm')}
             </button>
             <button
               type="button"
@@ -969,7 +979,7 @@ function ConfirmationPrompt({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-rose-500/15 border border-rose-500/40 text-rose-100 text-[12px] font-medium hover:bg-rose-500/25 transition-colors"
             >
               <X className="h-3 w-3" />
-              Cancelar
+              {t('common.cancel')}
             </button>
           </div>
         </div>
@@ -981,9 +991,11 @@ function ConfirmationPrompt({
 function ReasoningBlock({
   text,
   streaming,
+  t,
 }: {
   text: string;
   streaming: boolean;
+  t: TranslateFn;
 }): React.ReactElement {
   const [open, setOpen] = useState(streaming);
   return (
@@ -994,9 +1006,9 @@ function ReasoningBlock({
     >
       <summary className="px-3 py-2 text-[11px] uppercase tracking-wider text-violet-300 cursor-pointer select-none flex items-center gap-2 hover:bg-violet-500/10">
         <Sparkles className="h-3 w-3" />
-        {streaming ? 'Pensando…' : 'Raciocínio'}
+        {streaming ? t('chat.thinking') : t('chat.reasoning')}
         <span className="ml-auto text-[10px] text-violet-300/60 font-mono">
-          {text.length.toLocaleString()} chars
+          {t('chat.charCount', { count: text.length.toLocaleString() })}
         </span>
       </summary>
       <pre className="text-[12.5px] text-violet-100/80 px-3 py-2 whitespace-pre-wrap font-mono leading-relaxed border-t border-violet-500/20 max-h-72 overflow-y-auto">
@@ -1006,7 +1018,13 @@ function ReasoningBlock({
   );
 }
 
-function EmptyState({ onPick }: { onPick: (s: string) => void }): React.ReactElement {
+function EmptyState({
+  onPick,
+  t,
+}: {
+  onPick: (s: string) => void;
+  t: TranslateFn;
+}): React.ReactElement {
   // 4 atalhos com ícones temáticos diferentes — sugestões fixas viraram cards
   // categorizados pra reduzir poluição visual e dar afford clara de "exemplo".
   const cards: {
@@ -1018,30 +1036,30 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }): React.ReactEle
   }[] = [
     {
       icon: Library,
-      title: 'Explorar biblioteca',
-      hint: 'Veja o que está indexado',
-      prompt: 'O que tem na minha biblioteca?',
+      title: t('chat.card.library.title'),
+      hint: t('chat.card.library.hint'),
+      prompt: t('chat.card.library.prompt'),
       accent: 'violet',
     },
     {
       icon: Sparkles,
-      title: 'Resumo do último',
-      hint: 'Síntese rápida',
-      prompt: 'Resuma o conteúdo mais recente da minha biblioteca.',
+      title: t('chat.card.summary.title'),
+      hint: t('chat.card.summary.hint'),
+      prompt: t('chat.card.summary.prompt'),
       accent: 'emerald',
     },
     {
       icon: ListVideo,
-      title: 'Ideias dos últimos 3',
-      hint: 'Conexões e padrões',
-      prompt: 'Quais ideias principais dos últimos 3 conteúdos?',
+      title: t('chat.card.ideas.title'),
+      hint: t('chat.card.ideas.hint'),
+      prompt: t('chat.card.ideas.prompt'),
       accent: 'amber',
     },
     {
       icon: Search,
-      title: 'Procurar tema',
-      hint: 'Busca FTS por palavra-chave',
-      prompt: 'Busque "produtividade" na minha biblioteca.',
+      title: t('chat.card.search.title'),
+      hint: t('chat.card.search.hint'),
+      prompt: t('chat.card.search.prompt'),
       accent: 'rose',
     },
   ];
@@ -1067,11 +1085,10 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }): React.ReactEle
         />
         <div className="space-y-1.5 max-w-md mx-auto">
           <p className="font-display text-2xl font-semibold tracking-tight">
-            Oi, sou a <span className="text-violet-accent">Vox</span>
+            {t('chat.emptyTitle', { name: 'Vox' })}
           </p>
           <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
-            Consulto sua base de conhecimento, indexo conteúdo novo e crio notas. Tudo com fonte e
-            timestamp — sem alucinação.
+            {t('chat.emptyDescription')}
           </p>
         </div>
       </div>

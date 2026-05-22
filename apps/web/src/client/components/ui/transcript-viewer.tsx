@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Check, Copy, ExternalLink } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
+import { useI18n } from '../../lib/i18n';
 
 /**
  * Texto contínuo da transcrição. Cada segmento é um <a> clicável (abre o vídeo
@@ -15,6 +16,7 @@ interface Segment {
 }
 
 export function TranscriptViewer({ markdown }: { markdown: string }): React.ReactElement {
+  const { t } = useI18n();
   const segments = useMemo(() => parseSegments(markdown), [markdown]);
   const [copied, setCopied] = useState(false);
   const plainText = useMemo(() => segments.map((s) => s.text).join(' '), [segments]);
@@ -33,7 +35,7 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
     <TooltipProvider delayDuration={120} skipDelayDuration={300}>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-200">
-          Transcrição
+          {t('transcript.title')}
         </h2>
         <button
           type="button"
@@ -42,11 +44,11 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
         >
           {copied ? (
             <>
-              <Check className="h-3 w-3 text-emerald-400" /> Copiado
+              <Check className="h-3 w-3 text-emerald-400" /> {t('common.copied')}
             </>
           ) : (
             <>
-              <Copy className="h-3 w-3" /> Copiar tudo
+              <Copy className="h-3 w-3" /> {t('transcript.copyAll')}
             </>
           )}
         </button>
@@ -129,7 +131,7 @@ function parseSegments(markdown: string): Segment[] {
   body = body.replace(/^!\[thumbnail\][^\n]*\n+/, '');
   body = body.replace(/^#\s+[^\n]+\n+/, '');
   body = body.replace(/^>\s+[^\n]+\n+/, '');
-  body = body.replace(/^##\s+Transcrição\s*\n+/m, '');
+  body = body.replace(/^##\s+(Transcrição|Transcript)\s*\n+/m, '');
 
   const lines = body.split('\n').filter((l) => l.trim().length > 0);
   const segments: Segment[] = [];

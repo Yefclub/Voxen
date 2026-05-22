@@ -10,6 +10,7 @@ import { useFetch } from '../lib/hooks';
 import { formatDuration, formatRelative, formatUsd } from '../lib/format';
 import type { JobStatus } from '../lib/types';
 import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motion/animated-page';
+import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 
 interface TranscriptSummary {
   id: string;
@@ -41,6 +42,7 @@ function useDebounced<T>(value: T, ms = 250): T {
 }
 
 export function TranscricoesPage(): React.ReactElement {
+  const { locale, t } = useI18n();
   const [q, setQ] = useState('');
   const debouncedQ = useDebounced(q, 250);
   const url = useMemo(
@@ -58,12 +60,13 @@ export function TranscricoesPage(): React.ReactElement {
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <Library className="h-3.5 w-3.5 text-violet-400" />
-            Biblioteca
+            {t('library.eyebrow')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Transcrições</h1>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+            {t('library.title')}
+          </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Busque por palavras-chave em todas as transcrições. Indexação full-text em português,
-            ordenada por relevância.
+            {t('library.description')}
           </p>
         </header>
 
@@ -76,7 +79,7 @@ export function TranscricoesPage(): React.ReactElement {
             type="text"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar nas transcrições…"
+            placeholder={t('library.searchPlaceholder')}
             autoComplete="off"
             spellCheck={false}
             className="w-full h-12 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 backdrop-blur-sm pl-11 pr-12 text-[15px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15 transition-colors"
@@ -86,7 +89,7 @@ export function TranscricoesPage(): React.ReactElement {
               type="button"
               onClick={() => setQ('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)] transition-colors"
-              aria-label="Limpar busca"
+              aria-label={t('library.clearSearch')}
             >
               {queryChanging ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -100,8 +103,12 @@ export function TranscricoesPage(): React.ReactElement {
         {isSearching && !loading && (
           <p className="text-xs text-[var(--color-app-muted)] -mt-6">
             <span className="tabular-nums">{transcripts.length}</span>{' '}
-            {transcripts.length === 1 ? 'resultado' : 'resultados'} para “
-            <span className="text-zinc-200">{debouncedQ}</span>”
+            {t('library.searchResults', {
+              count: transcripts.length,
+              label:
+                transcripts.length === 1 ? t('library.resultSingular') : t('library.resultPlural'),
+              query: debouncedQ,
+            })}
           </p>
         )}
 
@@ -121,17 +128,15 @@ export function TranscricoesPage(): React.ReactElement {
               </div>
               <div className="space-y-1.5">
                 <p className="font-display text-lg font-semibold tracking-tight">
-                  {isSearching ? 'Nada encontrado' : 'Biblioteca vazia'}
+                  {isSearching ? t('library.noResults') : t('library.empty')}
                 </p>
                 <p className="text-sm text-[var(--color-app-muted)]">
-                  {isSearching
-                    ? 'Tente outras palavras-chave.'
-                    : 'Suas transcrições aparecerão aqui.'}
+                  {isSearching ? t('library.tryOtherKeywords') : t('library.emptyDescription')}
                 </p>
               </div>
               {!isSearching && (
                 <Button variant="primary" size="lg" asChild className="mt-3">
-                  <Link to="/jobs">Adicionar primeiro conteúdo</Link>
+                  <Link to="/jobs">{t('library.addFirst')}</Link>
                 </Button>
               )}
             </CardContent>
@@ -140,9 +145,14 @@ export function TranscricoesPage(): React.ReactElement {
 
         {!loading && transcripts.length > 0 && (
           <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {transcripts.map((t) => (
-              <StaggerItem key={t.id}>
-                <TranscriptCard t={t} highlightQuery={debouncedQ} />
+            {transcripts.map((transcript) => (
+              <StaggerItem key={transcript.id}>
+                <TranscriptCard
+                  t={transcript}
+                  highlightQuery={debouncedQ}
+                  locale={locale}
+                  translate={t}
+                />
               </StaggerItem>
             ))}
           </StaggerContainer>
@@ -155,9 +165,13 @@ export function TranscricoesPage(): React.ReactElement {
 function TranscriptCard({
   t,
   highlightQuery,
+  locale,
+  translate,
 }: {
   t: TranscriptSummary;
   highlightQuery: string;
+  locale: Locale;
+  translate: TranslateFn;
 }): React.ReactElement {
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
@@ -229,7 +243,7 @@ function TranscriptCard({
               {/* Source primário — diferencia Vídeo / Web e plataforma */}
               <Badge variant={t.source === 'WEB' ? 'muted' : 'success'} className="text-[10px]">
                 {t.source === 'WEB' && <Globe className="h-2.5 w-2.5" />}
-                {displaySource(t.source)}
+                {displaySource(t.source, translate)}
               </Badge>
               {/* Método (só faz sentido pra vídeos) */}
               {t.source !== 'WEB' && (
@@ -237,7 +251,7 @@ function TranscriptCard({
                   variant={t.transcriptionMethod === 'SUBTITLES' ? 'success' : 'default'}
                   className="text-[10px]"
                 >
-                  {displayMethod(t.transcriptionMethod)}
+                  {displayMethod(t.transcriptionMethod, translate)}
                 </Badge>
               )}
               {t.language && (
@@ -248,7 +262,7 @@ function TranscriptCard({
             </div>
 
             <div className="pt-3 border-t border-[var(--color-app-border)] flex items-center justify-between text-[11px] text-[var(--color-app-muted)]">
-              <span>{formatRelative(new Date(t.createdAt))}</span>
+              <span>{formatRelative(new Date(t.createdAt), locale)}</span>
               <span className="tabular-nums font-mono">{formatUsd(t.costUsd)}</span>
             </div>
           </CardContent>
@@ -258,7 +272,7 @@ function TranscriptCard({
   );
 }
 
-function displaySource(source: TranscriptSummary['source']): string {
+function displaySource(source: TranscriptSummary['source'], t: TranslateFn): string {
   switch (source) {
     case 'YOUTUBE':
       return 'YouTube';
@@ -269,24 +283,24 @@ function displaySource(source: TranscriptSummary['source']): string {
     case 'X':
       return 'X';
     case 'WEB':
-      return 'Página web';
+      return t('library.source.web');
     case 'UPLOAD':
       return 'Upload';
   }
 }
 
-function displayMethod(method: TranscriptSummary['transcriptionMethod']): string {
+function displayMethod(method: TranscriptSummary['transcriptionMethod'], t: TranslateFn): string {
   switch (method) {
     case 'SUBTITLES':
-      return 'Legendas';
+      return t('library.method.subtitles');
     case 'VISION':
-      return 'Imagem';
+      return t('library.method.vision');
     case 'DOCUMENT':
-      return 'Documento';
+      return t('library.method.document');
     case 'SCRAPE':
       return 'Web';
     case 'API':
-      return 'IA';
+      return t('library.method.ai');
   }
 }
 
