@@ -22,6 +22,7 @@ import {
 import { cn } from '../../lib/utils';
 import { createVoiceRecorder } from '../../lib/voice-recorder';
 import { toast } from 'sonner';
+import { useI18n } from '../../lib/i18n';
 
 export interface PromptBoxHandle {
   focus: () => void;
@@ -82,11 +83,12 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
     uploadEnabled = false,
     uploadingFile = false,
     onUploadFile,
-    placeholder = 'Pergunte qualquer coisa pra Vox…',
+    placeholder,
     className,
   },
   ref,
 ) {
+  const { t } = useI18n();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -157,7 +159,7 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
         await sendVoice(blob);
       } catch (e) {
         setRecording(false);
-        toast.error('Falha ao finalizar gravação.', {
+        toast.error(t('prompt.recordFinishError'), {
           description: e instanceof Error ? e.message : undefined,
         });
       }
@@ -169,7 +171,7 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
       recorderRef.current = rec;
       setRecording(true);
     } catch (e) {
-      toast.error('Não foi possível acessar o microfone.', {
+      toast.error(t('prompt.microphoneError'), {
         description: e instanceof Error ? e.message : undefined,
       });
     }
@@ -187,18 +189,18 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
       });
       const data = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
       if (!res.ok) {
-        toast.error(data.error ?? 'Falha ao transcrever áudio.');
+        toast.error(data.error ?? t('prompt.voiceTranscribeError'));
         return;
       }
       const text = (data.text ?? '').trim();
       if (!text) {
-        toast.warning('Não consegui entender o áudio. Tente de novo.');
+        toast.warning(t('prompt.voiceEmpty'));
         return;
       }
       onChange(value ? value + ' ' + text : text);
       requestAnimationFrame(() => textareaRef.current?.focus());
     } catch (e) {
-      toast.error('Erro de rede ao enviar áudio.', {
+      toast.error(t('prompt.voiceNetworkError'), {
         description: e instanceof Error ? e.message : undefined,
       });
     } finally {
@@ -208,8 +210,8 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
 
   function onPickImage(): void {
     if (!visionEnabled) {
-      toast.warning('Visão não configurada.', {
-        description: 'Admin precisa escolher um modelo de visão em /setup.',
+      toast.warning(t('prompt.visionMissing'), {
+        description: t('prompt.visionMissingDescription'),
       });
       return;
     }
@@ -218,8 +220,8 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
 
   function onPickUpload(): void {
     if (!uploadEnabled) {
-      toast.warning('Documentos não configurados.', {
-        description: 'Admin precisa escolher um modelo de documentos em /setup.',
+      toast.warning(t('prompt.documentsMissing'), {
+        description: t('prompt.documentsMissingDescription'),
       });
       return;
     }
@@ -231,13 +233,13 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
     e.target.value = ''; // permite re-selecionar mesmo arquivo
     if (!file) return;
     if (!IMAGE_ALLOWED_MIMES.has(file.type)) {
-      toast.error('Formato não suportado.', {
-        description: 'Aceito: PNG, JPEG, WebP, GIF.',
+      toast.error(t('chat.unsupportedFormat'), {
+        description: t('chat.acceptedImages'),
       });
       return;
     }
     if (file.size > IMAGE_MAX_BYTES) {
-      toast.error('Imagem muito grande.', { description: 'Limite de 5MB.' });
+      toast.error(t('chat.imageTooLarge'), { description: t('prompt.imageLimit') });
       return;
     }
     const reader = new FileReader();
@@ -248,7 +250,7 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
       }
     };
     reader.onerror = () => {
-      toast.error('Falha ao ler imagem.');
+      toast.error(t('prompt.readImageError'));
     };
     reader.readAsDataURL(file);
   }
@@ -303,12 +305,12 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
           >
             <div className="flex items-center gap-2 border-b border-[var(--color-app-border)] px-3 py-2 text-[11px] uppercase tracking-wider text-[var(--color-app-muted)]">
               <AtSign className="h-3.5 w-3.5" />
-              Biblioteca
+              {t('prompt.mentionLibrary')}
               {mentionLoading && <Loader2 className="ml-auto h-3 w-3 animate-spin" />}
             </div>
             {mentionResults.length === 0 ? (
               <div className="px-3 py-3 text-xs text-[var(--color-app-muted)]">
-                {mentionLoading ? 'Buscando…' : 'Nenhum item encontrado.'}
+                {mentionLoading ? t('prompt.searching') : t('prompt.noMentionResults')}
               </div>
             ) : (
               <div className="max-h-64 overflow-y-auto py-1">
@@ -351,20 +353,24 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
             className="px-4 pt-3 overflow-hidden"
           >
             <div className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] p-1.5 pr-2.5">
-              <img src={attachedImage} alt="Anexo" className="h-12 w-12 rounded-md object-cover" />
+              <img
+                src={attachedImage}
+                alt={t('prompt.imageAttached')}
+                className="h-12 w-12 rounded-md object-cover"
+              />
               <div className="flex flex-col">
                 <span className="text-[11px] uppercase tracking-wider text-violet-300 font-medium">
-                  Imagem anexada
+                  {t('prompt.imageAttached')}
                 </span>
                 <span className="text-[10px] text-[var(--color-app-muted)]">
-                  Vox vai analisar com modelo de visão
+                  {t('prompt.imageAttachedHint')}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => onClearImage?.()}
                 className="ml-2 h-6 w-6 flex items-center justify-center rounded-md text-[var(--color-app-muted)] hover:text-rose-300 hover:bg-rose-500/10 transition-colors"
-                aria-label="Remover imagem"
+                aria-label={t('prompt.removeImage')}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -439,7 +445,7 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
             if (hasValue && !disabled) onSubmit();
           }
         }}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t('prompt.placeholder')}
         rows={1}
         className="w-full resize-none border-0 bg-transparent px-5 pt-4 pb-2 text-[15px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none leading-relaxed overflow-hidden"
         disabled={disabled}
@@ -456,10 +462,10 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
               : 'border border-[var(--color-app-border)] text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]',
           )}
           aria-pressed={thinking}
-          title={thinking ? 'Raciocínio ativado' : 'Ativar raciocínio extra'}
+          title={thinking ? t('prompt.thinkingOn') : t('prompt.thinkingOff')}
         >
           <Brain className="h-3.5 w-3.5" />
-          Pensar
+          {t('prompt.think')}
         </button>
 
         {/* Recording indicator */}
@@ -475,7 +481,7 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
                 <span className="absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75 animate-ping" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
               </span>
-              Gravando…
+              {t('prompt.recording')}
             </motion.div>
           )}
           {transcribing && !recording && (
@@ -486,7 +492,7 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
               className="flex items-center gap-1.5 text-[11px] text-[var(--color-app-muted)]"
             >
               <Loader2 className="h-3 w-3 animate-spin" />
-              Transcrevendo…
+              {t('prompt.transcribing')}
             </motion.div>
           )}
         </AnimatePresence>
@@ -504,11 +510,9 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
                 : 'text-[var(--color-app-muted)]/40 cursor-not-allowed',
               (loading || uploadingFile) && 'opacity-40 cursor-not-allowed',
             )}
-            aria-label="Enviar documento"
+            aria-label={t('prompt.uploadDocument')}
             title={
-              uploadEnabled
-                ? 'Enviar documento para análise'
-                : 'Modelo de documentos não configurado'
+              uploadEnabled ? t('prompt.uploadDocumentTitle') : t('prompt.documentModelMissing')
             }
           >
             {uploadingFile ? (
@@ -531,12 +535,8 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
               attachedImage && 'opacity-40 cursor-not-allowed',
               loading && 'opacity-40 cursor-not-allowed',
             )}
-            aria-label="Anexar imagem"
-            title={
-              visionEnabled
-                ? 'Anexar imagem (PNG/JPEG/WebP/GIF, máx 5MB)'
-                : 'Modelo de visão não configurado'
-            }
+            aria-label={t('prompt.attachImage')}
+            title={visionEnabled ? t('prompt.attachImageTitle') : t('prompt.visionModelMissing')}
           >
             <ImageIcon className="h-4 w-4" />
           </button>
@@ -553,8 +553,8 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
                 : 'text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]',
               (transcribing || loading) && 'opacity-40 cursor-not-allowed',
             )}
-            aria-label={recording ? 'Parar gravação' : 'Gravar voz'}
-            title={recording ? 'Parar gravação' : 'Gravar voz'}
+            aria-label={recording ? t('prompt.stopRecording') : t('prompt.recordVoice')}
+            title={recording ? t('prompt.stopRecording') : t('prompt.recordVoice')}
           >
             {recording ? (
               <Square className="h-4 w-4" fill="currentColor" />
@@ -576,7 +576,7 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
                 ? 'bg-zinc-100 text-zinc-900 hover:bg-white active:scale-95'
                 : 'bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] cursor-not-allowed',
             )}
-            aria-label="Enviar"
+            aria-label={t('prompt.send')}
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

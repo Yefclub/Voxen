@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Check, Copy } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { useI18n } from '../../lib/i18n';
 
 interface MarkdownProps {
   children: string;
@@ -19,6 +20,7 @@ function CodeBlock({
   children?: React.ReactNode;
 }): React.ReactElement {
   const [copied, setCopied] = useState(false);
+  const { t } = useI18n();
   const raw = String(children ?? '').replace(/\n$/, '');
   const lang = /language-([\w-]+)/.exec(className ?? '')?.[1];
 
@@ -44,21 +46,21 @@ function CodeBlock({
     <div className="group relative my-3 overflow-hidden rounded-xl border border-[var(--color-app-border)] bg-zinc-950/60">
       <div className="flex items-center justify-between px-3.5 py-1.5 border-b border-[var(--color-app-border)] bg-zinc-900/60">
         <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-mono">
-          {lang ?? 'código'}
+          {lang ?? t('markdown.code')}
         </span>
         <button
           type="button"
           onClick={() => void copy()}
           className="flex items-center gap-1.5 text-[11px] text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors opacity-0 group-hover:opacity-100"
-          aria-label="Copiar"
+          aria-label={t('common.copy')}
         >
           {copied ? (
             <>
-              <Check className="h-3 w-3 text-emerald-400" /> Copiado
+              <Check className="h-3 w-3 text-emerald-400" /> {t('common.copied')}
             </>
           ) : (
             <>
-              <Copy className="h-3 w-3" /> Copiar
+              <Copy className="h-3 w-3" /> {t('common.copy')}
             </>
           )}
         </button>

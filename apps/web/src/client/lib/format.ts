@@ -1,12 +1,19 @@
 import { formatDistanceToNow, format } from 'date-fns';
+import { enUS } from 'date-fns/locale';
 import { ptBR } from 'date-fns/locale';
+import type { Locale } from './i18n';
 
-export function formatRelative(date: Date): string {
-  return formatDistanceToNow(date, { locale: ptBR, addSuffix: true });
+function dateLocale(locale: Locale): typeof ptBR {
+  return locale === 'en' ? enUS : ptBR;
 }
 
-export function formatDateTime(date: Date): string {
-  return format(date, "dd 'de' MMM 'às' HH:mm", { locale: ptBR });
+export function formatRelative(date: Date, locale: Locale = 'pt-BR'): string {
+  return formatDistanceToNow(date, { locale: dateLocale(locale), addSuffix: true });
+}
+
+export function formatDateTime(date: Date, locale: Locale = 'pt-BR'): string {
+  const pattern = locale === 'en' ? "MMM d 'at' HH:mm" : "dd 'de' MMM 'às' HH:mm";
+  return format(date, pattern, { locale: dateLocale(locale) });
 }
 
 export function formatDuration(seconds: number): string {

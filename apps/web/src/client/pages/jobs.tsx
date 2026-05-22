@@ -18,6 +18,7 @@ import { jobStatusBadge, stageLabel } from '../lib/job-display';
 import type { JobStatus, JobSummary } from '../lib/types';
 import { detectSourceFromUrl, displayJobSource, type DetectedSource } from '../lib/source-detect';
 import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motion/animated-page';
+import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 
 interface ProgressEvent {
   jobId: string;
@@ -38,6 +39,7 @@ export function JobsPage(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const { data, loading, refresh } = useFetch<{ jobs: JobSummary[] }>('/api/jobs');
   const navigate = useNavigate();
+  const { locale, t } = useI18n();
 
   // Detecta tipo enquanto user digita — UI mostra badge "Vídeo do YouTube",
   // "Página web", etc. Reaproveita o mesmo regex do back (parseVideoUrl).
@@ -59,11 +61,12 @@ export function JobsPage(): React.ReactElement {
       }>('/api/jobs/auto', { url });
       setUrl('');
       refresh();
-      const successMsg = res.kind === 'web' ? 'Página na fila.' : 'Vídeo na fila.';
+      const successMsg =
+        res.kind === 'web' ? t('jobs.toast.webQueued') : t('jobs.toast.videoQueued');
       toast.success(successMsg, {
-        description: 'Acompanhe o progresso em tempo real.',
+        description: t('jobs.toast.progress'),
         action: {
-          label: 'Abrir',
+          label: t('common.open'),
           onClick: () => navigate(`/jobs/${res.jobId}`),
         },
       });
@@ -73,16 +76,16 @@ export function JobsPage(): React.ReactElement {
         if (err.status === 409 && err.body && typeof err.body === 'object') {
           const transcriptId = (err.body as { transcriptId?: string }).transcriptId;
           if (transcriptId) {
-            toast('Já indexado.', {
+            toast(t('jobs.toast.alreadyIndexed'), {
               action: {
-                label: 'Abrir',
+                label: t('common.open'),
                 onClick: () => navigate(`/transcricoes/${transcriptId}`),
               },
             });
           }
         }
       } else {
-        setError('Erro inesperado.');
+        setError(t('jobs.error.unexpected'));
       }
     } finally {
       setSubmitting(false);
@@ -110,31 +113,31 @@ export function JobsPage(): React.ReactElement {
         error?: string;
       };
       if (!res.ok || !body.jobId) {
-        throw new ApiError(body.error ?? 'Falha ao enviar arquivo.', res.status, body);
+        throw new ApiError(body.error ?? t('jobs.error.upload'), res.status, body);
       }
       setMediaFile(null);
       refresh();
       toast.success(
         body.kind === 'image'
-          ? 'Imagem na fila.'
+          ? t('jobs.toast.imageQueued')
           : body.kind === 'document'
-            ? 'Documento na fila.'
-            : 'Arquivo na fila.',
+            ? t('jobs.toast.documentQueued')
+            : t('jobs.toast.fileQueued'),
         {
           description:
             body.kind === 'image'
-              ? 'A análise visual será feita pelo modelo configurado.'
+              ? t('jobs.toast.imageDescription')
               : body.kind === 'document'
-                ? 'A análise documental será feita pelo modelo configurado.'
-                : 'A transcrição será feita pelo modelo configurado.',
+                ? t('jobs.toast.documentDescription')
+                : t('jobs.toast.mediaDescription'),
           action: {
-            label: 'Abrir',
+            label: t('common.open'),
             onClick: () => navigate(`/jobs/${body.jobId}`),
           },
         },
       );
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro inesperado.');
+      setError(err instanceof ApiError ? err.message : t('jobs.error.unexpected'));
     } finally {
       setUploading(false);
     }
@@ -157,13 +160,13 @@ export function JobsPage(): React.ReactElement {
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <PlayCircle className="h-3.5 w-3.5 text-rose-400" />
-            Indexar conteúdo
+            {t('jobs.eyebrow')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Novo conteúdo</h1>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+            {t('jobs.title')}
+          </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Cole links do YouTube, Instagram, TikTok, X ou páginas web. Também dá para enviar um
-            arquivo de áudio, vídeo, imagem ou documento quando a plataforma bloquear o download ou
-            quando o conteúdo estiver local.
+            {t('jobs.description')}
           </p>
         </header>
 
@@ -195,7 +198,7 @@ export function JobsPage(): React.ReactElement {
                     ].join(' ')}
                   >
                     <Link2 className="h-3.5 w-3.5" />
-                    Link
+                    {t('jobs.mode.link')}
                   </button>
                   <button
                     type="button"
@@ -208,7 +211,7 @@ export function JobsPage(): React.ReactElement {
                     ].join(' ')}
                   >
                     <Upload className="h-3.5 w-3.5" />
-                    Arquivo
+                    {t('jobs.mode.upload')}
                   </button>
                 </div>
 
@@ -228,7 +231,7 @@ export function JobsPage(): React.ReactElement {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ duration: 0.18 }}
                         >
-                          <DetectedBadge source={detected} />
+                          <DetectedBadge source={detected} t={t} />
                         </motion.div>
                       )}
                     </div>
@@ -254,23 +257,20 @@ export function JobsPage(): React.ReactElement {
                         className="h-11 px-5 sm:w-auto"
                       >
                         {submitting ? <Spinner /> : <Plus className="h-4 w-4" />}
-                        Adicionar
+                        {t('jobs.add')}
                       </Button>
                     </div>
-                    <p className="text-xs text-[var(--color-app-muted)]">
-                      Aceita vídeos públicos, posts do X e páginas web. Conteúdos com bloqueio
-                      anti-bot podem ser enviados como arquivo.
-                    </p>
+                    <p className="text-xs text-[var(--color-app-muted)]">{t('jobs.linkHint')}</p>
                   </form>
                 ) : (
                   <form onSubmit={onUploadSubmit} className="space-y-3">
-                    <Label htmlFor="media">Áudio, vídeo, imagem ou documento</Label>
+                    <Label htmlFor="media">{t('jobs.uploadLabel')}</Label>
                     <div className="space-y-2.5 sm:flex sm:gap-2.5 sm:space-y-0">
                       <div className="flex gap-2.5 sm:flex-1">
                         <label className="relative flex h-11 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 text-sm text-[var(--color-app-muted)] transition-colors hover:border-emerald-400/50 hover:text-zinc-100">
                           <Upload className="h-4 w-4 shrink-0" />
                           <span className="truncate">
-                            {mediaFile ? mediaFile.name : 'Selecionar arquivo'}
+                            {mediaFile ? mediaFile.name : t('jobs.selectFile')}
                           </span>
                           <input
                             id="media"
@@ -287,7 +287,7 @@ export function JobsPage(): React.ReactElement {
                             size="icon"
                             className="h-11 w-11"
                             onClick={() => setMediaFile(null)}
-                            aria-label="Remover arquivo"
+                            aria-label={t('jobs.removeFile')}
                           >
                             <X className="h-4 w-4" />
                           </Button>
@@ -301,13 +301,12 @@ export function JobsPage(): React.ReactElement {
                         className="h-11 w-full px-5 sm:w-auto"
                       >
                         {uploading ? <Spinner /> : <Upload className="h-4 w-4" />}
-                        Enviar
+                        {t('jobs.send')}
                       </Button>
                     </div>
                     {mediaFile && (
                       <p className="text-xs text-[var(--color-app-muted)]">
-                        {(mediaFile.size / 1024 / 1024).toFixed(1)} MiB · imagens até 20 MiB,
-                        documentos até 50 MiB, áudio/vídeo até 500 MiB
+                        {(mediaFile.size / 1024 / 1024).toFixed(1)} MiB · {t('jobs.sizeHint')}
                       </p>
                     )}
                   </form>
@@ -320,16 +319,19 @@ export function JobsPage(): React.ReactElement {
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <h2 className="font-display text-xl font-semibold tracking-tight">Sua fila</h2>
+              <h2 className="font-display text-xl font-semibold tracking-tight">
+                {t('jobs.queueTitle')}
+              </h2>
               {jobs.length > 0 && (
                 <span className="text-xs text-[var(--color-app-muted)] tabular-nums">
-                  {jobs.length} {jobs.length === 1 ? 'item' : 'itens'}
+                  {jobs.length}{' '}
+                  {jobs.length === 1 ? t('dashboard.itemSingular') : t('dashboard.itemPlural')}
                 </span>
               )}
             </div>
             <Button variant="ghost" size="sm" onClick={refresh}>
               <RefreshCw className="h-3.5 w-3.5" />
-              Atualizar
+              {t('jobs.refresh')}
             </Button>
           </div>
 
@@ -344,8 +346,7 @@ export function JobsPage(): React.ReactElement {
           {!loading && jobs.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center text-sm text-[var(--color-app-muted)]">
-                Você ainda não enviou nenhum conteúdo. Cole um link ou envie um arquivo para
-                começar.
+                {t('jobs.queueEmpty')}
               </CardContent>
             </Card>
           )}
@@ -356,7 +357,7 @@ export function JobsPage(): React.ReactElement {
                 <ul className="divide-y divide-[var(--color-app-border)]">
                   {jobs.map((j) => (
                     <StaggerItem key={j.id}>
-                      <JobRow job={j} onUpdate={refresh} />
+                      <JobRow job={j} onUpdate={refresh} locale={locale} t={t} />
                     </StaggerItem>
                   ))}
                 </ul>
@@ -369,7 +370,17 @@ export function JobsPage(): React.ReactElement {
   );
 }
 
-function JobRow({ job, onUpdate }: { job: JobSummary; onUpdate: () => void }): React.ReactElement {
+function JobRow({
+  job,
+  onUpdate,
+  locale,
+  t,
+}: {
+  job: JobSummary;
+  onUpdate: () => void;
+  locale: Locale;
+  t: TranslateFn;
+}): React.ReactElement {
   const isActive = job.status === 'QUEUED' || job.status === 'RUNNING';
   const [stage, setStage] = useState<string>(job.status === 'RUNNING' ? 'running' : 'queued');
   const [percent, setPercent] = useState<number>(0);
@@ -394,12 +405,12 @@ function JobRow({ job, onUpdate }: { job: JobSummary; onUpdate: () => void }): R
     if (closed && isActive) onUpdate();
   }, [closed, isActive, onUpdate]);
 
-  const { variant, label } = jobStatusBadge(job.status);
+  const { variant, label } = jobStatusBadge(job.status, t);
 
   return (
     <li className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50">
       <Badge variant={variant} className="shrink-0 w-28 justify-center">
-        {isActive ? stageLabel(stage) : label}
+        {isActive ? stageLabel(stage, t) : label}
       </Badge>
       <div className="flex-1 min-w-0 space-y-1.5">
         <p className="text-sm text-zinc-200 truncate font-mono tracking-tight">
@@ -421,8 +432,8 @@ function JobRow({ job, onUpdate }: { job: JobSummary; onUpdate: () => void }): R
         ) : (
           <p className="text-xs text-[var(--color-app-muted)]">
             {job.finishedAt
-              ? `Finalizado ${formatRelative(new Date(job.finishedAt))}`
-              : `Enfileirado ${formatRelative(new Date(job.queuedAt))}`}
+              ? t('jobs.finished', { time: formatRelative(new Date(job.finishedAt), locale) })
+              : t('jobs.queued', { time: formatRelative(new Date(job.queuedAt), locale) })}
           </p>
         )}
         {job.errorMsg && !isActive && (
@@ -432,14 +443,14 @@ function JobRow({ job, onUpdate }: { job: JobSummary; onUpdate: () => void }): R
       {job.transcriptId ? (
         <Button variant="ghost" size="sm" asChild>
           <Link to={`/transcricoes/${job.transcriptId}`}>
-            Abrir
+            {t('common.open')}
             <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </Button>
       ) : (
         <Button variant="ghost" size="sm" asChild>
           <Link to={`/jobs/${job.id}`}>
-            Detalhes
+            {t('jobs.details')}
             <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </Button>
@@ -448,16 +459,28 @@ function JobRow({ job, onUpdate }: { job: JobSummary; onUpdate: () => void }): R
   );
 }
 
-function DetectedBadge({ source }: { source: DetectedSource }): React.ReactElement {
+function DetectedBadge({
+  source,
+  t,
+}: {
+  source: DetectedSource;
+  t: TranslateFn;
+}): React.ReactElement {
   const map = {
-    YOUTUBE: { label: 'Vídeo do YouTube', cls: 'text-rose-300 border-rose-500/40 bg-rose-500/10' },
+    YOUTUBE: {
+      label: t('jobs.detect.youtube'),
+      cls: 'text-rose-300 border-rose-500/40 bg-rose-500/10',
+    },
     INSTAGRAM: {
-      label: 'Reel do Instagram',
+      label: t('jobs.detect.instagram'),
       cls: 'text-fuchsia-300 border-fuchsia-500/40 bg-fuchsia-500/10',
     },
-    TIKTOK: { label: 'TikTok', cls: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' },
-    X: { label: 'Post do X', cls: 'text-sky-300 border-sky-500/40 bg-sky-500/10' },
-    WEB: { label: 'Página web', cls: 'text-zinc-300 border-zinc-500/40 bg-zinc-500/10' },
+    TIKTOK: {
+      label: t('jobs.detect.tiktok'),
+      cls: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+    },
+    X: { label: t('jobs.detect.x'), cls: 'text-sky-300 border-sky-500/40 bg-sky-500/10' },
+    WEB: { label: t('jobs.detect.web'), cls: 'text-zinc-300 border-zinc-500/40 bg-zinc-500/10' },
   } as const;
   const { label, cls } = map[source];
   const Icon = source === 'WEB' ? Globe : PlayCircle;
