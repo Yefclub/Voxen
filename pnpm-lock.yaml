@@ -80,8 +80,8 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       cytoscape:
-        specifier: ^3.33.3
-        version: 3.33.3
+        specifier: ^3.33.4
+        version: 3.33.4
       date-fns:
         specifier: ^4.2.1
         version: 4.2.1
@@ -1953,8 +1953,8 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
-  cytoscape@3.33.3:
-    resolution: {integrity: sha512-Gej7U+OKR+LZ8kvX7rb2HhCYJ0IhvEFsnkud4SB1PR+BUY/TsSO0dmOW59WEVLu51b1Rm+gQRKoz4bLYxGSZ2g==}
+  cytoscape@3.33.4:
+    resolution: {integrity: sha512-HIN5Pmd9MrX9BkV7tDwnOcEJCSFvCpc8X97h3f508J6I5FsqAY65wKOCvgH2CuP42CaahWaz4tuh32SOOIH7ww==}
     engines: {node: '>=0.10'}
 
   date-fns@4.2.1:
@@ -4599,7 +4599,7 @@ snapshots:
 
   '@types/cytoscape@3.31.0':
     dependencies:
-      cytoscape: 3.33.3
+      cytoscape: 3.33.4
 
   '@types/debug@4.1.13':
     dependencies:
@@ -5030,7 +5030,7 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  cytoscape@3.33.3: {}
+  cytoscape@3.33.4: {}
 
   date-fns@4.2.1: {}
 
