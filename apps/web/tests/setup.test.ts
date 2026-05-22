@@ -140,6 +140,35 @@ describeIfDb('setup flow', () => {
     await expect(getSetting('summary_timeout_sec')).resolves.toBe('180');
   });
 
+  it('admin pode persistir idioma da plataforma', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    installFetchMock(async () => new Response('{}', { status: 200 }));
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/setup', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          app_language: 'en',
+          openrouter_api_key: VALID_KEY,
+          default_chat_model: 'openrouter/auto',
+          default_transcription_model: 'openai/whisper-1',
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    await expect(getSetting('app_language')).resolves.toBe('en');
+
+    const statusRes = await app.fetch(
+      new Request('http://localhost/api/setup', { headers: { cookie } }),
+    );
+    const status = (await statusRes.json()) as { language: string };
+    expect(status.language).toBe('en');
+  });
+
   it('status reconhece aliases legados do modelo de análise do X', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');

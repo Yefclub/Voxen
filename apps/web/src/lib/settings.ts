@@ -17,6 +17,7 @@ import { getMasterKey } from './master-key';
 
 export type GlobalSettingKey =
   | 'openrouter_api_key'
+  | 'app_language'
   | 'default_chat_model'
   | 'default_transcription_model'
   // Modelo dedicado a pesquisa na web — OpenRouter aceita `:online` em
@@ -57,6 +58,12 @@ const X_ANALYSIS_SETTING_KEYS = [
   'x_analysis_model',
 ] as const;
 
+export type AppLanguage = 'pt-BR' | 'en';
+
+export function normalizeAppLanguage(value: string | null | undefined): AppLanguage {
+  return value === 'en' ? 'en' : 'pt-BR';
+}
+
 export async function getSetting(key: GlobalSettingKey): Promise<string | null> {
   return getSettingByKey(key);
 }
@@ -68,6 +75,10 @@ export async function getSettingByKey(key: string): Promise<string | null> {
   });
   if (!row) return null;
   return decrypt(row.valueEnc, getMasterKey());
+}
+
+export async function getAppLanguage(): Promise<AppLanguage> {
+  return normalizeAppLanguage(await getSetting('app_language'));
 }
 
 export async function getFirstSettingByKey(keys: readonly string[]): Promise<string | null> {

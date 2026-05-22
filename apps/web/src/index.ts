@@ -7,7 +7,12 @@
 import { Hono } from 'hono';
 import { auth } from './lib/auth';
 import { db } from './lib/db';
-import { getDefaultXAnalysisModel, getSetting, isSetupComplete } from './lib/settings';
+import {
+  getAppLanguage,
+  getDefaultXAnalysisModel,
+  getSetting,
+  isSetupComplete,
+} from './lib/settings';
 import { adminRoutes } from './routes/admin';
 import { jobsRoutes } from './routes/jobs';
 import { setupRoutes } from './routes/setup';
@@ -106,16 +111,17 @@ app.get('/health/deep', async (c) => {
 // Endpoint público: estado da instância (signups, primeira instalação)
 // Login page usa isso pra mostrar/esconder "Criar conta".
 app.get('/api/instance', async (c) => {
-  const [allowSignupsRaw, onboardingRaw] = await Promise.all([
+  const [allowSignupsRaw, onboardingRaw, language] = await Promise.all([
     getSetting('allow_signups').catch(() => null),
     getSetting('onboarding_done').catch(() => null),
+    getAppLanguage().catch(() => 'pt-BR' as const),
   ]);
   // Sem onboarding feito: não há admin ainda OR admin não terminou setup.
   // Nesse caso o primeiro signup é o do admin → sempre permitido.
   const userCount = await db.user.count();
   const onboardingDone = onboardingRaw === 'true';
   const allowSignups = userCount === 0 || (onboardingDone && allowSignupsRaw !== 'false');
-  return c.json({ allowSignups, hasUsers: userCount > 0, onboardingDone });
+  return c.json({ allowSignups, hasUsers: userCount > 0, onboardingDone, language });
 });
 
 // Capabilities: features opcionais que o admin pode habilitar/desabilitar.
@@ -160,17 +166,20 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
 // /api/me — devolve session corrente + flag de setupComplete (sempre exposta)
 app.get('/api/me', async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  const setupComplete = await isSetupComplete();
-  const onboardingRaw = await getSetting('onboarding_done').catch(() => null);
+  const [setupComplete, onboardingRaw, language] = await Promise.all([
+    isSetupComplete(),
+    getSetting('onboarding_done').catch(() => null),
+    getAppLanguage().catch(() => 'pt-BR' as const),
+  ]);
   const onboardingDone = onboardingRaw === 'true';
   if (!session) {
-    return c.json({ user: null, setupComplete, onboardingDone });
+    return c.json({ user: null, setupComplete, onboardingDone, language });
   }
   const user = await db.user.findUnique({
     where: { id: session.user.id },
     select: { id: true, email: true, name: true, image: true, status: true, role: true },
   });
-  return c.json({ user, setupComplete, onboardingDone });
+  return c.json({ user, setupComplete, onboardingDone, language });
 });
 
 // Setup endpoints (protegidos por middleware ADMIN no próprio router)
