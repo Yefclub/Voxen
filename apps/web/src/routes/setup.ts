@@ -20,6 +20,7 @@ import { db } from '../lib/db';
 import {
   deleteDefaultXAnalysisModel,
   deleteSetting,
+  getAppLanguage,
   getDefaultXAnalysisModel,
   getSetting,
   isSetupComplete,
@@ -64,9 +65,11 @@ setupRoutes.use('*', async (c, next) => {
 
 setupRoutes.get('/', async (c) => {
   const complete = await isSetupComplete();
+  const language = await getAppLanguage();
   if (!complete) {
     return c.json({
       complete,
+      language,
       chatModel: null,
       transcriptionModel: null,
       webSearchModel: null,
@@ -103,6 +106,7 @@ setupRoutes.get('/', async (c) => {
   ]);
   return c.json({
     complete,
+    language,
     chatModel,
     transcriptionModel,
     webSearchModel,
@@ -171,6 +175,7 @@ setupRoutes.post('/models', async (c) => {
 });
 
 const SaveBody = z.object({
+  app_language: z.enum(['pt-BR', 'en']).optional(),
   // opcional pra permitir trocar só os modelos sem reenviar a key
   openrouter_api_key: z.string().min(20).optional(),
   default_chat_model: z.string().min(1),
@@ -205,6 +210,7 @@ setupRoutes.post('/', async (c) => {
     yt_dlp_proxy_urls,
     admin_email,
     summary_timeout_sec,
+    app_language,
   } = parsed.data;
 
   const normalizedAdminEmail = admin_email?.trim();
@@ -307,6 +313,9 @@ setupRoutes.post('/', async (c) => {
     } else {
       await setSetting('summary_timeout_sec', summaryTimeoutToSave);
     }
+  }
+  if (app_language !== undefined) {
+    await setSetting('app_language', app_language);
   }
 
   return c.json({ complete: true });

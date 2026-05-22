@@ -6,7 +6,7 @@ Versões fixadas e justificativas. Atualizar este arquivo SEMPRE que mudar uma v
 
 | Tecnologia | Versão | Por quê |
 |---|---|---|
-| Bun | `1.2.x` | Runtime do `apps/web`. Rápido, suporta TS nativo, ótimo dev experience |
+| Bun | `>=1.2` (CI `1.2.x`; imagens Docker `1.3`) | Runtime do `apps/web`. Rápido, suporta TS nativo, ótimo dev experience |
 | Node | `22 LTS` | Compatibilidade com tooling que ainda não cobre Bun (Prisma CLI roda melhor em Node) |
 | Python | `3.13` | Latest stable. `apps/chat` (Agno) e `apps/worker` (extração de mídia + ARQ) |
 | pnpm | `9.x` | Package manager monorepo TS |
@@ -19,19 +19,18 @@ Versões fixadas e justificativas. Atualizar este arquivo SEMPRE que mudar uma v
 | Lib | Versão | Função |
 |---|---|---|
 | `hono` | `^4` | HTTP server (rotas + middleware) |
-| `react`, `react-dom` | `^18` | Front-end |
-| `vite` | `^5` | Build + dev server |
+| `react`, `react-dom` | `^19` | Front-end |
+| `vite` | `^6` | Build + dev server |
 | `@vitejs/plugin-react` | `^4` | React em Vite |
 | `tailwindcss` | `^4` | CSS utilitário, novo `@theme` |
 | `shadcn/ui` | latest | Componentes (zinc theme) |
 | `better-auth` | `^1` | Auth (email/senha + Prisma adapter) |
 | `prisma`, `@prisma/client` | `^6` | ORM |
-| `zod` | `^3` | Validação de schemas (input/output) |
+| `zod` | `^4` | Validação de schemas (input/output) |
 | `eslint` | `^9` | Lint TS |
 | `prettier` | `^3` | Formatação |
 | `typescript` | `^5.6` | TS compiler |
-| `vitest` | `^2` | Testes TS (compatível com Bun também) |
-| `@playwright/test` | `^1.49` | Testes E2E |
+| `vitest` | `^3` | Testes TS (compatível com Bun também) |
 
 ### `apps/chat` (Python)
 
@@ -82,14 +81,17 @@ Versões fixadas e justificativas. Atualizar este arquivo SEMPRE que mudar uma v
 | Tool | Função |
 |---|---|
 | GitHub Actions | Runner do CI |
-| `actions/setup-node@v4` | Setup Node 22 |
+| `actions/setup-node@v6` | Setup Node 22 |
 | `oven-sh/setup-bun@v2` | Setup Bun 1.2 |
-| `astral-sh/setup-uv@v3` | Setup uv (Python 3.13) |
-| `aquasecurity/trivy-action` | Container + filesystem scan |
+| `pnpm/action-setup@v6` | Setup pnpm |
+| `actions/setup-python@v6` | Setup Python 3.13 |
+| `astral-sh/setup-uv@v8.1.0` | Setup uv (Python 3.13) |
+| `actions/dependency-review-action@v5` | Review de dependências em PR |
+| `aquasecurity/trivy-action@v0.36.0` | Container + filesystem scan |
 | `github/codeql-action` | SAST TS/JS |
 | `pypa/gh-action-pip-audit` | Audit deps Python |
 | `gitleaks/gitleaks-action` | Secret scanning |
-| `docker/build-push-action@v6` | Build + push pra ghcr.io |
+| `docker/build-push-action@v7` | Build + push pra ghcr.io |
 
 ## Política de upgrade
 

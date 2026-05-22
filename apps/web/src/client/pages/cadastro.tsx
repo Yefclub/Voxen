@@ -9,8 +9,10 @@ import { useMe } from '../lib/hooks';
 import type { InstanceState } from '../lib/types';
 import { Logo } from '../components/ui/logo';
 import { cn } from '../lib/utils';
+import { useI18n } from '../lib/i18n';
 
 export function CadastroPage(): React.ReactElement {
+  const { setLocale, t } = useI18n();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,9 +26,12 @@ export function CadastroPage(): React.ReactElement {
 
   useEffect(() => {
     apiGet<InstanceState>('/api/instance')
-      .then(setInstance)
+      .then((next) => {
+        setInstance(next);
+        setLocale(next.language);
+      })
       .catch(() => undefined);
-  }, []);
+  }, [setLocale]);
 
   const isFirstUser = instance && !instance.hasUsers;
 
@@ -34,11 +39,11 @@ export function CadastroPage(): React.ReactElement {
     e.preventDefault();
     setError(null);
     if (password.length < 12) {
-      setError('A senha precisa ter pelo menos 12 caracteres.');
+      setError(t('signup.passwordTooShort'));
       return;
     }
     if (password !== confirm) {
-      setError('As senhas não conferem.');
+      setError(t('signup.passwordMismatch'));
       return;
     }
     setLoading(true);
@@ -55,13 +60,18 @@ export function CadastroPage(): React.ReactElement {
       }
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
-      else setError('Erro inesperado. Tente novamente.');
+      else setError(t('auth.unexpectedError'));
     } finally {
       setLoading(false);
     }
   }
 
-  const passwordStrength = checkStrength(password);
+  const passwordStrength = checkStrength(password, [
+    t('signup.strength.weak'),
+    t('signup.strength.fair'),
+    t('signup.strength.good'),
+    t('signup.strength.strong'),
+  ]);
 
   return (
     <div className="min-h-screen flex flex-col px-8 lg:px-16 py-10 relative">
@@ -86,12 +96,10 @@ export function CadastroPage(): React.ReactElement {
         >
           <div className="space-y-2.5">
             <h1 className="font-display text-[40px] font-semibold leading-[1.05] tracking-[-0.04em]">
-              {isFirstUser ? 'Criar conta principal' : 'Criar conta no Voxen'}
+              {isFirstUser ? t('signup.titleFirst') : t('signup.titleDefault')}
             </h1>
             <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-              {isFirstUser
-                ? 'Esta será a conta administradora da instância.'
-                : 'Você poderá usar a plataforma assim que o administrador aprovar.'}
+              {isFirstUser ? t('signup.subtitleFirst') : t('signup.subtitleDefault')}
             </p>
           </div>
 
@@ -103,13 +111,13 @@ export function CadastroPage(): React.ReactElement {
             )}
 
             <div className="space-y-2">
-              <FieldLabel htmlFor="name">Nome</FieldLabel>
+              <FieldLabel htmlFor="name">{t('auth.name')}</FieldLabel>
               <GlassInputWrapper>
                 <input
                   id="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Como prefere ser chamado"
+                  placeholder={t('auth.namePlaceholder')}
                   autoComplete="name"
                   required
                   minLength={2}
@@ -119,14 +127,14 @@ export function CadastroPage(): React.ReactElement {
             </div>
 
             <div className="space-y-2">
-              <FieldLabel htmlFor="email">E-mail</FieldLabel>
+              <FieldLabel htmlFor="email">{t('auth.email')}</FieldLabel>
               <GlassInputWrapper>
                 <input
                   id="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="voce@exemplo.com"
+                  placeholder={t('auth.emailPlaceholder')}
                   autoComplete="email"
                   required
                   className="w-full bg-transparent text-sm px-4 py-3.5 rounded-xl focus:outline-none placeholder:text-zinc-600"
@@ -135,7 +143,7 @@ export function CadastroPage(): React.ReactElement {
             </div>
 
             <div className="space-y-2">
-              <FieldLabel htmlFor="password">Senha</FieldLabel>
+              <FieldLabel htmlFor="password">{t('auth.password')}</FieldLabel>
               <GlassInputWrapper>
                 <div className="relative">
                   <input
@@ -143,7 +151,7 @@ export function CadastroPage(): React.ReactElement {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Mínimo 12 caracteres"
+                    placeholder={t('auth.passwordMin')}
                     autoComplete="new-password"
                     minLength={12}
                     required
@@ -163,7 +171,7 @@ export function CadastroPage(): React.ReactElement {
             </div>
 
             <div className="space-y-2">
-              <FieldLabel htmlFor="confirm">Confirmar senha</FieldLabel>
+              <FieldLabel htmlFor="confirm">{t('auth.passwordConfirm')}</FieldLabel>
               <GlassInputWrapper>
                 <div className="relative">
                   <input
@@ -171,7 +179,7 @@ export function CadastroPage(): React.ReactElement {
                     type={showPassword ? 'text' : 'password'}
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
-                    placeholder="Repita a senha"
+                    placeholder={t('auth.passwordConfirm')}
                     autoComplete="new-password"
                     minLength={12}
                     required
@@ -194,18 +202,24 @@ export function CadastroPage(): React.ReactElement {
               disabled={loading}
               className="w-full rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-500 py-3.5 font-semibold text-emerald-950 hover:from-emerald-300 hover:to-emerald-400 active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              {loading ? <Spinner /> : isFirstUser ? 'Criar e configurar' : 'Criar conta'}
+              {loading ? (
+                <Spinner />
+              ) : isFirstUser ? (
+                t('signup.submitFirst')
+              ) : (
+                t('signup.submitDefault')
+              )}
               {!loading && <ArrowRight className="h-4 w-4" />}
             </button>
           </form>
 
           <p className="text-center text-sm text-[var(--color-app-muted)] pt-2 border-t border-[var(--color-app-border)]/60">
-            Já tem conta?{' '}
+            {t('signup.hasAccount')}{' '}
             <Link
               to="/entrar"
               className="text-violet-400 font-medium hover:text-violet-300 hover:underline transition-colors"
             >
-              Entrar
+              {t('auth.signIn')}
             </Link>
           </p>
         </motion.div>
@@ -239,14 +253,16 @@ function GlassInputWrapper({ children }: { children: React.ReactNode }): React.R
   );
 }
 
-function checkStrength(pwd: string): { score: 0 | 1 | 2 | 3; label: string } {
+function checkStrength(
+  pwd: string,
+  labels: readonly [string, string, string, string],
+): { score: 0 | 1 | 2 | 3; label: string } {
   if (pwd.length === 0) return { score: 0, label: '' };
   let score = 0;
   if (pwd.length >= 12) score++;
   if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) score++;
   if (/\d/.test(pwd) && /[^a-zA-Z\d]/.test(pwd)) score++;
-  const labels = ['Fraca', 'Razoável', 'Boa', 'Forte'] as const;
-  return { score: Math.min(score, 3) as 0 | 1 | 2 | 3, label: labels[score] ?? 'Forte' };
+  return { score: Math.min(score, 3) as 0 | 1 | 2 | 3, label: labels[score] ?? labels[3] };
 }
 
 function StrengthBar({
