@@ -6,6 +6,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
 import { formatUsd } from '../lib/format';
 import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motion/animated-page';
+import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 
 interface CostResponse {
   summary: {
@@ -29,6 +30,7 @@ interface CostResponse {
 export function AdminCustosPage(): React.ReactElement {
   const [range, setRange] = useState<'month' | 'all'>('month');
   const { data, loading } = useFetch<CostResponse>(`/api/admin/custos?range=${range}`);
+  const { locale, t } = useI18n();
 
   return (
     <AnimatedPage>
@@ -36,11 +38,13 @@ export function AdminCustosPage(): React.ReactElement {
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-            Administração
+            {t('admin.eyebrow')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Custos</h1>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+            {t('admin.costs.title')}
+          </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Quanto a instância está gastando com chat, transcrição e análise via OpenRouter.
+            {t('admin.costs.description')}
           </p>
         </header>
 
@@ -48,26 +52,32 @@ export function AdminCustosPage(): React.ReactElement {
         <StaggerContainer className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StaggerItem>
             <SummaryCard
-              label="Mês atual"
+              label={t('admin.costs.monthCurrent')}
               value={data?.summary.month.total ?? null}
               events={data?.summary.month.events ?? null}
               accent="emerald"
+              locale={locale}
+              t={t}
             />
           </StaggerItem>
           <StaggerItem>
             <SummaryCard
-              label="Últimos 30 dias"
+              label={t('admin.costs.last30days')}
               value={data?.summary.last30d.total ?? null}
               events={data?.summary.last30d.events ?? null}
               accent="violet"
+              locale={locale}
+              t={t}
             />
           </StaggerItem>
           <StaggerItem>
             <SummaryCard
-              label="Desde sempre"
+              label={t('admin.costs.allTime')}
               value={data?.summary.allTime.total ?? null}
               events={data?.summary.allTime.events ?? null}
               accent="amber"
+              locale={locale}
+              t={t}
             />
           </StaggerItem>
         </StaggerContainer>
@@ -75,13 +85,13 @@ export function AdminCustosPage(): React.ReactElement {
         {/* Switcher de range */}
         <div className="flex items-center gap-2 -mb-4">
           <span className="text-xs uppercase tracking-wider text-[var(--color-app-muted)]">
-            Detalhar por
+            {t('admin.costs.detailBy')}
           </span>
           <RangeChip active={range === 'month'} onClick={() => setRange('month')}>
-            Este mês
+            {t('admin.costs.thisMonth')}
           </RangeChip>
           <RangeChip active={range === 'all'} onClick={() => setRange('all')}>
-            Histórico completo
+            {t('admin.costs.fullHistory')}
           </RangeChip>
         </div>
 
@@ -91,30 +101,32 @@ export function AdminCustosPage(): React.ReactElement {
             <div className="flex items-center gap-2 mb-4">
               <LineChart className="h-3.5 w-3.5 text-violet-400" />
               <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
-                Últimos 30 dias
+                {t('admin.costs.last30days')}
               </h2>
             </div>
             {loading || !data ? (
               <Skeleton className="h-32 w-full" />
             ) : data.daily.length === 0 ? (
               <p className="text-sm text-[var(--color-app-muted)] py-8 text-center">
-                Sem gastos no período.
+                {t('admin.costs.noSpending')}
               </p>
             ) : (
-              <DailyChart points={data.daily} />
+              <DailyChart points={data.daily} locale={locale} />
             )}
           </CardContent>
         </Card>
 
         {/* Por modelo */}
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-200">Por modelo</h2>
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
+            {t('admin.costs.byModel')}
+          </h2>
           {loading || !data ? (
             <Skeleton className="h-32 w-full" />
           ) : data.byModel.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
-                Nada por aqui ainda.
+                {t('admin.costs.empty')}
               </CardContent>
             </Card>
           ) : (
@@ -125,12 +137,15 @@ export function AdminCustosPage(): React.ReactElement {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-mono text-zinc-200 truncate">{m.model}</p>
                       <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
-                        {m.events} {m.events === 1 ? 'chamada' : 'chamadas'}
-                        {m.tokens > 0 && ` · ${m.tokens.toLocaleString('pt-BR')} tokens`}
+                        {m.events}{' '}
+                        {m.events === 1
+                          ? t('admin.costs.callSingular')
+                          : t('admin.costs.callPlural')}
+                        {m.tokens > 0 && ` · ${m.tokens.toLocaleString(locale)} tokens`}
                       </p>
                     </div>
                     <span className="text-base font-display font-semibold tabular-nums">
-                      {formatUsd(m.total)}
+                      {formatUsd(m.total, locale)}
                     </span>
                   </li>
                 ))}
@@ -141,13 +156,15 @@ export function AdminCustosPage(): React.ReactElement {
 
         {/* Por uso */}
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-200">Por uso</h2>
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
+            {t('admin.costs.byUse')}
+          </h2>
           {loading || !data ? (
             <Skeleton className="h-28 w-full" />
           ) : data.byKind.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
-                Nada por aqui ainda.
+                {t('admin.costs.empty')}
               </CardContent>
             </Card>
           ) : (
@@ -156,13 +173,16 @@ export function AdminCustosPage(): React.ReactElement {
                 {data.byKind.map((k) => (
                   <li key={k.kind} className="flex items-center gap-4 px-5 py-4">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-200 truncate">{kindLabel(k.kind)}</p>
+                      <p className="text-sm text-zinc-200 truncate">{kindLabel(k.kind, t)}</p>
                       <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
-                        {k.events} {k.events === 1 ? 'evento' : 'eventos'}
+                        {k.events}{' '}
+                        {k.events === 1
+                          ? t('admin.costs.eventSingular')
+                          : t('admin.costs.eventPlural')}
                       </p>
                     </div>
                     <span className="text-base font-display font-semibold tabular-nums">
-                      {formatUsd(k.total)}
+                      {formatUsd(k.total, locale)}
                     </span>
                   </li>
                 ))}
@@ -173,13 +193,15 @@ export function AdminCustosPage(): React.ReactElement {
 
         {/* Por user */}
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-200">Por usuário</h2>
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
+            {t('admin.costs.byUser')}
+          </h2>
           {loading || !data ? (
             <Skeleton className="h-32 w-full" />
           ) : data.byUser.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
-                Nada por aqui ainda.
+                {t('admin.costs.empty')}
               </CardContent>
             </Card>
           ) : (
@@ -188,14 +210,18 @@ export function AdminCustosPage(): React.ReactElement {
                 {data.byUser.map((u) => (
                   <li key={u.userId} className="flex items-center gap-4 px-5 py-4">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-200 truncate">{u.name ?? '— removido —'}</p>
+                      <p className="text-sm text-zinc-200 truncate">
+                        {u.name ?? t('admin.costs.removedUser')}
+                      </p>
                       <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
-                        {u.email ?? 'sem email'} · {u.events}{' '}
-                        {u.events === 1 ? 'evento' : 'eventos'}
+                        {u.email ?? t('admin.costs.noEmail')} · {u.events}{' '}
+                        {u.events === 1
+                          ? t('admin.costs.eventSingular')
+                          : t('admin.costs.eventPlural')}
                       </p>
                     </div>
                     <span className="text-base font-display font-semibold tabular-nums">
-                      {formatUsd(u.total)}
+                      {formatUsd(u.total, locale)}
                     </span>
                   </li>
                 ))}
@@ -208,13 +234,13 @@ export function AdminCustosPage(): React.ReactElement {
   );
 }
 
-function kindLabel(kind: string): string {
+function kindLabel(kind: string, t: TranslateFn): string {
   const labels: Record<string, string> = {
-    CHAT: 'Chat',
-    TRANSCRIBE: 'Transcrição',
-    DOCUMENT: 'Documentos',
-    X_SEARCH: 'Análise do X',
-    EMBED: 'Embeddings',
+    CHAT: t('admin.costs.kind.chat'),
+    TRANSCRIBE: t('admin.costs.kind.transcribe'),
+    DOCUMENT: t('admin.costs.kind.document'),
+    X_SEARCH: t('admin.costs.kind.x'),
+    EMBED: t('admin.costs.kind.embed'),
   };
   return labels[kind] ?? kind;
 }
@@ -224,11 +250,15 @@ function SummaryCard({
   value,
   events,
   accent,
+  locale,
+  t,
 }: {
   label: string;
   value: string | null;
   events: number | null;
   accent: 'emerald' | 'violet' | 'amber';
+  locale: Locale;
+  t: TranslateFn;
 }): React.ReactElement {
   const colors = {
     emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
@@ -247,11 +277,12 @@ function SummaryCard({
               <Skeleton className="h-10 w-24" />
             ) : (
               <p className="font-display text-3xl font-semibold tracking-[-0.03em] tabular-nums leading-none">
-                {formatUsd(value)}
+                {formatUsd(value, locale)}
               </p>
             )}
             <p className="text-[11px] text-[var(--color-app-muted)] tabular-nums">
-              {events ?? 0} {events === 1 ? 'cobrança' : 'cobranças'}
+              {events ?? 0}{' '}
+              {events === 1 ? t('admin.costs.chargeSingular') : t('admin.costs.chargePlural')}
             </p>
           </div>
           <div
@@ -289,7 +320,13 @@ function RangeChip({
   );
 }
 
-function DailyChart({ points }: { points: { day: string; total: string }[] }): React.ReactElement {
+function DailyChart({
+  points,
+  locale,
+}: {
+  points: { day: string; total: string }[];
+  locale: Locale;
+}): React.ReactElement {
   const values = points.map((p) => Number(p.total));
   const max = Math.max(...values, 0.0001);
   return (
@@ -305,7 +342,7 @@ function DailyChart({ points }: { points: { day: string; total: string }[] }): R
               animate={{ height: `${h}%` }}
               transition={{ delay: i * 0.02, type: 'spring', stiffness: 220, damping: 24 }}
               className="flex-1 rounded-sm bg-gradient-to-t from-violet-500/40 to-emerald-500/40 border-t border-emerald-400/40"
-              title={`${p.day} · ${formatUsd(p.total)}`}
+              title={`${p.day} · ${formatUsd(p.total, locale)}`}
             />
           );
         })}

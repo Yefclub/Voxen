@@ -12,6 +12,7 @@ import { useFetch } from '../lib/hooks';
 import type { AdminUser } from '../lib/types';
 import { formatRelative } from '../lib/format';
 import { AnimatedPage } from '../components/motion/animated-page';
+import { useI18n, type TranslateFn } from '../lib/i18n';
 
 interface InstanceResponse {
   allowSignups: boolean;
@@ -19,6 +20,7 @@ interface InstanceResponse {
 
 export function AdminUsuariosPage(): React.ReactElement {
   const { data, loading, refresh } = useFetch<{ users: AdminUser[] }>('/api/admin/usuarios');
+  const { locale, t } = useI18n();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [allowSignups, setAllowSignups] = useState<boolean | null>(null);
   const [togglingSignups, setTogglingSignups] = useState(false);
@@ -33,10 +35,10 @@ export function AdminUsuariosPage(): React.ReactElement {
     setPendingId(id);
     try {
       await apiPost(`/api/admin/usuarios/${id}/approve`, {});
-      toast.success('Usuário aprovado.');
+      toast.success(t('admin.users.approvedToast'));
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Falha ao aprovar.');
+      toast.error(err instanceof ApiError ? err.message : t('admin.users.approveError'));
     } finally {
       setPendingId(null);
     }
@@ -46,10 +48,10 @@ export function AdminUsuariosPage(): React.ReactElement {
     setPendingId(id);
     try {
       await apiPost(`/api/admin/usuarios/${id}/reject`, {});
-      toast('Usuário recusado.', { description: 'Ele não poderá acessar a instância.' });
+      toast(t('admin.users.rejectedToast'), { description: t('admin.users.rejectedDescription') });
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Falha ao recusar.');
+      toast.error(err instanceof ApiError ? err.message : t('admin.users.rejectError'));
     } finally {
       setPendingId(null);
     }
@@ -64,14 +66,14 @@ export function AdminUsuariosPage(): React.ReactElement {
         method: 'PATCH',
         body: JSON.stringify({ allowSignups: next }),
       });
-      toast.success(next ? 'Cadastros abertos.' : 'Cadastros fechados.', {
+      toast.success(next ? t('admin.users.signupsOpen') : t('admin.users.signupsClosed'), {
         description: next
-          ? 'Qualquer pessoa pode se cadastrar; você aprova depois.'
-          : 'Ninguém mais consegue criar conta.',
+          ? t('admin.users.signupsOpenDescription')
+          : t('admin.users.signupsClosedDescription'),
       });
     } catch (err) {
       setAllowSignups(previous);
-      toast.error(err instanceof ApiError ? err.message : 'Falha ao atualizar.');
+      toast.error(err instanceof ApiError ? err.message : t('admin.users.updateError'));
     } finally {
       setTogglingSignups(false);
     }
@@ -87,11 +89,13 @@ export function AdminUsuariosPage(): React.ReactElement {
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-            Administração
+            {t('admin.eyebrow')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Usuários</h1>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+            {t('admin.users.title')}
+          </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Aprove novos cadastros e controle quem pode entrar.
+            {t('admin.users.description')}
           </p>
         </header>
 
@@ -108,13 +112,13 @@ export function AdminUsuariosPage(): React.ReactElement {
               {allowSignups ? <UsersIcon className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-zinc-100">Cadastros novos</p>
+              <p className="text-sm font-medium text-zinc-100">{t('admin.users.newSignups')}</p>
               <p className="text-xs text-[var(--color-app-muted)] mt-0.5 leading-relaxed">
                 {allowSignups === null
-                  ? 'Carregando…'
+                  ? t('admin.users.loading')
                   : allowSignups
-                    ? 'Qualquer pessoa pode criar conta; você aprova cada uma.'
-                    : 'Ninguém mais consegue criar conta. Só você usa a instância.'}
+                    ? t('admin.users.signupOpenCopy')
+                    : t('admin.users.signupClosedCopy')}
               </p>
             </div>
             <div className="flex items-center gap-3 shrink-0">
@@ -123,7 +127,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                 checked={allowSignups ?? false}
                 onCheckedChange={toggleSignups}
                 disabled={allowSignups === null || togglingSignups}
-                aria-label="Permitir novos cadastros"
+                aria-label={t('admin.users.allowSignups')}
               />
             </div>
           </CardContent>
@@ -131,7 +135,7 @@ export function AdminUsuariosPage(): React.ReactElement {
 
         <section className="space-y-4">
           <h2 className="text-sm font-semibold tracking-tight text-zinc-300">
-            Aguardando aprovação
+            {t('admin.users.pendingApproval')}
             {pending.length > 0 && (
               <Badge variant="warning" className="ml-2">
                 {pending.length}
@@ -144,7 +148,7 @@ export function AdminUsuariosPage(): React.ReactElement {
           {!loading && pending.length === 0 && (
             <Card>
               <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
-                Nenhum cadastro pendente.
+                {t('admin.users.noPending')}
               </CardContent>
             </Card>
           )}
@@ -163,7 +167,9 @@ export function AdminUsuariosPage(): React.ReactElement {
                         <span className="text-sm text-[var(--color-app-muted)]">{u.email}</span>
                       </div>
                       <p className="text-xs text-[var(--color-app-muted)]">
-                        Cadastrou-se {formatRelative(new Date(u.createdAt))}
+                        {t('admin.users.registered', {
+                          time: formatRelative(new Date(u.createdAt), locale),
+                        })}
                       </p>
                     </div>
                     <div className="flex gap-2 shrink-0">
@@ -174,7 +180,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                         onClick={() => reject(u.id)}
                       >
                         {pendingId === u.id ? <Spinner /> : <X className="h-3.5 w-3.5" />}
-                        Recusar
+                        {t('admin.users.reject')}
                       </Button>
                       <Button
                         variant="primary"
@@ -183,7 +189,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                         onClick={() => approve(u.id)}
                       >
                         {pendingId === u.id ? <Spinner /> : <Check className="h-3.5 w-3.5" />}
-                        Aprovar
+                        {t('admin.users.approve')}
                       </Button>
                     </div>
                   </li>
@@ -194,12 +200,14 @@ export function AdminUsuariosPage(): React.ReactElement {
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-300">Todos os usuários</h2>
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-300">
+            {t('admin.users.allUsers')}
+          </h2>
 
           {!loading && others.length === 0 && (
             <Card>
               <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
-                Você é o primeiro usuário do sistema.
+                {t('admin.users.firstUser')}
               </CardContent>
             </Card>
           )}
@@ -224,13 +232,15 @@ export function AdminUsuariosPage(): React.ReactElement {
                       </div>
                       <p className="text-xs text-[var(--color-app-muted)]">
                         {u.status === 'APPROVED' && u.approvedAt
-                          ? `Aprovado ${formatRelative(new Date(u.approvedAt))}`
+                          ? t('admin.users.approvedAt', {
+                              time: formatRelative(new Date(u.approvedAt), locale),
+                            })
                           : u.status === 'REJECTED'
-                            ? 'Cadastro recusado'
-                            : 'Desativado'}
+                            ? t('admin.users.rejected')
+                            : t('admin.users.disabled')}
                       </p>
                     </div>
-                    <StatusBadge status={u.status} />
+                    <StatusBadge status={u.status} t={t} />
                   </li>
                 ))}
               </ul>
@@ -242,9 +252,21 @@ export function AdminUsuariosPage(): React.ReactElement {
   );
 }
 
-function StatusBadge({ status }: { status: AdminUser['status'] }): React.ReactElement {
-  if (status === 'APPROVED') return <Badge variant="success">Ativo</Badge>;
-  if (status === 'PENDING') return <Badge variant="warning">Pendente</Badge>;
-  if (status === 'REJECTED') return <Badge variant="danger">Recusado</Badge>;
-  return <Badge variant="muted">Desativado</Badge>;
+function StatusBadge({
+  status,
+  t,
+}: {
+  status: AdminUser['status'];
+  t: TranslateFn;
+}): React.ReactElement {
+  if (status === 'APPROVED') {
+    return <Badge variant="success">{t('admin.users.status.active')}</Badge>;
+  }
+  if (status === 'PENDING') {
+    return <Badge variant="warning">{t('admin.users.status.pending')}</Badge>;
+  }
+  if (status === 'REJECTED') {
+    return <Badge variant="danger">{t('admin.users.status.rejected')}</Badge>;
+  }
+  return <Badge variant="muted">{t('admin.users.status.disabled')}</Badge>;
 }
