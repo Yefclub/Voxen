@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner';
 import { Markdown } from '../components/ui/markdown';
 import { Button } from '../components/ui/button';
+import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 
 type AutomationType = 'PERIODIC_SUMMARY' | 'WEB_RESEARCH';
 type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
@@ -60,27 +61,8 @@ interface Run {
   createdAt: string;
 }
 
-const TYPE_LABELS: Record<AutomationType, string> = {
-  PERIODIC_SUMMARY: 'Resumo periódico',
-  WEB_RESEARCH: 'Pesquisa web → nota',
-};
-
-const FREQ_LABELS: Record<Frequency, string> = {
-  DAILY: 'Diária',
-  WEEKLY: 'Semanal',
-  MONTHLY: 'Mensal',
-};
-
-const DAYS_OF_WEEK = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-
-const PROMPT_PLACEHOLDERS: Record<AutomationType, string> = {
-  PERIODIC_SUMMARY:
-    'Liste e resuma todas as transcrições e notas que criei nos últimos 7 dias. Destaque temas recorrentes, insights principais e tópicos pra aprofundar.',
-  WEB_RESEARCH:
-    'Pesquise na web sobre <coloque seu tópico aqui>. Crie uma nota com: principais achados, links úteis, tópicos pra aprofundar.',
-};
-
 export function AutomacoesPage(): React.ReactElement {
+  const { locale, t } = useI18n();
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -96,13 +78,13 @@ export function AutomacoesPage(): React.ReactElement {
       const data = (await res.json()) as { automations: Automation[] };
       setAutomations(data.automations);
     } catch (err) {
-      toast.error('Falha ao carregar automações.', {
+      toast.error(t('automations.fetchError'), {
         description: err instanceof Error ? err.message : undefined,
       });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void fetchAutomations();
@@ -120,13 +102,12 @@ export function AutomacoesPage(): React.ReactElement {
         credentials: 'include',
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      toast.success('Execução enfileirada.', {
-        description:
-          'Em até 1 min a Vox processa essa automação. Atualize a página pra ver o resultado.',
+      toast.success(t('automations.runQueued'), {
+        description: t('automations.runQueuedDescription'),
       });
       await fetchAutomations();
     } catch (err) {
-      toast.error('Falha ao disparar.', {
+      toast.error(t('automations.runError'), {
         description: err instanceof Error ? err.message : undefined,
       });
     }
@@ -143,25 +124,24 @@ export function AutomacoesPage(): React.ReactElement {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await fetchAutomations();
     } catch (err) {
-      toast.error('Falha ao atualizar status.', {
+      toast.error(t('automations.statusError'), {
         description: err instanceof Error ? err.message : undefined,
       });
     }
   }
 
   async function remove(a: Automation): Promise<void> {
-    if (!confirm(`Apagar a automação "${a.name}"? Histórico de execuções também será removido.`))
-      return;
+    if (!confirm(t('automations.deleteConfirm', { name: a.name }))) return;
     try {
       const res = await fetch(`/api/automations/${a.id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      toast.success('Automação removida.');
+      toast.success(t('automations.removed'));
       await fetchAutomations();
     } catch (err) {
-      toast.error('Falha ao remover.', {
+      toast.error(t('automations.removeError'), {
         description: err instanceof Error ? err.message : undefined,
       });
     }
@@ -174,7 +154,7 @@ export function AutomacoesPage(): React.ReactElement {
       const data = (await res.json()) as { runs: Run[] };
       setRunViewer({ automation: a, runs: data.runs });
     } catch (err) {
-      toast.error('Falha ao listar execuções.', {
+      toast.error(t('automations.runsError'), {
         description: err instanceof Error ? err.message : undefined,
       });
     }
@@ -193,10 +173,10 @@ export function AutomacoesPage(): React.ReactElement {
             <Workflow className="size-5 text-zinc-700 dark:text-zinc-300" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Automações</h1>
-            <p className="text-sm text-zinc-500">
-              Jobs periódicos que a Vox executa pra você em background.
-            </p>
+            <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+              {t('automations.title')}
+            </h1>
+            <p className="text-sm text-zinc-500">{t('automations.description')}</p>
           </div>
         </div>
         <Button
@@ -206,17 +186,17 @@ export function AutomacoesPage(): React.ReactElement {
           }}
         >
           <Plus className="size-4 mr-1.5" />
-          Nova automação
+          {t('automations.new')}
         </Button>
       </div>
 
       {loading ? (
         <div className="py-12 text-center text-zinc-500 text-sm">
           <Loader2 className="size-4 animate-spin mx-auto mb-2" />
-          Carregando…
+          {t('automations.loading')}
         </div>
       ) : automations.length === 0 ? (
-        <EmptyState onCreate={() => setFormOpen(true)} />
+        <EmptyState onCreate={() => setFormOpen(true)} t={t} />
       ) : (
         <div className="grid gap-3">
           {automations.map((a) => (
@@ -231,6 +211,8 @@ export function AutomacoesPage(): React.ReactElement {
               onTogglePause={() => togglePause(a)}
               onDelete={() => remove(a)}
               onOpenRuns={() => openRuns(a)}
+              locale={locale}
+              t={t}
             />
           ))}
         </div>
@@ -241,6 +223,7 @@ export function AutomacoesPage(): React.ReactElement {
           <AutomationForm
             initial={editing}
             hasTelegram={hasTelegram}
+            t={t}
             onClose={() => {
               setFormOpen(false);
               setEditing(null);
@@ -256,6 +239,8 @@ export function AutomacoesPage(): React.ReactElement {
           <RunsModal
             automation={runViewer.automation}
             runs={runViewer.runs}
+            locale={locale}
+            t={t}
             onClose={() => setRunViewer(null)}
           />
         )}
@@ -268,20 +253,19 @@ export function AutomacoesPage(): React.ReactElement {
 // Subcomponents
 // ---------------------------------------------------------------------------
 
-function EmptyState({ onCreate }: { onCreate: () => void }): React.ReactElement {
+function EmptyState({ onCreate, t }: { onCreate: () => void; t: TranslateFn }): React.ReactElement {
   return (
     <div className="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-800 p-12 text-center">
       <Workflow className="size-10 text-zinc-300 dark:text-zinc-700 mx-auto mb-3" />
       <h2 className="text-base font-medium text-zinc-800 dark:text-zinc-200 mb-1">
-        Sem automações ainda
+        {t('automations.emptyTitle')}
       </h2>
       <p className="text-sm text-zinc-500 mb-4 max-w-md mx-auto">
-        Configure jobs periódicos: resumos semanais do que você consumiu, pesquisas web automáticas
-        em temas de interesse, ou notificações no Telegram quando algo importante for produzido.
+        {t('automations.emptyDescription')}
       </p>
       <Button onClick={onCreate}>
         <Plus className="size-4 mr-1.5" />
-        Criar primeira automação
+        {t('automations.createFirst')}
       </Button>
     </div>
   );
@@ -294,6 +278,8 @@ function AutomationCard({
   onTogglePause,
   onDelete,
   onOpenRuns,
+  locale,
+  t,
 }: {
   automation: Automation;
   onRunNow: () => void;
@@ -301,13 +287,15 @@ function AutomationCard({
   onTogglePause: () => void;
   onDelete: () => void;
   onOpenRuns: () => void;
+  locale: Locale;
+  t: TranslateFn;
 }): React.ReactElement {
   const a = automation;
-  const freqLabel = useMemo(() => formatFrequency(a), [a]);
+  const freqLabel = useMemo(() => formatFrequency(a, locale, t), [a, locale, t]);
   const nextLabel = a.nextRunAt
-    ? new Date(a.nextRunAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+    ? new Date(a.nextRunAt).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })
     : '—';
-  const lastBadge = a.lastRun ? <RunStatusBadge status={a.lastRun.status} /> : null;
+  const lastBadge = a.lastRun ? <RunStatusBadge status={a.lastRun.status} t={t} /> : null;
 
   return (
     <motion.div
@@ -326,11 +314,11 @@ function AutomationCard({
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-medium text-zinc-900 dark:text-zinc-100 truncate">{a.name}</h3>
             <span className="text-[11px] uppercase tracking-wide font-medium text-zinc-500 bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded">
-              {TYPE_LABELS[a.type]}
+              {typeLabel(a.type, t)}
             </span>
             {a.status === 'PAUSED' && (
               <span className="text-[11px] uppercase tracking-wide font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">
-                pausada
+                {t('automations.paused')}
               </span>
             )}
             {(a.delivery === 'TELEGRAM' || a.delivery === 'BOTH') && (
@@ -346,7 +334,7 @@ function AutomationCard({
               {freqLabel}
             </span>
             <span>·</span>
-            <span>Próxima: {nextLabel}</span>
+            <span>{t('automations.next', { date: nextLabel })}</span>
             {a.runCount > 0 && (
               <>
                 <span>·</span>
@@ -354,7 +342,12 @@ function AutomationCard({
                   onClick={onOpenRuns}
                   className="underline-offset-2 hover:underline cursor-pointer"
                 >
-                  {a.runCount} execuç{a.runCount === 1 ? 'ão' : 'ões'}
+                  {t(
+                    a.runCount === 1
+                      ? 'automations.runCountSingular'
+                      : 'automations.runCountPlural',
+                    { count: a.runCount },
+                  )}
                 </button>
                 {lastBadge}
               </>
@@ -362,16 +355,19 @@ function AutomationCard({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <IconButton onClick={onRunNow} title="Rodar agora">
+          <IconButton onClick={onRunNow} title={t('automations.runNow')}>
             <Play className="size-4" />
           </IconButton>
-          <IconButton onClick={onTogglePause} title={a.status === 'ACTIVE' ? 'Pausar' : 'Retomar'}>
+          <IconButton
+            onClick={onTogglePause}
+            title={a.status === 'ACTIVE' ? t('automations.pause') : t('automations.resume')}
+          >
             {a.status === 'ACTIVE' ? <Pause className="size-4" /> : <Play className="size-4" />}
           </IconButton>
-          <IconButton onClick={onEdit} title="Editar">
+          <IconButton onClick={onEdit} title={t('notes.edit')}>
             <Pencil className="size-4" />
           </IconButton>
-          <IconButton onClick={onDelete} title="Apagar" danger>
+          <IconButton onClick={onDelete} title={t('common.delete')} danger>
             <Trash2 className="size-4" />
           </IconButton>
         </div>
@@ -407,24 +403,28 @@ function IconButton({
   );
 }
 
-function RunStatusBadge({ status }: { status: RunStatus }): React.ReactElement {
+function RunStatusBadge({ status, t }: { status: RunStatus; t: TranslateFn }): React.ReactElement {
   const map: Record<
     RunStatus,
     { label: string; cls: string; Icon: React.ComponentType<{ className?: string }> }
   > = {
-    PENDING: { label: 'pendente', cls: 'text-zinc-600 bg-zinc-100 dark:bg-zinc-900', Icon: Clock },
+    PENDING: {
+      label: t('automations.runStatus.pending'),
+      cls: 'text-zinc-600 bg-zinc-100 dark:bg-zinc-900',
+      Icon: Clock,
+    },
     RUNNING: {
-      label: 'rodando',
+      label: t('automations.runStatus.running'),
       cls: 'text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40',
       Icon: Loader2,
     },
     SUCCESS: {
-      label: 'ok',
+      label: t('automations.runStatus.success'),
       cls: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40',
       Icon: CheckCircle2,
     },
     FAILED: {
-      label: 'falhou',
+      label: t('automations.runStatus.failed'),
       cls: 'text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40',
       Icon: AlertCircle,
     },
@@ -440,16 +440,52 @@ function RunStatusBadge({ status }: { status: RunStatus }): React.ReactElement {
   );
 }
 
-function formatFrequency(a: Automation): string {
+function formatFrequency(a: Automation, locale: Locale, t: TranslateFn): string {
   const hh = String(a.hour).padStart(2, '0');
   const mm = String(a.minute).padStart(2, '0');
-  if (a.frequency === 'DAILY') return `Todo dia às ${hh}:${mm}`;
+  if (a.frequency === 'DAILY') return t('automations.frequency.dailyAt', { time: `${hh}:${mm}` });
   if (a.frequency === 'WEEKLY') {
     const dow = a.dayOfWeek ?? 0;
-    const dayName = DAYS_OF_WEEK[dow] ?? 'Segunda';
-    return `Toda ${dayName.toLowerCase()} às ${hh}:${mm}`;
+    const dayName = dayLabels(t)[dow] ?? t('automations.day.monday');
+    return t('automations.frequency.weeklyAt', {
+      day: locale === 'pt-BR' ? dayName.toLowerCase() : dayName,
+      time: `${hh}:${mm}`,
+    });
   }
-  return `Todo dia ${a.dayOfMonth ?? 1} do mês às ${hh}:${mm}`;
+  return t('automations.frequency.monthlyAt', { day: a.dayOfMonth ?? 1, time: `${hh}:${mm}` });
+}
+
+function typeLabel(type: AutomationType, t: TranslateFn): string {
+  return type === 'PERIODIC_SUMMARY'
+    ? t('automations.type.summary')
+    : t('automations.type.webResearch');
+}
+
+function frequencyLabel(frequency: Frequency, t: TranslateFn): string {
+  const labels: Record<Frequency, string> = {
+    DAILY: t('automations.freq.daily'),
+    WEEKLY: t('automations.freq.weekly'),
+    MONTHLY: t('automations.freq.monthly'),
+  };
+  return labels[frequency];
+}
+
+function dayLabels(t: TranslateFn): string[] {
+  return [
+    t('automations.day.monday'),
+    t('automations.day.tuesday'),
+    t('automations.day.wednesday'),
+    t('automations.day.thursday'),
+    t('automations.day.friday'),
+    t('automations.day.saturday'),
+    t('automations.day.sunday'),
+  ];
+}
+
+function promptPlaceholder(type: AutomationType, t: TranslateFn): string {
+  return type === 'PERIODIC_SUMMARY'
+    ? t('automations.prompt.summary')
+    : t('automations.prompt.webResearch');
 }
 
 // ---------------------------------------------------------------------------
@@ -459,11 +495,13 @@ function formatFrequency(a: Automation): string {
 function AutomationForm({
   initial,
   hasTelegram,
+  t,
   onClose,
   onSaved,
 }: {
   initial: Automation | null;
   hasTelegram: boolean;
+  t: TranslateFn;
   onClose: () => void;
   onSaved: () => void;
 }): React.ReactElement {
@@ -490,7 +528,7 @@ function AutomationForm({
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (!name.trim() || !prompt.trim()) {
-      toast.error('Nome e prompt são obrigatórios.');
+      toast.error(t('automations.form.required'));
       return;
     }
     setSubmitting(true);
@@ -519,10 +557,10 @@ function AutomationForm({
         const err = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(err.error ?? `HTTP ${res.status}`);
       }
-      toast.success(isEdit ? 'Automação atualizada.' : 'Automação criada.');
+      toast.success(isEdit ? t('automations.updated') : t('automations.created'));
       onSaved();
     } catch (err) {
-      toast.error('Falha ao salvar.', {
+      toast.error(t('automations.saveError'), {
         description: err instanceof Error ? err.message : undefined,
       });
     } finally {
@@ -549,7 +587,7 @@ function AutomationForm({
       >
         <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between sticky top-0 bg-white dark:bg-zinc-950">
           <h2 className="font-semibold text-zinc-900 dark:text-zinc-100">
-            {isEdit ? 'Editar automação' : 'Nova automação'}
+            {isEdit ? t('automations.form.editTitle') : t('automations.form.newTitle')}
           </h2>
           <button
             type="button"
@@ -561,50 +599,50 @@ function AutomationForm({
         </div>
 
         <div className="px-6 py-4 space-y-4">
-          <Field label="Nome">
+          <Field label={t('automations.form.name')}>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Resumo semanal das transcrições"
+              placeholder={t('automations.form.namePlaceholder')}
               className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
               maxLength={120}
               required
             />
           </Field>
 
-          <Field label="Tipo">
+          <Field label={t('automations.form.type')}>
             <div className="grid grid-cols-2 gap-2">
-              {(['PERIODIC_SUMMARY', 'WEB_RESEARCH'] as const).map((t) => (
+              {(['PERIODIC_SUMMARY', 'WEB_RESEARCH'] as const).map((automationType) => (
                 <button
-                  key={t}
+                  key={automationType}
                   type="button"
                   onClick={() => {
-                    setType(t);
-                    if (!prompt.trim()) setPrompt(PROMPT_PLACEHOLDERS[t]);
+                    setType(automationType);
+                    if (!prompt.trim()) setPrompt(promptPlaceholder(automationType, t));
                   }}
                   className={`px-3 py-2 rounded-lg border text-sm text-left transition-colors ${
-                    type === t
+                    type === automationType
                       ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/40 text-violet-900 dark:text-violet-200'
                       : 'border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900'
                   }`}
                 >
-                  <div className="font-medium">{TYPE_LABELS[t]}</div>
+                  <div className="font-medium">{typeLabel(automationType, t)}</div>
                   <div className="text-[11px] text-zinc-500 mt-0.5">
-                    {t === 'PERIODIC_SUMMARY'
-                      ? 'Sintetiza transcrições/notas recentes'
-                      : 'Busca web e cria nota'}
+                    {automationType === 'PERIODIC_SUMMARY'
+                      ? t('automations.type.summaryDescription')
+                      : t('automations.type.webResearchDescription')}
                   </div>
                 </button>
               ))}
             </div>
           </Field>
 
-          <Field label="Prompt (o que a Vox deve fazer)">
+          <Field label={t('automations.form.prompt')}>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder={PROMPT_PLACEHOLDERS[type]}
+              placeholder={promptPlaceholder(type, t)}
               rows={5}
               className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
               maxLength={4000}
@@ -612,7 +650,7 @@ function AutomationForm({
             />
           </Field>
 
-          <Field label="Frequência">
+          <Field label={t('automations.form.frequency')}>
             <div className="flex gap-2">
               {(['DAILY', 'WEEKLY', 'MONTHLY'] as const).map((f) => (
                 <button
@@ -625,20 +663,20 @@ function AutomationForm({
                       : 'border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900'
                   }`}
                 >
-                  {FREQ_LABELS[f]}
+                  {frequencyLabel(f, t)}
                 </button>
               ))}
             </div>
           </Field>
 
           {frequency === 'WEEKLY' && (
-            <Field label="Dia da semana">
+            <Field label={t('automations.form.dayOfWeek')}>
               <select
                 value={dayOfWeek}
                 onChange={(e) => setDayOfWeek(Number(e.target.value))}
                 className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm"
               >
-                {DAYS_OF_WEEK.map((d, i) => (
+                {dayLabels(t).map((d, i) => (
                   <option key={i} value={i}>
                     {d}
                   </option>
@@ -648,7 +686,7 @@ function AutomationForm({
           )}
 
           {frequency === 'MONTHLY' && (
-            <Field label="Dia do mês (1-31)">
+            <Field label={t('automations.form.dayOfMonth')}>
               <input
                 type="number"
                 min={1}
@@ -657,14 +695,12 @@ function AutomationForm({
                 onChange={(e) => setDayOfMonth(Math.max(1, Math.min(31, Number(e.target.value))))}
                 className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm"
               />
-              <p className="text-[11px] text-zinc-500 mt-1">
-                Em meses com menos dias, ajusta automaticamente pro último dia.
-              </p>
+              <p className="text-[11px] text-zinc-500 mt-1">{t('automations.form.monthHint')}</p>
             </Field>
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Hora">
+            <Field label={t('automations.form.hour')}>
               <input
                 type="number"
                 min={0}
@@ -674,7 +710,7 @@ function AutomationForm({
                 className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm"
               />
             </Field>
-            <Field label="Minuto">
+            <Field label={t('automations.form.minute')}>
               <input
                 type="number"
                 min={0}
@@ -686,16 +722,20 @@ function AutomationForm({
             </Field>
           </div>
 
-          <Field label="Entrega">
+          <Field label={t('automations.form.delivery')}>
             <div className="space-y-1.5">
               {[
                 {
                   v: 'IN_APP' as const,
-                  label: 'Aparece em /automacoes (padrão)',
+                  label: t('automations.delivery.inApp'),
                   requiresTg: false,
                 },
-                { v: 'TELEGRAM' as const, label: 'Envia pro meu Telegram', requiresTg: true },
-                { v: 'BOTH' as const, label: 'Ambos', requiresTg: true },
+                {
+                  v: 'TELEGRAM' as const,
+                  label: t('automations.delivery.telegram'),
+                  requiresTg: true,
+                },
+                { v: 'BOTH' as const, label: t('automations.delivery.both'), requiresTg: true },
               ].map((opt) => {
                 const disabled = opt.requiresTg && !hasTelegram;
                 return (
@@ -706,7 +746,7 @@ function AutomationForm({
                         ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/40'
                         : 'border-zinc-200 dark:border-zinc-800'
                     } ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-zinc-50 dark:hover:bg-zinc-900'}`}
-                    title={disabled ? 'Vincule o Telegram em /conta primeiro' : ''}
+                    title={disabled ? t('automations.delivery.telegramRequired') : ''}
                   >
                     <input
                       type="radio"
@@ -723,16 +763,18 @@ function AutomationForm({
             </div>
           </Field>
 
-          <div className="text-[11px] text-zinc-500">Timezone: {timezone}</div>
+          <div className="text-[11px] text-zinc-500">
+            {t('automations.form.timezone', { timezone })}
+          </div>
         </div>
 
         <div className="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-end gap-2 sticky bottom-0 bg-white dark:bg-zinc-950">
           <Button type="button" variant="ghost" onClick={onClose}>
-            Cancelar
+            {t('common.cancel')}
           </Button>
           <Button type="submit" disabled={submitting}>
             {submitting && <Loader2 className="size-4 mr-1.5 animate-spin" />}
-            {isEdit ? 'Salvar' : 'Criar'}
+            {isEdit ? t('common.save') : t('common.create')}
           </Button>
         </div>
       </motion.form>
@@ -764,10 +806,14 @@ function Field({
 function RunsModal({
   automation,
   runs,
+  locale,
+  t,
   onClose,
 }: {
   automation: Automation;
   runs: Run[];
+  locale: Locale;
+  t: TranslateFn;
   onClose: () => void;
 }): React.ReactElement {
   const [expanded, setExpanded] = useState<string | null>(runs[0]?.id ?? null);
@@ -791,7 +837,7 @@ function RunsModal({
         <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-zinc-900 dark:text-zinc-100">{automation.name}</h2>
-            <p className="text-xs text-zinc-500">Execuções recentes</p>
+            <p className="text-xs text-zinc-500">{t('automations.recentRuns')}</p>
           </div>
           <button
             type="button"
@@ -804,9 +850,7 @@ function RunsModal({
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           {runs.length === 0 ? (
-            <div className="py-8 text-center text-sm text-zinc-500">
-              Nenhuma execução ainda. Use "Rodar agora" pra disparar manualmente.
-            </div>
+            <div className="py-8 text-center text-sm text-zinc-500">{t('automations.noRuns')}</div>
           ) : (
             runs.map((r) => {
               const ts = r.startedAt ?? r.createdAt;
@@ -822,20 +866,22 @@ function RunsModal({
                     className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-zinc-50 dark:hover:bg-zinc-900"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <RunStatusBadge status={r.status} />
+                      <RunStatusBadge status={r.status} t={t} />
                       <span className="text-sm text-zinc-700 dark:text-zinc-300">
-                        {new Date(ts).toLocaleString('pt-BR', {
+                        {new Date(ts).toLocaleString(locale, {
                           dateStyle: 'short',
                           timeStyle: 'short',
                         })}
                       </span>
                       {r.triggeredBy === 'manual' && (
-                        <span className="text-[10px] uppercase text-zinc-500">manual</span>
+                        <span className="text-[10px] uppercase text-zinc-500">
+                          {t('automations.manual')}
+                        </span>
                       )}
                       {r.telegramSent && (
                         <span className="text-[10px] flex items-center gap-1 text-sky-700 dark:text-sky-400">
                           <Send className="size-3" />
-                          enviado
+                          {t('automations.sent')}
                         </span>
                       )}
                     </div>
@@ -855,18 +901,18 @@ function RunsModal({
                       ) : (
                         <div className="text-sm text-zinc-500 italic">
                           {r.status === 'PENDING' || r.status === 'RUNNING'
-                            ? 'Aguardando processamento…'
-                            : 'Sem output.'}
+                            ? t('automations.waiting')
+                            : t('automations.noOutput')}
                         </div>
                       )}
                       {r.noteId && (
                         <div className="mt-3 text-xs text-zinc-500">
-                          📄 Nota criada:{' '}
+                          {t('automations.noteCreated')}{' '}
                           <a
                             href={`/notas/${r.noteId}`}
                             className="text-violet-700 dark:text-violet-300 hover:underline"
                           >
-                            abrir
+                            {t('automations.open')}
                           </a>
                         </div>
                       )}
