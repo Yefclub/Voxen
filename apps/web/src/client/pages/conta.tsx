@@ -23,6 +23,7 @@ import { ApiError, api, apiGet, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { formatDateTime } from '../lib/format';
+import { useI18n } from '../lib/i18n';
 
 interface AccountData {
   id: string;
@@ -37,6 +38,7 @@ interface AccountData {
 
 export function ContaPage(): React.ReactElement {
   const { refresh } = useMe();
+  const { locale, t } = useI18n();
   const [account, setAccount] = useState<AccountData | null>(null);
   const [name, setName] = useState('');
   const [savingName, setSavingName] = useState(false);
@@ -69,9 +71,9 @@ export function ContaPage(): React.ReactElement {
       });
       setAccount((a) => (a ? { ...a, name: res.user.name } : a));
       await refresh();
-      toast.success('Nome atualizado.');
+      toast.success(t('account.nameUpdated'));
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Falha ao salvar.');
+      toast.error(err instanceof ApiError ? err.message : t('account.saveFailed'));
     } finally {
       setSavingName(false);
     }
@@ -89,14 +91,14 @@ export function ContaPage(): React.ReactElement {
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? 'Erro ao enviar imagem.');
+        throw new Error(body.error ?? t('account.avatarUploadError'));
       }
       const data = (await res.json()) as { image: string };
       setAccount((a) => (a ? { ...a, image: data.image } : a));
       await refresh();
-      toast.success('Foto atualizada.');
+      toast.success(t('account.avatarUpdated'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Falha no upload.');
+      toast.error(err instanceof Error ? err.message : t('account.avatarUploadFailed'));
     } finally {
       setUploadingAvatar(false);
     }
@@ -105,11 +107,11 @@ export function ContaPage(): React.ReactElement {
   async function changePassword(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (newPassword.length < 12) {
-      toast.error('Nova senha precisa ter ao menos 12 caracteres.');
+      toast.error(t('account.passwordTooShort'));
       return;
     }
     if (newPassword !== confirmNew) {
-      toast.error('As senhas novas não conferem.');
+      toast.error(t('account.passwordMismatch'));
       return;
     }
     setChangingPwd(true);
@@ -121,11 +123,11 @@ export function ContaPage(): React.ReactElement {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmNew('');
-      toast.success('Senha trocada.', {
-        description: 'Outras sessões foram desconectadas.',
+      toast.success(t('account.passwordChanged'), {
+        description: t('account.passwordChangedDescription'),
       });
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Senha atual incorreta.');
+      toast.error(err instanceof ApiError ? err.message : t('account.currentPasswordIncorrect'));
     } finally {
       setChangingPwd(false);
     }
@@ -145,19 +147,21 @@ export function ContaPage(): React.ReactElement {
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <UserIcon className="h-3.5 w-3.5 text-violet-400" />
-            Conta
+            {t('account.eyebrow')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Seu perfil</h1>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+            {t('account.title')}
+          </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-            Atualize seus dados e gerencie sua senha.
+            {t('account.description')}
           </p>
         </header>
 
         {/* Avatar */}
         <Card elevated>
           <CardHeader>
-            <CardTitle className="font-display text-lg">Foto de perfil</CardTitle>
-            <CardDescription>PNG, JPG ou WebP até 5 MB.</CardDescription>
+            <CardTitle className="font-display text-lg">{t('account.avatarTitle')}</CardTitle>
+            <CardDescription>{t('account.avatarDescription')}</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center gap-6">
             <Avatar className="h-20 w-20 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
@@ -181,7 +185,7 @@ export function ContaPage(): React.ReactElement {
             <div>
               <label className="inline-flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface)] hover:bg-[var(--color-app-surface-hover)] px-3.5 py-2 text-sm font-medium transition-colors">
                 {uploadingAvatar ? <Spinner /> : <Upload className="h-3.5 w-3.5" />}
-                Trocar imagem
+                {t('account.changeImage')}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
@@ -199,17 +203,17 @@ export function ContaPage(): React.ReactElement {
         {/* Identidade */}
         <Card elevated>
           <CardHeader>
-            <CardTitle className="font-display text-lg">Identidade</CardTitle>
-            <CardDescription>E-mail não pode ser alterado por aqui (ainda).</CardDescription>
+            <CardTitle className="font-display text-lg">{t('account.identityTitle')}</CardTitle>
+            <CardDescription>{t('account.emailFixed')}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={saveName} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">E-mail</Label>
+                <Label htmlFor="email">{t('auth.email')}</Label>
                 <Input id="email" value={account.email} disabled className="font-mono" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="name">Nome</Label>
+                <Label htmlFor="name">{t('auth.name')}</Label>
                 <Input
                   id="name"
                   value={name}
@@ -225,7 +229,7 @@ export function ContaPage(): React.ReactElement {
                   size="default"
                   disabled={savingName || name === account.name || name.length < 2}
                 >
-                  {savingName ? <Spinner /> : 'Salvar'}
+                  {savingName ? <Spinner /> : t('common.save')}
                 </Button>
               </div>
             </form>
@@ -237,14 +241,14 @@ export function ContaPage(): React.ReactElement {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-display text-lg">
               <KeyRound className="h-4 w-4 text-emerald-400" />
-              Trocar senha
+              {t('account.changePasswordTitle')}
             </CardTitle>
-            <CardDescription>Ao trocar, suas outras sessões serão desconectadas.</CardDescription>
+            <CardDescription>{t('account.passwordDescription')}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={changePassword} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="cur">Senha atual</Label>
+                <Label htmlFor="cur">{t('account.currentPassword')}</Label>
                 <div className="relative">
                   <Input
                     id="cur"
@@ -258,14 +262,16 @@ export function ContaPage(): React.ReactElement {
                     type="button"
                     onClick={() => setShowPwd((v) => !v)}
                     className="absolute inset-y-0 right-3 flex items-center text-[var(--color-app-muted)] hover:text-zinc-100"
-                    aria-label={showPwd ? 'Ocultar' : 'Ver'}
+                    aria-label={
+                      showPwd ? t('admin.integrations.hide') : t('admin.integrations.show')
+                    }
                   >
                     {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new">Nova senha</Label>
+                <Label htmlFor="new">{t('account.newPassword')}</Label>
                 <Input
                   id="new"
                   type={showPwd ? 'text' : 'password'}
@@ -277,7 +283,7 @@ export function ContaPage(): React.ReactElement {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirm">Confirmar nova senha</Label>
+                <Label htmlFor="confirm">{t('account.confirmNewPassword')}</Label>
                 <Input
                   id="confirm"
                   type={showPwd ? 'text' : 'password'}
@@ -300,7 +306,7 @@ export function ContaPage(): React.ReactElement {
                     newPassword !== confirmNew
                   }
                 >
-                  {changingPwd ? <Spinner /> : 'Trocar senha'}
+                  {changingPwd ? <Spinner /> : t('account.changePassword')}
                 </Button>
               </div>
             </form>
@@ -315,7 +321,7 @@ export function ContaPage(): React.ReactElement {
           transition={{ delay: 0.3 }}
           className="text-xs text-[var(--color-app-muted)] text-center pt-2"
         >
-          Conta criada em {formatDateTime(new Date(account.createdAt))}
+          {t('account.createdAt', { date: formatDateTime(new Date(account.createdAt), locale) })}
         </motion.p>
       </div>
     </AnimatedPage>
@@ -330,6 +336,7 @@ interface TelegramStatus {
 }
 
 function TelegramLinkCard(): React.ReactElement {
+  const { locale, t } = useI18n();
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [codeExpiresAt, setCodeExpiresAt] = useState<number | null>(null);
@@ -359,9 +366,9 @@ function TelegramLinkCard(): React.ReactElement {
       );
       setCode(r.code);
       setCodeExpiresAt(Date.now() + r.expiresInSec * 1000);
-      toast.success('Código gerado. Mande no bot dentro de 10 minutos.');
+      toast.success(t('account.telegram.codeGenerated'));
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Erro ao gerar código.');
+      toast.error(err instanceof ApiError ? err.message : t('account.telegram.codeError'));
     } finally {
       setGenerating(false);
     }
@@ -385,11 +392,11 @@ function TelegramLinkCard(): React.ReactElement {
         method: 'DELETE',
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('Falha ao desvincular.');
-      toast.success('Telegram desvinculado.');
+      if (!res.ok) throw new Error(t('account.telegram.unlinkFailed'));
+      toast.success(t('account.telegram.unlinked'));
       setStatus({ linked: false });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro.');
+      toast.error(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setUnlinking(false);
     }
@@ -405,11 +412,11 @@ function TelegramLinkCard(): React.ReactElement {
             setStatus(s);
             setCode(null);
             setCodeExpiresAt(null);
-            toast.success('Telegram vinculado!');
+            toast.success(t('account.telegram.linked'));
           } else if (codeExpiresAt && Date.now() > codeExpiresAt) {
             setCode(null);
             setCodeExpiresAt(null);
-            toast.warning('Código expirou.');
+            toast.warning(t('account.telegram.codeExpired'));
           }
         })
         .catch(() => undefined);
@@ -432,11 +439,9 @@ function TelegramLinkCard(): React.ReactElement {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 font-display">
           <Send className="h-4 w-4 text-violet-400" />
-          Telegram
+          {t('account.telegram.title')}
         </CardTitle>
-        <CardDescription>
-          Vincule sua conta pra falar com a Vox e buscar na biblioteca pelo bot do Telegram.
-        </CardDescription>
+        <CardDescription>{t('account.telegram.description')}</CardDescription>
       </CardHeader>
       <CardContent>
         {status.linked ? (
@@ -445,14 +450,18 @@ function TelegramLinkCard(): React.ReactElement {
               <Check className="h-4 w-4 text-emerald-400" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-zinc-100">
-                  Vinculado {status.username ? `como @${status.username}` : ''}
+                  {status.username
+                    ? t('account.telegram.linkedAs', { username: status.username })
+                    : t('account.telegram.linkedStatus')}
                 </p>
                 <p className="text-[11px] text-[var(--color-app-muted)] tabular-nums">
-                  chat_id <span className="font-mono">{status.chatId}</span>
+                  {t('account.telegram.chatId')} <span className="font-mono">{status.chatId}</span>
                   {status.linkedAt && (
                     <>
                       {' · '}
-                      desde {formatDateTime(new Date(status.linkedAt))}
+                      {t('account.telegram.since', {
+                        date: formatDateTime(new Date(status.linkedAt), locale),
+                      })}
                     </>
                   )}
                 </p>
@@ -460,32 +469,32 @@ function TelegramLinkCard(): React.ReactElement {
             </div>
             <Button variant="outline" size="sm" onClick={() => void unlink()} disabled={unlinking}>
               {unlinking ? <Spinner /> : <Unlink className="h-3.5 w-3.5" />}
-              Desvincular
+              {t('account.telegram.unlink')}
             </Button>
           </div>
         ) : code ? (
           <div className="space-y-3">
             <div className="rounded-lg border border-violet-500/30 bg-violet-500/5 px-4 py-4">
               <p className="text-[11px] uppercase tracking-wider text-violet-300 font-medium mb-2">
-                No bot do Voxen no Telegram, envie:
+                {t('account.telegram.sendToBot')}
               </p>
               <code className="block font-mono text-2xl font-bold tracking-wider text-zinc-100 tabular-nums">
                 /start {code}
               </code>
               <p className="text-[11px] text-[var(--color-app-muted)] mt-2">
-                Expira em 10 minutos. Detecto o vínculo automaticamente.
+                {t('account.telegram.expires')}
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={() => void copyCode()}>
               {copied ? (
                 <>
                   <Check className="h-3.5 w-3.5" />
-                  Copiado
+                  {t('common.copied')}
                 </>
               ) : (
                 <>
                   <CopyIcon className="h-3.5 w-3.5" />
-                  Copiar comando
+                  {t('account.telegram.copyCommand')}
                 </>
               )}
             </Button>
@@ -498,7 +507,7 @@ function TelegramLinkCard(): React.ReactElement {
             disabled={generating}
           >
             {generating ? <Spinner /> : <Send className="h-3.5 w-3.5" />}
-            Gerar código de vínculo
+            {t('account.telegram.generateCode')}
           </Button>
         )}
       </CardContent>
