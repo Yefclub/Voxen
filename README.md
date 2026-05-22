@@ -1,5 +1,7 @@
 # Voxen
 
+[Português (Brasil)](README.md) | [English](docs/en/README.md)
+
 Plataforma web self-hosted de **biblioteca multimodal** com transcrição, análise de documentos/imagens e **chat-agente** que navega o acervo. Sem embeddings — abordagem harness/Karpathy.
 
 ## O que faz
@@ -111,6 +113,8 @@ make backup          # snapshot postgres + MASTER_KEY + minio em ./backups/
 Migrations rodam automaticamente no entrypoint do `web` (Prisma `migrate deploy`).
 
 ## Documentação
+
+Índice bilíngue completo: [`docs/README.md`](docs/README.md).
 
 | Doc | Tema |
 |---|---|

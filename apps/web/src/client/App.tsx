@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { Toaster } from './components/ui/sonner';
 import { AppLayout } from './components/layout/app-layout';
 import { AuthLayout } from './components/layout/auth-layout';
@@ -20,48 +21,64 @@ import { TranscricaoDetalhePage } from './pages/transcricoes-detalhe';
 import { NotasPage } from './pages/notas';
 import { AutomacoesPage } from './pages/automacoes';
 import { GrafoPage } from './pages/grafo';
+import { I18nProvider, useI18n } from './lib/i18n';
+import { useMe } from './lib/hooks';
 
 export function App(): React.ReactElement {
   return (
-    <BrowserRouter>
-      <Toaster />
-      <Routes>
-        {/* Auth (sem login) */}
-        <Route element={<AuthLayout />}>
-          <Route path="/entrar" element={<LoginPage />} />
-          <Route path="/cadastro" element={<CadastroPage />} />
-        </Route>
+    <I18nProvider>
+      <I18nRuntimeSync />
+      <BrowserRouter>
+        <Toaster />
+        <Routes>
+          {/* Auth (sem login) */}
+          <Route element={<AuthLayout />}>
+            <Route path="/entrar" element={<LoginPage />} />
+            <Route path="/cadastro" element={<CadastroPage />} />
+          </Route>
 
-        {/* Wizard de onboarding do admin (sem sidebar) */}
-        <Route path="/onboarding" element={<OnboardingPage />} />
+          {/* Wizard de onboarding do admin (sem sidebar) */}
+          <Route path="/onboarding" element={<OnboardingPage />} />
 
-        {/* Estado de espera (sem layout) */}
-        <Route path="/pendente" element={<PendentePage />} />
+          {/* Estado de espera (sem layout) */}
+          <Route path="/pendente" element={<PendentePage />} />
 
-        {/* App autenticado */}
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/chat/:id" element={<ChatPage />} />
-          <Route path="/setup" element={<SetupPage />} />
-          <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
-          <Route path="/admin/custos" element={<AdminCustosPage />} />
-          <Route path="/admin/integracoes" element={<AdminIntegracoesPage />} />
-          <Route path="/conta" element={<ContaPage />} />
-          <Route path="/jobs" element={<JobsPage />} />
-          <Route path="/jobs/:id" element={<JobDetalhePage />} />
-          <Route path="/transcricoes" element={<TranscricoesPage />} />
-          <Route path="/transcricoes/:id" element={<TranscricaoDetalhePage />} />
-          <Route path="/notas" element={<NotasPage />} />
-          <Route path="/notas/:id" element={<NotasPage />} />
-          <Route path="/automacoes" element={<AutomacoesPage />} />
-          <Route path="/grafo" element={<GrafoPage />} />
-        </Route>
+          {/* App autenticado */}
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/chat/:id" element={<ChatPage />} />
+            <Route path="/setup" element={<SetupPage />} />
+            <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
+            <Route path="/admin/custos" element={<AdminCustosPage />} />
+            <Route path="/admin/integracoes" element={<AdminIntegracoesPage />} />
+            <Route path="/conta" element={<ContaPage />} />
+            <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/jobs/:id" element={<JobDetalhePage />} />
+            <Route path="/transcricoes" element={<TranscricoesPage />} />
+            <Route path="/transcricoes/:id" element={<TranscricaoDetalhePage />} />
+            <Route path="/notas" element={<NotasPage />} />
+            <Route path="/notas/:id" element={<NotasPage />} />
+            <Route path="/automacoes" element={<AutomacoesPage />} />
+            <Route path="/grafo" element={<GrafoPage />} />
+          </Route>
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </BrowserRouter>
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </I18nProvider>
   );
+}
+
+function I18nRuntimeSync(): null {
+  const { data } = useMe();
+  const { setLocale } = useI18n();
+
+  useEffect(() => {
+    if (data?.language) setLocale(data.language);
+  }, [data?.language, setLocale]);
+
+  return null;
 }

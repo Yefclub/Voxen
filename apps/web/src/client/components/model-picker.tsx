@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactElement } from 'react';
 import { Check, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
 import type { OrModel } from '../lib/types';
 import { cn } from '../lib/utils';
+import { useI18n } from '../lib/i18n';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
@@ -25,6 +26,7 @@ export function ModelPicker({
   hint,
   optional = false,
 }: ModelPickerProps): ReactElement {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const selected = options.find((m) => m.id === value);
@@ -59,7 +61,9 @@ export function ModelPicker({
       <div className="flex items-center justify-between gap-3">
         <Label>{label}</Label>
         <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] tabular-nums">
-          {query.trim() ? `${filtered.length} / ${total}` : `${total} disponíveis`}
+          {query.trim()
+            ? `${filtered.length} / ${total}`
+            : t('modelPicker.available', { count: total })}
         </span>
       </div>
 
@@ -78,10 +82,10 @@ export function ModelPicker({
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-zinc-100">
-              {selected?.name || value || 'Não configurado'}
+              {selected?.name || value || t('modelPicker.notConfigured')}
             </span>
             <span className="mt-0.5 block truncate font-mono text-[11px] text-[var(--color-app-muted)]">
-              {selected?.id || value || 'Selecione um modelo'}
+              {selected?.id || value || t('modelPicker.select')}
             </span>
           </span>
           <ChevronDown className="h-4 w-4 shrink-0 text-[var(--color-app-muted)] transition-colors group-hover:text-zinc-200" />
@@ -100,7 +104,8 @@ export function ModelPicker({
           <DialogHeader className="border-b border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-5 py-4">
             <DialogTitle className="font-display text-xl">{label}</DialogTitle>
             <DialogDescription>
-              {total} modelos disponíveis{optional ? ' · opcional' : ''}
+              {t('modelPicker.total', { count: total })}
+              {optional ? ` · ${t('common.optional')}` : ''}
             </DialogDescription>
           </DialogHeader>
 
@@ -111,7 +116,7 @@ export function ModelPicker({
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Filtrar por nome, provedor ou ID"
+                placeholder={t('modelPicker.filter')}
                 spellCheck={false}
                 className="h-10 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] pl-10 pr-3 text-sm text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none"
               />
@@ -134,9 +139,9 @@ export function ModelPicker({
                   <X className="h-4 w-4" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold">Não configurar</span>
+                  <span className="block text-sm font-semibold">{t('modelPicker.clear')}</span>
                   <span className="block text-xs text-[var(--color-app-muted)]">
-                    Recurso fica desabilitado ou usa fallback.
+                    {t('modelPicker.clearHint')}
                   </span>
                 </span>
                 {!value && <Check className="h-4 w-4 shrink-0 text-emerald-300" />}
@@ -145,7 +150,7 @@ export function ModelPicker({
 
             {filtered.length === 0 ? (
               <div className="px-4 py-10 text-center text-sm text-[var(--color-app-muted)]">
-                Nenhum modelo encontrado.
+                {t('modelPicker.empty')}
               </div>
             ) : (
               filtered.map((model) => (
@@ -161,7 +166,7 @@ export function ModelPicker({
 
           <div className="flex justify-end border-t border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/70 px-5 py-3">
             <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
-              Fechar
+              {t('common.close')}
             </Button>
           </div>
         </DialogContent>

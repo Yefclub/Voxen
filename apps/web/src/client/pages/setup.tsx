@@ -7,6 +7,7 @@ import {
   DownloadCloud,
   ExternalLink,
   KeyRound,
+  Languages,
   Mail,
   RotateCw,
   Sparkles,
@@ -24,6 +25,7 @@ import { useMe } from '../lib/hooks';
 import type { OrModel } from '../lib/types';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ModelPicker } from '../components/model-picker';
+import { LOCALES, useI18n, type Locale } from '../lib/i18n';
 
 interface ModelsResponse {
   chat: OrModel[];
@@ -36,6 +38,7 @@ interface ModelsResponse {
 
 interface SetupStatus {
   complete: boolean;
+  language: Locale;
   chatModel: string | null;
   transcriptionModel: string | null;
   webSearchModel: string | null;
@@ -53,8 +56,10 @@ interface SetupStatus {
 type Step = 'loading' | 'key' | 'modelos' | 'done';
 
 export function SetupPage(): React.ReactElement {
+  const { locale, setLocale, t } = useI18n();
   const [step, setStep] = useState<Step>('loading');
   const [status, setStatus] = useState<SetupStatus | null>(null);
+  const [appLanguage, setAppLanguage] = useState<Locale>(locale);
   const [apiKey, setApiKey] = useState('');
   const [chatModel, setChatModel] = useState('');
   const [transcriptionModel, setTranscriptionModel] = useState('');
@@ -78,6 +83,8 @@ export function SetupPage(): React.ReactElement {
 
     function hydrateStatus(s: SetupStatus): void {
       setStatus(s);
+      setAppLanguage(s.language);
+      setLocale(s.language);
       if (!s.complete) return;
       setChatModel(s.chatModel ?? '');
       setTranscriptionModel(s.transcriptionModel ?? '');
@@ -116,7 +123,7 @@ export function SetupPage(): React.ReactElement {
         setStep('modelos');
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'Erro ao carregar configuração.');
+        setError(err instanceof ApiError ? err.message : t('setup.error.load'));
         setStep('key');
       }
     }
@@ -125,11 +132,13 @@ export function SetupPage(): React.ReactElement {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setLocale]);
 
   async function refreshStatus(): Promise<void> {
     const s = await apiGet<SetupStatus>('/api/setup');
     setStatus(s);
+    setAppLanguage(s.language);
+    setLocale(s.language);
     setChatModel(s.chatModel ?? '');
     setTranscriptionModel(s.transcriptionModel ?? '');
     setWebSearchModel(s.webSearchModel ?? '');
@@ -160,7 +169,7 @@ export function SetupPage(): React.ReactElement {
       }
       setStep('modelos');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao validar chave.');
+      setError(err instanceof ApiError ? err.message : t('setup.error.key'));
     } finally {
       setLoading(false);
     }
@@ -184,7 +193,7 @@ export function SetupPage(): React.ReactElement {
       }
       setStep('modelos');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao listar modelos.');
+      setError(err instanceof ApiError ? err.message : t('setup.error.models'));
     } finally {
       setLoading(false);
     }
@@ -198,6 +207,7 @@ export function SetupPage(): React.ReactElement {
     const wasConfigured = Boolean(status?.complete);
     try {
       const body: Record<string, string | boolean> = {
+        app_language: appLanguage,
         default_chat_model: chatModel,
         default_transcription_model: transcriptionModel,
       };
@@ -222,7 +232,7 @@ export function SetupPage(): React.ReactElement {
       setStep('done');
       setTimeout(() => navigate('/dashboard'), 1500);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao salvar.');
+      setError(err instanceof ApiError ? err.message : t('setup.error.save'));
     } finally {
       setLoading(false);
     }
@@ -257,7 +267,7 @@ export function SetupPage(): React.ReactElement {
             transition={{ delay: 0.15 }}
             className="font-display text-3xl font-semibold mt-8"
           >
-            Salvo.
+            {t('setup.doneTitle')}
           </motion.h2>
           <motion.p
             initial={{ opacity: 0, y: 6 }}
@@ -265,7 +275,7 @@ export function SetupPage(): React.ReactElement {
             transition={{ delay: 0.22 }}
             className="text-[15px] text-[var(--color-app-muted)] mt-3"
           >
-            Configuração atualizada. Levando você ao painel…
+            {t('setup.doneSubtitle')}
           </motion.p>
         </div>
       </AnimatedPage>
@@ -279,27 +289,29 @@ export function SetupPage(): React.ReactElement {
     <AnimatedPage>
       <div className="mx-auto max-w-4xl px-6 py-12">
         <PageHeader
-          badge={editingConfigured ? 'Configurações' : 'Configuração inicial'}
+          badge={editingConfigured ? t('setup.badge.edit') : t('setup.badge.initial')}
           title={
             editingConfigured ? (
-              'Configurações da instância'
+              t('setup.title.edit')
             ) : (
               <>
-                Conecte com a <span className="text-emerald-accent">OpenRouter</span>
+                {t('setup.title.initial').replace('OpenRouter', '')}
+                <span className="text-emerald-accent">OpenRouter</span>
               </>
             )
           }
-          sub={
-            editingConfigured
-              ? 'Edite chave, modelos padrão, operação e extração de mídia sem sair da página.'
-              : 'Uma chave da OpenRouter dá acesso a Whisper para transcrição e a vários modelos de chat. É a única dependência externa do Voxen.'
-          }
+          sub={editingConfigured ? t('setup.subtitle.edit') : t('setup.subtitle.initial')}
         />
 
         {/* Stepper */}
         {!editingConfigured && (
           <div className="mb-8 flex items-center gap-3">
-            <StepDot index={1} active={step === 'key'} done={step !== 'key'} label="Chave" />
+            <StepDot
+              index={1}
+              active={step === 'key'}
+              done={step !== 'key'}
+              label={t('setup.step.key')}
+            />
             <div className="flex-1 h-px relative">
               <div className="absolute inset-0 bg-[var(--color-app-border)]" />
               <motion.div
@@ -309,7 +321,12 @@ export function SetupPage(): React.ReactElement {
                 className="absolute inset-0 origin-left bg-gradient-to-r from-emerald-400 to-violet-400"
               />
             </div>
-            <StepDot index={2} active={step === 'modelos'} done={false} label="Modelos" />
+            <StepDot
+              index={2}
+              active={step === 'modelos'}
+              done={false}
+              label={t('setup.step.models')}
+            />
           </div>
         )}
 
@@ -320,7 +337,7 @@ export function SetupPage(): React.ReactElement {
             className="mb-6"
           >
             <Alert variant="destructive">
-              <AlertTitle>Não consegui validar</AlertTitle>
+              <AlertTitle>{t('setup.validationTitle')}</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           </motion.div>
@@ -334,7 +351,7 @@ export function SetupPage(): React.ReactElement {
           >
             <Alert variant="success">
               <CheckCircle2 className="mt-0.5 h-4 w-4" />
-              <AlertDescription>Configurações salvas.</AlertDescription>
+              <AlertDescription>{t('setup.saved')}</AlertDescription>
             </Alert>
           </motion.div>
         )}
@@ -354,17 +371,17 @@ export function SetupPage(): React.ReactElement {
                     <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                       <KeyRound className="h-3.5 w-3.5 text-emerald-400" />
                     </span>
-                    Cole sua chave
+                    {t('setup.openrouter.apiKey')}
                   </CardTitle>
                   <CardDescription>
-                    Será validada antes de ser salva.{' '}
+                    {t('setup.openrouter.description.new')}{' '}
                     <a
                       href="https://openrouter.ai/keys"
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1 text-zinc-100 underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
                     >
-                      Gerar chave
+                      OpenRouter
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   </CardDescription>
@@ -372,7 +389,7 @@ export function SetupPage(): React.ReactElement {
                 <CardContent>
                   <form onSubmit={validateAndListModels} className="space-y-5">
                     <div className="space-y-2">
-                      <Label htmlFor="key">OpenRouter API key</Label>
+                      <Label htmlFor="key">{t('setup.openrouter.apiKey')}</Label>
                       <Input
                         id="key"
                         type="password"
@@ -394,7 +411,7 @@ export function SetupPage(): React.ReactElement {
                         disabled={loading}
                         className="w-full h-11"
                       >
-                        {loading ? <Spinner /> : 'Validar e continuar'}
+                        {loading ? <Spinner /> : t('onboarding.validateContinue')}
                         {!loading && <ArrowRight className="h-4 w-4" />}
                       </Button>
                     </div>
@@ -415,26 +432,66 @@ export function SetupPage(): React.ReactElement {
               <form onSubmit={saveSetup} className="space-y-5">
                 <Card elevated>
                   <CardHeader>
+                    <CardTitle className="flex items-center gap-2 font-display">
+                      <Languages className="h-4 w-4 text-emerald-400" />
+                      {t('setup.language.title')}
+                    </CardTitle>
+                    <CardDescription>{t('setup.language.description')}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {(Object.keys(LOCALES) as Locale[]).map((language) => (
+                        <button
+                          key={language}
+                          type="button"
+                          onClick={() => {
+                            setSaved(false);
+                            setAppLanguage(language);
+                            setLocale(language);
+                          }}
+                          className={[
+                            'rounded-xl border px-4 py-3 text-left transition-colors',
+                            appLanguage === language
+                              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+                              : 'border-[var(--color-app-border)] bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
+                          ].join(' ')}
+                        >
+                          <span className="block text-sm font-semibold">
+                            {LOCALES[language].nativeName}
+                          </span>
+                          <span className="mt-1 block text-[11px] uppercase tracking-wider text-[var(--color-app-muted)]">
+                            {LOCALES[language].shortName}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card elevated>
+                  <CardHeader>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-1">
                         <CardTitle className="flex items-center gap-2 font-display">
                           <KeyRound className="h-4 w-4 text-emerald-400" />
-                          OpenRouter
+                          {t('setup.openrouter.title')}
                         </CardTitle>
                         <CardDescription>
                           {status?.complete
-                            ? 'A chave salva permanece cifrada. Cole uma nova apenas quando quiser substituir a atual.'
-                            : 'A chave validada será salva junto com os modelos escolhidos.'}
+                            ? t('setup.openrouter.description.active')
+                            : t('setup.openrouter.description.new')}
                         </CardDescription>
                       </div>
-                      {status?.hasApiKey && <Badge variant="success">Chave ativa</Badge>}
+                      {status?.hasApiKey && (
+                        <Badge variant="success">{t('setup.openrouter.active')}</Badge>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {status?.hasApiKey && (
                       <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2 text-sm text-emerald-200">
                         <CheckCircle2 className="h-4 w-4 shrink-0" />
-                        <span>Chave armazenada e pronta para uso.</span>
+                        <span>{t('setup.openrouter.stored')}</span>
                         <span className="ml-auto font-mono text-[11px] tracking-widest text-emerald-300/80">
                           ••••••••••••
                         </span>
@@ -444,8 +501,8 @@ export function SetupPage(): React.ReactElement {
                       <div className="space-y-2">
                         <Label htmlFor="configured-key">
                           {status?.complete
-                            ? 'Nova OpenRouter API key (opcional)'
-                            : 'OpenRouter API key'}
+                            ? t('setup.openrouter.newKey')
+                            : t('setup.openrouter.apiKey')}
                         </Label>
                         <Input
                           id="configured-key"
@@ -469,75 +526,72 @@ export function SetupPage(): React.ReactElement {
                         disabled={loading}
                       >
                         {loading ? <Spinner /> : <RotateCw className="h-4 w-4" />}
-                        Atualizar modelos
+                        {t('setup.openrouter.refreshModels')}
                       </Button>
                     </div>
                     <p className="text-xs leading-relaxed text-[var(--color-app-muted)]">
                       {status?.complete
-                        ? 'Atualizar modelos valida a chave digitada; se o campo estiver vazio, usa a chave já salva na instância.'
-                        : 'Atualizar modelos revalida a chave digitada antes de carregar o catálogo.'}
+                        ? t('setup.openrouter.refreshHint.active')
+                        : t('setup.openrouter.refreshHint.new')}
                     </p>
                   </CardContent>
                 </Card>
 
                 <Card elevated>
                   <CardHeader>
-                    <CardTitle className="font-display">Modelos padrão</CardTitle>
-                    <CardDescription>
-                      Escolha os modelos que a instância usa para chat, transcrição, visão,
-                      documentos, pesquisa web e análise do X.
-                    </CardDescription>
+                    <CardTitle className="font-display">{t('setup.models.title')}</CardTitle>
+                    <CardDescription>{t('setup.models.description')}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-5">
                     <ModelPicker
-                      label="Modelo de transcrição"
+                      label={t('setup.models.transcription')}
                       value={transcriptionModel}
                       onChange={setTranscriptionModel}
                       options={models.transcription}
                       count={models.transcription.length}
                     />
                     <ModelPicker
-                      label="Modelo de chat"
+                      label={t('setup.models.chat')}
                       value={chatModel}
                       onChange={setChatModel}
                       options={models.chat}
                       count={models.chat.length}
                     />
                     <ModelPicker
-                      label="Modelo de pesquisa web (opcional)"
+                      label={t('setup.models.web')}
                       value={webSearchModel}
                       onChange={setWebSearchModel}
                       options={models.web}
                       count={models.web.length}
                       optional
-                      hint="Tool web_search usa este modelo com sufixo :online (plugin Perplexity). Vazio = usa o de chat."
+                      hint={t('setup.models.webHint')}
                     />
                     <ModelPicker
-                      label="Modelo de visão (opcional)"
+                      label={t('setup.models.vision')}
                       value={visionModel}
                       onChange={setVisionModel}
                       options={models.vision}
                       count={models.vision.length}
                       optional
-                      hint="Pra entender imagens enviadas no chat. Vazio = uploads ficam desabilitados."
+                      hint={t('setup.models.visionHint')}
                     />
                     <ModelPicker
-                      label="Modelo de documentos/PDF (opcional)"
+                      label={t('setup.models.documents')}
                       value={documentModel}
                       onChange={setDocumentModel}
                       options={models.document}
                       count={models.document.length}
                       optional
-                      hint="Filtrado por modelos OpenRouter com entrada nativa de arquivo/PDF. Vazio = upload de documentos fica desabilitado."
+                      hint={t('setup.models.documentsHint')}
                     />
                     <ModelPicker
-                      label="Modelo de análise do X (Grok)"
+                      label={t('setup.models.x')}
                       value={xAnalysisModel}
                       onChange={setXAnalysisModel}
                       options={models.xAnalysis}
                       count={models.xAnalysis.length}
                       optional
-                      hint="Posts do X usam Grok/xAI com busca nativa no X. Vazio = tenta análise pela extração de mídia quando houver mídia pública."
+                      hint={t('setup.models.xHint')}
                     />
                   </CardContent>
                 </Card>
@@ -546,17 +600,14 @@ export function SetupPage(): React.ReactElement {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 font-display">
                       <DownloadCloud className="h-4 w-4 text-emerald-400" />
-                      Operação da instância
+                      {t('setup.operation.title')}
                     </CardTitle>
-                    <CardDescription>
-                      Ajustes de operação que não são modelos: identificação do bot, timeout de
-                      resumo e resiliência da extração de mídia.
-                    </CardDescription>
+                    <CardDescription>{t('setup.operation.description')}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-5">
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label>Email do operador</Label>
+                        <Label>{t('setup.operation.adminEmail')}</Label>
                         <div className="relative">
                           <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-app-muted)]" />
                           <Input
@@ -568,11 +619,11 @@ export function SetupPage(): React.ReactElement {
                           />
                         </div>
                         <p className="mt-1 text-[11px] text-[var(--color-app-muted)] leading-snug">
-                          Usado no header From do scraper quando configurado.
+                          {t('setup.operation.adminEmailHint')}
                         </p>
                       </div>
                       <div className="space-y-2">
-                        <Label>Timeout de resumo</Label>
+                        <Label>{t('setup.operation.summaryTimeout')}</Label>
                         <div className="relative">
                           <Timer className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-app-muted)]" />
                           <Input
@@ -587,25 +638,23 @@ export function SetupPage(): React.ReactElement {
                           />
                         </div>
                         <p className="mt-1 text-[11px] text-[var(--color-app-muted)] leading-snug">
-                          Em segundos. Vazio usa o padrão do serviço.
+                          {t('setup.operation.summaryTimeoutHint')}
                         </p>
                       </div>
                     </div>
 
                     <div className="space-y-4 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 p-4">
                       <div className="space-y-2">
-                        <Label>Extração de mídia</Label>
+                        <Label>{t('setup.operation.mediaExtraction')}</Label>
                         <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
-                          Em deploys home-lab (IP residencial) o YouTube praticamente não bloqueia
-                          downloads. Em VPS é comum cair em soft-block: configure um proxy
-                          residencial próprio abaixo ou use o upload manual quando precisar.
+                          {t('setup.operation.mediaExtractionHint')}
                         </p>
                       </div>
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Label>Proxy de extração (opcional)</Label>
+                          <Label>{t('setup.operation.proxy')}</Label>
                           {status?.ytDlp?.proxies && (
-                            <Badge variant="success">Proxy configurado</Badge>
+                            <Badge variant="success">{t('setup.operation.proxyConfigured')}</Badge>
                           )}
                         </div>
                         <textarea
@@ -617,8 +666,7 @@ export function SetupPage(): React.ReactElement {
                           className="min-h-20 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
                         />
                         <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
-                          Uma URL por linha. Use apenas proxies controlados por você (próprios ou
-                          residenciais contratados). Vazio = sem proxy.
+                          {t('setup.operation.proxyHint')}
                         </p>
                       </div>
                     </div>
@@ -635,16 +683,16 @@ export function SetupPage(): React.ReactElement {
                         setError(null);
                       }}
                     >
-                      Voltar
+                      {t('common.back')}
                     </Button>
                   )}
                   <Button type="submit" variant="primary" size="lg" disabled={loading}>
                     {loading ? (
                       <Spinner />
                     ) : editingConfigured ? (
-                      'Salvar configurações'
+                      t('setup.save')
                     ) : (
-                      'Salvar e continuar'
+                      t('common.saveContinue')
                     )}
                     {!loading && <ArrowRight className="h-4 w-4" />}
                   </Button>

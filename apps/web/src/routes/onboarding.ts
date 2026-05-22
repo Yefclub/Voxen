@@ -33,6 +33,7 @@ onboardingRoutes.use('*', async (c, next) => {
 
 const FinishBody = z.object({
   allow_signups: z.boolean(),
+  app_language: z.enum(['pt-BR', 'en']).optional(),
 });
 
 onboardingRoutes.post('/', async (c) => {
@@ -46,6 +47,9 @@ onboardingRoutes.post('/', async (c) => {
     return c.json({ error: 'Payload inválido.' }, 400);
   }
   await setSetting('allow_signups', parsed.data.allow_signups ? 'true' : 'false');
+  if (parsed.data.app_language !== undefined) {
+    await setSetting('app_language', parsed.data.app_language);
+  }
   await setSetting('onboarding_done', 'true');
   return c.json({ ok: true });
 });

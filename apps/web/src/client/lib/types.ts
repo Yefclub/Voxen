@@ -1,5 +1,6 @@
 export type UserStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED';
 export type UserRole = 'ADMIN' | 'USER';
+export type AppLanguage = 'pt-BR' | 'en';
 
 export interface MeUser {
   id: string;
@@ -14,12 +15,14 @@ export interface MeResponse {
   user: MeUser | null;
   setupComplete: boolean;
   onboardingDone: boolean;
+  language: AppLanguage;
 }
 
 export interface InstanceState {
   allowSignups: boolean;
   hasUsers: boolean;
   onboardingDone: boolean;
+  language: AppLanguage;
 }
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';
