@@ -17,15 +17,18 @@ import { useChatContextState } from '../../lib/chat-context-ctx';
 import type { MeUser } from '../../lib/types';
 import { Badge } from '../ui/badge';
 import { cn } from '../../lib/utils';
+import { useI18n, type TranslateFn } from '../../lib/i18n';
 
 function ContextIndicator({
   tokens,
   limit,
   onOpenSummary,
+  t,
 }: {
   tokens: number;
   limit: number;
   onOpenSummary?: () => void;
+  t: TranslateFn;
 }): React.ReactElement {
   const pct = limit > 0 ? (tokens / limit) * 100 : 0;
   const tone = pct >= 80 ? 'rose' : pct >= 60 ? 'amber' : 'emerald';
@@ -34,31 +37,36 @@ function ContextIndicator({
     amber: { bar: 'bg-amber-500', text: 'text-amber-300' },
     rose: { bar: 'bg-rose-500', text: 'text-rose-300' },
   } as const;
-  const t = toneClass[tone];
+  const toneStyles = toneClass[tone];
   // Compacto pra caber ao lado do avatar — só barrinha + % + título.
   return (
     <div
       className="hidden sm:flex items-center gap-2.5 pl-3 pr-3 py-1.5 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/60"
-      title={`Contexto: ${tokens.toLocaleString()} / ${limit.toLocaleString()} tokens`}
+      title={t('shell.contextTitle', {
+        tokens: tokens.toLocaleString(),
+        limit: limit.toLocaleString(),
+      })}
     >
       <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] font-medium">
         Ctx
       </span>
       <div className="w-20 h-1.5 rounded-full bg-[var(--color-app-bg)] overflow-hidden">
         <motion.div
-          className={cn('h-full rounded-full', t.bar)}
+          className={cn('h-full rounded-full', toneStyles.bar)}
           initial={{ width: 0 }}
           animate={{ width: `${Math.min(100, Math.max(2, pct))}%` }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
         />
       </div>
-      <span className={cn('text-[11px] tabular-nums font-mono', t.text)}>{pct.toFixed(0)}%</span>
+      <span className={cn('text-[11px] tabular-nums font-mono', toneStyles.text)}>
+        {pct.toFixed(0)}%
+      </span>
       {onOpenSummary && (
         <button
           type="button"
           onClick={onOpenSummary}
           className="text-[10px] uppercase tracking-wider text-violet-300 hover:text-violet-200 transition-colors"
-          title="Ver resumo da última compactação"
+          title={t('shell.contextSummary')}
         >
           ↗
         </button>
@@ -80,6 +88,7 @@ function initials(name: string): string {
 export function Topbar({ user, title }: { user: MeUser; title?: string }): React.ReactElement {
   const navigate = useNavigate();
   const { refresh } = useMe();
+  const { t } = useI18n();
   const { usage, lastCompaction, requestOpenSummary } = useChatContextState();
 
   const onSignOut = async (): Promise<void> => {
@@ -100,6 +109,7 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
             tokens={usage.tokens}
             limit={usage.limit}
             onOpenSummary={lastCompaction ? requestOpenSummary : undefined}
+            t={t}
           />
         )}
         <DropdownMenu>
@@ -107,7 +117,7 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
             <button
               type="button"
               className="rounded-full ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 hover:opacity-90 transition-opacity"
-              aria-label="Menu do usuário"
+              aria-label={t('shell.userMenu')}
             >
               <Avatar className="h-9 w-9 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
                 {user.image && (
@@ -132,7 +142,7 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
                 {user.role === 'ADMIN' && (
                   <Badge variant="success" className="text-[9px] shrink-0">
                     <ShieldCheck className="h-2.5 w-2.5" />
-                    Admin
+                    {t('shell.admin')}
                   </Badge>
                 )}
               </div>
@@ -144,13 +154,13 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
             <DropdownMenuItem asChild>
               <Link to="/conta" className="flex items-center gap-2 cursor-pointer">
                 <UserIcon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
-                <span className="truncate">Perfil</span>
+                <span className="truncate">{t('common.profile')}</span>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem destructive onSelect={onSignOut}>
               <LogOut className="h-3.5 w-3.5" />
-              Sair
+              {t('common.signOut')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

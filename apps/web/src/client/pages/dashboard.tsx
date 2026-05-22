@@ -9,6 +9,7 @@ import { useFetch, useMe } from '../lib/hooks';
 import type { JobSummary } from '../lib/types';
 import { formatRelative } from '../lib/format';
 import { jobStatusBadge } from '../lib/job-display';
+import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 import {
   detectSourceFromUrl,
   displayJobSource,
@@ -20,12 +21,13 @@ import { NumberTicker } from '../components/motion/number-ticker';
 
 export function DashboardPage(): React.ReactElement {
   const { data: me } = useMe();
+  const { locale, t } = useI18n();
   const { data, loading } = useFetch<{ jobs: JobSummary[] }>('/api/jobs');
   const jobs = data?.jobs ?? [];
   const queued = jobs.filter((j) => j.status === 'QUEUED' || j.status === 'RUNNING').length;
   const done = jobs.filter((j) => j.status === 'DONE').length;
   const failed = jobs.filter((j) => j.status === 'FAILED').length;
-  const firstName = me?.user?.name?.split(' ')[0] ?? 'Olá';
+  const firstName = me?.user?.name?.split(' ')[0] ?? t('dashboard.fallbackName');
 
   return (
     <AnimatedPage>
@@ -40,7 +42,7 @@ export function DashboardPage(): React.ReactElement {
               className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium"
             >
               <Sparkles className="h-3 w-3 text-emerald-400" />
-              Bem-vindo de volta
+              {t('dashboard.welcome')}
             </motion.div>
             <h1 className="font-display text-4xl font-semibold tracking-[-0.03em] text-balance">
               {firstName}.
@@ -48,7 +50,7 @@ export function DashboardPage(): React.ReactElement {
           </div>
           <Button variant="primary" size="lg" asChild>
             <Link to="/jobs">
-              Novo conteúdo
+              {t('dashboard.newContent')}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
@@ -58,7 +60,7 @@ export function DashboardPage(): React.ReactElement {
         <StaggerContainer className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StaggerItem>
             <StatCard
-              label="Em processamento"
+              label={t('dashboard.processing')}
               value={loading ? null : queued}
               accent="amber"
               Icon={PlayCircle}
@@ -67,7 +69,7 @@ export function DashboardPage(): React.ReactElement {
           </StaggerItem>
           <StaggerItem>
             <StatCard
-              label="Transcrições prontas"
+              label={t('dashboard.readyTranscripts')}
               value={loading ? null : done}
               accent="emerald"
               Icon={ListVideo}
@@ -77,7 +79,7 @@ export function DashboardPage(): React.ReactElement {
           </StaggerItem>
           <StaggerItem>
             <StatCard
-              label="Com erro"
+              label={t('dashboard.failed')}
               value={loading ? null : failed}
               accent={failed > 0 ? 'rose' : 'muted'}
               Icon={ArrowUpRight}
@@ -91,17 +93,18 @@ export function DashboardPage(): React.ReactElement {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h2 className="font-display text-xl font-semibold tracking-tight">
-                Atividade recente
+                {t('dashboard.recentActivity')}
               </h2>
               {jobs.length > 0 && (
                 <span className="text-xs text-[var(--color-app-muted)] tabular-nums">
-                  {jobs.length} {jobs.length === 1 ? 'item' : 'itens'}
+                  {jobs.length}{' '}
+                  {jobs.length === 1 ? t('dashboard.itemSingular') : t('dashboard.itemPlural')}
                 </span>
               )}
             </div>
             <Button variant="link" size="sm" asChild>
               <Link to="/jobs" className="text-[var(--color-app-muted)]">
-                Ver tudo
+                {t('dashboard.viewAll')}
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
@@ -115,7 +118,7 @@ export function DashboardPage(): React.ReactElement {
             </div>
           )}
 
-          {!loading && jobs.length === 0 && <EmptyState />}
+          {!loading && jobs.length === 0 && <EmptyState t={t} />}
 
           {!loading && jobs.length > 0 && (
             <Card>
@@ -123,7 +126,7 @@ export function DashboardPage(): React.ReactElement {
                 <ul className="divide-y divide-[var(--color-app-border)]">
                   {jobs.slice(0, 5).map((j) => (
                     <StaggerItem key={j.id}>
-                      <ActivityRow job={j} />
+                      <ActivityRow job={j} locale={locale} t={t} />
                     </StaggerItem>
                   ))}
                 </ul>
@@ -136,8 +139,16 @@ export function DashboardPage(): React.ReactElement {
   );
 }
 
-function ActivityRow({ job }: { job: JobSummary }): React.ReactElement {
-  const { variant, label } = jobStatusBadge(job.status);
+function ActivityRow({
+  job,
+  locale,
+  t,
+}: {
+  job: JobSummary;
+  locale: Locale;
+  t: TranslateFn;
+}): React.ReactElement {
+  const { variant, label } = jobStatusBadge(job.status, t);
   const to = job.transcriptId ? `/transcricoes/${job.transcriptId}` : `/jobs/${job.id}`;
   const source = detectSourceFromUrl(job.sourceUrl);
   const isUpload = isUploadSourceUrl(job.sourceUrl);
@@ -157,7 +168,7 @@ function ActivityRow({ job }: { job: JobSummary }): React.ReactElement {
             {displayJobSource(job.sourceUrl)}
           </p>
           <p className="text-xs text-[var(--color-app-muted)] mt-0.5">
-            {formatRelative(new Date(job.queuedAt))}
+            {formatRelative(new Date(job.queuedAt), locale)}
           </p>
         </div>
         <ArrowRight className="h-4 w-4 text-[var(--color-app-muted)] transition-all opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 shrink-0" />
@@ -237,7 +248,7 @@ function SourcePreview({
   );
 }
 
-function EmptyState(): React.ReactElement {
+function EmptyState({ t }: { t: TranslateFn }): React.ReactElement {
   return (
     <Card elevated className="overflow-hidden relative">
       <div
@@ -253,15 +264,16 @@ function EmptyState(): React.ReactElement {
           <PlayCircle className="h-5 w-5 text-emerald-400" />
         </div>
         <div className="space-y-1.5">
-          <p className="font-display text-lg font-semibold tracking-tight">Comece sua biblioteca</p>
+          <p className="font-display text-lg font-semibold tracking-tight">
+            {t('dashboard.emptyTitle')}
+          </p>
           <p className="text-sm text-[var(--color-app-muted)] max-w-sm mx-auto leading-relaxed">
-            Cole um link ou envie um arquivo para o Voxen transcrever e indexar. Tudo fica
-            disponível para conversar com o agente depois.
+            {t('dashboard.emptyDescription')}
           </p>
         </div>
         <Button variant="primary" size="lg" asChild className="mt-2">
           <Link to="/jobs">
-            Transcrever primeiro vídeo
+            {t('dashboard.emptyCta')}
             <ArrowRight className="h-4 w-4" />
           </Link>
         </Button>

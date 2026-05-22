@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ApiError, apiPost } from './api';
+import { useI18n } from './i18n';
 
 export interface NoteListItem {
   id: string;
@@ -45,6 +46,7 @@ async function fetchNotes(): Promise<NoteListItem[]> {
 }
 
 export function useNotes(): State {
+  const { t } = useI18n();
   const [notes, setLocal] = useState<NoteListItem[]>(cache ?? []);
   const [loading, setLoading] = useState(cache === null);
 
@@ -78,18 +80,18 @@ export function useNotes(): State {
         const r = await apiPost<{ note: NoteListItem }>('/api/notes', {
           kind,
           parentId,
-          title: kind === 'FOLDER' ? 'Nova pasta' : 'Sem título',
+          title: kind === 'FOLDER' ? t('notes.newFolder') : t('notes.untitled'),
           content: '',
         });
         await refresh();
-        toast.success(kind === 'FOLDER' ? 'Pasta criada.' : 'Nota criada.');
+        toast.success(kind === 'FOLDER' ? t('notes.createdFolder') : t('notes.createdNote'));
         return r.note;
       } catch (err) {
-        toast.error(err instanceof ApiError ? err.message : 'Erro ao criar.');
+        toast.error(err instanceof ApiError ? err.message : t('notes.createError'));
         return null;
       }
     },
-    [refresh],
+    [refresh, t],
   );
 
   const remove = useCallback(
@@ -99,16 +101,16 @@ export function useNotes(): State {
           method: 'DELETE',
           credentials: 'include',
         });
-        if (!res.ok) throw new Error('Falha ao apagar.');
+        if (!res.ok) throw new Error(t('notes.deleteError'));
         await refresh();
-        toast.success('Apagado.');
+        toast.success(t('notes.deleted'));
         return true;
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Erro.');
+        toast.error(err instanceof Error ? err.message : t('common.error'));
         return false;
       }
     },
-    [refresh],
+    [refresh, t],
   );
 
   return { notes, loading, refresh, create, remove };

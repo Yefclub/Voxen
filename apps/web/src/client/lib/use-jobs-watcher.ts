@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { toast } from 'sonner';
+import { useI18n } from './i18n';
 
 interface JobEvent {
   jobId: string;
@@ -16,6 +17,8 @@ interface JobEvent {
  * página da aplicação. Deduplica eventos por (jobId, stage).
  */
 export function useJobsWatcher(enabled: boolean, onNavigate: (path: string) => void): void {
+  const { t } = useI18n();
+
   useEffect(() => {
     if (!enabled) return;
     const es = new EventSource('/api/jobs/events/me', { withCredentials: true });
@@ -34,27 +37,27 @@ export function useJobsWatcher(enabled: boolean, onNavigate: (path: string) => v
       // Só interessa toast em stages terminais.
       if (evt.stage === 'done') {
         seen.add(key);
-        toast.success('Transcrição pronta.', {
-          description: 'Disponível na Biblioteca.',
+        toast.success(t('job.toast.ready'), {
+          description: t('job.toast.readyDescription'),
           action: evt.transcriptId
             ? {
-                label: 'Abrir',
+                label: t('common.open'),
                 onClick: () => onNavigate(`/transcricoes/${evt.transcriptId}`),
               }
             : undefined,
         });
       } else if (evt.stage === 'failed') {
         seen.add(key);
-        toast.error('Transcrição falhou.', {
-          description: evt.errorMsg ?? 'Algo deu errado.',
+        toast.error(t('job.toast.failed'), {
+          description: evt.errorMsg ?? t('job.toast.failedDescription'),
           action: {
-            label: 'Ver',
+            label: t('job.toast.view'),
             onClick: () => onNavigate(`/jobs/${evt.jobId}`),
           },
         });
       } else if (evt.stage === 'cancelled') {
         seen.add(key);
-        toast('Transcrição cancelada.');
+        toast(t('job.toast.cancelled'));
       }
     });
 
@@ -65,5 +68,5 @@ export function useJobsWatcher(enabled: boolean, onNavigate: (path: string) => v
     return () => {
       es.close();
     };
-  }, [enabled, onNavigate]);
+  }, [enabled, onNavigate, t]);
 }

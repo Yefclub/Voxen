@@ -10,6 +10,7 @@ import {
 } from './dialog';
 import { Button } from './button';
 import { cn } from '../../lib/utils';
+import { useI18n } from '../../lib/i18n';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -33,14 +34,17 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = 'Confirmar',
-  cancelLabel = 'Cancelar',
+  confirmLabel,
+  cancelLabel,
   variant = 'default',
   onConfirm,
   loading: externalLoading,
 }: ConfirmDialogProps): React.ReactElement {
+  const { t } = useI18n();
   const [internalLoading, setInternalLoading] = useState(false);
   const loading = externalLoading ?? internalLoading;
+  const finalConfirmLabel = confirmLabel ?? t('common.confirm');
+  const finalCancelLabel = cancelLabel ?? t('common.cancel');
 
   useEffect(() => {
     if (!open) setInternalLoading(false);
@@ -84,7 +88,7 @@ export function ConfirmDialog({
             onClick={() => onOpenChange(false)}
             disabled={loading}
           >
-            {cancelLabel}
+            {finalCancelLabel}
           </Button>
           <Button
             type="button"
@@ -98,7 +102,7 @@ export function ConfirmDialog({
             )}
           >
             {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {confirmLabel}
+            {finalConfirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

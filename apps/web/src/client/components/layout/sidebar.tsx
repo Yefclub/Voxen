@@ -28,34 +28,36 @@ import { cn } from '../../lib/utils';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
 import { useConversations, type ConvSummary } from '../../lib/use-conversations';
 import { useNotes } from '../../lib/use-notes';
+import { useI18n, type I18nKey } from '../../lib/i18n';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { NotesTree } from '../notes/notes-tree';
 
 interface NavItem {
   to: string;
-  label: string;
+  labelKey: I18nKey;
   Icon: typeof LayoutDashboard;
   adminOnly?: boolean;
 }
 
 const NAV: NavItem[] = [
-  { to: '/dashboard', label: 'Painel', Icon: LayoutDashboard },
-  { to: '/chat', label: 'Conversar', Icon: MessagesSquare },
-  { to: '/jobs', label: 'Transcrever', Icon: PlayCircle },
-  { to: '/transcricoes', label: 'Biblioteca', Icon: ListVideo },
-  { to: '/notas', label: 'Notas', Icon: Notebook },
-  { to: '/automacoes', label: 'Automações', Icon: Workflow },
-  { to: '/grafo', label: 'Grafo', Icon: Network },
-  { to: '/admin/usuarios', label: 'Usuários', Icon: ShieldCheck, adminOnly: true },
-  { to: '/admin/custos', label: 'Custos', Icon: DollarSign, adminOnly: true },
-  { to: '/admin/integracoes', label: 'Integrações', Icon: Plug, adminOnly: true },
-  { to: '/setup', label: 'Configuração', Icon: SettingsIcon, adminOnly: true },
+  { to: '/dashboard', labelKey: 'shell.nav.dashboard', Icon: LayoutDashboard },
+  { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessagesSquare },
+  { to: '/jobs', labelKey: 'shell.nav.jobs', Icon: PlayCircle },
+  { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
+  { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
+  { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow },
+  { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },
+  { to: '/admin/usuarios', labelKey: 'shell.nav.users', Icon: ShieldCheck, adminOnly: true },
+  { to: '/admin/custos', labelKey: 'shell.nav.costs', Icon: DollarSign, adminOnly: true },
+  { to: '/admin/integracoes', labelKey: 'shell.nav.integrations', Icon: Plug, adminOnly: true },
+  { to: '/setup', labelKey: 'shell.nav.settings', Icon: SettingsIcon, adminOnly: true },
 ];
 
 const SIDEBAR_WIDTH = 264;
 
 export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
   const location = useLocation();
+  const { t } = useI18n();
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN');
   const { collapsed, toggle } = useSidebarCollapsed();
   const inChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
@@ -77,8 +79,8 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="hidden md:flex fixed top-4 left-4 z-50 h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] transition-colors"
-            aria-label="Abrir menu"
-            title="Abrir menu"
+            aria-label={t('shell.openMenu')}
+            title={t('shell.openMenu')}
           >
             <PanelLeftOpen className="h-4 w-4" />
           </motion.button>
@@ -122,6 +124,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
 }
 
 function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactElement {
+  const { t } = useI18n();
   return (
     <div className="flex items-center h-16 px-4 border-b border-[var(--color-app-border)] shrink-0">
       <div className="relative shrink-0 h-9 w-9">
@@ -137,15 +140,15 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
       <div className="ml-3 flex min-w-0 flex-col leading-none">
         <span className="text-sm font-semibold tracking-tight font-display">Voxen</span>
         <span className="mt-1 whitespace-nowrap text-[9px] uppercase tracking-[0.04em] text-[var(--color-app-muted)]">
-          Base de conhecimento
+          {t('shell.knowledgeBase')}
         </span>
       </div>
       <button
         type="button"
         onClick={onCollapse}
         className="ml-auto flex items-center justify-center h-7 w-7 rounded-md text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
-        aria-label="Recolher"
-        title="Recolher"
+        aria-label={t('shell.collapse')}
+        title={t('shell.collapse')}
       >
         <PanelLeftClose className="h-4 w-4" />
       </button>
@@ -158,10 +161,11 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
 // ---------------------------------------------------------------------------
 
 function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): React.ReactElement {
+  const { t } = useI18n();
   return (
     <nav className="flex-1 p-3 overflow-y-auto">
       <ul className="space-y-0.5">
-        {items.map(({ to, label, Icon }) => {
+        {items.map(({ to, labelKey, Icon }) => {
           const isActive = pathname === to || pathname.startsWith(to + '/');
           return (
             <li key={to} className="relative">
@@ -186,7 +190,7 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
                     isActive ? 'text-emerald-400' : 'text-[var(--color-app-muted)]',
                   )}
                 />
-                <span className="truncate">{label}</span>
+                <span className="truncate">{t(labelKey)}</span>
                 {isActive && (
                   <motion.span
                     layoutId="sidebar-active-dot"
@@ -208,6 +212,7 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
 // ---------------------------------------------------------------------------
 
 function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { conversations, loading, create, remove } = useConversations();
   const [q, setQ] = useState('');
@@ -228,7 +233,7 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
   async function onNew(): Promise<void> {
     const conv = await create();
     if (!conv) {
-      toast.error('Falha ao criar conversa.');
+      toast.error(t('shell.createConversationError'));
       return;
     }
     navigate(`/chat/${conv.id}`);
@@ -244,7 +249,7 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
     const id = pendingDelete.id;
     const ok = await remove(id);
     if (!ok) {
-      toast.error('Falha ao apagar.');
+      toast.error(t('shell.deleteConversationError'));
       return;
     }
     if (activeId === id) navigate('/chat', { replace: true });
@@ -259,7 +264,7 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
           className="flex items-center gap-2 h-9 rounded-lg px-3 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Voltar para o painel
+          {t('shell.backToDashboard')}
         </button>
         <button
           type="button"
@@ -267,7 +272,7 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
           className="flex items-center justify-center gap-2 h-10 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-sm font-medium text-zinc-100 hover:border-violet-500/40 hover:bg-violet-500/5 transition-colors"
         >
           <Plus className="h-4 w-4" />
-          Nova conversa
+          {t('shell.newConversation')}
         </button>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none z-10" />
@@ -275,7 +280,7 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
             type="text"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar conversas…"
+            placeholder={t('shell.searchConversations')}
             autoComplete="off"
             spellCheck={false}
             className="w-full h-9 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 pl-8 pr-3 text-[13px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
@@ -286,12 +291,12 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2 space-y-0.5">
         {loading && conversations.length === 0 && (
           <div className="px-3 py-6 text-center text-xs text-[var(--color-app-muted)]">
-            Carregando…
+            {t('common.loading')}
           </div>
         )}
         {!loading && filtered.length === 0 && (
           <div className="px-3 py-6 text-center text-xs text-[var(--color-app-muted)]">
-            {q ? 'Nada encontrado.' : 'Nenhuma conversa ainda.'}
+            {q ? t('shell.noConversationFound') : t('shell.noConversations')}
           </div>
         )}
         {filtered.map((c) => {
@@ -313,15 +318,19 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
               >
                 <p className="text-[13px] font-medium text-zinc-100 truncate">{c.title}</p>
                 <p className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] mt-0.5">
-                  {c.messageCount} {c.messageCount === 1 ? 'mensagem' : 'mensagens'}
+                  {t('shell.messageCount', {
+                    count: c.messageCount,
+                    label:
+                      c.messageCount === 1 ? t('shell.messageSingular') : t('shell.messagePlural'),
+                  })}
                 </p>
               </button>
               <button
                 type="button"
                 onClick={(e) => askDelete(c, e)}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-[var(--color-app-muted)] opacity-0 group-hover:opacity-100 hover:text-rose-300 hover:bg-rose-500/10 transition-all flex items-center justify-center"
-                aria-label="Apagar conversa"
-                title="Apagar conversa"
+                aria-label={t('common.delete')}
+                title={t('common.delete')}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -333,18 +342,14 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
-        title="Apagar esta conversa?"
+        title={t('shell.deleteConversationTitle')}
         description={
-          pendingDelete ? (
-            <>
-              Você vai perder todas as mensagens de{' '}
-              <span className="text-zinc-200 font-medium">“{pendingDelete.title}”</span>. Essa ação
-              não pode ser desfeita.
-            </>
-          ) : null
+          pendingDelete
+            ? t('shell.deleteConversationDescription', { title: pendingDelete.title })
+            : null
         }
-        confirmLabel="Apagar"
-        cancelLabel="Cancelar"
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
         variant="destructive"
         onConfirm={confirmDelete}
       />
@@ -359,7 +364,7 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
           <ChevronDown
             className={cn('h-3 w-3 transition-transform', menuOpen ? 'rotate-180' : '')}
           />
-          Menu
+          {t('shell.menu')}
         </button>
         <AnimatePresence initial={false}>
           {menuOpen && (
@@ -372,14 +377,14 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
             >
               {items
                 .filter((n) => n.to !== '/chat')
-                .map(({ to, label, Icon }) => (
+                .map(({ to, labelKey, Icon }) => (
                   <li key={to}>
                     <NavLink
                       to={to}
                       className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
                     >
                       <Icon className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{label}</span>
+                      <span className="truncate">{t(labelKey)}</span>
                     </NavLink>
                   </li>
                 ))}
@@ -402,6 +407,7 @@ function NotasModeBody({
   items: NavItem[];
   pathname: string;
 }): React.ReactElement {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { create } = useNotes();
   const [creating, setCreating] = useState(false);
@@ -432,7 +438,7 @@ function NotasModeBody({
           className="flex items-center gap-2 h-9 rounded-lg px-3 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Voltar para o painel
+          {t('shell.backToDashboard')}
         </button>
         <div className="flex gap-1.5">
           <button
@@ -442,15 +448,15 @@ function NotasModeBody({
             className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-sm font-medium text-zinc-100 hover:border-violet-500/40 hover:bg-violet-500/5 transition-colors disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
-            Nova nota
+            {t('shell.newNote')}
           </button>
           <button
             type="button"
             onClick={() => void onCreate('FOLDER')}
             disabled={creating}
             className="flex items-center justify-center h-10 w-10 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:border-amber-500/40 hover:text-amber-300 hover:bg-amber-500/5 transition-colors disabled:opacity-50"
-            aria-label="Nova pasta"
-            title="Nova pasta"
+            aria-label={t('shell.newFolder')}
+            title={t('shell.newFolder')}
           >
             <FolderPlus className="h-4 w-4" />
           </button>
@@ -471,7 +477,7 @@ function NotasModeBody({
           <ChevronDown
             className={cn('h-3 w-3 transition-transform', menuOpen ? 'rotate-180' : '')}
           />
-          Menu
+          {t('shell.menu')}
         </button>
         <AnimatePresence initial={false}>
           {menuOpen && (
@@ -484,14 +490,14 @@ function NotasModeBody({
             >
               {items
                 .filter((n) => n.to !== '/notas')
-                .map(({ to, label, Icon }) => (
+                .map(({ to, labelKey, Icon }) => (
                   <li key={to}>
                     <NavLink
                       to={to}
                       className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
                     >
                       <Icon className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{label}</span>
+                      <span className="truncate">{t(labelKey)}</span>
                     </NavLink>
                   </li>
                 ))}

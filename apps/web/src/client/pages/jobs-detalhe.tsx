@@ -23,6 +23,7 @@ import { jobStatusBadge, stageLabel } from '../lib/job-display';
 import { displayJobSource, isExternalSourceUrl, isUploadSourceUrl } from '../lib/source-detect';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ApiError, apiPost } from '../lib/api';
+import { useI18n } from '../lib/i18n';
 
 interface ProgressEvent {
   jobId: string;
@@ -55,6 +56,7 @@ const STAGE_ORDER = [
 export function JobDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { locale, t } = useI18n();
   const { data, refresh } = useFetch<{ job: JobSummary }>(id ? `/api/jobs/${id}` : null);
   const [events, setEvents] = useState<ProgressEvent[]>([]);
   const [percent, setPercent] = useState<number>(0);
@@ -64,16 +66,16 @@ export function JobDetalhePage(): React.ReactElement {
 
   async function onCancel(): Promise<void> {
     if (!id) return;
-    if (!window.confirm('Cancelar este job? Não dá pra voltar atrás.')) return;
+    if (!window.confirm(t('jobDetail.cancelConfirm'))) return;
     setCancelling(true);
     try {
       await apiPost(`/api/jobs/${id}/cancel`);
-      toast('Cancelamento solicitado.', {
-        description: 'O worker vai parar na próxima etapa.',
+      toast(t('jobDetail.cancelRequested'), {
+        description: t('jobDetail.cancelRequestedDescription'),
       });
       refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Falha ao cancelar.');
+      toast.error(err instanceof ApiError ? err.message : t('jobDetail.cancelError'));
     } finally {
       setCancelling(false);
     }
@@ -91,7 +93,7 @@ export function JobDetalhePage(): React.ReactElement {
       }
       navigate(`/jobs/${res.jobId}`);
     } catch (err) {
-      setRetryError(err instanceof ApiError ? err.message : 'Erro ao retentar.');
+      setRetryError(err instanceof ApiError ? err.message : t('jobDetail.retryError'));
     } finally {
       setRetrying(false);
     }
@@ -131,7 +133,7 @@ export function JobDetalhePage(): React.ReactElement {
   }
 
   const job = data.job;
-  const { variant, label } = jobStatusBadge(job.status);
+  const { variant, label } = jobStatusBadge(job.status, t);
   const currentStage = events[events.length - 1]?.stage ?? 'queued';
   const currentStageIdx = STAGE_ORDER.indexOf(currentStage);
   const externalSource = isExternalSourceUrl(job.sourceUrl);
@@ -143,7 +145,7 @@ export function JobDetalhePage(): React.ReactElement {
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link to="/jobs">
             <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar para fila
+            {t('jobDetail.backToQueue')}
           </Link>
         </Button>
 
@@ -175,8 +177,17 @@ export function JobDetalhePage(): React.ReactElement {
               </Badge>
             </div>
             <p className="text-xs text-[var(--color-app-muted)] mt-3">
-              Enfileirado em {formatDateTime(new Date(job.queuedAt))}
-              {job.finishedAt && <> · Finalizado em {formatDateTime(new Date(job.finishedAt))}</>}
+              {t('jobDetail.queuedAt', {
+                date: formatDateTime(new Date(job.queuedAt), locale),
+              })}
+              {job.finishedAt && (
+                <>
+                  {' · '}
+                  {t('jobDetail.finishedAt', {
+                    date: formatDateTime(new Date(job.finishedAt), locale),
+                  })}
+                </>
+              )}
             </p>
           </div>
 
@@ -191,7 +202,7 @@ export function JobDetalhePage(): React.ReactElement {
                       <span className="relative rounded-full bg-violet-400 h-full w-full" />
                     </span>
                     <span className="text-sm font-medium text-zinc-100 truncate">
-                      {stageLabel(currentStage)}
+                      {stageLabel(currentStage, t)}
                     </span>
                   </div>
                   <span className="text-2xl font-display font-semibold tabular-nums text-zinc-100">
@@ -213,14 +224,14 @@ export function JobDetalhePage(): React.ReactElement {
                   {connected ? (
                     <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-400/80 flex items-center gap-2">
                       <span className="h-1 w-1 rounded-full bg-emerald-400 animate-pulse" />
-                      Recebendo eventos em tempo real
+                      {t('jobDetail.realtime')}
                     </p>
                   ) : (
                     <span />
                   )}
                   <Button variant="destructive" size="sm" onClick={onCancel} disabled={cancelling}>
                     {cancelling ? <Spinner /> : <X className="h-3.5 w-3.5" />}
-                    Cancelar
+                    {t('jobDetail.cancel')}
                   </Button>
                 </div>
               </div>
@@ -240,16 +251,16 @@ export function JobDetalhePage(): React.ReactElement {
                     </div>
                     <div>
                       <p className="font-display text-base font-semibold text-emerald-200">
-                        Processamento concluído
+                        {t('jobDetail.doneTitle')}
                       </p>
                       <p className="text-xs text-emerald-300/70 mt-0.5">
-                        Já está na sua biblioteca, pronta para consultar.
+                        {t('jobDetail.doneDescription')}
                       </p>
                     </div>
                   </div>
                   <Button variant="primary" size="sm" asChild>
                     <Link to={`/transcricoes/${job.transcriptId}`}>
-                      Abrir
+                      {t('common.open')}
                       <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
                   </Button>
@@ -267,7 +278,7 @@ export function JobDetalhePage(): React.ReactElement {
                 <Alert variant="destructive">
                   <XCircle className="h-4 w-4 text-rose-400 mt-0.5 shrink-0" />
                   <AlertDescription className="break-words whitespace-pre-wrap">
-                    {job.errorMsg ?? 'Algo deu errado.'}
+                    {job.errorMsg ?? t('jobDetail.failedFallback')}
                   </AlertDescription>
                 </Alert>
                 {retryError && (
@@ -278,7 +289,7 @@ export function JobDetalhePage(): React.ReactElement {
                 <div className="flex justify-end">
                   <Button variant="primary" size="default" onClick={onRetry} disabled={retrying}>
                     {retrying ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />}
-                    Tentar novamente
+                    {t('jobDetail.retry')}
                   </Button>
                 </div>
               </motion.div>
@@ -289,7 +300,7 @@ export function JobDetalhePage(): React.ReactElement {
               <div className="flex justify-end">
                 <Button variant="secondary" size="default" onClick={onRetry} disabled={retrying}>
                   {retrying ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />}
-                  Reenviar
+                  {t('jobDetail.resend')}
                 </Button>
               </div>
             )}
@@ -298,7 +309,7 @@ export function JobDetalhePage(): React.ReactElement {
             {events.length > 0 && (
               <div className="space-y-3">
                 <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
-                  Histórico
+                  {t('jobDetail.history')}
                 </p>
                 <ol className="relative border-l border-[var(--color-app-border)] pl-5 space-y-2.5">
                   <AnimatePresence initial={false}>
@@ -326,10 +337,10 @@ export function JobDetalhePage(): React.ReactElement {
                                     : 'bg-[var(--color-app-border-strong)]',
                             ].join(' ')}
                           />
-                          <span className="text-zinc-200">{stageLabel(e.stage)}</span>
+                          <span className="text-zinc-200">{stageLabel(e.stage, t)}</span>
                           {typeof e.chunkIndex === 'number' && (
                             <span className="ml-2 text-xs text-[var(--color-app-muted)] tabular-nums">
-                              bloco #{e.chunkIndex + 1}
+                              {t('jobDetail.block', { index: e.chunkIndex + 1 })}
                             </span>
                           )}
                         </motion.li>
@@ -348,11 +359,13 @@ export function JobDetalhePage(): React.ReactElement {
                   rel="noreferrer"
                   className="text-xs text-[var(--color-app-muted)] hover:text-zinc-100 inline-flex items-center gap-1.5 transition-colors group"
                 >
-                  Abrir conteúdo original
+                  {t('jobDetail.openOriginal')}
                   <ExternalLink className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 </a>
               ) : uploadedSource ? (
-                <span className="text-xs text-[var(--color-app-muted)]">Arquivo enviado</span>
+                <span className="text-xs text-[var(--color-app-muted)]">
+                  {t('jobDetail.uploadedFile')}
+                </span>
               ) : null}
             </div>
           </CardContent>

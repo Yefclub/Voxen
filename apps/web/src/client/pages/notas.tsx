@@ -18,6 +18,7 @@ import { Spinner } from '../components/ui/spinner';
 import { useFetch } from '../lib/hooks';
 import { useNotes } from '../lib/use-notes';
 import { AnimatedPage } from '../components/motion/animated-page';
+import { useI18n } from '../lib/i18n';
 
 interface NoteFull {
   id: string;
@@ -35,6 +36,7 @@ interface GetResp {
 
 export function NotasPage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
+  const { t } = useI18n();
   const [previewMode, setPreviewMode] = useState(false);
   const { notes, refresh } = useNotes();
 
@@ -44,12 +46,13 @@ export function NotasPage(): React.ReactElement {
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <Library className="h-3.5 w-3.5 text-violet-400" />
-            Base manual
+            {t('notes.manualBase')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Notas</h1>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+            {t('notes.title')}
+          </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Sua base de conhecimento escrita à mão. Use a árvore na lateral pra navegar entre notas
-            e pastas. A Vox também pode criar/editar via chat com confirmação.
+            {t('notes.description')}
           </p>
         </header>
 
@@ -69,12 +72,10 @@ export function NotasPage(): React.ReactElement {
               </div>
               <div className="space-y-1.5">
                 <p className="font-display text-xl font-semibold tracking-tight">
-                  {notes.length === 0 ? 'Comece sua base manual' : 'Selecione uma nota'}
+                  {notes.length === 0 ? t('notes.emptyTitle') : t('notes.selectTitle')}
                 </p>
                 <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
-                  {notes.length === 0
-                    ? 'Crie sua primeira nota ou pasta na sidebar. Você também pode pedir pra Vox criar via chat (com confirmação antes).'
-                    : 'Clique numa nota da árvore na sidebar pra abrir o editor.'}
+                  {notes.length === 0 ? t('notes.emptyDescription') : t('notes.selectDescription')}
                 </p>
               </div>
             </CardContent>
@@ -97,6 +98,7 @@ function NoteEditor({
   onSaved: () => void;
 }): React.ReactElement {
   const { data, loading } = useFetch<GetResp>(`/api/notes/${noteId}`);
+  const { t } = useI18n();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
@@ -121,11 +123,11 @@ function NoteEditor({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content }),
       });
-      if (!res.ok) throw new Error('Falha ao salvar.');
+      if (!res.ok) throw new Error(t('notes.saveError'));
       setDirty(false);
       onSaved();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro.');
+      toast.error(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setSaving(false);
     }
@@ -167,30 +169,30 @@ function NoteEditor({
               setDirty(true);
             }}
             onBlur={() => void save()}
-            placeholder="Sem título"
+            placeholder={t('notes.untitled')}
             className="flex-1 bg-transparent text-xl font-display font-semibold tracking-tight text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none"
           />
           <span className="text-[11px] uppercase tracking-wider tabular-nums">
             {saving ? (
               <span className="inline-flex items-center gap-1.5 text-[var(--color-app-muted)]">
-                <Loader2 className="h-3 w-3 animate-spin" /> Salvando
+                <Loader2 className="h-3 w-3 animate-spin" /> {t('common.saving')}
               </span>
             ) : dirty ? (
-              <span className="text-amber-300">Pendente</span>
+              <span className="text-amber-300">{t('notes.pending')}</span>
             ) : (
-              <span className="text-emerald-300">Salvo</span>
+              <span className="text-emerald-300">{t('common.saved')}</span>
             )}
           </span>
           <Button size="sm" variant="ghost" onClick={onTogglePreview}>
             {previewMode ? (
               <>
                 <EyeOff className="h-3.5 w-3.5" />
-                Editar
+                {t('notes.edit')}
               </>
             ) : (
               <>
                 <Eye className="h-3.5 w-3.5" />
-                Preview
+                {t('notes.preview')}
               </>
             )}
           </Button>
@@ -201,7 +203,7 @@ function NoteEditor({
             disabled={!dirty || saving}
           >
             <Save className="h-3.5 w-3.5" />
-            Salvar
+            {t('common.save')}
           </Button>
         </div>
 
@@ -211,7 +213,7 @@ function NoteEditor({
               {content.trim() ? (
                 <Markdown>{content}</Markdown>
               ) : (
-                <p className="text-[var(--color-app-muted)] italic">Sem conteúdo ainda.</p>
+                <p className="text-[var(--color-app-muted)] italic">{t('notes.emptyContent')}</p>
               )}
             </div>
           ) : (
@@ -222,7 +224,7 @@ function NoteEditor({
                   setContent(v);
                   setDirty(true);
                 }}
-                placeholder="Comece a escrever em markdown…"
+                placeholder={t('notes.editorPlaceholder')}
               />
             </div>
           )}
