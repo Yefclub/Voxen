@@ -4,9 +4,11 @@ import { motion } from 'motion/react';
 import { Button } from '../components/ui/button';
 import { useMe } from '../lib/hooks';
 import { apiPost } from '../lib/api';
+import { useI18n } from '../lib/i18n';
 
 export function PendentePage(): React.ReactElement {
   const { data, refresh } = useMe();
+  const { t } = useI18n();
   const navigate = useNavigate();
 
   const onSignOut = async (): Promise<void> => {
@@ -38,40 +40,37 @@ export function PendentePage(): React.ReactElement {
             {isSetupIncomplete ? (
               <>
                 <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">
-                  Aguardando configuração
+                  {t('pending.setupTitle')}
                 </h1>
                 <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-                  O sistema ainda está sendo configurado pelo administrador. Volte em alguns
-                  instantes.
+                  {t('pending.setupDescription')}
                 </p>
               </>
             ) : status === 'PENDING' ? (
               <>
                 <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">
-                  Cadastro aguardando aprovação
+                  {t('pending.approvalTitle')}
                 </h1>
                 <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-                  Seu cadastro foi recebido. Um administrador precisa aprovar antes que você consiga
-                  entrar. Você será avisado por e-mail (quando configurado).
+                  {t('pending.approvalDescription')}
                 </p>
               </>
             ) : status === 'REJECTED' ? (
               <>
                 <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">
-                  Cadastro recusado
+                  {t('pending.rejectedTitle')}
                 </h1>
                 <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-                  Seu cadastro foi recusado pelo administrador. Entre em contato se acha que houve
-                  engano.
+                  {t('pending.rejectedDescription')}
                 </p>
               </>
             ) : (
               <>
                 <h1 className="font-display text-3xl font-semibold tracking-[-0.03em]">
-                  Conta desativada
+                  {t('pending.disabledTitle')}
                 </h1>
                 <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-                  Sua conta está desativada. Entre em contato com o administrador.
+                  {t('pending.disabledDescription')}
                 </p>
               </>
             )}
@@ -79,7 +78,7 @@ export function PendentePage(): React.ReactElement {
             <div className="pt-2">
               <Button variant="secondary" size="lg" onClick={onSignOut}>
                 <LogOut className="h-4 w-4" />
-                Sair
+                {t('common.signOut')}
               </Button>
             </div>
           </motion.div>

@@ -12,6 +12,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { EditorView } from '@codemirror/view';
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
+import { useI18n } from '../../lib/i18n';
 
 // Highlight estilo Voxen — combina com o tema dark zinc + acentos violet/emerald
 const voxenHighlight = HighlightStyle.define([
@@ -89,10 +90,11 @@ interface Props {
 export function MarkdownEditor({
   value,
   onChange,
-  placeholder = 'Comece a escrever em markdown…',
+  placeholder,
   readOnly = false,
   autoFocus = false,
 }: Props): React.ReactElement {
+  const { t: translate } = useI18n();
   const ref = useRef<ReactCodeMirrorRef>(null);
 
   const extensions = useMemo(
@@ -115,7 +117,7 @@ export function MarkdownEditor({
       ref={ref}
       value={value}
       onChange={onChange}
-      placeholder={placeholder}
+      placeholder={placeholder ?? translate('notes.editorPlaceholder')}
       readOnly={readOnly}
       basicSetup={{
         lineNumbers: false,
