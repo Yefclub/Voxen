@@ -29,6 +29,7 @@ import { Spinner } from '../components/ui/spinner';
 import { ApiError, apiGet, apiPost } from '../lib/api';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { useI18n } from '../lib/i18n';
 
 interface TelegramAdminStatus {
   configured: boolean;
@@ -42,17 +43,21 @@ interface McpAdminStatus {
 }
 
 export function AdminIntegracoesPage(): React.ReactElement {
+  const { t } = useI18n();
+
   return (
     <AnimatedPage>
       <div className="px-8 py-12 mx-auto max-w-3xl space-y-10">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <Sparkles className="h-3.5 w-3.5 text-violet-400" />
-            Admin
+            {t('shell.admin')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Integrações</h1>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+            {t('admin.integrations.title')}
+          </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-            Configure tokens pra Telegram bot e MCP server. Ambos cifrados em DB com a master key.
+            {t('admin.integrations.description')}
           </p>
         </header>
 
@@ -64,6 +69,7 @@ export function AdminIntegracoesPage(): React.ReactElement {
 }
 
 function TelegramSection(): React.ReactElement {
+  const { t } = useI18n();
   const [status, setStatus] = useState<TelegramAdminStatus | null>(null);
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
@@ -85,7 +91,7 @@ function TelegramSection(): React.ReactElement {
 
   async function save(): Promise<void> {
     if (!token.trim()) {
-      toast.error('Cole o token do bot.');
+      toast.error(t('admin.integrations.telegram.tokenMissing'));
       return;
     }
     setSaving(true);
@@ -97,12 +103,14 @@ function TelegramSection(): React.ReactElement {
         body: JSON.stringify({ token }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(data.error ?? 'Erro ao salvar.');
-      toast.success('Token salvo. Worker telegram conecta em segundos.');
+      if (!res.ok) throw new Error(data.error ?? t('admin.integrations.telegram.saveError'));
+      toast.success(t('admin.integrations.telegram.saved'));
       setToken('');
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro.');
+      toast.error(
+        err instanceof Error ? err.message : t('admin.integrations.telegram.genericError'),
+      );
     } finally {
       setSaving(false);
     }
@@ -114,11 +122,13 @@ function TelegramSection(): React.ReactElement {
         method: 'DELETE',
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('Falha.');
-      toast.success('Token revogado.');
+      if (!res.ok) throw new Error(t('admin.integrations.telegram.revokeFailed'));
+      toast.success(t('admin.integrations.telegram.revoked'));
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro.');
+      toast.error(
+        err instanceof Error ? err.message : t('admin.integrations.telegram.genericError'),
+      );
     }
   }
 
@@ -138,20 +148,13 @@ function TelegramSection(): React.ReactElement {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 font-display">
             <Send className="h-4 w-4 text-violet-400" />
-            Bot do Telegram
+            {t('admin.integrations.telegram.title')}
           </CardTitle>
           <CardDescription>
-            Cole o token do bot (formato <code className="text-zinc-300">1234567890:AAH…</code>).
-            Crie um bot via{' '}
-            <a
-              href="https://t.me/BotFather"
-              target="_blank"
-              rel="noreferrer"
-              className="text-emerald-400 underline-offset-4 hover:underline"
-            >
-              @BotFather
-            </a>{' '}
-            no Telegram.
+            {t('admin.integrations.telegram.description', {
+              format: '1234567890:AAH…',
+              botFather: '@BotFather',
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -159,19 +162,24 @@ function TelegramSection(): React.ReactElement {
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
               <Check className="h-4 w-4 text-emerald-400" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-100">Bot ativo</p>
+                <p className="text-sm text-zinc-100">{t('admin.integrations.telegram.active')}</p>
                 <p className="text-[11px] text-[var(--color-app-muted)] font-mono">
-                  token: {status.tokenPreview ?? '••••'}
+                  {t('admin.integrations.telegram.token').toLowerCase()}:{' '}
+                  {status.tokenPreview ?? '••••'}
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setConfirmRevoke(true)}>
                 <Trash2 className="h-3.5 w-3.5" />
-                Revogar
+                {t('admin.integrations.revoke')}
               </Button>
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="tg-token">{status.configured ? 'Substituir token' : 'Token'}</Label>
+            <Label htmlFor="tg-token">
+              {status.configured
+                ? t('admin.integrations.telegram.replaceToken')
+                : t('admin.integrations.telegram.token')}
+            </Label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Input
@@ -187,7 +195,9 @@ function TelegramSection(): React.ReactElement {
                   type="button"
                   onClick={() => setShowToken((v) => !v)}
                   className="absolute inset-y-0 right-3 flex items-center text-[var(--color-app-muted)] hover:text-zinc-100"
-                  aria-label={showToken ? 'Ocultar' : 'Ver'}
+                  aria-label={
+                    showToken ? t('admin.integrations.hide') : t('admin.integrations.show')
+                  }
                 >
                   {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -197,7 +207,7 @@ function TelegramSection(): React.ReactElement {
                 onClick={() => void save()}
                 disabled={saving || !token.trim()}
               >
-                {saving ? <Spinner /> : 'Salvar'}
+                {saving ? <Spinner /> : t('common.save')}
               </Button>
             </div>
           </div>
@@ -206,9 +216,9 @@ function TelegramSection(): React.ReactElement {
       <ConfirmDialog
         open={confirmRevoke}
         onOpenChange={setConfirmRevoke}
-        title="Revogar token do bot?"
-        description="O bot vai parar de responder até admin configurar novo token."
-        confirmLabel="Revogar"
+        title={t('admin.integrations.telegram.revokeTitle')}
+        description={t('admin.integrations.telegram.revokeDescription')}
+        confirmLabel={t('admin.integrations.revoke')}
         variant="destructive"
         onConfirm={revoke}
       />
@@ -217,6 +227,7 @@ function TelegramSection(): React.ReactElement {
 }
 
 function McpSection(): React.ReactElement {
+  const { t } = useI18n();
   const [status, setStatus] = useState<McpAdminStatus | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [rotating, setRotating] = useState(false);
@@ -241,10 +252,12 @@ function McpSection(): React.ReactElement {
     try {
       const r = await apiPost<{ token: string; userId: string }>('/api/admin/mcp/rotate', {});
       setNewToken(r.token);
-      toast.success('Token gerado. Copie agora — não será exibido novamente.');
+      toast.success(t('admin.integrations.mcp.generated'));
       await refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Erro.');
+      toast.error(
+        err instanceof ApiError ? err.message : t('admin.integrations.telegram.genericError'),
+      );
     } finally {
       setRotating(false);
     }
@@ -256,12 +269,14 @@ function McpSection(): React.ReactElement {
         method: 'DELETE',
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('Falha.');
-      toast.success('Token MCP revogado.');
+      if (!res.ok) throw new Error(t('admin.integrations.telegram.revokeFailed'));
+      toast.success(t('admin.integrations.mcp.revoked'));
       setNewToken(null);
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro.');
+      toast.error(
+        err instanceof Error ? err.message : t('admin.integrations.telegram.genericError'),
+      );
     }
   }
 
@@ -296,26 +311,24 @@ function McpSection(): React.ReactElement {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 font-display">
             <Bot className="h-4 w-4 text-emerald-400" />
-            MCP Server
+            {t('admin.integrations.mcp.title')}
           </CardTitle>
-          <CardDescription>
-            Expõe sua biblioteca via Model Context Protocol pra IAs externas (Claude Desktop,
-            Cursor, agentes próprios) consultarem read-only.
-          </CardDescription>
+          <CardDescription>{t('admin.integrations.mcp.description')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {status.enabled && (
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
               <Check className="h-4 w-4 text-emerald-400" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-100">Habilitado</p>
+                <p className="text-sm text-zinc-100">{t('admin.integrations.mcp.enabled')}</p>
                 <p className="text-[11px] text-[var(--color-app-muted)] font-mono">
-                  token: {status.tokenPreview ?? '••••'}
+                  {t('admin.integrations.telegram.token').toLowerCase()}:{' '}
+                  {status.tokenPreview ?? '••••'}
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setConfirmRevoke(true)}>
                 <Trash2 className="h-3.5 w-3.5" />
-                Revogar
+                {t('admin.integrations.revoke')}
               </Button>
             </div>
           )}
@@ -323,7 +336,7 @@ function McpSection(): React.ReactElement {
           {newToken && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-4 space-y-2">
               <p className="text-[11px] uppercase tracking-wider text-amber-300 font-medium">
-                Salve agora — não será exibido novamente
+                {t('admin.integrations.mcp.saveNow')}
               </p>
               <code className="block font-mono text-[12px] tracking-tight text-zinc-100 break-all bg-[var(--color-app-bg-elevated)] rounded px-2 py-2 border border-[var(--color-app-border)]">
                 {newToken}
@@ -332,34 +345,38 @@ function McpSection(): React.ReactElement {
                 {copied ? (
                   <>
                     <Check className="h-3.5 w-3.5" />
-                    Copiado
+                    {t('common.copied')}
                   </>
                 ) : (
                   <>
                     <Copy className="h-3.5 w-3.5" />
-                    Copiar token
+                    {t('admin.integrations.mcp.copyToken')}
                   </>
                 )}
               </Button>
               <p className="text-[11px] text-[var(--color-app-muted)] mt-2 leading-relaxed">
-                Configure no client MCP apontando pra <code>https://seu-host/mcp</code> com header{' '}
-                <code>Authorization: Bearer &lt;token&gt;</code>.
+                {t('admin.integrations.mcp.clientHint', {
+                  url: 'https://your-host/mcp',
+                  header: 'Authorization: Bearer <token>',
+                })}
               </p>
             </div>
           )}
 
           <Button variant="primary" onClick={() => void rotate()} disabled={rotating}>
             {rotating ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />}
-            {status.enabled ? 'Rotacionar token' : 'Gerar token'}
+            {status.enabled
+              ? t('admin.integrations.mcp.rotateToken')
+              : t('admin.integrations.mcp.generateToken')}
           </Button>
         </CardContent>
       </Card>
       <ConfirmDialog
         open={confirmRevoke}
         onOpenChange={setConfirmRevoke}
-        title="Revogar token MCP?"
-        description="Clients MCP que usam este token vão perder acesso até admin gerar novo."
-        confirmLabel="Revogar"
+        title={t('admin.integrations.mcp.revokeTitle')}
+        description={t('admin.integrations.mcp.revokeDescription')}
+        confirmLabel={t('admin.integrations.revoke')}
         variant="destructive"
         onConfirm={revoke}
       />

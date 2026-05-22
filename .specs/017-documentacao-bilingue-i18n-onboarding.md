@@ -54,10 +54,15 @@ Esta spec cria a base bilíngue:
 - While the backend returns a valid `app_language`, the frontend shall sync the
   local runtime locale to that value.
 
-### Optional
+### Complemento de Cobertura Interna
 
-- Where a page has not yet been translated, the system may continue rendering
-  PT-BR copy while the i18n foundation is expanded incrementally.
+- The system shall render the main authenticated web surfaces through the i18n
+  runtime: dashboard, chat, jobs, library, notes, graph, automations, account,
+  setup and admin pages.
+- The system shall keep PT-BR as canonical copy and provide English strings for
+  the initial open-source UI experience.
+- The system shall keep user-generated content, model/provider names, external
+  service names and persisted automation prompts untranslated.
 
 ### Unwanted
 
@@ -84,10 +89,11 @@ Esta spec cria a base bilíngue:
 - [x] `docs/en/*.md` contém guias em inglês para arquitetura, deploy,
       desenvolvimento, stack, segurança, decisões e formato de transcrição.
 - [x] Validações web passam: lint, typecheck, test, format-check e build.
+- [x] Fluxos internos centrais foram conectados ao i18n em PRs complementares.
+- [x] Páginas admin, conta, automações e grafo usam dicionário PT-BR/EN.
 
 ## Fora de Escopo
 
-- Tradução completa de todas as telas internas já existentes.
 - Tradução dinâmica de conteúdo criado pelo usuário.
 - Preferência de idioma por usuário individual.
 - Migração SQL para backfill de `app_language`; ausência da setting usa

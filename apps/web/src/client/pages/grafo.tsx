@@ -15,6 +15,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { useFetch } from '../lib/hooks';
 import { cn } from '../lib/utils';
 import { AnimatedPage } from '../components/motion/animated-page';
+import { useI18n } from '../lib/i18n';
 
 interface GraphNode {
   id: string;
@@ -47,6 +48,7 @@ export function GrafoPage(): React.ReactElement {
   const { data, loading, refresh } = useFetch<GraphResp>('/api/graph');
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const filtered = useMemo(() => {
     if (!data) return null;
@@ -170,13 +172,14 @@ export function GrafoPage(): React.ReactElement {
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <Network className="h-3.5 w-3.5 text-violet-400" />
-            Visualização
+            {t('graph.eyebrow')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">Grafo</h1>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+            {t('graph.title')}
+          </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            Mapa visual de toda sua biblioteca. Transcrições e notas conectadas por wiki-links
-            <code className="text-zinc-300 mx-1">[[título]]</code> e por hierarquia de pastas.
-            Clique num nó pra abrir.
+            {t('graph.descriptionBefore')} <code className="text-zinc-300 mx-1">[[title]]</code>
+            {t('graph.descriptionAfter')}
           </p>
         </header>
 
@@ -190,30 +193,30 @@ export function GrafoPage(): React.ReactElement {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filtrar nós e vizinhos…"
+              placeholder={t('graph.searchPlaceholder')}
               className="relative w-full h-11 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/70 backdrop-blur-sm pl-10 pr-4 text-[14px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15 transition-colors"
             />
           </div>
           <Button variant="outline" size="default" onClick={refresh} disabled={loading}>
             <RotateCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-            Atualizar
+            {t('graph.refresh')}
           </Button>
           {stats && stats.nodes.length > 0 && (
             <div className="ml-auto inline-flex items-center gap-3 text-[11px] tabular-nums text-[var(--color-app-muted)]">
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-violet-400" />
-                {stats.nodes.filter((n) => n.type === 'transcript').length} transcrições
+                {stats.nodes.filter((n) => n.type === 'transcript').length} {t('graph.transcripts')}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                {stats.nodes.filter((n) => n.type === 'note').length} notas
+                {stats.nodes.filter((n) => n.type === 'note').length} {t('graph.notes')}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-sm bg-amber-400" />
-                {stats.nodes.filter((n) => n.type === 'folder').length} pastas
+                {stats.nodes.filter((n) => n.type === 'folder').length} {t('graph.folders')}
               </span>
               <span className="text-[var(--color-app-muted)]/60">
-                · {stats.edges.length} conexões
+                · {t('graph.connections', { count: stats.edges.length })}
               </span>
             </div>
           )}
@@ -235,11 +238,14 @@ export function GrafoPage(): React.ReactElement {
                   </div>
                   <div className="space-y-1.5">
                     <p className="font-display text-lg font-semibold tracking-tight">
-                      Biblioteca vazia
+                      {t('graph.emptyTitle')}
                     </p>
                     <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
-                      Crie uma nota em <code className="text-zinc-300">/notas</code> ou transcreva
-                      conteúdo em <code className="text-zinc-300">/jobs</code> pra começar.
+                      {t('graph.emptyDescriptionBefore')}{' '}
+                      <code className="text-zinc-300">/notas</code>{' '}
+                      {t('graph.emptyDescriptionMiddle')}{' '}
+                      <code className="text-zinc-300">/jobs</code>{' '}
+                      {t('graph.emptyDescriptionAfter')}
                     </p>
                   </div>
                 </CardContent>
