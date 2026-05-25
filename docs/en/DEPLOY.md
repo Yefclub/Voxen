@@ -44,6 +44,10 @@ S3_SECRET_KEY=...
 S3_BUCKET=voxen-transcripts
 S3_REGION=us-east-1
 S3_FORCE_PATH_STYLE=true
+
+# Optional yt-dlp bgutil HTTP provider for PO tokens.
+# Use only a provider you control. Empty = default yt-dlp mode.
+YTDLP_BGUTIL_BASE_URL=
 ```
 
 `MASTER_KEY` encrypts application secrets stored in the database. Generate it with:
@@ -53,6 +57,19 @@ openssl rand -base64 32
 ```
 
 Back up `MASTER_KEY` together with Postgres and MinIO/S3 data. If it is lost, encrypted secrets stored in the database cannot be recovered.
+
+## YouTube Extraction
+
+The worker tries YouTube transcripts/captions before downloading audio. If a
+transcript is available, Voxen stores it as subtitles with no OpenRouter audio
+cost. If that path fails, the normal fallback remains: `yt-dlp` subtitles,
+then audio transcription, then manual upload when the platform blocks access.
+
+On VPS/datacenter IPs, YouTube may still block automated access. The stable
+free mitigation is to run extraction from a residential/home-lab network. If
+you operate your own bgutil HTTP provider for yt-dlp PO tokens, set
+`YTDLP_BGUTIL_BASE_URL=http://host:4416` in the worker environment. Do not use
+public providers; this is a fragile mitigation, not a download guarantee.
 
 ## Home-Lab
 

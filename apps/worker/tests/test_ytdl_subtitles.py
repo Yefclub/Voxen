@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
+from src import ytdl
 from src.ytdl import VideoProbe, parse_vtt_or_srt, pick_subtitle_lang
 
 VTT_SAMPLE = """WEBVTT
@@ -113,3 +116,60 @@ def test_pick_subtitle_falls_back_to_any_lang() -> None:
     assert pick is not None
     assert pick[0] == "de"
     assert pick[1] == "vtt"
+
+
+async def test_fetch_youtube_transcript_builds_probe_and_segments(monkeypatch) -> None:
+    class FakeSnippet:
+        def __init__(self, text: str, start: float, duration: float) -> None:
+            self.text = text
+            self.start = start
+            self.duration = duration
+
+    class FakeFetched:
+        language_code = "pt"
+
+        def __iter__(self):
+            return iter(
+                [
+                    FakeSnippet("Olá <b>mundo</b>", 0.0, 2.0),
+                    FakeSnippet("Segundo trecho", 2.0, 3.2),
+                ]
+            )
+
+    class FakeApi:
+        def __init__(self, proxy_config=None) -> None:
+            self.proxy_config = proxy_config
+
+        def fetch(self, video_id, languages, preserve_formatting=False):
+            assert video_id == "dQw4w9WgXcQ"
+            assert languages[0] == "pt"
+            return FakeFetched()
+
+    monkeypatch.setattr(ytdl, "YouTubeTranscriptApi", FakeApi)
+    monkeypatch.setattr(ytdl, "_runtime_options", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        ytdl,
+        "_fetch_youtube_oembed",
+        lambda video_id, proxy_url: {
+            "title": "Video de teste",
+            "author_name": "Canal",
+            "thumbnail_url": "https://img.example/thumb.jpg",
+        },
+    )
+
+    result = await ytdl.fetch_youtube_transcript("https://youtu.be/dQw4w9WgXcQ")
+
+    assert result is not None
+    assert result.language == "pt"
+    assert result.probe.title == "Video de teste"
+    assert result.probe.channel == "Canal"
+    assert result.probe.duration_sec == 6
+    assert result.segments[0].text == "Olá mundo"
+
+
+async def test_fetch_youtube_transcript_ignores_non_youtube(monkeypatch) -> None:
+    monkeypatch.setattr(ytdl, "_runtime_options", AsyncMock(return_value={}))
+
+    result = await ytdl.fetch_youtube_transcript("https://example.com/watch?v=dQw4w9WgXcQ")
+
+    assert result is None

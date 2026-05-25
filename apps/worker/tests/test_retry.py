@@ -105,6 +105,8 @@ async def test_runtime_options_without_proxy_returns_base_opts(
 ) -> None:
     monkeypatch.delenv("YTDLP_PROXY_URLS", raising=False)
     monkeypatch.delenv("YTDLP_PROXY_URL", raising=False)
+    monkeypatch.delenv("YTDLP_BGUTIL_BASE_URL", raising=False)
+    monkeypatch.delenv("YTDLP_POT_PROVIDER_URL", raising=False)
     monkeypatch.setattr(ytdl.voxen_settings, "get_yt_dlp_proxy_urls", AsyncMock(return_value=None))
 
     opts = await ytdl._runtime_options()
@@ -117,6 +119,8 @@ async def test_runtime_options_without_proxy_returns_base_opts(
 async def test_runtime_options_applies_configured_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("YTDLP_PROXY_URLS", raising=False)
     monkeypatch.delenv("YTDLP_PROXY_URL", raising=False)
+    monkeypatch.delenv("YTDLP_BGUTIL_BASE_URL", raising=False)
+    monkeypatch.delenv("YTDLP_POT_PROVIDER_URL", raising=False)
     monkeypatch.setattr(
         ytdl.voxen_settings,
         "get_yt_dlp_proxy_urls",
@@ -126,3 +130,20 @@ async def test_runtime_options_applies_configured_proxy(monkeypatch: pytest.Monk
     opts = await ytdl._runtime_options()
 
     assert opts["proxy"] == "http://user:pass@proxy.example:8080"
+
+
+async def test_runtime_options_enables_bgutil_provider_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("YTDLP_PROXY_URLS", raising=False)
+    monkeypatch.delenv("YTDLP_PROXY_URL", raising=False)
+    monkeypatch.setenv("YTDLP_BGUTIL_BASE_URL", "http://bgutil-provider:4416")
+    monkeypatch.delenv("YTDLP_POT_PROVIDER_URL", raising=False)
+    monkeypatch.setattr(ytdl.voxen_settings, "get_yt_dlp_proxy_urls", AsyncMock(return_value=None))
+
+    opts = await ytdl._runtime_options()
+
+    assert opts["extractor_args"]["youtube"]["player_client"] == ["mweb"]
+    assert opts["extractor_args"]["youtubepot-bgutilhttp"]["base_url"] == [
+        "http://bgutil-provider:4416"
+    ]

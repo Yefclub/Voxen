@@ -168,79 +168,93 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "downloading", percent=5)
 
-    probe_info = await _retry_transient(lambda: ytdl.probe(source_url), tries=3)
-    if probe_info.duration_sec > ytdl.MAX_DURATION_SEC:
-        raise PermanentError("Vídeo excede a duração máxima de 4 horas.")
-
-    _check_cancel(job_id)
-    await events.publish_job_event(user_id, job_id, "choosing_method", percent=10)
-    sub_pick = ytdl.pick_subtitle_lang(probe_info)
-
-    with tempfile.TemporaryDirectory(prefix="voxen-") as tmp:
-        tmpdir = Path(tmp)
-        subtitle_segments: tuple[Segment, ...] | None = None
-        subtitle_lang: str | None = None
-
-        if sub_pick is not None:
-            lang, fmt = sub_pick
-            log.info("path-subtitles", lang=lang, fmt=fmt)
-            try:
-                sub_path = await _retry_transient(
-                    lambda: ytdl.download_subtitle(source_url, lang, fmt, tmpdir),
-                    tries=3,
-                )
-                content = sub_path.read_text(encoding="utf-8")
-                subtitle_segments = ytdl.parse_vtt_or_srt(content)
-                subtitle_lang = lang
-            except _TRANSIENT_EXC as e:
-                # YouTube rate-limita download de subtitles (HTTP 429) com
-                # frequência. Em vez de FAILED, caímos pro path API (Whisper) —
-                # é mais caro mas funciona. Probe já passou, vídeo existe.
-                log.warning(
-                    "subtitle-failed-fallback-api",
-                    lang=lang,
-                    error=str(e)[:200],
-                )
-
-        if subtitle_segments is not None and subtitle_lang is not None:
-            segments = subtitle_segments
-            method = "SUBTITLES"
-            model = None
-            cost_total = Decimal("0")
-            language = subtitle_lang.split("-")[0]
-        else:
-            log.info("path-api")
-            audio_path = await _retry_transient(
-                lambda: ytdl.download_audio_opus(source_url, tmpdir), tries=3
-            )
-            await events.publish_job_event(user_id, job_id, "transcribing", percent=30)
-            segments, model, cost_total = await _transcribe_via_api(
-                audio_path=audio_path,
-                user_id=user_id,
-                job_id=job_id,
-                duration_sec=probe_info.duration_sec,
-                tmpdir=tmpdir,
-                log=log,
-            )
-            method = "API"
-            language = probe_info.language_hint or "auto"
-
-        if not segments:
-            raise PermanentError("Transcrição vazia — nenhum texto extraído.")
+    transcript_fetch = await ytdl.fetch_youtube_transcript(source_url)
+    if transcript_fetch is not None:
+        log.info("path-youtube-transcript-api", lang=transcript_fetch.language)
+        probe_info = transcript_fetch.probe
+        if probe_info.duration_sec > ytdl.MAX_DURATION_SEC:
+            raise PermanentError("Vídeo excede a duração máxima de 4 horas.")
+        _check_cancel(job_id)
+        await events.publish_job_event(user_id, job_id, "choosing_method", percent=10)
+        segments = transcript_fetch.segments
+        method = "SUBTITLES"
+        model = None
+        cost_total: Decimal | None = None
+        language = transcript_fetch.language
+    else:
+        probe_info = await _retry_transient(lambda: ytdl.probe(source_url), tries=3)
+        if probe_info.duration_sec > ytdl.MAX_DURATION_SEC:
+            raise PermanentError("Vídeo excede a duração máxima de 4 horas.")
 
         _check_cancel(job_id)
-        await events.publish_job_event(user_id, job_id, "uploading", percent=80)
-        new_transcript_id = await _persist(
-            user_id=user_id,
-            job_id=job_id,
-            probe_info=probe_info,
-            source_url=source_url,
-            segments=segments,
-            method=method,
-            model=model,
-            cost_usd=cost_total if method == "API" else None,
-            language=language,
-        )
+        await events.publish_job_event(user_id, job_id, "choosing_method", percent=10)
+        sub_pick = ytdl.pick_subtitle_lang(probe_info)
+
+        with tempfile.TemporaryDirectory(prefix="voxen-") as tmp:
+            tmpdir = Path(tmp)
+            subtitle_segments: tuple[Segment, ...] | None = None
+            subtitle_lang: str | None = None
+
+            if sub_pick is not None:
+                lang, fmt = sub_pick
+                log.info("path-subtitles", lang=lang, fmt=fmt)
+                try:
+                    sub_path = await _retry_transient(
+                        lambda: ytdl.download_subtitle(source_url, lang, fmt, tmpdir),
+                        tries=3,
+                    )
+                    content = sub_path.read_text(encoding="utf-8")
+                    subtitle_segments = ytdl.parse_vtt_or_srt(content)
+                    subtitle_lang = lang
+                except _TRANSIENT_EXC as e:
+                    # YouTube rate-limita download de subtitles (HTTP 429) com
+                    # frequência. Em vez de FAILED, caímos pro path API (Whisper) —
+                    # é mais caro mas funciona. Probe já passou, vídeo existe.
+                    log.warning(
+                        "subtitle-failed-fallback-api",
+                        lang=lang,
+                        error=str(e)[:200],
+                    )
+
+            if subtitle_segments is not None and subtitle_lang is not None:
+                segments = subtitle_segments
+                method = "SUBTITLES"
+                model = None
+                cost_total = None
+                language = subtitle_lang.split("-")[0]
+            else:
+                log.info("path-api")
+                audio_path = await _retry_transient(
+                    lambda: ytdl.download_audio_opus(source_url, tmpdir), tries=3
+                )
+                await events.publish_job_event(user_id, job_id, "transcribing", percent=30)
+                segments, model, cost_total = await _transcribe_via_api(
+                    audio_path=audio_path,
+                    user_id=user_id,
+                    job_id=job_id,
+                    duration_sec=probe_info.duration_sec,
+                    tmpdir=tmpdir,
+                    log=log,
+                )
+                method = "API"
+                language = probe_info.language_hint or "auto"
+
+    if not segments:
+        raise PermanentError("Transcrição vazia — nenhum texto extraído.")
+
+    _check_cancel(job_id)
+    await events.publish_job_event(user_id, job_id, "uploading", percent=80)
+    new_transcript_id = await _persist(
+        user_id=user_id,
+        job_id=job_id,
+        probe_info=probe_info,
+        source_url=source_url,
+        segments=segments,
+        method=method,
+        model=model,
+        cost_usd=cost_total if method == "API" else None,
+        language=language,
+    )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_transcript(job_id, new_transcript_id)
