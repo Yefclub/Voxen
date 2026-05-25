@@ -31,7 +31,12 @@ RUN chmod +x /entrypoint.sh
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    DENO_DIR=/tmp/voxen-deno
+
+# yt-dlp depende de EJS + runtime JS para suporte completo ao YouTube atual.
+# O binario `deno` vem do extra `yt-dlp[deno]` instalado no virtualenv.
+RUN deno --version >/dev/null && python -m yt_dlp --version >/dev/null
 
 # Healthcheck: ping no Redis (worker depende dele pra pub/sub de jobs).
 # `pgrep` não está disponível em python:3.13-slim e instalar procps puxa CVEs.

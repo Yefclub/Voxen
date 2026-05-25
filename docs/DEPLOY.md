@@ -665,7 +665,15 @@ funcionam direto, sem necessidade de configurações extras de mitigação.
    Extração de mídia. O Voxen escolhe aleatoriamente uma URL por download.
    Use apenas proxies que você controla; proxies públicos gratuitos são
    instáveis e podem ser maliciosos.
-3. **Híbrido**: rode Voxen no VPS (uptime, HTTPS gerenciado) e direcione o
+3. **Transcript/legendas primeiro**: o worker tenta obter legendas do YouTube
+   antes de baixar áudio. Quando há transcript acessível, a transcrição não
+   consome OpenRouter e evita o download de mídia; quando não há, o fluxo cai
+   nos fallbacks normais (`yt-dlp` legendas → áudio → upload manual).
+4. **PO token/bgutil opt-in**: se você opera um provider HTTP bgutil próprio,
+   defina `YTDLP_BGUTIL_BASE_URL=http://host:4416` no ambiente do worker. O
+   Voxen então passa esse provider ao `yt-dlp` e prefere o client `mweb`. Não
+   use providers públicos; isso é mitigação frágil, não garantia de download.
+5. **Híbrido**: rode Voxen no VPS (uptime, HTTPS gerenciado) e direcione o
    tráfego do worker por um proxy/VPN residencial. Avançado, requer
    configuração de rede mais cuidadosa.
 

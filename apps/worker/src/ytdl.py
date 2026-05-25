@@ -9,13 +9,19 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlencode, urlparse
 
+import requests
 import yt_dlp
+from youtube_transcript_api._api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import NoTranscriptFound, YouTubeTranscriptApiException
+from youtube_transcript_api.proxies import GenericProxyConfig
 
 from . import voxen_settings
 from .transcript_md import Segment
 
 MAX_DURATION_SEC = 4 * 60 * 60  # 4h conforme spec 002
+PREFERRED_TRANSCRIPT_LANGS = ("pt", "pt-BR", "pt-PT", "en", "en-US", "en-GB")
 
 
 @dataclass(frozen=True)
@@ -31,6 +37,13 @@ class VideoProbe:
     automatic_captions: dict[str, list[dict[str, Any]]]
 
 
+@dataclass(frozen=True)
+class TranscriptFetch:
+    probe: VideoProbe
+    segments: tuple[Segment, ...]
+    language: str
+
+
 def _parse_upload_date(raw: str | None) -> datetime | None:
     if not raw or len(raw) != 8:
         return None
@@ -38,6 +51,145 @@ def _parse_upload_date(raw: str | None) -> datetime | None:
         return datetime.strptime(raw, "%Y%m%d").replace(tzinfo=UTC)
     except ValueError:
         return None
+
+
+async def fetch_youtube_transcript(url: str) -> TranscriptFetch | None:
+    """Tenta buscar transcript/legenda do YouTube sem baixar midia.
+
+    Best-effort por design: qualquer falha cai no pipeline normal do yt-dlp.
+    Isso evita transformar bloqueio/rate-limit do endpoint de transcripts em
+    falha definitiva antes de tentar os fallbacks existentes.
+    """
+    video_id = _youtube_video_id(url)
+    if video_id is None:
+        return None
+
+    base_opts = await _runtime_options()
+    proxy_url = base_opts.get("proxy")
+
+    import asyncio
+
+    return await asyncio.to_thread(_fetch_youtube_transcript_sync, video_id, proxy_url)
+
+
+def _fetch_youtube_transcript_sync(video_id: str, proxy_url: str | None) -> TranscriptFetch | None:
+    try:
+        api = YouTubeTranscriptApi(proxy_config=_transcript_proxy_config(proxy_url))
+        try:
+            fetched: Any = api.fetch(video_id, languages=PREFERRED_TRANSCRIPT_LANGS)
+        except NoTranscriptFound:
+            fetched = _fetch_any_transcript(api, video_id)
+            if fetched is None:
+                return None
+
+        segments = tuple(
+            Segment(start_sec=float(snippet.start), text=_clean_cue_line(snippet.text))
+            for snippet in fetched
+            if snippet.text.strip()
+        )
+        if not segments:
+            return None
+
+        metadata = _fetch_youtube_oembed(video_id, proxy_url)
+        duration_sec = _fetched_transcript_duration_sec(fetched)
+        language = getattr(fetched, "language_code", None) or "auto"
+        probe = VideoProbe(
+            video_id=video_id,
+            title=metadata.get("title") or "(sem título)",
+            channel=metadata.get("author_name"),
+            duration_sec=duration_sec,
+            published_at=None,
+            thumbnail_url=metadata.get("thumbnail_url")
+            or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+            language_hint=language,
+            available_subtitles={},
+            automatic_captions={},
+        )
+        return TranscriptFetch(probe=probe, segments=segments, language=language.split("-")[0])
+    except (OSError, requests.RequestException, YouTubeTranscriptApiException):
+        return None
+
+
+def _fetch_any_transcript(api: YouTubeTranscriptApi, video_id: str) -> Any | None:
+    transcript_list = api.list(video_id)
+    for transcript in transcript_list:
+        return transcript.fetch()
+    return None
+
+
+def _fetched_transcript_duration_sec(fetched: Any) -> int:
+    max_end = 0.0
+    for snippet in fetched:
+        max_end = max(max_end, float(snippet.start) + float(snippet.duration))
+    return max(1, int(max_end + 0.999))
+
+
+def _fetch_youtube_oembed(video_id: str, proxy_url: str | None) -> dict[str, str]:
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    query = urlencode({"url": url, "format": "json"})
+    try:
+        resp = requests.get(
+            f"https://www.youtube.com/oembed?{query}",
+            timeout=10,
+            proxies=_requests_proxy_dict(proxy_url),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): str(v) for k, v in data.items() if isinstance(v, str)}
+
+
+def _transcript_proxy_config(proxy_url: str | None) -> GenericProxyConfig | None:
+    if not proxy_url or not _is_http_proxy(proxy_url):
+        return None
+    return GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
+
+
+def _requests_proxy_dict(proxy_url: str | None) -> dict[str, str] | None:
+    if not proxy_url or not _is_http_proxy(proxy_url):
+        return None
+    return {"http": proxy_url, "https": proxy_url}
+
+
+def _is_http_proxy(proxy_url: str | None) -> bool:
+    return bool(proxy_url and proxy_url.startswith(("http://", "https://")))
+
+
+def _youtube_video_id(url: str) -> str | None:
+    try:
+        u = urlparse(url)
+    except ValueError:
+        return None
+    if u.scheme not in ("http", "https") or not u.hostname:
+        return None
+
+    host = u.hostname.lower()
+    for prefix in ("www.", "m.", "mobile.", "music."):
+        if host.startswith(prefix):
+            host = host[len(prefix) :]
+            break
+
+    video_id: str | None
+    if host == "youtu.be":
+        video_id = u.path.lstrip("/").split("/")[0]
+    elif host == "youtube.com":
+        path = u.path.rstrip("/")
+        if path == "/watch":
+            values = parse_qs(u.query).get("v")
+            video_id = values[0] if values else None
+        elif path.startswith(("/shorts/", "/embed/", "/v/")):
+            video_id = path.split("/")[2]
+        else:
+            video_id = None
+    else:
+        video_id = None
+
+    if video_id and re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
+        return video_id
+    return None
 
 
 async def probe(url: str) -> VideoProbe:
@@ -202,6 +354,15 @@ async def _runtime_options() -> dict[str, Any]:
         "noplaylist": True,
         "geo_bypass": True,
     }
+
+    bgutil_base_url = (
+        os.environ.get("YTDLP_BGUTIL_BASE_URL") or os.environ.get("YTDLP_POT_PROVIDER_URL") or ""
+    ).strip()
+    if bgutil_base_url:
+        opts["extractor_args"] = {
+            "youtube": {"player_client": ["mweb"]},
+            "youtubepot-bgutilhttp": {"base_url": [bgutil_base_url]},
+        }
 
     proxy_urls_raw = (
         await voxen_settings.get_yt_dlp_proxy_urls()
