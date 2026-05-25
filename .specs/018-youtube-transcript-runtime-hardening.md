@@ -21,8 +21,8 @@ operacional opt-in por variavel de ambiente, sem promessa de bypass garantido.
 - The system shall keep manual upload as the universal fallback when external
   extraction is blocked.
 - The worker image shall include the runtime dependencies recommended for
-  current `yt-dlp` YouTube support: `yt-dlp` default extras, browser
-  impersonation support and a JavaScript runtime.
+  current `yt-dlp` YouTube support that pass security scanning: `yt-dlp`
+  default extras and a JavaScript runtime.
 
 ### Event-driven
 
@@ -47,7 +47,7 @@ operacional opt-in por variavel de ambiente, sem promessa de bypass garantido.
 - [ ] Transcript-only success skips media download and OpenRouter audio cost.
 - [ ] Existing `yt-dlp` subtitle and audio fallbacks remain intact.
 - [ ] Worker dependencies include `youtube-transcript-api` explicitly.
-- [ ] Worker dependencies include `yt-dlp` extras for EJS, curl-cffi and Deno.
+- [ ] Worker dependencies include `yt-dlp` extras for EJS and Deno.
 - [ ] Docker build verifies that the Deno runtime is present in the worker
       image.
 - [ ] bgutil PO token provider is opt-in via env and does not require UI
