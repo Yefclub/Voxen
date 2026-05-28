@@ -10,13 +10,13 @@ Guia prático pra colocar Voxen rodando em produção. Os arquivos do dev são o
 
 Escolha o seu cenário:
 
-| Cenário | Quando usar | Seção |
-|---|---|---|
-| **Home-lab (recomendado)** | Mini-PC, NAS ou Proxmox em casa. IP residencial, sem bloqueio do YouTube. | [Home-lab](#home-lab) |
-| **Servidor próprio + nginx do host** | VPS, dedicated, máquina local. Você já tem (ou quer) nginx instalado. ⚠ Veja aviso sobre VPS. | [Servidor + nginx host](#servidor--nginx-do-host) |
-| **Servidor próprio + nginx em container** | Mesmo cenário, mas prefere tudo dockerizado. ⚠ Veja aviso sobre VPS. | [Servidor + nginx container](#servidor--nginx-em-container) |
-| **LXC do Proxmox** | Container LXC do Proxmox (em casa ou no homelab). | [Proxmox CT](#proxmox-ct) |
-| **Easypanel** | Plataforma já cuida de HTTPS e domínio. Pode rodar em VPS (com avisos) ou em servidor próprio. | [Easypanel App](#easypanel-app) |
+| Cenário                                   | Quando usar                                                                                    | Seção                                                       |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| **Home-lab (recomendado)**                | Mini-PC, NAS ou Proxmox em casa. IP residencial, sem bloqueio do YouTube.                      | [Home-lab](#home-lab)                                       |
+| **Servidor próprio + nginx do host**      | VPS, dedicated, máquina local. Você já tem (ou quer) nginx instalado. ⚠ Veja aviso sobre VPS.  | [Servidor + nginx host](#servidor--nginx-do-host)           |
+| **Servidor próprio + nginx em container** | Mesmo cenário, mas prefere tudo dockerizado. ⚠ Veja aviso sobre VPS.                           | [Servidor + nginx container](#servidor--nginx-em-container) |
+| **LXC do Proxmox**                        | Container LXC do Proxmox (em casa ou no homelab).                                              | [Proxmox CT](#proxmox-ct)                                   |
+| **Easypanel**                             | Plataforma já cuida de HTTPS e domínio. Pode rodar em VPS (com avisos) ou em servidor próprio. | [Easypanel App](#easypanel-app)                             |
 
 > **Antes de qualquer cenário** — leia [Pré-requisitos comuns](#pré-requisitos-comuns).
 
@@ -391,6 +391,8 @@ No modo Docker image, esses valores não participam do build:
 
 ```env
 APP_BASE_URL=https://voxen.seudominio.com
+# Opcional: se houver domínio temporário + domínio final, separe por vírgula.
+BETTER_AUTH_TRUSTED_ORIGINS=
 NODE_ENV=production
 BETTER_AUTH_SECRET=<openssl rand -base64 32>
 MASTER_KEY=<openssl rand -base64 32>
@@ -422,6 +424,11 @@ use o endpoint interno do MinIO no App.
 backup desse valor** junto com Postgres e MinIO; sem ele, API keys e settings
 cifrados ficam ilegíveis.
 
+`APP_BASE_URL` deve ser exatamente a origem pública usada no navegador
+(`https://domínio`, sem barra final). Se o deploy aceitar mais de um domínio,
+inclua os alternativos em `BETTER_AUTH_TRUSTED_ORIGINS`; caso contrário o
+Better Auth rejeita signup/login com `Invalid origin`.
+
 ### 4. Domínio
 
 Easypanel UI → Domains. Adicione `voxen.seudominio.com` apontando para a porta
@@ -448,6 +455,7 @@ interno e MinIO/S3.
 ### 6. Backups
 
 Configure backups de:
+
 - Postgres
 - MinIO bucket `voxen-transcripts`
 - Valor do env `MASTER_KEY`
@@ -471,17 +479,19 @@ Se usar Compose mesmo assim:
 
 ### Troubleshooting S3/MinIO
 
-| Sintoma | Causa provável | Fix |
-|---------|----------------|-----|
-| `SignatureDoesNotMatch` | Secret errado ou clock skew | Recopie a secret; sincronize NTP |
-| `NoSuchBucket` | Bucket não criado | Crie na console MinIO |
-| `403 Forbidden` | Access key sem policy | Default policy ou attach `readwrite` |
-| `Connection refused` | Endpoint errado | No App use URL interna do Easypanel; no Compose use `http://minio:9000` |
-| Startup preso em `S3 ainda indisponível` | Porta do endpoint S3 errada ou domínio sem proxy para S3 | Para domínio/proxy use `https://s3.seudominio.com`; para MinIO interno use `http://host-interno:9000` |
-| Startup falha em `S3 bucket ... sem escrita` | Bucket não existe, endpoint não aceita API S3 ou access key sem escrita | Crie o bucket, revise credenciais/policy ou troque para o endpoint interno do MinIO |
-| Upload de avatar retorna 502 | Falha de escrita no bucket | Use `/health/deep` e logs do App; o bucket precisa aceitar `PUT Object` |
-| `/api/jobs/events/me` com `ERR_HTTP2_PROTOCOL_ERROR` | Proxy/HTTP2 bufferizando SSE | Verifique se o deploy está na versão com headers `no-transform` e `X-Accel-Buffering: no` |
-| `MalformedXML` | Falta `S3_FORCE_PATH_STYLE=true` | Sempre `true` pra MinIO |
+| Sintoma                                              | Causa provável                                                                              | Fix                                                                                                   |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `SignatureDoesNotMatch`                              | Secret errado ou clock skew                                                                 | Recopie a secret; sincronize NTP                                                                      |
+| `NoSuchBucket`                                       | Bucket não criado                                                                           | Crie na console MinIO                                                                                 |
+| `403 Forbidden`                                      | Access key sem policy                                                                       | Default policy ou attach `readwrite`                                                                  |
+| `Connection refused`                                 | Endpoint errado                                                                             | No App use URL interna do Easypanel; no Compose use `http://minio:9000`                               |
+| Startup preso em `S3 ainda indisponível`             | Porta do endpoint S3 errada ou domínio sem proxy para S3                                    | Para domínio/proxy use `https://s3.seudominio.com`; para MinIO interno use `http://host-interno:9000` |
+| Startup falha em `S3 bucket ... sem escrita`         | Bucket não existe, endpoint não aceita API S3 ou access key sem escrita                     | Crie o bucket, revise credenciais/policy ou troque para o endpoint interno do MinIO                   |
+| Upload de avatar retorna 502                         | Falha de escrita no bucket                                                                  | Use `/health/deep` e logs do App; o bucket precisa aceitar `PUT Object`                               |
+| `/api/auth/*` com `Invalid origin`                   | `APP_BASE_URL` não bate com o domínio acessado                                              | Ajuste `APP_BASE_URL` ou adicione a origem em `BETTER_AUTH_TRUSTED_ORIGINS`                           |
+| `/api/jobs/events/me` com `ERR_HTTP2_PROTOCOL_ERROR` | Deploy antigo emitindo headers SSE incompatíveis com HTTP/2 ou proxy fechando stream ocioso | Use versão com SSE HTTP/2-safe; ela não envia `Connection`/`Transfer-Encoding` e usa heartbeat curto  |
+| `MalformedXML`                                       | Falta `S3_FORCE_PATH_STYLE=true`                                                            | Sempre `true` pra MinIO                                                                               |
+| Redis avisa `Memory overcommit must be enabled`      | Kernel com `vm.overcommit_memory=0`                                                         | No host: `sudo sysctl -w vm.overcommit_memory=1` e persista em `/etc/sysctl.conf`                     |
 
 ### Variantes
 
@@ -543,22 +553,23 @@ Rode via cron diário. **A master key é o mais crítico** — sem ela, os secre
 
 Endpoints de health:
 
-| Endpoint | Service | Propósito | Resposta |
-|---|---|---|---|
-| `GET /health` | web (3000) | **Liveness** — proxy/reverse-proxy. Sempre 200 se processo vivo | `{"ok":true,"service":"web"}` |
-| `GET /health/deep` | web (3000) | **Readiness** — checa DB + Redis + chat service + S3/MinIO | 200 com checks ou 503 se algum falhar |
-| `GET /health` | chat (8001, interno) | Liveness do FastAPI | `{"ok":true,"service":"chat"}` |
-| `GET /health/deep` | chat (8001, interno) | Checa DB + master key carregável | 200/503 com latências |
+| Endpoint           | Service              | Propósito                                                       | Resposta                              |
+| ------------------ | -------------------- | --------------------------------------------------------------- | ------------------------------------- |
+| `GET /health`      | web (3000)           | **Liveness** — proxy/reverse-proxy. Sempre 200 se processo vivo | `{"ok":true,"service":"web"}`         |
+| `GET /health/deep` | web (3000)           | **Readiness** — checa DB + Redis + chat service + S3/MinIO      | 200 com checks ou 503 se algum falhar |
+| `GET /health`      | chat (8001, interno) | Liveness do FastAPI                                             | `{"ok":true,"service":"chat"}`        |
+| `GET /health/deep` | chat (8001, interno) | Checa DB + master key carregável                                | 200/503 com latências                 |
 
 Exemplo de resposta do `/health/deep` (web):
+
 ```json
 {
   "ok": true,
   "checks": {
     "postgres": { "ok": true, "latencyMs": 4 },
-    "redis":    { "ok": true, "latencyMs": 1 },
-    "chat":     { "ok": true, "latencyMs": 12 },
-    "s3":       { "ok": true, "latencyMs": 8 }
+    "redis": { "ok": true, "latencyMs": 1 },
+    "chat": { "ok": true, "latencyMs": 12 },
+    "s3": { "ok": true, "latencyMs": 8 }
   }
 }
 ```
@@ -567,10 +578,12 @@ Quando algum check falhar, o endpoint retorna **HTTP 503** com `ok: false`
 e o erro no check correspondente — perfeito pra alerta automático.
 
 **Uptime Kuma / Healthchecks.io:**
+
 - Liveness simples → `https://voxen.seudominio.com/health`
 - Status real → `https://voxen.seudominio.com/health/deep` com check de HTTP 200
 
 Outras ferramentas:
+
 - `docker compose ps` — status dos containers
 - `docker compose logs -f web chat worker` — logs ao vivo
 
@@ -618,11 +631,11 @@ docker compose exec web bun apps/web/src/scripts/reset-password.ts \
 
 ### Quando falha
 
-| Erro | Causa | Fix |
-|---|---|---|
-| `nenhum user com email "X"` | email errado ou user nunca cadastrou | Listar users: `docker compose exec postgres psql -U voxen voxen -c 'SELECT email FROM "User";'` |
-| `user não tem credential account` | user só tem login social/OAuth (futuro) | OAuth login não tem senha pra resetar |
-| `senha mínima de 12 caracteres` | senha curta | Use 12+ chars |
+| Erro                              | Causa                                   | Fix                                                                                             |
+| --------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `nenhum user com email "X"`       | email errado ou user nunca cadastrou    | Listar users: `docker compose exec postgres psql -U voxen voxen -c 'SELECT email FROM "User";'` |
+| `user não tem credential account` | user só tem login social/OAuth (futuro) | OAuth login não tem senha pra resetar                                                           |
+| `senha mínima de 12 caracteres`   | senha curta                             | Use 12+ chars                                                                                   |
 
 ### Por que não via UI/email?
 
@@ -635,8 +648,7 @@ Self-hosted single-tenant não justifica overhead de fluxo email→link→form. 
 ### Por que home-lab é a recomendação
 
 YouTube e plataformas similares aplicam bloqueio agressivo em IPs de
-datacenter (provedores como Hostinger, DigitalOcean, AWS, Hetzner etc.) desde
-2025. Mesmo com cookies, PO Tokens e player clients alternativos, esses
+datacenter (provedores como Hostinger, DigitalOcean, AWS, Hetzner etc.) desde 2025. Mesmo com cookies, PO Tokens e player clients alternativos, esses
 bypasses são frágeis e podem causar banimento de contas Google usadas como
 fonte de cookies.
 
@@ -646,14 +658,14 @@ funcionam direto, sem necessidade de configurações extras de mitigação.
 
 ### O que muda na operação
 
-| Aspecto | Home-lab | VPS |
-|---|---|---|
-| Download direto do YouTube | Funciona | Frequentemente bloqueado |
-| Custo mensal | Eletricidade (~R$5-15) | R$25-100+ |
-| Uptime | Dependente da rede/energia da casa | Geralmente 99,9%+ |
-| Soberania dos dados | Em casa | Em servidor de terceiros |
-| IP fixo / portas 80-443 | Geralmente não — use Cloudflare Tunnel | Sim, padrão |
-| Hardware | Você compra/reaproveita | Provisionado pelo provedor |
+| Aspecto                    | Home-lab                               | VPS                        |
+| -------------------------- | -------------------------------------- | -------------------------- |
+| Download direto do YouTube | Funciona                               | Frequentemente bloqueado   |
+| Custo mensal               | Eletricidade (~R$5-15)                 | R$25-100+                  |
+| Uptime                     | Dependente da rede/energia da casa     | Geralmente 99,9%+          |
+| Soberania dos dados        | Em casa                                | Em servidor de terceiros   |
+| IP fixo / portas 80-443    | Geralmente não — use Cloudflare Tunnel | Sim, padrão                |
+| Hardware                   | Você compra/reaproveita                | Provisionado pelo provedor |
 
 ### Mitigações em VPS quando home-lab não é opção
 
@@ -689,15 +701,15 @@ ressalva acima.
 
 ## Troubleshooting
 
-| Sintoma | Causa | Fix |
-|---|---|---|
-| `EADDRINUSE :3000` | Porta já ocupada | Mude a porta exposta no compose ou pare o processo conflitante |
-| 502 do nginx | Web container ainda iniciando | `docker compose logs web` — esperar healthcheck passar |
-| Chat retorna 412 "Setup incompleto" | Admin não fez onboarding | Login como admin → `/onboarding` → cola OpenRouter key |
-| Job fica eternamente RUNNING | Worker travou | `docker compose restart worker`. Job vira FAILED após uns minutos via reconciliation |
-| SSE corta a cada 60s | nginx com `proxy_buffering on` | Garanta `proxy_buffering off` no location (já vem no `voxen.conf.example`) |
-| `MASTER_KEY não definido` | Environment sem master key | Gere com `openssl rand -base64 32` e salve no `.env`/Environment |
-| `NoSuchBucket` no `/health/deep` | Bucket MinIO não criado | `make minio-init` ou crie `voxen-transcripts` na console |
+| Sintoma                              | Causa                                 | Fix                                                                                                                                 |
+| ------------------------------------ | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `EADDRINUSE :3000`                   | Porta já ocupada                      | Mude a porta exposta no compose ou pare o processo conflitante                                                                      |
+| 502 do nginx                         | Web container ainda iniciando         | `docker compose logs web` — esperar healthcheck passar                                                                              |
+| Chat retorna 412 "Setup incompleto"  | Admin não fez onboarding              | Login como admin → `/onboarding` → cola OpenRouter key                                                                              |
+| Job fica eternamente RUNNING         | Worker travou                         | `docker compose restart worker`. Job vira FAILED após uns minutos via reconciliation                                                |
+| SSE corta a cada 60s                 | nginx com `proxy_buffering on`        | Garanta `proxy_buffering off` no location (já vem no `voxen.conf.example`)                                                          |
+| `MASTER_KEY não definido`            | Environment sem master key            | Gere com `openssl rand -base64 32` e salve no `.env`/Environment                                                                    |
+| `NoSuchBucket` no `/health/deep`     | Bucket MinIO não criado               | `make minio-init` ou crie `voxen-transcripts` na console                                                                            |
 | "YouTube bloqueou o download" em VPS | IP de datacenter marcado pelo YouTube | Veja [Home-lab vs VPS](#home-lab-vs-vps). Opções: migrar pra home-lab, configurar proxy residencial em Setup, ou usar upload manual |
 
 Pra debug profundo, leia [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) e [`docs/SECURITY.md`](SECURITY.md).
