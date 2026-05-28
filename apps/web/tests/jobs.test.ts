@@ -453,6 +453,9 @@ describeIfDb('jobs API', () => {
     );
     expect(sseRes.status).toBe(200);
     expect(sseRes.headers.get('content-type')).toMatch(/event-stream/);
+    expect(sseRes.headers.get('transfer-encoding')).toBeNull();
+    expect(sseRes.headers.get('connection')).toBeNull();
+    expect(sseRes.headers.get('cache-control')).toContain('no-transform');
 
     // Publica evento running, depois done (terminal → server fecha)
     const pub = getRedisPublisher();

@@ -12,7 +12,6 @@
 // ============================================================================
 
 import { Hono, type Context } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
@@ -45,10 +44,114 @@ type JobsVariables = {
 
 export const jobsRoutes = new Hono<{ Variables: JobsVariables }>();
 
-function setSseProxyHeaders(c: Context): void {
-  c.header('Content-Type', 'text/event-stream; charset=utf-8');
-  c.header('Cache-Control', 'no-cache, no-transform');
-  c.header('X-Accel-Buffering', 'no');
+type SseMessage = {
+  data: string;
+  event?: string;
+  id?: string;
+  retry?: number;
+};
+
+type SseConnection = {
+  writeSSE(message: SseMessage): void;
+  close(): Promise<void>;
+  isClosed(): boolean;
+  onClose(fn: () => void | Promise<void>): void;
+};
+
+const SSE_HEARTBEAT_MS = 10_000;
+const SSE_RETRY_MS = 5_000;
+
+function sseField(name: string, value: string): string {
+  if (/[\r\n]/.test(value)) {
+    throw new Error(`${name} must not contain CR/LF`);
+  }
+  return value;
+}
+
+function formatSseMessage(message: SseMessage): string {
+  const dataLines = message.data
+    .split(/\r\n|\r|\n/)
+    .map((line) => `data: ${line}`)
+    .join('\n');
+  return (
+    [
+      message.event ? `event: ${sseField('event', message.event)}` : undefined,
+      dataLines,
+      message.id ? `id: ${sseField('id', message.id)}` : undefined,
+      message.retry !== undefined ? `retry: ${message.retry}` : undefined,
+    ]
+      .filter(Boolean)
+      .join('\n') + '\n\n'
+  );
+}
+
+function sseResponse(c: Context, start: (stream: SseConnection) => Promise<void> | void): Response {
+  const encoder = new TextEncoder();
+  const cleanup: Array<() => void | Promise<void>> = [];
+  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let closed = false;
+
+  const close = async (): Promise<void> => {
+    if (closed) return;
+    closed = true;
+    await Promise.all(
+      cleanup.splice(0).map(async (fn) => {
+        try {
+          await fn();
+        } catch {
+          // Cleanup is best-effort; the stream is already closing.
+        }
+      }),
+    );
+    try {
+      controller?.close();
+    } catch {
+      // Client already disconnected.
+    }
+  };
+
+  const writeSSE = (message: SseMessage): void => {
+    if (closed || !controller) return;
+    try {
+      controller.enqueue(encoder.encode(formatSseMessage(message)));
+    } catch {
+      void close();
+    }
+  };
+
+  const body = new ReadableStream<Uint8Array>({
+    start(ctrl) {
+      controller = ctrl;
+      const abort = () => {
+        void close();
+      };
+      c.req.raw.signal.addEventListener('abort', abort, { once: true });
+      cleanup.push(() => c.req.raw.signal.removeEventListener('abort', abort));
+      void Promise.resolve(
+        start({
+          writeSSE,
+          close,
+          isClosed: () => closed,
+          onClose: (fn) => cleanup.push(fn),
+        }),
+      ).catch(() => {
+        writeSSE({ event: 'error', data: 'stream_error' });
+        void close();
+      });
+    },
+    cancel() {
+      void close();
+    },
+  });
+
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',
+      Vary: 'Cookie',
+    },
+  });
 }
 
 async function jobTypeForVideo(
@@ -591,45 +694,33 @@ jobsRoutes.post('/:id/cancel', async (c) => {
 // SSE global por user — toast notification em qualquer página.
 jobsRoutes.get('/events/me', async (c) => {
   const userId = c.get('userId');
-  setSseProxyHeaders(c);
-  return streamSSE(c, async (stream) => {
+  return sseResponse(c, async (stream) => {
     const sub = createSubscriber();
-    let closed = false;
-    let resolveClose!: () => void;
-    const done = new Promise<void>((r) => {
-      resolveClose = r;
-    });
-    const close = async (): Promise<void> => {
-      if (closed) return;
-      closed = true;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+    stream.onClose(async () => {
+      if (heartbeat) clearInterval(heartbeat);
       await sub.quit().catch(() => undefined);
-      resolveClose();
-    };
-    stream.onAbort(() => {
-      void close();
+    });
+    sub.on('error', () => {
+      void stream.close();
     });
 
-    await stream.writeSSE({ event: 'connected', data: '{}' });
+    stream.writeSSE({ event: 'connected', data: '{}', retry: SSE_RETRY_MS });
     await sub.subscribe(userChannel(userId));
     sub.on('message', (_chan, raw) => {
-      if (closed) return;
-      void stream.writeSSE({ event: 'progress', data: raw });
+      if (stream.isClosed()) return;
+      stream.writeSSE({ event: 'progress', data: raw });
     });
 
-    // Heartbeat 30s
-    const hb = setInterval(() => {
-      if (closed) {
-        clearInterval(hb);
+    // Keep proxies from treating the global notification stream as idle.
+    stream.writeSSE({ event: 'ping', data: String(Date.now()) });
+    heartbeat = setInterval(() => {
+      if (stream.isClosed()) {
+        if (heartbeat) clearInterval(heartbeat);
         return;
       }
-      void stream.writeSSE({ event: 'ping', data: String(Date.now()) });
-    }, 30_000);
-
-    try {
-      await done;
-    } finally {
-      clearInterval(hb);
-    }
+      stream.writeSSE({ event: 'ping', data: String(Date.now()) });
+    }, SSE_HEARTBEAT_MS);
   });
 });
 
@@ -644,69 +735,57 @@ jobsRoutes.get('/:id/events', async (c) => {
     return c.json({ error: 'Job não encontrado.' }, 404);
   }
 
-  setSseProxyHeaders(c);
-  return streamSSE(c, async (stream) => {
+  return sseResponse(c, async (stream) => {
     const sub = createSubscriber();
-    let closed = false;
-    let resolveClose!: () => void;
-    const done = new Promise<void>((r) => {
-      resolveClose = r;
-    });
-    const close = async (): Promise<void> => {
-      if (closed) return;
-      closed = true;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+    stream.onClose(async () => {
+      if (heartbeat) clearInterval(heartbeat);
       await sub.quit().catch(() => undefined);
-      resolveClose();
-    };
-
-    stream.onAbort(() => {
-      void close();
+    });
+    sub.on('error', () => {
+      void stream.close();
     });
 
     // Evento inicial pra confirmar conexão (facilita debug e UI)
-    await stream.writeSSE({
+    stream.writeSSE({
       event: 'connected',
       data: JSON.stringify({ jobId: job.id }),
+      retry: SSE_RETRY_MS,
     });
 
     // Job já em estado terminal: manda 1 evento e fecha
     if (job.status === 'DONE' || job.status === 'FAILED' || job.status === 'CANCELLED') {
-      await stream.writeSSE({
+      stream.writeSSE({
         event: 'snapshot',
         data: JSON.stringify({ jobId: job.id, stage: job.status.toLowerCase() }),
       });
-      await close();
+      await stream.close();
       return;
     }
 
     await sub.subscribe(jobChannel(userId, id));
     sub.on('message', (_chan, raw) => {
-      if (closed) return;
+      if (stream.isClosed()) return;
       let evt: JobEvent;
       try {
         evt = JSON.parse(raw) as JobEvent;
       } catch {
         return;
       }
-      void stream.writeSSE({ event: 'progress', data: raw });
+      stream.writeSSE({ event: 'progress', data: raw });
       if (isTerminalStage(evt.stage)) {
-        void close();
+        void stream.close();
       }
     });
 
-    // Heartbeat a cada 15s pra manter conexão viva atrás de proxies
-    const heartbeat = setInterval(() => {
-      if (closed) {
-        clearInterval(heartbeat);
+    // Heartbeat curto para Traefik/HTTP2 e proxies que fecham SSE ocioso cedo.
+    stream.writeSSE({ event: 'ping', data: String(Date.now()) });
+    heartbeat = setInterval(() => {
+      if (stream.isClosed()) {
+        if (heartbeat) clearInterval(heartbeat);
         return;
       }
-      void stream.writeSSE({ event: 'ping', data: String(Date.now()) });
-    }, 15_000);
-
-    try {
-      await done;
-    } finally {
-      clearInterval(heartbeat);
-    }
+      stream.writeSSE({ event: 'ping', data: String(Date.now()) });
+    }, SSE_HEARTBEAT_MS);
   });
 });
