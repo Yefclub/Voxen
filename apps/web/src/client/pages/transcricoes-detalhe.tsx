@@ -86,13 +86,17 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { locale, t: translate } = useI18n();
-  const { data, loading, refresh } = useFetch<ResponseBody>(id ? `/api/transcripts/${id}` : null);
+  const { data, loading, refresh } = useFetch<ResponseBody>(
+    id ? `/api/transcripts/${id}?includeTrash=1` : null,
+  );
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
   const [generating, setGenerating] = useState(false);
   const [organizing, setOrganizing] = useState(false);
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function generateSummary(force: boolean): Promise<void> {
     if (!id) return;
@@ -217,6 +221,30 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     }
   }
 
+  async function hardDelete(): Promise<void> {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/transcripts/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(body.error ?? translate('library.deleteError'));
+        return;
+      }
+      toast.success(translate('library.deleted'));
+      navigate('/transcricoes?status=trash');
+    } catch (e) {
+      toast.error(translate('library.deleteError'), {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (loading || !data) {
     return (
       <div className="px-8 py-10 mx-auto max-w-5xl">
@@ -301,6 +329,11 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             {t.status === 'ARCHIVED' && (
               <Badge variant="muted" className="text-[10px]">
                 {translate('library.statusArchived')}
+              </Badge>
+            )}
+            {t.status === 'TRASH' && (
+              <Badge variant="danger" className="text-[10px]">
+                {translate('library.statusTrash')}
               </Badge>
             )}
           </div>
@@ -423,7 +456,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
             <Card elevated>
               <CardContent className="pt-5 pb-5 space-y-3">
-                {t.status === 'ARCHIVED' ? (
+                {t.status === 'ARCHIVED' || t.status === 'TRASH' ? (
                   <Button
                     variant="outline"
                     size="default"
@@ -446,16 +479,29 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                     {translate('library.archive')}
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  size="default"
-                  className="w-full border-red-500/25 text-red-200 hover:bg-red-500/10 hover:text-red-100"
-                  disabled={lifecycleLoading}
-                  onClick={() => void updateLifecycle('TRASH')}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {translate('library.moveToTrash')}
-                </Button>
+                {t.status === 'TRASH' ? (
+                  <Button
+                    variant="destructive"
+                    size="default"
+                    className="w-full"
+                    disabled={deleting}
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {translate('library.deletePermanently')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="w-full border-red-500/25 text-red-200 hover:bg-red-500/10 hover:text-red-100"
+                    disabled={lifecycleLoading}
+                    onClick={() => void updateLifecycle('TRASH')}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {translate('library.moveToTrash')}
+                  </Button>
+                )}
               </CardContent>
             </Card>
 
@@ -481,6 +527,17 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         cancelLabel={translate('common.cancel')}
         onConfirm={() => generateSummary(true)}
         loading={generating}
+      />
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={translate('library.deleteTitle')}
+        description={translate('library.deleteDescription')}
+        confirmLabel={translate('library.deletePermanently')}
+        cancelLabel={translate('common.cancel')}
+        variant="destructive"
+        onConfirm={() => hardDelete()}
+        loading={deleting}
       />
     </AnimatedPage>
   );

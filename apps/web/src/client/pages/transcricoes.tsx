@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { FileText, Folder, Globe, Library, Loader2, Search, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Card, CardContent } from '../components/ui/card';
@@ -35,6 +35,8 @@ interface SearchResponse {
   query: string;
 }
 
+type StatusFilter = 'active' | 'archived' | 'trash';
+
 function useDebounced<T>(value: T, ms = 250): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -46,16 +48,28 @@ function useDebounced<T>(value: T, ms = 250): T {
 
 export function TranscricoesPage(): React.ReactElement {
   const { locale, t } = useI18n();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const status = normalizeStatusFilter(searchParams.get('status'));
   const [q, setQ] = useState('');
   const debouncedQ = useDebounced(q, 250);
-  const url = useMemo(
-    () => `/api/transcripts${debouncedQ ? `?q=${encodeURIComponent(debouncedQ)}` : ''}`,
-    [debouncedQ],
-  );
+  const url = useMemo(() => {
+    const params = new URLSearchParams();
+    if (debouncedQ) params.set('q', debouncedQ);
+    if (status !== 'active') params.set('status', status);
+    const suffix = params.toString();
+    return `/api/transcripts${suffix ? `?${suffix}` : ''}`;
+  }, [debouncedQ, status]);
   const { data, loading } = useFetch<SearchResponse>(url);
   const transcripts = data?.transcripts ?? [];
   const isSearching = debouncedQ.length > 0;
   const queryChanging = q !== debouncedQ;
+
+  function setStatus(next: StatusFilter): void {
+    const params = new URLSearchParams(searchParams);
+    if (next === 'active') params.delete('status');
+    else params.set('status', next);
+    setSearchParams(params, { replace: true });
+  }
 
   return (
     <AnimatedPage>
@@ -101,6 +115,20 @@ export function TranscricoesPage(): React.ReactElement {
               )}
             </button>
           )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 -mt-4">
+          {(['active', 'archived', 'trash'] as const).map((item) => (
+            <Button
+              key={item}
+              type="button"
+              variant={status === item ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setStatus(item)}
+            >
+              {statusFilterLabel(item, t)}
+            </Button>
+          ))}
         </div>
 
         {isSearching && !loading && (
@@ -250,6 +278,16 @@ function TranscriptCard({
                 {t.source === 'WEB' && <Globe className="h-2.5 w-2.5" />}
                 {displaySource(t.source, translate)}
               </Badge>
+              {t.status === 'ARCHIVED' && (
+                <Badge variant="muted" className="text-[10px]">
+                  {translate('library.statusArchived')}
+                </Badge>
+              )}
+              {t.status === 'TRASH' && (
+                <Badge variant="danger" className="text-[10px]">
+                  {translate('library.statusTrash')}
+                </Badge>
+              )}
               {/* Método (só faz sentido pra vídeos) */}
               {t.source !== 'WEB' && (
                 <Badge
@@ -281,6 +319,22 @@ function TranscriptCard({
       </Link>
     </motion.div>
   );
+}
+
+function normalizeStatusFilter(value: string | null): StatusFilter {
+  if (value === 'archived' || value === 'trash') return value;
+  return 'active';
+}
+
+function statusFilterLabel(status: StatusFilter, t: TranslateFn): string {
+  switch (status) {
+    case 'active':
+      return t('library.status.active');
+    case 'archived':
+      return t('library.status.archived');
+    case 'trash':
+      return t('library.status.trash');
+  }
 }
 
 function displaySource(source: TranscriptSummary['source'], t: TranslateFn): string {
