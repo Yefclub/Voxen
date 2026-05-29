@@ -73,6 +73,16 @@ async def test_happy_path_persists_and_publishes_events(
     monkeypatch.setattr(scrape_pipeline.db, "generate_cuid", lambda: "ctest123")
     monkeypatch.setattr(scrape_pipeline.db, "link_job_transcript", AsyncMock(return_value=None))
     monkeypatch.setattr(scrape_pipeline.db, "mark_job_done", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        scrape_pipeline.db,
+        "upsert_transcript_brain_node",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        scrape_pipeline.db,
+        "reindex_transcript_brain_node",
+        AsyncMock(return_value=True),
+    )
 
     # Mock summary.maybe_generate (best-effort, não precisa testar aqui)
     monkeypatch.setattr(
@@ -100,6 +110,8 @@ async def test_happy_path_persists_and_publishes_events(
 
     # Job só vira DONE depois da tentativa de resumo.
     scrape_pipeline.db.link_job_transcript.assert_awaited_once_with("job1", "ctest123")  # type: ignore[attr-defined]
+    scrape_pipeline.db.upsert_transcript_brain_node.assert_awaited_once()  # type: ignore[attr-defined]
+    scrape_pipeline.db.reindex_transcript_brain_node.assert_awaited_once_with("user1", "ctest123")  # type: ignore[attr-defined]
     scrape_pipeline.db.mark_job_done.assert_awaited_once_with("job1")  # type: ignore[attr-defined]
 
 

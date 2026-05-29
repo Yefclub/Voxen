@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import unicodedata
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -13,6 +15,54 @@ from typing import Any
 import asyncpg
 
 _pool: asyncpg.Pool | None = None
+
+TOPIC_LIMIT = 8
+TOPIC_MIN_LEN = 4
+TOPIC_STOPWORDS = {
+    "ainda",
+    "algo",
+    "also",
+    "apenas",
+    "após",
+    "apos",
+    "cada",
+    "como",
+    "com",
+    "conteudo",
+    "conteúdo",
+    "conteudos",
+    "contra",
+    "depois",
+    "desde",
+    "esta",
+    "este",
+    "isso",
+    "para",
+    "pela",
+    "pelo",
+    "sobre",
+    "texto",
+    "http",
+    "https",
+    "www",
+    "that",
+    "this",
+    "with",
+    "from",
+    "have",
+    "will",
+    "your",
+    "they",
+    "their",
+    "there",
+    "what",
+    "when",
+    "where",
+    "which",
+    "would",
+    "could",
+    "should",
+}
 
 
 def _utcnow_naive() -> datetime:
@@ -224,6 +274,7 @@ async def upsert_transcript_brain_node(
     transcription_method: str,
     thumbnail_url: str | None,
     plain_text: str,
+    status: str = "ACTIVE",
 ) -> None:
     """Materializa o nó CONTENT do Brain quando o worker conclui uma transcrição."""
     node_id = generate_cuid()
@@ -235,15 +286,17 @@ async def upsert_transcript_brain_node(
         "language": language,
         "transcriptionMethod": transcription_method,
         "thumbnailUrl": thumbnail_url,
+        "topicIndexVersion": 1,
     }
+    await _remove_transcript_brain_refreshable_sources(conn, user_id, transcript_id)
     row = await conn.fetchrow(
         """
         INSERT INTO "BrainNode" (
             id, "userId", key, type, label, description, status, metadata,
             "sourceType", "sourceId", "createdAt", "updatedAt"
         ) VALUES (
-            $1, $2, $3, 'CONTENT'::"BrainNodeType", $4, $5, 'ACTIVE'::"ContentStatus",
-            $6::jsonb, 'TRANSCRIPT'::"BrainSourceType", $7, NOW(), NOW()
+            $1, $2, $3, 'CONTENT'::"BrainNodeType", $4, $5, $6::"ContentStatus",
+            $7::jsonb, 'TRANSCRIPT'::"BrainSourceType", $8, NOW(), NOW()
         )
         ON CONFLICT ("userId", key) DO UPDATE SET
             type = EXCLUDED.type,
@@ -261,6 +314,7 @@ async def upsert_transcript_brain_node(
         key,
         title,
         _truncate(plain_text, 800),
+        status,
         json.dumps(metadata, default=str),
         transcript_id,
     )
@@ -279,6 +333,314 @@ async def upsert_transcript_brain_node(
         transcript_id,
         _truncate(title, 600),
     )
+    await _upsert_transcript_topic_edges(
+        conn,
+        user_id=user_id,
+        transcript_id=transcript_id,
+        content_node_id=brain_node_id,
+        title=title,
+        text=plain_text,
+        status=status,
+    )
+
+
+async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> bool:
+    """Reindexa um Transcript já persistido usando summaryMd quando existir."""
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT source, url, title, channel, language, "transcriptionMethod",
+                   "thumbnailUrl", "plainText", "summaryMd", status
+            FROM "Transcript"
+            WHERE id = $1 AND "userId" = $2
+            """,
+            transcript_id,
+            user_id,
+        )
+        if not row:
+            await conn.execute(
+                """
+                DELETE FROM "BrainNode"
+                WHERE "userId" = $1
+                  AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+                  AND "sourceId" = $2
+                """,
+                user_id,
+                transcript_id,
+            )
+            await _delete_orphan_keyword_topic_nodes(conn, user_id)
+            return False
+        await upsert_transcript_brain_node(
+            conn,
+            user_id=user_id,
+            transcript_id=transcript_id,
+            source=row["source"],
+            url=row["url"],
+            title=row["title"],
+            channel=row["channel"],
+            language=row["language"],
+            transcription_method=row["transcriptionMethod"],
+            thumbnail_url=row["thumbnailUrl"],
+            plain_text=row["summaryMd"] or row["plainText"],
+            status=row["status"],
+        )
+        return True
+
+
+async def reindex_missing_transcript_brain_nodes(limit: int = 50) -> int:
+    """Backfill automático para conteúdos já executados que não entraram no Brain.
+
+    Também cobre transcrições com nó CONTENT antigo, mas sem índice de tópicos v1.
+    """
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT t.id, t."userId"
+            FROM "Transcript" t
+            LEFT JOIN "BrainNode" n
+              ON n."userId" = t."userId"
+             AND n.key = CONCAT('TRANSCRIPT:', t.id)
+            WHERE n.id IS NULL
+               OR (
+                    t.status = 'ACTIVE'::"ContentStatus"
+                AND COALESCE(n.metadata->>'topicIndexVersion', '') <> '1'
+               )
+            ORDER BY t."updatedAt" ASC
+            LIMIT $1
+            """,
+            limit,
+        )
+    count = 0
+    for row in rows:
+        if await reindex_transcript_brain_node(row["userId"], row["id"]):
+            count += 1
+    return count
+
+
+async def _remove_transcript_brain_refreshable_sources(
+    conn: asyncpg.Connection,
+    user_id: str,
+    transcript_id: str,
+) -> None:
+    rows = await conn.fetch(
+        """
+        SELECT bs."edgeId"
+        FROM "BrainSource" bs
+        LEFT JOIN "BrainEdge" be ON be.id = bs."edgeId"
+        WHERE bs."userId" = $1
+          AND bs."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+          AND bs."sourceId" = $2
+          AND (bs."edgeId" IS NULL OR be.method = 'keyword')
+        """,
+        user_id,
+        transcript_id,
+    )
+    edge_ids = [row["edgeId"] for row in rows if row["edgeId"]]
+    await conn.execute(
+        """
+        DELETE FROM "BrainSource" bs
+        USING "BrainEdge" be
+        WHERE bs."edgeId" = be.id
+          AND bs."userId" = $1
+          AND bs."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+          AND bs."sourceId" = $2
+          AND be.method = 'keyword'
+        """,
+        user_id,
+        transcript_id,
+    )
+    await conn.execute(
+        """
+        DELETE FROM "BrainSource"
+        WHERE "userId" = $1
+          AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+          AND "sourceId" = $2
+          AND "edgeId" IS NULL
+        """,
+        user_id,
+        transcript_id,
+    )
+    if not edge_ids:
+        return
+    remaining = await conn.fetch(
+        """
+        SELECT DISTINCT "edgeId"
+        FROM "BrainSource"
+        WHERE "edgeId" = ANY($1::text[])
+        """,
+        edge_ids,
+    )
+    remaining_ids = {row["edgeId"] for row in remaining}
+    orphan_edge_ids = [edge_id for edge_id in edge_ids if edge_id not in remaining_ids]
+    if orphan_edge_ids:
+        await conn.execute(
+            """
+            DELETE FROM "BrainEdge"
+            WHERE "userId" = $1
+              AND id = ANY($2::text[])
+              AND method = 'keyword'
+            """,
+            user_id,
+            orphan_edge_ids,
+        )
+        await _delete_orphan_keyword_topic_nodes(conn, user_id)
+
+
+async def _delete_orphan_keyword_topic_nodes(conn: asyncpg.Connection, user_id: str) -> None:
+    await conn.execute(
+        """
+        DELETE FROM "BrainNode" n
+        WHERE n."userId" = $1
+          AND n.type = 'TOPIC'::"BrainNodeType"
+          AND n."sourceType" IS NULL
+          AND n.metadata->>'method' = 'keyword'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "BrainEdge" be
+            WHERE be."userId" = n."userId"
+              AND (be."fromNodeId" = n.id OR be."toNodeId" = n.id)
+          )
+        """,
+        user_id,
+    )
+
+
+async def _upsert_transcript_topic_edges(
+    conn: asyncpg.Connection,
+    *,
+    user_id: str,
+    transcript_id: str,
+    content_node_id: str,
+    title: str,
+    text: str,
+    status: str,
+) -> None:
+    if status != "ACTIVE":
+        return
+    for topic in _extract_topics(f"{title}\n{text}"):
+        topic_node_id = await _upsert_topic_node(conn, user_id, topic["slug"], topic["label"])
+        edge_row = await conn.fetchrow(
+            """
+            INSERT INTO "BrainEdge" (
+                id, "userId", "fromNodeId", "toNodeId", kind, confidence,
+                method, status, metadata, "createdAt", "updatedAt"
+            ) VALUES (
+                $1, $2, $3, $4, 'MENTIONS'::"BrainEdgeKind", $5,
+                'keyword', 'ACTIVE'::"ContentStatus", $6::jsonb, NOW(), NOW()
+            )
+            ON CONFLICT ("userId", "fromNodeId", "toNodeId", kind, method) DO UPDATE SET
+                confidence = EXCLUDED.confidence,
+                status = EXCLUDED.status,
+                metadata = EXCLUDED.metadata,
+                "updatedAt" = NOW()
+            RETURNING id
+            """,
+            generate_cuid(),
+            user_id,
+            content_node_id,
+            topic_node_id,
+            topic["confidence"],
+            json.dumps({"term": topic["slug"], "count": topic["count"]}),
+        )
+        if not edge_row:
+            continue
+        await conn.execute(
+            """
+            INSERT INTO "BrainSource" (
+                id, "userId", "edgeId", "sourceType", "sourceId", excerpt, "createdAt"
+            ) VALUES (
+                $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, NOW()
+            )
+            """,
+            generate_cuid(),
+            user_id,
+            edge_row["id"],
+            transcript_id,
+            topic["excerpt"],
+        )
+
+
+async def _upsert_topic_node(
+    conn: asyncpg.Connection,
+    user_id: str,
+    slug: str,
+    label: str,
+) -> str:
+    row = await conn.fetchrow(
+        """
+        INSERT INTO "BrainNode" (
+            id, "userId", key, type, label, description, status, metadata,
+            "sourceType", "sourceId", "createdAt", "updatedAt"
+        ) VALUES (
+            $1, $2, $3, 'TOPIC'::"BrainNodeType", $4, $5, 'ACTIVE'::"ContentStatus",
+            $6::jsonb, NULL, NULL, NOW(), NOW()
+        )
+        ON CONFLICT ("userId", key) DO UPDATE SET
+            type = EXCLUDED.type,
+            label = EXCLUDED.label,
+            description = EXCLUDED.description,
+            metadata = EXCLUDED.metadata,
+            "updatedAt" = NOW()
+        RETURNING id
+        """,
+        generate_cuid(),
+        user_id,
+        f"TOPIC:{slug}",
+        label,
+        "Tópico detectado automaticamente nos conteúdos da biblioteca.",
+        json.dumps({"method": "keyword"}),
+    )
+    return str(row["id"])
+
+
+def _extract_topics(value: str) -> list[dict[str, Any]]:
+    text = value or ""
+    normalized = _normalize_topic_text(text)
+    counts: dict[str, int] = {}
+    for match in re.findall(r"[a-z0-9][a-z0-9_-]{3,}", normalized):
+        token = match.strip("_-")
+        if (
+            len(token) < TOPIC_MIN_LEN
+            or token.isdigit()
+            or token in TOPIC_STOPWORDS
+            or token.startswith(("http", "www"))
+        ):
+            continue
+        counts[token] = counts.get(token, 0) + 1
+
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:TOPIC_LIMIT]
+    return [
+        {
+            "slug": token,
+            "label": _topic_label(token),
+            "count": count,
+            "confidence": round(min(1.0, 0.35 + count * 0.08), 4),
+            "excerpt": _topic_excerpt(text, token),
+        }
+        for token, count in ranked
+    ]
+
+
+def _normalize_topic_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return ascii_text.lower()
+
+
+def _topic_label(slug: str) -> str:
+    parts = [part for part in re.split(r"[-_]+", slug) if part]
+    if not parts:
+        return slug
+    return " ".join(part.upper() if len(part) <= 3 else part.capitalize() for part in parts)
+
+
+def _topic_excerpt(text: str, slug: str) -> str | None:
+    if not text.strip():
+        return None
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+        if slug in _normalize_topic_text(sentence):
+            return _truncate(sentence, 600)
+    return _truncate(text, 600)
 
 
 async def mark_job_done(job_id: str) -> None:

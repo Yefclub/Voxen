@@ -68,6 +68,12 @@ async def _reconciliation_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> N
         except Exception:  # noqa: BLE001
             log.exception("reconciliation-failed")
         try:
+            indexed = await db.reindex_missing_transcript_brain_nodes(limit=50)
+            if indexed:
+                log.info("brain-reconciliation-indexed", count=indexed)
+        except Exception:  # noqa: BLE001
+            log.exception("brain-reconciliation-failed")
+        try:
             await asyncio.wait_for(stop.wait(), timeout=RECONCILIATION_INTERVAL_SEC)
         except TimeoutError:
             continue
