@@ -1,6 +1,6 @@
 {
   "name": "voxen",
-  "version": "0.8.4",
+  "version": "0.9.0",
   "private": true,
   "description": "Voxen — base de conhecimento self-hosted com Vox, sua assistente IA",
   "engines": {
