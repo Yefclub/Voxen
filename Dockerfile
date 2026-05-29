@@ -81,7 +81,8 @@ ENV NODE_ENV=production \
     PORT=3000 \
     CHAT_SERVICE_URL=http://127.0.0.1:8001 \
     S3_REGION=us-east-1 \
-    S3_FORCE_PATH_STYLE=true
+    S3_FORCE_PATH_STYLE=true \
+    DENO_DIR=/tmp/voxen-deno
 
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
@@ -118,6 +119,11 @@ COPY --from=worker-builder --chown=voxen:voxen /app/apps/worker/src ./apps/worke
 
 COPY --chown=voxen:voxen scripts/easypanel-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+# Mantem a imagem unica alinhada ao worker do Compose: yt-dlp atual precisa de
+# EJS + runtime JS para alguns fluxos do YouTube.
+RUN /app/apps/worker/.venv/bin/deno --version >/dev/null \
+    && /app/apps/worker/.venv/bin/python -m yt_dlp --version >/dev/null
 
 USER voxen
 EXPOSE 3000
