@@ -61,7 +61,9 @@ async def list_user_transcripts(
                 """
                 SELECT id, title, channel, "durationSec", source::text AS source, "createdAt"
                 FROM "Transcript"
-                WHERE "userId" = $1 AND source = $2::"TranscriptSource"
+                WHERE "userId" = $1
+                  AND status = 'ACTIVE'::"ContentStatus"
+                  AND source = $2::"TranscriptSource"
                 ORDER BY "createdAt" DESC LIMIT $3
                 """,
                 user_id,
@@ -74,6 +76,7 @@ async def list_user_transcripts(
                 SELECT id, title, channel, "durationSec", source::text AS source, "createdAt"
                 FROM "Transcript"
                 WHERE "userId" = $1
+                  AND status = 'ACTIVE'::"ContentStatus"
                 ORDER BY "createdAt" DESC LIMIT $2
                 """,
                 user_id,
@@ -98,6 +101,7 @@ async def search_user_transcripts(
               ts_rank("searchVector", plainto_tsquery('portuguese', $2)) AS rank
             FROM "Transcript"
             WHERE "userId" = $1
+              AND status = 'ACTIVE'::"ContentStatus"
               AND "searchVector" @@ plainto_tsquery('portuguese', $2)
             ORDER BY rank DESC, "createdAt" DESC
             LIMIT $3
@@ -117,7 +121,9 @@ async def get_user_transcript(user_id: str, transcript_id: str) -> dict[str, Any
                    "durationSec", language, "transcriptionMethod"::text AS "transcriptionMethod",
                    model, source::text AS source, "thumbnailUrl", "summaryMd"
             FROM "Transcript"
-            WHERE id = $1 AND "userId" = $2
+            WHERE id = $1
+              AND "userId" = $2
+              AND status = 'ACTIVE'::"ContentStatus"
             """,
             transcript_id,
             user_id,
@@ -161,7 +167,12 @@ async def _create_job(user_id: str, source_url: str, job_type: str) -> dict[str,
 
     async with connection() as conn:
         existing_t = await conn.fetchrow(
-            'SELECT id FROM "Transcript" WHERE "userId" = $1 AND url = $2',
+            """
+            SELECT id FROM "Transcript"
+            WHERE "userId" = $1
+              AND url = $2
+              AND status <> 'TRASH'::"ContentStatus"
+            """,
             user_id,
             source_url,
         )

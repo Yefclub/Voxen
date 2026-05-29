@@ -15,6 +15,7 @@ import {
 } from './lib/settings';
 import { adminRoutes } from './routes/admin';
 import { jobsRoutes } from './routes/jobs';
+import { libraryRoutes } from './routes/library';
 import { setupRoutes } from './routes/setup';
 import { transcriptsRoutes } from './routes/transcripts';
 import { onboardingRoutes } from './routes/onboarding';
@@ -207,6 +208,8 @@ app.route('/api/admin/custos', costRoutes);
 app.route('/api/chat', chatRoutes);
 // KB manual de notas (CRUD + FTS + tree)
 app.route('/api/notes', notesRoutes);
+// Organização compartilhada da biblioteca
+app.route('/api/library', libraryRoutes);
 // Automações (jobs periódicos com continuidade — spec 008)
 app.route('/api/automations', automationsRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)

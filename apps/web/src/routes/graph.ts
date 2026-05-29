@@ -69,7 +69,7 @@ graphRoutes.get('/', async (c) => {
 
   const [transcripts, notes] = await Promise.all([
     db.transcript.findMany({
-      where: { userId },
+      where: { userId, status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },
       take: NODE_LIMIT,
       select: { id: true, title: true, source: true },
