@@ -59,8 +59,61 @@ type LibraryFolderRecord = {
   updatedAt: Date;
 };
 
+type TopicCandidate = {
+  slug: string;
+  label: string;
+  count: number;
+  confidence: number;
+  excerpt: string | null;
+};
+
 const DESCRIPTION_LIMIT = 800;
 const EVIDENCE_LIMIT = 600;
+const TOPIC_LIMIT = 8;
+const TOPIC_MIN_LENGTH = 4;
+const TOPIC_STOPWORDS = new Set([
+  'ainda',
+  'algo',
+  'also',
+  'apenas',
+  'apos',
+  'cada',
+  'como',
+  'com',
+  'conteudo',
+  'conteudos',
+  'contra',
+  'depois',
+  'desde',
+  'esta',
+  'este',
+  'isso',
+  'para',
+  'pela',
+  'pelo',
+  'sobre',
+  'texto',
+  'http',
+  'https',
+  'www',
+  'that',
+  'this',
+  'with',
+  'from',
+  'have',
+  'will',
+  'your',
+  'they',
+  'their',
+  'there',
+  'what',
+  'when',
+  'where',
+  'which',
+  'would',
+  'could',
+  'should',
+]);
 
 export function brainNodeKey(sourceType: BrainSourceType, sourceId: string): string {
   return `${sourceType}:${sourceId}`;
@@ -71,8 +124,9 @@ export async function deleteBrainForSource(
   sourceType: BrainSourceType,
   sourceId: string,
 ): Promise<void> {
-  await db.brainNode.deleteMany({ where: { userId, sourceType, sourceId } });
   await removeSourceEvidence(userId, sourceType, sourceId);
+  await db.brainNode.deleteMany({ where: { userId, sourceType, sourceId } });
+  await deleteOrphanKeywordTopicNodes(userId);
 }
 
 export async function deleteBrainForSources(
@@ -127,6 +181,7 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
       transcriptionMethod: transcript.transcriptionMethod,
       thumbnailUrl: transcript.thumbnailUrl,
       createdAt: transcript.createdAt.toISOString(),
+      topicIndexVersion: 1,
     },
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
@@ -152,6 +207,28 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
       sourceId: transcript.id,
       excerpt: `Folder: ${transcript.folder.name}`,
     });
+  }
+
+  if (transcript.status === 'ACTIVE') {
+    const searchableText = `${transcript.title}\n${transcript.summaryMd || transcript.plainText}`;
+    for (const topic of extractTopics(searchableText)) {
+      const topicNode = await upsertTopicNode(userId, topic);
+      await upsertBrainEdge({
+        userId,
+        fromNodeId: contentNode.id,
+        toNodeId: topicNode.id,
+        kind: 'MENTIONS',
+        method: 'keyword',
+        confidence: topic.confidence,
+        sourceType: 'TRANSCRIPT',
+        sourceId: transcript.id,
+        excerpt: topic.excerpt,
+        metadata: {
+          term: topic.slug,
+          count: topic.count,
+        },
+      });
+    }
   }
 }
 
@@ -335,7 +412,24 @@ async function removeSourceEvidence(
     await db.brainEdge.deleteMany({
       where: { userId, id: { in: orphanEdgeIds }, method: { not: 'manual' } },
     });
+    await deleteOrphanKeywordTopicNodes(userId);
   }
+}
+
+async function deleteOrphanKeywordTopicNodes(userId: string): Promise<void> {
+  await db.$executeRaw`
+    DELETE FROM "BrainNode" n
+    WHERE n."userId" = ${userId}
+      AND n.type = 'TOPIC'::"BrainNodeType"
+      AND n."sourceType" IS NULL
+      AND n.metadata->>'method' = 'keyword'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "BrainEdge" be
+        WHERE be."userId" = n."userId"
+          AND (be."fromNodeId" = n.id OR be."toNodeId" = n.id)
+      )
+  `;
 }
 
 async function upsertLibraryFolderNode(userId: string, folder: LibraryFolderRecord) {
@@ -369,6 +463,22 @@ async function upsertNoteNode(userId: string, note: NoteRecord) {
     },
     sourceType: 'NOTE',
     sourceId: note.id,
+  });
+}
+
+async function upsertTopicNode(userId: string, topic: TopicCandidate) {
+  return upsertBrainNode({
+    userId,
+    key: `TOPIC:${topic.slug}`,
+    type: 'TOPIC',
+    label: topic.label,
+    description: 'Tópico detectado automaticamente nos conteúdos da biblioteca.',
+    status: 'ACTIVE',
+    metadata: {
+      method: 'keyword',
+    },
+    sourceType: null,
+    sourceId: null,
   });
 }
 
@@ -472,6 +582,66 @@ function parseWikiLinks(markdown: string): string[] {
     if (title) found.add(title);
   }
   return [...found];
+}
+
+function extractTopics(value: string): TopicCandidate[] {
+  const text = value || '';
+  const normalized = normalizeTopicText(text);
+  const counts = new Map<string, number>();
+  for (const match of normalized.matchAll(/[a-z0-9][a-z0-9_-]{3,}/g)) {
+    const token = match[0].replace(/^[-_]+|[-_]+$/g, '');
+    if (
+      token.length < TOPIC_MIN_LENGTH ||
+      /^\d+$/.test(token) ||
+      TOPIC_STOPWORDS.has(token) ||
+      token.startsWith('http') ||
+      token.startsWith('www')
+    ) {
+      continue;
+    }
+    counts.set(token, (counts.get(token) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort(([leftToken, leftCount], [rightToken, rightCount]) => {
+      if (rightCount !== leftCount) return rightCount - leftCount;
+      return leftToken.localeCompare(rightToken);
+    })
+    .slice(0, TOPIC_LIMIT)
+    .map(([slug, count]) => ({
+      slug,
+      label: topicLabel(slug),
+      count,
+      confidence: Math.min(1, Number((0.35 + count * 0.08).toFixed(4))),
+      excerpt: topicExcerpt(text, slug),
+    }));
+}
+
+function normalizeTopicText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function topicLabel(slug: string): string {
+  const parts = slug.split(/[-_]+/).filter(Boolean);
+  if (parts.length === 0) return slug;
+  return parts
+    .map((part) =>
+      part.length <= 3 ? part.toUpperCase() : `${part.charAt(0).toUpperCase()}${part.slice(1)}`,
+    )
+    .join(' ');
+}
+
+function topicExcerpt(text: string, slug: string): string | null {
+  if (!text.trim()) return null;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/g)) {
+    if (normalizeTopicText(sentence).includes(slug)) {
+      return truncate(sentence, EVIDENCE_LIMIT);
+    }
+  }
+  return truncate(text, EVIDENCE_LIMIT);
 }
 
 function truncate(value: string | null | undefined, limit: number): string | null {
