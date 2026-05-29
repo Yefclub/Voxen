@@ -188,7 +188,7 @@ async function executeTool(
   if (name === 'list_transcripts') {
     const limit = Math.min(Number(args.limit ?? 30), 100);
     const transcripts = await db.transcript.findMany({
-      where: { userId },
+      where: { userId, status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
@@ -220,6 +220,7 @@ async function executeTool(
         ts_rank("searchVector", plainto_tsquery('portuguese', ${query})) AS rank
       FROM "Transcript"
       WHERE "userId" = ${userId}
+        AND status = 'ACTIVE'::"ContentStatus"
         AND "searchVector" @@ plainto_tsquery('portuguese', ${query})
       ORDER BY rank DESC, "createdAt" DESC
       LIMIT ${limit}
@@ -229,7 +230,7 @@ async function executeTool(
   if (name === 'read_transcript') {
     const id = String(args.transcript_id ?? '');
     const t = await db.transcript.findFirst({
-      where: { id, userId },
+      where: { id, userId, status: 'ACTIVE' },
       select: { id: true, title: true, plainText: true, summaryMd: true },
     });
     if (!t) return { error: 'Transcrição não encontrada.' };

@@ -207,7 +207,7 @@ jobsRoutes.post('/', async (c) => {
   const jobType = await jobTypeForVideo(video);
 
   const existingTranscript = await db.transcript.findFirst({
-    where: { userId, url: video.canonical },
+    where: { userId, url: video.canonical, status: { not: 'TRASH' } },
     select: { id: true },
   });
   if (existingTranscript) {
@@ -287,7 +287,7 @@ jobsRoutes.post('/auto', async (c) => {
     const jobType = await jobTypeForVideo(video);
     const kind = jobType === 'ANALYZE_X' ? 'x' : 'video';
     const existing = await db.transcript.findFirst({
-      where: { userId, url: video.canonical },
+      where: { userId, url: video.canonical, status: { not: 'TRASH' } },
       select: { id: true },
     });
     if (existing) {
@@ -332,7 +332,7 @@ jobsRoutes.post('/auto', async (c) => {
     return c.json({ error: 'URL inválida — informe um link http(s) válido.' }, 400);
   }
   const existingWeb = await db.transcript.findFirst({
-    where: { userId, url: normalized },
+    where: { userId, url: normalized, status: { not: 'TRASH' } },
     select: { id: true },
   });
   if (existingWeb) {
@@ -486,7 +486,7 @@ jobsRoutes.post('/scrape', async (c) => {
   }
 
   const existingTranscript = await db.transcript.findFirst({
-    where: { userId, url: normalized },
+    where: { userId, url: normalized, status: { not: 'TRASH' } },
     select: { id: true },
   });
   if (existingTranscript) {
@@ -602,7 +602,7 @@ jobsRoutes.post('/:id/retry', async (c) => {
 
   // Se já existe Transcript com esta URL pro user, não vale retentar
   const existingTranscript = await db.transcript.findFirst({
-    where: { userId, url: original.sourceUrl },
+    where: { userId, url: original.sourceUrl, status: { not: 'TRASH' } },
     select: { id: true },
   });
   if (existingTranscript) {

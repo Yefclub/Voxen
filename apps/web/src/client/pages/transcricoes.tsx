@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, Globe, Library, Loader2, Search, X } from 'lucide-react';
+import { FileText, Folder, Globe, Library, Loader2, Search, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -23,6 +23,9 @@ interface TranscriptSummary {
   transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION' | 'DOCUMENT';
   thumbnailUrl: string | null;
   costUsd: string | null;
+  folderId: string | null;
+  folder: { id: string; name: string } | null;
+  status: 'ACTIVE' | 'ARCHIVED' | 'TRASH';
   createdAt: string;
   snippet?: string;
 }
@@ -146,7 +149,7 @@ export function TranscricoesPage(): React.ReactElement {
         {!loading && transcripts.length > 0 && (
           <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {transcripts.map((transcript) => (
-              <StaggerItem key={transcript.id}>
+              <StaggerItem key={transcript.id} className="h-full">
                 <TranscriptCard
                   t={transcript}
                   highlightQuery={debouncedQ}
@@ -176,15 +179,19 @@ function TranscriptCard({
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   return (
-    <motion.div whileHover={{ y: -3 }} transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}>
+    <motion.div
+      className="h-full"
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+    >
       <Link
         to={`/transcricoes/${t.id}`}
-        className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 rounded-2xl"
+        className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 rounded-2xl"
       >
         <Card
           hoverable
           elevated
-          className="h-full overflow-hidden p-0 transition-colors duration-200"
+          className="flex h-full min-h-[360px] flex-col overflow-hidden p-0 transition-colors duration-200"
         >
           <div className="relative aspect-video bg-[var(--color-app-bg-elevated)] overflow-hidden">
             {t.thumbnailUrl ? (
@@ -223,21 +230,19 @@ function TranscriptCard({
             )}
           </div>
 
-          <CardContent className="pt-4 pb-5 space-y-3">
+          <CardContent className="flex flex-1 flex-col pt-4 pb-5 space-y-3">
             <div>
               <h3 className="text-[15px] font-semibold leading-snug tracking-tight line-clamp-2 group-hover:text-violet-300 transition-colors font-display">
                 {highlightInText(t.title, highlightQuery)}
               </h3>
-              {t.channel && (
-                <p className="text-xs text-[var(--color-app-muted)] mt-1.5 truncate">{t.channel}</p>
-              )}
+              <p className="min-h-[18px] text-xs text-[var(--color-app-muted)] mt-1.5 truncate">
+                {t.channel ?? t.folder?.name ?? ''}
+              </p>
             </div>
 
-            {t.snippet && (
-              <p className="text-xs text-[var(--color-app-subtle)] leading-relaxed line-clamp-3">
-                {renderSnippet(t.snippet)}
-              </p>
-            )}
+            <p className="min-h-[54px] text-xs text-[var(--color-app-subtle)] leading-relaxed line-clamp-3">
+              {t.snippet ? renderSnippet(t.snippet) : null}
+            </p>
 
             <div className="flex items-center gap-2 flex-wrap pt-1">
               {/* Source primário — diferencia Vídeo / Web e plataforma */}
@@ -259,9 +264,15 @@ function TranscriptCard({
                   {t.language}
                 </Badge>
               )}
+              {t.folder && (
+                <Badge variant="muted" className="max-w-full text-[10px]">
+                  <Folder className="h-2.5 w-2.5 shrink-0" />
+                  <span className="truncate">{t.folder.name}</span>
+                </Badge>
+              )}
             </div>
 
-            <div className="pt-3 border-t border-[var(--color-app-border)] flex items-center justify-between text-[11px] text-[var(--color-app-muted)]">
+            <div className="mt-auto pt-3 border-t border-[var(--color-app-border)] flex items-center justify-between text-[11px] text-[var(--color-app-muted)]">
               <span>{formatRelative(new Date(t.createdAt), locale)}</span>
               <span className="tabular-nums font-mono">{formatUsd(t.costUsd)}</span>
             </div>

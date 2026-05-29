@@ -65,6 +65,7 @@ model User {
   costEvents      CostEvent[]
   conversations   Conversation[]
   notes           Note[]
+  libraryFolders  LibraryFolder[]
   telegramLink    TelegramLink?
   automations     Automation[]
   automationRuns  AutomationRun[]
@@ -179,9 +180,17 @@ enum TranscriptionMethod {
   X_SEARCH      // análise de post/thread do X via Grok/OpenRouter search
 }
 
+enum ContentStatus {
+  ACTIVE
+  ARCHIVED
+  TRASH
+}
+
 model Transcript {
   id                  String              @id @default(cuid())
   userId              String              // == workspace_id
+  folderId            String?
+  status              ContentStatus       @default(ACTIVE)
   source              TranscriptSource
   url                 String
   title               String
@@ -206,17 +215,40 @@ model Transcript {
   searchVector        Unsupported("tsvector")?
   checksum            String?             // sha256 do áudio original
   formatVersion       Int                 @default(1)
+  archivedAt          DateTime?
+  trashedAt           DateTime?
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
   // Relations
   user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder              LibraryFolder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
   chunks              Chunk[]
   job                 Job?
 
   @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, status, createdAt(sort: Desc)])
+  @@index([userId, folderId])
   @@index([userId, source])
   @@index([userId, language])
   // Índice GIN no tsvector criado via SQL na migration
+}
+
+// Pastas de biblioteca para organizar conteúdos transcritos/documentos/web.
+// Não movem objetos no S3; são metadata de navegação e base para o Brain.
+model LibraryFolder {
+  id          String          @id @default(cuid())
+  userId      String
+  parentId    String?
+  name        String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent      LibraryFolder?  @relation("LibraryFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    LibraryFolder[] @relation("LibraryFolderTree")
+  transcripts Transcript[]
+
+  @@index([userId, parentId])
+  @@index([userId, updatedAt(sort: Desc)])
 }
 
 // Opcional: chunks granulares pra busca por timestamp range / re-rank
