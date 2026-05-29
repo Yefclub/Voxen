@@ -66,6 +66,9 @@ model User {
   conversations   Conversation[]
   notes           Note[]
   libraryFolders  LibraryFolder[]
+  brainNodes      BrainNode[]
+  brainEdges      BrainEdge[]
+  brainSources    BrainSource[]
   telegramLink    TelegramLink?
   automations     Automation[]
   automationRuns  AutomationRun[]
@@ -262,6 +265,111 @@ model Chunk {
   transcript   Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
 
   @@index([transcriptId, startSec])
+}
+
+// ============================================================================
+// BRAIN — grafo de conhecimento Postgres-first
+// ============================================================================
+
+enum BrainSourceType {
+  TRANSCRIPT
+  NOTE
+  FOLDER
+  JOB
+  CHAT
+  MANUAL
+}
+
+enum BrainNodeType {
+  CONTENT
+  FOLDER
+  ENTITY
+  TOPIC
+  CLAIM
+  EVENT
+  CLUSTER
+}
+
+enum BrainEdgeKind {
+  BELONGS_TO
+  LINKS_TO
+  MENTIONS
+  SUPPORTS
+  CONTRADICTS
+  SAME_AS
+  PART_OF
+  RELATED_TO
+  NEXT_TO
+}
+
+model BrainNode {
+  id          String           @id @default(cuid())
+  userId      String
+  key         String
+  type        BrainNodeType
+  label       String
+  description String?          @db.Text
+  status      ContentStatus    @default(ACTIVE)
+  metadata    Json             @default("{}")
+  sourceType  BrainSourceType?
+  sourceId    String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outgoing    BrainEdge[]      @relation("BrainEdgeFrom")
+  incoming    BrainEdge[]      @relation("BrainEdgeTo")
+  sources     BrainSource[]
+
+  @@unique([userId, key])
+  @@index([userId, type, updatedAt(sort: Desc)])
+  @@index([userId, status, type])
+  @@index([userId, sourceType, sourceId])
+}
+
+model BrainEdge {
+  id         String        @id @default(cuid())
+  userId     String
+  fromNodeId String
+  toNodeId   String
+  kind       BrainEdgeKind
+  confidence Decimal       @default(1) @db.Decimal(5, 4)
+  method     String        @default("manual")
+  status     ContentStatus @default(ACTIVE)
+  metadata   Json          @default("{}")
+  createdBy  String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  from       BrainNode     @relation("BrainEdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  to         BrainNode     @relation("BrainEdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
+  sources    BrainSource[]
+
+  @@unique([userId, fromNodeId, toNodeId, kind, method])
+  @@index([userId, kind, updatedAt(sort: Desc)])
+  @@index([userId, status, kind])
+  @@index([fromNodeId])
+  @@index([toNodeId])
+}
+
+model BrainSource {
+  id         String          @id @default(cuid())
+  userId     String
+  nodeId     String?
+  edgeId     String?
+  sourceType BrainSourceType
+  sourceId   String
+  chunkId    String?
+  startSec   Int?
+  endSec     Int?
+  excerpt    String?         @db.Text
+  createdAt  DateTime        @default(now())
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  node       BrainNode?      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  edge       BrainEdge?      @relation(fields: [edgeId], references: [id], onDelete: Cascade)
+
+  @@index([userId, sourceType, sourceId])
+  @@index([nodeId])
+  @@index([edgeId])
 }
 
 // ============================================================================
