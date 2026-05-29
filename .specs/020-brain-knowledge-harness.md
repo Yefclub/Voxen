@@ -251,10 +251,16 @@ The existing `/grafo` route may remain as redirect or compatibility entrypoint.
 ### PR 6 — Brain UI and card consistency
 
 - Replace simple graph payload with Brain graph payload.
-- Add inspector, clusters, local expansion and preview cards.
-- Extract a shared content preview card component and use it in library/search
-  surfaces.
-- Verify with Playwright screenshots before PR.
+- Add side inspector, node sizing by degree, relation-aware styling and source
+  navigation.
+- Backfill legacy source nodes on graph load/refresh when Brain records are
+  missing.
+- Normalize library preview card dimensions and media aspect-ratio across
+  content sources.
+- Defer shared preview-card extraction until another surface needs the exact
+  component contract; keep this PR focused on behavior and visual consistency.
+- Visual verification should happen against the Easypanel deployment after the
+  release, because the owner explicitly asked not to start the local app.
 
 ### PR 7 — Release dev to main and Easypanel deploy
 

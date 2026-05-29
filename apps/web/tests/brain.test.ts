@@ -169,4 +169,50 @@ describeIfDb('brain indexer', () => {
     });
     expect(evidence.excerpt).toBe('Folder: Pesquisa');
   });
+
+  it('GET /api/graph backfills Brain nodes for legacy content', async () => {
+    await signUp('graph-brain@voxen.local', 'senha-super-segura-123', 'Graph Brain');
+    const signin = await signIn('graph-brain@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'graph-brain@voxen.local' } });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/legacy-graph',
+        title: 'Conteúdo legado',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/legacy-graph.md`,
+        plainText: 'texto legado ainda sem brain node',
+        frontmatter: {},
+      },
+    });
+
+    expect(await db.brainNode.count({ where: { userId: user.id } })).toBe(0);
+
+    const graph = await app.fetch(
+      new Request('http://localhost/api/graph?force=1', {
+        headers: { cookie },
+      }),
+    );
+    expect(graph.status).toBe(200);
+    const body = (await graph.json()) as {
+      nodes: Array<{ key: string; type: string; sourceType: string; source?: string }>;
+    };
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        key: `TRANSCRIPT:${transcript.id}`,
+        type: 'transcript',
+        sourceType: 'TRANSCRIPT',
+        source: 'WEB',
+      }),
+    );
+
+    const persisted = await db.brainNode.findUnique({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+    });
+    expect(persisted).not.toBeNull();
+  });
 });

@@ -1,17 +1,22 @@
 // ============================================================================
-// /api/graph — visualização da KB em árvore + arestas
+// /api/graph — visualização do Voxen Brain
 // ============================================================================
-// Retorna nodes (transcripts + notes + folders) + edges (descobertas):
-//   1. Wiki-links explícitas no content das notas: `[[título alvo]]`
-//   2. Parent-child em pastas de notas
+// Retorna nodes + edges materializados pelo Brain indexer:
+//   - Transcript/note/folder como fontes canônicas
+//   - Relações explícitas: wiki-links, hierarquia, pastas e evidências
 //
-// Spec: .specs/006-graph-viz.md
+// Spec: .specs/020-brain-knowledge-harness.md
 // Limite: 500 nós por user (cap defensivo — KBs maiores precisam paginação)
 // Cache: 60s em Redis (key voxen:graph:<userId>) — refresh manual disponível
 // ============================================================================
 
 import { Hono } from 'hono';
 import { auth } from '../lib/auth';
+import {
+  reindexLibraryFoldersBrain,
+  reindexNotesBrain,
+  reindexTranscriptsBrain,
+} from '../lib/brain';
 import { db } from '../lib/db';
 import { graphCacheKey } from '../lib/graph-cache';
 import { getRedisPublisher } from '../lib/redis';
@@ -36,19 +41,46 @@ graphRoutes.use('*', async (c, next) => {
 
 interface GraphNode {
   id: string;
+  key: string;
   label: string;
-  type: 'transcript' | 'note' | 'folder';
+  description: string | null;
+  type:
+    | 'transcript'
+    | 'note'
+    | 'folder'
+    | 'entity'
+    | 'topic'
+    | 'claim'
+    | 'event'
+    | 'cluster'
+    | 'content';
   source?: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB' | 'UPLOAD';
+  sourceType: 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL' | null;
+  sourceId: string | null;
   weight: number;
+  updatedAt: string;
 }
 
 interface GraphEdge {
+  id: string;
   from: string;
   to: string;
-  kind: 'wikilink' | 'parent';
+  kind:
+    | 'belongs_to'
+    | 'links_to'
+    | 'mentions'
+    | 'supports'
+    | 'contradicts'
+    | 'same_as'
+    | 'part_of'
+    | 'related_to'
+    | 'next_to';
+  method: string;
+  confidence: string;
 }
 
 const NODE_LIMIT = 500;
+const EDGE_LIMIT = 1_500;
 const CACHE_TTL_SEC = 60;
 
 graphRoutes.get('/', async (c) => {
@@ -68,66 +100,74 @@ graphRoutes.get('/', async (c) => {
     }
   }
 
-  const [transcripts, notes] = await Promise.all([
-    db.transcript.findMany({
-      where: { userId, status: 'ACTIVE' },
-      orderBy: { createdAt: 'desc' },
-      take: NODE_LIMIT,
-      select: { id: true, title: true, source: true },
-    }),
-    db.note.findMany({
-      where: { userId },
-      orderBy: { updatedAt: 'desc' },
-      take: NODE_LIMIT,
+  await ensureBrainCoverage(userId, force);
+
+  const rawNodes = await db.brainNode.findMany({
+    where: { userId, status: 'ACTIVE' },
+    orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    take: NODE_LIMIT,
+    select: {
+      id: true,
+      key: true,
+      type: true,
+      label: true,
+      description: true,
+      sourceType: true,
+      sourceId: true,
+      metadata: true,
+      updatedAt: true,
+    },
+  });
+  const nodeIds = new Set(rawNodes.map((node) => node.id));
+  const rawEdges = (
+    await db.brainEdge.findMany({
+      where: {
+        userId,
+        status: 'ACTIVE',
+        fromNodeId: { in: [...nodeIds] },
+        toNodeId: { in: [...nodeIds] },
+        from: { status: 'ACTIVE' },
+        to: { status: 'ACTIVE' },
+      },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+      take: EDGE_LIMIT,
       select: {
         id: true,
-        title: true,
+        fromNodeId: true,
+        toNodeId: true,
         kind: true,
-        parentId: true,
-        content: true,
+        method: true,
+        confidence: true,
       },
-    }),
-  ]);
+    })
+  ).filter((edge) => nodeIds.has(edge.fromNodeId) && nodeIds.has(edge.toNodeId));
 
-  const nodes: GraphNode[] = [];
-  const edges: GraphEdge[] = [];
+  const degree = new Map<string, number>();
+  for (const edge of rawEdges) {
+    degree.set(edge.fromNodeId, (degree.get(edge.fromNodeId) ?? 0) + 1);
+    degree.set(edge.toNodeId, (degree.get(edge.toNodeId) ?? 0) + 1);
+  }
 
-  for (const t of transcripts) {
-    nodes.push({
-      id: `t:${t.id}`,
-      label: t.title.slice(0, 80),
-      type: 'transcript',
-      source: t.source,
-      weight: 1,
-    });
-  }
-  // Index pra resolver wikilinks por título (case-insensitive)
-  const noteByTitle = new Map<string, string>();
-  for (const n of notes) {
-    noteByTitle.set(n.title.trim().toLowerCase(), `n:${n.id}`);
-  }
-  for (const n of notes) {
-    nodes.push({
-      id: `n:${n.id}`,
-      label: n.title.slice(0, 80),
-      type: n.kind === 'FOLDER' ? 'folder' : 'note',
-      weight: 1,
-    });
-    if (n.parentId) {
-      edges.push({ from: `n:${n.parentId}`, to: `n:${n.id}`, kind: 'parent' });
-    }
-    if (n.kind === 'NOTE' && n.content) {
-      const wikilinks = n.content.matchAll(/\[\[([^\]]+)\]\]/g);
-      for (const m of wikilinks) {
-        const target = m[1]?.trim().toLowerCase();
-        if (!target) continue;
-        const targetId = noteByTitle.get(target);
-        if (targetId && targetId !== `n:${n.id}`) {
-          edges.push({ from: `n:${n.id}`, to: targetId, kind: 'wikilink' });
-        }
-      }
-    }
-  }
+  const nodes = rawNodes.map<GraphNode>((node) => ({
+    id: node.id,
+    key: node.key,
+    label: node.label.slice(0, 120),
+    description: node.description,
+    type: graphNodeType(node),
+    source: graphSource(node),
+    sourceType: node.sourceType,
+    sourceId: node.sourceId,
+    weight: 1 + Math.min(degree.get(node.id) ?? 0, 8),
+    updatedAt: node.updatedAt.toISOString(),
+  }));
+  const edges = rawEdges.map<GraphEdge>((edge) => ({
+    id: edge.id,
+    from: edge.fromNodeId,
+    to: edge.toNodeId,
+    kind: edge.kind.toLowerCase() as GraphEdge['kind'],
+    method: edge.method,
+    confidence: edge.confidence.toString(),
+  }));
 
   const response = { nodes, edges, totalNodes: nodes.length, totalEdges: edges.length };
   try {
@@ -137,3 +177,73 @@ graphRoutes.get('/', async (c) => {
   }
   return c.json(response);
 });
+
+async function ensureBrainCoverage(userId: string, force: boolean): Promise<void> {
+  const [transcripts, notes, folders, brainNodes] = await Promise.all([
+    db.transcript.count({ where: { userId, status: 'ACTIVE' } }),
+    db.note.count({ where: { userId } }),
+    db.libraryFolder.count({ where: { userId } }),
+    db.brainNode.count({
+      where: {
+        userId,
+        status: 'ACTIVE',
+        sourceType: { in: ['TRANSCRIPT', 'NOTE', 'FOLDER'] },
+      },
+    }),
+  ]);
+  const expectedSourceNodes = transcripts + notes + folders;
+  if (!force && (expectedSourceNodes === 0 || brainNodes >= expectedSourceNodes)) return;
+
+  await reindexLibraryFoldersBrain(userId);
+  await reindexNotesBrain(userId);
+  await reindexTranscriptsBrain(userId);
+}
+
+function graphNodeType(node: {
+  type: string;
+  sourceType: string | null;
+  metadata: unknown;
+}): GraphNode['type'] {
+  if (node.sourceType === 'TRANSCRIPT') return 'transcript';
+  if (node.sourceType === 'FOLDER') return 'folder';
+  if (node.sourceType === 'NOTE') {
+    const metadata = node.metadata && typeof node.metadata === 'object' ? node.metadata : {};
+    if ('kind' in metadata && metadata.kind === 'FOLDER') return 'folder';
+    return 'note';
+  }
+  switch (node.type) {
+    case 'ENTITY':
+      return 'entity';
+    case 'TOPIC':
+      return 'topic';
+    case 'CLAIM':
+      return 'claim';
+    case 'EVENT':
+      return 'event';
+    case 'CLUSTER':
+      return 'cluster';
+    case 'FOLDER':
+      return 'folder';
+    default:
+      return 'content';
+  }
+}
+
+function graphSource(node: { sourceType: string | null; metadata: unknown }): GraphNode['source'] {
+  if (node.sourceType !== 'TRANSCRIPT') return undefined;
+  if (!node.metadata || typeof node.metadata !== 'object' || !('source' in node.metadata)) {
+    return undefined;
+  }
+  const source = node.metadata.source;
+  if (
+    source === 'YOUTUBE' ||
+    source === 'INSTAGRAM' ||
+    source === 'TIKTOK' ||
+    source === 'X' ||
+    source === 'WEB' ||
+    source === 'UPLOAD'
+  ) {
+    return source;
+  }
+  return undefined;
+}

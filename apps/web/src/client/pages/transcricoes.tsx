@@ -144,9 +144,9 @@ export function TranscricoesPage(): React.ReactElement {
         )}
 
         {loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-64 rounded-2xl" />
+              <Skeleton key={i} className="min-h-[430px] rounded-2xl" />
             ))}
           </div>
         )}
@@ -175,7 +175,7 @@ export function TranscricoesPage(): React.ReactElement {
         )}
 
         {!loading && transcripts.length > 0 && (
-          <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <StaggerContainer className="grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {transcripts.map((transcript) => (
               <StaggerItem key={transcript.id} className="h-full">
                 <TranscriptCard
@@ -219,7 +219,7 @@ function TranscriptCard({
         <Card
           hoverable
           elevated
-          className="flex h-full min-h-[360px] flex-col overflow-hidden p-0 transition-colors duration-200"
+          className="flex h-full min-h-[430px] flex-col overflow-hidden p-0 transition-colors duration-200"
         >
           <div className="relative aspect-video bg-[var(--color-app-bg-elevated)] overflow-hidden">
             {t.thumbnailUrl ? (
@@ -258,7 +258,7 @@ function TranscriptCard({
             )}
           </div>
 
-          <CardContent className="flex flex-1 flex-col pt-4 pb-5 space-y-3">
+          <CardContent className="flex min-h-0 flex-1 flex-col space-y-3 px-5 pb-5 pt-4">
             <div>
               <h3 className="text-[15px] font-semibold leading-snug tracking-tight line-clamp-2 group-hover:text-violet-300 transition-colors font-display">
                 {highlightInText(t.title, highlightQuery)}
@@ -268,11 +268,11 @@ function TranscriptCard({
               </p>
             </div>
 
-            <p className="min-h-[54px] text-xs text-[var(--color-app-subtle)] leading-relaxed line-clamp-3">
+            <p className="h-[54px] text-xs text-[var(--color-app-subtle)] leading-relaxed line-clamp-3">
               {t.snippet ? renderSnippet(t.snippet) : null}
             </p>
 
-            <div className="flex items-center gap-2 flex-wrap pt-1">
+            <div className="flex h-[50px] flex-wrap content-start items-start gap-2 overflow-hidden pt-1">
               {/* Source primário — diferencia Vídeo / Web e plataforma */}
               <Badge variant={t.source === 'WEB' ? 'muted' : 'success'} className="text-[10px]">
                 {t.source === 'WEB' && <Globe className="h-2.5 w-2.5" />}
