@@ -46,6 +46,7 @@ async def run(*, job_id: str, user_id: str, source_url: str, log: Any) -> None: 
     await summary.maybe_generate(
         user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
+    await db.reindex_transcript_brain_node(user_id, new_transcript_id)
 
     await db.mark_job_done(job_id)
     await events.publish_job_event(
@@ -122,6 +123,19 @@ async def _persist(*, user_id: str, source_url: str, result: scraper.ScrapeResul
             md_key,
             result.plain_text,
             json.dumps(frontmatter, default=str),
+        )
+        await db.upsert_transcript_brain_node(
+            conn,
+            user_id=user_id,
+            transcript_id=transcript_id,
+            source="WEB",
+            url=result.url,
+            title=result.title,
+            channel=result.site_name,
+            language=result.language or "und",
+            transcription_method="SCRAPE",
+            thumbnail_url=result.thumbnail_url,
+            plain_text=result.plain_text,
         )
     return transcript_id
 

@@ -675,6 +675,7 @@ async def _generate_summary_with_progress(
         job_id=job_id,
         log=log,
     )
+    await db.reindex_transcript_brain_node(user_id, transcript_id)
 
 
 async def _transcribe_via_api(
@@ -824,6 +825,19 @@ async def _persist(
             md_key,
             plain_text,
             _frontmatter_json(doc),
+        )
+        await db.upsert_transcript_brain_node(
+            conn,
+            user_id=user_id,
+            transcript_id=transcript_id,
+            source=doc.source,
+            url=doc.url,
+            title=doc.title,
+            channel=doc.channel,
+            language=doc.language,
+            transcription_method=doc.transcription_method,
+            thumbnail_url=doc.thumbnail_url,
+            plain_text=plain_text,
         )
     return transcript_id
 

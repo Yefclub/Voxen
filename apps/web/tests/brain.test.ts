@@ -180,12 +180,12 @@ describeIfDb('brain indexer', () => {
         userId: user.id,
         source: 'WEB',
         url: 'https://example.com/legacy-graph',
-        title: 'Conteúdo legado',
+        title: 'Automação de conteúdo legado',
         durationSec: 0,
         language: 'pt',
         transcriptionMethod: 'SCRAPE',
         mdPath: `workspaces/${user.id}/transcripts/legacy-graph.md`,
-        plainText: 'texto legado ainda sem brain node',
+        plainText: 'Automação automação organiza processos internos e conhecimento operacional.',
         frontmatter: {},
       },
     });
@@ -199,7 +199,14 @@ describeIfDb('brain indexer', () => {
     );
     expect(graph.status).toBe(200);
     const body = (await graph.json()) as {
-      nodes: Array<{ key: string; type: string; sourceType: string; source?: string }>;
+      nodes: Array<{
+        id: string;
+        key: string;
+        type: string;
+        sourceType: string | null;
+        source?: string;
+      }>;
+      edges: Array<{ from: string; to: string; kind: string; method: string }>;
     };
     expect(body.nodes).toContainEqual(
       expect.objectContaining({
@@ -209,10 +216,79 @@ describeIfDb('brain indexer', () => {
         source: 'WEB',
       }),
     );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        key: 'TOPIC:automacao',
+        type: 'topic',
+        sourceType: null,
+      }),
+    );
+    const transcriptNode = body.nodes.find((node) => node.key === `TRANSCRIPT:${transcript.id}`);
+    const topicNode = body.nodes.find((node) => node.key === 'TOPIC:automacao');
+    expect(transcriptNode).toBeDefined();
+    expect(topicNode).toBeDefined();
+    expect(body.edges).toContainEqual(
+      expect.objectContaining({
+        from: transcriptNode?.id,
+        to: topicNode?.id,
+        kind: 'mentions',
+        method: 'keyword',
+      }),
+    );
 
     const persisted = await db.brainNode.findUnique({
       where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
     });
     expect(persisted).not.toBeNull();
+  });
+
+  it('removes automatic topic nodes when transcript leaves the active graph', async () => {
+    await signUp('graph-removal@voxen.local', 'senha-super-segura-123', 'Graph Removal');
+    const signin = await signIn('graph-removal@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'graph-removal@voxen.local' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/removal-graph',
+        title: 'Automação removível',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/removal-graph.md`,
+        plainText: 'Automação automação aparece no grafo e depois sai.',
+        frontmatter: {},
+      },
+    });
+
+    const graph = await app.fetch(
+      new Request('http://localhost/api/graph?force=1', {
+        headers: { cookie },
+      }),
+    );
+    expect(graph.status).toBe(200);
+    expect(
+      await db.brainNode.findUnique({
+        where: { userId_key: { userId: user.id, key: 'TOPIC:automacao' } },
+      }),
+    ).not.toBeNull();
+
+    const trash = await app.fetch(
+      new Request(`http://localhost/api/transcripts/${transcript.id}/lifecycle`, {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'TRASH' }),
+      }),
+    );
+    expect(trash.status).toBe(200);
+    expect(
+      await db.brainNode.findUnique({
+        where: { userId_key: { userId: user.id, key: 'TOPIC:automacao' } },
+      }),
+    ).toBeNull();
+    expect(await db.brainEdge.count({ where: { userId: user.id, method: 'keyword' } })).toBe(0);
   });
 });
