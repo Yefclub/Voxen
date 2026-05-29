@@ -44,12 +44,14 @@ function extractCookie(res: Response): string {
 
 describeIfDb('library organization API', () => {
   beforeEach(async () => {
+    process.env.S3_DELETE_DISABLED = 'true';
     await wipeDb();
   });
 
   afterAll(async () => {
     await wipeDb();
     await db.$disconnect();
+    delete process.env.S3_DELETE_DISABLED;
   });
 
   it('requires an authenticated approved user', async () => {
@@ -146,5 +148,64 @@ describeIfDb('library organization API', () => {
     const trashed = await db.transcript.findUniqueOrThrow({ where: { id: transcript.id } });
     expect(trashed.status).toBe('TRASH');
     expect(trashed.trashedAt).not.toBeNull();
+  });
+
+  it('requires trash before hard delete and purges transcript records', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'UPLOAD',
+        url: 'upload://hard-delete',
+        title: 'Conteúdo para apagar',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'DOCUMENT',
+        mdPath: `workspaces/${user.id}/transcripts/delete.md`,
+        plainText: 'texto para purge',
+        frontmatter: {},
+      },
+    });
+    const job = await db.job.create({
+      data: {
+        userId: user.id,
+        type: 'UPLOAD_AND_ANALYZE_DOCUMENT',
+        status: 'DONE',
+        sourceUrl: transcript.url,
+        transcriptId: transcript.id,
+      },
+    });
+
+    const activeDelete = await app.fetch(
+      new Request(`http://localhost/api/transcripts/${transcript.id}`, {
+        method: 'DELETE',
+        headers: { cookie },
+      }),
+    );
+    expect(activeDelete.status).toBe(409);
+    expect(await db.transcript.findUnique({ where: { id: transcript.id } })).not.toBeNull();
+
+    const trash = await app.fetch(
+      new Request(`http://localhost/api/transcripts/${transcript.id}/lifecycle`, {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'TRASH' }),
+      }),
+    );
+    expect(trash.status).toBe(200);
+
+    const hardDelete = await app.fetch(
+      new Request(`http://localhost/api/transcripts/${transcript.id}`, {
+        method: 'DELETE',
+        headers: { cookie },
+      }),
+    );
+    expect(hardDelete.status).toBe(200);
+    expect(await db.transcript.findUnique({ where: { id: transcript.id } })).toBeNull();
+    const retainedJob = await db.job.findUniqueOrThrow({ where: { id: job.id } });
+    expect(retainedJob.transcriptId).toBeNull();
   });
 });

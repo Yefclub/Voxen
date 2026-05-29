@@ -13,6 +13,7 @@
 import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
+import { graphCacheKey } from '../lib/graph-cache';
 import { getRedisPublisher } from '../lib/redis';
 
 type Vars = { userId: string };
@@ -55,7 +56,7 @@ graphRoutes.get('/', async (c) => {
   const force = c.req.query('force') === '1';
 
   // Cache em Redis 60s
-  const cacheKey = `voxen:graph:${userId}`;
+  const cacheKey = graphCacheKey(userId);
   if (!force) {
     try {
       const cached = await getRedisPublisher().get(cacheKey);

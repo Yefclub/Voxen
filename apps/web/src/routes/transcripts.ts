@@ -13,8 +13,9 @@ import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
+import { invalidateGraphCache } from '../lib/graph-cache';
 import { rateLimit } from '../lib/rate-limit';
-import { s3Bucket, s3Client } from '../lib/s3';
+import { deleteS3Object, s3Bucket, s3Client } from '../lib/s3';
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
@@ -272,6 +273,7 @@ transcriptsRoutes.patch('/:id/organization', async (c) => {
     data: { folderId },
     select: TRANSCRIPT_LIST_SELECT,
   });
+  await invalidateGraphCache(userId);
   return c.json({ transcript });
 });
 
@@ -302,7 +304,34 @@ transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
     },
     select: TRANSCRIPT_LIST_SELECT,
   });
+  await invalidateGraphCache(userId);
   return c.json({ transcript });
+});
+
+// DELETE /api/transcripts/:id — purge definitivo.
+// Por segurança, exige que a transcrição esteja na lixeira antes do hard delete.
+transcriptsRoutes.delete('/:id', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId },
+    select: { id: true, status: true, mdPath: true, title: true },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+  if (transcript.status !== 'TRASH') {
+    return c.json({ error: 'Mova para a lixeira antes de apagar definitivamente.' }, 409);
+  }
+
+  try {
+    await deleteS3Object(transcript.mdPath);
+  } catch (err) {
+    console.error('[transcripts] erro ao apagar .md do S3:', err);
+    return c.json({ error: 'Falha ao apagar arquivo no armazenamento S3.' }, 502);
+  }
+
+  await db.transcript.delete({ where: { id } });
+  await invalidateGraphCache(userId);
+  return c.json({ ok: true, deletedId: id });
 });
 
 // POST /api/transcripts/:id/summary — gerar / regenerar resumo via chat service.

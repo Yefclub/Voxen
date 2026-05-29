@@ -12,6 +12,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
+import { invalidateGraphCache } from '../lib/graph-cache';
 
 type Vars = { userId: string };
 
@@ -88,6 +89,7 @@ libraryRoutes.post('/folders', async (c) => {
       updatedAt: true,
     },
   });
+  await invalidateGraphCache(userId);
   return c.json({ folder }, 201);
 });
 
@@ -135,6 +137,7 @@ libraryRoutes.patch('/folders/:id', async (c) => {
       updatedAt: true,
     },
   });
+  await invalidateGraphCache(userId);
   return c.json({ folder });
 });
 
@@ -148,6 +151,7 @@ libraryRoutes.delete('/folders/:id', async (c) => {
   if (!existing) return c.json({ error: 'Pasta não encontrada.' }, 404);
 
   await db.libraryFolder.delete({ where: { id } });
+  await invalidateGraphCache(userId);
   return c.json({ ok: true });
 });
 

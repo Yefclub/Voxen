@@ -14,6 +14,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
+import { invalidateGraphCache } from '../lib/graph-cache';
 
 type Vars = { userId: string };
 
@@ -138,6 +139,7 @@ notesRoutes.post('/', async (c) => {
     },
     select: { id: true, parentId: true, kind: true, title: true, updatedAt: true },
   });
+  await invalidateGraphCache(userId);
   return c.json({ note }, 201);
 });
 
@@ -200,6 +202,7 @@ notesRoutes.patch('/:id', async (c) => {
       updatedAt: true,
     },
   });
+  await invalidateGraphCache(userId);
   return c.json({ note });
 });
 
@@ -212,6 +215,7 @@ notesRoutes.delete('/:id', async (c) => {
   });
   if (!existing) return c.json({ error: 'Nota não encontrada.' }, 404);
   await db.note.delete({ where: { id } });
+  await invalidateGraphCache(userId);
   return c.json({ ok: true });
 });
 
