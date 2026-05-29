@@ -10,10 +10,13 @@
 
 import { Hono } from 'hono';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { z } from 'zod';
 import { auth } from '../lib/auth';
+import { deleteBrainForSource, reindexTranscriptBrain } from '../lib/brain';
 import { db } from '../lib/db';
+import { invalidateGraphCache } from '../lib/graph-cache';
 import { rateLimit } from '../lib/rate-limit';
-import { s3Bucket, s3Client } from '../lib/s3';
+import { deleteS3Object, s3Bucket, s3Client } from '../lib/s3';
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
@@ -21,6 +24,27 @@ const SUMMARY_MIN_INTERVAL_SEC = 60;
 type Vars = { userId: string };
 
 export const transcriptsRoutes = new Hono<{ Variables: Vars }>();
+
+type SearchRow = {
+  id: string;
+  source: string;
+  url: string;
+  title: string;
+  channel: string | null;
+  durationSec: number;
+  language: string;
+  transcriptionMethod: string;
+  thumbnailUrl: string | null;
+  costUsd: string | null;
+  folderId: string | null;
+  folderName: string | null;
+  status: string;
+  archivedAt: Date | null;
+  trashedAt: Date | null;
+  createdAt: Date;
+  snippet: string;
+  rank: number;
+};
 
 transcriptsRoutes.use('*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -39,10 +63,17 @@ transcriptsRoutes.use('*', async (c, next) => {
 transcriptsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const query = (c.req.query('q') ?? '').trim();
+  const status = normalizeStatus(c.req.query('status'));
+  const folderId = normalizeFolderId(c.req.query('folderId'));
+  const where = {
+    userId,
+    ...(status === 'ALL' ? {} : { status }),
+    ...(folderId !== undefined ? { folderId } : {}),
+  };
 
   if (query.length === 0) {
     const transcripts = await db.transcript.findMany({
-      where: { userId },
+      where,
       orderBy: { createdAt: 'desc' },
       take: 100,
       select: TRANSCRIPT_LIST_SELECT,
@@ -54,48 +85,76 @@ transcriptsRoutes.get('/', async (c) => {
   // sincronizado com `plainText`. ts_rank ordena por relevância.
   // Usamos plainto_tsquery (sanitiza input, não exige operadores) e
   // limitamos a 100 resultados.
-  type Row = {
-    id: string;
-    source: string;
-    url: string;
-    title: string;
-    channel: string | null;
-    durationSec: number;
-    language: string;
-    transcriptionMethod: string;
-    thumbnailUrl: string | null;
-    costUsd: string | null;
-    createdAt: Date;
-    snippet: string;
-    rank: number;
-  };
-  const rows = await db.$queryRaw<Row[]>`
+  const rows =
+    status === 'ALL'
+      ? await db.$queryRaw<SearchRow[]>`
     SELECT
-      id,
-      source::text AS source,
-      url,
-      title,
-      channel,
-      "durationSec",
-      language,
-      "transcriptionMethod"::text AS "transcriptionMethod",
-      "thumbnailUrl",
-      "costUsd"::text AS "costUsd",
-      "createdAt",
+      t.id,
+      t.source::text AS source,
+      t.url,
+      t.title,
+      t.channel,
+      t."durationSec",
+      t.language,
+      t."transcriptionMethod"::text AS "transcriptionMethod",
+      t."thumbnailUrl",
+      t."costUsd"::text AS "costUsd",
+      t."folderId",
+      f.name AS "folderName",
+      t.status::text AS status,
+      t."archivedAt",
+      t."trashedAt",
+      t."createdAt",
       ts_headline(
         'portuguese',
-        "plainText",
+        t."plainText",
         plainto_tsquery('portuguese', ${query}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1, FragmentDelimiter=" … "'
       ) AS snippet,
-      ts_rank("searchVector", plainto_tsquery('portuguese', ${query})) AS rank
-    FROM "Transcript"
-    WHERE "userId" = ${userId}
-      AND "searchVector" @@ plainto_tsquery('portuguese', ${query})
-    ORDER BY rank DESC, "createdAt" DESC
+      ts_rank(t."searchVector", plainto_tsquery('portuguese', ${query})) AS rank
+    FROM "Transcript" t
+    LEFT JOIN "LibraryFolder" f ON f.id = t."folderId" AND f."userId" = t."userId"
+    WHERE t."userId" = ${userId}
+      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
+      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+    ORDER BY rank DESC, t."createdAt" DESC
+    LIMIT 100
+  `
+      : await db.$queryRaw<SearchRow[]>`
+    SELECT
+      t.id,
+      t.source::text AS source,
+      t.url,
+      t.title,
+      t.channel,
+      t."durationSec",
+      t.language,
+      t."transcriptionMethod"::text AS "transcriptionMethod",
+      t."thumbnailUrl",
+      t."costUsd"::text AS "costUsd",
+      t."folderId",
+      f.name AS "folderName",
+      t.status::text AS status,
+      t."archivedAt",
+      t."trashedAt",
+      t."createdAt",
+      ts_headline(
+        'portuguese',
+        t."plainText",
+        plainto_tsquery('portuguese', ${query}),
+        'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1, FragmentDelimiter=" … "'
+      ) AS snippet,
+      ts_rank(t."searchVector", plainto_tsquery('portuguese', ${query})) AS rank
+    FROM "Transcript" t
+    LEFT JOIN "LibraryFolder" f ON f.id = t."folderId" AND f."userId" = t."userId"
+    WHERE t."userId" = ${userId}
+      AND t.status = ${status}::"ContentStatus"
+      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
+      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+    ORDER BY rank DESC, t."createdAt" DESC
     LIMIT 100
   `;
-  return c.json({ transcripts: rows, query });
+  return c.json({ transcripts: rows.map(mapSearchRow), query });
 });
 
 const TRANSCRIPT_LIST_SELECT = {
@@ -109,16 +168,25 @@ const TRANSCRIPT_LIST_SELECT = {
   transcriptionMethod: true,
   thumbnailUrl: true,
   costUsd: true,
+  folderId: true,
+  folder: { select: { id: true, name: true, parentId: true } },
+  status: true,
+  archivedAt: true,
+  trashedAt: true,
   createdAt: true,
 } as const;
 
 transcriptsRoutes.get('/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
+  const includeTrash = c.req.query('includeTrash') === '1';
   const transcript = await db.transcript.findFirst({
-    where: { id, userId },
+    where: { id, userId, ...(includeTrash ? {} : { status: { not: 'TRASH' as const } }) },
     select: {
       id: true,
+      folderId: true,
+      folder: { select: { id: true, name: true, parentId: true } },
+      status: true,
       source: true,
       url: true,
       title: true,
@@ -135,6 +203,8 @@ transcriptsRoutes.get('/:id', async (c) => {
       plainText: true,
       summaryMd: true,
       frontmatter: true,
+      archivedAt: true,
+      trashedAt: true,
       createdAt: true,
     },
   });
@@ -174,6 +244,100 @@ transcriptsRoutes.get('/:id', async (c) => {
   return c.json({ transcript: { ...transcript, totalCostUsd }, markdown });
 });
 
+const OrganizationBody = z.object({
+  folderId: z.string().nullable(),
+});
+
+transcriptsRoutes.patch('/:id/organization', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const parsed = OrganizationBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Payload inválido.' }, 400);
+  const { folderId } = parsed.data;
+
+  const existing = await db.transcript.findFirst({
+    where: { id, userId },
+    select: { id: true },
+  });
+  if (!existing) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+
+  if (folderId) {
+    const folder = await db.libraryFolder.findFirst({
+      where: { id: folderId, userId },
+      select: { id: true },
+    });
+    if (!folder) return c.json({ error: 'Pasta não encontrada.' }, 400);
+  }
+
+  const transcript = await db.transcript.update({
+    where: { id },
+    data: { folderId },
+    select: TRANSCRIPT_LIST_SELECT,
+  });
+  await reindexTranscriptBrain(userId, id);
+  await invalidateGraphCache(userId);
+  return c.json({ transcript });
+});
+
+const LifecycleBody = z.object({
+  status: z.enum(['ACTIVE', 'ARCHIVED', 'TRASH']),
+});
+
+transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const parsed = LifecycleBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Payload inválido.' }, 400);
+  const { status } = parsed.data;
+
+  const existing = await db.transcript.findFirst({
+    where: { id, userId },
+    select: { id: true },
+  });
+  if (!existing) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+
+  const now = new Date();
+  const transcript = await db.transcript.update({
+    where: { id },
+    data: {
+      status,
+      archivedAt: status === 'ARCHIVED' ? now : null,
+      trashedAt: status === 'TRASH' ? now : null,
+    },
+    select: TRANSCRIPT_LIST_SELECT,
+  });
+  await reindexTranscriptBrain(userId, id);
+  await invalidateGraphCache(userId);
+  return c.json({ transcript });
+});
+
+// DELETE /api/transcripts/:id — purge definitivo.
+// Por segurança, exige que a transcrição esteja na lixeira antes do hard delete.
+transcriptsRoutes.delete('/:id', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId },
+    select: { id: true, status: true, mdPath: true, title: true },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+  if (transcript.status !== 'TRASH') {
+    return c.json({ error: 'Mova para a lixeira antes de apagar definitivamente.' }, 409);
+  }
+
+  try {
+    await deleteS3Object(transcript.mdPath);
+  } catch (err) {
+    console.error('[transcripts] erro ao apagar .md do S3:', err);
+    return c.json({ error: 'Falha ao apagar arquivo no armazenamento S3.' }, 502);
+  }
+
+  await db.transcript.delete({ where: { id } });
+  await deleteBrainForSource(userId, 'TRANSCRIPT', id);
+  await invalidateGraphCache(userId);
+  return c.json({ ok: true, deletedId: id });
+});
+
 // POST /api/transcripts/:id/summary — gerar / regenerar resumo via chat service.
 // Anti-abuso: throttle 1/min por transcript + se já tem summary, exige
 // { force: true } pra não queimar tokens da OR num clique acidental.
@@ -197,7 +361,7 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
   }
 
   const transcript = await db.transcript.findFirst({
-    where: { id, userId },
+    where: { id, userId, status: { not: 'TRASH' } },
     select: { id: true, title: true, plainText: true, summaryMd: true },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
@@ -239,3 +403,23 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
   }
   return c.json({ summaryMd: data.summary_md ?? null });
 });
+
+function normalizeStatus(value: string | undefined): 'ACTIVE' | 'ARCHIVED' | 'TRASH' | 'ALL' {
+  if (value === 'archived') return 'ARCHIVED';
+  if (value === 'trash') return 'TRASH';
+  if (value === 'all') return 'ALL';
+  return 'ACTIVE';
+}
+
+function normalizeFolderId(value: string | undefined): string | null | undefined {
+  if (!value) return undefined;
+  if (value === 'none') return null;
+  return value;
+}
+
+function mapSearchRow(row: SearchRow): SearchRow & { folder: { id: string; name: string } | null } {
+  return {
+    ...row,
+    folder: row.folderId && row.folderName ? { id: row.folderId, name: row.folderName } : null,
+  };
+}

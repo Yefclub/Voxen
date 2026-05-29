@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { FileText, Globe, Library, Loader2, Search, X } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { FileText, Folder, Globe, Library, Loader2, Search, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -23,6 +23,9 @@ interface TranscriptSummary {
   transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION' | 'DOCUMENT';
   thumbnailUrl: string | null;
   costUsd: string | null;
+  folderId: string | null;
+  folder: { id: string; name: string } | null;
+  status: 'ACTIVE' | 'ARCHIVED' | 'TRASH';
   createdAt: string;
   snippet?: string;
 }
@@ -31,6 +34,8 @@ interface SearchResponse {
   transcripts: TranscriptSummary[];
   query: string;
 }
+
+type StatusFilter = 'active' | 'archived' | 'trash';
 
 function useDebounced<T>(value: T, ms = 250): T {
   const [debounced, setDebounced] = useState(value);
@@ -43,16 +48,28 @@ function useDebounced<T>(value: T, ms = 250): T {
 
 export function TranscricoesPage(): React.ReactElement {
   const { locale, t } = useI18n();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const status = normalizeStatusFilter(searchParams.get('status'));
   const [q, setQ] = useState('');
   const debouncedQ = useDebounced(q, 250);
-  const url = useMemo(
-    () => `/api/transcripts${debouncedQ ? `?q=${encodeURIComponent(debouncedQ)}` : ''}`,
-    [debouncedQ],
-  );
+  const url = useMemo(() => {
+    const params = new URLSearchParams();
+    if (debouncedQ) params.set('q', debouncedQ);
+    if (status !== 'active') params.set('status', status);
+    const suffix = params.toString();
+    return `/api/transcripts${suffix ? `?${suffix}` : ''}`;
+  }, [debouncedQ, status]);
   const { data, loading } = useFetch<SearchResponse>(url);
   const transcripts = data?.transcripts ?? [];
   const isSearching = debouncedQ.length > 0;
   const queryChanging = q !== debouncedQ;
+
+  function setStatus(next: StatusFilter): void {
+    const params = new URLSearchParams(searchParams);
+    if (next === 'active') params.delete('status');
+    else params.set('status', next);
+    setSearchParams(params, { replace: true });
+  }
 
   return (
     <AnimatedPage>
@@ -100,6 +117,20 @@ export function TranscricoesPage(): React.ReactElement {
           )}
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 -mt-4">
+          {(['active', 'archived', 'trash'] as const).map((item) => (
+            <Button
+              key={item}
+              type="button"
+              variant={status === item ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setStatus(item)}
+            >
+              {statusFilterLabel(item, t)}
+            </Button>
+          ))}
+        </div>
+
         {isSearching && !loading && (
           <p className="text-xs text-[var(--color-app-muted)] -mt-6">
             <span className="tabular-nums">{transcripts.length}</span>{' '}
@@ -113,9 +144,9 @@ export function TranscricoesPage(): React.ReactElement {
         )}
 
         {loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-64 rounded-2xl" />
+              <Skeleton key={i} className="min-h-[430px] rounded-2xl" />
             ))}
           </div>
         )}
@@ -144,9 +175,9 @@ export function TranscricoesPage(): React.ReactElement {
         )}
 
         {!loading && transcripts.length > 0 && (
-          <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <StaggerContainer className="grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {transcripts.map((transcript) => (
-              <StaggerItem key={transcript.id}>
+              <StaggerItem key={transcript.id} className="h-full">
                 <TranscriptCard
                   t={transcript}
                   highlightQuery={debouncedQ}
@@ -176,15 +207,19 @@ function TranscriptCard({
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   return (
-    <motion.div whileHover={{ y: -3 }} transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}>
+    <motion.div
+      className="h-full"
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+    >
       <Link
         to={`/transcricoes/${t.id}`}
-        className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 rounded-2xl"
+        className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 rounded-2xl"
       >
         <Card
           hoverable
           elevated
-          className="h-full overflow-hidden p-0 transition-colors duration-200"
+          className="flex h-full min-h-[430px] flex-col overflow-hidden p-0 transition-colors duration-200"
         >
           <div className="relative aspect-video bg-[var(--color-app-bg-elevated)] overflow-hidden">
             {t.thumbnailUrl ? (
@@ -223,28 +258,36 @@ function TranscriptCard({
             )}
           </div>
 
-          <CardContent className="pt-4 pb-5 space-y-3">
+          <CardContent className="flex min-h-0 flex-1 flex-col space-y-3 px-5 pb-5 pt-4">
             <div>
               <h3 className="text-[15px] font-semibold leading-snug tracking-tight line-clamp-2 group-hover:text-violet-300 transition-colors font-display">
                 {highlightInText(t.title, highlightQuery)}
               </h3>
-              {t.channel && (
-                <p className="text-xs text-[var(--color-app-muted)] mt-1.5 truncate">{t.channel}</p>
-              )}
+              <p className="min-h-[18px] text-xs text-[var(--color-app-muted)] mt-1.5 truncate">
+                {t.channel ?? t.folder?.name ?? ''}
+              </p>
             </div>
 
-            {t.snippet && (
-              <p className="text-xs text-[var(--color-app-subtle)] leading-relaxed line-clamp-3">
-                {renderSnippet(t.snippet)}
-              </p>
-            )}
+            <p className="h-[54px] text-xs text-[var(--color-app-subtle)] leading-relaxed line-clamp-3">
+              {t.snippet ? renderSnippet(t.snippet) : null}
+            </p>
 
-            <div className="flex items-center gap-2 flex-wrap pt-1">
+            <div className="flex h-[50px] flex-wrap content-start items-start gap-2 overflow-hidden pt-1">
               {/* Source primário — diferencia Vídeo / Web e plataforma */}
               <Badge variant={t.source === 'WEB' ? 'muted' : 'success'} className="text-[10px]">
                 {t.source === 'WEB' && <Globe className="h-2.5 w-2.5" />}
                 {displaySource(t.source, translate)}
               </Badge>
+              {t.status === 'ARCHIVED' && (
+                <Badge variant="muted" className="text-[10px]">
+                  {translate('library.statusArchived')}
+                </Badge>
+              )}
+              {t.status === 'TRASH' && (
+                <Badge variant="danger" className="text-[10px]">
+                  {translate('library.statusTrash')}
+                </Badge>
+              )}
               {/* Método (só faz sentido pra vídeos) */}
               {t.source !== 'WEB' && (
                 <Badge
@@ -259,9 +302,15 @@ function TranscriptCard({
                   {t.language}
                 </Badge>
               )}
+              {t.folder && (
+                <Badge variant="muted" className="max-w-full text-[10px]">
+                  <Folder className="h-2.5 w-2.5 shrink-0" />
+                  <span className="truncate">{t.folder.name}</span>
+                </Badge>
+              )}
             </div>
 
-            <div className="pt-3 border-t border-[var(--color-app-border)] flex items-center justify-between text-[11px] text-[var(--color-app-muted)]">
+            <div className="mt-auto pt-3 border-t border-[var(--color-app-border)] flex items-center justify-between text-[11px] text-[var(--color-app-muted)]">
               <span>{formatRelative(new Date(t.createdAt), locale)}</span>
               <span className="tabular-nums font-mono">{formatUsd(t.costUsd)}</span>
             </div>
@@ -270,6 +319,22 @@ function TranscriptCard({
       </Link>
     </motion.div>
   );
+}
+
+function normalizeStatusFilter(value: string | null): StatusFilter {
+  if (value === 'archived' || value === 'trash') return value;
+  return 'active';
+}
+
+function statusFilterLabel(status: StatusFilter, t: TranslateFn): string {
+  switch (status) {
+    case 'active':
+      return t('library.status.active');
+    case 'archived':
+      return t('library.status.archived');
+    case 'trash':
+      return t('library.status.trash');
+  }
 }
 
 function displaySource(source: TranscriptSummary['source'], t: TranslateFn): string {

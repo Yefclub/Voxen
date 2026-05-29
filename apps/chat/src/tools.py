@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from decimal import Decimal
 from typing import Any
@@ -186,6 +187,18 @@ TOOLS_SPEC: list[dict[str, Any]] = [
                             "twitter.com/<user>/status/<id>)."
                         ),
                     },
+                    "wait": {
+                        "type": "boolean",
+                        "description": (
+                            "Se true, aguarda a conclusão por um timeout curto e "
+                            "retorna a transcrição quando terminar. Use para "
+                            "pedidos como 'transcreva e responda/resuma'. Padrão true."
+                        ),
+                    },
+                    "wait_timeout_sec": {
+                        "type": "integer",
+                        "description": "Timeout da espera síncrona (padrão 90, máx 180).",
+                    },
                 },
                 "required": ["url"],
             },
@@ -206,6 +219,71 @@ TOOLS_SPEC: list[dict[str, Any]] = [
                     "transcript_id": {"type": "string", "description": "ID da transcrição."},
                 },
                 "required": ["transcript_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "brain_search",
+            "description": (
+                "Busca no grafo Brain (conteúdos, notas, pastas e relações materializadas). "
+                "Use quando precisar conectar ideias, encontrar nós ou partir para expansão."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer"},
+                    "include_archived": {"type": "boolean"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "brain_neighbors",
+            "description": "Expande vizinhos de um nó Brain por id ou key (ex: TRANSCRIPT:<id>).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "node_id": {"type": "string"},
+                    "limit": {"type": "integer"},
+                    "include_archived": {"type": "boolean"},
+                },
+                "required": ["node_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "brain_sources",
+            "description": "Retorna evidências/citações de um nó, aresta ou sourceId do Brain.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ref": {"type": "string"},
+                    "limit": {"type": "integer"},
+                },
+                "required": ["ref"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "brain_path",
+            "description": "Tenta explicar uma conexão direta ou em 2 saltos entre dois nós Brain.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "from_node_id": {"type": "string"},
+                    "to_node_id": {"type": "string"},
+                },
+                "required": ["from_node_id", "to_node_id"],
             },
         },
     },
@@ -499,6 +577,10 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                     ),
                 }
             is_x_status = canonical.startswith("https://x.com/i/status/")
+            wait = args.get("wait", True) is not False
+            wait_timeout = _bounded_int(
+                args.get("wait_timeout_sec"), default=90, min_value=5, max_value=180
+            )
             if is_x_status and await voxen_settings.get_default_x_analysis_model():
                 res = await db.create_x_analysis_job(user_id, canonical)
                 queued_message = (
@@ -516,12 +598,18 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                 already_message = "Esse vídeo já está na biblioteca."
                 processing_message = "Esse vídeo já está em processamento."
             if res.get("duplicate") == "transcript":
+                transcript = await db.get_user_transcript(user_id, str(res["transcript_id"]))
                 return {
                     "status": "already_transcribed",
                     "transcript_id": res["transcript_id"],
+                    "transcript": _transcript_preview(transcript),
                     "message": already_message,
                 }
             if res.get("duplicate") == "job":
+                if wait:
+                    waited = await _wait_for_job(user_id, str(res["id"]), wait_timeout)
+                    if waited:
+                        return waited
                 return {
                     "status": "already_queued",
                     "job_id": res["id"],
@@ -529,6 +617,10 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                     "message": processing_message,
                 }
             await redis_pub.publish_new_job(res["id"])
+            if wait:
+                waited = await _wait_for_job(user_id, str(res["id"]), wait_timeout)
+                if waited:
+                    return waited
             return {
                 "status": "queued",
                 "job_id": res["id"],
@@ -549,6 +641,52 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                     "hint": "Resumo ainda não gerado — use read_transcript.",
                 }
             return {"id": t["id"], "title": t["title"], "summary": summary}
+
+        if name == "brain_search":
+            query = str(args.get("query", "")).strip()
+            if not query:
+                return {"error": "Parâmetro 'query' vazio."}
+            limit = _bounded_int(args.get("limit"), default=8, min_value=1, max_value=30)
+            rows = await db.brain_search(
+                user_id,
+                query,
+                limit=limit,
+                include_archived=bool(args.get("include_archived", False)),
+            )
+            return {"results": [_serialize_brain_node(r) for r in rows], "query": query}
+
+        if name == "brain_neighbors":
+            ref = str(args.get("node_id", "")).strip()
+            if not ref:
+                return {"error": "node_id obrigatório."}
+            result = await db.brain_neighbors(
+                user_id,
+                ref,
+                limit=_bounded_int(args.get("limit"), default=30, min_value=1, max_value=80),
+                include_archived=bool(args.get("include_archived", False)),
+            )
+            if not result:
+                return {"error": "Nó não encontrado."}
+            return result
+
+        if name == "brain_sources":
+            ref = str(args.get("ref", "")).strip()
+            if not ref:
+                return {"error": "ref obrigatório."}
+            return {
+                "sources": await db.brain_sources(
+                    user_id,
+                    ref,
+                    _bounded_int(args.get("limit"), default=20, min_value=1, max_value=50),
+                )
+            }
+
+        if name == "brain_path":
+            from_ref = str(args.get("from_node_id", "")).strip()
+            to_ref = str(args.get("to_node_id", "")).strip()
+            if not from_ref or not to_ref:
+                return {"error": "from_node_id e to_node_id são obrigatórios."}
+            return {"paths": await db.brain_path(user_id, from_ref, to_ref)}
 
         if name == "web_search":
             query = str(args.get("query", "")).strip()
@@ -707,6 +845,79 @@ def _serialize(row: dict[str, Any]) -> dict[str, Any]:
         "source": row["source"],
         "createdAt": row["createdAt"].isoformat() if row.get("createdAt") else None,
     }
+
+
+def _bounded_int(value: Any, *, default: int, min_value: int, max_value: int) -> int:
+    try:
+        parsed = int(value) if value is not None else default
+    except (TypeError, ValueError):
+        parsed = default
+    return max(min_value, min(parsed, max_value))
+
+
+def _serialize_brain_node(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "key": row["key"],
+        "type": row["type"],
+        "label": row["label"],
+        "description": row.get("description"),
+        "status": row.get("status"),
+        "sourceType": row.get("sourceType"),
+        "sourceId": row.get("sourceId"),
+        "metadata": row.get("metadata") or {},
+    }
+
+
+def _transcript_preview(transcript: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not transcript:
+        return None
+    text = transcript.get("summaryMd") or transcript.get("plainText") or ""
+    return {
+        "id": transcript["id"],
+        "title": transcript["title"],
+        "source": transcript.get("source"),
+        "summary": transcript.get("summaryMd"),
+        "text_preview": text[:4000],
+    }
+
+
+async def _wait_for_job(user_id: str, job_id: str, timeout_sec: int) -> dict[str, Any] | None:
+    deadline = asyncio.get_running_loop().time() + timeout_sec
+    while True:
+        job = await db.get_user_job(user_id, job_id)
+        if not job:
+            return {"status": "not_found", "job_id": job_id, "error": "Job não encontrado."}
+        if job["status"] == "DONE":
+            transcript_id = job.get("transcriptId")
+            transcript = (
+                await db.get_user_transcript(user_id, str(transcript_id)) if transcript_id else None
+            )
+            return {
+                "status": "completed",
+                "job_id": job_id,
+                "transcript_id": transcript_id,
+                "transcript": _transcript_preview(transcript),
+                "message": "Transcrição concluída dentro da conversa.",
+            }
+        if job["status"] in ("FAILED", "CANCELLED"):
+            return {
+                "status": str(job["status"]).lower(),
+                "job_id": job_id,
+                "error": job.get("errorMsg") or "Job não concluiu.",
+            }
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            return {
+                "status": "queued_background",
+                "job_id": job_id,
+                "job_status": job["status"],
+                "message": (
+                    "Ainda está processando. Continuei em modo background; "
+                    f"acompanhe em /jobs/{job_id}."
+                ),
+            }
+        await asyncio.sleep(min(3.0, remaining))
 
 
 async def _web_search(user_id: str, query: str) -> dict[str, Any]:

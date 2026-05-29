@@ -13,7 +13,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
+import { deleteBrainForSources, reindexNotesBrain } from '../lib/brain';
 import { db } from '../lib/db';
+import { invalidateGraphCache } from '../lib/graph-cache';
 
 type Vars = { userId: string };
 
@@ -138,6 +140,8 @@ notesRoutes.post('/', async (c) => {
     },
     select: { id: true, parentId: true, kind: true, title: true, updatedAt: true },
   });
+  await reindexNotesBrain(userId);
+  await invalidateGraphCache(userId);
   return c.json({ note }, 201);
 });
 
@@ -200,6 +204,8 @@ notesRoutes.patch('/:id', async (c) => {
       updatedAt: true,
     },
   });
+  await reindexNotesBrain(userId);
+  await invalidateGraphCache(userId);
   return c.json({ note });
 });
 
@@ -211,7 +217,11 @@ notesRoutes.delete('/:id', async (c) => {
     select: { id: true },
   });
   if (!existing) return c.json({ error: 'Nota não encontrada.' }, 404);
+  const noteIds = [id, ...(await getDescendantIds(id))];
   await db.note.delete({ where: { id } });
+  await deleteBrainForSources(userId, 'NOTE', noteIds);
+  await reindexNotesBrain(userId);
+  await invalidateGraphCache(userId);
   return c.json({ ok: true });
 });
 

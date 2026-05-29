@@ -1,16 +1,20 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
+  Archive,
   Calendar,
   Clock,
   ExternalLink,
   FileText,
+  Folder,
   Globe,
   Languages,
   Loader2,
+  RotateCcw,
   Sparkles,
+  Trash2,
   Wand2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -24,10 +28,20 @@ import { AnimatedPage } from '../components/motion/animated-page';
 import { TranscriptViewer } from '../components/ui/transcript-viewer';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { useI18n, type TranslateFn } from '../lib/i18n';
 
 interface TranscriptDetail {
   id: string;
+  folderId: string | null;
+  folder: { id: string; name: string; parentId: string | null } | null;
+  status: 'ACTIVE' | 'ARCHIVED' | 'TRASH';
   source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB' | 'UPLOAD';
   url: string;
   title: string;
@@ -47,6 +61,8 @@ interface TranscriptDetail {
   plainText: string;
   summaryMd: string | null;
   frontmatter: unknown;
+  archivedAt: string | null;
+  trashedAt: string | null;
   createdAt: string;
 }
 
@@ -55,12 +71,32 @@ interface ResponseBody {
   markdown: string;
 }
 
+interface LibraryFolder {
+  id: string;
+  parentId: string | null;
+  name: string;
+  _count?: { transcripts: number; children: number };
+}
+
+interface FoldersResponse {
+  folders: LibraryFolder[];
+}
+
 export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { locale, t: translate } = useI18n();
-  const { data, loading, refresh } = useFetch<ResponseBody>(id ? `/api/transcripts/${id}` : null);
+  const { data, loading, refresh } = useFetch<ResponseBody>(
+    id ? `/api/transcripts/${id}?includeTrash=1` : null,
+  );
+  const { data: foldersData, refresh: refreshFolders } =
+    useFetch<FoldersResponse>('/api/library/folders');
   const [generating, setGenerating] = useState(false);
+  const [organizing, setOrganizing] = useState(false);
+  const [lifecycleLoading, setLifecycleLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function generateSummary(force: boolean): Promise<void> {
     if (!id) return;
@@ -95,6 +131,117 @@ export function TranscricaoDetalhePage(): React.ReactElement {
       });
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function moveToFolder(folderId: string | null): Promise<void> {
+    if (!id) return;
+    setOrganizing(true);
+    try {
+      const res = await fetch(`/api/transcripts/${id}/organization`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderId }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(body.error ?? translate('library.folderError'));
+        return;
+      }
+      toast.success(translate('library.folderSaved'));
+      refresh();
+    } catch (e) {
+      toast.error(translate('library.folderError'), {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setOrganizing(false);
+    }
+  }
+
+  async function createFolder(name: string): Promise<void> {
+    setOrganizing(true);
+    try {
+      const res = await fetch('/api/library/folders', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        folder?: { id: string };
+      };
+      if (!res.ok || !body.folder) {
+        toast.error(body.error ?? translate('library.folderError'));
+        setOrganizing(false);
+        return;
+      }
+      await refreshFolders();
+      await moveToFolder(body.folder.id);
+    } catch (e) {
+      toast.error(translate('library.folderError'), {
+        description: e instanceof Error ? e.message : undefined,
+      });
+      setOrganizing(false);
+    }
+  }
+
+  async function updateLifecycle(status: TranscriptDetail['status']): Promise<void> {
+    if (!id) return;
+    setLifecycleLoading(true);
+    try {
+      const res = await fetch(`/api/transcripts/${id}/lifecycle`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(body.error ?? translate('library.lifecycleError'));
+        return;
+      }
+      if (status === 'TRASH') {
+        toast.success(translate('library.movedToTrash'));
+        navigate('/transcricoes');
+        return;
+      }
+      toast.success(
+        status === 'ARCHIVED' ? translate('library.archived') : translate('library.restored'),
+      );
+      refresh();
+    } catch (e) {
+      toast.error(translate('library.lifecycleError'), {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setLifecycleLoading(false);
+    }
+  }
+
+  async function hardDelete(): Promise<void> {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/transcripts/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(body.error ?? translate('library.deleteError'));
+        return;
+      }
+      toast.success(translate('library.deleted'));
+      navigate('/transcricoes?status=trash');
+    } catch (e) {
+      toast.error(translate('library.deleteError'), {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -179,6 +326,16 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 {t.language}
               </Badge>
             )}
+            {t.status === 'ARCHIVED' && (
+              <Badge variant="muted" className="text-[10px]">
+                {translate('library.statusArchived')}
+              </Badge>
+            )}
+            {t.status === 'TRASH' && (
+              <Badge variant="danger" className="text-[10px]">
+                {translate('library.statusTrash')}
+              </Badge>
+            )}
           </div>
           <h1 className="font-display text-4xl lg:text-5xl font-semibold tracking-[-0.035em] leading-[1.05] text-balance">
             {t.title}
@@ -240,6 +397,14 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
             <Card elevated>
               <CardContent className="pt-5 pb-5 space-y-4">
+                <LibraryFolderControl
+                  folders={foldersData?.folders ?? []}
+                  folderId={t.folderId}
+                  organizing={organizing}
+                  onMove={moveToFolder}
+                  onCreate={createFolder}
+                  t={translate}
+                />
                 {/* Duração só faz sentido pra vídeos */}
                 {t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript && (
                   <MetaRow
@@ -289,6 +454,57 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </CardContent>
             </Card>
 
+            <Card elevated>
+              <CardContent className="pt-5 pb-5 space-y-3">
+                {t.status === 'ARCHIVED' || t.status === 'TRASH' ? (
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="w-full"
+                    disabled={lifecycleLoading}
+                    onClick={() => void updateLifecycle('ACTIVE')}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    {translate('library.restore')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="w-full"
+                    disabled={lifecycleLoading}
+                    onClick={() => void updateLifecycle('ARCHIVED')}
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                    {translate('library.archive')}
+                  </Button>
+                )}
+                {t.status === 'TRASH' ? (
+                  <Button
+                    variant="destructive"
+                    size="default"
+                    className="w-full"
+                    disabled={deleting}
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {translate('library.deletePermanently')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="w-full border-red-500/25 text-red-200 hover:bg-red-500/10 hover:text-red-100"
+                    disabled={lifecycleLoading}
+                    onClick={() => void updateLifecycle('TRASH')}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {translate('library.moveToTrash')}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
             {t.source !== 'UPLOAD' && (
               <Button variant="outline" size="default" className="w-full" asChild>
                 <a href={t.url} target="_blank" rel="noreferrer">
@@ -312,7 +528,93 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         onConfirm={() => generateSummary(true)}
         loading={generating}
       />
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={translate('library.deleteTitle')}
+        description={translate('library.deleteDescription')}
+        confirmLabel={translate('library.deletePermanently')}
+        cancelLabel={translate('common.cancel')}
+        variant="destructive"
+        onConfirm={() => hardDelete()}
+        loading={deleting}
+      />
     </AnimatedPage>
+  );
+}
+
+function LibraryFolderControl({
+  folders,
+  folderId,
+  organizing,
+  onMove,
+  onCreate,
+  t,
+}: {
+  folders: LibraryFolder[];
+  folderId: string | null;
+  organizing: boolean;
+  onMove: (folderId: string | null) => Promise<void>;
+  onCreate: (name: string) => Promise<void>;
+  t: TranslateFn;
+}): React.ReactElement {
+  const [name, setName] = useState('');
+  const sortedFolders = [...folders].sort((a, b) => a.name.localeCompare(b.name));
+
+  async function submit(): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    await onCreate(trimmed);
+    setName('');
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
+        <Folder className="h-3.5 w-3.5 text-amber-400" />
+        {t('library.folder')}
+      </div>
+      <Select
+        value={folderId ?? 'none'}
+        disabled={organizing}
+        onValueChange={(value) => void onMove(value === 'none' ? null : value)}
+      >
+        <SelectTrigger className="h-10">
+          <SelectValue placeholder={t('library.noFolder')} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">{t('library.noFolder')}</SelectItem>
+          {sortedFolders.map((folder) => (
+            <SelectItem key={folder.id} value={folder.id}>
+              {folder.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void submit();
+          }}
+          placeholder={t('library.newFolderPlaceholder')}
+          className="min-w-0 flex-1 h-9 rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15"
+          disabled={organizing}
+          maxLength={120}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={organizing || name.trim().length === 0}
+          onClick={() => void submit()}
+        >
+          {t('library.createFolder')}
+        </Button>
+      </div>
+    </div>
   );
 }
 

@@ -5,7 +5,7 @@
 // `GARAGE_*` permanece apenas como fallback de compatibilidade.
 // ============================================================================
 
-import { S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { existsSync, readFileSync } from 'node:fs';
 
 function envOr(...keys: string[]): string | undefined {
@@ -58,4 +58,14 @@ export function s3Client(): S3Client {
     forcePathStyle,
   });
   return cachedClient;
+}
+
+export async function deleteS3Object(key: string): Promise<void> {
+  if (process.env.S3_DELETE_DISABLED === 'true') return;
+  await s3Client().send(
+    new DeleteObjectCommand({
+      Bucket: s3Bucket(),
+      Key: key,
+    }),
+  );
 }

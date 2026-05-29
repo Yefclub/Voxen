@@ -81,6 +81,7 @@ chatRoutes.get('/library-mentions', async (c) => {
     db.transcript.findMany({
       where: {
         userId: uid,
+        status: 'ACTIVE',
         ...(q
           ? {
               OR: [
@@ -552,7 +553,7 @@ async function resolveLibraryMentions(uid: string, raw: unknown): Promise<Librar
   const [transcripts, notes] = await Promise.all([
     transcriptIds.length
       ? db.transcript.findMany({
-          where: { userId: uid, id: { in: transcriptIds } },
+          where: { userId: uid, status: 'ACTIVE', id: { in: transcriptIds } },
           select: {
             id: true,
             title: true,
