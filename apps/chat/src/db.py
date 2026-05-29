@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
+import secrets
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from decimal import Decimal
@@ -299,28 +302,28 @@ async def create_user_note(
     parent_id: str | None = None,
     kind: str = "NOTE",
 ) -> dict[str, Any]:
-    import secrets
-    import time
-
-    new_id = f"n{format(int(time.time() * 1000), 'x')[-8:]}{secrets.token_hex(8)}"
+    new_id = _generate_note_id()
     async with connection() as conn:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO "Note" (
-                id, "userId", "parentId", kind, title, content,
-                "createdAt", "updatedAt"
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                INSERT INTO "Note" (
+                    id, "userId", "parentId", kind, title, content,
+                    "createdAt", "updatedAt"
+                )
+                VALUES ($1, $2, $3, $4::"NoteKind", $5, $6, $7, $7)
+                RETURNING id, "parentId", kind::text AS kind, title, content, "updatedAt"
+                """,
+                new_id,
+                user_id,
+                parent_id,
+                kind,
+                title,
+                content,
+                _utcnow_naive(),
             )
-            VALUES ($1, $2, $3, $4::"NoteKind", $5, $6, $7, $7)
-            RETURNING id, "parentId", kind::text AS kind, title, "updatedAt"
-            """,
-            new_id,
-            user_id,
-            parent_id,
-            kind,
-            title,
-            content,
-            _utcnow_naive(),
-        )
+            if row:
+                await upsert_note_brain_node(conn, user_id=user_id, note=dict(row))
     return dict(row) if row else {"id": new_id}
 
 
@@ -328,36 +331,129 @@ async def update_user_note(
     user_id: str, note_id: str, *, title: str | None = None, content: str | None = None
 ) -> dict[str, Any] | None:
     async with connection() as conn:
-        row = await conn.fetchrow(
-            """
-            UPDATE "Note"
-            SET title = COALESCE($3, title),
-                content = COALESCE($4, content),
-                "updatedAt" = NOW()
-            WHERE id = $1 AND "userId" = $2
-            RETURNING id, title, "updatedAt"
-            """,
-            note_id,
-            user_id,
-            title,
-            content,
-        )
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                UPDATE "Note"
+                SET title = COALESCE($3, title),
+                    content = COALESCE($4, content),
+                    "updatedAt" = NOW()
+                WHERE id = $1 AND "userId" = $2
+                RETURNING id, "parentId", kind::text AS kind, title, content, "updatedAt"
+                """,
+                note_id,
+                user_id,
+                title,
+                content,
+            )
+            if row:
+                await upsert_note_brain_node(conn, user_id=user_id, note=dict(row))
     return dict(row) if row else None
 
 
 async def delete_user_note(user_id: str, note_id: str) -> bool:
     async with connection() as conn:
-        result = await conn.execute(
-            'DELETE FROM "Note" WHERE id = $1 AND "userId" = $2',
-            note_id,
-            user_id,
-        )
+        async with conn.transaction():
+            result = await conn.execute(
+                'DELETE FROM "Note" WHERE id = $1 AND "userId" = $2',
+                note_id,
+                user_id,
+            )
+            await delete_note_brain_node(conn, user_id=user_id, note_id=note_id)
     # asyncpg retorna "DELETE N" — parse pra inteiro
     try:
         n = int(result.split()[-1])
     except (ValueError, IndexError):
         n = 0
     return n > 0
+
+
+async def upsert_note_brain_node(
+    conn: asyncpg.Connection, *, user_id: str, note: dict[str, Any]
+) -> None:
+    await conn.execute(
+        """
+        DELETE FROM "BrainSource"
+        WHERE "userId" = $1
+          AND "sourceType" = 'NOTE'::"BrainSourceType"
+          AND "sourceId" = $2
+          AND "nodeId" IS NOT NULL
+        """,
+        user_id,
+        note["id"],
+    )
+    node_type = "FOLDER" if note.get("kind") == "FOLDER" else "CONTENT"
+    node_id = _generate_cuid()
+    key = f"NOTE:{note['id']}"
+    updated_at = note.get("updatedAt")
+    metadata = {
+        "kind": note.get("kind"),
+        "parentId": note.get("parentId"),
+        "updatedAt": updated_at.isoformat() if updated_at is not None else None,
+    }
+    row = await conn.fetchrow(
+        """
+        INSERT INTO "BrainNode" (
+            id, "userId", key, type, label, description, status, metadata,
+            "sourceType", "sourceId", "createdAt", "updatedAt"
+        ) VALUES (
+            $1, $2, $3, $4::"BrainNodeType", $5, $6, 'ACTIVE'::"ContentStatus",
+            $7::jsonb, 'NOTE'::"BrainSourceType", $8, NOW(), NOW()
+        )
+        ON CONFLICT ("userId", key) DO UPDATE SET
+            type = EXCLUDED.type,
+            label = EXCLUDED.label,
+            description = EXCLUDED.description,
+            status = EXCLUDED.status,
+            metadata = EXCLUDED.metadata,
+            "sourceType" = EXCLUDED."sourceType",
+            "sourceId" = EXCLUDED."sourceId",
+            "updatedAt" = NOW()
+        RETURNING id
+        """,
+        node_id,
+        user_id,
+        key,
+        node_type,
+        note["title"],
+        _truncate(note.get("content") if note.get("kind") == "NOTE" else None, 800),
+        json.dumps(metadata, default=str),
+        note["id"],
+    )
+    brain_node_id = row["id"] if row else node_id
+    await conn.execute(
+        """
+        INSERT INTO "BrainSource" (
+            id, "userId", "nodeId", "sourceType", "sourceId", excerpt, "createdAt"
+        ) VALUES (
+            $1, $2, $3, 'NOTE'::"BrainSourceType", $4, $5, NOW()
+        )
+        """,
+        _generate_cuid(),
+        user_id,
+        brain_node_id,
+        note["id"],
+        _truncate(note["title"], 600),
+    )
+
+
+async def delete_note_brain_node(conn: asyncpg.Connection, *, user_id: str, note_id: str) -> None:
+    await conn.execute(
+        """
+        DELETE FROM "BrainNode"
+        WHERE "userId" = $1 AND "sourceType" = 'NOTE'::"BrainSourceType" AND "sourceId" = $2
+        """,
+        user_id,
+        note_id,
+    )
+    await conn.execute(
+        """
+        DELETE FROM "BrainSource"
+        WHERE "userId" = $1 AND "sourceType" = 'NOTE'::"BrainSourceType" AND "sourceId" = $2
+        """,
+        user_id,
+        note_id,
+    )
 
 
 async def list_user_automation_runs(
@@ -412,11 +508,7 @@ async def insert_cost_event(
     kind: str = "CHAT",
     meta: dict[str, Any] | None = None,
 ) -> None:
-    import json
-    import secrets
-    import time
-
-    new_id = f"c{format(int(time.time() * 1000), 'x')[-8:]}{secrets.token_hex(8)}"
+    new_id = _generate_cuid()
     async with connection() as conn:
         await conn.execute(
             """
@@ -437,3 +529,20 @@ async def insert_cost_event(
             cost_usd,
             json.dumps(meta or {}, default=str),
         )
+
+
+def _generate_note_id() -> str:
+    return f"n{format(int(time.time() * 1000), 'x')[-8:]}{secrets.token_hex(8)}"
+
+
+def _generate_cuid() -> str:
+    return f"c{format(int(time.time() * 1000), 'x')[-8:]}{secrets.token_hex(8)}"
+
+
+def _truncate(value: str | None, limit: int) -> str | None:
+    normalized = " ".join((value or "").split())
+    if not normalized:
+        return None
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 3] + "..."

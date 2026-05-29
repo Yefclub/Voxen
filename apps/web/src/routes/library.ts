@@ -11,6 +11,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
+import {
+  deleteBrainForSources,
+  reindexLibraryFolderBrain,
+  reindexTranscriptsBrain,
+} from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 
@@ -89,6 +94,7 @@ libraryRoutes.post('/folders', async (c) => {
       updatedAt: true,
     },
   });
+  await reindexLibraryFolderBrain(userId, folder.id);
   await invalidateGraphCache(userId);
   return c.json({ folder }, 201);
 });
@@ -137,6 +143,7 @@ libraryRoutes.patch('/folders/:id', async (c) => {
       updatedAt: true,
     },
   });
+  await reindexLibraryFolderBrain(userId, folder.id);
   await invalidateGraphCache(userId);
   return c.json({ folder });
 });
@@ -150,7 +157,17 @@ libraryRoutes.delete('/folders/:id', async (c) => {
   });
   if (!existing) return c.json({ error: 'Pasta não encontrada.' }, 404);
 
+  const folderIds = [id, ...(await getDescendantIds(userId, id))];
+  const affectedTranscripts = await db.transcript.findMany({
+    where: { userId, folderId: { in: folderIds } },
+    select: { id: true },
+  });
   await db.libraryFolder.delete({ where: { id } });
+  await deleteBrainForSources(userId, 'FOLDER', folderIds);
+  await reindexTranscriptsBrain(
+    userId,
+    affectedTranscripts.map((item) => item.id),
+  );
   await invalidateGraphCache(userId);
   return c.json({ ok: true });
 });

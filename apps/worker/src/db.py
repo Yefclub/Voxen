@@ -147,40 +147,54 @@ async def write_transcript(
         published_at.replace(tzinfo=None) if published_at and published_at.tzinfo else published_at
     )
     async with connection() as conn:
-        # cuid() gerado via random — Prisma não está disponível aqui;
-        # geramos um id compatível com cuid pattern (25 chars, starts with c).
-        new_id = generate_cuid()
-        await conn.execute(
-            """
-            INSERT INTO "Transcript" (
-                id, "userId", source, url, title, channel, author, "durationSec",
-                "publishedAt", "thumbnailUrl", language, "transcriptionMethod",
-                model, "costUsd", "mdPath", "plainText", frontmatter,
-                "createdAt", "updatedAt"
-            ) VALUES (
-                $1, $2, $3::"TranscriptSource", $4, $5, $6, $7, $8, $9, $10, $11,
-                $12::"TranscriptionMethod", $13, $14, $15, $16, $17::jsonb,
-                NOW(), NOW()
+        async with conn.transaction():
+            # cuid() gerado via random — Prisma não está disponível aqui;
+            # geramos um id compatível com cuid pattern (25 chars, starts with c).
+            new_id = generate_cuid()
+            await conn.execute(
+                """
+                INSERT INTO "Transcript" (
+                    id, "userId", source, url, title, channel, author, "durationSec",
+                    "publishedAt", "thumbnailUrl", language, "transcriptionMethod",
+                    model, "costUsd", "mdPath", "plainText", frontmatter,
+                    "createdAt", "updatedAt"
+                ) VALUES (
+                    $1, $2, $3::"TranscriptSource", $4, $5, $6, $7, $8, $9, $10, $11,
+                    $12::"TranscriptionMethod", $13, $14, $15, $16, $17::jsonb,
+                    NOW(), NOW()
+                )
+                """,
+                new_id,
+                user_id,
+                source,
+                url,
+                title,
+                channel,
+                author,
+                duration_sec,
+                published_at_naive,
+                thumbnail_url,
+                language,
+                transcription_method,
+                model,
+                cost_usd,
+                md_path,
+                plain_text,
+                json.dumps(frontmatter, default=str),
             )
-            """,
-            new_id,
-            user_id,
-            source,
-            url,
-            title,
-            channel,
-            author,
-            duration_sec,
-            published_at_naive,
-            thumbnail_url,
-            language,
-            transcription_method,
-            model,
-            cost_usd,
-            md_path,
-            plain_text,
-            json.dumps(frontmatter, default=str),
-        )
+            await upsert_transcript_brain_node(
+                conn,
+                user_id=user_id,
+                transcript_id=new_id,
+                source=source,
+                url=url,
+                title=title,
+                channel=channel,
+                language=language,
+                transcription_method=transcription_method,
+                thumbnail_url=thumbnail_url,
+                plain_text=plain_text,
+            )
         return new_id
 
 
@@ -195,6 +209,76 @@ async def link_job_transcript(job_id: str, transcript_id: str) -> None:
             job_id,
             transcript_id,
         )
+
+
+async def upsert_transcript_brain_node(
+    conn: asyncpg.Connection,
+    *,
+    user_id: str,
+    transcript_id: str,
+    source: str,
+    url: str,
+    title: str,
+    channel: str | None,
+    language: str,
+    transcription_method: str,
+    thumbnail_url: str | None,
+    plain_text: str,
+) -> None:
+    """Materializa o nó CONTENT do Brain quando o worker conclui uma transcrição."""
+    node_id = generate_cuid()
+    key = f"TRANSCRIPT:{transcript_id}"
+    metadata = {
+        "source": source,
+        "url": url,
+        "channel": channel,
+        "language": language,
+        "transcriptionMethod": transcription_method,
+        "thumbnailUrl": thumbnail_url,
+    }
+    row = await conn.fetchrow(
+        """
+        INSERT INTO "BrainNode" (
+            id, "userId", key, type, label, description, status, metadata,
+            "sourceType", "sourceId", "createdAt", "updatedAt"
+        ) VALUES (
+            $1, $2, $3, 'CONTENT'::"BrainNodeType", $4, $5, 'ACTIVE'::"ContentStatus",
+            $6::jsonb, 'TRANSCRIPT'::"BrainSourceType", $7, NOW(), NOW()
+        )
+        ON CONFLICT ("userId", key) DO UPDATE SET
+            type = EXCLUDED.type,
+            label = EXCLUDED.label,
+            description = EXCLUDED.description,
+            status = EXCLUDED.status,
+            metadata = EXCLUDED.metadata,
+            "sourceType" = EXCLUDED."sourceType",
+            "sourceId" = EXCLUDED."sourceId",
+            "updatedAt" = NOW()
+        RETURNING id
+        """,
+        node_id,
+        user_id,
+        key,
+        title,
+        _truncate(plain_text, 800),
+        json.dumps(metadata, default=str),
+        transcript_id,
+    )
+    brain_node_id = row["id"] if row else node_id
+    await conn.execute(
+        """
+        INSERT INTO "BrainSource" (
+            id, "userId", "nodeId", "sourceType", "sourceId", excerpt, "createdAt"
+        ) VALUES (
+            $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, NOW()
+        )
+        """,
+        generate_cuid(),
+        user_id,
+        brain_node_id,
+        transcript_id,
+        _truncate(title, 600),
+    )
 
 
 async def mark_job_done(job_id: str) -> None:
@@ -273,3 +357,12 @@ def generate_cuid() -> str:
     ts_part = format(int(time.time() * 1000), "x")[-8:]
     rand_part = secrets.token_hex(8)
     return f"c{ts_part}{rand_part}"
+
+
+def _truncate(value: str | None, limit: int) -> str | None:
+    normalized = " ".join((value or "").split())
+    if not normalized:
+        return None
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 3] + "..."

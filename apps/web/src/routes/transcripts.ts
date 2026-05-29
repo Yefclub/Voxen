@@ -12,6 +12,7 @@ import { Hono } from 'hono';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
+import { deleteBrainForSource, reindexTranscriptBrain } from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { rateLimit } from '../lib/rate-limit';
@@ -273,6 +274,7 @@ transcriptsRoutes.patch('/:id/organization', async (c) => {
     data: { folderId },
     select: TRANSCRIPT_LIST_SELECT,
   });
+  await reindexTranscriptBrain(userId, id);
   await invalidateGraphCache(userId);
   return c.json({ transcript });
 });
@@ -304,6 +306,7 @@ transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
     },
     select: TRANSCRIPT_LIST_SELECT,
   });
+  await reindexTranscriptBrain(userId, id);
   await invalidateGraphCache(userId);
   return c.json({ transcript });
 });
@@ -330,6 +333,7 @@ transcriptsRoutes.delete('/:id', async (c) => {
   }
 
   await db.transcript.delete({ where: { id } });
+  await deleteBrainForSource(userId, 'TRANSCRIPT', id);
   await invalidateGraphCache(userId);
   return c.json({ ok: true, deletedId: id });
 });
