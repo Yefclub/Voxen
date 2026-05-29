@@ -67,8 +67,10 @@ REGRAS DE TRABALHO:
 - Se a base está vazia, diga e sugira indexar conteúdo.
 
 INDEXAÇÃO:
-- Link de vídeo (YouTube/Instagram Reel/TikTok) — chame `transcribe_video`. Confirme rápido,
-  avise que demora (curto: ~30s, longo: minutos).
+- Link de vídeo (YouTube/Instagram Reel/TikTok) — chame `transcribe_video`.
+  Para pedidos como "transcreva e resuma/responda", mantenha `wait=true` e só responda
+  o usuário depois do retorno da tool. Para pedidos de apenas indexar, use `wait=false`
+  e informe que ficou em processamento.
 - Link http(s) que NÃO é vídeo (blog, artigo, docs, wiki) — chame `scrape_url`. Confirme rápido.
 
 PESQUISA WEB:
@@ -405,7 +407,23 @@ async def chat(
                         except Exception:  # noqa: BLE001
                             fn_args = {}
                         yield _sse("tool_start", {"name": fn_name, "args": fn_args})
-                        result = await execute_tool(fn_name, fn_args, user_id)
+                        tool_task = asyncio.create_task(
+                            execute_tool(fn_name, fn_args, user_id),
+                            name=f"tool:{fn_name}",
+                        )
+                        while not tool_task.done():
+                            try:
+                                result = await asyncio.wait_for(
+                                    asyncio.shield(tool_task),
+                                    timeout=8,
+                                )
+                            except TimeoutError:
+                                yield _sse(
+                                    "tool_progress",
+                                    {"name": fn_name, "status": "running"},
+                                )
+                                continue
+                        result = tool_task.result()
                         # Pra HITL, devolve `action_summary` cru no payload SSE
                         # alem do preview truncado — UI usa o campo dedicado
                         # pra renderizar o banner sem depender de parsear o

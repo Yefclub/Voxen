@@ -134,6 +134,210 @@ async def get_user_transcript(user_id: str, transcript_id: str) -> dict[str, Any
         return dict(row) if row else None
 
 
+async def get_user_job(user_id: str, job_id: str) -> dict[str, Any] | None:
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, status::text AS status, "sourceUrl", "transcriptId", "errorMsg",
+                   "queuedAt", "startedAt", "finishedAt"
+            FROM "Job"
+            WHERE id = $1 AND "userId" = $2
+            """,
+            job_id,
+            user_id,
+        )
+    return dict(row) if row else None
+
+
+async def brain_search(
+    user_id: str, query: str, limit: int = 8, include_archived: bool = False
+) -> list[dict[str, Any]]:
+    pattern = f"%{query}%"
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, key, type::text AS type, label, description,
+                   status::text AS status, "sourceType"::text AS "sourceType",
+                   "sourceId", metadata, "updatedAt"
+            FROM "BrainNode"
+            WHERE "userId" = $1
+              AND ($4::boolean OR status = 'ACTIVE'::"ContentStatus")
+              AND (label ILIKE $2 OR coalesce(description, '') ILIKE $2 OR key ILIKE $2)
+            ORDER BY
+              CASE WHEN label ILIKE $3 THEN 0 ELSE 1 END,
+              "updatedAt" DESC
+            LIMIT $5
+            """,
+            user_id,
+            pattern,
+            f"{query}%",
+            include_archived,
+            limit,
+        )
+    return [dict(r) for r in rows]
+
+
+async def brain_get_node(user_id: str, node_ref: str) -> dict[str, Any] | None:
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, key, type::text AS type, label, description,
+                   status::text AS status, "sourceType"::text AS "sourceType",
+                   "sourceId", metadata, "updatedAt"
+            FROM "BrainNode"
+            WHERE "userId" = $1 AND (id = $2 OR key = $2)
+            """,
+            user_id,
+            node_ref,
+        )
+    return dict(row) if row else None
+
+
+async def brain_neighbors(
+    user_id: str, node_ref: str, limit: int = 30, include_archived: bool = False
+) -> dict[str, Any] | None:
+    node = await brain_get_node(user_id, node_ref)
+    if not node:
+        return None
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+              e.id AS "edgeId",
+              e.kind::text AS kind,
+              e.method,
+              e.confidence::text AS confidence,
+              e.status::text AS "edgeStatus",
+              e."fromNodeId",
+              e."toNodeId",
+              n.id, n.key, n.type::text AS type, n.label, n.description,
+              n.status::text AS status, n."sourceType"::text AS "sourceType",
+              n."sourceId", n.metadata
+            FROM "BrainEdge" e
+            JOIN "BrainNode" n
+              ON n.id = CASE WHEN e."fromNodeId" = $2 THEN e."toNodeId" ELSE e."fromNodeId" END
+            WHERE e."userId" = $1
+              AND (e."fromNodeId" = $2 OR e."toNodeId" = $2)
+              AND (
+                $3::boolean
+                OR (
+                  e.status = 'ACTIVE'::"ContentStatus"
+                  AND n.status = 'ACTIVE'::"ContentStatus"
+                )
+              )
+            ORDER BY e."updatedAt" DESC
+            LIMIT $4
+            """,
+            user_id,
+            node["id"],
+            include_archived,
+            limit,
+        )
+    return {"node": node, "neighbors": [dict(r) for r in rows]}
+
+
+async def brain_sources(
+    user_id: str, node_or_edge_ref: str, limit: int = 20
+) -> list[dict[str, Any]]:
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT s.id, s."nodeId", s."edgeId", s."sourceType"::text AS "sourceType",
+                   s."sourceId", s."chunkId", s."startSec", s."endSec", s.excerpt,
+                   n.key AS "nodeKey", n.label AS "nodeLabel",
+                   e.kind::text AS "edgeKind", e.method AS "edgeMethod"
+            FROM "BrainSource" s
+            LEFT JOIN "BrainNode" n ON n.id = s."nodeId"
+            LEFT JOIN "BrainEdge" e ON e.id = s."edgeId"
+            WHERE s."userId" = $1
+              AND (
+                s."nodeId" = $2 OR s."edgeId" = $2 OR
+                n.key = $2 OR s."sourceId" = $2
+              )
+            ORDER BY s."createdAt" DESC
+            LIMIT $3
+            """,
+            user_id,
+            node_or_edge_ref,
+            limit,
+        )
+    return [dict(r) for r in rows]
+
+
+async def brain_path(user_id: str, from_ref: str, to_ref: str) -> list[dict[str, Any]]:
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            WITH endpoints AS (
+              SELECT
+                (SELECT id FROM "BrainNode"
+                 WHERE "userId" = $1 AND status = 'ACTIVE'::"ContentStatus"
+                   AND (id = $2 OR key = $2)
+                 LIMIT 1) AS from_id,
+                (SELECT id FROM "BrainNode"
+                 WHERE "userId" = $1 AND status = 'ACTIVE'::"ContentStatus"
+                   AND (id = $3 OR key = $3)
+                 LIMIT 1) AS to_id
+            ),
+            active_edges AS (
+              SELECT e.*
+              FROM "BrainEdge" e
+              JOIN "BrainNode" f ON f.id = e."fromNodeId"
+              JOIN "BrainNode" t ON t.id = e."toNodeId"
+              WHERE e."userId" = $1
+                AND e.status = 'ACTIVE'::"ContentStatus"
+                AND f.status = 'ACTIVE'::"ContentStatus"
+                AND t.status = 'ACTIVE'::"ContentStatus"
+            ),
+            direct AS (
+              SELECT e.id, e.kind::text AS kind, e.method, e."fromNodeId", e."toNodeId",
+                     NULL::text AS "viaNodeId", NULL::text AS "viaLabel", 1 AS depth
+              FROM active_edges e, endpoints ep
+              WHERE ep.from_id IS NOT NULL
+                AND ep.to_id IS NOT NULL
+                AND ((e."fromNodeId" = ep.from_id AND e."toNodeId" = ep.to_id)
+                  OR (e."fromNodeId" = ep.to_id AND e."toNodeId" = ep.from_id))
+            ),
+            two_hop AS (
+              SELECT e1.id || ':' || e2.id AS id,
+                     e1.kind::text || ' -> ' || e2.kind::text AS kind,
+                     e1.method || ' -> ' || e2.method AS method,
+                     e1."fromNodeId",
+                     e2."toNodeId",
+                     via.id AS "viaNodeId",
+                     via.label AS "viaLabel",
+                     2 AS depth
+              FROM active_edges e1
+              JOIN active_edges e2 ON e1.id <> e2.id
+              JOIN endpoints ep ON TRUE
+              JOIN "BrainNode" via
+                ON via.id = CASE
+                  WHEN e1."fromNodeId" = ep.from_id THEN e1."toNodeId"
+                  ELSE e1."fromNodeId"
+                END
+              WHERE ep.from_id IS NOT NULL
+                AND ep.to_id IS NOT NULL
+                AND (e1."fromNodeId" = ep.from_id OR e1."toNodeId" = ep.from_id)
+                AND (e2."fromNodeId" = ep.to_id OR e2."toNodeId" = ep.to_id)
+                AND via.id = CASE
+                  WHEN e2."fromNodeId" = ep.to_id THEN e2."toNodeId"
+                  ELSE e2."fromNodeId"
+                END
+              LIMIT 5
+            )
+            SELECT * FROM direct
+            UNION ALL
+            SELECT * FROM two_hop
+            ORDER BY depth ASC
+            LIMIT 10
+            """,
+            user_id,
+            from_ref,
+            to_ref,
+        )
+    return [dict(r) for r in rows]
+
+
 def _utcnow_naive() -> Any:
     from datetime import UTC, datetime
 
