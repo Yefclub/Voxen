@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { FileText, Folder, Globe, Library, Loader2, Search, X } from 'lucide-react';
+import { FileText, Folder, FolderPlus, Globe, Library, Loader2, Search, X } from 'lucide-react';
 import { motion } from 'motion/react';
+import { toast } from 'sonner';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Button } from '../components/ui/button';
+import { apiPost } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import { formatDuration, formatRelative, formatUsd } from '../lib/format';
 import type { JobStatus } from '../lib/types';
@@ -20,7 +22,7 @@ interface TranscriptSummary {
   channel: string | null;
   durationSec: number;
   language: string;
-  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION' | 'DOCUMENT';
+  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION' | 'DOCUMENT' | 'X_SEARCH';
   thumbnailUrl: string | null;
   costUsd: string | null;
   folderId: string | null;
@@ -33,6 +35,19 @@ interface TranscriptSummary {
 interface SearchResponse {
   transcripts: TranscriptSummary[];
   query: string;
+}
+
+interface LibraryFolder {
+  id: string;
+  parentId: string | null;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  _count: { transcripts: number; children: number };
+}
+
+interface FoldersResponse {
+  folders: LibraryFolder[];
 }
 
 type StatusFilter = 'active' | 'archived' | 'trash';
@@ -50,17 +65,24 @@ export function TranscricoesPage(): React.ReactElement {
   const { locale, t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const status = normalizeStatusFilter(searchParams.get('status'));
+  const folderId = searchParams.get('folderId');
   const [q, setQ] = useState('');
+  const [newFolderName, setNewFolderName] = useState('');
+  const [creatingFolder, setCreatingFolder] = useState(false);
   const debouncedQ = useDebounced(q, 250);
   const url = useMemo(() => {
     const params = new URLSearchParams();
     if (debouncedQ) params.set('q', debouncedQ);
     if (status !== 'active') params.set('status', status);
+    if (folderId) params.set('folderId', folderId);
     const suffix = params.toString();
     return `/api/transcripts${suffix ? `?${suffix}` : ''}`;
-  }, [debouncedQ, status]);
+  }, [debouncedQ, folderId, status]);
   const { data, loading } = useFetch<SearchResponse>(url);
+  const { data: foldersData, refresh: refreshFolders } =
+    useFetch<FoldersResponse>('/api/library/folders');
   const transcripts = data?.transcripts ?? [];
+  const folders = foldersData?.folders ?? [];
   const isSearching = debouncedQ.length > 0;
   const queryChanging = q !== debouncedQ;
 
@@ -69,6 +91,30 @@ export function TranscricoesPage(): React.ReactElement {
     if (next === 'active') params.delete('status');
     else params.set('status', next);
     setSearchParams(params, { replace: true });
+  }
+
+  function setFolder(next: string | null): void {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set('folderId', next);
+    else params.delete('folderId');
+    setSearchParams(params, { replace: true });
+  }
+
+  async function createFolder(): Promise<void> {
+    const name = newFolderName.trim();
+    if (!name || creatingFolder) return;
+    setCreatingFolder(true);
+    try {
+      const body = await apiPost<{ folder: LibraryFolder }>('/api/library/folders', { name });
+      setNewFolderName('');
+      refreshFolders();
+      setFolder(body.folder.id);
+      toast.success(t('library.folderSaved'));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('library.folderError'));
+    } finally {
+      setCreatingFolder(false);
+    }
   }
 
   return (
@@ -116,6 +162,69 @@ export function TranscricoesPage(): React.ReactElement {
             </button>
           )}
         </div>
+
+        <section className="space-y-3 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/40 p-3 -mt-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
+              <Folder className="h-3.5 w-3.5 text-amber-400" />
+              {t('library.folders')}
+            </div>
+            <div className="flex min-w-0 gap-2">
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(event) => setNewFolderName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void createFolder();
+                }}
+                placeholder={t('library.newFolderPlaceholder')}
+                className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15"
+                disabled={creatingFolder}
+                maxLength={120}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={creatingFolder || newFolderName.trim().length === 0}
+                onClick={() => void createFolder()}
+              >
+                {creatingFolder ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FolderPlus className="h-3.5 w-3.5" />
+                )}
+                <span>{t('library.createFolder')}</span>
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant={!folderId ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setFolder(null)}
+            >
+              {t('library.allFolders')}
+            </Button>
+            {folders.map((folder) => (
+              <Button
+                key={folder.id}
+                type="button"
+                variant={folderId === folder.id ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setFolder(folder.id)}
+                className="max-w-[220px]"
+              >
+                <Folder className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                <span className="truncate">{folder.name}</span>
+                <span className="tabular-nums text-[var(--color-app-muted)]">
+                  {folder._count.transcripts}
+                </span>
+              </Button>
+            ))}
+          </div>
+        </section>
 
         <div className="flex flex-wrap items-center gap-2 -mt-4">
           {(['active', 'archived', 'trash'] as const).map((item) => (
@@ -362,6 +471,8 @@ function displayMethod(method: TranscriptSummary['transcriptionMethod'], t: Tran
       return t('library.method.vision');
     case 'DOCUMENT':
       return t('library.method.document');
+    case 'X_SEARCH':
+      return 'X';
     case 'SCRAPE':
       return 'Web';
     case 'API':
