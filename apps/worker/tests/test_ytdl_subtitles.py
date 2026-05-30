@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import xml.etree.ElementTree
 from unittest.mock import AsyncMock
 
 from src import ytdl
@@ -171,5 +172,21 @@ async def test_fetch_youtube_transcript_ignores_non_youtube(monkeypatch) -> None
     monkeypatch.setattr(ytdl, "_runtime_options", AsyncMock(return_value={}))
 
     result = await ytdl.fetch_youtube_transcript("https://example.com/watch?v=dQw4w9WgXcQ")
+
+    assert result is None
+
+
+async def test_fetch_youtube_transcript_malformed_xml_falls_back(monkeypatch) -> None:
+    class FakeApi:
+        def __init__(self, proxy_config=None) -> None:
+            self.proxy_config = proxy_config
+
+        def fetch(self, video_id, languages, preserve_formatting=False):
+            raise xml.etree.ElementTree.ParseError("no element found: line 1, column 0")
+
+    monkeypatch.setattr(ytdl, "YouTubeTranscriptApi", FakeApi)
+    monkeypatch.setattr(ytdl, "_runtime_options", AsyncMock(return_value={}))
+
+    result = await ytdl.fetch_youtube_transcript("https://youtu.be/dQw4w9WgXcQ")
 
     assert result is None
