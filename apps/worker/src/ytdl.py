@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import xml.etree.ElementTree
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -106,7 +107,12 @@ def _fetch_youtube_transcript_sync(video_id: str, proxy_url: str | None) -> Tran
             automatic_captions={},
         )
         return TranscriptFetch(probe=probe, segments=segments, language=language.split("-")[0])
-    except (OSError, requests.RequestException, YouTubeTranscriptApiException):
+    except (
+        OSError,
+        requests.RequestException,
+        YouTubeTranscriptApiException,
+        xml.etree.ElementTree.ParseError,
+    ):
         return None
 
 
