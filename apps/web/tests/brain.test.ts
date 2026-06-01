@@ -319,6 +319,89 @@ describeIfDb('brain indexer', () => {
     expect(evidence?.excerpt).toContain('Conceitos em comum');
   });
 
+  it('connects content by semantic profile and timeline without exact concept overlap', async () => {
+    await signUp('semantic-brain@voxen.local', 'senha-super-segura-123', 'Semantic Brain');
+    const signin = await signIn('semantic-brain@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'semantic-brain@voxen.local' },
+    });
+
+    const first = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'YOUTUBE',
+        url: 'https://youtu.be/alpha-memory',
+        title: 'Circuito Azul',
+        channel: 'Canal A',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/alpha-memory.md`,
+        plainText: 'Rotor celeste calibra mapa discreto.',
+        frontmatter: {},
+      },
+    });
+    const second = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'YOUTUBE',
+        url: 'https://youtu.be/beta-memory',
+        title: 'Ponte Laranja',
+        channel: 'Canal B',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/beta-memory.md`,
+        plainText: 'Saturno dorsal organiza trilha silenciosa.',
+        frontmatter: {},
+      },
+    });
+
+    const graph = await app.fetch(
+      new Request('http://localhost/api/graph?force=1', {
+        headers: { cookie },
+      }),
+    );
+    expect(graph.status).toBe(200);
+
+    const firstNode = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${first.id}` } },
+    });
+    const secondNode = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${second.id}` } },
+    });
+
+    const semantic = await db.brainEdge.findFirst({
+      where: {
+        userId: user.id,
+        kind: 'RELATED_TO',
+        method: 'semantic-profile',
+        OR: [
+          { fromNodeId: firstNode.id, toNodeId: secondNode.id },
+          { fromNodeId: secondNode.id, toNodeId: firstNode.id },
+        ],
+      },
+    });
+    expect(semantic).not.toBeNull();
+    expect((semantic?.metadata as { reasons?: Array<{ kind: string }> }).reasons).toContainEqual(
+      expect.objectContaining({ kind: 'domain' }),
+    );
+
+    const timeline = await db.brainEdge.findFirst({
+      where: {
+        userId: user.id,
+        kind: 'NEXT_TO',
+        method: 'timeline-adjacent',
+        OR: [
+          { fromNodeId: firstNode.id, toNodeId: secondNode.id },
+          { fromNodeId: secondNode.id, toNodeId: firstNode.id },
+        ],
+      },
+    });
+    expect(timeline).not.toBeNull();
+  });
+
   it('reindexes stale Brain source nodes on graph load', async () => {
     await signUp('stale-brain@voxen.local', 'senha-super-segura-123', 'Stale Brain');
     const signin = await signIn('stale-brain@voxen.local', 'senha-super-segura-123');
