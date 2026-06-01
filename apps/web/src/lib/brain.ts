@@ -80,6 +80,8 @@ type IndexedConcept = {
   confidence: number;
 };
 
+export const BRAIN_INDEX_VERSION = 2;
+
 const DESCRIPTION_LIMIT = 800;
 const EVIDENCE_LIMIT = 600;
 const TOPIC_LIMIT = 10;
@@ -201,7 +203,7 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
       transcriptionMethod: transcript.transcriptionMethod,
       thumbnailUrl: transcript.thumbnailUrl,
       createdAt: transcript.createdAt.toISOString(),
-      topicIndexVersion: 1,
+      brainIndexVersion: BRAIN_INDEX_VERSION,
     },
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
@@ -480,6 +482,7 @@ async function upsertLibraryFolderNode(userId: string, folder: LibraryFolderReco
     metadata: {
       parentId: folder.parentId,
       updatedAt: folder.updatedAt.toISOString(),
+      brainIndexVersion: BRAIN_INDEX_VERSION,
     },
     sourceType: 'FOLDER',
     sourceId: folder.id,
@@ -498,6 +501,7 @@ async function upsertNoteNode(userId: string, note: NoteRecord) {
       kind: note.kind,
       parentId: note.parentId,
       updatedAt: note.updatedAt.toISOString(),
+      brainIndexVersion: BRAIN_INDEX_VERSION,
     },
     sourceType: 'NOTE',
     sourceId: note.id,
