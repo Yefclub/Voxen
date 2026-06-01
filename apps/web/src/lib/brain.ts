@@ -80,13 +80,25 @@ type IndexedConcept = {
   confidence: number;
 };
 
-export const BRAIN_INDEX_VERSION = 2;
+type SemanticProfile = {
+  extractorVersion: number;
+  topics: string[];
+  entities: string[];
+  keywords: string[];
+  indexedAt: string;
+};
+
+export const BRAIN_INDEX_VERSION = 3;
 
 const DESCRIPTION_LIMIT = 800;
 const EVIDENCE_LIMIT = 600;
 const TOPIC_LIMIT = 10;
 const ENTITY_LIMIT = 8;
 const RELATED_CONTENT_LIMIT = 12;
+const SEMANTIC_PROFILE_VERSION = 1;
+const SEMANTIC_PROFILE_KEYWORD_LIMIT = 28;
+const SEMANTIC_PROFILE_CANDIDATE_LIMIT = 120;
+const TIMELINE_NEIGHBOR_LIMIT = 3;
 const TOPIC_MIN_LENGTH = 4;
 const TOPIC_STOPWORDS = new Set([
   'ainda',
@@ -144,7 +156,7 @@ export async function deleteBrainForSource(
   sourceType: BrainSourceType,
   sourceId: string,
 ): Promise<void> {
-  await deleteSharedConceptEdgesForSource(userId, sourceType, sourceId);
+  await deleteAutomaticContentEdgesForSource(userId, sourceType, sourceId);
   await removeSourceEvidence(userId, sourceType, sourceId);
   await db.brainNode.deleteMany({ where: { userId, sourceType, sourceId } });
   await deleteOrphanAutomaticConceptNodes(userId);
@@ -186,7 +198,7 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
     return;
   }
 
-  await deleteSharedConceptEdgesForSource(userId, 'TRANSCRIPT', transcript.id);
+  await deleteAutomaticContentEdgesForSource(userId, 'TRANSCRIPT', transcript.id);
   await removeSourceEvidence(userId, 'TRANSCRIPT', transcript.id);
   const contentNode = await upsertBrainNode({
     userId,
@@ -202,7 +214,9 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
       language: transcript.language,
       transcriptionMethod: transcript.transcriptionMethod,
       thumbnailUrl: transcript.thumbnailUrl,
+      folderId: transcript.folderId,
       createdAt: transcript.createdAt.toISOString(),
+      updatedAt: transcript.updatedAt.toISOString(),
       brainIndexVersion: BRAIN_INDEX_VERSION,
     },
     sourceType: 'TRANSCRIPT',
@@ -352,7 +366,7 @@ async function reindexNoteRecord(
   note: NoteRecord,
   indexes: { byId: Map<string, NoteRecord>; byTitle: Map<string, NoteRecord> },
 ): Promise<void> {
-  await deleteSharedConceptEdgesForSource(userId, 'NOTE', note.id);
+  await deleteAutomaticContentEdgesForSource(userId, 'NOTE', note.id);
   await removeSourceEvidence(userId, 'NOTE', note.id);
   const node = await upsertNoteNode(userId, note);
   await addBrainSource({
@@ -435,7 +449,7 @@ async function removeSourceEvidence(
   }
 }
 
-async function deleteSharedConceptEdgesForSource(
+async function deleteAutomaticContentEdgesForSource(
   userId: string,
   sourceType: BrainSourceType,
   sourceId: string,
@@ -448,7 +462,7 @@ async function deleteSharedConceptEdgesForSource(
   await db.brainEdge.deleteMany({
     where: {
       userId,
-      method: 'shared-concepts',
+      method: { in: ['shared-concepts', 'semantic-profile', 'timeline-adjacent'] },
       OR: [{ fromNodeId: node.id }, { toNodeId: node.id }],
     },
   });
@@ -551,8 +565,17 @@ async function indexConceptsForContent(input: {
 }): Promise<void> {
   if (input.status !== 'ACTIVE') return;
   const indexed: IndexedConcept[] = [];
+  const topics = extractTopics(input.text);
+  const entities = extractEntities(input.text);
 
-  for (const topic of extractTopics(input.text)) {
+  await updateContentSemanticProfile({
+    contentNodeId: input.contentNodeId,
+    text: input.text,
+    topics,
+    entities,
+  });
+
+  for (const topic of topics) {
     const topicNode = await upsertTopicNode(input.userId, topic);
     await upsertBrainEdge({
       userId: input.userId,
@@ -580,7 +603,7 @@ async function indexConceptsForContent(input: {
     });
   }
 
-  for (const entity of extractEntities(input.text)) {
+  for (const entity of entities) {
     const entityNode = await upsertEntityNode(input.userId, entity);
     await upsertBrainEdge({
       userId: input.userId,
@@ -615,6 +638,49 @@ async function indexConceptsForContent(input: {
     sourceType: input.sourceType,
     sourceId: input.sourceId,
     concepts: indexed,
+  });
+  await connectContentBySemanticProfile({
+    userId: input.userId,
+    contentNodeId: input.contentNodeId,
+    sourceType: input.sourceType,
+    sourceId: input.sourceId,
+  });
+  await connectTimelineNeighbors({
+    userId: input.userId,
+    contentNodeId: input.contentNodeId,
+    sourceType: input.sourceType,
+    sourceId: input.sourceId,
+  });
+}
+
+async function updateContentSemanticProfile(input: {
+  contentNodeId: string;
+  text: string;
+  topics: TopicCandidate[];
+  entities: EntityCandidate[];
+}): Promise<void> {
+  const node = await db.brainNode.findUnique({
+    where: { id: input.contentNodeId },
+    select: { metadata: true },
+  });
+  if (!node) return;
+  const metadata = jsonRecord(node.metadata);
+  const profile: SemanticProfile = {
+    extractorVersion: SEMANTIC_PROFILE_VERSION,
+    topics: uniqueSlugs(input.topics.map((topic) => topic.slug)),
+    entities: uniqueSlugs(input.entities.map((entity) => entity.slug)),
+    keywords: extractProfileKeywords(input.text),
+    indexedAt: new Date().toISOString(),
+  };
+  await db.brainNode.update({
+    where: { id: input.contentNodeId },
+    data: {
+      metadata: {
+        ...metadata,
+        semanticProfile: profile,
+        brainIndexVersion: BRAIN_INDEX_VERSION,
+      } as JsonObject,
+    },
   });
 }
 
@@ -713,6 +779,155 @@ async function connectContentBySharedConcepts(input: {
           confidence: concept.confidence,
         })),
         score: candidate.score,
+      },
+    });
+  }
+}
+
+async function connectContentBySemanticProfile(input: {
+  userId: string;
+  contentNodeId: string;
+  sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
+  sourceId: string;
+}): Promise<void> {
+  const current = await db.brainNode.findUnique({
+    where: { id: input.contentNodeId },
+    select: { id: true, label: true, metadata: true },
+  });
+  if (!current) return;
+  const currentMetadata = jsonRecord(current.metadata);
+  const currentProfile = readSemanticProfile(currentMetadata);
+  const candidates = await db.brainNode.findMany({
+    where: {
+      userId: input.userId,
+      id: { not: input.contentNodeId },
+      status: 'ACTIVE',
+      sourceType: { in: ['TRANSCRIPT', 'NOTE'] },
+    },
+    orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    take: SEMANTIC_PROFILE_CANDIDATE_LIMIT,
+    select: {
+      id: true,
+      label: true,
+      metadata: true,
+    },
+  });
+
+  const ranked = candidates
+    .map((candidate) => {
+      const candidateMetadata = jsonRecord(candidate.metadata);
+      const scored = scoreSemanticProfile(
+        currentMetadata,
+        currentProfile,
+        candidateMetadata,
+        readSemanticProfile(candidateMetadata),
+      );
+      if (!scored) return null;
+      return {
+        nodeId: candidate.id,
+        label: candidate.label,
+        ...scored,
+      };
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return left.label.localeCompare(right.label);
+    })
+    .slice(0, RELATED_CONTENT_LIMIT);
+
+  for (const candidate of ranked) {
+    const [fromNodeId, toNodeId] = canonicalEdge(input.contentNodeId, candidate.nodeId);
+    const reasonLabels = candidate.reasons.slice(0, 5).map((reason) => reason.label);
+    await upsertBrainEdge({
+      userId: input.userId,
+      fromNodeId,
+      toNodeId,
+      kind: 'RELATED_TO',
+      method: 'semantic-profile',
+      confidence: Math.min(0.92, Number((0.38 + candidate.score * 0.12).toFixed(4))),
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      excerpt: `Similaridade: ${reasonLabels.join(', ')}`,
+      metadata: {
+        extractorVersion: SEMANTIC_PROFILE_VERSION,
+        sourceNodeId: input.contentNodeId,
+        targetNodeId: candidate.nodeId,
+        reasons: candidate.reasons,
+        score: candidate.score,
+      },
+    });
+  }
+}
+
+async function connectTimelineNeighbors(input: {
+  userId: string;
+  contentNodeId: string;
+  sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
+  sourceId: string;
+}): Promise<void> {
+  const current = await db.brainNode.findUnique({
+    where: { id: input.contentNodeId },
+    select: { metadata: true, updatedAt: true },
+  });
+  if (!current) return;
+  const currentTimestamp = contentTimestamp(jsonRecord(current.metadata), current.updatedAt);
+  if (!currentTimestamp) return;
+
+  const candidates = await db.brainNode.findMany({
+    where: {
+      userId: input.userId,
+      id: { not: input.contentNodeId },
+      status: 'ACTIVE',
+      sourceType: { in: ['TRANSCRIPT', 'NOTE'] },
+    },
+    orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    take: SEMANTIC_PROFILE_CANDIDATE_LIMIT,
+    select: {
+      id: true,
+      label: true,
+      metadata: true,
+      updatedAt: true,
+    },
+  });
+  const neighbors = candidates
+    .map((candidate) => {
+      const timestamp = contentTimestamp(jsonRecord(candidate.metadata), candidate.updatedAt);
+      if (!timestamp) return null;
+      return {
+        nodeId: candidate.id,
+        label: candidate.label,
+        timestamp,
+        distanceMs: Math.abs(currentTimestamp.getTime() - timestamp.getTime()),
+      };
+    })
+    .filter((neighbor): neighbor is NonNullable<typeof neighbor> => neighbor !== null)
+    .sort((left, right) => {
+      if (left.distanceMs !== right.distanceMs) return left.distanceMs - right.distanceMs;
+      return left.label.localeCompare(right.label);
+    })
+    .slice(0, TIMELINE_NEIGHBOR_LIMIT);
+
+  for (const [index, neighbor] of neighbors.entries()) {
+    const [fromNodeId, toNodeId] = canonicalEdge(input.contentNodeId, neighbor.nodeId);
+    const distanceDays = Number((neighbor.distanceMs / 86_400_000).toFixed(3));
+    await upsertBrainEdge({
+      userId: input.userId,
+      fromNodeId,
+      toNodeId,
+      kind: 'NEXT_TO',
+      method: 'timeline-adjacent',
+      confidence: Math.max(0.3, Number((0.48 - index * 0.06).toFixed(4))),
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      excerpt: `Conteúdo próximo na linha do tempo: ${neighbor.label}`,
+      metadata: {
+        extractorVersion: 1,
+        sourceNodeId: input.contentNodeId,
+        targetNodeId: neighbor.nodeId,
+        sourceTimestamp: currentTimestamp.toISOString(),
+        targetTimestamp: neighbor.timestamp.toISOString(),
+        distanceDays,
       },
     });
   }
@@ -822,6 +1037,174 @@ function parseWikiLinks(markdown: string): string[] {
     if (title) found.add(title);
   }
   return [...found];
+}
+
+function extractProfileKeywords(value: string): string[] {
+  const counts = new Map<string, number>();
+  const tokens = normalizeTopicText(value).match(/[a-z0-9][a-z0-9_-]{2,}/g) ?? [];
+  for (const token of tokens) {
+    const clean = token.replace(/^[-_]+|[-_]+$/g, '');
+    if (!isValidTopicParts([clean])) continue;
+    counts.set(clean, (counts.get(clean) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([left, leftCount], [right, rightCount]) => {
+      if (rightCount !== leftCount) return rightCount - leftCount;
+      return left.localeCompare(right);
+    })
+    .slice(0, SEMANTIC_PROFILE_KEYWORD_LIMIT)
+    .map(([keyword]) => keyword);
+}
+
+function scoreSemanticProfile(
+  currentMetadata: Record<string, unknown>,
+  currentProfile: SemanticProfile,
+  candidateMetadata: Record<string, unknown>,
+  candidateProfile: SemanticProfile,
+): {
+  score: number;
+  reasons: Array<{ kind: string; label: string; value: string; weight: number }>;
+} | null {
+  let score = 0;
+  const reasons: Array<{ kind: string; label: string; value: string; weight: number }> = [];
+
+  for (const slug of intersection(currentProfile.entities, candidateProfile.entities).slice(0, 5)) {
+    score += 1.25;
+    reasons.push({ kind: 'entity', label: topicLabel(slug), value: slug, weight: 1.25 });
+  }
+  for (const slug of intersection(currentProfile.topics, candidateProfile.topics).slice(0, 5)) {
+    score += 0.8;
+    reasons.push({ kind: 'topic', label: topicLabel(slug), value: slug, weight: 0.8 });
+  }
+
+  const sharedKeywords = intersection(currentProfile.keywords, candidateProfile.keywords).slice(
+    0,
+    6,
+  );
+  if (sharedKeywords.length > 0) {
+    const weight = Math.min(0.9, sharedKeywords.length * 0.16);
+    score += weight;
+    reasons.push({
+      kind: 'keyword',
+      label: sharedKeywords.slice(0, 3).map(topicLabel).join(', '),
+      value: sharedKeywords.join(','),
+      weight,
+    });
+  }
+
+  const currentCollection = contentCollectionKey(currentMetadata);
+  const candidateCollection = contentCollectionKey(candidateMetadata);
+  if (currentCollection && currentCollection === candidateCollection) {
+    score += 0.7;
+    reasons.push({
+      kind: 'collection',
+      label: 'Mesma pasta',
+      value: currentCollection,
+      weight: 0.7,
+    });
+  }
+
+  const currentChannel = conceptSlug(asString(currentMetadata.channel));
+  const candidateChannel = conceptSlug(asString(candidateMetadata.channel));
+  if (currentChannel && currentChannel === candidateChannel) {
+    score += 0.85;
+    reasons.push({ kind: 'channel', label: 'Mesmo canal', value: currentChannel, weight: 0.85 });
+  }
+
+  const currentDomain = urlDomain(asString(currentMetadata.url));
+  const candidateDomain = urlDomain(asString(candidateMetadata.url));
+  if (currentDomain && currentDomain === candidateDomain) {
+    score += 0.55;
+    reasons.push({ kind: 'domain', label: currentDomain, value: currentDomain, weight: 0.55 });
+  }
+
+  const currentSource = asString(currentMetadata.source);
+  const candidateSource = asString(candidateMetadata.source);
+  if (currentSource && currentSource === candidateSource && score > 0) {
+    score += 0.18;
+    reasons.push({ kind: 'source', label: currentSource, value: currentSource, weight: 0.18 });
+  }
+
+  if (score < 0.5 || reasons.length === 0) return null;
+  return { score: Number(score.toFixed(4)), reasons };
+}
+
+function readSemanticProfile(metadata: Record<string, unknown>): SemanticProfile {
+  const raw = metadata.semanticProfile;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return emptySemanticProfile();
+  }
+  const record = raw as Record<string, unknown>;
+  return {
+    extractorVersion:
+      typeof record.extractorVersion === 'number'
+        ? record.extractorVersion
+        : SEMANTIC_PROFILE_VERSION,
+    topics: stringArray(record.topics),
+    entities: stringArray(record.entities),
+    keywords: stringArray(record.keywords),
+    indexedAt: asString(record.indexedAt),
+  };
+}
+
+function emptySemanticProfile(): SemanticProfile {
+  return {
+    extractorVersion: SEMANTIC_PROFILE_VERSION,
+    topics: [],
+    entities: [],
+    keywords: [],
+    indexedAt: '',
+  };
+}
+
+function contentTimestamp(metadata: Record<string, unknown>, fallback: Date): Date | null {
+  for (const key of ['createdAt', 'updatedAt']) {
+    const value = asString(metadata[key]);
+    if (!value) continue;
+    const timestamp = new Date(value);
+    if (!Number.isNaN(timestamp.getTime())) return timestamp;
+  }
+  return fallback;
+}
+
+function contentCollectionKey(metadata: Record<string, unknown>): string | null {
+  const folderId = asString(metadata.folderId);
+  if (folderId) return `folder:${folderId}`;
+  const parentId = asString(metadata.parentId);
+  if (parentId) return `note-parent:${parentId}`;
+  return null;
+}
+
+function urlDomain(value: string): string {
+  if (!value) return '';
+  try {
+    return new URL(value).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return { ...(value as Record<string, unknown>) };
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return uniqueSlugs(value.filter((item): item is string => typeof item === 'string'));
+}
+
+function uniqueSlugs(slugs: string[]): string[] {
+  return [...new Set(slugs.map((slug) => slug.trim()).filter(Boolean))];
+}
+
+function intersection(left: string[], right: string[]): string[] {
+  const rightSet = new Set(right);
+  return left.filter((item) => rightSet.has(item));
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function extractTopics(value: string): TopicCandidate[] {
