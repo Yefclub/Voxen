@@ -3,7 +3,7 @@
 # ============================================================================
 # Regra: `dev` não ganha commit/tag automático de pre-release. A versão estável
 # vive em package.json e tags vX.Y.Z; builds de dev usam metadata efêmera
-# ligada à próxima versão patch: `X.Y.Z-dev.YYYYMMDD.HHMMSS+sha.<shortsha>`.
+# ligada à próxima versão patch: `X.Y.Z-dev.<unix_epoch_seconds>`.
 # ============================================================================
 
 name: Dev version metadata
@@ -44,9 +44,9 @@ jobs:
             v[2] += 1;
             console.log(v.join('.'));
           ")
-          STAMP=$(date -u +%Y%m%d.%H%M%S)
+          STAMP=$(date -u +%s)
           SHORT_SHA="${GITHUB_SHA::7}"
-          DEV_VER="${NEXT_VER}-dev.${STAMP}+sha.${SHORT_SHA}"
+          DEV_VER="${NEXT_VER}-dev.${STAMP}"
           {
             echo "base_version=$BASE_VER"
             echo "next_version=$NEXT_VER"

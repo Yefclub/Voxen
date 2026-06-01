@@ -94,7 +94,7 @@ Flow:
 
 ## Versioning
 
-Stable versions use SemVer tags on `main`, for example `v0.7.4`. Development builds on `dev` use generated pre-release metadata tied to the commit.
+Stable versions use SemVer tags on `main`, for example `v0.7.4`. Development builds on `dev` use generated pre-release metadata in the format `X.Y.Z-dev.<unix_epoch_seconds>`.
 
 Release flow:
 

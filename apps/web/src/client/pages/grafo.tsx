@@ -2,11 +2,13 @@
 // /grafo — visualização do Voxen Brain
 // ============================================================================
 // Spec: .specs/020-brain-knowledge-harness.md
-// Tech: SVG responsivo sobre BrainNode/BrainEdge materializados.
+// Tech: Sigma.js/WebGL sobre Graphology, com fallback SVG determinístico.
 // ============================================================================
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Graph from 'graphology';
+import type SigmaRenderer from 'sigma';
 import { BrainCircuit, ExternalLink, Network, RotateCw, Search } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -82,6 +84,32 @@ interface GraphLayout {
   edges: GraphLayoutEdge[];
 }
 
+interface SigmaNodeAttributes {
+  x: number;
+  y: number;
+  size: number;
+  color: string;
+  label: string;
+  type: GraphNodeType;
+  zIndex: number;
+  original: GraphNode;
+}
+
+interface SigmaEdgeAttributes {
+  size: number;
+  color: string;
+  kind: GraphEdge['kind'];
+  from: string;
+  to: string;
+  original: GraphEdge;
+}
+
+interface SigmaGraphModel {
+  graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>;
+  layout: GraphLayout;
+  neighborhoods: Map<string, Set<string>>;
+}
+
 const GRAPH_VIEWBOX = { width: 1000, height: 620 };
 const SOURCE_NODE_TYPES = new Set<GraphNodeType>(['transcript', 'note', 'folder']);
 
@@ -150,7 +178,7 @@ export function GrafoPage(): React.ReactElement {
 
   const selectedNode = selectedId ? (nodeById.get(selectedId) ?? null) : null;
   const selectedEdges = selectedId ? (edgeByNodeId.get(selectedId) ?? []) : [];
-  const graphLayout = useMemo(() => (filtered ? buildGraphLayout(filtered) : null), [filtered]);
+  const graphModel = useMemo(() => (filtered ? buildSigmaGraphModel(filtered) : null), [filtered]);
 
   useEffect(() => {
     if (selectedId && filtered && !filtered.nodes.some((node) => node.id === selectedId)) {
@@ -232,7 +260,7 @@ export function GrafoPage(): React.ReactElement {
                 </div>
               )}
               <BrainGraphCanvas
-                layout={graphLayout}
+                model={graphModel}
                 selectedId={selectedId}
                 translate={t}
                 onSelect={setSelectedId}
@@ -306,20 +334,159 @@ function StatDot({
 }
 
 function BrainGraphCanvas({
+  model,
+  selectedId,
+  translate,
+  onSelect,
+}: {
+  model: SigmaGraphModel | null;
+  selectedId: string | null;
+  translate: TranslateFn;
+  onSelect: (id: string | null) => void;
+}): React.ReactElement {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const rendererRef = useRef<SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [webglFailed, setWebglFailed] = useState(false);
+  const [rendererVersion, setRendererVersion] = useState(0);
+
+  useEffect(() => {
+    setWebglFailed(false);
+  }, [model]);
+
+  useEffect(() => {
+    if (!model || model.layout.nodes.length === 0 || !containerRef.current) return;
+    setWebglFailed(false);
+    let cancelled = false;
+    let renderer: SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+
+    void import('sigma')
+      .then(({ default: Sigma }) => {
+        if (cancelled || !containerRef.current) return;
+        try {
+          renderer = new Sigma(model.graph, containerRef.current, {
+            allowInvalidContainer: true,
+            defaultNodeColor: '#94a3b8',
+            defaultEdgeColor: 'rgba(148, 163, 184, 0.42)',
+            enableEdgeEvents: true,
+            hideEdgesOnMove: true,
+            hideLabelsOnMove: false,
+            itemSizesReference: 'screen',
+            labelColor: { color: '#f4f4f5' },
+            labelDensity: 0.16,
+            labelFont: 'Inter, system-ui, sans-serif',
+            labelRenderedSizeThreshold: 8,
+            labelSize: 12,
+            maxCameraRatio: 2.8,
+            minCameraRatio: 0.12,
+            renderEdgeLabels: false,
+            zIndex: true,
+          });
+          rendererRef.current = renderer;
+          renderer.on('clickNode', ({ node }) => onSelect(node));
+          renderer.on('clickStage', () => onSelect(null));
+          renderer.on('enterNode', ({ node }) => setHoveredId(node));
+          renderer.on('leaveNode', () => setHoveredId(null));
+          if ('ResizeObserver' in window) {
+            resizeObserver = new ResizeObserver(() => renderer?.resize());
+            resizeObserver.observe(containerRef.current);
+          }
+          renderer.refresh();
+          setRendererVersion((version) => version + 1);
+        } catch {
+          setWebglFailed(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setWebglFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+      resizeObserver?.disconnect();
+      renderer?.kill();
+      rendererRef.current = null;
+    };
+  }, [model, onSelect]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !model) return;
+    const activeId = hoveredId ?? selectedId;
+    const activeNeighbors = activeId ? (model.neighborhoods.get(activeId) ?? new Set()) : null;
+    renderer.setSetting('nodeReducer', (node, data) => {
+      if (!activeId || !activeNeighbors) return data;
+      const isActive = node === activeId;
+      const isNeighbor = activeNeighbors.has(node);
+      if (!isActive && !isNeighbor) {
+        return {
+          ...data,
+          color: 'rgba(82, 82, 91, 0.42)',
+          label: '',
+          size: Math.max(3, data.size * 0.72),
+          zIndex: 0,
+        };
+      }
+      return {
+        ...data,
+        color: isActive ? '#fafafa' : data.color,
+        size: data.size * (isActive ? 1.45 : 1.12),
+        zIndex: isActive ? 4 : 3,
+      };
+    });
+    renderer.setSetting('edgeReducer', (_edge, data) => {
+      if (!activeId) return data;
+      const connected = data.from === activeId || data.to === activeId;
+      return {
+        ...data,
+        color: connected ? data.color : 'rgba(82, 82, 91, 0.16)',
+        size: connected ? data.size * 1.35 : Math.max(0.35, data.size * 0.5),
+      };
+    });
+    renderer.refresh();
+  }, [hoveredId, model, rendererVersion, selectedId]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !model || !selectedId || !model.graph.hasNode(selectedId)) return;
+    const attrs = model.graph.getNodeAttributes(selectedId);
+    void renderer.getCamera().animate({ x: attrs.x, y: attrs.y, ratio: 0.62 }, { duration: 260 });
+  }, [model, rendererVersion, selectedId]);
+
+  if (!model || model.layout.nodes.length === 0) {
+    return <div className="absolute inset-0" />;
+  }
+
+  if (webglFailed) {
+    return (
+      <BrainGraphSvg
+        layout={model.layout}
+        selectedId={selectedId}
+        translate={translate}
+        onSelect={onSelect}
+      />
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      <div ref={containerRef} aria-label={translate('graph.title')} className="h-full w-full" />
+    </div>
+  );
+}
+
+function BrainGraphSvg({
   layout,
   selectedId,
   translate,
   onSelect,
 }: {
-  layout: GraphLayout | null;
+  layout: GraphLayout;
   selectedId: string | null;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
 }): React.ReactElement {
-  if (!layout || layout.nodes.length === 0) {
-    return <div className="absolute inset-0" />;
-  }
-
   return (
     <div className="absolute inset-0 overflow-hidden">
       <svg
@@ -580,6 +747,45 @@ function searchableNodeText(node: GraphNode): string {
 
 function countType(data: GraphResp, type: GraphNodeType): number {
   return data.nodes.filter((node) => node.type === type).length;
+}
+
+export function buildSigmaGraphModel(data: GraphResp): SigmaGraphModel {
+  const layout = buildGraphLayout(data);
+  const graph = new Graph<SigmaNodeAttributes, SigmaEdgeAttributes>({
+    multi: true,
+    type: 'undirected',
+  });
+  const neighborhoods = new Map<string, Set<string>>();
+
+  for (const node of layout.nodes) {
+    neighborhoods.set(node.id, new Set([node.id]));
+    graph.addNode(node.id, {
+      x: (node.x - GRAPH_VIEWBOX.width / 2) / 150,
+      y: (node.y - GRAPH_VIEWBOX.height / 2) / 150,
+      size: Math.max(4, node.radius / 2.4),
+      color: NODE_COLORS[node.type],
+      label: node.label,
+      type: node.type,
+      zIndex: SOURCE_NODE_TYPES.has(node.type) ? 2 : 1,
+      original: node,
+    });
+  }
+
+  for (const edge of layout.edges) {
+    if (!graph.hasNode(edge.from) || !graph.hasNode(edge.to)) continue;
+    neighborhoods.get(edge.from)?.add(edge.to);
+    neighborhoods.get(edge.to)?.add(edge.from);
+    graph.addUndirectedEdgeWithKey(edge.id, edge.from, edge.to, {
+      size: edge.kind === 'links_to' ? 1.9 : 1.15,
+      color: EDGE_COLORS[edge.kind],
+      kind: edge.kind,
+      from: edge.from,
+      to: edge.to,
+      original: edge,
+    });
+  }
+
+  return { graph, layout, neighborhoods };
 }
 
 function nodePath(node: GraphNode): string | null {

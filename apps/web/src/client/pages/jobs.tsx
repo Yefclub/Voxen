@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Globe, Link2, PlayCircle, Plus, RefreshCw, Upload, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
@@ -39,6 +39,8 @@ export function JobsPage(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const { data, loading, refresh } = useFetch<{ jobs: JobSummary[] }>('/api/jobs');
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sharedUrlLockRef = useRef<string | null>(null);
   const { locale, t } = useI18n();
 
   // Detecta tipo enquanto user digita — UI mostra badge "Vídeo do YouTube",
@@ -48,33 +50,13 @@ export function JobsPage(): React.ReactElement {
     [url],
   );
 
-  async function onSubmit(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const res = await apiPost<{
-        jobId: string;
-        status: JobStatus;
-        sourceUrl: string;
-        kind: 'video' | 'web';
-      }>('/api/jobs/auto', { url });
-      setUrl('');
-      refresh();
-      const successMsg =
-        res.kind === 'web' ? t('jobs.toast.webQueued') : t('jobs.toast.videoQueued');
-      toast.success(successMsg, {
-        description: t('jobs.toast.progress'),
-        action: {
-          label: t('common.open'),
-          onClick: () => navigate(`/jobs/${res.jobId}`),
-        },
-      });
-    } catch (err) {
+  const handleAutoJobError = useCallback(
+    (err: unknown) => {
       if (err instanceof ApiError) {
         setError(err.message);
         if (err.status === 409 && err.body && typeof err.body === 'object') {
           const transcriptId = (err.body as { transcriptId?: string }).transcriptId;
+          const jobId = (err.body as { jobId?: string }).jobId;
           if (transcriptId) {
             toast(t('jobs.toast.alreadyIndexed'), {
               action: {
@@ -82,11 +64,57 @@ export function JobsPage(): React.ReactElement {
                 onClick: () => navigate(`/transcricoes/${transcriptId}`),
               },
             });
+          } else if (jobId) {
+            toast(t('jobs.toast.alreadyQueued'), {
+              action: {
+                label: t('common.open'),
+                onClick: () => navigate(`/jobs/${jobId}`),
+              },
+            });
           }
         }
       } else {
         setError(t('jobs.error.unexpected'));
       }
+    },
+    [navigate, t],
+  );
+
+  const submitUrl = useCallback(
+    async (value: string, options: { clearInput?: boolean } = {}): Promise<void> => {
+      const res = await apiPost<{
+        jobId: string;
+        status: JobStatus;
+        sourceUrl: string;
+        kind: 'video' | 'web' | 'x';
+      }>('/api/jobs/auto', { url: value });
+      if (options.clearInput !== false) setUrl('');
+      refresh();
+      const successMsg =
+        res.kind === 'web'
+          ? t('jobs.toast.webQueued')
+          : res.kind === 'x'
+            ? t('jobs.toast.xQueued')
+            : t('jobs.toast.videoQueued');
+      toast.success(successMsg, {
+        description: t('jobs.toast.progress'),
+        action: {
+          label: t('common.open'),
+          onClick: () => navigate(`/jobs/${res.jobId}`),
+        },
+      });
+    },
+    [navigate, refresh, t],
+  );
+
+  async function onSubmit(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await submitUrl(url, { clearInput: true });
+    } catch (err) {
+      handleAutoJobError(err);
     } finally {
       setSubmitting(false);
     }
@@ -145,6 +173,68 @@ export function JobsPage(): React.ReactElement {
 
   const jobs = data?.jobs ?? [];
   const hasActiveJobs = jobs.some((job) => job.status === 'QUEUED' || job.status === 'RUNNING');
+
+  useEffect(() => {
+    if (searchParams.get('shared') !== '1') return;
+
+    const jobId = searchParams.get('jobId');
+    if (jobId) {
+      const count = Number(searchParams.get('queued') ?? '1') || 1;
+      toast.success(count > 1 ? t('jobs.shareQueuedMany', { count }) : t('jobs.shareQueued'), {
+        description: t('jobs.toast.progress'),
+        action: {
+          label: t('common.open'),
+          onClick: () => navigate(`/jobs/${jobId}`),
+        },
+      });
+      setSearchParams({}, { replace: true });
+      refresh();
+      return;
+    }
+
+    const shareError = searchParams.get('share_error');
+    if (shareError) {
+      const message = shareErrorMessage(shareError, t);
+      setError(message);
+      toast.error(message);
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    const sharedUrl = searchParams.get('url')?.trim();
+    if (!sharedUrl) return;
+    setMode('link');
+    setUrl(sharedUrl);
+
+    const lockKey = `voxen:share-target:${sharedUrl}`;
+    if (sharedUrlLockRef.current === lockKey) return;
+    sharedUrlLockRef.current = lockKey;
+    try {
+      if (window.sessionStorage.getItem(lockKey) === 'pending') return;
+      window.sessionStorage.setItem(lockKey, 'pending');
+    } catch {
+      // sessionStorage é só trava contra double-effect; falha não bloqueia ingestão.
+    }
+
+    setSubmitting(true);
+    submitUrl(sharedUrl, { clearInput: false })
+      .then(() => {
+        setSearchParams({}, { replace: true });
+      })
+      .catch((err: unknown) => {
+        handleAutoJobError(err);
+        setSearchParams({}, { replace: true });
+      })
+      .finally(() => {
+        try {
+          window.sessionStorage.removeItem(lockKey);
+        } catch {
+          // no-op
+        }
+        setSubmitting(false);
+        sharedUrlLockRef.current = null;
+      });
+  }, [handleAutoJobError, navigate, refresh, searchParams, setSearchParams, submitUrl, t]);
 
   useEffect(() => {
     if (!hasActiveJobs) return;
@@ -492,4 +582,11 @@ function DetectedBadge({
       {label}
     </span>
   );
+}
+
+function shareErrorMessage(errorCode: string, t: TranslateFn): string {
+  const key = `jobs.shareError.${errorCode}` as Parameters<TranslateFn>[0];
+  const translated = t(key);
+  if (translated !== key) return translated;
+  return t('jobs.shareError.generic');
 }

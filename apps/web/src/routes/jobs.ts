@@ -183,6 +183,278 @@ const PostBody = z.object({
   url: z.string().min(1).max(2048),
 });
 
+export type AutoJobKind = 'video' | 'web' | 'x';
+
+export type AutoJobResult =
+  | {
+      outcome: 'created';
+      jobId: string;
+      status: string;
+      sourceUrl: string;
+      kind: AutoJobKind;
+    }
+  | {
+      outcome: 'existing_transcript';
+      transcriptId: string;
+      kind: AutoJobKind;
+      error: string;
+    }
+  | {
+      outcome: 'inflight';
+      jobId?: string;
+      kind: AutoJobKind;
+      error: string;
+    }
+  | { outcome: 'invalid'; error: string }
+  | { outcome: 'setup_incomplete'; error: string };
+
+export type UploadJobResult =
+  | {
+      outcome: 'created';
+      jobId: string;
+      status: string;
+      sourceUrl: string;
+      kind: 'media' | 'image' | 'document';
+    }
+  | { outcome: 'error'; status: 400 | 412 | 413 | 502; error: string };
+
+export async function createAutoJobForUser(userId: string, rawUrl: string): Promise<AutoJobResult> {
+  if (!(await isSetupComplete())) {
+    return {
+      outcome: 'setup_incomplete',
+      error: 'Setup incompleto. Aguarde o administrador concluir a configuração.',
+    };
+  }
+
+  const raw = rawUrl.trim();
+
+  // 1) Tenta vídeo primeiro (mais específico — YT/IG/TT/X).
+  const video = parseVideoUrl(raw);
+  if (video) {
+    const jobType = await jobTypeForVideo(video);
+    const kind: AutoJobKind = jobType === 'ANALYZE_X' ? 'x' : 'video';
+    const existing = await db.transcript.findFirst({
+      where: { userId, url: video.canonical, status: { not: 'TRASH' } },
+      select: { id: true },
+    });
+    if (existing) {
+      return {
+        outcome: 'existing_transcript',
+        error: 'Você já transcreveu esta URL.',
+        transcriptId: existing.id,
+        kind,
+      };
+    }
+    const inflight = await db.job.findFirst({
+      where: { userId, sourceUrl: video.canonical, status: { in: ['QUEUED', 'RUNNING'] } },
+      select: { id: true },
+    });
+    if (inflight) {
+      return {
+        outcome: 'inflight',
+        error: 'Esta URL já está sendo processada.',
+        jobId: inflight.id,
+        kind,
+      };
+    }
+    let job: { id: string; status: string; sourceUrl: string };
+    try {
+      job = await db.job.create({
+        data: {
+          userId,
+          type: jobType,
+          status: 'QUEUED',
+          sourceUrl: video.canonical,
+        },
+        select: { id: true, status: true, sourceUrl: true },
+      });
+    } catch (err) {
+      if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
+        return { outcome: 'inflight', error: 'Esta URL já está sendo processada.', kind };
+      }
+      throw err;
+    }
+    await notifyNewJob(job.id).catch((err) => {
+      console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    });
+    await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
+    return {
+      outcome: 'created',
+      jobId: job.id,
+      status: job.status,
+      sourceUrl: job.sourceUrl,
+      kind,
+    };
+  }
+
+  // 2) Fallback: trata como página web (qualquer http(s)).
+  const normalized = normalizeWebUrl(raw);
+  if (!normalized) {
+    return { outcome: 'invalid', error: 'URL inválida — informe um link http(s) válido.' };
+  }
+  const existingWeb = await db.transcript.findFirst({
+    where: { userId, url: normalized, status: { not: 'TRASH' } },
+    select: { id: true },
+  });
+  if (existingWeb) {
+    return {
+      outcome: 'existing_transcript',
+      error: 'Você já indexou esta página.',
+      transcriptId: existingWeb.id,
+      kind: 'web',
+    };
+  }
+  const inflightWeb = await db.job.findFirst({
+    where: { userId, sourceUrl: normalized, status: { in: ['QUEUED', 'RUNNING'] } },
+    select: { id: true },
+  });
+  if (inflightWeb) {
+    return {
+      outcome: 'inflight',
+      error: 'Esta URL já está sendo processada.',
+      jobId: inflightWeb.id,
+      kind: 'web',
+    };
+  }
+  let webJob: { id: string; status: string; sourceUrl: string };
+  try {
+    webJob = await db.job.create({
+      data: { userId, type: 'SCRAPE_WEB', status: 'QUEUED', sourceUrl: normalized },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
+      return { outcome: 'inflight', error: 'Esta URL já está sendo processada.', kind: 'web' };
+    }
+    throw err;
+  }
+  await notifyNewJob(webJob.id).catch((err) => {
+    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+  });
+  await publishJobEvent(userId, { jobId: webJob.id, stage: 'queued' }).catch(() => undefined);
+  return {
+    outcome: 'created',
+    jobId: webJob.id,
+    status: webJob.status,
+    sourceUrl: webJob.sourceUrl,
+    kind: 'web',
+  };
+}
+
+export async function createUploadJobForUser(
+  userId: string,
+  media: File,
+): Promise<UploadJobResult> {
+  if (!(await isSetupComplete())) {
+    return {
+      outcome: 'error',
+      status: 412,
+      error: 'Setup incompleto. Aguarde o administrador concluir a configuração.',
+    };
+  }
+
+  const filename = sanitizeUploadFilename(media.name);
+  const contentType = media.type || 'application/octet-stream';
+  const kind = detectUploadKind(filename, contentType);
+  if (media.size <= 0) {
+    return { outcome: 'error', status: 400, error: 'Arquivo vazio.' };
+  }
+  if (!kind) {
+    return {
+      outcome: 'error',
+      status: 400,
+      error: 'Formato não suportado. Envie áudio, vídeo, imagem ou documento.',
+    };
+  }
+  if (kind === 'image' && media.size > MAX_IMAGE_UPLOAD_BYTES) {
+    return { outcome: 'error', status: 413, error: 'Imagem muito grande. O limite é 20 MiB.' };
+  }
+  if (kind === 'document' && media.size > MAX_DOCUMENT_UPLOAD_BYTES) {
+    return { outcome: 'error', status: 413, error: 'Documento muito grande. O limite é 50 MiB.' };
+  }
+  if (kind === 'document') {
+    const documentModel = await getSetting('default_document_model').catch(() => null);
+    if (!documentModel) {
+      return {
+        outcome: 'error',
+        status: 412,
+        error: 'Análise documental ainda não está configurada. Defina um modelo de documento.',
+      };
+    }
+  }
+  if (kind === 'media' && media.size > MAX_MEDIA_UPLOAD_BYTES) {
+    return { outcome: 'error', status: 413, error: 'Arquivo muito grande. O limite é 500 MiB.' };
+  }
+
+  const uploadId = crypto.randomUUID();
+  const sourceUrl = uploadSourceUrl(uploadId, filename);
+  try {
+    await putUploadFile({
+      userId,
+      uploadId,
+      filename,
+      body: new Uint8Array(await media.arrayBuffer()),
+      contentType,
+    });
+  } catch (err) {
+    console.error('[jobs] upload to S3 failed:', err instanceof Error ? err.message : err);
+    return {
+      outcome: 'error',
+      status: 502,
+      error: 'Falha ao enviar arquivo para o armazenamento S3.',
+    };
+  }
+
+  const job = await db.job.create({
+    data: {
+      userId,
+      type:
+        kind === 'image'
+          ? 'UPLOAD_AND_ANALYZE_IMAGE'
+          : kind === 'document'
+            ? 'UPLOAD_AND_ANALYZE_DOCUMENT'
+            : 'UPLOAD_AND_TRANSCRIBE',
+      status: 'QUEUED',
+      sourceUrl,
+    },
+    select: { id: true, status: true, sourceUrl: true },
+  });
+
+  await notifyNewJob(job.id).catch((err) => {
+    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+  });
+  await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
+
+  return { outcome: 'created', jobId: job.id, status: job.status, sourceUrl, kind };
+}
+
+function autoJobResponse(c: Context, result: AutoJobResult): Response {
+  if (result.outcome === 'created') {
+    return c.json(
+      {
+        jobId: result.jobId,
+        status: result.status,
+        sourceUrl: result.sourceUrl,
+        kind: result.kind,
+      },
+      201,
+    );
+  }
+  if (result.outcome === 'existing_transcript') {
+    return c.json(
+      { error: result.error, transcriptId: result.transcriptId, kind: result.kind },
+      409,
+    );
+  }
+  if (result.outcome === 'inflight') {
+    return c.json({ error: result.error, jobId: result.jobId, kind: result.kind }, 409);
+  }
+  if (result.outcome === 'setup_incomplete') {
+    return c.json({ error: result.error }, 412);
+  }
+  return c.json({ error: result.error }, 400);
+}
+
 jobsRoutes.post('/', async (c) => {
   const userId = c.get('userId');
 
@@ -268,109 +540,11 @@ jobsRoutes.post('/', async (c) => {
 jobsRoutes.post('/auto', async (c) => {
   const userId = c.get('userId');
 
-  if (!(await isSetupComplete())) {
-    return c.json(
-      { error: 'Setup incompleto. Aguarde o administrador concluir a configuração.' },
-      412,
-    );
-  }
-
   const parsed = PostBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     return c.json({ error: 'Payload inválido.' }, 400);
   }
-  const raw = parsed.data.url.trim();
-
-  // 1) Tenta vídeo primeiro (mais específico — YT/IG/TT)
-  const video = parseVideoUrl(raw);
-  if (video) {
-    const jobType = await jobTypeForVideo(video);
-    const kind = jobType === 'ANALYZE_X' ? 'x' : 'video';
-    const existing = await db.transcript.findFirst({
-      where: { userId, url: video.canonical, status: { not: 'TRASH' } },
-      select: { id: true },
-    });
-    if (existing) {
-      return c.json(
-        { error: 'Você já transcreveu esta URL.', transcriptId: existing.id, kind },
-        409,
-      );
-    }
-    const inflight = await db.job.findFirst({
-      where: { userId, sourceUrl: video.canonical, status: { in: ['QUEUED', 'RUNNING'] } },
-      select: { id: true },
-    });
-    if (inflight) {
-      return c.json({ error: 'Esta URL já está sendo processada.', jobId: inflight.id, kind }, 409);
-    }
-    let job: { id: string; status: string; sourceUrl: string };
-    try {
-      job = await db.job.create({
-        data: {
-          userId,
-          type: jobType,
-          status: 'QUEUED',
-          sourceUrl: video.canonical,
-        },
-        select: { id: true, status: true, sourceUrl: true },
-      });
-    } catch (err) {
-      if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
-        return c.json({ error: 'Esta URL já está sendo processada.', kind }, 409);
-      }
-      throw err;
-    }
-    await notifyNewJob(job.id).catch((err) => {
-      console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
-    });
-    await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
-    return c.json({ jobId: job.id, status: job.status, sourceUrl: job.sourceUrl, kind }, 201);
-  }
-  // 2) Fallback: trata como página web (qualquer http(s))
-  const normalized = normalizeWebUrl(raw);
-  if (!normalized) {
-    return c.json({ error: 'URL inválida — informe um link http(s) válido.' }, 400);
-  }
-  const existingWeb = await db.transcript.findFirst({
-    where: { userId, url: normalized, status: { not: 'TRASH' } },
-    select: { id: true },
-  });
-  if (existingWeb) {
-    return c.json(
-      { error: 'Você já indexou esta página.', transcriptId: existingWeb.id, kind: 'web' },
-      409,
-    );
-  }
-  const inflightWeb = await db.job.findFirst({
-    where: { userId, sourceUrl: normalized, status: { in: ['QUEUED', 'RUNNING'] } },
-    select: { id: true },
-  });
-  if (inflightWeb) {
-    return c.json(
-      { error: 'Esta URL já está sendo processada.', jobId: inflightWeb.id, kind: 'web' },
-      409,
-    );
-  }
-  let webJob: { id: string; status: string; sourceUrl: string };
-  try {
-    webJob = await db.job.create({
-      data: { userId, type: 'SCRAPE_WEB', status: 'QUEUED', sourceUrl: normalized },
-      select: { id: true, status: true, sourceUrl: true },
-    });
-  } catch (err) {
-    if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
-      return c.json({ error: 'Esta URL já está sendo processada.', kind: 'web' }, 409);
-    }
-    throw err;
-  }
-  await notifyNewJob(webJob.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
-  });
-  await publishJobEvent(userId, { jobId: webJob.id, stage: 'queued' }).catch(() => undefined);
-  return c.json(
-    { jobId: webJob.id, status: webJob.status, sourceUrl: webJob.sourceUrl, kind: 'web' },
-    201,
-  );
+  return autoJobResponse(c, await createAutoJobForUser(userId, parsed.data.url));
 });
 
 // POST /api/jobs/upload — envia áudio/vídeo/imagem/documento para S3 e agenda processamento.
@@ -395,73 +569,19 @@ jobsRoutes.post('/upload', async (c) => {
     return c.json({ error: 'Arquivo de mídia ausente.' }, 400);
   }
 
-  const filename = sanitizeUploadFilename(media.name);
-  const contentType = media.type || 'application/octet-stream';
-  const kind = detectUploadKind(filename, contentType);
-  if (media.size <= 0) {
-    return c.json({ error: 'Arquivo vazio.' }, 400);
+  const result = await createUploadJobForUser(userId, media);
+  if (result.outcome === 'error') {
+    return c.json({ error: result.error }, result.status);
   }
-  if (!kind) {
-    return c.json(
-      { error: 'Formato não suportado. Envie áudio, vídeo, imagem ou documento.' },
-      400,
-    );
-  }
-  if (kind === 'image' && media.size > MAX_IMAGE_UPLOAD_BYTES) {
-    return c.json({ error: 'Imagem muito grande. O limite é 20 MiB.' }, 413);
-  }
-  if (kind === 'document' && media.size > MAX_DOCUMENT_UPLOAD_BYTES) {
-    return c.json({ error: 'Documento muito grande. O limite é 50 MiB.' }, 413);
-  }
-  if (kind === 'document') {
-    const documentModel = await getSetting('default_document_model').catch(() => null);
-    if (!documentModel) {
-      return c.json(
-        { error: 'Análise documental ainda não está configurada. Defina um modelo de documento.' },
-        412,
-      );
-    }
-  }
-  if (kind === 'media' && media.size > MAX_MEDIA_UPLOAD_BYTES) {
-    return c.json({ error: 'Arquivo muito grande. O limite é 500 MiB.' }, 413);
-  }
-
-  const uploadId = crypto.randomUUID();
-  const sourceUrl = uploadSourceUrl(uploadId, filename);
-  try {
-    await putUploadFile({
-      userId,
-      uploadId,
-      filename,
-      body: new Uint8Array(await media.arrayBuffer()),
-      contentType,
-    });
-  } catch (err) {
-    console.error('[jobs] upload to S3 failed:', err instanceof Error ? err.message : err);
-    return c.json({ error: 'Falha ao enviar arquivo para o armazenamento S3.' }, 502);
-  }
-
-  const job = await db.job.create({
-    data: {
-      userId,
-      type:
-        kind === 'image'
-          ? 'UPLOAD_AND_ANALYZE_IMAGE'
-          : kind === 'document'
-            ? 'UPLOAD_AND_ANALYZE_DOCUMENT'
-            : 'UPLOAD_AND_TRANSCRIBE',
-      status: 'QUEUED',
-      sourceUrl,
+  return c.json(
+    {
+      jobId: result.jobId,
+      status: result.status,
+      sourceUrl: result.sourceUrl,
+      kind: result.kind,
     },
-    select: { id: true, status: true, sourceUrl: true },
-  });
-
-  await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
-  });
-  await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
-
-  return c.json({ jobId: job.id, status: job.status, sourceUrl: job.sourceUrl, kind }, 201);
+    201,
+  );
 });
 
 // POST /api/jobs/scrape — agenda scraping de página web (spec 004)

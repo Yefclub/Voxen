@@ -53,9 +53,9 @@ jobs:
                 v[2] += 1;
                 console.log(v.join('.'));
               ")"
-              stamp="$(date -u +%Y%m%d.%H%M%S)"
-              version="${next_version}-dev.${stamp}+sha.${short_sha}"
-              docker_version="${next_version}-dev.${stamp}.sha.${short_sha}"
+              stamp="$(date -u +%s)"
+              version="${next_version}-dev.${stamp}"
+              docker_version="$version"
               printf '%s\n' "${IMAGE_NAME}:dev" >> "$tags_file"
               printf '%s\n' "${IMAGE_NAME}:dev-${docker_version}" >> "$tags_file"
               printf '%s\n' "${IMAGE_NAME}:${docker_version}" >> "$tags_file"
