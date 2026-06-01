@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Eye, EyeOff, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -19,6 +19,7 @@ export function LoginPage(): React.ReactElement {
   const [loading, setLoading] = useState(false);
   const [instance, setInstance] = useState<InstanceState | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const { refresh } = useMe();
 
   useEffect(() => {
@@ -37,7 +38,14 @@ export function LoginPage(): React.ReactElement {
     try {
       await apiPost('/api/auth/sign-in/email', { email, password });
       await refresh();
-      navigate('/dashboard');
+      const nextPath =
+        typeof location.state === 'object' &&
+        location.state !== null &&
+        'from' in location.state &&
+        typeof location.state.from === 'string'
+          ? location.state.from
+          : '/dashboard';
+      navigate(nextPath);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         setError(err.message);

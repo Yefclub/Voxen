@@ -24,7 +24,9 @@ export function AppLayout(): React.ReactElement {
   }
 
   if (!data?.user) {
-    return <Navigate to="/entrar" replace state={{ from: location.pathname }} />;
+    return (
+      <Navigate to="/entrar" replace state={{ from: `${location.pathname}${location.search}` }} />
+    );
   }
 
   if (data.user.status !== 'APPROVED') {

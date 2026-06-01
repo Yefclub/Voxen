@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { EDGE_COLORS, NODE_COLORS, buildGraphLayout } from '../src/client/pages/grafo';
+import {
+  EDGE_COLORS,
+  NODE_COLORS,
+  buildGraphLayout,
+  buildSigmaGraphModel,
+} from '../src/client/pages/grafo';
 
 const SVG_SAFE_COLOR = /^(#[0-9a-f]{6}|rgba?\([^)]+\))$/i;
 
@@ -15,7 +20,7 @@ describe('graph rendering helpers', () => {
   });
 
   test('creates finite positions and connects rendered edges to nodes', () => {
-    const layout = buildGraphLayout({
+    const fixture = {
       totalNodes: 3,
       totalEdges: 2,
       nodes: [
@@ -72,7 +77,8 @@ describe('graph rendering helpers', () => {
           confidence: '1',
         },
       ],
-    });
+    } satisfies Parameters<typeof buildGraphLayout>[0];
+    const layout = buildGraphLayout(fixture);
 
     expect(layout.nodes).toHaveLength(3);
     expect(layout.edges).toHaveLength(2);
@@ -86,5 +92,51 @@ describe('graph rendering helpers', () => {
       expect(edge.fromNode.id).toBe(edge.from);
       expect(edge.toNode.id).toBe(edge.to);
     }
+  });
+
+  test('builds a Graphology model for the WebGL renderer', () => {
+    const model = buildSigmaGraphModel({
+      totalNodes: 2,
+      totalEdges: 1,
+      nodes: [
+        {
+          id: 'note-1',
+          key: 'note:1',
+          label: 'Nota conectada',
+          description: null,
+          type: 'note',
+          sourceType: 'NOTE',
+          sourceId: '1',
+          weight: 2,
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          id: 'topic-1',
+          key: 'topic:1',
+          label: 'Topico',
+          description: null,
+          type: 'topic',
+          sourceType: 'MANUAL',
+          sourceId: null,
+          weight: 1,
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+      edges: [
+        {
+          id: 'edge-1',
+          from: 'note-1',
+          to: 'topic-1',
+          kind: 'mentions',
+          method: 'test',
+          confidence: '1',
+        },
+      ],
+    });
+
+    expect(model.graph.order).toBe(2);
+    expect(model.graph.size).toBe(1);
+    expect(model.graph.getNodeAttribute('note-1', 'label')).toBe('Nota conectada');
+    expect(model.neighborhoods.get('note-1')?.has('topic-1')).toBe(true);
   });
 });

@@ -158,12 +158,12 @@ docs(spec): adiciona .specs/003-painel-custos.md
 `package.json` guarda a última versão estável do produto. Tags estáveis usam
 SemVer completo: `vX.Y.Z`. A branch `dev` não cria commits/tags automáticos de
 pré-release a cada merge; builds de dev usam uma versão efêmera SemVer ligada à
-próxima patch estável: `X.Y.Z-dev.YYYYMMDD.HHMMSS+sha.<shortsha>`.
+próxima patch estável: `X.Y.Z-dev.<unix_epoch_seconds>`.
 
 **Branch `dev`**:
 - Toda feature entra por PR para `dev`.
 - `version-dev.yml` calcula e publica a versão dev no summary do workflow.
-- A imagem Easypanel em `dev` recebe tags `dev`, `dev-X.Y.Z-dev.<timestamp>.sha.<shortsha>` e `X.Y.Z-dev.<timestamp>.sha.<shortsha>`.
+- A imagem Easypanel em `dev` recebe tags `dev`, `dev-X.Y.Z-dev.<unix_epoch_seconds>` e `X.Y.Z-dev.<unix_epoch_seconds>`.
 - O workflow não altera arquivos, não commita e não cria tag.
 
 **Release estável em `main`**:

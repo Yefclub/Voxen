@@ -26,6 +26,7 @@ import { notesRoutes } from './routes/notes';
 import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
 import { graphRoutes } from './routes/graph';
+import { shareTargetRoutes } from './routes/share-target';
 import { getRedisPublisher } from './lib/redis';
 import { rateLimit } from './lib/rate-limit';
 import { s3Bucket, s3Client } from './lib/s3';
@@ -216,6 +217,8 @@ app.route('/api/automations', automationsRoutes);
 app.route('/mcp', mcpRoutes);
 // Graph view (visualização Obsidian-like da KB)
 app.route('/api/graph', graphRoutes);
+// PWA Web Share Target (Android/Chrome instalado)
+app.route('/share-target', shareTargetRoutes);
 
 // Avatar proxy: serve imagem do storage S3 de qualquer user autenticado
 app.get('/api/avatar/:userId', async (c) => {
