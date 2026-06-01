@@ -2,12 +2,11 @@
 // /grafo — visualização do Voxen Brain
 // ============================================================================
 // Spec: .specs/020-brain-knowledge-harness.md
-// Tech: cytoscape.js layout 'cose' sobre BrainNode/BrainEdge materializados.
+// Tech: SVG responsivo sobre BrainNode/BrainEdge materializados.
 // ============================================================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import cytoscape, { type Core, type NodeSingular } from 'cytoscape';
 import { BrainCircuit, ExternalLink, Network, RotateCw, Search } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -66,6 +65,26 @@ interface GraphResp {
   totalEdges: number;
 }
 
+interface GraphLayoutNode extends GraphNode {
+  x: number;
+  y: number;
+  radius: number;
+  labelLines: string[];
+}
+
+interface GraphLayoutEdge extends GraphEdge {
+  fromNode: GraphLayoutNode;
+  toNode: GraphLayoutNode;
+}
+
+interface GraphLayout {
+  nodes: GraphLayoutNode[];
+  edges: GraphLayoutEdge[];
+}
+
+const GRAPH_VIEWBOX = { width: 1000, height: 620 };
+const SOURCE_NODE_TYPES = new Set<GraphNodeType>(['transcript', 'note', 'folder']);
+
 export const NODE_COLORS: Record<GraphNodeType, string> = {
   transcript: '#a78bfa',
   note: '#34d399',
@@ -90,26 +109,7 @@ export const EDGE_COLORS: Record<GraphEdge['kind'], string> = {
   next_to: 'rgba(163, 230, 53, 0.7)',
 };
 
-const NODE_COLOR_STYLES: cytoscape.StylesheetJsonBlock[] = Object.entries(NODE_COLORS).map(
-  ([type, color]) => ({
-    selector: `node.${type}`,
-    style: {
-      'background-color': color,
-      shape: nodeShape(type as GraphNodeType),
-    },
-  }),
-);
-
-const EDGE_COLOR_STYLES: cytoscape.StylesheetJsonBlock[] = Object.entries(EDGE_COLORS).map(
-  ([kind, color]) => ({
-    selector: `edge.${kind}`,
-    style: { 'line-color': color, 'target-arrow-color': color },
-  }),
-);
-
 export function GrafoPage(): React.ReactElement {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const cyRef = useRef<Core | null>(null);
   const [forceTick, setForceTick] = useState(0);
   const graphPath = forceTick > 0 ? `/api/graph?force=1&t=${forceTick}` : '/api/graph';
   const { data, loading, error } = useFetch<GraphResp>(graphPath);
@@ -150,143 +150,13 @@ export function GrafoPage(): React.ReactElement {
 
   const selectedNode = selectedId ? (nodeById.get(selectedId) ?? null) : null;
   const selectedEdges = selectedId ? (edgeByNodeId.get(selectedId) ?? []) : [];
+  const graphLayout = useMemo(() => (filtered ? buildGraphLayout(filtered) : null), [filtered]);
 
   useEffect(() => {
     if (selectedId && filtered && !filtered.nodes.some((node) => node.id === selectedId)) {
       setSelectedId(null);
     }
   }, [filtered, selectedId]);
-
-  useEffect(() => {
-    if (!containerRef.current || !filtered) return;
-    const graphContainer = containerRef.current;
-    cyRef.current?.destroy();
-
-    const cy = cytoscape({
-      container: graphContainer,
-      elements: [
-        ...filtered.nodes.map((node) => ({
-          data: {
-            id: node.id,
-            label: node.label,
-            type: node.type,
-            weight: node.weight,
-          },
-          classes: node.type,
-        })),
-        ...filtered.edges.map((edge) => ({
-          data: {
-            id: edge.id,
-            source: edge.from,
-            target: edge.to,
-            kind: edge.kind,
-            method: edge.method,
-          },
-          classes: edge.kind,
-        })),
-      ],
-      style: [
-        {
-          selector: 'node',
-          style: {
-            label: 'data(label)',
-            color: '#f4f4f5',
-            'font-size': 9,
-            'font-family': 'Inter, sans-serif',
-            'text-valign': 'bottom',
-            'text-margin-y': 8,
-            'text-max-width': '132px',
-            'text-wrap': 'wrap',
-            width: 'mapData(weight, 1, 9, 14, 34)',
-            height: 'mapData(weight, 1, 9, 14, 34)',
-            'border-width': 1.4,
-            'border-color': '#18181b',
-            'overlay-opacity': 0,
-          },
-        },
-        ...NODE_COLOR_STYLES,
-        {
-          selector: 'edge',
-          style: {
-            width: 1.15,
-            'line-color': 'rgba(148, 163, 184, 0.5)',
-            'target-arrow-shape': 'triangle',
-            'target-arrow-color': 'rgba(148, 163, 184, 0.5)',
-            'curve-style': 'bezier',
-            opacity: 0.72,
-          },
-        },
-        ...EDGE_COLOR_STYLES,
-        {
-          selector: 'edge.belongs_to',
-          style: { 'line-style': 'dashed', width: 1.25 },
-        },
-        {
-          selector: 'edge.links_to',
-          style: { width: 1.65 },
-        },
-        {
-          selector: 'node:selected',
-          style: {
-            'border-width': 4,
-            'border-color': '#fafafa',
-            'underlay-color': 'rgba(167, 139, 250, 0.18)',
-            'underlay-opacity': 1,
-            'underlay-padding': 7,
-          },
-        },
-      ],
-      layout: {
-        name: filtered.nodes.length < 4 ? 'circle' : 'cose',
-        animate: false,
-        nodeRepulsion: () => 7200,
-        idealEdgeLength: () => 88,
-        edgeElasticity: () => 78,
-        nestingFactor: 1.1,
-        gravity: 0.28,
-        randomize: true,
-        fit: true,
-        padding: 44,
-      },
-      wheelSensitivity: 0.18,
-      minZoom: 0.18,
-      maxZoom: 3.2,
-    });
-
-    cy.on('tap', 'node', (evt) => {
-      const node = evt.target as NodeSingular;
-      setSelectedId(node.id());
-    });
-    cy.on('tap', (evt) => {
-      if (evt.target === cy) setSelectedId(null);
-    });
-
-    const fitGraph = () => {
-      cy.resize();
-      cy.fit(undefined, 44);
-    };
-
-    let animationFrame = 0;
-    const scheduleFit = () => {
-      cancelAnimationFrame(animationFrame);
-      animationFrame = requestAnimationFrame(fitGraph);
-    };
-
-    cy.ready(scheduleFit);
-    cy.on('layoutstop', scheduleFit);
-
-    const resizeObserver =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleFit);
-    resizeObserver?.observe(graphContainer);
-
-    cyRef.current = cy;
-    return () => {
-      cancelAnimationFrame(animationFrame);
-      resizeObserver?.disconnect();
-      cy.destroy();
-      if (cyRef.current === cy) cyRef.current = null;
-    };
-  }, [filtered]);
 
   const stats = filtered ?? data;
 
@@ -361,7 +231,12 @@ export function GrafoPage(): React.ReactElement {
                   </CardContent>
                 </div>
               )}
-              <div ref={containerRef} className="absolute inset-0" />
+              <BrainGraphCanvas
+                layout={graphLayout}
+                selectedId={selectedId}
+                translate={t}
+                onSelect={setSelectedId}
+              />
             </div>
             <GraphInspector
               node={selectedNode}
@@ -428,6 +303,146 @@ function StatDot({
       {label}
     </span>
   );
+}
+
+function BrainGraphCanvas({
+  layout,
+  selectedId,
+  translate,
+  onSelect,
+}: {
+  layout: GraphLayout | null;
+  selectedId: string | null;
+  translate: TranslateFn;
+  onSelect: (id: string | null) => void;
+}): React.ReactElement {
+  if (!layout || layout.nodes.length === 0) {
+    return <div className="absolute inset-0" />;
+  }
+
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      <svg
+        role="img"
+        aria-label={translate('graph.title')}
+        className="h-full w-full"
+        viewBox={`0 0 ${GRAPH_VIEWBOX.width} ${GRAPH_VIEWBOX.height}`}
+        preserveAspectRatio="xMidYMid meet"
+        onClick={() => onSelect(null)}
+      >
+        <rect width={GRAPH_VIEWBOX.width} height={GRAPH_VIEWBOX.height} fill="transparent" />
+        <g opacity="0.75">
+          {layout.edges.map((edge) => (
+            <path
+              key={edge.id}
+              d={edgePath(edge)}
+              fill="none"
+              stroke={EDGE_COLORS[edge.kind]}
+              strokeLinecap="round"
+              strokeWidth={edge.kind === 'links_to' ? 2.4 : 1.6}
+              strokeDasharray={edge.kind === 'belongs_to' ? '6 8' : undefined}
+            />
+          ))}
+        </g>
+        <g>
+          {layout.nodes.map((node) => (
+            <BrainGraphNode
+              key={node.id}
+              node={node}
+              selected={node.id === selectedId}
+              onSelect={onSelect}
+            />
+          ))}
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+function BrainGraphNode({
+  node,
+  selected,
+  onSelect,
+}: {
+  node: GraphLayoutNode;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}): React.ReactElement {
+  const color = NODE_COLORS[node.type];
+  const stroke = selected ? '#fafafa' : '#18181b';
+  const strokeWidth = selected ? 4 : 1.5;
+  const labelY = node.radius + 15;
+
+  return (
+    <g
+      className="cursor-pointer outline-none"
+      role="button"
+      tabIndex={0}
+      transform={`translate(${node.x} ${node.y})`}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect(node.id);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        onSelect(node.id);
+      }}
+    >
+      <title>{node.label}</title>
+      {nodeShapeElement(node, color, stroke, strokeWidth)}
+      <text
+        y={labelY}
+        textAnchor="middle"
+        className="select-none fill-zinc-100 font-sans text-[11px] font-medium"
+        paintOrder="stroke"
+        stroke="#18181b"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      >
+        {node.labelLines.map((line, index) => (
+          <tspan key={`${line}-${index}`} x="0" dy={index === 0 ? 0 : 13}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  );
+}
+
+function nodeShapeElement(
+  node: GraphLayoutNode,
+  fill: string,
+  stroke: string,
+  strokeWidth: number,
+): React.ReactElement {
+  if (node.type === 'folder') {
+    const width = node.radius * 2.25;
+    const height = node.radius * 1.55;
+    return (
+      <rect
+        x={-width / 2}
+        y={-height / 2}
+        width={width}
+        height={height}
+        rx="8"
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+    );
+  }
+  if (node.type === 'cluster') {
+    return (
+      <polygon
+        points={hexagonPoints(node.radius)}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+    );
+  }
+  return <circle r={node.radius} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />;
 }
 
 function GraphInspector({
@@ -567,12 +582,6 @@ function countType(data: GraphResp, type: GraphNodeType): number {
   return data.nodes.filter((node) => node.type === type).length;
 }
 
-function nodeShape(type: GraphNodeType): cytoscape.Css.NodeShape {
-  if (type === 'folder') return 'round-rectangle';
-  if (type === 'cluster') return 'hexagon';
-  return 'ellipse';
-}
-
 function nodePath(node: GraphNode): string | null {
   if (!node.sourceId) return null;
   if (node.sourceType === 'TRANSCRIPT') return `/transcricoes/${node.sourceId}`;
@@ -586,4 +595,181 @@ function nodeTypeLabel(type: GraphNodeType, translate: TranslateFn): string {
 
 function edgeKindLabel(kind: GraphEdge['kind'], translate: TranslateFn): string {
   return translate(`graph.edge.${kind}`);
+}
+
+export function buildGraphLayout(data: GraphResp): GraphLayout {
+  const width = GRAPH_VIEWBOX.width;
+  const height = GRAPH_VIEWBOX.height;
+  const center = { x: width / 2, y: height / 2 };
+  const degree = new Map<string, number>();
+  for (const edge of data.edges) {
+    degree.set(edge.from, (degree.get(edge.from) ?? 0) + 1);
+    degree.set(edge.to, (degree.get(edge.to) ?? 0) + 1);
+  }
+
+  const orderedNodes = [...data.nodes].sort(compareGraphNodes);
+  const sourceNodes = orderedNodes.filter((node) => SOURCE_NODE_TYPES.has(node.type));
+  const sourceAngles = new Map<string, number>();
+  const positions = new Map<string, { x: number; y: number }>();
+
+  if (sourceNodes.length > 0) {
+    const sourceRadius = sourceNodes.length === 1 ? 0 : 132 + Math.min(sourceNodes.length, 8) * 6;
+    sourceNodes.forEach((node, index) => {
+      const angle = angleForIndex(index, sourceNodes.length, -Math.PI / 2);
+      sourceAngles.set(node.id, angle);
+      positions.set(node.id, polarPoint(center, sourceRadius, angle));
+    });
+  }
+
+  const fallbackNodes = sourceNodes.length > 0 ? [] : orderedNodes;
+  fallbackNodes.forEach((node, index) => {
+    const radius = orderedNodes.length < 3 ? 95 : 205;
+    positions.set(node.id, polarPoint(center, radius, angleForIndex(index, orderedNodes.length)));
+  });
+
+  const conceptNodes = orderedNodes.filter((node) => !positions.has(node.id));
+  conceptNodes.forEach((node, index) => {
+    const neighborAngles = data.edges
+      .filter((edge) => edge.from === node.id || edge.to === node.id)
+      .map((edge) => (edge.from === node.id ? edge.to : edge.from))
+      .map((id) => sourceAngles.get(id))
+      .filter((angle): angle is number => typeof angle === 'number');
+    const angle =
+      averageAngle(neighborAngles) ??
+      angleForIndex(index, Math.max(conceptNodes.length, 1), Math.PI / 10);
+    const ring = 218 + (index % 4) * 34;
+    positions.set(node.id, polarPoint(center, ring, angle + ((index % 3) - 1) * 0.11));
+  });
+
+  const layoutNodes = orderedNodes.map<GraphLayoutNode>((node) => {
+    const point = positions.get(node.id) ?? center;
+    const radius = clamp(11 + Math.min(degree.get(node.id) ?? 0, 8) * 2.3, 13, 32);
+    const sourceBoost = SOURCE_NODE_TYPES.has(node.type) ? 3 : 0;
+    return {
+      ...node,
+      ...clampPoint(point, 58, width - 58, 56, height - 74),
+      radius: radius + sourceBoost,
+      labelLines: splitGraphLabel(node.label),
+    };
+  });
+  const byId = new Map(layoutNodes.map((node) => [node.id, node]));
+  const layoutEdges = data.edges
+    .map<GraphLayoutEdge | null>((edge) => {
+      const fromNode = byId.get(edge.from);
+      const toNode = byId.get(edge.to);
+      if (!fromNode || !toNode) return null;
+      return { ...edge, fromNode, toNode };
+    })
+    .filter((edge): edge is GraphLayoutEdge => edge !== null);
+
+  return { nodes: layoutNodes, edges: layoutEdges };
+}
+
+function compareGraphNodes(a: GraphNode, b: GraphNode): number {
+  const priority: Record<GraphNodeType, number> = {
+    transcript: 0,
+    folder: 1,
+    note: 2,
+    topic: 3,
+    entity: 4,
+    claim: 5,
+    event: 6,
+    cluster: 7,
+    content: 8,
+  };
+  return (
+    priority[a.type] - priority[b.type] || b.weight - a.weight || a.label.localeCompare(b.label)
+  );
+}
+
+function angleForIndex(index: number, total: number, offset = 0): number {
+  if (total <= 1) return offset;
+  return offset + (index / total) * Math.PI * 2;
+}
+
+function polarPoint(
+  center: { x: number; y: number },
+  radius: number,
+  angle: number,
+): { x: number; y: number } {
+  return {
+    x: center.x + Math.cos(angle) * radius,
+    y: center.y + Math.sin(angle) * radius,
+  };
+}
+
+function averageAngle(angles: number[]): number | null {
+  if (angles.length === 0) return null;
+  const vector = angles.reduce(
+    (acc, angle) => ({
+      x: acc.x + Math.cos(angle),
+      y: acc.y + Math.sin(angle),
+    }),
+    { x: 0, y: 0 },
+  );
+  return Math.atan2(vector.y / angles.length, vector.x / angles.length);
+}
+
+function clampPoint(
+  point: { x: number; y: number },
+  minX: number,
+  maxX: number,
+  minY: number,
+  maxY: number,
+): { x: number; y: number } {
+  return {
+    x: clamp(point.x, minX, maxX),
+    y: clamp(point.y, minY, maxY),
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function splitGraphLabel(label: string): string[] {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  for (const word of words) {
+    const current = lines.at(-1);
+    if (!current || current.length + word.length + 1 > 20) {
+      lines.push(word.slice(0, 22));
+    } else {
+      lines[lines.length - 1] = `${current} ${word}`;
+    }
+    if (lines.length === 2) break;
+  }
+  if (lines.length === 0) return ['Sem titulo'];
+  if (words.join(' ').length > lines.join(' ').length) {
+    lines[lines.length - 1] = `${lines.at(-1)?.replace(/\.*$/, '')}...`;
+  }
+  return lines;
+}
+
+function edgePath(edge: GraphLayoutEdge): string {
+  const { fromNode, toNode } = edge;
+  const midX = (fromNode.x + toNode.x) / 2;
+  const midY = (fromNode.y + toNode.y) / 2;
+  const dx = toNode.x - fromNode.x;
+  const dy = toNode.y - fromNode.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const curve = ((hashString(edge.id) % 7) - 3) * 5;
+  const cx = midX + (-dy / length) * curve;
+  const cy = midY + (dx / length) * curve;
+  return `M ${fromNode.x.toFixed(1)} ${fromNode.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${toNode.x.toFixed(1)} ${toNode.y.toFixed(1)}`;
+}
+
+function hexagonPoints(radius: number): string {
+  return Array.from({ length: 6 }, (_, index) => {
+    const angle = Math.PI / 6 + index * (Math.PI / 3);
+    return `${(Math.cos(angle) * radius).toFixed(1)},${(Math.sin(angle) * radius).toFixed(1)}`;
+  }).join(' ');
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
 }
