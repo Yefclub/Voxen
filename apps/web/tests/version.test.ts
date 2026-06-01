@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import app from '../src/index';
+import { formatDevVersionFromDeploy } from '../src/index';
 
 describe('GET /api/version', () => {
   it('retorna version e builtAt sempre populados', async () => {
@@ -17,6 +18,19 @@ describe('GET /api/version', () => {
     const res = await app.fetch(new Request('http://localhost/api/version'));
     // Sem cookie de sessão, ainda devolve 200 (versão é pública)
     expect(res.status).toBe(200);
+  });
+});
+
+describe('dev version formatting', () => {
+  it('usa próxima patch e normaliza DEPLOY_TIMESTAMP em milissegundos', () => {
+    expect(formatDevVersionFromDeploy('0.9.3', '1780337076625', 'abc123')).toBe(
+      '0.9.4-dev.1780337076',
+    );
+  });
+
+  it('não gera versão dev sem sha ou timestamp válido', () => {
+    expect(formatDevVersionFromDeploy('0.9.3', '1780337076')).toBe(null);
+    expect(formatDevVersionFromDeploy('0.9.3', 'not-a-number', 'abc123')).toBe(null);
   });
 });
 

@@ -184,7 +184,10 @@ direto em `main` ou `dev`.
 **Versão visível na UI**: `/api/version` retorna em ordem:
 1. env `VOXEN_VERSION` (CI/deploy injeta build arg; dev local pode usar
    `git describe --tags --always --dirty`)
-2. `package.json` como fallback estável
+2. deploy Easypanel por GitHub source: `package.json` próxima patch +
+   `DEPLOY_TIMESTAMP`, no formato `X.Y.Z-dev.<unix_epoch_seconds>`, quando há
+   `GIT_SHA`
+3. `package.json` como fallback estável
 
 ## Estilo de código
 
