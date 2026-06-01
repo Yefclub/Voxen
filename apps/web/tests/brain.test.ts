@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import app from '../src/index';
+import { BRAIN_INDEX_VERSION } from '../src/lib/brain';
 import { db } from '../src/lib/db';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
@@ -316,6 +317,43 @@ describeIfDb('brain indexer', () => {
       },
     });
     expect(evidence?.excerpt).toContain('Conceitos em comum');
+  });
+
+  it('reindexes stale Brain source nodes on graph load', async () => {
+    await signUp('stale-brain@voxen.local', 'senha-super-segura-123', 'Stale Brain');
+    const signin = await signIn('stale-brain@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'stale-brain@voxen.local' } });
+
+    const noteRes = await app.fetch(
+      new Request('http://localhost/api/notes', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Memória stale',
+          content: 'Projeto Atlas precisa ser reindexado automaticamente.',
+        }),
+      }),
+    );
+    expect(noteRes.status).toBe(201);
+    const noteBody = (await noteRes.json()) as { note: { id: string } };
+
+    await db.brainNode.update({
+      where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
+      data: { metadata: { brainIndexVersion: 1 } },
+    });
+
+    const graph = await app.fetch(
+      new Request('http://localhost/api/graph', { headers: { cookie } }),
+    );
+    expect(graph.status).toBe(200);
+
+    const node = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
+    });
+    expect((node.metadata as { brainIndexVersion?: number }).brainIndexVersion).toBe(
+      BRAIN_INDEX_VERSION,
+    );
   });
 
   it('removes automatic topic nodes when transcript leaves the active graph', async () => {
