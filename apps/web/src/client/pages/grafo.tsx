@@ -66,28 +66,28 @@ interface GraphResp {
   totalEdges: number;
 }
 
-const NODE_COLORS: Record<GraphNodeType, string> = {
-  transcript: 'oklch(72% 0.17 293)',
-  note: 'oklch(73% 0.15 158)',
-  folder: 'oklch(80% 0.15 76)',
-  entity: 'oklch(72% 0.14 226)',
-  topic: 'oklch(72% 0.15 35)',
-  claim: 'oklch(73% 0.16 330)',
-  event: 'oklch(76% 0.16 196)',
-  cluster: 'oklch(82% 0.12 105)',
-  content: 'oklch(68% 0.06 255)',
+export const NODE_COLORS: Record<GraphNodeType, string> = {
+  transcript: '#a78bfa',
+  note: '#34d399',
+  folder: '#fbbf24',
+  entity: '#38bdf8',
+  topic: '#fb7185',
+  claim: '#f472b6',
+  event: '#2dd4bf',
+  cluster: '#a3e635',
+  content: '#94a3b8',
 };
 
-const EDGE_COLORS: Record<GraphEdge['kind'], string> = {
-  belongs_to: 'oklch(80% 0.15 76 / 0.72)',
-  links_to: 'oklch(72% 0.17 293 / 0.78)',
-  mentions: 'oklch(72% 0.14 226 / 0.72)',
-  supports: 'oklch(73% 0.15 158 / 0.76)',
-  contradicts: 'oklch(68% 0.18 25 / 0.78)',
-  same_as: 'oklch(84% 0.08 255 / 0.7)',
-  part_of: 'oklch(76% 0.16 196 / 0.72)',
-  related_to: 'oklch(68% 0.06 255 / 0.68)',
-  next_to: 'oklch(82% 0.12 105 / 0.7)',
+export const EDGE_COLORS: Record<GraphEdge['kind'], string> = {
+  belongs_to: 'rgba(251, 191, 36, 0.72)',
+  links_to: 'rgba(167, 139, 250, 0.78)',
+  mentions: 'rgba(56, 189, 248, 0.72)',
+  supports: 'rgba(52, 211, 153, 0.76)',
+  contradicts: 'rgba(248, 113, 113, 0.78)',
+  same_as: 'rgba(203, 213, 225, 0.7)',
+  part_of: 'rgba(45, 212, 191, 0.72)',
+  related_to: 'rgba(148, 163, 184, 0.68)',
+  next_to: 'rgba(163, 230, 53, 0.7)',
 };
 
 const NODE_COLOR_STYLES: cytoscape.StylesheetJsonBlock[] = Object.entries(NODE_COLORS).map(
@@ -159,10 +159,11 @@ export function GrafoPage(): React.ReactElement {
 
   useEffect(() => {
     if (!containerRef.current || !filtered) return;
+    const graphContainer = containerRef.current;
     cyRef.current?.destroy();
 
     const cy = cytoscape({
-      container: containerRef.current,
+      container: graphContainer,
       elements: [
         ...filtered.nodes.map((node) => ({
           data: {
@@ -208,9 +209,9 @@ export function GrafoPage(): React.ReactElement {
           selector: 'edge',
           style: {
             width: 1.15,
-            'line-color': 'oklch(56% 0.05 255 / 0.5)',
+            'line-color': 'rgba(148, 163, 184, 0.5)',
             'target-arrow-shape': 'triangle',
-            'target-arrow-color': 'oklch(56% 0.05 255 / 0.5)',
+            'target-arrow-color': 'rgba(148, 163, 184, 0.5)',
             'curve-style': 'bezier',
             opacity: 0.72,
           },
@@ -229,7 +230,7 @@ export function GrafoPage(): React.ReactElement {
           style: {
             'border-width': 4,
             'border-color': '#fafafa',
-            'underlay-color': 'oklch(72% 0.17 293 / 0.18)',
+            'underlay-color': 'rgba(167, 139, 250, 0.18)',
             'underlay-opacity': 1,
             'underlay-padding': 7,
           },
@@ -237,14 +238,13 @@ export function GrafoPage(): React.ReactElement {
       ],
       layout: {
         name: filtered.nodes.length < 4 ? 'circle' : 'cose',
-        animate: true,
-        animationDuration: 650,
+        animate: false,
         nodeRepulsion: () => 7200,
         idealEdgeLength: () => 88,
         edgeElasticity: () => 78,
         nestingFactor: 1.1,
         gravity: 0.28,
-        randomize: false,
+        randomize: true,
         fit: true,
         padding: 44,
       },
@@ -260,13 +260,31 @@ export function GrafoPage(): React.ReactElement {
     cy.on('tap', (evt) => {
       if (evt.target === cy) setSelectedId(null);
     });
-    cy.ready(() => {
+
+    const fitGraph = () => {
+      cy.resize();
       cy.fit(undefined, 44);
-    });
+    };
+
+    let animationFrame = 0;
+    const scheduleFit = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(fitGraph);
+    };
+
+    cy.ready(scheduleFit);
+    cy.on('layoutstop', scheduleFit);
+
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleFit);
+    resizeObserver?.observe(graphContainer);
 
     cyRef.current = cy;
     return () => {
+      cancelAnimationFrame(animationFrame);
+      resizeObserver?.disconnect();
       cy.destroy();
+      if (cyRef.current === cy) cyRef.current = null;
     };
   }, [filtered]);
 
