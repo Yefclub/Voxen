@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar, SidebarSpacer } from './sidebar';
 import { Topbar } from './topbar';
@@ -10,10 +11,18 @@ export function AppLayout(): React.ReactElement {
   const { data, loading } = useMe();
   const location = useLocation();
   const navigate = useNavigate();
+  const mainRef = useRef<HTMLElement>(null);
   // Watcher global de jobs do user logado (toast em qualquer página)
   useJobsWatcher(!!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone), (path) =>
     navigate(path),
   );
+
+  // O scroll migrou da window para o <main> (shell de altura fixa com header
+  // travado). Resetar ao topo a cada troca de rota pra não herdar a posição da
+  // página anterior.
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [location.pathname]);
 
   if (loading) {
     return (
@@ -46,26 +55,20 @@ export function AppLayout(): React.ReactElement {
     return <Navigate to="/pendente" replace />;
   }
 
-  // Em /chat o conteúdo gerencia a própria altura (input fixo no fundo), então
-  // removemos o padding bottom do <main> pra não criar scroll extra na página.
+  // App shell de altura fixa: o cabeçalho (Topbar) fica travado no topo e o
+  // conteúdo rola dentro do <main>. /chat continua gerenciando a própria altura
+  // (input fixo no fundo), então não recebe o overflow-y-auto.
   const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
-
-  const shellClass = isChat
-    ? 'h-dvh flex bg-[var(--color-app-bg)] overflow-hidden'
-    : 'min-h-dvh flex bg-[var(--color-app-bg)]';
-  const contentClass = isChat
-    ? 'flex-1 flex flex-col min-w-0 min-h-0'
-    : 'flex-1 flex flex-col min-w-0 min-h-dvh';
-  const mainClass = isChat ? 'flex-1 min-h-0' : 'flex-1 pb-6';
+  const mainClass = isChat ? 'flex-1 min-h-0' : 'flex-1 min-h-0 overflow-y-auto pb-6';
 
   return (
     <ChatContextProvider>
-      <div className={shellClass}>
+      <div className="flex h-dvh overflow-hidden bg-[var(--color-app-bg)]">
         <Sidebar user={data.user} />
         <SidebarSpacer />
-        <div className={contentClass}>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <Topbar user={data.user} />
-          <main className={mainClass}>
+          <main ref={mainRef} className={mainClass}>
             <Outlet />
           </main>
           {!isChat && <VersionFooter />}
