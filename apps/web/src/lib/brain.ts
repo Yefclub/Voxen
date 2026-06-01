@@ -67,9 +67,24 @@ type TopicCandidate = {
   excerpt: string | null;
 };
 
+type EntityCandidate = TopicCandidate & {
+  kind: 'domain' | 'hashtag' | 'proper-noun';
+};
+
+type IndexedConcept = {
+  nodeId: string;
+  key: string;
+  type: 'topic' | 'entity';
+  slug: string;
+  label: string;
+  confidence: number;
+};
+
 const DESCRIPTION_LIMIT = 800;
 const EVIDENCE_LIMIT = 600;
-const TOPIC_LIMIT = 8;
+const TOPIC_LIMIT = 10;
+const ENTITY_LIMIT = 8;
+const RELATED_CONTENT_LIMIT = 12;
 const TOPIC_MIN_LENGTH = 4;
 const TOPIC_STOPWORDS = new Set([
   'ainda',
@@ -93,6 +108,9 @@ const TOPIC_STOPWORDS = new Set([
   'pelo',
   'sobre',
   'texto',
+  'tipo',
+  'tudo',
+  'voce',
   'http',
   'https',
   'www',
@@ -124,9 +142,10 @@ export async function deleteBrainForSource(
   sourceType: BrainSourceType,
   sourceId: string,
 ): Promise<void> {
+  await deleteSharedConceptEdgesForSource(userId, sourceType, sourceId);
   await removeSourceEvidence(userId, sourceType, sourceId);
   await db.brainNode.deleteMany({ where: { userId, sourceType, sourceId } });
-  await deleteOrphanKeywordTopicNodes(userId);
+  await deleteOrphanAutomaticConceptNodes(userId);
 }
 
 export async function deleteBrainForSources(
@@ -165,6 +184,7 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
     return;
   }
 
+  await deleteSharedConceptEdgesForSource(userId, 'TRANSCRIPT', transcript.id);
   await removeSourceEvidence(userId, 'TRANSCRIPT', transcript.id);
   const contentNode = await upsertBrainNode({
     userId,
@@ -209,27 +229,14 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
     });
   }
 
-  if (transcript.status === 'ACTIVE') {
-    const searchableText = `${transcript.title}\n${transcript.summaryMd || transcript.plainText}`;
-    for (const topic of extractTopics(searchableText)) {
-      const topicNode = await upsertTopicNode(userId, topic);
-      await upsertBrainEdge({
-        userId,
-        fromNodeId: contentNode.id,
-        toNodeId: topicNode.id,
-        kind: 'MENTIONS',
-        method: 'keyword',
-        confidence: topic.confidence,
-        sourceType: 'TRANSCRIPT',
-        sourceId: transcript.id,
-        excerpt: topic.excerpt,
-        metadata: {
-          term: topic.slug,
-          count: topic.count,
-        },
-      });
-    }
-  }
+  await indexConceptsForContent({
+    userId,
+    contentNodeId: contentNode.id,
+    sourceType: 'TRANSCRIPT',
+    sourceId: transcript.id,
+    status: transcript.status,
+    text: `${transcript.title}\n${transcript.channel ?? ''}\n${transcript.summaryMd || transcript.plainText}`,
+  });
 }
 
 export async function reindexTranscriptsBrain(
@@ -343,6 +350,7 @@ async function reindexNoteRecord(
   note: NoteRecord,
   indexes: { byId: Map<string, NoteRecord>; byTitle: Map<string, NoteRecord> },
 ): Promise<void> {
+  await deleteSharedConceptEdgesForSource(userId, 'NOTE', note.id);
   await removeSourceEvidence(userId, 'NOTE', note.id);
   const node = await upsertNoteNode(userId, note);
   await addBrainSource({
@@ -387,6 +395,15 @@ async function reindexNoteRecord(
       metadata: { targetTitle },
     });
   }
+
+  await indexConceptsForContent({
+    userId,
+    contentNodeId: node.id,
+    sourceType: 'NOTE',
+    sourceId: note.id,
+    status: 'ACTIVE',
+    text: `${note.title}\n${note.content}`,
+  });
 }
 
 async function removeSourceEvidence(
@@ -412,17 +429,38 @@ async function removeSourceEvidence(
     await db.brainEdge.deleteMany({
       where: { userId, id: { in: orphanEdgeIds }, method: { not: 'manual' } },
     });
-    await deleteOrphanKeywordTopicNodes(userId);
+    await deleteOrphanAutomaticConceptNodes(userId);
   }
 }
 
-async function deleteOrphanKeywordTopicNodes(userId: string): Promise<void> {
+async function deleteSharedConceptEdgesForSource(
+  userId: string,
+  sourceType: BrainSourceType,
+  sourceId: string,
+): Promise<void> {
+  const node = await db.brainNode.findUnique({
+    where: { userId_key: { userId, key: brainNodeKey(sourceType, sourceId) } },
+    select: { id: true },
+  });
+  if (!node) return;
+  await db.brainEdge.deleteMany({
+    where: {
+      userId,
+      method: 'shared-concepts',
+      OR: [{ fromNodeId: node.id }, { toNodeId: node.id }],
+    },
+  });
+}
+
+async function deleteOrphanAutomaticConceptNodes(userId: string): Promise<void> {
   await db.$executeRaw`
     DELETE FROM "BrainNode" n
     WHERE n."userId" = ${userId}
-      AND n.type = 'TOPIC'::"BrainNodeType"
       AND n."sourceType" IS NULL
-      AND n.metadata->>'method' = 'keyword'
+      AND (
+        (n.type = 'TOPIC'::"BrainNodeType" AND n.metadata->>'method' = 'keyword')
+        OR (n.type = 'ENTITY'::"BrainNodeType" AND n.metadata->>'method' = 'entity-heuristic')
+      )
       AND NOT EXISTS (
         SELECT 1
         FROM "BrainEdge" be
@@ -480,6 +518,204 @@ async function upsertTopicNode(userId: string, topic: TopicCandidate) {
     sourceType: null,
     sourceId: null,
   });
+}
+
+async function upsertEntityNode(userId: string, entity: EntityCandidate) {
+  return upsertBrainNode({
+    userId,
+    key: `ENTITY:${entity.slug}`,
+    type: 'ENTITY',
+    label: entity.label,
+    description: 'Entidade detectada automaticamente nos conteúdos da biblioteca.',
+    status: 'ACTIVE',
+    metadata: {
+      method: 'entity-heuristic',
+      kind: entity.kind,
+    },
+    sourceType: null,
+    sourceId: null,
+  });
+}
+
+async function indexConceptsForContent(input: {
+  userId: string;
+  contentNodeId: string;
+  sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
+  sourceId: string;
+  status: ContentStatus;
+  text: string;
+}): Promise<void> {
+  if (input.status !== 'ACTIVE') return;
+  const indexed: IndexedConcept[] = [];
+
+  for (const topic of extractTopics(input.text)) {
+    const topicNode = await upsertTopicNode(input.userId, topic);
+    await upsertBrainEdge({
+      userId: input.userId,
+      fromNodeId: input.contentNodeId,
+      toNodeId: topicNode.id,
+      kind: 'MENTIONS',
+      method: 'keyword',
+      confidence: topic.confidence,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      excerpt: topic.excerpt,
+      metadata: {
+        term: topic.slug,
+        count: topic.count,
+        extractorVersion: 2,
+      },
+    });
+    indexed.push({
+      nodeId: topicNode.id,
+      key: topicNode.key,
+      type: 'topic',
+      slug: topic.slug,
+      label: topic.label,
+      confidence: topic.confidence,
+    });
+  }
+
+  for (const entity of extractEntities(input.text)) {
+    const entityNode = await upsertEntityNode(input.userId, entity);
+    await upsertBrainEdge({
+      userId: input.userId,
+      fromNodeId: input.contentNodeId,
+      toNodeId: entityNode.id,
+      kind: 'MENTIONS',
+      method: 'entity-heuristic',
+      confidence: entity.confidence,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      excerpt: entity.excerpt,
+      metadata: {
+        term: entity.slug,
+        kind: entity.kind,
+        count: entity.count,
+        extractorVersion: 1,
+      },
+    });
+    indexed.push({
+      nodeId: entityNode.id,
+      key: entityNode.key,
+      type: 'entity',
+      slug: entity.slug,
+      label: entity.label,
+      confidence: entity.confidence,
+    });
+  }
+
+  await connectContentBySharedConcepts({
+    userId: input.userId,
+    contentNodeId: input.contentNodeId,
+    sourceType: input.sourceType,
+    sourceId: input.sourceId,
+    concepts: indexed,
+  });
+}
+
+async function connectContentBySharedConcepts(input: {
+  userId: string;
+  contentNodeId: string;
+  sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
+  sourceId: string;
+  concepts: IndexedConcept[];
+}): Promise<void> {
+  if (input.concepts.length === 0) return;
+  const conceptById = new Map(input.concepts.map((concept) => [concept.nodeId, concept]));
+  const mentions = await db.brainEdge.findMany({
+    where: {
+      userId: input.userId,
+      status: 'ACTIVE',
+      kind: 'MENTIONS',
+      method: { in: ['keyword', 'entity-heuristic'] },
+      toNodeId: { in: [...conceptById.keys()] },
+      from: {
+        status: 'ACTIVE',
+        sourceType: { in: ['TRANSCRIPT', 'NOTE'] },
+      },
+    },
+    select: {
+      fromNodeId: true,
+      toNodeId: true,
+      from: {
+        select: {
+          id: true,
+          label: true,
+          sourceType: true,
+          sourceId: true,
+        },
+      },
+    },
+  });
+
+  const candidates = new Map<
+    string,
+    {
+      nodeId: string;
+      label: string;
+      concepts: IndexedConcept[];
+      score: number;
+    }
+  >();
+  for (const mention of mentions) {
+    if (mention.fromNodeId === input.contentNodeId) continue;
+    const concept = conceptById.get(mention.toNodeId);
+    if (!concept) continue;
+    const current = candidates.get(mention.fromNodeId) ?? {
+      nodeId: mention.fromNodeId,
+      label: mention.from.label,
+      concepts: [],
+      score: 0,
+    };
+    if (!current.concepts.some((item) => item.nodeId === concept.nodeId)) {
+      current.concepts.push(concept);
+      current.score += concept.type === 'entity' ? 1.25 : 1;
+    }
+    candidates.set(mention.fromNodeId, current);
+  }
+
+  const ranked = [...candidates.values()]
+    .filter((candidate) => candidate.score >= 1.25 || candidate.concepts.length >= 2)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return left.label.localeCompare(right.label);
+    })
+    .slice(0, RELATED_CONTENT_LIMIT);
+
+  for (const candidate of ranked) {
+    const [fromNodeId, toNodeId] = canonicalEdge(input.contentNodeId, candidate.nodeId);
+    const labels = candidate.concepts.slice(0, 5).map((concept) => concept.label);
+    const confidence = Math.min(0.95, Number((0.42 + candidate.score * 0.11).toFixed(4)));
+    await upsertBrainEdge({
+      userId: input.userId,
+      fromNodeId,
+      toNodeId,
+      kind: 'RELATED_TO',
+      method: 'shared-concepts',
+      confidence,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      excerpt: `Conceitos em comum: ${labels.join(', ')}`,
+      metadata: {
+        extractorVersion: 1,
+        sourceNodeId: input.contentNodeId,
+        targetNodeId: candidate.nodeId,
+        sharedConcepts: candidate.concepts.map((concept) => ({
+          key: concept.key,
+          type: concept.type,
+          slug: concept.slug,
+          label: concept.label,
+          confidence: concept.confidence,
+        })),
+        score: candidate.score,
+      },
+    });
+  }
+}
+
+function canonicalEdge(left: string, right: string): [string, string] {
+  return left.localeCompare(right) <= 0 ? [left, right] : [right, left];
 }
 
 async function upsertBrainNode(input: BrainNodeInput) {
@@ -587,34 +823,140 @@ function parseWikiLinks(markdown: string): string[] {
 function extractTopics(value: string): TopicCandidate[] {
   const text = value || '';
   const normalized = normalizeTopicText(text);
-  const counts = new Map<string, number>();
-  for (const match of normalized.matchAll(/[a-z0-9][a-z0-9_-]{3,}/g)) {
-    const token = match[0].replace(/^[-_]+|[-_]+$/g, '');
-    if (
-      token.length < TOPIC_MIN_LENGTH ||
-      /^\d+$/.test(token) ||
-      TOPIC_STOPWORDS.has(token) ||
-      token.startsWith('http') ||
-      token.startsWith('www')
-    ) {
-      continue;
+  const tokens = normalized.match(/[a-z0-9][a-z0-9_-]{2,}/g) ?? [];
+  const candidates = new Map<
+    string,
+    {
+      label: string;
+      count: number;
+      score: number;
     }
-    counts.set(token, (counts.get(token) ?? 0) + 1);
+  >();
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    for (const size of [1, 2, 3]) {
+      const parts = tokens
+        .slice(index, index + size)
+        .map((token) => token.replace(/^[-_]+|[-_]+$/g, ''));
+      if (parts.length !== size || !isValidTopicParts(parts)) continue;
+      const slug = parts.join('-');
+      const current = candidates.get(slug) ?? { label: topicLabel(slug), count: 0, score: 0 };
+      const phraseWeight = size === 1 ? 1 : 1.18 + size * 0.12;
+      current.count += 1;
+      current.score += phraseWeight;
+      candidates.set(slug, current);
+    }
   }
 
-  return [...counts.entries()]
-    .sort(([leftToken, leftCount], [rightToken, rightCount]) => {
-      if (rightCount !== leftCount) return rightCount - leftCount;
-      return leftToken.localeCompare(rightToken);
+  return [...candidates.entries()]
+    .sort(([leftSlug, left], [rightSlug, right]) => {
+      if (right.score !== left.score) return right.score - left.score;
+      if (right.count !== left.count) return right.count - left.count;
+      return leftSlug.localeCompare(rightSlug);
     })
     .slice(0, TOPIC_LIMIT)
-    .map(([slug, count]) => ({
+    .map(([slug, candidate]) => ({
       slug,
-      label: topicLabel(slug),
-      count,
-      confidence: Math.min(1, Number((0.35 + count * 0.08).toFixed(4))),
+      label: candidate.label,
+      count: candidate.count,
+      confidence: Math.min(1, Number((0.35 + candidate.score * 0.055).toFixed(4))),
       excerpt: topicExcerpt(text, slug),
     }));
+}
+
+function isValidTopicParts(parts: string[]): boolean {
+  if (parts.some((part) => !part || /^\d+$/.test(part))) return false;
+  if (parts.some((part) => part.startsWith('http') || part.startsWith('www'))) return false;
+  if (parts.some((part) => TOPIC_STOPWORDS.has(part))) return false;
+  if (parts.length === 1) return (parts[0]?.length ?? 0) >= TOPIC_MIN_LENGTH;
+  return parts.join('').length >= TOPIC_MIN_LENGTH * parts.length;
+}
+
+function extractEntities(value: string): EntityCandidate[] {
+  const text = value || '';
+  const candidates = new Map<string, EntityCandidate>();
+
+  for (const match of text.matchAll(/\bhttps?:\/\/[^\s)]+/gi)) {
+    const raw = match[0];
+    try {
+      const host = new URL(raw).hostname.replace(/^www\./, '');
+      addEntityCandidate(candidates, host, 'domain', text);
+    } catch {
+      // URL parcial ou inválida: ignora sem bloquear indexação.
+    }
+  }
+
+  for (const match of text.matchAll(/(^|\s)#([\p{L}\p{N}_-]{3,})/gu)) {
+    addEntityCandidate(candidates, match[2] ?? '', 'hashtag', text);
+  }
+
+  const capitalizedWord = String.raw`[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\p{L}\p{N}&_.-]{2,}`;
+  const connector = String.raw`(?:d[aeo]s?|e|and|of|the)`;
+  const properNounRegex = new RegExp(
+    String.raw`\b${capitalizedWord}(?:[ \t]+(?:${connector}[ \t]+)?${capitalizedWord}){0,4}`,
+    'gu',
+  );
+  for (const match of text.matchAll(properNounRegex)) {
+    addEntityCandidate(candidates, match[0] ?? '', 'proper-noun', text);
+  }
+
+  return [...candidates.values()]
+    .filter(
+      (entity) =>
+        entity.kind !== 'proper-noun' ||
+        entity.count > 1 ||
+        entity.label.includes(' ') ||
+        hasStrongSingleTokenSignal(entity.label),
+    )
+    .sort((left, right) => {
+      if (right.count !== left.count) return right.count - left.count;
+      if (right.label.length !== left.label.length) return right.label.length - left.label.length;
+      return left.label.localeCompare(right.label);
+    })
+    .slice(0, ENTITY_LIMIT)
+    .map((entity) => ({
+      ...entity,
+      confidence: Math.min(0.92, Number((0.48 + entity.count * 0.09).toFixed(4))),
+    }));
+}
+
+function hasStrongSingleTokenSignal(label: string): boolean {
+  return /^[A-Z0-9&.-]{3,}$/.test(label) || /[A-ZÁÉÍÓÚÂÊÔÃÕÇ].*[A-ZÁÉÍÓÚÂÊÔÃÕÇ]/.test(label);
+}
+
+function addEntityCandidate(
+  candidates: Map<string, EntityCandidate>,
+  rawLabel: string,
+  kind: EntityCandidate['kind'],
+  text: string,
+): void {
+  const label = cleanEntityLabel(rawLabel);
+  const slug = conceptSlug(label);
+  if (!label || slug.length < 3 || TOPIC_STOPWORDS.has(slug)) return;
+  const current = candidates.get(slug) ?? {
+    slug,
+    label,
+    kind,
+    count: 0,
+    confidence: 0.5,
+    excerpt: topicExcerpt(text, slug),
+  };
+  current.count += 1;
+  candidates.set(slug, current);
+}
+
+function cleanEntityLabel(value: string): string {
+  return value
+    .replace(/^#+/, '')
+    .replace(/[.,;:!?()[\]{}"'`]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function conceptSlug(value: string): string {
+  return normalizeTopicText(value)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function normalizeTopicText(value: string): string {
@@ -636,8 +978,10 @@ function topicLabel(slug: string): string {
 
 function topicExcerpt(text: string, slug: string): string | null {
   if (!text.trim()) return null;
+  const needle = slug.replace(/[-_]+/g, ' ');
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/g)) {
-    if (normalizeTopicText(sentence).includes(slug)) {
+    const haystack = normalizeTopicText(sentence).replace(/[^a-z0-9]+/g, ' ');
+    if (haystack.includes(needle)) {
       return truncate(sentence, EVIDENCE_LIMIT);
     }
   }

@@ -2,13 +2,20 @@
 // /grafo — visualização do Voxen Brain
 // ============================================================================
 // Spec: .specs/020-brain-knowledge-harness.md
-// Tech: Sigma.js/WebGL sobre Graphology, com fallback SVG determinístico.
+// Tech: react-force-graph-3d/Three.js com fallback Sigma/SVG determinístico.
 // ============================================================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Graph from 'graphology';
 import type SigmaRenderer from 'sigma';
+import type {
+  ForceGraphMethods,
+  ForceGraphProps,
+  GraphData as ForceGraphData,
+  LinkObject,
+  NodeObject,
+} from 'react-force-graph-3d';
 import { BrainCircuit, ExternalLink, Network, RotateCw, Search } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -108,7 +115,33 @@ interface SigmaGraphModel {
   graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>;
   layout: GraphLayout;
   neighborhoods: Map<string, Set<string>>;
+  forceData: ForceGraphData<ForceGraphNode, ForceGraphLink>;
 }
+
+interface ForceGraphNode extends GraphNode {
+  value: number;
+  color: string;
+  group: GraphNodeType;
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface ForceGraphLink extends GraphEdge {
+  source: string;
+  target: string;
+  value: number;
+  color: string;
+}
+
+type ForceGraph3DComponent = React.ComponentType<
+  ForceGraphProps<ForceGraphNode, ForceGraphLink> & {
+    ref?: React.MutableRefObject<ForceGraphMethods<ForceGraphNode, ForceGraphLink> | undefined>;
+  }
+>;
+
+type RenderedForceNode = NodeObject<ForceGraphNode>;
+type RenderedForceLink = LinkObject<ForceGraphNode, ForceGraphLink>;
 
 const GRAPH_VIEWBOX = { width: 1000, height: 620 };
 const SOURCE_NODE_TYPES = new Set<GraphNodeType>(['transcript', 'note', 'folder']);
@@ -334,6 +367,195 @@ function StatDot({
 }
 
 function BrainGraphCanvas({
+  model,
+  selectedId,
+  translate,
+  onSelect,
+}: {
+  model: SigmaGraphModel | null;
+  selectedId: string | null;
+  translate: TranslateFn;
+  onSelect: (id: string | null) => void;
+}): React.ReactElement {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const graphRef = useRef<ForceGraphMethods<ForceGraphNode, ForceGraphLink> | undefined>(undefined);
+  const [ForceGraph3D, setForceGraph3D] = useState<ForceGraph3DComponent | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [webglFailed, setWebglFailed] = useState(false);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!containerRef.current || !('ResizeObserver' in window)) return;
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const rect = entry.contentRect;
+      setSize({
+        width: Math.max(320, Math.floor(rect.width)),
+        height: Math.max(420, Math.floor(rect.height)),
+      });
+    });
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  useEffect(() => {
+    setWebglFailed(false);
+    setForceGraph3D(null);
+    if (!model || model.layout.nodes.length === 0) return;
+    if (!supportsWebGL()) {
+      setWebglFailed(true);
+      return;
+    }
+    let cancelled = false;
+    void import('react-force-graph-3d')
+      .then((mod) => {
+        if (!cancelled) setForceGraph3D(() => mod.default as ForceGraph3DComponent);
+      })
+      .catch(() => {
+        if (!cancelled) setWebglFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [model]);
+
+  const activeId = hoveredId ?? selectedId;
+  const activeNeighbors = activeId ? (model?.neighborhoods.get(activeId) ?? new Set()) : null;
+
+  const isActiveNode = useCallback(
+    (nodeId: string): boolean => {
+      if (!activeId || !activeNeighbors) return true;
+      return nodeId === activeId || activeNeighbors.has(nodeId);
+    },
+    [activeId, activeNeighbors],
+  );
+
+  const isActiveLink = useCallback(
+    (link: RenderedForceLink): boolean => {
+      if (!activeId) return true;
+      return linkEndpointId(link.source) === activeId || linkEndpointId(link.target) === activeId;
+    },
+    [activeId],
+  );
+
+  const focusNode = useCallback((node: RenderedForceNode) => {
+    const x = finiteCoord(node.x);
+    const y = finiteCoord(node.y);
+    const z = finiteCoord(node.z);
+    graphRef.current?.cameraPosition({ x: x * 1.35, y: y * 1.35, z: z + 190 }, { x, y, z }, 520);
+  }, []);
+
+  useEffect(() => {
+    if (!model || !selectedId || !graphRef.current) return;
+    const node = model.forceData.nodes.find((item) => item.id === selectedId);
+    if (node) focusNode(node);
+  }, [focusNode, model, selectedId]);
+
+  useEffect(() => {
+    if (!ForceGraph3D || !graphRef.current) return;
+    const timer = window.setTimeout(() => {
+      graphRef.current?.zoomToFit(650, 70);
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [ForceGraph3D, model]);
+
+  if (!model || model.layout.nodes.length === 0) {
+    return <div className="absolute inset-0" />;
+  }
+
+  if (webglFailed) {
+    return (
+      <BrainGraph2DCanvas
+        model={model}
+        selectedId={selectedId}
+        translate={translate}
+        onSelect={onSelect}
+      />
+    );
+  }
+
+  const width = size.width || 900;
+  const height = size.height || 560;
+
+  return (
+    <div
+      ref={containerRef}
+      className="absolute inset-0 overflow-hidden bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:44px_44px]"
+    >
+      {!ForceGraph3D && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
+          <Spinner />
+        </div>
+      )}
+      {ForceGraph3D && (
+        <ForceGraph3D
+          ref={graphRef}
+          graphData={model.forceData}
+          nodeId="id"
+          linkSource="source"
+          linkTarget="target"
+          width={width}
+          height={height}
+          backgroundColor="rgba(0,0,0,0)"
+          showNavInfo={false}
+          enableNodeDrag
+          enableNavigationControls
+          enablePointerInteraction
+          forceEngine="d3"
+          numDimensions={3}
+          cooldownTicks={260}
+          d3AlphaDecay={0.018}
+          d3VelocityDecay={0.28}
+          warmupTicks={80}
+          nodeRelSize={4.8}
+          nodeResolution={18}
+          nodeOpacity={0.96}
+          nodeVal={(node) => node.value}
+          nodeColor={(node) => {
+            const id = String(node.id);
+            if (!isActiveNode(id)) return '#3f3f46';
+            if (id === selectedId) return '#fafafa';
+            return node.color;
+          }}
+          nodeLabel={(node) => `${node.label}\n${nodeTypeLabel(node.type, translate)}`}
+          linkColor={(link) => (isActiveLink(link) ? link.color : 'rgba(82, 82, 91, 0.16)')}
+          linkOpacity={0.68}
+          linkWidth={(link) => {
+            const base = link.kind === 'links_to' ? 2.4 : link.kind === 'related_to' ? 1.8 : 1.25;
+            return isActiveLink(link) ? base * 1.25 : Math.max(0.35, base * 0.55);
+          }}
+          linkLabel={(link) => `${edgeKindLabel(link.kind, translate)} · ${link.method}`}
+          linkDirectionalParticles={(link) => {
+            if (activeId && isActiveLink(link)) return 4;
+            if (link.kind === 'links_to') return 2;
+            if (link.kind === 'related_to') return 1;
+            return 0;
+          }}
+          linkDirectionalParticleWidth={(link) => (isActiveLink(link) ? 2.1 : 1.2)}
+          linkDirectionalParticleSpeed={(link) => (link.kind === 'related_to' ? 0.003 : 0.0045)}
+          linkDirectionalParticleColor={(link) => link.color}
+          onNodeClick={(node) => {
+            const id = String(node.id);
+            onSelect(id);
+            focusNode(node);
+          }}
+          onNodeHover={(node) => setHoveredId(node?.id ? String(node.id) : null)}
+          onNodeDrag={() => graphRef.current?.d3ReheatSimulation()}
+          onNodeDragEnd={(node) => {
+            delete node.fx;
+            delete node.fy;
+            delete node.fz;
+            graphRef.current?.d3ReheatSimulation();
+          }}
+          onBackgroundClick={() => onSelect(null)}
+          showPointerCursor={(object) => Boolean(object)}
+        />
+      )}
+    </div>
+  );
+}
+
+function BrainGraph2DCanvas({
   model,
   selectedId,
   translate,
@@ -756,6 +978,7 @@ export function buildSigmaGraphModel(data: GraphResp): SigmaGraphModel {
     type: 'undirected',
   });
   const neighborhoods = new Map<string, Set<string>>();
+  const forceData = buildForceGraphData(layout);
 
   for (const node of layout.nodes) {
     neighborhoods.set(node.id, new Set([node.id]));
@@ -785,7 +1008,30 @@ export function buildSigmaGraphModel(data: GraphResp): SigmaGraphModel {
     });
   }
 
-  return { graph, layout, neighborhoods };
+  return { graph, layout, neighborhoods, forceData };
+}
+
+export function buildForceGraphData(
+  layout: GraphLayout,
+): ForceGraphData<ForceGraphNode, ForceGraphLink> {
+  return {
+    nodes: layout.nodes.map((node, index) => ({
+      ...node,
+      value: Math.max(1.2, node.weight * (SOURCE_NODE_TYPES.has(node.type) ? 1.35 : 1)),
+      color: NODE_COLORS[node.type],
+      group: node.type,
+      x: (node.x - GRAPH_VIEWBOX.width / 2) * 0.55,
+      y: (node.y - GRAPH_VIEWBOX.height / 2) * 0.55,
+      z: seededDepth(node.id, index, SOURCE_NODE_TYPES.has(node.type)),
+    })),
+    links: layout.edges.map((edge) => ({
+      ...edge,
+      source: edge.from,
+      target: edge.to,
+      value: edgeVisualWeight(edge),
+      color: EDGE_COLORS[edge.kind],
+    })),
+  };
 }
 
 function nodePath(node: GraphNode): string | null {
@@ -963,6 +1209,40 @@ function edgePath(edge: GraphLayoutEdge): string {
   const cx = midX + (-dy / length) * curve;
   const cy = midY + (dx / length) * curve;
   return `M ${fromNode.x.toFixed(1)} ${fromNode.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${toNode.x.toFixed(1)} ${toNode.y.toFixed(1)}`;
+}
+
+function edgeVisualWeight(edge: GraphEdge): number {
+  if (edge.kind === 'links_to') return 2.4;
+  if (edge.kind === 'related_to') return 1.9;
+  if (edge.kind === 'belongs_to') return 1.55;
+  return 1.2;
+}
+
+function seededDepth(id: string, index: number, isSource: boolean): number {
+  const span = isSource ? 130 : 220;
+  const centered = (hashString(`${id}:${index}`) % (span * 2)) - span;
+  return centered * (isSource ? 0.65 : 1);
+}
+
+function linkEndpointId(endpoint: unknown): string {
+  if (typeof endpoint === 'object' && endpoint !== null && 'id' in endpoint) {
+    return String((endpoint as { id?: string | number }).id);
+  }
+  return String(endpoint);
+}
+
+function finiteCoord(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function supportsWebGL(): boolean {
+  if (typeof document === 'undefined') return false;
+  try {
+    const canvas = document.createElement('canvas');
+    return Boolean(canvas.getContext('webgl2') ?? canvas.getContext('webgl'));
+  } catch {
+    return false;
+  }
 }
 
 function hexagonPoints(radius: number): string {
