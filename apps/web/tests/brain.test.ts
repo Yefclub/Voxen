@@ -242,6 +242,82 @@ describeIfDb('brain indexer', () => {
     expect(persisted).not.toBeNull();
   });
 
+  it('connects active contents through shared concepts', async () => {
+    await signUp('shared-brain@voxen.local', 'senha-super-segura-123', 'Shared Brain');
+    const signin = await signIn('shared-brain@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'shared-brain@voxen.local' } });
+
+    const noteRes = await app.fetch(
+      new Request('http://localhost/api/notes', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Projeto Atlas',
+          content: 'Projeto Atlas usa GraphRAG para conectar memórias do Voxen.',
+        }),
+      }),
+    );
+    expect(noteRes.status).toBe(201);
+    const noteBody = (await noteRes.json()) as { note: { id: string } };
+
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/atlas-graphrag',
+        title: 'Projeto Atlas GraphRAG',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/atlas-graphrag.md`,
+        plainText: 'Projeto Atlas conecta memórias, GraphRAG e base de conhecimento.',
+        frontmatter: {},
+      },
+    });
+
+    const graph = await app.fetch(
+      new Request('http://localhost/api/graph?force=1', {
+        headers: { cookie },
+      }),
+    );
+    expect(graph.status).toBe(200);
+
+    const noteNode = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
+    });
+    const transcriptNode = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+    });
+    expect(
+      await db.brainNode.findUnique({
+        where: { userId_key: { userId: user.id, key: 'ENTITY:projeto-atlas' } },
+      }),
+    ).not.toBeNull();
+
+    const related = await db.brainEdge.findFirst({
+      where: {
+        userId: user.id,
+        kind: 'RELATED_TO',
+        method: 'shared-concepts',
+        OR: [
+          { fromNodeId: noteNode.id, toNodeId: transcriptNode.id },
+          { fromNodeId: transcriptNode.id, toNodeId: noteNode.id },
+        ],
+      },
+    });
+    expect(related).not.toBeNull();
+    const evidence = await db.brainSource.findFirst({
+      where: {
+        userId: user.id,
+        edgeId: related?.id,
+        sourceType: 'TRANSCRIPT',
+        sourceId: transcript.id,
+      },
+    });
+    expect(evidence?.excerpt).toContain('Conceitos em comum');
+  });
+
   it('removes automatic topic nodes when transcript leaves the active graph', async () => {
     await signUp('graph-removal@voxen.local', 'senha-super-segura-123', 'Graph Removal');
     const signin = await signIn('graph-removal@voxen.local', 'senha-super-segura-123');
