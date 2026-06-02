@@ -394,31 +394,41 @@ function BrainGraphCanvas({
   onSelect: (id: string | null) => void;
   onOpen: (node: GraphNode) => void;
 }): React.ReactElement {
-  const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<ForceGraphMethods<ForceGraphNode, ForceGraphLink> | undefined>(undefined);
+  const observerRef = useRef<ResizeObserver | null>(null);
   const [ForceGraph3D, setForceGraph3D] = useState<ForceGraph3DComponent | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [webglFailed, setWebglFailed] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const lastClickRef = useRef<{ id: string; time: number } | null>(null);
+  const fittedRef = useRef(false);
 
-  useEffect(() => {
-    if (!containerRef.current || !('ResizeObserver' in window)) return;
-    const resizeObserver = new ResizeObserver(([entry]) => {
-      if (!entry) return;
-      const rect = entry.contentRect;
+  // Ref callback: mede o container assim que ele (re)monta e o re-observa. Com um
+  // useEffect([]) o observer não pegava o tamanho quando o <div> do canvas só
+  // aparecia depois de o model carregar — o size ficava 0 e o ForceGraph caía no
+  // fallback 900x560, deixando o grafo pequeno e descentralizado.
+  const measureRef = useCallback((node: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node || !('ResizeObserver' in window)) return;
+    const apply = (width: number, height: number): void =>
       setSize({
-        width: Math.max(320, Math.floor(rect.width)),
-        height: Math.max(420, Math.floor(rect.height)),
+        width: Math.max(320, Math.floor(width)),
+        height: Math.max(420, Math.floor(height)),
       });
+    const initial = node.getBoundingClientRect();
+    apply(initial.width, initial.height);
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) apply(entry.contentRect.width, entry.contentRect.height);
     });
-    resizeObserver.observe(containerRef.current);
-    return () => resizeObserver.disconnect();
+    observer.observe(node);
+    observerRef.current = observer;
   }, []);
 
   useEffect(() => {
     setWebglFailed(false);
     setForceGraph3D(null);
+    fittedRef.current = false;
     if (!model || model.layout.nodes.length === 0) return;
     if (!supportsWebGL()) {
       setWebglFailed(true);
@@ -532,7 +542,7 @@ function BrainGraphCanvas({
 
   return (
     <div
-      ref={containerRef}
+      ref={measureRef}
       className="absolute inset-0 overflow-hidden bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:44px_44px]"
     >
       {!ForceGraph3D && (
@@ -557,6 +567,11 @@ function BrainGraphCanvas({
           forceEngine="d3"
           numDimensions={3}
           cooldownTicks={260}
+          onEngineStop={() => {
+            if (fittedRef.current) return;
+            fittedRef.current = true;
+            graphRef.current?.zoomToFit(450, 60);
+          }}
           d3AlphaDecay={0.018}
           d3VelocityDecay={0.28}
           warmupTicks={80}
