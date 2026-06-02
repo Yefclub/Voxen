@@ -641,14 +641,11 @@ const ptBRMessages = {
   'automations.noteCreated': 'Nota criada:',
   'automations.open': 'abrir',
 
-  'graph.eyebrow': 'Visualização',
   'graph.title': 'Brain',
-  'graph.descriptionBefore':
-    'Mapa vivo do acervo: conteúdos, notas, pastas e relações materializadas para a Vox e para MCP.',
-  'graph.descriptionAfter':
-    'Selecione um nó para inspecionar conexões e abrir a fonte quando houver.',
   'graph.searchPlaceholder': 'Filtrar por título, tipo, fonte ou descrição…',
   'graph.refresh': 'Atualizar',
+  'graph.controlsHint':
+    'Arraste para girar · espaço + arraste ou clique do meio para mover · scroll para zoom · duplo-clique abre a fonte',
   'graph.transcripts': 'transcrições',
   'graph.notes': 'notas',
   'graph.folders': 'pastas',
@@ -1466,14 +1463,11 @@ const enMessages: Record<I18nKey, string> = {
   'automations.noteCreated': 'Note created:',
   'automations.open': 'open',
 
-  'graph.eyebrow': 'Visualization',
   'graph.title': 'Brain',
-  'graph.descriptionBefore':
-    'Live map of the library: content, notes, folders, and materialized relations for Vox and MCP.',
-  'graph.descriptionAfter':
-    'Select a node to inspect connections and open the source when available.',
   'graph.searchPlaceholder': 'Filter by title, type, source, or description…',
   'graph.refresh': 'Refresh',
+  'graph.controlsHint':
+    'Drag to rotate · space + drag or middle-click to pan · scroll to zoom · double-click to open',
   'graph.transcripts': 'transcripts',
   'graph.notes': 'notes',
   'graph.folders': 'folders',

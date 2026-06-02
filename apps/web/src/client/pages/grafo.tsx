@@ -16,9 +16,8 @@ import type {
   LinkObject,
   NodeObject,
 } from 'react-force-graph-3d';
-import { BrainCircuit, ExternalLink, Network, RotateCw, Search } from 'lucide-react';
+import { ArrowLeft, BrainCircuit, Network, RotateCw, Search } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import { Card, CardContent } from '../components/ui/card';
 import { Spinner } from '../components/ui/spinner';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { useFetch } from '../lib/hooks';
@@ -170,6 +169,29 @@ export const EDGE_COLORS: Record<GraphEdge['kind'], string> = {
   next_to: 'rgba(163, 230, 53, 0.7)',
 };
 
+// Ações de mouse do TrackballControls (three.MOUSE). Valores literais pra não
+// importar 'three' estaticamente no bundle principal — o three só entra no chunk
+// lazy do react-force-graph. ROTATE/LEFT=0, DOLLY/MIDDLE=1, PAN/RIGHT=2.
+const MOUSE_ROTATE = 0;
+const MOUSE_PAN = 2;
+const DOUBLE_CLICK_MS = 350;
+
+interface PanControls {
+  mouseButtons: { LEFT: number; MIDDLE: number; RIGHT: number };
+}
+
+// Não sequestrar o Espaço quando o foco está num elemento interativo (digitar
+// num campo, ativar um botão/link). O pan por Espaço só vale sobre o canvas.
+function isInteractiveTarget(): boolean {
+  const el = typeof document === 'undefined' ? null : document.activeElement;
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable) return true;
+  return (
+    ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(el.tagName) ||
+    el.getAttribute('role') === 'button'
+  );
+}
+
 export function GrafoPage(): React.ReactElement {
   const [forceTick, setForceTick] = useState(0);
   const graphPath = forceTick > 0 ? `/api/graph?force=1&t=${forceTick}` : '/api/graph';
@@ -178,18 +200,6 @@ export function GrafoPage(): React.ReactElement {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { t } = useI18n();
-
-  const nodeById = useMemo(() => {
-    return new Map((data?.nodes ?? []).map((node) => [node.id, node]));
-  }, [data]);
-  const edgeByNodeId = useMemo(() => {
-    const grouped = new Map<string, GraphEdge[]>();
-    for (const edge of data?.edges ?? []) {
-      grouped.set(edge.from, [...(grouped.get(edge.from) ?? []), edge]);
-      grouped.set(edge.to, [...(grouped.get(edge.to) ?? []), edge]);
-    }
-    return grouped;
-  }, [data]);
 
   const filtered = useMemo(() => {
     if (!data) return null;
@@ -209,8 +219,6 @@ export function GrafoPage(): React.ReactElement {
     };
   }, [data, search]);
 
-  const selectedNode = selectedId ? (nodeById.get(selectedId) ?? null) : null;
-  const selectedEdges = selectedId ? (edgeByNodeId.get(selectedId) ?? []) : [];
   const graphModel = useMemo(() => (filtered ? buildSigmaGraphModel(filtered) : null), [filtered]);
 
   useEffect(() => {
@@ -219,98 +227,105 @@ export function GrafoPage(): React.ReactElement {
     }
   }, [filtered, selectedId]);
 
+  const openNode = useCallback(
+    (node: GraphNode) => {
+      const path = nodePath(node);
+      if (path) navigate(path);
+    },
+    [navigate],
+  );
+
   const stats = filtered ?? data;
+  const hasGraph = Boolean(graphModel && graphModel.layout.nodes.length > 0);
 
   return (
-    <AnimatedPage>
-      <div className="mx-auto max-w-7xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
-        <header className="space-y-3">
-          <div className="inline-flex items-center gap-2 text-xs uppercase text-[var(--color-app-muted)] font-medium">
-            <BrainCircuit className="h-3.5 w-3.5 text-violet-400" />
-            {t('graph.eyebrow')}
-          </div>
-          <h1 className="font-display text-3xl font-semibold sm:text-4xl">{t('graph.title')}</h1>
-          <p className="max-w-3xl text-[15px] leading-relaxed text-[var(--color-app-muted)]">
-            {t('graph.descriptionBefore')} {t('graph.descriptionAfter')}
-          </p>
-        </header>
+    <AnimatedPage className="h-full">
+      <div className="relative h-full w-full overflow-hidden bg-[var(--color-app-bg-elevated)]">
+        <BrainGraphCanvas
+          model={graphModel}
+          selectedId={selectedId}
+          translate={t}
+          onSelect={setSelectedId}
+          onOpen={openNode}
+        />
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[220px] flex-1 max-w-lg">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 z-10 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-zinc-400">
-              <Search className="h-4 w-4" />
-            </span>
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={t('graph.searchPlaceholder')}
-              className="relative h-11 w-full rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/70 pl-10 pr-4 text-[14px] text-zinc-100 placeholder:text-[var(--color-app-muted)] transition-colors focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
-            />
+        {loading && !data && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <Spinner />
           </div>
-          <Button
-            variant="outline"
-            size="default"
-            onClick={() => setForceTick(Date.now())}
-            disabled={loading}
-          >
-            <RotateCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-            {t('graph.refresh')}
-          </Button>
-          {stats && stats.nodes.length > 0 && <GraphStats data={stats} translate={t} />}
-        </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-rose-300">
+            {error}
+          </div>
+        )}
+        {!loading && data && data.nodes.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center px-6">
+            <div className="max-w-md space-y-3 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)]">
+                <Network className="h-5 w-5 text-violet-400" />
+              </div>
+              <div className="space-y-1.5">
+                <p className="font-display text-lg font-semibold">{t('graph.emptyTitle')}</p>
+                <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
+                  {t('graph.emptyDescriptionBefore')} <code className="text-zinc-300">/notas</code>{' '}
+                  {t('graph.emptyDescriptionMiddle')} <code className="text-zinc-300">/jobs</code>{' '}
+                  {t('graph.emptyDescriptionAfter')}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
-        <Card elevated className="overflow-hidden p-0">
-          <div className="grid min-h-[620px] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="relative min-h-[520px] bg-[var(--color-app-bg-elevated)]">
-              {loading && !data && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Spinner />
-                </div>
-              )}
-              {error && (
-                <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-rose-300">
-                  {error}
-                </div>
-              )}
-              {!loading && data && data.nodes.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <CardContent className="max-w-md space-y-3 py-12 text-center">
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)]">
-                      <Network className="h-5 w-5 text-violet-400" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <p className="font-display text-lg font-semibold">{t('graph.emptyTitle')}</p>
-                      <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
-                        {t('graph.emptyDescriptionBefore')}{' '}
-                        <code className="text-zinc-300">/notas</code>{' '}
-                        {t('graph.emptyDescriptionMiddle')}{' '}
-                        <code className="text-zinc-300">/jobs</code>{' '}
-                        {t('graph.emptyDescriptionAfter')}
-                      </p>
-                    </div>
-                  </CardContent>
-                </div>
-              )}
-              <BrainGraphCanvas
-                model={graphModel}
-                selectedId={selectedId}
-                translate={t}
-                onSelect={setSelectedId}
+        {/* Barra de controles flutuante sobre o canvas */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 p-3 sm:p-4">
+          <div className="pointer-events-auto mx-auto flex max-w-5xl flex-wrap items-center gap-2.5 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/80 px-3 py-2.5 shadow-lg backdrop-blur-xl sm:gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard')}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-zinc-100"
+              aria-label={t('shell.backToDashboard')}
+              title={t('shell.backToDashboard')}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <div className="hidden items-center gap-2 sm:flex">
+              <BrainCircuit className="h-4 w-4 text-violet-400" />
+              <span className="font-display text-sm font-semibold">{t('graph.title')}</span>
+            </div>
+            <div className="relative min-w-[150px] flex-1">
+              <span className="pointer-events-none absolute left-3 top-1/2 z-10 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-zinc-400">
+                <Search className="h-4 w-4" />
+              </span>
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t('graph.searchPlaceholder')}
+                className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/60 pl-9 pr-3 text-[13px] text-zinc-100 placeholder:text-[var(--color-app-muted)] transition-colors focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
               />
             </div>
-            <GraphInspector
-              node={selectedNode}
-              edges={selectedEdges}
-              nodes={nodeById}
-              translate={t}
-              onOpen={(node) => {
-                const path = nodePath(node);
-                if (path) navigate(path);
-              }}
-            />
+            <Button
+              variant="outline"
+              size="default"
+              onClick={() => setForceTick(Date.now())}
+              disabled={loading}
+            >
+              <RotateCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+              <span className="hidden sm:inline">{t('graph.refresh')}</span>
+            </Button>
+            {stats && stats.nodes.length > 0 && <GraphStats data={stats} translate={t} />}
           </div>
-        </Card>
+        </div>
+
+        {/* Dica de navegação do canvas */}
+        {hasGraph && (
+          <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 px-4">
+            <p className="rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/70 px-3 py-1.5 text-center text-[11px] text-[var(--color-app-muted)] backdrop-blur-md">
+              {t('graph.controlsHint')}
+            </p>
+          </div>
+        )}
       </div>
     </AnimatedPage>
   );
@@ -371,11 +386,13 @@ function BrainGraphCanvas({
   selectedId,
   translate,
   onSelect,
+  onOpen,
 }: {
   model: SigmaGraphModel | null;
   selectedId: string | null;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
+  onOpen: (node: GraphNode) => void;
 }): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<ForceGraphMethods<ForceGraphNode, ForceGraphLink> | undefined>(undefined);
@@ -383,6 +400,7 @@ function BrainGraphCanvas({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [webglFailed, setWebglFailed] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const lastClickRef = useRef<{ id: string; time: number } | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || !('ResizeObserver' in window)) return;
@@ -459,6 +477,40 @@ function BrainGraphCanvas({
     return () => window.clearTimeout(timer);
   }, [ForceGraph3D, model]);
 
+  // Pan extra além do giro (arraste) e zoom (scroll) padrão: botão do meio
+  // (scroll-click) sempre move, e Espaço + arraste alterna o botão esquerdo
+  // pra mover. Configura o TrackballControls assim que ele existe.
+  useEffect(() => {
+    if (!ForceGraph3D) return;
+    let cancelled = false;
+    let cleanupKeys: (() => void) | undefined;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      const controls = graphRef.current?.controls() as PanControls | undefined;
+      if (!controls?.mouseButtons) return;
+      controls.mouseButtons.MIDDLE = MOUSE_PAN;
+      const onKeyDown = (event: KeyboardEvent): void => {
+        if (event.code !== 'Space' || event.repeat || isInteractiveTarget()) return;
+        event.preventDefault();
+        controls.mouseButtons.LEFT = MOUSE_PAN;
+      };
+      const onKeyUp = (event: KeyboardEvent): void => {
+        if (event.code === 'Space') controls.mouseButtons.LEFT = MOUSE_ROTATE;
+      };
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup', onKeyUp);
+      cleanupKeys = () => {
+        window.removeEventListener('keydown', onKeyDown);
+        window.removeEventListener('keyup', onKeyUp);
+      };
+    }, 160);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      cleanupKeys?.();
+    };
+  }, [ForceGraph3D]);
+
   if (!model || model.layout.nodes.length === 0) {
     return <div className="absolute inset-0" />;
   }
@@ -470,6 +522,7 @@ function BrainGraphCanvas({
         selectedId={selectedId}
         translate={translate}
         onSelect={onSelect}
+        onOpen={onOpen}
       />
     );
   }
@@ -536,6 +589,14 @@ function BrainGraphCanvas({
           linkDirectionalParticleColor={(link) => link.color}
           onNodeClick={(node) => {
             const id = String(node.id);
+            const now = Date.now();
+            const last = lastClickRef.current;
+            if (last && last.id === id && now - last.time < DOUBLE_CLICK_MS) {
+              lastClickRef.current = null;
+              onOpen(node);
+              return;
+            }
+            lastClickRef.current = { id, time: now };
             onSelect(id);
             focusNode(node);
           }}
@@ -560,11 +621,13 @@ function BrainGraph2DCanvas({
   selectedId,
   translate,
   onSelect,
+  onOpen,
 }: {
   model: SigmaGraphModel | null;
   selectedId: string | null;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
+  onOpen: (node: GraphNode) => void;
 }): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null>(null);
@@ -607,6 +670,10 @@ function BrainGraph2DCanvas({
           });
           rendererRef.current = renderer;
           renderer.on('clickNode', ({ node }) => onSelect(node));
+          renderer.on('doubleClickNode', ({ node, event }) => {
+            event.preventSigmaDefault();
+            if (model.graph.hasNode(node)) onOpen(model.graph.getNodeAttributes(node).original);
+          });
           renderer.on('clickStage', () => onSelect(null));
           renderer.on('enterNode', ({ node }) => setHoveredId(node));
           renderer.on('leaveNode', () => setHoveredId(null));
@@ -630,7 +697,7 @@ function BrainGraph2DCanvas({
       renderer?.kill();
       rendererRef.current = null;
     };
-  }, [model, onSelect]);
+  }, [model, onSelect, onOpen]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -687,6 +754,7 @@ function BrainGraph2DCanvas({
         selectedId={selectedId}
         translate={translate}
         onSelect={onSelect}
+        onOpen={onOpen}
       />
     );
   }
@@ -703,11 +771,13 @@ function BrainGraphSvg({
   selectedId,
   translate,
   onSelect,
+  onOpen,
 }: {
   layout: GraphLayout;
   selectedId: string | null;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
+  onOpen: (node: GraphNode) => void;
 }): React.ReactElement {
   return (
     <div className="absolute inset-0 overflow-hidden">
@@ -740,6 +810,7 @@ function BrainGraphSvg({
               node={node}
               selected={node.id === selectedId}
               onSelect={onSelect}
+              onOpen={onOpen}
             />
           ))}
         </g>
@@ -752,10 +823,12 @@ function BrainGraphNode({
   node,
   selected,
   onSelect,
+  onOpen,
 }: {
   node: GraphLayoutNode;
   selected: boolean;
   onSelect: (id: string) => void;
+  onOpen: (node: GraphNode) => void;
 }): React.ReactElement {
   const color = NODE_COLORS[node.type];
   const stroke = selected ? '#fafafa' : '#18181b';
@@ -772,8 +845,17 @@ function BrainGraphNode({
         event.stopPropagation();
         onSelect(node.id);
       }}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onOpen(node);
+      }}
       onKeyDown={(event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          onOpen(node);
+          return;
+        }
+        if (event.key !== ' ') return;
         event.preventDefault();
         onSelect(node.id);
       }}
@@ -832,132 +914,6 @@ function nodeShapeElement(
     );
   }
   return <circle r={node.radius} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />;
-}
-
-function GraphInspector({
-  node,
-  edges,
-  nodes,
-  translate,
-  onOpen,
-}: {
-  node: GraphNode | null;
-  edges: GraphEdge[];
-  nodes: Map<string, GraphNode>;
-  translate: TranslateFn;
-  onOpen: (node: GraphNode) => void;
-}): React.ReactElement {
-  if (!node) {
-    return (
-      <aside className="border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)]/35 p-5 lg:border-l lg:border-t-0">
-        <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-3 text-center">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]">
-            <BrainCircuit className="h-5 w-5 text-violet-300" />
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-zinc-100">
-              {translate('graph.noSelectionTitle')}
-            </p>
-            <p className="max-w-[240px] text-xs leading-relaxed text-[var(--color-app-muted)]">
-              {translate('graph.noSelectionDescription')}
-            </p>
-          </div>
-        </div>
-      </aside>
-    );
-  }
-
-  const path = nodePath(node);
-  const visibleEdges = edges.slice(0, 8);
-  return (
-    <aside className="border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)]/35 p-5 lg:border-l lg:border-t-0">
-      <div className="flex h-full flex-col gap-5">
-        <div className="space-y-3">
-          <div className="flex items-start gap-3">
-            <span
-              className="mt-1 h-3 w-3 shrink-0 rounded-full"
-              style={{ backgroundColor: NODE_COLORS[node.type] }}
-            />
-            <div className="min-w-0">
-              <p className="break-words font-display text-lg font-semibold leading-tight text-zinc-100">
-                {node.label}
-              </p>
-              <p className="mt-1 truncate font-mono text-[11px] text-[var(--color-app-muted)]">
-                {node.key}
-              </p>
-            </div>
-          </div>
-          {node.description && (
-            <p className="line-clamp-5 text-sm leading-relaxed text-[var(--color-app-muted)]">
-              {node.description}
-            </p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <NodePill>{nodeTypeLabel(node.type, translate)}</NodePill>
-            {node.source && <NodePill>{node.source}</NodePill>}
-            <NodePill>{translate('graph.degree', { count: edges.length })}</NodePill>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase text-[var(--color-app-muted)]">
-            {translate('graph.connectionsLabel')}
-          </p>
-          {visibleEdges.length === 0 ? (
-            <p className="text-xs text-[var(--color-app-muted)]">
-              {translate('graph.noConnections')}
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {visibleEdges.map((edge) => {
-                const other = nodes.get(edge.from === node.id ? edge.to : edge.from);
-                return (
-                  <div
-                    key={edge.id}
-                    className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] px-3 py-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-1.5 w-1.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: EDGE_COLORS[edge.kind] }}
-                      />
-                      <span className="truncate text-xs font-medium text-zinc-200">
-                        {other?.label ?? edge.to}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[11px] text-[var(--color-app-muted)]">
-                      {edgeKindLabel(edge.kind, translate)} · {edge.method}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="mt-auto">
-          <Button
-            type="button"
-            variant="primary"
-            className="w-full"
-            disabled={!path}
-            onClick={() => onOpen(node)}
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            {translate('graph.openNode')}
-          </Button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function NodePill({ children }: { children: React.ReactNode }): React.ReactElement {
-  return (
-    <span className="rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] px-2 py-1 text-[11px] text-zinc-300">
-      {children}
-    </span>
-  );
 }
 
 function searchableNodeText(node: GraphNode): string {
