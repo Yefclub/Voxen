@@ -9,6 +9,11 @@
     "pnpm": ">=9.0.0"
   },
   "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "overrides": {
+      "vitest": "^4.1.0"
+    }
+  },
   "scripts": {
     "dev": "make dev",
     "down": "make down",
