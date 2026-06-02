@@ -641,26 +641,16 @@ const ptBRMessages = {
   'automations.noteCreated': 'Nota criada:',
   'automations.open': 'abrir',
 
-  'graph.eyebrow': 'Visualização',
   'graph.title': 'Brain',
-  'graph.descriptionBefore':
-    'Mapa vivo do acervo: conteúdos, notas, pastas e relações materializadas para a Vox e para MCP.',
-  'graph.descriptionAfter':
-    'Selecione um nó para inspecionar conexões e abrir a fonte quando houver.',
   'graph.searchPlaceholder': 'Filtrar por título, tipo, fonte ou descrição…',
   'graph.refresh': 'Atualizar',
+  'graph.controlsHint':
+    'Arraste para girar · espaço + arraste ou clique do meio para mover · scroll para zoom · duplo-clique abre a fonte',
   'graph.transcripts': 'transcrições',
   'graph.notes': 'notas',
   'graph.folders': 'pastas',
   'graph.concepts': 'conceitos',
   'graph.connections': '{count} conexões',
-  'graph.noSelectionTitle': 'Selecione um nó',
-  'graph.noSelectionDescription':
-    'O painel mostra evidências, relações e o caminho para abrir a fonte original.',
-  'graph.openNode': 'Abrir fonte',
-  'graph.degree': '{count} relações',
-  'graph.connectionsLabel': 'Conexões',
-  'graph.noConnections': 'Sem conexões materializadas para este nó.',
   'graph.node.transcript': 'Transcrição',
   'graph.node.note': 'Nota',
   'graph.node.folder': 'Pasta',
@@ -1466,26 +1456,16 @@ const enMessages: Record<I18nKey, string> = {
   'automations.noteCreated': 'Note created:',
   'automations.open': 'open',
 
-  'graph.eyebrow': 'Visualization',
   'graph.title': 'Brain',
-  'graph.descriptionBefore':
-    'Live map of the library: content, notes, folders, and materialized relations for Vox and MCP.',
-  'graph.descriptionAfter':
-    'Select a node to inspect connections and open the source when available.',
   'graph.searchPlaceholder': 'Filter by title, type, source, or description…',
   'graph.refresh': 'Refresh',
+  'graph.controlsHint':
+    'Drag to rotate · space + drag or middle-click to pan · scroll to zoom · double-click to open',
   'graph.transcripts': 'transcripts',
   'graph.notes': 'notes',
   'graph.folders': 'folders',
   'graph.concepts': 'concepts',
   'graph.connections': '{count} connections',
-  'graph.noSelectionTitle': 'Select a node',
-  'graph.noSelectionDescription':
-    'This panel shows evidence, relations, and the path to open the original source.',
-  'graph.openNode': 'Open source',
-  'graph.degree': '{count} relations',
-  'graph.connectionsLabel': 'Connections',
-  'graph.noConnections': 'No materialized connections for this node.',
   'graph.node.transcript': 'Transcript',
   'graph.node.note': 'Note',
   'graph.node.folder': 'Folder',

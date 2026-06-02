@@ -55,7 +55,7 @@ const NAV: NavItem[] = [
 
 const SIDEBAR_WIDTH = 264;
 
-export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
+export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const location = useLocation();
   const { t } = useI18n();
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN');
@@ -64,6 +64,12 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
   const inNotas = location.pathname === '/notas' || location.pathname.startsWith('/notas/');
   // Modo da sidebar: nav (default) | chat (em /chat) | notas (em /notas)
   const mode: 'nav' | 'chat' | 'notas' = inChat ? 'chat' : inNotas ? 'notas' : 'nav';
+
+  // Em /grafo a navegação lateral some — o grafo ocupa a tela toda (o Topbar
+  // permanece, e a barra flutuante do grafo oferece o "voltar").
+  if (location.pathname === '/grafo' || location.pathname.startsWith('/grafo/')) {
+    return null;
+  }
 
   return (
     <>
@@ -511,10 +517,12 @@ function NotasModeBody({
 
 export function SidebarSpacer(): React.ReactElement {
   const { collapsed } = useSidebarCollapsed();
+  const location = useLocation();
+  const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
   return (
     <motion.div
       className="hidden md:block shrink-0"
-      animate={{ width: collapsed ? 0 : SIDEBAR_WIDTH + 32 }}
+      animate={{ width: collapsed || isGraph ? 0 : SIDEBAR_WIDTH + 32 }}
       initial={false}
       transition={{ type: 'spring', stiffness: 320, damping: 32 }}
       aria-hidden

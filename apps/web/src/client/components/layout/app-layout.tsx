@@ -72,10 +72,12 @@ export function AppLayout(): React.ReactElement {
   }
 
   // App shell de altura fixa: o cabeçalho (Topbar) fica travado no topo e o
-  // conteúdo rola dentro do <main>. /chat continua gerenciando a própria altura
-  // (input fixo no fundo), então não recebe o overflow-y-auto.
+  // conteúdo rola dentro do <main>. /chat e /grafo ocupam a tela toda e
+  // gerenciam a própria altura, então não recebem o overflow-y-auto/padding.
   const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
-  const mainClass = isChat ? 'flex-1 min-h-0' : 'flex-1 min-h-0 overflow-y-auto pb-6';
+  const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
+  const isFullBleed = isChat || isGraph;
+  const mainClass = isFullBleed ? 'flex-1 min-h-0' : 'flex-1 min-h-0 overflow-y-auto pb-6';
 
   return (
     <ChatContextProvider>
@@ -87,7 +89,7 @@ export function AppLayout(): React.ReactElement {
           <main ref={mainRef} className={mainClass}>
             <AnimatedOutlet onExitComplete={resetScroll} />
           </main>
-          {!isChat && <VersionFooter />}
+          {!isFullBleed && <VersionFooter />}
         </div>
       </div>
     </ChatContextProvider>
