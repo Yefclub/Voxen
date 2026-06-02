@@ -274,6 +274,10 @@ const ptBRMessages = {
   'dashboard.itemSingular': 'item',
   'dashboard.itemPlural': 'itens',
   'dashboard.viewAll': 'Ver tudo',
+  'dashboard.clearActivity': 'Limpar',
+  'dashboard.clearedToast': 'Atividades recentes ocultadas',
+  'dashboard.undo': 'Desfazer',
+  'dashboard.allClear': 'Sem atividade recente',
   'dashboard.emptyTitle': 'Comece sua biblioteca',
   'dashboard.emptyDescription':
     'Cole um link ou envie um arquivo para o Voxen transcrever e indexar. Tudo fica disponível para conversar com o agente depois.',
@@ -1096,6 +1100,10 @@ const enMessages: Record<I18nKey, string> = {
   'dashboard.itemSingular': 'item',
   'dashboard.itemPlural': 'items',
   'dashboard.viewAll': 'View all',
+  'dashboard.clearActivity': 'Clear',
+  'dashboard.clearedToast': 'Recent activity hidden',
+  'dashboard.undo': 'Undo',
+  'dashboard.allClear': 'No recent activity',
   'dashboard.emptyTitle': 'Start your library',
   'dashboard.emptyDescription':
     'Paste a link or upload a file for Voxen to transcribe and index. Everything becomes available for chatting with the agent later.',
