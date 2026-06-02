@@ -990,7 +990,7 @@ export function buildForceGraphData(
   };
 }
 
-function nodePath(node: GraphNode): string | null {
+export function nodePath(node: GraphNode): string | null {
   if (!node.sourceId) return null;
   if (node.sourceType === 'TRANSCRIPT') return `/transcricoes/${node.sourceId}`;
   if (node.sourceType === 'NOTE') return `/notas/${node.sourceId}`;

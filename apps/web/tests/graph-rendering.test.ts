@@ -4,6 +4,7 @@ import {
   NODE_COLORS,
   buildGraphLayout,
   buildSigmaGraphModel,
+  nodePath,
 } from '../src/client/pages/grafo';
 
 const SVG_SAFE_COLOR = /^(#[0-9a-f]{6}|rgba?\([^)]+\))$/i;
@@ -143,5 +144,34 @@ describe('graph rendering helpers', () => {
     expect(model.forceData.nodes.every((node) => Number.isFinite(node.z))).toBe(true);
     expect(model.forceData.links[0]?.source).toBe('note-1');
     expect(model.forceData.links[0]?.target).toBe('topic-1');
+  });
+});
+
+describe('nodePath', () => {
+  function makeNode(over: Partial<Parameters<typeof nodePath>[0]>): Parameters<typeof nodePath>[0] {
+    return {
+      id: 'n',
+      key: 'k',
+      label: 'L',
+      description: null,
+      type: 'transcript',
+      sourceType: null,
+      sourceId: null,
+      weight: 1,
+      updatedAt: '2026-01-01T00:00:00Z',
+      ...over,
+    };
+  }
+
+  test('maps transcript/note sources to routes and returns null otherwise', () => {
+    expect(nodePath(makeNode({ sourceType: 'TRANSCRIPT', sourceId: 't1' }))).toBe(
+      '/transcricoes/t1',
+    );
+    expect(nodePath(makeNode({ sourceType: 'NOTE', sourceId: 'n2' }))).toBe('/notas/n2');
+    // sourceType sem rota dedicada → null, mesmo com sourceId
+    expect(nodePath(makeNode({ sourceType: 'FOLDER', sourceId: 'f1' }))).toBeNull();
+    expect(nodePath(makeNode({ sourceType: null, sourceId: 's1' }))).toBeNull();
+    // sem sourceId → null
+    expect(nodePath(makeNode({ sourceType: 'TRANSCRIPT', sourceId: null }))).toBeNull();
   });
 });
