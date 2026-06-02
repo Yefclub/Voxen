@@ -15,6 +15,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { AnimatedPage } from '../components/motion/animated-page';
 import { Markdown } from '../components/ui/markdown';
 import { Button } from '../components/ui/button';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
@@ -161,12 +162,7 @@ export function AutomacoesPage(): React.ReactElement {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="max-w-5xl mx-auto px-6 py-8 space-y-6"
-    >
+    <AnimatedPage className="max-w-5xl mx-auto px-6 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="size-10 rounded-xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center ring-1 ring-zinc-200 dark:ring-zinc-800">
@@ -245,7 +241,7 @@ export function AutomacoesPage(): React.ReactElement {
           />
         )}
       </AnimatePresence>
-    </motion.div>
+    </AnimatedPage>
   );
 }
 

@@ -1,5 +1,13 @@
-import { useEffect, useRef } from 'react';
-import { Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useCallback, useContext, useEffect, useRef, type ReactNode } from 'react';
+import {
+  Navigate,
+  UNSAFE_LocationContext as LocationContext,
+  UNSAFE_RouteContext as RouteContext,
+  useLocation,
+  useNavigate,
+  useOutlet,
+} from 'react-router-dom';
+import { AnimatePresence, usePresence } from 'motion/react';
 import { Sidebar, SidebarSpacer } from './sidebar';
 import { Topbar } from './topbar';
 import { useMe, useFetch } from '../../lib/hooks';
@@ -12,17 +20,25 @@ export function AppLayout(): React.ReactElement {
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
+  const sectionRef = useRef(getSectionKey(location.pathname));
   // Watcher global de jobs do user logado (toast em qualquer página)
   useJobsWatcher(!!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone), (path) =>
     navigate(path),
   );
 
-  // O scroll migrou da window para o <main> (shell de altura fixa com header
-  // travado). Resetar ao topo a cada troca de rota pra não herdar a posição da
-  // página anterior.
-  useEffect(() => {
+  const resetScroll = useCallback(() => {
     mainRef.current?.scrollTo({ top: 0 });
-  }, [location.pathname]);
+  }, []);
+
+  // O scroll vive no <main> (shell de altura fixa). Navegar DENTRO da mesma
+  // seção não dispara a transição (mesma key), então o reset é imediato aqui;
+  // trocas de seção resetam no onExitComplete (depois do fade-out) pra não
+  // "pular" o conteúdo que está saindo.
+  useEffect(() => {
+    const key = getSectionKey(location.pathname);
+    if (key === sectionRef.current) resetScroll();
+    sectionRef.current = key;
+  }, [location.pathname, resetScroll]);
 
   if (loading) {
     return (
@@ -69,12 +85,66 @@ export function AppLayout(): React.ReactElement {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <Topbar user={data.user} />
           <main ref={mainRef} className={mainClass}>
-            <Outlet />
+            <AnimatedOutlet onExitComplete={resetScroll} />
           </main>
           {!isChat && <VersionFooter />}
         </div>
       </div>
     </ChatContextProvider>
+  );
+}
+
+/**
+ * Agrupa rotas por seção pra animar a troca ENTRE seções sem remontar ao
+ * navegar dentro da mesma seção (ex.: /chat/a→/chat/b, /notas/x→/notas/y,
+ * /jobs/1→/jobs/2 preservam estado e scroll).
+ */
+function getSectionKey(pathname: string): string {
+  const segments = pathname.split('/').filter(Boolean);
+  const root = segments[0] ?? 'dashboard';
+  // /admin/usuarios, /admin/custos e /admin/integracoes são seções distintas.
+  return root === 'admin' ? `admin/${segments[1] ?? ''}` : root;
+}
+
+/**
+ * Mantém LocationContext/RouteContext estáveis para a página que está saindo.
+ * Enquanto a instância está presente, acompanha o router atual — navegar dentro
+ * da mesma seção (ex.: /notas/a→/notas/b, trocar de conversa em /chat) atualiza
+ * os params normalmente. Quando a instância começa a sair (isPresent=false),
+ * congela o último router pra página não renderizar com useParams() vazio
+ * durante o fade-out.
+ */
+function FrozenRouter({ children }: { children: ReactNode }): React.ReactElement {
+  const [isPresent] = usePresence();
+  const location = useContext(LocationContext);
+  const route = useContext(RouteContext);
+  const frozenLocation = useRef(location);
+  const frozenRoute = useRef(route);
+  if (isPresent) {
+    frozenLocation.current = location;
+    frozenRoute.current = route;
+  }
+  return (
+    <LocationContext.Provider value={frozenLocation.current}>
+      <RouteContext.Provider value={frozenRoute.current}>{children}</RouteContext.Provider>
+    </LocationContext.Provider>
+  );
+}
+
+/**
+ * Conteúdo da rota com transição de saída + entrada entre seções. As páginas
+ * animam via <AnimatedPage> (que respeita prefers-reduced-motion); /chat não
+ * usa AnimatedPage, então troca sem animação de propósito.
+ */
+function AnimatedOutlet({ onExitComplete }: { onExitComplete: () => void }): React.ReactElement {
+  const location = useLocation();
+  const outlet = useOutlet();
+  return (
+    <AnimatePresence mode="wait" initial={false} onExitComplete={onExitComplete}>
+      <div key={getSectionKey(location.pathname)} className="contents">
+        <FrozenRouter>{outlet}</FrozenRouter>
+      </div>
+    </AnimatePresence>
   );
 }
 
