@@ -69,20 +69,27 @@ async def transcribe_audio(
     """
     owns_client = client is None
     if client is None:
-        client = httpx.AsyncClient(timeout=120.0)
+        client = httpx.AsyncClient(timeout=180.0)
     try:
-        with audio_path.open("rb") as fh:
-            files = {"file": (audio_path.name, fh, "audio/ogg")}
-            data = {"model": model, "response_format": "json"}
-            try:
-                res = await client.post(
-                    f"{OR_BASE_URL}/audio/transcriptions",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    data=data,
-                    files=files,
-                )
-            except (httpx.TimeoutException, httpx.NetworkError) as e:
-                raise OpenrouterTransientError(f"Rede/timeout: {e}") from e
+        audio_format = audio_path.suffix.lower().lstrip(".") or "ogg"
+        if audio_format == "oga":
+            audio_format = "ogg"
+        payload = {
+            "model": model,
+            "input_audio": {
+                "data": base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+                "format": audio_format,
+            },
+            "response_format": "json",
+        }
+        try:
+            res = await client.post(
+                f"{OR_BASE_URL}/audio/transcriptions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json=payload,
+            )
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.ProtocolError) as e:
+            raise OpenrouterTransientError(f"Rede/timeout: {e}") from e
         if res.status_code in (401, 403):
             raise OpenrouterAuthError(f"OpenRouter rejeitou a key (HTTP {res.status_code})")
         if 500 <= res.status_code < 600:
