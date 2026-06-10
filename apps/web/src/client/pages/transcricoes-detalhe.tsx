@@ -12,6 +12,8 @@ import {
   Globe,
   Languages,
   Loader2,
+  MessageCircle,
+  NotebookPen,
   RotateCcw,
   Sparkles,
   Trash2,
@@ -23,6 +25,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
+import { apiPost, ApiError } from '../lib/api';
 import { formatDateTime, formatDuration, formatUsd } from '../lib/format';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { TranscriptViewer } from '../components/ui/transcript-viewer';
@@ -35,7 +38,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { useI18n, type TranslateFn } from '../lib/i18n';
+import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
+import { createConversation } from '../lib/use-conversations';
+import type { LibraryMentionItem } from '../components/ui/prompt-box';
 
 interface TranscriptDetail {
   id: string;
@@ -82,6 +87,18 @@ interface FoldersResponse {
   folders: LibraryFolder[];
 }
 
+interface LinkedNote {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface LinkedNotesResponse {
+  notes: LinkedNote[];
+}
+
 export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -89,12 +106,23 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const { data, loading, refresh } = useFetch<ResponseBody>(
     id ? `/api/transcripts/${id}?includeTrash=1` : null,
   );
+  const {
+    data: linkedNotesData,
+    loading: linkedNotesLoading,
+    refresh: refreshLinkedNotes,
+  } = useFetch<LinkedNotesResponse>(
+    id && data?.transcript.status !== 'TRASH' ? `/api/transcripts/${id}/notes` : null,
+  );
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
   const [generating, setGenerating] = useState(false);
   const [organizing, setOrganizing] = useState(false);
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [startingChat, setStartingChat] = useState(false);
+  const [creatingLinkedNote, setCreatingLinkedNote] = useState(false);
+  const [linkedNoteTitle, setLinkedNoteTitle] = useState('');
+  const [linkedNoteContent, setLinkedNoteContent] = useState('');
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -245,6 +273,63 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     }
   }
 
+  async function startContextualChat(transcript: TranscriptDetail): Promise<void> {
+    setStartingChat(true);
+    try {
+      const conv = await createConversation(`Sobre: ${transcript.title}`.slice(0, 60));
+      if (!conv) {
+        toast.error(translate('library.chatError'));
+        return;
+      }
+      const mention: LibraryMentionItem = {
+        type: 'transcript',
+        id: transcript.id,
+        label: transcript.title,
+        subtitle: [transcript.source, transcript.channel].filter(Boolean).join(' · '),
+      };
+      navigate(`/chat/${conv.id}`, {
+        state: {
+          prefill: {
+            text: translate('library.chatPrompt', { title: transcript.title }),
+            mentions: [mention],
+          },
+        },
+      });
+      toast.success(translate('library.chatReady'));
+    } catch (e) {
+      toast.error(translate('library.chatError'), {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setStartingChat(false);
+    }
+  }
+
+  async function createLinkedNote(transcript: TranscriptDetail): Promise<void> {
+    const title = linkedNoteTitle.trim();
+    if (!title) {
+      toast.error(translate('library.linkedNoteError'));
+      return;
+    }
+    setCreatingLinkedNote(true);
+    try {
+      await apiPost<{ note: LinkedNote }>(`/api/transcripts/${transcript.id}/notes`, {
+        title,
+        content: linkedNoteContent,
+      });
+      setLinkedNoteTitle('');
+      setLinkedNoteContent('');
+      refreshLinkedNotes();
+      toast.success(translate('library.linkedNoteCreated'));
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : translate('library.linkedNoteError'), {
+        description: e instanceof Error && !(e instanceof ApiError) ? e.message : undefined,
+      });
+    } finally {
+      setCreatingLinkedNote(false);
+    }
+  }
+
   if (loading || !data) {
     return (
       <div className="px-8 py-10 mx-auto max-w-5xl">
@@ -268,6 +353,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const published = t.publishedAt ? new Date(t.publishedAt) : null;
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
+  const canUseContextualActions = t.status !== 'TRASH';
   const contentMarkdown = stripMarkdownFrontmatter(data.markdown);
 
   return (
@@ -454,8 +540,41 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </CardContent>
             </Card>
 
+            {canUseContextualActions && (
+              <LinkedNotesCard
+                notes={linkedNotesData?.notes ?? []}
+                loading={linkedNotesLoading}
+                title={linkedNoteTitle}
+                content={linkedNoteContent}
+                creating={creatingLinkedNote}
+                locale={locale}
+                onTitleChange={setLinkedNoteTitle}
+                onContentChange={setLinkedNoteContent}
+                onCreate={() => void createLinkedNote(t)}
+                t={translate}
+              />
+            )}
+
             <Card elevated>
               <CardContent className="pt-5 pb-5 space-y-3">
+                {canUseContextualActions && (
+                  <Button
+                    variant="primary"
+                    size="default"
+                    className="w-full"
+                    disabled={startingChat}
+                    onClick={() => void startContextualChat(t)}
+                  >
+                    {startingChat ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <MessageCircle className="h-3.5 w-3.5" />
+                    )}
+                    {startingChat
+                      ? translate('library.chatStarting')
+                      : translate('library.chatAbout')}
+                  </Button>
+                )}
                 {t.status === 'ARCHIVED' || t.status === 'TRASH' ? (
                   <Button
                     variant="outline"
@@ -540,6 +659,116 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         loading={deleting}
       />
     </AnimatedPage>
+  );
+}
+
+function LinkedNotesCard({
+  notes,
+  loading,
+  title,
+  content,
+  creating,
+  locale,
+  onTitleChange,
+  onContentChange,
+  onCreate,
+  t,
+}: {
+  notes: LinkedNote[];
+  loading: boolean;
+  title: string;
+  content: string;
+  creating: boolean;
+  locale: Locale;
+  onTitleChange: (value: string) => void;
+  onContentChange: (value: string) => void;
+  onCreate: () => void;
+  t: TranslateFn;
+}): React.ReactElement {
+  return (
+    <Card elevated>
+      <CardContent className="pt-5 pb-5 space-y-4">
+        <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
+          <NotebookPen className="h-3.5 w-3.5 text-emerald-400" />
+          {t('library.linkedNotes')}
+        </div>
+
+        <div className="space-y-2">
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => onTitleChange(e.target.value)}
+            placeholder={t('library.linkedNoteTitle')}
+            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+            disabled={creating}
+            maxLength={200}
+          />
+          <textarea
+            value={content}
+            onChange={(e) => onContentChange(e.target.value)}
+            placeholder={t('library.linkedNoteContent')}
+            className="min-h-24 w-full resize-y rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 py-2 text-xs leading-relaxed text-zinc-100 placeholder:text-zinc-600 focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+            disabled={creating}
+            maxLength={200_000}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="w-full"
+            disabled={creating || title.trim().length === 0}
+            onClick={onCreate}
+          >
+            {creating ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {t('library.linkedNoteCreating')}
+              </>
+            ) : (
+              t('library.linkedNoteCreate')
+            )}
+          </Button>
+        </div>
+
+        <div className="space-y-2">
+          {loading && (
+            <>
+              <Skeleton className="h-16 w-full rounded-lg" />
+              <Skeleton className="h-16 w-full rounded-lg" />
+            </>
+          )}
+          {!loading && notes.length === 0 && (
+            <p className="rounded-lg border border-dashed border-[var(--color-app-border)] px-3 py-4 text-center text-xs text-[var(--color-app-muted)]">
+              {t('library.linkedNotesEmpty')}
+            </p>
+          )}
+          {!loading &&
+            notes.map((note) => {
+              const preview =
+                note.content.trim().replace(/\s+/g, ' ').slice(0, 140) || t('notes.emptyContent');
+              return (
+                <div
+                  key={note.id}
+                  className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/45 px-3 py-2.5"
+                >
+                  <p className="truncate text-sm font-medium text-zinc-100">{note.title}</p>
+                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--color-app-muted)]">
+                    {preview}
+                  </p>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="truncate text-[10px] uppercase tracking-wider text-[var(--color-app-muted)]/80">
+                      {formatDateTime(new Date(note.updatedAt), locale)}
+                    </span>
+                    <Button asChild variant="ghost" size="sm" className="h-7 px-2">
+                      <Link to={`/notas/${note.id}`}>{t('library.openNote')}</Link>
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

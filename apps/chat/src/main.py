@@ -307,9 +307,13 @@ async def chat(
                 )
         # === Fim compactação ===
 
-        extra: dict[str, Any] = {}
-        if thinking:
-            extra["reasoning"] = {"effort": "medium"}
+        extra: dict[str, Any] = {
+            "reasoning": (
+                {"enabled": True, "effort": "medium", "exclude": False}
+                if thinking
+                else {"effort": "none"}
+            )
+        }
 
         total_in = 0
         total_out = 0
@@ -362,9 +366,10 @@ async def chat(
                     # Thinking/reasoning: OpenRouter expõe o raciocínio do
                     # modelo em campos `reasoning` (texto) ou `reasoning_details`
                     # (estruturado) no delta. Quando o user ativa o toggle
-                    # `thinking`, mandamos `reasoning.effort=medium` e captamos
-                    # esses tokens aqui pra UI renderizar como bloco separado.
-                    # https://openrouter.ai/docs/use-cases/reasoning-tokens
+                    # `thinking`, mandamos `reasoning.enabled=true` +
+                    # `effort=medium`. Com o toggle desligado mandamos
+                    # `effort=none` para desativar reasoning quando suportado.
+                    # https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
                     reasoning_text = getattr(delta, "reasoning", None)
                     if reasoning_text:
                         yield _sse("reasoning_token", {"text": reasoning_text})
@@ -695,7 +700,7 @@ sobre um tema configurado pelo usuário do Voxen.
 
 Tools disponíveis:
 - web_search(query) — busca real na internet
-- create_note(title, content, parent_id?) — cria nova nota com markdown
+- create_note(title, content, parent_id?, source_type?, source_id?) — cria nova nota com markdown
 
 Seu trabalho:
 1. Use web_search uma ou mais vezes pra coletar fontes recentes sobre o tema.

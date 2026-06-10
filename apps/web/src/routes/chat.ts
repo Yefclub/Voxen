@@ -553,7 +553,7 @@ async function resolveLibraryMentions(uid: string, raw: unknown): Promise<Librar
   const [transcripts, notes] = await Promise.all([
     transcriptIds.length
       ? db.transcript.findMany({
-          where: { userId: uid, status: 'ACTIVE', id: { in: transcriptIds } },
+          where: { userId: uid, status: { not: 'TRASH' }, id: { in: transcriptIds } },
           select: {
             id: true,
             title: true,

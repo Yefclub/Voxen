@@ -515,6 +515,8 @@ model Note {
   id           String                  @id @default(cuid())
   userId       String
   parentId     String?
+  sourceType   BrainSourceType?
+  sourceId     String?
   kind         NoteKind                @default(NOTE)
   title        String
   // Conteúdo markdown. FOLDER ignora este campo.
@@ -528,6 +530,7 @@ model Note {
   children     Note[]                  @relation("NoteTree")
 
   @@index([userId, parentId])
+  @@index([userId, sourceType, sourceId])
   @@index([userId, updatedAt(sort: Desc)])
 }
 

@@ -126,7 +126,7 @@ async def get_user_transcript(user_id: str, transcript_id: str) -> dict[str, Any
             FROM "Transcript"
             WHERE id = $1
               AND "userId" = $2
-              AND status = 'ACTIVE'::"ContentStatus"
+              AND status <> 'TRASH'::"ContentStatus"
             """,
             transcript_id,
             user_id,
@@ -505,6 +505,8 @@ async def create_user_note(
     content: str = "",
     parent_id: str | None = None,
     kind: str = "NOTE",
+    source_type: str | None = None,
+    source_id: str | None = None,
 ) -> dict[str, Any]:
     new_id = _generate_note_id()
     async with connection() as conn:
@@ -512,15 +514,18 @@ async def create_user_note(
             row = await conn.fetchrow(
                 """
                 INSERT INTO "Note" (
-                    id, "userId", "parentId", kind, title, content,
+                    id, "userId", "parentId", "sourceType", "sourceId", kind, title, content,
                     "createdAt", "updatedAt"
                 )
-                VALUES ($1, $2, $3, $4::"NoteKind", $5, $6, $7, $7)
-                RETURNING id, "parentId", kind::text AS kind, title, content, "updatedAt"
+                VALUES ($1, $2, $3, $4::"BrainSourceType", $5, $6::"NoteKind", $7, $8, $9, $9)
+                RETURNING id, "parentId", "sourceType"::text AS "sourceType",
+                          "sourceId", kind::text AS kind, title, content, "updatedAt"
                 """,
                 new_id,
                 user_id,
                 parent_id,
+                source_type,
+                source_id,
                 kind,
                 title,
                 content,
@@ -543,7 +548,8 @@ async def update_user_note(
                     content = COALESCE($4, content),
                     "updatedAt" = NOW()
                 WHERE id = $1 AND "userId" = $2
-                RETURNING id, "parentId", kind::text AS kind, title, content, "updatedAt"
+                RETURNING id, "parentId", "sourceType"::text AS "sourceType",
+                          "sourceId", kind::text AS kind, title, content, "updatedAt"
                 """,
                 note_id,
                 user_id,
@@ -593,6 +599,8 @@ async def upsert_note_brain_node(
     metadata = {
         "kind": note.get("kind"),
         "parentId": note.get("parentId"),
+        "linkedSourceType": note.get("sourceType"),
+        "linkedSourceId": note.get("sourceId"),
         "updatedAt": updated_at.isoformat() if updated_at is not None else None,
     }
     row = await conn.fetchrow(

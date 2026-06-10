@@ -12,7 +12,7 @@ import { Hono } from 'hono';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
-import { deleteBrainForSource, reindexTranscriptBrain } from '../lib/brain';
+import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { rateLimit } from '../lib/rate-limit';
@@ -242,6 +242,74 @@ transcriptsRoutes.get('/:id', async (c) => {
   })();
 
   return c.json({ transcript: { ...transcript, totalCostUsd }, markdown });
+});
+
+const LinkedNoteBody = z.object({
+  title: z.string().min(1).max(200),
+  content: z.string().max(200_000).default(''),
+});
+
+transcriptsRoutes.get('/:id/notes', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId, status: { not: 'TRASH' } },
+    select: { id: true },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+
+  const notes = await db.note.findMany({
+    where: {
+      userId,
+      kind: 'NOTE',
+      sourceType: 'TRANSCRIPT',
+      sourceId: id,
+    },
+    orderBy: { updatedAt: 'desc' },
+    select: {
+      id: true,
+      title: true,
+      content: true,
+      updatedAt: true,
+      createdAt: true,
+    },
+    take: 20,
+  });
+  return c.json({ notes });
+});
+
+transcriptsRoutes.post('/:id/notes', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const parsed = LinkedNoteBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Payload inválido.' }, 400);
+
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId, status: { not: 'TRASH' } },
+    select: { id: true },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+
+  const note = await db.note.create({
+    data: {
+      userId,
+      kind: 'NOTE',
+      title: parsed.data.title.trim(),
+      content: parsed.data.content,
+      sourceType: 'TRANSCRIPT',
+      sourceId: id,
+    },
+    select: {
+      id: true,
+      title: true,
+      content: true,
+      updatedAt: true,
+      createdAt: true,
+    },
+  });
+  await reindexNoteBrain(userId, note.id);
+  await invalidateGraphCache(userId);
+  return c.json({ note }, 201);
 });
 
 const OrganizationBody = z.object({
