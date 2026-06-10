@@ -162,9 +162,9 @@ setupRoutes.post('/models', async (c) => {
       listDocumentModels(key),
       listXAnalysisModels(key),
     ]);
-    // Web search: qualquer modelo de chat aceita o sufixo `:online` no OR
-    // (plugin Perplexity). Devolvemos a lista de chat repetida — UI deixa
-    // claro que o modelo escolhido vai ter `:online` agregado automaticamente.
+    // Web search: a server tool `openrouter:web_search` é model-agnostic.
+    // Devolvemos a lista de chat repetida para o admin escolher um modelo
+    // dedicado, sem depender do sufixo deprecated `:online`.
     return c.json({ chat, transcription, vision, document, xAnalysis, web: chat });
   } catch (err) {
     if (err instanceof OpenrouterError) {
@@ -180,8 +180,8 @@ const SaveBody = z.object({
   openrouter_api_key: z.string().min(20).optional(),
   default_chat_model: z.string().min(1),
   default_transcription_model: z.string().min(1),
-  // Opcional: modelo dedicado a pesquisa web. Fallback é
-  // `default_chat_model:online` no chat service. String vazia = limpar setting.
+  // Opcional: modelo dedicado a pesquisa web. Fallback é `default_chat_model`
+  // com a server tool `openrouter:web_search`. String vazia = limpar setting.
   default_web_search_model: z.string().optional(),
   // Opcional: modelo multimodal pra entender imagens (vision). Vazio = limpar.
   default_vision_model: z.string().optional(),

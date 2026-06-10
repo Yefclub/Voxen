@@ -10,6 +10,7 @@ async function wipeDb(): Promise<void> {
   await db.job.deleteMany();
   await db.transcript.deleteMany();
   await db.libraryFolder.deleteMany();
+  await db.note.deleteMany();
   await db.session.deleteMany();
   await db.account.deleteMany();
   await db.verification.deleteMany();
@@ -207,5 +208,51 @@ describeIfDb('library organization API', () => {
     expect(await db.transcript.findUnique({ where: { id: transcript.id } })).toBeNull();
     const retainedJob = await db.job.findUniqueOrThrow({ where: { id: job.id } });
     expect(retainedJob.transcriptId).toBeNull();
+  });
+
+  it('creates and lists notes linked to a transcript', async () => {
+    await signUp('notes-link@voxen.local', 'senha-super-segura-123', 'Notes Link');
+    const signin = await signIn('notes-link@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'notes-link@voxen.local' } });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/linked-note',
+        title: 'Conteúdo com nota',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/linked-note.md`,
+        plainText: 'texto base',
+        frontmatter: {},
+      },
+    });
+
+    const create = await app.fetch(
+      new Request(`http://localhost/api/transcripts/${transcript.id}/notes`, {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ title: 'Insight', content: 'Nota vinculada.' }),
+      }),
+    );
+
+    expect(create.status).toBe(201);
+    const createBody = (await create.json()) as { note: { id: string; title: string } };
+    expect(createBody.note.title).toBe('Insight');
+
+    const stored = await db.note.findUniqueOrThrow({ where: { id: createBody.note.id } });
+    expect(stored.sourceType).toBe('TRANSCRIPT');
+    expect(stored.sourceId).toBe(transcript.id);
+
+    const list = await app.fetch(
+      new Request(`http://localhost/api/transcripts/${transcript.id}/notes`, {
+        headers: { cookie },
+      }),
+    );
+    expect(list.status).toBe(200);
+    const listBody = (await list.json()) as { notes: { id: string }[] };
+    expect(listBody.notes.map((note) => note.id)).toEqual([createBody.note.id]);
   });
 });

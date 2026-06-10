@@ -292,7 +292,7 @@ TOOLS_SPEC: list[dict[str, Any]] = [
         "function": {
             "name": "web_search",
             "description": (
-                "Pesquisa na web ao vivo via OpenRouter (plugin :online). "
+                "Pesquisa na web ao vivo via OpenRouter server tool. "
                 "Use APENAS quando a base de conhecimento não tem a info, "
                 "ou para confirmar dados atualizados (datas, números, fatos "
                 "que mudam). NÃO use pra navegação genérica nem em vez de "
@@ -392,6 +392,15 @@ TOOLS_SPEC: list[dict[str, Any]] = [
                     "title": {"type": "string", "description": "Título (1-200 chars)."},
                     "content": {"type": "string", "description": "Conteúdo markdown."},
                     "parent_id": {"type": "string", "description": "ID da pasta pai (opcional)."},
+                    "source_type": {
+                        "type": "string",
+                        "enum": ["TRANSCRIPT"],
+                        "description": "Tipo de conteúdo vinculado à nota (opcional).",
+                    },
+                    "source_id": {
+                        "type": "string",
+                        "description": "ID do conteúdo vinculado quando source_type=TRANSCRIPT.",
+                    },
                 },
                 "required": ["title", "content"],
             },
@@ -761,6 +770,10 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
             title = str(args.get("title", "")).strip()
             content = str(args.get("content", ""))
             parent_id = args.get("parent_id")
+            source_type_raw = args.get("source_type")
+            source_id_raw = args.get("source_id")
+            source_type = str(source_type_raw).strip().upper() if source_type_raw else None
+            source_id = str(source_id_raw).strip() if source_id_raw else None
             if not title:
                 return {"error": "Título obrigatório."}
             if len(title) > 200:
@@ -773,13 +786,27 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
                     return {"error": "Pasta pai não encontrada."}
                 if parent.get("kind") != "FOLDER":
                     return {"error": "parent_id precisa ser uma pasta (FOLDER)."}
+            if source_type or source_id:
+                if source_type != "TRANSCRIPT" or not source_id:
+                    return {"error": "Vínculo inválido: use source_type=TRANSCRIPT e source_id."}
+                transcript = await db.get_user_transcript(user_id, source_id)
+                if not transcript:
+                    return {"error": "Transcrição vinculada não encontrada."}
             note = await db.create_user_note(
-                user_id, title=title, content=content, parent_id=parent_id, kind="NOTE"
+                user_id,
+                title=title,
+                content=content,
+                parent_id=parent_id,
+                kind="NOTE",
+                source_type=source_type,
+                source_id=source_id,
             )
             return {
                 "status": "created",
                 "id": note["id"],
                 "title": note["title"],
+                "source_type": note.get("sourceType"),
+                "source_id": note.get("sourceId"),
                 "message": "Nota criada com sucesso.",
             }
 
@@ -925,8 +952,8 @@ async def _web_search(user_id: str, query: str) -> dict[str, Any]:
 
     Estratégia:
       1) Setting `default_web_search_model` configurada → usa esse modelo
-         direto (deve ter `:online` ou suportar web nativamente).
-      2) Senão, usa `default_chat_model + ":online"` (plugin Perplexity).
+         direto com server tool `openrouter:web_search`.
+      2) Senão, usa `default_chat_model` com a mesma server tool.
       3) Sem API key OR → erro claro.
     Custo é registrado em CostEvent kind=CHAT (somando ao painel do user).
     """
@@ -939,33 +966,18 @@ async def _web_search(user_id: str, query: str) -> dict[str, Any]:
         base = await voxen_settings.get_default_chat_model()
         if not base:
             return {"error": "Modelo de chat não configurado."}
-        # Sufixo `:online` ativa o plugin web da Perplexity em qualquer modelo
-        model = base if base.endswith(":online") else f"{base}:online"
+        model = base
+    model = _strip_openrouter_online_suffix(model)
 
     # Cap query length antes de enviar ao OR (e ao registrar em CostEvent.meta)
     safe_query = query[:WEB_SEARCH_MAX_QUERY_CHARS]
 
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Você é um buscador. Responda à pergunta usando informação "
-                    "atualizada da web. Cite fontes (URLs) entre parênteses. "
-                    "Seja conciso (até 6 parágrafos curtos)."
-                ),
-            },
-            {"role": "user", "content": safe_query},
-        ],
-        "stream": False,
-        "usage": {"include": True},
-    }
+    payload = _build_web_search_payload(model, safe_query)
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             res = await client.post(
                 f"{OR_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}"},
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json=payload,
             )
     except httpx.HTTPError as e:
@@ -978,7 +990,9 @@ async def _web_search(user_id: str, query: str) -> dict[str, Any]:
         return {"error": f"OpenRouter retornou {res.status_code}."}
 
     data = res.json()
-    text = ((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
+    message = (data.get("choices") or [{}])[0].get("message", {}) or {}
+    text = str(message.get("content") or "").strip()
+    sources = _extract_url_citations(message)
     usage = data.get("usage") or {}
     cost_raw = usage.get("cost")
     try:
@@ -998,7 +1012,60 @@ async def _web_search(user_id: str, query: str) -> dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         _log.warning("web-search-cost-event-failed", error=str(e))
 
-    return {"answer": text or "Sem resposta da pesquisa.", "model": model}
+    return {
+        "answer": text or "Sem resposta da pesquisa.",
+        "sources": sources,
+        "model": model,
+        "web_search_requests": (usage.get("server_tool_use") or {}).get("web_search_requests"),
+    }
+
+
+def _strip_openrouter_online_suffix(model: str) -> str:
+    return model[: -len(":online")] if model.endswith(":online") else model
+
+
+def _build_web_search_payload(model: str, query: str) -> dict[str, Any]:
+    return {
+        "model": _strip_openrouter_online_suffix(model),
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Você é um buscador. Responda à pergunta usando informação "
+                    "atualizada da web. Cite fontes com URLs. Seja conciso "
+                    "(até 6 parágrafos curtos)."
+                ),
+            },
+            {"role": "user", "content": query},
+        ],
+        "tools": [
+            {
+                "type": "openrouter:web_search",
+                "parameters": {"max_results": 5, "max_total_results": 10},
+            }
+        ],
+        "stream": False,
+        "usage": {"include": True},
+    }
+
+
+def _extract_url_citations(message: dict[str, Any]) -> list[dict[str, str]]:
+    citations: list[dict[str, str]] = []
+    annotations = message.get("annotations")
+    if not isinstance(annotations, list):
+        return citations
+    for item in annotations:
+        if not isinstance(item, dict) or item.get("type") != "url_citation":
+            continue
+        citation = item.get("url_citation")
+        if not isinstance(citation, dict):
+            continue
+        url = str(citation.get("url") or "").strip()
+        if not url:
+            continue
+        title = str(citation.get("title") or url).strip()
+        citations.append({"url": url, "title": title})
+    return citations
 
 
 def _normalize_web_url(url: str) -> str | None:

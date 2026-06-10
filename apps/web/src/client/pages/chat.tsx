@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertCircle,
@@ -72,8 +72,14 @@ interface PersistedChatMessage {
   tools?: unknown;
 }
 
+interface ChatPrefillState {
+  text: string;
+  mentions?: LibraryMentionItem[];
+}
+
 export function ChatPage(): React.ReactElement {
   const { id: routeId } = useParams<{ id: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const { data: me } = useMe();
   const { t } = useI18n();
@@ -213,6 +219,16 @@ export function ChatPage(): React.ReactElement {
     }
     void loadActive(routeId);
   }, [routeId, loadActive]);
+
+  useEffect(() => {
+    const state = location.state as { prefill?: ChatPrefillState } | null;
+    const prefill = state?.prefill;
+    if (!prefill) return;
+    setInput(prefill.text);
+    setSelectedMentions((prefill.mentions ?? []).slice(0, 8));
+    requestAnimationFrame(() => promptRef.current?.focus());
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });

@@ -45,8 +45,11 @@ async def get_default_transcription_model() -> str | None:
 
 
 async def get_default_web_search_model() -> str | None:
-    """Modelo dedicado pra tool web_search. Fallback ao default_chat_model
-    com sufixo ":online" se não configurado (qualquer modelo OR aceita)."""
+    """Modelo dedicado pra tool web_search.
+
+    Quando ausente, o chat service usa default_chat_model com a server tool
+    openrouter:web_search. O modelo não precisa do sufixo deprecated :online.
+    """
     enc = await db.get_setting_enc("default_web_search_model")
     if enc is None:
         return None

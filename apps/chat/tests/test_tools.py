@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from src.tools import _canonical_video_url, _normalize_web_url
+from src.tools import (
+    _build_web_search_payload,
+    _canonical_video_url,
+    _extract_url_citations,
+    _normalize_web_url,
+)
 
 # ---------------------------------------------------------------------------
 # _canonical_video_url
@@ -179,3 +184,37 @@ def test_web_url_news_sites_unchanged() -> None:
     for url in cases:
         # Espera retorno = input (apenas fragment removido se houver)
         assert _normalize_web_url(url) == url
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter web_search server tool
+# ---------------------------------------------------------------------------
+
+
+def test_web_search_payload_uses_openrouter_server_tool() -> None:
+    payload = _build_web_search_payload("openai/gpt-5.2:online", "notícias de IA hoje")
+
+    assert payload["model"] == "openai/gpt-5.2"
+    assert payload["tools"] == [
+        {
+            "type": "openrouter:web_search",
+            "parameters": {"max_results": 5, "max_total_results": 10},
+        }
+    ]
+    assert "plugins" not in payload
+
+
+def test_extract_url_citations_from_openrouter_annotations() -> None:
+    citations = _extract_url_citations(
+        {
+            "annotations": [
+                {
+                    "type": "url_citation",
+                    "url_citation": {"url": "https://example.com/a", "title": "Fonte A"},
+                },
+                {"type": "other"},
+            ]
+        }
+    )
+
+    assert citations == [{"url": "https://example.com/a", "title": "Fonte A"}]

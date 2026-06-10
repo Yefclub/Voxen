@@ -221,6 +221,45 @@ async def test_read_transcript_summary_hints_when_missing(
     assert "read_transcript" in str(result["hint"])
 
 
+async def test_create_note_links_to_valid_transcript(monkeypatch: pytest.MonkeyPatch) -> None:
+    get_transcript = AsyncMock(return_value={"id": "t1", "title": "Transcrição"})
+    create_note = AsyncMock(
+        return_value={
+            "id": "n1",
+            "title": "Nota contextual",
+            "sourceType": "TRANSCRIPT",
+            "sourceId": "t1",
+        }
+    )
+    monkeypatch.setattr(tools.db, "get_user_transcript", get_transcript)
+    monkeypatch.setattr(tools.db, "create_user_note", create_note)
+
+    result = await tools.execute_tool(
+        "create_note",
+        {
+            "title": "Nota contextual",
+            "content": "Conteúdo",
+            "source_type": "TRANSCRIPT",
+            "source_id": "t1",
+        },
+        "u1",
+    )
+
+    assert result["status"] == "created"
+    assert result["source_type"] == "TRANSCRIPT"
+    assert result["source_id"] == "t1"
+    get_transcript.assert_awaited_once_with("u1", "t1")
+    create_note.assert_awaited_once_with(
+        "u1",
+        title="Nota contextual",
+        content="Conteúdo",
+        parent_id=None,
+        kind="NOTE",
+        source_type="TRANSCRIPT",
+        source_id="t1",
+    )
+
+
 async def test_scrape_url_returns_already_indexed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         tools.db,

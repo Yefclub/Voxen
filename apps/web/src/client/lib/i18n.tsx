@@ -47,6 +47,9 @@ const ptBRMessages = {
   'shell.admin': 'Admin',
   'shell.contextTitle': 'Contexto: {tokens} / {limit} tokens',
   'shell.contextSummary': 'Ver resumo da última compactação',
+  'shell.versionInfo': 'Versão {version}',
+  'shell.versionSha': 'Commit {sha}',
+  'shell.versionBuiltAt': 'Build {date}',
   'shell.nav.dashboard': 'Painel',
   'shell.nav.chat': 'Conversar',
   'shell.nav.jobs': 'Transcrever',
@@ -74,6 +77,7 @@ const ptBRMessages = {
   'shell.newNote': 'Nova nota',
   'shell.newFolder': 'Nova pasta',
   'shell.menu': 'Menu',
+  'shell.signOut': 'Sair',
 
   'pending.setupTitle': 'Aguardando configuração',
   'pending.setupDescription':
@@ -263,6 +267,20 @@ const ptBRMessages = {
   'library.regenerateTitle': 'Regenerar resumo?',
   'library.regenerateDescription':
     'Vai consumir tokens da OpenRouter pra gerar um resumo novo do zero. O atual será sobrescrito.',
+  'library.chatAbout': 'Conversar sobre esta transcrição',
+  'library.chatStarting': 'Abrindo chat…',
+  'library.chatPrompt': '@{title} Analise esta transcrição e destaque os pontos principais.',
+  'library.chatReady': 'Chat contextual pronto.',
+  'library.chatError': 'Falha ao abrir chat contextual.',
+  'library.linkedNotes': 'Notas vinculadas',
+  'library.linkedNotesEmpty': 'Nenhuma nota vinculada a este conteúdo.',
+  'library.linkedNoteTitle': 'Título da nota',
+  'library.linkedNoteContent': 'Conteúdo em markdown',
+  'library.linkedNoteCreate': 'Adicionar nota',
+  'library.linkedNoteCreating': 'Salvando…',
+  'library.linkedNoteCreated': 'Nota vinculada criada.',
+  'library.linkedNoteError': 'Falha ao criar nota vinculada.',
+  'library.openNote': 'Abrir nota',
 
   'dashboard.welcome': 'Bem-vindo de volta',
   'dashboard.fallbackName': 'Olá',
@@ -733,7 +751,7 @@ const ptBRMessages = {
   'onboarding.models.chat': 'Chat',
   'onboarding.models.web': 'Pesquisa web',
   'onboarding.models.webHint':
-    'Usado pela tool web_search com sufixo :online. Vazio = usa o modelo de chat.',
+    'Usado pela tool web_search via OpenRouter server tool. Vazio = usa o modelo de chat.',
   'onboarding.models.vision': 'Visão',
   'onboarding.models.visionHint':
     'Habilita envio de imagens no chat e no Telegram. Vazio = recurso desabilitado.',
@@ -801,7 +819,7 @@ const ptBRMessages = {
   'setup.models.chat': 'Modelo de chat',
   'setup.models.web': 'Modelo de pesquisa web (opcional)',
   'setup.models.webHint':
-    'Tool web_search usa este modelo com sufixo :online (plugin Perplexity). Vazio = usa o de chat.',
+    'Tool web_search usa este modelo com openrouter:web_search. Vazio = usa o de chat.',
   'setup.models.vision': 'Modelo de visão (opcional)',
   'setup.models.visionHint':
     'Pra entender imagens enviadas no chat. Vazio = uploads ficam desabilitados.',
@@ -864,6 +882,9 @@ const enMessages: Record<I18nKey, string> = {
   'shell.admin': 'Admin',
   'shell.contextTitle': 'Context: {tokens} / {limit} tokens',
   'shell.contextSummary': 'View last compaction summary',
+  'shell.versionInfo': 'Version {version}',
+  'shell.versionSha': 'Commit {sha}',
+  'shell.versionBuiltAt': 'Build {date}',
   'shell.nav.dashboard': 'Dashboard',
   'shell.nav.chat': 'Chat',
   'shell.nav.jobs': 'Transcribe',
@@ -891,6 +912,7 @@ const enMessages: Record<I18nKey, string> = {
   'shell.newNote': 'New note',
   'shell.newFolder': 'New folder',
   'shell.menu': 'Menu',
+  'shell.signOut': 'Sign out',
 
   'pending.setupTitle': 'Waiting for setup',
   'pending.setupDescription':
@@ -1079,6 +1101,20 @@ const enMessages: Record<I18nKey, string> = {
   'library.regenerateTitle': 'Regenerate summary?',
   'library.regenerateDescription':
     'This will consume OpenRouter tokens to generate a new summary from scratch. The current one will be overwritten.',
+  'library.chatAbout': 'Chat about this transcript',
+  'library.chatStarting': 'Opening chat…',
+  'library.chatPrompt': '@{title} Analyze this transcript and highlight the main points.',
+  'library.chatReady': 'Contextual chat ready.',
+  'library.chatError': 'Failed to open contextual chat.',
+  'library.linkedNotes': 'Linked notes',
+  'library.linkedNotesEmpty': 'No notes linked to this content.',
+  'library.linkedNoteTitle': 'Note title',
+  'library.linkedNoteContent': 'Markdown content',
+  'library.linkedNoteCreate': 'Add note',
+  'library.linkedNoteCreating': 'Saving…',
+  'library.linkedNoteCreated': 'Linked note created.',
+  'library.linkedNoteError': 'Failed to create linked note.',
+  'library.openNote': 'Open note',
 
   'dashboard.welcome': 'Welcome back',
   'dashboard.fallbackName': 'Hello',
@@ -1548,7 +1584,7 @@ const enMessages: Record<I18nKey, string> = {
   'onboarding.models.chat': 'Chat',
   'onboarding.models.web': 'Web search',
   'onboarding.models.webHint':
-    'Used by the web_search tool with the :online suffix. Empty = use the chat model.',
+    'Used by the web_search tool through the OpenRouter server tool. Empty = use the chat model.',
   'onboarding.models.vision': 'Vision',
   'onboarding.models.visionHint':
     'Enables image uploads in chat and Telegram. Empty = feature disabled.',
@@ -1613,7 +1649,7 @@ const enMessages: Record<I18nKey, string> = {
   'setup.models.chat': 'Chat model',
   'setup.models.web': 'Web search model (optional)',
   'setup.models.webHint':
-    'The web_search tool uses this model with the :online suffix (Perplexity plugin). Empty = use the chat model.',
+    'The web_search tool uses this model with openrouter:web_search. Empty = use the chat model.',
   'setup.models.vision': 'Vision model (optional)',
   'setup.models.visionHint':
     'For understanding images sent in chat. Empty = uploads stay disabled.',

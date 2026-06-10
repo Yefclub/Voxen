@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   FolderPlus,
   ListVideo,
+  LogOut,
   MessagesSquare,
   Network,
   Notebook,
@@ -29,6 +30,8 @@ import { useSidebarCollapsed } from '../../lib/sidebar-state';
 import { useConversations, type ConvSummary } from '../../lib/use-conversations';
 import { useNotes } from '../../lib/use-notes';
 import { useI18n, type I18nKey } from '../../lib/i18n';
+import { apiPost } from '../../lib/api';
+import { useMe } from '../../lib/hooks';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { NotesTree } from '../notes/notes-tree';
 
@@ -122,10 +125,36 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
                 <NavBody items={items} pathname={location.pathname} />
               )}
             </motion.div>
+            <SidebarSignOut />
           </motion.aside>
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+function SidebarSignOut(): React.ReactElement {
+  const { t } = useI18n();
+  const { refresh } = useMe();
+  const navigate = useNavigate();
+
+  async function signOut(): Promise<void> {
+    await apiPost('/api/auth/sign-out').catch(() => undefined);
+    await refresh();
+    navigate('/entrar');
+  }
+
+  return (
+    <div className="shrink-0 border-t border-[var(--color-app-border)] p-3">
+      <button
+        type="button"
+        onClick={() => void signOut()}
+        className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-[var(--color-app-muted)] transition-colors hover:bg-rose-500/10 hover:text-rose-200"
+      >
+        <LogOut className="h-4 w-4 shrink-0" />
+        <span className="truncate">{t('shell.signOut')}</span>
+      </button>
+    </div>
   );
 }
 
