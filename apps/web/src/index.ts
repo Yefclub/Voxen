@@ -330,6 +330,12 @@ app.get('*', async (c) => {
   // - Assets hashados (/assets/[name].[hash].js|css|svg|woff2): max-age=1y
   //   immutable. Vite garante que mudaram → mudou o filename, cache antigo
   //   continua válido em paralelo.
+  // - Arquivos do PWA sem hash (sw.js, registerSW.js, manifest.webmanifest):
+  //   no-cache. O service worker é o gatilho de update do PWA — se ficar 1h
+  //   em cache HTTP, o browser demora 1h pra perceber que existe build novo.
+  //   no-cache (≠ no-store) ainda permite revalidação condicional (ETag/304).
+  // - workbox-*.js na raiz do dist: tem hash no nome (gerado pelo
+  //   vite-plugin-pwa), então é immutable como os /assets/.
   // - Outros estáticos sem hash (/favicon.ico, /voxen-256.png): 1h
   //   (balance entre frescor e load).
   const headers = new Headers();
@@ -339,9 +345,13 @@ app.get('*', async (c) => {
   const isHashedAsset = /\/assets\/[^/]+[.-][A-Za-z0-9_-]{8,}\.(js|css|svg|woff2?|ttf|otf)$/.test(
     reqPath,
   );
+  const isPwaEntry = /^\/(sw\.js|registerSW\.js|manifest\.webmanifest)$/.test(reqPath);
+  const isWorkboxRuntime = /^\/workbox-[A-Za-z0-9_-]+\.js$/.test(reqPath);
   if (isHtml) {
     headers.set('Cache-Control', 'no-store, must-revalidate');
-  } else if (isHashedAsset) {
+  } else if (isPwaEntry) {
+    headers.set('Cache-Control', 'no-cache, must-revalidate');
+  } else if (isHashedAsset || isWorkboxRuntime) {
     headers.set('Cache-Control', 'public, max-age=31536000, immutable');
   } else {
     headers.set('Cache-Control', 'public, max-age=3600');

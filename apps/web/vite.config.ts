@@ -59,6 +59,22 @@ export default defineConfig({
             purpose: 'maskable',
           },
         ],
+        screenshots: [
+          {
+            src: '/screenshots/wide.png',
+            sizes: '1280x800',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Chat com pesquisa na web e fontes',
+          },
+          {
+            src: '/screenshots/narrow.png',
+            sizes: '860x1864',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: 'Chat no mobile',
+          },
+        ],
         shortcuts: [
           {
             name: 'Novo chat',
