@@ -86,3 +86,10 @@ def test_summary_uses_title_including_nested() -> None:
 def test_summary_absent_when_no_heuristic_matches() -> None:
     payload = _tool_end_payload("get_metadata", {"id": "x", "metadata": {}})
     assert "summary" not in payload
+
+
+def test_summary_falls_back_to_message() -> None:
+    queued = {"status": "queued", "job_id": "j1", "message": "Job criado. Worker vai processar."}
+    assert _tool_end_payload("transcribe_video", queued)["summary"] == (
+        "Job criado. Worker vai processar."
+    )

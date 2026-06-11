@@ -907,6 +907,11 @@ def _tool_summary(fn_name: str, result: Any) -> str | None:
                     break
     if isinstance(title, str) and title:
         return title[:TOOL_SUMMARY_MAX_CHARS]
+    # Último recurso: tools como transcribe_video (job na fila) retornam um
+    # `message` humano pronto — melhor que cair no JSON cru na UI.
+    message = result.get("message")
+    if isinstance(message, str) and message:
+        return message[:TOOL_SUMMARY_MAX_CHARS]
     return None
 
 
