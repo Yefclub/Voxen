@@ -443,7 +443,7 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
   const encoder = new TextEncoder();
   let buffer = '';
   let assistantContent = '';
-  const tools: Array<{ name: string; preview?: string }> = [];
+  const tools: PersistedTool[] = [];
 
   // Persiste o que foi acumulado até agora. Usado no done normal E em erros
   // do upstream — evita perder a mensagem parcial quando chat:8001 cai.
@@ -504,9 +504,16 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
           const parsed = JSON.parse(dataMatch[1]!) as Record<string, unknown>;
           const ev = eventMatch[1];
           if (ev === 'token') assistantContent += (parsed.text as string) ?? '';
-          else if (ev === 'tool_start') tools.push({ name: (parsed.name as string) ?? '' });
-          else if (ev === 'tool_end' && tools.length > 0) {
-            tools[tools.length - 1]!.preview = (parsed.preview as string) ?? '';
+          else if (ev === 'tool_start') {
+            tools.push({
+              name: (parsed.name as string) ?? '',
+              args: sanitizeToolArgs(parsed.args),
+            });
+          } else if (ev === 'tool_end' && tools.length > 0) {
+            const last = tools[tools.length - 1]!;
+            last.preview = (parsed.preview as string) ?? '';
+            const sources = sanitizeToolSources(parsed.sources);
+            if (sources) last.sources = sources;
           }
         } catch {
           // ignora linhas malformadas
@@ -605,6 +612,64 @@ function truncateMentionContent(text: string): string {
   const clean = text.trim();
   if (clean.length <= MAX_LIBRARY_MENTION_CHARS) return clean;
   return `${clean.slice(0, MAX_LIBRARY_MENTION_CHARS).trim()}\n\n[conteúdo truncado]`;
+}
+
+// ----------------------------------------------------------------------------
+// Tools persistidas em ChatMessage.tools (ver .specs/026)
+// ----------------------------------------------------------------------------
+
+type ToolArgValue = string | number | boolean | null;
+
+// `type` (não interface) — interfaces não têm index signature implícita e
+// não são aceitas pelo InputJsonValue do Prisma.
+type PersistedTool = {
+  name: string;
+  args?: Record<string, ToolArgValue>;
+  preview?: string;
+  sources?: Array<{ url: string; title: string }>;
+};
+
+const TOOL_ARGS_MAX_ENTRIES = 8;
+const TOOL_ARGS_MAX_VALUE_CHARS = 300;
+const TOOL_SOURCES_MAX = 20;
+const TOOL_SOURCE_TITLE_MAX_CHARS = 300;
+const TOOL_SOURCE_URL_MAX_CHARS = 2000;
+
+// Só escalares truncados — args persistidos servem pra UI resumir a chamada
+// (ex: query da pesquisa), não pra reproduzir o payload inteiro.
+function sanitizeToolArgs(raw: unknown): Record<string, ToolArgValue> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, ToolArgValue> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (Object.keys(out).length >= TOOL_ARGS_MAX_ENTRIES) break;
+    if (typeof value === 'string') {
+      out[key] =
+        value.length > TOOL_ARGS_MAX_VALUE_CHARS
+          ? `${value.slice(0, TOOL_ARGS_MAX_VALUE_CHARS)}…`
+          : value;
+    } else if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+      out[key] = value;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function sanitizeToolSources(raw: unknown): Array<{ url: string; title: string }> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: Array<{ url: string; title: string }> = [];
+  for (const item of raw) {
+    if (out.length >= TOOL_SOURCES_MAX) break;
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const url = String(record.url ?? '').trim();
+    // Só http(s) — nunca renderizar javascript:/data: como link.
+    if (!/^https?:\/\//i.test(url)) continue;
+    const title = String(record.title ?? url)
+      .trim()
+      .slice(0, TOOL_SOURCE_TITLE_MAX_CHARS);
+    out.push({ url: url.slice(0, TOOL_SOURCE_URL_MAX_CHARS), title });
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 // ----------------------------------------------------------------------------
