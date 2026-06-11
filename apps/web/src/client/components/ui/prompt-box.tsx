@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { Spinner } from './spinner';
 import { createVoiceRecorder } from '../../lib/voice-recorder';
 import { toast } from 'sonner';
 import { useI18n } from '../../lib/i18n';
@@ -563,7 +564,10 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
             )}
           </button>
 
-          {/* Send */}
+          {/* Send. Durante streaming o botão mantém o fundo claro com o
+              Spinner orbital (Motion) — o Loader2 com animate-spin ficava
+              cinza sobre fundo escuro e parecia um loader travado, além de
+              congelar os primeiros ~600ms no WebKit. */}
           <button
             type="button"
             onClick={() => {
@@ -572,14 +576,17 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
             disabled={!hasValue || disabled}
             className={cn(
               'flex h-9 w-9 items-center justify-center rounded-full transition-all',
-              hasValue && !disabled
-                ? 'bg-zinc-100 text-zinc-900 hover:bg-white active:scale-95'
-                : 'bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] cursor-not-allowed',
+              loading
+                ? 'bg-zinc-100 text-zinc-900 cursor-wait'
+                : hasValue && !disabled
+                  ? 'bg-zinc-100 text-zinc-900 hover:bg-white active:scale-95'
+                  : 'bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] cursor-not-allowed',
             )}
             aria-label={t('prompt.send')}
+            aria-busy={loading || undefined}
           >
             {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner size={16} />
             ) : (
               <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
             )}
