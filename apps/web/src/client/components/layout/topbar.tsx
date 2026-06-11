@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { LogOut, Menu, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import {
@@ -85,7 +85,15 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-export function Topbar({ user, title }: { user: MeUser; title?: string }): React.ReactElement {
+export function Topbar({
+  user,
+  title,
+  onOpenMobileNav,
+}: {
+  user: MeUser;
+  title?: string;
+  onOpenMobileNav?: () => void;
+}): React.ReactElement {
   const navigate = useNavigate();
   const { refresh } = useMe();
   const { t } = useI18n();
@@ -100,6 +108,17 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
   return (
     <header className="relative shrink-0 z-30 flex h-16 items-center justify-between border-b border-[var(--color-app-border)] bg-[var(--color-app-bg)]/70 backdrop-blur-md px-6">
       <div className="flex items-center gap-4">
+        {onOpenMobileNav && (
+          <button
+            type="button"
+            onClick={onOpenMobileNav}
+            className="md:hidden flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] transition-colors"
+            aria-label={t('shell.openMenu')}
+            title={t('shell.openMenu')}
+          >
+            <Menu className="h-4 w-4" />
+          </button>
+        )}
         {title && <h1 className="text-base font-semibold font-display tracking-tight">{title}</h1>}
       </div>
 
