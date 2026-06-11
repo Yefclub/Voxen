@@ -4,11 +4,18 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertCircle,
   Check,
+  ChevronDown,
   Copy,
+  ExternalLink,
+  FileText,
+  Globe,
   Library,
   ListVideo,
+  Network,
   Search,
   Sparkles,
+  StickyNote,
+  Video,
   Wand2,
   X,
 } from 'lucide-react';
@@ -31,7 +38,22 @@ import {
   refreshConversations,
 } from '../lib/use-conversations';
 import { useChatContextState } from '../lib/chat-context-ctx';
-import { useI18n, type TranslateFn } from '../lib/i18n';
+import { useI18n, type TranslateFn, type I18nKey } from '../lib/i18n';
+
+interface ToolSource {
+  url: string;
+  title: string;
+}
+
+// Execução de tool exibida na mensagem (ver .specs/026). Mensagens antigas
+// só têm {name, preview} — todos os campos extras são opcionais.
+interface ChatTool {
+  name: string;
+  args?: Record<string, unknown>;
+  preview?: string;
+  sources?: ToolSource[];
+  actionSummary?: string;
+}
 
 interface Msg {
   id: string;
@@ -41,7 +63,7 @@ interface Msg {
   // `actionSummary` é populado quando a tool é request_user_confirmation —
   // o backend envia o resumo cru no SSE pra UI renderizar o banner HITL
   // sem precisar parsear o JSON do preview (que pode estar truncado).
-  tools?: { name: string; preview?: string; actionSummary?: string }[];
+  tools?: ChatTool[];
   pending?: boolean;
   // Raciocínio em streaming (thinking mode). Renderizado num bloco
   // colapsável antes do content final.
@@ -204,7 +226,7 @@ export function ChatPage(): React.ReactElement {
             role: m.role,
             kind: m.kind,
             content: m.content,
-            tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
+            tools: (m.tools as ChatTool[] | null) ?? undefined,
           })),
       );
     },
@@ -369,13 +391,17 @@ export function ChatPage(): React.ReactElement {
             );
           } else if (ev === 'tool_start') {
             const name = (payload.name as string) ?? '';
+            const args = (payload.args as Record<string, unknown> | undefined) ?? undefined;
             setMessages((m) =>
-              m.map((x) => (x.id === asstId ? { ...x, tools: [...(x.tools ?? []), { name }] } : x)),
+              m.map((x) =>
+                x.id === asstId ? { ...x, tools: [...(x.tools ?? []), { name, args }] } : x,
+              ),
             );
           } else if (ev === 'tool_end') {
             const name = (payload.name as string) ?? '';
             const preview = (payload.preview as string) ?? '';
             const actionSummary = (payload.action_summary as string | undefined) ?? undefined;
+            const sources = (payload.sources as ToolSource[] | undefined) ?? undefined;
             setMessages((m) =>
               m.map((x) =>
                 x.id === asstId
@@ -383,7 +409,7 @@ export function ChatPage(): React.ReactElement {
                       ...x,
                       tools: (x.tools ?? []).map((t, i, arr) =>
                         i === arr.length - 1 && t.name === name
-                          ? { ...t, preview, actionSummary }
+                          ? { ...t, preview, actionSummary, sources }
                           : t,
                       ),
                     }
@@ -545,7 +571,7 @@ export function ChatPage(): React.ReactElement {
           role: m.role,
           kind: m.kind,
           content: m.content,
-          tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
+          tools: (m.tools as ChatTool[] | null) ?? undefined,
         })),
       ]);
       toast.success(t('chat.documentSent'), {
@@ -830,18 +856,7 @@ function Bubble({
         )}
       >
         {!isUser && msg.tools && msg.tools.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {msg.tools.map((t, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-mono text-violet-300"
-                title={t.preview ?? ''}
-              >
-                <Wand2 className="h-2.5 w-2.5" />
-                {t.name}
-              </span>
-            ))}
-          </div>
+          <ToolActivity tools={msg.tools} pending={!!msg.pending} t={t} />
         )}
 
         <div
@@ -890,6 +905,7 @@ function Bubble({
                 <ReasoningBlock text={msg.reasoning} streaming={!!msg.pending} t={t} />
               )}
               <Markdown>{msg.content}</Markdown>
+              <SourcesSection tools={msg.tools} t={t} />
               {msg.content.length > 0 && (
                 <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-[var(--color-app-border)] opacity-60 hover:opacity-100 transition-opacity">
                   <button
@@ -913,6 +929,222 @@ function Bubble({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Atividade de tools + fontes (ver .specs/026)
+// ----------------------------------------------------------------------------
+
+const TOOL_ICONS: Record<string, typeof Wand2> = {
+  web_search: Globe,
+  scrape_url: Globe,
+  search_transcripts: Search,
+  search_notes: Search,
+  brain_search: Network,
+  brain_neighbors: Network,
+  brain_sources: Network,
+  brain_path: Network,
+  list_transcripts: ListVideo,
+  transcribe_video: Video,
+  read_transcript: FileText,
+  read_transcript_section: FileText,
+  read_transcript_summary: FileText,
+  get_metadata: FileText,
+  list_notes: StickyNote,
+  read_note: StickyNote,
+  create_note: StickyNote,
+  edit_note: StickyNote,
+  delete_note: StickyNote,
+};
+
+const TOOL_LABEL_KEYS: Record<string, I18nKey> = {
+  web_search: 'tools.web_search',
+  scrape_url: 'tools.scrape_url',
+  search_transcripts: 'tools.search_transcripts',
+  search_notes: 'tools.search_notes',
+  brain_search: 'tools.brain_search',
+  brain_neighbors: 'tools.brain_neighbors',
+  brain_sources: 'tools.brain_sources',
+  brain_path: 'tools.brain_path',
+  list_transcripts: 'tools.list_transcripts',
+  transcribe_video: 'tools.transcribe_video',
+  read_transcript: 'tools.read_transcript',
+  read_transcript_section: 'tools.read_transcript_section',
+  read_transcript_summary: 'tools.read_transcript_summary',
+  get_metadata: 'tools.get_metadata',
+  list_notes: 'tools.list_notes',
+  read_note: 'tools.read_note',
+  create_note: 'tools.create_note',
+  edit_note: 'tools.edit_note',
+  delete_note: 'tools.delete_note',
+};
+
+// Resumo curto do argumento principal pro header do card (query da pesquisa,
+// URL do vídeo, etc). Tools sem arg "humano" não mostram resumo.
+function toolArgSummary(tool: ChatTool): string | null {
+  const args = tool.args ?? {};
+  const candidate =
+    args.query ?? args.url ?? args.title ?? args.transcript_id ?? args.note_id ?? args.source_id;
+  if (typeof candidate !== 'string') return null;
+  const text = candidate.trim();
+  if (!text) return null;
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function ToolActivity({
+  tools,
+  pending,
+  t,
+}: {
+  tools: ChatTool[];
+  pending: boolean;
+  t: TranslateFn;
+}): React.ReactElement | null {
+  // HITL tem banner próprio (ConfirmationPrompt) — fica fora da atividade.
+  const visible = tools.filter((tool) => tool.name !== 'request_user_confirmation');
+  if (visible.length === 0) return null;
+  return (
+    <div className="flex w-full flex-col gap-1">
+      {visible.map((tool, i) => (
+        <ToolActivityCard
+          key={i}
+          tool={tool}
+          running={pending && tool.preview === undefined && i === visible.length - 1}
+          t={t}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ToolActivityCard({
+  tool,
+  running,
+  t,
+}: {
+  tool: ChatTool;
+  running: boolean;
+  t: TranslateFn;
+}): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const Icon = TOOL_ICONS[tool.name] ?? Wand2;
+  const labelKey = TOOL_LABEL_KEYS[tool.name];
+  const label = labelKey ? t(labelKey) : tool.name;
+  const summary = toolArgSummary(tool);
+  const hasDetails = !!tool.preview || (tool.sources?.length ?? 0) > 0;
+  return (
+    <div className="w-full max-w-md rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/60 text-[12px]">
+      <button
+        type="button"
+        onClick={() => hasDetails && setOpen((v) => !v)}
+        className={cn(
+          'flex w-full items-center gap-2 px-2.5 py-1.5 text-left',
+          hasDetails
+            ? 'cursor-pointer hover:bg-[var(--color-app-surface-hover)]/50'
+            : 'cursor-default',
+          'rounded-lg transition-colors',
+        )}
+        aria-expanded={hasDetails ? open : undefined}
+      >
+        <Icon className="h-3.5 w-3.5 shrink-0 text-violet-300" />
+        <span className="shrink-0 font-medium text-zinc-200">{label}</span>
+        {summary && <span className="truncate text-[var(--color-app-muted)]">{summary}</span>}
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {running ? (
+            <Spinner size={12} className="text-[var(--color-app-muted)]" />
+          ) : hasDetails ? (
+            <ChevronDown
+              className={cn(
+                'h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform',
+                open && 'rotate-180',
+              )}
+            />
+          ) : null}
+        </span>
+      </button>
+      {open && hasDetails && (
+        <div className="flex flex-col gap-2 border-t border-[var(--color-app-border)] px-2.5 py-2">
+          {tool.sources && tool.sources.length > 0 && (
+            <ul className="flex flex-col gap-1">
+              {tool.sources.map((s, i) => (
+                <li key={i}>
+                  <a
+                    href={s.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-zinc-300 transition-colors hover:text-zinc-50"
+                  >
+                    <ExternalLink className="h-3 w-3 shrink-0 text-[var(--color-app-muted)]" />
+                    <span className="truncate">{s.title}</span>
+                    <span className="shrink-0 text-[10px] text-[var(--color-app-muted)]">
+                      {hostnameOf(s.url)}
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+          {tool.preview && (
+            <pre className="max-h-40 overflow-auto rounded bg-[var(--color-app-bg)]/60 p-2 font-mono text-[11px] whitespace-pre-wrap break-words text-[var(--color-app-subtle)]">
+              {tool.preview}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SourcesSection({
+  tools,
+  t,
+}: {
+  tools?: ChatTool[];
+  t: TranslateFn;
+}): React.ReactElement | null {
+  const all = (tools ?? []).flatMap((tool) => tool.sources ?? []);
+  if (all.length === 0) return null;
+  const seen = new Set<string>();
+  const unique: ToolSource[] = [];
+  for (const s of all) {
+    if (!seen.has(s.url)) {
+      seen.add(s.url);
+      unique.push(s);
+    }
+  }
+  return (
+    <div className="mt-3 border-t border-[var(--color-app-border)] pt-2">
+      <div className="mb-1.5 text-[11px] font-medium tracking-wider uppercase text-[var(--color-app-muted)]">
+        {t('chat.sources')}
+      </div>
+      <ol className="flex flex-wrap gap-1.5">
+        {unique.map((s, i) => (
+          <li key={s.url}>
+            <a
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex max-w-xs items-center gap-1.5 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/60 px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:border-[var(--color-app-border-strong)] hover:text-zinc-50"
+            >
+              <span className="text-[var(--color-app-muted)]">{i + 1}.</span>
+              <span className="truncate">{s.title}</span>
+              <span className="shrink-0 text-[10px] text-[var(--color-app-muted)]">
+                {hostnameOf(s.url)}
+              </span>
+            </a>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
