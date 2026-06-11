@@ -52,6 +52,17 @@ export function MobileNavDrawer({
     if (open) panelRef.current?.focus();
   }, [open]);
 
+  // Trava o scroll do body enquanto aberto — sem isso, em telas longas o
+  // conteúdo de fundo rola por trás do backdrop (scroll-bleed no touch).
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+
   return (
     <AnimatePresence>
       {open && (
