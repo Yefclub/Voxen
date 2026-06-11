@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { existsSync } from 'node:fs';
 import app from '../src/index';
 import { formatDevVersionFromDeploy } from '../src/index';
 
@@ -42,5 +43,27 @@ describe('static cache headers', () => {
     // Em dev sem dist, retorna 404 com hint; em test mode pode falhar a static
     // mas o status code é determinístico (não 5xx).
     expect(res.status).toBeLessThan(500);
+  });
+});
+
+describe('build identity meta', () => {
+  // Só roda quando o dist do Vite existe (build local/CI com front buildado).
+  // Sem dist, o handler * devolve o hint de dev e não há HTML pra inspecionar.
+  const distIndexExists = existsSync(new URL('../dist/index.html', import.meta.url));
+
+  it.skipIf(!distIndexExists)('injeta meta voxen-build no HTML servido', async () => {
+    const res = await app.fetch(new Request('http://localhost/'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toContain('no-store');
+    expect(res.headers.get('content-type')).toContain('text/html');
+    const html = await res.text();
+    expect(html).toMatch(/<head><meta name="voxen-build" content="[^"]+">/);
+  });
+
+  it.skipIf(!distIndexExists)('injeta o mesmo meta no fallback SPA', async () => {
+    const res = await app.fetch(new Request('http://localhost/qualquer-rota-spa'));
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toMatch(/<meta name="voxen-build" content="[^"]+">/);
   });
 });
