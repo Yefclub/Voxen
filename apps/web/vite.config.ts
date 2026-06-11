@@ -25,7 +25,7 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         background_color: '#111113',
-        theme_color: '#1a1a1d',
+        theme_color: '#111113',
         categories: ['productivity', 'education', 'utilities'],
         icons: [
           {
