@@ -6,6 +6,7 @@ import { Topbar } from './topbar';
 import { useMe, useFetch } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
 import { useJobsWatcher } from '../../lib/use-jobs-watcher';
+import { useVersionMonitor } from '../../lib/use-version-monitor';
 import { ChatContextProvider } from '../../lib/chat-context-ctx';
 import { useI18n } from '../../lib/i18n';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
@@ -19,6 +20,8 @@ export function AppLayout(): React.ReactElement {
   useJobsWatcher(!!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone), (path) =>
     navigate(path),
   );
+  // Aviso de versão nova do backend (toast persistente com ação de recarregar)
+  useVersionMonitor(!!data?.user);
 
   // O scroll vive no <main> (shell de altura fixa). Resetar ao topo a cada troca
   // de rota pra não herdar a posição da página anterior.
