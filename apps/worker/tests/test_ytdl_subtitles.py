@@ -53,6 +53,56 @@ def test_parse_srt() -> None:
     assert segments[2].start_sec == 9.2
 
 
+# Rolling captions (legendas automáticas do YouTube): cada cue repete a linha
+# do cue anterior e acrescenta a nova — padrão real visto em prod (spec 029).
+VTT_ROLLING_SAMPLE = """WEBVTT
+
+00:00:00.000 --> 00:00:02.000
+CNPJ terá letras e números a partir de
+
+00:00:02.000 --> 00:00:04.000
+CNPJ terá letras e números a partir de
+julho, mês que vem, cara. Então, você
+
+00:00:04.000 --> 00:00:06.000
+julho, mês que vem, cara. Então, você
+
+00:00:06.000 --> 00:00:08.000
+julho, mês que vem, cara. Então, você
+que é programador, o que isso impacta
+"""
+
+
+def test_parse_vtt_rolling_dedup() -> None:
+    segments = parse_vtt_or_srt(VTT_ROLLING_SAMPLE)
+    texts = [s.text for s in segments]
+    assert texts == [
+        "CNPJ terá letras e números a partir de",
+        "julho, mês que vem, cara. Então, você",
+        "que é programador, o que isso impacta",
+    ]
+    # Cue 100% repetido não vira segmento; timestamps dos demais preservados
+    assert segments[0].start_sec == 0.0
+    assert segments[1].start_sec == 2.0
+    assert segments[2].start_sec == 6.0
+
+
+def test_parse_vtt_rolling_identical_consecutive_cues() -> None:
+    sample = """WEBVTT
+
+00:00:00.000 --> 00:00:02.000
+mesma linha
+
+00:00:02.000 --> 00:00:04.000
+mesma linha
+
+00:00:04.000 --> 00:00:06.000
+outra linha
+"""
+    segments = parse_vtt_or_srt(sample)
+    assert [s.text for s in segments] == ["mesma linha", "outra linha"]
+
+
 def test_pick_subtitle_prefers_pt_over_en() -> None:
     probe = VideoProbe(
         video_id="abc",

@@ -391,8 +391,15 @@ _TS_RE = re.compile(r"(\d{2}):(\d{2}):(\d{2})[.,](\d{3})")
 
 
 def parse_vtt_or_srt(content: str) -> tuple[Segment, ...]:
-    """Parser minimal: extrai (start_sec, text) de cada cue. Funciona p/ ambos."""
+    """Parser minimal: extrai (start_sec, text) de cada cue. Funciona p/ ambos.
+
+    Legendas automáticas do YouTube usam "rolling captions": cada cue repete
+    a(s) linha(s) do cue anterior e acrescenta a nova. Sem dedup, o texto sai
+    duplicado 2-3x (ver .specs/029). Removemos o overlap linha-a-linha: o
+    maior sufixo do cue anterior que é prefixo do atual é descartado.
+    """
     segments: list[Segment] = []
+    prev_lines: list[str] = []
     blocks = re.split(r"\n\s*\n", content.strip())
     for block in blocks:
         lines = [ln for ln in block.splitlines() if ln.strip()]
@@ -416,11 +423,26 @@ def parse_vtt_or_srt(content: str) -> tuple[Segment, ...]:
             continue
         h, m, s, ms = match.groups()
         start_sec = int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
-        text = " ".join(_clean_cue_line(ln) for ln in lines[text_start:])
-        text = text.strip()
+        cue_lines = [cleaned for ln in lines[text_start:] if (cleaned := _clean_cue_line(ln))]
+        new_lines = _drop_rolling_overlap(prev_lines, cue_lines)
+        prev_lines = cue_lines
+        text = " ".join(new_lines).strip()
         if text:
             segments.append(Segment(start_sec=start_sec, text=text))
     return tuple(segments)
+
+
+def _drop_rolling_overlap(prev_lines: list[str], cue_lines: list[str]) -> list[str]:
+    """Remove do início do cue o maior bloco de linhas repetido do cue anterior.
+
+    Ex: prev=["A", "B"], cue=["B", "C"] → ["C"]. Cues 100% repetidos viram
+    lista vazia (não geram segmento). Legendas normais (sem rolling) raramente
+    repetem linhas consecutivas, então saem intactas.
+    """
+    for k in range(min(len(prev_lines), len(cue_lines)), 0, -1):
+        if prev_lines[-k:] == cue_lines[:k]:
+            return cue_lines[k:]
+    return cue_lines
 
 
 _TAG_RE = re.compile(r"<[^>]+>")
