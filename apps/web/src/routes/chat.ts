@@ -512,6 +512,9 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
           } else if (ev === 'tool_end' && tools.length > 0) {
             const last = tools[tools.length - 1]!;
             last.preview = (parsed.preview as string) ?? '';
+            if (typeof parsed.summary === 'string' && parsed.summary) {
+              last.summary = parsed.summary.slice(0, 200);
+            }
             const sources = sanitizeToolSources(parsed.sources);
             if (sources) last.sources = sources;
           }
@@ -626,6 +629,7 @@ type PersistedTool = {
   name: string;
   args?: Record<string, ToolArgValue>;
   preview?: string;
+  summary?: string;
   sources?: Array<{ url: string; title: string }>;
 };
 

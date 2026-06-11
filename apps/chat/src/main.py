@@ -860,16 +860,75 @@ TOOL_END_MAX_TITLE_CHARS = 300
 TOOL_END_MAX_URL_CHARS = 2000
 
 
+TOOL_SUMMARY_MAX_CHARS = 160
+
+# Chaves de lista conhecidas nos retornos das tools → rótulo (singular, plural)
+# pro resumo humano. Ordem importa: a primeira presente vence.
+_COUNT_KEYS: tuple[tuple[str, str, str], ...] = (
+    ("results", "resultado", "resultados"),
+    ("transcripts", "transcrição", "transcrições"),
+    ("notes", "nota", "notas"),
+    ("paths", "caminho", "caminhos"),
+    ("edges", "conexão", "conexões"),
+    ("sources", "evidência", "evidências"),
+)
+
+
+def _tool_summary(fn_name: str, result: Any) -> str | None:
+    """Resumo humano curto do resultado de uma tool (ver .specs/027).
+
+    Usado pela UI no corpo do card de atividade no lugar do JSON cru.
+    Retorna None quando nenhuma heurística casa — frontend usa fallback.
+    """
+    if not isinstance(result, dict):
+        return None
+    error = result.get("error")
+    if isinstance(error, str) and error:
+        return error[:TOOL_SUMMARY_MAX_CHARS]
+    if fn_name == "web_search":
+        n = len(result.get("sources") or [])
+        if n:
+            return f"{n} fonte consultada" if n == 1 else f"{n} fontes consultadas"
+        return "Pesquisa concluída"
+    for key, singular, plural in _COUNT_KEYS:
+        value = result.get(key)
+        if isinstance(value, list):
+            n = len(value)
+            return f"{n} {singular}" if n == 1 else f"{n} {plural}"
+    title = result.get("title")
+    if not isinstance(title, str) or not title:
+        title = None
+        for nested_key in ("transcript", "note", "node"):
+            nested = result.get(nested_key)
+            if isinstance(nested, dict):
+                candidate = nested.get("title") or nested.get("label")
+                if isinstance(candidate, str) and candidate:
+                    title = candidate
+                    break
+    if isinstance(title, str) and title:
+        return title[:TOOL_SUMMARY_MAX_CHARS]
+    # Último recurso: tools como transcribe_video (job na fila) retornam um
+    # `message` humano pronto — melhor que cair no JSON cru na UI.
+    message = result.get("message")
+    if isinstance(message, str) and message:
+        return message[:TOOL_SUMMARY_MAX_CHARS]
+    return None
+
+
 def _tool_end_payload(fn_name: str, result: Any) -> dict[str, Any]:
-    """Monta o payload do SSE `tool_end` (ver .specs/026).
+    """Monta o payload do SSE `tool_end` (ver .specs/026 e 027).
 
     - `preview` truncado por `_short` (compat com UI antiga).
+    - `summary` humano por tipo de tool — UI mostra no lugar do JSON cru.
     - `sources` ({url, title}) quando a tool retorna citações (ex: web_search)
       — UI renderiza links consultados + seção "Fontes". Só http(s).
     - Pra HITL, devolve `action_summary` cru além do preview — UI usa o campo
       dedicado pra renderizar o banner sem parsear o preview truncado.
     """
     payload: dict[str, Any] = {"name": fn_name, "preview": _short(result)}
+    summary = _tool_summary(fn_name, result)
+    if summary:
+        payload["summary"] = summary
     if not isinstance(result, dict):
         return payload
 
