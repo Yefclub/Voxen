@@ -638,6 +638,8 @@ type PersistedTool = {
   sources?: Array<{ url: string; title: string }>;
 };
 
+// Espelha TOOL_CONTENT_MAX_CHARS do chat service (apps/chat/src/main.py) —
+// defesa em profundidade na persistência; manter os dois em sincronia.
 const TOOL_CONTENT_MAX_CHARS = 20_000;
 const TOOL_ARGS_MAX_ENTRIES = 8;
 const TOOL_ARGS_MAX_VALUE_CHARS = 300;
