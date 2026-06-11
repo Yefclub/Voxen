@@ -13,8 +13,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
-      includeAssets: ['favicon.ico', 'favicon-16.png', 'favicon-32.png'],
+      includeAssets: ['favicon.ico', 'favicon-16.png', 'favicon-32.png', 'apple-touch-icon.png'],
       manifest: {
+        id: '/',
         name: 'Voxen',
         short_name: 'Voxen',
         description: 'Base de conhecimento self-hosted com IA, transcricao e biblioteca.',
@@ -24,46 +25,64 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         background_color: '#111113',
-        theme_color: '#1a1a1d',
+        theme_color: '#111113',
         categories: ['productivity', 'education', 'utilities'],
         icons: [
           {
             src: '/voxen-192.png',
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'any',
           },
           {
             src: '/voxen-256.png',
             sizes: '256x256',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'any',
           },
           {
             src: '/voxen-512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'any',
+          },
+          {
+            src: '/voxen-maskable-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+          {
+            src: '/voxen-maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
           },
         ],
         shortcuts: [
           {
-            name: 'Conversar',
+            name: 'Novo chat',
             short_name: 'Chat',
             url: '/chat',
-            icons: [{ src: '/voxen-192.png', sizes: '192x192', type: 'image/png' }],
+            icons: [{ src: '/voxen-maskable-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Biblioteca',
+            short_name: 'Biblioteca',
+            url: '/transcricoes',
+            icons: [{ src: '/voxen-maskable-192.png', sizes: '192x192', type: 'image/png' }],
           },
           {
             name: 'Transcrever',
             short_name: 'Jobs',
             url: '/jobs',
-            icons: [{ src: '/voxen-192.png', sizes: '192x192', type: 'image/png' }],
+            icons: [{ src: '/voxen-maskable-192.png', sizes: '192x192', type: 'image/png' }],
           },
           {
             name: 'Brain',
             short_name: 'Brain',
             url: '/grafo',
-            icons: [{ src: '/voxen-192.png', sizes: '192x192', type: 'image/png' }],
+            icons: [{ src: '/voxen-maskable-192.png', sizes: '192x192', type: 'image/png' }],
           },
         ],
         share_target: {
