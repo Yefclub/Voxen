@@ -51,6 +51,7 @@ interface ChatTool {
   name: string;
   args?: Record<string, unknown>;
   preview?: string;
+  summary?: string;
   sources?: ToolSource[];
   actionSummary?: string;
 }
@@ -401,6 +402,7 @@ export function ChatPage(): React.ReactElement {
             const name = (payload.name as string) ?? '';
             const preview = (payload.preview as string) ?? '';
             const actionSummary = (payload.action_summary as string | undefined) ?? undefined;
+            const summary = (payload.summary as string | undefined) ?? undefined;
             const sources = (payload.sources as ToolSource[] | undefined) ?? undefined;
             setMessages((m) =>
               m.map((x) =>
@@ -409,7 +411,7 @@ export function ChatPage(): React.ReactElement {
                       ...x,
                       tools: (x.tools ?? []).map((t, i, arr) =>
                         i === arr.length - 1 && t.name === name
-                          ? { ...t, preview, actionSummary, sources }
+                          ? { ...t, preview, actionSummary, summary, sources }
                           : t,
                       ),
                     }
@@ -1001,6 +1003,46 @@ function hostnameOf(url: string): string {
   }
 }
 
+// Citações do OpenRouter costumam vir com URL de redirect (vertexaisearch...)
+// e o domínio REAL no título. Pro favicon/label, preferimos o título quando
+// ele tem cara de domínio; senão caímos no hostname da URL.
+function sourceDomain(s: ToolSource): string {
+  const title = s.title.trim().toLowerCase();
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(title)) return title.replace(/^www\./, '');
+  return hostnameOf(s.url);
+}
+
+// Favicon via DuckDuckGo (mesmo padrão do Orbital), com fallback pra globo
+// quando o serviço não tem o ícone do domínio.
+function SourceFavicon({
+  domain,
+  size = 16,
+}: {
+  domain: string;
+  size?: number;
+}): React.ReactElement {
+  const [failed, setFailed] = useState(false);
+  if (!domain || failed) {
+    return (
+      <Globe
+        className="shrink-0 text-[var(--color-app-muted)]"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  return (
+    <img
+      src={`https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`}
+      alt=""
+      width={size}
+      height={size}
+      loading="lazy"
+      className="shrink-0 rounded-sm object-contain"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function ToolActivity({
   tools,
   pending,
@@ -1040,8 +1082,12 @@ function ToolActivityCard({
   const Icon = TOOL_ICONS[tool.name] ?? Wand2;
   const labelKey = TOOL_LABEL_KEYS[tool.name];
   const label = labelKey ? t(labelKey) : tool.name;
-  const summary = toolArgSummary(tool);
-  const hasDetails = !!tool.preview || (tool.sources?.length ?? 0) > 0;
+  const argSummary = toolArgSummary(tool);
+  const query = typeof tool.args?.query === 'string' ? tool.args.query.trim() : '';
+  const hasSources = (tool.sources?.length ?? 0) > 0;
+  // Corpo do card (spec 027): conteúdo estruturado quando disponível; o
+  // preview JSON cru é só fallback de mensagens antigas (pré-summary).
+  const hasDetails = hasSources || !!tool.summary || !!tool.preview;
   return (
     <div className="w-full max-w-md rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/60 text-[12px]">
       <button
@@ -1058,8 +1104,13 @@ function ToolActivityCard({
       >
         <Icon className="h-3.5 w-3.5 shrink-0 text-violet-300" />
         <span className="shrink-0 font-medium text-zinc-200">{label}</span>
-        {summary && <span className="truncate text-[var(--color-app-muted)]">{summary}</span>}
+        {argSummary && <span className="truncate text-[var(--color-app-muted)]">{argSummary}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {!running && tool.summary && (
+            <span className="hidden max-w-[180px] truncate text-[11px] text-[var(--color-app-muted)] sm:inline">
+              {tool.summary}
+            </span>
+          )}
           {running ? (
             <Spinner size={12} className="text-[var(--color-app-muted)]" />
           ) : hasDetails ? (
@@ -1074,27 +1125,43 @@ function ToolActivityCard({
       </button>
       {open && hasDetails && (
         <div className="flex flex-col gap-2 border-t border-[var(--color-app-border)] px-2.5 py-2">
-          {tool.sources && tool.sources.length > 0 && (
+          {query && (
+            <div className="inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/70 px-2.5 py-1">
+              <Search className="h-3 w-3 shrink-0 text-[var(--color-app-muted)]" />
+              <span className="truncate font-mono text-[11px] text-zinc-300">{query}</span>
+            </div>
+          )}
+          {hasSources && (
             <ul className="flex flex-col gap-1">
-              {tool.sources.map((s, i) => (
-                <li key={i}>
-                  <a
-                    href={s.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-zinc-300 transition-colors hover:text-zinc-50"
-                  >
-                    <ExternalLink className="h-3 w-3 shrink-0 text-[var(--color-app-muted)]" />
-                    <span className="truncate">{s.title}</span>
-                    <span className="shrink-0 text-[10px] text-[var(--color-app-muted)]">
-                      {hostnameOf(s.url)}
-                    </span>
-                  </a>
-                </li>
-              ))}
+              {tool.sources!.map((s, i) => {
+                const domain = sourceDomain(s);
+                return (
+                  <li key={i}>
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-center gap-2 rounded-md px-1 py-0.5 text-zinc-300 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 hover:text-zinc-50"
+                    >
+                      <SourceFavicon domain={domain} size={16} />
+                      <span className="truncate">{s.title}</span>
+                      {domain && domain !== s.title.trim().toLowerCase() && (
+                        <span className="shrink-0 text-[10px] text-[var(--color-app-muted)]">
+                          {domain}
+                        </span>
+                      )}
+                      <ExternalLink className="ml-auto h-3 w-3 shrink-0 text-[var(--color-app-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           )}
-          {tool.preview && (
+          {!hasSources && tool.summary && (
+            <p className="text-[12px] text-[var(--color-app-subtle)]">{tool.summary}</p>
+          )}
+          {/* Fallback legado: mensagens antigas só têm o preview JSON cru. */}
+          {!hasSources && !tool.summary && tool.preview && (
             <pre className="max-h-40 overflow-auto rounded bg-[var(--color-app-bg)]/60 p-2 font-mono text-[11px] whitespace-pre-wrap break-words text-[var(--color-app-subtle)]">
               {tool.preview}
             </pre>
@@ -1137,10 +1204,8 @@ function SourcesSection({
               className="inline-flex max-w-xs items-center gap-1.5 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/60 px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:border-[var(--color-app-border-strong)] hover:text-zinc-50"
             >
               <span className="text-[var(--color-app-muted)]">{i + 1}.</span>
+              <SourceFavicon domain={sourceDomain(s)} size={13} />
               <span className="truncate">{s.title}</span>
-              <span className="shrink-0 text-[10px] text-[var(--color-app-muted)]">
-                {hostnameOf(s.url)}
-              </span>
             </a>
           </li>
         ))}

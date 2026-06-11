@@ -48,3 +48,41 @@ def test_payload_hitl_keeps_action_summary() -> None:
 def test_payload_non_dict_result() -> None:
     payload = _tool_end_payload("web_search", "erro qualquer")
     assert payload == {"name": "web_search", "preview": '"erro qualquer"'}
+
+
+# --- _tool_summary (spec 027) ---
+
+
+def test_summary_error_wins() -> None:
+    payload = _tool_end_payload("web_search", {"error": "OpenRouter sem configuração."})
+    assert payload["summary"] == "OpenRouter sem configuração."
+
+
+def test_summary_web_search_counts_sources() -> None:
+    result = {"answer": "ok", "sources": [{"url": "https://a.com", "title": "A"}]}
+    assert _tool_end_payload("web_search", result)["summary"] == "1 fonte consultada"
+    result["sources"].append({"url": "https://b.com", "title": "B"})
+    assert _tool_end_payload("web_search", result)["summary"] == "2 fontes consultadas"
+
+
+def test_summary_web_search_without_sources() -> None:
+    assert _tool_end_payload("web_search", {"answer": "ok"})["summary"] == "Pesquisa concluída"
+
+
+def test_summary_counts_results_and_lists() -> None:
+    assert (
+        _tool_end_payload("search_transcripts", {"results": [1, 2, 3]})["summary"] == "3 resultados"
+    )
+    assert _tool_end_payload("list_transcripts", {"transcripts": [1]})["summary"] == "1 transcrição"
+    assert _tool_end_payload("list_notes", {"notes": []})["summary"] == "0 notas"
+
+
+def test_summary_uses_title_including_nested() -> None:
+    assert _tool_end_payload("read_transcript", {"title": "Vídeo X"})["summary"] == "Vídeo X"
+    nested = {"status": "completed", "transcript": {"title": "Vídeo Y"}}
+    assert _tool_end_payload("transcribe_video", nested)["summary"] == "Vídeo Y"
+
+
+def test_summary_absent_when_no_heuristic_matches() -> None:
+    payload = _tool_end_payload("get_metadata", {"id": "x", "metadata": {}})
+    assert "summary" not in payload
