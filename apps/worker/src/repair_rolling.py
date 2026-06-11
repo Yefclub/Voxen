@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -66,6 +67,13 @@ async def _fresh_segments(url: str) -> tuple[tuple[Segment, ...], str] | None:
 
 
 def _parse_transcribed_at(frontmatter: Any, fallback: datetime) -> datetime:
+    # asyncpg sem codec jsonb devolve a coluna como string JSON crua —
+    # decodifica antes de ler o campo (achado do review do PR #242).
+    if isinstance(frontmatter, str):
+        try:
+            frontmatter = json.loads(frontmatter)
+        except ValueError:
+            frontmatter = None
     if isinstance(frontmatter, dict):
         raw = frontmatter.get("transcribed_at")
         if isinstance(raw, str):
