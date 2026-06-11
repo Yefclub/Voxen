@@ -305,6 +305,31 @@ import { join } from 'node:path';
 const distDir = join(import.meta.dir, '..', 'dist');
 const distExists = existsSync(distDir);
 
+// Identidade do build injetada no HTML na hora de servir. Por quê: o PWA
+// precacheia index.html/assets — um app instalado pode estar rodando um bundle
+// ANTIGO servido pelo service worker enquanto o servidor já tem build novo.
+// O monitor de versão (use-version-monitor) compara este meta (identidade do
+// bundle carregado) contra /api/version a cada poll e detecta o descompasso —
+// baseline buscado da rede não cobre esse caso, porque viria sempre do
+// servidor novo. Sanitizamos pra chars seguros de atributo HTML por defesa.
+const VOXEN_BUILD_ID = (VOXEN_GIT_SHA || VOXEN_VERSION).replace(/[^A-Za-z0-9._+-]/g, '');
+
+// Cache em memória do HTML transformado por path: o dist é imutável durante a
+// vida do processo, então lemos/injetamos uma única vez por arquivo em vez de
+// reprocessar a cada request (o Cache-Control do HTML é no-store).
+const htmlBuildMetaCache = new Map<string, string>();
+
+async function serveHtmlWithBuildMeta(target: string, headers: Headers): Promise<Response> {
+  let html = htmlBuildMetaCache.get(target);
+  if (html === undefined) {
+    const raw = await Bun.file(target).text();
+    html = raw.replace('<head>', `<head><meta name="voxen-build" content="${VOXEN_BUILD_ID}">`);
+    htmlBuildMetaCache.set(target, html);
+  }
+  headers.set('Content-Type', 'text/html; charset=utf-8');
+  return new Response(html, { headers });
+}
+
 app.get('*', async (c) => {
   if (!distExists) {
     // Dev sem build — devolve hint pro user usar Vite
@@ -349,6 +374,7 @@ app.get('*', async (c) => {
   const isWorkboxRuntime = /^\/workbox-[A-Za-z0-9_-]+\.js$/.test(reqPath);
   if (isHtml) {
     headers.set('Cache-Control', 'no-store, must-revalidate');
+    return serveHtmlWithBuildMeta(target, headers);
   } else if (isPwaEntry) {
     headers.set('Cache-Control', 'no-cache, must-revalidate');
   } else if (isHashedAsset || isWorkboxRuntime) {

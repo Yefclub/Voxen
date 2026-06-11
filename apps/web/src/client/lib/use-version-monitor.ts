@@ -9,21 +9,32 @@ const UPDATE_TOAST_ID = 'voxen-version-update';
 
 interface VersionPayload {
   version?: string;
+  gitSha?: string | null;
 }
 
 /**
- * Monitor de versão (padrão Orbital): captura a versão do backend na montagem
- * como baseline e reconsulta a cada 60s + nos eventos focus/online/
- * visibilitychange. Se o backend reportar versão diferente (deploy novo),
- * mostra toast persistente com ação de recarregar — o reload pega o index.html
+ * Monitor de versão (padrão Orbital): reconsulta /api/version a cada 60s +
+ * nos eventos focus/online/visibilitychange e mostra toast persistente com
+ * ação de recarregar quando detecta build novo — o reload pega o index.html
  * fresco (no-store) e o sw.js novo (no-cache), completando o update do PWA.
  * Falhas de rede são silenciosas: tenta de novo no próximo ciclo.
+ *
+ * Baseline em duas camadas:
+ * 1. Meta `voxen-build` injetado pelo servidor no HTML servido — é a
+ *    identidade do PRÓPRIO bundle carregado. Essencial no PWA: o service
+ *    worker serve index.html precacheado (antigo), então baseline buscado da
+ *    rede viria sempre do servidor novo e o app instalado nunca se perceberia
+ *    velho. Com o meta, mismatch contra /api/version = bundle de outro build.
+ * 2. Fallback (dev server Vite, builds antigos sem o meta): baseline da
+ *    primeira resposta de /api/version, como antes.
  */
 export function useVersionMonitor(enabled: boolean): void {
   const { t } = useI18n();
 
   useEffect(() => {
     if (!enabled) return;
+    const buildMeta =
+      document.querySelector('meta[name="voxen-build"]')?.getAttribute('content') || null;
     let baseline: string | null = null;
     let stopped = false;
     const controller = new AbortController();
@@ -43,13 +54,21 @@ export function useVersionMonitor(enabled: boolean): void {
         // Rede instável/offline: silêncio — o próximo ciclo tenta de novo.
         return;
       }
-      const version = payload.version;
-      if (!version || stopped) return;
-      if (baseline === null) {
-        baseline = version;
-        return;
+      if (stopped) return;
+      if (buildMeta) {
+        // O servidor injeta gitSha quando disponível, senão a version — mesma
+        // ordem de fallback usada na comparação aqui.
+        const serverBuild = payload.gitSha || payload.version || null;
+        if (!serverBuild || serverBuild === buildMeta) return;
+      } else {
+        const version = payload.version;
+        if (!version) return;
+        if (baseline === null) {
+          baseline = version;
+          return;
+        }
+        if (version === baseline) return;
       }
-      if (version === baseline) return;
       toast(t('shell.updateAvailable'), {
         id: UPDATE_TOAST_ID,
         duration: Infinity,
