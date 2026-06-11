@@ -429,19 +429,7 @@ async def chat(
                                 )
                                 continue
                         result = tool_task.result()
-                        # Pra HITL, devolve `action_summary` cru no payload SSE
-                        # alem do preview truncado — UI usa o campo dedicado
-                        # pra renderizar o banner sem depender de parsear o
-                        # preview (que pode estar truncado por _short).
-                        event_payload: dict[str, Any] = {
-                            "name": fn_name,
-                            "preview": _short(result),
-                        }
-                        if fn_name == "request_user_confirmation" and isinstance(result, dict):
-                            summary = result.get("action_summary")
-                            if isinstance(summary, str) and summary:
-                                event_payload["action_summary"] = summary
-                        yield _sse("tool_end", event_payload)
+                        yield _sse("tool_end", _tool_end_payload(fn_name, result))
                         messages.append(
                             {
                                 "role": "tool",
@@ -863,3 +851,46 @@ def _sse(event: str, data: dict[str, Any]) -> str:
 def _short(obj: Any) -> str:
     s = json.dumps(obj, ensure_ascii=False, default=str)
     return s if len(s) < 200 else s[:200] + "…"
+
+
+# Limites do payload de `tool_end` — fontes demais ou títulos gigantes só
+# inflam o SSE/JSONB sem valor pra UI.
+TOOL_END_MAX_SOURCES = 20
+TOOL_END_MAX_TITLE_CHARS = 300
+TOOL_END_MAX_URL_CHARS = 2000
+
+
+def _tool_end_payload(fn_name: str, result: Any) -> dict[str, Any]:
+    """Monta o payload do SSE `tool_end` (ver .specs/026).
+
+    - `preview` truncado por `_short` (compat com UI antiga).
+    - `sources` ({url, title}) quando a tool retorna citações (ex: web_search)
+      — UI renderiza links consultados + seção "Fontes". Só http(s).
+    - Pra HITL, devolve `action_summary` cru além do preview — UI usa o campo
+      dedicado pra renderizar o banner sem parsear o preview truncado.
+    """
+    payload: dict[str, Any] = {"name": fn_name, "preview": _short(result)}
+    if not isinstance(result, dict):
+        return payload
+
+    raw_sources = result.get("sources")
+    if isinstance(raw_sources, list):
+        sources: list[dict[str, str]] = []
+        for item in raw_sources:
+            if not isinstance(item, dict):
+                continue
+            url = str(item.get("url") or "").strip()
+            if not url.lower().startswith(("http://", "https://")):
+                continue
+            title = str(item.get("title") or url).strip()[:TOOL_END_MAX_TITLE_CHARS]
+            sources.append({"url": url[:TOOL_END_MAX_URL_CHARS], "title": title})
+            if len(sources) >= TOOL_END_MAX_SOURCES:
+                break
+        if sources:
+            payload["sources"] = sources
+
+    if fn_name == "request_user_confirmation":
+        summary = result.get("action_summary")
+        if isinstance(summary, str) and summary:
+            payload["action_summary"] = summary
+    return payload
