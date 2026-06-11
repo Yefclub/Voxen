@@ -1,0 +1,50 @@
+"""Testes do payload SSE `tool_end` — atividade de tools + fontes (spec 026)."""
+
+from __future__ import annotations
+
+from src.main import TOOL_END_MAX_SOURCES, TOOL_END_MAX_TITLE_CHARS, _tool_end_payload
+
+
+def test_payload_without_sources() -> None:
+    payload = _tool_end_payload("read_transcript", {"id": "t1", "title": "Vídeo"})
+    assert payload["name"] == "read_transcript"
+    assert "sources" not in payload
+    assert isinstance(payload["preview"], str)
+
+
+def test_payload_with_sources_filters_non_http() -> None:
+    result = {
+        "answer": "ok",
+        "sources": [
+            {"url": "https://example.com/a", "title": "Artigo A"},
+            {"url": "javascript:alert(1)", "title": "xss"},
+            {"url": "  ", "title": "vazio"},
+            {"url": "http://example.com/b", "title": ""},
+            "lixo",
+        ],
+    }
+    payload = _tool_end_payload("web_search", result)
+    assert payload["sources"] == [
+        {"url": "https://example.com/a", "title": "Artigo A"},
+        # Sem título → usa a própria URL.
+        {"url": "http://example.com/b", "title": "http://example.com/b"},
+    ]
+
+
+def test_payload_caps_sources_and_title() -> None:
+    result = {
+        "sources": [{"url": f"https://e.com/{i}", "title": "x" * 999} for i in range(50)],
+    }
+    payload = _tool_end_payload("web_search", result)
+    assert len(payload["sources"]) == TOOL_END_MAX_SOURCES
+    assert all(len(s["title"]) == TOOL_END_MAX_TITLE_CHARS for s in payload["sources"])
+
+
+def test_payload_hitl_keeps_action_summary() -> None:
+    payload = _tool_end_payload("request_user_confirmation", {"action_summary": "Criar nota X"})
+    assert payload["action_summary"] == "Criar nota X"
+
+
+def test_payload_non_dict_result() -> None:
+    payload = _tool_end_payload("web_search", "erro qualquer")
+    assert payload == {"name": "web_search", "preview": '"erro qualquer"'}
