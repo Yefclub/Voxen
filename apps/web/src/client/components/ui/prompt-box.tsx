@@ -585,11 +585,7 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
             aria-label={t('prompt.send')}
             aria-busy={loading || undefined}
           >
-            {loading ? (
-              <Spinner size={16} />
-            ) : (
-              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-            )}
+            {loading ? <Spinner size={16} /> : <ArrowUp className="h-4 w-4" strokeWidth={2.5} />}
           </button>
         </div>
       </div>
