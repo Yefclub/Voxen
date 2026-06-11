@@ -58,15 +58,45 @@ const NAV: NavItem[] = [
 
 const SIDEBAR_WIDTH = 264;
 
+/**
+ * Corpo modo-aware da sidebar: nav (default) | chat (em /chat) | notas (em
+ * /notas). Reutilizado pela sidebar desktop e pelo drawer mobile — qualquer
+ * item novo de navegação aparece automaticamente nos dois.
+ *
+ * Troca entre modos sem AnimatePresence — `key` no motion.div força remount
+ * limpo. AnimatePresence mode="wait" interno aqui acumulava estados pendentes
+ * em cliques rápidos e travava.
+ */
+export function SidebarModeBody({ user }: { user: MeUser }): React.ReactElement {
+  const location = useLocation();
+  const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN');
+  const inChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
+  const inNotas = location.pathname === '/notas' || location.pathname.startsWith('/notas/');
+  const mode: 'nav' | 'chat' | 'notas' = inChat ? 'chat' : inNotas ? 'notas' : 'nav';
+
+  return (
+    <motion.div
+      key={`${mode}-mode`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+      className="flex-1 flex flex-col min-h-0"
+    >
+      {mode === 'chat' ? (
+        <ChatModeBody items={items} />
+      ) : mode === 'notas' ? (
+        <NotasModeBody items={items} pathname={location.pathname} />
+      ) : (
+        <NavBody items={items} pathname={location.pathname} />
+      )}
+    </motion.div>
+  );
+}
+
 export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const location = useLocation();
   const { t } = useI18n();
-  const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN');
   const { collapsed, toggle } = useSidebarCollapsed();
-  const inChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
-  const inNotas = location.pathname === '/notas' || location.pathname.startsWith('/notas/');
-  // Modo da sidebar: nav (default) | chat (em /chat) | notas (em /notas)
-  const mode: 'nav' | 'chat' | 'notas' = inChat ? 'chat' : inNotas ? 'notas' : 'nav';
 
   // Em /grafo a navegação lateral some — o grafo ocupa a tela toda (o Topbar
   // permanece, e a barra flutuante do grafo oferece o "voltar").
@@ -107,24 +137,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             style={{ width: SIDEBAR_WIDTH }}
           >
             <SidebarHeader onCollapse={toggle} />
-            {/* Troca entre nav e chat sem AnimatePresence — `key` no motion.div
-                força remount limpo. AnimatePresence mode="wait" interno aqui
-                acumulava estados pendentes em cliques rápidos e travava. */}
-            <motion.div
-              key={`${mode}-mode`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-              className="flex-1 flex flex-col min-h-0"
-            >
-              {mode === 'chat' ? (
-                <ChatModeBody items={items} />
-              ) : mode === 'notas' ? (
-                <NotasModeBody items={items} pathname={location.pathname} />
-              ) : (
-                <NavBody items={items} pathname={location.pathname} />
-              )}
-            </motion.div>
+            <SidebarModeBody user={user} />
             <SidebarSignOut />
           </motion.aside>
         )}
@@ -133,7 +146,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   );
 }
 
-function SidebarSignOut(): React.ReactElement {
+export function SidebarSignOut(): React.ReactElement {
   const { t } = useI18n();
   const { refresh } = useMe();
   const navigate = useNavigate();

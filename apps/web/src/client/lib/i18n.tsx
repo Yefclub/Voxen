@@ -42,6 +42,7 @@ const ptBRMessages = {
 
   'shell.knowledgeBase': 'Base de conhecimento',
   'shell.openMenu': 'Abrir menu',
+  'shell.closeMenu': 'Fechar menu',
   'shell.collapse': 'Recolher',
   'shell.userMenu': 'Menu do usuário',
   'shell.admin': 'Admin',
@@ -899,6 +900,7 @@ const enMessages: Record<I18nKey, string> = {
 
   'shell.knowledgeBase': 'Knowledge base',
   'shell.openMenu': 'Open menu',
+  'shell.closeMenu': 'Close menu',
   'shell.collapse': 'Collapse',
   'shell.userMenu': 'User menu',
   'shell.admin': 'Admin',

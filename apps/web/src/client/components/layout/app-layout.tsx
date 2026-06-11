@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { CircleHelp } from 'lucide-react';
 import { Sidebar, SidebarSpacer } from './sidebar';
+import { MobileNavDrawer } from './mobile-nav-drawer';
 import { Topbar } from './topbar';
 import { useMe, useFetch } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
@@ -16,6 +17,10 @@ export function AppLayout(): React.ReactElement {
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
+  // Navegação mobile (<md): a Sidebar é hidden md:flex — o drawer é a única
+  // navegação abaixo de 768px. Estado vive aqui pra ligar Topbar (hamburger)
+  // e drawer (overlay fora do header, que tem backdrop-blur).
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Watcher global de jobs do user logado (toast em qualquer página)
   useJobsWatcher(!!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone), (path) =>
     navigate(path),
@@ -72,9 +77,14 @@ export function AppLayout(): React.ReactElement {
     <ChatContextProvider>
       <div className="flex h-dvh overflow-hidden bg-[var(--color-app-bg)]">
         <Sidebar user={data.user} />
+        <MobileNavDrawer
+          user={data.user}
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+        />
         <SidebarSpacer />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <Topbar user={data.user} />
+          <Topbar user={data.user} onOpenMobileNav={() => setMobileNavOpen(true)} />
           <main ref={mainRef} className={mainClass}>
             <AnimatedOutlet />
           </main>
