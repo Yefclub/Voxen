@@ -52,6 +52,9 @@ interface ChatTool {
   args?: Record<string, unknown>;
   preview?: string;
   summary?: string;
+  // Conteúdo textual completo (markdown) da tool — renderizado no corpo
+  // rolável do card (spec 032).
+  content?: string;
   sources?: ToolSource[];
   actionSummary?: string;
 }
@@ -403,6 +406,7 @@ export function ChatPage(): React.ReactElement {
             const preview = (payload.preview as string) ?? '';
             const actionSummary = (payload.action_summary as string | undefined) ?? undefined;
             const summary = (payload.summary as string | undefined) ?? undefined;
+            const content = (payload.content as string | undefined) ?? undefined;
             const sources = (payload.sources as ToolSource[] | undefined) ?? undefined;
             setMessages((m) =>
               m.map((x) =>
@@ -411,7 +415,7 @@ export function ChatPage(): React.ReactElement {
                       ...x,
                       tools: (x.tools ?? []).map((t, i, arr) =>
                         i === arr.length - 1 && t.name === name
-                          ? { ...t, preview, actionSummary, summary, sources }
+                          ? { ...t, preview, actionSummary, summary, content, sources }
                           : t,
                       ),
                     }
@@ -1085,9 +1089,10 @@ function ToolActivityCard({
   const argSummary = toolArgSummary(tool);
   const query = typeof tool.args?.query === 'string' ? tool.args.query.trim() : '';
   const hasSources = (tool.sources?.length ?? 0) > 0;
-  // Corpo do card (spec 027): conteúdo estruturado quando disponível; o
-  // preview JSON cru é só fallback de mensagens antigas (pré-summary).
-  const hasDetails = hasSources || !!tool.summary || !!tool.preview;
+  const hasContent = !!tool.content;
+  // Corpo do card (specs 027/032): conteúdo completo em Markdown quando
+  // disponível; o preview JSON cru é só fallback de mensagens antigas.
+  const hasDetails = hasSources || hasContent || !!tool.summary || !!tool.preview;
   return (
     <div className="w-full max-w-md rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/60 text-[12px]">
       <button
@@ -1157,13 +1162,20 @@ function ToolActivityCard({
               })}
             </ul>
           )}
-          {!hasSources && tool.summary && (
+          {hasContent && (
+            <div className="max-h-72 overflow-y-auto rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/50 px-3 py-2 text-[13px] leading-relaxed">
+              <Markdown>{tool.content!}</Markdown>
+            </div>
+          )}
+          {!hasSources && !hasContent && tool.summary && (
             <p className="text-[12px] text-[var(--color-app-subtle)]">{tool.summary}</p>
           )}
           {/* Fallback legado: mensagens antigas só têm o preview JSON cru
               (truncado). Tentamos extrair um campo de texto legível; só
               mostramos o JSON quando nem isso dá. */}
-          {!hasSources && !tool.summary && tool.preview && <LegacyPreview preview={tool.preview} />}
+          {!hasSources && !hasContent && !tool.summary && tool.preview && (
+            <LegacyPreview preview={tool.preview} />
+          )}
         </div>
       )}
     </div>
@@ -1182,7 +1194,7 @@ function legacyPreviewText(preview: string): string | null {
 function LegacyPreview({ preview }: { preview: string }): React.ReactElement {
   const text = legacyPreviewText(preview);
   if (text) {
-    return <p className="text-[12px] text-[var(--color-app-subtle)]">{text}…</p>;
+    return <p className="text-[12px] text-[var(--color-app-subtle)]">{text}</p>;
   }
   return (
     <pre className="max-h-40 overflow-auto rounded bg-[var(--color-app-bg)]/60 p-2 font-mono text-[11px] whitespace-pre-wrap break-words text-[var(--color-app-subtle)]">

@@ -515,6 +515,9 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
             if (typeof parsed.summary === 'string' && parsed.summary) {
               last.summary = parsed.summary.slice(0, 200);
             }
+            if (typeof parsed.content === 'string' && parsed.content) {
+              last.content = parsed.content.slice(0, TOOL_CONTENT_MAX_CHARS);
+            }
             const sources = sanitizeToolSources(parsed.sources);
             if (sources) last.sources = sources;
           }
@@ -630,9 +633,14 @@ type PersistedTool = {
   args?: Record<string, ToolArgValue>;
   preview?: string;
   summary?: string;
+  // Conteúdo textual completo (markdown) da tool — corpo rolável do card.
+  content?: string;
   sources?: Array<{ url: string; title: string }>;
 };
 
+// Espelha TOOL_CONTENT_MAX_CHARS do chat service (apps/chat/src/main.py) —
+// defesa em profundidade na persistência; manter os dois em sincronia.
+const TOOL_CONTENT_MAX_CHARS = 20_000;
 const TOOL_ARGS_MAX_ENTRIES = 8;
 const TOOL_ARGS_MAX_VALUE_CHARS = 300;
 const TOOL_SOURCES_MAX = 20;

@@ -915,11 +915,33 @@ def _tool_summary(fn_name: str, result: Any) -> str | None:
     return None
 
 
+# Conteúdo textual completo da tool (markdown) exibido no corpo do card,
+# em bloco rolável (spec 032). Cap generoso — read_transcript pode ser longo.
+TOOL_CONTENT_MAX_CHARS = 20_000
+_CONTENT_KEYS = ("answer", "markdown", "summary", "content", "text")
+
+
+def _tool_content(result: Any) -> str | None:
+    """Primeiro campo textual conhecido do resultado, sem truncar em '…'.
+
+    Diferente do `summary` (uma linha) e do `preview` (JSON 200 chars), este é
+    o conteúdo COMPLETO pra UI renderizar como Markdown em bloco rolável.
+    """
+    if not isinstance(result, dict):
+        return None
+    for key in _CONTENT_KEYS:
+        value = result.get(key)
+        if isinstance(value, str) and value.strip():
+            return value[:TOOL_CONTENT_MAX_CHARS]
+    return None
+
+
 def _tool_end_payload(fn_name: str, result: Any) -> dict[str, Any]:
-    """Monta o payload do SSE `tool_end` (ver .specs/026 e 027).
+    """Monta o payload do SSE `tool_end` (ver .specs/026, 027 e 032).
 
     - `preview` truncado por `_short` (compat com UI antiga).
-    - `summary` humano por tipo de tool — UI mostra no lugar do JSON cru.
+    - `summary` humano por tipo de tool — uma linha no header do card.
+    - `content` textual completo (markdown) — corpo rolável do card.
     - `sources` ({url, title}) quando a tool retorna citações (ex: web_search)
       — UI renderiza links consultados + seção "Fontes". Só http(s).
     - Pra HITL, devolve `action_summary` cru além do preview — UI usa o campo
@@ -929,6 +951,9 @@ def _tool_end_payload(fn_name: str, result: Any) -> dict[str, Any]:
     summary = _tool_summary(fn_name, result)
     if summary:
         payload["summary"] = summary
+    content = _tool_content(result)
+    if content:
+        payload["content"] = content
     if not isinstance(result, dict):
         return payload
 

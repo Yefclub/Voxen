@@ -1,3 +1,8 @@
+// SEGURANÇA: este renderer recebe conteúdo NÃO-CONFIÁVEL (respostas de
+// modelo, transcrições de vídeos, resultados de tools). A postura segura
+// depende de react-markdown SEM rehype-raw: HTML embutido fica escapado e
+// URLs javascript:/data: são neutralizadas pelo urlTransform padrão.
+// NÃO adicionar rehype-raw nem override de urlTransform sem sanitização.
 import { memo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';

@@ -93,3 +93,24 @@ def test_summary_falls_back_to_message() -> None:
     assert _tool_end_payload("transcribe_video", queued)["summary"] == (
         "Job criado. Worker vai processar."
     )
+
+
+# --- _tool_content (spec 032) ---
+
+
+def test_content_full_answer_for_web_search() -> None:
+    answer = "## Resultado\n\n" + "linha de markdown. " * 50
+    payload = _tool_end_payload("web_search", {"answer": answer, "sources": []})
+    assert payload["content"] == answer  # completo, sem reticências
+
+
+def test_content_caps_at_limit() -> None:
+    from src.main import TOOL_CONTENT_MAX_CHARS
+
+    payload = _tool_end_payload("read_transcript", {"markdown": "x" * 50_000})
+    assert len(payload["content"]) == TOOL_CONTENT_MAX_CHARS
+
+
+def test_content_absent_without_textual_field() -> None:
+    payload = _tool_end_payload("get_metadata", {"id": "t1", "metadata": {"a": 1}})
+    assert "content" not in payload
