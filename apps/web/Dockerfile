@@ -59,7 +59,10 @@ ENV VOXEN_VERSION=${VOXEN_VERSION:-}
 ENV VOXEN_GIT_SHA=${VOXEN_GIT_SHA:-}
 ENV VOXEN_BUILT_AT=${VOXEN_BUILT_AT:-}
 
-RUN apk add --no-cache nodejs npm wget && \
+# `apk upgrade` aplica patches de segurança da base alpine (ex: CVE-2026-45447
+# em libcrypto3) sem depender de bump da imagem oven/bun.
+RUN apk upgrade --no-cache && \
+    apk add --no-cache nodejs npm wget && \
     npm install -g prisma@6.19.3 --omit=dev && \
     addgroup -S voxen && adduser -S -G voxen -u 1001 voxen && \
     # Prisma 6 precisa escrever no diretório de instalação pra baixar engines
