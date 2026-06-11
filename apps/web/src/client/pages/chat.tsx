@@ -1160,15 +1160,34 @@ function ToolActivityCard({
           {!hasSources && tool.summary && (
             <p className="text-[12px] text-[var(--color-app-subtle)]">{tool.summary}</p>
           )}
-          {/* Fallback legado: mensagens antigas só têm o preview JSON cru. */}
-          {!hasSources && !tool.summary && tool.preview && (
-            <pre className="max-h-40 overflow-auto rounded bg-[var(--color-app-bg)]/60 p-2 font-mono text-[11px] whitespace-pre-wrap break-words text-[var(--color-app-subtle)]">
-              {tool.preview}
-            </pre>
-          )}
+          {/* Fallback legado: mensagens antigas só têm o preview JSON cru
+              (truncado). Tentamos extrair um campo de texto legível; só
+              mostramos o JSON quando nem isso dá. */}
+          {!hasSources && !tool.summary && tool.preview && <LegacyPreview preview={tool.preview} />}
         </div>
       )}
     </div>
+  );
+}
+
+// Extrai texto legível do preview JSON truncado de mensagens antigas
+// (pré-spec 027): pega o primeiro campo textual conhecido e desescapa.
+function legacyPreviewText(preview: string): string | null {
+  const match = preview.match(/"(answer|error|message|title|summary)":\s*"((?:[^"\\]|\\.)*)/);
+  if (!match) return null;
+  const text = match[2]!.replace(/\\n/g, ' ').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
+  return text.length >= 8 ? text : null;
+}
+
+function LegacyPreview({ preview }: { preview: string }): React.ReactElement {
+  const text = legacyPreviewText(preview);
+  if (text) {
+    return <p className="text-[12px] text-[var(--color-app-subtle)]">{text}…</p>;
+  }
+  return (
+    <pre className="max-h-40 overflow-auto rounded bg-[var(--color-app-bg)]/60 p-2 font-mono text-[11px] whitespace-pre-wrap break-words text-[var(--color-app-subtle)]">
+      {preview}
+    </pre>
   );
 }
 
