@@ -66,22 +66,34 @@
     overflow-x: hidden;
   }
 
-  /* Scrollbar estética em containers que rolam internamente (chat, sidebar) */
-  *::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  /* Scrollbar estética em containers que rolam internamente (chat, sidebar).
+     Só em dispositivos com ponteiro fino (mouse) — em touch/PWA mobile a
+     barra visível denuncia "site" em vez de app; o scroll segue funcionando. */
+  @media (pointer: fine) {
+    *::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    *::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    *::-webkit-scrollbar-thumb {
+      background: var(--color-app-border);
+      border-radius: 999px;
+      border: 0;
+    }
+    *::-webkit-scrollbar-thumb:hover {
+      background: var(--color-app-border-strong);
+      border: 0;
+    }
   }
-  *::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  *::-webkit-scrollbar-thumb {
-    background: var(--color-app-border);
-    border-radius: 999px;
-    border: 0;
-  }
-  *::-webkit-scrollbar-thumb:hover {
-    background: var(--color-app-border-strong);
-    border: 0;
+  @media (pointer: coarse) {
+    * {
+      scrollbar-width: none;
+    }
+    *::-webkit-scrollbar {
+      display: none;
+    }
   }
 
   /* Mesh gradient ambiente — leve, atrás de tudo */
