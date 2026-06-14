@@ -11,6 +11,7 @@
   "packageManager": "pnpm@9.15.0",
   "pnpm": {
     "overrides": {
+      "esbuild": "0.28.1",
       "vitest": "^4.1.0"
     }
   },

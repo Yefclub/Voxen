@@ -24,8 +24,8 @@ export default defineConfig({
         scope: '/',
         display: 'standalone',
         orientation: 'portrait',
-        background_color: '#111113',
-        theme_color: '#111113',
+        background_color: '#191b1d',
+        theme_color: '#191b1d',
         categories: ['productivity', 'education', 'utilities'],
         icons: [
           {
@@ -89,8 +89,8 @@ export default defineConfig({
             icons: [{ src: '/voxen-maskable-192.png', sizes: '192x192', type: 'image/png' }],
           },
           {
-            name: 'Transcrever',
-            short_name: 'Jobs',
+            name: 'Capturar conteúdo',
+            short_name: 'Capturar',
             url: '/jobs',
             icons: [{ src: '/voxen-maskable-192.png', sizes: '192x192', type: 'image/png' }],
           },
@@ -147,6 +147,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    target: 'es2022',
     // Manifest pra Hono servir assets com hash em prod.
     manifest: true,
   },

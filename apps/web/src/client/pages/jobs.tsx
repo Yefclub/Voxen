@@ -64,6 +64,7 @@ export function JobsPage(): React.ReactElement {
                 onClick: () => navigate(`/transcricoes/${transcriptId}`),
               },
             });
+            navigate(`/transcricoes/${transcriptId}`);
           } else if (jobId) {
             toast(t('jobs.toast.alreadyQueued'), {
               action: {
@@ -71,6 +72,7 @@ export function JobsPage(): React.ReactElement {
                 onClick: () => navigate(`/jobs/${jobId}`),
               },
             });
+            navigate(`/jobs/${jobId}`);
           }
         }
       } else {
@@ -81,7 +83,15 @@ export function JobsPage(): React.ReactElement {
   );
 
   const submitUrl = useCallback(
-    async (value: string, options: { clearInput?: boolean } = {}): Promise<void> => {
+    async (
+      value: string,
+      options: { clearInput?: boolean; replace?: boolean } = {},
+    ): Promise<{
+      jobId: string;
+      status: JobStatus;
+      sourceUrl: string;
+      kind: 'video' | 'web' | 'x';
+    }> => {
       const res = await apiPost<{
         jobId: string;
         status: JobStatus;
@@ -103,6 +113,8 @@ export function JobsPage(): React.ReactElement {
           onClick: () => navigate(`/jobs/${res.jobId}`),
         },
       });
+      navigate(`/jobs/${res.jobId}`, { replace: options.replace === true });
+      return res;
     },
     [navigate, refresh, t],
   );
@@ -143,6 +155,7 @@ export function JobsPage(): React.ReactElement {
       if (!res.ok || !body.jobId) {
         throw new ApiError(body.error ?? t('jobs.error.upload'), res.status, body);
       }
+      const jobId = body.jobId;
       setMediaFile(null);
       refresh();
       toast.success(
@@ -160,10 +173,11 @@ export function JobsPage(): React.ReactElement {
                 : t('jobs.toast.mediaDescription'),
           action: {
             label: t('common.open'),
-            onClick: () => navigate(`/jobs/${body.jobId}`),
+            onClick: () => navigate(`/jobs/${jobId}`),
           },
         },
       );
+      navigate(`/jobs/${jobId}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('jobs.error.unexpected'));
     } finally {
@@ -182,13 +196,9 @@ export function JobsPage(): React.ReactElement {
       const count = Number(searchParams.get('queued') ?? '1') || 1;
       toast.success(count > 1 ? t('jobs.shareQueuedMany', { count }) : t('jobs.shareQueued'), {
         description: t('jobs.toast.progress'),
-        action: {
-          label: t('common.open'),
-          onClick: () => navigate(`/jobs/${jobId}`),
-        },
       });
-      setSearchParams({}, { replace: true });
       refresh();
+      navigate(`/jobs/${jobId}`, { replace: true });
       return;
     }
 
@@ -217,13 +227,10 @@ export function JobsPage(): React.ReactElement {
     }
 
     setSubmitting(true);
-    submitUrl(sharedUrl, { clearInput: false })
-      .then(() => {
-        setSearchParams({}, { replace: true });
-      })
+    submitUrl(sharedUrl, { clearInput: false, replace: true })
       .catch((err: unknown) => {
-        handleAutoJobError(err);
         setSearchParams({}, { replace: true });
+        handleAutoJobError(err);
       })
       .finally(() => {
         try {
@@ -246,16 +253,16 @@ export function JobsPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-12 mx-auto max-w-6xl space-y-10">
-        <header className="space-y-3">
+      <div className="mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
+        <header className="space-y-2 sm:space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <PlayCircle className="h-3.5 w-3.5 text-rose-400" />
             {t('jobs.eyebrow')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+          <h1 className="font-display text-2xl font-semibold tracking-[-0.03em] sm:text-4xl">
             {t('jobs.title')}
           </h1>
-          <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
+          <p className="hidden max-w-2xl text-[15px] leading-relaxed text-[var(--color-app-muted)] sm:block">
             {t('jobs.description')}
           </p>
         </header>
@@ -344,13 +351,15 @@ export function JobsPage(): React.ReactElement {
                         variant="primary"
                         size="lg"
                         disabled={submitting || url.trim().length === 0}
-                        className="h-11 px-5 sm:w-auto"
+                        className="h-11 w-full px-5 sm:w-auto"
                       >
                         {submitting ? <Spinner /> : <Plus className="h-4 w-4" />}
                         {t('jobs.add')}
                       </Button>
                     </div>
-                    <p className="text-xs text-[var(--color-app-muted)]">{t('jobs.linkHint')}</p>
+                    <p className="hidden text-xs text-[var(--color-app-muted)] sm:block">
+                      {t('jobs.linkHint')}
+                    </p>
                   </form>
                 ) : (
                   <form onSubmit={onUploadSubmit} className="space-y-3">
@@ -498,7 +507,7 @@ function JobRow({
   const { variant, label } = jobStatusBadge(job.status, t);
 
   return (
-    <li className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50">
+    <li className="group flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
       <Badge variant={variant} className="shrink-0 w-28 justify-center">
         {isActive ? stageLabel(stage, t) : label}
       </Badge>
@@ -531,14 +540,14 @@ function JobRow({
         )}
       </div>
       {job.transcriptId ? (
-        <Button variant="ghost" size="sm" asChild>
+        <Button variant="ghost" size="sm" asChild className="w-full sm:w-auto">
           <Link to={`/transcricoes/${job.transcriptId}`}>
             {t('common.open')}
             <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </Button>
       ) : (
-        <Button variant="ghost" size="sm" asChild>
+        <Button variant="ghost" size="sm" asChild className="w-full sm:w-auto">
           <Link to={`/jobs/${job.id}`}>
             {t('jobs.details')}
             <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />

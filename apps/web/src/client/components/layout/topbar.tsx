@@ -1,6 +1,6 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { LogOut, Menu, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { ArrowLeft, LogOut, Menu, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import {
@@ -95,9 +95,11 @@ export function Topbar({
   onOpenMobileNav?: () => void;
 }): React.ReactElement {
   const navigate = useNavigate();
+  const location = useLocation();
   const { refresh } = useMe();
   const { t } = useI18n();
   const { usage, lastCompaction, requestOpenSummary } = useChatContextState();
+  const mobileBackTarget = getMobileBackTarget(location.pathname);
 
   const onSignOut = async (): Promise<void> => {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
@@ -106,8 +108,22 @@ export function Topbar({
   };
 
   return (
-    <header className="relative shrink-0 z-30 flex h-16 items-center justify-between border-b border-[var(--color-app-border)] bg-[var(--color-app-bg)]/70 backdrop-blur-md px-6">
-      <div className="flex items-center gap-4">
+    <header
+      className="relative z-30 flex h-16 shrink-0 items-center justify-between border-b border-[var(--color-app-border)] bg-[var(--color-app-bg)]/82 px-4 backdrop-blur-md sm:px-6"
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}
+    >
+      <div className="flex items-center gap-2 sm:gap-4">
+        {mobileBackTarget && (
+          <button
+            type="button"
+            onClick={() => navigate(mobileBackTarget)}
+            className="md:hidden flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] transition-colors hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface)] hover:text-zinc-100"
+            aria-label={t('common.back')}
+            title={t('common.back')}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+        )}
         {onOpenMobileNav && (
           <button
             type="button"
@@ -186,4 +202,13 @@ export function Topbar({
       </div>
     </header>
   );
+}
+
+function getMobileBackTarget(pathname: string): string | null {
+  if (/^\/jobs\/[^/]+/.test(pathname)) return '/jobs';
+  if (/^\/transcricoes\/[^/]+/.test(pathname)) return '/transcricoes';
+  if (/^\/chat\/[^/]+/.test(pathname)) return '/chat';
+  if (/^\/notas\/[^/]+/.test(pathname)) return '/notas';
+  if (pathname === '/grafo' || pathname.startsWith('/grafo/')) return '/dashboard';
+  return null;
 }

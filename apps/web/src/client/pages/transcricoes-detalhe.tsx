@@ -358,8 +358,8 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-10 mx-auto max-w-5xl">
-        <Button variant="ghost" size="sm" asChild className="mb-8 -ml-2">
+      <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+        <Button variant="ghost" size="sm" asChild className="mb-8 -ml-2 hidden sm:inline-flex">
           <Link to="/transcricoes">
             <ArrowLeft className="h-3.5 w-3.5" />
             {translate('library.detailBack')}
@@ -370,7 +370,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="mb-10 space-y-4"
+          className="mb-6 space-y-3 sm:mb-10 sm:space-y-4"
         >
           <div className="flex items-center gap-2 flex-wrap">
             {/* Source primário — clarifica origem do conteúdo */}
@@ -423,19 +423,19 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </Badge>
             )}
           </div>
-          <h1 className="font-display text-4xl lg:text-5xl font-semibold tracking-[-0.035em] leading-[1.05] text-balance">
+          <h1 className="font-display text-2xl font-semibold leading-[1.08] tracking-[-0.035em] text-balance sm:text-4xl lg:text-5xl">
             {t.title}
           </h1>
           {t.channel && <p className="text-[15px] text-[var(--color-app-muted)]">{t.channel}</p>}
         </motion.header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-10">
+        <div className="grid grid-cols-1 gap-7 lg:grid-cols-[1fr_280px] lg:gap-10">
           {/* Coluna principal: resumo + transcrição */}
           <motion.article
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.1 }}
-            className="min-w-0 space-y-10"
+            className="min-w-0 space-y-7 sm:space-y-10"
           >
             <SummaryBlock
               summary={t.summaryMd}
@@ -468,10 +468,10 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             initial={{ opacity: 0, x: 8 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.45, delay: 0.18 }}
-            className="space-y-4 lg:sticky lg:top-24 self-start"
+            className="flex flex-col gap-4 self-start lg:sticky lg:top-24"
           >
             {t.thumbnailUrl && (
-              <Card className="overflow-hidden p-0" elevated>
+              <Card className="order-2 overflow-hidden p-0 lg:order-none" elevated>
                 <img
                   src={t.thumbnailUrl}
                   alt=""
@@ -481,7 +481,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </Card>
             )}
 
-            <Card elevated>
+            <Card elevated className="order-3 lg:order-none">
               <CardContent className="pt-5 pb-5 space-y-4">
                 <LibraryFolderControl
                   folders={foldersData?.folders ?? []}
@@ -541,22 +541,24 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             </Card>
 
             {canUseContextualActions && (
-              <LinkedNotesCard
-                notes={linkedNotesData?.notes ?? []}
-                loading={linkedNotesLoading}
-                title={linkedNoteTitle}
-                content={linkedNoteContent}
-                creating={creatingLinkedNote}
-                locale={locale}
-                onTitleChange={setLinkedNoteTitle}
-                onContentChange={setLinkedNoteContent}
-                onCreate={() => void createLinkedNote(t)}
-                t={translate}
-              />
+              <div className="order-4 lg:order-none">
+                <LinkedNotesCard
+                  notes={linkedNotesData?.notes ?? []}
+                  loading={linkedNotesLoading}
+                  title={linkedNoteTitle}
+                  content={linkedNoteContent}
+                  creating={creatingLinkedNote}
+                  locale={locale}
+                  onTitleChange={setLinkedNoteTitle}
+                  onContentChange={setLinkedNoteContent}
+                  onCreate={() => void createLinkedNote(t)}
+                  t={translate}
+                />
+              </div>
             )}
 
-            <Card elevated>
-              <CardContent className="pt-5 pb-5 space-y-3">
+            <Card elevated className="order-1 lg:order-none">
+              <CardContent className="space-y-3 pb-5 pt-5">
                 {canUseContextualActions && (
                   <Button
                     variant="primary"
@@ -625,7 +627,12 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             </Card>
 
             {t.source !== 'UPLOAD' && (
-              <Button variant="outline" size="default" className="w-full" asChild>
+              <Button
+                variant="outline"
+                size="default"
+                className="order-5 w-full lg:order-none"
+                asChild
+              >
                 <a href={t.url} target="_blank" rel="noreferrer">
                   {t.source === 'WEB'
                     ? translate('library.openPage')
@@ -867,7 +874,7 @@ function SummaryBlock({
     return (
       <Card elevated>
         <CardContent className="py-8 px-6 space-y-4">
-          <div className="flex items-start gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
               <Wand2 className="h-4 w-4 text-violet-300" />
             </div>
@@ -879,7 +886,13 @@ function SummaryBlock({
                 {t('library.summaryDescription')}
               </p>
             </div>
-            <Button onClick={onGenerate} disabled={generating} variant="primary" size="sm">
+            <Button
+              onClick={onGenerate}
+              disabled={generating}
+              variant="primary"
+              size="sm"
+              className="w-full sm:w-auto"
+            >
               {generating ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -899,7 +912,7 @@ function SummaryBlock({
   }
   return (
     <section>
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2.5">
           <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
             <Wand2 className="h-3.5 w-3.5 text-violet-300" />
@@ -908,7 +921,13 @@ function SummaryBlock({
             {t('library.summary')}
           </h2>
         </div>
-        <Button onClick={onGenerate} disabled={generating} variant="ghost" size="sm">
+        <Button
+          onClick={onGenerate}
+          disabled={generating}
+          variant="ghost"
+          size="sm"
+          className="w-full sm:w-auto"
+        >
           {generating ? (
             <>
               <Loader2 className="h-3 w-3 animate-spin" />
