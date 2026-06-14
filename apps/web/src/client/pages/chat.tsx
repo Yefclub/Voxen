@@ -665,7 +665,10 @@ export function ChatPage(): React.ReactElement {
         transition={{ duration: 0.4, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
         className="shrink-0 bg-gradient-to-t from-[var(--color-app-bg)] via-[var(--color-app-bg)]/95 to-transparent pt-4"
       >
-        <div className="mx-auto max-w-3xl px-6 pb-4">
+        <div
+          className="mx-auto max-w-3xl px-4 pb-4 sm:px-6"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        >
           <PromptBox
             ref={promptRef}
             value={input}

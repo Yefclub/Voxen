@@ -48,7 +48,7 @@
   html {
     min-height: 100%;
     color-scheme: dark;
-    background: var(--color-app-bg);
+    background: #191b1d;
     color: var(--color-app-fg);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -58,6 +58,7 @@
 
   body {
     min-height: 100%;
+    min-height: 100dvh;
     background: var(--color-app-bg);
     color: var(--color-app-fg);
     font-feature-settings: 'cv11', 'ss01', 'ss03';
@@ -123,6 +124,7 @@
 
   #root {
     min-height: 100%;
+    min-height: 100dvh;
     position: relative;
     z-index: 1;
   }

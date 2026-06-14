@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -63,6 +63,7 @@ export function JobDetalhePage(): React.ReactElement {
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const openedTranscriptRef = useRef<string | null>(null);
 
   async function onCancel(): Promise<void> {
     if (!id) return;
@@ -106,6 +107,10 @@ export function JobDetalhePage(): React.ReactElement {
     (evt) => {
       setEvents((prev) => [...prev, evt]);
       if (typeof evt.percent === 'number') setPercent(evt.percent);
+      if (evt.stage === 'done' && evt.transcriptId) {
+        openedTranscriptRef.current = evt.transcriptId;
+        setTimeout(() => navigate(`/transcricoes/${evt.transcriptId}`, { replace: true }), 700);
+      }
       if (evt.stage === 'done' || evt.stage === 'failed') {
         setTimeout(() => refresh(), 600);
       }
@@ -124,6 +129,17 @@ export function JobDetalhePage(): React.ReactElement {
     return () => window.clearInterval(intervalId);
   }, [isActive, refresh]);
 
+  useEffect(() => {
+    const transcriptId = data?.job.transcriptId;
+    if (data?.job.status !== 'DONE' || !transcriptId) return;
+    if (openedTranscriptRef.current === transcriptId) return;
+    openedTranscriptRef.current = transcriptId;
+    const timeoutId = window.setTimeout(() => {
+      navigate(`/transcricoes/${transcriptId}`, { replace: true });
+    }, 700);
+    return () => window.clearTimeout(timeoutId);
+  }, [data?.job.status, data?.job.transcriptId, navigate]);
+
   if (!data?.job) {
     return (
       <div className="px-8 py-20 flex justify-center">
@@ -141,8 +157,8 @@ export function JobDetalhePage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-10 mx-auto max-w-3xl space-y-6">
-        <Button variant="ghost" size="sm" asChild className="-ml-2">
+      <div className="mx-auto max-w-3xl space-y-5 px-4 py-5 sm:space-y-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+        <Button variant="ghost" size="sm" asChild className="-ml-2 hidden sm:inline-flex">
           <Link to="/jobs">
             <ArrowLeft className="h-3.5 w-3.5" />
             {t('jobDetail.backToQueue')}

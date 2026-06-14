@@ -90,7 +90,11 @@ export function MobileNavDrawer({
           exit={{ x: -(DRAWER_WIDTH + 24) }}
           transition={{ type: 'spring', stiffness: 320, damping: 32 }}
           className="md:hidden fixed top-0 bottom-0 left-0 z-50 flex max-w-[85vw] flex-col rounded-r-2xl border-r border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/95 backdrop-blur-xl overflow-hidden focus:outline-none"
-          style={{ width: DRAWER_WIDTH }}
+          style={{
+            width: DRAWER_WIDTH,
+            paddingTop: 'env(safe-area-inset-top)',
+            paddingBottom: 'env(safe-area-inset-bottom)',
+          }}
         >
           <div className="flex items-center h-16 px-4 border-b border-[var(--color-app-border)] shrink-0">
             <div className="relative shrink-0 h-9 w-9">

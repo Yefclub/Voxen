@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom'
 import { CircleHelp } from 'lucide-react';
 import { Sidebar, SidebarSpacer } from './sidebar';
 import { MobileNavDrawer } from './mobile-nav-drawer';
+import { MobileBottomNav } from './mobile-bottom-nav';
 import { Topbar } from './topbar';
 import { useMe, useFetch } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
@@ -71,7 +72,9 @@ export function AppLayout(): React.ReactElement {
   const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
   const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
   const isFullBleed = isChat || isGraph;
-  const mainClass = isFullBleed ? 'flex-1 min-h-0' : 'flex-1 min-h-0 overflow-y-auto pb-6';
+  const mainClass = isFullBleed
+    ? 'flex-1 min-h-0'
+    : 'flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6';
 
   return (
     <ChatContextProvider>
@@ -88,6 +91,7 @@ export function AppLayout(): React.ReactElement {
           <main ref={mainRef} className={mainClass}>
             <AnimatedOutlet />
           </main>
+          {!isFullBleed && <MobileBottomNav />}
           {!isFullBleed && <VersionFooter />}
         </div>
       </div>
@@ -136,7 +140,7 @@ function VersionFooter(): React.ReactElement | null {
     ? new Date(data.builtAt).toLocaleString(locale === 'pt-BR' ? 'pt-BR' : 'en-US')
     : null;
   return (
-    <footer className="fixed bottom-2 right-3 z-10 select-none">
+    <footer className="fixed bottom-2 right-3 z-10 hidden select-none md:block">
       <TooltipProvider delayDuration={150}>
         <Tooltip>
           <TooltipTrigger asChild>

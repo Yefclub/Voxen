@@ -55,7 +55,7 @@ const ptBRMessages = {
   'shell.updateAction': 'Atualizar',
   'shell.nav.dashboard': 'Painel',
   'shell.nav.chat': 'Conversar',
-  'shell.nav.jobs': 'Transcrever',
+  'shell.nav.jobs': 'Capturar',
   'shell.nav.library': 'Biblioteca',
   'shell.nav.notes': 'Notas',
   'shell.nav.automations': 'Automações',
@@ -124,7 +124,7 @@ const ptBRMessages = {
   'job.toast.view': 'Ver',
 
   'jobs.eyebrow': 'Indexar conteúdo',
-  'jobs.title': 'Novo conteúdo',
+  'jobs.title': 'Capturar',
   'jobs.description':
     'Cole links do YouTube, Instagram, TikTok, X ou páginas web. Também dá para enviar um arquivo de áudio, vídeo, imagem ou documento quando a plataforma bloquear o download ou quando o conteúdo estiver local.',
   'jobs.mode.link': 'Link',
@@ -913,7 +913,7 @@ const enMessages: Record<I18nKey, string> = {
   'shell.updateAction': 'Update',
   'shell.nav.dashboard': 'Dashboard',
   'shell.nav.chat': 'Chat',
-  'shell.nav.jobs': 'Transcribe',
+  'shell.nav.jobs': 'Capture',
   'shell.nav.library': 'Library',
   'shell.nav.notes': 'Notes',
   'shell.nav.automations': 'Automations',
@@ -982,7 +982,7 @@ const enMessages: Record<I18nKey, string> = {
   'job.toast.view': 'View',
 
   'jobs.eyebrow': 'Index content',
-  'jobs.title': 'New content',
+  'jobs.title': 'Capture',
   'jobs.description':
     'Paste YouTube, Instagram, TikTok, X, or web page links. You can also upload an audio, video, image, or document file when the platform blocks download or the content is local.',
   'jobs.mode.link': 'Link',
