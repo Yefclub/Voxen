@@ -188,6 +188,10 @@ describeIfDb('library organization API', () => {
     expect(original.status).toBe(404);
 
     await signUp('media-other@voxen.local', 'senha-super-segura-456', 'Media Other');
+    await db.user.update({
+      where: { email: 'media-other@voxen.local' },
+      data: { status: 'APPROVED' },
+    });
     const otherSignin = await signIn('media-other@voxen.local', 'senha-super-segura-456');
     const otherCookie = extractCookie(otherSignin);
     const foreignPreview = await app.fetch(
