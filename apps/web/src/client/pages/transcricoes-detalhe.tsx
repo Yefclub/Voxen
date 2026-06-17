@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
@@ -15,9 +15,11 @@ import {
   MessageCircle,
   NotebookPen,
   RotateCcw,
+  Send,
   Sparkles,
   Trash2,
   Wand2,
+  X as XIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
@@ -39,8 +41,8 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
-import { createConversation } from '../lib/use-conversations';
-import type { LibraryMentionItem } from '../components/ui/prompt-box';
+import { createConversation, refreshConversations } from '../lib/use-conversations';
+import { cn } from '../lib/utils';
 
 interface TranscriptDetail {
   id: string;
@@ -55,8 +57,13 @@ interface TranscriptDetail {
   durationSec: number;
   publishedAt: string | null;
   thumbnailUrl: string | null;
+  originalObjectKey: string | null;
+  originalFilename: string | null;
+  originalMimeType: string | null;
+  previewObjectKey: string | null;
+  previewMimeType: string | null;
   language: string;
-  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION' | 'DOCUMENT';
+  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION' | 'DOCUMENT' | 'X_SEARCH';
   model: string | null;
   costUsd: string | null;
   // Soma de costUsd da transcrição + custos de resumos/regenerações.
@@ -119,7 +126,6 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const [organizing, setOrganizing] = useState(false);
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [startingChat, setStartingChat] = useState(false);
   const [creatingLinkedNote, setCreatingLinkedNote] = useState(false);
   const [linkedNoteTitle, setLinkedNoteTitle] = useState('');
   const [linkedNoteContent, setLinkedNoteContent] = useState('');
@@ -273,38 +279,6 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     }
   }
 
-  async function startContextualChat(transcript: TranscriptDetail): Promise<void> {
-    setStartingChat(true);
-    try {
-      const conv = await createConversation(`Sobre: ${transcript.title}`.slice(0, 60));
-      if (!conv) {
-        toast.error(translate('library.chatError'));
-        return;
-      }
-      const mention: LibraryMentionItem = {
-        type: 'transcript',
-        id: transcript.id,
-        label: transcript.title,
-        subtitle: [transcript.source, transcript.channel].filter(Boolean).join(' · '),
-      };
-      navigate(`/chat/${conv.id}`, {
-        state: {
-          prefill: {
-            text: translate('library.chatPrompt', { title: transcript.title }),
-            mentions: [mention],
-          },
-        },
-      });
-      toast.success(translate('library.chatReady'));
-    } catch (e) {
-      toast.error(translate('library.chatError'), {
-        description: e instanceof Error ? e.message : undefined,
-      });
-    } finally {
-      setStartingChat(false);
-    }
-  }
-
   async function createLinkedNote(transcript: TranscriptDetail): Promise<void> {
     const title = linkedNoteTitle.trim();
     if (!title) {
@@ -355,10 +329,11 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   const canUseContextualActions = t.status !== 'TRASH';
   const contentMarkdown = stripMarkdownFrontmatter(data.markdown);
+  const previewSrc = t.thumbnailUrl || `/api/transcripts/${t.id}/preview`;
 
   return (
     <AnimatedPage>
-      <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <div className="mx-auto max-w-5xl overflow-x-clip px-4 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
         <Button variant="ghost" size="sm" asChild className="mb-8 -ml-2 hidden sm:inline-flex">
           <Link to="/transcricoes">
             <ArrowLeft className="h-3.5 w-3.5" />
@@ -423,7 +398,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </Badge>
             )}
           </div>
-          <h1 className="font-display text-2xl font-semibold leading-[1.08] tracking-[-0.035em] text-balance sm:text-4xl lg:text-5xl">
+          <h1 className="max-w-full break-words font-display text-2xl font-semibold leading-[1.08] tracking-[-0.02em] text-balance [overflow-wrap:anywhere] sm:text-4xl lg:text-5xl">
             {t.title}
           </h1>
           {t.channel && <p className="text-[15px] text-[var(--color-app-muted)]">{t.channel}</p>}
@@ -470,16 +445,14 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             transition={{ duration: 0.45, delay: 0.18 }}
             className="flex flex-col gap-4 self-start lg:sticky lg:top-24"
           >
-            {t.thumbnailUrl && (
-              <Card className="order-2 overflow-hidden p-0 lg:order-none" elevated>
-                <img
-                  src={t.thumbnailUrl}
-                  alt=""
-                  className="w-full aspect-video object-cover"
-                  loading="lazy"
-                />
-              </Card>
-            )}
+            <Card className="order-2 overflow-hidden p-0 lg:order-none" elevated>
+              <img
+                src={previewSrc}
+                alt=""
+                className="w-full aspect-video object-cover"
+                loading="lazy"
+              />
+            </Card>
 
             <Card elevated className="order-3 lg:order-none">
               <CardContent className="pt-5 pb-5 space-y-4">
@@ -559,24 +532,6 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
             <Card elevated className="order-1 lg:order-none">
               <CardContent className="space-y-3 pb-5 pt-5">
-                {canUseContextualActions && (
-                  <Button
-                    variant="primary"
-                    size="default"
-                    className="w-full"
-                    disabled={startingChat}
-                    onClick={() => void startContextualChat(t)}
-                  >
-                    {startingChat ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <MessageCircle className="h-3.5 w-3.5" />
-                    )}
-                    {startingChat
-                      ? translate('library.chatStarting')
-                      : translate('library.chatAbout')}
-                  </Button>
-                )}
                 {t.status === 'ARCHIVED' || t.status === 'TRASH' ? (
                   <Button
                     variant="outline"
@@ -641,9 +596,23 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 </a>
               </Button>
             )}
+            {t.originalObjectKey && (
+              <Button
+                variant="outline"
+                size="default"
+                className="order-5 w-full lg:order-none"
+                asChild
+              >
+                <a href={`/api/transcripts/${t.id}/original`} target="_blank" rel="noreferrer">
+                  {translate('library.openOriginalUpload')}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
           </motion.aside>
         </div>
       </div>
+      {canUseContextualActions && <FloatingTranscriptChat transcript={t} t={translate} />}
       <ConfirmDialog
         open={confirmRegen}
         onOpenChange={setConfirmRegen}
@@ -666,6 +635,210 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         loading={deleting}
       />
     </AnimatedPage>
+  );
+}
+
+type FloatingChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  pending?: boolean;
+};
+
+function FloatingTranscriptChat({
+  transcript,
+  t,
+}: {
+  transcript: TranscriptDetail;
+  t: TranslateFn;
+}): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<FloatingChatMessage[]>([]);
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, open]);
+
+  async function ensureConversation(): Promise<string | null> {
+    if (conversationId) return conversationId;
+    const conv = await createConversation(`Sobre: ${transcript.title}`.slice(0, 60));
+    if (!conv) return null;
+    setConversationId(conv.id);
+    return conv.id;
+  }
+
+  async function send(): Promise<void> {
+    const content = input.trim();
+    if (!content || sending) return;
+    setSending(true);
+    setInput('');
+    const userMessage: FloatingChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content,
+    };
+    const assistantId = crypto.randomUUID();
+    setMessages((current) => [
+      ...current,
+      userMessage,
+      { id: assistantId, role: 'assistant', content: '', pending: true },
+    ]);
+    try {
+      const id = await ensureConversation();
+      if (!id) throw new Error(t('library.chatError'));
+      const res = await fetch(`/api/chat/conversations/${id}/send`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content,
+          mentions: [
+            {
+              type: 'transcript',
+              id: transcript.id,
+              label: transcript.title,
+            },
+          ],
+        }),
+      });
+      if (!res.ok || !res.body) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? t('library.chatError'));
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const block = buffer.slice(0, idx).trim();
+          buffer = buffer.slice(idx + 2);
+          const eventMatch = block.match(/^event:\s*(.+)$/m);
+          const dataMatch = block.match(/^data:\s*(.+)$/m);
+          if (!eventMatch || !dataMatch) continue;
+          const eventName = eventMatch[1];
+          const eventData = dataMatch[1];
+          if (!eventName || !eventData || eventName !== 'token') continue;
+          try {
+            const parsed = JSON.parse(eventData) as { text?: string };
+            if (!parsed.text) continue;
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === assistantId
+                  ? { ...message, content: message.content + parsed.text, pending: false }
+                  : message,
+              ),
+            );
+          } catch {
+            // ignora evento malformado
+          }
+        }
+      }
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantId ? { ...message, pending: false } : message,
+        ),
+      );
+      await refreshConversations();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('library.chatError'));
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantId
+            ? { ...message, content: t('library.chatInlineError'), pending: false }
+            : message,
+        ),
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="primary"
+        size="icon"
+        aria-label={open ? t('library.closeInlineChat') : t('library.openInlineChat')}
+        className="fixed right-4 z-50 h-14 w-14 rounded-full shadow-2xl shadow-emerald-950/40 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6 sm:right-6"
+        onClick={() => setOpen((value) => !value)}
+      >
+        {open ? <XIcon className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
+      </Button>
+      {open && (
+        <div className="fixed inset-x-3 bottom-[calc(10rem+env(safe-area-inset-bottom))] z-50 max-h-[68dvh] overflow-hidden rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] shadow-2xl shadow-black/40 sm:inset-x-auto sm:bottom-24 sm:right-6 sm:w-[420px]">
+          <div className="flex items-center justify-between border-b border-[var(--color-app-border)] px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--color-app-muted)]">
+                {t('library.inlineChatEyebrow')}
+              </p>
+              <p className="truncate text-sm font-semibold text-zinc-100">{transcript.title}</p>
+            </div>
+            <button
+              type="button"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-zinc-100"
+              aria-label={t('library.closeInlineChat')}
+              onClick={() => setOpen(false)}
+            >
+              <XIcon className="h-4 w-4" />
+            </button>
+          </div>
+          <div ref={scrollRef} className="max-h-[44dvh] space-y-3 overflow-y-auto px-4 py-4">
+            {messages.length === 0 && (
+              <div className="rounded-lg border border-dashed border-[var(--color-app-border)] px-4 py-6 text-center text-sm text-[var(--color-app-muted)]">
+                {t('library.inlineChatEmpty')}
+              </div>
+            )}
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={cn(
+                  'max-w-[92%] rounded-xl px-3 py-2 text-sm leading-relaxed',
+                  message.role === 'user'
+                    ? 'ml-auto bg-emerald-500 text-zinc-950'
+                    : 'mr-auto bg-[var(--color-app-surface)] text-zinc-100',
+                )}
+              >
+                {message.content || message.pending
+                  ? message.content || <Loader2 className="h-4 w-4 animate-spin" />
+                  : null}
+              </div>
+            ))}
+          </div>
+          <form
+            className="flex gap-2 border-t border-[var(--color-app-border)] p-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void send();
+            }}
+          >
+            <input
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder={t('library.inlineChatPlaceholder')}
+              className="min-w-0 flex-1 rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+              disabled={sending}
+            />
+            <Button type="submit" variant="primary" size="icon" disabled={!input.trim() || sending}>
+              {sending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </form>
+        </div>
+      )}
+    </>
   );
 }
 

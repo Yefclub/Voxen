@@ -7,6 +7,7 @@ para compatibilidade com instalações antigas.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -88,12 +89,36 @@ async def put_markdown(
         )
 
 
+async def put_file(
+    *,
+    key: str,
+    path: Path,
+    content_type: str = "application/octet-stream",
+    bucket: str | None = None,
+) -> None:
+    """Upload de arquivo local para S3 preservando content-type."""
+    session = s3_session()
+    async with session.client(**s3_client_kwargs()) as s3:
+        await s3.put_object(
+            Bucket=bucket or s3_bucket(),
+            Key=key,
+            Body=path.read_bytes(),
+            ContentType=content_type,
+        )
+
+
 def transcript_key(user_id: str, transcript_id: str) -> str:
     return f"workspaces/{user_id}/transcripts/{transcript_id}.md"
 
 
 def upload_key(user_id: str, upload_id: str, filename: str) -> str:
     return f"workspaces/{user_id}/uploads/{upload_id}/{filename}"
+
+
+def upload_preview_key(user_id: str, upload_id: str, filename: str) -> str:
+    stem = Path(filename).stem or "preview"
+    safe_stem = re.sub(r"[^A-Za-z0-9_-]+", "_", stem).strip("_")[:80] or "preview"
+    return f"workspaces/{user_id}/uploads/{upload_id}/{safe_stem}.preview.jpg"
 
 
 async def download_to_file(*, key: str, dest: Path, bucket: str | None = None) -> None:

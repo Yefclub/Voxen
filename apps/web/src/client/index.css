@@ -3,7 +3,7 @@
 /* ============================================================================
    Voxen — Design system com personalidade
    ----------------------------------------------------------------------------
-   - Cinza neutro elevado (não preto) com viés azulado sutil
+   - Cinza neutro elevado (não preto) com viés verde sutil
    - Duas tintas de acento: emerald (vida/ok) + violet (foco/destaque)
    - Mesh gradient ambiente + noise overlay para textura
    - Tipografia: Bricolage Grotesque (display) + Inter (UI) + JetBrains Mono
@@ -15,13 +15,13 @@
   --font-display: 'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* Tons de cinza com leve azul (mais frio + premium que zinc puro) */
-  --color-app-bg: oklch(22% 0.005 250);
-  --color-app-bg-elevated: oklch(25% 0.005 250);
-  --color-app-surface: oklch(27.5% 0.006 250);
-  --color-app-surface-hover: oklch(31% 0.007 250);
-  --color-app-border: oklch(34% 0.008 250);
-  --color-app-border-strong: oklch(42% 0.01 250);
+  /* Tons de cinza com leve verde, alinhados ao PWA mobile */
+  --color-app-bg: oklch(22% 0.01 165);
+  --color-app-bg-elevated: oklch(25% 0.01 165);
+  --color-app-surface: oklch(27.5% 0.011 165);
+  --color-app-surface-hover: oklch(31% 0.012 165);
+  --color-app-border: oklch(34% 0.011 165);
+  --color-app-border-strong: oklch(42% 0.013 165);
 
   --color-app-fg: oklch(98.5% 0 0);
   --color-app-muted: oklch(68% 0.008 250);
@@ -47,24 +47,31 @@
 @layer base {
   html {
     min-height: 100%;
+    width: 100%;
+    max-width: 100%;
     color-scheme: dark;
-    background: #191b1d;
+    background: #19211f;
     color: var(--color-app-fg);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     overflow-x: hidden;
+    overflow-x: clip;
     scrollbar-gutter: auto;
   }
 
   body {
     min-height: 100%;
     min-height: 100dvh;
+    width: 100%;
+    max-width: 100%;
     background: var(--color-app-bg);
     color: var(--color-app-fg);
     font-feature-settings: 'cv11', 'ss01', 'ss03';
     letter-spacing: 0;
     position: relative;
     overflow-x: hidden;
+    overflow-x: clip;
+    overscroll-behavior-x: none;
   }
 
   /* Scrollbar estética em containers que rolam internamente (chat, sidebar).
@@ -125,12 +132,27 @@
   #root {
     min-height: 100%;
     min-height: 100dvh;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    overflow-x: clip;
     position: relative;
     z-index: 1;
   }
 
-  * {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
     border-color: var(--color-app-border);
+  }
+
+  img,
+  video,
+  canvas,
+  iframe,
+  table {
+    max-width: 100%;
   }
 
   ::selection {
@@ -157,6 +179,45 @@
   h4 {
     letter-spacing: -0.025em;
     font-weight: 600;
+  }
+}
+
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-group(root) {
+  animation-duration: 220ms;
+  animation-timing-function: var(--ease-out);
+}
+
+::view-transition-old(root) {
+  animation: voxen-view-out 150ms var(--ease-out) both;
+}
+
+::view-transition-new(root) {
+  animation: voxen-view-in 220ms var(--ease-out) both;
+}
+
+@keyframes voxen-view-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.995);
+  }
+}
+
+@keyframes voxen-view-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.995);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 1ms !important;
   }
 }
 

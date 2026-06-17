@@ -34,6 +34,7 @@ from .openrouter import (
     analyze_image,
     analyze_pdf_native,
     analyze_x_url,
+    generate_content_title,
     transcribe_audio,
 )
 from .transcript_md import Segment, TranscriptDoc, render_markdown, render_plain_text
@@ -283,6 +284,7 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
         raw_path = tmpdir / ref.filename
         audio_path = tmpdir / "audio.opus"
         key = storage.upload_key(user_id, ref.upload_id, ref.filename)
+        original_mime_type = uploaded_media.guess_mime_type(ref.filename)
 
         await _retry_transient(lambda: storage.download_to_file(key=key, dest=raw_path), tries=3)
 
@@ -321,6 +323,26 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
             available_subtitles={},
             automatic_captions={},
         )
+        preview_object_key: str | None = None
+        preview_mime_type: str | None = None
+        if uploaded_media.is_video_mime(original_mime_type):
+            preview_path = tmpdir / "preview.jpg"
+            try:
+                await uploaded_media.extract_video_preview_jpeg(raw_path, preview_path)
+                preview_object_key = storage.upload_preview_key(
+                    user_id, ref.upload_id, ref.filename
+                )
+                preview_mime_type = "image/jpeg"
+                await _retry_transient(
+                    lambda: storage.put_file(
+                        key=preview_object_key,
+                        path=preview_path,
+                        content_type=preview_mime_type,
+                    ),
+                    tries=3,
+                )
+            except Exception as e:  # noqa: BLE001 — preview é best-effort
+                log.warning("upload-preview-generation-failed", error=str(e)[:240])
         await events.publish_job_event(user_id, job_id, "transcribing", percent=30)
         segments, model, cost_total = await _transcribe_via_api(
             audio_path=audio_path,
@@ -332,6 +354,16 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
         )
         if not segments:
             raise PermanentError("Transcrição vazia — nenhum texto extraído.")
+
+        generated_title = await _maybe_generate_title(
+            user_id=user_id,
+            job_id=job_id,
+            content="\n".join(segment.text for segment in segments),
+            source_label="Upload de áudio/vídeo",
+            fallback_title=Path(ref.filename).stem or ref.filename,
+            fallback_model=model,
+            log=log,
+        )
 
         _check_cancel(job_id)
         await events.publish_job_event(user_id, job_id, "uploading", percent=80)
@@ -346,6 +378,12 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
             cost_usd=cost_total,
             language="auto",
             source_override="UPLOAD",
+            title_override=generated_title,
+            original_object_key=key,
+            original_filename=ref.filename,
+            original_mime_type=original_mime_type,
+            preview_object_key=preview_object_key,
+            preview_mime_type=preview_mime_type,
         )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
@@ -379,6 +417,7 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
         tmpdir = Path(tmp)
         image_path = tmpdir / ref.filename
         key = storage.upload_key(user_id, ref.upload_id, ref.filename)
+        original_mime_type = uploaded_media.guess_mime_type(ref.filename)
         await _retry_transient(lambda: storage.download_to_file(key=key, dest=image_path), tries=3)
 
         _check_cancel(job_id)
@@ -423,6 +462,15 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
             available_subtitles={},
             automatic_captions={},
         )
+        generated_title = await _maybe_generate_title(
+            user_id=user_id,
+            job_id=job_id,
+            content=result.text,
+            source_label="Upload de imagem",
+            fallback_title=Path(ref.filename).stem or ref.filename,
+            fallback_model=model,
+            log=log,
+        )
         _check_cancel(job_id)
         await events.publish_job_event(user_id, job_id, "uploading", percent=80)
         new_transcript_id = await _persist(
@@ -436,6 +484,10 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
             cost_usd=result.cost_usd,
             language="pt",
             source_override="UPLOAD",
+            title_override=generated_title,
+            original_object_key=key,
+            original_filename=ref.filename,
+            original_mime_type=original_mime_type,
         )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
@@ -475,6 +527,7 @@ async def _run_document_pipeline(
         tmpdir = Path(tmp)
         doc_path = tmpdir / ref.filename
         key = storage.upload_key(user_id, ref.upload_id, ref.filename)
+        original_mime_type = uploaded_media.guess_mime_type(ref.filename)
         await _retry_transient(lambda: storage.download_to_file(key=key, dest=doc_path), tries=3)
 
         _check_cancel(job_id)
@@ -555,6 +608,15 @@ async def _run_document_pipeline(
             available_subtitles={},
             automatic_captions={},
         )
+        generated_title = await _maybe_generate_title(
+            user_id=user_id,
+            job_id=job_id,
+            content=result.text,
+            source_label="Upload de documento",
+            fallback_title=Path(ref.filename).stem or ref.filename,
+            fallback_model=model,
+            log=log,
+        )
         _check_cancel(job_id)
         await events.publish_job_event(user_id, job_id, "uploading", percent=80)
         new_transcript_id = await _persist(
@@ -568,6 +630,10 @@ async def _run_document_pipeline(
             cost_usd=result.cost_usd,
             language="pt",
             source_override="UPLOAD",
+            title_override=generated_title,
+            original_object_key=key,
+            original_filename=ref.filename,
+            original_mime_type=original_mime_type,
         )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
@@ -632,6 +698,15 @@ async def _run_x_analysis_pipeline(
         available_subtitles={},
         automatic_captions={},
     )
+    generated_title = await _maybe_generate_title(
+        user_id=user_id,
+        job_id=job_id,
+        content=result.text,
+        source_label="Publicação do X",
+        fallback_title=f"Post do X {status_id}",
+        fallback_model=model,
+        log=log,
+    )
 
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "uploading", percent=80)
@@ -645,6 +720,7 @@ async def _run_x_analysis_pipeline(
         model=model,
         cost_usd=result.cost_usd,
         language="pt",
+        title_override=generated_title,
     )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
@@ -733,6 +809,51 @@ async def _transcribe_via_api(
     return tuple(all_segments), model, total_cost
 
 
+async def _maybe_generate_title(
+    *,
+    user_id: str,
+    job_id: str,
+    content: str,
+    source_label: str,
+    fallback_title: str,
+    fallback_model: str | None,
+    log: Any,  # noqa: ANN401
+) -> str | None:
+    clean_content = content.strip()
+    if len(clean_content) < 40:
+        return None
+    try:
+        api_key = await voxen_settings.get_openrouter_api_key()
+        model = await voxen_settings.get_default_chat_model()
+        model = model or fallback_model
+        if not api_key or not model:
+            return None
+        result = await _retry_transient_or(
+            lambda: generate_content_title(
+                content=clean_content,
+                source_label=source_label,
+                fallback_title=fallback_title,
+                api_key=api_key,
+                model=model,
+            ),
+            tries=2,
+        )
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="CHAT",
+            model=result.model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+            job_id=job_id,
+            meta={"source": "title_generation", "source_label": source_label},
+        )
+        return result.title
+    except Exception as e:  # noqa: BLE001 — título é enriquecimento best-effort
+        log.warning("title-generation-failed", source_label=source_label, error=str(e)[:240])
+        return None
+
+
 async def _call_or(audio_path: Path, api_key: str, model: str) -> Any:  # noqa: ANN401 — TranscriptionResult
     return await transcribe_audio(audio_path=audio_path, api_key=api_key, model=model)
 
@@ -749,6 +870,12 @@ async def _persist(
     cost_usd: Decimal | None,
     language: str,
     source_override: str | None = None,
+    title_override: str | None = None,
+    original_object_key: str | None = None,
+    original_filename: str | None = None,
+    original_mime_type: str | None = None,
+    preview_object_key: str | None = None,
+    preview_mime_type: str | None = None,
 ) -> str:
     # Gera transcript_id e doc completo
     transcribed_at = datetime.now(UTC)
@@ -772,12 +899,12 @@ async def _persist(
         source=source,
         url=source_url,
         video_id=probe_info.video_id,
-        title=probe_info.title,
+        title=title_override or probe_info.title,
         channel=probe_info.channel,
         author=None,
         duration_sec=probe_info.duration_sec,
         published_at=probe_info.published_at,
-        thumbnail_url=probe_info.thumbnail_url,
+        thumbnail_url=probe_info.thumbnail_url or f"/api/transcripts/{transcript_id}/preview",
         language=language,
         transcription_method=method,
         model=model,
@@ -789,6 +916,15 @@ async def _persist(
     plain_text = render_plain_text(doc)
     md_key = storage.transcript_key(user_id, transcript_id)
 
+    frontmatter_json = _frontmatter_json(
+        doc,
+        original_object_key=original_object_key,
+        original_filename=original_filename,
+        original_mime_type=original_mime_type,
+        preview_object_key=preview_object_key,
+        preview_mime_type=preview_mime_type,
+    )
+
     await _retry_transient(lambda: storage.put_markdown(key=md_key, content=md_content), tries=3)
 
     # Insert no Postgres (passamos o mesmo id usado no path do S3)
@@ -799,10 +935,13 @@ async def _persist(
                 id, "userId", source, url, title, channel, author, "durationSec",
                 "publishedAt", "thumbnailUrl", language, "transcriptionMethod",
                 model, "costUsd", "mdPath", "plainText", frontmatter,
+                "originalObjectKey", "originalFilename", "originalMimeType",
+                "previewObjectKey", "previewMimeType",
                 "createdAt", "updatedAt"
             ) VALUES (
                 $1, $2, $3::"TranscriptSource", $4, $5, $6, $7, $8, $9, $10, $11,
                 $12::"TranscriptionMethod", $13, $14, $15, $16, $17::jsonb,
+                $18, $19, $20, $21, $22,
                 NOW(), NOW()
             )
             """,
@@ -824,7 +963,12 @@ async def _persist(
             doc.cost_usd,
             md_key,
             plain_text,
-            _frontmatter_json(doc),
+            frontmatter_json,
+            original_object_key,
+            original_filename,
+            original_mime_type,
+            preview_object_key,
+            preview_mime_type,
         )
         await db.upsert_transcript_brain_node(
             conn,
@@ -842,12 +986,32 @@ async def _persist(
     return transcript_id
 
 
-def _frontmatter_json(doc: TranscriptDoc) -> str:
+def _frontmatter_json(
+    doc: TranscriptDoc,
+    *,
+    original_object_key: str | None = None,
+    original_filename: str | None = None,
+    original_mime_type: str | None = None,
+    preview_object_key: str | None = None,
+    preview_mime_type: str | None = None,
+) -> str:
     import json
 
     from .transcript_md import build_frontmatter
 
-    return json.dumps(build_frontmatter(doc), default=str)
+    frontmatter = build_frontmatter(doc)
+    if original_object_key:
+        frontmatter["original"] = {
+            "objectKey": original_object_key,
+            "filename": original_filename,
+            "mimeType": original_mime_type,
+        }
+    if preview_object_key:
+        frontmatter["preview"] = {
+            "objectKey": preview_object_key,
+            "mimeType": preview_mime_type,
+        }
+    return json.dumps(frontmatter, default=str)
 
 
 # ============================================================================

@@ -55,6 +55,15 @@ class XAnalysisResult:
     tokens_out: int
 
 
+@dataclass(frozen=True)
+class TitleGenerationResult:
+    title: str
+    cost_usd: Decimal
+    model: str
+    tokens_in: int
+    tokens_out: int
+
+
 async def transcribe_audio(
     *,
     audio_path: Path,
@@ -315,6 +324,63 @@ async def analyze_x_url(
         tokens_in=result.tokens_in,
         tokens_out=result.tokens_out,
     )
+
+
+async def generate_content_title(
+    *,
+    content: str,
+    source_label: str,
+    fallback_title: str,
+    api_key: str,
+    model: str,
+    client: httpx.AsyncClient | None = None,
+) -> TitleGenerationResult:
+    """Gera título curto para conteúdos sem título editorial confiável."""
+    excerpt = content.strip().replace("\x00", " ")[:8_000]
+    prompt = (
+        f"Fonte: {source_label}\n"
+        f"Título atual/arquivo: {fallback_title}\n\n"
+        "Gere um título editorial curto em português do Brasil para este conteúdo. "
+        "Não use aspas. Não use ponto final. Máximo 80 caracteres. "
+        "Se houver nome próprio ou assunto principal, preserve.\n\n"
+        f"Conteúdo:\n{excerpt}"
+    )
+    payload: dict[str, object] = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Você cria títulos precisos para uma base de conhecimento pessoal. "
+                    "Responda apenas com o título final."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 48,
+        "usage": {"include": True},
+    }
+    result = await _chat_completion_document(
+        payload=payload, api_key=api_key, model=model, client=client
+    )
+    title = _clean_generated_title(result.text) or _clean_generated_title(fallback_title)
+    return TitleGenerationResult(
+        title=title or fallback_title[:80] or "Conteúdo sem título",
+        cost_usd=result.cost_usd,
+        model=result.model,
+        tokens_in=result.tokens_in,
+        tokens_out=result.tokens_out,
+    )
+
+
+def _clean_generated_title(value: str) -> str:
+    title = " ".join(value.replace("\n", " ").split()).strip(" \"'“”‘’#:-")
+    if not title:
+        return ""
+    if len(title) > 90:
+        title = title[:90].rsplit(" ", 1)[0] or title[:80]
+    return title.strip(" .")
 
 
 def _document_payload(

@@ -7,8 +7,9 @@ from typing import Any
 
 import structlog
 
-from . import db, events, scraper, storage, summary
+from . import db, events, scraper, storage, summary, voxen_settings
 from .cancellation import CancelledException, is_cancelled
+from .openrouter import generate_content_title
 from .pipeline import PermanentError  # reusa exceção pro process_job tratar igual
 
 log = structlog.get_logger(__name__)
@@ -33,8 +34,10 @@ async def run(*, job_id: str, user_id: str, source_url: str, log: Any) -> None: 
 
     new_transcript_id = await _persist(
         user_id=user_id,
+        job_id=job_id,
         source_url=source_url,
         result=result,
+        log=log,
     )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=92)
@@ -70,12 +73,27 @@ async def _scrape_with_retry(url: str, tries: int = 3) -> scraper.ScrapeResult:
     raise last_exc
 
 
-async def _persist(*, user_id: str, source_url: str, result: scraper.ScrapeResult) -> str:
+async def _persist(
+    *,
+    user_id: str,
+    job_id: str,
+    source_url: str,
+    result: scraper.ScrapeResult,
+    log: Any,  # noqa: ANN401
+) -> str:
     """Persiste o resultado como Transcript (source=WEB, method=SCRAPE)."""
     import json
 
     transcript_id = db.generate_cuid()
     md_key = storage.transcript_key(user_id, transcript_id)
+    title = await _maybe_generate_title(
+        user_id=user_id,
+        job_id=job_id,
+        content=result.plain_text,
+        fallback_title=result.title,
+        log=log,
+    )
+    thumbnail_url = result.thumbnail_url or f"/api/transcripts/{transcript_id}/preview"
 
     await storage.put_markdown(key=md_key, content=result.markdown)
 
@@ -84,7 +102,7 @@ async def _persist(*, user_id: str, source_url: str, result: scraper.ScrapeResul
         "userId": user_id,
         "source": "WEB",
         "url": result.url,
-        "title": result.title,
+        "title": title,
         "siteName": result.site_name,
         "author": result.author,
         "publishedAt": result.published_at.isoformat() if result.published_at else None,
@@ -110,7 +128,7 @@ async def _persist(*, user_id: str, source_url: str, result: scraper.ScrapeResul
             transcript_id,
             user_id,
             result.url,
-            result.title,
+            title,
             result.site_name,
             result.author,
             (
@@ -118,7 +136,7 @@ async def _persist(*, user_id: str, source_url: str, result: scraper.ScrapeResul
                 if result.published_at and result.published_at.tzinfo
                 else result.published_at
             ),
-            result.thumbnail_url,
+            thumbnail_url,
             result.language or "und",
             md_key,
             result.plain_text,
@@ -130,14 +148,53 @@ async def _persist(*, user_id: str, source_url: str, result: scraper.ScrapeResul
             transcript_id=transcript_id,
             source="WEB",
             url=result.url,
-            title=result.title,
+            title=title,
             channel=result.site_name,
             language=result.language or "und",
             transcription_method="SCRAPE",
-            thumbnail_url=result.thumbnail_url,
+            thumbnail_url=thumbnail_url,
             plain_text=result.plain_text,
         )
     return transcript_id
+
+
+async def _maybe_generate_title(
+    *,
+    user_id: str,
+    job_id: str,
+    content: str,
+    fallback_title: str,
+    log: Any,  # noqa: ANN401
+) -> str:
+    clean_content = content.strip()
+    if len(clean_content) < 40:
+        return fallback_title
+    try:
+        api_key = await voxen_settings.get_openrouter_api_key()
+        model = await voxen_settings.get_default_chat_model()
+        if not api_key or not model:
+            return fallback_title
+        result = await generate_content_title(
+            content=clean_content,
+            source_label="Página web",
+            fallback_title=fallback_title,
+            api_key=api_key,
+            model=model,
+        )
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="CHAT",
+            model=result.model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+            job_id=job_id,
+            meta={"source": "title_generation", "source_label": "Página web"},
+        )
+        return result.title or fallback_title
+    except Exception as e:  # noqa: BLE001 — título é enriquecimento best-effort
+        log.warning("web-title-generation-failed", error=str(e)[:240])
+        return fallback_title
 
 
 def _check_cancel(job_id: str) -> None:
