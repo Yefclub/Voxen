@@ -51,6 +51,8 @@ const ptBRMessages = {
   'shell.versionInfo': 'Versão {version}',
   'shell.versionSha': 'Commit {sha}',
   'shell.versionBuiltAt': 'Build {date}',
+  'shell.versionBuildLabel': 'Build',
+  'shell.versionFallback': 'Versão indisponível',
   'shell.updateAvailable': 'Nova versão disponível',
   'shell.updateAction': 'Atualizar',
   'shell.nav.dashboard': 'Painel',
@@ -278,8 +280,17 @@ const ptBRMessages = {
   'library.openInlineChat': 'Abrir chat da transcrição',
   'library.closeInlineChat': 'Fechar chat da transcrição',
   'library.inlineChatEyebrow': 'Chat contextual',
-  'library.inlineChatEmpty': 'Pergunte algo sobre esta transcrição.',
+  'library.inlineChatAssistant': 'Voxen',
+  'library.inlineChatEmpty': 'Escolha um atalho ou pergunte sobre este conteúdo.',
   'library.inlineChatPlaceholder': 'Pergunte sobre este conteúdo…',
+  'library.inlineChatQuickSummary': 'Resumo',
+  'library.inlineChatQuickSummaryPrompt': 'Resuma este conteúdo em três pontos práticos.',
+  'library.inlineChatQuickActions': 'Ações',
+  'library.inlineChatQuickActionsPrompt':
+    'Extraia possíveis ações, decisões ou próximos passos deste conteúdo.',
+  'library.inlineChatQuickQuotes': 'Trechos',
+  'library.inlineChatQuickQuotesPrompt':
+    'Liste os trechos mais importantes deste conteúdo e explique por que importam.',
   'library.chatInlineError': 'Não consegui responder agora. Tente novamente.',
   'library.openOriginalUpload': 'Abrir arquivo enviado',
   'library.linkedNotes': 'Notas vinculadas',
@@ -553,6 +564,13 @@ const ptBRMessages = {
   'admin.integrations.mcp.copyToken': 'Copiar token',
   'admin.integrations.mcp.clientHint':
     'Configure no client MCP apontando para {url} com header {header}.',
+  'admin.integrations.mcp.promptTitle': 'Prompt pronto para agente',
+  'admin.integrations.mcp.promptDescription':
+    'Copia URL atual, endpoint MCP, token ativo e instruções de uso seguro para colar em um agente externo.',
+  'admin.integrations.mcp.promptDisabled':
+    'Gere um token MCP antes de copiar o prompt para agentes externos.',
+  'admin.integrations.mcp.copyAgentPrompt': 'Copiar prompt',
+  'admin.integrations.mcp.promptCopied': 'Prompt MCP copiado.',
   'admin.integrations.mcp.rotateToken': 'Rotacionar token',
   'admin.integrations.mcp.generateToken': 'Gerar token',
   'admin.integrations.mcp.revokeTitle': 'Revogar token MCP?',
@@ -916,6 +934,8 @@ const enMessages: Record<I18nKey, string> = {
   'shell.versionInfo': 'Version {version}',
   'shell.versionSha': 'Commit {sha}',
   'shell.versionBuiltAt': 'Build {date}',
+  'shell.versionBuildLabel': 'Build',
+  'shell.versionFallback': 'Version unavailable',
   'shell.updateAvailable': 'New version available',
   'shell.updateAction': 'Update',
   'shell.nav.dashboard': 'Dashboard',
@@ -1142,8 +1162,17 @@ const enMessages: Record<I18nKey, string> = {
   'library.openInlineChat': 'Open transcript chat',
   'library.closeInlineChat': 'Close transcript chat',
   'library.inlineChatEyebrow': 'Contextual chat',
-  'library.inlineChatEmpty': 'Ask something about this transcript.',
+  'library.inlineChatAssistant': 'Voxen',
+  'library.inlineChatEmpty': 'Choose a shortcut or ask about this content.',
   'library.inlineChatPlaceholder': 'Ask about this content…',
+  'library.inlineChatQuickSummary': 'Summary',
+  'library.inlineChatQuickSummaryPrompt': 'Summarize this content in three practical points.',
+  'library.inlineChatQuickActions': 'Actions',
+  'library.inlineChatQuickActionsPrompt':
+    'Extract possible actions, decisions, or next steps from this content.',
+  'library.inlineChatQuickQuotes': 'Excerpts',
+  'library.inlineChatQuickQuotesPrompt':
+    'List the most important excerpts from this content and explain why they matter.',
   'library.chatInlineError': 'I could not answer right now. Try again.',
   'library.openOriginalUpload': 'Open uploaded file',
   'library.linkedNotes': 'Linked notes',
@@ -1417,6 +1446,13 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.mcp.copyToken': 'Copy token',
   'admin.integrations.mcp.clientHint':
     'Configure the MCP client to point to {url} with header {header}.',
+  'admin.integrations.mcp.promptTitle': 'Agent-ready prompt',
+  'admin.integrations.mcp.promptDescription':
+    'Copies the current URL, MCP endpoint, active token, and safe usage instructions for an external agent.',
+  'admin.integrations.mcp.promptDisabled':
+    'Generate an MCP token before copying the prompt for external agents.',
+  'admin.integrations.mcp.copyAgentPrompt': 'Copy prompt',
+  'admin.integrations.mcp.promptCopied': 'MCP prompt copied.',
   'admin.integrations.mcp.rotateToken': 'Rotate token',
   'admin.integrations.mcp.generateToken': 'Generate token',
   'admin.integrations.mcp.revokeTitle': 'Revoke MCP token?',

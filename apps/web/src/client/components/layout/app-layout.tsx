@@ -1,17 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom';
-import { CircleHelp } from 'lucide-react';
 import { Sidebar, SidebarSpacer } from './sidebar';
 import { MobileNavDrawer } from './mobile-nav-drawer';
 import { MobileBottomNav } from './mobile-bottom-nav';
 import { Topbar } from './topbar';
-import { useMe, useFetch } from '../../lib/hooks';
+import { useMe } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
 import { useJobsWatcher } from '../../lib/use-jobs-watcher';
 import { useVersionMonitor } from '../../lib/use-version-monitor';
 import { ChatContextProvider } from '../../lib/chat-context-ctx';
-import { useI18n } from '../../lib/i18n';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
 export function AppLayout(): React.ReactElement {
   const { data, loading } = useMe();
@@ -92,7 +89,6 @@ export function AppLayout(): React.ReactElement {
             <AnimatedOutlet />
           </main>
           {!isFullBleed && <MobileBottomNav />}
-          {!isFullBleed && <VersionFooter />}
         </div>
       </div>
     </ChatContextProvider>
@@ -126,39 +122,5 @@ function AnimatedOutlet(): React.ReactElement {
     <div key={getSectionKey(location.pathname)} className="contents">
       {outlet}
     </div>
-  );
-}
-
-function VersionFooter(): React.ReactElement | null {
-  const { locale, t } = useI18n();
-  const { data } = useFetch<{ version: string; gitSha: string | null; builtAt: string }>(
-    '/api/version',
-  );
-  if (!data?.version) return null;
-  const shortSha = data.gitSha?.slice(0, 7) ?? null;
-  const builtAt = data.builtAt
-    ? new Date(data.builtAt).toLocaleString(locale === 'pt-BR' ? 'pt-BR' : 'en-US')
-    : null;
-  return (
-    <footer className="fixed bottom-2 right-3 z-10 hidden select-none md:block">
-      <TooltipProvider delayDuration={150}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/80 text-[var(--color-app-muted)] hover:border-[var(--color-app-border-strong)] hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
-              aria-label={t('shell.versionInfo', { version: data.version })}
-            >
-              <CircleHelp className="h-4 w-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent align="end" className="space-y-1 font-mono">
-            <div>{t('shell.versionInfo', { version: data.version })}</div>
-            {shortSha && <div>{t('shell.versionSha', { sha: shortSha })}</div>}
-            {builtAt && <div>{t('shell.versionBuiltAt', { date: builtAt })}</div>}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    </footer>
   );
 }
