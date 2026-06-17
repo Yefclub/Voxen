@@ -21,3 +21,12 @@ def test_parse_upload_source_url_rejects_invalid_scheme() -> None:
 
 def test_sanitize_filename_removes_paths_and_unsafe_chars() -> None:
     assert uploaded_media.sanitize_filename("../Meu áudio final!!.mp3") == "Meu_udio_final_.mp3"
+
+
+def test_guess_and_classify_upload_mime_types() -> None:
+    assert uploaded_media.guess_mime_type("aula.mp4") == "video/mp4"
+    assert uploaded_media.guess_mime_type("print.png") == "image/png"
+    assert uploaded_media.guess_mime_type("arquivo-desconhecido") == "application/octet-stream"
+    assert uploaded_media.is_video_mime("video/quicktime")
+    assert uploaded_media.is_image_mime("image/webp; charset=binary")
+    assert not uploaded_media.is_video_mime("application/pdf")

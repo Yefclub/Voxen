@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from src.openrouter import analyze_x_url, transcribe_audio
+from src.openrouter import analyze_x_url, generate_content_title, transcribe_audio
 
 
 class CaptureClient:
@@ -64,6 +64,25 @@ async def test_analyze_x_url_uses_native_x_search_with_media_understanding() -> 
         "enable_image_understanding": True,
         "enable_video_understanding": True,
     }
+
+
+async def test_generate_content_title_uses_short_title_payload() -> None:
+    client = CaptureClient()
+
+    result = await generate_content_title(
+        content="Conteúdo longo sobre estratégia de produto, métricas e roadmap.",
+        source_label="Página web",
+        fallback_title="arquivo-generico",
+        api_key="sk-test",
+        model="openai/gpt-4.1-mini",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert result.title == "Resumo do post"
+    assert client.payload is not None
+    assert client.payload["max_tokens"] == 48
+    assert client.payload["temperature"] == 0.2
+    assert "Responda apenas com o título final." in str(client.payload["messages"])
 
 
 async def test_transcribe_audio_uses_openrouter_json_base64_payload(tmp_path: Path) -> None:

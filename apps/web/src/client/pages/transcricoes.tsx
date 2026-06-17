@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { FileText, Folder, FolderPlus, Globe, Library, Loader2, Search, X } from 'lucide-react';
+import { Folder, FolderPlus, Globe, Library, Loader2, Search, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '../components/ui/card';
@@ -315,6 +315,7 @@ function TranscriptCard({
 }): React.ReactElement {
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
+  const previewSrc = t.thumbnailUrl || `/api/transcripts/${t.id}/preview`;
   return (
     <motion.div
       className="h-full"
@@ -331,26 +332,12 @@ function TranscriptCard({
           className="flex h-full min-h-[168px] flex-row overflow-hidden p-0 transition-colors duration-200 sm:min-h-[430px] sm:flex-col"
         >
           <div className="relative h-auto w-28 shrink-0 overflow-hidden bg-[var(--color-app-bg-elevated)] sm:w-full sm:aspect-video">
-            {t.thumbnailUrl ? (
-              <img
-                src={t.thumbnailUrl}
-                alt=""
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                loading="lazy"
-              />
-            ) : (
-              <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900">
-                {isDocumentTranscript ? (
-                  <FileText className="h-10 w-10 text-zinc-600" />
-                ) : t.source === 'WEB' || isVisualTranscript ? (
-                  <Globe className="h-10 w-10 text-zinc-600" />
-                ) : (
-                  <span className="font-display text-5xl font-semibold text-zinc-700 tracking-tight">
-                    {t.title[0]?.toUpperCase()}
-                  </span>
-                )}
-              </div>
-            )}
+            <img
+              src={previewSrc}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              loading="lazy"
+            />
             <div
               aria-hidden
               className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent"
@@ -369,7 +356,7 @@ function TranscriptCard({
 
           <CardContent className="flex min-h-0 flex-1 flex-col space-y-2 px-4 py-3 sm:space-y-3 sm:px-5 sm:pb-5 sm:pt-4">
             <div>
-              <h3 className="text-[15px] font-semibold leading-snug tracking-tight line-clamp-2 group-hover:text-violet-300 transition-colors font-display">
+              <h3 className="max-w-full break-words text-[15px] font-semibold leading-snug tracking-tight line-clamp-2 [overflow-wrap:anywhere] group-hover:text-violet-300 transition-colors font-display">
                 {highlightInText(t.title, highlightQuery)}
               </h3>
               <p className="min-h-[18px] text-xs text-[var(--color-app-muted)] mt-1.5 truncate">

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import mimetypes
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,18 @@ def sanitize_filename(raw: str) -> str:
     name = raw.replace("\\", "/").split("/")[-1].strip() or "arquivo"
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_")[:160]
     return safe or "arquivo"
+
+
+def guess_mime_type(filename: str) -> str:
+    return mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+
+def is_image_mime(mime_type: str | None) -> bool:
+    return bool(mime_type and mime_type.lower().split(";", 1)[0].startswith("image/"))
+
+
+def is_video_mime(mime_type: str | None) -> bool:
+    return bool(mime_type and mime_type.lower().split(";", 1)[0].startswith("video/"))
 
 
 def parse_upload_source_url(source_url: str) -> UploadedMediaRef | None:
@@ -85,3 +98,31 @@ async def extract_audio_opus(source: Path, dest: Path) -> None:
     if proc.returncode != 0:
         msg = stderr.decode("utf-8", errors="replace").strip() or "ffmpeg falhou"
         raise RuntimeError(f"Não foi possível extrair áudio do arquivo: {msg}")
+
+
+async def extract_video_preview_jpeg(source: Path, dest: Path) -> None:
+    """Extrai um frame estável para preview de vídeos enviados por upload."""
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-ss",
+        "1",
+        "-i",
+        str(source),
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale='min(1280,iw)':-2",
+        "-q:v",
+        "4",
+        "-y",
+        str(dest),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0 or not dest.exists() or dest.stat().st_size == 0:
+        msg = stderr.decode("utf-8", errors="replace").strip() or "ffmpeg falhou"
+        raise RuntimeError(f"Não foi possível gerar preview do vídeo: {msg}")

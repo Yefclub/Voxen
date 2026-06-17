@@ -35,6 +35,11 @@ type SearchRow = {
   language: string;
   transcriptionMethod: string;
   thumbnailUrl: string | null;
+  originalObjectKey: string | null;
+  originalFilename: string | null;
+  originalMimeType: string | null;
+  previewObjectKey: string | null;
+  previewMimeType: string | null;
   costUsd: string | null;
   folderId: string | null;
   folderName: string | null;
@@ -98,6 +103,11 @@ transcriptsRoutes.get('/', async (c) => {
       t.language,
       t."transcriptionMethod"::text AS "transcriptionMethod",
       t."thumbnailUrl",
+      t."originalObjectKey",
+      t."originalFilename",
+      t."originalMimeType",
+      t."previewObjectKey",
+      t."previewMimeType",
       t."costUsd"::text AS "costUsd",
       t."folderId",
       f.name AS "folderName",
@@ -131,6 +141,11 @@ transcriptsRoutes.get('/', async (c) => {
       t.language,
       t."transcriptionMethod"::text AS "transcriptionMethod",
       t."thumbnailUrl",
+      t."originalObjectKey",
+      t."originalFilename",
+      t."originalMimeType",
+      t."previewObjectKey",
+      t."previewMimeType",
       t."costUsd"::text AS "costUsd",
       t."folderId",
       f.name AS "folderName",
@@ -167,6 +182,11 @@ const TRANSCRIPT_LIST_SELECT = {
   language: true,
   transcriptionMethod: true,
   thumbnailUrl: true,
+  originalObjectKey: true,
+  originalFilename: true,
+  originalMimeType: true,
+  previewObjectKey: true,
+  previewMimeType: true,
   costUsd: true,
   folderId: true,
   folder: { select: { id: true, name: true, parentId: true } },
@@ -195,6 +215,11 @@ transcriptsRoutes.get('/:id', async (c) => {
       durationSec: true,
       publishedAt: true,
       thumbnailUrl: true,
+      originalObjectKey: true,
+      originalFilename: true,
+      originalMimeType: true,
+      previewObjectKey: true,
+      previewMimeType: true,
       language: true,
       transcriptionMethod: true,
       model: true,
@@ -242,6 +267,95 @@ transcriptsRoutes.get('/:id', async (c) => {
   })();
 
   return c.json({ transcript: { ...transcript, totalCostUsd }, markdown });
+});
+
+transcriptsRoutes.get('/:id/original', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId },
+    select: {
+      id: true,
+      originalObjectKey: true,
+      originalFilename: true,
+      originalMimeType: true,
+    },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+  if (!transcript.originalObjectKey)
+    return c.json({ error: 'Arquivo original não disponível.' }, 404);
+  try {
+    const res = await s3Client().send(
+      new GetObjectCommand({
+        Bucket: s3Bucket(),
+        Key: transcript.originalObjectKey,
+      }),
+    );
+    const filename = safeDownloadFilename(transcript.originalFilename || `${id}.bin`);
+    return new Response(await s3BodyToResponseBody(res.Body), {
+      headers: {
+        'content-type': transcript.originalMimeType || 'application/octet-stream',
+        'cache-control': 'private, max-age=300',
+        'content-disposition': `inline; filename="${filename}"`,
+      },
+    });
+  } catch (err) {
+    console.error('[transcripts] erro ao baixar original:', err);
+    return c.json({ error: 'Falha ao baixar arquivo original.' }, 502);
+  }
+});
+
+transcriptsRoutes.get('/:id/preview', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId },
+    select: {
+      id: true,
+      title: true,
+      source: true,
+      previewObjectKey: true,
+      previewMimeType: true,
+      originalObjectKey: true,
+      originalMimeType: true,
+    },
+  });
+  if (!transcript) return c.text('', 404);
+  const objectKey =
+    transcript.previewObjectKey ||
+    (transcript.originalObjectKey && transcript.originalMimeType?.startsWith('image/')
+      ? transcript.originalObjectKey
+      : null);
+  const mimeType =
+    transcript.previewObjectKey && transcript.previewMimeType
+      ? transcript.previewMimeType
+      : transcript.originalMimeType?.startsWith('image/')
+        ? transcript.originalMimeType
+        : null;
+  if (objectKey && mimeType) {
+    try {
+      const res = await s3Client().send(
+        new GetObjectCommand({
+          Bucket: s3Bucket(),
+          Key: objectKey,
+        }),
+      );
+      return new Response(await s3BodyToResponseBody(res.Body), {
+        headers: {
+          'content-type': mimeType,
+          'cache-control': 'private, max-age=300',
+        },
+      });
+    } catch (err) {
+      console.error('[transcripts] erro ao baixar preview:', err);
+    }
+  }
+  return new Response(renderPreviewSvg(transcript.title, transcript.source), {
+    headers: {
+      'content-type': 'image/svg+xml; charset=utf-8',
+      'cache-control': 'private, max-age=300',
+    },
+  });
 });
 
 const LinkedNoteBody = z.object({
@@ -386,7 +500,14 @@ transcriptsRoutes.delete('/:id', async (c) => {
   const id = c.req.param('id');
   const transcript = await db.transcript.findFirst({
     where: { id, userId },
-    select: { id: true, status: true, mdPath: true, title: true },
+    select: {
+      id: true,
+      status: true,
+      mdPath: true,
+      title: true,
+      originalObjectKey: true,
+      previewObjectKey: true,
+    },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
   if (transcript.status !== 'TRASH') {
@@ -394,10 +515,14 @@ transcriptsRoutes.delete('/:id', async (c) => {
   }
 
   try {
-    await deleteS3Object(transcript.mdPath);
+    await Promise.all(
+      [transcript.mdPath, transcript.previewObjectKey, transcript.originalObjectKey]
+        .filter((key): key is string => Boolean(key))
+        .map((key) => deleteS3Object(key)),
+    );
   } catch (err) {
-    console.error('[transcripts] erro ao apagar .md do S3:', err);
-    return c.json({ error: 'Falha ao apagar arquivo no armazenamento S3.' }, 502);
+    console.error('[transcripts] erro ao apagar objetos no S3:', err);
+    return c.json({ error: 'Falha ao apagar arquivos no armazenamento S3.' }, 502);
   }
 
   await db.transcript.delete({ where: { id } });
@@ -490,4 +615,79 @@ function mapSearchRow(row: SearchRow): SearchRow & { folder: { id: string; name:
     ...row,
     folder: row.folderId && row.folderName ? { id: row.folderId, name: row.folderName } : null,
   };
+}
+
+async function s3BodyToResponseBody(body: unknown): Promise<BodyInit> {
+  const maybeBody = body as {
+    transformToWebStream?: () => ReadableStream<Uint8Array>;
+    transformToByteArray?: () => Promise<Uint8Array>;
+  } | null;
+  if (maybeBody?.transformToWebStream) return maybeBody.transformToWebStream();
+  if (maybeBody?.transformToByteArray) {
+    const bytes = await maybeBody.transformToByteArray();
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+  return new ArrayBuffer(0);
+}
+
+function safeDownloadFilename(value: string): string {
+  return value
+    .replace(/[\\/\r\n"]/g, '_')
+    .replace(/[^\w .()-]+/g, '_')
+    .slice(0, 160);
+}
+
+function renderPreviewSvg(title: string, source: string): string {
+  const cleanTitle = escapeXml(title).slice(0, 120);
+  const cleanSource = escapeXml(sourceLabel(source));
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="${cleanTitle}">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#202326"/>
+      <stop offset="0.55" stop-color="#191b1d"/>
+      <stop offset="1" stop-color="#17362f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="78%" cy="22%" r="55%">
+      <stop stop-color="#10b981" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#glow)"/>
+  <rect x="72" y="72" width="1136" height="576" rx="44" fill="#ffffff" fill-opacity="0.035" stroke="#ffffff" stroke-opacity="0.12"/>
+  <text x="112" y="160" fill="#9ca3af" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="700" letter-spacing="8">${cleanSource}</text>
+  <foreignObject x="112" y="230" width="960" height="250">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Inter, Arial, sans-serif; color: #f8fafc; font-size: 62px; font-weight: 750; line-height: 1.08; overflow-wrap: anywhere;">${cleanTitle}</div>
+  </foreignObject>
+  <circle cx="1112" cy="560" r="58" fill="#10b981" fill-opacity="0.16" stroke="#34d399" stroke-opacity="0.5"/>
+  <path d="M1095 535v50l44-25-44-25Z" fill="#6ee7b7"/>
+</svg>`;
+}
+
+function sourceLabel(source: string): string {
+  if (source === 'WEB') return 'PÁGINA WEB';
+  if (source === 'UPLOAD') return 'UPLOAD';
+  if (source === 'X') return 'X';
+  return source;
+}
+
+function escapeXml(value: string): string {
+  return value.replace(/[<>&"']/g, (ch) => {
+    switch (ch) {
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '&':
+        return '&amp;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&apos;';
+      default:
+        return ch;
+    }
+  });
 }

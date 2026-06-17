@@ -35,6 +35,15 @@ def test_upload_key_format() -> None:
     )
 
 
+def test_upload_preview_key_format() -> None:
+    assert (
+        storage.upload_preview_key(
+            "cuser01", "123e4567-e89b-12d3-a456-426614174000", "aula final!!.mp4"
+        )
+        == "workspaces/cuser01/uploads/123e4567-e89b-12d3-a456-426614174000/aula_final.preview.jpg"
+    )
+
+
 def test_env_helpers_fallback_garage() -> None:
     assert storage.s3_bucket() == "voxen-test-bucket"
     assert storage.s3_endpoint() == "http://garage:3900"
@@ -74,3 +83,28 @@ async def test_put_markdown_calls_s3_put_object_with_expected_args() -> None:
     assert kwargs["Key"] == "workspaces/u1/transcripts/t1.md"
     assert kwargs["Body"] == b"hello"
     assert kwargs["ContentType"].startswith("text/markdown")
+
+
+async def test_put_file_calls_s3_put_object_with_expected_args(tmp_path) -> None:  # noqa: ANN001
+    preview = tmp_path / "preview.jpg"
+    preview.write_bytes(b"jpeg")
+    fake_client = MagicMock()
+    fake_client.put_object = AsyncMock(return_value={})
+    fake_ctx = MagicMock()
+    fake_ctx.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch.object(storage, "s3_session") as mock_session:
+        mock_session.return_value.client.return_value = fake_ctx
+        await storage.put_file(
+            key="workspaces/u1/uploads/up1/preview.jpg",
+            path=preview,
+            content_type="image/jpeg",
+        )
+
+    fake_client.put_object.assert_awaited_once()
+    kwargs = fake_client.put_object.await_args.kwargs
+    assert kwargs["Bucket"] == "voxen-test-bucket"
+    assert kwargs["Key"] == "workspaces/u1/uploads/up1/preview.jpg"
+    assert kwargs["Body"] == b"jpeg"
+    assert kwargs["ContentType"] == "image/jpeg"

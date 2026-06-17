@@ -202,6 +202,11 @@ model Transcript {
   durationSec         Int
   publishedAt         DateTime?
   thumbnailUrl        String?
+  originalObjectKey   String?
+  originalFilename    String?
+  originalMimeType    String?
+  previewObjectKey    String?
+  previewMimeType     String?
   language            String              // ISO 639-1
   transcriptionMethod TranscriptionMethod
   model               String?             // null se SUBTITLES

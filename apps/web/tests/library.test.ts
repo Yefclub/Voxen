@@ -151,6 +151,53 @@ describeIfDb('library organization API', () => {
     expect(trashed.trashedAt).not.toBeNull();
   });
 
+  it('serves authenticated fallback previews and hides media from other users', async () => {
+    await signUp('media-owner@voxen.local', 'senha-super-segura-123', 'Media Owner');
+    const signin = await signIn('media-owner@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'media-owner@voxen.local' } });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/no-preview',
+        title: 'Título sem imagem externa',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/no-preview.md`,
+        plainText: 'texto base',
+        frontmatter: {},
+      },
+    });
+
+    const preview = await app.fetch(
+      new Request(`http://localhost/api/transcripts/${transcript.id}/preview`, {
+        headers: { cookie },
+      }),
+    );
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get('content-type')).toContain('image/svg+xml');
+    expect(await preview.text()).toContain('Título sem imagem externa');
+
+    const original = await app.fetch(
+      new Request(`http://localhost/api/transcripts/${transcript.id}/original`, {
+        headers: { cookie },
+      }),
+    );
+    expect(original.status).toBe(404);
+
+    await signUp('media-other@voxen.local', 'senha-super-segura-456', 'Media Other');
+    const otherSignin = await signIn('media-other@voxen.local', 'senha-super-segura-456');
+    const otherCookie = extractCookie(otherSignin);
+    const foreignPreview = await app.fetch(
+      new Request(`http://localhost/api/transcripts/${transcript.id}/preview`, {
+        headers: { cookie: otherCookie },
+      }),
+    );
+    expect(foreignPreview.status).toBe(404);
+  });
+
   it('requires trash before hard delete and purges transcript records', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
