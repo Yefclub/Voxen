@@ -658,6 +658,21 @@ function FloatingTranscriptChat({
   const [messages, setMessages] = useState<FloatingChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const quickPrompts = [
+    {
+      label: t('library.inlineChatQuickSummary'),
+      prompt: t('library.inlineChatQuickSummaryPrompt'),
+    },
+    {
+      label: t('library.inlineChatQuickActions'),
+      prompt: t('library.inlineChatQuickActionsPrompt'),
+    },
+    {
+      label: t('library.inlineChatQuickQuotes'),
+      prompt: t('library.inlineChatQuickQuotesPrompt'),
+    },
+  ];
 
   useEffect(() => {
     if (!open) return;
@@ -762,73 +777,166 @@ function FloatingTranscriptChat({
     }
   }
 
+  function chooseQuickPrompt(prompt: string): void {
+    setInput(prompt);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
   return (
     <>
-      <Button
-        type="button"
-        variant="primary"
-        size="icon"
-        aria-label={open ? t('library.closeInlineChat') : t('library.openInlineChat')}
-        className="fixed right-4 z-50 h-14 w-14 rounded-full shadow-2xl shadow-emerald-950/40 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6 sm:right-6"
-        onClick={() => setOpen((value) => !value)}
-      >
-        {open ? <XIcon className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
-      </Button>
+      {!open && (
+        <motion.button
+          type="button"
+          aria-label={t('library.openInlineChat')}
+          className="fixed right-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-emerald-300/20 bg-[var(--color-app-bg-elevated)] text-zinc-100 shadow-2xl shadow-emerald-950/45 transition-colors bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6 sm:right-6"
+          whileHover={{ scale: 1.04 }}
+          whileTap={{ scale: 0.96 }}
+          onClick={() => setOpen(true)}
+        >
+          <span className="absolute inset-0 bg-emerald-400/20 opacity-70 blur-xl" aria-hidden />
+          <img
+            src="/voxen-256.png"
+            alt=""
+            width={40}
+            height={40}
+            draggable={false}
+            className="relative h-10 w-10 select-none rounded-xl"
+          />
+        </motion.button>
+      )}
       {open && (
-        <div className="fixed inset-x-3 bottom-[calc(10rem+env(safe-area-inset-bottom))] z-50 max-h-[68dvh] overflow-hidden rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] shadow-2xl shadow-black/40 sm:inset-x-auto sm:bottom-24 sm:right-6 sm:w-[420px]">
-          <div className="flex items-center justify-between border-b border-[var(--color-app-border)] px-4 py-3">
-            <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--color-app-muted)]">
-                {t('library.inlineChatEyebrow')}
-              </p>
-              <p className="truncate text-sm font-semibold text-zinc-100">{transcript.title}</p>
+        <motion.div
+          initial={{ opacity: 0, y: 18, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          className="fixed inset-x-3 bottom-[calc(10rem+env(safe-area-inset-bottom))] z-50 flex max-h-[68dvh] flex-col overflow-hidden rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] shadow-2xl shadow-black/45 sm:inset-x-auto sm:bottom-24 sm:right-6 sm:w-[420px] sm:max-h-[620px]"
+        >
+          <div className="relative overflow-hidden border-b border-[var(--color-app-border)] px-4 py-3">
+            <div
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,oklch(73%_0.16_159_/_0.18),transparent_42%),radial-gradient(circle_at_100%_0%,oklch(72%_0.18_290_/_0.16),transparent_40%)]"
+              aria-hidden
+            />
+            <div className="relative flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-950/20">
+                  <img
+                    src="/voxen-256.png"
+                    alt=""
+                    width={32}
+                    height={32}
+                    draggable={false}
+                    className="h-8 w-8 select-none rounded-lg"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-zinc-100">
+                      {t('library.inlineChatAssistant')}
+                    </p>
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  </div>
+                  <p className="truncate text-xs text-[var(--color-app-muted)]">
+                    {transcript.title}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-zinc-100/10 hover:text-zinc-100"
+                aria-label={t('library.closeInlineChat')}
+                onClick={() => setOpen(false)}
+              >
+                <XIcon className="h-4 w-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-zinc-100"
-              aria-label={t('library.closeInlineChat')}
-              onClick={() => setOpen(false)}
-            >
-              <XIcon className="h-4 w-4" />
-            </button>
           </div>
-          <div ref={scrollRef} className="max-h-[44dvh] space-y-3 overflow-y-auto px-4 py-4">
+          <div
+            ref={scrollRef}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4"
+          >
             {messages.length === 0 && (
-              <div className="rounded-lg border border-dashed border-[var(--color-app-border)] px-4 py-6 text-center text-sm text-[var(--color-app-muted)]">
-                {t('library.inlineChatEmpty')}
+              <div className="space-y-3">
+                <div className="flex gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
+                    <MessageCircle className="h-4 w-4 text-emerald-300" />
+                  </div>
+                  <div className="rounded-2xl rounded-tl-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/70 px-3 py-2.5 text-sm leading-relaxed text-zinc-200">
+                    {t('library.inlineChatEmpty')}
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {quickPrompts.map((prompt) => (
+                    <button
+                      key={prompt.label}
+                      type="button"
+                      className="min-h-9 rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-2 text-xs font-medium text-zinc-200 transition-colors hover:border-emerald-400/40 hover:bg-emerald-500/10 hover:text-emerald-100"
+                      onClick={() => chooseQuickPrompt(prompt.prompt)}
+                    >
+                      {prompt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {messages.map((message) => (
               <div
                 key={message.id}
                 className={cn(
-                  'max-w-[92%] rounded-xl px-3 py-2 text-sm leading-relaxed',
+                  'flex gap-2',
                   message.role === 'user'
-                    ? 'ml-auto bg-emerald-500 text-zinc-950'
-                    : 'mr-auto bg-[var(--color-app-surface)] text-zinc-100',
+                    ? 'ml-auto max-w-[88%] flex-row-reverse'
+                    : 'mr-auto max-w-[92%]',
                 )}
               >
-                {message.content || message.pending
-                  ? message.content || <Loader2 className="h-4 w-4 animate-spin" />
-                  : null}
+                {message.role === 'assistant' && (
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
+                    <img
+                      src="/voxen-256.png"
+                      alt=""
+                      width={22}
+                      height={22}
+                      draggable={false}
+                      className="h-[22px] w-[22px] select-none rounded-md"
+                    />
+                  </div>
+                )}
+                <div
+                  className={cn(
+                    'min-w-0 rounded-2xl px-3 py-2 text-sm leading-relaxed',
+                    message.role === 'user'
+                      ? 'rounded-tr-md bg-emerald-400 text-emerald-950'
+                      : 'rounded-tl-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-zinc-100',
+                  )}
+                >
+                  {message.content || message.pending
+                    ? message.content || <Loader2 className="h-4 w-4 animate-spin" />
+                    : null}
+                </div>
               </div>
             ))}
           </div>
           <form
-            className="flex gap-2 border-t border-[var(--color-app-border)] p-3"
+            className="flex gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-bg)]/35 p-3"
             onSubmit={(event) => {
               event.preventDefault();
               void send();
             }}
           >
             <input
+              ref={inputRef}
               value={input}
               onChange={(event) => setInput(event.target.value)}
               placeholder={t('library.inlineChatPlaceholder')}
-              className="min-w-0 flex-1 rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--color-app-border)] bg-zinc-100/[0.04] px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-500/15"
               disabled={sending}
             />
-            <Button type="submit" variant="primary" size="icon" disabled={!input.trim() || sending}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="icon"
+              className="h-10 w-10 rounded-xl"
+              disabled={!input.trim() || sending}
+            >
               {sending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -836,7 +944,7 @@ function FloatingTranscriptChat({
               )}
             </Button>
           </form>
-        </div>
+        </motion.div>
       )}
     </>
   );

@@ -126,6 +126,36 @@ describeIfDb('auth + admin approval flow', () => {
     expect(userLogin.status).toBe(200);
   });
 
+  it('admin pode copiar prompt MCP com URL atual e token ativo', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    const rotate = await app.fetch(
+      new Request('http://localhost/api/admin/mcp/rotate', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(rotate.status).toBe(200);
+    const rotated = (await rotate.json()) as { token: string };
+
+    const promptRes = await app.fetch(
+      new Request('http://localhost/api/admin/mcp/prompt', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ appUrl: 'https://voxen.local/admin/integracoes' }),
+      }),
+    );
+    expect(promptRes.status).toBe(200);
+    const body = (await promptRes.json()) as { prompt: string };
+    expect(body.prompt).toContain('https://voxen.local');
+    expect(body.prompt).toContain('https://voxen.local/mcp');
+    expect(body.prompt).toContain(rotated.token);
+    expect(body.prompt).toContain('Voxen');
+  });
+
   it('user comum recebe 403 em /api/admin/usuarios', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     await signUp('user@voxen.local', 'senha-super-segura-456', 'User');

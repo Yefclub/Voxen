@@ -4,7 +4,7 @@ import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { X } from 'lucide-react';
 import type { MeUser } from '../../lib/types';
 import { useI18n } from '../../lib/i18n';
-import { SidebarModeBody, SidebarSignOut } from './sidebar';
+import { SidebarModeBody, SidebarSignOut, SidebarVersionInfo } from './sidebar';
 
 const DRAWER_WIDTH = 280;
 
@@ -129,6 +129,7 @@ export function MobileNavDrawer({
           <LayoutGroup id="mobile-nav">
             <SidebarModeBody user={user} />
           </LayoutGroup>
+          <SidebarVersionInfo />
           <SidebarSignOut />
         </motion.aside>
       )}

@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ChevronDown,
   DollarSign,
+  GitBranch,
   LayoutDashboard,
   FolderPlus,
   ListVideo,
@@ -31,7 +32,7 @@ import { useConversations, type ConvSummary } from '../../lib/use-conversations'
 import { useNotes } from '../../lib/use-notes';
 import { useI18n, type I18nKey } from '../../lib/i18n';
 import { apiPost } from '../../lib/api';
-import { useMe } from '../../lib/hooks';
+import { useFetch, useMe } from '../../lib/hooks';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { NotesTree } from '../notes/notes-tree';
 
@@ -138,11 +139,66 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
           >
             <SidebarHeader onCollapse={toggle} />
             <SidebarModeBody user={user} />
+            <SidebarVersionInfo />
             <SidebarSignOut />
           </motion.aside>
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+interface VersionPayload {
+  version: string;
+  gitSha: string | null;
+  builtAt: string;
+}
+
+export function SidebarVersionInfo(): React.ReactElement {
+  const { locale, t } = useI18n();
+  const { data } = useFetch<VersionPayload>('/api/version');
+  const shortSha = data?.gitSha?.slice(0, 7) ?? null;
+  const builtAt = data?.builtAt
+    ? new Date(data.builtAt).toLocaleString(locale === 'pt-BR' ? 'pt-BR' : 'en-US')
+    : null;
+  const title = data?.version
+    ? [
+        t('shell.versionInfo', { version: data.version }),
+        shortSha ? t('shell.versionSha', { sha: shortSha }) : null,
+        builtAt ? t('shell.versionBuiltAt', { date: builtAt }) : null,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : t('shell.versionFallback');
+
+  return (
+    <div className="shrink-0 border-t border-[var(--color-app-border)] px-3 py-2">
+      <div
+        className="flex min-h-12 items-center gap-3 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/35 px-3 py-2"
+        title={title}
+      >
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-300">
+          <GitBranch className="h-3.5 w-3.5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
+            {t('shell.versionBuildLabel')}
+          </p>
+          {data?.version ? (
+            <p className="truncate font-mono text-[11px] text-zinc-200">
+              v{data.version}
+              {shortSha ? (
+                <span className="text-[var(--color-app-muted)]"> · {shortSha}</span>
+              ) : null}
+            </p>
+          ) : (
+            <p className="truncate text-[11px] text-[var(--color-app-muted)]">
+              {t('shell.versionFallback')}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
