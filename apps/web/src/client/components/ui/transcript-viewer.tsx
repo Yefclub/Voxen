@@ -62,7 +62,7 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
         </button>
       </div>
       <article className="prose-voxen">
-        <p className="leading-[1.85] text-[15.5px] text-[var(--color-app-subtle)] text-pretty">
+        <p className="leading-[1.85] text-[15.5px] text-[var(--color-app-subtle)] text-pretty break-words">
           {segments.map((seg, i) => (
             <SegmentSpan key={i} seg={seg} />
           ))}

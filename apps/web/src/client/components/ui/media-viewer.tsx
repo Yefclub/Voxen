@@ -80,7 +80,7 @@ export function UploadMediaViewer({
               src={src}
               alt={title}
               onClick={() => setLightbox(false)}
-              className="max-h-[88vh] w-full cursor-zoom-out rounded-lg object-contain"
+              className="max-h-[88dvh] w-full cursor-zoom-out rounded-lg object-contain"
             />
           </DialogContent>
         </Dialog>

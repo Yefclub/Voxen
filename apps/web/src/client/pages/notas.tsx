@@ -42,7 +42,7 @@ export function NotasPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-10 mx-auto max-w-5xl space-y-8">
+      <div className="px-4 sm:px-8 py-8 sm:py-10 mx-auto max-w-5xl space-y-8">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <Library className="h-3.5 w-3.5 text-violet-400" />
@@ -194,7 +194,7 @@ function NoteEditor({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
     >
-      <Card elevated className="overflow-hidden p-0 min-h-[calc(100vh-280px)] flex flex-col">
+      <Card elevated className="overflow-hidden p-0 min-h-[calc(100dvh-280px)] flex flex-col">
         <div className="flex items-center gap-3 px-6 py-4 border-b border-[var(--color-app-border)]">
           <input
             type="text"
@@ -252,7 +252,7 @@ function NoteEditor({
               )}
             </div>
           ) : (
-            <div className="min-h-[55vh] h-full">
+            <div className="min-h-[55dvh] h-full">
               <MarkdownEditor
                 value={content}
                 onChange={(v) => {
