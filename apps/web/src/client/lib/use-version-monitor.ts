@@ -29,9 +29,10 @@ async function applyUpdate(): Promise<void> {
         };
         // Quando o SW novo assume o controle, os assets servidos já são os novos.
         navigator.serviceWorker.addEventListener('controllerchange', reloadOnce, { once: true });
+        // No modo generateSW + autoUpdate (vite-plugin-pwa), o SW novo já chama
+        // skipWaiting()/clientsClaim() sozinho — basta buscá-lo. Não há handler de
+        // mensagem SKIP_WAITING pra postar (isso é do modo prompt/injectManifest).
         await reg.update();
-        // autoUpdate já faz skipWaiting; se houver um SW esperando, força assumir.
-        reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
         // Fallback: se nenhum SW novo assumir em 3s, recarrega mesmo assim.
         setTimeout(reloadOnce, 3000);
         return;
