@@ -27,6 +27,28 @@ describe('POST /mcp (auth)', () => {
     const res = await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, 'token-errado');
     expect(res.status).toBe(401);
   });
+
+  it('rejeita Origin divergente (defesa DNS rebinding)', async () => {
+    const prev = process.env.APP_BASE_URL;
+    process.env.APP_BASE_URL = 'https://voxen.example.com';
+    try {
+      const res = await app.fetch(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json',
+            origin: 'https://evil.example.com',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+        }),
+      );
+      expect(res.status).toBe(403);
+    } finally {
+      if (prev === undefined) delete process.env.APP_BASE_URL;
+      else process.env.APP_BASE_URL = prev;
+    }
+  });
 });
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
@@ -100,5 +122,20 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(Array.isArray(data.result?.structuredContent?.transcripts)).toBe(true);
     expect(data.result?.structuredContent?.transcripts?.length).toBe(0);
     expect(data.result?.structuredContent?.nextCursor).toBe(null);
+  });
+
+  it('tools/call em transcript inexistente retorna isError (não erro de protocolo)', async () => {
+    const res = await call(
+      {
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'tools/call',
+        params: { name: 'voxen_read_transcript', arguments: { transcript_id: 'nao-existe' } },
+      },
+      TOKEN,
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { result?: { isError?: boolean } };
+    expect(data.result?.isError).toBe(true);
   });
 });
