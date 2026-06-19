@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { Maximize2, Music2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from './dialog';
 import { useI18n } from '../../lib/i18n';
+import { uploadMediaKind } from '../../lib/media-kind';
 
 interface UploadMediaViewerProps {
   transcriptId: string;
@@ -27,8 +28,9 @@ export function UploadMediaViewer({
   const { t } = useI18n();
   const [lightbox, setLightbox] = useState(false);
   const src = `/api/transcripts/${transcriptId}/original`;
+  const kind = uploadMediaKind(mimeType);
 
-  if (mimeType.startsWith('video/')) {
+  if (kind === 'video') {
     return (
       <video
         controls
@@ -40,7 +42,7 @@ export function UploadMediaViewer({
     );
   }
 
-  if (mimeType.startsWith('audio/')) {
+  if (kind === 'audio') {
     return (
       <div className="flex flex-col gap-3 p-5">
         <div className="flex items-center gap-2 text-sm text-[var(--color-app-muted)]">
@@ -52,7 +54,7 @@ export function UploadMediaViewer({
     );
   }
 
-  if (mimeType.startsWith('image/')) {
+  if (kind === 'image') {
     return (
       <>
         <button
@@ -74,7 +76,12 @@ export function UploadMediaViewer({
         <Dialog open={lightbox} onOpenChange={setLightbox}>
           <DialogContent className="max-w-[92vw] border-0 bg-transparent p-0 shadow-none sm:max-w-5xl">
             <DialogTitle className="sr-only">{title}</DialogTitle>
-            <img src={src} alt={title} className="max-h-[88vh] w-full rounded-lg object-contain" />
+            <img
+              src={src}
+              alt={title}
+              onClick={() => setLightbox(false)}
+              className="max-h-[88vh] w-full cursor-zoom-out rounded-lg object-contain"
+            />
           </DialogContent>
         </Dialog>
       </>

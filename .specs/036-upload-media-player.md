@@ -44,6 +44,12 @@ o seek de vídeo e faz o Safari/iOS recusar a tag `<video>`.
 
 - WHEN a mídia é servida THEN o acesso SHALL continuar exigindo sessão autenticada
   e validar ownership de `transcriptId` (sem URL pública permanente).
+- WHEN o MIME do upload é mídia segura (`video/*`, `audio/*`, `image/png|jpeg|webp|gif`)
+  THEN a resposta SHALL usar `Content-Disposition: inline`; para qualquer outro tipo
+  (ex.: `text/html`, `image/svg+xml`, `application/pdf`) SHALL usar `attachment`
+  (download), evitando execução same-origin de upload malicioso (XSS armazenado).
+- WHEN qualquer mídia original é servida THEN a resposta SHALL incluir
+  `X-Content-Type-Options: nosniff`.
 
 ## Fora de escopo
 

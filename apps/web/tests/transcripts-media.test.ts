@@ -20,6 +20,8 @@ describe('buildOriginalResponseInit', () => {
     expect(init.headers['content-length']).toBe('1000');
     expect(init.headers['content-type']).toBe('video/mp4');
     expect(init.headers['content-range']).toBeUndefined();
+    expect(init.headers['content-disposition']?.startsWith('inline')).toBe(true);
+    expect(init.headers['x-content-type-options']).toBe('nosniff');
   });
 
   it('206 + content-range quando o S3 satisfaz o Range', () => {
@@ -54,4 +56,30 @@ describe('buildOriginalResponseInit', () => {
     });
     expect(init.headers['content-type']).toBe('audio/mpeg');
   });
+});
+
+// Segurança: upload do usuário é não-confiável. Só mídia segura vai inline; o
+// resto (html/svg/pdf) vira attachment, e nosniff sempre presente. Evita XSS
+// armazenado ao servir um .html malicioso same-origin.
+describe('buildOriginalResponseInit — disposição segura', () => {
+  const cases: [string, 'inline' | 'attachment'][] = [
+    ['video/mp4', 'inline'],
+    ['audio/mpeg', 'inline'],
+    ['image/png', 'inline'],
+    ['image/jpeg', 'inline'],
+    ['image/webp', 'inline'],
+    ['image/gif', 'inline'],
+    ['image/svg+xml', 'attachment'],
+    ['text/html', 'attachment'],
+    ['application/xhtml+xml', 'attachment'],
+    ['application/pdf', 'attachment'],
+    ['application/octet-stream', 'attachment'],
+  ];
+  for (const [mime, disposition] of cases) {
+    it(`${mime} -> ${disposition}`, () => {
+      const init = buildOriginalResponseInit({ fallbackMime: mime, filename: 'f' });
+      expect(init.headers['content-disposition']?.startsWith(disposition)).toBe(true);
+      expect(init.headers['x-content-type-options']).toBe('nosniff');
+    });
+  }
 });

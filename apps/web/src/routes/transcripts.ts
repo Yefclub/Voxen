@@ -287,7 +287,10 @@ transcriptsRoutes.get('/:id/original', async (c) => {
   // Range: o player de vídeo/áudio (e o Safari/iOS obrigatoriamente) precisa de
   // 206 + Accept-Ranges pra fazer seek. Repassamos o header pro S3/MinIO, que
   // fatia os bytes, e relayamos Content-Range/Content-Length da resposta dele.
-  const rangeHeader = c.req.header('range');
+  // Só single-range: multi-range (vírgula) viraria multipart/byteranges, que não
+  // sabemos relayar — nesse caso servimos o arquivo inteiro (200).
+  const rawRange = c.req.header('range');
+  const rangeHeader = rawRange && !rawRange.includes(',') ? rawRange : undefined;
   try {
     const res = await s3Client().send(
       new GetObjectCommand({
@@ -655,11 +658,17 @@ export function buildOriginalResponseInit(opts: {
   fallbackMime: string | null;
   filename: string;
 }): { status: number; headers: Record<string, string> } {
+  const contentType = opts.fallbackMime || opts.s3ContentType || 'application/octet-stream';
+  // Conteúdo é upload do usuário (NÃO confiável): só mídia segura vai `inline` no
+  // contexto same-origin da app; o resto (text/html, image/svg+xml, pdf...) vira
+  // `attachment` (download), evitando XSS armazenado. `nosniff` impede o browser
+  // de reinterpretar o MIME e executar como HTML.
   const headers: Record<string, string> = {
-    'content-type': opts.fallbackMime || opts.s3ContentType || 'application/octet-stream',
+    'content-type': contentType,
     'cache-control': 'private, max-age=300',
-    'content-disposition': `inline; filename="${opts.filename}"`,
+    'content-disposition': `${inlineSafeMime(contentType) ? 'inline' : 'attachment'}; filename="${opts.filename}"`,
     'accept-ranges': 'bytes',
+    'x-content-type-options': 'nosniff',
   };
   if (opts.s3ContentLength != null) headers['content-length'] = String(opts.s3ContentLength);
   if (opts.rangeHeader && opts.s3ContentRange) {
@@ -667,6 +676,15 @@ export function buildOriginalResponseInit(opts: {
     return { status: 206, headers };
   }
   return { status: 200, headers };
+}
+
+// Tipos servidos `inline` (renderizados no browser same-origin). Restrito a mídia
+// que o player usa; text/html, image/svg+xml e pdf ficam de fora (vão como
+// attachment) porque podem executar script no contexto da aplicação.
+function inlineSafeMime(contentType: string): boolean {
+  const ct = contentType.toLowerCase().split(';')[0]?.trim() ?? '';
+  if (ct.startsWith('video/') || ct.startsWith('audio/')) return true;
+  return ct === 'image/png' || ct === 'image/jpeg' || ct === 'image/webp' || ct === 'image/gif';
 }
 
 function safeDownloadFilename(value: string): string {
