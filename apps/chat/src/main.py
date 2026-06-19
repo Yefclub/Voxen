@@ -183,6 +183,66 @@ async def health_deep() -> JSONResponse:
     return JSONResponse({"ok": all_ok, "checks": checks}, status_code=200 if all_ok else 503)
 
 
+class TitleRequest(BaseModel):
+    message: str
+
+
+@app.post("/title")
+async def generate_title(
+    body: TitleRequest,
+    x_voxen_user_id: str | None = Header(default=None, alias="X-Voxen-User-Id"),
+) -> JSONResponse:
+    """Título curto pra uma conversa a partir da 1ª mensagem do user.
+
+    Uma chamada barata, sem reasoning (tarefa trivial). Best-effort: qualquer
+    erro/sem-setup devolve título vazio (o web mantém o fallback).
+    """
+    msg = (body.message or "").strip()[:2000]
+    if not msg:
+        return JSONResponse({"title": ""})
+    api_key = await voxen_settings.get_openrouter_api_key()
+    model = await voxen_settings.get_default_chat_model()
+    if not api_key or not model:
+        return JSONResponse({"title": ""})
+    model = model[:-7] if model.endswith(":online") else model
+    client = AsyncOpenAI(api_key=api_key, base_url=OR_BASE_URL)
+    try:
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Gere um título MUITO curto (no máximo 6 palavras, sem aspas e sem "
+                        "ponto final) que resuma o tema da conversa a partir da primeira "
+                        "mensagem do usuário. Responda APENAS o título, no idioma da mensagem."
+                    ),
+                },
+                {"role": "user", "content": msg},
+            ],
+            max_tokens=24,
+            extra_body={"reasoning": {"effort": "none"}, "usage": {"include": True}},
+        )
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"title": ""})
+    raw = resp.choices[0].message.content if resp.choices else None
+    title = (raw or "").strip().strip('"').strip()[:120]
+    if x_voxen_user_id and resp.usage:
+        try:
+            cost = getattr(resp.usage, "cost", None)
+            await db.insert_cost_event(
+                user_id=x_voxen_user_id,
+                model=model,
+                tokens_in=resp.usage.prompt_tokens or 0,
+                tokens_out=resp.usage.completion_tokens or 0,
+                cost_usd=Decimal(str(cost)) if cost is not None else Decimal("0"),
+                meta={"source": "title"},
+            )
+        except Exception as e:  # noqa: BLE001
+            log.warning("title-cost-event-failed", error=str(e))
+    return JSONResponse({"title": title})
+
+
 class ChatMessage(BaseModel):
     role: str
     content: str
