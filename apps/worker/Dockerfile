@@ -36,7 +36,11 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 # yt-dlp depende de EJS + runtime JS para suporte completo ao YouTube atual.
 # O binario `deno` vem do extra `yt-dlp[deno]` instalado no virtualenv.
-RUN deno --version >/dev/null && python -m yt_dlp --version >/dev/null
+# `curl_cffi` (extra `yt-dlp[curl-cffi]`) habilita impersonation de browser,
+# exigida por extractors como TikTok — falha o build se o backend sumir.
+RUN deno --version >/dev/null \
+    && python -m yt_dlp --version >/dev/null \
+    && python -c "import curl_cffi"
 
 # Healthcheck: ping no Redis (worker depende dele pra pub/sub de jobs).
 # `pgrep` não está disponível em python:3.13-slim e instalar procps puxa CVEs.
