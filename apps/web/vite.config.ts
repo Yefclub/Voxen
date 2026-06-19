@@ -150,6 +150,18 @@ export default defineConfig({
     target: 'es2022',
     // Manifest pra Hono servir assets com hash em prod.
     manifest: true,
+    rollupOptions: {
+      output: {
+        // Isola o renderer de markdown (Streamdown + deps de parsing) em chunk
+        // próprio. Mantém o bundle principal abaixo do limite por-arquivo de
+        // precache do PWA (2 MiB) e tira o markdown do caminho crítico. As deps
+        // pesadas opt-in do Streamdown (mermaid/katex/shiki) não são habilitadas
+        // e o Rollup as tree-shaka para stubs (~100 B), fora do bundle real.
+        manualChunks: {
+          markdown: ['streamdown'],
+        },
+      },
+    },
   },
   server: {
     host: '0.0.0.0',
