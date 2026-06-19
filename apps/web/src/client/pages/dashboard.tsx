@@ -77,7 +77,7 @@ export function DashboardPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-12 mx-auto max-w-6xl space-y-12">
+      <div className="px-4 sm:px-8 py-8 sm:py-12 mx-auto max-w-6xl space-y-12">
         {/* Header */}
         <header className="flex items-end justify-between gap-6 flex-wrap">
           <div className="space-y-2">
@@ -229,7 +229,7 @@ function ActivityRow({
         className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 focus:outline-none focus-visible:bg-[var(--color-app-surface-hover)]"
       >
         <SourcePreview source={source} ytId={ytId} isUpload={isUpload} />
-        <Badge variant={variant} className="shrink-0 w-28 justify-center">
+        <Badge variant={variant} className="shrink-0 min-w-28 justify-center text-center">
           {label}
         </Badge>
         <div className="flex-1 min-w-0">

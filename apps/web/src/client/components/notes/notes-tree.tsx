@@ -153,7 +153,7 @@ function TreeNode({
               e.stopPropagation();
               onDelete(node);
             }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-[var(--color-app-muted)] hover:text-rose-400"
+            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-0.5 rounded text-[var(--color-app-muted)] hover:text-rose-400"
             aria-label={t('common.delete')}
           >
             <Trash2 className="h-3 w-3" />

@@ -406,7 +406,11 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           <h1 className="max-w-full break-words font-display text-2xl font-semibold leading-[1.08] tracking-[-0.02em] text-balance [overflow-wrap:anywhere] sm:text-4xl lg:text-5xl">
             {t.title}
           </h1>
-          {t.channel && <p className="text-[15px] text-[var(--color-app-muted)]">{t.channel}</p>}
+          {t.channel && (
+            <p className="text-[15px] text-[var(--color-app-muted)] break-words [overflow-wrap:anywhere]">
+              {t.channel}
+            </p>
+          )}
         </motion.header>
 
         <div className="grid grid-cols-1 gap-7 lg:grid-cols-[1fr_280px] lg:gap-10">
@@ -1062,7 +1066,7 @@ function FloatingTranscriptChat({
                     {t('library.inlineChatEmpty')}
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {quickPrompts.map((prompt) => (
                     <button
                       key={prompt.label}
