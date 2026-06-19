@@ -756,10 +756,16 @@ function FloatingTranscriptChat({
         });
         if (!convRes.ok || cancelled) return;
         const convData = (await convRes.json()) as {
+          conversation?: { thinking?: boolean };
           messages?: { id: string; role: string; kind?: string; content: string }[];
         };
         if (cancelled) return;
         setConversationId(existing.id);
+        // Paridade com o chat principal: o estado do toggle reflete o flag REAL
+        // da conversa resumida (DB), não a chave global de localStorage.
+        if (typeof convData.conversation?.thinking === 'boolean') {
+          setThinking(convData.conversation.thinking);
+        }
         setMessages(
           (convData.messages ?? [])
             .filter(
