@@ -380,6 +380,23 @@ async def _runtime_options() -> dict[str, Any]:
     if proxy_urls:
         opts["proxy"] = secrets.choice(proxy_urls)
 
+    # Browser impersonation (curl_cffi). Plataformas como TikTok exigem imitar o
+    # TLS/JA3 de um browser real; o extractor pede impersonation sozinho e, com
+    # o backend `curl_cffi` instalado (extra yt-dlp[curl-cffi]), ele escolhe um
+    # alvo automaticamente — por isso o caso comum não precisa de config. O env
+    # `YTDLP_IMPERSONATE` (ex.: "chrome", "chrome-124:windows-10") força um alvo
+    # específico quando uma plataforma quebra com o padrão.
+    impersonate_raw = (os.environ.get("YTDLP_IMPERSONATE") or "").strip()
+    if impersonate_raw and impersonate_raw.lower() not in ("0", "false", "off", "none"):
+        try:
+            from yt_dlp.networking.impersonate import ImpersonateTarget
+
+            opts["impersonate"] = ImpersonateTarget.from_str(impersonate_raw)
+        except (ImportError, ValueError, AttributeError):
+            # curl_cffi ausente, alvo inválido ou API do yt-dlp mudou: segue sem
+            # forçar — o extractor ainda pode auto-selecionar se houver backend.
+            pass
+
     return opts
 
 

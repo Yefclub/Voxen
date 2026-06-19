@@ -134,6 +134,15 @@ async def process_job(job_id: str) -> None:
 
 def _friendly_external_error(exc: BaseException) -> str | None:
     text = str(exc).lower()
+    if "tiktok" in text and (
+        "unable to extract" in text or "rehydration" in text or "universal data" in text
+    ):
+        return (
+            "Não consegui extrair este conteúdo do TikTok agora. "
+            "O TikTok muda a estrutura da página com frequência e às vezes bloqueia "
+            "downloads automatizados. Tente novamente em alguns minutos; se continuar "
+            "falhando, baixe o vídeo e envie por upload manual."
+        )
     if (
         "sign in to confirm" in text
         or "not a bot" in text
