@@ -15,7 +15,6 @@ import {
   MessageCircle,
   NotebookPen,
   RotateCcw,
-  Send,
   Sparkles,
   Trash2,
   Wand2,
@@ -44,6 +43,11 @@ import {
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 import { createConversation, refreshConversations } from '../lib/use-conversations';
 import { cn } from '../lib/utils';
+import {
+  PromptBox,
+  type PromptBoxHandle,
+  type LibraryMentionItem,
+} from '../components/ui/prompt-box';
 
 interface TranscriptDetail {
   id: string;
@@ -655,6 +659,20 @@ type FloatingChatMessage = {
   pending?: boolean;
 };
 
+const FLOATING_THINKING_KEY = 'voxen:chat:thinking';
+const FLOATING_DOCUMENT_LIMIT_BYTES = 50 * 1024 * 1024;
+
+interface FloatingUploadJobResponse {
+  jobId: string;
+  kind: 'media' | 'image' | 'document';
+}
+
+interface FloatingPersistedMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
 function FloatingTranscriptChat({
   transcript,
   t,
@@ -667,8 +685,20 @@ function FloatingTranscriptChat({
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<FloatingChatMessage[]>([]);
   const [sending, setSending] = useState(false);
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [visionEnabled, setVisionEnabled] = useState(false);
+  const [documentEnabled, setDocumentEnabled] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [selectedMentions, setSelectedMentions] = useState<LibraryMentionItem[]>([]);
+  const [thinking, setThinking] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(FLOATING_THINKING_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const promptRef = useRef<PromptBoxHandle>(null);
   const quickPrompts = [
     {
       label: t('library.inlineChatQuickSummary'),
@@ -688,6 +718,23 @@ function FloatingTranscriptChat({
     if (!open) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, open]);
+
+  // Detecta se o admin configurou modelos de visão/documentos pra habilitar os
+  // botões de anexo do composer (mesmo critério do chat principal).
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/capabilities', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((d: { vision?: boolean; document?: boolean }) => {
+        if (cancelled) return;
+        setVisionEnabled(!!d.vision);
+        setDocumentEnabled(!!d.document);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Continuidade: reabre a conversa contínua desta transcrição e carrega o
   // histórico, pra o chat sobreviver ao reload (a conversa fica como seção no
@@ -735,14 +782,111 @@ function FloatingTranscriptChat({
     const conv = await createConversation(`Sobre: ${transcript.title}`.slice(0, 60), transcript.id);
     if (!conv) return null;
     setConversationId(conv.id);
+    // Conversa nasce com thinking=false; se o toggle está ligado, propaga pro
+    // backend antes da 1ª mensagem (o /send lê o flag da conversa no DB).
+    if (thinking) {
+      await fetch(`/api/chat/conversations/${conv.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thinking: true }),
+      }).catch(() => undefined);
+    }
     return conv.id;
+  }
+
+  async function toggleThinking(): Promise<void> {
+    const next = !thinking;
+    setThinking(next);
+    try {
+      window.localStorage.setItem(FLOATING_THINKING_KEY, next ? '1' : '0');
+    } catch {
+      // localStorage indisponível: mantém só em memória
+    }
+    if (conversationId) {
+      await fetch(`/api/chat/conversations/${conversationId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thinking: next }),
+      }).catch(() => undefined);
+    }
+  }
+
+  async function uploadFile(file: File): Promise<void> {
+    if (sending || uploadingFile) return;
+    if (!documentEnabled) {
+      toast.error(t('chat.documentsDisabled'), {
+        description: t('chat.documentsDisabledDescription'),
+      });
+      return;
+    }
+    if (file.size > FLOATING_DOCUMENT_LIMIT_BYTES) {
+      toast.error(t('chat.documentTooLarge'), { description: t('chat.documentLimit') });
+      return;
+    }
+    setUploadingFile(true);
+    try {
+      const id = await ensureConversation();
+      if (!id) throw new Error(t('library.chatError'));
+      const fd = new FormData();
+      fd.append('media', file);
+      const uploadRes = await fetch('/api/jobs/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      });
+      const uploadBody = (await uploadRes.json().catch(() => ({}))) as
+        | FloatingUploadJobResponse
+        | { error?: string };
+      if (!uploadRes.ok || !('jobId' in uploadBody)) {
+        toast.error(('error' in uploadBody && uploadBody.error) || t('chat.documentSendError'));
+        return;
+      }
+      const msgRes = await fetch(`/api/chat/conversations/${id}/file-message`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          jobId: uploadBody.jobId,
+          kind: uploadBody.kind,
+        }),
+      });
+      const msgBody = (await msgRes.json().catch(() => ({}))) as {
+        messages?: FloatingPersistedMessage[];
+        error?: string;
+      };
+      if (!msgRes.ok || !Array.isArray(msgBody.messages)) {
+        toast.error(msgBody.error ?? t('chat.documentRegisterError'));
+        return;
+      }
+      setMessages((current) => [
+        ...current,
+        ...msgBody
+          .messages!.filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content })),
+      ]);
+      toast.success(t('chat.documentSent'));
+      await refreshConversations();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('chat.documentSendError'));
+    } finally {
+      setUploadingFile(false);
+    }
   }
 
   async function send(): Promise<void> {
     const content = input.trim();
-    if (!content || sending) return;
+    if ((!content && !attachedImage) || sending) return;
     setSending(true);
     setInput('');
+    const sentImage = attachedImage;
+    // A transcrição atual entra SEMPRE no contexto; o usuário pode somar outras
+    // menções (@) que tenham sido referenciadas no texto.
+    const extraMentions = selectedMentions.filter((m) => content.includes(`@${m.label}`));
+    setAttachedImage(null);
+    setSelectedMentions([]);
     const userMessage: FloatingChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -763,12 +907,10 @@ function FloatingTranscriptChat({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content,
+          ...(sentImage ? { image_data_url: sentImage } : {}),
           mentions: [
-            {
-              type: 'transcript',
-              id: transcript.id,
-              label: transcript.title,
-            },
+            { type: 'transcript', id: transcript.id, label: transcript.title },
+            ...extraMentions.map((m) => ({ type: m.type, id: m.id, label: m.label })),
           ],
         }),
       });
@@ -829,8 +971,7 @@ function FloatingTranscriptChat({
   }
 
   function chooseQuickPrompt(prompt: string): void {
-    setInput(prompt);
-    window.setTimeout(() => inputRef.current?.focus(), 0);
+    promptRef.current?.setValue(prompt);
   }
 
   return (
@@ -966,35 +1107,41 @@ function FloatingTranscriptChat({
               </div>
             ))}
           </div>
-          <form
-            className="flex gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-bg)]/35 p-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void send();
-            }}
-          >
-            <input
-              ref={inputRef}
+          <div className="border-t border-[var(--color-app-border)] bg-[var(--color-app-bg)]/35 p-3">
+            <PromptBox
+              ref={promptRef}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder={t('library.inlineChatPlaceholder')}
-              className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--color-app-border)] bg-zinc-100/[0.04] px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-500/15"
+              onChange={setInput}
+              onSubmit={() => void send()}
               disabled={sending}
+              loading={sending}
+              thinking={thinking}
+              onToggleThinking={() => void toggleThinking()}
+              attachedImage={attachedImage}
+              onAttachImage={(d) => setAttachedImage(d)}
+              onClearImage={() => setAttachedImage(null)}
+              visionEnabled={visionEnabled}
+              uploadEnabled={documentEnabled}
+              uploadingFile={uploadingFile}
+              onUploadFile={(file) => void uploadFile(file)}
+              selectedMentions={selectedMentions}
+              onMentionSelect={(item) =>
+                setSelectedMentions((items) => {
+                  if (items.some((x) => x.type === item.type && x.id === item.id)) return items;
+                  return [...items, item].slice(-8);
+                })
+              }
+              onMentionRemove={(item) => {
+                setSelectedMentions((items) =>
+                  items.filter((x) => !(x.type === item.type && x.id === item.id)),
+                );
+                setInput((current) =>
+                  current.replace(`@${item.label}`, '').replace(/\s{2,}/g, ' '),
+                );
+              }}
+              placeholder={t('library.inlineChatPlaceholder')}
             />
-            <Button
-              type="submit"
-              variant="primary"
-              size="icon"
-              className="h-10 w-10 rounded-xl"
-              disabled={!input.trim() || sending}
-            >
-              {sending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
-          </form>
+          </div>
         </motion.div>
       )}
     </>
