@@ -11,6 +11,7 @@ import httpx
 import structlog
 
 from . import db, redis_pub, storage, voxen_settings
+from .fts import expand_fts_query
 
 OR_BASE_URL = "https://openrouter.ai/api/v1"
 _log = structlog.get_logger()
@@ -72,7 +73,9 @@ TOOLS_SPEC: list[dict[str, Any]] = [
             "description": (
                 "Busca full-text nas transcrições do usuário. Retorna trechos "
                 "relevantes com pontuação de relevância. Use palavras-chave em "
-                "português, sem operadores."
+                "português, sem operadores. A busca já expande termos "
+                "(sinônimos/variações) e casa por relevância, então frases "
+                "naturais de poucas palavras funcionam bem."
             ),
             "parameters": {
                 "type": "object",
@@ -482,7 +485,12 @@ async def execute_tool(name: str, args: dict[str, Any], user_id: str) -> dict[st
             if not query:
                 return {"error": "Parâmetro 'query' vazio."}
             limit = min(int(args.get("limit", 8)), 25)
-            rows = await db.search_user_transcripts(user_id, query, limit=limit)
+            # Query expansion (spec 047): OR + prefix + sinônimos pra recall.
+            # Vazio → db cai pro plainto_tsquery (fallback determinístico).
+            tsquery_expr = expand_fts_query(query)
+            rows = await db.search_user_transcripts(
+                user_id, query, limit=limit, tsquery_expr=tsquery_expr
+            )
             return {
                 "results": [
                     {

@@ -89,10 +89,21 @@ async def list_user_transcripts(
 
 
 async def search_user_transcripts(
-    user_id: str, query: str, limit: int = 10
+    user_id: str, query: str, limit: int = 10, tsquery_expr: str | None = None
 ) -> list[dict[str, Any]]:
-    async with connection() as conn:
-        rows = await conn.fetch(
+    """FTS escopado por userId.
+
+    `tsquery_expr` (spec 047): quando informado e não vazio, é uma expressão
+    `tsquery` já expandida (OR + prefix + sinônimos, sanitizada pelo chamador)
+    usada no MATCH e no ranking via `to_tsquery`, ampliando o recall. Quando
+    vazio/None, cai pro `plainto_tsquery` da query crua (comportamento legado).
+    O `ts_headline` SEMPRE usa a query crua pra destacar as palavras do usuário.
+    O escopo por `userId` é inviolável em ambos os caminhos.
+    """
+    expr = (tsquery_expr or "").strip()
+
+    async def _plainto(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+        rows: list[asyncpg.Record] = await conn.fetch(
             """
             SELECT
               id, title,
@@ -113,6 +124,40 @@ async def search_user_transcripts(
             query,
             limit,
         )
+        return rows
+
+    async with connection() as conn:
+        if expr:
+            try:
+                rows = await conn.fetch(
+                    """
+                    SELECT
+                      id, title,
+                      ts_headline(
+                        'portuguese', "plainText",
+                        plainto_tsquery('portuguese', $2),
+                        'StartSel=«, StopSel=», MaxWords=30, MinWords=10, MaxFragments=1'
+                      ) AS snippet,
+                      ts_rank("searchVector", to_tsquery('portuguese', $3)) AS rank
+                    FROM "Transcript"
+                    WHERE "userId" = $1
+                      AND status = 'ACTIVE'::"ContentStatus"
+                      AND "searchVector" @@ to_tsquery('portuguese', $3)
+                    ORDER BY rank DESC, "createdAt" DESC
+                    LIMIT $4
+                    """,
+                    user_id,
+                    query,
+                    expr,
+                    limit,
+                )
+            except asyncpg.PostgresSyntaxError:
+                # Defesa em profundidade (spec 047, R4): se a expansão produzir
+                # uma tsquery inválida por qualquer regressão futura no mapa de
+                # sinônimos, cai pro plainto em vez de propagar erro 500.
+                rows = await _plainto(conn)
+        else:
+            rows = await _plainto(conn)
         return [dict(r) for r in rows]
 
 
