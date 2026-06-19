@@ -23,12 +23,18 @@ export function LoginPage(): React.ReactElement {
   const { refresh } = useMe();
 
   useEffect(() => {
+    // Guarda contra setState após unmount (apiGet não aceita AbortController).
+    let cancelled = false;
     apiGet<InstanceState>('/api/instance')
       .then((next) => {
+        if (cancelled) return;
         setInstance(next);
         setLocale(next.language);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [setLocale]);
 
   async function onSubmit(e: React.FormEvent): Promise<void> {

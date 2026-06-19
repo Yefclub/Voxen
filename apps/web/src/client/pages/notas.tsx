@@ -104,9 +104,19 @@ function NoteEditor({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // AbortController do PATCH em voo: garante que dois saves concorrentes
+  // (debounce + onBlur, ou save manual) não compitam — o anterior é abortado e
+  // o último vence de forma determinística.
+  const inFlight = useRef<AbortController | null>(null);
+  // `dirty` muda a cada tecla; sem uma ref o `save` debounced fecharia sobre um
+  // valor stale. Mantém o estado mais recente acessível sem recriar o callback.
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
 
   useEffect(() => {
-    if (data?.note) {
+    // Só re-hidrata do servidor quando NÃO há edição pendente — senão um refetch
+    // sobrescreveria texto não salvo do usuário.
+    if (data?.note && !dirtyRef.current) {
       setTitle(data.note.title);
       setContent(data.note.content);
       setDirty(false);
@@ -114,7 +124,16 @@ function NoteEditor({
   }, [data?.note]);
 
   const save = useCallback(async (): Promise<void> => {
-    if (!dirty) return;
+    // Cancela qualquer save agendado pelo debounce — o blur/save manual assume.
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    if (!dirtyRef.current) return;
+    // Aborta o PATCH anterior (se houver) pra o último request vencer.
+    inFlight.current?.abort();
+    const controller = new AbortController();
+    inFlight.current = controller;
     setSaving(true);
     try {
       const res = await fetch(`/api/notes/${noteId}`, {
@@ -122,16 +141,24 @@ function NoteEditor({
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content }),
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error(t('notes.saveError'));
-      setDirty(false);
+      // Só limpa o dirty se este ainda é o save mais recente — senão um save
+      // posterior (com edições novas) já assumiu e não devemos marcá-lo salvo.
+      if (inFlight.current === controller) setDirty(false);
       onSaved();
     } catch (err) {
+      // Abort = substituído por save mais recente; silencioso.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       toast.error(err instanceof Error ? err.message : t('common.error'));
     } finally {
-      setSaving(false);
+      if (inFlight.current === controller) {
+        inFlight.current = null;
+        setSaving(false);
+      }
     }
-  }, [noteId, title, content, dirty, onSaved]);
+  }, [noteId, title, content, onSaved, t]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -141,6 +168,14 @@ function NoteEditor({
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, [dirty, save]);
+
+  // Cleanup no unmount: cancela timer e aborta PATCH em voo.
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      inFlight.current?.abort();
+    };
+  }, []);
 
   if (loading || !data) {
     return (

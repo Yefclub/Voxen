@@ -25,12 +25,18 @@ export function CadastroPage(): React.ReactElement {
   const { refresh } = useMe();
 
   useEffect(() => {
+    // Guarda contra setState após unmount (apiGet não aceita AbortController).
+    let cancelled = false;
     apiGet<InstanceState>('/api/instance')
       .then((next) => {
+        if (cancelled) return;
         setInstance(next);
         setLocale(next.language);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [setLocale]);
 
   const isFirstUser = instance && !instance.hasUsers;

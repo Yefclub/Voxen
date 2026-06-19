@@ -152,10 +152,27 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
     };
   }, [mentionQuery, onMentionSelect]);
 
+  // Cleanup no unmount: se o usuário sair do chat gravando, o MediaRecorder e o
+  // stream do microfone continuariam ativos. `cancel()` para o recorder e libera
+  // as tracks sem disparar transcrição.
+  useEffect(() => {
+    return () => {
+      if (recorderRef.current?.isRecording()) {
+        recorderRef.current.cancel();
+      }
+      recorderRef.current = null;
+    };
+  }, []);
+
   async function toggleRecord(): Promise<void> {
     if (recording) {
+      const rec = recorderRef.current;
+      if (!rec) {
+        setRecording(false);
+        return;
+      }
       try {
-        const blob = await recorderRef.current!.stop();
+        const blob = await rec.stop();
         setRecording(false);
         await sendVoice(blob);
       } catch (e) {

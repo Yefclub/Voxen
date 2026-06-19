@@ -14,7 +14,7 @@
 // bg-background) que não existem no design system do Voxen. Para garantir ZERO
 // regressão visual, sobrescrevemos os elementos estruturais com tags simples e
 // deixamos o tema zinc ser governado pelos seletores descendentes do wrapper.
-import { memo, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Streamdown, type Components, type ExtraProps } from 'streamdown';
 import { Check, Copy } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -32,15 +32,23 @@ function CodeBlock({
   children,
 }: React.ComponentPropsWithoutRef<'code'> & ExtraProps): React.ReactElement {
   const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { t } = useI18n();
   const raw = String(children ?? '').replace(/\n$/, '');
   const lang = /language-([\w-]+)/.exec(className ?? '')?.[1];
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
 
   async function copy(): Promise<void> {
     try {
       await navigator.clipboard.writeText(raw);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1500);
     } catch {
       // ignora
     }

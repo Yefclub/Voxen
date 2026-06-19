@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, ExternalLink } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 import { useI18n } from '../../lib/i18n';
@@ -19,13 +19,21 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
   const { t } = useI18n();
   const segments = useMemo(() => parseSegments(markdown), [markdown]);
   const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const plainText = useMemo(() => segments.map((s) => s.text).join(' '), [segments]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
 
   async function copy(): Promise<void> {
     try {
       await navigator.clipboard.writeText(plainText);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1500);
     } catch {
       // ignora
     }

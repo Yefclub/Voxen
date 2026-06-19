@@ -26,9 +26,17 @@ export function AdminUsuariosPage(): React.ReactElement {
   const [togglingSignups, setTogglingSignups] = useState(false);
 
   useEffect(() => {
+    // Guarda contra setState após unmount (apiGet não aceita AbortController).
+    let cancelled = false;
     apiGet<InstanceResponse>('/api/admin/instance')
-      .then((s) => setAllowSignups(s.allowSignups))
+      .then((s) => {
+        if (cancelled) return;
+        setAllowSignups(s.allowSignups);
+      })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function approve(id: string): Promise<void> {
