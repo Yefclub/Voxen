@@ -185,6 +185,9 @@ function registerWriteTools(server: McpServer, userId: string): void {
       if (args.title === undefined && args.content === undefined) {
         return fail('Nada para atualizar: informe title e/ou content.');
       }
+      if (args.title !== undefined && !args.title.trim()) {
+        return fail('Título não pode ser vazio.');
+      }
       const existing = await db.note.findFirst({
         where: { id: args.note_id, userId, kind: 'NOTE' },
         select: { id: true },

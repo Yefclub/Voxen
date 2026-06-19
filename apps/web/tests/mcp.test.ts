@@ -172,4 +172,31 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(note?.title).toBe('Nota MCP');
     expect(note?.userId).toBe(userId);
   });
+
+  it('voxen_update_note não edita nota de outro user (isolamento)', async () => {
+    const other = await db.user.create({
+      data: { email: `mcp-other-${Date.now()}@voxen.local`, name: 'Other', status: 'APPROVED' },
+    });
+    const otherNote = await db.note.create({
+      data: { userId: other.id, kind: 'NOTE', title: 'Alheia', content: 'segredo' },
+      select: { id: true },
+    });
+    const res = await call(
+      {
+        jsonrpc: '2.0',
+        id: 7,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_update_note',
+          arguments: { note_id: otherNote.id, content: 'hackeado' },
+        },
+      },
+      TOKEN,
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { result?: { isError?: boolean } };
+    expect(data.result?.isError).toBe(true);
+    const unchanged = await db.note.findUnique({ where: { id: otherNote.id } });
+    expect(unchanged?.content).toBe('segredo');
+  });
 });
