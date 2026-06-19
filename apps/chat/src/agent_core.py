@@ -31,7 +31,9 @@ from . import db, voxen_settings
 from .tools import TOOLS_SPEC, execute_tool
 
 OR_BASE_URL = "https://openrouter.ai/api/v1"
-MAX_TOOL_LOOPS = 5
+# Alinhado com main.py (spec 038 R4): 8 rodadas pra fluxos multi-passo. A mesma
+# decisão de qualidade vale pro bot do Telegram, que usa este core.
+MAX_TOOL_LOOPS = 8
 log = structlog.get_logger("agent")
 
 

@@ -386,9 +386,9 @@ async def chat(
                     # Thinking/reasoning: OpenRouter expõe o raciocínio do
                     # modelo em campos `reasoning` (texto) ou `reasoning_details`
                     # (estruturado) no delta. Quando o user ativa o toggle
-                    # `thinking`, mandamos `reasoning.enabled=true` +
-                    # `effort=medium`. Com o toggle desligado mandamos
-                    # `effort=none` para desativar reasoning quando suportado.
+                    # `thinking`. Reasoning fica SEMPRE ligado (ver
+                    # build_reasoning_config): effort=medium por padrão, high com
+                    # o toggle. exclude=false deixa a UI mostrar o raciocínio.
                     # https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
                     reasoning_text = getattr(delta, "reasoning", None)
                     if reasoning_text:
