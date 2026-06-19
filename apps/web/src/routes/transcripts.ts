@@ -284,22 +284,37 @@ transcriptsRoutes.get('/:id/original', async (c) => {
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
   if (!transcript.originalObjectKey)
     return c.json({ error: 'Arquivo original não disponível.' }, 404);
+  // Range: o player de vídeo/áudio (e o Safari/iOS obrigatoriamente) precisa de
+  // 206 + Accept-Ranges pra fazer seek. Repassamos o header pro S3/MinIO, que
+  // fatia os bytes, e relayamos Content-Range/Content-Length da resposta dele.
+  // Só single-range: multi-range (vírgula) viraria multipart/byteranges, que não
+  // sabemos relayar — nesse caso servimos o arquivo inteiro (200).
+  const rawRange = c.req.header('range');
+  const rangeHeader = rawRange && !rawRange.includes(',') ? rawRange : undefined;
   try {
     const res = await s3Client().send(
       new GetObjectCommand({
         Bucket: s3Bucket(),
         Key: transcript.originalObjectKey,
+        ...(rangeHeader ? { Range: rangeHeader } : {}),
       }),
     );
     const filename = safeDownloadFilename(transcript.originalFilename || `${id}.bin`);
-    return new Response(await s3BodyToResponseBody(res.Body), {
-      headers: {
-        'content-type': transcript.originalMimeType || 'application/octet-stream',
-        'cache-control': 'private, max-age=300',
-        'content-disposition': `inline; filename="${filename}"`,
-      },
+    const init = buildOriginalResponseInit({
+      rangeHeader,
+      s3ContentType: res.ContentType,
+      s3ContentLength: res.ContentLength,
+      s3ContentRange: res.ContentRange,
+      fallbackMime: transcript.originalMimeType,
+      filename,
     });
+    return new Response(await s3BodyToResponseBody(res.Body), init);
   } catch (err) {
+    const httpStatus = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata
+      ?.httpStatusCode;
+    if (httpStatus === 416) {
+      return c.json({ error: 'Range solicitado inválido.' }, 416);
+    }
     console.error('[transcripts] erro ao baixar original:', err);
     return c.json({ error: 'Falha ao baixar arquivo original.' }, 502);
   }
@@ -321,15 +336,20 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
     },
   });
   if (!transcript) return c.text('', 404);
+  // Só servimos a imagem original como preview se for raster segura
+  // (png/jpeg/webp/gif). image/svg+xml é executável em navegação direta à URL →
+  // cai no placeholder. A preview gerada (previewObjectKey) é sempre JPEG nosso.
+  const originalIsSafeImage =
+    !!transcript.originalObjectKey &&
+    !!transcript.originalMimeType &&
+    transcript.originalMimeType.startsWith('image/') &&
+    inlineSafeMime(transcript.originalMimeType);
   const objectKey =
-    transcript.previewObjectKey ||
-    (transcript.originalObjectKey && transcript.originalMimeType?.startsWith('image/')
-      ? transcript.originalObjectKey
-      : null);
+    transcript.previewObjectKey || (originalIsSafeImage ? transcript.originalObjectKey : null);
   const mimeType =
     transcript.previewObjectKey && transcript.previewMimeType
       ? transcript.previewMimeType
-      : transcript.originalMimeType?.startsWith('image/')
+      : originalIsSafeImage
         ? transcript.originalMimeType
         : null;
   if (objectKey && mimeType) {
@@ -344,6 +364,7 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
         headers: {
           'content-type': mimeType,
           'cache-control': 'private, max-age=300',
+          'x-content-type-options': 'nosniff',
         },
       });
     } catch (err) {
@@ -354,6 +375,7 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
     headers: {
       'content-type': 'image/svg+xml; charset=utf-8',
       'cache-control': 'private, max-age=300',
+      'x-content-type-options': 'nosniff',
     },
   });
 });
@@ -630,6 +652,46 @@ async function s3BodyToResponseBody(body: unknown): Promise<BodyInit> {
     return copy.buffer;
   }
   return new ArrayBuffer(0);
+}
+
+// Monta status + headers da resposta de `/:id/original`. Puro (sem I/O) para ser
+// testável: decide 206 (Range satisfeito pelo S3) vs 200, e relaya os headers de
+// range. `accept-ranges: bytes` sempre presente para o player saber que dá seek.
+export function buildOriginalResponseInit(opts: {
+  rangeHeader?: string;
+  s3ContentType?: string;
+  s3ContentLength?: number;
+  s3ContentRange?: string;
+  fallbackMime: string | null;
+  filename: string;
+}): { status: number; headers: Record<string, string> } {
+  const contentType = opts.fallbackMime || opts.s3ContentType || 'application/octet-stream';
+  // Conteúdo é upload do usuário (NÃO confiável): só mídia segura vai `inline` no
+  // contexto same-origin da app; o resto (text/html, image/svg+xml, pdf...) vira
+  // `attachment` (download), evitando XSS armazenado. `nosniff` impede o browser
+  // de reinterpretar o MIME e executar como HTML.
+  const headers: Record<string, string> = {
+    'content-type': contentType,
+    'cache-control': 'private, max-age=300',
+    'content-disposition': `${inlineSafeMime(contentType) ? 'inline' : 'attachment'}; filename="${opts.filename}"`,
+    'accept-ranges': 'bytes',
+    'x-content-type-options': 'nosniff',
+  };
+  if (opts.s3ContentLength != null) headers['content-length'] = String(opts.s3ContentLength);
+  if (opts.rangeHeader && opts.s3ContentRange) {
+    headers['content-range'] = opts.s3ContentRange;
+    return { status: 206, headers };
+  }
+  return { status: 200, headers };
+}
+
+// Tipos servidos `inline` (renderizados no browser same-origin). Restrito a mídia
+// que o player usa; text/html, image/svg+xml e pdf ficam de fora (vão como
+// attachment) porque podem executar script no contexto da aplicação.
+function inlineSafeMime(contentType: string): boolean {
+  const ct = contentType.toLowerCase().split(';')[0]?.trim() ?? '';
+  if (ct.startsWith('video/') || ct.startsWith('audio/')) return true;
+  return ct === 'image/png' || ct === 'image/jpeg' || ct === 'image/webp' || ct === 'image/gif';
 }
 
 function safeDownloadFilename(value: string): string {
