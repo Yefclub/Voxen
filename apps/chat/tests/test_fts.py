@@ -65,6 +65,26 @@ def test_synonyms_case_insensitive() -> None:
     assert "publicidade:*" in terms
 
 
+def test_multiword_synonym_splits_into_separate_lexemes() -> None:
+    # "ia" mapeia o sinônimo multi-palavra "machine learning"; um lexeme com
+    # espaço quebraria a tsquery INTEIRA no to_tsquery. Deve virar dois lexemes.
+    expr = expand_fts_query("ia")
+    terms = _terms(expr)
+    assert "machine:*" in terms
+    assert "learning:*" in terms
+    assert "machine learning:*" not in terms
+
+
+def test_no_lexeme_contains_space() -> None:
+    # Invariante de segurança (R5): nenhum lexeme do output pode ter espaço,
+    # senão o to_tsquery falha com syntax error. Cobre os sinônimos
+    # multi-palavra do mapa de uma vez.
+    queries = ["ia", "inteligência", "marketing vendas", "machine"]
+    for q in queries:
+        for term in _terms(expand_fts_query(q)):
+            assert " " not in term, f"lexeme com espaço em {q!r}: {term!r}"
+
+
 # ---------------------------------------------------------------------------
 # R4 — query vazia / só operadores → fallback (string vazia)
 # ---------------------------------------------------------------------------

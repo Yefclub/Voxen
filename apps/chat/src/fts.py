@@ -31,10 +31,12 @@ _MIN_TERM_LEN = 2
 # Teto de termos expandidos pra não montar tsquery gigante.
 _MAX_TERMS = 24
 
-# Mapa curado de sinônimos/termos relacionados PT-BR. Chave = lexema-base do
-# termo do usuário (lowercase, sem acento removido — comparação é por
-# startswith do termo normalizado). Cada termo expande nas alternativas.
-# Mantido pequeno e de alto valor; ampliar conforme uso real do acervo.
+# Mapa curado de sinônimos/termos relacionados PT-BR. Chave = termo do usuário
+# normalizado (lowercase, acentos preservados); o casamento é por IGUALDADE
+# exata do termo normalizado (não prefixo). Cada termo expande nas alternativas.
+# Sinônimos podem ter mais de uma palavra (ex: "machine learning") — `_to_lexemes`
+# faz split por whitespace, então nenhum espaço chega à tsquery. Mantido pequeno
+# e de alto valor; ampliar conforme uso real do acervo.
 _SYNONYMS: dict[str, tuple[str, ...]] = {
     "video": ("vídeo", "filmagem", "gravação"),
     "vídeo": ("video", "filmagem", "gravação"),
@@ -90,15 +92,22 @@ def _alternatives(term: str) -> list[str]:
     return out
 
 
-def _to_lexeme(term: str) -> str | None:
-    """Sanitiza um único termo para um lexeme prefix-match seguro (`termo:*`).
+def _to_lexemes(term: str) -> list[str]:
+    """Sanitiza um termo em lexemes prefix-match seguros (`palavra:*`).
 
-    Retorna None se nada utilizável sobrar após sanitização.
+    Sinônimos podem ter mais de uma palavra (ex: "machine learning"); um lexeme
+    com espaço quebra a `tsquery` INTEIRA no `to_tsquery` (erro de sintaxe → 500).
+    Por isso fazemos split por whitespace e emitimos um lexeme por palavra —
+    nenhum espaço sobrevive. Retorna lista vazia se nada utilizável sobrar (R5).
     """
-    safe = _TSQUERY_SPECIALS.sub("", term).strip().strip("-")
-    if len(safe) < _MIN_TERM_LEN:
-        return None
-    return f"{safe}:*"
+    out: list[str] = []
+    cleaned = _TSQUERY_SPECIALS.sub(" ", term)
+    for word in cleaned.split():
+        safe = word.strip("-")
+        if len(safe) < _MIN_TERM_LEN:
+            continue
+        out.append(f"{safe}:*")
+    return out
 
 
 def expand_fts_query(query: str) -> str:
@@ -116,11 +125,13 @@ def expand_fts_query(query: str) -> str:
     seen: set[str] = set()
     for term in terms:
         for alt in _alternatives(term):
-            lexeme = _to_lexeme(alt)
-            if not lexeme or lexeme in seen:
-                continue
-            seen.add(lexeme)
-            lexemes.append(lexeme)
+            for lexeme in _to_lexemes(alt):
+                if lexeme in seen:
+                    continue
+                seen.add(lexeme)
+                lexemes.append(lexeme)
+                if len(lexemes) >= _MAX_TERMS:
+                    break
             if len(lexemes) >= _MAX_TERMS:
                 break
         if len(lexemes) >= _MAX_TERMS:
