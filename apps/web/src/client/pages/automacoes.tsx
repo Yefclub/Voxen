@@ -18,7 +18,24 @@ import { toast } from 'sonner';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { Markdown } from '../components/ui/markdown';
 import { Button } from '../components/ui/button';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
+
+/**
+ * Trava o scroll do body enquanto `active` for true — paridade com o `Dialog`
+ * do shadcn (Radix) para os modais próprios desta página, evitando que o fundo
+ * role atrás. Restaura o valor anterior ao desmontar/fechar.
+ */
+function useBodyScrollLock(active: boolean): void {
+  useEffect(() => {
+    if (!active) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [active]);
+}
 
 type AutomationType = 'PERIODIC_SUMMARY' | 'WEB_RESEARCH';
 type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
@@ -70,6 +87,7 @@ export function AutomacoesPage(): React.ReactElement {
   const [editing, setEditing] = useState<Automation | null>(null);
   const [hasTelegram, setHasTelegram] = useState<boolean>(false);
   const [runViewer, setRunViewer] = useState<{ automation: Automation; runs: Run[] } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Automation | null>(null);
 
   const fetchAutomations = useCallback(async () => {
     setLoading(true);
@@ -131,8 +149,7 @@ export function AutomacoesPage(): React.ReactElement {
     }
   }
 
-  async function remove(a: Automation): Promise<void> {
-    if (!confirm(t('automations.deleteConfirm', { name: a.name }))) return;
+  async function confirmRemove(a: Automation): Promise<void> {
     try {
       const res = await fetch(`/api/automations/${a.id}`, {
         method: 'DELETE',
@@ -145,6 +162,7 @@ export function AutomacoesPage(): React.ReactElement {
       toast.error(t('automations.removeError'), {
         description: err instanceof Error ? err.message : undefined,
       });
+      throw err;
     }
   }
 
@@ -165,14 +183,12 @@ export function AutomacoesPage(): React.ReactElement {
     <AnimatedPage className="max-w-5xl mx-auto px-6 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center ring-1 ring-zinc-200 dark:ring-zinc-800">
-            <Workflow className="size-5 text-zinc-700 dark:text-zinc-300" />
+          <div className="size-10 rounded-xl bg-[var(--color-app-surface)] flex items-center justify-center ring-1 ring-[var(--color-app-border)]">
+            <Workflow className="size-5 text-zinc-300" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-              {t('automations.title')}
-            </h1>
-            <p className="text-sm text-zinc-500">{t('automations.description')}</p>
+            <h1 className="text-xl font-semibold text-zinc-100">{t('automations.title')}</h1>
+            <p className="text-sm text-[var(--color-app-muted)]">{t('automations.description')}</p>
           </div>
         </div>
         <Button
@@ -187,7 +203,7 @@ export function AutomacoesPage(): React.ReactElement {
       </div>
 
       {loading ? (
-        <div className="py-12 text-center text-zinc-500 text-sm">
+        <div className="py-12 text-center text-[var(--color-app-muted)] text-sm">
           <Loader2 className="size-4 animate-spin mx-auto mb-2" />
           {t('automations.loading')}
         </div>
@@ -205,7 +221,7 @@ export function AutomacoesPage(): React.ReactElement {
                 setFormOpen(true);
               }}
               onTogglePause={() => togglePause(a)}
-              onDelete={() => remove(a)}
+              onDelete={() => setPendingDelete(a)}
               onOpenRuns={() => openRuns(a)}
               locale={locale}
               t={t}
@@ -241,6 +257,23 @@ export function AutomacoesPage(): React.ReactElement {
           />
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={pendingDelete != null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+        title={t('automations.deleteTitle')}
+        description={
+          pendingDelete ? t('automations.deleteConfirm', { name: pendingDelete.name }) : undefined
+        }
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        variant="destructive"
+        onConfirm={async () => {
+          if (pendingDelete) await confirmRemove(pendingDelete);
+        }}
+      />
     </AnimatedPage>
   );
 }
@@ -251,12 +284,10 @@ export function AutomacoesPage(): React.ReactElement {
 
 function EmptyState({ onCreate, t }: { onCreate: () => void; t: TranslateFn }): React.ReactElement {
   return (
-    <div className="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-800 p-12 text-center">
-      <Workflow className="size-10 text-zinc-300 dark:text-zinc-700 mx-auto mb-3" />
-      <h2 className="text-base font-medium text-zinc-800 dark:text-zinc-200 mb-1">
-        {t('automations.emptyTitle')}
-      </h2>
-      <p className="text-sm text-zinc-500 mb-4 max-w-md mx-auto">
+    <div className="rounded-xl border border-dashed border-[var(--color-app-border)] p-12 text-center">
+      <Workflow className="size-10 text-[var(--color-app-muted)] mx-auto mb-3" />
+      <h2 className="text-base font-medium text-zinc-200 mb-1">{t('automations.emptyTitle')}</h2>
+      <p className="text-sm text-[var(--color-app-muted)] mb-4 max-w-md mx-auto">
         {t('automations.emptyDescription')}
       </p>
       <Button onClick={onCreate}>
@@ -299,17 +330,15 @@ function AutomationCard({
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className={`rounded-xl border bg-white dark:bg-zinc-950 p-4 ${
-        a.status === 'PAUSED'
-          ? 'border-zinc-200 dark:border-zinc-800 opacity-70'
-          : 'border-zinc-200 dark:border-zinc-800'
+      className={`rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-4 ${
+        a.status === 'PAUSED' ? 'opacity-70' : ''
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-medium text-zinc-900 dark:text-zinc-100 truncate">{a.name}</h3>
-            <span className="text-[11px] uppercase tracking-wide font-medium text-zinc-500 bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded">
+            <h3 className="font-medium text-zinc-100 truncate">{a.name}</h3>
+            <span className="text-[11px] uppercase tracking-wide font-medium text-[var(--color-app-muted)] bg-[var(--color-app-bg-elevated)] px-1.5 py-0.5 rounded">
               {typeLabel(a.type, t)}
             </span>
             {a.status === 'PAUSED' && (
@@ -324,7 +353,7 @@ function AutomationCard({
               </span>
             )}
           </div>
-          <div className="mt-1 flex items-center gap-3 text-xs text-zinc-500 flex-wrap">
+          <div className="mt-1 flex items-center gap-3 text-xs text-[var(--color-app-muted)] flex-wrap">
             <span className="flex items-center gap-1">
               <Clock className="size-3.5" />
               {freqLabel}
@@ -390,8 +419,8 @@ function IconButton({
       title={title}
       className={`size-8 rounded-lg flex items-center justify-center transition-colors ${
         danger
-          ? 'text-zinc-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-          : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900'
+          ? 'text-[var(--color-app-muted)] hover:text-rose-400 hover:bg-rose-500/10'
+          : 'text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]'
       }`}
     >
       {children}
@@ -406,7 +435,7 @@ function RunStatusBadge({ status, t }: { status: RunStatus; t: TranslateFn }): R
   > = {
     PENDING: {
       label: t('automations.runStatus.pending'),
-      cls: 'text-zinc-600 bg-zinc-100 dark:bg-zinc-900',
+      cls: 'text-[var(--color-app-muted)] bg-[var(--color-app-bg-elevated)]',
       Icon: Clock,
     },
     RUNNING: {
@@ -512,6 +541,7 @@ function AutomationForm({
   const [dayOfMonth, setDayOfMonth] = useState<number>(initial?.dayOfMonth ?? 1);
   const [delivery, setDelivery] = useState<Delivery>(initial?.delivery ?? 'IN_APP');
   const [submitting, setSubmitting] = useState(false);
+  useBodyScrollLock(true);
 
   const timezone = useMemo(() => {
     try {
@@ -569,7 +599,7 @@ function AutomationForm({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-zinc-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center p-4"
       onClick={onClose}
     >
       <motion.form
@@ -579,16 +609,16 @@ function AutomationForm({
         transition={{ duration: 0.2 }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
-        className="bg-white dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto"
+        className="bg-[var(--color-app-surface)] rounded-2xl border border-[var(--color-app-border)] shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto"
       >
-        <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between sticky top-0 bg-white dark:bg-zinc-950">
-          <h2 className="font-semibold text-zinc-900 dark:text-zinc-100">
+        <div className="px-6 py-4 border-b border-[var(--color-app-border)] flex items-center justify-between sticky top-0 bg-[var(--color-app-surface)]">
+          <h2 className="font-semibold text-zinc-100">
             {isEdit ? t('automations.form.editTitle') : t('automations.form.newTitle')}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="size-8 rounded-lg flex items-center justify-center text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]"
           >
             <X className="size-4" />
           </button>
@@ -601,7 +631,7 @@ function AutomationForm({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t('automations.form.namePlaceholder')}
-              className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
               maxLength={120}
               required
             />
@@ -619,12 +649,12 @@ function AutomationForm({
                   }}
                   className={`px-3 py-2 rounded-lg border text-sm text-left transition-colors ${
                     type === automationType
-                      ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/40 text-violet-900 dark:text-violet-200'
-                      : 'border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900'
+                      ? 'border-violet-500 bg-violet-500/10 text-violet-200'
+                      : 'border-[var(--color-app-border)] text-zinc-100 hover:bg-[var(--color-app-surface-hover)]'
                   }`}
                 >
                   <div className="font-medium">{typeLabel(automationType, t)}</div>
-                  <div className="text-[11px] text-zinc-500 mt-0.5">
+                  <div className="text-[11px] text-[var(--color-app-muted)] mt-0.5">
                     {automationType === 'PERIODIC_SUMMARY'
                       ? t('automations.type.summaryDescription')
                       : t('automations.type.webResearchDescription')}
@@ -640,7 +670,7 @@ function AutomationForm({
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={promptPlaceholder(type, t)}
               rows={5}
-              className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
               maxLength={4000}
               required
             />
@@ -655,8 +685,8 @@ function AutomationForm({
                   onClick={() => setFrequency(f)}
                   className={`flex-1 px-3 py-2 rounded-lg border text-sm transition-colors ${
                     frequency === f
-                      ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/40 text-violet-900 dark:text-violet-200'
-                      : 'border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900'
+                      ? 'border-violet-500 bg-violet-500/10 text-violet-200'
+                      : 'border-[var(--color-app-border)] text-zinc-100 hover:bg-[var(--color-app-surface-hover)]'
                   }`}
                 >
                   {frequencyLabel(f, t)}
@@ -670,7 +700,7 @@ function AutomationForm({
               <select
                 value={dayOfWeek}
                 onChange={(e) => setDayOfWeek(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm"
               >
                 {dayLabels(t).map((d, i) => (
                   <option key={i} value={i}>
@@ -689,9 +719,11 @@ function AutomationForm({
                 max={31}
                 value={dayOfMonth}
                 onChange={(e) => setDayOfMonth(Math.max(1, Math.min(31, Number(e.target.value))))}
-                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm"
               />
-              <p className="text-[11px] text-zinc-500 mt-1">{t('automations.form.monthHint')}</p>
+              <p className="text-[11px] text-[var(--color-app-muted)] mt-1">
+                {t('automations.form.monthHint')}
+              </p>
             </Field>
           )}
 
@@ -703,7 +735,7 @@ function AutomationForm({
                 max={23}
                 value={hour}
                 onChange={(e) => setHour(Math.max(0, Math.min(23, Number(e.target.value))))}
-                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm"
               />
             </Field>
             <Field label={t('automations.form.minute')}>
@@ -713,7 +745,7 @@ function AutomationForm({
                 max={59}
                 value={minute}
                 onChange={(e) => setMinute(Math.max(0, Math.min(59, Number(e.target.value))))}
-                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm"
               />
             </Field>
           </div>
@@ -737,11 +769,11 @@ function AutomationForm({
                 return (
                   <label
                     key={opt.v}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm ${
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm text-zinc-100 ${
                       delivery === opt.v
-                        ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/40'
-                        : 'border-zinc-200 dark:border-zinc-800'
-                    } ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-zinc-50 dark:hover:bg-zinc-900'}`}
+                        ? 'border-violet-500 bg-violet-500/10'
+                        : 'border-[var(--color-app-border)]'
+                    } ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[var(--color-app-surface-hover)]'}`}
                     title={disabled ? t('automations.delivery.telegramRequired') : ''}
                   >
                     <input
@@ -759,12 +791,12 @@ function AutomationForm({
             </div>
           </Field>
 
-          <div className="text-[11px] text-zinc-500">
+          <div className="text-[11px] text-[var(--color-app-muted)]">
             {t('automations.form.timezone', { timezone })}
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-end gap-2 sticky bottom-0 bg-white dark:bg-zinc-950">
+        <div className="px-6 py-4 border-t border-[var(--color-app-border)] flex items-center justify-end gap-2 sticky bottom-0 bg-[var(--color-app-surface)]">
           <Button type="button" variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>
@@ -787,9 +819,7 @@ function Field({
 }): React.ReactElement {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
-        {label}
-      </span>
+      <span className="text-xs font-medium text-zinc-300 mb-1.5 block">{label}</span>
       {children}
     </label>
   );
@@ -813,13 +843,14 @@ function RunsModal({
   onClose: () => void;
 }): React.ReactElement {
   const [expanded, setExpanded] = useState<string | null>(runs[0]?.id ?? null);
+  useBodyScrollLock(true);
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-zinc-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center p-4"
       onClick={onClose}
     >
       <motion.div
@@ -828,17 +859,17 @@ function RunsModal({
         exit={{ scale: 0.95, opacity: 0 }}
         transition={{ duration: 0.2 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
+        className="bg-[var(--color-app-surface)] rounded-2xl border border-[var(--color-app-border)] shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
       >
-        <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-[var(--color-app-border)] flex items-center justify-between">
           <div>
-            <h2 className="font-semibold text-zinc-900 dark:text-zinc-100">{automation.name}</h2>
-            <p className="text-xs text-zinc-500">{t('automations.recentRuns')}</p>
+            <h2 className="font-semibold text-zinc-100">{automation.name}</h2>
+            <p className="text-xs text-[var(--color-app-muted)]">{t('automations.recentRuns')}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="size-8 rounded-lg flex items-center justify-center text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]"
           >
             <X className="size-4" />
           </button>
@@ -846,7 +877,9 @@ function RunsModal({
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           {runs.length === 0 ? (
-            <div className="py-8 text-center text-sm text-zinc-500">{t('automations.noRuns')}</div>
+            <div className="py-8 text-center text-sm text-[var(--color-app-muted)]">
+              {t('automations.noRuns')}
+            </div>
           ) : (
             runs.map((r) => {
               const ts = r.startedAt ?? r.createdAt;
@@ -854,23 +887,23 @@ function RunsModal({
               return (
                 <div
                   key={r.id}
-                  className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden"
+                  className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] overflow-hidden"
                 >
                   <button
                     type="button"
                     onClick={() => setExpanded(isOpen ? null : r.id)}
-                    className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                    className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[var(--color-app-surface-hover)]"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <RunStatusBadge status={r.status} t={t} />
-                      <span className="text-sm text-zinc-700 dark:text-zinc-300">
+                      <span className="text-sm text-zinc-300">
                         {new Date(ts).toLocaleString(locale, {
                           dateStyle: 'short',
                           timeStyle: 'short',
                         })}
                       </span>
                       {r.triggeredBy === 'manual' && (
-                        <span className="text-[10px] uppercase text-zinc-500">
+                        <span className="text-[10px] uppercase text-[var(--color-app-muted)]">
                           {t('automations.manual')}
                         </span>
                       )}
@@ -881,32 +914,33 @@ function RunsModal({
                         </span>
                       )}
                     </div>
-                    <span className="text-[11px] text-zinc-500">
-                      ${parseFloat(r.costUsd).toFixed(4)}
+                    <span className="text-[11px] text-[var(--color-app-muted)]">
+                      $
+                      {(Number.isFinite(parseFloat(r.costUsd)) ? parseFloat(r.costUsd) : 0).toFixed(
+                        4,
+                      )}
                     </span>
                   </button>
                   {isOpen && (
-                    <div className="border-t border-zinc-200 dark:border-zinc-800 px-4 py-3 bg-zinc-50/50 dark:bg-zinc-900/30">
+                    <div className="border-t border-[var(--color-app-border)] px-4 py-3 bg-[var(--color-app-bg)]/40">
                       {r.status === 'FAILED' && r.errorMessage && (
-                        <div className="text-sm text-rose-700 dark:text-rose-300 mb-2">
-                          ⚠️ {r.errorMessage}
-                        </div>
+                        <div className="text-sm text-rose-300 mb-2">⚠️ {r.errorMessage}</div>
                       )}
                       {r.outputMd ? (
                         <Markdown>{r.outputMd}</Markdown>
                       ) : (
-                        <div className="text-sm text-zinc-500 italic">
+                        <div className="text-sm text-[var(--color-app-muted)] italic">
                           {r.status === 'PENDING' || r.status === 'RUNNING'
                             ? t('automations.waiting')
                             : t('automations.noOutput')}
                         </div>
                       )}
                       {r.noteId && (
-                        <div className="mt-3 text-xs text-zinc-500">
+                        <div className="mt-3 text-xs text-[var(--color-app-muted)]">
                           {t('automations.noteCreated')}{' '}
                           <a
                             href={`/notas/${r.noteId}`}
-                            className="text-violet-700 dark:text-violet-300 hover:underline"
+                            className="text-violet-300 hover:underline"
                           >
                             {t('automations.open')}
                           </a>

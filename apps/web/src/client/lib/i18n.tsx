@@ -660,6 +660,7 @@ const ptBRMessages = {
   'automations.statusError': 'Falha ao atualizar status.',
   'automations.deleteConfirm':
     'Apagar a automação "{name}"? Histórico de execuções também será removido.',
+  'automations.deleteTitle': 'Apagar automação',
   'automations.removed': 'Automação removida.',
   'automations.removeError': 'Falha ao remover.',
   'automations.runsError': 'Falha ao listar execuções.',
@@ -1544,6 +1545,7 @@ const enMessages: Record<I18nKey, string> = {
   'automations.statusError': 'Failed to update status.',
   'automations.deleteConfirm':
     'Delete automation "{name}"? Execution history will also be removed.',
+  'automations.deleteTitle': 'Delete automation',
   'automations.removed': 'Automation removed.',
   'automations.removeError': 'Failed to remove.',
   'automations.runsError': 'Failed to list runs.',
