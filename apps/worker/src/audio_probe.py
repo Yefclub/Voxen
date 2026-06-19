@@ -29,6 +29,11 @@ logger = structlog.get_logger(__name__)
 # corrupção), não um áudio comprimido legítimo.
 MAX_AUDIO_BYTES = 1024 * 1024 * 1024  # 1 GiB
 
+# Teto pro ffprobe responder. ffprobe lê só headers, então é rápido; se passar
+# disso, o arquivo/FS está patológico — matamos o processo e caímos na
+# degradação graceful (deixa a API decidir) em vez de pendurar o job.
+FFPROBE_TIMEOUT_SEC = 30.0
+
 
 class AudioValidationError(Exception):
     """Áudio reprovado pelo ffprobe — não deve ser enviado pra API.
@@ -131,7 +136,13 @@ async def _run_ffprobe(path: Path) -> dict[str, Any] | None:
         logger.warning("ffprobe-not-found", path=str(path))
         return None
 
-    stdout, stderr = await proc.communicate()
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=FFPROBE_TIMEOUT_SEC)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        logger.warning("ffprobe-timeout", path=str(path), timeout_sec=FFPROBE_TIMEOUT_SEC)
+        return None
     if proc.returncode != 0:
         msg = stderr.decode("utf-8", errors="replace").strip() or "ffprobe falhou"
         logger.warning(

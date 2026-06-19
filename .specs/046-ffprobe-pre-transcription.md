@@ -69,6 +69,9 @@ tamanho do arquivo final que vai pra API.
   retorna um JSON inválido/inesperado THEN o sistema SHALL registrar um warning
   (`audio-validation-skipped`) e SEGUIR para a transcrição — a validação NÃO bloqueia
   o job nesse caso, pra não travar produção se a imagem mudar/o binário sumir.
+- WHEN o `ffprobe` não responde dentro de `FFPROBE_TIMEOUT_SEC` (30s) THEN o sistema
+  SHALL matar o processo, registrar `ffprobe-timeout` e SEGUIR para a transcrição
+  (mesma degradação graceful) — um ffprobe pendurado não pode travar o job.
 - Justificativa: a validação é uma otimização de "fail fast", não um gate de
   segurança. Se a ferramenta de validação some, o comportamento correto é degradar
   para o comportamento atual (deixar a API decidir), não derrubar todos os jobs.

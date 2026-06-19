@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -21,6 +22,20 @@ class _FakeProc:
 
     async def communicate(self) -> tuple[bytes, bytes]:
         return self._stdout, self._stderr
+
+    def kill(self) -> None:
+        self.returncode = -9
+
+    async def wait(self) -> int:
+        return self.returncode
+
+
+class _HangingProc(_FakeProc):
+    """ffprobe que nunca responde — exercita o caminho de timeout."""
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        await asyncio.sleep(10)
+        return b"", b""
 
 
 def _ffprobe_json(*, duration: str | None = "12.5", with_audio: bool = True) -> bytes:
@@ -159,6 +174,16 @@ async def test_ffprobe_nonzero_exit_degrades_gracefully(
     path = _write_audio(tmp_path)
     _patch_ffprobe(monkeypatch, _FakeProc(stderr=b"boom", returncode=1))
     # ffprobe falhou na execução → degrada graceful (deixa a API decidir).
+    await validate_audio_for_transcription(path)
+
+
+async def test_ffprobe_timeout_degrades_gracefully(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_audio(tmp_path)
+    monkeypatch.setattr(audio_probe, "FFPROBE_TIMEOUT_SEC", 0.05)
+    _patch_ffprobe(monkeypatch, _HangingProc())
+    # ffprobe pendurado → timeout → None → degradação graceful (não levanta).
     await validate_audio_for_transcription(path)
 
 
