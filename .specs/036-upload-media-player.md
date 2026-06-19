@@ -50,6 +50,9 @@ o seek de vídeo e faz o Safari/iOS recusar a tag `<video>`.
   (download), evitando execução same-origin de upload malicioso (XSS armazenado).
 - WHEN qualquer mídia original é servida THEN a resposta SHALL incluir
   `X-Content-Type-Options: nosniff`.
+- WHEN o endpoint de preview serve a imagem original THEN SHALL fazê-lo apenas
+  para raster segura (`image/png|jpeg|webp|gif`); `image/svg+xml` (executável em
+  navegação direta) SHALL cair no placeholder, e a resposta SHALL incluir `nosniff`.
 
 ## Fora de escopo
 

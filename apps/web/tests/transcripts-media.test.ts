@@ -74,6 +74,10 @@ describe('buildOriginalResponseInit — disposição segura', () => {
     ['application/xhtml+xml', 'attachment'],
     ['application/pdf', 'attachment'],
     ['application/octet-stream', 'attachment'],
+    // Vetores de bypass: parâmetro e case não devem furar a allowlist.
+    ['text/html; charset=utf-8', 'attachment'],
+    ['TEXT/HTML', 'attachment'],
+    ['VIDEO/MP4', 'inline'],
   ];
   for (const [mime, disposition] of cases) {
     it(`${mime} -> ${disposition}`, () => {

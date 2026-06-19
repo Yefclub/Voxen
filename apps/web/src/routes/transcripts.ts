@@ -336,15 +336,20 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
     },
   });
   if (!transcript) return c.text('', 404);
+  // Só servimos a imagem original como preview se for raster segura
+  // (png/jpeg/webp/gif). image/svg+xml é executável em navegação direta à URL →
+  // cai no placeholder. A preview gerada (previewObjectKey) é sempre JPEG nosso.
+  const originalIsSafeImage =
+    !!transcript.originalObjectKey &&
+    !!transcript.originalMimeType &&
+    transcript.originalMimeType.startsWith('image/') &&
+    inlineSafeMime(transcript.originalMimeType);
   const objectKey =
-    transcript.previewObjectKey ||
-    (transcript.originalObjectKey && transcript.originalMimeType?.startsWith('image/')
-      ? transcript.originalObjectKey
-      : null);
+    transcript.previewObjectKey || (originalIsSafeImage ? transcript.originalObjectKey : null);
   const mimeType =
     transcript.previewObjectKey && transcript.previewMimeType
       ? transcript.previewMimeType
-      : transcript.originalMimeType?.startsWith('image/')
+      : originalIsSafeImage
         ? transcript.originalMimeType
         : null;
   if (objectKey && mimeType) {
@@ -359,6 +364,7 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
         headers: {
           'content-type': mimeType,
           'cache-control': 'private, max-age=300',
+          'x-content-type-options': 'nosniff',
         },
       });
     } catch (err) {
@@ -369,6 +375,7 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
     headers: {
       'content-type': 'image/svg+xml; charset=utf-8',
       'cache-control': 'private, max-age=300',
+      'x-content-type-options': 'nosniff',
     },
   });
 });
