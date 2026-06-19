@@ -1419,19 +1419,18 @@ function EmptyState({
   } as const;
 
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center space-y-8">
-      <div className="space-y-4">
+    <div className="flex flex-col items-center justify-center py-8 text-center space-y-6 sm:py-16 sm:space-y-8">
+      <div className="space-y-3 sm:space-y-4">
         <img
           src="/voxen-256.png"
           alt="Voxen"
           width={88}
           height={88}
           draggable={false}
-          className="mx-auto h-22 w-22 select-none pointer-events-none drop-shadow-[0_0_40px_rgba(139,92,246,0.25)]"
-          style={{ height: 88, width: 88 }}
+          className="mx-auto h-16 w-16 sm:h-[88px] sm:w-[88px] select-none pointer-events-none drop-shadow-[0_0_40px_rgba(139,92,246,0.25)]"
         />
         <div className="space-y-1.5 max-w-md mx-auto">
-          <p className="font-display text-2xl font-semibold tracking-tight">
+          <p className="font-display text-xl sm:text-2xl font-semibold tracking-tight">
             {t('chat.emptyTitle', { name: 'Vox' })}
           </p>
           <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
@@ -1439,7 +1438,7 @@ function EmptyState({
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-xl">
+      <div className="grid grid-cols-2 gap-2.5 w-full max-w-xl">
         {cards.map(({ icon: Icon, title, hint, prompt, accent }) => (
           <button
             key={title}
