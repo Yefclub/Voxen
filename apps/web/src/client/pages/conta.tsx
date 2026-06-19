@@ -52,12 +52,19 @@ export function ContaPage(): React.ReactElement {
   const [changingPwd, setChangingPwd] = useState(false);
 
   useEffect(() => {
+    // Guarda contra setState após unmount: o helper `apiGet` não suporta
+    // AbortController, então usamos a flag clássica de cleanup.
+    let cancelled = false;
     apiGet<{ user: AccountData }>('/api/account')
       .then((d) => {
+        if (cancelled) return;
         setAccount(d.user);
         setName(d.user.name);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function saveName(e: React.FormEvent): Promise<void> {

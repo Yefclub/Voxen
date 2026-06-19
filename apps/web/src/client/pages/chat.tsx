@@ -144,17 +144,22 @@ export function ChatPage(): React.ReactElement {
   const [documentEnabled, setDocumentEnabled] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   useEffect(() => {
-    // Detecta se o admin configurou modelo de visão pra habilitar o botão
-    fetch('/api/capabilities', { credentials: 'include' })
+    // Detecta se o admin configurou modelo de visão pra habilitar o botão.
+    // AbortController evita setState após unmount se a página fechar antes da
+    // resposta.
+    const ac = new AbortController();
+    fetch('/api/capabilities', { credentials: 'include', signal: ac.signal })
       .then((r) => r.json())
       .then((d: { vision?: boolean; document?: boolean }) => {
         setVisionEnabled(!!d.vision);
         setDocumentEnabled(!!d.document);
       })
       .catch(() => {
+        if (ac.signal.aborted) return;
         setVisionEnabled(false);
         setDocumentEnabled(false);
       });
+    return () => ac.abort();
   }, []);
   const [thinking, setThinking] = useState<boolean>(() => {
     try {
@@ -376,7 +381,15 @@ export function ChatPage(): React.ReactElement {
           const ev = block.match(/^event:\s*(.+)$/m)?.[1];
           const data = block.match(/^data:\s*(.+)$/m)?.[1];
           if (!ev || !data) continue;
-          const payload = JSON.parse(data) as Record<string, unknown>;
+          let payload: Record<string, unknown>;
+          try {
+            payload = JSON.parse(data) as Record<string, unknown>;
+          } catch {
+            // Bloco SSE malformado: ignora só este bloco e segue o stream — sem
+            // isso, um JSON quebrado abortava o streaming inteiro (catch externo)
+            // e marcava a mensagem com erro. Mesmo padrão do FloatingTranscriptChat.
+            continue;
+          }
           if (ev === 'token') {
             const t = (payload.text as string) ?? '';
             setMessages((m) =>
