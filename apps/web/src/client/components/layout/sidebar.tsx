@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   ChevronDown,
   DollarSign,
-  GitBranch,
   LayoutDashboard,
   FolderPlus,
   ListVideo,
@@ -172,32 +171,17 @@ export function SidebarVersionInfo(): React.ReactElement {
     : t('shell.versionFallback');
 
   return (
-    <div className="shrink-0 border-t border-[var(--color-app-border)] px-3 py-2">
-      <div
-        className="flex min-h-12 items-center gap-3 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/35 px-3 py-2"
-        title={title}
-      >
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-300">
-          <GitBranch className="h-3.5 w-3.5" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
-            {t('shell.versionBuildLabel')}
-          </p>
-          {data?.version ? (
-            <p className="truncate font-mono text-[11px] text-zinc-200">
-              v{data.version}
-              {shortSha ? (
-                <span className="text-[var(--color-app-muted)]"> · {shortSha}</span>
-              ) : null}
-            </p>
-          ) : (
-            <p className="truncate text-[11px] text-[var(--color-app-muted)]">
-              {t('shell.versionFallback')}
-            </p>
-          )}
-        </div>
-      </div>
+    <div className="shrink-0 px-3 py-1.5" title={title}>
+      <p className="truncate text-center font-mono text-[10px] leading-none text-[var(--color-app-muted)]/60">
+        {data?.version ? (
+          <>
+            v{data.version}
+            {shortSha ? <span> · {shortSha}</span> : null}
+          </>
+        ) : (
+          t('shell.versionFallback')
+        )}
+      </p>
     </div>
   );
 }
