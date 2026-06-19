@@ -26,6 +26,7 @@ from . import (
     ytdl,
 )
 from .audio_chunking import AudioChunk, split_audio
+from .audio_probe import AudioValidationError, validate_audio_for_transcription
 from .cancellation import CancelledException, clear_cancelled, is_cancelled
 from .openrouter import (
     OpenrouterAuthError,
@@ -778,6 +779,13 @@ async def _transcribe_via_api(
     model = await voxen_settings.get_default_transcription_model()
     if not model:
         raise PermanentError("Setup incompleto — modelo de transcrição padrão ausente.")
+
+    # Fail fast: valida o áudio com ffprobe ANTES de fatiar e chamar a API (spec 046).
+    # Barra arquivos vazios/corrompidos/sem faixa de áudio sem queimar tokens.
+    try:
+        await validate_audio_for_transcription(audio_path)
+    except AudioValidationError as e:
+        raise PermanentError(str(e)) from e
 
     chunks: list[AudioChunk] = await split_audio(audio_path, tmpdir, duration_sec)
     total_chunks = len(chunks)
