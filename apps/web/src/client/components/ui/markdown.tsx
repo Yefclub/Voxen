@@ -125,7 +125,13 @@ const components: Components = {
   hr: () => <hr />,
   strong: (p) => <strong>{kids(p)}</strong>,
   em: (p) => <em>{kids(p)}</em>,
-  table: (p) => <table>{kids(p)}</table>,
+  // Wrapper com scroll-x: sob `overflow-x: clip` global, tabela larga seria
+  // cortada no mobile em vez de rolar.
+  table: (p) => (
+    <div className="my-3 overflow-x-auto">
+      <table>{kids(p)}</table>
+    </div>
+  ),
   thead: (p) => <thead>{kids(p)}</thead>,
   tbody: (p) => <tbody>{kids(p)}</tbody>,
   tr: (p) => <tr>{kids(p)}</tr>,
@@ -140,7 +146,9 @@ export const Markdown = memo(function Markdown({
   return (
     <div
       className={cn(
-        'text-[14.5px] leading-relaxed text-zinc-100',
+        // break-words: URLs/tokens longos sem espaço estouram a bolha no mobile
+        // (sob `overflow-x: clip` global) — força quebra em vez de corte.
+        'text-[14.5px] leading-relaxed text-zinc-100 break-words',
         '[&_p+p]:mt-3 [&_p+ul]:mt-3 [&_p+ol]:mt-3 [&_ul+p]:mt-3 [&_ol+p]:mt-3',
         '[&_p]:leading-relaxed',
         '[&_strong]:text-zinc-50 [&_strong]:font-semibold',
@@ -149,12 +157,12 @@ export const Markdown = memo(function Markdown({
         '[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1',
         '[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1',
         '[&_li]:leading-relaxed',
-        '[&_blockquote]:border-l-2 [&_blockquote]:border-violet-500/50 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-[var(--color-app-subtle)]',
+        '[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-violet-500/50 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-[var(--color-app-subtle)]',
         '[&_h1]:font-display [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h1]:mt-4',
         '[&_h2]:font-display [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:mt-4',
         '[&_h3]:font-display [&_h3]:text-base [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:mt-3',
         '[&_hr]:border-[var(--color-app-border)] [&_hr]:my-4',
-        '[&_table]:w-full [&_table]:text-[13px] [&_table]:border-collapse [&_table]:my-3',
+        '[&_table]:w-full [&_table]:text-[13px] [&_table]:border-collapse',
         '[&_th]:text-left [&_th]:font-semibold [&_th]:text-zinc-200 [&_th]:border-b [&_th]:border-[var(--color-app-border-strong)] [&_th]:px-2 [&_th]:py-1.5',
         '[&_td]:border-b [&_td]:border-[var(--color-app-border)] [&_td]:px-2 [&_td]:py-1.5',
         className,

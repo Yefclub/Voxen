@@ -24,13 +24,18 @@ ou um fence ``` ainda não terminado fazem o layout pular.
 
 ### Bundle (decisão sobre Mermaid/KaTeX/Shiki)
 
-Inspeção do `dist` instalado: o pacote tem ~104 KB e **não** importa Mermaid, KaTeX
-ou Shiki estática nem dinamicamente no chunk principal. Esses são **plugins opt-in**
-(`plugins` prop). Como NÃO vamos passar `plugins.mermaid`, `plugins.math` nem
-`plugins.code`, nada de Mermaid/KaTeX/Shiki entra no bundle. Decisão: **manter os
-três desligados** — o chat do Voxen não precisa de diagramas/fórmulas, e os blocos
-de código continuam renderizados pelo nosso `CodeBlock` (Tailwind, sem highlight
-pesado), preservando o look atual e o bundle enxuto.
+Correção factual: o `streamdown` **declara `mermaid` como dependência direta**
+(que puxa d3/cytoscape/katex etc.) — não é peer/optional. PORÉM, Mermaid/KaTeX/Shiki
+são **plugins opt-in** carregados via `import()` dinâmico (lazy) e só ativam quando
+`plugins` é passado. Como NÃO passamos `plugins.mermaid`, `plugins.math` nem
+`plugins.code` e sobrescrevemos `code`, esses caminhos viram código morto: no build
+real do Voxen o Rollup os **tree-shaka para stubs de ~100 bytes** (verificado no
+`dist`: chunk `mermaid-*.js` = 119 B, `highlighted-body-*.js` = 505 B), e o browser
+**nunca os baixa**. Ou seja: estão no `node_modules`/lockfile (superfície de
+dependência), mas **fora do bundle de runtime e do precache do PWA**. Decisão:
+**manter os três desligados** — o chat do Voxen não precisa de diagramas/fórmulas, e
+os blocos de código continuam renderizados pelo nosso `CodeBlock` (Tailwind, sem
+highlight pesado), preservando o look atual e o bundle enxuto.
 
 ## Requisitos (EARS)
 
