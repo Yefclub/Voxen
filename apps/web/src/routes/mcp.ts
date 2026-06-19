@@ -21,6 +21,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPTransport } from '@hono/mcp';
 import { db } from '../lib/db';
 import { getSetting } from '../lib/settings';
+import { createAutoJobForUser } from './jobs';
+import { reindexNotesBrain } from '../lib/brain';
+import { invalidateGraphCache } from '../lib/graph-cache';
 
 export const mcpRoutes = new Hono();
 
@@ -29,23 +32,29 @@ export const mcpRoutes = new Hono();
 // as tools se encaixam e as boas práticas de uso.
 const VOXEN_INSTRUCTIONS = [
   'Voxen é uma base de conhecimento self-hosted single-tenant. Este servidor MCP',
-  'dá acesso SOMENTE-LEITURA ao acervo do usuário dono do token: transcrições de',
-  'vídeos (YouTube/Instagram/TikTok), páginas web indexadas, uploads, notas',
-  'manuais e o grafo "Voxen Brain".',
+  'dá acesso ao acervo do usuário dono do token: transcrições de vídeos',
+  '(YouTube/Instagram/TikTok), páginas web indexadas, uploads, notas manuais e o',
+  'grafo "Voxen Brain". A maioria das tools é de leitura; algumas criam conteúdo.',
   '',
-  'Fluxo recomendado:',
+  'Fluxo de leitura:',
   '1. Para achar conteúdo, comece por voxen_search_transcripts / voxen_search_notes',
   '   (retornam trechos curtos + id). Só então use voxen_read_transcript /',
   '   voxen_read_note com o id para ler o conteúdo completo. Isso economiza tokens.',
   '2. Para navegar relações e entidades, use as tools voxen_brain_*.',
   '',
+  'Fluxo de escrita:',
+  '- voxen_create_note / voxen_update_note: salvar ou editar informação na KB.',
+  '- voxen_request_transcription(url) enfileira um job; acompanhe com',
+  '  voxen_get_job_status(job_id) até DONE e então voxen_read_transcript no resultado.',
+  '',
   'Regras: cite títulos/ids/trechos ao usar o que recuperar; não invente conteúdo',
   'quando uma tool não retornar evidência; respeite o escopo do workspace do token.',
 ].join('\n');
 
-// Anotações: todas as tools deste servidor são read-only sobre um domínio fechado
-// (o acervo do próprio usuário). Os defaults do MCP assumem o pior caso, então é
-// importante declarar isto explicitamente para o cliente não tratar como perigoso.
+// Anotação reutilizada pelas tools de LEITURA (domínio fechado = o acervo do
+// próprio usuário). Os defaults do MCP assumem o pior caso, então declaramos
+// explicitamente pra o cliente não tratar como perigoso. As write tools
+// (voxen_create_note/update_note/request_transcription) têm annotations próprias.
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
 
 // ----------------------------------------------------------------------------
@@ -114,7 +123,178 @@ function buildVoxenMcpServer(userId: string): McpServer {
   registerTranscriptTools(server, userId);
   registerNoteTools(server, userId);
   registerBrainTools(server, userId);
+  registerWriteTools(server, userId);
   return server;
+}
+
+function registerWriteTools(server: McpServer, userId: string): void {
+  server.registerTool(
+    'voxen_create_note',
+    {
+      title: 'Criar nota',
+      description:
+        'Cria uma nota (markdown) na KB do usuário. Use para salvar/ingerir informação que ' +
+        'o usuário pediu para guardar. Retorna o id da nota criada.',
+      inputSchema: {
+        title: z.string().min(1).max(200).describe('Título da nota.'),
+        content: z.string().max(200_000).optional().describe('Conteúdo markdown.'),
+      },
+      outputSchema: { id: z.string(), title: z.string() },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+        title: 'Criar nota',
+      },
+    },
+    async (args) => {
+      const title = args.title.trim();
+      if (!title) return fail('Título obrigatório.');
+      const note = await db.note.create({
+        data: { userId, kind: 'NOTE', title, content: args.content ?? '' },
+        select: { id: true, title: true },
+      });
+      await reindexNotesBrain(userId).catch(() => {});
+      await invalidateGraphCache(userId).catch(() => {});
+      return ok({ id: note.id, title: note.title });
+    },
+  );
+
+  server.registerTool(
+    'voxen_update_note',
+    {
+      title: 'Editar nota',
+      description:
+        'Atualiza título e/ou conteúdo de uma nota existente (pelo note_id). Sobrescreve o ' +
+        'conteúdo informado. Só edita notas (kind=NOTE) do próprio usuário.',
+      inputSchema: {
+        note_id: z.string().min(1).describe('ID da nota a editar.'),
+        title: z.string().min(1).max(200).optional().describe('Novo título.'),
+        content: z.string().max(200_000).optional().describe('Novo conteúdo markdown.'),
+      },
+      outputSchema: { id: z.string(), title: z.string() },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+        title: 'Editar nota',
+      },
+    },
+    async (args) => {
+      if (args.title === undefined && args.content === undefined) {
+        return fail('Nada para atualizar: informe title e/ou content.');
+      }
+      if (args.title !== undefined && !args.title.trim()) {
+        return fail('Título não pode ser vazio.');
+      }
+      const existing = await db.note.findFirst({
+        where: { id: args.note_id, userId, kind: 'NOTE' },
+        select: { id: true },
+      });
+      if (!existing) return fail('Nota não encontrada (ou não é editável).');
+      const note = await db.note.update({
+        where: { id: existing.id },
+        data: {
+          ...(args.title !== undefined ? { title: args.title.trim() } : {}),
+          ...(args.content !== undefined ? { content: args.content } : {}),
+        },
+        select: { id: true, title: true },
+      });
+      await reindexNotesBrain(userId).catch(() => {});
+      await invalidateGraphCache(userId).catch(() => {});
+      return ok({ id: note.id, title: note.title });
+    },
+  );
+
+  server.registerTool(
+    'voxen_request_transcription',
+    {
+      title: 'Solicitar transcrição',
+      description:
+        'Enfileira a transcrição/indexação de uma URL (vídeo YouTube/Instagram/TikTok/X ou ' +
+        'página web). Retorna um job_id; acompanhe com voxen_get_job_status(job_id) até ' +
+        'status=DONE e então leia com voxen_read_transcript. Se a URL já foi transcrita, ' +
+        'retorna o transcript_id existente.',
+      inputSchema: {
+        url: z.string().min(1).max(2048).describe('URL do vídeo ou página a transcrever/indexar.'),
+      },
+      outputSchema: {
+        outcome: z.string(),
+        jobId: z.string().nullable(),
+        transcriptId: z.string().nullable(),
+        message: z.string(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: true,
+        title: 'Solicitar transcrição',
+      },
+    },
+    async (args) => {
+      const result = await createAutoJobForUser(userId, args.url);
+      switch (result.outcome) {
+        case 'created':
+          return ok({
+            outcome: 'created',
+            jobId: result.jobId,
+            transcriptId: null,
+            message: 'Job enfileirado. Use voxen_get_job_status(job_id) até status=DONE.',
+          });
+        case 'existing_transcript':
+          return ok({
+            outcome: 'existing_transcript',
+            jobId: null,
+            transcriptId: result.transcriptId,
+            message: 'URL já transcrita. Use voxen_read_transcript(transcript_id).',
+          });
+        case 'inflight':
+          return ok({
+            outcome: 'inflight',
+            jobId: result.jobId ?? null,
+            transcriptId: null,
+            message: 'URL já está sendo processada. Acompanhe com voxen_get_job_status.',
+          });
+        default:
+          return fail(result.error);
+      }
+    },
+  );
+
+  server.registerTool(
+    'voxen_get_job_status',
+    {
+      title: 'Status de um job',
+      description:
+        'Consulta o status de um job de transcrição/indexação: QUEUED, RUNNING, DONE, FAILED ' +
+        'ou CANCELLED. Quando DONE, retorna transcript_id (use voxen_read_transcript); quando ' +
+        'FAILED, retorna o erro.',
+      inputSchema: {
+        job_id: z.string().min(1).describe('ID do job retornado por request_transcription.'),
+      },
+      outputSchema: {
+        id: z.string(),
+        status: z.string(),
+        transcriptId: z.string().nullable(),
+        error: z.string().nullable(),
+      },
+      annotations: { ...READ_ONLY, title: 'Status de um job' },
+    },
+    async (args) => {
+      const job = await db.job.findFirst({
+        where: { id: args.job_id.trim(), userId },
+        select: { id: true, status: true, transcriptId: true, errorMsg: true },
+      });
+      if (!job) return fail('Job não encontrado.');
+      return ok({
+        id: job.id,
+        status: job.status,
+        transcriptId: job.transcriptId ?? null,
+        error: job.errorMsg ?? null,
+      });
+    },
+  );
 }
 
 function registerTranscriptTools(server: McpServer, userId: string): void {
