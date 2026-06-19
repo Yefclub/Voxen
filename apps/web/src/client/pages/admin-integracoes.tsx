@@ -289,7 +289,7 @@ function McpSection(): React.ReactElement {
   async function copyToken(): Promise<void> {
     if (!newToken) return;
     try {
-      await writeClipboardText(newToken);
+      await writeClipboardText(newToken, t('admin.integrations.copyError'));
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -303,7 +303,7 @@ function McpSection(): React.ReactElement {
     try {
       const origin = window.location.origin;
       const res = await apiPost<McpPromptResponse>('/api/admin/mcp/prompt', { appUrl: origin });
-      await writeClipboardText(res.prompt);
+      await writeClipboardText(res.prompt, t('admin.integrations.copyError'));
       setPromptCopied(true);
       toast.success(t('admin.integrations.mcp.promptCopied'));
       setTimeout(() => setPromptCopied(false), 1800);
@@ -448,7 +448,7 @@ function McpSection(): React.ReactElement {
   );
 }
 
-async function writeClipboardText(text: string): Promise<void> {
+async function writeClipboardText(text: string, errorMessage: string): Promise<void> {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
@@ -468,5 +468,5 @@ async function writeClipboardText(text: string): Promise<void> {
   textarea.select();
   const ok = document.execCommand('copy');
   textarea.remove();
-  if (!ok) throw new Error('Falha ao copiar.');
+  if (!ok) throw new Error(errorMessage);
 }

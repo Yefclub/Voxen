@@ -141,7 +141,8 @@ export function AdminCustosPage(): React.ReactElement {
                         {m.events === 1
                           ? t('admin.costs.callSingular')
                           : t('admin.costs.callPlural')}
-                        {m.tokens > 0 && ` · ${m.tokens.toLocaleString(locale)} tokens`}
+                        {m.tokens > 0 &&
+                          ` · ${m.tokens.toLocaleString(locale)} ${t('admin.costs.tokens')}`}
                       </p>
                     </div>
                     <span className="text-base font-display font-semibold tabular-nums">
