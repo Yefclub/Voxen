@@ -34,7 +34,7 @@ export function AdminCustosPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-12 mx-auto max-w-6xl space-y-10">
+      <div className="px-4 sm:px-8 py-8 sm:py-12 mx-auto max-w-6xl space-y-10">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />

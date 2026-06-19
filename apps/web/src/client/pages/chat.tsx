@@ -894,7 +894,7 @@ function Bubble({
               <Spinner /> {t('chat.thinking')}
             </span>
           ) : isUser ? (
-            <p className="whitespace-pre-wrap">{msg.content}</p>
+            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
           ) : (
             <>
               {/* HITL: tool request_user_confirmation gera banner. Backend
@@ -1451,7 +1451,7 @@ function EmptyState({
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2.5 w-full max-w-xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-xl">
         {cards.map(({ icon: Icon, title, hint, prompt, accent }) => (
           <button
             key={title}

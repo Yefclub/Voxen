@@ -508,7 +508,7 @@ function JobRow({
 
   return (
     <li className="group flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
-      <Badge variant={variant} className="shrink-0 w-28 justify-center">
+      <Badge variant={variant} className="shrink-0 min-w-28 justify-center text-center">
         {isActive ? stageLabel(stage, t) : label}
       </Badge>
       <div className="flex-1 min-w-0 space-y-1.5">
