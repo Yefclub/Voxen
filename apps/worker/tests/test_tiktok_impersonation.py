@@ -46,6 +46,15 @@ async def test_runtime_options_impersonate_disabled_value(monkeypatch) -> None:
     assert "impersonate" not in opts
 
 
+async def test_runtime_options_invalid_target_degrades_gracefully(monkeypatch) -> None:
+    # Alvo inválido não deve derrubar o job por config: o except segura e o
+    # extractor ainda pode auto-selecionar (spec 035 R2).
+    monkeypatch.setenv("YTDLP_IMPERSONATE", "not-a-real-target")
+    monkeypatch.setattr(ytdl.voxen_settings, "get_yt_dlp_proxy_urls", AsyncMock(return_value=None))
+    opts = await ytdl._runtime_options()
+    assert "impersonate" not in opts
+
+
 def test_friendly_error_tiktok_rehydration() -> None:
     exc = RuntimeError(
         "ERROR: [TikTok] 7652846085165239573: Unable to extract universal data "
