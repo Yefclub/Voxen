@@ -409,7 +409,7 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
                 type="button"
                 onClick={() => onMentionRemove?.(item)}
                 className="rounded-full text-emerald-200/70 hover:text-emerald-100"
-                aria-label={`Remover ${item.label}`}
+                aria-label={t('prompt.removeMention', { label: item.label })}
               >
                 <X className="h-3 w-3" />
               </button>

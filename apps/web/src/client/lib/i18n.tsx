@@ -178,6 +178,7 @@ const ptBRMessages = {
   'jobs.detect.x': 'Post do X',
   'jobs.detect.web': 'Página web',
 
+  'jobDetail.eyebrow': 'Job',
   'jobDetail.cancelConfirm': 'Cancelar este job? Não dá pra voltar atrás.',
   'jobDetail.cancelRequested': 'Cancelamento solicitado.',
   'jobDetail.cancelRequestedDescription': 'O worker vai parar na próxima etapa.',
@@ -417,6 +418,7 @@ const ptBRMessages = {
   'prompt.mentionLibrary': 'Biblioteca',
   'prompt.searching': 'Buscando…',
   'prompt.noMentionResults': 'Nenhum item encontrado.',
+  'prompt.removeMention': 'Remover {label}',
   'prompt.imageAttached': 'Imagem anexada',
   'prompt.imageAttachedHint': 'Vox vai analisar com modelo de visão',
   'prompt.removeImage': 'Remover imagem',
@@ -492,6 +494,7 @@ const ptBRMessages = {
   'admin.costs.byUse': 'Por uso',
   'admin.costs.byUser': 'Por usuário',
   'admin.costs.empty': 'Nada por aqui ainda.',
+  'admin.costs.tokens': 'tokens',
   'admin.costs.callSingular': 'chamada',
   'admin.costs.callPlural': 'chamadas',
   'admin.costs.eventSingular': 'evento',
@@ -563,6 +566,7 @@ const ptBRMessages = {
   'admin.integrations.mcp.revoked': 'Token MCP revogado.',
   'admin.integrations.mcp.enabled': 'Habilitado',
   'admin.integrations.mcp.saveNow': 'Salve agora — não será exibido novamente',
+  'admin.integrations.copyError': 'Falha ao copiar.',
   'admin.integrations.mcp.copyToken': 'Copiar token',
   'admin.integrations.mcp.clientHint':
     'Configure no client MCP apontando para {url} com header {header}.',
@@ -834,7 +838,8 @@ const ptBRMessages = {
 
   'setup.badge.initial': 'Configuração inicial',
   'setup.badge.edit': 'Configurações',
-  'setup.title.initial': 'Conecte com a OpenRouter',
+  'setup.title.initialPrefix': 'Conecte com a ',
+  'setup.title.initialSuffix': '',
   'setup.title.edit': 'Configurações da instância',
   'setup.subtitle.initial':
     'Uma chave da OpenRouter dá acesso a Whisper para transcrição e a vários modelos de chat. É a única dependência externa do Voxen.',
@@ -857,6 +862,7 @@ const ptBRMessages = {
   'setup.openrouter.active': 'Chave ativa',
   'setup.openrouter.stored': 'Chave armazenada e pronta para uso.',
   'setup.openrouter.newKey': 'Nova OpenRouter API key (opcional)',
+  'setup.openrouter.newKeyPlaceholder': 'sk-or-v1-... (opcional)',
   'setup.openrouter.apiKey': 'OpenRouter API key',
   'setup.openrouter.refreshModels': 'Atualizar modelos',
   'setup.openrouter.refreshHint.active':
@@ -891,6 +897,8 @@ const ptBRMessages = {
   'setup.operation.mediaExtractionHint':
     'Em deploys home-lab (IP residencial) o YouTube praticamente não bloqueia downloads. Em VPS é comum cair em soft-block: configure um proxy residencial próprio abaixo ou use o upload manual quando precisar.',
   'setup.operation.proxy': 'Proxy de extração (opcional)',
+  'setup.operation.proxyPlaceholder': 'http://usuario:senha@host:porta&#10;socks5://host:porta',
+  'setup.operation.adminEmailPlaceholder': 'admin@seudominio.com',
   'setup.operation.proxyConfigured': 'Proxy configurado',
   'setup.operation.proxyHint':
     'Uma URL por linha. Use apenas proxies controlados por você (próprios ou residenciais contratados). Vazio = sem proxy.',
@@ -1063,6 +1071,7 @@ const enMessages: Record<I18nKey, string> = {
   'jobs.detect.x': 'X post',
   'jobs.detect.web': 'Web page',
 
+  'jobDetail.eyebrow': 'Job',
   'jobDetail.cancelConfirm': 'Cancel this job? This cannot be undone.',
   'jobDetail.cancelRequested': 'Cancellation requested.',
   'jobDetail.cancelRequestedDescription': 'The worker will stop at the next step.',
@@ -1301,6 +1310,7 @@ const enMessages: Record<I18nKey, string> = {
   'prompt.mentionLibrary': 'Library',
   'prompt.searching': 'Searching…',
   'prompt.noMentionResults': 'No item found.',
+  'prompt.removeMention': 'Remove {label}',
   'prompt.imageAttached': 'Image attached',
   'prompt.imageAttachedHint': 'Vox will analyze it with a vision model',
   'prompt.removeImage': 'Remove image',
@@ -1377,6 +1387,7 @@ const enMessages: Record<I18nKey, string> = {
   'admin.costs.byUse': 'By use',
   'admin.costs.byUser': 'By user',
   'admin.costs.empty': 'Nothing here yet.',
+  'admin.costs.tokens': 'tokens',
   'admin.costs.callSingular': 'call',
   'admin.costs.callPlural': 'calls',
   'admin.costs.eventSingular': 'event',
@@ -1448,6 +1459,7 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.mcp.revoked': 'MCP token revoked.',
   'admin.integrations.mcp.enabled': 'Enabled',
   'admin.integrations.mcp.saveNow': 'Save it now. It will not be shown again',
+  'admin.integrations.copyError': 'Failed to copy.',
   'admin.integrations.mcp.copyToken': 'Copy token',
   'admin.integrations.mcp.clientHint':
     'Configure the MCP client to point to {url} with header {header}.',
@@ -1717,7 +1729,8 @@ const enMessages: Record<I18nKey, string> = {
 
   'setup.badge.initial': 'Initial setup',
   'setup.badge.edit': 'Settings',
-  'setup.title.initial': 'Connect OpenRouter',
+  'setup.title.initialPrefix': 'Connect ',
+  'setup.title.initialSuffix': '',
   'setup.title.edit': 'Instance settings',
   'setup.subtitle.initial':
     'An OpenRouter key gives access to Whisper for transcription and several chat models. It is Voxen’s only external dependency.',
@@ -1738,6 +1751,7 @@ const enMessages: Record<I18nKey, string> = {
   'setup.openrouter.active': 'Active key',
   'setup.openrouter.stored': 'Key stored and ready to use.',
   'setup.openrouter.newKey': 'New OpenRouter API key (optional)',
+  'setup.openrouter.newKeyPlaceholder': 'sk-or-v1-... (optional)',
   'setup.openrouter.apiKey': 'OpenRouter API key',
   'setup.openrouter.refreshModels': 'Refresh models',
   'setup.openrouter.refreshHint.active':
@@ -1772,6 +1786,8 @@ const enMessages: Record<I18nKey, string> = {
   'setup.operation.mediaExtractionHint':
     'On home-lab deployments (residential IP), YouTube rarely blocks downloads. On VPS hosts, soft-blocks are common: configure your own residential proxy below or use manual upload when needed.',
   'setup.operation.proxy': 'Extraction proxy (optional)',
+  'setup.operation.proxyPlaceholder': 'http://user:password@host:port&#10;socks5://host:port',
+  'setup.operation.adminEmailPlaceholder': 'admin@yourdomain.com',
   'setup.operation.proxyConfigured': 'Proxy configured',
   'setup.operation.proxyHint':
     'One URL per line. Use only proxies you control (owned or contracted residential proxies). Empty = no proxy.',

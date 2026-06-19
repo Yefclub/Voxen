@@ -182,7 +182,7 @@ export function JobDetalhePage(): React.ReactElement {
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="space-y-2 min-w-0 flex-1">
                 <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
-                  Job · {job.id.slice(0, 12)}
+                  {t('jobDetail.eyebrow')} · {job.id.slice(0, 12)}
                 </p>
                 <h2 className="font-mono text-[15px] font-medium tracking-tight text-zinc-100 truncate">
                   {displayJobSource(job.sourceUrl)}

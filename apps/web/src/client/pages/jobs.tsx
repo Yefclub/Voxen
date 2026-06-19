@@ -321,7 +321,7 @@ export function JobsPage(): React.ReactElement {
                 {mode === 'link' ? (
                   <form onSubmit={onSubmit} className="space-y-2">
                     <div className="flex items-center justify-between min-h-[20px]">
-                      <Label htmlFor="url">Link</Label>
+                      <Label htmlFor="url">{t('jobs.mode.link')}</Label>
                       {detected && (
                         <motion.div
                           initial={{ opacity: 0, y: -2 }}
