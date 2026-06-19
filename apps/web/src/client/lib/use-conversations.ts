@@ -53,12 +53,18 @@ export async function refreshConversations(): Promise<void> {
   await fetchOnce();
 }
 
-export async function createConversation(title?: string): Promise<ConvSummary | null> {
+export async function createConversation(
+  title?: string,
+  transcriptId?: string,
+): Promise<ConvSummary | null> {
   const res = await fetch('/api/chat/conversations', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(title ? { title } : {}),
+    body: JSON.stringify({
+      ...(title ? { title } : {}),
+      ...(transcriptId ? { transcriptId } : {}),
+    }),
   });
   if (!res.ok) return null;
   const data = (await res.json()) as { conversation: ConvSummary };

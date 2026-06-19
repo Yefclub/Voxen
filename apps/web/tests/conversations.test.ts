@@ -69,6 +69,76 @@ describeIfDb('/api/chat/conversations CRUD', () => {
     expect(body.conversations).toEqual([]);
   });
 
+  it('vincula conversa a transcrição e filtra por transcriptId', async () => {
+    const cookie = await setupApprovedUser();
+    const user = await db.user.findFirstOrThrow();
+    const tr = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'UPLOAD',
+        url: 'upload://test/file',
+        title: 'Transcrição de teste',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'API',
+        mdPath: 'test.md',
+        plainText: '',
+        frontmatter: {},
+      },
+    });
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/chat/conversations', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ title: 'Sobre: x', transcriptId: tr.id }),
+      }),
+    );
+    expect(createRes.status).toBe(200);
+    const created = (await createRes.json()) as { conversation: { id: string } };
+    const listRes = await app.fetch(
+      new Request(`http://localhost/api/chat/conversations?transcriptId=${tr.id}`, {
+        headers: { cookie },
+      }),
+    );
+    expect(listRes.status).toBe(200);
+    const list = (await listRes.json()) as { conversations: { id: string }[] };
+    expect(list.conversations.map((co) => co.id)).toContain(created.conversation.id);
+    const dbConv = await db.conversation.findUnique({ where: { id: created.conversation.id } });
+    expect(dbConv?.transcriptId).toBe(tr.id);
+  });
+
+  it('ignora transcriptId de transcrição de outro user (ownership)', async () => {
+    const cookie = await setupApprovedUser();
+    const other = await db.user.create({
+      data: { email: 'other@voxen.local', name: 'Other', status: 'APPROVED' },
+    });
+    const tr = await db.transcript.create({
+      data: {
+        userId: other.id,
+        source: 'UPLOAD',
+        url: 'upload://other/file',
+        title: 'Alheia',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'API',
+        mdPath: 'o.md',
+        plainText: '',
+        frontmatter: {},
+      },
+    });
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/chat/conversations', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ transcriptId: tr.id }),
+      }),
+    );
+    expect(createRes.status).toBe(200);
+    const created = (await createRes.json()) as { conversation: { id: string } };
+    const dbConv = await db.conversation.findUnique({ where: { id: created.conversation.id } });
+    expect(dbConv?.transcriptId).toBeNull();
+  });
+
   it('cria conversa com título auto-default', async () => {
     const cookie = await setupApprovedUser();
     const res = await app.fetch(
