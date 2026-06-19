@@ -12,6 +12,37 @@ interface VersionPayload {
   gitSha?: string | null;
 }
 
+// Aplica o update do PWA de verdade: força o service worker a buscar/ativar o
+// build novo e só então recarrega. Sem isto, window.location.reload() pega o
+// index.html precacheado (antigo) e o toast de "nova versão" reaparece em loop.
+async function applyUpdate(): Promise<void> {
+  toast.dismiss(UPDATE_TOAST_ID);
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        let reloaded = false;
+        const reloadOnce = (): void => {
+          if (reloaded) return;
+          reloaded = true;
+          window.location.reload();
+        };
+        // Quando o SW novo assume o controle, os assets servidos já são os novos.
+        navigator.serviceWorker.addEventListener('controllerchange', reloadOnce, { once: true });
+        await reg.update();
+        // autoUpdate já faz skipWaiting; se houver um SW esperando, força assumir.
+        reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
+        // Fallback: se nenhum SW novo assumir em 3s, recarrega mesmo assim.
+        setTimeout(reloadOnce, 3000);
+        return;
+      }
+    }
+  } catch {
+    // sem service worker / erro: cai no reload simples
+  }
+  window.location.reload();
+}
+
 /**
  * Monitor de versão (padrão Orbital): reconsulta /api/version a cada 60s +
  * nos eventos focus/online/visibilitychange e mostra toast persistente com
@@ -74,7 +105,7 @@ export function useVersionMonitor(enabled: boolean): void {
         duration: Infinity,
         action: {
           label: t('shell.updateAction'),
-          onClick: () => window.location.reload(),
+          onClick: () => void applyUpdate(),
         },
       });
     };
