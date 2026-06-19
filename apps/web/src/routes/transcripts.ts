@@ -284,22 +284,34 @@ transcriptsRoutes.get('/:id/original', async (c) => {
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
   if (!transcript.originalObjectKey)
     return c.json({ error: 'Arquivo original não disponível.' }, 404);
+  // Range: o player de vídeo/áudio (e o Safari/iOS obrigatoriamente) precisa de
+  // 206 + Accept-Ranges pra fazer seek. Repassamos o header pro S3/MinIO, que
+  // fatia os bytes, e relayamos Content-Range/Content-Length da resposta dele.
+  const rangeHeader = c.req.header('range');
   try {
     const res = await s3Client().send(
       new GetObjectCommand({
         Bucket: s3Bucket(),
         Key: transcript.originalObjectKey,
+        ...(rangeHeader ? { Range: rangeHeader } : {}),
       }),
     );
     const filename = safeDownloadFilename(transcript.originalFilename || `${id}.bin`);
-    return new Response(await s3BodyToResponseBody(res.Body), {
-      headers: {
-        'content-type': transcript.originalMimeType || 'application/octet-stream',
-        'cache-control': 'private, max-age=300',
-        'content-disposition': `inline; filename="${filename}"`,
-      },
+    const init = buildOriginalResponseInit({
+      rangeHeader,
+      s3ContentType: res.ContentType,
+      s3ContentLength: res.ContentLength,
+      s3ContentRange: res.ContentRange,
+      fallbackMime: transcript.originalMimeType,
+      filename,
     });
+    return new Response(await s3BodyToResponseBody(res.Body), init);
   } catch (err) {
+    const httpStatus = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata
+      ?.httpStatusCode;
+    if (httpStatus === 416) {
+      return c.json({ error: 'Range solicitado inválido.' }, 416);
+    }
     console.error('[transcripts] erro ao baixar original:', err);
     return c.json({ error: 'Falha ao baixar arquivo original.' }, 502);
   }
@@ -630,6 +642,31 @@ async function s3BodyToResponseBody(body: unknown): Promise<BodyInit> {
     return copy.buffer;
   }
   return new ArrayBuffer(0);
+}
+
+// Monta status + headers da resposta de `/:id/original`. Puro (sem I/O) para ser
+// testável: decide 206 (Range satisfeito pelo S3) vs 200, e relaya os headers de
+// range. `accept-ranges: bytes` sempre presente para o player saber que dá seek.
+export function buildOriginalResponseInit(opts: {
+  rangeHeader?: string;
+  s3ContentType?: string;
+  s3ContentLength?: number;
+  s3ContentRange?: string;
+  fallbackMime: string | null;
+  filename: string;
+}): { status: number; headers: Record<string, string> } {
+  const headers: Record<string, string> = {
+    'content-type': opts.fallbackMime || opts.s3ContentType || 'application/octet-stream',
+    'cache-control': 'private, max-age=300',
+    'content-disposition': `inline; filename="${opts.filename}"`,
+    'accept-ranges': 'bytes',
+  };
+  if (opts.s3ContentLength != null) headers['content-length'] = String(opts.s3ContentLength);
+  if (opts.rangeHeader && opts.s3ContentRange) {
+    headers['content-range'] = opts.s3ContentRange;
+    return { status: 206, headers };
+  }
+  return { status: 200, headers };
 }
 
 function safeDownloadFilename(value: string): string {

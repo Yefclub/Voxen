@@ -33,6 +33,7 @@ import { AnimatedPage } from '../components/motion/animated-page';
 import { TranscriptViewer } from '../components/ui/transcript-viewer';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { UploadMediaViewer } from '../components/ui/media-viewer';
 import {
   Select,
   SelectContent,
@@ -446,12 +447,21 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             className="flex flex-col gap-4 self-start lg:sticky lg:top-24"
           >
             <Card className="order-2 overflow-hidden p-0 lg:order-none" elevated>
-              <img
-                src={previewSrc}
-                alt=""
-                className="w-full aspect-video object-cover"
-                loading="lazy"
-              />
+              {t.originalObjectKey && t.originalMimeType ? (
+                <UploadMediaViewer
+                  transcriptId={t.id}
+                  mimeType={t.originalMimeType}
+                  previewSrc={previewSrc}
+                  title={t.title}
+                />
+              ) : (
+                <img
+                  src={previewSrc}
+                  alt=""
+                  className="w-full aspect-video object-cover"
+                  loading="lazy"
+                />
+              )}
             </Card>
 
             <Card elevated className="order-3 lg:order-none">
