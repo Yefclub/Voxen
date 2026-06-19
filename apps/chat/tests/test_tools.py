@@ -198,7 +198,7 @@ def test_web_search_payload_uses_openrouter_server_tool() -> None:
     assert payload["tools"] == [
         {
             "type": "openrouter:web_search",
-            "parameters": {"max_results": 5, "max_total_results": 10},
+            "parameters": {"max_results": 8, "max_total_results": 15},
         }
     ]
     assert "plugins" not in payload

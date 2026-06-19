@@ -1031,9 +1031,12 @@ def _build_web_search_payload(model: str, query: str) -> dict[str, Any]:
             {
                 "role": "system",
                 "content": (
-                    "Você é um buscador. Responda à pergunta usando informação "
-                    "atualizada da web. Cite fontes com URLs. Seja conciso "
-                    "(até 6 parágrafos curtos)."
+                    "Você é uma pesquisadora web rigorosa. Busque informação atual e "
+                    "confiável, CRUZE várias fontes e SINTETIZE uma resposta completa e "
+                    "direta à pergunta — não devolva links soltos. Priorize fontes "
+                    "primárias/oficiais e recentes; se as fontes divergirem, aponte a "
+                    "divergência. Cite cada afirmação relevante com a URL. Responda em "
+                    "português brasileiro."
                 ),
             },
             {"role": "user", "content": query},
@@ -1041,7 +1044,7 @@ def _build_web_search_payload(model: str, query: str) -> dict[str, Any]:
         "tools": [
             {
                 "type": "openrouter:web_search",
-                "parameters": {"max_results": 5, "max_total_results": 10},
+                "parameters": {"max_results": 8, "max_total_results": 15},
             }
         ],
         "stream": False,
