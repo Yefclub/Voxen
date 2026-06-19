@@ -130,8 +130,10 @@ chatRoutes.get('/library-mentions', async (c) => {
 
 chatRoutes.get('/conversations', async (c) => {
   const uid = userId(c);
+  // ?transcriptId= filtra as conversas contextuais de uma transcrição (resume).
+  const transcriptId = c.req.query('transcriptId');
   const list = await db.conversation.findMany({
-    where: { userId: uid, archivedAt: null },
+    where: { userId: uid, archivedAt: null, ...(transcriptId ? { transcriptId } : {}) },
     orderBy: { updatedAt: 'desc' },
     select: {
       id: true,
@@ -157,11 +159,24 @@ chatRoutes.get('/conversations', async (c) => {
 
 chatRoutes.post('/conversations', async (c) => {
   const uid = userId(c);
-  const body = (await c.req.json().catch(() => ({}))) as { title?: string };
+  const body = (await c.req.json().catch(() => ({}))) as {
+    title?: string;
+    transcriptId?: string;
+  };
+  // Vincula a uma transcrição só após validar ownership (nunca confia no client).
+  let transcriptId: string | null = null;
+  if (typeof body.transcriptId === 'string' && body.transcriptId) {
+    const t = await db.transcript.findFirst({
+      where: { id: body.transcriptId, userId: uid },
+      select: { id: true },
+    });
+    transcriptId = t?.id ?? null;
+  }
   const conv = await db.conversation.create({
     data: {
       userId: uid,
       title: body.title?.trim() || 'Nova conversa',
+      transcriptId,
     },
     select: { id: true, title: true, thinking: true, updatedAt: true, createdAt: true },
   });

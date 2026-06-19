@@ -689,9 +689,50 @@ function FloatingTranscriptChat({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, open]);
 
+  // Continuidade: reabre a conversa contínua desta transcrição e carrega o
+  // histórico, pra o chat sobreviver ao reload (a conversa fica como seção no
+  // chat principal). Best-effort: qualquer falha cai no fluxo de criar nova.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const listRes = await fetch(
+          `/api/chat/conversations?transcriptId=${encodeURIComponent(transcript.id)}`,
+          { credentials: 'include' },
+        );
+        if (!listRes.ok) return;
+        const listData = (await listRes.json()) as { conversations?: { id: string }[] };
+        const existing = listData.conversations?.[0];
+        if (!existing || cancelled) return;
+        const convRes = await fetch(`/api/chat/conversations/${existing.id}`, {
+          credentials: 'include',
+        });
+        if (!convRes.ok || cancelled) return;
+        const convData = (await convRes.json()) as {
+          messages?: { id: string; role: string; kind?: string; content: string }[];
+        };
+        if (cancelled) return;
+        setConversationId(existing.id);
+        setMessages(
+          (convData.messages ?? [])
+            .filter(
+              (m) =>
+                m.kind !== 'COMPACTION_SUMMARY' && (m.role === 'user' || m.role === 'assistant'),
+            )
+            .map((m) => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content })),
+        );
+      } catch {
+        // ignora — o chat ainda funciona criando uma conversa nova
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [transcript.id]);
+
   async function ensureConversation(): Promise<string | null> {
     if (conversationId) return conversationId;
-    const conv = await createConversation(`Sobre: ${transcript.title}`.slice(0, 60));
+    const conv = await createConversation(`Sobre: ${transcript.title}`.slice(0, 60), transcript.id);
     if (!conv) return null;
     setConversationId(conv.id);
     return conv.id;
@@ -798,19 +839,19 @@ function FloatingTranscriptChat({
         <motion.button
           type="button"
           aria-label={t('library.openInlineChat')}
-          className="fixed right-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-emerald-300/20 bg-[var(--color-app-bg-elevated)] text-zinc-100 shadow-2xl shadow-emerald-950/45 transition-colors bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6 sm:right-6"
-          whileHover={{ scale: 1.04 }}
-          whileTap={{ scale: 0.96 }}
+          className="fixed right-4 z-50 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-emerald-300/25 bg-[var(--color-app-bg-elevated)] text-zinc-100 shadow-2xl shadow-emerald-950/50 ring-1 ring-emerald-400/15 transition-transform bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6 sm:right-6"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
           onClick={() => setOpen(true)}
         >
-          <span className="absolute inset-0 bg-emerald-400/20 opacity-70 blur-xl" aria-hidden />
+          <span className="absolute inset-0 bg-emerald-400/25 opacity-70 blur-xl" aria-hidden />
           <img
             src="/voxen-256.png"
             alt=""
-            width={40}
-            height={40}
+            width={44}
+            height={44}
             draggable={false}
-            className="relative h-10 w-10 select-none rounded-xl"
+            className="relative h-11 w-11 select-none rounded-full"
           />
         </motion.button>
       )}
@@ -819,7 +860,7 @@ function FloatingTranscriptChat({
           initial={{ opacity: 0, y: 18, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-          className="fixed inset-x-3 bottom-[calc(10rem+env(safe-area-inset-bottom))] z-50 flex max-h-[68dvh] flex-col overflow-hidden rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] shadow-2xl shadow-black/45 sm:inset-x-auto sm:bottom-24 sm:right-6 sm:w-[420px] sm:max-h-[620px]"
+          className="fixed inset-x-3 bottom-[calc(10rem+env(safe-area-inset-bottom))] z-50 flex h-[72dvh] flex-col overflow-hidden rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] shadow-2xl shadow-black/45 sm:inset-x-auto sm:bottom-24 sm:right-6 sm:h-[640px] sm:max-h-[85vh] sm:w-[420px]"
         >
           <div className="relative overflow-hidden border-b border-[var(--color-app-border)] px-4 py-3">
             <div
