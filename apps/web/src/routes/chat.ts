@@ -398,14 +398,18 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
     },
   });
 
-  // Bumpa updatedAt e (se for a primeira) define um título auto.
+  // Título da 1ª mensagem: gera por IA EM PARALELO (sem atrasar a resposta) e usa
+  // os primeiros 60 chars como fallback imediato/à prova de falha. O título da IA
+  // é gravado no fim do stream (persistPartial), antes de fechar — assim o
+  // refreshConversations que o front chama pós-stream já pega o título novo.
+  const isFirstMessage = conv.messages.length === 0 && conv.title === 'Nova conversa';
+  const titlePromise: Promise<string | null> =
+    isFirstMessage && content ? generateConversationTitle(uid, content) : Promise.resolve(null);
   await db.conversation.update({
     where: { id },
     data: {
       updatedAt: new Date(),
-      ...(conv.messages.length === 0 && conv.title === 'Nova conversa'
-        ? { title: (content || 'Imagem').slice(0, 60) }
-        : {}),
+      ...(isFirstMessage ? { title: (content || 'Imagem').slice(0, 60) } : {}),
     },
   });
 
@@ -479,6 +483,17 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
         });
       } catch {
         // Best-effort
+      }
+    }
+    // Grava o título por IA da 1ª mensagem (se gerado) antes de fechar o stream.
+    if (isFirstMessage) {
+      try {
+        const aiTitle = await titlePromise;
+        if (aiTitle) {
+          await db.conversation.update({ where: { id }, data: { title: aiTitle } });
+        }
+      } catch {
+        // mantém o título de fallback
       }
     }
   };
@@ -558,6 +573,24 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
     },
   });
 });
+
+// Gera um título curto pra conversa via chat service (/title → 1 call barata).
+// Best-effort: erro/sem-setup retorna null e o chamador mantém o fallback.
+async function generateConversationTitle(uid: string, message: string): Promise<string | null> {
+  try {
+    const res = await fetch(chatUrl('/title'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Voxen-User-Id': uid },
+      body: JSON.stringify({ message: message.slice(0, 2000) }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { title?: string };
+    const title = data.title?.trim();
+    return title ? title.slice(0, 120) : null;
+  } catch {
+    return null;
+  }
+}
 
 async function resolveLibraryMentions(uid: string, raw: unknown): Promise<LibraryMentionContext[]> {
   if (!Array.isArray(raw)) return [];
