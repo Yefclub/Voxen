@@ -558,7 +558,7 @@ const ptBRMessages = {
     'O bot vai parar de responder até admin configurar novo token.',
   'admin.integrations.mcp.title': 'MCP Server',
   'admin.integrations.mcp.description':
-    'Expõe sua biblioteca via Model Context Protocol para IAs externas (Claude Desktop, Cursor, agentes próprios) consultarem read-only.',
+    'Expõe sua biblioteca via Model Context Protocol para IAs externas (Claude Desktop, Cursor, agentes próprios) lerem o acervo e criarem conteúdo (notas, transcrições).',
   'admin.integrations.mcp.generated': 'Token gerado. Copie agora — não será exibido novamente.',
   'admin.integrations.mcp.revoked': 'Token MCP revogado.',
   'admin.integrations.mcp.enabled': 'Habilitado',
@@ -1442,7 +1442,7 @@ const enMessages: Record<I18nKey, string> = {
     'The bot will stop responding until an admin configures a new token.',
   'admin.integrations.mcp.title': 'MCP Server',
   'admin.integrations.mcp.description':
-    'Exposes your library through Model Context Protocol so external AIs (Claude Desktop, Cursor, custom agents) can query it read-only.',
+    'Exposes your library through Model Context Protocol so external AIs (Claude Desktop, Cursor, custom agents) can read it and create content (notes, transcriptions).',
   'admin.integrations.mcp.generated': 'Token generated. Copy it now. It will not be shown again.',
   'admin.integrations.mcp.revoked': 'MCP token revoked.',
   'admin.integrations.mcp.enabled': 'Enabled',

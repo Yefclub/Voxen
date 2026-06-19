@@ -138,4 +138,38 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     const data = (await res.json()) as { result?: { isError?: boolean } };
     expect(data.result?.isError).toBe(true);
   });
+
+  it('tools/list inclui as write tools com readOnlyHint false', async () => {
+    const res = await call({ jsonrpc: '2.0', id: 5, method: 'tools/list' }, TOKEN);
+    const data = (await res.json()) as {
+      result?: { tools?: { name: string; annotations?: { readOnlyHint?: boolean } }[] };
+    };
+    const tools = data.result?.tools ?? [];
+    const names = tools.map((t) => t.name);
+    expect(names).toContain('voxen_create_note');
+    expect(names).toContain('voxen_update_note');
+    expect(names).toContain('voxen_request_transcription');
+    expect(names).toContain('voxen_get_job_status');
+    const createNote = tools.find((t) => t.name === 'voxen_create_note');
+    expect(createNote?.annotations?.readOnlyHint).toBe(false);
+  });
+
+  it('tools/call voxen_create_note cria a nota escopada por userId', async () => {
+    const res = await call(
+      {
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'tools/call',
+        params: { name: 'voxen_create_note', arguments: { title: 'Nota MCP', content: '# oi' } },
+      },
+      TOKEN,
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { result?: { structuredContent?: { id?: string } } };
+    const noteId = data.result?.structuredContent?.id;
+    expect(typeof noteId).toBe('string');
+    const note = await db.note.findFirst({ where: { id: noteId, userId } });
+    expect(note?.title).toBe('Nota MCP');
+    expect(note?.userId).toBe(userId);
+  });
 });
