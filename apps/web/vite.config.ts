@@ -150,6 +150,16 @@ export default defineConfig({
     target: 'es2022',
     // Manifest pra Hono servir assets com hash em prod.
     manifest: true,
+    rollupOptions: {
+      output: {
+        // Isola o renderer de markdown (Streamdown + shiki alias map + deps de
+        // parsing) em chunk próprio. Mantém o bundle principal abaixo do limite
+        // de precache do PWA (2 MiB) e tira o markdown do caminho crítico.
+        manualChunks: {
+          markdown: ['streamdown'],
+        },
+      },
+    },
   },
   server: {
     host: '0.0.0.0',
