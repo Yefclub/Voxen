@@ -46,7 +46,7 @@ MODEL_CONTEXT_LIMITS: dict[str, int] = {
 
 DEFAULT_LIMIT = 32_000
 # Threshold deliberadamente conservador: 70% deixa ~30% de headroom para
-# tool loops (MAX_TOOL_LOOPS=5 no main.py) que injetam resultados grandes
+# tool loops (MAX_TOOL_LOOPS=8) que injetam resultados grandes
 # (read_transcript pode trazer 5k+ tokens por chamada) + a resposta final
 # em streaming. 80% estoura na prática quando o agente encadeia tools.
 DEFAULT_THRESHOLD = 0.70
