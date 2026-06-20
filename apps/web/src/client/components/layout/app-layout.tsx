@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom'
 import { Sidebar, SidebarSpacer } from './sidebar';
 import { MobileNavDrawer } from './mobile-nav-drawer';
 import { MobileBottomNav } from './mobile-bottom-nav';
+import { MobileTopBar } from './mobile-top-bar';
 import { Topbar } from './topbar';
 import { useMe } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
@@ -11,15 +12,16 @@ import { useVersionMonitor } from '../../lib/use-version-monitor';
 import { ChatContextProvider } from '../../lib/chat-context-ctx';
 import { useIsDesktop } from '../../lib/use-media-query';
 import { useEdgeSwipe } from '../../lib/use-edge-swipe';
+import { hasOwnMobileChrome } from '../../lib/mobile-nav';
 
 export function AppLayout(): React.ReactElement {
   const { data, loading } = useMe();
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
-  // Navegação mobile (<md): a Sidebar é hidden md:flex — o drawer é a única
-  // navegação abaixo de 768px. Estado vive aqui pra ligar Topbar (hamburger)
-  // e drawer (overlay fora do header, que tem backdrop-blur).
+  // Navegação mobile (<md): NÃO há header. A navegação é bottom-nav + edge-swipe
+  // + botões de voltar. O estado do drawer vive aqui pra ligar o gesto, o botão
+  // de menu da MobileTopBar e o próprio drawer (overlay full-screen).
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isDesktop = useIsDesktop();
   // Swipe da borda esquerda → direita abre o drawer; swipe de volta fecha. Só
@@ -75,12 +77,16 @@ export function AppLayout(): React.ReactElement {
     return <Navigate to="/pendente" replace />;
   }
 
-  // App shell de altura fixa: o cabeçalho (Topbar) fica travado no topo e o
+  // App shell de altura fixa: no desktop o Topbar fica travado no topo; no mobile
+  // não há header (a MobileTopBar é uma barra enxuta com menu + voltar). O
   // conteúdo rola dentro do <main>. /chat e /grafo ocupam a tela toda e
   // gerenciam a própria altura, então não recebem o overflow-y-auto/padding.
   const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
   const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
   const isFullBleed = isChat || isGraph;
+  // A MobileTopBar (md:hidden) aparece em todas as rotas mobile, exceto as que já
+  // têm chrome próprio (o grafo tem barra flutuante com voltar + busca).
+  const showMobileTopBar = !hasOwnMobileChrome(location.pathname);
   const mainClass = isFullBleed
     ? 'flex-1 min-h-0'
     : 'flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6';
@@ -96,7 +102,10 @@ export function AppLayout(): React.ReactElement {
         />
         <SidebarSpacer />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <Topbar user={data.user} onOpenMobileNav={() => setMobileNavOpen(true)} />
+          {isDesktop && <Topbar user={data.user} />}
+          {!isDesktop && showMobileTopBar && (
+            <MobileTopBar onOpenMobileNav={() => setMobileNavOpen(true)} />
+          )}
           <main ref={mainRef} className={mainClass}>
             <AnimatedOutlet />
           </main>

@@ -13,9 +13,9 @@ import { SidebarModeBody, SidebarSignOut, SidebarVersionInfo } from './sidebar';
  * conversas do chat | árvore de notas) e o botão Sair, então qualquer item
  * novo aparece automaticamente aqui também.
  *
- * Abre via botão hambúrguer (topbar) ou swipe da borda esquerda → direita.
- * Fecha em: mudança de rota, clique no backdrop, botão X, swipe de volta e
- * tecla Escape. (Swipe é tratado no AppLayout via useEdgeSwipe.)
+ * Abre via botão de menu da MobileTopBar (fallback acessível) ou swipe da borda
+ * esquerda → direita. Fecha em: mudança de rota, clique no backdrop, botão X,
+ * swipe de volta e tecla Escape. (Swipe é tratado no AppLayout via useEdgeSwipe.)
  */
 export function MobileNavDrawer({
   user,

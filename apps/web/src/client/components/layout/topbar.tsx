@@ -1,6 +1,6 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ArrowLeft, LogOut, Menu, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import {
@@ -85,21 +85,16 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-export function Topbar({
-  user,
-  title,
-  onOpenMobileNav,
-}: {
-  user: MeUser;
-  title?: string;
-  onOpenMobileNav?: () => void;
-}): React.ReactElement {
+/**
+ * Cabeçalho do shell — **desktop-only**. No mobile não há header (ver
+ * `app-layout`: a navegação é bottom-nav + MobileTopBar + edge-swipe). Hospeda o
+ * indicador de contexto do chat e o menu de usuário.
+ */
+export function Topbar({ user, title }: { user: MeUser; title?: string }): React.ReactElement {
   const navigate = useNavigate();
-  const location = useLocation();
   const { refresh } = useMe();
   const { t } = useI18n();
   const { usage, lastCompaction, requestOpenSummary } = useChatContextState();
-  const mobileBackTarget = getMobileBackTarget(location.pathname);
 
   const onSignOut = async (): Promise<void> => {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
@@ -113,28 +108,6 @@ export function Topbar({
       style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
       <div className="flex items-center gap-2 sm:gap-4">
-        {mobileBackTarget && (
-          <button
-            type="button"
-            onClick={() => navigate(mobileBackTarget)}
-            className="md:hidden flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] transition-colors hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface)] hover:text-zinc-100"
-            aria-label={t('common.back')}
-            title={t('common.back')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-        )}
-        {onOpenMobileNav && (
-          <button
-            type="button"
-            onClick={onOpenMobileNav}
-            className="md:hidden flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] transition-colors"
-            aria-label={t('shell.openMenu')}
-            title={t('shell.openMenu')}
-          >
-            <Menu className="h-4 w-4" />
-          </button>
-        )}
         {title && <h1 className="text-base font-semibold font-display tracking-tight">{title}</h1>}
       </div>
 
@@ -203,13 +176,4 @@ export function Topbar({
       </div>
     </header>
   );
-}
-
-function getMobileBackTarget(pathname: string): string | null {
-  if (/^\/jobs\/[^/]+/.test(pathname)) return '/jobs';
-  if (/^\/transcricoes\/[^/]+/.test(pathname)) return '/transcricoes';
-  if (/^\/chat\/[^/]+/.test(pathname)) return '/chat';
-  if (/^\/notas\/[^/]+/.test(pathname)) return '/notas';
-  if (pathname === '/grafo' || pathname.startsWith('/grafo/')) return '/dashboard';
-  return null;
 }
