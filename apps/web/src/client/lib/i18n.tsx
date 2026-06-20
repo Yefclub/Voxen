@@ -571,6 +571,28 @@ const ptBRMessages = {
   'admin.integrations.show': 'Ver',
   'admin.integrations.hide': 'Ocultar',
 
+  'admin.integrations.proxy.title': 'Agente de Proxy',
+  'admin.integrations.proxy.description':
+    'Roteie a extração de mídia por um agente residencial (IP de casa) quando o YouTube bloqueia downloads de datacenter. O token autentica o túnel e fica cifrado no banco.',
+  'admin.integrations.proxy.configured': 'Token configurado',
+  'admin.integrations.proxy.notConfigured': 'Nenhum token configurado.',
+  'admin.integrations.proxy.generated': 'Token gerado. Copie agora — não será exibido novamente.',
+  'admin.integrations.proxy.revoked': 'Token do agente de proxy revogado.',
+  'admin.integrations.proxy.generateToken': 'Gerar token',
+  'admin.integrations.proxy.rotateToken': 'Rotacionar token',
+  'admin.integrations.proxy.saveNow': 'Salve agora — não será exibido novamente',
+  'admin.integrations.proxy.copyToken': 'Copiar token',
+  'admin.integrations.proxy.tunnelUrl': 'URL de conexão do túnel',
+  'admin.integrations.proxy.tunnelMissing':
+    'Configure PROXY_TUNNEL_URL ou APP_BASE_URL para derivar a URL do túnel.',
+  'admin.integrations.proxy.installTitle': 'Instalação do agente (Docker)',
+  'admin.integrations.proxy.installHint':
+    'Rode este comando na máquina residencial. O runtime do agente chega numa atualização futura.',
+  'admin.integrations.proxy.copySnippet': 'Copiar comando',
+  'admin.integrations.proxy.revokeTitle': 'Revogar token do agente de proxy?',
+  'admin.integrations.proxy.revokeDescription':
+    'O agente residencial perde a conexão até admin gerar um novo token.',
+
   'account.eyebrow': 'Conta',
   'account.title': 'Seu perfil',
   'account.description': 'Atualize seus dados e gerencie sua senha.',
@@ -1448,6 +1470,28 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.revoke': 'Revoke',
   'admin.integrations.show': 'Show',
   'admin.integrations.hide': 'Hide',
+
+  'admin.integrations.proxy.title': 'Proxy Agent',
+  'admin.integrations.proxy.description':
+    'Route media extraction through a residential agent (home IP) when YouTube blocks datacenter downloads. The token authenticates the tunnel and is encrypted in the database.',
+  'admin.integrations.proxy.configured': 'Token configured',
+  'admin.integrations.proxy.notConfigured': 'No token configured.',
+  'admin.integrations.proxy.generated': 'Token generated. Copy it now. It will not be shown again.',
+  'admin.integrations.proxy.revoked': 'Proxy agent token revoked.',
+  'admin.integrations.proxy.generateToken': 'Generate token',
+  'admin.integrations.proxy.rotateToken': 'Rotate token',
+  'admin.integrations.proxy.saveNow': 'Save it now. It will not be shown again',
+  'admin.integrations.proxy.copyToken': 'Copy token',
+  'admin.integrations.proxy.tunnelUrl': 'Tunnel connection URL',
+  'admin.integrations.proxy.tunnelMissing':
+    'Set PROXY_TUNNEL_URL or APP_BASE_URL to derive the tunnel URL.',
+  'admin.integrations.proxy.installTitle': 'Agent installation (Docker)',
+  'admin.integrations.proxy.installHint':
+    'Run this command on the home machine. The agent runtime ships in a future update.',
+  'admin.integrations.proxy.copySnippet': 'Copy command',
+  'admin.integrations.proxy.revokeTitle': 'Revoke proxy agent token?',
+  'admin.integrations.proxy.revokeDescription':
+    'The residential agent loses its connection until an admin generates a new token.',
 
   'account.eyebrow': 'Account',
   'account.title': 'Your profile',

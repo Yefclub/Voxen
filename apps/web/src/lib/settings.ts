@@ -48,7 +48,11 @@ export type GlobalSettingKey =
   // Bearer <token> e mapeia pro userId. Apenas 1 token por instância no MVP.
   | 'mcp_api_token'
   // Telegram bot token (cifrado). Quando setado, worker telegram conecta.
-  | 'telegram_bot_token';
+  | 'telegram_bot_token'
+  // Token de conexão do agente de proxy residencial (chisel). Cifrado em DB.
+  // O agente residencial usa este token pra autenticar o túnel reverso.
+  // Apenas 1 token por instância no MVP. Ver spec 058.
+  | 'proxy_agent_token';
 
 const X_ANALYSIS_SETTING_KEYS = [
   'default_x_analysis_model',
