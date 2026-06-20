@@ -139,6 +139,48 @@ def build_reasoning_config(thinking: bool) -> dict[str, Any]:
     return {"enabled": True, "effort": "high" if thinking else "medium", "exclude": False}
 
 
+def extract_reasoning_text(delta: Any) -> str | None:
+    """Extrai o texto de raciocínio de um delta de streaming do OpenRouter.
+
+    O raciocínio chega de duas formas no delta:
+    - `delta.reasoning` (string) — formato simples;
+    - `delta.reasoning_details` (lista de objetos estruturados), ex.:
+      `[{"type": "reasoning.text", "text": "..."}]` ou
+      `{"type": "reasoning.summary", "summary": "..."}`.
+
+    Modelos mandam um OU outro por chunk. Priorizamos a string `reasoning`
+    quando presente (caminho legado, sempre 1:1 com o texto) e só caímos em
+    `reasoning_details` quando a string vier vazia — assim não emitimos o mesmo
+    raciocínio duas vezes (REQ-3 da spec 052).
+
+    De `reasoning_details` extraímos `text`, senão `summary`. Itens cifrados
+    (`reasoning.encrypted`, campo `data`) e itens sem texto utilizável são
+    ignorados. Tolerante a dict OU objeto e a formatos inesperados: nunca
+    propaga exceção pro loop de streaming (retorna None).
+    """
+    reasoning = getattr(delta, "reasoning", None)
+    if reasoning:
+        return str(reasoning)
+
+    details = getattr(delta, "reasoning_details", None)
+    if not details:
+        return None
+
+    parts: list[str] = []
+    try:
+        for item in details:
+            if isinstance(item, dict):
+                value = item.get("text") or item.get("summary")
+            else:
+                value = getattr(item, "text", None) or getattr(item, "summary", None)
+            if value:
+                parts.append(str(value))
+    except Exception:  # noqa: BLE001 — formato inesperado não pode derrubar o stream
+        return None
+
+    return "".join(parts) or None
+
+
 @app.get("/health")
 async def health() -> dict[str, object]:
     return {"ok": True, "service": "chat"}
@@ -443,14 +485,15 @@ async def chat(
                     delta = chunk.choices[0].delta
                     finish_reason = chunk.choices[0].finish_reason or finish_reason
 
-                    # Thinking/reasoning: OpenRouter expõe o raciocínio do
-                    # modelo em campos `reasoning` (texto) ou `reasoning_details`
-                    # (estruturado) no delta. Quando o user ativa o toggle
-                    # `thinking`. Reasoning fica SEMPRE ligado (ver
-                    # build_reasoning_config): effort=medium por padrão, high com
-                    # o toggle. exclude=false deixa a UI mostrar o raciocínio.
+                    # Thinking/reasoning: OpenRouter expõe o raciocínio do modelo
+                    # em `delta.reasoning` (string) OU `delta.reasoning_details`
+                    # (lista estruturada). Vários modelos só mandam o segundo, por
+                    # isso a extração trata ambos (ver extract_reasoning_text /
+                    # spec 052). Reasoning fica SEMPRE ligado (ver
+                    # build_reasoning_config): effort=medium por padrão, high com o
+                    # toggle. exclude=false deixa a UI mostrar o raciocínio.
                     # https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
-                    reasoning_text = getattr(delta, "reasoning", None)
+                    reasoning_text = extract_reasoning_text(delta)
                     if reasoning_text:
                         yield _sse("reasoning_token", {"text": reasoning_text})
 
