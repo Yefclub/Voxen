@@ -331,11 +331,11 @@ function TranscriptCard({
           elevated
           className="flex h-full min-h-[168px] flex-row overflow-hidden p-0 transition-colors duration-200 sm:min-h-[430px] sm:flex-col"
         >
-          <div className="relative h-auto w-28 shrink-0 overflow-hidden bg-[var(--color-app-bg-elevated)] sm:w-full sm:aspect-video">
+          <div className="relative aspect-square w-28 shrink-0 self-stretch overflow-hidden bg-[var(--color-app-bg-elevated)] sm:aspect-video sm:w-full sm:self-auto">
             <img
               src={previewSrc}
               alt=""
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
               loading="lazy"
             />
             <div
