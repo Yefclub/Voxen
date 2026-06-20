@@ -149,19 +149,28 @@ def _fetch_youtube_oembed(video_id: str, proxy_url: str | None) -> dict[str, str
 
 
 def _transcript_proxy_config(proxy_url: str | None) -> GenericProxyConfig | None:
-    if not proxy_url or not _is_http_proxy(proxy_url):
+    if not _is_supported_proxy(proxy_url):
         return None
     return GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
 
 
 def _requests_proxy_dict(proxy_url: str | None) -> dict[str, str] | None:
-    if not proxy_url or not _is_http_proxy(proxy_url):
+    if not _is_supported_proxy(proxy_url):
         return None
+    assert proxy_url is not None  # garantido por _is_supported_proxy
     return {"http": proxy_url, "https": proxy_url}
 
 
-def _is_http_proxy(proxy_url: str | None) -> bool:
-    return bool(proxy_url and proxy_url.startswith(("http://", "https://")))
+# Esquemas de proxy aceitos. yt-dlp suporta SOCKS nativamente; para os caminhos
+# que usam `requests` (oEmbed) e `youtube-transcript-api` (GenericProxyConfig →
+# requests por baixo), o SOCKS depende do PySocks (extra `requests[socks]`).
+# Prefira `socks5h://` (resolução de DNS via proxy) para evitar vazar consultas
+# DNS pelo host local; `socks5://` também é aceito.
+_SUPPORTED_PROXY_SCHEMES = ("http://", "https://", "socks5://", "socks5h://")
+
+
+def _is_supported_proxy(proxy_url: str | None) -> bool:
+    return bool(proxy_url and proxy_url.startswith(_SUPPORTED_PROXY_SCHEMES))
 
 
 def _youtube_video_id(url: str) -> str | None:
@@ -348,6 +357,7 @@ async def _runtime_options() -> dict[str, Any]:
 
     A única configuração runtime suportada é um proxy opcional controlado pelo
     operador do deploy (setting `yt_dlp_proxy_urls`, ou env `YTDLP_PROXY_URLS`).
+    Aceita `http(s)://` e `socks5(h)://` (prefira `socks5h://` p/ DNS via proxy).
     Em deploys home-lab (IP residencial), o proxy normalmente não é necessário.
     Em VPS o YouTube tende a bloquear; o fluxo recomendado é upload manual ou
     proxy residencial controlado pelo operador.
