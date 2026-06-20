@@ -1,10 +1,11 @@
 import { describe, expect, it, afterEach } from 'bun:test';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   buildChiselAuthfile,
   syncChiselAuthfile,
+  writeAuthfileInPlace,
   CHISEL_SOCKS_REMOTE,
 } from '../src/lib/proxy-agent-tunnel';
 
@@ -55,6 +56,21 @@ describe('syncChiselAuthfile (best-effort I/O)', () => {
   it('does not throw when authfile path is unwritable', async () => {
     process.env.CHISEL_AUTHFILE = '/proc/voxen-nonexistent/auth.json';
     await expect(syncChiselAuthfile()).resolves.toBeUndefined();
+  });
+
+  it('writes in-place (stable inode) so chisel fsnotify reload fires on rewrite', () => {
+    // Regressão: o chisel observa o INODE do authfile via fsnotify e só recarrega
+    // no evento Write. Um temp+rename mudaria o inode e quebraria o watch (token
+    // revogado continuaria válido). A escrita TEM que ser in-place: mesmo inode
+    // entre reescritas, conteúdo atualizado.
+    const dir = mkdtempSync(join(tmpdir(), 'voxen-chisel-'));
+    const authfile = join(dir, 'auth.json');
+    writeAuthfileInPlace(authfile, '{"voxen:a":["^R:127\\\\.0\\\\.0\\\\.1:1080:socks$"]}');
+    const inoBefore = statSync(authfile).ino;
+    writeAuthfileInPlace(authfile, '{}');
+    const inoAfter = statSync(authfile).ino;
+    expect(inoAfter).toBe(inoBefore);
+    expect(JSON.parse(readFileSync(authfile, 'utf8'))).toEqual({});
   });
 
   it('writes valid JSON to the authfile path (token absent -> {})', async () => {

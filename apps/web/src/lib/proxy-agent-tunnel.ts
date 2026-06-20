@@ -19,7 +19,7 @@
 // log — nunca quebra o boot nem os endpoints admin.
 // ============================================================================
 
-import { writeFileSync, renameSync, chmodSync, unlinkSync } from 'node:fs';
+import { writeFileSync, chmodSync } from 'node:fs';
 import { getSetting } from './settings';
 
 // Usuário de auth do chisel (o agente disca com `--auth voxen:<token>`).
@@ -52,28 +52,20 @@ export function buildChiselAuthfile(token: string | null): Record<string, string
 }
 
 /**
- * Escreve o authfile de forma atômica (temp + rename no mesmo diretório) pra que
- * o watcher do chisel nunca leia um JSON pela metade. Permissão 600.
+ * Escreve o authfile IN-PLACE (mesmo inode), NÃO via temp+rename. O chisel
+ * observa o inode do authfile via fsnotify e só recarrega no evento `Write`; um
+ * rename emite `Rename` e deixa o watch pendurado no inode antigo, então o reload
+ * NUNCA acontece (revogação de token não teria efeito — falha de segurança). O
+ * JSON é minúsculo (uma linha), então o risco de leitura parcial é desprezível.
+ * Permissão 600.
  */
-function writeAuthfileAtomic(path: string, content: string): void {
-  const tmp = `${path}.tmp`;
+export function writeAuthfileInPlace(path: string, content: string): void {
+  writeFileSync(path, content, { encoding: 'utf8', mode: 0o600 });
+  // Reforça a permissão caso o destino já existisse com modo mais aberto.
   try {
-    writeFileSync(tmp, content, { encoding: 'utf8', mode: 0o600 });
-    renameSync(tmp, path);
-    // Reforça a permissão caso o destino já existisse com modo mais aberto.
-    try {
-      chmodSync(path, 0o600);
-    } catch {
-      /* best-effort */
-    }
-  } catch (err) {
-    // Limpa o temp em caso de falha no meio do caminho.
-    try {
-      unlinkSync(tmp);
-    } catch {
-      /* best-effort */
-    }
-    throw err;
+    chmodSync(path, 0o600);
+  } catch {
+    /* best-effort */
   }
 }
 
@@ -97,7 +89,7 @@ export async function syncChiselAuthfile(): Promise<void> {
   const content = JSON.stringify(buildChiselAuthfile(token));
   const path = authfilePath();
   try {
-    writeAuthfileAtomic(path, content);
+    writeAuthfileInPlace(path, content);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // Em dev sem /run/voxen isso é esperado — só informa, não quebra.

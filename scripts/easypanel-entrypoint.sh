@@ -170,7 +170,8 @@ start_chisel() {
   fi
   mkdir -p "$(dirname "$CHISEL_AUTHFILE")" "$(dirname "$CHISEL_PIDFILE")" 2>/dev/null || true
   # authfile inicial vazio: chisel falha se o arquivo não existir. {} = nega tudo
-  # até o admin gerar o token (a app web sobrescreve via SIGHUP).
+  # até o admin gerar o token. A app web reescreve o arquivo in-place e o chisel
+  # faz hot-reload sozinho via fsnotify (NÃO usar SIGHUP — mata o chisel).
   if [[ ! -f "$CHISEL_AUTHFILE" ]]; then
     if echo '{}' > "$CHISEL_AUTHFILE"; then
       chmod 600 "$CHISEL_AUTHFILE" 2>/dev/null || true
