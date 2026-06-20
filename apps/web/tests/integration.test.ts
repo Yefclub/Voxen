@@ -156,6 +156,101 @@ describeIfDb('auth + admin approval flow', () => {
     expect(body.prompt).toContain('Voxen');
   });
 
+  it('admin gera token de proxy: persiste cifrado e GET não vaza', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    // Estado inicial: não configurado.
+    const before = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', { headers: { cookie } }),
+    );
+    expect(before.status).toBe(200);
+    const beforeBody = (await before.json()) as { configured: boolean; agentStatus: string };
+    expect(beforeBody.configured).toBe(false);
+    expect(beforeBody.agentStatus).toBe('not_configured');
+
+    // Gera o token.
+    const gen = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent/token', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(gen.status).toBe(200);
+    const genBody = (await gen.json()) as { token: string };
+    // 32 bytes -> base64url (sem padding) = 43 chars. Garante entropia.
+    expect(genBody.token.length).toBeGreaterThanOrEqual(43);
+    expect(genBody.token).toMatch(/^[A-Za-z0-9_-]+$/);
+
+    // Persistido CIFRADO no DB (valueEnc != texto puro do token).
+    const row = await db.setting.findFirst({
+      where: { scope: 'GLOBAL', userId: null, key: 'proxy_agent_token' },
+      select: { valueEnc: true },
+    });
+    expect(row).not.toBeNull();
+    expect(row!.valueEnc).not.toContain(genBody.token);
+
+    // GET reporta configured=true mas NUNCA devolve o token.
+    const after = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', { headers: { cookie } }),
+    );
+    const afterBody = (await after.json()) as Record<string, unknown>;
+    expect(afterBody.configured).toBe(true);
+    expect(afterBody.agentStatus).toBe('unknown');
+    expect(JSON.stringify(afterBody)).not.toContain(genBody.token);
+
+    // Revoga.
+    const del = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent/token', {
+        method: 'DELETE',
+        headers: { cookie },
+      }),
+    );
+    expect(del.status).toBe(200);
+    const gone = await db.setting.findFirst({
+      where: { scope: 'GLOBAL', userId: null, key: 'proxy_agent_token' },
+    });
+    expect(gone).toBeNull();
+  });
+
+  it('user comum recebe 403 em /api/admin/proxy-agent', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('user@voxen.local', 'senha-super-segura-456', 'User');
+    const adminSignin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const adminCookie = extractCookie(adminSignin);
+    const pending = await db.user.findUnique({ where: { email: 'user@voxen.local' } });
+    await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${pending!.id}/approve`, {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    const userSignin = await signIn('user@voxen.local', 'senha-super-segura-456');
+    const userCookie = extractCookie(userSignin);
+
+    const getRes = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', { headers: { cookie: userCookie } }),
+    );
+    expect(getRes.status).toBe(403);
+
+    const postRes = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent/token', {
+        method: 'POST',
+        headers: { cookie: userCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(postRes.status).toBe(403);
+  });
+
+  it('non-authenticated recebe 401 em /api/admin/proxy-agent', async () => {
+    const res = await app.fetch(new Request('http://localhost/api/admin/proxy-agent'));
+    expect(res.status).toBe(401);
+  });
+
   it('user comum recebe 403 em /api/admin/usuarios', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     await signUp('user@voxen.local', 'senha-super-segura-456', 'User');
