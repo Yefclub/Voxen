@@ -87,9 +87,14 @@ export function AppLayout(): React.ReactElement {
   // Botão de voltar flutuante (mobile): só em sub-páginas (não abas de topo) e
   // nunca em rotas que já têm chrome próprio de nav (ex.: /grafo).
   const showBack = showsMobileBack(location.pathname) && !hasOwnMobileChrome(location.pathname);
+  // Quando o botão de voltar flutuante aparece (mobile, sub-páginas não-fullbleed),
+  // o conteúdo ganha um padding-top pra não ficar atrás do botão. No desktop
+  // (md:) zera, pois lá existe header e o botão não renderiza.
+  const backPad = showBack ? ' pt-[calc(env(safe-area-inset-top)+3.5rem)] md:pt-0' : '';
   const mainClass = isFullBleed
     ? 'flex-1 min-h-0'
-    : 'flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6';
+    : 'flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6' +
+      backPad;
 
   return (
     <ChatContextProvider>

@@ -19,7 +19,7 @@ chat + menu de usuário, ao lado da `Sidebar`.
 
 ### Destinos que só existiam na sidebar/drawer
 
-Dashboard, Notas, Automações, Setup e os de admin (Usuários, Custos,
+Dashboard, Notas, Automações e os de admin (Setup, Usuários, Custos,
 Integrações) não são abas da bottom-nav. Pra não dependerem do gesto de swipe,
 eles passam a viver também no **menu do Perfil da bottom-nav** (dropdown que abre
 pra cima).
@@ -77,9 +77,10 @@ menu do Perfil), sem depender do gesto. Documentado em `use-edge-swipe.ts`.
   dois locales (pt-BR "Voltar" / en "Back"). Sem string hardcoded.
 
 - **R9** — While no mobile, the menu do Perfil da bottom-nav shall listar, além de
-  Perfil e Sair, os destinos únicos que não são abas: Dashboard, Notas,
-  Automações, Setup — e, somente para usuários ADMIN, Usuários, Custos e
-  Integrações.
+  Perfil e Sair, os destinos únicos que não são abas: Dashboard, Notas e
+  Automações — e, somente para usuários ADMIN, Setup, Usuários, Custos e
+  Integrações (o gate de admin segue o `adminOnly` do `NAV` da sidebar; Setup é
+  admin-only).
 
 - **R10** — The lista de destinos do menu do Perfil shall derivar da fonte
   canônica `NAV` (exportada de `sidebar.tsx`), filtrando os itens que são abas de

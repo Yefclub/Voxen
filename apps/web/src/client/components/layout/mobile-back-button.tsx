@@ -16,10 +16,17 @@ export function MobileBackButton(): React.ReactElement {
   const navigate = useNavigate();
   const { t } = useI18n();
 
+  // navigate(-1) volta no histórico; em deep-link direto (sem histórico interno)
+  // isso sairia do app — então cai pra home como fallback.
+  const goBack = (): void => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate('/');
+  };
+
   return (
     <button
       type="button"
-      onClick={() => navigate(-1)}
+      onClick={goBack}
       aria-label={t('common.back')}
       title={t('common.back')}
       className="md:hidden fixed left-3 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/80 text-zinc-100 backdrop-blur-md shadow-lg shadow-black/20 transition-colors active:bg-[var(--color-app-surface)]"
