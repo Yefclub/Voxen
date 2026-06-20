@@ -1,0 +1,26 @@
+# voxen-proxy-agent — exemplo de deploy no home lab (IP residencial).
+#
+# Copie o arquivo .env.example para .env, preencha VOXEN_TUNNEL_URL e
+# VOXEN_TUNNEL_TOKEN (gerados na UI admin do Voxen) e suba com:
+#
+#   docker compose up -d
+#
+# O agente disca pra VPS via TLS (wss) e mantém a conexão viva com reconexão
+# automática. Nenhuma porta é exposta no host residencial.
+
+services:
+  proxy-agent:
+    image: ghcr.io/yefclub/voxen-proxy-agent:latest
+    # Para construir localmente em vez de puxar a imagem publicada:
+    # build:
+    #   context: .
+    container_name: voxen-proxy-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Sem ports: o SOCKS5 reverso vive na VPS (127.0.0.1:1080), não aqui.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
