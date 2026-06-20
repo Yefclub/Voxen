@@ -73,7 +73,7 @@ docker run -d --name voxen-proxy-agent --restart unless-stopped \
 | `VOXEN_TUNNEL_URL`         | Sim         | —                | URL de controle do túnel (deve ser `https://` / TLS).                 |
 | `VOXEN_TUNNEL_TOKEN`       | Sim         | —                | Token de auth do túnel, gerado na UI admin (mostrado uma única vez).  |
 | `VOXEN_TUNNEL_FINGERPRINT` | Não         | —                | Fingerprint do server pra host-key pinning (fortemente recomendado).  |
-| `VOXEN_SOCKS_REMOTE`       | Não         | `R:1080:socks`   | Remote reverso. Deve casar com o authfile do server.                  |
+| `VOXEN_SOCKS_REMOTE`       | Não         | `R:127.0.0.1:1080:socks` | Remote reverso (bind em localhost na VPS). Deve casar com a regex do authfile do server. |
 | `VOXEN_KEEPALIVE`          | Não         | `25s`            | Intervalo de keepalive.                                               |
 | `VOXEN_MAX_RETRY_INTERVAL` | Não         | `30s`            | Espera máxima entre tentativas de reconexão.                          |
 | `VOXEN_AUTH_USER`          | Não         | `voxen`          | Usuário de auth (par `user:token`).                                   |
