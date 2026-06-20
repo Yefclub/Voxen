@@ -25,12 +25,18 @@ export function CadastroPage(): React.ReactElement {
   const { refresh } = useMe();
 
   useEffect(() => {
+    // Guarda contra setState após unmount (apiGet não aceita AbortController).
+    let cancelled = false;
     apiGet<InstanceState>('/api/instance')
       .then((next) => {
+        if (cancelled) return;
         setInstance(next);
         setLocale(next.language);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [setLocale]);
 
   const isFirstUser = instance && !instance.hasUsers;
@@ -74,7 +80,7 @@ export function CadastroPage(): React.ReactElement {
   ]);
 
   return (
-    <div className="min-h-screen flex flex-col px-8 lg:px-16 py-10 relative">
+    <div className="min-h-screen flex flex-col px-4 sm:px-8 lg:px-16 py-10 relative">
       <div
         aria-hidden
         className="absolute inset-0 pointer-events-none"

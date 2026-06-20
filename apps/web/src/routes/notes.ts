@@ -44,6 +44,8 @@ notesRoutes.get('/', async (c) => {
     select: {
       id: true,
       parentId: true,
+      sourceType: true,
+      sourceId: true,
       kind: true,
       title: true,
       createdAt: true,
@@ -94,6 +96,8 @@ notesRoutes.get('/:id', async (c) => {
     select: {
       id: true,
       parentId: true,
+      sourceType: true,
+      sourceId: true,
       kind: true,
       title: true,
       content: true,
@@ -107,6 +111,8 @@ notesRoutes.get('/:id', async (c) => {
 
 const CreateBody = z.object({
   parentId: z.string().nullable().optional(),
+  sourceType: z.enum(['TRANSCRIPT']).optional(),
+  sourceId: z.string().optional(),
   kind: z.enum(['NOTE', 'FOLDER']).default('NOTE'),
   title: z.string().min(1).max(200),
   content: z.string().max(200_000).optional(),
@@ -116,7 +122,7 @@ notesRoutes.post('/', async (c) => {
   const userId = c.get('userId');
   const parsed = CreateBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: 'Payload inválido.' }, 400);
-  const { parentId, kind, title, content } = parsed.data;
+  const { parentId, sourceType, sourceId, kind, title, content } = parsed.data;
 
   // Validar parentId — só permite filhar de pasta do mesmo user
   if (parentId) {
@@ -130,15 +136,39 @@ notesRoutes.post('/', async (c) => {
     }
   }
 
+  if (sourceType || sourceId) {
+    if (kind !== 'NOTE') {
+      return c.json({ error: 'Só notas podem ser vinculadas a conteúdo.' }, 400);
+    }
+    if (sourceType !== 'TRANSCRIPT' || !sourceId) {
+      return c.json({ error: 'Vínculo de conteúdo inválido.' }, 400);
+    }
+    const transcript = await db.transcript.findFirst({
+      where: { id: sourceId, userId, status: { not: 'TRASH' } },
+      select: { id: true },
+    });
+    if (!transcript) return c.json({ error: 'Transcrição vinculada não encontrada.' }, 400);
+  }
+
   const note = await db.note.create({
     data: {
       userId,
       parentId: parentId ?? null,
+      sourceType: sourceType ?? null,
+      sourceId: sourceId ?? null,
       kind,
       title: title.trim(),
       content: kind === 'NOTE' ? (content ?? '') : '',
     },
-    select: { id: true, parentId: true, kind: true, title: true, updatedAt: true },
+    select: {
+      id: true,
+      parentId: true,
+      sourceType: true,
+      sourceId: true,
+      kind: true,
+      title: true,
+      updatedAt: true,
+    },
   });
   await reindexNotesBrain(userId);
   await invalidateGraphCache(userId);
@@ -198,6 +228,8 @@ notesRoutes.patch('/:id', async (c) => {
     select: {
       id: true,
       parentId: true,
+      sourceType: true,
+      sourceId: true,
       kind: true,
       title: true,
       content: true,

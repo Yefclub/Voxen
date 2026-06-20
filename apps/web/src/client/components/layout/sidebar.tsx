@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   FolderPlus,
   ListVideo,
+  LogOut,
   MessagesSquare,
   Network,
   Notebook,
@@ -29,6 +30,8 @@ import { useSidebarCollapsed } from '../../lib/sidebar-state';
 import { useConversations, type ConvSummary } from '../../lib/use-conversations';
 import { useNotes } from '../../lib/use-notes';
 import { useI18n, type I18nKey } from '../../lib/i18n';
+import { apiPost } from '../../lib/api';
+import { useFetch, useMe } from '../../lib/hooks';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { NotesTree } from '../notes/notes-tree';
 
@@ -55,15 +58,51 @@ const NAV: NavItem[] = [
 
 const SIDEBAR_WIDTH = 264;
 
-export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
+/**
+ * Corpo modo-aware da sidebar: nav (default) | chat (em /chat) | notas (em
+ * /notas). Reutilizado pela sidebar desktop e pelo drawer mobile — qualquer
+ * item novo de navegação aparece automaticamente nos dois.
+ *
+ * Troca entre modos sem AnimatePresence — `key` no motion.div força remount
+ * limpo. AnimatePresence mode="wait" interno aqui acumulava estados pendentes
+ * em cliques rápidos e travava.
+ */
+export function SidebarModeBody({ user }: { user: MeUser }): React.ReactElement {
   const location = useLocation();
-  const { t } = useI18n();
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN');
-  const { collapsed, toggle } = useSidebarCollapsed();
   const inChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
   const inNotas = location.pathname === '/notas' || location.pathname.startsWith('/notas/');
-  // Modo da sidebar: nav (default) | chat (em /chat) | notas (em /notas)
   const mode: 'nav' | 'chat' | 'notas' = inChat ? 'chat' : inNotas ? 'notas' : 'nav';
+
+  return (
+    <motion.div
+      key={`${mode}-mode`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+      className="flex-1 flex flex-col min-h-0"
+    >
+      {mode === 'chat' ? (
+        <ChatModeBody items={items} />
+      ) : mode === 'notas' ? (
+        <NotasModeBody items={items} pathname={location.pathname} />
+      ) : (
+        <NavBody items={items} pathname={location.pathname} />
+      )}
+    </motion.div>
+  );
+}
+
+export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
+  const location = useLocation();
+  const { t } = useI18n();
+  const { collapsed, toggle } = useSidebarCollapsed();
+
+  // Em /grafo a navegação lateral some — o grafo ocupa a tela toda (o Topbar
+  // permanece, e a barra flutuante do grafo oferece o "voltar").
+  if (location.pathname === '/grafo' || location.pathname.startsWith('/grafo/')) {
+    return null;
+  }
 
   return (
     <>
@@ -98,28 +137,77 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement {
             style={{ width: SIDEBAR_WIDTH }}
           >
             <SidebarHeader onCollapse={toggle} />
-            {/* Troca entre nav e chat sem AnimatePresence — `key` no motion.div
-                força remount limpo. AnimatePresence mode="wait" interno aqui
-                acumulava estados pendentes em cliques rápidos e travava. */}
-            <motion.div
-              key={`${mode}-mode`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-              className="flex-1 flex flex-col min-h-0"
-            >
-              {mode === 'chat' ? (
-                <ChatModeBody items={items} />
-              ) : mode === 'notas' ? (
-                <NotasModeBody items={items} pathname={location.pathname} />
-              ) : (
-                <NavBody items={items} pathname={location.pathname} />
-              )}
-            </motion.div>
+            <SidebarModeBody user={user} />
+            <SidebarVersionInfo />
+            <SidebarSignOut />
           </motion.aside>
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+interface VersionPayload {
+  version: string;
+  gitSha: string | null;
+  builtAt: string;
+}
+
+export function SidebarVersionInfo(): React.ReactElement {
+  const { locale, t } = useI18n();
+  const { data } = useFetch<VersionPayload>('/api/version');
+  const shortSha = data?.gitSha?.slice(0, 7) ?? null;
+  const builtAt = data?.builtAt
+    ? new Date(data.builtAt).toLocaleString(locale === 'pt-BR' ? 'pt-BR' : 'en-US')
+    : null;
+  const title = data?.version
+    ? [
+        t('shell.versionInfo', { version: data.version }),
+        shortSha ? t('shell.versionSha', { sha: shortSha }) : null,
+        builtAt ? t('shell.versionBuiltAt', { date: builtAt }) : null,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : t('shell.versionFallback');
+
+  return (
+    <div className="shrink-0 px-3 py-1.5" title={title}>
+      <p className="truncate text-center font-mono text-[10px] leading-none text-[var(--color-app-muted)]/60">
+        {data?.version ? (
+          <>
+            v{data.version}
+            {shortSha ? <span> · {shortSha}</span> : null}
+          </>
+        ) : (
+          t('shell.versionFallback')
+        )}
+      </p>
+    </div>
+  );
+}
+
+export function SidebarSignOut(): React.ReactElement {
+  const { t } = useI18n();
+  const { refresh } = useMe();
+  const navigate = useNavigate();
+
+  async function signOut(): Promise<void> {
+    await apiPost('/api/auth/sign-out').catch(() => undefined);
+    await refresh();
+    navigate('/entrar');
+  }
+
+  return (
+    <div className="shrink-0 border-t border-[var(--color-app-border)] p-3">
+      <button
+        type="button"
+        onClick={() => void signOut()}
+        className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-[var(--color-app-muted)] transition-colors hover:bg-rose-500/10 hover:text-rose-200"
+      >
+        <LogOut className="h-4 w-4 shrink-0" />
+        <span className="truncate">{t('shell.signOut')}</span>
+      </button>
+    </div>
   );
 }
 
@@ -511,10 +599,12 @@ function NotasModeBody({
 
 export function SidebarSpacer(): React.ReactElement {
   const { collapsed } = useSidebarCollapsed();
+  const location = useLocation();
+  const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
   return (
     <motion.div
       className="hidden md:block shrink-0"
-      animate={{ width: collapsed ? 0 : SIDEBAR_WIDTH + 32 }}
+      animate={{ width: collapsed || isGraph ? 0 : SIDEBAR_WIDTH + 32 }}
       initial={false}
       transition={{ type: 'spring', stiffness: 320, damping: 32 }}
       aria-hidden

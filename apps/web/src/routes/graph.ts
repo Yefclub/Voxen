@@ -13,6 +13,7 @@
 import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import {
+  BRAIN_INDEX_VERSION,
   reindexLibraryFoldersBrain,
   reindexNotesBrain,
   reindexTranscriptsBrain,
@@ -179,7 +180,7 @@ graphRoutes.get('/', async (c) => {
 });
 
 async function ensureBrainCoverage(userId: string, force: boolean): Promise<void> {
-  const [transcripts, notes, folders, brainNodes] = await Promise.all([
+  const [transcripts, notes, folders, brainNodes, staleSourceNodes] = await Promise.all([
     db.transcript.count({ where: { userId, status: 'ACTIVE' } }),
     db.note.count({ where: { userId } }),
     db.libraryFolder.count({ where: { userId } }),
@@ -190,13 +191,32 @@ async function ensureBrainCoverage(userId: string, force: boolean): Promise<void
         sourceType: { in: ['TRANSCRIPT', 'NOTE', 'FOLDER'] },
       },
     }),
+    countStaleBrainSourceNodes(userId),
   ]);
   const expectedSourceNodes = transcripts + notes + folders;
-  if (!force && (expectedSourceNodes === 0 || brainNodes >= expectedSourceNodes)) return;
+  if (
+    !force &&
+    (expectedSourceNodes === 0 || (brainNodes >= expectedSourceNodes && staleSourceNodes === 0))
+  ) {
+    return;
+  }
 
   await reindexLibraryFoldersBrain(userId);
   await reindexNotesBrain(userId);
   await reindexTranscriptsBrain(userId);
+}
+
+async function countStaleBrainSourceNodes(userId: string): Promise<number> {
+  const rows = await db.$queryRaw<Array<{ count: number | bigint }>>`
+    SELECT count(*)::int AS count
+    FROM "BrainNode"
+    WHERE "userId" = ${userId}
+      AND status = 'ACTIVE'::"ContentStatus"
+      AND "sourceType"::text IN ('TRANSCRIPT', 'NOTE')
+      AND coalesce(metadata->>'brainIndexVersion', '0') <> ${String(BRAIN_INDEX_VERSION)}
+  `;
+  const count = rows[0]?.count ?? 0;
+  return typeof count === 'bigint' ? Number(count) : count;
 }
 
 function graphNodeType(node: {

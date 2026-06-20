@@ -153,6 +153,66 @@ adminRoutes.post('/mcp/rotate', async (c) => {
   });
 });
 
+// POST /api/admin/mcp/prompt — gera prompt pronto para configurar um agente.
+// Retorna o token dentro do prompt porque a ação é explícita, admin-only e
+// feita sob demanda. Não incluir esse payload em logs.
+adminRoutes.post('/mcp/prompt', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { appUrl?: unknown };
+  const appUrl = normalizeAppOrigin(body.appUrl);
+  if (!appUrl) {
+    return c.json({ error: 'URL da aplicação inválida.' }, 400);
+  }
+
+  const stored = await getSetting('mcp_api_token').catch(() => null);
+  if (!stored) {
+    return c.json({ error: 'Token MCP não configurado.' }, 409);
+  }
+  const [userId, token] = stored.split(':');
+  if (!userId || !token) {
+    return c.json({ error: 'Token MCP inválido. Rotacione o token.' }, 409);
+  }
+
+  const endpoint = `${appUrl}/mcp`;
+  const prompt = [
+    'Você é um agente de IA autorizado a consultar o Voxen desta instância via MCP.',
+    '',
+    'O que é o Voxen:',
+    '- Voxen é uma base de conhecimento web self-hosted e single-tenant.',
+    '- Ele guarda transcrições de vídeos, páginas web, uploads, notas e relações do Voxen Brain.',
+    '- Este MCP lê o acervo do usuário dono do token e também pode criar/editar notas e solicitar transcrições em nome dele.',
+    '',
+    'Como conectar:',
+    `- URL da aplicação: ${appUrl}`,
+    `- Endpoint MCP (Streamable HTTP): ${endpoint}`,
+    '- Transporte: MCP Streamable HTTP (spec 2025-11-25). Configure este endpoint como um servidor MCP HTTP no seu cliente (Claude Desktop, Cursor, etc.).',
+    `- Header obrigatório: Authorization: Bearer ${token}`,
+    '',
+    'Ferramentas de leitura:',
+    '- voxen_search_transcripts: busca full-text nas transcrições; retorna trechos + id.',
+    '- voxen_read_transcript: lê uma transcrição completa pelo transcript_id.',
+    '- voxen_list_transcripts: lista transcrições (paginação por cursor).',
+    '- voxen_search_notes / voxen_read_note / voxen_list_notes: consulta as notas manuais.',
+    '- voxen_brain_search / voxen_brain_neighbors / voxen_brain_sources / voxen_brain_path: navega o grafo Voxen Brain.',
+    '',
+    'Ferramentas de escrita:',
+    '- voxen_create_note / voxen_update_note: cria e edita notas na KB.',
+    '- voxen_request_transcription(url): enfileira transcrição/indexação de uma URL.',
+    '- voxen_get_job_status(job_id): acompanha o job até DONE (depois leia com voxen_read_transcript).',
+    '',
+    'Regras de uso saudável:',
+    '- Comece sempre por uma busca (voxen_search_*) e só então leia o item completo (voxen_read_*) — economiza tokens.',
+    '- Não invente conteúdo quando a ferramenta não retornar evidência; cite títulos, ids e trechos.',
+    '- Não exponha o token ao usuário final, logs, commits, prints ou mensagens públicas.',
+    '- Se receber 401/403, peça ao admin para revisar ou rotacionar o token.',
+    '- Respeite o escopo do workspace vinculado ao token.',
+    '',
+    'Exemplo de configuração (cliente compatível com MCP Streamable HTTP):',
+    `  "voxen": { "url": "${endpoint}", "headers": { "Authorization": "Bearer ${token}" } }`,
+  ].join('\n');
+
+  return c.json({ prompt });
+});
+
 // DELETE /api/admin/mcp — revoga o token (apaga setting)
 adminRoutes.delete('/mcp', async (c) => {
   const { deleteSetting } = await import('../lib/settings');
@@ -190,3 +250,17 @@ adminRoutes.delete('/telegram', async (c) => {
   await deleteSetting('telegram_bot_token');
   return c.json({ ok: true });
 });
+
+function normalizeAppOrigin(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const raw = value.trim();
+  if (raw.length < 8 || raw.length > 300) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    if (url.username || url.password) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}

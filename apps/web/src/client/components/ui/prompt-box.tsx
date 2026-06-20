@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { Spinner } from './spinner';
 import { createVoiceRecorder } from '../../lib/voice-recorder';
 import { toast } from 'sonner';
 import { useI18n } from '../../lib/i18n';
@@ -151,10 +152,27 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
     };
   }, [mentionQuery, onMentionSelect]);
 
+  // Cleanup no unmount: se o usuário sair do chat gravando, o MediaRecorder e o
+  // stream do microfone continuariam ativos. `cancel()` para o recorder e libera
+  // as tracks sem disparar transcrição.
+  useEffect(() => {
+    return () => {
+      if (recorderRef.current?.isRecording()) {
+        recorderRef.current.cancel();
+      }
+      recorderRef.current = null;
+    };
+  }, []);
+
   async function toggleRecord(): Promise<void> {
     if (recording) {
+      const rec = recorderRef.current;
+      if (!rec) {
+        setRecording(false);
+        return;
+      }
       try {
-        const blob = await recorderRef.current!.stop();
+        const blob = await rec.stop();
         setRecording(false);
         await sendVoice(blob);
       } catch (e) {
@@ -391,7 +409,7 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
                 type="button"
                 onClick={() => onMentionRemove?.(item)}
                 className="rounded-full text-emerald-200/70 hover:text-emerald-100"
-                aria-label={`Remover ${item.label}`}
+                aria-label={t('prompt.removeMention', { label: item.label })}
               >
                 <X className="h-3 w-3" />
               </button>
@@ -563,7 +581,10 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
             )}
           </button>
 
-          {/* Send */}
+          {/* Send. Durante streaming o botão mantém o fundo claro com o
+              Spinner orbital (Motion) — o Loader2 com animate-spin ficava
+              cinza sobre fundo escuro e parecia um loader travado, além de
+              congelar os primeiros ~600ms no WebKit. */}
           <button
             type="button"
             onClick={() => {
@@ -572,17 +593,16 @@ export const PromptBox = forwardRef<PromptBoxHandle, PromptBoxProps>(function Pr
             disabled={!hasValue || disabled}
             className={cn(
               'flex h-9 w-9 items-center justify-center rounded-full transition-all',
-              hasValue && !disabled
-                ? 'bg-zinc-100 text-zinc-900 hover:bg-white active:scale-95'
-                : 'bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] cursor-not-allowed',
+              loading
+                ? 'bg-zinc-100 text-zinc-900 cursor-wait'
+                : hasValue && !disabled
+                  ? 'bg-zinc-100 text-zinc-900 hover:bg-white active:scale-95'
+                  : 'bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] cursor-not-allowed',
             )}
             aria-label={t('prompt.send')}
+            aria-busy={loading || undefined}
           >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-            )}
+            {loading ? <Spinner size={16} /> : <ArrowUp className="h-4 w-4" strokeWidth={2.5} />}
           </button>
         </div>
       </div>

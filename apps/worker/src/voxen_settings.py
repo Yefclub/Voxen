@@ -37,6 +37,13 @@ async def get_default_transcription_model() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_default_chat_model() -> str | None:
+    enc = await db.get_setting_enc("default_chat_model")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
 async def get_default_vision_model() -> str | None:
     enc = await db.get_setting_enc("default_vision_model")
     if enc is None:

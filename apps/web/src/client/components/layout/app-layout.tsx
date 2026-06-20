@@ -1,19 +1,36 @@
-import { Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { Sidebar, SidebarSpacer } from './sidebar';
+import { MobileNavDrawer } from './mobile-nav-drawer';
+import { MobileBottomNav } from './mobile-bottom-nav';
 import { Topbar } from './topbar';
-import { useMe, useFetch } from '../../lib/hooks';
+import { useMe } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
 import { useJobsWatcher } from '../../lib/use-jobs-watcher';
+import { useVersionMonitor } from '../../lib/use-version-monitor';
 import { ChatContextProvider } from '../../lib/chat-context-ctx';
 
 export function AppLayout(): React.ReactElement {
   const { data, loading } = useMe();
   const location = useLocation();
   const navigate = useNavigate();
+  const mainRef = useRef<HTMLElement>(null);
+  // Navegação mobile (<md): a Sidebar é hidden md:flex — o drawer é a única
+  // navegação abaixo de 768px. Estado vive aqui pra ligar Topbar (hamburger)
+  // e drawer (overlay fora do header, que tem backdrop-blur).
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Watcher global de jobs do user logado (toast em qualquer página)
   useJobsWatcher(!!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone), (path) =>
     navigate(path),
   );
+  // Aviso de versão nova do backend (toast persistente com ação de recarregar)
+  useVersionMonitor(!!data?.user);
+
+  // O scroll vive no <main> (shell de altura fixa). Resetar ao topo a cada troca
+  // de rota pra não herdar a posição da página anterior.
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [location.pathname]);
 
   if (loading) {
     return (
@@ -24,7 +41,9 @@ export function AppLayout(): React.ReactElement {
   }
 
   if (!data?.user) {
-    return <Navigate to="/entrar" replace state={{ from: location.pathname }} />;
+    return (
+      <Navigate to="/entrar" replace state={{ from: `${location.pathname}${location.search}` }} />
+    );
   }
 
   if (data.user.status !== 'APPROVED') {
@@ -44,44 +63,64 @@ export function AppLayout(): React.ReactElement {
     return <Navigate to="/pendente" replace />;
   }
 
-  // Em /chat o conteúdo gerencia a própria altura (input fixo no fundo), então
-  // removemos o padding bottom do <main> pra não criar scroll extra na página.
+  // App shell de altura fixa: o cabeçalho (Topbar) fica travado no topo e o
+  // conteúdo rola dentro do <main>. /chat e /grafo ocupam a tela toda e
+  // gerenciam a própria altura, então não recebem o overflow-y-auto/padding.
   const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
-
-  const shellClass = isChat
-    ? 'h-dvh flex bg-[var(--color-app-bg)] overflow-hidden'
-    : 'min-h-dvh flex bg-[var(--color-app-bg)]';
-  const contentClass = isChat
-    ? 'flex-1 flex flex-col min-w-0 min-h-0'
-    : 'flex-1 flex flex-col min-w-0 min-h-dvh';
-  const mainClass = isChat ? 'flex-1 min-h-0' : 'flex-1 pb-6';
+  const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
+  const isFullBleed = isChat || isGraph;
+  const mainClass = isFullBleed
+    ? 'flex-1 min-h-0'
+    : 'flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6';
 
   return (
     <ChatContextProvider>
-      <div className={shellClass}>
+      <div className="flex h-dvh overflow-hidden bg-[var(--color-app-bg)]">
         <Sidebar user={data.user} />
+        <MobileNavDrawer
+          user={data.user}
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+        />
         <SidebarSpacer />
-        <div className={contentClass}>
-          <Topbar user={data.user} />
-          <main className={mainClass}>
-            <Outlet />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <Topbar user={data.user} onOpenMobileNav={() => setMobileNavOpen(true)} />
+          <main ref={mainRef} className={mainClass}>
+            <AnimatedOutlet />
           </main>
-          {!isChat && <VersionFooter />}
+          {!isFullBleed && <MobileBottomNav />}
         </div>
       </div>
     </ChatContextProvider>
   );
 }
 
-function VersionFooter(): React.ReactElement | null {
-  const { data } = useFetch<{ version: string; gitSha: string | null; builtAt: string }>(
-    '/api/version',
-  );
-  if (!data?.version) return null;
+/**
+ * Agrupa rotas por seção pra animar a troca ENTRE seções sem remontar ao
+ * navegar dentro da mesma seção (ex.: /chat/a→/chat/b, /notas/x→/notas/y,
+ * /jobs/1→/jobs/2 preservam estado e scroll).
+ */
+function getSectionKey(pathname: string): string {
+  const segments = pathname.split('/').filter(Boolean);
+  const root = segments[0] ?? 'dashboard';
+  // /admin/usuarios, /admin/custos e /admin/integracoes são seções distintas.
+  return root === 'admin' ? `admin/${segments[1] ?? ''}` : root;
+}
+
+/**
+ * Conteúdo da rota com transição de ENTRADA por seção. Remontar por key (em vez
+ * de AnimatePresence mode="wait" + frozen router) faz cada página animar a
+ * entrada via <AnimatedPage> sem NUNCA segurar a montagem do próximo conteúdo —
+ * o que antes deixava a tela em branco ao navegar no build de produção.
+ * Navegar dentro da mesma seção não remonta (mesma key), preservando estado e
+ * scroll do chat, das notas e das páginas de detalhe.
+ */
+function AnimatedOutlet(): React.ReactElement {
+  const location = useLocation();
+  const outlet = useOutlet();
   return (
-    <footer className="pointer-events-none fixed bottom-2 right-3 z-10 text-[10px] uppercase tracking-[0.12em] text-[var(--color-app-muted)]/60 font-mono select-none">
-      Voxen v{data.version}
-      {data.gitSha && <span className="ml-1.5 opacity-70">·{data.gitSha.slice(0, 7)}</span>}
-    </footer>
+    <div key={getSectionKey(location.pathname)} className="contents">
+      {outlet}
+    </div>
   );
 }

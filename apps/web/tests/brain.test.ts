@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import app from '../src/index';
+import { BRAIN_INDEX_VERSION } from '../src/lib/brain';
 import { db } from '../src/lib/db';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
@@ -240,6 +241,202 @@ describeIfDb('brain indexer', () => {
       where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
     });
     expect(persisted).not.toBeNull();
+  });
+
+  it('connects active contents through shared concepts', async () => {
+    await signUp('shared-brain@voxen.local', 'senha-super-segura-123', 'Shared Brain');
+    const signin = await signIn('shared-brain@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'shared-brain@voxen.local' } });
+
+    const noteRes = await app.fetch(
+      new Request('http://localhost/api/notes', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Projeto Atlas',
+          content: 'Projeto Atlas usa GraphRAG para conectar memórias do Voxen.',
+        }),
+      }),
+    );
+    expect(noteRes.status).toBe(201);
+    const noteBody = (await noteRes.json()) as { note: { id: string } };
+
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/atlas-graphrag',
+        title: 'Projeto Atlas GraphRAG',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/atlas-graphrag.md`,
+        plainText: 'Projeto Atlas conecta memórias, GraphRAG e base de conhecimento.',
+        frontmatter: {},
+      },
+    });
+
+    const graph = await app.fetch(
+      new Request('http://localhost/api/graph?force=1', {
+        headers: { cookie },
+      }),
+    );
+    expect(graph.status).toBe(200);
+
+    const noteNode = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
+    });
+    const transcriptNode = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+    });
+    expect(
+      await db.brainNode.findUnique({
+        where: { userId_key: { userId: user.id, key: 'ENTITY:projeto-atlas' } },
+      }),
+    ).not.toBeNull();
+
+    const related = await db.brainEdge.findFirst({
+      where: {
+        userId: user.id,
+        kind: 'RELATED_TO',
+        method: 'shared-concepts',
+        OR: [
+          { fromNodeId: noteNode.id, toNodeId: transcriptNode.id },
+          { fromNodeId: transcriptNode.id, toNodeId: noteNode.id },
+        ],
+      },
+    });
+    expect(related).not.toBeNull();
+    const evidence = await db.brainSource.findFirst({
+      where: {
+        userId: user.id,
+        edgeId: related?.id,
+        sourceType: 'TRANSCRIPT',
+        sourceId: transcript.id,
+      },
+    });
+    expect(evidence?.excerpt).toContain('Conceitos em comum');
+  });
+
+  it('connects content by semantic profile and timeline without exact concept overlap', async () => {
+    await signUp('semantic-brain@voxen.local', 'senha-super-segura-123', 'Semantic Brain');
+    const signin = await signIn('semantic-brain@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'semantic-brain@voxen.local' },
+    });
+
+    const first = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'YOUTUBE',
+        url: 'https://youtu.be/alpha-memory',
+        title: 'Circuito Azul',
+        channel: 'Canal A',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/alpha-memory.md`,
+        plainText: 'Rotor celeste calibra mapa discreto.',
+        frontmatter: {},
+      },
+    });
+    const second = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'YOUTUBE',
+        url: 'https://youtu.be/beta-memory',
+        title: 'Ponte Laranja',
+        channel: 'Canal B',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/beta-memory.md`,
+        plainText: 'Saturno dorsal organiza trilha silenciosa.',
+        frontmatter: {},
+      },
+    });
+
+    const graph = await app.fetch(
+      new Request('http://localhost/api/graph?force=1', {
+        headers: { cookie },
+      }),
+    );
+    expect(graph.status).toBe(200);
+
+    const firstNode = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${first.id}` } },
+    });
+    const secondNode = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${second.id}` } },
+    });
+
+    const semantic = await db.brainEdge.findFirst({
+      where: {
+        userId: user.id,
+        kind: 'RELATED_TO',
+        method: 'semantic-profile',
+        OR: [
+          { fromNodeId: firstNode.id, toNodeId: secondNode.id },
+          { fromNodeId: secondNode.id, toNodeId: firstNode.id },
+        ],
+      },
+    });
+    expect(semantic).not.toBeNull();
+    expect((semantic?.metadata as { reasons?: Array<{ kind: string }> }).reasons).toContainEqual(
+      expect.objectContaining({ kind: 'domain' }),
+    );
+
+    const timeline = await db.brainEdge.findFirst({
+      where: {
+        userId: user.id,
+        kind: 'NEXT_TO',
+        method: 'timeline-adjacent',
+        OR: [
+          { fromNodeId: firstNode.id, toNodeId: secondNode.id },
+          { fromNodeId: secondNode.id, toNodeId: firstNode.id },
+        ],
+      },
+    });
+    expect(timeline).not.toBeNull();
+  });
+
+  it('reindexes stale Brain source nodes on graph load', async () => {
+    await signUp('stale-brain@voxen.local', 'senha-super-segura-123', 'Stale Brain');
+    const signin = await signIn('stale-brain@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'stale-brain@voxen.local' } });
+
+    const noteRes = await app.fetch(
+      new Request('http://localhost/api/notes', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Memória stale',
+          content: 'Projeto Atlas precisa ser reindexado automaticamente.',
+        }),
+      }),
+    );
+    expect(noteRes.status).toBe(201);
+    const noteBody = (await noteRes.json()) as { note: { id: string } };
+
+    await db.brainNode.update({
+      where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
+      data: { metadata: { brainIndexVersion: 1 } },
+    });
+
+    const graph = await app.fetch(
+      new Request('http://localhost/api/graph', { headers: { cookie } }),
+    );
+    expect(graph.status).toBe(200);
+
+    const node = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
+    });
+    expect((node.metadata as { brainIndexVersion?: number }).brainIndexVersion).toBe(
+      BRAIN_INDEX_VERSION,
+    );
   });
 
   it('removes automatic topic nodes when transcript leaves the active graph', async () => {

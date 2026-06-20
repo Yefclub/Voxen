@@ -94,7 +94,7 @@ Flow:
 
 ## Versioning
 
-Stable versions use SemVer tags on `main`, for example `v0.7.4`. Development builds on `dev` use generated pre-release metadata tied to the commit.
+Stable versions use SemVer tags on `main`, for example `v0.7.4`. Development builds on `dev` use generated pre-release metadata in the format `X.Y.Z-dev.<unix_epoch_seconds>`. Easypanel GitHub-source deployments derive the visible `/api/version` value from the next patch version, `DEPLOY_TIMESTAMP`, and `GIT_SHA` when `VOXEN_VERSION` is not injected.
 
 Release flow:
 

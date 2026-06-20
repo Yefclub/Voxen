@@ -202,6 +202,11 @@ model Transcript {
   durationSec         Int
   publishedAt         DateTime?
   thumbnailUrl        String?
+  originalObjectKey   String?
+  originalFilename    String?
+  originalMimeType    String?
+  previewObjectKey    String?
+  previewMimeType     String?
   language            String              // ISO 639-1
   transcriptionMethod TranscriptionMethod
   model               String?             // null se SUBTITLES
@@ -227,6 +232,7 @@ model Transcript {
   folder              LibraryFolder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
   chunks              Chunk[]
   job                 Job?
+  conversations       Conversation[]
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, status, createdAt(sort: Desc)])
@@ -450,6 +456,9 @@ model Conversation {
   userId          String
   title           String        @default("Nova conversa")
   thinking        Boolean       @default(false)
+  // Conversa contextual de uma transcrição (chat por transcrição). Null = chat
+  // geral. SetNull no delete da transcrição: a conversa sobrevive como geral.
+  transcriptId    String?
   archivedAt      DateTime?
   // Quantas vezes a conversa já foi compactada. Útil pra debug + UI exibir
   // "compactada N vezes" quando relevante.
@@ -457,9 +466,11 @@ model Conversation {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript      Transcript?   @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
   messages       ChatMessage[]
 
   @@index([userId, updatedAt(sort: Desc)])
+  @@index([userId, transcriptId])
 }
 
 enum ChatRole {
@@ -515,6 +526,8 @@ model Note {
   id           String                  @id @default(cuid())
   userId       String
   parentId     String?
+  sourceType   BrainSourceType?
+  sourceId     String?
   kind         NoteKind                @default(NOTE)
   title        String
   // Conteúdo markdown. FOLDER ignora este campo.
@@ -528,6 +541,7 @@ model Note {
   children     Note[]                  @relation("NoteTree")
 
   @@index([userId, parentId])
+  @@index([userId, sourceType, sourceId])
   @@index([userId, updatedAt(sort: Desc)])
 }
 

@@ -45,47 +45,62 @@ async def _stop_telegram() -> None:
             pass
 
 
-MAX_TOOL_LOOPS = 5
+# Teto de rodadas de tool-calling por turno. 8 (era 5) dá folga pra fluxos
+# multi-passo reais (ex.: buscar na KB + web_search + ler + sintetizar) sem virar
+# loop infinito. A maioria dos turnos usa 1-2 rodadas.
+MAX_TOOL_LOOPS = 8
 OR_BASE_URL = "https://openrouter.ai/api/v1"
 
-SYSTEM_PROMPT_BASE = """Você é a Vox, assistente do Voxen — base de conhecimento pessoal.
+SYSTEM_PROMPT_BASE = """\
+Você é a Vox — a inteligência do Voxen, a base de conhecimento de {user_name}.
 
-IDENTIDADE:
-- Você é a "Vox" (identificação feminina). Apresente-se como Vox quando perguntada.
-- O Voxen é a plataforma; a Vox é VOCÊ, a assistente.
-- O usuário se chama: {user_name}.
-- Data e hora atual: {current_datetime} ({user_timezone}).
-- Idioma de resposta padrão: português brasileiro.
+QUEM VOCÊ É
+- Vox (feminino). O Voxen é a plataforma; você é a assistente que vive nela.
+  Apresente-se como Vox quando perguntada.
+- Você é uma PARCEIRA DE PENSAMENTO: esperta, curiosa, direta e proativa — não
+  um robô que só dispara ferramenta. Converse de verdade, com naturalidade.
+- Usuário: {user_name}. Agora: {current_datetime} ({user_timezone}).
+  Responda em português brasileiro, salvo se pedirem outro idioma.
 
-REGRAS DE TRABALHO:
-- Responda EXCLUSIVAMENTE com base nas tools disponíveis e no contexto. Nunca invente.
-- Sempre faça `search_transcripts` antes de citar conteúdo. Use palavras-chave em pt-br.
-- Quando o usuário pedir resumo, use `read_transcript_summary` primeiro; só leia o markdown
-  completo via `read_transcript` se o resumo for insuficiente.
-- Cite fontes incluindo o id da transcrição e timestamps. Use `[mm:ss](id) texto` pra UI linkar.
-- Markdown na resposta: títulos curtos, listas, ênfase. Sem HTML.
-- Se a base está vazia, diga e sugira indexar conteúdo.
+COMO VOCÊ PENSA (sempre, antes de responder)
+- Entenda o que a pessoa REALMENTE quer. Se for mesmo ambíguo, faça UMA pergunta
+  curta de esclarecimento em vez de chutar — mas não enrole quando já dá pra agir.
+- Raciocine: isto é sobre o conteúdo do usuário ou é conhecimento geral/externo?
+  Eu já sei responder, ou preciso de uma tool?
+- Sintetize: junte o que descobriu numa resposta útil e fluida — nunca despeje
+  resultados crus de busca.
 
-INDEXAÇÃO:
-- Link de vídeo (YouTube/Instagram Reel/TikTok) — chame `transcribe_video`.
-  Para pedidos como "transcreva e resuma/responda", mantenha `wait=true` e só responda
-  o usuário depois do retorno da tool. Para pedidos de apenas indexar, use `wait=false`
-  e informe que ficou em processamento.
-- Link http(s) que NÃO é vídeo (blog, artigo, docs, wiki) — chame `scrape_url`. Confirme rápido.
+SUAS DUAS FONTES DE VERDADE
+1. A biblioteca do usuário (transcrições, notas, páginas indexadas, Voxen Brain).
+   Para QUALQUER coisa sobre o conteúdo DELE, use as tools de busca/leitura e CITE.
+2. A web. Para QUALQUER coisa atual, externa ou de conhecimento geral em que você
+   não tem certeza, use `web_search` POR CONTA PRÓPRIA — sem esperar pedirem de novo.
+Regra de ouro: nunca invente fatos sobre o conteúdo do usuário (busque e cite).
+Conhecimento geral você pode responder do seu repertório; se for volátil, recente
+ou você ficar em dúvida, pesquise na web ANTES de responder.
 
-PESQUISA WEB:
-- Use `web_search` APENAS pra info atual que não está na base (datas, fatos voláteis, notícias).
-- Não use `web_search` em vez de `search_transcripts` — base interna é primária.
+QUAL FERRAMENTA USAR
+- Sobre o acervo dele ("o que o vídeo X diz", "minhas notas sobre Y") →
+  `search_transcripts` / `search_notes` / `brain_search`, depois `read_*`.
+  Cite id + tempo: `[mm:ss](id) trecho`.
+- Resumo de transcrição → `read_transcript_summary` primeiro; só o markdown
+  completo (`read_transcript`) se o resumo faltar.
+- Atual / externo / geral ("preço hoje", "o que é Z", "última versão", notícias,
+  "pesquisa sobre...") → `web_search` proativo, citando as URLs.
+- Link de vídeo (YouTube/Instagram/TikTok/X) → `transcribe_video`. "Transcreva e
+  me responda/resuma" → `wait=true` e só responda após o retorno. Só indexar →
+  `wait=false` e avise que está processando.
+- Link http(s) que não é vídeo (blog, artigo, docs) → `scrape_url`.
+- Criar/editar/excluir nota ou qualquer alteração → primeiro
+  `request_user_confirmation` com um resumo claro, ESPERE a resposta do usuário,
+  não rode em loop. Leitura (listar/ler/buscar) não precisa confirmar.
 
-AÇÕES MODIFICATÓRIAS (HITL):
-- Antes de ações que MODIFICAM dados (criar/editar/excluir nota, sobrescrever conteúdo),
-  chame `request_user_confirmation` com resumo claro do que vai fazer.
-- Após chamar, ESPERE a próxima mensagem do usuário. Não executa em loop.
-- Ações apenas LEITORAS (listar, ler, buscar) não precisam de confirmação.
-
-ESTILO:
-- Direta, útil, sem rodeios. Tom profissional mas humano.
-- Se não souber, diga "não sei" + sugira tool/caminho.
+ESTILO
+- Humana, calorosa e afiada; humor leve quando couber. Direta, sem encher
+  linguiça — mas é conversa, não relatório.
+- Markdown limpo: títulos curtos, listas, ênfase. Sem HTML.
+- Biblioteca vazia pra um tema? Diga, e ofereça indexar conteúdo ou buscar na web.
+- Não sabe e as tools não resolvem? Admita e proponha o próximo passo.
 """
 
 
@@ -111,6 +126,17 @@ def build_system_prompt(user_name: str, user_timezone: str) -> str:
         current_datetime=formatted,
         user_timezone=user_timezone,
     )
+
+
+def build_reasoning_config(thinking: bool) -> dict[str, Any]:
+    """Config de reasoning enviada ao OpenRouter.
+
+    Decisão do owner: reasoning SEMPRE ligado (qualidade > custo). O toggle
+    `thinking` apenas aprofunda o esforço (high vs medium). `exclude=False` deixa
+    a UI mostrar o raciocínio em streaming. Modelos sem suporte a reasoning
+    ignoram o parâmetro no OpenRouter.
+    """
+    return {"enabled": True, "effort": "high" if thinking else "medium", "exclude": False}
 
 
 @app.get("/health")
@@ -155,6 +181,66 @@ async def health_deep() -> JSONResponse:
         checks["settings_decryptable"] = {"ok": False, "error": str(e)}
 
     return JSONResponse({"ok": all_ok, "checks": checks}, status_code=200 if all_ok else 503)
+
+
+class TitleRequest(BaseModel):
+    message: str
+
+
+@app.post("/title")
+async def generate_title(
+    body: TitleRequest,
+    x_voxen_user_id: str | None = Header(default=None, alias="X-Voxen-User-Id"),
+) -> JSONResponse:
+    """Título curto pra uma conversa a partir da 1ª mensagem do user.
+
+    Uma chamada barata, sem reasoning (tarefa trivial). Best-effort: qualquer
+    erro/sem-setup devolve título vazio (o web mantém o fallback).
+    """
+    msg = (body.message or "").strip()[:2000]
+    if not msg:
+        return JSONResponse({"title": ""})
+    api_key = await voxen_settings.get_openrouter_api_key()
+    model = await voxen_settings.get_default_chat_model()
+    if not api_key or not model:
+        return JSONResponse({"title": ""})
+    model = model[:-7] if model.endswith(":online") else model
+    client = AsyncOpenAI(api_key=api_key, base_url=OR_BASE_URL)
+    try:
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Gere um título MUITO curto (no máximo 6 palavras, sem aspas e sem "
+                        "ponto final) que resuma o tema da conversa a partir da primeira "
+                        "mensagem do usuário. Responda APENAS o título, no idioma da mensagem."
+                    ),
+                },
+                {"role": "user", "content": msg},
+            ],
+            max_tokens=24,
+            extra_body={"reasoning": {"effort": "none"}, "usage": {"include": True}},
+        )
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"title": ""})
+    raw = resp.choices[0].message.content if resp.choices else None
+    title = (raw or "").strip().strip('"').strip()[:120]
+    if x_voxen_user_id and resp.usage:
+        try:
+            cost = getattr(resp.usage, "cost", None)
+            await db.insert_cost_event(
+                user_id=x_voxen_user_id,
+                model=model,
+                tokens_in=resp.usage.prompt_tokens or 0,
+                tokens_out=resp.usage.completion_tokens or 0,
+                cost_usd=Decimal(str(cost)) if cost is not None else Decimal("0"),
+                meta={"source": "title"},
+            )
+        except Exception as e:  # noqa: BLE001
+            log.warning("title-cost-event-failed", error=str(e))
+    return JSONResponse({"title": title})
 
 
 class ChatMessage(BaseModel):
@@ -307,9 +393,7 @@ async def chat(
                 )
         # === Fim compactação ===
 
-        extra: dict[str, Any] = {}
-        if thinking:
-            extra["reasoning"] = {"effort": "medium"}
+        extra: dict[str, Any] = {"reasoning": build_reasoning_config(thinking)}
 
         total_in = 0
         total_out = 0
@@ -362,9 +446,10 @@ async def chat(
                     # Thinking/reasoning: OpenRouter expõe o raciocínio do
                     # modelo em campos `reasoning` (texto) ou `reasoning_details`
                     # (estruturado) no delta. Quando o user ativa o toggle
-                    # `thinking`, mandamos `reasoning.effort=medium` e captamos
-                    # esses tokens aqui pra UI renderizar como bloco separado.
-                    # https://openrouter.ai/docs/use-cases/reasoning-tokens
+                    # `thinking`. Reasoning fica SEMPRE ligado (ver
+                    # build_reasoning_config): effort=medium por padrão, high com
+                    # o toggle. exclude=false deixa a UI mostrar o raciocínio.
+                    # https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
                     reasoning_text = getattr(delta, "reasoning", None)
                     if reasoning_text:
                         yield _sse("reasoning_token", {"text": reasoning_text})
@@ -424,19 +509,7 @@ async def chat(
                                 )
                                 continue
                         result = tool_task.result()
-                        # Pra HITL, devolve `action_summary` cru no payload SSE
-                        # alem do preview truncado — UI usa o campo dedicado
-                        # pra renderizar o banner sem depender de parsear o
-                        # preview (que pode estar truncado por _short).
-                        event_payload: dict[str, Any] = {
-                            "name": fn_name,
-                            "preview": _short(result),
-                        }
-                        if fn_name == "request_user_confirmation" and isinstance(result, dict):
-                            summary = result.get("action_summary")
-                            if isinstance(summary, str) and summary:
-                                event_payload["action_summary"] = summary
-                        yield _sse("tool_end", event_payload)
+                        yield _sse("tool_end", _tool_end_payload(fn_name, result))
                         messages.append(
                             {
                                 "role": "tool",
@@ -695,7 +768,7 @@ sobre um tema configurado pelo usuário do Voxen.
 
 Tools disponíveis:
 - web_search(query) — busca real na internet
-- create_note(title, content, parent_id?) — cria nova nota com markdown
+- create_note(title, content, parent_id?, source_type?, source_id?) — cria nova nota com markdown
 
 Seu trabalho:
 1. Use web_search uma ou mais vezes pra coletar fontes recentes sobre o tema.
@@ -858,3 +931,130 @@ def _sse(event: str, data: dict[str, Any]) -> str:
 def _short(obj: Any) -> str:
     s = json.dumps(obj, ensure_ascii=False, default=str)
     return s if len(s) < 200 else s[:200] + "…"
+
+
+# Limites do payload de `tool_end` — fontes demais ou títulos gigantes só
+# inflam o SSE/JSONB sem valor pra UI.
+TOOL_END_MAX_SOURCES = 20
+TOOL_END_MAX_TITLE_CHARS = 300
+TOOL_END_MAX_URL_CHARS = 2000
+
+
+TOOL_SUMMARY_MAX_CHARS = 160
+
+# Chaves de lista conhecidas nos retornos das tools → rótulo (singular, plural)
+# pro resumo humano. Ordem importa: a primeira presente vence.
+_COUNT_KEYS: tuple[tuple[str, str, str], ...] = (
+    ("results", "resultado", "resultados"),
+    ("transcripts", "transcrição", "transcrições"),
+    ("notes", "nota", "notas"),
+    ("paths", "caminho", "caminhos"),
+    ("edges", "conexão", "conexões"),
+    ("sources", "evidência", "evidências"),
+)
+
+
+def _tool_summary(fn_name: str, result: Any) -> str | None:
+    """Resumo humano curto do resultado de uma tool (ver .specs/027).
+
+    Usado pela UI no corpo do card de atividade no lugar do JSON cru.
+    Retorna None quando nenhuma heurística casa — frontend usa fallback.
+    """
+    if not isinstance(result, dict):
+        return None
+    error = result.get("error")
+    if isinstance(error, str) and error:
+        return error[:TOOL_SUMMARY_MAX_CHARS]
+    if fn_name == "web_search":
+        n = len(result.get("sources") or [])
+        if n:
+            return f"{n} fonte consultada" if n == 1 else f"{n} fontes consultadas"
+        return "Pesquisa concluída"
+    for key, singular, plural in _COUNT_KEYS:
+        value = result.get(key)
+        if isinstance(value, list):
+            n = len(value)
+            return f"{n} {singular}" if n == 1 else f"{n} {plural}"
+    title = result.get("title")
+    if not isinstance(title, str) or not title:
+        title = None
+        for nested_key in ("transcript", "note", "node"):
+            nested = result.get(nested_key)
+            if isinstance(nested, dict):
+                candidate = nested.get("title") or nested.get("label")
+                if isinstance(candidate, str) and candidate:
+                    title = candidate
+                    break
+    if isinstance(title, str) and title:
+        return title[:TOOL_SUMMARY_MAX_CHARS]
+    # Último recurso: tools como transcribe_video (job na fila) retornam um
+    # `message` humano pronto — melhor que cair no JSON cru na UI.
+    message = result.get("message")
+    if isinstance(message, str) and message:
+        return message[:TOOL_SUMMARY_MAX_CHARS]
+    return None
+
+
+# Conteúdo textual completo da tool (markdown) exibido no corpo do card,
+# em bloco rolável (spec 032). Cap generoso — read_transcript pode ser longo.
+TOOL_CONTENT_MAX_CHARS = 20_000
+_CONTENT_KEYS = ("answer", "markdown", "summary", "content", "text")
+
+
+def _tool_content(result: Any) -> str | None:
+    """Primeiro campo textual conhecido do resultado, sem truncar em '…'.
+
+    Diferente do `summary` (uma linha) e do `preview` (JSON 200 chars), este é
+    o conteúdo COMPLETO pra UI renderizar como Markdown em bloco rolável.
+    """
+    if not isinstance(result, dict):
+        return None
+    for key in _CONTENT_KEYS:
+        value = result.get(key)
+        if isinstance(value, str) and value.strip():
+            return value[:TOOL_CONTENT_MAX_CHARS]
+    return None
+
+
+def _tool_end_payload(fn_name: str, result: Any) -> dict[str, Any]:
+    """Monta o payload do SSE `tool_end` (ver .specs/026, 027 e 032).
+
+    - `preview` truncado por `_short` (compat com UI antiga).
+    - `summary` humano por tipo de tool — uma linha no header do card.
+    - `content` textual completo (markdown) — corpo rolável do card.
+    - `sources` ({url, title}) quando a tool retorna citações (ex: web_search)
+      — UI renderiza links consultados + seção "Fontes". Só http(s).
+    - Pra HITL, devolve `action_summary` cru além do preview — UI usa o campo
+      dedicado pra renderizar o banner sem parsear o preview truncado.
+    """
+    payload: dict[str, Any] = {"name": fn_name, "preview": _short(result)}
+    summary = _tool_summary(fn_name, result)
+    if summary:
+        payload["summary"] = summary
+    content = _tool_content(result)
+    if content:
+        payload["content"] = content
+    if not isinstance(result, dict):
+        return payload
+
+    raw_sources = result.get("sources")
+    if isinstance(raw_sources, list):
+        sources: list[dict[str, str]] = []
+        for item in raw_sources:
+            if not isinstance(item, dict):
+                continue
+            url = str(item.get("url") or "").strip()
+            if not url.lower().startswith(("http://", "https://")):
+                continue
+            title = str(item.get("title") or url).strip()[:TOOL_END_MAX_TITLE_CHARS]
+            sources.append({"url": url[:TOOL_END_MAX_URL_CHARS], "title": title})
+            if len(sources) >= TOOL_END_MAX_SOURCES:
+                break
+        if sources:
+            payload["sources"] = sources
+
+    if fn_name == "request_user_confirmation":
+        summary = result.get("action_summary")
+        if isinstance(summary, str) and summary:
+            payload["action_summary"] = summary
+    return payload

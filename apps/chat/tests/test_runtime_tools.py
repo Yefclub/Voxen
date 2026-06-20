@@ -221,6 +221,98 @@ async def test_read_transcript_summary_hints_when_missing(
     assert "read_transcript" in str(result["hint"])
 
 
+async def test_create_note_links_to_valid_transcript(monkeypatch: pytest.MonkeyPatch) -> None:
+    get_transcript = AsyncMock(return_value={"id": "t1", "title": "Transcrição"})
+    create_note = AsyncMock(
+        return_value={
+            "id": "n1",
+            "title": "Nota contextual",
+            "sourceType": "TRANSCRIPT",
+            "sourceId": "t1",
+        }
+    )
+    monkeypatch.setattr(tools.db, "get_user_transcript", get_transcript)
+    monkeypatch.setattr(tools.db, "create_user_note", create_note)
+
+    result = await tools.execute_tool(
+        "create_note",
+        {
+            "title": "Nota contextual",
+            "content": "Conteúdo",
+            "source_type": "TRANSCRIPT",
+            "source_id": "t1",
+        },
+        "u1",
+    )
+
+    assert result["status"] == "created"
+    assert result["source_type"] == "TRANSCRIPT"
+    assert result["source_id"] == "t1"
+    get_transcript.assert_awaited_once_with("u1", "t1")
+    create_note.assert_awaited_once_with(
+        "u1",
+        title="Nota contextual",
+        content="Conteúdo",
+        parent_id=None,
+        kind="NOTE",
+        source_type="TRANSCRIPT",
+        source_id="t1",
+    )
+
+
+async def test_create_note_rejects_nonexistent_transcript_link(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    get_transcript = AsyncMock(return_value=None)
+    create_note = AsyncMock()
+    monkeypatch.setattr(tools.db, "get_user_transcript", get_transcript)
+    monkeypatch.setattr(tools.db, "create_user_note", create_note)
+
+    result = await tools.execute_tool(
+        "create_note",
+        {
+            "title": "Nota órfã",
+            "content": "Conteúdo",
+            "source_type": "TRANSCRIPT",
+            "source_id": "nao-existe",
+        },
+        "u1",
+    )
+
+    assert result == {"error": "Transcrição vinculada não encontrada."}
+    get_transcript.assert_awaited_once_with("u1", "nao-existe")
+    create_note.assert_not_awaited()
+
+
+async def test_create_note_rejects_transcript_owned_by_another_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scoped_get_transcript(user_id: str, transcript_id: str) -> dict[str, str] | None:
+        # Espelha o scoping por userId de db.get_user_transcript: a transcrição
+        # t1 existe mas pertence ao "owner" — qualquer outro user recebe None.
+        if user_id == "owner" and transcript_id == "t1":
+            return {"id": "t1", "title": "Transcrição do owner"}
+        return None
+
+    create_note = AsyncMock()
+    monkeypatch.setattr(tools.db, "get_user_transcript", scoped_get_transcript)
+    monkeypatch.setattr(tools.db, "create_user_note", create_note)
+
+    result = await tools.execute_tool(
+        "create_note",
+        {
+            "title": "Nota intrusa",
+            "content": "Conteúdo",
+            "source_type": "TRANSCRIPT",
+            "source_id": "t1",
+        },
+        "intruder",
+    )
+
+    assert result == {"error": "Transcrição vinculada não encontrada."}
+    create_note.assert_not_awaited()
+
+
 async def test_scrape_url_returns_already_indexed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         tools.db,

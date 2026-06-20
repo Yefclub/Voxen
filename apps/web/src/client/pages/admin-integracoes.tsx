@@ -42,18 +42,22 @@ interface McpAdminStatus {
   tokenPreview: string | null;
 }
 
+interface McpPromptResponse {
+  prompt: string;
+}
+
 export function AdminIntegracoesPage(): React.ReactElement {
   const { t } = useI18n();
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-12 mx-auto max-w-3xl space-y-10">
+      <div className="mx-auto max-w-3xl space-y-8 px-4 py-8 sm:space-y-10 sm:px-8 sm:py-12">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <Sparkles className="h-3.5 w-3.5 text-violet-400" />
             {t('shell.admin')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
             {t('admin.integrations.title')}
           </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
@@ -233,6 +237,8 @@ function McpSection(): React.ReactElement {
   const [rotating, setRotating] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
+  const [copyingPrompt, setCopyingPrompt] = useState(false);
 
   useEffect(() => {
     void refresh();
@@ -283,11 +289,30 @@ function McpSection(): React.ReactElement {
   async function copyToken(): Promise<void> {
     if (!newToken) return;
     try {
-      await navigator.clipboard.writeText(newToken);
+      await writeClipboardText(newToken, t('admin.integrations.copyError'));
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
       // ignora
+    }
+  }
+
+  async function copyAgentPrompt(): Promise<void> {
+    if (!status?.enabled || copyingPrompt) return;
+    setCopyingPrompt(true);
+    try {
+      const origin = window.location.origin;
+      const res = await apiPost<McpPromptResponse>('/api/admin/mcp/prompt', { appUrl: origin });
+      await writeClipboardText(res.prompt, t('admin.integrations.copyError'));
+      setPromptCopied(true);
+      toast.success(t('admin.integrations.mcp.promptCopied'));
+      setTimeout(() => setPromptCopied(false), 1800);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : t('admin.integrations.telegram.genericError'),
+      );
+    } finally {
+      setCopyingPrompt(false);
     }
   }
 
@@ -363,12 +388,51 @@ function McpSection(): React.ReactElement {
             </div>
           )}
 
-          <Button variant="primary" onClick={() => void rotate()} disabled={rotating}>
-            {rotating ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />}
-            {status.enabled
-              ? t('admin.integrations.mcp.rotateToken')
-              : t('admin.integrations.mcp.generateToken')}
-          </Button>
+          <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.06] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-500/12 text-violet-300">
+                  <KeyRound className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-zinc-100">
+                    {t('admin.integrations.mcp.promptTitle')}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-[var(--color-app-muted)]">
+                    {status.enabled
+                      ? t('admin.integrations.mcp.promptDescription')
+                      : t('admin.integrations.mcp.promptDisabled')}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full sm:w-auto"
+                onClick={() => void copyAgentPrompt()}
+                disabled={!status.enabled || copyingPrompt}
+                aria-label={t('admin.integrations.mcp.copyAgentPrompt')}
+              >
+                {copyingPrompt ? (
+                  <Spinner />
+                ) : promptCopied ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+                {promptCopied ? t('common.copied') : t('admin.integrations.mcp.copyAgentPrompt')}
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="primary" onClick={() => void rotate()} disabled={rotating}>
+              {rotating ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />}
+              {status.enabled
+                ? t('admin.integrations.mcp.rotateToken')
+                : t('admin.integrations.mcp.generateToken')}
+            </Button>
+          </div>
         </CardContent>
       </Card>
       <ConfirmDialog
@@ -384,5 +448,25 @@ function McpSection(): React.ReactElement {
   );
 }
 
-// Suprime warning de imports não usados em alguns lint configs
-void KeyRound;
+async function writeClipboardText(text: string, errorMessage: string): Promise<void> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // Alguns WebViews/headless bloqueiam Clipboard API mesmo em HTTPS.
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand('copy');
+  textarea.remove();
+  if (!ok) throw new Error(errorMessage);
+}

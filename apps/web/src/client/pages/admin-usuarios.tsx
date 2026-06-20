@@ -26,9 +26,17 @@ export function AdminUsuariosPage(): React.ReactElement {
   const [togglingSignups, setTogglingSignups] = useState(false);
 
   useEffect(() => {
+    // Guarda contra setState após unmount (apiGet não aceita AbortController).
+    let cancelled = false;
     apiGet<InstanceResponse>('/api/admin/instance')
-      .then((s) => setAllowSignups(s.allowSignups))
+      .then((s) => {
+        if (cancelled) return;
+        setAllowSignups(s.allowSignups);
+      })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function approve(id: string): Promise<void> {
@@ -85,7 +93,7 @@ export function AdminUsuariosPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-12 mx-auto max-w-6xl space-y-10">
+      <div className="px-4 sm:px-8 py-8 sm:py-12 mx-auto max-w-6xl space-y-10">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
@@ -162,9 +170,11 @@ export function AdminUsuariosPage(): React.ReactElement {
                     className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50"
                   >
                     <div className="flex-1 min-w-0 space-y-1">
-                      <div className="flex items-center gap-3">
-                        <span className="font-medium text-zinc-100">{u.name}</span>
-                        <span className="text-sm text-[var(--color-app-muted)]">{u.email}</span>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                        <span className="font-medium text-zinc-100 break-words">{u.name}</span>
+                        <span className="text-sm text-[var(--color-app-muted)] break-all">
+                          {u.email}
+                        </span>
                       </div>
                       <p className="text-xs text-[var(--color-app-muted)]">
                         {t('admin.users.registered', {
@@ -221,9 +231,11 @@ export function AdminUsuariosPage(): React.ReactElement {
                     className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50"
                   >
                     <div className="flex-1 min-w-0 space-y-1">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <span className="font-medium text-zinc-100">{u.name}</span>
-                        <span className="text-sm text-[var(--color-app-muted)]">{u.email}</span>
+                      <div className="flex items-center gap-x-3 gap-y-1 flex-wrap min-w-0">
+                        <span className="font-medium text-zinc-100 break-words">{u.name}</span>
+                        <span className="text-sm text-[var(--color-app-muted)] break-all">
+                          {u.email}
+                        </span>
                         {u.role === 'ADMIN' && (
                           <Badge variant="success" className="text-[10px]">
                             Admin

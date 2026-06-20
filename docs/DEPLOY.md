@@ -688,6 +688,11 @@ funcionam direto, sem necessidade de configurações extras de mitigação.
 5. **Híbrido**: rode Voxen no VPS (uptime, HTTPS gerenciado) e direcione o
    tráfego do worker por um proxy/VPN residencial. Avançado, requer
    configuração de rede mais cuidadosa.
+6. **Impersonation de browser (TikTok/Instagram)**: o worker já inclui o
+   backend `curl_cffi`, e extractors como o do TikTok pedem impersonation de
+   browser (TLS/JA3) automaticamente. Se uma plataforma quebrar com o padrão,
+   force um alvo definindo `YTDLP_IMPERSONATE` no ambiente do worker (ex.:
+   `chrome` ou `chrome-124:windows-10`). Vazio = auto-seleção pelo extractor.
 
 ### Decisão arquitetural
 

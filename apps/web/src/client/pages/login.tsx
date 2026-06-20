@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Eye, EyeOff, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -19,15 +19,22 @@ export function LoginPage(): React.ReactElement {
   const [loading, setLoading] = useState(false);
   const [instance, setInstance] = useState<InstanceState | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const { refresh } = useMe();
 
   useEffect(() => {
+    // Guarda contra setState após unmount (apiGet não aceita AbortController).
+    let cancelled = false;
     apiGet<InstanceState>('/api/instance')
       .then((next) => {
+        if (cancelled) return;
         setInstance(next);
         setLocale(next.language);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [setLocale]);
 
   async function onSubmit(e: React.FormEvent): Promise<void> {
@@ -37,7 +44,14 @@ export function LoginPage(): React.ReactElement {
     try {
       await apiPost('/api/auth/sign-in/email', { email, password });
       await refresh();
-      navigate('/dashboard');
+      const nextPath =
+        typeof location.state === 'object' &&
+        location.state !== null &&
+        'from' in location.state &&
+        typeof location.state.from === 'string'
+          ? location.state.from
+          : '/dashboard';
+      navigate(nextPath);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         setError(err.message);
@@ -58,7 +72,7 @@ export function LoginPage(): React.ReactElement {
   return (
     <div className="min-h-screen grid lg:grid-cols-[1.05fr_1fr]">
       {/* Lado esquerdo: form */}
-      <section className="flex flex-col items-center justify-center px-8 lg:px-16 py-10 relative">
+      <section className="flex flex-col items-center justify-center px-4 sm:px-8 lg:px-16 py-10 relative">
         {/* Mesh decorativa atrás */}
         <div
           aria-hidden

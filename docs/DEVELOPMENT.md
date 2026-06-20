@@ -158,12 +158,12 @@ docs(spec): adiciona .specs/003-painel-custos.md
 `package.json` guarda a última versão estável do produto. Tags estáveis usam
 SemVer completo: `vX.Y.Z`. A branch `dev` não cria commits/tags automáticos de
 pré-release a cada merge; builds de dev usam uma versão efêmera SemVer ligada à
-próxima patch estável: `X.Y.Z-dev.YYYYMMDD.HHMMSS+sha.<shortsha>`.
+próxima patch estável: `X.Y.Z-dev.<unix_epoch_seconds>`.
 
 **Branch `dev`**:
 - Toda feature entra por PR para `dev`.
 - `version-dev.yml` calcula e publica a versão dev no summary do workflow.
-- A imagem Easypanel em `dev` recebe tags `dev`, `dev-X.Y.Z-dev.<timestamp>.sha.<shortsha>` e `X.Y.Z-dev.<timestamp>.sha.<shortsha>`.
+- A imagem Easypanel em `dev` recebe tags `dev`, `dev-X.Y.Z-dev.<unix_epoch_seconds>` e `X.Y.Z-dev.<unix_epoch_seconds>`.
 - O workflow não altera arquivos, não commita e não cria tag.
 
 **Release estável em `main`**:
@@ -184,7 +184,10 @@ direto em `main` ou `dev`.
 **Versão visível na UI**: `/api/version` retorna em ordem:
 1. env `VOXEN_VERSION` (CI/deploy injeta build arg; dev local pode usar
    `git describe --tags --always --dirty`)
-2. `package.json` como fallback estável
+2. deploy Easypanel por GitHub source: `package.json` próxima patch +
+   `DEPLOY_TIMESTAMP`, no formato `X.Y.Z-dev.<unix_epoch_seconds>`, quando há
+   `GIT_SHA`
+3. `package.json` como fallback estável
 
 ## Estilo de código
 

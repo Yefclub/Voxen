@@ -89,10 +89,21 @@ async def list_user_transcripts(
 
 
 async def search_user_transcripts(
-    user_id: str, query: str, limit: int = 10
+    user_id: str, query: str, limit: int = 10, tsquery_expr: str | None = None
 ) -> list[dict[str, Any]]:
-    async with connection() as conn:
-        rows = await conn.fetch(
+    """FTS escopado por userId.
+
+    `tsquery_expr` (spec 047): quando informado e não vazio, é uma expressão
+    `tsquery` já expandida (OR + prefix + sinônimos, sanitizada pelo chamador)
+    usada no MATCH e no ranking via `to_tsquery`, ampliando o recall. Quando
+    vazio/None, cai pro `plainto_tsquery` da query crua (comportamento legado).
+    O `ts_headline` SEMPRE usa a query crua pra destacar as palavras do usuário.
+    O escopo por `userId` é inviolável em ambos os caminhos.
+    """
+    expr = (tsquery_expr or "").strip()
+
+    async def _plainto(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+        rows: list[asyncpg.Record] = await conn.fetch(
             """
             SELECT
               id, title,
@@ -113,6 +124,40 @@ async def search_user_transcripts(
             query,
             limit,
         )
+        return rows
+
+    async with connection() as conn:
+        if expr:
+            try:
+                rows = await conn.fetch(
+                    """
+                    SELECT
+                      id, title,
+                      ts_headline(
+                        'portuguese', "plainText",
+                        plainto_tsquery('portuguese', $2),
+                        'StartSel=«, StopSel=», MaxWords=30, MinWords=10, MaxFragments=1'
+                      ) AS snippet,
+                      ts_rank("searchVector", to_tsquery('portuguese', $3)) AS rank
+                    FROM "Transcript"
+                    WHERE "userId" = $1
+                      AND status = 'ACTIVE'::"ContentStatus"
+                      AND "searchVector" @@ to_tsquery('portuguese', $3)
+                    ORDER BY rank DESC, "createdAt" DESC
+                    LIMIT $4
+                    """,
+                    user_id,
+                    query,
+                    expr,
+                    limit,
+                )
+            except asyncpg.PostgresSyntaxError:
+                # Defesa em profundidade (spec 047, R4): se a expansão produzir
+                # uma tsquery inválida por qualquer regressão futura no mapa de
+                # sinônimos, cai pro plainto em vez de propagar erro 500.
+                rows = await _plainto(conn)
+        else:
+            rows = await _plainto(conn)
         return [dict(r) for r in rows]
 
 
@@ -126,7 +171,7 @@ async def get_user_transcript(user_id: str, transcript_id: str) -> dict[str, Any
             FROM "Transcript"
             WHERE id = $1
               AND "userId" = $2
-              AND status = 'ACTIVE'::"ContentStatus"
+              AND status <> 'TRASH'::"ContentStatus"
             """,
             transcript_id,
             user_id,
@@ -505,6 +550,8 @@ async def create_user_note(
     content: str = "",
     parent_id: str | None = None,
     kind: str = "NOTE",
+    source_type: str | None = None,
+    source_id: str | None = None,
 ) -> dict[str, Any]:
     new_id = _generate_note_id()
     async with connection() as conn:
@@ -512,15 +559,18 @@ async def create_user_note(
             row = await conn.fetchrow(
                 """
                 INSERT INTO "Note" (
-                    id, "userId", "parentId", kind, title, content,
+                    id, "userId", "parentId", "sourceType", "sourceId", kind, title, content,
                     "createdAt", "updatedAt"
                 )
-                VALUES ($1, $2, $3, $4::"NoteKind", $5, $6, $7, $7)
-                RETURNING id, "parentId", kind::text AS kind, title, content, "updatedAt"
+                VALUES ($1, $2, $3, $4::"BrainSourceType", $5, $6::"NoteKind", $7, $8, $9, $9)
+                RETURNING id, "parentId", "sourceType"::text AS "sourceType",
+                          "sourceId", kind::text AS kind, title, content, "updatedAt"
                 """,
                 new_id,
                 user_id,
                 parent_id,
+                source_type,
+                source_id,
                 kind,
                 title,
                 content,
@@ -543,7 +593,8 @@ async def update_user_note(
                     content = COALESCE($4, content),
                     "updatedAt" = NOW()
                 WHERE id = $1 AND "userId" = $2
-                RETURNING id, "parentId", kind::text AS kind, title, content, "updatedAt"
+                RETURNING id, "parentId", "sourceType"::text AS "sourceType",
+                          "sourceId", kind::text AS kind, title, content, "updatedAt"
                 """,
                 note_id,
                 user_id,
@@ -593,6 +644,8 @@ async def upsert_note_brain_node(
     metadata = {
         "kind": note.get("kind"),
         "parentId": note.get("parentId"),
+        "linkedSourceType": note.get("sourceType"),
+        "linkedSourceId": note.get("sourceId"),
         "updatedAt": updated_at.isoformat() if updated_at is not None else None,
     }
     row = await conn.fetchrow(

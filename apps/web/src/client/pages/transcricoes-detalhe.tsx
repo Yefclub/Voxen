@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
@@ -12,10 +12,13 @@ import {
   Globe,
   Languages,
   Loader2,
+  MessageCircle,
+  NotebookPen,
   RotateCcw,
   Sparkles,
   Trash2,
   Wand2,
+  X as XIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
@@ -23,11 +26,13 @@ import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
+import { apiPost, ApiError } from '../lib/api';
 import { formatDateTime, formatDuration, formatUsd } from '../lib/format';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { TranscriptViewer } from '../components/ui/transcript-viewer';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { UploadMediaViewer } from '../components/ui/media-viewer';
 import {
   Select,
   SelectContent,
@@ -35,7 +40,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { useI18n, type TranslateFn } from '../lib/i18n';
+import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
+import { createConversation, refreshConversations } from '../lib/use-conversations';
+import { cn } from '../lib/utils';
+import {
+  PromptBox,
+  type PromptBoxHandle,
+  type LibraryMentionItem,
+} from '../components/ui/prompt-box';
 
 interface TranscriptDetail {
   id: string;
@@ -50,8 +62,13 @@ interface TranscriptDetail {
   durationSec: number;
   publishedAt: string | null;
   thumbnailUrl: string | null;
+  originalObjectKey: string | null;
+  originalFilename: string | null;
+  originalMimeType: string | null;
+  previewObjectKey: string | null;
+  previewMimeType: string | null;
   language: string;
-  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION' | 'DOCUMENT';
+  transcriptionMethod: 'API' | 'SUBTITLES' | 'SCRAPE' | 'VISION' | 'DOCUMENT' | 'X_SEARCH';
   model: string | null;
   costUsd: string | null;
   // Soma de costUsd da transcrição + custos de resumos/regenerações.
@@ -82,6 +99,18 @@ interface FoldersResponse {
   folders: LibraryFolder[];
 }
 
+interface LinkedNote {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface LinkedNotesResponse {
+  notes: LinkedNote[];
+}
+
 export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -89,12 +118,22 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const { data, loading, refresh } = useFetch<ResponseBody>(
     id ? `/api/transcripts/${id}?includeTrash=1` : null,
   );
+  const {
+    data: linkedNotesData,
+    loading: linkedNotesLoading,
+    refresh: refreshLinkedNotes,
+  } = useFetch<LinkedNotesResponse>(
+    id && data?.transcript.status !== 'TRASH' ? `/api/transcripts/${id}/notes` : null,
+  );
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
   const [generating, setGenerating] = useState(false);
   const [organizing, setOrganizing] = useState(false);
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [creatingLinkedNote, setCreatingLinkedNote] = useState(false);
+  const [linkedNoteTitle, setLinkedNoteTitle] = useState('');
+  const [linkedNoteContent, setLinkedNoteContent] = useState('');
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -245,6 +284,31 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     }
   }
 
+  async function createLinkedNote(transcript: TranscriptDetail): Promise<void> {
+    const title = linkedNoteTitle.trim();
+    if (!title) {
+      toast.error(translate('library.linkedNoteError'));
+      return;
+    }
+    setCreatingLinkedNote(true);
+    try {
+      await apiPost<{ note: LinkedNote }>(`/api/transcripts/${transcript.id}/notes`, {
+        title,
+        content: linkedNoteContent,
+      });
+      setLinkedNoteTitle('');
+      setLinkedNoteContent('');
+      refreshLinkedNotes();
+      toast.success(translate('library.linkedNoteCreated'));
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : translate('library.linkedNoteError'), {
+        description: e instanceof Error && !(e instanceof ApiError) ? e.message : undefined,
+      });
+    } finally {
+      setCreatingLinkedNote(false);
+    }
+  }
+
   if (loading || !data) {
     return (
       <div className="px-8 py-10 mx-auto max-w-5xl">
@@ -268,12 +332,14 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const published = t.publishedAt ? new Date(t.publishedAt) : null;
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
+  const canUseContextualActions = t.status !== 'TRASH';
   const contentMarkdown = stripMarkdownFrontmatter(data.markdown);
+  const previewSrc = t.thumbnailUrl || `/api/transcripts/${t.id}/preview`;
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-10 mx-auto max-w-5xl">
-        <Button variant="ghost" size="sm" asChild className="mb-8 -ml-2">
+      <div className="mx-auto max-w-5xl overflow-x-clip px-4 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+        <Button variant="ghost" size="sm" asChild className="mb-8 -ml-2 hidden sm:inline-flex">
           <Link to="/transcricoes">
             <ArrowLeft className="h-3.5 w-3.5" />
             {translate('library.detailBack')}
@@ -284,7 +350,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="mb-10 space-y-4"
+          className="mb-6 space-y-3 sm:mb-10 sm:space-y-4"
         >
           <div className="flex items-center gap-2 flex-wrap">
             {/* Source primário — clarifica origem do conteúdo */}
@@ -337,19 +403,23 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </Badge>
             )}
           </div>
-          <h1 className="font-display text-4xl lg:text-5xl font-semibold tracking-[-0.035em] leading-[1.05] text-balance">
+          <h1 className="max-w-full break-words font-display text-2xl font-semibold leading-[1.08] tracking-[-0.02em] text-balance [overflow-wrap:anywhere] sm:text-4xl lg:text-5xl">
             {t.title}
           </h1>
-          {t.channel && <p className="text-[15px] text-[var(--color-app-muted)]">{t.channel}</p>}
+          {t.channel && (
+            <p className="text-[15px] text-[var(--color-app-muted)] break-words [overflow-wrap:anywhere]">
+              {t.channel}
+            </p>
+          )}
         </motion.header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-10">
+        <div className="grid grid-cols-1 gap-7 lg:grid-cols-[1fr_280px] lg:gap-10">
           {/* Coluna principal: resumo + transcrição */}
           <motion.article
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.1 }}
-            className="min-w-0 space-y-10"
+            className="min-w-0 space-y-7 sm:space-y-10"
           >
             <SummaryBlock
               summary={t.summaryMd}
@@ -382,20 +452,27 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             initial={{ opacity: 0, x: 8 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.45, delay: 0.18 }}
-            className="space-y-4 lg:sticky lg:top-24 self-start"
+            className="flex flex-col gap-4 self-start lg:sticky lg:top-24"
           >
-            {t.thumbnailUrl && (
-              <Card className="overflow-hidden p-0" elevated>
+            <Card className="order-2 overflow-hidden p-0 lg:order-none" elevated>
+              {t.originalObjectKey && t.originalMimeType ? (
+                <UploadMediaViewer
+                  transcriptId={t.id}
+                  mimeType={t.originalMimeType}
+                  previewSrc={previewSrc}
+                  title={t.title}
+                />
+              ) : (
                 <img
-                  src={t.thumbnailUrl}
+                  src={previewSrc}
                   alt=""
                   className="w-full aspect-video object-cover"
                   loading="lazy"
                 />
-              </Card>
-            )}
+              )}
+            </Card>
 
-            <Card elevated>
+            <Card elevated className="order-3 lg:order-none">
               <CardContent className="pt-5 pb-5 space-y-4">
                 <LibraryFolderControl
                   folders={foldersData?.folders ?? []}
@@ -454,8 +531,25 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </CardContent>
             </Card>
 
-            <Card elevated>
-              <CardContent className="pt-5 pb-5 space-y-3">
+            {canUseContextualActions && (
+              <div className="order-4 lg:order-none">
+                <LinkedNotesCard
+                  notes={linkedNotesData?.notes ?? []}
+                  loading={linkedNotesLoading}
+                  title={linkedNoteTitle}
+                  content={linkedNoteContent}
+                  creating={creatingLinkedNote}
+                  locale={locale}
+                  onTitleChange={setLinkedNoteTitle}
+                  onContentChange={setLinkedNoteContent}
+                  onCreate={() => void createLinkedNote(t)}
+                  t={translate}
+                />
+              </div>
+            )}
+
+            <Card elevated className="order-1 lg:order-none">
+              <CardContent className="space-y-3 pb-5 pt-5">
                 {t.status === 'ARCHIVED' || t.status === 'TRASH' ? (
                   <Button
                     variant="outline"
@@ -506,7 +600,12 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             </Card>
 
             {t.source !== 'UPLOAD' && (
-              <Button variant="outline" size="default" className="w-full" asChild>
+              <Button
+                variant="outline"
+                size="default"
+                className="order-5 w-full lg:order-none"
+                asChild
+              >
                 <a href={t.url} target="_blank" rel="noreferrer">
                   {t.source === 'WEB'
                     ? translate('library.openPage')
@@ -515,9 +614,23 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 </a>
               </Button>
             )}
+            {t.originalObjectKey && (
+              <Button
+                variant="outline"
+                size="default"
+                className="order-5 w-full lg:order-none"
+                asChild
+              >
+                <a href={`/api/transcripts/${t.id}/original`} target="_blank" rel="noreferrer">
+                  {translate('library.openOriginalUpload')}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
           </motion.aside>
         </div>
       </div>
+      {canUseContextualActions && <FloatingTranscriptChat transcript={t} t={translate} />}
       <ConfirmDialog
         open={confirmRegen}
         onOpenChange={setConfirmRegen}
@@ -540,6 +653,618 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         loading={deleting}
       />
     </AnimatedPage>
+  );
+}
+
+type FloatingChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  pending?: boolean;
+};
+
+const FLOATING_THINKING_KEY = 'voxen:chat:thinking';
+const FLOATING_DOCUMENT_LIMIT_BYTES = 50 * 1024 * 1024;
+
+interface FloatingUploadJobResponse {
+  jobId: string;
+  kind: 'media' | 'image' | 'document';
+}
+
+interface FloatingPersistedMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+function FloatingTranscriptChat({
+  transcript,
+  t,
+}: {
+  transcript: TranscriptDetail;
+  t: TranslateFn;
+}): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<FloatingChatMessage[]>([]);
+  const [sending, setSending] = useState(false);
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [visionEnabled, setVisionEnabled] = useState(false);
+  const [documentEnabled, setDocumentEnabled] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [selectedMentions, setSelectedMentions] = useState<LibraryMentionItem[]>([]);
+  const [thinking, setThinking] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(FLOATING_THINKING_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const promptRef = useRef<PromptBoxHandle>(null);
+  const quickPrompts = [
+    {
+      label: t('library.inlineChatQuickSummary'),
+      prompt: t('library.inlineChatQuickSummaryPrompt'),
+    },
+    {
+      label: t('library.inlineChatQuickActions'),
+      prompt: t('library.inlineChatQuickActionsPrompt'),
+    },
+    {
+      label: t('library.inlineChatQuickQuotes'),
+      prompt: t('library.inlineChatQuickQuotesPrompt'),
+    },
+  ];
+
+  useEffect(() => {
+    if (!open) return;
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, open]);
+
+  // Detecta se o admin configurou modelos de visão/documentos pra habilitar os
+  // botões de anexo do composer (mesmo critério do chat principal).
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/capabilities', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((d: { vision?: boolean; document?: boolean }) => {
+        if (cancelled) return;
+        setVisionEnabled(!!d.vision);
+        setDocumentEnabled(!!d.document);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Continuidade: reabre a conversa contínua desta transcrição e carrega o
+  // histórico, pra o chat sobreviver ao reload (a conversa fica como seção no
+  // chat principal). Best-effort: qualquer falha cai no fluxo de criar nova.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const listRes = await fetch(
+          `/api/chat/conversations?transcriptId=${encodeURIComponent(transcript.id)}`,
+          { credentials: 'include' },
+        );
+        if (!listRes.ok) return;
+        const listData = (await listRes.json()) as { conversations?: { id: string }[] };
+        const existing = listData.conversations?.[0];
+        if (!existing || cancelled) return;
+        const convRes = await fetch(`/api/chat/conversations/${existing.id}`, {
+          credentials: 'include',
+        });
+        if (!convRes.ok || cancelled) return;
+        const convData = (await convRes.json()) as {
+          conversation?: { thinking?: boolean };
+          messages?: { id: string; role: string; kind?: string; content: string }[];
+        };
+        if (cancelled) return;
+        setConversationId(existing.id);
+        // Paridade com o chat principal: o estado do toggle reflete o flag REAL
+        // da conversa resumida (DB), não a chave global de localStorage.
+        if (typeof convData.conversation?.thinking === 'boolean') {
+          setThinking(convData.conversation.thinking);
+        }
+        setMessages(
+          (convData.messages ?? [])
+            .filter(
+              (m) =>
+                m.kind !== 'COMPACTION_SUMMARY' && (m.role === 'user' || m.role === 'assistant'),
+            )
+            .map((m) => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content })),
+        );
+      } catch {
+        // ignora — o chat ainda funciona criando uma conversa nova
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [transcript.id]);
+
+  async function ensureConversation(): Promise<string | null> {
+    if (conversationId) return conversationId;
+    const conv = await createConversation(`Sobre: ${transcript.title}`.slice(0, 60), transcript.id);
+    if (!conv) return null;
+    setConversationId(conv.id);
+    // Conversa nasce com thinking=false; se o toggle está ligado, propaga pro
+    // backend antes da 1ª mensagem (o /send lê o flag da conversa no DB).
+    if (thinking) {
+      await fetch(`/api/chat/conversations/${conv.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thinking: true }),
+      }).catch(() => undefined);
+    }
+    return conv.id;
+  }
+
+  async function toggleThinking(): Promise<void> {
+    const next = !thinking;
+    setThinking(next);
+    try {
+      window.localStorage.setItem(FLOATING_THINKING_KEY, next ? '1' : '0');
+    } catch {
+      // localStorage indisponível: mantém só em memória
+    }
+    if (conversationId) {
+      await fetch(`/api/chat/conversations/${conversationId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thinking: next }),
+      }).catch(() => undefined);
+    }
+  }
+
+  async function uploadFile(file: File): Promise<void> {
+    if (sending || uploadingFile) return;
+    if (!documentEnabled) {
+      toast.error(t('chat.documentsDisabled'), {
+        description: t('chat.documentsDisabledDescription'),
+      });
+      return;
+    }
+    if (file.size > FLOATING_DOCUMENT_LIMIT_BYTES) {
+      toast.error(t('chat.documentTooLarge'), { description: t('chat.documentLimit') });
+      return;
+    }
+    setUploadingFile(true);
+    try {
+      const id = await ensureConversation();
+      if (!id) throw new Error(t('library.chatError'));
+      const fd = new FormData();
+      fd.append('media', file);
+      const uploadRes = await fetch('/api/jobs/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      });
+      const uploadBody = (await uploadRes.json().catch(() => ({}))) as
+        | FloatingUploadJobResponse
+        | { error?: string };
+      if (!uploadRes.ok || !('jobId' in uploadBody)) {
+        toast.error(('error' in uploadBody && uploadBody.error) || t('chat.documentSendError'));
+        return;
+      }
+      const msgRes = await fetch(`/api/chat/conversations/${id}/file-message`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          jobId: uploadBody.jobId,
+          kind: uploadBody.kind,
+        }),
+      });
+      const msgBody = (await msgRes.json().catch(() => ({}))) as {
+        messages?: FloatingPersistedMessage[];
+        error?: string;
+      };
+      if (!msgRes.ok || !Array.isArray(msgBody.messages)) {
+        toast.error(msgBody.error ?? t('chat.documentRegisterError'));
+        return;
+      }
+      setMessages((current) => [
+        ...current,
+        ...msgBody
+          .messages!.filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content })),
+      ]);
+      toast.success(t('chat.documentSent'));
+      await refreshConversations();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('chat.documentSendError'));
+    } finally {
+      setUploadingFile(false);
+    }
+  }
+
+  async function send(): Promise<void> {
+    const content = input.trim();
+    if ((!content && !attachedImage) || sending) return;
+    setSending(true);
+    setInput('');
+    const sentImage = attachedImage;
+    // A transcrição atual entra SEMPRE no contexto; o usuário pode somar outras
+    // menções (@) que tenham sido referenciadas no texto.
+    const extraMentions = selectedMentions.filter((m) => content.includes(`@${m.label}`));
+    setAttachedImage(null);
+    setSelectedMentions([]);
+    const userMessage: FloatingChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content,
+    };
+    const assistantId = crypto.randomUUID();
+    setMessages((current) => [
+      ...current,
+      userMessage,
+      { id: assistantId, role: 'assistant', content: '', pending: true },
+    ]);
+    try {
+      const id = await ensureConversation();
+      if (!id) throw new Error(t('library.chatError'));
+      const res = await fetch(`/api/chat/conversations/${id}/send`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content,
+          ...(sentImage ? { image_data_url: sentImage } : {}),
+          mentions: [
+            { type: 'transcript', id: transcript.id, label: transcript.title },
+            ...extraMentions.map((m) => ({ type: m.type, id: m.id, label: m.label })),
+          ],
+        }),
+      });
+      if (!res.ok || !res.body) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? t('library.chatError'));
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const block = buffer.slice(0, idx).trim();
+          buffer = buffer.slice(idx + 2);
+          const eventMatch = block.match(/^event:\s*(.+)$/m);
+          const dataMatch = block.match(/^data:\s*(.+)$/m);
+          if (!eventMatch || !dataMatch) continue;
+          const eventName = eventMatch[1];
+          const eventData = dataMatch[1];
+          if (!eventName || !eventData || eventName !== 'token') continue;
+          try {
+            const parsed = JSON.parse(eventData) as { text?: string };
+            if (!parsed.text) continue;
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === assistantId
+                  ? { ...message, content: message.content + parsed.text, pending: false }
+                  : message,
+              ),
+            );
+          } catch {
+            // ignora evento malformado
+          }
+        }
+      }
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantId ? { ...message, pending: false } : message,
+        ),
+      );
+      await refreshConversations();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('library.chatError'));
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantId
+            ? { ...message, content: t('library.chatInlineError'), pending: false }
+            : message,
+        ),
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function chooseQuickPrompt(prompt: string): void {
+    promptRef.current?.setValue(prompt);
+  }
+
+  return (
+    <>
+      {!open && (
+        <motion.button
+          type="button"
+          aria-label={t('library.openInlineChat')}
+          className="fixed right-4 z-50 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-emerald-300/25 bg-[var(--color-app-bg-elevated)] text-zinc-100 shadow-2xl shadow-emerald-950/50 ring-1 ring-emerald-400/15 transition-transform bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6 sm:right-6"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setOpen(true)}
+        >
+          <span className="absolute inset-0 bg-emerald-400/25 opacity-70 blur-xl" aria-hidden />
+          <img
+            src="/voxen-256.png"
+            alt=""
+            width={44}
+            height={44}
+            draggable={false}
+            className="relative h-11 w-11 select-none rounded-full"
+          />
+        </motion.button>
+      )}
+      {open && (
+        <motion.div
+          initial={{ opacity: 0, y: 18, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          className="fixed inset-x-3 bottom-[calc(10rem+env(safe-area-inset-bottom))] z-50 flex h-[72dvh] flex-col overflow-hidden rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] shadow-2xl shadow-black/45 sm:inset-x-auto sm:bottom-24 sm:right-6 sm:h-[640px] sm:max-h-[85vh] sm:w-[420px]"
+        >
+          <div className="relative overflow-hidden border-b border-[var(--color-app-border)] px-4 py-3">
+            <div
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,oklch(73%_0.16_159_/_0.18),transparent_42%),radial-gradient(circle_at_100%_0%,oklch(72%_0.18_290_/_0.16),transparent_40%)]"
+              aria-hidden
+            />
+            <div className="relative flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-950/20">
+                  <img
+                    src="/voxen-256.png"
+                    alt=""
+                    width={32}
+                    height={32}
+                    draggable={false}
+                    className="h-8 w-8 select-none rounded-lg"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-zinc-100">
+                      {t('library.inlineChatAssistant')}
+                    </p>
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  </div>
+                  <p className="truncate text-xs text-[var(--color-app-muted)]">
+                    {transcript.title}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-zinc-100/10 hover:text-zinc-100"
+                aria-label={t('library.closeInlineChat')}
+                onClick={() => setOpen(false)}
+              >
+                <XIcon className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div
+            ref={scrollRef}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4"
+          >
+            {messages.length === 0 && (
+              <div className="space-y-3">
+                <div className="flex gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
+                    <MessageCircle className="h-4 w-4 text-emerald-300" />
+                  </div>
+                  <div className="rounded-2xl rounded-tl-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/70 px-3 py-2.5 text-sm leading-relaxed text-zinc-200">
+                    {t('library.inlineChatEmpty')}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {quickPrompts.map((prompt) => (
+                    <button
+                      key={prompt.label}
+                      type="button"
+                      className="min-h-9 rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-2 text-xs font-medium text-zinc-200 transition-colors hover:border-emerald-400/40 hover:bg-emerald-500/10 hover:text-emerald-100"
+                      onClick={() => chooseQuickPrompt(prompt.prompt)}
+                    >
+                      {prompt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={cn(
+                  'flex gap-2',
+                  message.role === 'user'
+                    ? 'ml-auto max-w-[88%] flex-row-reverse'
+                    : 'mr-auto max-w-[92%]',
+                )}
+              >
+                {message.role === 'assistant' && (
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
+                    <img
+                      src="/voxen-256.png"
+                      alt=""
+                      width={22}
+                      height={22}
+                      draggable={false}
+                      className="h-[22px] w-[22px] select-none rounded-md"
+                    />
+                  </div>
+                )}
+                <div
+                  className={cn(
+                    'min-w-0 rounded-2xl px-3 py-2 text-sm leading-relaxed',
+                    message.role === 'user'
+                      ? 'rounded-tr-md bg-emerald-400 text-emerald-950'
+                      : 'rounded-tl-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-zinc-100',
+                  )}
+                >
+                  {message.content || message.pending
+                    ? message.content || <Loader2 className="h-4 w-4 animate-spin" />
+                    : null}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-[var(--color-app-border)] bg-[var(--color-app-bg)]/35 p-3">
+            <PromptBox
+              ref={promptRef}
+              value={input}
+              onChange={setInput}
+              onSubmit={() => void send()}
+              disabled={sending}
+              loading={sending}
+              thinking={thinking}
+              onToggleThinking={() => void toggleThinking()}
+              attachedImage={attachedImage}
+              onAttachImage={(d) => setAttachedImage(d)}
+              onClearImage={() => setAttachedImage(null)}
+              visionEnabled={visionEnabled}
+              uploadEnabled={documentEnabled}
+              uploadingFile={uploadingFile}
+              onUploadFile={(file) => void uploadFile(file)}
+              selectedMentions={selectedMentions}
+              onMentionSelect={(item) =>
+                setSelectedMentions((items) => {
+                  if (items.some((x) => x.type === item.type && x.id === item.id)) return items;
+                  return [...items, item].slice(-8);
+                })
+              }
+              onMentionRemove={(item) => {
+                setSelectedMentions((items) =>
+                  items.filter((x) => !(x.type === item.type && x.id === item.id)),
+                );
+                setInput((current) =>
+                  current.replace(`@${item.label}`, '').replace(/\s{2,}/g, ' '),
+                );
+              }}
+              placeholder={t('library.inlineChatPlaceholder')}
+            />
+          </div>
+        </motion.div>
+      )}
+    </>
+  );
+}
+
+function LinkedNotesCard({
+  notes,
+  loading,
+  title,
+  content,
+  creating,
+  locale,
+  onTitleChange,
+  onContentChange,
+  onCreate,
+  t,
+}: {
+  notes: LinkedNote[];
+  loading: boolean;
+  title: string;
+  content: string;
+  creating: boolean;
+  locale: Locale;
+  onTitleChange: (value: string) => void;
+  onContentChange: (value: string) => void;
+  onCreate: () => void;
+  t: TranslateFn;
+}): React.ReactElement {
+  return (
+    <Card elevated>
+      <CardContent className="pt-5 pb-5 space-y-4">
+        <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
+          <NotebookPen className="h-3.5 w-3.5 text-emerald-400" />
+          {t('library.linkedNotes')}
+        </div>
+
+        <div className="space-y-2">
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => onTitleChange(e.target.value)}
+            placeholder={t('library.linkedNoteTitle')}
+            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+            disabled={creating}
+            maxLength={200}
+          />
+          <textarea
+            value={content}
+            onChange={(e) => onContentChange(e.target.value)}
+            placeholder={t('library.linkedNoteContent')}
+            className="min-h-24 w-full resize-y rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 py-2 text-xs leading-relaxed text-zinc-100 placeholder:text-zinc-600 focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+            disabled={creating}
+            maxLength={200_000}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="w-full"
+            disabled={creating || title.trim().length === 0}
+            onClick={onCreate}
+          >
+            {creating ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {t('library.linkedNoteCreating')}
+              </>
+            ) : (
+              t('library.linkedNoteCreate')
+            )}
+          </Button>
+        </div>
+
+        <div className="space-y-2">
+          {loading && (
+            <>
+              <Skeleton className="h-16 w-full rounded-lg" />
+              <Skeleton className="h-16 w-full rounded-lg" />
+            </>
+          )}
+          {!loading && notes.length === 0 && (
+            <p className="rounded-lg border border-dashed border-[var(--color-app-border)] px-3 py-4 text-center text-xs text-[var(--color-app-muted)]">
+              {t('library.linkedNotesEmpty')}
+            </p>
+          )}
+          {!loading &&
+            notes.map((note) => {
+              const preview =
+                note.content.trim().replace(/\s+/g, ' ').slice(0, 140) || t('notes.emptyContent');
+              return (
+                <div
+                  key={note.id}
+                  className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/45 px-3 py-2.5"
+                >
+                  <p className="truncate text-sm font-medium text-zinc-100">{note.title}</p>
+                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--color-app-muted)]">
+                    {preview}
+                  </p>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="truncate text-[10px] uppercase tracking-wider text-[var(--color-app-muted)]/80">
+                      {formatDateTime(new Date(note.updatedAt), locale)}
+                    </span>
+                    <Button asChild variant="ghost" size="sm" className="h-7 px-2">
+                      <Link to={`/notas/${note.id}`}>{t('library.openNote')}</Link>
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -638,7 +1363,7 @@ function SummaryBlock({
     return (
       <Card elevated>
         <CardContent className="py-8 px-6 space-y-4">
-          <div className="flex items-start gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
               <Wand2 className="h-4 w-4 text-violet-300" />
             </div>
@@ -650,7 +1375,13 @@ function SummaryBlock({
                 {t('library.summaryDescription')}
               </p>
             </div>
-            <Button onClick={onGenerate} disabled={generating} variant="primary" size="sm">
+            <Button
+              onClick={onGenerate}
+              disabled={generating}
+              variant="primary"
+              size="sm"
+              className="w-full sm:w-auto"
+            >
               {generating ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -670,7 +1401,7 @@ function SummaryBlock({
   }
   return (
     <section>
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2.5">
           <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
             <Wand2 className="h-3.5 w-3.5 text-violet-300" />
@@ -679,7 +1410,13 @@ function SummaryBlock({
             {t('library.summary')}
           </h2>
         </div>
-        <Button onClick={onGenerate} disabled={generating} variant="ghost" size="sm">
+        <Button
+          onClick={onGenerate}
+          disabled={generating}
+          variant="ghost"
+          size="sm"
+          className="w-full sm:w-auto"
+        >
           {generating ? (
             <>
               <Loader2 className="h-3 w-3 animate-spin" />

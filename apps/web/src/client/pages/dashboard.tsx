@@ -1,6 +1,16 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, ArrowUpRight, Globe, ListVideo, PlayCircle, Sparkles } from 'lucide-react';
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Eraser,
+  Globe,
+  ListVideo,
+  PlayCircle,
+  Sparkles,
+} from 'lucide-react';
 import { motion } from 'motion/react';
+import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Skeleton } from '../components/ui/skeleton';
@@ -29,9 +39,45 @@ export function DashboardPage(): React.ReactElement {
   const failed = jobs.filter((j) => j.status === 'FAILED').length;
   const firstName = me?.user?.name?.split(' ')[0] ?? t('dashboard.fallbackName');
 
+  // "Limpar" oculta a lista de atividade recente (client-side, por usuário) sem
+  // tocar nos jobs nem na biblioteca: persiste um timestamp e some os jobs
+  // anteriores a ele; jobs novos voltam a aparecer.
+  const userId = me?.user?.id;
+  const storageKey = userId ? `voxen:dashboard:activity-cleared-at:${userId}` : null;
+  const [clearedAt, setClearedAt] = useState(0);
+  useEffect(() => {
+    if (!storageKey) {
+      setClearedAt(0);
+      return;
+    }
+    const raw = window.localStorage.getItem(storageKey);
+    setClearedAt(raw ? Number(raw) || 0 : 0);
+  }, [storageKey]);
+
+  const visibleJobs = useMemo(
+    () => (clearedAt ? jobs.filter((j) => new Date(j.queuedAt).getTime() > clearedAt) : jobs),
+    [jobs, clearedAt],
+  );
+
+  const clearActivity = useCallback(() => {
+    if (!storageKey) return;
+    const now = Date.now();
+    window.localStorage.setItem(storageKey, String(now));
+    setClearedAt(now);
+    toast.success(t('dashboard.clearedToast'), {
+      action: {
+        label: t('dashboard.undo'),
+        onClick: () => {
+          window.localStorage.removeItem(storageKey);
+          setClearedAt(0);
+        },
+      },
+    });
+  }, [storageKey, t]);
+
   return (
     <AnimatedPage>
-      <div className="px-8 py-12 mx-auto max-w-6xl space-y-12">
+      <div className="px-4 sm:px-8 py-8 sm:py-12 mx-auto max-w-6xl space-y-12">
         {/* Header */}
         <header className="flex items-end justify-between gap-6 flex-wrap">
           <div className="space-y-2">
@@ -95,19 +141,34 @@ export function DashboardPage(): React.ReactElement {
               <h2 className="font-display text-xl font-semibold tracking-tight">
                 {t('dashboard.recentActivity')}
               </h2>
-              {jobs.length > 0 && (
+              {visibleJobs.length > 0 && (
                 <span className="text-xs text-[var(--color-app-muted)] tabular-nums">
-                  {jobs.length}{' '}
-                  {jobs.length === 1 ? t('dashboard.itemSingular') : t('dashboard.itemPlural')}
+                  {visibleJobs.length}{' '}
+                  {visibleJobs.length === 1
+                    ? t('dashboard.itemSingular')
+                    : t('dashboard.itemPlural')}
                 </span>
               )}
             </div>
-            <Button variant="link" size="sm" asChild>
-              <Link to="/jobs" className="text-[var(--color-app-muted)]">
-                {t('dashboard.viewAll')}
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </Button>
+            <div className="flex items-center gap-1">
+              {visibleJobs.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearActivity}
+                  className="text-[var(--color-app-muted)]"
+                >
+                  <Eraser className="h-3.5 w-3.5" />
+                  {t('dashboard.clearActivity')}
+                </Button>
+              )}
+              <Button variant="link" size="sm" asChild>
+                <Link to="/jobs" className="text-[var(--color-app-muted)]">
+                  {t('dashboard.viewAll')}
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
           </div>
 
           {loading && (
@@ -120,11 +181,19 @@ export function DashboardPage(): React.ReactElement {
 
           {!loading && jobs.length === 0 && <EmptyState t={t} />}
 
-          {!loading && jobs.length > 0 && (
+          {!loading && jobs.length > 0 && visibleJobs.length === 0 && (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-[var(--color-app-muted)]">
+                {t('dashboard.allClear')}
+              </CardContent>
+            </Card>
+          )}
+
+          {!loading && visibleJobs.length > 0 && (
             <Card>
               <StaggerContainer delay={0.1}>
                 <ul className="divide-y divide-[var(--color-app-border)]">
-                  {jobs.slice(0, 5).map((j) => (
+                  {visibleJobs.slice(0, 5).map((j) => (
                     <StaggerItem key={j.id}>
                       <ActivityRow job={j} locale={locale} t={t} />
                     </StaggerItem>
@@ -160,7 +229,7 @@ function ActivityRow({
         className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 focus:outline-none focus-visible:bg-[var(--color-app-surface-hover)]"
       >
         <SourcePreview source={source} ytId={ytId} isUpload={isUpload} />
-        <Badge variant={variant} className="shrink-0 w-28 justify-center">
+        <Badge variant={variant} className="shrink-0 min-w-28 justify-center text-center">
           {label}
         </Badge>
         <div className="flex-1 min-w-0">

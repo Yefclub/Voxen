@@ -12,7 +12,7 @@ import { Hono } from 'hono';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
-import { deleteBrainForSource, reindexTranscriptBrain } from '../lib/brain';
+import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { rateLimit } from '../lib/rate-limit';
@@ -35,6 +35,11 @@ type SearchRow = {
   language: string;
   transcriptionMethod: string;
   thumbnailUrl: string | null;
+  originalObjectKey: string | null;
+  originalFilename: string | null;
+  originalMimeType: string | null;
+  previewObjectKey: string | null;
+  previewMimeType: string | null;
   costUsd: string | null;
   folderId: string | null;
   folderName: string | null;
@@ -98,6 +103,11 @@ transcriptsRoutes.get('/', async (c) => {
       t.language,
       t."transcriptionMethod"::text AS "transcriptionMethod",
       t."thumbnailUrl",
+      t."originalObjectKey",
+      t."originalFilename",
+      t."originalMimeType",
+      t."previewObjectKey",
+      t."previewMimeType",
       t."costUsd"::text AS "costUsd",
       t."folderId",
       f.name AS "folderName",
@@ -131,6 +141,11 @@ transcriptsRoutes.get('/', async (c) => {
       t.language,
       t."transcriptionMethod"::text AS "transcriptionMethod",
       t."thumbnailUrl",
+      t."originalObjectKey",
+      t."originalFilename",
+      t."originalMimeType",
+      t."previewObjectKey",
+      t."previewMimeType",
       t."costUsd"::text AS "costUsd",
       t."folderId",
       f.name AS "folderName",
@@ -167,6 +182,11 @@ const TRANSCRIPT_LIST_SELECT = {
   language: true,
   transcriptionMethod: true,
   thumbnailUrl: true,
+  originalObjectKey: true,
+  originalFilename: true,
+  originalMimeType: true,
+  previewObjectKey: true,
+  previewMimeType: true,
   costUsd: true,
   folderId: true,
   folder: { select: { id: true, name: true, parentId: true } },
@@ -195,6 +215,11 @@ transcriptsRoutes.get('/:id', async (c) => {
       durationSec: true,
       publishedAt: true,
       thumbnailUrl: true,
+      originalObjectKey: true,
+      originalFilename: true,
+      originalMimeType: true,
+      previewObjectKey: true,
+      previewMimeType: true,
       language: true,
       transcriptionMethod: true,
       model: true,
@@ -242,6 +267,185 @@ transcriptsRoutes.get('/:id', async (c) => {
   })();
 
   return c.json({ transcript: { ...transcript, totalCostUsd }, markdown });
+});
+
+transcriptsRoutes.get('/:id/original', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId },
+    select: {
+      id: true,
+      originalObjectKey: true,
+      originalFilename: true,
+      originalMimeType: true,
+    },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+  if (!transcript.originalObjectKey)
+    return c.json({ error: 'Arquivo original não disponível.' }, 404);
+  // Range: o player de vídeo/áudio (e o Safari/iOS obrigatoriamente) precisa de
+  // 206 + Accept-Ranges pra fazer seek. Repassamos o header pro S3/MinIO, que
+  // fatia os bytes, e relayamos Content-Range/Content-Length da resposta dele.
+  // Só single-range: multi-range (vírgula) viraria multipart/byteranges, que não
+  // sabemos relayar — nesse caso servimos o arquivo inteiro (200).
+  const rawRange = c.req.header('range');
+  const rangeHeader = rawRange && !rawRange.includes(',') ? rawRange : undefined;
+  try {
+    const res = await s3Client().send(
+      new GetObjectCommand({
+        Bucket: s3Bucket(),
+        Key: transcript.originalObjectKey,
+        ...(rangeHeader ? { Range: rangeHeader } : {}),
+      }),
+    );
+    const filename = safeDownloadFilename(transcript.originalFilename || `${id}.bin`);
+    const init = buildOriginalResponseInit({
+      rangeHeader,
+      s3ContentType: res.ContentType,
+      s3ContentLength: res.ContentLength,
+      s3ContentRange: res.ContentRange,
+      fallbackMime: transcript.originalMimeType,
+      filename,
+    });
+    return new Response(await s3BodyToResponseBody(res.Body), init);
+  } catch (err) {
+    const httpStatus = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata
+      ?.httpStatusCode;
+    if (httpStatus === 416) {
+      return c.json({ error: 'Range solicitado inválido.' }, 416);
+    }
+    console.error('[transcripts] erro ao baixar original:', err);
+    return c.json({ error: 'Falha ao baixar arquivo original.' }, 502);
+  }
+});
+
+transcriptsRoutes.get('/:id/preview', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId },
+    select: {
+      id: true,
+      title: true,
+      source: true,
+      previewObjectKey: true,
+      previewMimeType: true,
+      originalObjectKey: true,
+      originalMimeType: true,
+    },
+  });
+  if (!transcript) return c.text('', 404);
+  // Só servimos a imagem original como preview se for raster segura
+  // (png/jpeg/webp/gif). image/svg+xml é executável em navegação direta à URL →
+  // cai no placeholder. A preview gerada (previewObjectKey) é sempre JPEG nosso.
+  const originalIsSafeImage =
+    !!transcript.originalObjectKey &&
+    !!transcript.originalMimeType &&
+    transcript.originalMimeType.startsWith('image/') &&
+    inlineSafeMime(transcript.originalMimeType);
+  const objectKey =
+    transcript.previewObjectKey || (originalIsSafeImage ? transcript.originalObjectKey : null);
+  const mimeType =
+    transcript.previewObjectKey && transcript.previewMimeType
+      ? transcript.previewMimeType
+      : originalIsSafeImage
+        ? transcript.originalMimeType
+        : null;
+  if (objectKey && mimeType) {
+    try {
+      const res = await s3Client().send(
+        new GetObjectCommand({
+          Bucket: s3Bucket(),
+          Key: objectKey,
+        }),
+      );
+      return new Response(await s3BodyToResponseBody(res.Body), {
+        headers: {
+          'content-type': mimeType,
+          'cache-control': 'private, max-age=300',
+          'x-content-type-options': 'nosniff',
+        },
+      });
+    } catch (err) {
+      console.error('[transcripts] erro ao baixar preview:', err);
+    }
+  }
+  return new Response(renderPreviewSvg(transcript.title, transcript.source), {
+    headers: {
+      'content-type': 'image/svg+xml; charset=utf-8',
+      'cache-control': 'private, max-age=300',
+      'x-content-type-options': 'nosniff',
+    },
+  });
+});
+
+const LinkedNoteBody = z.object({
+  title: z.string().min(1).max(200),
+  content: z.string().max(200_000).default(''),
+});
+
+transcriptsRoutes.get('/:id/notes', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId, status: { not: 'TRASH' } },
+    select: { id: true },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+
+  const notes = await db.note.findMany({
+    where: {
+      userId,
+      kind: 'NOTE',
+      sourceType: 'TRANSCRIPT',
+      sourceId: id,
+    },
+    orderBy: { updatedAt: 'desc' },
+    select: {
+      id: true,
+      title: true,
+      content: true,
+      updatedAt: true,
+      createdAt: true,
+    },
+    take: 20,
+  });
+  return c.json({ notes });
+});
+
+transcriptsRoutes.post('/:id/notes', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const parsed = LinkedNoteBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Payload inválido.' }, 400);
+
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId, status: { not: 'TRASH' } },
+    select: { id: true },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+
+  const note = await db.note.create({
+    data: {
+      userId,
+      kind: 'NOTE',
+      title: parsed.data.title.trim(),
+      content: parsed.data.content,
+      sourceType: 'TRANSCRIPT',
+      sourceId: id,
+    },
+    select: {
+      id: true,
+      title: true,
+      content: true,
+      updatedAt: true,
+      createdAt: true,
+    },
+  });
+  await reindexNoteBrain(userId, note.id);
+  await invalidateGraphCache(userId);
+  return c.json({ note }, 201);
 });
 
 const OrganizationBody = z.object({
@@ -318,7 +522,14 @@ transcriptsRoutes.delete('/:id', async (c) => {
   const id = c.req.param('id');
   const transcript = await db.transcript.findFirst({
     where: { id, userId },
-    select: { id: true, status: true, mdPath: true, title: true },
+    select: {
+      id: true,
+      status: true,
+      mdPath: true,
+      title: true,
+      originalObjectKey: true,
+      previewObjectKey: true,
+    },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
   if (transcript.status !== 'TRASH') {
@@ -326,10 +537,14 @@ transcriptsRoutes.delete('/:id', async (c) => {
   }
 
   try {
-    await deleteS3Object(transcript.mdPath);
+    await Promise.all(
+      [transcript.mdPath, transcript.previewObjectKey, transcript.originalObjectKey]
+        .filter((key): key is string => Boolean(key))
+        .map((key) => deleteS3Object(key)),
+    );
   } catch (err) {
-    console.error('[transcripts] erro ao apagar .md do S3:', err);
-    return c.json({ error: 'Falha ao apagar arquivo no armazenamento S3.' }, 502);
+    console.error('[transcripts] erro ao apagar objetos no S3:', err);
+    return c.json({ error: 'Falha ao apagar arquivos no armazenamento S3.' }, 502);
   }
 
   await db.transcript.delete({ where: { id } });
@@ -422,4 +637,119 @@ function mapSearchRow(row: SearchRow): SearchRow & { folder: { id: string; name:
     ...row,
     folder: row.folderId && row.folderName ? { id: row.folderId, name: row.folderName } : null,
   };
+}
+
+async function s3BodyToResponseBody(body: unknown): Promise<BodyInit> {
+  const maybeBody = body as {
+    transformToWebStream?: () => ReadableStream<Uint8Array>;
+    transformToByteArray?: () => Promise<Uint8Array>;
+  } | null;
+  if (maybeBody?.transformToWebStream) return maybeBody.transformToWebStream();
+  if (maybeBody?.transformToByteArray) {
+    const bytes = await maybeBody.transformToByteArray();
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+  return new ArrayBuffer(0);
+}
+
+// Monta status + headers da resposta de `/:id/original`. Puro (sem I/O) para ser
+// testável: decide 206 (Range satisfeito pelo S3) vs 200, e relaya os headers de
+// range. `accept-ranges: bytes` sempre presente para o player saber que dá seek.
+export function buildOriginalResponseInit(opts: {
+  rangeHeader?: string;
+  s3ContentType?: string;
+  s3ContentLength?: number;
+  s3ContentRange?: string;
+  fallbackMime: string | null;
+  filename: string;
+}): { status: number; headers: Record<string, string> } {
+  const contentType = opts.fallbackMime || opts.s3ContentType || 'application/octet-stream';
+  // Conteúdo é upload do usuário (NÃO confiável): só mídia segura vai `inline` no
+  // contexto same-origin da app; o resto (text/html, image/svg+xml, pdf...) vira
+  // `attachment` (download), evitando XSS armazenado. `nosniff` impede o browser
+  // de reinterpretar o MIME e executar como HTML.
+  const headers: Record<string, string> = {
+    'content-type': contentType,
+    'cache-control': 'private, max-age=300',
+    'content-disposition': `${inlineSafeMime(contentType) ? 'inline' : 'attachment'}; filename="${opts.filename}"`,
+    'accept-ranges': 'bytes',
+    'x-content-type-options': 'nosniff',
+  };
+  if (opts.s3ContentLength != null) headers['content-length'] = String(opts.s3ContentLength);
+  if (opts.rangeHeader && opts.s3ContentRange) {
+    headers['content-range'] = opts.s3ContentRange;
+    return { status: 206, headers };
+  }
+  return { status: 200, headers };
+}
+
+// Tipos servidos `inline` (renderizados no browser same-origin). Restrito a mídia
+// que o player usa; text/html, image/svg+xml e pdf ficam de fora (vão como
+// attachment) porque podem executar script no contexto da aplicação.
+function inlineSafeMime(contentType: string): boolean {
+  const ct = contentType.toLowerCase().split(';')[0]?.trim() ?? '';
+  if (ct.startsWith('video/') || ct.startsWith('audio/')) return true;
+  return ct === 'image/png' || ct === 'image/jpeg' || ct === 'image/webp' || ct === 'image/gif';
+}
+
+function safeDownloadFilename(value: string): string {
+  return value
+    .replace(/[\\/\r\n"]/g, '_')
+    .replace(/[^\w .()-]+/g, '_')
+    .slice(0, 160);
+}
+
+function renderPreviewSvg(title: string, source: string): string {
+  const cleanTitle = escapeXml(title).slice(0, 120);
+  const cleanSource = escapeXml(sourceLabel(source));
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="${cleanTitle}">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#202326"/>
+      <stop offset="0.55" stop-color="#191b1d"/>
+      <stop offset="1" stop-color="#17362f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="78%" cy="22%" r="55%">
+      <stop stop-color="#10b981" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#glow)"/>
+  <rect x="72" y="72" width="1136" height="576" rx="44" fill="#ffffff" fill-opacity="0.035" stroke="#ffffff" stroke-opacity="0.12"/>
+  <text x="112" y="160" fill="#9ca3af" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="700" letter-spacing="8">${cleanSource}</text>
+  <foreignObject x="112" y="230" width="960" height="250">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Inter, Arial, sans-serif; color: #f8fafc; font-size: 62px; font-weight: 750; line-height: 1.08; overflow-wrap: anywhere;">${cleanTitle}</div>
+  </foreignObject>
+  <circle cx="1112" cy="560" r="58" fill="#10b981" fill-opacity="0.16" stroke="#34d399" stroke-opacity="0.5"/>
+  <path d="M1095 535v50l44-25-44-25Z" fill="#6ee7b7"/>
+</svg>`;
+}
+
+function sourceLabel(source: string): string {
+  if (source === 'WEB') return 'PÁGINA WEB';
+  if (source === 'UPLOAD') return 'UPLOAD';
+  if (source === 'X') return 'X';
+  return source;
+}
+
+function escapeXml(value: string): string {
+  return value.replace(/[<>&"']/g, (ch) => {
+    switch (ch) {
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '&':
+        return '&amp;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&apos;';
+      default:
+        return ch;
+    }
+  });
 }

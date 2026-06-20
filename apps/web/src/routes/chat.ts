@@ -130,8 +130,10 @@ chatRoutes.get('/library-mentions', async (c) => {
 
 chatRoutes.get('/conversations', async (c) => {
   const uid = userId(c);
+  // ?transcriptId= filtra as conversas contextuais de uma transcrição (resume).
+  const transcriptId = c.req.query('transcriptId');
   const list = await db.conversation.findMany({
-    where: { userId: uid, archivedAt: null },
+    where: { userId: uid, archivedAt: null, ...(transcriptId ? { transcriptId } : {}) },
     orderBy: { updatedAt: 'desc' },
     select: {
       id: true,
@@ -157,11 +159,24 @@ chatRoutes.get('/conversations', async (c) => {
 
 chatRoutes.post('/conversations', async (c) => {
   const uid = userId(c);
-  const body = (await c.req.json().catch(() => ({}))) as { title?: string };
+  const body = (await c.req.json().catch(() => ({}))) as {
+    title?: string;
+    transcriptId?: string;
+  };
+  // Vincula a uma transcrição só após validar ownership (nunca confia no client).
+  let transcriptId: string | null = null;
+  if (typeof body.transcriptId === 'string' && body.transcriptId) {
+    const t = await db.transcript.findFirst({
+      where: { id: body.transcriptId, userId: uid },
+      select: { id: true },
+    });
+    transcriptId = t?.id ?? null;
+  }
   const conv = await db.conversation.create({
     data: {
       userId: uid,
       title: body.title?.trim() || 'Nova conversa',
+      transcriptId,
     },
     select: { id: true, title: true, thinking: true, updatedAt: true, createdAt: true },
   });
@@ -383,14 +398,18 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
     },
   });
 
-  // Bumpa updatedAt e (se for a primeira) define um título auto.
+  // Título da 1ª mensagem: gera por IA EM PARALELO (sem atrasar a resposta) e usa
+  // os primeiros 60 chars como fallback imediato/à prova de falha. O título da IA
+  // é gravado no fim do stream (persistPartial), antes de fechar — assim o
+  // refreshConversations que o front chama pós-stream já pega o título novo.
+  const isFirstMessage = conv.messages.length === 0 && conv.title === 'Nova conversa';
+  const titlePromise: Promise<string | null> =
+    isFirstMessage && content ? generateConversationTitle(uid, content) : Promise.resolve(null);
   await db.conversation.update({
     where: { id },
     data: {
       updatedAt: new Date(),
-      ...(conv.messages.length === 0 && conv.title === 'Nova conversa'
-        ? { title: (content || 'Imagem').slice(0, 60) }
-        : {}),
+      ...(isFirstMessage ? { title: (content || 'Imagem').slice(0, 60) } : {}),
     },
   });
 
@@ -443,7 +462,7 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
   const encoder = new TextEncoder();
   let buffer = '';
   let assistantContent = '';
-  const tools: Array<{ name: string; preview?: string }> = [];
+  const tools: PersistedTool[] = [];
 
   // Persiste o que foi acumulado até agora. Usado no done normal E em erros
   // do upstream — evita perder a mensagem parcial quando chat:8001 cai.
@@ -464,6 +483,17 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
         });
       } catch {
         // Best-effort
+      }
+    }
+    // Grava o título por IA da 1ª mensagem (se gerado) antes de fechar o stream.
+    if (isFirstMessage) {
+      try {
+        const aiTitle = await titlePromise;
+        if (aiTitle) {
+          await db.conversation.update({ where: { id }, data: { title: aiTitle } });
+        }
+      } catch {
+        // mantém o título de fallback
       }
     }
   };
@@ -504,9 +534,22 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
           const parsed = JSON.parse(dataMatch[1]!) as Record<string, unknown>;
           const ev = eventMatch[1];
           if (ev === 'token') assistantContent += (parsed.text as string) ?? '';
-          else if (ev === 'tool_start') tools.push({ name: (parsed.name as string) ?? '' });
-          else if (ev === 'tool_end' && tools.length > 0) {
-            tools[tools.length - 1]!.preview = (parsed.preview as string) ?? '';
+          else if (ev === 'tool_start') {
+            tools.push({
+              name: (parsed.name as string) ?? '',
+              args: sanitizeToolArgs(parsed.args),
+            });
+          } else if (ev === 'tool_end' && tools.length > 0) {
+            const last = tools[tools.length - 1]!;
+            last.preview = (parsed.preview as string) ?? '';
+            if (typeof parsed.summary === 'string' && parsed.summary) {
+              last.summary = parsed.summary.slice(0, 200);
+            }
+            if (typeof parsed.content === 'string' && parsed.content) {
+              last.content = parsed.content.slice(0, TOOL_CONTENT_MAX_CHARS);
+            }
+            const sources = sanitizeToolSources(parsed.sources);
+            if (sources) last.sources = sources;
           }
         } catch {
           // ignora linhas malformadas
@@ -531,6 +574,24 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
   });
 });
 
+// Gera um título curto pra conversa via chat service (/title → 1 call barata).
+// Best-effort: erro/sem-setup retorna null e o chamador mantém o fallback.
+async function generateConversationTitle(uid: string, message: string): Promise<string | null> {
+  try {
+    const res = await fetch(chatUrl('/title'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Voxen-User-Id': uid },
+      body: JSON.stringify({ message: message.slice(0, 2000) }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { title?: string };
+    const title = data.title?.trim();
+    return title ? title.slice(0, 120) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveLibraryMentions(uid: string, raw: unknown): Promise<LibraryMentionContext[]> {
   if (!Array.isArray(raw)) return [];
   const parsed: LibraryMentionInput[] = [];
@@ -553,7 +614,7 @@ async function resolveLibraryMentions(uid: string, raw: unknown): Promise<Librar
   const [transcripts, notes] = await Promise.all([
     transcriptIds.length
       ? db.transcript.findMany({
-          where: { userId: uid, status: 'ACTIVE', id: { in: transcriptIds } },
+          where: { userId: uid, status: { not: 'TRASH' }, id: { in: transcriptIds } },
           select: {
             id: true,
             title: true,
@@ -605,6 +666,70 @@ function truncateMentionContent(text: string): string {
   const clean = text.trim();
   if (clean.length <= MAX_LIBRARY_MENTION_CHARS) return clean;
   return `${clean.slice(0, MAX_LIBRARY_MENTION_CHARS).trim()}\n\n[conteúdo truncado]`;
+}
+
+// ----------------------------------------------------------------------------
+// Tools persistidas em ChatMessage.tools (ver .specs/026)
+// ----------------------------------------------------------------------------
+
+type ToolArgValue = string | number | boolean | null;
+
+// `type` (não interface) — interfaces não têm index signature implícita e
+// não são aceitas pelo InputJsonValue do Prisma.
+type PersistedTool = {
+  name: string;
+  args?: Record<string, ToolArgValue>;
+  preview?: string;
+  summary?: string;
+  // Conteúdo textual completo (markdown) da tool — corpo rolável do card.
+  content?: string;
+  sources?: Array<{ url: string; title: string }>;
+};
+
+// Espelha TOOL_CONTENT_MAX_CHARS do chat service (apps/chat/src/main.py) —
+// defesa em profundidade na persistência; manter os dois em sincronia.
+const TOOL_CONTENT_MAX_CHARS = 20_000;
+const TOOL_ARGS_MAX_ENTRIES = 8;
+const TOOL_ARGS_MAX_VALUE_CHARS = 300;
+const TOOL_SOURCES_MAX = 20;
+const TOOL_SOURCE_TITLE_MAX_CHARS = 300;
+const TOOL_SOURCE_URL_MAX_CHARS = 2000;
+
+// Só escalares truncados — args persistidos servem pra UI resumir a chamada
+// (ex: query da pesquisa), não pra reproduzir o payload inteiro.
+function sanitizeToolArgs(raw: unknown): Record<string, ToolArgValue> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, ToolArgValue> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (Object.keys(out).length >= TOOL_ARGS_MAX_ENTRIES) break;
+    if (typeof value === 'string') {
+      out[key] =
+        value.length > TOOL_ARGS_MAX_VALUE_CHARS
+          ? `${value.slice(0, TOOL_ARGS_MAX_VALUE_CHARS)}…`
+          : value;
+    } else if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+      out[key] = value;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function sanitizeToolSources(raw: unknown): Array<{ url: string; title: string }> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: Array<{ url: string; title: string }> = [];
+  for (const item of raw) {
+    if (out.length >= TOOL_SOURCES_MAX) break;
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const url = String(record.url ?? '').trim();
+    // Só http(s) — nunca renderizar javascript:/data: como link.
+    if (!/^https?:\/\//i.test(url)) continue;
+    const title = String(record.title ?? url)
+      .trim()
+      .slice(0, TOOL_SOURCE_TITLE_MAX_CHARS);
+    out.push({ url: url.slice(0, TOOL_SOURCE_URL_MAX_CHARS), title });
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 // ----------------------------------------------------------------------------

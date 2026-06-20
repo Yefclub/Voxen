@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { FileText, Folder, FolderPlus, Globe, Library, Loader2, Search, X } from 'lucide-react';
+import { Folder, FolderPlus, Globe, Library, Loader2, Search, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '../components/ui/card';
@@ -119,16 +119,16 @@ export function TranscricoesPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-12 mx-auto max-w-6xl space-y-10">
-        <header className="space-y-3">
+      <div className="mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
+        <header className="space-y-2 sm:space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <Library className="h-3.5 w-3.5 text-violet-400" />
             {t('library.eyebrow')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+          <h1 className="font-display text-2xl font-semibold tracking-[-0.03em] sm:text-4xl">
             {t('library.title')}
           </h1>
-          <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
+          <p className="hidden max-w-2xl text-[15px] leading-relaxed text-[var(--color-app-muted)] sm:block">
             {t('library.description')}
           </p>
         </header>
@@ -163,7 +163,7 @@ export function TranscricoesPage(): React.ReactElement {
           )}
         </div>
 
-        <section className="space-y-3 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/40 p-3 -mt-4">
+        <section className="-mt-2 space-y-3 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/40 p-3 sm:-mt-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
               <Folder className="h-3.5 w-3.5 text-amber-400" />
@@ -194,7 +194,7 @@ export function TranscricoesPage(): React.ReactElement {
                 ) : (
                   <FolderPlus className="h-3.5 w-3.5" />
                 )}
-                <span>{t('library.createFolder')}</span>
+                <span className="hidden sm:inline">{t('library.createFolder')}</span>
               </Button>
             </div>
           </div>
@@ -226,7 +226,7 @@ export function TranscricoesPage(): React.ReactElement {
           </div>
         </section>
 
-        <div className="flex flex-wrap items-center gap-2 -mt-4">
+        <div className="-mt-2 flex flex-wrap items-center gap-2 sm:-mt-4">
           {(['active', 'archived', 'trash'] as const).map((item) => (
             <Button
               key={item}
@@ -284,7 +284,7 @@ export function TranscricoesPage(): React.ReactElement {
         )}
 
         {!loading && transcripts.length > 0 && (
-          <StaggerContainer className="grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <StaggerContainer className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
             {transcripts.map((transcript) => (
               <StaggerItem key={transcript.id} className="h-full">
                 <TranscriptCard
@@ -315,6 +315,7 @@ function TranscriptCard({
 }): React.ReactElement {
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
+  const previewSrc = t.thumbnailUrl || `/api/transcripts/${t.id}/preview`;
   return (
     <motion.div
       className="h-full"
@@ -328,29 +329,15 @@ function TranscriptCard({
         <Card
           hoverable
           elevated
-          className="flex h-full min-h-[430px] flex-col overflow-hidden p-0 transition-colors duration-200"
+          className="flex h-full min-h-[168px] flex-row overflow-hidden p-0 transition-colors duration-200 sm:min-h-[430px] sm:flex-col"
         >
-          <div className="relative aspect-video bg-[var(--color-app-bg-elevated)] overflow-hidden">
-            {t.thumbnailUrl ? (
-              <img
-                src={t.thumbnailUrl}
-                alt=""
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                loading="lazy"
-              />
-            ) : (
-              <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900">
-                {isDocumentTranscript ? (
-                  <FileText className="h-10 w-10 text-zinc-600" />
-                ) : t.source === 'WEB' || isVisualTranscript ? (
-                  <Globe className="h-10 w-10 text-zinc-600" />
-                ) : (
-                  <span className="font-display text-5xl font-semibold text-zinc-700 tracking-tight">
-                    {t.title[0]?.toUpperCase()}
-                  </span>
-                )}
-              </div>
-            )}
+          <div className="relative h-auto w-28 shrink-0 overflow-hidden bg-[var(--color-app-bg-elevated)] sm:w-full sm:aspect-video">
+            <img
+              src={previewSrc}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              loading="lazy"
+            />
             <div
               aria-hidden
               className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent"
@@ -367,9 +354,9 @@ function TranscriptCard({
             )}
           </div>
 
-          <CardContent className="flex min-h-0 flex-1 flex-col space-y-3 px-5 pb-5 pt-4">
+          <CardContent className="flex min-h-0 flex-1 flex-col space-y-2 px-4 py-3 sm:space-y-3 sm:px-5 sm:pb-5 sm:pt-4">
             <div>
-              <h3 className="text-[15px] font-semibold leading-snug tracking-tight line-clamp-2 group-hover:text-violet-300 transition-colors font-display">
+              <h3 className="max-w-full break-words text-[15px] font-semibold leading-snug tracking-tight line-clamp-2 [overflow-wrap:anywhere] group-hover:text-violet-300 transition-colors font-display">
                 {highlightInText(t.title, highlightQuery)}
               </h3>
               <p className="min-h-[18px] text-xs text-[var(--color-app-muted)] mt-1.5 truncate">
@@ -377,11 +364,11 @@ function TranscriptCard({
               </p>
             </div>
 
-            <p className="h-[54px] text-xs text-[var(--color-app-subtle)] leading-relaxed line-clamp-3">
+            <p className="hidden h-[54px] text-xs leading-relaxed text-[var(--color-app-subtle)] line-clamp-3 sm:block">
               {t.snippet ? renderSnippet(t.snippet) : null}
             </p>
 
-            <div className="flex h-[50px] flex-wrap content-start items-start gap-2 overflow-hidden pt-1">
+            <div className="flex max-h-[48px] flex-wrap content-start items-start gap-1.5 overflow-hidden pt-0.5 sm:h-[50px] sm:max-h-none sm:gap-2 sm:pt-1">
               {/* Source primário — diferencia Vídeo / Web e plataforma */}
               <Badge variant={t.source === 'WEB' ? 'muted' : 'success'} className="text-[10px]">
                 {t.source === 'WEB' && <Globe className="h-2.5 w-2.5" />}
@@ -419,7 +406,7 @@ function TranscriptCard({
               )}
             </div>
 
-            <div className="mt-auto pt-3 border-t border-[var(--color-app-border)] flex items-center justify-between text-[11px] text-[var(--color-app-muted)]">
+            <div className="mt-auto flex items-center justify-between border-t border-[var(--color-app-border)] pt-2 text-[11px] text-[var(--color-app-muted)] sm:pt-3">
               <span>{formatRelative(new Date(t.createdAt), locale)}</span>
               <span className="tabular-nums font-mono">{formatUsd(t.costUsd)}</span>
             </div>

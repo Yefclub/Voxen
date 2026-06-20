@@ -1,16 +1,177 @@
 import { describe, expect, test } from 'bun:test';
-import { EDGE_COLORS, NODE_COLORS } from '../src/client/pages/grafo';
+import {
+  EDGE_COLORS,
+  NODE_COLORS,
+  buildGraphLayout,
+  buildSigmaGraphModel,
+  nodePath,
+} from '../src/client/pages/grafo';
 
-const CYTOSCAPE_SAFE_COLOR = /^(#[0-9a-f]{6}|rgba?\([^)]+\))$/i;
+const SVG_SAFE_COLOR = /^(#[0-9a-f]{6}|rgba?\([^)]+\))$/i;
 
 describe('graph rendering helpers', () => {
-  test('uses canvas-compatible colors for Cytoscape styles', () => {
+  test('uses SVG-compatible colors for graph styles', () => {
     const colors = [...Object.values(NODE_COLORS), ...Object.values(EDGE_COLORS)];
 
     expect(colors.length).toBeGreaterThan(0);
     for (const color of colors) {
       expect(color.toLowerCase()).not.toContain('oklch');
-      expect(color).toMatch(CYTOSCAPE_SAFE_COLOR);
+      expect(color).toMatch(SVG_SAFE_COLOR);
     }
+  });
+
+  test('creates finite positions and connects rendered edges to nodes', () => {
+    const fixture = {
+      totalNodes: 3,
+      totalEdges: 2,
+      nodes: [
+        {
+          id: 'transcript-1',
+          key: 'transcript:1',
+          label: 'Transcricao de teste',
+          description: null,
+          type: 'transcript',
+          sourceType: 'TRANSCRIPT',
+          sourceId: '1',
+          source: 'YOUTUBE',
+          weight: 3,
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          id: 'topic-1',
+          key: 'topic:1',
+          label: 'Conhecimento conectado',
+          description: null,
+          type: 'topic',
+          sourceType: 'MANUAL',
+          sourceId: null,
+          weight: 2,
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          id: 'entity-1',
+          key: 'entity:1',
+          label: 'Voxen',
+          description: null,
+          type: 'entity',
+          sourceType: 'MANUAL',
+          sourceId: null,
+          weight: 1,
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+      edges: [
+        {
+          id: 'edge-1',
+          from: 'transcript-1',
+          to: 'topic-1',
+          kind: 'mentions',
+          method: 'test',
+          confidence: '1',
+        },
+        {
+          id: 'edge-2',
+          from: 'topic-1',
+          to: 'entity-1',
+          kind: 'related_to',
+          method: 'test',
+          confidence: '1',
+        },
+      ],
+    } satisfies Parameters<typeof buildGraphLayout>[0];
+    const layout = buildGraphLayout(fixture);
+
+    expect(layout.nodes).toHaveLength(3);
+    expect(layout.edges).toHaveLength(2);
+    for (const node of layout.nodes) {
+      expect(Number.isFinite(node.x)).toBe(true);
+      expect(Number.isFinite(node.y)).toBe(true);
+      expect(node.radius).toBeGreaterThan(0);
+      expect(node.labelLines.length).toBeGreaterThan(0);
+    }
+    for (const edge of layout.edges) {
+      expect(edge.fromNode.id).toBe(edge.from);
+      expect(edge.toNode.id).toBe(edge.to);
+    }
+  });
+
+  test('builds a Graphology model for the WebGL renderer', () => {
+    const model = buildSigmaGraphModel({
+      totalNodes: 2,
+      totalEdges: 1,
+      nodes: [
+        {
+          id: 'note-1',
+          key: 'note:1',
+          label: 'Nota conectada',
+          description: null,
+          type: 'note',
+          sourceType: 'NOTE',
+          sourceId: '1',
+          weight: 2,
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          id: 'topic-1',
+          key: 'topic:1',
+          label: 'Topico',
+          description: null,
+          type: 'topic',
+          sourceType: 'MANUAL',
+          sourceId: null,
+          weight: 1,
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+      edges: [
+        {
+          id: 'edge-1',
+          from: 'note-1',
+          to: 'topic-1',
+          kind: 'mentions',
+          method: 'test',
+          confidence: '1',
+        },
+      ],
+    });
+
+    expect(model.graph.order).toBe(2);
+    expect(model.graph.size).toBe(1);
+    expect(model.graph.getNodeAttribute('note-1', 'label')).toBe('Nota conectada');
+    expect(model.neighborhoods.get('note-1')?.has('topic-1')).toBe(true);
+    expect(model.forceData.nodes).toHaveLength(2);
+    expect(model.forceData.links).toHaveLength(1);
+    expect(model.forceData.nodes.every((node) => Number.isFinite(node.z))).toBe(true);
+    expect(model.forceData.links[0]?.source).toBe('note-1');
+    expect(model.forceData.links[0]?.target).toBe('topic-1');
+  });
+});
+
+describe('nodePath', () => {
+  function makeNode(over: Partial<Parameters<typeof nodePath>[0]>): Parameters<typeof nodePath>[0] {
+    return {
+      id: 'n',
+      key: 'k',
+      label: 'L',
+      description: null,
+      type: 'transcript',
+      sourceType: null,
+      sourceId: null,
+      weight: 1,
+      updatedAt: '2026-01-01T00:00:00Z',
+      ...over,
+    };
+  }
+
+  test('maps transcript/note sources to routes and returns null otherwise', () => {
+    expect(nodePath(makeNode({ sourceType: 'TRANSCRIPT', sourceId: 't1' }))).toBe(
+      '/transcricoes/t1',
+    );
+    expect(nodePath(makeNode({ sourceType: 'NOTE', sourceId: 'n2' }))).toBe('/notas/n2');
+    // sourceType sem rota dedicada → null, mesmo com sourceId
+    expect(nodePath(makeNode({ sourceType: 'FOLDER', sourceId: 'f1' }))).toBeNull();
+    expect(nodePath(makeNode({ sourceType: null, sourceId: 's1' }))).toBeNull();
+    // sem sourceId → null
+    expect(nodePath(makeNode({ sourceType: 'TRANSCRIPT', sourceId: null }))).toBeNull();
   });
 });

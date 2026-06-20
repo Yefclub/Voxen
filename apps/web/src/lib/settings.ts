@@ -20,9 +20,8 @@ export type GlobalSettingKey =
   | 'app_language'
   | 'default_chat_model'
   | 'default_transcription_model'
-  // Modelo dedicado a pesquisa na web — OpenRouter aceita `:online` em
-  // qualquer modelo (plugin web da Perplexity) ou modelos nativos com
-  // `web_search_options`. Tool `web_search` no agente usa este modelo.
+  // Modelo dedicado a pesquisa na web. A tool `web_search` usa a server tool
+  // OpenRouter `openrouter:web_search`; não depende do sufixo deprecated :online.
   | 'default_web_search_model'
   // Modelo multimodal pra entender imagens (upload via chat/telegram).
   // Filtrado por modalities=['image'] no /api/openrouter/models.

@@ -295,8 +295,9 @@ export function SetupPage(): React.ReactElement {
               t('setup.title.edit')
             ) : (
               <>
-                {t('setup.title.initial').replace('OpenRouter', '')}
+                {t('setup.title.initialPrefix')}
                 <span className="text-emerald-accent">OpenRouter</span>
+                {t('setup.title.initialSuffix')}
               </>
             )
           }
@@ -512,7 +513,7 @@ export function SetupPage(): React.ReactElement {
                             setSaved(false);
                             setApiKey(e.target.value);
                           }}
-                          placeholder="sk-or-v1-... (opcional)"
+                          placeholder={t('setup.openrouter.newKeyPlaceholder')}
                           autoComplete="off"
                           spellCheck={false}
                           className="font-mono h-11 text-[15px]"
@@ -614,7 +615,7 @@ export function SetupPage(): React.ReactElement {
                             type="email"
                             value={adminEmail}
                             onChange={(e) => setAdminEmail(e.target.value)}
-                            placeholder="admin@seudominio.com"
+                            placeholder={t('setup.operation.adminEmailPlaceholder')}
                             className="pl-9"
                           />
                         </div>
@@ -660,7 +661,7 @@ export function SetupPage(): React.ReactElement {
                         <textarea
                           value={ytDlpProxyUrls}
                           onChange={(e) => setYtDlpProxyUrls(e.target.value)}
-                          placeholder="http://usuario:senha@host:porta&#10;socks5://host:porta"
+                          placeholder={t('setup.operation.proxyPlaceholder')}
                           rows={3}
                           spellCheck={false}
                           className="min-h-20 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"

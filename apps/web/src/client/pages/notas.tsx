@@ -42,7 +42,7 @@ export function NotasPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-10 mx-auto max-w-5xl space-y-8">
+      <div className="px-4 sm:px-8 py-8 sm:py-10 mx-auto max-w-5xl space-y-8">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <Library className="h-3.5 w-3.5 text-violet-400" />
@@ -104,9 +104,19 @@ function NoteEditor({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // AbortController do PATCH em voo: garante que dois saves concorrentes
+  // (debounce + onBlur, ou save manual) não compitam — o anterior é abortado e
+  // o último vence de forma determinística.
+  const inFlight = useRef<AbortController | null>(null);
+  // `dirty` muda a cada tecla; sem uma ref o `save` debounced fecharia sobre um
+  // valor stale. Mantém o estado mais recente acessível sem recriar o callback.
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
 
   useEffect(() => {
-    if (data?.note) {
+    // Só re-hidrata do servidor quando NÃO há edição pendente — senão um refetch
+    // sobrescreveria texto não salvo do usuário.
+    if (data?.note && !dirtyRef.current) {
       setTitle(data.note.title);
       setContent(data.note.content);
       setDirty(false);
@@ -114,7 +124,16 @@ function NoteEditor({
   }, [data?.note]);
 
   const save = useCallback(async (): Promise<void> => {
-    if (!dirty) return;
+    // Cancela qualquer save agendado pelo debounce — o blur/save manual assume.
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    if (!dirtyRef.current) return;
+    // Aborta o PATCH anterior (se houver) pra o último request vencer.
+    inFlight.current?.abort();
+    const controller = new AbortController();
+    inFlight.current = controller;
     setSaving(true);
     try {
       const res = await fetch(`/api/notes/${noteId}`, {
@@ -122,16 +141,24 @@ function NoteEditor({
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content }),
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error(t('notes.saveError'));
-      setDirty(false);
+      // Só limpa o dirty se este ainda é o save mais recente — senão um save
+      // posterior (com edições novas) já assumiu e não devemos marcá-lo salvo.
+      if (inFlight.current === controller) setDirty(false);
       onSaved();
     } catch (err) {
+      // Abort = substituído por save mais recente; silencioso.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       toast.error(err instanceof Error ? err.message : t('common.error'));
     } finally {
-      setSaving(false);
+      if (inFlight.current === controller) {
+        inFlight.current = null;
+        setSaving(false);
+      }
     }
-  }, [noteId, title, content, dirty, onSaved]);
+  }, [noteId, title, content, onSaved, t]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -141,6 +168,14 @@ function NoteEditor({
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, [dirty, save]);
+
+  // Cleanup no unmount: cancela timer e aborta PATCH em voo.
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      inFlight.current?.abort();
+    };
+  }, []);
 
   if (loading || !data) {
     return (
@@ -159,7 +194,7 @@ function NoteEditor({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
     >
-      <Card elevated className="overflow-hidden p-0 min-h-[calc(100vh-280px)] flex flex-col">
+      <Card elevated className="overflow-hidden p-0 min-h-[calc(100dvh-280px)] flex flex-col">
         <div className="flex items-center gap-3 px-6 py-4 border-b border-[var(--color-app-border)]">
           <input
             type="text"
@@ -217,7 +252,7 @@ function NoteEditor({
               )}
             </div>
           ) : (
-            <div className="min-h-[55vh] h-full">
+            <div className="min-h-[55dvh] h-full">
               <MarkdownEditor
                 value={content}
                 onChange={(v) => {

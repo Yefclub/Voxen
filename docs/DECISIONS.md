@@ -116,6 +116,23 @@ Postgres FTS (`tsvector` GIN, dicionário `portuguese`) é o motor de busca. Sem
   - Buscas puramente semânticas sem keyword match podem falhar (mitigado por reformulação do agente)
 - Trade-off aceitável pro perfil de uso (knowledge base pessoal/equipe pequena)
 
+### Extensão — Query expansion no FTS (spec 047, 2026-06-19)
+
+Pra mitigar o contra "buscas semânticas sem keyword match podem falhar" **sem
+introduzir embeddings**, `search_transcripts` passou a expandir a query no nível
+do `tsquery` (helper puro `src/fts.py`):
+
+- lexemes unidos por OR (`|`) + prefix match (`:*`) em vez do AND implícito do
+  `plainto_tsquery` — frases naturais de poucas palavras passam a casar;
+- mapa estático curado de sinônimos PT-BR como alternativas OR;
+- `ts_rank` continua ordenando por relevância; fallback pro `plainto_tsquery`
+  quando a expansão não produz termos.
+
+Avaliada e **rejeitada** a expansão via LLM (uma chamada por busca): adiciona
+latência/custo e quebra o determinismo. A escolhida é **custo zero, latência
+zero, 100% determinística e no Postgres** — coerente com esta ADR. Sem pgvector,
+sem embeddings, sem reindex.
+
 ---
 
 ## ADR-005 — ARQ em vez de BullMQ

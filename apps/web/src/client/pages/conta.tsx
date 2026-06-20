@@ -52,12 +52,19 @@ export function ContaPage(): React.ReactElement {
   const [changingPwd, setChangingPwd] = useState(false);
 
   useEffect(() => {
+    // Guarda contra setState após unmount: o helper `apiGet` não suporta
+    // AbortController, então usamos a flag clássica de cleanup.
+    let cancelled = false;
     apiGet<{ user: AccountData }>('/api/account')
       .then((d) => {
+        if (cancelled) return;
         setAccount(d.user);
         setName(d.user.name);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function saveName(e: React.FormEvent): Promise<void> {
@@ -143,7 +150,7 @@ export function ContaPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-8 py-12 mx-auto max-w-2xl space-y-8">
+      <div className="px-4 sm:px-8 py-8 sm:py-12 mx-auto max-w-2xl space-y-8">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <UserIcon className="h-3.5 w-3.5 text-violet-400" />
@@ -478,7 +485,7 @@ function TelegramLinkCard(): React.ReactElement {
               <p className="text-[11px] uppercase tracking-wider text-violet-300 font-medium mb-2">
                 {t('account.telegram.sendToBot')}
               </p>
-              <code className="block font-mono text-2xl font-bold tracking-wider text-zinc-100 tabular-nums">
+              <code className="block font-mono text-2xl font-bold tracking-wider text-zinc-100 tabular-nums break-all">
                 /start {code}
               </code>
               <p className="text-[11px] text-[var(--color-app-muted)] mt-2">

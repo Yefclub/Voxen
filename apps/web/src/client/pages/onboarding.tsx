@@ -183,7 +183,7 @@ function OnboardingContent({
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? 'Erro ao enviar imagem.');
+        throw new Error(body.error ?? t('onboarding.error.avatar'));
       }
       const data = (await res.json()) as { image: string };
       setAvatarPreview(data.image);

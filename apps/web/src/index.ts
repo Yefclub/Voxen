@@ -26,6 +26,7 @@ import { notesRoutes } from './routes/notes';
 import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
 import { graphRoutes } from './routes/graph';
+import { shareTargetRoutes } from './routes/share-target';
 import { getRedisPublisher } from './lib/redis';
 import { rateLimit } from './lib/rate-limit';
 import { s3Bucket, s3Client } from './lib/s3';
@@ -38,20 +39,32 @@ app.get('/health', (c) => c.json({ ok: true, service: 'web' }));
 // Versão da build — fonte canônica em ordem de prioridade:
 //   1. env VOXEN_VERSION (release.yml injeta da tag git; Makefile injeta
 //      via `git describe --tags --always --dirty` no dev local)
-//   2. package.json (fallback se build foi feito sem injeção)
+//   2. Easypanel source deploy: package next-patch + DEPLOY_TIMESTAMP
+//      (`X.Y.Z-dev.<unix_epoch_seconds>`) quando há GIT_SHA
+//   3. package.json (fallback se build foi feito sem injeção)
 // Tag git é a verdade no Voxen — package.json fica como fallback estável.
 async function loadAppVersion(): Promise<string> {
   if (process.env.VOXEN_VERSION) return process.env.VOXEN_VERSION;
   try {
     const pkg = await Bun.file(new URL('../package.json', import.meta.url)).json();
-    return typeof pkg.version === 'string' ? pkg.version : '0.1.0';
+    const packageVersion = typeof pkg.version === 'string' ? pkg.version : '0.1.0';
+    return (
+      formatDevVersionFromDeploy(
+        packageVersion,
+        process.env.DEPLOY_TIMESTAMP,
+        process.env.VOXEN_GIT_SHA || process.env.GIT_SHA,
+      ) ?? packageVersion
+    );
   } catch {
     return '0.1.0';
   }
 }
 const VOXEN_VERSION = await loadAppVersion();
-const VOXEN_GIT_SHA = process.env.VOXEN_GIT_SHA || '';
-const VOXEN_BUILT_AT = process.env.VOXEN_BUILT_AT || new Date().toISOString();
+const VOXEN_GIT_SHA = process.env.VOXEN_GIT_SHA || process.env.GIT_SHA || '';
+const VOXEN_BUILT_AT =
+  process.env.VOXEN_BUILT_AT ||
+  deployTimestampToIso(process.env.DEPLOY_TIMESTAMP) ||
+  new Date().toISOString();
 app.get('/api/version', (c) => {
   return c.json({
     version: VOXEN_VERSION,
@@ -59,6 +72,35 @@ app.get('/api/version', (c) => {
     builtAt: VOXEN_BUILT_AT,
   });
 });
+
+export function formatDevVersionFromDeploy(
+  packageVersion: string,
+  deployTimestamp?: string,
+  gitSha?: string,
+): string | null {
+  const stamp = deployTimestampToUnixSeconds(deployTimestamp);
+  if (!stamp || !gitSha) return null;
+  const base = packageVersion.split('-', 1)[0] ?? packageVersion;
+  const parts = base.split('.').map((part) => Number(part));
+  if (parts.length !== 3 || parts.some((part) => !Number.isInteger(part) || part < 0)) return null;
+  const [major, minor, patch] = parts as [number, number, number];
+  return `${major}.${minor}.${patch + 1}-dev.${stamp}`;
+}
+
+function deployTimestampToUnixSeconds(value?: string): string | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const numeric = Number(value);
+  if (!Number.isSafeInteger(numeric) || numeric <= 0) return null;
+  const seconds = numeric > 9_999_999_999 ? Math.floor(numeric / 1000) : numeric;
+  return String(seconds);
+}
+
+function deployTimestampToIso(value?: string): string | null {
+  const seconds = deployTimestampToUnixSeconds(value);
+  if (!seconds) return null;
+  const date = new Date(Number(seconds) * 1000);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
 
 // Healthcheck deep — checa DB + Redis + chat service + S3 em paralelo.
 // 200 se todos ok, 503 se algum falhar. Pra monitoramento externo (Uptime
@@ -129,15 +171,18 @@ app.get('/api/instance', async (c) => {
 // UI consulta pra mostrar/esconder botões (ex: upload de imagem só aparece
 // se admin configurou modelo de visão).
 app.get('/api/capabilities', async (c) => {
-  const [visionModel, webSearchModel, documentModel, xAnalysisModel] = await Promise.all([
-    getSetting('default_vision_model').catch(() => null),
-    getSetting('default_web_search_model').catch(() => null),
-    getSetting('default_document_model').catch(() => null),
-    getDefaultXAnalysisModel().catch(() => null),
-  ]);
+  const [chatModel, visionModel, webSearchModel, documentModel, xAnalysisModel] = await Promise.all(
+    [
+      getSetting('default_chat_model').catch(() => null),
+      getSetting('default_vision_model').catch(() => null),
+      getSetting('default_web_search_model').catch(() => null),
+      getSetting('default_document_model').catch(() => null),
+      getDefaultXAnalysisModel().catch(() => null),
+    ],
+  );
   return c.json({
     vision: !!visionModel,
-    webSearch: !!webSearchModel,
+    webSearch: !!(webSearchModel || chatModel),
     document: !!documentModel,
     xAnalysis: !!xAnalysisModel,
   });
@@ -216,6 +261,8 @@ app.route('/api/automations', automationsRoutes);
 app.route('/mcp', mcpRoutes);
 // Graph view (visualização Obsidian-like da KB)
 app.route('/api/graph', graphRoutes);
+// PWA Web Share Target (Android/Chrome instalado)
+app.route('/share-target', shareTargetRoutes);
 
 // Avatar proxy: serve imagem do storage S3 de qualquer user autenticado
 app.get('/api/avatar/:userId', async (c) => {
@@ -258,6 +305,31 @@ import { join } from 'node:path';
 const distDir = join(import.meta.dir, '..', 'dist');
 const distExists = existsSync(distDir);
 
+// Identidade do build injetada no HTML na hora de servir. Por quê: o PWA
+// precacheia index.html/assets — um app instalado pode estar rodando um bundle
+// ANTIGO servido pelo service worker enquanto o servidor já tem build novo.
+// O monitor de versão (use-version-monitor) compara este meta (identidade do
+// bundle carregado) contra /api/version a cada poll e detecta o descompasso —
+// baseline buscado da rede não cobre esse caso, porque viria sempre do
+// servidor novo. Sanitizamos pra chars seguros de atributo HTML por defesa.
+const VOXEN_BUILD_ID = (VOXEN_GIT_SHA || VOXEN_VERSION).replace(/[^A-Za-z0-9._+-]/g, '');
+
+// Cache em memória do HTML transformado por path: o dist é imutável durante a
+// vida do processo, então lemos/injetamos uma única vez por arquivo em vez de
+// reprocessar a cada request (o Cache-Control do HTML é no-store).
+const htmlBuildMetaCache = new Map<string, string>();
+
+async function serveHtmlWithBuildMeta(target: string, headers: Headers): Promise<Response> {
+  let html = htmlBuildMetaCache.get(target);
+  if (html === undefined) {
+    const raw = await Bun.file(target).text();
+    html = raw.replace('<head>', `<head><meta name="voxen-build" content="${VOXEN_BUILD_ID}">`);
+    htmlBuildMetaCache.set(target, html);
+  }
+  headers.set('Content-Type', 'text/html; charset=utf-8');
+  return new Response(html, { headers });
+}
+
 app.get('*', async (c) => {
   if (!distExists) {
     // Dev sem build — devolve hint pro user usar Vite
@@ -283,6 +355,12 @@ app.get('*', async (c) => {
   // - Assets hashados (/assets/[name].[hash].js|css|svg|woff2): max-age=1y
   //   immutable. Vite garante que mudaram → mudou o filename, cache antigo
   //   continua válido em paralelo.
+  // - Arquivos do PWA sem hash (sw.js, registerSW.js, manifest.webmanifest):
+  //   no-cache. O service worker é o gatilho de update do PWA — se ficar 1h
+  //   em cache HTTP, o browser demora 1h pra perceber que existe build novo.
+  //   no-cache (≠ no-store) ainda permite revalidação condicional (ETag/304).
+  // - workbox-*.js na raiz do dist: tem hash no nome (gerado pelo
+  //   vite-plugin-pwa), então é immutable como os /assets/.
   // - Outros estáticos sem hash (/favicon.ico, /voxen-256.png): 1h
   //   (balance entre frescor e load).
   const headers = new Headers();
@@ -292,9 +370,14 @@ app.get('*', async (c) => {
   const isHashedAsset = /\/assets\/[^/]+[.-][A-Za-z0-9_-]{8,}\.(js|css|svg|woff2?|ttf|otf)$/.test(
     reqPath,
   );
+  const isPwaEntry = /^\/(sw\.js|registerSW\.js|manifest\.webmanifest)$/.test(reqPath);
+  const isWorkboxRuntime = /^\/workbox-[A-Za-z0-9_-]+\.js$/.test(reqPath);
   if (isHtml) {
     headers.set('Cache-Control', 'no-store, must-revalidate');
-  } else if (isHashedAsset) {
+    return serveHtmlWithBuildMeta(target, headers);
+  } else if (isPwaEntry) {
+    headers.set('Cache-Control', 'no-cache, must-revalidate');
+  } else if (isHashedAsset || isWorkboxRuntime) {
     headers.set('Cache-Control', 'public, max-age=31536000, immutable');
   } else {
     headers.set('Cache-Control', 'public, max-age=3600');

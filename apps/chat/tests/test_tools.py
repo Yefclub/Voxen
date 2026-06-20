@@ -6,9 +6,18 @@ puros (_canonical_video_url, _normalize_web_url) que são pure functions.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 
-from src.tools import _canonical_video_url, _normalize_web_url
+from src import tools
+from src.tools import (
+    _build_web_search_payload,
+    _canonical_video_url,
+    _extract_url_citations,
+    _normalize_web_url,
+    execute_tool,
+)
 
 # ---------------------------------------------------------------------------
 # _canonical_video_url
@@ -179,3 +188,102 @@ def test_web_url_news_sites_unchanged() -> None:
     for url in cases:
         # Espera retorno = input (apenas fragment removido se houver)
         assert _normalize_web_url(url) == url
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter web_search server tool
+# ---------------------------------------------------------------------------
+
+
+def test_web_search_payload_uses_openrouter_server_tool() -> None:
+    payload = _build_web_search_payload("openai/gpt-5.2:online", "notícias de IA hoje")
+
+    assert payload["model"] == "openai/gpt-5.2"
+    assert payload["tools"] == [
+        {
+            "type": "openrouter:web_search",
+            "parameters": {"max_results": 8, "max_total_results": 15},
+        }
+    ]
+    assert "plugins" not in payload
+
+
+# ---------------------------------------------------------------------------
+# search_transcripts — query expansion + scoping por userId (spec 047)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_transcripts_forwards_expanded_tsquery_and_user_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_search(user_id, query, limit, tsquery_expr):  # type: ignore[no-untyped-def]
+        captured["user_id"] = user_id
+        captured["query"] = query
+        captured["limit"] = limit
+        captured["tsquery_expr"] = tsquery_expr
+        return [{"id": "t1", "title": "A", "snippet": "x", "rank": 0.5}]
+
+    monkeypatch.setattr(tools.db, "search_user_transcripts", fake_search)
+
+    res = await execute_tool("search_transcripts", {"query": "marketing digital"}, "user-42")
+
+    # Escopo por userId vindo do handler, nunca do args (R6)
+    assert captured["user_id"] == "user-42"
+    # Expansão é repassada e contém OR + prefix (R1)
+    expr = str(captured["tsquery_expr"])
+    assert "|" in expr and ":*" in expr
+    assert res["results"][0]["id"] == "t1"
+
+
+@pytest.mark.asyncio
+async def test_search_transcripts_empty_query_does_not_hit_db(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spy = AsyncMock()
+    monkeypatch.setattr(tools.db, "search_user_transcripts", spy)
+
+    res = await execute_tool("search_transcripts", {"query": "   "}, "user-1")
+
+    assert "error" in res
+    spy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_search_transcripts_dedupes_result_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A tsquery OR única já deduplica por linha no Postgres; o retorno preserva
+    # uma entrada por id e mantém o contrato (id/title/snippet/rank).
+    async def fake_search(user_id, query, limit, tsquery_expr):  # type: ignore[no-untyped-def]
+        return [
+            {"id": "t1", "title": "A", "snippet": "s1", "rank": 0.9},
+            {"id": "t2", "title": "B", "snippet": "s2", "rank": 0.4},
+        ]
+
+    monkeypatch.setattr(tools.db, "search_user_transcripts", fake_search)
+
+    res = await execute_tool("search_transcripts", {"query": "vendas"}, "u")
+
+    ids = [r["id"] for r in res["results"]]
+    assert ids == ["t1", "t2"]
+    assert len(ids) == len(set(ids))
+    assert set(res["results"][0]) == {"id", "title", "snippet", "rank"}
+
+
+def test_extract_url_citations_from_openrouter_annotations() -> None:
+    citations = _extract_url_citations(
+        {
+            "annotations": [
+                {
+                    "type": "url_citation",
+                    "url_citation": {"url": "https://example.com/a", "title": "Fonte A"},
+                },
+                {"type": "other"},
+            ]
+        }
+    )
+
+    assert citations == [{"url": "https://example.com/a", "title": "Fonte A"}]

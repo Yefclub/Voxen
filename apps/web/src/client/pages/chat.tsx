@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertCircle,
   Check,
+  ChevronDown,
   Copy,
+  ExternalLink,
+  FileText,
+  Globe,
   Library,
   ListVideo,
+  Network,
   Search,
   Sparkles,
+  StickyNote,
+  Video,
   Wand2,
   X,
 } from 'lucide-react';
@@ -31,7 +38,26 @@ import {
   refreshConversations,
 } from '../lib/use-conversations';
 import { useChatContextState } from '../lib/chat-context-ctx';
-import { useI18n, type TranslateFn } from '../lib/i18n';
+import { useI18n, type TranslateFn, type I18nKey } from '../lib/i18n';
+
+interface ToolSource {
+  url: string;
+  title: string;
+}
+
+// Execução de tool exibida na mensagem (ver .specs/026). Mensagens antigas
+// só têm {name, preview} — todos os campos extras são opcionais.
+interface ChatTool {
+  name: string;
+  args?: Record<string, unknown>;
+  preview?: string;
+  summary?: string;
+  // Conteúdo textual completo (markdown) da tool — renderizado no corpo
+  // rolável do card (spec 032).
+  content?: string;
+  sources?: ToolSource[];
+  actionSummary?: string;
+}
 
 interface Msg {
   id: string;
@@ -41,7 +67,7 @@ interface Msg {
   // `actionSummary` é populado quando a tool é request_user_confirmation —
   // o backend envia o resumo cru no SSE pra UI renderizar o banner HITL
   // sem precisar parsear o JSON do preview (que pode estar truncado).
-  tools?: { name: string; preview?: string; actionSummary?: string }[];
+  tools?: ChatTool[];
   pending?: boolean;
   // Raciocínio em streaming (thinking mode). Renderizado num bloco
   // colapsável antes do content final.
@@ -72,8 +98,14 @@ interface PersistedChatMessage {
   tools?: unknown;
 }
 
+interface ChatPrefillState {
+  text: string;
+  mentions?: LibraryMentionItem[];
+}
+
 export function ChatPage(): React.ReactElement {
   const { id: routeId } = useParams<{ id: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const { data: me } = useMe();
   const { t } = useI18n();
@@ -112,17 +144,22 @@ export function ChatPage(): React.ReactElement {
   const [documentEnabled, setDocumentEnabled] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   useEffect(() => {
-    // Detecta se o admin configurou modelo de visão pra habilitar o botão
-    fetch('/api/capabilities', { credentials: 'include' })
+    // Detecta se o admin configurou modelo de visão pra habilitar o botão.
+    // AbortController evita setState após unmount se a página fechar antes da
+    // resposta.
+    const ac = new AbortController();
+    fetch('/api/capabilities', { credentials: 'include', signal: ac.signal })
       .then((r) => r.json())
       .then((d: { vision?: boolean; document?: boolean }) => {
         setVisionEnabled(!!d.vision);
         setDocumentEnabled(!!d.document);
       })
       .catch(() => {
+        if (ac.signal.aborted) return;
         setVisionEnabled(false);
         setDocumentEnabled(false);
       });
+    return () => ac.abort();
   }, []);
   const [thinking, setThinking] = useState<boolean>(() => {
     try {
@@ -198,7 +235,7 @@ export function ChatPage(): React.ReactElement {
             role: m.role,
             kind: m.kind,
             content: m.content,
-            tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
+            tools: (m.tools as ChatTool[] | null) ?? undefined,
           })),
       );
     },
@@ -213,6 +250,16 @@ export function ChatPage(): React.ReactElement {
     }
     void loadActive(routeId);
   }, [routeId, loadActive]);
+
+  useEffect(() => {
+    const state = location.state as { prefill?: ChatPrefillState } | null;
+    const prefill = state?.prefill;
+    if (!prefill) return;
+    setInput(prefill.text);
+    setSelectedMentions((prefill.mentions ?? []).slice(0, 8));
+    requestAnimationFrame(() => promptRef.current?.focus());
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -334,7 +381,15 @@ export function ChatPage(): React.ReactElement {
           const ev = block.match(/^event:\s*(.+)$/m)?.[1];
           const data = block.match(/^data:\s*(.+)$/m)?.[1];
           if (!ev || !data) continue;
-          const payload = JSON.parse(data) as Record<string, unknown>;
+          let payload: Record<string, unknown>;
+          try {
+            payload = JSON.parse(data) as Record<string, unknown>;
+          } catch {
+            // Bloco SSE malformado: ignora só este bloco e segue o stream — sem
+            // isso, um JSON quebrado abortava o streaming inteiro (catch externo)
+            // e marcava a mensagem com erro. Mesmo padrão do FloatingTranscriptChat.
+            continue;
+          }
           if (ev === 'token') {
             const t = (payload.text as string) ?? '';
             setMessages((m) =>
@@ -353,13 +408,19 @@ export function ChatPage(): React.ReactElement {
             );
           } else if (ev === 'tool_start') {
             const name = (payload.name as string) ?? '';
+            const args = (payload.args as Record<string, unknown> | undefined) ?? undefined;
             setMessages((m) =>
-              m.map((x) => (x.id === asstId ? { ...x, tools: [...(x.tools ?? []), { name }] } : x)),
+              m.map((x) =>
+                x.id === asstId ? { ...x, tools: [...(x.tools ?? []), { name, args }] } : x,
+              ),
             );
           } else if (ev === 'tool_end') {
             const name = (payload.name as string) ?? '';
             const preview = (payload.preview as string) ?? '';
             const actionSummary = (payload.action_summary as string | undefined) ?? undefined;
+            const summary = (payload.summary as string | undefined) ?? undefined;
+            const content = (payload.content as string | undefined) ?? undefined;
+            const sources = (payload.sources as ToolSource[] | undefined) ?? undefined;
             setMessages((m) =>
               m.map((x) =>
                 x.id === asstId
@@ -367,7 +428,7 @@ export function ChatPage(): React.ReactElement {
                       ...x,
                       tools: (x.tools ?? []).map((t, i, arr) =>
                         i === arr.length - 1 && t.name === name
-                          ? { ...t, preview, actionSummary }
+                          ? { ...t, preview, actionSummary, summary, content, sources }
                           : t,
                       ),
                     }
@@ -529,7 +590,7 @@ export function ChatPage(): React.ReactElement {
           role: m.role,
           kind: m.kind,
           content: m.content,
-          tools: (m.tools as { name: string; preview?: string }[] | null) ?? undefined,
+          tools: (m.tools as ChatTool[] | null) ?? undefined,
         })),
       ]);
       toast.success(t('chat.documentSent'), {
@@ -617,7 +678,10 @@ export function ChatPage(): React.ReactElement {
         transition={{ duration: 0.4, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
         className="shrink-0 bg-gradient-to-t from-[var(--color-app-bg)] via-[var(--color-app-bg)]/95 to-transparent pt-4"
       >
-        <div className="mx-auto max-w-3xl px-6 pb-4">
+        <div
+          className="mx-auto max-w-3xl px-4 pb-4 sm:px-6"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        >
           <PromptBox
             ref={promptRef}
             value={input}
@@ -814,18 +878,7 @@ function Bubble({
         )}
       >
         {!isUser && msg.tools && msg.tools.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {msg.tools.map((t, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-mono text-violet-300"
-                title={t.preview ?? ''}
-              >
-                <Wand2 className="h-2.5 w-2.5" />
-                {t.name}
-              </span>
-            ))}
-          </div>
+          <ToolActivity tools={msg.tools} pending={!!msg.pending} t={t} />
         )}
 
         <div
@@ -841,7 +894,7 @@ function Bubble({
               <Spinner /> {t('chat.thinking')}
             </span>
           ) : isUser ? (
-            <p className="whitespace-pre-wrap">{msg.content}</p>
+            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
           ) : (
             <>
               {/* HITL: tool request_user_confirmation gera banner. Backend
@@ -874,6 +927,7 @@ function Bubble({
                 <ReasoningBlock text={msg.reasoning} streaming={!!msg.pending} t={t} />
               )}
               <Markdown>{msg.content}</Markdown>
+              <SourcesSection tools={msg.tools} t={t} />
               {msg.content.length > 0 && (
                 <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-[var(--color-app-border)] opacity-60 hover:opacity-100 transition-opacity">
                   <button
@@ -897,6 +951,312 @@ function Bubble({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Atividade de tools + fontes (ver .specs/026)
+// ----------------------------------------------------------------------------
+
+const TOOL_ICONS: Record<string, typeof Wand2> = {
+  web_search: Globe,
+  scrape_url: Globe,
+  search_transcripts: Search,
+  search_notes: Search,
+  brain_search: Network,
+  brain_neighbors: Network,
+  brain_sources: Network,
+  brain_path: Network,
+  list_transcripts: ListVideo,
+  transcribe_video: Video,
+  read_transcript: FileText,
+  read_transcript_section: FileText,
+  read_transcript_summary: FileText,
+  get_metadata: FileText,
+  list_notes: StickyNote,
+  read_note: StickyNote,
+  create_note: StickyNote,
+  edit_note: StickyNote,
+  delete_note: StickyNote,
+};
+
+const TOOL_LABEL_KEYS: Record<string, I18nKey> = {
+  web_search: 'tools.web_search',
+  scrape_url: 'tools.scrape_url',
+  search_transcripts: 'tools.search_transcripts',
+  search_notes: 'tools.search_notes',
+  brain_search: 'tools.brain_search',
+  brain_neighbors: 'tools.brain_neighbors',
+  brain_sources: 'tools.brain_sources',
+  brain_path: 'tools.brain_path',
+  list_transcripts: 'tools.list_transcripts',
+  transcribe_video: 'tools.transcribe_video',
+  read_transcript: 'tools.read_transcript',
+  read_transcript_section: 'tools.read_transcript_section',
+  read_transcript_summary: 'tools.read_transcript_summary',
+  get_metadata: 'tools.get_metadata',
+  list_notes: 'tools.list_notes',
+  read_note: 'tools.read_note',
+  create_note: 'tools.create_note',
+  edit_note: 'tools.edit_note',
+  delete_note: 'tools.delete_note',
+};
+
+// Resumo curto do argumento principal pro header do card (query da pesquisa,
+// URL do vídeo, etc). Tools sem arg "humano" não mostram resumo.
+function toolArgSummary(tool: ChatTool): string | null {
+  const args = tool.args ?? {};
+  const candidate =
+    args.query ?? args.url ?? args.title ?? args.transcript_id ?? args.note_id ?? args.source_id;
+  if (typeof candidate !== 'string') return null;
+  const text = candidate.trim();
+  if (!text) return null;
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+// Citações do OpenRouter costumam vir com URL de redirect (vertexaisearch...)
+// e o domínio REAL no título. Pro favicon/label, preferimos o título quando
+// ele tem cara de domínio; senão caímos no hostname da URL.
+function sourceDomain(s: ToolSource): string {
+  const title = s.title.trim().toLowerCase();
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(title)) return title.replace(/^www\./, '');
+  return hostnameOf(s.url);
+}
+
+// Favicon via DuckDuckGo (mesmo padrão do Orbital), com fallback pra globo
+// quando o serviço não tem o ícone do domínio.
+function SourceFavicon({
+  domain,
+  size = 16,
+}: {
+  domain: string;
+  size?: number;
+}): React.ReactElement {
+  const [failed, setFailed] = useState(false);
+  if (!domain || failed) {
+    return (
+      <Globe
+        className="shrink-0 text-[var(--color-app-muted)]"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  return (
+    <img
+      src={`https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`}
+      alt=""
+      width={size}
+      height={size}
+      loading="lazy"
+      className="shrink-0 rounded-sm object-contain"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function ToolActivity({
+  tools,
+  pending,
+  t,
+}: {
+  tools: ChatTool[];
+  pending: boolean;
+  t: TranslateFn;
+}): React.ReactElement | null {
+  // HITL tem banner próprio (ConfirmationPrompt) — fica fora da atividade.
+  const visible = tools.filter((tool) => tool.name !== 'request_user_confirmation');
+  if (visible.length === 0) return null;
+  return (
+    <div className="flex w-full flex-col gap-1">
+      {visible.map((tool, i) => (
+        <ToolActivityCard
+          key={i}
+          tool={tool}
+          running={pending && tool.preview === undefined && i === visible.length - 1}
+          t={t}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ToolActivityCard({
+  tool,
+  running,
+  t,
+}: {
+  tool: ChatTool;
+  running: boolean;
+  t: TranslateFn;
+}): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const Icon = TOOL_ICONS[tool.name] ?? Wand2;
+  const labelKey = TOOL_LABEL_KEYS[tool.name];
+  const label = labelKey ? t(labelKey) : tool.name;
+  const argSummary = toolArgSummary(tool);
+  const query = typeof tool.args?.query === 'string' ? tool.args.query.trim() : '';
+  const hasSources = (tool.sources?.length ?? 0) > 0;
+  const hasContent = !!tool.content;
+  // Corpo do card (specs 027/032): conteúdo completo em Markdown quando
+  // disponível; o preview JSON cru é só fallback de mensagens antigas.
+  const hasDetails = hasSources || hasContent || !!tool.summary || !!tool.preview;
+  return (
+    <div className="w-full max-w-md rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/60 text-[12px]">
+      <button
+        type="button"
+        onClick={() => hasDetails && setOpen((v) => !v)}
+        className={cn(
+          'flex w-full items-center gap-2 px-2.5 py-1.5 text-left',
+          hasDetails
+            ? 'cursor-pointer hover:bg-[var(--color-app-surface-hover)]/50'
+            : 'cursor-default',
+          'rounded-lg transition-colors',
+        )}
+        aria-expanded={hasDetails ? open : undefined}
+      >
+        <Icon className="h-3.5 w-3.5 shrink-0 text-violet-300" />
+        <span className="shrink-0 font-medium text-zinc-200">{label}</span>
+        {argSummary && <span className="truncate text-[var(--color-app-muted)]">{argSummary}</span>}
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {!running && tool.summary && (
+            <span className="hidden max-w-[180px] truncate text-[11px] text-[var(--color-app-muted)] sm:inline">
+              {tool.summary}
+            </span>
+          )}
+          {running ? (
+            <Spinner size={12} className="text-[var(--color-app-muted)]" />
+          ) : hasDetails ? (
+            <ChevronDown
+              className={cn(
+                'h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform',
+                open && 'rotate-180',
+              )}
+            />
+          ) : null}
+        </span>
+      </button>
+      {open && hasDetails && (
+        <div className="flex flex-col gap-2 border-t border-[var(--color-app-border)] px-2.5 py-2">
+          {query && (
+            <div className="inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/70 px-2.5 py-1">
+              <Search className="h-3 w-3 shrink-0 text-[var(--color-app-muted)]" />
+              <span className="truncate font-mono text-[11px] text-zinc-300">{query}</span>
+            </div>
+          )}
+          {hasSources && (
+            <ul className="flex flex-col gap-1">
+              {tool.sources!.map((s, i) => {
+                const domain = sourceDomain(s);
+                return (
+                  <li key={i}>
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-center gap-2 rounded-md px-1 py-0.5 text-zinc-300 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 hover:text-zinc-50"
+                    >
+                      <SourceFavicon domain={domain} size={16} />
+                      <span className="truncate">{s.title}</span>
+                      {domain && domain !== s.title.trim().toLowerCase() && (
+                        <span className="shrink-0 text-[10px] text-[var(--color-app-muted)]">
+                          {domain}
+                        </span>
+                      )}
+                      <ExternalLink className="ml-auto h-3 w-3 shrink-0 text-[var(--color-app-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {hasContent && (
+            <div className="max-h-72 overflow-y-auto rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/50 px-3 py-2 text-[13px] leading-relaxed">
+              <Markdown>{tool.content!}</Markdown>
+            </div>
+          )}
+          {!hasSources && !hasContent && tool.summary && (
+            <p className="text-[12px] text-[var(--color-app-subtle)]">{tool.summary}</p>
+          )}
+          {/* Fallback legado: mensagens antigas só têm o preview JSON cru
+              (truncado). Tentamos extrair um campo de texto legível; só
+              mostramos o JSON quando nem isso dá. */}
+          {!hasSources && !hasContent && !tool.summary && tool.preview && (
+            <LegacyPreview preview={tool.preview} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Extrai texto legível do preview JSON truncado de mensagens antigas
+// (pré-spec 027): pega o primeiro campo textual conhecido e desescapa.
+function legacyPreviewText(preview: string): string | null {
+  const match = preview.match(/"(answer|error|message|title|summary)":\s*"((?:[^"\\]|\\.)*)/);
+  if (!match) return null;
+  const text = match[2]!.replace(/\\n/g, ' ').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
+  return text.length >= 8 ? text : null;
+}
+
+function LegacyPreview({ preview }: { preview: string }): React.ReactElement {
+  const text = legacyPreviewText(preview);
+  if (text) {
+    return <p className="text-[12px] text-[var(--color-app-subtle)]">{text}</p>;
+  }
+  return (
+    <pre className="max-h-40 overflow-auto rounded bg-[var(--color-app-bg)]/60 p-2 font-mono text-[11px] whitespace-pre-wrap break-words text-[var(--color-app-subtle)]">
+      {preview}
+    </pre>
+  );
+}
+
+function SourcesSection({
+  tools,
+  t,
+}: {
+  tools?: ChatTool[];
+  t: TranslateFn;
+}): React.ReactElement | null {
+  const all = (tools ?? []).flatMap((tool) => tool.sources ?? []);
+  if (all.length === 0) return null;
+  const seen = new Set<string>();
+  const unique: ToolSource[] = [];
+  for (const s of all) {
+    if (!seen.has(s.url)) {
+      seen.add(s.url);
+      unique.push(s);
+    }
+  }
+  return (
+    <div className="mt-3 border-t border-[var(--color-app-border)] pt-2">
+      <div className="mb-1.5 text-[11px] font-medium tracking-wider uppercase text-[var(--color-app-muted)]">
+        {t('chat.sources')}
+      </div>
+      <ol className="flex flex-wrap gap-1.5">
+        {unique.map((s, i) => (
+          <li key={s.url}>
+            <a
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex max-w-xs items-center gap-1.5 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/60 px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:border-[var(--color-app-border-strong)] hover:text-zinc-50"
+            >
+              <span className="text-[var(--color-app-muted)]">{i + 1}.</span>
+              <SourceFavicon domain={sourceDomain(s)} size={13} />
+              <span className="truncate">{s.title}</span>
+            </a>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
@@ -1072,19 +1432,18 @@ function EmptyState({
   } as const;
 
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center space-y-8">
-      <div className="space-y-4">
+    <div className="flex flex-col items-center justify-center py-8 text-center space-y-6 sm:py-16 sm:space-y-8">
+      <div className="space-y-3 sm:space-y-4">
         <img
           src="/voxen-256.png"
           alt="Voxen"
           width={88}
           height={88}
           draggable={false}
-          className="mx-auto h-22 w-22 select-none pointer-events-none drop-shadow-[0_0_40px_rgba(139,92,246,0.25)]"
-          style={{ height: 88, width: 88 }}
+          className="mx-auto h-16 w-16 sm:h-[88px] sm:w-[88px] select-none pointer-events-none drop-shadow-[0_0_40px_rgba(139,92,246,0.25)]"
         />
         <div className="space-y-1.5 max-w-md mx-auto">
-          <p className="font-display text-2xl font-semibold tracking-tight">
+          <p className="font-display text-xl sm:text-2xl font-semibold tracking-tight">
             {t('chat.emptyTitle', { name: 'Vox' })}
           </p>
           <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
