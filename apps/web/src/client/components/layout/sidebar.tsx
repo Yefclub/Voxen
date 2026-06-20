@@ -36,14 +36,20 @@ import { useFetch, useMe } from '../../lib/hooks';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { NotesTree } from '../notes/notes-tree';
 
-interface NavItem {
+export interface NavItem {
   to: string;
   labelKey: I18nKey;
   Icon: typeof LayoutDashboard;
   adminOnly?: boolean;
 }
 
-const NAV: NavItem[] = [
+/**
+ * Lista canônica de destinos de navegação. Fonte única — consumida pela sidebar
+ * desktop, pelo drawer mobile e pelo menu do Perfil da bottom-nav (que expõe os
+ * destinos que não são abas de topo). Manter em sincronia com `BOTTOM_NAV_TABS`
+ * em `lib/mobile-nav.ts`.
+ */
+export const NAV: NavItem[] = [
   { to: '/dashboard', labelKey: 'shell.nav.dashboard', Icon: LayoutDashboard },
   { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessagesSquare },
   { to: '/jobs', labelKey: 'shell.nav.jobs', Icon: PlayCircle },

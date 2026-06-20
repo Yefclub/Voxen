@@ -22,9 +22,14 @@ export interface EdgeSwipeThresholds {
   maxAngleRatio: number;
 }
 
+// Calibragem alinhada a padrões mobile 2025: zona de borda estreita (~24px) pra
+// não capturar toques de conteúdo, e deslocamento mínimo de 60px pra confirmar
+// intenção de gesto (descarta toques curtos/acidentais). Ângulo ≤ 0.6 descarta
+// scroll vertical. Caveat (PWA no browser): a borda esquerda colide com o gesto
+// "voltar" do navegador/OS — confiável só em PWA instalado (standalone).
 export const DEFAULT_THRESHOLDS: EdgeSwipeThresholds = {
-  edgeZone: 28,
-  minDistance: 56,
+  edgeZone: 24,
+  minDistance: 60,
   maxAngleRatio: 0.6,
 };
 

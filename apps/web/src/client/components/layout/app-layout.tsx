@@ -11,15 +11,18 @@ import { useVersionMonitor } from '../../lib/use-version-monitor';
 import { ChatContextProvider } from '../../lib/chat-context-ctx';
 import { useIsDesktop } from '../../lib/use-media-query';
 import { useEdgeSwipe } from '../../lib/use-edge-swipe';
+import { showsMobileBack, hasOwnMobileChrome } from '../../lib/mobile-nav';
+import { MobileBackButton } from './mobile-back-button';
 
 export function AppLayout(): React.ReactElement {
   const { data, loading } = useMe();
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
-  // Navegação mobile (<md): a Sidebar é hidden md:flex — o drawer é a única
-  // navegação abaixo de 768px. Estado vive aqui pra ligar Topbar (hamburger)
-  // e drawer (overlay fora do header, que tem backdrop-blur).
+  // Navegação mobile (<md): NÃO há header no topo. A navegação é a bottom-nav
+  // (abas + menu do Perfil com os destinos únicos) + botão de voltar flutuante +
+  // swipe da borda pra abrir o drawer (bônus). Estado do drawer vive aqui pra
+  // ligar o edge-swipe ao overlay.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isDesktop = useIsDesktop();
   // Swipe da borda esquerda → direita abre o drawer; swipe de volta fecha. Só
@@ -81,9 +84,17 @@ export function AppLayout(): React.ReactElement {
   const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
   const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
   const isFullBleed = isChat || isGraph;
+  // Botão de voltar flutuante (mobile): só em sub-páginas (não abas de topo) e
+  // nunca em rotas que já têm chrome próprio de nav (ex.: /grafo).
+  const showBack = showsMobileBack(location.pathname) && !hasOwnMobileChrome(location.pathname);
+  // Quando o botão de voltar flutuante aparece (mobile, sub-páginas não-fullbleed),
+  // o conteúdo ganha um padding-top pra não ficar atrás do botão. No desktop
+  // (md:) zera, pois lá existe header e o botão não renderiza.
+  const backPad = showBack ? ' pt-[calc(env(safe-area-inset-top)+3.5rem)] md:pt-0' : '';
   const mainClass = isFullBleed
     ? 'flex-1 min-h-0'
-    : 'flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6';
+    : 'flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6' +
+      backPad;
 
   return (
     <ChatContextProvider>
@@ -95,8 +106,9 @@ export function AppLayout(): React.ReactElement {
           onClose={() => setMobileNavOpen(false)}
         />
         <SidebarSpacer />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <Topbar user={data.user} onOpenMobileNav={() => setMobileNavOpen(true)} />
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <Topbar user={data.user} />
+          {showBack && <MobileBackButton />}
           <main ref={mainRef} className={mainClass}>
             <AnimatedOutlet />
           </main>

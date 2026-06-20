@@ -24,6 +24,8 @@ import { useI18n, type I18nKey } from '../../lib/i18n';
 import { useMe } from '../../lib/hooks';
 import { apiPost } from '../../lib/api';
 import type { MeUser } from '../../lib/types';
+import { NAV } from './sidebar';
+import { isBottomNavTab } from '../../lib/mobile-nav';
 
 interface MobileNavItem {
   to: string;
@@ -58,6 +60,13 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
   const navigate = useNavigate();
   const { t } = useI18n();
   const { refresh } = useMe();
+
+  // Destinos únicos que NÃO são abas da bottom-nav (dashboard, notas, automações,
+  // setup + admin) entram no menu do Perfil pra não dependerem do swipe/drawer.
+  // Fonte canônica = NAV da sidebar; aplica o mesmo gate de admin por role.
+  const menuItems = NAV.filter(
+    (n) => !isBottomNavTab(n.to) && (!n.adminOnly || user.role === 'ADMIN'),
+  );
 
   async function onSignOut(): Promise<void> {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
@@ -122,7 +131,13 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
               <span className="max-w-full truncate">{t('common.profile')}</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="top" sideOffset={8} className="w-60 mb-1">
+          <DropdownMenuContent
+            align="end"
+            side="top"
+            sideOffset={8}
+            className="w-60 mb-1 max-h-[min(70vh,28rem)] overflow-y-auto"
+            style={{ marginBottom: 'max(env(safe-area-inset-bottom), 0.25rem)' }}
+          >
             <DropdownMenuLabel className="flex flex-col items-start gap-0.5 py-2.5">
               <div className="flex items-center gap-2 w-full">
                 <span className="text-sm font-medium text-zinc-100 truncate flex-1">
@@ -146,6 +161,18 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
                 <span className="truncate">{t('common.profile')}</span>
               </Link>
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {/* Destinos únicos (não-abas): dashboard, notas, automações, setup +
+                admin. NavLinks fecham o dropdown ao navegar (comportamento padrão
+                do DropdownMenuItem ao clicar). */}
+            {menuItems.map(({ to, labelKey, Icon }) => (
+              <DropdownMenuItem key={to} asChild>
+                <NavLink to={to} className="flex items-center gap-2 cursor-pointer">
+                  <Icon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
+                  <span className="truncate">{t(labelKey)}</span>
+                </NavLink>
+              </DropdownMenuItem>
+            ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem destructive onSelect={() => void onSignOut()}>
               <LogOut className="h-3.5 w-3.5" />
