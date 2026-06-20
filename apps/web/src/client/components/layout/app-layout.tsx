@@ -9,6 +9,8 @@ import { Spinner } from '../ui/spinner';
 import { useJobsWatcher } from '../../lib/use-jobs-watcher';
 import { useVersionMonitor } from '../../lib/use-version-monitor';
 import { ChatContextProvider } from '../../lib/chat-context-ctx';
+import { useIsDesktop } from '../../lib/use-media-query';
+import { useEdgeSwipe } from '../../lib/use-edge-swipe';
 
 export function AppLayout(): React.ReactElement {
   const { data, loading } = useMe();
@@ -19,6 +21,16 @@ export function AppLayout(): React.ReactElement {
   // navegação abaixo de 768px. Estado vive aqui pra ligar Topbar (hamburger)
   // e drawer (overlay fora do header, que tem backdrop-blur).
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const isDesktop = useIsDesktop();
+  // Swipe da borda esquerda → direita abre o drawer; swipe de volta fecha. Só
+  // ativo no mobile (no desktop a navegação é a sidebar). Hooks sempre rodam
+  // (regras de hooks) — `enabled` controla o anexo dos listeners.
+  useEdgeSwipe({
+    enabled: !isDesktop,
+    isOpen: mobileNavOpen,
+    onOpen: () => setMobileNavOpen(true),
+    onClose: () => setMobileNavOpen(false),
+  });
   // Watcher global de jobs do user logado (toast em qualquer página)
   useJobsWatcher(!!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone), (path) =>
     navigate(path),
@@ -88,7 +100,7 @@ export function AppLayout(): React.ReactElement {
           <main ref={mainRef} className={mainClass}>
             <AnimatedOutlet />
           </main>
-          {!isFullBleed && <MobileBottomNav />}
+          {!isFullBleed && <MobileBottomNav user={data.user} />}
         </div>
       </div>
     </ChatContextProvider>

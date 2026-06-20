@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import type { MeUser } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
+import { useIsDesktop } from '../../lib/use-media-query';
 import { useConversations, type ConvSummary } from '../../lib/use-conversations';
 import { useNotes } from '../../lib/use-notes';
 import { useI18n, type I18nKey } from '../../lib/i18n';
@@ -97,6 +98,13 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const location = useLocation();
   const { t } = useI18n();
   const { collapsed, toggle } = useSidebarCollapsed();
+  const isDesktop = useIsDesktop();
+
+  // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
+  // seu corpo modo-aware (que monta os hooks pesados de conversas/notas) NÃO
+  // são montados aqui — render condicional, não só CSS — pra manter o mobile
+  // leve (sem fetches nem árvore de notas viva por trás).
+  if (!isDesktop) return null;
 
   // Em /grafo a navegação lateral some — o grafo ocupa a tela toda (o Topbar
   // permanece, e a barra flutuante do grafo oferece o "voltar").
@@ -450,7 +458,7 @@ function ChatModeBody({ items }: { items: NavItem[] }): React.ReactElement {
           className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors"
         >
           <ChevronDown
-            className={cn('h-3 w-3 transition-transform', menuOpen ? 'rotate-180' : '')}
+            className={cn('h-3 w-3 transition-transform', menuOpen ? '' : 'rotate-180')}
           />
           {t('shell.menu')}
         </button>
@@ -563,7 +571,7 @@ function NotasModeBody({
           className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors"
         >
           <ChevronDown
-            className={cn('h-3 w-3 transition-transform', menuOpen ? 'rotate-180' : '')}
+            className={cn('h-3 w-3 transition-transform', menuOpen ? '' : 'rotate-180')}
           />
           {t('shell.menu')}
         </button>
@@ -597,10 +605,13 @@ function NotasModeBody({
   );
 }
 
-export function SidebarSpacer(): React.ReactElement {
+export function SidebarSpacer(): React.ReactElement | null {
   const { collapsed } = useSidebarCollapsed();
   const location = useLocation();
+  const isDesktop = useIsDesktop();
   const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
+  // No mobile não há sidebar montada — sem spacer (evita reservar largura).
+  if (!isDesktop) return null;
   return (
     <motion.div
       className="hidden md:block shrink-0"
