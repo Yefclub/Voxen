@@ -10,7 +10,7 @@ set -eu
 #   VOXEN_TUNNEL_URL     URL de controle do túnel (ex.: https://tunnel.exemplo.com)
 #   VOXEN_TUNNEL_TOKEN   Token gerado na UI admin do Voxen (credencial de auth)
 # Opcionais:
-#   VOXEN_SOCKS_REMOTE       Remote reverso (default: R:1080:socks)
+#   VOXEN_SOCKS_REMOTE       Remote reverso (default: R:127.0.0.1:1080:socks)
 #   VOXEN_TUNNEL_FINGERPRINT Fingerprint do server pra host-key pinning
 #   VOXEN_KEEPALIVE          Intervalo de keepalive (default: 25s)
 #   VOXEN_MAX_RETRY_INTERVAL Espera máxima entre tentativas (default: 30s)
@@ -18,7 +18,10 @@ set -eu
 
 VOXEN_TUNNEL_URL="${VOXEN_TUNNEL_URL:-}"
 VOXEN_TUNNEL_TOKEN="${VOXEN_TUNNEL_TOKEN:-}"
-VOXEN_SOCKS_REMOTE="${VOXEN_SOCKS_REMOTE:-R:1080:socks}"
+# Bind do SOCKS reverso em 127.0.0.1 na VPS (defesa em profundidade): o proxy
+# nunca é exposto à rede do host, só o worker local o consome. Deve casar com a
+# regex do authfile do server (^R:127\.0\.0\.1:1080:socks$).
+VOXEN_SOCKS_REMOTE="${VOXEN_SOCKS_REMOTE:-R:127.0.0.1:1080:socks}"
 VOXEN_TUNNEL_FINGERPRINT="${VOXEN_TUNNEL_FINGERPRINT:-}"
 VOXEN_KEEPALIVE="${VOXEN_KEEPALIVE:-25s}"
 VOXEN_MAX_RETRY_INTERVAL="${VOXEN_MAX_RETRY_INTERVAL:-30s}"

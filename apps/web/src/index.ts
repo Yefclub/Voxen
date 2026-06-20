@@ -389,6 +389,19 @@ app.get('*', async (c) => {
 // O default precisa ter `{ port, fetch }` (formato BunServeOptions).
 const port = Number(process.env.PORT ?? 3000);
 
+// Sincroniza o authfile do chisel embutido com o `proxy_agent_token` no boot
+// (uma vez). Best-effort: roda fora do path de serve e nunca quebra o startup.
+// Só em produção (entrypoint seta NODE_ENV=production): em dev/test o import de
+// `../src/index` pelos testes não deve tocar /run/voxen nem DB.
+if (process.env.NODE_ENV === 'production') {
+  void import('./lib/proxy-agent-tunnel')
+    .then(({ syncChiselAuthfile }) => syncChiselAuthfile())
+    .catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[proxy-agent] sync no boot falhou: ${message}`);
+    });
+}
+
 export default {
   port,
   fetch: app.fetch,

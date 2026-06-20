@@ -148,10 +148,55 @@ prisma generate --schema=/app/prisma/schema.prisma
 echo "[easypanel] applying migrations..."
 prisma migrate deploy --schema=/app/prisma/schema.prisma
 
+# ---------------------------------------------------------------------------
+# chisel — servidor de túnel reverso (opcional, dirigido por token).
+# Aceita conexões do agente residencial na porta de controle (CHISEL_PORT,
+# default 8088), que é exposta via domínio TLS no deploy. O SOCKS reverso
+# (127.0.0.1:1080) NÃO é publicado — só o worker local o consome.
+# O authfile é gerenciado em runtime pela app web (syncChiselAuthfile): começa
+# vazio ({}, recusa qualquer conexão) e é preenchido quando o admin gera o token.
+# O chisel faz hot-reload automático do authfile ao detectar mudança (sem sinal).
+# Best-effort: se o chisel falhar, logamos e seguimos — o boot dos 3 serviços
+# core NÃO depende dele.
+# ---------------------------------------------------------------------------
+export CHISEL_PORT="${CHISEL_PORT:-8088}"
+export CHISEL_AUTHFILE="${CHISEL_AUTHFILE:-/run/voxen/chisel-auth.json}"
+export CHISEL_PIDFILE="${CHISEL_PIDFILE:-/run/voxen/chisel.pid}"
+
+start_chisel() {
+  if ! command -v chisel >/dev/null 2>&1; then
+    echo "[easypanel] chisel não instalado — túnel de proxy desabilitado"
+    return 0
+  fi
+  mkdir -p "$(dirname "$CHISEL_AUTHFILE")" "$(dirname "$CHISEL_PIDFILE")" 2>/dev/null || true
+  # authfile inicial vazio: chisel falha se o arquivo não existir. {} = nega tudo
+  # até o admin gerar o token (a app web sobrescreve via SIGHUP).
+  if [[ ! -f "$CHISEL_AUTHFILE" ]]; then
+    if echo '{}' > "$CHISEL_AUTHFILE"; then
+      chmod 600 "$CHISEL_AUTHFILE" 2>/dev/null || true
+    else
+      echo "[easypanel] AVISO: não foi possível criar $CHISEL_AUTHFILE — túnel desabilitado"
+      return 0
+    fi
+  fi
+  echo "[easypanel] starting chisel server on 0.0.0.0:${CHISEL_PORT} (reverse)..."
+  chisel server \
+    --reverse \
+    --keepalive 25s \
+    --authfile "$CHISEL_AUTHFILE" \
+    --port "${CHISEL_PORT}" &
+  echo $! > "$CHISEL_PIDFILE" 2>/dev/null || true
+}
+
+start_chisel || echo "[easypanel] AVISO: chisel server não iniciou (seguindo sem túnel)"
+
 terminate() {
   trap - TERM INT
   echo "[easypanel] stopping services..."
   kill -TERM "$chat_pid" "$worker_pid" "$web_pid" 2>/dev/null || true
+  if [[ -f "$CHISEL_PIDFILE" ]]; then
+    kill -TERM "$(cat "$CHISEL_PIDFILE" 2>/dev/null)" 2>/dev/null || true
+  fi
   wait "$chat_pid" "$worker_pid" "$web_pid" 2>/dev/null || true
 }
 

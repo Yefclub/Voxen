@@ -280,6 +280,16 @@ adminRoutes.post('/proxy-agent/token', async (c) => {
   crypto.getRandomValues(tokenBytes);
   const token = toBase64Url(tokenBytes);
   await setSetting('proxy_agent_token', token);
+  // Aponta o worker pro SOCKS local do túnel (worker já é socks5-capable, spec
+  // 058). Só seta se ainda não houver um proxy customizado configurado pelo
+  // operador — não sobrescrevemos um http proxy intencional.
+  const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
+  if (!currentProxy) {
+    await setSetting('yt_dlp_proxy_urls', LOCAL_TUNNEL_SOCKS_URL);
+  }
+  // Sincroniza o authfile do chisel e recarrega o servidor (best-effort).
+  const { syncChiselAuthfile } = await import('../lib/proxy-agent-tunnel');
+  await syncChiselAuthfile();
   return c.json({
     token,
     tunnelUrl: deriveTunnelUrl(),
@@ -291,8 +301,21 @@ adminRoutes.post('/proxy-agent/token', async (c) => {
 adminRoutes.delete('/proxy-agent/token', async (c) => {
   const { deleteSetting } = await import('../lib/settings');
   await deleteSetting('proxy_agent_token');
+  // Limpa o proxy do worker SOMENTE se for exatamente o SOCKS local do túnel —
+  // não apaga um proxy http custom que o operador tenha configurado.
+  const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
+  if (currentProxy === LOCAL_TUNNEL_SOCKS_URL) {
+    await deleteSetting('yt_dlp_proxy_urls');
+  }
+  // Limpa o authfile (passa a {} -> nega conexões) e recarrega (best-effort).
+  const { syncChiselAuthfile } = await import('../lib/proxy-agent-tunnel');
+  await syncChiselAuthfile();
   return c.json({ ok: true });
 });
+
+// SOCKS5 local exposto pelo túnel chisel (bind em 127.0.0.1:1080 na VPS).
+// socks5h => resolução de DNS no lado do agente residencial.
+const LOCAL_TUNNEL_SOCKS_URL = 'socks5h://127.0.0.1:1080';
 
 function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
