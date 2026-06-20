@@ -226,21 +226,32 @@ function ActivityRow({
     <li className="group">
       <Link
         to={to}
-        className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 focus:outline-none focus-visible:bg-[var(--color-app-surface-hover)]"
+        className="flex items-center gap-3 px-4 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 focus:outline-none focus-visible:bg-[var(--color-app-surface-hover)] sm:gap-4 sm:px-5"
       >
         <SourcePreview source={source} ytId={ytId} isUpload={isUpload} />
-        <Badge variant={variant} className="shrink-0 min-w-28 justify-center text-center">
+        {/* Desktop: badge como coluna própria (min-w-28); no mobile vai pra
+            linha de baixo junto da data — ver dentro de .flex-1 abaixo. */}
+        <Badge
+          variant={variant}
+          className="hidden shrink-0 min-w-28 justify-center text-center sm:inline-flex"
+        >
           {label}
         </Badge>
         <div className="flex-1 min-w-0">
           <p className="text-sm text-zinc-200 truncate font-mono tracking-tight">
             {displayJobSource(job.sourceUrl)}
           </p>
-          <p className="text-xs text-[var(--color-app-muted)] mt-0.5">
-            {formatRelative(new Date(job.queuedAt), locale)}
-          </p>
+          {/* Mobile: badge (largura auto) + data numa linha única, sem quebra. */}
+          <div className="mt-1 flex min-w-0 items-center gap-2 sm:mt-0.5 sm:block">
+            <Badge variant={variant} className="shrink-0 text-center sm:hidden">
+              {label}
+            </Badge>
+            <p className="min-w-0 truncate whitespace-nowrap text-xs text-[var(--color-app-muted)]">
+              {formatRelative(new Date(job.queuedAt), locale)}
+            </p>
+          </div>
         </div>
-        <ArrowRight className="h-4 w-4 text-[var(--color-app-muted)] transition-all opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 shrink-0" />
+        <ArrowRight className="hidden h-4 w-4 shrink-0 text-[var(--color-app-muted)] opacity-50 transition-all group-hover:translate-x-0.5 group-hover:opacity-100 sm:block" />
       </Link>
     </li>
   );
@@ -257,7 +268,7 @@ function SourcePreview({
 }): React.ReactElement {
   if (source === 'YOUTUBE' && ytId) {
     return (
-      <div className="shrink-0 h-14 w-24 rounded-lg overflow-hidden bg-[var(--color-app-bg-elevated)] border border-[var(--color-app-border)]">
+      <div className="shrink-0 h-12 w-16 sm:h-14 sm:w-24 rounded-lg overflow-hidden bg-[var(--color-app-bg-elevated)] border border-[var(--color-app-border)]">
         <img
           src={`https://i.ytimg.com/vi/${ytId}/mqdefault.jpg`}
           alt=""
@@ -301,7 +312,7 @@ function SourcePreview({
   } as const;
   if (isUpload) {
     return (
-      <div className="shrink-0 h-14 w-24 rounded-lg overflow-hidden border bg-gradient-to-br from-emerald-500/15 to-violet-500/5 text-emerald-300/80 border-emerald-500/20 flex items-center justify-center">
+      <div className="shrink-0 h-12 w-16 sm:h-14 sm:w-24 rounded-lg overflow-hidden border bg-gradient-to-br from-emerald-500/15 to-violet-500/5 text-emerald-300/80 border-emerald-500/20 flex items-center justify-center">
         <PlayCircle className="h-5 w-5" />
       </div>
     );
@@ -310,7 +321,7 @@ function SourcePreview({
     source === null ? map.null : (map[source as Exclude<typeof source, null>] ?? map.null);
   return (
     <div
-      className={`shrink-0 h-14 w-24 rounded-lg overflow-hidden border bg-gradient-to-br flex items-center justify-center ${cls}`}
+      className={`shrink-0 h-12 w-16 sm:h-14 sm:w-24 rounded-lg overflow-hidden border bg-gradient-to-br flex items-center justify-center ${cls}`}
     >
       <Icon className="h-5 w-5" />
     </div>
