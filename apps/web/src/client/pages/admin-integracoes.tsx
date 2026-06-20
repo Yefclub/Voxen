@@ -577,9 +577,7 @@ function ProxyAgentSection(): React.ReactElement {
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
               <Check className="h-4 w-4 text-emerald-400" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-100">
-                  {t('admin.integrations.proxy.configured')}
-                </p>
+                <p className="text-sm text-zinc-100">{t('admin.integrations.proxy.configured')}</p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setConfirmRevoke(true)}>
                 <Trash2 className="h-3.5 w-3.5" />
