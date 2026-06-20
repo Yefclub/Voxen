@@ -9,7 +9,6 @@ import {
   ExternalLink,
   FileText,
   Globe,
-  Library,
   ListVideo,
   Network,
   Search,
@@ -651,7 +650,7 @@ export function ChatPage(): React.ReactElement {
           transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
           className="mx-auto max-w-3xl px-6 py-8 space-y-5"
         >
-          {empty && <EmptyState onPick={(s) => promptRef.current?.setValue(s)} t={t} />}
+          {empty && <EmptyState />}
           <AnimatePresence initial={false}>
             {messages.map((m) => (
               <motion.div
@@ -1378,104 +1377,20 @@ function ReasoningBlock({
   );
 }
 
-function EmptyState({
-  onPick,
-  t,
-}: {
-  onPick: (s: string) => void;
-  t: TranslateFn;
-}): React.ReactElement {
-  // 4 atalhos com ícones temáticos diferentes — sugestões fixas viraram cards
-  // categorizados pra reduzir poluição visual e dar afford clara de "exemplo".
-  const cards: {
-    icon: typeof Sparkles;
-    title: string;
-    hint: string;
-    prompt: string;
-    accent: 'violet' | 'emerald' | 'amber' | 'rose';
-  }[] = [
-    {
-      icon: Library,
-      title: t('chat.card.library.title'),
-      hint: t('chat.card.library.hint'),
-      prompt: t('chat.card.library.prompt'),
-      accent: 'violet',
-    },
-    {
-      icon: Sparkles,
-      title: t('chat.card.summary.title'),
-      hint: t('chat.card.summary.hint'),
-      prompt: t('chat.card.summary.prompt'),
-      accent: 'emerald',
-    },
-    {
-      icon: ListVideo,
-      title: t('chat.card.ideas.title'),
-      hint: t('chat.card.ideas.hint'),
-      prompt: t('chat.card.ideas.prompt'),
-      accent: 'amber',
-    },
-    {
-      icon: Search,
-      title: t('chat.card.search.title'),
-      hint: t('chat.card.search.hint'),
-      prompt: t('chat.card.search.prompt'),
-      accent: 'rose',
-    },
-  ];
-
-  const accentMap = {
-    violet: 'from-violet-500/30 to-violet-500/5 border-violet-500/40 text-violet-300',
-    emerald: 'from-emerald-500/30 to-emerald-500/5 border-emerald-500/40 text-emerald-300',
-    amber: 'from-amber-500/30 to-amber-500/5 border-amber-500/40 text-amber-300',
-    rose: 'from-rose-500/30 to-rose-500/5 border-rose-500/40 text-rose-300',
-  } as const;
-
+function EmptyState(): React.ReactElement {
+  // Home minimalista: apenas a logo Voxen centralizada acima do composer.
+  // Sugestões/saudação foram removidas (ver .specs/053). O wrapper externo
+  // (scrollRef) preenche a altura; aqui só centralizamos a logo verticalmente.
   return (
-    <div className="flex flex-col items-center justify-center py-8 text-center space-y-6 sm:py-16 sm:space-y-8">
-      <div className="space-y-3 sm:space-y-4">
-        <img
-          src="/voxen-256.png"
-          alt="Voxen"
-          width={88}
-          height={88}
-          draggable={false}
-          className="mx-auto h-16 w-16 sm:h-[88px] sm:w-[88px] select-none pointer-events-none drop-shadow-[0_0_40px_rgba(139,92,246,0.25)]"
-        />
-        <div className="space-y-1.5 max-w-md mx-auto">
-          <p className="font-display text-xl sm:text-2xl font-semibold tracking-tight">
-            {t('chat.emptyTitle', { name: 'Vox' })}
-          </p>
-          <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
-            {t('chat.emptyDescription')}
-          </p>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-xl">
-        {cards.map(({ icon: Icon, title, hint, prompt, accent }) => (
-          <button
-            key={title}
-            type="button"
-            onClick={() => onPick(prompt)}
-            className="group relative text-left rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/50 backdrop-blur-sm p-3.5 transition-all hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface)] hover:-translate-y-0.5"
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className={cn(
-                  'shrink-0 h-9 w-9 rounded-lg border bg-gradient-to-br flex items-center justify-center transition-transform group-hover:scale-110',
-                  accentMap[accent],
-                )}
-              >
-                <Icon className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[13px] font-medium text-zinc-100 leading-tight">{title}</p>
-                <p className="text-[11px] text-[var(--color-app-muted)] mt-0.5 truncate">{hint}</p>
-              </div>
-            </div>
-          </button>
-        ))}
-      </div>
+    <div className="flex min-h-[55vh] flex-col items-center justify-center">
+      <img
+        src="/voxen-256.png"
+        alt="Voxen"
+        width={96}
+        height={96}
+        draggable={false}
+        className="h-20 w-20 sm:h-24 sm:w-24 select-none pointer-events-none drop-shadow-[0_0_40px_rgba(139,92,246,0.25)]"
+      />
     </div>
   );
 }
