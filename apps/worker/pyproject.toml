@@ -17,6 +17,7 @@ dependencies = [
     "youtube-transcript-api>=1.0.3,<1.1.dev0",
     "bgutil-ytdlp-pot-provider>=1.3.1",
     "yt-dlp[default,deno,curl-cffi]>=2026.6.9",
+    "requests[socks]>=2.34.2",
 ]
 
 [dependency-groups]
