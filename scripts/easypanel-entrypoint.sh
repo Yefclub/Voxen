@@ -10,6 +10,33 @@ require_env() {
 }
 
 require_env APP_BASE_URL
+
+# Fail-fast em APP_BASE_URL malformado ANTES de subir qualquer serviço.
+# Um valor como "https://" (esquema sem host) faz o better-auth crashar com
+# "Invalid base URL", a web sai com status 1 e a stack entra em loop críptico.
+# Exige esquema http/https E pelo menos um caractere de host após "://".
+validate_app_base_url() {
+  case "$APP_BASE_URL" in
+    http://?* | https://?*)
+      # Há algo após "://"; rejeitar se esse algo começa com "/" (host vazio,
+      # ex.: "https:///path") — nesse caso o primeiro char após // é "/".
+      local rest="${APP_BASE_URL#*://}"
+      case "$rest" in
+        /*)
+          echo "[easypanel] ERRO: APP_BASE_URL inválido: '$APP_BASE_URL'. Precisa incluir o host, ex.: https://voxen.seudominio.com" >&2
+          exit 1
+          ;;
+      esac
+      ;;
+    *)
+      echo "[easypanel] ERRO: APP_BASE_URL inválido: '$APP_BASE_URL'. Precisa incluir o host, ex.: https://voxen.seudominio.com" >&2
+      exit 1
+      ;;
+  esac
+}
+
+validate_app_base_url
+
 require_env DATABASE_URL
 require_env REDIS_URL
 require_env BETTER_AUTH_SECRET

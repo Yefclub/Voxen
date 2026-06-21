@@ -32,6 +32,31 @@ import { AnimatedPage } from '../components/motion/animated-page';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { useI18n } from '../lib/i18n';
 
+// Path do proxy de WebSocket do túnel na web do Voxen. Deve casar com o default
+// do backend (PROXY_TUNNEL_PATH). Usado só como fallback de EXIBIÇÃO quando o
+// backend não tem APP_BASE_URL e portanto não derivou a URL — aqui usamos o
+// origin da janela (a URL que o admin já está acessando é a URL do Voxen).
+const TUNNEL_PATH = '/_tunnel';
+
+/**
+ * Converte um origin HTTP(S) (ex.: o `window.location.origin`) na URL de conexão
+ * do túnel: http→ws, https→wss, + path do proxy. Retorna null se inválido.
+ */
+function originToTunnelUrl(origin: string): string | null {
+  try {
+    const url = new URL(origin);
+    if (url.protocol === 'https:') url.protocol = 'wss:';
+    else if (url.protocol === 'http:') url.protocol = 'ws:';
+    else return null;
+    url.pathname = TUNNEL_PATH;
+    url.search = '';
+    url.hash = '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return null;
+  }
+}
+
 interface TelegramAdminStatus {
   configured: boolean;
   tokenPreview: string | null;
@@ -547,14 +572,20 @@ function ProxyAgentSection(): React.ReactElement {
     );
   }
 
-  const tunnelUrl = status.tunnelUrl ?? '<TUNNEL_URL>';
+  // URL de conexão auto-coletada: o backend deriva da APP_BASE_URL do próprio
+  // Voxen (http→ws, https→wss, path /_tunnel). Se o backend não tiver
+  // APP_BASE_URL setado, usamos o origin da janela atual como fallback de EXIBIÇÃO
+  // (a URL que o admin está acessando agora já é a URL pública do Voxen).
+  const displayTunnelUrl = status.tunnelUrl ?? originToTunnelUrl(window.location.origin);
+  const tunnelUrl = displayTunnelUrl ?? '<TUNNEL_URL>';
   const tokenForSnippet = newToken ?? '<TOKEN>';
-  // Comando de instalação do agente residencial (chisel client). O runtime real
-  // chega em PR futura; aqui é só o snippet pronto pra colar.
+  // Comando de instalação do agente residencial (chisel client). A URL é a do
+  // próprio Voxen + o remote SOCKS reverso esperado pelo authfile do server.
   const snippet = [
     'docker run -d --name voxen-proxy-agent \\',
     `  -e VOXEN_TUNNEL_URL="${tunnelUrl}" \\`,
     `  -e VOXEN_TUNNEL_TOKEN="${tokenForSnippet}" \\`,
+    '  -e VOXEN_SOCKS_REMOTE="R:127.0.0.1:1080:socks" \\',
     '  ghcr.io/yefclub/voxen-proxy-agent:latest',
   ].join('\n');
 
@@ -616,10 +647,17 @@ function ProxyAgentSection(): React.ReactElement {
 
           <div className="space-y-1.5">
             <Label>{t('admin.integrations.proxy.tunnelUrl')}</Label>
-            {status.tunnelUrl ? (
-              <code className="block font-mono text-[12px] text-zinc-100 break-all bg-[var(--color-app-bg-elevated)] rounded px-2 py-2 border border-[var(--color-app-border)]">
-                {status.tunnelUrl}
-              </code>
+            {displayTunnelUrl ? (
+              <>
+                <code className="block font-mono text-[12px] text-zinc-100 break-all bg-[var(--color-app-bg-elevated)] rounded px-2 py-2 border border-[var(--color-app-border)]">
+                  {displayTunnelUrl}
+                </code>
+                {!status.tunnelUrl && (
+                  <p className="text-[11px] text-[var(--color-app-muted)]">
+                    {t('admin.integrations.proxy.tunnelFromOrigin')}
+                  </p>
+                )}
+              </>
             ) : (
               <p className="text-[12px] text-amber-300/90">
                 {t('admin.integrations.proxy.tunnelMissing')}
