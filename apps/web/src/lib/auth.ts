@@ -23,11 +23,41 @@ function requireEnv(name: string, minLength = 0): string {
   return v;
 }
 
+const FALLBACK_BASE_URL = 'http://localhost:3000';
+
+/**
+ * Resolve o baseURL do better-auth a partir de APP_BASE_URL com defesa em
+ * profundidade. O fail-fast com mensagem clara fica no entrypoint de prod
+ * (scripts/easypanel-entrypoint.sh); aqui só garantimos que uma URL ausente
+ * ou malformada (ex.: `"https://"` — esquema sem host) NÃO propague o erro
+ * críptico `Invalid base URL` do better-auth, que derruba o processo em loop.
+ * Em vez disso, logamos e caímos no fallback de desenvolvimento.
+ */
+export function resolveAuthBaseURL(raw: string | undefined): string {
+  if (!raw || raw.length === 0) {
+    return FALLBACK_BASE_URL;
+  }
+  try {
+    const url = new URL(raw);
+    if ((url.protocol === 'http:' || url.protocol === 'https:') && url.hostname.length > 0) {
+      return raw;
+    }
+    console.error(
+      `[auth] APP_BASE_URL inválido (esquema/host): '${raw}'. Usando fallback ${FALLBACK_BASE_URL}.`,
+    );
+  } catch {
+    console.error(
+      `[auth] APP_BASE_URL malformado: '${raw}'. Usando fallback ${FALLBACK_BASE_URL}.`,
+    );
+  }
+  return FALLBACK_BASE_URL;
+}
+
 const config: BetterAuthOptions = {
   database: prismaAdapter(db, { provider: 'postgresql' }),
   // Mínimo 32 chars pra HMAC seguro. Em prod, gerar com `openssl rand -base64 32`.
   secret: requireEnv('BETTER_AUTH_SECRET', 32),
-  baseURL: process.env.APP_BASE_URL ?? 'http://localhost:3000',
+  baseURL: resolveAuthBaseURL(process.env.APP_BASE_URL),
   emailAndPassword: {
     enabled: true,
     autoSignIn: false, // login só após aprovação — fail-closed
