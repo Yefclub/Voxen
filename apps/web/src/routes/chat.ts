@@ -498,63 +498,139 @@ chatRoutes.post('/conversations/:id/send', async (c) => {
     }
   };
 
-  const stream = new ReadableStream({
-    async pull(controller) {
-      let value: Uint8Array | undefined;
-      let done: boolean;
-      try {
-        const r = await reader.read();
-        value = r.value;
-        done = r.done;
-      } catch {
-        // Upstream caiu/abortou. Persiste o parcial e fecha sem propagar erro
-        // pro browser (o frontend já mostra o que recebeu até aqui).
-        await persistPartial();
-        controller.close();
-        return;
-      }
-      if (done) {
-        await persistPartial();
-        controller.close();
-        return;
-      }
-      const chunk = decoder.decode(value!, { stream: true });
-      buffer += chunk;
-      controller.enqueue(encoder.encode(chunk));
+  // Keepalive: Voxen pode rodar atrás do Cloudflare, que derruba conexões
+  // ociosas por ~100s (erro 524). Durante tool calls longas (web search /
+  // reasoning) o upstream pode passar > 100s sem emitir token. Enviamos um
+  // comentário SSE (`: keepalive`) a cada KEEPALIVE_MS de ociosidade — o parser
+  // SSE do browser ignora linhas de comentário, então o ping é puro transporte:
+  // não vira evento nem polui o conteúdo persistido. O timer é adiado sempre que
+  // dados reais fluem e limpo em TODOS os caminhos de término.
+  const KEEPALIVE_MS = 15_000;
+  const KEEPALIVE_BYTES = encoder.encode(': keepalive\n\n');
 
-      // Parse SSE blocks pra acumular content/tools.
-      let idx: number;
-      while ((idx = buffer.indexOf('\n\n')) !== -1) {
-        const block = buffer.slice(0, idx).trim();
-        buffer = buffer.slice(idx + 2);
-        const eventMatch = block.match(/^event:\s*(.+)$/m);
-        const dataMatch = block.match(/^data:\s*(.+)$/m);
-        if (!eventMatch || !dataMatch) continue;
-        try {
-          const parsed = JSON.parse(dataMatch[1]!) as Record<string, unknown>;
-          const ev = eventMatch[1];
-          if (ev === 'token') assistantContent += (parsed.text as string) ?? '';
-          else if (ev === 'tool_start') {
-            tools.push({
-              name: (parsed.name as string) ?? '',
-              args: sanitizeToolArgs(parsed.args),
-            });
-          } else if (ev === 'tool_end' && tools.length > 0) {
-            const last = tools[tools.length - 1]!;
-            last.preview = (parsed.preview as string) ?? '';
-            if (typeof parsed.summary === 'string' && parsed.summary) {
-              last.summary = parsed.summary.slice(0, 200);
-            }
-            if (typeof parsed.content === 'string' && parsed.content) {
-              last.content = parsed.content.slice(0, TOOL_CONTENT_MAX_CHARS);
-            }
-            const sources = sanitizeToolSources(parsed.sources);
-            if (sources) last.sources = sources;
-          }
-        } catch {
-          // ignora linhas malformadas
+  const stream = new ReadableStream({
+    start(controller) {
+      let closed = false;
+      let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+
+      const stopKeepalive = (): void => {
+        if (keepaliveTimer !== null) {
+          clearInterval(keepaliveTimer);
+          keepaliveTimer = null;
         }
-      }
+      };
+
+      // Reinicia a contagem de ociosidade. Chamado ao abrir o stream e a cada
+      // chunk real do upstream, para o ping só ocorrer em ociosidade de verdade.
+      const armKeepalive = (): void => {
+        stopKeepalive();
+        keepaliveTimer = setInterval(() => {
+          if (closed) {
+            stopKeepalive();
+            return;
+          }
+          try {
+            controller.enqueue(KEEPALIVE_BYTES);
+          } catch {
+            // Controller já fechado (race com close): para o timer.
+            closed = true;
+            stopKeepalive();
+          }
+        }, KEEPALIVE_MS);
+      };
+
+      const finish = async (): Promise<void> => {
+        if (closed) return;
+        closed = true;
+        stopKeepalive();
+        await persistPartial();
+        try {
+          controller.close();
+        } catch {
+          // Já fechado pelo cancel() do browser.
+        }
+      };
+
+      armKeepalive();
+
+      void (async () => {
+        while (!closed) {
+          let value: Uint8Array | undefined;
+          let done: boolean;
+          try {
+            const r = await reader.read();
+            value = r.value;
+            done = r.done;
+          } catch {
+            // Upstream caiu/abortou. Persiste o parcial e fecha sem propagar
+            // erro pro browser (o frontend já mostra o que recebeu até aqui).
+            await finish();
+            return;
+          }
+          if (done) {
+            await finish();
+            return;
+          }
+          // Chegou dado real: adia o próximo keepalive.
+          armKeepalive();
+
+          const chunk = decoder.decode(value!, { stream: true });
+          buffer += chunk;
+          if (!closed) {
+            try {
+              controller.enqueue(encoder.encode(chunk));
+            } catch {
+              // Browser fechou no meio do enqueue.
+              await finish();
+              return;
+            }
+          }
+
+          // Parse SSE blocks pra acumular content/tools.
+          let idx: number;
+          while ((idx = buffer.indexOf('\n\n')) !== -1) {
+            const block = buffer.slice(0, idx).trim();
+            buffer = buffer.slice(idx + 2);
+            const eventMatch = block.match(/^event:\s*(.+)$/m);
+            const dataMatch = block.match(/^data:\s*(.+)$/m);
+            if (!eventMatch || !dataMatch) continue;
+            try {
+              const parsed = JSON.parse(dataMatch[1]!) as Record<string, unknown>;
+              const ev = eventMatch[1];
+              if (ev === 'token') assistantContent += (parsed.text as string) ?? '';
+              else if (ev === 'tool_start') {
+                tools.push({
+                  name: (parsed.name as string) ?? '',
+                  args: sanitizeToolArgs(parsed.args),
+                });
+              } else if (ev === 'tool_end' && tools.length > 0) {
+                const last = tools[tools.length - 1]!;
+                last.preview = (parsed.preview as string) ?? '';
+                if (typeof parsed.summary === 'string' && parsed.summary) {
+                  last.summary = parsed.summary.slice(0, 200);
+                }
+                if (typeof parsed.content === 'string' && parsed.content) {
+                  last.content = parsed.content.slice(0, TOOL_CONTENT_MAX_CHARS);
+                }
+                const sources = sanitizeToolSources(parsed.sources);
+                if (sources) last.sources = sources;
+              }
+            } catch {
+              // ignora linhas malformadas
+            }
+          }
+        }
+      })();
+
+      // Browser fechou a conexão. Para o keepalive, cancela reader + aborta
+      // upstream pro chat service detectar disconnect rápido.
+      const onAbort = (): void => {
+        closed = true;
+        stopKeepalive();
+        reader.cancel('client disconnect').catch(() => undefined);
+        upstreamAbort.abort();
+      };
+      c.req.raw.signal.addEventListener('abort', onAbort, { once: true });
     },
     cancel(reason) {
       // Browser fechou a conexão. Cancela reader + aborta upstream pro chat
