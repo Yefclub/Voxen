@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import {
+  AlertTriangle,
   Bot,
   Check,
   Copy,
@@ -75,7 +76,10 @@ interface McpPromptResponse {
 interface ProxyAgentStatus {
   configured: boolean;
   tunnelUrl: string | null;
-  agentStatus: 'unknown' | 'not_configured' | string;
+  // Status REAL da conexão do agente (probe TCP ao SOCKS reverso local).
+  connected: boolean;
+  // true quando o chisel logou "address already in use" (2º agente tentou conectar).
+  conflict: boolean;
 }
 
 interface ProxyAgentTokenResponse {
@@ -495,8 +499,12 @@ function ProxyAgentSection(): React.ReactElement {
   const [copiedToken, setCopiedToken] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState(false);
 
+  // Polling ao vivo (~9s) pra refletir conexão/conflito do agente em tempo real.
+  // Cleanup do interval no unmount.
   useEffect(() => {
     void refresh();
+    const id = window.setInterval(() => void refresh(), 9000);
+    return () => window.clearInterval(id);
   }, []);
 
   async function refresh(): Promise<void> {
@@ -504,7 +512,7 @@ function ProxyAgentSection(): React.ReactElement {
       const s = await apiGet<ProxyAgentStatus>('/api/admin/proxy-agent');
       setStatus(s);
     } catch {
-      setStatus({ configured: false, tunnelUrl: null, agentStatus: 'not_configured' });
+      setStatus({ configured: false, tunnelUrl: null, connected: false, conflict: false });
     }
   }
 
@@ -605,11 +613,39 @@ function ProxyAgentSection(): React.ReactElement {
           <CardDescription>{t('admin.integrations.proxy.description')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Indicador de conexão ao vivo (polling ~9s). Sempre visível. */}
+          <div className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 px-4 py-3 flex items-center gap-3">
+            <span
+              className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                status.connected ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'
+              }`}
+              aria-hidden
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-zinc-100">
+                {status.connected
+                  ? t('admin.integrations.proxy.live.connected')
+                  : t('admin.integrations.proxy.live.disconnected')}
+              </p>
+            </div>
+          </div>
+
+          {/* Aviso de múltiplos agentes (single-connection é garantido pelo bind). */}
+          {status.conflict && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
+              <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-200/90">{t('admin.integrations.proxy.conflict')}</p>
+            </div>
+          )}
+
           {status.configured ? (
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
               <Check className="h-4 w-4 text-emerald-400" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-zinc-100">{t('admin.integrations.proxy.configured')}</p>
+                <p className="text-[11px] text-[var(--color-app-muted)] mt-0.5">
+                  {t('admin.integrations.proxy.managedNote')}
+                </p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setConfirmRevoke(true)}>
                 <Trash2 className="h-3.5 w-3.5" />

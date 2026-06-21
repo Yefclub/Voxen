@@ -21,6 +21,8 @@
 // ============================================================================
 
 import { writeFileSync, chmodSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { connect } from 'node:net';
 import { getSetting } from './settings';
 
 // Usuário de auth do chisel (o agente disca com `--auth voxen:<token>`).
@@ -165,5 +167,93 @@ export async function syncChiselAuthfile(): Promise<void> {
     const message = err instanceof Error ? err.message : String(err);
     // Em dev sem /run/voxen isso é esperado — só informa, não quebra.
     console.warn(`[proxy-agent] não foi possível escrever authfile (${path}): ${message}`);
+  }
+}
+
+// ============================================================================
+// Status ao vivo da conexão do agente
+// ============================================================================
+
+/**
+ * Porta do SOCKS reverso que o chisel server abre em 127.0.0.1 QUANDO (e somente
+ * quando) um agente residencial conecta pedindo o remote R:127.0.0.1:1080:socks.
+ * Bind em localhost — nunca exposto à rede. Lê CHISEL_SOCKS_PORT, default 1080.
+ */
+function chiselSocksPort(): number {
+  const raw = process.env.CHISEL_SOCKS_PORT?.trim();
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isInteger(parsed) && parsed > 0 && parsed < 65536 ? parsed : 1080;
+}
+
+/**
+ * Arquivo de log do chisel server (o entrypoint redireciona stdout/stderr pra cá
+ * além do console). Configurável por CHISEL_LOGFILE; default /run/voxen/chisel.log.
+ */
+function chiselLogfile(): string {
+  return process.env.CHISEL_LOGFILE?.trim() || '/run/voxen/chisel.log';
+}
+
+/**
+ * Faz um TCP connect best-effort ao SOCKS reverso local com timeout curto.
+ * - conecta  => há um agente conectado (o chisel só abre essa porta com agente).
+ * - recusa / timeout / qualquer erro => nenhum agente (ou dev sem chisel).
+ *
+ * NUNCA lança: resolve sempre boolean. O socket é destruído em qualquer desfecho
+ * pra não pendurar o request de status. Default timeout 1000ms.
+ */
+export function probeAgentConnected(timeoutMs = 1000): Promise<boolean> {
+  const port = chiselSocksPort();
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (connected: boolean): void => {
+      if (settled) return;
+      settled = true;
+      try {
+        socket.destroy();
+      } catch {
+        /* best-effort */
+      }
+      resolve(connected);
+    };
+
+    const socket = connect({ host: '127.0.0.1', port });
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
+}
+
+// Marcadores que o chisel server loga quando um 2º agente tenta bindar o SOCKS
+// reverso já ocupado pelo 1º. A garantia de single-connection vem do port-bind.
+const CONFLICT_MARKERS = ['address already in use', 'bind: address already in use'];
+
+/**
+ * Extrai do conteúdo de log se há sinal recente de conflito de múltiplos agentes.
+ * Pura (sem I/O): testável diretamente. Olha só as últimas `tailLines` linhas
+ * (default 200) pra não reagir a um conflito antigo já resolvido.
+ */
+export function detectConflictInLog(logContent: string, tailLines = 200): boolean {
+  if (!logContent) return false;
+  const lines = logContent.split('\n');
+  const tail = lines.slice(-tailLines);
+  return tail.some((line) => {
+    const lower = line.toLowerCase();
+    return CONFLICT_MARKERS.some((marker) => lower.includes(marker));
+  });
+}
+
+/**
+ * Lê o log do chisel (best-effort) e detecta conflito de múltiplos agentes.
+ * Sem arquivo (dev / sem chisel) => false, sem erro. NUNCA loga conteúdo do log.
+ */
+export async function readConflictFlag(): Promise<boolean> {
+  const path = chiselLogfile();
+  try {
+    const content = await readFile(path, 'utf8');
+    return detectConflictInLog(content);
+  } catch {
+    // Sem log (dev, ou chisel nunca subiu) — sem conflito a reportar.
+    return false;
   }
 }

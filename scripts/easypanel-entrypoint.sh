@@ -189,13 +189,17 @@ prisma migrate deploy --schema=/app/prisma/schema.prisma
 export CHISEL_PORT="${CHISEL_PORT:-8088}"
 export CHISEL_AUTHFILE="${CHISEL_AUTHFILE:-/run/voxen/chisel-auth.json}"
 export CHISEL_PIDFILE="${CHISEL_PIDFILE:-/run/voxen/chisel.pid}"
+export CHISEL_LOGFILE="${CHISEL_LOGFILE:-/run/voxen/chisel.log}"
 
 start_chisel() {
   if ! command -v chisel >/dev/null 2>&1; then
     echo "[easypanel] chisel não instalado — túnel de proxy desabilitado"
     return 0
   fi
-  mkdir -p "$(dirname "$CHISEL_AUTHFILE")" "$(dirname "$CHISEL_PIDFILE")" 2>/dev/null || true
+  mkdir -p \
+    "$(dirname "$CHISEL_AUTHFILE")" \
+    "$(dirname "$CHISEL_PIDFILE")" \
+    "$(dirname "$CHISEL_LOGFILE")" 2>/dev/null || true
   # authfile inicial vazio: chisel falha se o arquivo não existir. {} = nega tudo
   # até o admin gerar o token. A app web reescreve o arquivo in-place e o chisel
   # faz hot-reload sozinho via fsnotify (NÃO usar SIGHUP — mata o chisel).
@@ -208,12 +212,28 @@ start_chisel() {
     fi
   fi
   echo "[easypanel] starting chisel server on 0.0.0.0:${CHISEL_PORT} (reverse)..."
-  chisel server \
+  # Saída do chisel vai pro console E pra um arquivo de log (a app web lê as
+  # últimas linhas pra detectar "address already in use" = 2º agente). Usamos
+  # process substitution (`> >(tee ...)`) de propósito: assim o job em background
+  # é o PRÓPRIO chisel — `$!` captura o PID do chisel, não o do tee — preservando
+  # o terminate()/SIGHUP de antes. Se o `tee` (ou o /run/voxen) falhar, o boot NÃO
+  # quebra: o `||` cai num start sem log-capture (best-effort, defensivo).
+  if chisel server \
     --reverse \
     --keepalive 25s \
     --authfile "$CHISEL_AUTHFILE" \
-    --port "${CHISEL_PORT}" &
-  echo $! > "$CHISEL_PIDFILE" 2>/dev/null || true
+    --port "${CHISEL_PORT}" > >(tee -a "$CHISEL_LOGFILE" 2>/dev/null) 2>&1 &
+  then
+    echo $! > "$CHISEL_PIDFILE" 2>/dev/null || true
+  else
+    echo "[easypanel] AVISO: log-capture do chisel falhou — subindo sem arquivo de log"
+    chisel server \
+      --reverse \
+      --keepalive 25s \
+      --authfile "$CHISEL_AUTHFILE" \
+      --port "${CHISEL_PORT}" &
+    echo $! > "$CHISEL_PIDFILE" 2>/dev/null || true
+  fi
 }
 
 start_chisel || echo "[easypanel] AVISO: chisel server não iniciou (seguindo sem túnel)"

@@ -116,9 +116,6 @@ setupRoutes.get('/', async (c) => {
     adminEmail,
     summaryTimeoutSec,
     hasApiKey: !!apiKey,
-    ytDlp: {
-      proxies: !!(await getSetting('yt_dlp_proxy_urls')),
-    },
   });
 });
 
@@ -189,7 +186,6 @@ const SaveBody = z.object({
   default_document_model: z.string().optional(),
   // Opcional: modelo Grok/xAI para analisar posts/threads do X via busca nativa.
   default_x_analysis_model: z.string().optional(),
-  yt_dlp_proxy_urls: z.string().optional(),
   admin_email: z.string().optional(),
   summary_timeout_sec: z.string().optional(),
 });
@@ -207,7 +203,6 @@ setupRoutes.post('/', async (c) => {
     default_vision_model,
     default_document_model,
     default_x_analysis_model,
-    yt_dlp_proxy_urls,
     admin_email,
     summary_timeout_sec,
     app_language,
@@ -291,13 +286,6 @@ setupRoutes.post('/', async (c) => {
       await deleteDefaultXAnalysisModel();
     } else {
       await setDefaultXAnalysisModel(default_x_analysis_model);
-    }
-  }
-  if (yt_dlp_proxy_urls !== undefined) {
-    if (yt_dlp_proxy_urls.trim() === '') {
-      await deleteSetting('yt_dlp_proxy_urls');
-    } else {
-      await setSetting('yt_dlp_proxy_urls', yt_dlp_proxy_urls);
     }
   }
   if (normalizedAdminEmail !== undefined) {
