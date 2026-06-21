@@ -10,9 +10,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlsplit, urlunsplit
 
 import requests
+import structlog
 import yt_dlp
 from youtube_transcript_api._api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import NoTranscriptFound, YouTubeTranscriptApiException
@@ -20,6 +21,8 @@ from youtube_transcript_api.proxies import GenericProxyConfig
 
 from . import voxen_settings
 from .transcript_md import Segment
+
+logger = structlog.get_logger(__name__)
 
 MAX_DURATION_SEC = 4 * 60 * 60  # 4h conforme spec 002
 PREFERRED_TRANSCRIPT_LANGS = ("pt", "pt-BR", "pt-PT", "en", "en-US", "en-GB")
@@ -171,6 +174,40 @@ _SUPPORTED_PROXY_SCHEMES = ("http://", "https://", "socks5://", "socks5h://")
 
 def _is_supported_proxy(proxy_url: str | None) -> bool:
     return bool(proxy_url and proxy_url.startswith(_SUPPORTED_PROXY_SCHEMES))
+
+
+def _mask_proxy(url: str) -> str:
+    """Remove o userinfo (usuário:senha) de uma URL de proxy para log seguro.
+
+    Preserva esquema + host + porta. Ex.: `socks5h://127.0.0.1:1080` continua
+    legível; `http://user:pass@host:8080` vira `http://host:8080`. NUNCA devolve
+    a string crua quando há risco de userinfo embutido — robusto a URL malformada.
+    """
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return "<proxy oculto>"
+
+    scheme = parsed.scheme
+    # Só confiamos no parse quando o esquema é um proxy conhecido. Sem esquema
+    # ("user:secret@host:1080" cai inteiro em .path) OU pseudo-esquema — ex.:
+    # "myuser:senha@host:1080", onde urlsplit lê "myuser" como scheme e o
+    # username VAZARIA no fallback `f"{scheme}://..."` — caem aqui e são ocultados.
+    if f"{scheme}://" not in _SUPPORTED_PROXY_SCHEMES:
+        return "<proxy oculto>"
+
+    try:
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        # Porta inválida / parse de netloc falhou: não arrisca vazar userinfo.
+        return f"{scheme}://<host oculto>"
+
+    if not host:
+        return f"{scheme}://<host oculto>"
+
+    netloc = f"{host}:{port}" if port is not None else host
+    return urlunsplit((scheme, netloc, "", "", ""))
 
 
 def _youtube_video_id(url: str) -> str | None:
@@ -389,6 +426,10 @@ async def _runtime_options() -> dict[str, Any]:
     proxy_urls = [line.strip() for line in re.split(r"[\n,]+", proxy_urls_raw) if line.strip()]
     if proxy_urls:
         opts["proxy"] = secrets.choice(proxy_urls)
+        # Observabilidade: torna auto-evidente nos logs quando o job sai por
+        # proxy (ex.: túnel residencial socks5h). MASCARADO — nunca loga
+        # credenciais. Silêncio (sem esta linha) = sem proxy.
+        logger.info("proxy-active", proxy=_mask_proxy(opts["proxy"]))
 
     # Browser impersonation (curl_cffi). Plataformas como TikTok exigem imitar o
     # TLS/JA3 de um browser real; o extractor pede impersonation sozinho e, com

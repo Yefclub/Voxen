@@ -123,6 +123,11 @@ escopo (placeholder de R2.2 permanece).
 - **R8.3** WHEN o admin revoga o token, THE app web SHALL limpar
   `yt_dlp_proxy_urls` SOMENTE se for exatamente `socks5h://127.0.0.1:1080`
   (não apaga um proxy http custom do operador).
+- **R8.4** WHEN um job seleciona um proxy para a extração, THE worker SHALL logar
+  uma linha `proxy-active` (nível `info`) com o proxy **mascarado** (esquema +
+  host + porta, SEM userinfo/credenciais), tornando auto-evidente nos logs que o
+  job saiu por proxy. WHILE nenhum proxy é selecionado, THE worker SHALL NÃO
+  emitir essa linha (silêncio = sem proxy).
 
 ## Mecanismo de exposição (Fase 2.1) — proxy WebSocket na URL do Voxen
 
