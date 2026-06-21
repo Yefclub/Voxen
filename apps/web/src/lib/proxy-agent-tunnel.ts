@@ -11,8 +11,9 @@
 //
 // Defesa em profundidade:
 //   - usuário fixo `voxen` + token de alta entropia como senha;
-//   - regex restrita ao ÚNICO remote esperado: R:127.0.0.1:1080:socks
-//     (bind em localhost na VPS — o SOCKS reverso nunca é exposto à rede);
+//   - regex restrita ao ÚNICO remote esperado: R:127.0.0.1:1080 (com o sufixo
+//     `:socks` opcional — o chisel valida o remote SEM o sufixo de tipo;
+//     bind em localhost na VPS — o SOCKS reverso nunca é exposto à rede);
 //   - authfile com permissão 600; token NUNCA logado.
 //
 // Best-effort: em dev (sem chisel / sem /run/voxen) tudo falha silencioso com
@@ -29,9 +30,11 @@ const CHISEL_AUTH_USER = 'voxen';
 // remote; o chisel server abre o SOCKS5 em 127.0.0.1:1080 (localhost na VPS).
 export const CHISEL_SOCKS_REMOTE = 'R:127.0.0.1:1080:socks';
 
-// Regex (string) usada no authfile pra restringir o remote permitido a ESTE
-// exato valor. Pontos escapados; âncoras ^...$ pra match exato.
-const CHISEL_REMOTE_REGEX = '^R:127\\.0\\.0\\.1:1080:socks$';
+// Regex (string) usada no authfile pra restringir o remote permitido. O chisel
+// valida o remote SEM o sufixo de tipo (`R:127.0.0.1:1080`), então o `:socks`
+// é OPCIONAL no match — senão o server nega com "access denied". Pontos
+// escapados; âncoras ^...$ pra match exato (sem bind aberto nem outras portas).
+const CHISEL_REMOTE_REGEX = '^R:127\\.0\\.0\\.1:1080(:socks)?$';
 
 function authfilePath(): string {
   return process.env.CHISEL_AUTHFILE?.trim() || '/run/voxen/chisel-auth.json';
@@ -39,7 +42,8 @@ function authfilePath(): string {
 
 // Path padrão onde a web do Voxen aceita o upgrade de WebSocket do agente e faz
 // proxy pro chisel server local. Configurável por env (PROXY_TUNNEL_PATH). O
-// agente conecta em wss://<url-do-voxen><PATH> e a web encaminha pro chisel.
+// agente recebe a URL como https://<url-do-voxen><PATH> e o chisel client faz o
+// upgrade pra WebSocket sozinho.
 export const DEFAULT_PROXY_TUNNEL_PATH = '/_tunnel';
 
 /**
@@ -58,13 +62,18 @@ export function proxyTunnelPath(): string {
 }
 
 /**
- * Deriva a URL de conexão do túnel — agora **a própria URL do Voxen** com o
- * scheme convertido pra WebSocket e o path do proxy anexado. Ordem:
+ * Deriva a URL de conexão do túnel — **a própria URL do Voxen** com o path do
+ * proxy anexado. O esquema permanece `http://`/`https://`: o chisel client
+ * recebe a URL de controle em http(s) e faz o upgrade pra WebSocket sozinho.
+ * Passar `wss://`/`ws://` quebra o chisel (`dial tcp: address wss::80: too many
+ * colons`), por isso NÃO convertemos o esquema. Ordem:
  *
  *   1. SE `PROXY_TUNNEL_URL` está setado, usa diretamente (operador assume o
- *      controle total — pode apontar pra outro host/porta/path).
- *   2. SENÃO, deriva de `APP_BASE_URL`: http→ws, https→wss, hostname/porta
- *      preservados, path = `proxyTunnelPath()` (ex.: wss://voxen.exemplo.com/_tunnel).
+ *      controle total — pode apontar pra outro host/porta/path). Se vier com
+ *      `ws://`/`wss://`, normaliza pra `http://`/`https://` (o chisel quer http).
+ *   2. SENÃO, deriva de `APP_BASE_URL`: esquema http(s) preservado,
+ *      hostname/porta preservados, path = `proxyTunnelPath()`
+ *      (ex.: https://voxen.exemplo.com/_tunnel).
  *   3. SE nenhuma resolve, retorna `null` (UI orienta a configurar APP_BASE_URL).
  *
  * Auto-coletado: o operador NÃO precisa criar subdomínio `tunnel.` nem digitar
@@ -74,7 +83,12 @@ export function deriveTunnelUrl(): string | null {
   const explicit = process.env.PROXY_TUNNEL_URL?.trim();
   if (explicit) {
     try {
-      return new URL(explicit).toString().replace(/\/$/, '');
+      const url = new URL(explicit);
+      // O chisel client quer a URL de controle em http(s) e faz o upgrade pra
+      // WebSocket sozinho — normaliza ws/wss caso o operador tenha configurado.
+      if (url.protocol === 'wss:') url.protocol = 'https:';
+      else if (url.protocol === 'ws:') url.protocol = 'http:';
+      return url.toString().replace(/\/$/, '');
     } catch {
       return null;
     }
@@ -83,9 +97,8 @@ export function deriveTunnelUrl(): string | null {
   if (!appBase) return null;
   try {
     const url = new URL(appBase);
-    if (url.protocol === 'https:') url.protocol = 'wss:';
-    else if (url.protocol === 'http:') url.protocol = 'ws:';
-    else return null;
+    // Mantém http(s) — NÃO converte pra ws/wss (o chisel client faz isso).
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
     url.pathname = proxyTunnelPath();
     url.search = '';
     url.hash = '';

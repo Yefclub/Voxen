@@ -96,15 +96,19 @@ escopo (placeholder de R2.2 permanece).
 ### R7 — Authfile dirigido pelo token (Fase 2)
 
 - **R7.1** WHEN o admin gera/rotaciona o token, THE app web SHALL escrever
-  (atomicamente) o authfile = `{ "voxen:<token>": ["^R:127\\.0\\.0\\.1:1080:socks$"] }`.
+  (atomicamente) o authfile = `{ "voxen:<token>": ["^R:127\\.0\\.0\\.1:1080(:socks)?$"] }`.
   O chisel server faz **hot-reload automático** ao detectar a mudança no arquivo
   (sem sinal — SIGHUP no chisel server NÃO recarrega e mata o processo).
+  O sufixo `:socks` é OPCIONAL no match porque o chisel valida o remote SEM o
+  sufixo de tipo (`R:127.0.0.1:1080`); regex com `:socks$` obrigatório resulta
+  em "access denied" (validado empiricamente em E2E).
 - **R7.2** WHEN o admin revoga o token, THE app web SHALL escrever authfile `{}`
   (nega qualquer conexão); o chisel recarrega sozinho.
 - **R7.3** THE app web SHALL sincronizar o authfile uma vez no boot (após DB
   pronto), refletindo o estado persistido do token.
 - **R7.4** THE authfile SHALL restringir o remote ao ÚNICO valor esperado
-  (`R:127.0.0.1:1080:socks`, bind localhost) via regex ancorada — nunca `R:.*`.
+  (`R:127.0.0.1:1080`, com `:socks` opcional, bind localhost) via regex ancorada
+  — nunca `R:.*`.
 - **R7.5** THE app web SHALL escrever o authfile com permissão 600 e NUNCA logar
   o token. A operação é **best-effort**: sem chisel/pidfile/`/run/voxen` (dev),
   loga e segue sem quebrar boot nem endpoints admin.
@@ -124,8 +128,17 @@ escopo (placeholder de R2.2 permanece).
 
 **Decisão.** O túnel NÃO usa mais um subdomínio `tunnel.<host>` separado. A
 própria web do Voxen faz **proxy de WebSocket** num path dedicado e encaminha pro
-chisel server local. O agente residencial conecta em `wss://<url-do-voxen>/_tunnel`
-e a web faz pipe bidirecional com `ws://127.0.0.1:${CHISEL_PORT:-8088}`.
+chisel server local. O agente residencial recebe a URL de controle como
+`https://<url-do-voxen>/_tunnel` — o chisel client faz o upgrade pra WebSocket
+sozinho. A web faz pipe bidirecional com `ws://127.0.0.1:${CHISEL_PORT:-8088}`.
+
+> **Esquema HTTPS, não WSS (validado em E2E).** A URL passada ao chisel client
+> DEVE ser `http://`/`https://`, não `ws://`/`wss://`: o chisel client interpreta
+> o esquema e faz o upgrade WebSocket por conta própria. Passar `wss://` quebra
+> com `dial tcp: address wss::80: too many colons`. Por isso `deriveTunnelUrl()`
+> e `originToTunnelUrl()` preservam o esquema http(s) e NÃO convertem pra ws/wss;
+> `PROXY_TUNNEL_URL`/entrypoint normalizam `wss://`→`https://` e `ws://`→`http://`
+> defensivamente (mantendo TLS obrigatório: `http://` puro continua rejeitado).
 
 **Por que funciona com o chisel (confirmado no source `jpillora/chisel`).**
 
@@ -166,16 +179,17 @@ e a web faz pipe bidirecional com `ws://127.0.0.1:${CHISEL_PORT:-8088}`.
 A URL de conexão é derivada no backend (`deriveTunnelUrl`) nesta ordem:
 
 1. SE a env `PROXY_TUNNEL_URL` está setada, usa ela diretamente (operador assume
-   o controle total — outro host/porta/path).
+   o controle total — outro host/porta/path); se vier `ws://`/`wss://`, normaliza
+   pra `http://`/`https://` (o chisel client quer http(s)).
 2. SENÃO, deriva de `APP_BASE_URL` (a URL pública do **próprio Voxen**):
-   converte `http→ws` / `https→wss`, preserva hostname e porta, e anexa
-   `proxyTunnelPath()` (ex.: `https://voxen.exemplo.com` →
-   `wss://voxen.exemplo.com/_tunnel`).
+   **preserva o esquema http(s)** (NÃO converte pra ws/wss — o chisel client faz
+   o upgrade sozinho), preserva hostname e porta, e anexa `proxyTunnelPath()`
+   (ex.: `https://voxen.exemplo.com` → `https://voxen.exemplo.com/_tunnel`).
 3. SE nenhuma resolve, retorna `null` (UI orienta a configurar `APP_BASE_URL`).
 
 Sem subdomínio manual: a URL sai da URL pública do Voxen. Na UI, quando o backend
-não tem `APP_BASE_URL`, o snippet usa `window.location.origin` (convertido pra
-ws/wss + path) como fallback de **exibição** — auto-coletando da URL que o admin
+não tem `APP_BASE_URL`, o snippet usa `window.location.origin` (esquema http(s)
+preservado + path) como fallback de **exibição** — auto-coletando da URL que o admin
 já está acessando.
 
 ## Endpoints
@@ -215,23 +229,30 @@ já está acessando.
 - [x] POST/DELETE do token e o boot do web chamam `syncChiselAuthfile()`.
 - [x] Token gerado aponta o worker pro SOCKS local; revogar limpa só o socks local.
 - [x] Remote do agente é `R:127.0.0.1:1080:socks` (bind localhost), batendo com
-      a regex do authfile.
+      a regex do authfile (`:socks` opcional no match — o chisel valida o remote
+      sem o sufixo de tipo).
 
 ### Fase 2.1 (esta entrega — proxy ws na URL do Voxen)
 
-- [x] `deriveTunnelUrl()` deriva da `APP_BASE_URL` (http→ws, https→wss, + path);
-      `PROXY_TUNNEL_URL` tem precedência; sem env → `null`.
+- [x] `deriveTunnelUrl()` deriva da `APP_BASE_URL` (esquema http(s) preservado,
+      + path — o chisel client faz o upgrade ws sozinho); `PROXY_TUNNEL_URL` tem
+      precedência (ws/wss normalizado pra http/https); sem env → `null`.
 - [x] Sem mais subdomínio `tunnel.<host>` (comportamento legado removido).
 - [x] Proxy ws no `apps/web` (`tunnel-proxy.ts`) plugado no `index.ts`, pipe pro
       `ws://127.0.0.1:CHISEL_PORT`, subprotocolo `chisel-v3` negociado.
 - [x] Path configurável por `PROXY_TUNNEL_PATH` (default `/_tunnel`).
 - [x] UI auto-coleta a URL (backend ou `window.location.origin`) + remote SOCKS.
-- [x] Testes de `deriveTunnelUrl` (http→ws, https→wss, porta, path, precedência).
+- [x] Testes de `deriveTunnelUrl` (esquema http(s) preservado, porta, path,
+      precedência, normalização de ws/wss explícito).
 
 ### Fase 3 (deploy real — fora desta PR)
 
-- [ ] Túnel ponta-a-ponta no deploy: agente conecta em `wss://<url>/_tunnel`,
-      worker baixa via SOCKS local. **Precisa de teste em deploy real** — o proxy
-      ws só pôde ser validado por unit tests + análise; não houve túnel real
-      ponta-a-ponta nem reverse-proxy externo (Easypanel/nginx) no caminho.
+- [x] Túnel ponta-a-ponta no deploy: agente conecta em `https://<url>/_tunnel`
+      (o chisel client faz o upgrade ws sozinho), worker baixa via SOCKS local.
+      **Validado em E2E real** — dois bugs encontrados e corrigidos: (1) a URL
+      precisa ser `https://` e não `wss://` (chisel client quebrava com
+      `dial tcp: address wss::80: too many colons`); (2) a regex do authfile
+      precisa aceitar `:socks` opcional (chisel valida o remote sem o sufixo de
+      tipo, `R:127.0.0.1:1080`, senão "access denied"). Com os fixes, o chisel
+      conecta e abre `proxy#R:127.0.0.1:1080=>socks: Listening`.
 - [ ] (Opcional) Host-key pinning automático (fingerprint) entregue na UI.

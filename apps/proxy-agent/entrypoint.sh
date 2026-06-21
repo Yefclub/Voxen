@@ -43,8 +43,19 @@ if [ "${fail}" -ne 0 ]; then
 fi
 
 # Exige TLS fim-a-fim: a URL de controle deve ser https/wss (spec 058, R8).
+# O chisel client quer a URL de controle em http(s) e faz o upgrade pra WebSocket
+# sozinho — passar wss:// quebra (`dial tcp: address wss::80: too many colons`).
+# Por isso normalizamos wss://->https:// (e ws://->http:// por simetria) antes de
+# entregar a URL ao chisel. http:// puro continua REJEITADO (TLS obrigatório).
 case "${VOXEN_TUNNEL_URL}" in
-  https://*|wss://*) : ;;
+  https://*) : ;;
+  wss://*)
+    VOXEN_TUNNEL_URL="https://${VOXEN_TUNNEL_URL#wss://}"
+    ;;
+  ws://*)
+    echo "ERRO: VOXEN_TUNNEL_URL deve usar https:// (TLS). Recebido ws:// (sem TLS)." >&2
+    exit 1
+    ;;
   *)
     echo "ERRO: VOXEN_TUNNEL_URL deve usar https:// (TLS). Recebido um esquema sem TLS." >&2
     exit 1

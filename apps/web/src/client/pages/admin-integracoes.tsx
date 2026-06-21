@@ -40,14 +40,14 @@ const TUNNEL_PATH = '/_tunnel';
 
 /**
  * Converte um origin HTTP(S) (ex.: o `window.location.origin`) na URL de conexão
- * do túnel: http→ws, https→wss, + path do proxy. Retorna null se inválido.
+ * do túnel: esquema http(s) preservado + path do proxy. O chisel client recebe a
+ * URL em http(s) e faz o upgrade pra WebSocket sozinho — passar ws/wss quebra.
+ * Retorna null se inválido.
  */
 function originToTunnelUrl(origin: string): string | null {
   try {
     const url = new URL(origin);
-    if (url.protocol === 'https:') url.protocol = 'wss:';
-    else if (url.protocol === 'http:') url.protocol = 'ws:';
-    else return null;
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
     url.pathname = TUNNEL_PATH;
     url.search = '';
     url.hash = '';
@@ -573,7 +573,8 @@ function ProxyAgentSection(): React.ReactElement {
   }
 
   // URL de conexão auto-coletada: o backend deriva da APP_BASE_URL do próprio
-  // Voxen (http→ws, https→wss, path /_tunnel). Se o backend não tiver
+  // Voxen (esquema http(s) preservado, path /_tunnel — o chisel client faz o
+  // upgrade pra WebSocket sozinho). Se o backend não tiver
   // APP_BASE_URL setado, usamos o origin da janela atual como fallback de EXIBIÇÃO
   // (a URL que o admin está acessando agora já é a URL pública do Voxen).
   const displayTunnelUrl = status.tunnelUrl ?? originToTunnelUrl(window.location.origin);
