@@ -62,6 +62,10 @@ const config = {
     oneTimeToken({
       expiresIn: QR_LOGIN_TTL_SEC / 60, // plugin usa minutos → 1 min
       storeToken: 'hashed',
+      // Fecha a rota HTTP crua (/api/auth/one-time-token/*): geração e consumo só
+      // via auth.api.* (server-side), que é como os wrappers /api/account/qr-login
+      // e /qr-login usam. Evita bypass do rate-limit do wrapper pela rota direta.
+      disableClientRequest: true,
     }),
   ],
   databaseHooks: {
