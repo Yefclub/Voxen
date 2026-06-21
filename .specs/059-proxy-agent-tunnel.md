@@ -120,19 +120,63 @@ escopo (placeholder de R2.2 permanece).
   `yt_dlp_proxy_urls` SOMENTE se for exatamente `socks5h://127.0.0.1:1080`
   (não apaga um proxy http custom do operador).
 
-## Derivação da URL do túnel
+## Mecanismo de exposição (Fase 2.1) — proxy WebSocket na URL do Voxen
 
-A URL de conexão do túnel é derivada no backend nesta ordem:
+**Decisão.** O túnel NÃO usa mais um subdomínio `tunnel.<host>` separado. A
+própria web do Voxen faz **proxy de WebSocket** num path dedicado e encaminha pro
+chisel server local. O agente residencial conecta em `wss://<url-do-voxen>/_tunnel`
+e a web faz pipe bidirecional com `ws://127.0.0.1:${CHISEL_PORT:-8088}`.
 
-1. SE a env `PROXY_TUNNEL_URL` está setada, usa ela diretamente.
-2. SENÃO, deriva de `APP_BASE_URL` prefixando o hostname com `tunnel.`
-   (ex.: `https://voxen.exemplo.com` → `https://tunnel.voxen.exemplo.com`).
-3. SE nenhuma das duas resolve, retorna `null` (UI mostra aviso de configurar
-   `PROXY_TUNNEL_URL`/`APP_BASE_URL`).
+**Por que funciona com o chisel (confirmado no source `jpillora/chisel`).**
 
-A porta/scheme seguem o `APP_BASE_URL`. A escolha de `tunnel.<host>` é uma
-convenção; o operador pode sobrescrever com `PROXY_TUNNEL_URL` quando o túnel
-roda em outro host/porta.
+- O chisel server NÃO roteia o upgrade de WebSocket por **path** — o que dispara
+  o túnel é o header `Sec-WebSocket-Protocol: chisel-v3` (+ `Upgrade: websocket`).
+  O path é cosmético: `/_tunnel` na web → `/` no chisel funciona transparente.
+- O transporte é WebSocket **binário puro** (SSH por cima). Um pipe frame-a-frame
+  não quebra nada — não há framing custom.
+- O subprotocolo `chisel-v3` é **obrigatório**: o proxy abre o socket upstream
+  pedindo esse subprotocolo e ecoa de volta pro agente, senão o chisel server
+  ignora a conexão.
+
+**Componentes (Fase 2.1).**
+
+- `apps/web/src/lib/tunnel-proxy.ts` — `tryUpgradeTunnel(req, server)` intercepta
+  só o path do túnel e faz `server.upgrade()`; `tunnelWebSocketHandler` faz o pipe
+  agente ⇄ chisel. Plugado no `export default` do `apps/web/src/index.ts` (antes
+  do Hono; só intercepta o path EXATO do túnel, não toca outros upgrades).
+- `apps/web/src/lib/proxy-agent-tunnel.ts` — `proxyTunnelPath()` (env
+  `PROXY_TUNNEL_PATH`, default `/_tunnel`) e `deriveTunnelUrl()` (auto-coletada,
+  ver abaixo).
+
+### R9 — Proxy WebSocket (Fase 2.1)
+
+- **R9.1** THE web SHALL aceitar upgrade de WebSocket no path `PROXY_TUNNEL_PATH`
+  (default `/_tunnel`) e fazer pipe bidirecional com `ws://127.0.0.1:CHISEL_PORT`.
+- **R9.2** THE proxy SHALL negociar o subprotocolo `chisel-v3` no upstream e ecoá-lo
+  de volta pro agente; SHALL repassar frames binários sem transformação.
+- **R9.3** THE proxy SHALL interceptar SOMENTE o path EXATO do túnel — qualquer
+  outra rota (incl. outros upgrades-ws) segue pro Hono normal.
+- **R9.4** WHEN um GET não-upgrade bate no path do túnel, THE proxy SHALL responder
+  `426 Upgrade Required` sem tocar no chisel.
+- **R9.5** THE proxy SHALL fazer cleanup dos dois lados em close/erro de qualquer
+  ponta; SHALL NUNCA logar tráfego (são bytes SSH + token de auth).
+
+## Derivação da URL do túnel (auto-coletada)
+
+A URL de conexão é derivada no backend (`deriveTunnelUrl`) nesta ordem:
+
+1. SE a env `PROXY_TUNNEL_URL` está setada, usa ela diretamente (operador assume
+   o controle total — outro host/porta/path).
+2. SENÃO, deriva de `APP_BASE_URL` (a URL pública do **próprio Voxen**):
+   converte `http→ws` / `https→wss`, preserva hostname e porta, e anexa
+   `proxyTunnelPath()` (ex.: `https://voxen.exemplo.com` →
+   `wss://voxen.exemplo.com/_tunnel`).
+3. SE nenhuma resolve, retorna `null` (UI orienta a configurar `APP_BASE_URL`).
+
+Sem subdomínio manual: a URL sai da URL pública do Voxen. Na UI, quando o backend
+não tem `APP_BASE_URL`, o snippet usa `window.location.origin` (convertido pra
+ws/wss + path) como fallback de **exibição** — auto-coletando da URL que o admin
+já está acessando.
 
 ## Endpoints
 
@@ -144,7 +188,8 @@ roda em outro host/porta.
 
 - ~~Servidor chisel embutido no `web`/entrypoint.~~ (Fase 2 — esta entrega)
 - ~~Integração do worker com o proxy do túnel (roteamento de yt-dlp).~~ (Fase 2)
-- Publicação da porta de controle via domínio TLS no deploy (Easypanel) — Fase 3.
+- ~~Exposição da porta de controle via subdomínio/TLS no deploy.~~ (Fase 2.1 —
+  agora o agente conecta na própria URL do Voxen via proxy ws em `/_tunnel`.)
 - Status real da conexão do agente (substitui o placeholder de R2.2).
 - Host-key pinning automático (fingerprint) entregue na UI.
 
@@ -172,7 +217,21 @@ roda em outro host/porta.
 - [x] Remote do agente é `R:127.0.0.1:1080:socks` (bind localhost), batendo com
       a regex do authfile.
 
+### Fase 2.1 (esta entrega — proxy ws na URL do Voxen)
+
+- [x] `deriveTunnelUrl()` deriva da `APP_BASE_URL` (http→ws, https→wss, + path);
+      `PROXY_TUNNEL_URL` tem precedência; sem env → `null`.
+- [x] Sem mais subdomínio `tunnel.<host>` (comportamento legado removido).
+- [x] Proxy ws no `apps/web` (`tunnel-proxy.ts`) plugado no `index.ts`, pipe pro
+      `ws://127.0.0.1:CHISEL_PORT`, subprotocolo `chisel-v3` negociado.
+- [x] Path configurável por `PROXY_TUNNEL_PATH` (default `/_tunnel`).
+- [x] UI auto-coleta a URL (backend ou `window.location.origin`) + remote SOCKS.
+- [x] Testes de `deriveTunnelUrl` (http→ws, https→wss, porta, path, precedência).
+
 ### Fase 3 (deploy real — fora desta PR)
 
-- [ ] Porta de controle (`CHISEL_PORT`) exposta via domínio TLS no Easypanel.
-- [ ] Túnel ponta-a-ponta: agente residencial conecta, worker baixa via SOCKS.
+- [ ] Túnel ponta-a-ponta no deploy: agente conecta em `wss://<url>/_tunnel`,
+      worker baixa via SOCKS local. **Precisa de teste em deploy real** — o proxy
+      ws só pôde ser validado por unit tests + análise; não houve túnel real
+      ponta-a-ponta nem reverse-proxy externo (Easypanel/nginx) no caminho.
+- [ ] (Opcional) Host-key pinning automático (fingerprint) entregue na UI.
