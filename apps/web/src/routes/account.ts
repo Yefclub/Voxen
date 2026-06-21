@@ -4,14 +4,16 @@
 // GET    /api/account            — dados completos (name, email, image)
 // PATCH  /api/account            — atualizar name (email é imutável aqui)
 // POST   /api/account/password   — trocar senha (precisa da senha atual)
+// POST   /api/account/qr-login   — gera URL de login por QR (one-time token)
 // O upload de avatar reaproveita /api/onboarding/avatar (qualquer user).
 // ============================================================================
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { auth } from '../lib/auth';
+import { auth, QR_LOGIN_TTL_SEC } from '../lib/auth';
 import { db } from '../lib/db';
 import { getRedisPublisher } from '../lib/redis';
+import { rateLimit } from '../lib/rate-limit';
 
 type Vars = { userId: string };
 
@@ -93,6 +95,45 @@ accountRoutes.post('/password', async (c) => {
     // Better-auth APIError tem statusCode em alguns casos; ignoramos e devolvemos 400
     return c.json({ error: msg || 'Senha atual incorreta.' }, 400);
   }
+});
+
+// ----------------------------------------------------------------------------
+// Login rápido por QR (spec 060)
+// ----------------------------------------------------------------------------
+// Gera um one-time token (plugin better-auth) atrelado à sessão atual e devolve
+// a URL `/qr-login?t=<token>` pro front renderizar como QR. O celular abre a URL
+// e a página chama o verify do plugin, que seta o cookie de sessão no device.
+//
+// Segurança: a geração do token usa `auth.api.generateOneTimeToken`, que deriva
+// a sessão dos headers (cookie) — userId NUNCA vem do cliente. Token de alta
+// entropia, TTL curto, single-use, hasheado no DB. Rate-limit por usuário evita
+// flood. O token NUNCA é logado.
+
+accountRoutes.post('/qr-login', async (c) => {
+  const uid = c.get('userId');
+
+  // Rate-limit por usuário: até 5 gerações por minuto. Suficiente pra UI normal
+  // (gerar + regenerar) e barra script abusivo.
+  const rl = await rateLimit(`voxen:rl:qr-login:${uid}`, 5, 60);
+  if (!rl.allowed) {
+    return c.json(
+      { error: 'Muitas tentativas. Aguarde alguns segundos.', retryInSec: rl.resetIn },
+      429,
+    );
+  }
+
+  // Gera o token derivando a sessão do cookie (headers da request original).
+  const result = await auth.api.generateOneTimeToken({ headers: c.req.raw.headers });
+  if (!result?.token) {
+    return c.json({ error: 'Falha ao gerar token de login.' }, 500);
+  }
+
+  // baseURL canônica do better-auth (APP_BASE_URL) — mesma usada pra links.
+  const baseUrl = (process.env.APP_BASE_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
+  const loginUrl = `${baseUrl}/qr-login?t=${encodeURIComponent(result.token)}`;
+
+  // NUNCA logar token nem loginUrl.
+  return c.json({ loginUrl, expiresInSec: QR_LOGIN_TTL_SEC });
 });
 
 // ----------------------------------------------------------------------------

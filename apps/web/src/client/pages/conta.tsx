@@ -5,11 +5,16 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  QrCode,
+  RefreshCw,
   Send,
+  ShieldAlert,
+  Smartphone,
   Unlink,
   Upload,
   User as UserIcon,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -322,6 +327,8 @@ export function ContaPage(): React.ReactElement {
 
         <TelegramLinkCard />
 
+        <QrLoginCard />
+
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -516,6 +523,119 @@ function TelegramLinkCard(): React.ReactElement {
             {generating ? <Spinner /> : <Send className="h-3.5 w-3.5" />}
             {t('account.telegram.generateCode')}
           </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Login rápido por QR (spec 060)
+// ----------------------------------------------------------------------------
+// Gera uma URL de login (one-time token) e renderiza como QR. O celular escaneia,
+// abre /qr-login?t=... e ganha sessão como este usuário. Token de uso único, TTL
+// curto. Quem escanear entra como o dono — daí o aviso de segurança.
+
+function QrLoginCard(): React.ReactElement {
+  const { t } = useI18n();
+  const [loginUrl, setLoginUrl] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [remaining, setRemaining] = useState(0);
+  const [generating, setGenerating] = useState(false);
+
+  async function generate(): Promise<void> {
+    setGenerating(true);
+    try {
+      const r = await apiPost<{ loginUrl: string; expiresInSec: number }>(
+        '/api/account/qr-login',
+        {},
+      );
+      setLoginUrl(r.loginUrl);
+      setExpiresAt(Date.now() + r.expiresInSec * 1000);
+      setRemaining(r.expiresInSec);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t('account.qrLogin.error'));
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  // Countdown: zera o QR quando expira (o token já não vale mais no servidor).
+  useEffect(() => {
+    if (!expiresAt) return;
+    const tick = (): void => {
+      const secs = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      setRemaining(secs);
+      if (secs <= 0) {
+        setLoginUrl(null);
+        setExpiresAt(null);
+      }
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [expiresAt]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 font-display">
+          <QrCode className="h-4 w-4 text-emerald-400" />
+          {t('account.qrLogin.title')}
+        </CardTitle>
+        <CardDescription>{t('account.qrLogin.description')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loginUrl ? (
+          <div className="space-y-4">
+            <div className="flex flex-col items-center gap-3">
+              <div className="rounded-xl bg-white p-3">
+                <QRCodeSVG value={loginUrl} size={200} level="M" marginSize={0} />
+              </div>
+              <p className="text-[13px] text-[var(--color-app-muted)] flex items-center gap-1.5">
+                <Smartphone className="h-3.5 w-3.5" />
+                {t('account.qrLogin.scanHint')}
+              </p>
+              <p className="text-xs text-[var(--color-app-muted)] tabular-nums">
+                {t('account.qrLogin.expiresIn', { seconds: remaining })}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-start gap-2.5">
+              <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-[13px] text-amber-200/90 leading-relaxed">
+                {t('account.qrLogin.warning')}
+              </p>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void generate()}
+              disabled={generating}
+            >
+              {generating ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />}
+              {t('account.qrLogin.regenerate')}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-start gap-2.5">
+              <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-[13px] text-amber-200/90 leading-relaxed">
+                {t('account.qrLogin.warning')}
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="default"
+              onClick={() => void generate()}
+              disabled={generating}
+            >
+              {generating ? <Spinner /> : <QrCode className="h-3.5 w-3.5" />}
+              {t('account.qrLogin.generate')}
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>

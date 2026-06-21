@@ -637,6 +637,26 @@ const ptBRMessages = {
   'account.telegram.copyCommand': 'Copiar comando',
   'account.telegram.generateCode': 'Gerar código de vínculo',
 
+  'account.qrLogin.title': 'Login rápido (QR)',
+  'account.qrLogin.description':
+    'Entre em outro aparelho escaneando um QR code, sem digitar senha.',
+  'account.qrLogin.generate': 'Gerar QR de login',
+  'account.qrLogin.regenerate': 'Gerar novo QR',
+  'account.qrLogin.scanHint': 'Escaneie com a câmera do celular',
+  'account.qrLogin.expiresIn': 'Expira em {seconds}s',
+  'account.qrLogin.warning':
+    'Trate como uma senha: quem escanear este QR entra como você. Não compartilhe nem deixe na tela.',
+  'account.qrLogin.error': 'Erro ao gerar o QR de login.',
+
+  'qrLogin.verifyingTitle': 'Entrando…',
+  'qrLogin.verifyingDescription': 'Validando o QR de login e abrindo sua conta.',
+  'qrLogin.successTitle': 'Tudo certo!',
+  'qrLogin.successDescription': 'Login concluído. Redirecionando…',
+  'qrLogin.errorTitle': 'Link inválido ou expirado',
+  'qrLogin.errorDescription':
+    'Este QR já foi usado ou expirou. Gere um novo no aparelho onde você está logado, ou entre normalmente.',
+  'qrLogin.goToLogin': 'Ir para o login',
+
   'automations.title': 'Automações',
   'automations.description': 'Jobs periódicos que a Vox executa para você em background.',
   'automations.new': 'Nova automação',
@@ -1536,6 +1556,25 @@ const enMessages: Record<I18nKey, string> = {
   'account.telegram.expires': 'Expires in 10 minutes. I detect the link automatically.',
   'account.telegram.copyCommand': 'Copy command',
   'account.telegram.generateCode': 'Generate link code',
+
+  'account.qrLogin.title': 'Quick login (QR)',
+  'account.qrLogin.description': 'Sign in on another device by scanning a QR code — no password.',
+  'account.qrLogin.generate': 'Generate login QR',
+  'account.qrLogin.regenerate': 'Generate new QR',
+  'account.qrLogin.scanHint': 'Scan with your phone camera',
+  'account.qrLogin.expiresIn': 'Expires in {seconds}s',
+  'account.qrLogin.warning':
+    'Treat it like a password: anyone who scans this QR signs in as you. Do not share it or leave it on screen.',
+  'account.qrLogin.error': 'Failed to generate the login QR.',
+
+  'qrLogin.verifyingTitle': 'Signing in…',
+  'qrLogin.verifyingDescription': 'Validating the login QR and opening your account.',
+  'qrLogin.successTitle': 'All set!',
+  'qrLogin.successDescription': 'Login complete. Redirecting…',
+  'qrLogin.errorTitle': 'Invalid or expired link',
+  'qrLogin.errorDescription':
+    'This QR was already used or has expired. Generate a new one on the device where you are signed in, or sign in normally.',
+  'qrLogin.goToLogin': 'Go to login',
 
   'automations.title': 'Automations',
   'automations.description': 'Periodic jobs Vox runs for you in the background.',
