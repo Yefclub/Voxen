@@ -357,7 +357,11 @@ async def download_audio_opus(url: str, out_dir: Path) -> Path:
     out_template = str(out_dir / "%(id)s.%(ext)s")
     opts = {
         **base_opts,
-        "format": "bestaudio/best",
+        # Prefere áudio puro; senão o melhor formato que TENHA faixa de áudio
+        # (`best*[acodec!=none]`) antes de cair no `best` genérico — evita baixar
+        # um rendition só-vídeo (ex.: alguns reels do Instagram) que faria o
+        # FFmpegExtractAudio estourar no ffprobe ("unable to obtain file audio codec").
+        "format": "bestaudio/best*[acodec!=none]/best",
         "outtmpl": out_template,
         "quiet": True,
         "no_warnings": True,
