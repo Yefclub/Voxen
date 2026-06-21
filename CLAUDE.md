@@ -196,6 +196,7 @@ Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo �
 - **NUNCA** branchar de stale. Sempre `git pull --ff-only` em `dev` antes de criar branch.
 - Quando uma PR ainda não mergeou e o owner pedir pra seguir pra próxima feature, **pausar** e perguntar: "PR #X ainda não mergeou. Mergear primeiro pra eu branchar de dev atualizado, ou prefere outra abordagem?"
 - Release: preparar versão com `pnpm release:prepare patch|minor|major`, abrir PR para `main` com label (`release:patch/minor/major`) e sincronizar `main` de volta para `dev` por PR normal após publicar.
+- **Versão do `dev` NUNCA pode ficar atrás da `main`.** A sincronização pós-release `main`→`dev` DEVE carregar o bump de `version` no `package.json` (raiz + `apps/web`). Cuidado com `merge -s ours` na resolução de divergência: ele descarta o bump da `main` e deixa o `dev` com versão menor que a já lançada (o build-dev vira `X.Y.(Z-1)-dev`, abaixo da release). Após qualquer release, conferir `git show origin/main:package.json` vs `dev` e bumpar o `dev` se ficou atrás.
 - Nunca execute `git clean -fd` ou qualquer operação destrutiva do git sem aprovação explícita do usuário. Sempre faça commit ou stash do trabalho antes de trocar de branch. Trate trabalho não commitado como sagrado.
 
 ### Sem co-autoria de IA (INVIOLÁVEL)
