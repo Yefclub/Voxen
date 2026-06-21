@@ -13,7 +13,7 @@ import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { getSetting, setSetting } from '../lib/settings';
-import { deriveTunnelUrl } from '../lib/proxy-agent-tunnel';
+import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
 
 type AdminVariables = {
   adminUserId: string;
@@ -259,16 +259,21 @@ adminRoutes.delete('/telegram', async (c) => {
 // (servidor de túnel, cliente no agente, integração com worker) vem em PRs
 // separadas. Ver spec 058. O token NUNCA é reexibido nem logado.
 
-// GET /api/admin/proxy-agent — status (configured, tunnelUrl, agentStatus).
-// NUNCA retorna o token (nem cifrado).
+// GET /api/admin/proxy-agent — status (configured, tunnelUrl, connected, conflict).
+// NUNCA retorna o token (nem cifrado). O `connected` é REAL: faz um TCP connect
+// best-effort (timeout curto) ao SOCKS reverso local — que o chisel só abre quando
+// há um agente conectado. `conflict` lê o log do chisel buscando "address already
+// in use" (2º agente tentou bindar). Ambos best-effort: em dev (sem chisel) viram
+// false sem erro. As probes correm em paralelo pra não pendurar o request.
 adminRoutes.get('/proxy-agent', async (c) => {
   const stored = await getSetting('proxy_agent_token').catch(() => null);
   const configured = !!stored;
+  const [connected, conflict] = await Promise.all([probeAgentConnected(), readConflictFlag()]);
   return c.json({
     configured,
     tunnelUrl: deriveTunnelUrl(),
-    // Placeholder: o status real da conexão do agente chega na PR do runtime.
-    agentStatus: configured ? 'unknown' : 'not_configured',
+    connected,
+    conflict,
   });
 });
 

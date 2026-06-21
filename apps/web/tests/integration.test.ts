@@ -166,9 +166,14 @@ describeIfDb('auth + admin approval flow', () => {
       new Request('http://localhost/api/admin/proxy-agent', { headers: { cookie } }),
     );
     expect(before.status).toBe(200);
-    const beforeBody = (await before.json()) as { configured: boolean; agentStatus: string };
+    const beforeBody = (await before.json()) as {
+      configured: boolean;
+      connected: boolean;
+      conflict: boolean;
+    };
     expect(beforeBody.configured).toBe(false);
-    expect(beforeBody.agentStatus).toBe('not_configured');
+    expect(beforeBody.connected).toBe(false);
+    expect(beforeBody.conflict).toBe(false);
 
     // Gera o token.
     const gen = await app.fetch(
@@ -198,7 +203,9 @@ describeIfDb('auth + admin approval flow', () => {
     );
     const afterBody = (await after.json()) as Record<string, unknown>;
     expect(afterBody.configured).toBe(true);
-    expect(afterBody.agentStatus).toBe('unknown');
+    // Sem agente conectado no ambiente de teste, o probe TCP a 127.0.0.1:1080 falha.
+    expect(afterBody.connected).toBe(false);
+    expect(afterBody.conflict).toBe(false);
     expect(JSON.stringify(afterBody)).not.toContain(genBody.token);
 
     // Revoga.

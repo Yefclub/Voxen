@@ -48,9 +48,6 @@ interface SetupStatus {
   adminEmail: string | null;
   summaryTimeoutSec: string | null;
   hasApiKey: boolean;
-  ytDlp?: {
-    proxies: boolean;
-  };
 }
 
 type Step = 'loading' | 'key' | 'modelos' | 'done';
@@ -69,7 +66,6 @@ export function SetupPage(): React.ReactElement {
   const [xAnalysisModel, setXAnalysisModel] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [summaryTimeoutSec, setSummaryTimeoutSec] = useState('');
-  const [ytDlpProxyUrls, setYtDlpProxyUrls] = useState('');
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -217,7 +213,6 @@ export function SetupPage(): React.ReactElement {
       body.default_x_analysis_model = xAnalysisModel;
       body.admin_email = adminEmail.trim();
       body.summary_timeout_sec = summaryTimeoutSec.trim();
-      body.yt_dlp_proxy_urls = ytDlpProxyUrls.trim();
       if (apiKey.trim()) {
         body.openrouter_api_key = apiKey.trim();
       }
@@ -640,34 +635,6 @@ export function SetupPage(): React.ReactElement {
                         </div>
                         <p className="mt-1 text-[11px] text-[var(--color-app-muted)] leading-snug">
                           {t('setup.operation.summaryTimeoutHint')}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-4 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 p-4">
-                      <div className="space-y-2">
-                        <Label>{t('setup.operation.mediaExtraction')}</Label>
-                        <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
-                          {t('setup.operation.mediaExtractionHint')}
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Label>{t('setup.operation.proxy')}</Label>
-                          {status?.ytDlp?.proxies && (
-                            <Badge variant="success">{t('setup.operation.proxyConfigured')}</Badge>
-                          )}
-                        </div>
-                        <textarea
-                          value={ytDlpProxyUrls}
-                          onChange={(e) => setYtDlpProxyUrls(e.target.value)}
-                          placeholder={t('setup.operation.proxyPlaceholder')}
-                          rows={3}
-                          spellCheck={false}
-                          className="min-h-20 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60"
-                        />
-                        <p className="text-[11px] text-[var(--color-app-muted)] leading-snug">
-                          {t('setup.operation.proxyHint')}
                         </p>
                       </div>
                     </div>

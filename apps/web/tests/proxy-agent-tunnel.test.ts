@@ -1,5 +1,6 @@
 import { describe, expect, it, afterEach } from 'bun:test';
-import { mkdtempSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync, statSync, writeFileSync } from 'node:fs';
+import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -10,6 +11,9 @@ import {
   deriveTunnelUrl,
   proxyTunnelPath,
   DEFAULT_PROXY_TUNNEL_PATH,
+  probeAgentConnected,
+  detectConflictInLog,
+  readConflictFlag,
 } from '../src/lib/proxy-agent-tunnel';
 
 describe('buildChiselAuthfile', () => {
@@ -206,5 +210,122 @@ describe('syncChiselAuthfile (best-effort I/O)', () => {
       const parsed = JSON.parse(readFileSync(authfile, 'utf8'));
       expect(typeof parsed).toBe('object');
     }
+  });
+});
+
+describe('probeAgentConnected (TCP probe ao SOCKS reverso)', () => {
+  const original = process.env.CHISEL_SOCKS_PORT;
+  afterEach(() => {
+    if (original === undefined) delete process.env.CHISEL_SOCKS_PORT;
+    else process.env.CHISEL_SOCKS_PORT = original;
+  });
+
+  function listenOnEphemeral(): Promise<{ server: Server; port: number }> {
+    return new Promise((resolve) => {
+      const server = createServer();
+      server.listen(0, '127.0.0.1', () => {
+        const addr = server.address();
+        const port = typeof addr === 'object' && addr ? addr.port : 0;
+        resolve({ server, port });
+      });
+    });
+  }
+
+  it('resolves true when something is listening on the SOCKS port (agente conectado)', async () => {
+    const { server, port } = await listenOnEphemeral();
+    process.env.CHISEL_SOCKS_PORT = String(port);
+    try {
+      await expect(probeAgentConnected(1000)).resolves.toBe(true);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('resolves false when the SOCKS port is closed (agente desconectado)', async () => {
+    // Abre e fecha pra garantir uma porta livre que recusa a conexão.
+    const { server, port } = await listenOnEphemeral();
+    await new Promise<void>((r) => server.close(() => r()));
+    process.env.CHISEL_SOCKS_PORT = String(port);
+    await expect(probeAgentConnected(500)).resolves.toBe(false);
+  });
+
+  it('never throws — resolves a boolean even with a bogus port', async () => {
+    process.env.CHISEL_SOCKS_PORT = 'not-a-port';
+    const result = await probeAgentConnected(300);
+    expect(typeof result).toBe('boolean');
+  });
+});
+
+describe('detectConflictInLog (parse de "address already in use")', () => {
+  it('returns false for empty content', () => {
+    expect(detectConflictInLog('')).toBe(false);
+  });
+
+  it('returns false for normal chisel logs without conflict', () => {
+    const log = [
+      '2026/06/21 server: Reverse tunnelling enabled',
+      '2026/06/21 server: Listening on http://0.0.0.0:8088',
+      '2026/06/21 server: session#1: tun: proxy#R:127.0.0.1:1080=>socks: Listening',
+    ].join('\n');
+    expect(detectConflictInLog(log)).toBe(false);
+  });
+
+  it('detects "address already in use" (2nd agent tried to bind)', () => {
+    const log = [
+      '2026/06/21 server: session#2: tun: proxy#R:127.0.0.1:1080=>socks:',
+      '2026/06/21 server: listen tcp 127.0.0.1:1080: bind: address already in use',
+    ].join('\n');
+    expect(detectConflictInLog(log)).toBe(true);
+  });
+
+  it('is case-insensitive on the marker', () => {
+    expect(detectConflictInLog('ERROR: Address Already In Use')).toBe(true);
+  });
+
+  it('ignores an old conflict outside the tail window', () => {
+    const lines = ['bind: address already in use'];
+    for (let i = 0; i < 300; i++) lines.push(`2026/06/21 server: heartbeat ${i}`);
+    expect(detectConflictInLog(lines.join('\n'), 200)).toBe(false);
+  });
+});
+
+describe('readConflictFlag (best-effort I/O)', () => {
+  const original = process.env.CHISEL_LOGFILE;
+  afterEach(() => {
+    if (original === undefined) delete process.env.CHISEL_LOGFILE;
+    else process.env.CHISEL_LOGFILE = original;
+  });
+
+  it('returns false when the log file does not exist (dev / sem chisel)', async () => {
+    process.env.CHISEL_LOGFILE = '/proc/voxen-nonexistent/chisel.log';
+    await expect(readConflictFlag()).resolves.toBe(false);
+  });
+
+  it('returns true when the log contains a recent conflict marker', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'voxen-chisel-log-'));
+    const logfile = join(dir, 'chisel.log');
+    writeFileSync(logfile, 'server: listen tcp 127.0.0.1:1080: bind: address already in use\n');
+    process.env.CHISEL_LOGFILE = logfile;
+    await expect(readConflictFlag()).resolves.toBe(true);
+  });
+
+  it('returns false for a clean log', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'voxen-chisel-log-'));
+    const logfile = join(dir, 'chisel.log');
+    writeFileSync(logfile, 'server: Listening on http://0.0.0.0:8088\n');
+    process.env.CHISEL_LOGFILE = logfile;
+    await expect(readConflictFlag()).resolves.toBe(false);
+  });
+
+  it('ignores an old conflict marker beyond the tail window (lê só a cauda)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'voxen-chisel-log-'));
+    const logfile = join(dir, 'chisel.log');
+    // Conflito antigo no início, seguido de >64KB de linhas limpas: o marcador
+    // fica fora da janela de cauda lida, então não deve disparar conflito.
+    const oldConflict = 'server: bind: address already in use\n';
+    const filler = 'server: keepalive ping\n'.repeat(5000); // ~110KB > 64KB
+    writeFileSync(logfile, oldConflict + filler);
+    process.env.CHISEL_LOGFILE = logfile;
+    await expect(readConflictFlag()).resolves.toBe(false);
   });
 });

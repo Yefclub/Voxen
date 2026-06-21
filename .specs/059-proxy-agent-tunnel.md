@@ -197,9 +197,54 @@ não tem `APP_BASE_URL`, o snippet usa `window.location.origin` (esquema http(s)
 preservado + path) como fallback de **exibição** — auto-coletando da URL que o admin
 já está acessando.
 
+### R10 — Status REAL ao vivo (Fase 2.2)
+
+Substitui o placeholder `agentStatus` de R2.2 por sinais reais.
+
+- **R10.1** WHEN um admin consulta `GET /api/admin/proxy-agent`, THE backend SHALL
+  fazer um **TCP connect best-effort** a `127.0.0.1:${CHISEL_SOCKS_PORT:-1080}`
+  (o SOCKS reverso que o chisel só abre quando um agente conecta) com timeout
+  curto (~1s) e retornar `connected: boolean` (conecta = agente ativo; recusa /
+  timeout / erro = sem agente). A probe NUNCA lança e NUNCA pendura o request.
+- **R10.2** WHILE não há chisel / em dev (porta fechada), THE backend SHALL
+  retornar `connected: false` sem erro (best-effort).
+- **R10.3** THE UI admin SHALL exibir um indicador AO VIVO (polling ~9s, com
+  cleanup do interval no unmount): verde "Conectado e funcionando" quando
+  `connected`, cinza "Desconectado" caso contrário. A seção é SEMPRE exibida.
+- **R10.4** THE endpoint NÃO expõe o SOCKS à rede nem retorna o token; a probe é
+  só um connect/disconnect local (sem handshake SOCKS).
+
+### R11 — Detecção de conflito (single-connection)
+
+A garantia de conexão única vem do port-bind: o 2º agente não consegue bindar
+`127.0.0.1:1080` e o chisel server loga `address already in use`. Esta seção
+faz SURFACE desse sinal na UI.
+
+- **R11.1** THE entrypoint SHALL redirecionar a saída do chisel server para um
+  arquivo de log (`CHISEL_LOGFILE`, default `/run/voxen/chisel.log`) ALÉM do
+  stdout, capturando o PID do **chisel** (não do `tee`) via process substitution.
+- **R11.2** IF o log-capture falhar (sem `/run/voxen`, `tee` indisponível), THE
+  entrypoint SHALL subir o chisel SEM log-capture — NUNCA quebrar o boot.
+- **R11.3** WHEN o admin consulta o status, THE backend SHALL ler as últimas
+  linhas do log e retornar `conflict: true` se houver `address already in use`
+  (case-insensitive) recente; sem log (dev) → `conflict: false`, sem erro.
+- **R11.4** WHEN `conflict`, THE UI SHALL exibir um aviso âmbar "Múltiplos
+  agentes detectados — rode apenas um" (i18n pt/en).
+
+### R12 — Remoção da config de proxy manual
+
+- **R12.1** THE tela de Configurações (`setup`) SHALL **remover** o input manual
+  de `yt_dlp_proxy_urls` (campo, estado, handler, envio no payload e i18n órfão).
+- **R12.2** THE setting `yt_dlp_proxy_urls` SHALL permanecer no backend, gerenciado
+  EXCLUSIVAMENTE pelo agente (seta `socks5h://127.0.0.1:1080` ao gerar token,
+  limpa ao revogar) — apenas a UI manual sai.
+- **R12.3** THE seção do Agente de Proxy SHALL exibir uma nota de que o proxy de
+  extração é gerenciado automaticamente pelo agente.
+
 ## Endpoints
 
-- `GET /api/admin/proxy-agent` — status (`configured`, `tunnelUrl`, `agentStatus`).
+- `GET /api/admin/proxy-agent` — status (`configured`, `tunnelUrl`, `connected`,
+  `conflict`). `connected` = probe TCP ao SOCKS local; `conflict` = parse do log.
 - `POST /api/admin/proxy-agent/token` — gera/rotaciona; retorna `{ token, tunnelUrl }`.
 - `DELETE /api/admin/proxy-agent/token` — revoga.
 
@@ -209,7 +254,8 @@ já está acessando.
 - ~~Integração do worker com o proxy do túnel (roteamento de yt-dlp).~~ (Fase 2)
 - ~~Exposição da porta de controle via subdomínio/TLS no deploy.~~ (Fase 2.1 —
   agora o agente conecta na própria URL do Voxen via proxy ws em `/_tunnel`.)
-- Status real da conexão do agente (substitui o placeholder de R2.2).
+- ~~Status real da conexão do agente (substitui o placeholder de R2.2).~~ (Fase 2.2
+  — esta entrega: probe TCP ao SOCKS local + detecção de conflito.)
 - Host-key pinning automático (fingerprint) entregue na UI.
 
 ## Critérios de aceite
@@ -249,6 +295,24 @@ já está acessando.
 - [x] UI auto-coleta a URL (backend ou `window.location.origin`) + remote SOCKS.
 - [x] Testes de `deriveTunnelUrl` (esquema http(s) preservado, porta, path,
       precedência, normalização de ws/wss explícito).
+
+### Fase 2.2 (esta entrega — status ao vivo + conflito + remoção do proxy manual)
+
+- [x] `GET /api/admin/proxy-agent` retorna `connected` (probe TCP best-effort ao
+      `127.0.0.1:${CHISEL_SOCKS_PORT:-1080}`, timeout ~1s) e `conflict` (parse do
+      log do chisel). Ambos best-effort: dev sem chisel → false sem erro.
+- [x] `probeAgentConnected()` nunca lança e nunca pendura (socket destruído em
+      qualquer desfecho); testes com porta aberta/fechada/inválida.
+- [x] `detectConflictInLog()` pura e testável; pega "address already in use"
+      (case-insensitive) só na cauda; ignora conflito antigo fora da janela.
+- [x] UI: indicador ao vivo (polling ~9s + cleanup) verde/cinza, SEMPRE visível;
+      banner âmbar de conflito; nota "proxy gerenciado pelo agente"; i18n pt/en.
+- [x] Entrypoint redireciona o chisel pra `CHISEL_LOGFILE` via process
+      substitution (PID do chisel preservado); fallback sem log-capture se falhar
+      — boot nunca quebra (`bash -n` ok).
+- [x] Config de proxy manual (`yt_dlp_proxy_urls`) REMOVIDA da tela de
+      Configurações (campo, estado, payload, status `ytDlp.proxies`, i18n órfão);
+      o setting permanece no backend, gerenciado só pelo agente.
 
 ### Fase 3 (deploy real — fora desta PR)
 

@@ -594,6 +594,12 @@ const ptBRMessages = {
   'admin.integrations.proxy.revokeTitle': 'Revogar token do agente de proxy?',
   'admin.integrations.proxy.revokeDescription':
     'O agente residencial perde a conexão até admin gerar um novo token.',
+  'admin.integrations.proxy.live.connected': 'Conectado e funcionando',
+  'admin.integrations.proxy.live.disconnected': 'Desconectado',
+  'admin.integrations.proxy.conflict':
+    'Múltiplos agentes detectados — rode apenas um. Só uma conexão de agente é permitida por vez.',
+  'admin.integrations.proxy.managedNote':
+    'O proxy de extração é gerenciado automaticamente pelo agente.',
 
   'account.eyebrow': 'Conta',
   'account.title': 'Seu perfil',
@@ -922,15 +928,7 @@ const ptBRMessages = {
   'setup.operation.adminEmailHint': 'Usado no header From do scraper quando configurado.',
   'setup.operation.summaryTimeout': 'Timeout de resumo',
   'setup.operation.summaryTimeoutHint': 'Em segundos. Vazio usa o padrão do serviço.',
-  'setup.operation.mediaExtraction': 'Extração de mídia',
-  'setup.operation.mediaExtractionHint':
-    'Em deploys home-lab (IP residencial) o YouTube praticamente não bloqueia downloads. Em VPS é comum cair em soft-block: configure um proxy residencial próprio abaixo ou use o upload manual quando precisar.',
-  'setup.operation.proxy': 'Proxy de extração (opcional)',
-  'setup.operation.proxyPlaceholder': 'http://usuario:senha@host:porta&#10;socks5://host:porta',
   'setup.operation.adminEmailPlaceholder': 'admin@seudominio.com',
-  'setup.operation.proxyConfigured': 'Proxy configurado',
-  'setup.operation.proxyHint':
-    'Uma URL por linha. Use apenas proxies controlados por você (próprios ou residenciais contratados). Vazio = sem proxy.',
   'setup.save': 'Salvar configurações',
   'setup.error.load': 'Erro ao carregar configuração.',
   'setup.error.key': 'Erro ao validar chave.',
@@ -1516,6 +1514,12 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.proxy.revokeTitle': 'Revoke proxy agent token?',
   'admin.integrations.proxy.revokeDescription':
     'The residential agent loses its connection until an admin generates a new token.',
+  'admin.integrations.proxy.live.connected': 'Connected and working',
+  'admin.integrations.proxy.live.disconnected': 'Disconnected',
+  'admin.integrations.proxy.conflict':
+    'Multiple agents detected — run only one. Only a single agent connection is allowed at a time.',
+  'admin.integrations.proxy.managedNote':
+    'The extraction proxy is managed automatically by the agent.',
 
   'account.eyebrow': 'Account',
   'account.title': 'Your profile',
@@ -1839,15 +1843,7 @@ const enMessages: Record<I18nKey, string> = {
   'setup.operation.adminEmailHint': 'Used in the scraper From header when configured.',
   'setup.operation.summaryTimeout': 'Summary timeout',
   'setup.operation.summaryTimeoutHint': 'In seconds. Empty uses the service default.',
-  'setup.operation.mediaExtraction': 'Media extraction',
-  'setup.operation.mediaExtractionHint':
-    'On home-lab deployments (residential IP), YouTube rarely blocks downloads. On VPS hosts, soft-blocks are common: configure your own residential proxy below or use manual upload when needed.',
-  'setup.operation.proxy': 'Extraction proxy (optional)',
-  'setup.operation.proxyPlaceholder': 'http://user:password@host:port&#10;socks5://host:port',
   'setup.operation.adminEmailPlaceholder': 'admin@yourdomain.com',
-  'setup.operation.proxyConfigured': 'Proxy configured',
-  'setup.operation.proxyHint':
-    'One URL per line. Use only proxies you control (owned or contracted residential proxies). Empty = no proxy.',
   'setup.save': 'Save settings',
   'setup.error.load': 'Error loading configuration.',
   'setup.error.key': 'Error validating key.',
