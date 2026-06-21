@@ -189,9 +189,11 @@ def _mask_proxy(url: str) -> str:
         return "<proxy oculto>"
 
     scheme = parsed.scheme
-    if not scheme:
-        # Sem esquema não dá pra confiar que urlsplit isolou o userinfo
-        # (ex.: "user:secret@host:1080" cai inteiro em .path). Oculta tudo.
+    # Só confiamos no parse quando o esquema é um proxy conhecido. Sem esquema
+    # ("user:secret@host:1080" cai inteiro em .path) OU pseudo-esquema — ex.:
+    # "myuser:senha@host:1080", onde urlsplit lê "myuser" como scheme e o
+    # username VAZARIA no fallback `f"{scheme}://..."` — caem aqui e são ocultados.
+    if f"{scheme}://" not in _SUPPORTED_PROXY_SCHEMES:
         return "<proxy oculto>"
 
     try:

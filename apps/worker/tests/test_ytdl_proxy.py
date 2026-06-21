@@ -119,13 +119,17 @@ def test_mask_proxy_without_port() -> None:
         "garbage",
         "://nope",
         "http://user:secret@",
+        # Sem esquema: "myuser" é lido como scheme por urlsplit — não pode vazar.
+        "myuser:secret@no-scheme:1080",
         "user:secret@no-scheme:1080",
         "",
     ],
 )
 def test_mask_proxy_malformed_never_leaks_credential(url: str) -> None:
-    # Robusto a URL malformada: nunca lança e nunca devolve a string crua
-    # com possível senha embutida.
+    # Robusto a URL malformada: nunca lança e nunca devolve a string crua com
+    # userinfo embutido — nem a senha NEM o usuário (metade do par de credencial).
     masked = _mask_proxy(url)
     assert "secret" not in masked
+    assert "myuser" not in masked
+    assert "user" not in masked
     assert isinstance(masked, str)
