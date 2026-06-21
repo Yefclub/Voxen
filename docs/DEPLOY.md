@@ -695,6 +695,19 @@ funcionam direto, sem necessidade de configurações extras de mitigação.
    browser (TLS/JA3) automaticamente. Se uma plataforma quebrar com o padrão,
    force um alvo definindo `YTDLP_IMPERSONATE` no ambiente do worker (ex.:
    `chrome` ou `chrome-124:windows-10`). Vazio = auto-seleção pelo extractor.
+7. **Cookies do yt-dlp (extração autenticada)**: alguns conteúdos só vêm
+   completos com uma sessão logada. O **Instagram** serve um rendition só-vídeo
+   (sem áudio) quando não há login — o download de áudio então falha; o
+   **YouTube** às vezes dispara o anti-bot ("Sign in to confirm you're not a
+   bot"). Em **Admin → Integrações → Cookies do yt-dlp**, cole o conteúdo de um
+   `cookies.txt` (formato Netscape) exportado por uma extensão de browser (ex.:
+   "Get cookies.txt LOCALLY") estando logado na conta. O worker passa esses
+   cookies ao `yt-dlp` em todos os caminhos (probe, áudio, legendas). O valor é
+   **cifrado em DB** com a master key, nunca é reexibido nem logado, e o worker o
+   materializa só num arquivo temporário `600` de vida curta. Trade-offs:
+   cookies **expiram** (reexporte quando pararem de funcionar), são da **conta do
+   próprio owner**, e o uso deve **respeitar os termos de uso** de cada
+   plataforma. Combine com proxy residencial quando o bloqueio for por IP.
 
 ### Decisão arquitetural
 

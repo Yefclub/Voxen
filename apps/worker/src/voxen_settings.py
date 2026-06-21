@@ -84,6 +84,19 @@ async def get_yt_dlp_proxy_urls() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_yt_dlp_cookies() -> str | None:
+    """Conteúdo do cookies.txt (formato Netscape) para extração autenticada.
+
+    Secret cifrado (mesma master key). Quando setado, o worker materializa o
+    conteúdo num arquivo temporário 600 e passa via `cookiefile` ao yt-dlp.
+    NUNCA logar o retorno desta função.
+    """
+    enc = await db.get_setting_enc("yt_dlp_cookies")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
 async def get_admin_email() -> str | None:
     """Email do admin do deploy — opcional. Quando setado, scraper inclui
     `From: <email>` no User-Agent (boa-prática RFC 7231 §5.5.1).
