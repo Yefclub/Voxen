@@ -146,7 +146,10 @@ describeIfDb('QR login — fluxo completo (Postgres real)', () => {
     const token = tokenFromLoginUrl(loginUrl);
 
     // O plugin guarda o token (hasheado) em `verification` com identifier
-    // `one-time-token:<hash>`. Forçamos a expiração para o passado.
+    // `one-time-token:<hash>`. Forçamos a expiração para o passado. O token
+    // NUNCA foi consumido, então o verify o ENCONTRA, deleta, e só então falha
+    // por expiração — exercitando o caminho de TTL (REQ-8), não o de "não
+    // encontrado". Validamos a mensagem específica pra isolar esse caminho.
     await db.verification.updateMany({
       where: { identifier: { startsWith: 'one-time-token:' } },
       data: { expiresAt: new Date(Date.now() - 1000) },
@@ -155,6 +158,8 @@ describeIfDb('QR login — fluxo completo (Postgres real)', () => {
     const res = await verifyToken(token);
     expect(res.status).not.toBe(200);
     expect(res.status).toBeGreaterThanOrEqual(400);
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    expect(body.message ?? '').toMatch(/expired/i);
   });
 
   it('geração persiste apenas o HASH do token (DB não revela token usável)', async () => {

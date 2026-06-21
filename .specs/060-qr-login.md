@@ -88,14 +88,19 @@ gerar o token.
 
 ## Critérios de aceite (testes)
 
-1. `GET /api/auth/one-time-token/generate` sem cookie → 401.
-2. Com sessão válida → 200 com `{ token }`.
+Os testes batem na **superfície real do app** (`/api/account/qr-login` para
+geração; `/api/auth/one-time-token/verify` do plugin para consumo) — a rota crua
+`GET /api/auth/one-time-token/generate` existe (exige sessão), mas o app só expõe
+o wrapper com rate-limit, então é ele que cobrimos.
+
+1. `POST /api/account/qr-login` sem sessão → 401 (userId nunca do cliente).
+2. Com sessão válida → 200 com `loginUrl` (contém `?t=`) + `expiresInSec`.
 3. `POST /api/auth/one-time-token/verify` com token válido → 200 + Set-Cookie de
-   sessão.
-4. Reusar o mesmo token (2ª chamada) → erro (400).
-5. Token expirado (TTL estourado) → erro (400).
-6. O endpoint de geração (`/api/account/qr-login`) sem sessão → 401; com sessão →
-   retorna `loginUrl` + `expiresInSec`, e o token NÃO aparece em log.
+   sessão (handoff).
+4. Reusar o mesmo token (2ª chamada) → erro (≥400).
+5. Token expirado (TTL forçado no passado) → erro (≥400) com mensagem `expired`
+   — isolando o caminho de TTL do de "não encontrado".
+6. Geração persiste apenas o HASH do token (o identifier não contém o token cru).
 
 ## Segurança
 
