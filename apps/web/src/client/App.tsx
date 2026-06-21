@@ -7,6 +7,7 @@ import { AuthLayout } from './components/layout/auth-layout';
 import { LoginPage } from './pages/login';
 import { CadastroPage } from './pages/cadastro';
 import { PendentePage } from './pages/pendente';
+import { QrLoginPage } from './pages/qr-login';
 import { OnboardingPage } from './pages/onboarding';
 import { SetupPage } from './pages/setup';
 import { DashboardPage } from './pages/dashboard';
@@ -78,6 +79,9 @@ function AppRoutes(): React.ReactElement {
 
       {/* Estado de espera (sem layout) */}
       <Route path="/pendente" element={<PendentePage />} />
+
+      {/* Consumo do QR de login (sem layout; device chega sem sessão) */}
+      <Route path="/qr-login" element={<QrLoginPage />} />
 
       {/* App autenticado */}
       <Route element={<AppLayout />}>

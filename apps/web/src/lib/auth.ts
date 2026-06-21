@@ -10,7 +10,12 @@
 import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { APIError } from 'better-auth/api';
+import { oneTimeToken } from 'better-auth/plugins/one-time-token';
 import { db } from './db';
+
+// TTL do token de login por QR (spec 060). Curto de propósito: o handoff é
+// imediato (escanear → abrir). `expiresIn` do plugin é em MINUTOS.
+export const QR_LOGIN_TTL_SEC = 60;
 
 function requireEnv(name: string, minLength = 0): string {
   const v = process.env[name];
@@ -53,7 +58,11 @@ export function resolveAuthBaseURL(raw: string | undefined): string {
   return FALLBACK_BASE_URL;
 }
 
-const config: BetterAuthOptions = {
+// Sem anotação explícita `: BetterAuthOptions` no `const` — ela apagaria os
+// tipos literais dos plugins, e `auth.api.generateOneTimeToken` ficaria
+// invisível. Usamos `satisfies` no fim para checar a forma sem perder a
+// inferência dos endpoints dos plugins.
+const config = {
   database: prismaAdapter(db, { provider: 'postgresql' }),
   // Mínimo 32 chars pra HMAC seguro. Em prod, gerar com `openssl rand -base64 32`.
   secret: requireEnv('BETTER_AUTH_SECRET', 32),
@@ -74,6 +83,21 @@ const config: BetterAuthOptions = {
     expiresIn: 60 * 60 * 24 * 30, // 30 dias
     updateAge: 60 * 60 * 24, // refresh a cada 24h
   },
+  plugins: [
+    // Login rápido por QR (spec 060). O `generate` exige sessão válida
+    // (sessionMiddleware interno), gerando token de alta entropia (32 chars)
+    // single-use. `storeToken: 'hashed'` guarda só o hash no DB — dump não
+    // revela tokens utilizáveis. O `verify` invalida o token no 1º uso e seta
+    // o cookie de sessão no device que escaneou (reusa a sessão do desktop).
+    oneTimeToken({
+      expiresIn: QR_LOGIN_TTL_SEC / 60, // plugin usa minutos → 1 min
+      storeToken: 'hashed',
+      // Fecha a rota HTTP crua (/api/auth/one-time-token/*): geração e consumo só
+      // via auth.api.* (server-side), que é como os wrappers /api/account/qr-login
+      // e /qr-login usam. Evita bypass do rate-limit do wrapper pela rota direta.
+      disableClientRequest: true,
+    }),
+  ],
   databaseHooks: {
     user: {
       create: {
@@ -129,7 +153,7 @@ const config: BetterAuthOptions = {
       },
     },
   },
-};
+} satisfies BetterAuthOptions;
 
 export const auth = betterAuth(config);
 
