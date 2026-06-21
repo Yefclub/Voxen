@@ -7,7 +7,7 @@ set -eu
 
 # --- Configuração via env -----------------------------------------------------
 # Obrigatórias:
-#   VOXEN_TUNNEL_URL     URL de controle do túnel (ex.: https://tunnel.exemplo.com)
+#   VOXEN_TUNNEL_URL     URL do túnel no Voxen (ex.: https://voxen.seudominio.com/_tunnel)
 #   VOXEN_TUNNEL_TOKEN   Token gerado na UI admin do Voxen (credencial de auth)
 # Opcionais:
 #   VOXEN_SOCKS_REMOTE       Remote reverso (default: R:127.0.0.1:1080:socks)
@@ -30,7 +30,7 @@ VOXEN_AUTH_USER="${VOXEN_AUTH_USER:-voxen}"
 # --- Validação (R7: recusa sem token) ----------------------------------------
 fail=0
 if [ -z "${VOXEN_TUNNEL_URL}" ]; then
-  echo "ERRO: VOXEN_TUNNEL_URL nao definida (ex.: https://tunnel.exemplo.com)." >&2
+  echo "ERRO: VOXEN_TUNNEL_URL nao definida (ex.: https://voxen.seudominio.com/_tunnel)." >&2
   fail=1
 fi
 if [ -z "${VOXEN_TUNNEL_TOKEN}" ]; then
