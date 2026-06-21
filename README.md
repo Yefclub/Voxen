@@ -42,7 +42,11 @@ Abre em `http://localhost:3000`. Primeiro cadastro vira admin e cai no onboardin
 > residencial evita o bloqueio do YouTube em downloads, custo mensal é
 > praticamente zero e seus dados ficam fisicamente com você. VPS continua
 > suportada, mas exige cuidado extra com extração de mídia — detalhes em
-> [`docs/DEPLOY.md#home-lab-vs-vps`](docs/DEPLOY.md#home-lab-vs-vps).
+> [`docs/DEPLOY.md#home-lab-vs-vps`](docs/DEPLOY.md#home-lab-vs-vps). Em VPS, o
+> jeito de baixar por IP residencial é o
+> [Agente de proxy residencial](docs/DEPLOY.md#agente-de-proxy-residencial):
+> um container leve que roda na sua casa e o Voxen roteia o egress de download
+> por ele via túnel reverso.
 
 Tem guia passo-a-passo pra cada cenário em [`docs/DEPLOY.md`](docs/DEPLOY.md):
 
