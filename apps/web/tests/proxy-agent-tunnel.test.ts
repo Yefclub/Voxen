@@ -24,18 +24,22 @@ describe('buildChiselAuthfile', () => {
   it('maps voxen:<token> to the restricted localhost remote regex', () => {
     const out = buildChiselAuthfile('abc123');
     expect(out).toEqual({
-      'voxen:abc123': ['^R:127\\.0\\.0\\.1:1080:socks$'],
+      'voxen:abc123': ['^R:127\\.0\\.0\\.1:1080(:socks)?$'],
     });
   });
 
-  it('the regex matches exactly the canonical remote and nothing broader', () => {
+  it('the regex matches the canonical remote with and without :socks and nothing broader', () => {
     const regex = new RegExp(buildChiselAuthfile('t')['voxen:t']![0]!);
     expect(regex.test(CHISEL_SOCKS_REMOTE)).toBe(true);
     expect(regex.test('R:127.0.0.1:1080:socks')).toBe(true);
+    // O chisel valida o remote SEM o sufixo de tipo — precisa casar também.
+    expect(regex.test('R:127.0.0.1:1080')).toBe(true);
     // Não pode casar bind aberto (0.0.0.0) nem outras portas.
     expect(regex.test('R:0.0.0.0:1080:socks')).toBe(false);
+    expect(regex.test('R:0.0.0.0:1080')).toBe(false);
     expect(regex.test('R:127.0.0.1:1080:socks:extra')).toBe(false);
     expect(regex.test('R:127x0x0x1:1080:socks')).toBe(false);
+    expect(regex.test('R:127.0.0.1:9999')).toBe(false);
   });
 });
 
@@ -86,29 +90,29 @@ describe('deriveTunnelUrl', () => {
     delete process.env.PROXY_TUNNEL_PATH;
   }
 
-  it('derives wss from an https APP_BASE_URL with the tunnel path', () => {
+  it('keeps https from an https APP_BASE_URL with the tunnel path (chisel upgrades itself)', () => {
     clear();
     process.env.APP_BASE_URL = 'https://voxen.exemplo.com';
-    expect(deriveTunnelUrl()).toBe('wss://voxen.exemplo.com/_tunnel');
+    expect(deriveTunnelUrl()).toBe('https://voxen.exemplo.com/_tunnel');
   });
 
-  it('derives ws from an http APP_BASE_URL (dev) with the tunnel path', () => {
+  it('keeps http from an http APP_BASE_URL (dev) with the tunnel path', () => {
     clear();
     process.env.APP_BASE_URL = 'http://localhost:3000';
-    expect(deriveTunnelUrl()).toBe('ws://localhost:3000/_tunnel');
+    expect(deriveTunnelUrl()).toBe('http://localhost:3000/_tunnel');
   });
 
   it('preserves a non-default port from APP_BASE_URL', () => {
     clear();
     process.env.APP_BASE_URL = 'https://voxen.exemplo.com:8443';
-    expect(deriveTunnelUrl()).toBe('wss://voxen.exemplo.com:8443/_tunnel');
+    expect(deriveTunnelUrl()).toBe('https://voxen.exemplo.com:8443/_tunnel');
   });
 
   it('uses a custom PROXY_TUNNEL_PATH in the derived URL', () => {
     clear();
     process.env.APP_BASE_URL = 'https://voxen.exemplo.com';
     process.env.PROXY_TUNNEL_PATH = '/wormhole';
-    expect(deriveTunnelUrl()).toBe('wss://voxen.exemplo.com/wormhole');
+    expect(deriveTunnelUrl()).toBe('https://voxen.exemplo.com/wormhole');
   });
 
   it('does NOT prefix the host with tunnel. (legacy behavior removed)', () => {
@@ -120,8 +124,20 @@ describe('deriveTunnelUrl', () => {
   it('PROXY_TUNNEL_URL takes precedence over APP_BASE_URL', () => {
     clear();
     process.env.APP_BASE_URL = 'https://voxen.exemplo.com';
+    process.env.PROXY_TUNNEL_URL = 'https://outro-host.net:9000/control';
+    expect(deriveTunnelUrl()).toBe('https://outro-host.net:9000/control');
+  });
+
+  it('normalizes an explicit wss:// PROXY_TUNNEL_URL to https:// (chisel wants http(s))', () => {
+    clear();
     process.env.PROXY_TUNNEL_URL = 'wss://outro-host.net:9000/control';
-    expect(deriveTunnelUrl()).toBe('wss://outro-host.net:9000/control');
+    expect(deriveTunnelUrl()).toBe('https://outro-host.net:9000/control');
+  });
+
+  it('normalizes an explicit ws:// PROXY_TUNNEL_URL to http://', () => {
+    clear();
+    process.env.PROXY_TUNNEL_URL = 'ws://localhost:9000/control';
+    expect(deriveTunnelUrl()).toBe('http://localhost:9000/control');
   });
 
   it('returns null when neither env is set', () => {
