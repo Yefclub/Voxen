@@ -110,7 +110,7 @@ export function deriveTunnelUrl(): string | null {
 
 /**
  * Monta o conteúdo do authfile do chisel para um dado token.
- * - token presente  -> { "voxen:<token>": ["^R:127\\.0\\.0\\.1:1080:socks$"] }
+ * - token presente  -> { "voxen:<token>": ["^R:127\\.0\\.0\\.1:1080(:socks)?$"] }
  * - token ausente   -> {} (chisel nega qualquer conexão)
  *
  * Exportado puro pra ser testável sem tocar filesystem nem DB.

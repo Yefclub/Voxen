@@ -20,7 +20,7 @@ VOXEN_TUNNEL_URL="${VOXEN_TUNNEL_URL:-}"
 VOXEN_TUNNEL_TOKEN="${VOXEN_TUNNEL_TOKEN:-}"
 # Bind do SOCKS reverso em 127.0.0.1 na VPS (defesa em profundidade): o proxy
 # nunca é exposto à rede do host, só o worker local o consome. Deve casar com a
-# regex do authfile do server (^R:127\.0\.0\.1:1080:socks$).
+# regex do authfile do server (^R:127\.0\.0\.1:1080(:socks)?$).
 VOXEN_SOCKS_REMOTE="${VOXEN_SOCKS_REMOTE:-R:127.0.0.1:1080:socks}"
 VOXEN_TUNNEL_FINGERPRINT="${VOXEN_TUNNEL_FINGERPRINT:-}"
 VOXEN_KEEPALIVE="${VOXEN_KEEPALIVE:-25s}"
