@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 
 from src import ytdl
-from src.ytdl import _is_supported_proxy, _requests_proxy_dict, _transcript_proxy_config
+from src.ytdl import (
+    _is_supported_proxy,
+    _mask_proxy,
+    _requests_proxy_dict,
+    _transcript_proxy_config,
+)
 
 
 @pytest.mark.parametrize(
@@ -79,3 +84,52 @@ async def test_runtime_options_applies_socks5_proxy(monkeypatch: pytest.MonkeyPa
     )
     opts = await ytdl._runtime_options()
     assert opts["proxy"] == "socks5h://user:pass@proxy.example:1080"
+
+
+def test_mask_proxy_keeps_credential_free_socks_url() -> None:
+    # Sem userinfo: a URL é logável tal qual (host:porta legíveis).
+    assert _mask_proxy("socks5h://127.0.0.1:1080") == "socks5h://127.0.0.1:1080"
+
+
+def test_mask_proxy_strips_userinfo() -> None:
+    masked = _mask_proxy("http://user:secret@host.com:8080")
+    assert "user" not in masked
+    assert "secret" not in masked
+    assert "host.com:8080" in masked
+    assert masked == "http://host.com:8080"
+
+
+def test_mask_proxy_strips_userinfo_socks5h() -> None:
+    masked = _mask_proxy("socks5h://alice:hunter2@residential.example:1080")
+    assert "alice" not in masked
+    assert "hunter2" not in masked
+    assert masked == "socks5h://residential.example:1080"
+
+
+def test_mask_proxy_without_port() -> None:
+    masked = _mask_proxy("http://user:pw@host.com")
+    assert "user" not in masked
+    assert "pw" not in masked
+    assert masked == "http://host.com"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "garbage",
+        "://nope",
+        "http://user:secret@",
+        # Sem esquema: "myuser" é lido como scheme por urlsplit — não pode vazar.
+        "myuser:secret@no-scheme:1080",
+        "user:secret@no-scheme:1080",
+        "",
+    ],
+)
+def test_mask_proxy_malformed_never_leaks_credential(url: str) -> None:
+    # Robusto a URL malformada: nunca lança e nunca devolve a string crua com
+    # userinfo embutido — nem a senha NEM o usuário (metade do par de credencial).
+    masked = _mask_proxy(url)
+    assert "secret" not in masked
+    assert "myuser" not in masked
+    assert "user" not in masked
+    assert isinstance(masked, str)
