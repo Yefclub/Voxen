@@ -601,6 +601,26 @@ const ptBRMessages = {
   'admin.integrations.proxy.managedNote':
     'O proxy de extração é gerenciado automaticamente pelo agente.',
 
+  'admin.integrations.cookies.title': 'Cookies do yt-dlp',
+  'admin.integrations.cookies.description':
+    'Destrava extração autenticada. O Instagram serve vídeo sem áudio quando não há login; o YouTube pode bloquear como bot. Com cookies de uma sessão logada, a mídia completa é obtida.',
+  'admin.integrations.cookies.configured': 'Cookies configurados',
+  'admin.integrations.cookies.notConfigured': 'Nenhum cookie configurado.',
+  'admin.integrations.cookies.paste': 'Cole o conteúdo do cookies.txt',
+  'admin.integrations.cookies.replace': 'Substituir cookies',
+  'admin.integrations.cookies.missing': 'Cole o conteúdo do cookies.txt.',
+  'admin.integrations.cookies.saveError': 'Erro ao salvar cookies.',
+  'admin.integrations.cookies.saved': 'Cookies salvos (cifrados). Próximas extrações vão usá-los.',
+  'admin.integrations.cookies.removed': 'Cookies removidos.',
+  'admin.integrations.cookies.remove': 'Remover',
+  'admin.integrations.cookies.removeTitle': 'Remover cookies do yt-dlp?',
+  'admin.integrations.cookies.removeDescription':
+    'As extrações voltam a rodar sem autenticação. Você pode recolar os cookies a qualquer momento.',
+  'admin.integrations.cookies.help':
+    'Exporte com uma extensão de browser (ex.: "Get cookies.txt LOCALLY") estando logado na conta, e cole o arquivo inteiro no formato Netscape.',
+  'admin.integrations.cookies.warning':
+    'Cookies expiram e são da conta do próprio owner — reexporte quando pararem de funcionar. Respeite os termos de uso de cada plataforma.',
+
   'account.eyebrow': 'Conta',
   'account.title': 'Seu perfil',
   'account.description': 'Atualize seus dados e gerencie sua senha.',
@@ -1520,6 +1540,27 @@ const enMessages: Record<I18nKey, string> = {
     'Multiple agents detected — run only one. Only a single agent connection is allowed at a time.',
   'admin.integrations.proxy.managedNote':
     'The extraction proxy is managed automatically by the agent.',
+
+  'admin.integrations.cookies.title': 'yt-dlp cookies',
+  'admin.integrations.cookies.description':
+    'Unlocks authenticated extraction. Instagram serves video without audio when not logged in; YouTube may block as a bot. With cookies from a logged-in session, the full media is fetched.',
+  'admin.integrations.cookies.configured': 'Cookies configured',
+  'admin.integrations.cookies.notConfigured': 'No cookies configured.',
+  'admin.integrations.cookies.paste': 'Paste the cookies.txt contents',
+  'admin.integrations.cookies.replace': 'Replace cookies',
+  'admin.integrations.cookies.missing': 'Paste the cookies.txt contents.',
+  'admin.integrations.cookies.saveError': 'Error saving cookies.',
+  'admin.integrations.cookies.saved':
+    'Cookies saved (encrypted). Future extractions will use them.',
+  'admin.integrations.cookies.removed': 'Cookies removed.',
+  'admin.integrations.cookies.remove': 'Remove',
+  'admin.integrations.cookies.removeTitle': 'Remove yt-dlp cookies?',
+  'admin.integrations.cookies.removeDescription':
+    'Extractions will run unauthenticated again. You can paste the cookies back at any time.',
+  'admin.integrations.cookies.help':
+    'Export with a browser extension (e.g. "Get cookies.txt LOCALLY") while logged into the account, and paste the whole file in Netscape format.',
+  'admin.integrations.cookies.warning':
+    "Cookies expire and belong to the owner's own account — re-export when they stop working. Respect each platform's terms of service.",
 
   'account.eyebrow': 'Account',
   'account.title': 'Your profile',

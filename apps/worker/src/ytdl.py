@@ -5,7 +5,10 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import tempfile
 import xml.etree.ElementTree
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -255,10 +258,9 @@ async def probe(url: str) -> VideoProbe:
         "writesubtitles": False,
         "writeautomaticsub": False,
     }
-    # yt-dlp é sync — chamamos em thread pra não bloquear o loop
-    import asyncio
-
-    info = await asyncio.to_thread(_extract_info, url, opts)
+    # yt-dlp é sync — chamamos em thread pra não bloquear o loop. O cookiefile
+    # (se configurado) é materializado/limpo dentro do helper.
+    info = await _extract_info_with_cookies(url, opts)
     return VideoProbe(
         video_id=info["id"],
         title=info.get("title") or "(sem título)",
@@ -319,8 +321,6 @@ async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path) -> Pat
     etc). Tentamos vários lang codes na requisição e fazemos glob amplo
     `*.{fmt}` no diretório dedicado do job.
     """
-    import asyncio
-
     # Inclui variantes do lang pedido + base (pt-BR → pt)
     base_opts = await _runtime_options()
     lang_variants = list(dict.fromkeys([lang, lang.split("-")[0]]))
@@ -338,7 +338,7 @@ async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path) -> Pat
     }
     # download=True faz o yt-dlp escrever os arquivos de legenda.
     # Com skip_download=True, NÃO baixa o vídeo, apenas as legendas.
-    await asyncio.to_thread(_run_download, url, opts)
+    await _download_with_cookies(url, opts)
     # tmpdir é exclusivo do job, então `*.{fmt}` é seguro
     candidates = sorted(out_dir.glob(f"*.{fmt}"))
     if not candidates:
@@ -351,8 +351,6 @@ async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path) -> Pat
 
 async def download_audio_opus(url: str, out_dir: Path) -> Path:
     """Extrai áudio como opus mono 16kHz 32kbps (spec 002)."""
-    import asyncio
-
     base_opts = await _runtime_options()
     out_template = str(out_dir / "%(id)s.%(ext)s")
     opts = {
@@ -381,7 +379,7 @@ async def download_audio_opus(url: str, out_dir: Path) -> Path:
             "32k",
         ],
     }
-    await asyncio.to_thread(_run_download, url, opts)
+    await _download_with_cookies(url, opts)
     files = list(out_dir.glob("*.opus")) + list(out_dir.glob("*.ogg"))
     if not files:
         raise RuntimeError("Áudio opus não foi gerado")
@@ -391,6 +389,59 @@ async def download_audio_opus(url: str, out_dir: Path) -> Path:
 def _run_download(url: str, opts: dict[str, Any]) -> None:
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([url])
+
+
+@contextmanager
+def _cookiefile_opts(cookies: str | None) -> Iterator[dict[str, Any]]:
+    """Materializa cookies (formato Netscape) num arquivo temp 600 e devolve o
+    trecho de opts (`{"cookiefile": <path>}`) a mesclar nas opções do yt-dlp.
+
+    Lifecycle fechado: o arquivo é criado com permissão 0600 e SEMPRE removido
+    ao sair do contexto, de forma que nenhum cookies.txt persista em disco entre
+    invocações. Sem cookies, devolve `{}` (comportamento atual intacto).
+
+    O conteúdo NUNCA é logado.
+    """
+    if not cookies or not cookies.strip():
+        yield {}
+        return
+
+    # mkstemp cria o arquivo já com 0600 (umask à parte: garantimos via chmod).
+    fd, raw_path = tempfile.mkstemp(prefix="voxen-cookies-", suffix=".txt")
+    path = Path(raw_path)
+    try:
+        os.chmod(path, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(cookies if cookies.endswith("\n") else cookies + "\n")
+        yield {"cookiefile": str(path)}
+    finally:
+        path.unlink(missing_ok=True)
+
+
+async def _extract_info_with_cookies(url: str, opts: dict[str, Any]) -> dict[str, Any]:
+    """Roda `probe`/extract_info com cookiefile temporário, se configurado."""
+    import asyncio
+
+    cookies = await voxen_settings.get_yt_dlp_cookies()
+
+    def _run() -> dict[str, Any]:
+        with _cookiefile_opts(cookies) as cookie_patch:
+            return _extract_info(url, {**opts, **cookie_patch})
+
+    return await asyncio.to_thread(_run)
+
+
+async def _download_with_cookies(url: str, opts: dict[str, Any]) -> None:
+    """Roda download (áudio/legenda) com cookiefile temporário, se configurado."""
+    import asyncio
+
+    cookies = await voxen_settings.get_yt_dlp_cookies()
+
+    def _run() -> None:
+        with _cookiefile_opts(cookies) as cookie_patch:
+            _run_download(url, {**opts, **cookie_patch})
+
+    await asyncio.to_thread(_run)
 
 
 async def _runtime_options() -> dict[str, Any]:
