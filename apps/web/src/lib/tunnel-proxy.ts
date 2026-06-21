@@ -148,9 +148,15 @@ export const tunnelWebSocketHandler = {
     // Normaliza Buffer -> Uint8Array (Bun entrega binário como Buffer).
     const frame = typeof message === 'string' ? message : new Uint8Array(message);
     if (!upstream || upstream.readyState !== WebSocket.OPEN) {
-      // Upstream ainda conectando: enfileira (limita pra evitar memória infinita
-      // se o chisel nunca abrir — improvável, mas defensivo).
-      if (ws.data.pending.length < 256) ws.data.pending.push(frame);
+      // Upstream ainda conectando: enfileira. Se a fila estourar (chisel não
+      // abriu a tempo — improvável, é 127.0.0.1), FECHA o socket em vez de
+      // descartar o frame: o transporte é SSH binário e descartar 1 frame
+      // corromperia a sessão silenciosamente. Fechar faz o agente reconectar limpo.
+      if (ws.data.pending.length >= 256) {
+        ws.close(1011, 'upstream backlog');
+        return;
+      }
+      ws.data.pending.push(frame);
       return;
     }
     try {
