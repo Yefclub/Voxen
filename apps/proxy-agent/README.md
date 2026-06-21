@@ -18,9 +18,13 @@ o agente conecta na VPS via TLS e a VPS passa a oferecer, **só em
 worker do Voxen usa `socks5h://127.0.0.1:1080` como proxy. A aplicação inteira
 continua na VPS — só o tráfego de download é que sai por casa.
 
+O agente conecta na **própria URL do Voxen** no path `/_tunnel` (a web faz proxy
+do WebSocket pro chisel server embutido). Não há subdomínio `tunnel.` separado
+nem porta de controle exposta publicamente.
+
 ```
 [ Worker (VPS) ] --socks5h://127.0.0.1:1080--> [ chisel server (voxen-app, VPS) ]
-                                                          ^  túnel TLS (wss)
+                                                          ^  túnel TLS (wss) via /_tunnel
                                                           |
                                           [ voxen-proxy-agent (seu home lab) ]
                                                           |
@@ -28,14 +32,25 @@ continua na VPS — só o tráfego de download é que sai por casa.
                                                    internet residencial --> YouTube/IG/TikTok
 ```
 
+> **Conexão única.** Só **um** agente pode estar conectado por vez — a garantia
+> vem do port-bind (`127.0.0.1:1080`). Um 2º agente não consegue bindar a porta;
+> o Voxen detecta e a UI de Integrações mostra um aviso de conflito. Rode apenas
+> um agente.
+
 ## Requisitos
 
 - Docker (ou Easypanel) num host Linux com **IP residencial**.
 - Saída de internet liberada na **porta 443 (HTTPS/WSS)** — é só uma conexão de
   saída; **nenhuma porta de entrada** precisa ser aberta no seu roteador.
-- A URL do túnel e o token, fornecidos pela **UI admin do Voxen**.
+- A URL do túnel e o token, fornecidos pela **UI admin do Voxen** em
+  **Admin → Integrações → Agente de Proxy** (botão **Gerar token**). A URL é a
+  própria URL do Voxen com `/_tunnel` no fim, e o token aparece **uma só vez**.
 
 ## Instalação
+
+> O jeito mais rápido é copiar o snippet `docker run` pronto da UI de
+> Integrações (URL e token já preenchidos). As opções abaixo são pra quem prefere
+> Compose ou montar o comando à mão.
 
 ### Opção A — Docker Compose (recomendado)
 
@@ -59,24 +74,38 @@ continua na VPS — só o tráfego de download é que sai por casa.
 
 ```bash
 docker run -d --name voxen-proxy-agent --restart unless-stopped \
-  -e VOXEN_TUNNEL_URL="https://tunnel.exemplo.com" \
+  -e VOXEN_TUNNEL_URL="https://voxen.seudominio.com/_tunnel" \
   -e VOXEN_TUNNEL_TOKEN="cole-o-token-aqui" \
   ghcr.io/yefclub/voxen-proxy-agent:latest
 ```
 
 > O agente não expõe nenhuma porta no host. Não use `-p`.
 
+## Status ao vivo
+
+Depois de subir o agente, confirme a conexão na UI do Voxen
+(**Admin → Integrações → Agente de Proxy**), que atualiza em tempo real:
+
+- **Conectado e funcionando** (verde) — o túnel está no ar; os downloads sairão
+  pelo IP residencial.
+- **Desconectado** (cinza) — nenhum agente conectado (subindo, token errado, ou
+  TLS/path `/_tunnel` bloqueado).
+
+No worker, cada job que usa o proxy loga uma linha `proxy-active` com o proxy
+**mascarado** (esquema + host + porta, sem credenciais) — auditoria de que o
+egress saiu pelo agente.
+
 ## Variáveis de ambiente
 
-| Variável                   | Obrigatória | Default          | Descrição                                                              |
-| -------------------------- | ----------- | ---------------- | --------------------------------------------------------------------- |
-| `VOXEN_TUNNEL_URL`         | Sim         | —                | URL de controle do túnel (deve ser `https://` / TLS).                 |
-| `VOXEN_TUNNEL_TOKEN`       | Sim         | —                | Token de auth do túnel, gerado na UI admin (mostrado uma única vez).  |
-| `VOXEN_TUNNEL_FINGERPRINT` | Não         | —                | Fingerprint do server pra host-key pinning (fortemente recomendado).  |
+| Variável                   | Obrigatória | Default                  | Descrição                                                                                |
+| -------------------------- | ----------- | ------------------------ | ---------------------------------------------------------------------------------------- |
+| `VOXEN_TUNNEL_URL`         | Sim         | —                        | URL de controle do túnel: a URL do Voxen + `/_tunnel` (deve ser `https://` / TLS).       |
+| `VOXEN_TUNNEL_TOKEN`       | Sim         | —                        | Token de auth do túnel, gerado na UI admin (mostrado uma única vez).                     |
+| `VOXEN_TUNNEL_FINGERPRINT` | Não         | —                        | Fingerprint do server pra host-key pinning (fortemente recomendado).                     |
 | `VOXEN_SOCKS_REMOTE`       | Não         | `R:127.0.0.1:1080:socks` | Remote reverso (bind em localhost na VPS). Deve casar com a regex do authfile do server. |
-| `VOXEN_KEEPALIVE`          | Não         | `25s`            | Intervalo de keepalive.                                               |
-| `VOXEN_MAX_RETRY_INTERVAL` | Não         | `30s`            | Espera máxima entre tentativas de reconexão.                          |
-| `VOXEN_AUTH_USER`          | Não         | `voxen`          | Usuário de auth (par `user:token`).                                   |
+| `VOXEN_KEEPALIVE`          | Não         | `25s`                    | Intervalo de keepalive.                                                                  |
+| `VOXEN_MAX_RETRY_INTERVAL` | Não         | `30s`                    | Espera máxima entre tentativas de reconexão.                                             |
+| `VOXEN_AUTH_USER`          | Não         | `voxen`                  | Usuário de auth (par `user:token`).                                                      |
 
 Se faltar `VOXEN_TUNNEL_URL` ou `VOXEN_TUNNEL_TOKEN`, o agente **recusa iniciar**
 com erro claro. Reconexão é automática e infinita (`--max-retry-count -1`).
@@ -84,8 +113,9 @@ com erro claro. Reconexão é automática e infinita (`--max-retry-count -1`).
 ## Segurança
 
 - **TLS fim-a-fim.** A conexão sai do agente como `wss://` e é terminada pelo
-  traefik na VPS. Use sempre `https://` na `VOXEN_TUNNEL_URL` — o agente recusa
-  esquemas sem TLS.
+  reverse proxy/TLS na frente do Voxen (Easypanel, Cloudflare, nginx etc.), que
+  encaminha o upgrade de WebSocket em `/_tunnel` pro chisel embutido. Use sempre
+  `https://` na `VOXEN_TUNNEL_URL` — o agente recusa esquemas sem TLS.
 - **Token vem da UI do Voxen.** É uma credencial de alta entropia gerada e
   guardada cifrada pela aplicação. Trate como secret: ponha no `.env` (fora do
   versionamento) ou no gestor de secrets do Easypanel.
