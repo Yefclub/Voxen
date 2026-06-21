@@ -116,6 +116,8 @@ services:
       S3_BUCKET: ${S3_BUCKET:-voxen-transcripts}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      # Opcional: habilita upload presigned direto pro S3 (ver docs/DEPLOY.md).
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
       CHAT_SERVICE_URL: http://chat:8001
     ports:
       - '3000:3000'

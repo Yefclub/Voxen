@@ -12,6 +12,7 @@ import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Spinner } from '../components/ui/spinner';
 import { ApiError, apiPost } from '../lib/api';
+import { uploadMedia } from '../lib/upload';
 import { useFetch, useSse } from '../lib/hooks';
 import { formatRelative } from '../lib/format';
 import { jobStatusBadge, stageLabel } from '../lib/job-display';
@@ -36,6 +37,7 @@ export function JobsPage(): React.ReactElement {
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const { data, loading, refresh } = useFetch<{ jobs: JobSummary[] }>('/api/jobs');
   const navigate = useNavigate();
@@ -137,38 +139,25 @@ export function JobsPage(): React.ReactElement {
     if (!mediaFile) return;
     setError(null);
     setUploading(true);
+    setUploadProgress(0);
     try {
-      const form = new FormData();
-      form.append('media', mediaFile);
-      const res = await fetch('/api/jobs/upload', {
-        method: 'POST',
-        credentials: 'include',
-        body: form,
+      const result = await uploadMedia(mediaFile, {
+        onProgress: (percent) => setUploadProgress(percent),
       });
-      const body = (await res.json().catch(() => ({}))) as {
-        jobId?: string;
-        status?: JobStatus;
-        sourceUrl?: string;
-        kind?: 'media' | 'image' | 'document';
-        error?: string;
-      };
-      if (!res.ok || !body.jobId) {
-        throw new ApiError(body.error ?? t('jobs.error.upload'), res.status, body);
-      }
-      const jobId = body.jobId;
+      const jobId = result.jobId;
       setMediaFile(null);
       refresh();
       toast.success(
-        body.kind === 'image'
+        result.kind === 'image'
           ? t('jobs.toast.imageQueued')
-          : body.kind === 'document'
+          : result.kind === 'document'
             ? t('jobs.toast.documentQueued')
             : t('jobs.toast.fileQueued'),
         {
           description:
-            body.kind === 'image'
+            result.kind === 'image'
               ? t('jobs.toast.imageDescription')
-              : body.kind === 'document'
+              : result.kind === 'document'
                 ? t('jobs.toast.documentDescription')
                 : t('jobs.toast.mediaDescription'),
           action: {
@@ -179,9 +168,15 @@ export function JobsPage(): React.ReactElement {
       );
       navigate(`/jobs/${jobId}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('jobs.error.unexpected'));
+      if (err instanceof ApiError) {
+        // 413 só ocorre no fallback via app (CF/limite do servidor).
+        setError(err.status === 413 ? t('jobs.error.uploadTooLarge') : err.message);
+      } else {
+        setError(t('jobs.error.unexpected'));
+      }
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   }
 
@@ -403,10 +398,30 @@ export function JobsPage(): React.ReactElement {
                         {t('jobs.send')}
                       </Button>
                     </div>
-                    {mediaFile && (
-                      <p className="text-xs text-[var(--color-app-muted)]">
-                        {(mediaFile.size / 1024 / 1024).toFixed(1)} MiB · {t('jobs.sizeHint')}
-                      </p>
+                    {uploading ? (
+                      <div className="space-y-1.5">
+                        <div
+                          className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-app-bg-elevated)]"
+                          role="progressbar"
+                          aria-valuenow={uploadProgress}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                        >
+                          <div
+                            className="h-full rounded-full bg-emerald-500 transition-[width] duration-200"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                        <p className="text-xs tabular-nums text-[var(--color-app-muted)]">
+                          {t('jobs.uploading', { percent: uploadProgress })}
+                        </p>
+                      </div>
+                    ) : (
+                      mediaFile && (
+                        <p className="text-xs text-[var(--color-app-muted)]">
+                          {(mediaFile.size / 1024 / 1024).toFixed(1)} MiB · {t('jobs.sizeHint')}
+                        </p>
+                      )
                     )}
                   </form>
                 )}

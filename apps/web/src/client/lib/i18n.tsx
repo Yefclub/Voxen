@@ -141,6 +141,9 @@ const ptBRMessages = {
   'jobs.toast.alreadyQueued': 'Já está na fila.',
   'jobs.error.unexpected': 'Erro inesperado.',
   'jobs.error.upload': 'Falha ao enviar arquivo.',
+  'jobs.error.uploadTooLarge':
+    'Arquivo muito grande para o envio via servidor. Tente novamente — o limite pode ser maior com upload direto configurado.',
+  'jobs.uploading': 'Enviando… {percent}%',
   'jobs.toast.imageQueued': 'Imagem na fila.',
   'jobs.toast.documentQueued': 'Documento na fila.',
   'jobs.toast.fileQueued': 'Arquivo na fila.',
@@ -1084,6 +1087,9 @@ const enMessages: Record<I18nKey, string> = {
   'jobs.toast.alreadyQueued': 'Already queued.',
   'jobs.error.unexpected': 'Unexpected error.',
   'jobs.error.upload': 'Failed to upload file.',
+  'jobs.error.uploadTooLarge':
+    'File too large for server upload. Try again — the limit can be higher with direct upload configured.',
+  'jobs.uploading': 'Uploading… {percent}%',
   'jobs.toast.imageQueued': 'Image queued.',
   'jobs.toast.documentQueued': 'Document queued.',
   'jobs.toast.fileQueued': 'File queued.',

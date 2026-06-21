@@ -1,4 +1,4 @@
-.PHONY: help ensure-env dev update build down restart logs ps test test-ts test-py lint lint-ts lint-py format format-ts format-py format-check format-check-ts format-check-py typecheck migrate seed shell-db shell-redis minio-init master-key-show reset-password backup clean
+.PHONY: help ensure-env dev update build down restart logs ps test test-ts test-py lint lint-ts lint-py format format-ts format-py format-check format-check-ts format-check-py typecheck migrate seed shell-db shell-redis minio-init minio-cors master-key-show reset-password backup clean
 
 # ============================================================================
 # Voxen — one-command development
@@ -108,6 +108,13 @@ shell-redis: ## redis-cli
 # --- Infra utilidades ---
 minio-init: ## Reroda criação do bucket MinIO (idempotente)
 	docker compose up minio-init
+
+minio-cors: ## Aplica CORS no bucket p/ upload presigned: make minio-cors APP_ORIGIN=https://app.dominio.com
+	@if [ -z "$(APP_ORIGIN)" ]; then \
+		echo "Erro: defina APP_ORIGIN. Ex.: make minio-cors APP_ORIGIN=https://app.seudominio.com"; \
+		exit 2; \
+	fi
+	APP_ORIGIN="$(APP_ORIGIN)" sh scripts/minio-cors.sh
 
 master-key-show: ## Mostra a master key (cuidado — secret)
 	@grep '^MASTER_KEY=' .env | sed 's/^MASTER_KEY=//'

@@ -12,7 +12,9 @@
   "pnpm": {
     "overrides": {
       "esbuild": "0.28.1",
-      "vitest": "^4.1.0"
+      "vitest": "^4.1.0",
+      "@smithy/types": "4.15.0",
+      "@smithy/core": "3.25.1"
     }
   },
   "scripts": {
