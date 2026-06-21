@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+import pytest
+import yt_dlp.utils
+
 from src import pipeline, ytdl
 
 
@@ -79,3 +82,20 @@ def test_friendly_error_no_audio_codec() -> None:
 
 def test_friendly_error_non_tiktok_returns_none() -> None:
     assert pipeline._friendly_external_error(RuntimeError("algo sem relação")) is None
+
+
+async def test_no_audio_short_circuits_without_retry() -> None:
+    # Falha determinística "sem áudio" não deve retentar: _retry_transient detecta
+    # o erro amigável e levanta PermanentError na 1ª tentativa (spec 002).
+    calls = 0
+
+    async def fn() -> None:
+        nonlocal calls
+        calls += 1
+        raise yt_dlp.utils.PostProcessingError(
+            "ERROR: Postprocessing: WARNING: unable to obtain file audio codec with ffprobe"
+        )
+
+    with pytest.raises(pipeline.PermanentError):
+        await pipeline._retry_transient(fn, tries=3)
+    assert calls == 1  # sem retries (curto-circuito)
