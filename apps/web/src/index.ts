@@ -28,6 +28,7 @@ import { mcpRoutes } from './routes/mcp';
 import { graphRoutes } from './routes/graph';
 import { shareTargetRoutes } from './routes/share-target';
 import { getRedisPublisher } from './lib/redis';
+import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
 import { s3Bucket, s3Client } from './lib/s3';
 
@@ -107,10 +108,7 @@ function deployTimestampToIso(value?: string): string | null {
 // Kuma, Healthchecks.io). Rate-limit por IP pra evitar DoS amplificado
 // (cada hit gera 4 round-trips reais).
 app.get('/health/deep', async (c) => {
-  const ip =
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
-    c.req.header('x-real-ip') ??
-    'unknown';
+  const ip = clientIp(c);
   const rl = await rateLimit(`voxen:rl:health-deep:${ip}`, 30, 60);
   if (!rl.allowed) {
     return c.json({ error: 'Rate limit. Tente em alguns segundos.' }, 429);
