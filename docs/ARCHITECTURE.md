@@ -97,6 +97,37 @@ Worker assíncrono que consome jobs via Redis (ARQ). Responsabilidades:
 - Trata SSRF: valida URL antes (allowlist de hosts: youtube.com, youtu.be, instagram.com, tiktok.com, vm.tiktok.com)
 - Respeita budget mensal do user (consulta antes de enfileirar OpenRouter)
 
+### Egress de download (agente de proxy residencial)
+
+Quando o Voxen roda numa VPS, o YouTube costuma bloquear downloads de IP de
+datacenter. Pra contornar, o egress de extração de mídia pode sair por um **IP
+residencial** via um túnel reverso [chisel](https://github.com/jpillora/chisel)
+(MIT). O servidor chisel vem **embutido na imagem `voxen-app`** (iniciado pelo
+entrypoint, best-effort) e o cliente é a imagem `voxen-proxy-agent`, rodada pelo
+operador num host de casa.
+
+Caminho do egress:
+
+```
+worker --socks5h://127.0.0.1:1080--> chisel server (voxen-app)
+                                          ^ túnel TLS (wss) — proxy ws da web em /_tunnel
+                                          |
+                              voxen-proxy-agent (IP residencial) --> YouTube/IG/TikTok
+```
+
+- O agente residencial **disca de volta** ao Voxen (túnel reverso) na própria URL
+  pública no path `/_tunnel`; a web faz proxy do WebSocket pro chisel local. Não
+  há subdomínio separado nem porta de controle (8088) exposta publicamente.
+- O chisel server abre um SOCKS5 **bindado em `127.0.0.1:1080`** (nunca exposto à
+  rede) só enquanto há agente conectado. O worker usa esse SOCKS via o setting
+  `yt_dlp_proxy_urls`, gerenciado automaticamente (setado ao gerar o token,
+  limpo ao revogar) — não há config manual de proxy.
+- **Conexão única**: o port-bind garante um só agente; um 2º tentando bindar
+  loga `address already in use`, surfaceado como conflito na UI de Integrações.
+- O admin gera o token e acompanha o status ao vivo em **Integrações**; o worker
+  loga `proxy-active` (mascarado) por job que usa o proxy. Detalhes de operação
+  em [`docs/DEPLOY.md`](DEPLOY.md#agente-de-proxy-residencial); specs 058/059.
+
 ## Os 3 serviços de infra
 
 ### Postgres 17
