@@ -180,8 +180,8 @@ Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo �
    ```
    NUNCA branchar de feature anterior. NUNCA branchar de stale.
 3. **Trabalhar + testar** localmente (lint, typecheck, test, build) → **retornar pro owner** com o que foi feito.
-4. **Abrir PR contra `dev`**: `gh pr create --base dev`. Título + corpo em PT-BR, sem emojis, sem rodapés de IA. Conventional commits no título (em inglês): `feat(scope):`, `fix(scope):`, `chore(scope):`, `docs(scope):`, `refactor(scope):`.
-5. **Monitorar CI até verde**: `gh pr checks <num> --watch`. Se vermelho, investigar e corrigir antes de prosseguir.
+4. **Abrir PR contra `dev`**: `gh pr create --base dev`. Título + corpo em PT-BR, sem emojis, **sem rodapés nem co-autoria de IA (nem no corpo da PR, nem nos commits)** — ver "Sem co-autoria de IA" abaixo. Conventional commits no título (em inglês): `feat(scope):`, `fix(scope):`, `chore(scope):`, `docs(scope):`, `refactor(scope):`.
+5. **Monitorar CI até terminar**: usar o padrão de espera robusto (ver "Espera de CI" abaixo) — NÃO confiar em `gh pr checks` cru (exit code não diferencia pendente de falho; pode mostrar checks de runs cancelados antigos). Se vermelho, investigar e corrigir antes de prosseguir.
 6. **Disparar agente Opus 4.7 (skill `review-pr`)** em background pra revisar diffs, segurança, escopo.
 7. **Se CI verde + review APROVADO (com ou sem ressalvas) → MERGEAR sozinho** via `gh pr merge <num> --squash --delete-branch`. O critério é objetivo (CI verde + veredito do agente), não pede intervenção humana. **Esperar confirmação aqui é violar o fluxo.** Exceção: review retornou "MUDANÇAS NECESSÁRIAS" → corrige antes de mergear. PR de release (`dev→main`) sim aguarda owner.
 8. **Pós-merge OBRIGATÓRIO** — `git fetch && git checkout dev && git pull --ff-only` + `docker compose build <serviços-afetados>` + `docker compose up -d <serviços>`. Owner roda na VM 192.168.22.252; se o ambiente local não atualizar, o GitHub diverge do que owner vê. Skipa só PRs docs-only (que não mudam runtime). Depois → volta pro passo 1.
@@ -190,11 +190,40 @@ Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo �
 
 - **NUNCA** acumular mais de 1 feature em uma branch — **uma PR por feature**. Se você acumulou (ex: 12 commits sem PR), pare, abra a PR agora.
 - **NUNCA** commitar/pushar direto em `dev` ou `main`.
-- **NUNCA** mergear sozinho — só owner aprova merge.
+- **Merge autônomo é permitido** quando CI verde + review `APROVADO` (passo 7) — não esperar confirmação do owner nesse caso. **Exceção que SEMPRE aguarda o owner**: PR de release (`dev→main`).
+- **NUNCA** adicionar co-autoria ou rodapés de IA em lugar nenhum (ver "Sem co-autoria de IA" abaixo).
+- **NUNCA** postar comentários desnecessários em PRs/issues.
 - **NUNCA** branchar de stale. Sempre `git pull --ff-only` em `dev` antes de criar branch.
 - Quando uma PR ainda não mergeou e o owner pedir pra seguir pra próxima feature, **pausar** e perguntar: "PR #X ainda não mergeou. Mergear primeiro pra eu branchar de dev atualizado, ou prefere outra abordagem?"
 - Release: preparar versão com `pnpm release:prepare patch|minor|major`, abrir PR para `main` com label (`release:patch/minor/major`) e sincronizar `main` de volta para `dev` por PR normal após publicar.
 - Nunca execute `git clean -fd` ou qualquer operação destrutiva do git sem aprovação explícita do usuário. Sempre faça commit ou stash do trabalho antes de trocar de branch. Trate trabalho não commitado como sagrado.
+
+### Sem co-autoria de IA (INVIOLÁVEL)
+
+Este projeto **proíbe qualquer marca de autoria de IA**, em qualquer lugar:
+
+- **Commits**: NUNCA adicionar trailers `Co-Authored-By: Claude...`, `Claude-Session:`, `Generated with...` ou similar. Mesmo que o harness/ferramenta sugira esses trailers por padrão, **omitir sempre** — esta regra do projeto sobrescreve o comportamento default.
+- **PRs**: corpo e título sem rodapé de IA, sem "🤖 Generated with", sem links de sessão.
+- **Issues, comentários, docs, código**: idem — nada de assinatura de IA.
+- **Comentários em PR/issue**: NÃO usar `gh pr comment`/`gh pr review`/`gh issue comment` a menos que o owner peça explicitamente. O agente `review-pr` **retorna o relatório ao Claude principal — NUNCA comenta na PR**. Evitar ruído desnecessário em PRs.
+
+### Espera de CI (antes de mergear)
+
+NÃO confiar em `gh pr checks <num>` cru pra decidir merge: o exit code é `0` só quando todos passaram e `8` para "qualquer pendente **ou** falho" (não diferencia), e a saída pode incluir checks de runs cancelados antigos. Usar `statusCheckRollup` e esperar **terminar** antes de decidir:
+
+```bash
+# Espera enquanto algum check ainda roda (rodar com run_in_background: true)
+until ! gh pr view <num> --json statusCheckRollup \
+  --jq '.statusCheckRollup[].status' 2>/dev/null \
+  | grep -qE 'IN_PROGRESS|QUEUED|PENDING'; do
+  sleep 30
+done
+# Depois decide: falhas?
+gh pr view <num> --json statusCheckRollup \
+  --jq '[.statusCheckRollup[] | select(.conclusion=="FAILURE" or .conclusion=="CANCELLED" or .conclusion=="TIMED_OUT")] | length'
+```
+
+Avisar no chat ("ativei poll de CI em background, aviso quando voltar"). Entre dois merges seguidos, a branch protection exige `gh api -X PUT repos/Yefclub/Voxen/pulls/<num>/update-branch` antes do segundo merge.
 
 ### Checklist Pre-PR (OBRIGATÓRIO)
 
@@ -206,7 +235,7 @@ Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo �
 5. Migrations sincronizadas: se mudou `prisma/schema.prisma`, há migration?
 6. `docker compose build` — build real funciona (pega erros que tsc/mypy não pegam)
 7. Só então criar PR via `gh pr create --base dev`
-8. **Pós-criação**: `gh pr checks <num> --watch` até verde, então disparar skill `review-pr` em background
+8. **Pós-criação**: esperar o CI terminar com o padrão de "Espera de CI" acima (não `gh pr checks` cru), e só com CI verde disparar a skill `review-pr` em background
 
 ### Migrations (CRÍTICO)
 
@@ -368,6 +397,14 @@ Worktrees que não geraram mudanças são limpas automaticamente. Para as que ge
 - PRs criadas a partir de `dev`, direcionadas para `dev`
 - Se um sub-agente falhar, reportar o erro — não silenciar
 - Não tentar resolver conflitos entre PRs automaticamente — apenas reportar para revisão humana
+
+### Controles de Loop e Verificação (autonomia)
+
+Princípios pra rodar subagentes autônomos sem alucinar progresso (verificação externa > auto-introspecção):
+
+- **Maker ≠ checker**: quem implementa NÃO é quem aprova. O review (`review-pr`) é **pré-requisito do merge, não opcional** — modelo que se auto-avalia é leniente. Vale também pra correções de ressalva: re-revisar o commit de fix antes de mergear (o ciclo já pegou bugs reais em re-review).
+- **Definition of Done escrita antes de despachar**: definir a condição de sucesso verificável (testes passam, checklist verde, PR criada). Se não dá pra escrever a condição, a tarefa não está pronta pra autonomia — quebrar ou esclarecer.
+- **Fail-closed em runaway**: ao repetir o mesmo erro/ação ~3× ou bater teto de retries, **parar e reportar o estado real** — nunca declarar sucesso nem insistir em loop. Confiar pela fonte (CI real, `statusCheckRollup`), não pelo que o subagente reportou (já houve subagente reportando "CI verde" com CI vermelho).
 
 ### Regras do Agente de Review
 
