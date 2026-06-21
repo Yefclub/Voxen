@@ -66,5 +66,16 @@ def test_friendly_error_tiktok_rehydration() -> None:
     assert "upload" in msg.lower()
 
 
+def test_friendly_error_no_audio_codec() -> None:
+    # Reels/posts servidos só-vídeo fazem o FFmpegExtractAudio estourar no ffprobe.
+    exc = RuntimeError(
+        "ERROR: Postprocessing: WARNING: unable to obtain file audio codec with ffprobe"
+    )
+    msg = pipeline._friendly_external_error(exc)
+    assert msg is not None
+    assert "áudio" in msg.lower()
+    assert "upload" in msg.lower()
+
+
 def test_friendly_error_non_tiktok_returns_none() -> None:
     assert pipeline._friendly_external_error(RuntimeError("algo sem relação")) is None

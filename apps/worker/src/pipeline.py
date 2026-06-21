@@ -156,6 +156,14 @@ def _friendly_external_error(exc: BaseException) -> str | None:
             "ou peça ao admin para configurar um proxy residencial nas configurações da instância. "
             "Por que isso acontece em VPS? Veja docs/DEPLOY.md (Home-lab vs VPS)."
         )
+    if "unable to obtain file audio codec" in text or (
+        "postprocessing" in text and "ffprobe" in text
+    ):
+        return (
+            "Este conteúdo foi servido sem faixa de áudio (a plataforma entregou só "
+            "vídeo, ou exige login). Não dá pra transcrever sem áudio. Tente novamente "
+            "em alguns minutos ou envie o arquivo por upload manual."
+        )
     if "private video" in text or "login required" in text or "members-only" in text:
         return (
             "Este vídeo exige login ou não está público. "
