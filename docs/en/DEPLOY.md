@@ -4,7 +4,7 @@ This guide covers production deployment. Voxen keeps development and production 
 
 ## Recommended Deployment: Home-Lab
 
-Voxen works best on a home-lab machine such as a mini PC, NAS, Proxmox host, or dedicated desktop at home. Residential IPs are less likely to trigger YouTube download soft-blocks than datacenter IPs. A VPS is supported, but media extraction may require a residential proxy configured in the instance settings.
+Voxen works best on a home-lab machine such as a mini PC, NAS, Proxmox host, or dedicated desktop at home. Residential IPs are less likely to trigger YouTube download soft-blocks than datacenter IPs. A VPS is supported, but media extraction may require routing downloads through the residential proxy agent (see the PT-BR guide section "Agente de proxy residencial" in `docs/DEPLOY.md`).
 
 ## Common Requirements
 
@@ -73,8 +73,12 @@ cost. If that path fails, the normal fallback remains: `yt-dlp` subtitles,
 then audio transcription, then manual upload when the platform blocks access.
 
 On VPS/datacenter IPs, YouTube may still block automated access. The stable
-free mitigation is to run extraction from a residential/home-lab network. If
-you operate your own bgutil HTTP provider for yt-dlp PO tokens, set
+free mitigation is to run extraction from a residential/home-lab network — when
+the app itself runs on a VPS, the supported way is the residential proxy agent
+(`ghcr.io/yefclub/voxen-proxy-agent`): a lightweight container you run on a home
+IP that the worker reaches through a reverse tunnel. Generate its token in
+Admin → Integrations → Proxy Agent. If you operate your own bgutil HTTP provider
+for yt-dlp PO tokens, set
 `YTDLP_BGUTIL_BASE_URL=http://host:4416` in the worker environment. Do not use
 public providers; this is a fragile mitigation, not a download guarantee.
 

@@ -103,6 +103,30 @@ O extrator de mídia e `ffmpeg` rodam via subprocess. Regras:
 - Limpeza forçada após job (sucesso ou falha)
 - Limite de RAM no container (compose `mem_limit`)
 
+## Agente de proxy residencial (túnel)
+
+O túnel reverso que roteia o egress de download por um IP residencial (chisel,
+ver [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#egress-de-download-agente-de-proxy-residencial))
+segue defesa em profundidade:
+
+- **SOCKS bindado em localhost.** O SOCKS5 reverso liga **`127.0.0.1:1080`** no
+  servidor Voxen — nunca `0.0.0.0`, nunca exposto à rede. Só o worker local o
+  consome. O authfile do chisel restringe o remote do agente ao ÚNICO valor
+  esperado (`R:127.0.0.1:1080`) via regex ancorada — nunca `R:.*`.
+- **TLS obrigatório.** O agente disca por `wss://` (terminado pelo reverse proxy
+  TLS na frente do Voxen, encaminhando o upgrade em `/_tunnel`). O agente recusa
+  esquemas sem TLS; `http://`/`ws://` puro é rejeitado.
+- **Token de alta entropia, cifrado.** O token do túnel tem ≥ 32 bytes
+  aleatórios (base64url), é persistido **cifrado** no setting `proxy_agent_token`
+  (AES-256-GCM com a `MASTER_KEY`) e é exibido em texto puro **uma única vez** —
+  depois só dá pra rotacionar ou revogar. Endpoints de proxy-agent são
+  **admin-only** (role derivada da sessão, nunca do body/query).
+- **Credenciais nunca em log.** O token jamais é logado (web nem agente). A linha
+  `proxy-active` do worker mostra o proxy **mascarado** (esquema + host + porta,
+  sem userinfo/credenciais). O authfile é escrito com permissão `600`.
+- **Conexão única.** O port-bind garante um só agente; tentativa de um 2º agente
+  loga `address already in use` e é surfaceada como conflito na UI.
+
 ## DB
 
 - Migrations Prisma sempre com `IF [NOT] EXISTS` em comandos manuais
