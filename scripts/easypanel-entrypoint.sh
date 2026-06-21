@@ -212,28 +212,29 @@ start_chisel() {
     fi
   fi
   echo "[easypanel] starting chisel server on 0.0.0.0:${CHISEL_PORT} (reverse)..."
-  # Saída do chisel vai pro console E pra um arquivo de log (a app web lê as
-  # últimas linhas pra detectar "address already in use" = 2º agente). Usamos
-  # process substitution (`> >(tee ...)`) de propósito: assim o job em background
-  # é o PRÓPRIO chisel — `$!` captura o PID do chisel, não o do tee — preservando
-  # o terminate()/SIGHUP de antes. Se o `tee` (ou o /run/voxen) falhar, o boot NÃO
-  # quebra: o `||` cai num start sem log-capture (best-effort, defensivo).
-  if chisel server \
-    --reverse \
-    --keepalive 25s \
-    --authfile "$CHISEL_AUTHFILE" \
-    --port "${CHISEL_PORT}" > >(tee -a "$CHISEL_LOGFILE" 2>/dev/null) 2>&1 &
-  then
-    echo $! > "$CHISEL_PIDFILE" 2>/dev/null || true
+  # A saída do chisel vai pro console E pra um arquivo de log (a app web lê as
+  # últimas linhas pra detectar "address already in use" = 2º agente). Decidimos o
+  # log-capture testando ANTES se o logfile é gravável: `if cmd & ; then` testaria
+  # o status do *backgrounding* (sempre 0) — o teste de gravabilidade é a condição
+  # REAL que escolhe o caminho. Truncar (`:>`) também limita o crescimento do log
+  # por boot. Em ambos os ramos o job em background é o PRÓPRIO chisel, então `$!`
+  # captura o PID do chisel (não o do tee) — preservando o terminate()/pidfile.
+  if { : > "$CHISEL_LOGFILE"; } 2>/dev/null; then
+    chmod 600 "$CHISEL_LOGFILE" 2>/dev/null || true
+    chisel server \
+      --reverse \
+      --keepalive 25s \
+      --authfile "$CHISEL_AUTHFILE" \
+      --port "${CHISEL_PORT}" > >(tee -a "$CHISEL_LOGFILE" 2>/dev/null) 2>&1 &
   else
-    echo "[easypanel] AVISO: log-capture do chisel falhou — subindo sem arquivo de log"
+    echo "[easypanel] AVISO: $CHISEL_LOGFILE não gravável — chisel sem arquivo de log (detecção de conflito desabilitada)"
     chisel server \
       --reverse \
       --keepalive 25s \
       --authfile "$CHISEL_AUTHFILE" \
       --port "${CHISEL_PORT}" &
-    echo $! > "$CHISEL_PIDFILE" 2>/dev/null || true
   fi
+  echo $! > "$CHISEL_PIDFILE" 2>/dev/null || true
 }
 
 start_chisel || echo "[easypanel] AVISO: chisel server não iniciou (seguindo sem túnel)"

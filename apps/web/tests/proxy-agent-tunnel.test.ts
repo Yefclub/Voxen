@@ -316,4 +316,16 @@ describe('readConflictFlag (best-effort I/O)', () => {
     process.env.CHISEL_LOGFILE = logfile;
     await expect(readConflictFlag()).resolves.toBe(false);
   });
+
+  it('ignores an old conflict marker beyond the tail window (lê só a cauda)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'voxen-chisel-log-'));
+    const logfile = join(dir, 'chisel.log');
+    // Conflito antigo no início, seguido de >64KB de linhas limpas: o marcador
+    // fica fora da janela de cauda lida, então não deve disparar conflito.
+    const oldConflict = 'server: bind: address already in use\n';
+    const filler = 'server: keepalive ping\n'.repeat(5000); // ~110KB > 64KB
+    writeFileSync(logfile, oldConflict + filler);
+    process.env.CHISEL_LOGFILE = logfile;
+    await expect(readConflictFlag()).resolves.toBe(false);
+  });
 });

@@ -21,7 +21,7 @@
 // ============================================================================
 
 import { writeFileSync, chmodSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { getSetting } from './settings';
 
@@ -243,17 +243,32 @@ export function detectConflictInLog(logContent: string, tailLines = 200): boolea
   });
 }
 
+// Quanto do final do log lemos por poll. O chisel loga pouco (só eventos de
+// conexão/bind), mas num deploy longo com agente flapando o arquivo cresce; ler
+// só a cauda mantém o poll (a cada ~9s) barato e O(1) no tamanho do log.
+const CONFLICT_TAIL_BYTES = 64 * 1024;
+
 /**
  * Lê o log do chisel (best-effort) e detecta conflito de múltiplos agentes.
+ * Lê apenas os últimos {@link CONFLICT_TAIL_BYTES} bytes (não o arquivo inteiro).
  * Sem arquivo (dev / sem chisel) => false, sem erro. NUNCA loga conteúdo do log.
  */
 export async function readConflictFlag(): Promise<boolean> {
   const path = chiselLogfile();
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    const content = await readFile(path, 'utf8');
-    return detectConflictInLog(content);
+    handle = await open(path, 'r');
+    const { size } = await handle.stat();
+    const start = size > CONFLICT_TAIL_BYTES ? size - CONFLICT_TAIL_BYTES : 0;
+    const length = size - start;
+    if (length <= 0) return false;
+    const buffer = Buffer.alloc(length);
+    await handle.read(buffer, 0, length, start);
+    return detectConflictInLog(buffer.toString('utf8'));
   } catch {
     // Sem log (dev, ou chisel nunca subiu) — sem conflito a reportar.
     return false;
+  } finally {
+    await handle?.close().catch(() => {});
   }
 }
