@@ -13,6 +13,7 @@ import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { getSetting, setSetting } from '../lib/settings';
+import { deriveTunnelUrl } from '../lib/proxy-agent-tunnel';
 
 type AdminVariables = {
   adminUserId: string;
@@ -321,31 +322,6 @@ function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
   for (const b of bytes) binary += String.fromCharCode(b);
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-// Deriva a URL de conexão do túnel:
-//   1. PROXY_TUNNEL_URL explícito, se setado;
-//   2. senão, APP_BASE_URL com hostname prefixado por `tunnel.`;
-//   3. senão, null (UI orienta a configurar uma das envs).
-function deriveTunnelUrl(): string | null {
-  const explicit = process.env.PROXY_TUNNEL_URL?.trim();
-  if (explicit) {
-    try {
-      return new URL(explicit).toString().replace(/\/$/, '');
-    } catch {
-      return null;
-    }
-  }
-  const appBase = process.env.APP_BASE_URL?.trim();
-  if (!appBase) return null;
-  try {
-    const url = new URL(appBase);
-    url.hostname = `tunnel.${url.hostname}`;
-    url.pathname = '/';
-    return url.toString().replace(/\/$/, '');
-  } catch {
-    return null;
-  }
 }
 
 function normalizeAppOrigin(value: unknown): string | null {

@@ -402,9 +402,30 @@ if (process.env.NODE_ENV === 'production') {
     });
 }
 
+// Proxy de WebSocket do túnel: antes de cair no Hono, tentamos fazer upgrade do
+// path do túnel (default /_tunnel) e encaminhar pro chisel server local. Só
+// intercepta o path EXATO do túnel; qualquer outra rota segue pro Hono normal.
+import { tryUpgradeTunnel, tunnelWebSocketHandler } from './lib/tunnel-proxy';
+import type { Server } from 'bun';
+
 export default {
   port,
-  fetch: app.fetch,
+  // `server` é injetado pelo Bun no runtime real. Em testes, importadores chamam
+  // `app.fetch(req)` direto (sem server) — por isso é opcional: sem server não há
+  // como fazer `server.upgrade`, então pulamos o proxy e seguimos pro Hono.
+  // Tipamos o retorno como `Response | Promise<Response>` pra não poluir os
+  // callers de teste (que fazem `const res = await app.fetch(req)`); no upgrade
+  // bem-sucedido o Bun aceita `undefined` em runtime — encapsulamos com cast.
+  fetch(req: Request, server?: Server<unknown>): Response | Promise<Response> {
+    if (server) {
+      const upgraded = tryUpgradeTunnel(req, server);
+      // `tryUpgradeTunnel`: `undefined` = upgrade aceito (o Bun assume a resposta);
+      // `Response` = interceptou e recusou; `null` = não é o path do túnel.
+      if (upgraded !== null) return upgraded as unknown as Response;
+    }
+    return app.fetch(req, server ? { server } : undefined);
+  },
+  websocket: tunnelWebSocketHandler,
 };
 
 // Em testes, importadores fazem `import app from '../src/index'` e Bun NÃO

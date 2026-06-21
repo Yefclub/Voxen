@@ -584,10 +584,12 @@ const ptBRMessages = {
   'admin.integrations.proxy.copyToken': 'Copiar token',
   'admin.integrations.proxy.tunnelUrl': 'URL de conexão do túnel',
   'admin.integrations.proxy.tunnelMissing':
-    'Configure PROXY_TUNNEL_URL ou APP_BASE_URL para derivar a URL do túnel.',
+    'Configure APP_BASE_URL (a URL pública do Voxen) para derivar a URL do túnel automaticamente.',
+  'admin.integrations.proxy.tunnelFromOrigin':
+    'Auto-coletada da URL atual do Voxen. Para fixar no backend, configure APP_BASE_URL.',
   'admin.integrations.proxy.installTitle': 'Instalação do agente (Docker)',
   'admin.integrations.proxy.installHint':
-    'Rode este comando na máquina residencial. O runtime do agente chega numa atualização futura.',
+    'Rode este comando na máquina residencial. A URL é a do próprio Voxen — o agente conecta o túnel de volta.',
   'admin.integrations.proxy.copySnippet': 'Copiar comando',
   'admin.integrations.proxy.revokeTitle': 'Revogar token do agente de proxy?',
   'admin.integrations.proxy.revokeDescription':
@@ -1484,10 +1486,12 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.proxy.copyToken': 'Copy token',
   'admin.integrations.proxy.tunnelUrl': 'Tunnel connection URL',
   'admin.integrations.proxy.tunnelMissing':
-    'Set PROXY_TUNNEL_URL or APP_BASE_URL to derive the tunnel URL.',
+    "Set APP_BASE_URL (Voxen's public URL) to derive the tunnel URL automatically.",
+  'admin.integrations.proxy.tunnelFromOrigin':
+    "Auto-collected from Voxen's current URL. To pin it on the backend, set APP_BASE_URL.",
   'admin.integrations.proxy.installTitle': 'Agent installation (Docker)',
   'admin.integrations.proxy.installHint':
-    'Run this command on the home machine. The agent runtime ships in a future update.',
+    "Run this command on the home machine. The URL is Voxen's own — the agent connects the tunnel back.",
   'admin.integrations.proxy.copySnippet': 'Copy command',
   'admin.integrations.proxy.revokeTitle': 'Revoke proxy agent token?',
   'admin.integrations.proxy.revokeDescription':
