@@ -80,6 +80,59 @@ S3_FORCE_PATH_STYLE=true
 > formato é o mesmo em todos os modos: `openssl rand -base64 32`. Faça backup
 > desse valor junto com Postgres e MinIO.
 
+### Upload direto (presigned) — arquivos grandes atrás do Cloudflare
+
+Por padrão, o upload de arquivos passa pelo app (browser → app → S3). Atrás do
+Cloudflare, o corpo da requisição é cortado em ~100 MiB, inviabilizando uploads
+grandes (mídia até 500 MiB). Para contornar, o Voxen suporta **upload direto do
+browser pro S3/MinIO via presigned URL** — o corpo nunca passa pelo app nem pelo
+Cloudflare.
+
+É **opt-in com fallback**: sem `S3_PUBLIC_ENDPOINT`, o upload usa o fluxo via app
+(sujeito ao limite do proxy). Para habilitar:
+
+1. **Exponha o MinIO/S3 num domínio público** alcançável pelo browser (ex.:
+   `s3.seudominio.com`), com TLS. Pode ser o mesmo MinIO via reverse proxy, ou
+   um endpoint S3 externo.
+
+2. **Defina `S3_PUBLIC_ENDPOINT`** no `.env` (ou no painel do serviço web):
+
+   ```bash
+   S3_PUBLIC_ENDPOINT=https://s3.seudominio.com
+   ```
+
+3. **Aplique CORS no bucket** permitindo `PUT`/`HEAD` da origin do app. Via
+   Makefile (usa `mc` num container na rede do compose):
+
+   ```bash
+   make minio-cors APP_ORIGIN=https://voxen.seudominio.com
+   ```
+
+   Equivalente manual com `aws` CLI contra o endpoint S3:
+
+   ```bash
+   cat > cors.json <<'JSON'
+   { "CORSRules": [ {
+       "AllowedOrigins": ["https://voxen.seudominio.com"],
+       "AllowedMethods": ["PUT", "HEAD", "GET"],
+       "AllowedHeaders": ["*"],
+       "ExposeHeaders": ["ETag"],
+       "MaxAgeSeconds": 3000
+   } ] }
+   JSON
+   aws --endpoint-url https://s3.seudominio.com s3api put-bucket-cors \
+     --bucket voxen-transcripts --cors-configuration file://cors.json
+   ```
+
+4. **Reinicie o web** (`docker compose up -d web`) e teste um upload grande pela
+   UI. Sem CORS, o navegador bloqueia o `PUT` presigned (erro de origem cruzada)
+   e o front cai no fallback via app automaticamente.
+
+> Segurança: a presigned URL expira em 300s e a key do objeto é sempre derivada
+> do usuário da sessão + um UUID aleatório — o cliente nunca escolhe o caminho do
+> objeto. Após o `PUT`, o app valida o objeto por `HeadObject` (tamanho real)
+> antes de enfileirar o job.
+
 ---
 
 ## Home-lab

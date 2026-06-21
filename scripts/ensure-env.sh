@@ -44,3 +44,8 @@ append_if_missing "S3_SECRET_KEY" "voxen_dev_minio_password"
 append_if_missing "S3_BUCKET" "voxen-transcripts"
 append_if_missing "S3_REGION" "us-east-1"
 append_if_missing "S3_FORCE_PATH_STYLE" "true"
+# S3_PUBLIC_ENDPOINT (opcional): base URL do S3/MinIO alcançável pelo browser
+# (ex.: https://s3.seudominio.com). Habilita upload direto via presigned URL.
+# Sem default — se setado, requer CORS no bucket (ver docs/DEPLOY.md). Ausente =
+# upload via app (fallback). Em dev local, o MinIO não tem TLS/CORS por padrão,
+# então deixamos desabilitado.

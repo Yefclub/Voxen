@@ -1,11 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  MAX_DOCUMENT_UPLOAD_BYTES,
+  MAX_IMAGE_UPLOAD_BYTES,
+  MAX_MEDIA_UPLOAD_BYTES,
   detectUploadKind,
   isSupportedDocumentFile,
   isSupportedImageFile,
   isSupportedMediaFile,
+  maxBytesForKind,
   parseUploadSourceUrl,
   sanitizeUploadFilename,
+  tooLargeMessageForKind,
   uploadObjectKey,
   uploadSourceUrl,
 } from '../src/lib/media-upload';
@@ -49,5 +54,26 @@ describe('media-upload helpers', () => {
     expect(uploadObjectKey('u1', uploadId, 'aula 01.mp4')).toBe(
       `workspaces/u1/uploads/${uploadId}/aula_01.mp4`,
     );
+  });
+
+  test('key escopada por userId — client não escolhe path mesmo com nome malicioso', () => {
+    const uploadId = '123e4567-e89b-12d3-a456-426614174000';
+    // Tentativa de path traversal / escrever em outro workspace é sanitizada.
+    const key = uploadObjectKey('userA', uploadId, '../../userB/uploads/x.mp4');
+    expect(key.startsWith(`workspaces/userA/uploads/${uploadId}/`)).toBe(true);
+    expect(key).not.toContain('userB');
+    expect(key).not.toContain('..');
+  });
+
+  test('limite por kind', () => {
+    expect(maxBytesForKind('image')).toBe(MAX_IMAGE_UPLOAD_BYTES);
+    expect(maxBytesForKind('document')).toBe(MAX_DOCUMENT_UPLOAD_BYTES);
+    expect(maxBytesForKind('media')).toBe(MAX_MEDIA_UPLOAD_BYTES);
+  });
+
+  test('mensagem de tamanho excedido por kind', () => {
+    expect(tooLargeMessageForKind('image')).toMatch(/20 MiB/);
+    expect(tooLargeMessageForKind('document')).toMatch(/50 MiB/);
+    expect(tooLargeMessageForKind('media')).toMatch(/500 MiB/);
   });
 });

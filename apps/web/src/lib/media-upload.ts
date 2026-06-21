@@ -108,6 +108,30 @@ export function detectUploadKind(filename: string, contentType: string): UploadK
   return null;
 }
 
+/** Limite de bytes por kind de upload. */
+export function maxBytesForKind(kind: UploadKind): number {
+  switch (kind) {
+    case 'image':
+      return MAX_IMAGE_UPLOAD_BYTES;
+    case 'document':
+      return MAX_DOCUMENT_UPLOAD_BYTES;
+    case 'media':
+      return MAX_MEDIA_UPLOAD_BYTES;
+  }
+}
+
+/** Mensagem de erro de tamanho excedido por kind. */
+export function tooLargeMessageForKind(kind: UploadKind): string {
+  switch (kind) {
+    case 'image':
+      return 'Imagem muito grande. O limite é 20 MiB.';
+    case 'document':
+      return 'Documento muito grande. O limite é 50 MiB.';
+    case 'media':
+      return 'Arquivo muito grande. O limite é 500 MiB.';
+  }
+}
+
 export function uploadSourceUrl(uploadId: string, filename: string): string {
   return `upload://${uploadId}/${encodeURIComponent(filename)}`;
 }
