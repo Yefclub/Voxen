@@ -227,7 +227,10 @@ export function GrafoPage(): React.ReactElement {
     };
   }, [data, search]);
 
-  const graphModel = useMemo(() => (filtered ? buildSigmaGraphModel(filtered) : null), [filtered]);
+  const graphModel = useMemo(
+    () => (filtered ? buildSigmaGraphModel(filtered, t) : null),
+    [filtered, t],
+  );
 
   useEffect(() => {
     if (selectedId && filtered && !filtered.nodes.some((node) => node.id === selectedId)) {
@@ -831,7 +834,7 @@ function countType(data: GraphResp, type: GraphNodeType): number {
   return data.nodes.filter((node) => node.type === type).length;
 }
 
-export function buildSigmaGraphModel(data: GraphResp): SigmaGraphModel {
+export function buildSigmaGraphModel(data: GraphResp, translate?: TranslateFn): SigmaGraphModel {
   const layout = buildGraphLayout(data);
   const graph = new Graph<SigmaNodeAttributes, SigmaEdgeAttributes>({
     multi: true,
@@ -842,7 +845,7 @@ export function buildSigmaGraphModel(data: GraphResp): SigmaGraphModel {
   const reagraphNodes: ReagraphNode[] = layout.nodes.map((node) => ({
     id: node.id,
     label: node.label,
-    subLabel: node.type,
+    subLabel: translate ? translate(`graph.node.${node.type}`) : node.type,
     fill: NODE_COLORS[node.type],
     size: Math.max(4, Math.min(14, 5 + node.weight * (SOURCE_NODE_TYPES.has(node.type) ? 1.4 : 1))),
     data: node,
@@ -851,7 +854,7 @@ export function buildSigmaGraphModel(data: GraphResp): SigmaGraphModel {
     id: edge.id,
     source: edge.from,
     target: edge.to,
-    label: edge.kind,
+    label: translate ? translate(`graph.edge.${edge.kind}`) : edge.kind,
     size: edge.kind === 'links_to' ? 2.2 : edge.kind === 'related_to' ? 1.6 : 1.1,
     fill: EDGE_COLORS[edge.kind],
     data: edge,

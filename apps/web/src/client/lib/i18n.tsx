@@ -815,7 +815,7 @@ const ptBRMessages = {
   'graph.searchPlaceholder': 'Filtrar por título, tipo, fonte ou descrição…',
   'graph.refresh': 'Atualizar',
   'graph.controlsHint':
-    'Arraste para girar · espaço + arraste ou clique do meio para mover · scroll para zoom · duplo-clique abre a fonte',
+    'Arraste para mover · scroll para zoom · clique seleciona · duplo-clique abre a fonte',
   'graph.transcripts': 'transcrições',
   'graph.notes': 'notas',
   'graph.folders': 'pastas',
@@ -1794,8 +1794,7 @@ const enMessages: Record<I18nKey, string> = {
   'graph.title': 'Brain',
   'graph.searchPlaceholder': 'Filter by title, type, source, or description…',
   'graph.refresh': 'Refresh',
-  'graph.controlsHint':
-    'Drag to rotate · space + drag or middle-click to pan · scroll to zoom · double-click to open',
+  'graph.controlsHint': 'Drag to pan · scroll to zoom · click to select · double-click to open',
   'graph.transcripts': 'transcripts',
   'graph.notes': 'notes',
   'graph.folders': 'folders',
