@@ -3,12 +3,12 @@ import {
   House,
   ListVideo,
   LogOut,
-  LayoutDashboard,
   Network,
   Notebook,
   ShieldCheck,
   User as UserIcon,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import {
