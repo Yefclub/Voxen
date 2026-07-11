@@ -75,6 +75,8 @@ COPY --from=build-server --chown=voxen:voxen /app/packages ./packages
 COPY --from=build-server --chown=voxen:voxen /app/prisma ./prisma
 # Assets do front (dist/) vêm do build-front
 COPY --from=build-front --chown=voxen:voxen /app/apps/web/dist ./apps/web/dist
+# Changelog manifesto (página Novidades) — gerado pelo pipeline version-dev.
+COPY --chown=voxen:voxen releases.json ./releases.json
 COPY --chown=voxen:voxen apps/web/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

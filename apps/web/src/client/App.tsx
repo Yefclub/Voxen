@@ -21,6 +21,7 @@ import { TranscricaoDetalhePage } from './pages/transcricoes-detalhe';
 import { NotasPage } from './pages/notas';
 import { AutomacoesPage } from './pages/automacoes';
 import { GrafoPage } from './pages/grafo';
+import { NovidadesPage } from './pages/novidades';
 import { I18nProvider, useI18n } from './lib/i18n';
 import { useMe } from './lib/hooks';
 
@@ -106,6 +107,7 @@ function AppRoutes(): React.ReactElement {
         <Route path="/notas/:id" element={<NotasPage />} />
         <Route path="/automacoes" element={<AutomacoesPage />} />
         <Route path="/grafo" element={<GrafoPage />} />
+        <Route path="/novidades" element={<NovidadesPage />} />
       </Route>
 
       {/* Fallback */}
