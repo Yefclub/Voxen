@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   Bot,
   Check,
-  Cookie,
   Copy,
   KeyRound,
   Network,
@@ -22,7 +21,6 @@ import {
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import { Spinner } from '../components/ui/spinner';
 import { ApiError, apiGet, apiPost } from '../lib/api';
@@ -79,10 +77,6 @@ interface ProxyAgentTokenResponse {
   tunnelUrl: string | null;
 }
 
-interface CookiesStatus {
-  configured: boolean;
-}
-
 export function AdminIntegracoesPage(): React.ReactElement {
   const { t } = useI18n();
 
@@ -104,7 +98,6 @@ export function AdminIntegracoesPage(): React.ReactElement {
 
         <McpSection />
         <ProxyAgentSection />
-        <CookiesSection />
       </div>
     </AnimatedPage>
   );
@@ -571,157 +564,6 @@ function ProxyAgentSection(): React.ReactElement {
         confirmLabel={t('admin.integrations.revoke')}
         variant="destructive"
         onConfirm={revoke}
-      />
-    </motion.div>
-  );
-}
-
-function CookiesSection(): React.ReactElement {
-  const { t } = useI18n();
-  const [status, setStatus] = useState<CookiesStatus | null>(null);
-  const [cookies, setCookies] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [confirmRemove, setConfirmRemove] = useState(false);
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  async function refresh(): Promise<void> {
-    try {
-      const s = await apiGet<CookiesStatus>('/api/admin/yt-dlp-cookies');
-      setStatus(s);
-    } catch {
-      setStatus({ configured: false });
-    }
-  }
-
-  async function save(): Promise<void> {
-    if (!cookies.trim()) {
-      toast.error(t('admin.integrations.cookies.missing'));
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await fetch('/api/admin/yt-dlp-cookies', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cookies }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(data.error ?? t('admin.integrations.cookies.saveError'));
-      toast.success(t('admin.integrations.cookies.saved'));
-      setCookies('');
-      await refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('common.error'));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function remove(): Promise<void> {
-    try {
-      const res = await fetch('/api/admin/yt-dlp-cookies', {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error(t('common.error'));
-      toast.success(t('admin.integrations.cookies.removed'));
-      await refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('common.error'));
-    }
-  }
-
-  if (!status) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <Spinner />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3 }}
-    >
-      <Card elevated>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 font-display">
-            <Cookie className="h-4 w-4 text-amber-400" />
-            {t('admin.integrations.cookies.title')}
-          </CardTitle>
-          <CardDescription>{t('admin.integrations.cookies.description')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {status.configured ? (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
-              <Check className="h-4 w-4 text-emerald-400" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-100">
-                  {t('admin.integrations.cookies.configured')}
-                </p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmRemove(true)}>
-                <Trash2 className="h-3.5 w-3.5" />
-                {t('admin.integrations.cookies.remove')}
-              </Button>
-            </div>
-          ) : (
-            <p className="text-sm text-[var(--color-app-muted)]">
-              {t('admin.integrations.cookies.notConfigured')}
-            </p>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="cookies-input">
-              {status.configured
-                ? t('admin.integrations.cookies.replace')
-                : t('admin.integrations.cookies.paste')}
-            </Label>
-            <Textarea
-              id="cookies-input"
-              value={cookies}
-              onChange={(e) => setCookies(e.target.value)}
-              placeholder="# Netscape HTTP Cookie File&#10;.instagram.com	TRUE	/	TRUE	0	sessionid	..."
-              className="font-mono text-[12px] min-h-[140px]"
-              spellCheck={false}
-            />
-            <div className="flex justify-end">
-              <Button
-                variant="primary"
-                onClick={() => void save()}
-                disabled={saving || !cookies.trim()}
-              >
-                {saving ? <Spinner /> : t('common.save')}
-              </Button>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 px-4 py-3 space-y-1.5">
-            <p className="text-[12px] text-zinc-200 leading-relaxed">
-              {t('admin.integrations.cookies.help')}
-            </p>
-            <p className="text-[11px] text-amber-300/90 leading-relaxed">
-              {t('admin.integrations.cookies.warning')}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-      <ConfirmDialog
-        open={confirmRemove}
-        onOpenChange={setConfirmRemove}
-        title={t('admin.integrations.cookies.removeTitle')}
-        description={t('admin.integrations.cookies.removeDescription')}
-        confirmLabel={t('admin.integrations.cookies.remove')}
-        variant="destructive"
-        onConfirm={remove}
       />
     </motion.div>
   );

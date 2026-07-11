@@ -43,9 +43,6 @@ export type GlobalSettingKey =
   | 'yt_dlp_cookies'
   | 'allow_signups'
   | 'onboarding_done'
-  // Opcional: email do admin do deploy. Quando setado, scraper inclui
-  // `From: <email>` no User-Agent (boa-prática pra sites identificarem o operador).
-  | 'admin_email'
   // Opcional: timeout (segundos) da chamada de resumo via OpenRouter.
   // Default 120s. Útil pra textos muito longos ou modelos lentos.
   | 'summary_timeout_sec'
@@ -133,31 +130,6 @@ export async function deleteDefaultXAnalysisModel(): Promise<void> {
   for (const key of X_ANALYSIS_SETTING_KEYS) {
     await deleteSettingByKey(key);
   }
-}
-
-/**
- * Heurística para validar que um conteúdo parece um `cookies.txt` no formato
- * Netscape (o formato que o yt-dlp consome via `cookiefile`). NÃO é um parser
- * completo — apenas rejeita lixo óbvio antes de cifrar/persistir.
- *
- * Aceita quando: (a) começa com o cabeçalho `# Netscape HTTP Cookie File`, OU
- * (b) tem ao menos uma linha não-comentário com TAB (campos do formato Netscape
- * são separados por TAB). Caso contrário, retorna false.
- */
-export function isLikelyNetscapeCookieFile(content: string): boolean {
-  if (!content || !content.trim()) return false;
-  const lines = content.split('\n');
-  for (const line of lines) {
-    if (line.trim().toLowerCase().startsWith('# netscape http cookie file')) {
-      return true;
-    }
-  }
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    if (line.includes('\t')) return true;
-  }
-  return false;
 }
 
 export async function isSetupComplete(): Promise<boolean> {
