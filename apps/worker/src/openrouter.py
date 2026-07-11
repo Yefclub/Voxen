@@ -442,6 +442,50 @@ def _clean_generated_title(value: str) -> str:
     return title.strip(" .")
 
 
+_FOLDER_META_PREFIXES: tuple[str, ...] = (
+    "the content is about",
+    "the content is a",
+    "the content is an",
+    "this content is about",
+    "this is about",
+    "this is a",
+    "this is an",
+    "it's about",
+    "its about",
+    "content about",
+    "category:",
+    "folder:",
+    "pasta:",
+    "label:",
+    "topic:",
+    "the topic is",
+    "the subject is",
+    "based on the content",
+    "looking at the content",
+)
+
+_FOLDER_BAD_MARKERS: tuple[str, ...] = (
+    "the user",
+    "i want",
+    "i will",
+    "i need",
+    "i should",
+    "let me",
+    "categorize",
+    "categorise",
+    "classif",
+    "organize",
+    "organise",
+    "please",
+    "respond",
+    "json",
+    "folder name",
+    "nome da pasta",
+    "o conteúdo",
+    "este conteúdo",
+)
+
+
 async def classify_content_folder(
     *,
     title: str,
@@ -449,44 +493,59 @@ async def classify_content_folder(
     existing_folders: list[str],
     api_key: str,
     model: str,
+    language: str = "pt-BR",
     client: httpx.AsyncClient | None = None,
 ) -> FolderClassificationResult:
     """Classifica o conteúdo em uma pasta (1:1) reutilizando nomes existentes quando couber."""
-    excerpt = content.strip().replace("\x00", " ")[:6_000]
+    excerpt = content.strip().replace("\x00", " ")[:4_000]
     folders_block = (
         "\n".join(f"- {name}" for name in existing_folders[:80])
         if existing_folders
-        else "(nenhuma pasta ainda)"
+        else "(none yet)"
     )
-    prompt = (
-        f"Título: {title.strip() or '(sem título)'}\n\n"
-        f"Pastas existentes do usuário:\n{folders_block}\n\n"
-        "Escolha UMA pasta de biblioteca (filtro/aba) para este conteúdo.\n"
-        "Regras:\n"
-        "1. Se alguma pasta existente servir bem, responda exatamente com o nome dela.\n"
-        "2. Se nenhuma servir, invente um nome curto em português do Brasil "
-        "(1–3 palavras, máximo 40 caracteres, Title Case quando fizer sentido). "
-        "Exemplos: Anime, Produtividade, História do Brasil, Machine Learning.\n"
-        "3. Se o conteúdo for impossível de classificar com segurança, responda: NONE\n"
-        "4. Não use aspas. Não explique. Responda só o nome ou NONE.\n\n"
-        f"Conteúdo:\n{excerpt}"
-    )
+    lang = "en" if language == "en" else "pt-BR"
+    if lang == "en":
+        system = (
+            "You label personal knowledge-base folders. "
+            "Reply with ONE short folder label only (1-4 words), or NONE. "
+            "Never write a sentence. Never start with 'The content is about'."
+        )
+        prompt = (
+            f"Title: {title.strip() or '(no title)'}\n"
+            f"Existing folders:\n{folders_block}\n\n"
+            'Return JSON only: {"folder":"Short Label"} or {"folder":null}\n'
+            "GOOD: HyperDX, Elden Ring, Alibaba Cloud, TypeScript, Claude Code\n"
+            "BAD: The content is about..., The user wants..., incomplete phrases\n"
+            "Reuse an existing folder name when it fits.\n\n"
+            f"Content excerpt:\n{excerpt}"
+        )
+    else:
+        system = (
+            "Você nomeia pastas de uma base de conhecimento pessoal. "
+            "Responda só com um rótulo curto (1-4 palavras) ou null. "
+            "Nunca escreva frase. Nunca comece com 'The content is about' ou 'O conteúdo'."
+        )
+        prompt = (
+            f"Título: {title.strip() or '(sem título)'}\n"
+            f"Pastas existentes:\n{folders_block}\n\n"
+            'Responda APENAS JSON: {"folder":"Rótulo Curto"} ou {"folder":null}\n'
+            "BONS: HyperDX, Elden Ring, Alibaba Cloud, TypeScript, Claude Code\n"
+            "RUINS: The content is about..., The user wants..., frases incompletas\n"
+            "Reutilize pasta existente. Prefira nome do produto/tema, não descrição.\n\n"
+            f"Trecho do conteúdo:\n{excerpt}"
+        )
     payload: dict[str, object] = {
         "model": model,
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Você organiza uma base de conhecimento pessoal em pastas temáticas. "
-                    "Responda apenas com o nome da pasta ou NONE."
-                ),
-            },
+            {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.1,
-        "max_tokens": 24,
+        "temperature": 0,
+        "max_tokens": 48,
         "usage": {"include": True},
     }
+    # Preferimos JSON no prompt (não response_format) — alguns modelos na
+    # OpenRouter rejeitam response_format e falhariam a classificação inteira.
     result = await _chat_completion_document(
         payload=payload, api_key=api_key, model=model, client=client
     )
@@ -501,30 +560,207 @@ async def classify_content_folder(
 
 
 def _resolve_folder_decision(raw: str, existing_folders: list[str]) -> str | None:
-    cleaned = " ".join(raw.replace("\n", " ").split()).strip(" \"'“”‘’#")
+    """Extrai rótulo de pasta válido; rejeita frases meta do modelo."""
+    text = (raw or "").strip()
+    if not text:
+        return None
+
+    # Tenta JSON {"folder": "..."}
+    extracted = _extract_folder_from_json(text)
+    if extracted is not None:
+        text = extracted
+    else:
+        # primeira linha útil
+        for line in text.splitlines():
+            line = line.strip().strip("`")
+            if line and not line.startswith(("{", "[")):
+                text = line
+                break
+
+    cleaned = " ".join(text.replace("\n", " ").split()).strip(" \"'“”‘’#.*")
     if not cleaned:
         return None
-    token = cleaned.upper()
-    if token in {"NONE", "NENHUMA", "N/A", "NA", "NULL"}:
+
+    # Rejeita raciocínio/instrução do modelo ANTES de truncar ou strip de artigos.
+    if _has_folder_meta_markers(cleaned):
         return None
+
+    cleaned = _strip_folder_meta_prefix(cleaned)
+    cleaned = cleaned.strip(" \"'“”‘’#.*")
+    if not cleaned:
+        return None
+
+    token = cleaned.upper().strip()
+    if token in {"NONE", "NENHUMA", "N/A", "NA", "NULL", "UNDEFINED", "NULO"}:
+        return None
+
     # Prefere match exato (case-insensitive) com pasta existente.
     for name in existing_folders:
         if name.casefold() == cleaned.casefold():
             return name
-    # Match por token (evita "ia" ∈ "história"). Só se ambos ≥ 3 chars.
+
+    # Match por tokens iguais (evita "ia" ∈ "história").
     cleaned_tokens = {t for t in cleaned.casefold().replace("-", " ").split() if len(t) >= 3}
     for name in existing_folders:
         name_tokens = {t for t in name.casefold().replace("-", " ").split() if len(t) >= 3}
         if cleaned_tokens and name_tokens and cleaned_tokens == name_tokens:
             return name
-    # Novo nome: sanitiza e limita.
+
     name = cleaned.strip(" .:-")
+    # Máx. 4 palavras / 40 chars — pastas são rótulos, não frases.
+    words = name.split()
+    if len(words) > 4:
+        name = " ".join(words[:4])
     if len(name) > 40:
         name = name[:40].rsplit(" ", 1)[0] or name[:40]
-    name = name.strip()
+    name = name.strip(" .:-\"'“”‘’")
+
     if len(name) < 2:
         return None
+    if _is_bad_folder_label(name):
+        return None
     return name
+
+
+def _extract_folder_from_json(raw: str) -> str | None:
+    import json
+    import re
+
+    text = raw.strip()
+    # bloco ```json ... ```
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
+    if fence:
+        text = fence.group(1)
+    else:
+        # primeiro objeto { ... }
+        brace = re.search(r"\{[^{}]*\}", text, re.DOTALL)
+        if brace:
+            text = brace.group(0)
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    for key in ("folder", "name", "label", "pasta", "category"):
+        if key in data:
+            val = data[key]
+            if val is None:
+                return "NONE"
+            if isinstance(val, str):
+                return val.strip()
+    return None
+
+
+def _strip_folder_meta_prefix(value: str) -> str:
+    import re
+
+    rest = value
+    lower = rest.casefold()
+    matched = False
+    for prefix in _FOLDER_META_PREFIXES:
+        if lower.startswith(prefix):
+            rest = rest[len(prefix) :].strip(" :,-–—\"'“”‘’")
+            matched = True
+            break
+    # truncamento do modelo: "HyperDX, an" / "Observe, a"
+    rest = re.sub(r",\s*(a|an|the|um|uma)\s*$", "", rest, flags=re.IGNORECASE).strip()
+    # artigo / filler só após meta: "an Elden Ring game" → "Elden Ring game"
+    if matched:
+        rest = re.sub(
+            r"^(a|an|the|um|uma|using|about)\s+",
+            "",
+            rest,
+            count=1,
+            flags=re.IGNORECASE,
+        ).strip()
+    return rest.strip(" \"'“”‘’")
+
+
+def _has_folder_meta_markers(value: str) -> bool:
+    """Detecta raciocínio do modelo / instruções de prompt no texto bruto."""
+    lower = value.casefold()
+    for marker in _FOLDER_BAD_MARKERS:
+        if marker in lower:
+            return True
+    # "The content is about X" ainda pode ser recuperável via strip.
+    if any(lower.startswith(p) for p in _FOLDER_META_PREFIXES):
+        return False
+    words = lower.split()
+    # frases longas em inglês que claramente não são rótulo
+    if len(words) > 6:
+        return True
+    if words and words[0] in {"the", "this", "that", "i", "we", "you"} and len(words) > 3:
+        return True
+    return False
+
+
+def _is_bad_folder_label(name: str) -> bool:
+    lower = name.casefold()
+    words = lower.split()
+    if len(words) > 4:
+        return True
+    # frases incompletas
+    if lower.endswith(
+        (
+            " a",
+            " an",
+            " the",
+            " of",
+            " for",
+            " to",
+            " and",
+            " or",
+            " called",
+            " about",
+            " with",
+            " from",
+            " is",
+            " are",
+            " uma",
+            " um",
+            " de",
+            " da",
+            " do",
+        )
+    ):
+        return True
+    # parece sentença em inglês genérica
+    if words and words[0] in {
+        "the",
+        "this",
+        "that",
+        "these",
+        "those",
+        "a",
+        "an",
+        "i",
+        "we",
+        "you",
+        "my",
+        "our",
+        "user",
+    }:
+        return True
+    # muito genérico / incompleto
+    if lower in {
+        "content",
+        "conteúdo",
+        "misc",
+        "other",
+        "geral",
+        "various",
+        "stuff",
+        "open-source",
+        "open source",
+        "library",
+        "tool",
+        "checklist",
+        "game",
+        "shift",
+    }:
+        return True
+    return False
 
 
 def _document_payload(
