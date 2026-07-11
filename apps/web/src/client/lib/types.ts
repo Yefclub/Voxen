@@ -36,6 +36,11 @@ export interface JobSummary {
   queuedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  /** Presente quando o job já tem transcript (DONE). */
+  title?: string | null;
+  thumbnailUrl?: string | null;
+  transcriptSource?: string | null;
+  durationSec?: number | null;
 }
 
 export interface AdminUser {

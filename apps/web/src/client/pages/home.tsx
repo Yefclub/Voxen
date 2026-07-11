@@ -24,10 +24,16 @@ import { Spinner } from '../components/ui/spinner';
 import { ApiError, apiPost } from '../lib/api';
 import { uploadMedia } from '../lib/upload';
 import { useFetch, useMe, useSse } from '../lib/hooks';
-import { formatRelative } from '../lib/format';
+import { formatDuration, formatRelative } from '../lib/format';
 import { jobStatusBadge, stageLabel } from '../lib/job-display';
 import type { JobStatus, JobSummary } from '../lib/types';
-import { detectSourceFromUrl, displayJobSource, type DetectedSource } from '../lib/source-detect';
+import {
+  detectSourceFromUrl,
+  displayJobSource,
+  isUploadSourceUrl,
+  youtubeVideoId,
+  type DetectedSource,
+} from '../lib/source-detect';
 import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motion/animated-page';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 
@@ -63,7 +69,16 @@ export function HomePage(): React.ReactElement {
   const [dragOver, setDragOver] = useState(false);
   const dragDepthRef = useRef(0);
   const uploadInFlightRef = useRef(false);
-  const { data, loading, refresh } = useFetch<{ jobs: JobSummary[] }>('/api/jobs');
+  const [queuePage, setQueuePage] = useState(1);
+  const queueLimit = 10;
+  const queueUrl = `/api/jobs?page=${queuePage}&limit=${queueLimit}`;
+  const { data, loading, refresh } = useFetch<{
+    jobs: JobSummary[];
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  }>(queueUrl);
   const { data: me } = useMe();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -264,6 +279,8 @@ export function HomePage(): React.ReactElement {
   }, [startUpload]);
 
   const jobs = data?.jobs ?? [];
+  const queueTotal = data?.total ?? jobs.length;
+  const totalPages = data?.totalPages ?? 1;
   const hasActiveJobs = jobs.some((job) => job.status === 'QUEUED' || job.status === 'RUNNING');
   const queued = jobs.filter((j) => j.status === 'QUEUED' || j.status === 'RUNNING').length;
   const done = jobs.filter((j) => j.status === 'DONE').length;
@@ -547,10 +564,10 @@ export function HomePage(): React.ReactElement {
               <h2 className="font-display text-xl font-semibold tracking-tight">
                 {t('jobs.queueTitle')}
               </h2>
-              {jobs.length > 0 && (
+              {queueTotal > 0 && (
                 <span className="text-xs text-[var(--color-app-muted)] tabular-nums">
-                  {jobs.length}{' '}
-                  {jobs.length === 1 ? t('dashboard.itemSingular') : t('dashboard.itemPlural')}
+                  {queueTotal}{' '}
+                  {queueTotal === 1 ? t('dashboard.itemSingular') : t('dashboard.itemPlural')}
                 </span>
               )}
             </div>
@@ -577,17 +594,46 @@ export function HomePage(): React.ReactElement {
           )}
 
           {!loading && jobs.length > 0 && (
-            <Card>
-              <StaggerContainer delay={0.05}>
-                <ul className="divide-y divide-[var(--color-app-border)]">
-                  {jobs.map((j) => (
-                    <StaggerItem key={j.id}>
-                      <JobRow job={j} onUpdate={refresh} locale={locale} t={t} />
-                    </StaggerItem>
-                  ))}
-                </ul>
-              </StaggerContainer>
-            </Card>
+            <>
+              <Card>
+                <StaggerContainer delay={0.05}>
+                  <ul className="divide-y divide-[var(--color-app-border)]">
+                    {jobs.map((j) => (
+                      <StaggerItem key={j.id}>
+                        <JobRow job={j} onUpdate={refresh} locale={locale} t={t} />
+                      </StaggerItem>
+                    ))}
+                  </ul>
+                </StaggerContainer>
+              </Card>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-[var(--color-app-muted)] tabular-nums">
+                    {t('jobs.pageOf', { page: queuePage, total: totalPages })}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={queuePage <= 1}
+                      onClick={() => setQueuePage((p) => Math.max(1, p - 1))}
+                    >
+                      {t('jobs.prevPage')}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={queuePage >= totalPages}
+                      onClick={() => setQueuePage((p) => Math.min(totalPages, p + 1))}
+                    >
+                      {t('jobs.nextPage')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>
@@ -659,14 +705,31 @@ function JobRow({
   }, [closed, isActive, onUpdate]);
 
   const { variant, label } = jobStatusBadge(job.status, t);
+  const source = detectSourceFromUrl(job.sourceUrl);
+  const isUpload = isUploadSourceUrl(job.sourceUrl);
+  const ytId = source === 'YOUTUBE' ? youtubeVideoId(job.sourceUrl) : null;
+  const previewSrc =
+    job.thumbnailUrl ||
+    (ytId ? `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg` : null) ||
+    (job.transcriptId ? `/api/transcripts/${job.transcriptId}/preview` : null);
+  const displayTitle = job.title?.trim() || displayJobSource(job.sourceUrl);
 
   return (
     <li className="group flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
-      <Badge variant={variant} className="shrink-0 min-w-28 justify-center text-center">
+      <JobPreview
+        previewSrc={previewSrc}
+        source={source}
+        isUpload={isUpload}
+        durationSec={job.durationSec ?? null}
+      />
+      <Badge variant={variant} className="hidden shrink-0 min-w-28 justify-center text-center sm:inline-flex">
         {isActive ? stageLabel(stage, t) : label}
       </Badge>
       <div className="flex-1 min-w-0 space-y-1.5">
-        <p className="text-sm text-zinc-200 truncate font-mono tracking-tight">
+        <p className="text-sm text-zinc-100 truncate font-medium tracking-tight font-display">
+          {displayTitle}
+        </p>
+        <p className="text-xs text-[var(--color-app-muted)] truncate font-mono">
           {displayJobSource(job.sourceUrl)}
         </p>
         {isActive ? (
@@ -683,11 +746,16 @@ function JobRow({
             </span>
           </div>
         ) : (
-          <p className="text-xs text-[var(--color-app-muted)]">
-            {job.finishedAt
-              ? t('jobs.finished', { time: formatRelative(new Date(job.finishedAt), locale) })
-              : t('jobs.queued', { time: formatRelative(new Date(job.queuedAt), locale) })}
-          </p>
+          <div className="flex min-w-0 items-center gap-2">
+            <Badge variant={variant} className="shrink-0 sm:hidden">
+              {isActive ? stageLabel(stage, t) : label}
+            </Badge>
+            <p className="text-xs text-[var(--color-app-muted)] truncate">
+              {job.finishedAt
+                ? t('jobs.finished', { time: formatRelative(new Date(job.finishedAt), locale) })
+                : t('jobs.queued', { time: formatRelative(new Date(job.queuedAt), locale) })}
+            </p>
+          </div>
         )}
         {job.errorMsg && !isActive && (
           <p className="text-xs text-rose-300 mt-1 line-clamp-2 break-words">{job.errorMsg}</p>
@@ -709,6 +777,59 @@ function JobRow({
         </Button>
       )}
     </li>
+  );
+}
+
+function JobPreview({
+  previewSrc,
+  source,
+  isUpload,
+  durationSec,
+}: {
+  previewSrc: string | null;
+  source: DetectedSource | null;
+  isUpload: boolean;
+  durationSec: number | null;
+}): React.ReactElement {
+  if (previewSrc) {
+    return (
+      <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] sm:h-16 sm:w-28">
+        <img
+          src={previewSrc}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-cover"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
+          }}
+        />
+        {typeof durationSec === 'number' && durationSec > 0 && (
+          <span className="absolute bottom-1 right-1 rounded bg-black/65 px-1 py-0.5 text-[9px] tabular-nums text-zinc-100">
+            {formatDuration(durationSec)}
+          </span>
+        )}
+      </div>
+    );
+  }
+  const map = {
+    YOUTUBE: 'from-rose-500/15 to-rose-500/5 text-rose-300/80 border-rose-500/20',
+    INSTAGRAM: 'from-fuchsia-500/15 to-pink-500/5 text-fuchsia-300/80 border-fuchsia-500/20',
+    TIKTOK: 'from-emerald-500/15 to-cyan-500/5 text-emerald-300/80 border-emerald-500/20',
+    X: 'from-sky-500/15 to-blue-500/5 text-sky-300/80 border-sky-500/20',
+    WEB: 'from-zinc-500/10 to-zinc-500/5 text-zinc-400 border-zinc-500/20',
+  } as const;
+  const cls = isUpload
+    ? 'from-emerald-500/15 to-violet-500/5 text-emerald-300/80 border-emerald-500/20'
+    : source
+      ? map[source]
+      : map.WEB;
+  const Icon = source === 'WEB' ? Globe : PlayCircle;
+  return (
+    <div
+      className={`flex h-14 w-20 shrink-0 items-center justify-center rounded-lg border bg-gradient-to-br sm:h-16 sm:w-28 ${cls}`}
+    >
+      <Icon className="h-5 w-5" />
+    </div>
   );
 }
 
