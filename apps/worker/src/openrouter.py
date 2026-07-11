@@ -381,20 +381,25 @@ async def generate_content_title(
             f"Fonte: {source_label}\n"
             f"Título candidato: {candidate or '(vazio)'}\n\n"
             "Você decide o título final deste conteúdo para uma base de conhecimento pessoal.\n"
+            "O título final DEVE estar em português do Brasil.\n"
             "Regras:\n"
-            "1. Se o título candidato já for um bom título editorial (claro, específico, "
-            "útil para achar o conteúdo depois), responda exatamente: KEEP\n"
+            "1. Só responda KEEP se o título candidato já for um bom título editorial "
+            "(claro, específico, útil para achar o conteúdo depois) E já estiver em "
+            "português do Brasil.\n"
             "2. Caso contrário, responda apenas com um título editorial curto em português "
-            "do Brasil (máximo 80 caracteres). Não use aspas. Não use ponto final. "
-            "Preserve nomes próprios e o assunto principal.\n"
+            "do Brasil (máximo 80 caracteres). Isso inclui TRADUZIR/adaptar para o "
+            "português um título que esteja em outro idioma, mesmo que ele já seja bom. "
+            "Não use aspas. Não use ponto final. Preserve nomes próprios, marcas e "
+            "títulos de obras.\n"
             "3. Títulos fracos a substituir: nome de arquivo, ID genérico, hostname, "
             "'Post do X …', '(sem título)', só emoji, ou título vago demais.\n"
             "\n\n"
             f"Conteúdo:\n{excerpt}"
         )
         system = (
-            "Você escolhe títulos precisos para uma base de conhecimento pessoal. "
-            "Responda apenas com KEEP ou com o título final."
+            "Você escolhe títulos precisos, em português do Brasil, para uma base de "
+            "conhecimento pessoal. Responda apenas com KEEP (somente se o candidato já "
+            "estiver em português do Brasil) ou com o título final em português."
         )
     payload: dict[str, object] = {
         "model": model,
