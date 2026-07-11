@@ -10,6 +10,7 @@ import {
   Search,
   Sparkles,
   Trash2,
+  Type,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -88,6 +89,7 @@ export function TranscricoesPage(): React.ReactElement {
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [reorganizing, setReorganizing] = useState(false);
+  const [regeneratingTitles, setRegeneratingTitles] = useState(false);
   const [clearingFolders, setClearingFolders] = useState(false);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -239,6 +241,57 @@ export function TranscricoesPage(): React.ReactElement {
     }
   }
 
+  // Regenera os títulos via IA drenando o acervo por cursor. Custa créditos
+  // (1 chamada LLM por conteúdo); títulos já bons voltam KEEP e são mantidos.
+  async function regenerateTitles(): Promise<void> {
+    if (regeneratingTitles) return;
+    setRegeneratingTitles(true);
+    let totalChanged = 0;
+    let totalKept = 0;
+    let totalFailed = 0;
+    let cursor: string | null = null;
+    try {
+      for (let i = 0; i < 60; i++) {
+        const body: {
+          processed: number;
+          changed: number;
+          kept: number;
+          skipped: number;
+          failed: number;
+          pendingTotal: number;
+          nextCursor: string | null;
+        } = await apiPost('/api/library/regenerate-titles', { limit: 15, cursor });
+        totalChanged += body.changed;
+        totalKept += body.kept;
+        totalFailed += body.failed;
+        if (i === 0 && body.pendingTotal === 0) {
+          toast.message(t('library.retitleNothing'));
+          break;
+        }
+        cursor = body.nextCursor;
+        if (!cursor) {
+          toast.success(
+            t('library.retitleDone', {
+              changed: totalChanged,
+              kept: totalKept,
+              failed: totalFailed,
+            }),
+          );
+          break;
+        }
+        if (i === 59) {
+          toast.success(t('library.retitlePartial', { changed: totalChanged }));
+        }
+      }
+      setOffset(0);
+      refreshTranscripts();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('library.retitleError'));
+    } finally {
+      setRegeneratingTitles(false);
+    }
+  }
+
   function loadMore(): void {
     if (!hasMore || loading || loadingMore) return;
     setLoadingMore(true);
@@ -279,6 +332,22 @@ export function TranscricoesPage(): React.ReactElement {
                 <Sparkles className="h-3.5 w-3.5 text-violet-400" />
               )}
               {reorganizing ? t('library.reorgRunning') : t('library.reorgAction')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={regeneratingTitles}
+              onClick={() => void regenerateTitles()}
+              className="h-8 text-xs"
+              title={t('library.retitleHint')}
+            >
+              {regeneratingTitles ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Type className="h-3.5 w-3.5 text-violet-400" />
+              )}
+              {regeneratingTitles ? t('library.retitleRunning') : t('library.retitleAction')}
             </Button>
             {folders.length > 0 && (
               <Button

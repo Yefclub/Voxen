@@ -276,6 +276,15 @@ const ptBRMessages = {
   'library.reorgPartial':
     'Lote aplicado ({assigned} classificados). Ainda restam {remaining} sem pasta — rode de novo.',
   'library.reorgError': 'Falha ao organizar a biblioteca com IA.',
+  'library.retitleAction': 'Regenerar títulos',
+  'library.retitleRunning': 'Regenerando…',
+  'library.retitleHint': 'Reescreve os títulos dos conteúdos com IA (consome créditos).',
+  'library.retitleNothing': 'Nada para regenerar.',
+  'library.retitleDone':
+    'Títulos regenerados: {changed} atualizados, {kept} mantidos, {failed} falhas.',
+  'library.retitlePartial':
+    '{changed} títulos atualizados até agora — rode de novo para continuar.',
+  'library.retitleError': 'Falha ao regenerar títulos.',
   'library.clearFolders': 'Apagar pastas',
   'library.clearFoldersConfirm':
     'Apagar TODAS as pastas? Os conteúdos permanecem na biblioteca (sem pasta), liberando o Organizar com IA.',
@@ -1259,6 +1268,13 @@ const enMessages: Record<I18nKey, string> = {
   'library.reorgPartial':
     'Batch applied ({assigned} assigned). {remaining} still without a folder — run again.',
   'library.reorgError': 'Failed to organize the library with AI.',
+  'library.retitleAction': 'Regenerate titles',
+  'library.retitleRunning': 'Regenerating…',
+  'library.retitleHint': 'Rewrites content titles with AI (uses credits).',
+  'library.retitleNothing': 'Nothing to regenerate.',
+  'library.retitleDone': 'Titles regenerated: {changed} updated, {kept} kept, {failed} failed.',
+  'library.retitlePartial': '{changed} titles updated so far — run again to continue.',
+  'library.retitleError': 'Failed to regenerate titles.',
   'library.clearFolders': 'Delete folders',
   'library.clearFoldersConfirm':
     'Delete ALL folders? Content stays in the library (unfoldered), so Organize with AI can run again.',
