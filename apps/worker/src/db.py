@@ -13,6 +13,9 @@ from decimal import Decimal
 from typing import Any
 
 import asyncpg
+import structlog
+
+log = structlog.get_logger(__name__)
 
 _pool: asyncpg.Pool | None = None
 
@@ -487,6 +490,8 @@ async def _remove_transcript_brain_refreshable_sources(
 
 
 async def _delete_orphan_keyword_topic_nodes(conn: asyncpg.Connection, user_id: str) -> None:
+    # Grace de 2 min: evita apagar tópico recém-criado no meio do reindex
+    # concorrente (upsert node → cleanup → insert edge = FK violation).
     await conn.execute(
         """
         DELETE FROM "BrainNode" n
@@ -494,6 +499,7 @@ async def _delete_orphan_keyword_topic_nodes(conn: asyncpg.Connection, user_id: 
           AND n.type = 'TOPIC'::"BrainNodeType"
           AND n."sourceType" IS NULL
           AND n.metadata->>'method' = 'keyword'
+          AND n."updatedAt" < NOW() - INTERVAL '2 minutes'
           AND NOT EXISTS (
             SELECT 1
             FROM "BrainEdge" be
@@ -544,20 +550,28 @@ async def _upsert_transcript_topic_edges(
         )
         if not edge_row:
             continue
-        await conn.execute(
-            """
-            INSERT INTO "BrainSource" (
-                id, "userId", "edgeId", "sourceType", "sourceId", excerpt, "createdAt"
-            ) VALUES (
-                $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, NOW()
+        try:
+            await conn.execute(
+                """
+                INSERT INTO "BrainSource" (
+                    id, "userId", "edgeId", "sourceType", "sourceId", excerpt, "createdAt"
+                ) VALUES (
+                    $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, NOW()
+                )
+                """,
+                generate_cuid(),
+                user_id,
+                edge_row["id"],
+                transcript_id,
+                topic["excerpt"],
             )
-            """,
-            generate_cuid(),
-            user_id,
-            edge_row["id"],
-            transcript_id,
-            topic["excerpt"],
-        )
+        except Exception:  # noqa: BLE001
+            # Aresta pode ter sumido por reindex concorrente (FK edgeId).
+            log.warning(
+                "brain-source-insert-skipped",
+                edge_id=edge_row["id"],
+                transcript_id=transcript_id,
+            )
 
 
 async def _upsert_topic_node(

@@ -473,6 +473,14 @@ describeIfDb('brain indexer', () => {
       }),
     ).not.toBeNull();
 
+    // O cleanup de nós-conceito órfãos tem grace de 2 min (evita apagar um nó
+    // recém-criado no meio de uma reconciliação concorrente). Envelhece o nó
+    // automático para simular esse tempo e exercitar a remoção de fato.
+    await db.brainNode.updateMany({
+      where: { userId: user.id, sourceType: null },
+      data: { updatedAt: new Date(Date.now() - 3 * 60 * 1000) },
+    });
+
     const trash = await app.fetch(
       new Request(`http://localhost/api/transcripts/${transcript.id}/lifecycle`, {
         method: 'PATCH',
