@@ -25,7 +25,8 @@ jobs:
   version-dev:
     runs-on: ubuntu-latest
     # Evita loop infinito: não re-bump se o push já for o commit do bot.
-    if: ${{ !startsWith(github.event.head_commit.message, 'chore: set version to ') }}
+    # Aspas externas obrigatórias: o ":" em "chore: set version" quebra o YAML.
+    if: "${{ github.event_name == 'workflow_dispatch' || (github.event.head_commit != null && !startsWith(github.event.head_commit.message, 'chore: set version to ')) }}"
     steps:
       - uses: actions/checkout@v6
         with:
