@@ -4,7 +4,7 @@ import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { X } from 'lucide-react';
 import type { MeUser } from '../../lib/types';
 import { useI18n } from '../../lib/i18n';
-import { SidebarModeBody, SidebarSignOut, SidebarVersionInfo } from './sidebar';
+import { SidebarModeBody, SidebarSignOut, SidebarChangelogButton } from './sidebar';
 
 /**
  * Drawer de navegação mobile (<md). Abaixo de 768px a sidebar desktop NÃO é
@@ -131,7 +131,7 @@ export function MobileNavDrawer({
           <LayoutGroup id="mobile-nav">
             <SidebarModeBody user={user} />
           </LayoutGroup>
-          <SidebarVersionInfo />
+          <SidebarChangelogButton />
           <SidebarSignOut />
         </motion.aside>
       )}
