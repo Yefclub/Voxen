@@ -4,6 +4,7 @@
 // Endpoints sempre escopados por userId:
 //   GET    /api/library/folders
 //   POST   /api/library/folders
+//   POST   /api/library/folders/clear — apaga todas as pastas (conteúdos ficam)
 //   PATCH  /api/library/folders/:id
 //   DELETE /api/library/folders/:id
 //   POST   /api/library/reorganize — classifica com IA só o que não tem pasta
@@ -275,6 +276,36 @@ libraryRoutes.post('/reorganize', async (c) => {
     failed,
     remaining,
     pendingTotal,
+  });
+});
+
+// Limpa TODAS as pastas do usuário: conteúdos ficam (folderId → null via onDelete SetNull).
+// Libera de novo o "Organizar com IA" (só classifica folderId null).
+libraryRoutes.post('/folders/clear', async (c) => {
+  const userId = c.get('userId');
+  const folders = await db.libraryFolder.findMany({
+    where: { userId },
+    select: { id: true },
+  });
+  if (folders.length === 0) {
+    return c.json({ ok: true, deleted: 0, affectedTranscripts: 0 });
+  }
+  const folderIds = folders.map((f) => f.id);
+  const affectedTranscripts = await db.transcript.findMany({
+    where: { userId, folderId: { in: folderIds } },
+    select: { id: true },
+  });
+  await db.libraryFolder.deleteMany({ where: { userId } });
+  await deleteBrainForSources(userId, 'FOLDER', folderIds);
+  await reindexTranscriptsBrain(
+    userId,
+    affectedTranscripts.map((item) => item.id),
+  );
+  await invalidateGraphCache(userId);
+  return c.json({
+    ok: true,
+    deleted: folderIds.length,
+    affectedTranscripts: affectedTranscripts.length,
   });
 });
 
