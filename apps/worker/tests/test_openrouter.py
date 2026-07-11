@@ -90,7 +90,7 @@ async def test_generate_content_title_uses_short_title_payload() -> None:
     assert client.payload["max_tokens"] == 48
     assert client.payload["temperature"] == 0.2
     assert "KEEP" in str(client.payload["messages"])
-    assert "Responda apenas com KEEP ou com o título final." in str(client.payload["messages"])
+    assert "Responda apenas com KEEP" in str(client.payload["messages"])
 
 
 async def test_generate_content_title_keeps_candidate_when_model_says_keep() -> None:
@@ -106,6 +106,29 @@ async def test_generate_content_title_keeps_candidate_when_model_says_keep() -> 
     )
 
     assert result.title == "Attack on Titan — Análise do final (sem spoilers leves)"
+
+
+async def test_generate_content_title_ptbr_prompt_forces_translation() -> None:
+    # Título de origem bom, mas em inglês: o prompt PT-BR deve pedir tradução
+    # (KEEP só se já estiver em português), não manter o inglês.
+    client = CaptureClient()
+
+    result = await generate_content_title(
+        content="Deep dive into the final arc of the anime and Eren's fate.",
+        source_label="Vídeo YOUTUBE",
+        fallback_title="Attack on Titan — Final Explained",
+        api_key="sk-test",
+        model="openai/gpt-4.1-mini",
+        language="pt-BR",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    msgs = str(client.payload["messages"])
+    assert "português do Brasil" in msgs
+    assert "TRADUZIR" in msgs
+    assert "já estiver em português do Brasil" in msgs
+    # O modelo retornou um título novo (não KEEP) → é usado.
+    assert result.title == "Resumo do post"
 
 
 def test_resolve_title_decision_keep_variants() -> None:
