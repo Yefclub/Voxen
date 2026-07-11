@@ -142,8 +142,9 @@ jobs:
             exit 0
           fi
 
-          # Evita pilha de PRs se já houver um bump aberto.
-          OPEN=$(gh pr list --base dev --state open --search "chore: set version to" --json number --jq 'length')
+          # Evita pilha de PRs se já houver um bump aberto (match exato no título).
+          OPEN=$(gh pr list --base dev --state open --json title --jq \
+            '[.[] | select(.title | startswith("chore: set version to "))] | length')
           if [ "${OPEN:-0}" != "0" ]; then
             echo "Já existe PR de version-dev aberta — pulando."
             exit 0
