@@ -98,6 +98,11 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
         "get_summary_timeout_sec",
         AsyncMock(return_value=42.0),
     )
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
     insert_cost = AsyncMock()
     monkeypatch.setattr(summary.db, "insert_cost_event", insert_cost)
 
@@ -105,7 +110,7 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
     fake_response.status_code = 200
     fake_response.json = MagicMock(
         return_value={
-            "choices": [{"message": {"content": "## TL;DR\nfoo"}}],
+            "choices": [{"message": {"content": "## Em poucas linhas\nfoo"}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5, "cost": "0.001"},
         }
     )
@@ -155,6 +160,11 @@ async def test_logs_empty_when_200_without_summary(monkeypatch: pytest.MonkeyPat
         "get_summary_timeout_sec",
         AsyncMock(return_value=120.0),
     )
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
 
     fake_response = MagicMock()
     fake_response.status_code = 200
@@ -189,6 +199,11 @@ async def test_warns_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
         "get_summary_timeout_sec",
         AsyncMock(return_value=120.0),
     )
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
 
     fake_response = MagicMock()
     fake_response.status_code = 502
@@ -215,3 +230,12 @@ async def test_exception_is_logged_but_not_raised(monkeypatch: pytest.MonkeyPatc
     # Não levanta — best-effort
     await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
     assert ("exception", "summary-failed") in log.events
+
+
+def test_build_summarize_prompt_no_tldr_pt_and_en() -> None:
+    pt = summary.build_summarize_prompt("pt-BR")
+    en = summary.build_summarize_prompt("en")
+    assert "## TL;DR" not in pt and "## TLDR" not in pt
+    assert "Em poucas linhas" in pt
+    assert "## TL;DR" not in en and "## TLDR" not in en
+    assert "In short" in en

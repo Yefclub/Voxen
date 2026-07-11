@@ -925,6 +925,7 @@ async def _maybe_generate_title(
         model = model or fallback_model
         if not api_key or not model:
             return None
+        language = await voxen_settings.get_app_language()
         result = await _retry_transient_or(
             lambda: generate_content_title(
                 content=clean_content,
@@ -932,6 +933,7 @@ async def _maybe_generate_title(
                 fallback_title=fallback_title,
                 api_key=api_key,
                 model=model,
+                language=language,
             ),
             tries=2,
         )

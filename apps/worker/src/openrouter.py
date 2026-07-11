@@ -344,6 +344,7 @@ async def generate_content_title(
     fallback_title: str,
     api_key: str,
     model: str,
+    language: str = "pt-BR",
     client: httpx.AsyncClient | None = None,
 ) -> TitleGenerationResult:
     """Avalia o título candidato e, se fraco, gera um editorial curto.
@@ -354,30 +355,51 @@ async def generate_content_title(
     """
     candidate = _clean_generated_title(fallback_title) or fallback_title.strip()
     excerpt = content.strip().replace("\x00", " ")[:8_000]
-    prompt = (
-        f"Fonte: {source_label}\n"
-        f"Título candidato: {candidate or '(vazio)'}\n\n"
-        "Você decide o título final deste conteúdo para uma base de conhecimento pessoal.\n"
-        "Regras:\n"
-        "1. Se o título candidato já for um bom título editorial (claro, específico, "
-        "útil para achar o conteúdo depois), responda exatamente: KEEP\n"
-        "2. Caso contrário, responda apenas com um título editorial curto em português "
-        "do Brasil (máximo 80 caracteres). Não use aspas. Não use ponto final. "
-        "Preserve nomes próprios e o assunto principal.\n"
-        "3. Títulos fracos a substituir: nome de arquivo, ID genérico, hostname, "
-        "'Post do X …', '(sem título)', só emoji, ou título vago demais.\n\n"
-        f"Conteúdo:\n{excerpt}"
-    )
+    lang = "en" if language == "en" else "pt-BR"
+    if lang == "en":
+        prompt = (
+            f"Source: {source_label}\n"
+            f"Candidate title: {candidate or '(empty)'}\n\n"
+            "You choose the final title for this content in a personal knowledge base.\n"
+            "Rules:\n"
+            "1. If the candidate is already a good editorial title (clear, specific, "
+            "useful to find later), reply exactly: KEEP\n"
+            "2. Otherwise reply only with a short English editorial title "
+            "(max 80 characters). No quotes. No trailing period. "
+            "Preserve proper names and the main topic.\n"
+            "3. Weak titles to replace: filename, generic ID, hostname, "
+            "'X post …', '(no title)', emoji-only, or overly vague titles.\n"
+            "\n\n"
+            f"Content:\n{excerpt}"
+        )
+        system = (
+            "You pick precise titles for a personal knowledge base. "
+            "Reply only with KEEP or the final title."
+        )
+    else:
+        prompt = (
+            f"Fonte: {source_label}\n"
+            f"Título candidato: {candidate or '(vazio)'}\n\n"
+            "Você decide o título final deste conteúdo para uma base de conhecimento pessoal.\n"
+            "Regras:\n"
+            "1. Se o título candidato já for um bom título editorial (claro, específico, "
+            "útil para achar o conteúdo depois), responda exatamente: KEEP\n"
+            "2. Caso contrário, responda apenas com um título editorial curto em português "
+            "do Brasil (máximo 80 caracteres). Não use aspas. Não use ponto final. "
+            "Preserve nomes próprios e o assunto principal.\n"
+            "3. Títulos fracos a substituir: nome de arquivo, ID genérico, hostname, "
+            "'Post do X …', '(sem título)', só emoji, ou título vago demais.\n"
+            "\n\n"
+            f"Conteúdo:\n{excerpt}"
+        )
+        system = (
+            "Você escolhe títulos precisos para uma base de conhecimento pessoal. "
+            "Responda apenas com KEEP ou com o título final."
+        )
     payload: dict[str, object] = {
         "model": model,
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Você escolhe títulos precisos para uma base de conhecimento pessoal. "
-                    "Responda apenas com KEEP ou com o título final."
-                ),
-            },
+            {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
