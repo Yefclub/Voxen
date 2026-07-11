@@ -18,7 +18,7 @@ from typing import NoReturn
 
 import structlog
 
-from . import automation, db, events
+from . import automation, db, events, ytdl
 from .cancellation import cancel_subscriber
 from .pipeline import process_job
 
@@ -148,6 +148,7 @@ async def amain() -> None:
         "worker-starting",
         max_concurrency=MAX_CONCURRENCY,
         automation_max_concurrency=AUTOMATION_MAX_CONCURRENCY,
+        **ytdl.runtime_versions(),
     )
     try:
         await asyncio.gather(
