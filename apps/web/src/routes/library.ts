@@ -16,7 +16,6 @@ import { auth } from '../lib/auth';
 import {
   deleteBrainForSources,
   reindexLibraryFolderBrain,
-  reindexTranscriptBrain,
   reindexTranscriptsBrain,
 } from '../lib/brain';
 import { db } from '../lib/db';
@@ -364,10 +363,8 @@ libraryRoutes.post('/regenerate-titles', async (c) => {
     }
   }
 
-  for (const id of changedIds) {
-    await reindexTranscriptBrain(userId, id).catch(() => {});
-  }
   if (changedIds.length > 0) {
+    await reindexTranscriptsBrain(userId, changedIds).catch(() => {});
     await invalidateGraphCache(userId).catch(() => {});
   }
 

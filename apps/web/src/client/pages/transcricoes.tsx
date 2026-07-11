@@ -92,6 +92,7 @@ export function TranscricoesPage(): React.ReactElement {
   const [regeneratingTitles, setRegeneratingTitles] = useState(false);
   const [clearingFolders, setClearingFolders] = useState(false);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [confirmRetitleOpen, setConfirmRetitleOpen] = useState(false);
   const [offset, setOffset] = useState(0);
   const [items, setItems] = useState<TranscriptSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -268,6 +269,12 @@ export function TranscricoesPage(): React.ReactElement {
           toast.message(t('library.retitleNothing'));
           break;
         }
+        // Falha sistêmica (ex.: chave da OpenRouter inválida): o lote inteiro
+        // falhou. Aborta em vez de gastar créditos rodando os 60 lotes.
+        if (body.processed > 0 && body.failed === body.processed) {
+          toast.error(t('library.retitleError'));
+          break;
+        }
         cursor = body.nextCursor;
         if (!cursor) {
           toast.success(
@@ -338,7 +345,7 @@ export function TranscricoesPage(): React.ReactElement {
               variant="outline"
               size="sm"
               disabled={regeneratingTitles}
-              onClick={() => void regenerateTitles()}
+              onClick={() => setConfirmRetitleOpen(true)}
               className="h-8 text-xs"
               title={t('library.retitleHint')}
             >
@@ -378,6 +385,16 @@ export function TranscricoesPage(): React.ReactElement {
           confirmLabel={t('library.clearFolders')}
           loading={clearingFolders}
           onConfirm={clearAllFolders}
+        />
+
+        <ConfirmDialog
+          open={confirmRetitleOpen}
+          onOpenChange={setConfirmRetitleOpen}
+          title={t('library.retitleAction')}
+          description={t('library.retitleConfirm')}
+          confirmLabel={t('library.retitleAction')}
+          loading={regeneratingTitles}
+          onConfirm={regenerateTitles}
         />
 
         <div className="relative">

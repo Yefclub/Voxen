@@ -279,6 +279,8 @@ const ptBRMessages = {
   'library.retitleAction': 'Regenerar títulos',
   'library.retitleRunning': 'Regenerando…',
   'library.retitleHint': 'Reescreve os títulos dos conteúdos com IA (consome créditos).',
+  'library.retitleConfirm':
+    'Isso reescreve com IA os títulos de todo o acervo, em lote — uma chamada de IA por conteúdo, o que consome créditos. Títulos que já estão bons são mantidos. Continuar?',
   'library.retitleNothing': 'Nada para regenerar.',
   'library.retitleDone':
     'Títulos regenerados: {changed} atualizados, {kept} mantidos, {failed} falhas.',
@@ -1271,6 +1273,8 @@ const enMessages: Record<I18nKey, string> = {
   'library.retitleAction': 'Regenerate titles',
   'library.retitleRunning': 'Regenerating…',
   'library.retitleHint': 'Rewrites content titles with AI (uses credits).',
+  'library.retitleConfirm':
+    'This rewrites every content title in your library with AI, in batches — one AI call per item, which uses credits. Titles that are already good are kept. Continue?',
   'library.retitleNothing': 'Nothing to regenerate.',
   'library.retitleDone': 'Titles regenerated: {changed} updated, {kept} kept, {failed} failed.',
   'library.retitlePartial': '{changed} titles updated so far — run again to continue.',

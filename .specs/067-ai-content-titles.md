@@ -48,9 +48,33 @@ editorialmente, a IA responde KEEP e o sistema mantém; senão, gera um novo.
 - [ ] Testes unitários cobrem payload, KEEP e título novo
 - [ ] Custo registrado em CostEvent com `source: title_generation` quando a call ocorre
 
+## Regeneração em lote (backfill)
+
+Reprocessa os títulos do acervo existente com a mesma lógica de geração — útil
+após corrigir a geração (idioma PT-BR e vazamento de reasoning).
+
+- When o admin aciona "Regenerar títulos", the system shall reavaliar em lote os
+  títulos das transcrições ACTIVE do usuário, uma chamada de IA por conteúdo,
+  usando o mesmo prompt/decisão da geração (KEEP mantém títulos já bons).
+- The system shall drenar o acervo em lotes via cursor estável
+  (`createdAt desc, id desc`), sem repetir nem pular itens, e ser seguro em
+  reexecução.
+- While o backfill roda, the system shall escopar toda query por `userId`,
+  persistir só quando o título muda, reindexar o Brain dos alterados e registrar
+  CostEvent (`source: title_generation_backfill`) por item.
+- When um lote inteiro falha (ex.: chave inválida), the system shall abortar o
+  drain em vez de gastar créditos.
+- The system shall confirmar com o usuário antes de iniciar (operação com custo).
+
+### Critérios de Aceite (backfill)
+
+- [ ] Endpoint em lote escopado por `userId`, idempotente por cursor
+- [ ] Persiste só quando muda; reindexa Brain dos alterados; CostEvent por item
+- [ ] Botão na biblioteca com confirmação de custo e drain por lotes
+- [ ] Testes unitários cobrem a decisão de título (KEEP / preâmbulo / novo)
+
 ## Fora de Escopo
 
-- Renomear títulos antigos em lote (backfill)
 - UI de editar título
 - Classificação em pastas (spec separada)
 
