@@ -441,8 +441,6 @@ _TITLE_META_PREFIXES: tuple[str, ...] = (
     "a good title",
     "based on the content",
     "the content is about",
-    "here is",
-    "here's",
     "let me",
     "i'll",
     "i will",
