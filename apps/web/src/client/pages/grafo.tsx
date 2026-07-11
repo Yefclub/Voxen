@@ -269,7 +269,7 @@ export function GrafoPage(): React.ReactElement {
                 <p className="font-display text-lg font-semibold">{t('graph.emptyTitle')}</p>
                 <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
                   {t('graph.emptyDescriptionBefore')} <code className="text-zinc-300">/notas</code>{' '}
-                  {t('graph.emptyDescriptionMiddle')} <code className="text-zinc-300">/jobs</code>{' '}
+                  {t('graph.emptyDescriptionMiddle')} <code className="text-zinc-300">/</code>{' '}
                   {t('graph.emptyDescriptionAfter')}
                 </p>
               </div>
@@ -282,10 +282,10 @@ export function GrafoPage(): React.ReactElement {
           <div className="pointer-events-auto mx-auto flex max-w-5xl flex-wrap items-center gap-2.5 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/80 px-3 py-2.5 shadow-lg backdrop-blur-xl sm:gap-3">
             <button
               type="button"
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/')}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-zinc-100"
-              aria-label={t('shell.backToDashboard')}
-              title={t('shell.backToDashboard')}
+              aria-label={t('shell.backToHome')}
+              title={t('shell.backToHome')}
             >
               <ArrowLeft className="h-4 w-4" />
             </button>

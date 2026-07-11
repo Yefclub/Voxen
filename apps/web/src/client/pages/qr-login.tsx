@@ -45,7 +45,7 @@ export function QrLoginPage(): React.ReactElement {
         await refresh();
         setPhase('success');
         // Pequeno delay pro feedback visual antes de entrar no app.
-        setTimeout(() => navigate('/dashboard', { replace: true }), 800);
+        setTimeout(() => navigate('/', { replace: true }), 800);
       } catch {
         setPhase('error');
       }

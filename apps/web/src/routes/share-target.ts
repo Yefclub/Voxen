@@ -140,5 +140,5 @@ function jobsRedirect(params: Record<string, string | null | undefined>): string
     if (value) search.set(key, value);
   }
   const query = search.toString();
-  return query ? `/jobs?${query}` : '/jobs';
+  return query ? `/?${query}` : '/';
 }

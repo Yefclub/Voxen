@@ -225,7 +225,7 @@ export function SetupPage(): React.ReactElement {
         return;
       }
       setStep('done');
-      setTimeout(() => navigate('/dashboard'), 1500);
+      setTimeout(() => navigate('/'), 1500);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('setup.error.save'));
     } finally {

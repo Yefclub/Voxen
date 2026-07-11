@@ -12,6 +12,7 @@ describe('isBottomNavTab', () => {
     '/transcricoes/xyz',
     '/grafo/node-1',
     '/dashboard',
+    '/jobs',
     '/notas',
     '/notas/abc',
     '/automacoes',
@@ -20,7 +21,6 @@ describe('isBottomNavTab', () => {
     '/admin/usuarios',
     '/admin/custos',
     '/admin/integracoes',
-    '/',
   ])('NÃO trata %s como aba de topo', (path) => {
     expect(isBottomNavTab(path)).toBe(false);
   });
@@ -36,6 +36,7 @@ describe('showsMobileBack', () => {
     '/jobs/123',
     '/transcricoes/xyz',
     '/dashboard',
+    '/jobs',
     '/notas',
     '/notas/abc',
     '/automacoes',
@@ -49,7 +50,7 @@ describe('showsMobileBack', () => {
   });
 
   test('é o complemento exato de isBottomNavTab', () => {
-    for (const p of ['/chat', '/chat/a', '/dashboard', '/grafo', '/setup']) {
+    for (const p of ['/', '/chat', '/chat/a', '/dashboard', '/grafo', '/setup']) {
       expect(showsMobileBack(p)).toBe(!isBottomNavTab(p));
     }
   });
@@ -61,7 +62,7 @@ describe('hasOwnMobileChrome', () => {
     expect(hasOwnMobileChrome('/grafo/node-1')).toBe(true);
   });
 
-  test.each(['/chat', '/dashboard', '/notas/abc', '/setup', '/jobs/1'])(
+  test.each(['/', '/chat', '/notas/abc', '/setup', '/jobs/1'])(
     '%s não tem chrome próprio',
     (path) => {
       expect(hasOwnMobileChrome(path)).toBe(false);
@@ -73,8 +74,8 @@ describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobi
   const shouldShowBack = (p: string): boolean => showsMobileBack(p) && !hasOwnMobileChrome(p);
 
   test('abas de topo: sem voltar', () => {
+    expect(shouldShowBack('/')).toBe(false);
     expect(shouldShowBack('/chat')).toBe(false);
-    expect(shouldShowBack('/jobs')).toBe(false);
     expect(shouldShowBack('/transcricoes')).toBe(false);
   });
 

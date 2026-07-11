@@ -19,7 +19,7 @@ export function AuthLayout(): React.ReactElement {
     if (!data.onboardingDone && data.user.role === 'ADMIN') {
       return <Navigate to="/onboarding" replace />;
     }
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/" replace />;
   }
 
   // /entrar e /cadastro são telas full-screen fora da app shell. Como o body
