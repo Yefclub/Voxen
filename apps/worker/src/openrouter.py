@@ -335,14 +335,26 @@ async def generate_content_title(
     model: str,
     client: httpx.AsyncClient | None = None,
 ) -> TitleGenerationResult:
-    """Gera título curto para conteúdos sem título editorial confiável."""
+    """Avalia o título candidato e, se fraco, gera um editorial curto.
+
+    Contrato da resposta do modelo:
+    - `KEEP` (ou o título candidato idêntico) → manter `fallback_title`
+    - qualquer outro texto → usar como novo título (sanitizado)
+    """
+    candidate = _clean_generated_title(fallback_title) or fallback_title.strip()
     excerpt = content.strip().replace("\x00", " ")[:8_000]
     prompt = (
         f"Fonte: {source_label}\n"
-        f"Título atual/arquivo: {fallback_title}\n\n"
-        "Gere um título editorial curto em português do Brasil para este conteúdo. "
-        "Não use aspas. Não use ponto final. Máximo 80 caracteres. "
-        "Se houver nome próprio ou assunto principal, preserve.\n\n"
+        f"Título candidato: {candidate or '(vazio)'}\n\n"
+        "Você decide o título final deste conteúdo para uma base de conhecimento pessoal.\n"
+        "Regras:\n"
+        "1. Se o título candidato já for um bom título editorial (claro, específico, "
+        "útil para achar o conteúdo depois), responda exatamente: KEEP\n"
+        "2. Caso contrário, responda apenas com um título editorial curto em português "
+        "do Brasil (máximo 80 caracteres). Não use aspas. Não use ponto final. "
+        "Preserve nomes próprios e o assunto principal.\n"
+        "3. Títulos fracos a substituir: nome de arquivo, ID genérico, hostname, "
+        "'Post do X …', '(sem título)', só emoji, ou título vago demais.\n\n"
         f"Conteúdo:\n{excerpt}"
     )
     payload: dict[str, object] = {
@@ -351,8 +363,8 @@ async def generate_content_title(
             {
                 "role": "system",
                 "content": (
-                    "Você cria títulos precisos para uma base de conhecimento pessoal. "
-                    "Responda apenas com o título final."
+                    "Você escolhe títulos precisos para uma base de conhecimento pessoal. "
+                    "Responda apenas com KEEP ou com o título final."
                 ),
             },
             {"role": "user", "content": prompt},
@@ -364,14 +376,28 @@ async def generate_content_title(
     result = await _chat_completion_document(
         payload=payload, api_key=api_key, model=model, client=client
     )
-    title = _clean_generated_title(result.text) or _clean_generated_title(fallback_title)
+    title = _resolve_title_decision(result.text, candidate or fallback_title)
     return TitleGenerationResult(
-        title=title or fallback_title[:80] or "Conteúdo sem título",
+        title=title or candidate or fallback_title[:80] or "Conteúdo sem título",
         cost_usd=result.cost_usd,
         model=result.model,
         tokens_in=result.tokens_in,
         tokens_out=result.tokens_out,
     )
+
+
+def _resolve_title_decision(raw: str, fallback_title: str) -> str:
+    """Interpreta a resposta do modelo: KEEP / título idêntico / título novo."""
+    cleaned = _clean_generated_title(raw)
+    if not cleaned:
+        return _clean_generated_title(fallback_title) or fallback_title.strip()
+    token = cleaned.upper()
+    if token in {"KEEP", "MANTER", "KEEP TITLE", "KEEP_TITLE"}:
+        return _clean_generated_title(fallback_title) or fallback_title.strip()
+    fallback_clean = _clean_generated_title(fallback_title)
+    if fallback_clean and cleaned.casefold() == fallback_clean.casefold():
+        return fallback_clean
+    return cleaned
 
 
 def _clean_generated_title(value: str) -> str:
