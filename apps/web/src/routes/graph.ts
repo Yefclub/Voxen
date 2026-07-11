@@ -78,6 +78,21 @@ interface GraphEdge {
     | 'next_to';
   method: string;
   confidence: string;
+  /** EXTRACTED = evidência explícita; INFERRED = heurística/keyword. */
+  evidence: 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS';
+}
+
+interface GraphHub {
+  id: string;
+  label: string;
+  type: GraphNode['type'];
+  degree: number;
+}
+
+interface GraphInsights {
+  hubs: GraphHub[];
+  communities: Array<{ id: number; size: number; label: string; nodeIds: string[] }>;
+  edgeEvidence: { extracted: number; inferred: number; ambiguous: number };
 }
 
 const NODE_LIMIT = 500;
@@ -168,9 +183,17 @@ graphRoutes.get('/', async (c) => {
     kind: edge.kind.toLowerCase() as GraphEdge['kind'],
     method: edge.method,
     confidence: edge.confidence.toString(),
+    evidence: evidenceTag(edge.method, edge.kind),
   }));
 
-  const response = { nodes, edges, totalNodes: nodes.length, totalEdges: edges.length };
+  const insights = buildInsights(nodes, edges, degree);
+  const response = {
+    nodes,
+    edges,
+    totalNodes: nodes.length,
+    totalEdges: edges.length,
+    insights,
+  };
   try {
     await getRedisPublisher().set(cacheKey, JSON.stringify(response), 'EX', CACHE_TTL_SEC);
   } catch {
@@ -217,6 +240,107 @@ async function countStaleBrainSourceNodes(userId: string): Promise<number> {
   `;
   const count = rows[0]?.count ?? 0;
   return typeof count === 'bigint' ? Number(count) : count;
+}
+
+function evidenceTag(method: string, kind: string): 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS' {
+  const m = method.toLowerCase();
+  if (
+    m.includes('wikilink') ||
+    m.includes('folder') ||
+    m.includes('explicit') ||
+    m === 'user' ||
+    kind === 'BELONGS_TO' ||
+    kind === 'LINKS_TO'
+  ) {
+    return 'EXTRACTED';
+  }
+  if (
+    m.includes('keyword') ||
+    m.includes('shared') ||
+    m.includes('semantic') ||
+    m.includes('timeline')
+  ) {
+    return 'INFERRED';
+  }
+  return 'AMBIGUOUS';
+}
+
+function buildInsights(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  degree: Map<string, number>,
+): GraphInsights {
+  const hubs = [...nodes]
+    .map((n) => ({
+      id: n.id,
+      label: n.label,
+      type: n.type,
+      degree: degree.get(n.id) ?? 0,
+    }))
+    .filter((h) => h.degree > 0)
+    .sort((a, b) => b.degree - a.degree)
+    .slice(0, 12);
+
+  // Comunidades: Union-Find em arestas RELATED_TO/MENTIONS (componentes conexos).
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    let p = parent.get(x) ?? x;
+    if (p !== x) {
+      p = find(p);
+      parent.set(x, p);
+    }
+    return p;
+  };
+  const union = (a: string, b: string): void => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  for (const n of nodes) parent.set(n.id, n.id);
+  for (const e of edges) {
+    if (e.kind === 'related_to' || e.kind === 'mentions' || e.kind === 'belongs_to') {
+      union(e.from, e.to);
+    }
+  }
+  const groups = new Map<string, string[]>();
+  for (const n of nodes) {
+    const root = find(n.id);
+    const list = groups.get(root) ?? [];
+    list.push(n.id);
+    groups.set(root, list);
+  }
+  const labelById = new Map(nodes.map((n) => [n.id, n.label]));
+  const communities = [...groups.entries()]
+    .map(([, ids], i) => {
+      // label = nó de maior grau no cluster
+      let best = ids[0] ?? '';
+      let bestDeg = -1;
+      for (const id of ids) {
+        const d = degree.get(id) ?? 0;
+        if (d > bestDeg) {
+          bestDeg = d;
+          best = id;
+        }
+      }
+      return {
+        id: i,
+        size: ids.length,
+        label: labelById.get(best) ?? best,
+        nodeIds: ids.slice(0, 40),
+      };
+    })
+    .filter((c) => c.size >= 2)
+    .sort((a, b) => b.size - a.size)
+    .slice(0, 20);
+
+  const edgeEvidence = { extracted: 0, inferred: 0, ambiguous: 0 };
+  for (const e of edges) {
+    if (e.evidence === 'EXTRACTED') edgeEvidence.extracted += 1;
+    else if (e.evidence === 'INFERRED') edgeEvidence.inferred += 1;
+    else edgeEvidence.ambiguous += 1;
+  }
+
+  return { hubs, communities, edgeEvidence };
 }
 
 function graphNodeType(node: {
