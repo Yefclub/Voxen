@@ -17,6 +17,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Button } from '../components/ui/button';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { apiPost } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import { formatDuration, formatRelative, formatUsd } from '../lib/format';
@@ -88,6 +89,7 @@ export function TranscricoesPage(): React.ReactElement {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [reorganizing, setReorganizing] = useState(false);
   const [clearingFolders, setClearingFolders] = useState(false);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [offset, setOffset] = useState(0);
   const [items, setItems] = useState<TranscriptSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -163,8 +165,6 @@ export function TranscricoesPage(): React.ReactElement {
 
   async function clearAllFolders(): Promise<void> {
     if (clearingFolders || folders.length === 0) return;
-    const ok = window.confirm(t('library.clearFoldersConfirm'));
-    if (!ok) return;
     setClearingFolders(true);
     try {
       const body = await apiPost<{ deleted: number; affectedTranscripts: number }>(
@@ -286,7 +286,7 @@ export function TranscricoesPage(): React.ReactElement {
                 variant="ghost"
                 size="sm"
                 disabled={clearingFolders}
-                onClick={() => void clearAllFolders()}
+                onClick={() => setConfirmClearOpen(true)}
                 className="h-8 text-xs text-zinc-400 hover:text-red-300"
               >
                 {clearingFolders ? (
@@ -299,6 +299,17 @@ export function TranscricoesPage(): React.ReactElement {
             )}
           </div>
         </header>
+
+        <ConfirmDialog
+          open={confirmClearOpen}
+          onOpenChange={setConfirmClearOpen}
+          variant="destructive"
+          title={t('library.clearFolders')}
+          description={t('library.clearFoldersConfirm')}
+          confirmLabel={t('library.clearFolders')}
+          loading={clearingFolders}
+          onConfirm={clearAllFolders}
+        />
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none z-10" />
