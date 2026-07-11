@@ -16,7 +16,7 @@ import type {
   GraphNode as ReagraphNode,
   Theme,
 } from 'reagraph';
-import { ArrowLeft, BrainCircuit, Network, RotateCw, Search } from 'lucide-react';
+import { ArrowLeft, Box, BrainCircuit, Network, RotateCw, Search, Square } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Spinner } from '../components/ui/spinner';
 import { AnimatedPage } from '../components/motion/animated-page';
@@ -202,6 +202,8 @@ function buildVoxenTheme(darkTheme: Theme): Theme {
 
 export function GrafoPage(): React.ReactElement {
   const [forceTick, setForceTick] = useState(0);
+  // Grafo 3D por padrão (orbita/gira); toggle para o 2D plano (pan).
+  const [is3d, setIs3d] = useState(true);
   const graphPath = forceTick > 0 ? `/api/graph?force=1&t=${forceTick}` : '/api/graph';
   const { data, loading, error } = useFetch<GraphResp>(graphPath);
   const [search, setSearch] = useState('');
@@ -255,6 +257,7 @@ export function GrafoPage(): React.ReactElement {
         <BrainGraphCanvas
           model={graphModel}
           selectedId={selectedId}
+          is3d={is3d}
           translate={t}
           onSelect={setSelectedId}
           onOpen={openNode}
@@ -319,6 +322,16 @@ export function GrafoPage(): React.ReactElement {
             <Button
               variant="outline"
               size="default"
+              onClick={() => setIs3d((prev) => !prev)}
+              title={t(is3d ? 'graph.switchTo2d' : 'graph.switchTo3d')}
+              aria-label={t(is3d ? 'graph.switchTo2d' : 'graph.switchTo3d')}
+            >
+              {is3d ? <Box className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">{is3d ? '3D' : '2D'}</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="default"
               onClick={() => setForceTick(Date.now())}
               disabled={loading}
             >
@@ -333,7 +346,7 @@ export function GrafoPage(): React.ReactElement {
         {hasGraph && (
           <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 px-4">
             <p className="rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/70 px-3 py-1.5 text-center text-[11px] text-[var(--color-app-muted)] backdrop-blur-md">
-              {t('graph.controlsHint')}
+              {t(is3d ? 'graph.controlsHint3d' : 'graph.controlsHint')}
             </p>
           </div>
         )}
@@ -395,12 +408,14 @@ function StatDot({
 function BrainGraphCanvas({
   model,
   selectedId,
+  is3d,
   translate,
   onSelect,
   onOpen,
 }: {
   model: SigmaGraphModel | null;
   selectedId: string | null;
+  is3d: boolean;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
   onOpen: (node: GraphNode) => void;
@@ -455,6 +470,11 @@ function BrainGraphCanvas({
     }
   }, [model, selectedId]);
 
+  // Trocar 2D/3D re-layouta o grafo — re-enquadra a câmera no novo layout.
+  useEffect(() => {
+    fittedRef.current = false;
+  }, [is3d]);
+
   useEffect(() => {
     if (!model || !reagraph || fittedRef.current) return;
     const timer = window.setTimeout(() => {
@@ -466,7 +486,7 @@ function BrainGraphCanvas({
       }
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [model, reagraph]);
+  }, [model, reagraph, is3d]);
 
   if (!model || model.layout.nodes.length === 0) {
     return <div className="absolute inset-0" />;
@@ -499,10 +519,10 @@ function BrainGraphCanvas({
           nodes={model.reagraphNodes}
           edges={model.reagraphEdges}
           theme={reagraph.theme}
-          layoutType="forceDirected2d"
+          layoutType={is3d ? 'forceDirected3d' : 'forceDirected2d'}
           labelType="auto"
           edgeInterpolation="curved"
-          cameraMode="pan"
+          cameraMode={is3d ? 'rotate' : 'pan'}
           animated
           draggable
           selections={selectedId ? [selectedId] : []}

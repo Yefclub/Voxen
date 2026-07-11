@@ -814,6 +814,10 @@ const ptBRMessages = {
   'graph.refresh': 'Atualizar',
   'graph.controlsHint':
     'Arraste para mover · scroll para zoom · clique seleciona · duplo-clique abre a fonte',
+  'graph.controlsHint3d':
+    'Arraste para girar · scroll para zoom · clique seleciona · duplo-clique abre a fonte',
+  'graph.switchTo2d': 'Ver em 2D',
+  'graph.switchTo3d': 'Ver em 3D',
   'graph.transcripts': 'transcrições',
   'graph.notes': 'notas',
   'graph.folders': 'pastas',
@@ -1791,6 +1795,10 @@ const enMessages: Record<I18nKey, string> = {
   'graph.searchPlaceholder': 'Filter by title, type, source, or description…',
   'graph.refresh': 'Refresh',
   'graph.controlsHint': 'Drag to pan · scroll to zoom · click to select · double-click to open',
+  'graph.controlsHint3d':
+    'Drag to rotate · scroll to zoom · click to select · double-click to open',
+  'graph.switchTo2d': 'View in 2D',
+  'graph.switchTo3d': 'View in 3D',
   'graph.transcripts': 'transcripts',
   'graph.notes': 'notes',
   'graph.folders': 'folders',
