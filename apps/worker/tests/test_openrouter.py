@@ -7,8 +7,10 @@ from typing import Any
 import httpx
 
 from src.openrouter import (
+    _resolve_folder_decision,
     _resolve_title_decision,
     analyze_x_url,
+    classify_content_folder,
     generate_content_title,
     transcribe_audio,
 )
@@ -116,6 +118,55 @@ def test_resolve_title_decision_keep_variants() -> None:
     assert (
         _resolve_title_decision("Novo título editorial", "arquivo.mp4") == "Novo título editorial"
     )
+
+
+def test_resolve_folder_decision_reuses_existing_and_none() -> None:
+    existing = ["Anime", "Produtividade", "Machine Learning", "IA"]
+    assert _resolve_folder_decision("NONE", existing) is None
+    assert _resolve_folder_decision("anime", existing) == "Anime"
+    assert _resolve_folder_decision("História do Brasil", existing) == "História do Brasil"
+    # Não colidir substring curta ("ia" em "história")
+    assert _resolve_folder_decision("História do Brasil", ["IA"]) == "História do Brasil"
+
+
+async def test_classify_content_folder_payload() -> None:
+    client = FolderClient()
+    result = await classify_content_folder(
+        title="Análise do final de Attack on Titan",
+        content="Discussão sobre o mangá e o anime, Eren e Mikasa.",
+        existing_folders=["Anime", "Produtividade"],
+        api_key="sk-test",
+        model="openai/gpt-4.1-mini",
+        client=client,  # type: ignore[arg-type]
+    )
+    assert result.folder_name == "Anime"
+    assert client.payload is not None
+    assert "Pastas existentes" in str(client.payload["messages"])
+
+
+class FolderClient:
+    def __init__(self) -> None:
+        self.payload: dict[str, Any] | None = None
+
+    async def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+    ) -> httpx.Response:
+        self.payload = json
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "Anime"}}],
+                "usage": {
+                    "cost": "0.001",
+                    "prompt_tokens": 30,
+                    "completion_tokens": 2,
+                },
+            },
+        )
 
 
 class KeepTitleClient:

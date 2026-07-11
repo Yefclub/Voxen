@@ -643,6 +643,69 @@ def _topic_excerpt(text: str, slug: str) -> str | None:
     return _truncate(text, 600)
 
 
+async def list_library_folder_names(user_id: str) -> list[str]:
+    """Nomes das pastas do workspace (raiz e aninhadas) para classificação."""
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT name
+            FROM "LibraryFolder"
+            WHERE "userId" = $1
+            ORDER BY name ASC
+            """,
+            user_id,
+        )
+    return [str(row["name"]) for row in rows if row["name"]]
+
+
+async def ensure_library_folder(user_id: str, name: str) -> str:
+    """Reusa pasta pelo nome (case-insensitive) ou cria no root. Retorna id."""
+    clean = " ".join(name.split()).strip()
+    if not clean:
+        raise ValueError("nome de pasta vazio")
+    async with connection() as conn:
+        existing = await conn.fetchrow(
+            """
+            SELECT id, name
+            FROM "LibraryFolder"
+            WHERE "userId" = $1 AND lower(name) = lower($2)
+            ORDER BY "createdAt" ASC
+            LIMIT 1
+            """,
+            user_id,
+            clean,
+        )
+        if existing:
+            return str(existing["id"])
+        folder_id = generate_cuid()
+        await conn.execute(
+            """
+            INSERT INTO "LibraryFolder" (
+                id, "userId", "parentId", name, "createdAt", "updatedAt"
+            ) VALUES (
+                $1, $2, NULL, $3, NOW(), NOW()
+            )
+            """,
+            folder_id,
+            user_id,
+            clean[:120],
+        )
+        return folder_id
+
+
+async def set_transcript_folder(transcript_id: str, folder_id: str) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE "Transcript"
+            SET "folderId" = $2, "updatedAt" = NOW()
+            WHERE id = $1
+            """,
+            transcript_id,
+            folder_id,
+        )
+
+
 async def mark_job_done(job_id: str) -> None:
     async with connection() as conn:
         await conn.execute(
