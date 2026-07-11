@@ -65,3 +65,11 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.uv]
+# Pins de segurança (Trivy HIGH). Transitive de trafilatura/markitdown/etc.
+override-dependencies = [
+    "lxml-html-clean>=0.4.5",
+    "soupsieve>=2.8.4",
+]
+
