@@ -1,6 +1,9 @@
 # Changelog
 
-O histórico de versões do Voxen é gerado automaticamente a partir de
-`changelog/unreleased/*.md` (dev) e `changelog/RELEASE.md` (produção).
+## v0.10.0-dev.1783760400 — 2026-07-11 · Dev
 
-Veja também a página **Novidades** na aplicação e as [GitHub Releases](https://github.com/Yefclub/Voxen/releases).
+### 🐛 Correção do detector de PR de versão aberta
+
+O workflow de versionamento em dev não criava a PR de bump porque a busca
+de PRs abertas era ampla demais. Agora só considera títulos que começam com
+`chore: set version to `.

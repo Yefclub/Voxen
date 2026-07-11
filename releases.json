@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "version": "0.10.0-dev.1783760400",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Correção do detector de PR de versão aberta",
+    "body": "O workflow de versionamento em dev não criava a PR de bump porque a busca\nde PRs abertas era ampla demais. Agora só considera títulos que começam com\n`chore: set version to `.",
+    "pr": 322,
+    "author": "Kalyel",
+    "date": "2026-07-11T05:59:49-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/322"
+  }
+]
