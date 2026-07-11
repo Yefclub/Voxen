@@ -52,7 +52,11 @@ export type GlobalSettingKey =
   // Token de conexão do agente de proxy residencial (chisel). Cifrado em DB.
   // O agente residencial usa este token pra autenticar o túnel reverso.
   // Apenas 1 token por instância no MVP. Ver spec 058.
-  | 'proxy_agent_token';
+  | 'proxy_agent_token'
+  // Switch on/off do Agente de Proxy: 'true'/'false'. Controla se o worker
+  // roteia a extração pelo SOCKS do túnel (yt_dlp_proxy_urls). Independente do
+  // token — desligar não apaga o token nem exige reinstalar o agente.
+  | 'proxy_agent_enabled';
 
 const X_ANALYSIS_SETTING_KEYS = [
   'default_x_analysis_model',

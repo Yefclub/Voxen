@@ -23,7 +23,8 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Label } from '../components/ui/label';
 import { Spinner } from '../components/ui/spinner';
-import { ApiError, apiGet, apiPost } from '../lib/api';
+import { Switch } from '../components/ui/switch';
+import { api, ApiError, apiGet, apiPost } from '../lib/api';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { useI18n } from '../lib/i18n';
@@ -65,6 +66,8 @@ interface McpPromptResponse {
 
 interface ProxyAgentStatus {
   configured: boolean;
+  // Switch on/off: o worker roteia a extração pelo agente de proxy.
+  enabled: boolean;
   tunnelUrl: string | null;
   // Status REAL da conexão do agente (probe TCP ao SOCKS reverso local).
   connected: boolean;
@@ -320,6 +323,7 @@ function ProxyAgentSection(): React.ReactElement {
   const [status, setStatus] = useState<ProxyAgentStatus | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [togglingEnabled, setTogglingEnabled] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [copiedToken, setCopiedToken] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState(false);
@@ -337,7 +341,32 @@ function ProxyAgentSection(): React.ReactElement {
       const s = await apiGet<ProxyAgentStatus>('/api/admin/proxy-agent');
       setStatus(s);
     } catch {
-      setStatus({ configured: false, tunnelUrl: null, connected: false, conflict: false });
+      setStatus({
+        configured: false,
+        enabled: false,
+        tunnelUrl: null,
+        connected: false,
+        conflict: false,
+      });
+    }
+  }
+
+  async function toggleEnabled(next: boolean): Promise<void> {
+    if (!status) return;
+    const previous = status;
+    setStatus({ ...status, enabled: next }); // otimista
+    setTogglingEnabled(true);
+    try {
+      await api('/api/admin/proxy-agent', {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled: next }),
+      });
+      await refresh();
+    } catch (err) {
+      setStatus(previous); // rollback
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
+    } finally {
+      setTogglingEnabled(false);
     }
   }
 
@@ -434,6 +463,22 @@ function ProxyAgentSection(): React.ReactElement {
           <CardDescription>{t('admin.integrations.proxy.description')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Switch on/off do roteamento pelo agente (não mexe no token/túnel). */}
+          <div className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 px-4 py-3 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-zinc-100">{t('admin.integrations.proxy.enableLabel')}</p>
+              <p className="text-[11px] text-[var(--color-app-muted)] mt-0.5">
+                {t('admin.integrations.proxy.enableHint')}
+              </p>
+            </div>
+            <Switch
+              checked={status.enabled}
+              onCheckedChange={(v) => void toggleEnabled(v)}
+              disabled={!status.configured || togglingEnabled}
+              aria-label={t('admin.integrations.proxy.enableLabel')}
+            />
+          </div>
+
           {/* Indicador de conexão ao vivo (polling ~9s). Sempre visível. */}
           <div className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 px-4 py-3 flex items-center gap-3">
             <span

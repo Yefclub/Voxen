@@ -237,13 +237,39 @@ adminRoutes.delete('/mcp', async (c) => {
 adminRoutes.get('/proxy-agent', async (c) => {
   const stored = await getSetting('proxy_agent_token').catch(() => null);
   const configured = !!stored;
+  const enabledRaw = await getSetting('proxy_agent_enabled').catch(() => null);
+  // Só faz sentido "ligado" quando há token; default = ligado (o token só é
+  // gerado quando se quer usar o proxy). 'false' explícito desliga.
+  const enabled = configured && enabledRaw !== 'false';
   const [connected, conflict] = await Promise.all([probeAgentConnected(), readConflictFlag()]);
   return c.json({
     configured,
+    enabled,
     tunnelUrl: deriveTunnelUrl(),
     connected,
     conflict,
   });
+});
+
+// PATCH /api/admin/proxy-agent — liga/desliga o roteamento pelo agente de proxy
+// SEM mexer no token nem no túnel. ON: aponta o worker pro SOCKS local; OFF:
+// remove o proxy local (worker baixa direto). Não sobrescreve proxy http custom.
+adminRoutes.patch('/proxy-agent', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  if (typeof body.enabled !== 'boolean') {
+    return c.json({ error: 'Campo "enabled" obrigatório (boolean).' }, 400);
+  }
+  await setSetting('proxy_agent_enabled', body.enabled ? 'true' : 'false');
+  const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
+  if (body.enabled) {
+    if (!currentProxy) {
+      await setSetting('yt_dlp_proxy_urls', LOCAL_TUNNEL_SOCKS_URL);
+    }
+  } else if (currentProxy === LOCAL_TUNNEL_SOCKS_URL) {
+    const { deleteSetting } = await import('../lib/settings');
+    await deleteSetting('yt_dlp_proxy_urls');
+  }
+  return c.json({ enabled: body.enabled });
 });
 
 // POST /api/admin/proxy-agent/token — gera/rotaciona o token.
@@ -255,6 +281,8 @@ adminRoutes.post('/proxy-agent/token', async (c) => {
   crypto.getRandomValues(tokenBytes);
   const token = toBase64Url(tokenBytes);
   await setSetting('proxy_agent_token', token);
+  // Gerar token = intenção de usar o proxy → liga o switch.
+  await setSetting('proxy_agent_enabled', 'true');
   // Aponta o worker pro SOCKS local do túnel (worker já é socks5-capable, spec
   // 058). Só seta se ainda não houver um proxy customizado configurado pelo
   // operador — não sobrescrevemos um http proxy intencional.
@@ -276,6 +304,7 @@ adminRoutes.post('/proxy-agent/token', async (c) => {
 adminRoutes.delete('/proxy-agent/token', async (c) => {
   const { deleteSetting } = await import('../lib/settings');
   await deleteSetting('proxy_agent_token');
+  await deleteSetting('proxy_agent_enabled');
   // Limpa o proxy do worker SOMENTE se for exatamente o SOCKS local do túnel —
   // não apaga um proxy http custom que o operador tenha configurado.
   const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
