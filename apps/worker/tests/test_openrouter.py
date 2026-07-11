@@ -87,7 +87,7 @@ async def test_generate_content_title_uses_short_title_payload() -> None:
 
     assert result.title == "Resumo do post"
     assert client.payload is not None
-    assert client.payload["max_tokens"] == 48
+    assert client.payload["max_tokens"] == 64
     assert client.payload["temperature"] == 0.2
     assert "KEEP" in str(client.payload["messages"])
     assert "Responda apenas com KEEP" in str(client.payload["messages"])
@@ -129,6 +129,46 @@ async def test_generate_content_title_ptbr_prompt_forces_translation() -> None:
     assert "já estiver em português do Brasil" in msgs
     # O modelo retornou um título novo (não KEEP) → é usado.
     assert result.title == "Resumo do post"
+
+
+async def test_generate_content_title_disables_reasoning() -> None:
+    # issue #335: reasoning ligado vazava o preâmbulo no content. O payload deve
+    # desabilitar reasoning e ter margem de tokens.
+    client = CaptureClient()
+    await generate_content_title(
+        content="Conteúdo de teste para o título.",
+        source_label="Página web",
+        fallback_title="arquivo-generico",
+        api_key="sk-test",
+        model="openai/gpt-4.1-mini",
+        client=client,  # type: ignore[arg-type]
+    )
+    assert client.payload is not None
+    assert client.payload["reasoning"] == {"enabled": False}
+    assert int(client.payload["max_tokens"]) >= 64  # type: ignore[arg-type]
+
+
+def test_resolve_title_decision_rejects_preamble() -> None:
+    # Exemplos reais da issue #335: preâmbulo/raciocínio nunca vira título.
+    assert (
+        _resolve_title_decision(
+            "The user wants a final title for a knowledge base entry based on the provided content",
+            "Post do X",
+        )
+        == "Post do X"
+    )
+    assert (
+        _resolve_title_decision(
+            'The candidate title is "GitHub - hyperdxio/hyperdx: fast. An',
+            "HyperDX",
+        )
+        == "HyperDX"
+    )
+    # Título legítimo passa.
+    assert (
+        _resolve_title_decision("Guia de observabilidade com HyperDX", "x")
+        == "Guia de observabilidade com HyperDX"
+    )
 
 
 def test_resolve_title_decision_keep_variants() -> None:

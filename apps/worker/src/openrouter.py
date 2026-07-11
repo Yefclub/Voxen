@@ -408,7 +408,12 @@ async def generate_content_title(
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
-        "max_tokens": 48,
+        "max_tokens": 64,
+        # Título é um one-shot curto: desabilita reasoning para o stream de
+        # raciocínio NÃO vazar no message.content (issue #335). Modelos sem
+        # reasoning ignoram o campo. max_tokens curto cortava o raciocínio no
+        # meio e o preâmbulo truncado virava "título".
+        "reasoning": {"enabled": False},
         "usage": {"include": True},
     }
     result = await _chat_completion_document(
@@ -424,6 +429,40 @@ async def generate_content_title(
     )
 
 
+# Prefixos de preâmbulo/raciocínio que o modelo às vezes cospe em vez de um
+# título (issue #335). Se o "título" começa assim, é meta-texto → cai no
+# fallback em vez de persistir lixo como "The candidate title is ...".
+_TITLE_META_PREFIXES: tuple[str, ...] = (
+    "the candidate title",
+    "the user wants",
+    "the user is",
+    "the user asked",
+    "the final title",
+    "a good title",
+    "based on the content",
+    "the content is about",
+    "here is",
+    "here's",
+    "let me",
+    "i'll",
+    "i will",
+    "i would",
+    "sure,",
+    "okay,",
+    "título:",
+    "título final",
+    "title:",
+)
+
+
+def _looks_like_title_preamble(title: str) -> bool:
+    """True se o "título" parece preâmbulo/raciocínio do modelo (issue #335)."""
+    low = title.strip().casefold()
+    if not low:
+        return False
+    return any(low.startswith(prefix) for prefix in _TITLE_META_PREFIXES)
+
+
 def _resolve_title_decision(raw: str, fallback_title: str) -> str:
     """Interpreta a resposta do modelo: KEEP / título idêntico / título novo."""
     cleaned = _clean_generated_title(raw)
@@ -435,6 +474,9 @@ def _resolve_title_decision(raw: str, fallback_title: str) -> str:
     fallback_clean = _clean_generated_title(fallback_title)
     if fallback_clean and cleaned.casefold() == fallback_clean.casefold():
         return fallback_clean
+    # Rede de segurança: preâmbulo/raciocínio vazado nunca vira título.
+    if _looks_like_title_preamble(cleaned):
+        return fallback_clean or fallback_title.strip()
     return cleaned
 
 
