@@ -105,8 +105,6 @@ describeIfDb('setup flow', () => {
           openrouter_api_key: VALID_KEY,
           default_chat_model: 'openrouter/auto',
           default_transcription_model: 'openai/whisper-1',
-          admin_email: 'admin@voxen.local',
-          summary_timeout_sec: '180',
         }),
       }),
     );
@@ -119,7 +117,7 @@ describeIfDb('setup flow', () => {
       where: { scope: 'GLOBAL', userId: null },
       select: { key: true, valueEnc: true },
     });
-    expect(stored).toHaveLength(5);
+    expect(stored).toHaveLength(3);
     for (const s of stored) {
       expect(s.valueEnc.length).toBeGreaterThan(0);
       expect(s.valueEnc.split('.')).toHaveLength(3);
@@ -129,15 +127,9 @@ describeIfDb('setup flow', () => {
       new Request('http://localhost/api/setup', { headers: { cookie } }),
     );
     const status = (await statusRes.json()) as {
-      adminEmail: string | null;
       complete: boolean;
-      summaryTimeoutSec: string | null;
     };
     expect(status.complete).toBe(true);
-    expect(status.adminEmail).toBe('admin@voxen.local');
-    expect(status.summaryTimeoutSec).toBe('180');
-    await expect(getSetting('admin_email')).resolves.toBe('admin@voxen.local');
-    await expect(getSetting('summary_timeout_sec')).resolves.toBe('180');
   });
 
   it('admin pode persistir idioma da plataforma', async () => {
@@ -210,62 +202,6 @@ describeIfDb('setup flow', () => {
     );
     const clearedStatus = (await clearedStatusRes.json()) as { xAnalysisModel: string | null };
     expect(clearedStatus.xAnalysisModel).toBeNull();
-  });
-
-  it('admin não persiste operação da instância com email inválido', async () => {
-    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
-    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
-    const cookie = extractCookie(signin);
-
-    installFetchMock(async () => new Response('{}', { status: 200 }));
-
-    const res = await app.fetch(
-      new Request('http://localhost/api/setup', {
-        method: 'POST',
-        headers: { cookie, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          openrouter_api_key: VALID_KEY,
-          default_chat_model: 'openrouter/auto',
-          default_transcription_model: 'openai/whisper-1',
-          admin_email: 'email-invalido',
-          summary_timeout_sec: '180',
-        }),
-      }),
-    );
-
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toMatch(/Email do operador inválido/i);
-    const stored = await db.setting.findMany({ where: { scope: 'GLOBAL' } });
-    expect(stored).toHaveLength(0);
-  });
-
-  it('admin não persiste operação da instância com timeout fora da faixa', async () => {
-    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
-    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
-    const cookie = extractCookie(signin);
-
-    installFetchMock(async () => new Response('{}', { status: 200 }));
-
-    const res = await app.fetch(
-      new Request('http://localhost/api/setup', {
-        method: 'POST',
-        headers: { cookie, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          openrouter_api_key: VALID_KEY,
-          default_chat_model: 'openrouter/auto',
-          default_transcription_model: 'openai/whisper-1',
-          admin_email: 'admin@voxen.local',
-          summary_timeout_sec: '12',
-        }),
-      }),
-    );
-
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toMatch(/Timeout de resumo/i);
-    const stored = await db.setting.findMany({ where: { scope: 'GLOBAL' } });
-    expect(stored).toHaveLength(0);
   });
 
   it('admin com key inválida → 400 PT-BR e nada persiste', async () => {
