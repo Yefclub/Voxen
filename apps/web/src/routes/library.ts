@@ -6,6 +6,7 @@
 //   POST   /api/library/folders
 //   PATCH  /api/library/folders/:id
 //   DELETE /api/library/folders/:id
+//   POST   /api/library/reorganize — classifica com IA só o que não tem pasta
 // ============================================================================
 
 import { Hono } from 'hono';
@@ -18,6 +19,8 @@ import {
 } from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
+import { classifyFolderForContent } from '../lib/folder-classify';
+import { isSetupComplete } from '../lib/settings';
 
 type Vars = { userId: string };
 
@@ -146,6 +149,133 @@ libraryRoutes.patch('/folders/:id', async (c) => {
   await reindexLibraryFolderBrain(userId, folder.id);
   await invalidateGraphCache(userId);
   return c.json({ folder });
+});
+
+// POST /api/library/reorganize — só transcripts ACTIVE com folderId null.
+// Processa em lotes (default 15) pra não estourar timeout do request.
+libraryRoutes.post('/reorganize', async (c) => {
+  const userId = c.get('userId');
+  if (!(await isSetupComplete())) {
+    return c.json({ error: 'Setup incompleto.' }, 412);
+  }
+
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
+  const limitRaw = Number(body.limit ?? 15);
+  const limit =
+    Number.isFinite(limitRaw) && limitRaw >= 1 && limitRaw <= 40 ? Math.floor(limitRaw) : 15;
+
+  const pendingTotal = await db.transcript.count({
+    where: { userId, status: 'ACTIVE', folderId: null },
+  });
+  if (pendingTotal === 0) {
+    return c.json({
+      processed: 0,
+      assigned: 0,
+      skipped: 0,
+      failed: 0,
+      remaining: 0,
+      pendingTotal: 0,
+    });
+  }
+
+  const batch = await db.transcript.findMany({
+    where: { userId, status: 'ACTIVE', folderId: null },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    select: { id: true, title: true, plainText: true },
+  });
+
+  let assigned = 0;
+  let skipped = 0;
+  let failed = 0;
+  const folderNames = (
+    await db.libraryFolder.findMany({
+      where: { userId },
+      select: { name: true },
+      orderBy: { name: 'asc' },
+    })
+  ).map((f) => f.name);
+
+  const assignedIds: string[] = [];
+
+  for (const item of batch) {
+    try {
+      const content = (item.plainText ?? '').trim();
+      if (content.length < 40 && item.title.trim().length < 3) {
+        skipped += 1;
+        continue;
+      }
+      const result = await classifyFolderForContent({
+        title: item.title,
+        content: content || item.title,
+        existingFolders: folderNames,
+      });
+      await db.costEvent.create({
+        data: {
+          userId,
+          kind: 'CHAT',
+          model: result.model,
+          tokensIn: result.tokensIn,
+          tokensOut: result.tokensOut,
+          costUsd: result.costUsd,
+          meta: {
+            source: 'folder_classification_backfill',
+            transcript_id: item.id,
+            folder_name: result.folderName,
+          },
+        },
+      });
+      if (!result.folderName) {
+        skipped += 1;
+        continue;
+      }
+      const existing = await db.libraryFolder.findFirst({
+        where: { userId, name: { equals: result.folderName, mode: 'insensitive' } },
+        select: { id: true, name: true },
+      });
+      let folderId: string;
+      let folderName: string;
+      if (existing) {
+        folderId = existing.id;
+        folderName = existing.name;
+      } else {
+        const created = await db.libraryFolder.create({
+          data: { userId, name: result.folderName.slice(0, 120), parentId: null },
+          select: { id: true, name: true },
+        });
+        folderId = created.id;
+        folderName = created.name;
+        folderNames.push(folderName);
+        await reindexLibraryFolderBrain(userId, folderId).catch(() => {});
+      }
+      await db.transcript.updateMany({
+        where: { id: item.id, userId, folderId: null },
+        data: { folderId },
+      });
+      assignedIds.push(item.id);
+      assigned += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  if (assignedIds.length > 0) {
+    await reindexTranscriptsBrain(userId, assignedIds).catch(() => {});
+    await invalidateGraphCache(userId).catch(() => {});
+  }
+
+  const remaining = await db.transcript.count({
+    where: { userId, status: 'ACTIVE', folderId: null },
+  });
+
+  return c.json({
+    processed: batch.length,
+    assigned,
+    skipped,
+    failed,
+    remaining,
+    pendingTotal,
+  });
 });
 
 libraryRoutes.delete('/folders/:id', async (c) => {
