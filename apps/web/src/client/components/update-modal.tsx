@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
-import { Dialog, DialogContent } from './ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Spinner } from './ui/spinner';
 import { Badge } from './ui/badge';
@@ -97,12 +97,12 @@ export function UpdateModal({
             <Sparkles className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1 pr-6">
-            <h2 className="text-lg font-semibold tracking-tight text-zinc-100">
+            <DialogTitle className="text-lg font-semibold tracking-tight text-zinc-100">
               {t('shell.updateAvailable')}
-            </h2>
-            <p className="mt-1 text-[13px] leading-relaxed text-zinc-400">
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-[13px] leading-relaxed text-zinc-400">
               {t('shell.updateModalSubtitle')}
-            </p>
+            </DialogDescription>
             {update.toVersion && (
               <div className="mt-3 flex items-center gap-1.5 font-mono text-[11px]">
                 {update.fromVersion && (
