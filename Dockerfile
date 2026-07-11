@@ -133,6 +133,8 @@ COPY --from=web-server-builder --chown=voxen:voxen /app/apps/web ./apps/web
 COPY --from=web-server-builder --chown=voxen:voxen /app/packages ./packages
 COPY --from=web-server-builder --chown=voxen:voxen /app/prisma ./prisma
 COPY --from=web-front-builder --chown=voxen:voxen /app/apps/web/dist ./apps/web/dist
+# Changelog manifesto (página Novidades)
+COPY --chown=voxen:voxen releases.json ./releases.json
 
 COPY --from=worker-builder --chown=voxen:voxen /app/apps/worker/.venv ./apps/worker/.venv
 COPY --from=worker-builder --chown=voxen:voxen /app/apps/worker/src ./apps/worker/src

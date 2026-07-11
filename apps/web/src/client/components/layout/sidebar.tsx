@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -167,23 +167,31 @@ export function SidebarVersionInfo(): React.ReactElement {
         t('shell.versionInfo', { version: data.version }),
         shortSha ? t('shell.versionSha', { sha: shortSha }) : null,
         builtAt ? t('shell.versionBuiltAt', { date: builtAt }) : null,
+        t('shell.versionOpenChangelog'),
       ]
         .filter(Boolean)
         .join('\n')
     : t('shell.versionFallback');
 
   return (
-    <div className="shrink-0 px-3 py-1.5" title={title}>
-      <p className="truncate text-center font-mono text-[10px] leading-none text-[var(--color-app-muted)]/60">
+    <div className="shrink-0 px-3 py-1.5">
+      <Link
+        to="/novidades"
+        title={title}
+        className="block truncate text-center font-mono text-[10px] leading-none text-[var(--color-app-muted)]/70 transition-colors hover:text-zinc-300"
+      >
         {data?.version ? (
           <>
-            v{data.version}
+            <span className="font-sans text-[10px] font-medium tracking-tight">
+              {t('shell.nav.changelog')}
+            </span>
+            <span className="mx-1 opacity-40">·</span>v{data.version}
             {shortSha ? <span> · {shortSha}</span> : null}
           </>
         ) : (
           t('shell.versionFallback')
         )}
-      </p>
+      </Link>
     </div>
   );
 }

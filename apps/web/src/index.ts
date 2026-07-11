@@ -25,6 +25,7 @@ import { notesRoutes } from './routes/notes';
 import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
 import { graphRoutes } from './routes/graph';
+import { releasesRoutes } from './routes/releases';
 import { shareTargetRoutes } from './routes/share-target';
 import { getRedisPublisher } from './lib/redis';
 import { clientIp } from './lib/client-ip';
@@ -251,6 +252,8 @@ app.route('/api/automations', automationsRoutes);
 app.route('/mcp', mcpRoutes);
 // Graph view (visualização Obsidian-like da KB)
 app.route('/api/graph', graphRoutes);
+// Changelog / release notes (releases.json)
+app.route('/api/releases', releasesRoutes);
 // PWA Web Share Target (Android/Chrome instalado)
 app.route('/share-target', shareTargetRoutes);
 
