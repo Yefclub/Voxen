@@ -7,11 +7,13 @@ import { getAppLanguage, getSetting, type AppLanguage } from './settings';
 
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 
-export function resolveFolderDecision(
-  raw: string,
-  existingFolders: string[],
-): string | null {
-  const cleaned = raw.replace(/\n/g, ' ').split(/\s+/).join(' ').trim().replace(/^["'“”‘’#]+|["'“”‘’#]+$/g, '');
+export function resolveFolderDecision(raw: string, existingFolders: string[]): string | null {
+  const cleaned = raw
+    .replace(/\n/g, ' ')
+    .split(/\s+/)
+    .join(' ')
+    .trim()
+    .replace(/^["'“”‘’#]+|["'“”‘’#]+$/g, '');
   if (!cleaned) return null;
   const token = cleaned.toUpperCase();
   if (['NONE', 'NENHUMA', 'N/A', 'NA', 'NULL'].includes(token)) return null;
@@ -121,12 +123,7 @@ export async function classifyFolderForContent(input: {
     throw new Error('Setup incompleto — OpenRouter/modelo ausentes.');
   }
   const language = await getAppLanguage();
-  const prompt = buildClassifyPrompt(
-    input.title,
-    input.content,
-    input.existingFolders,
-    language,
-  );
+  const prompt = buildClassifyPrompt(input.title, input.content, input.existingFolders, language);
   const system =
     language === 'en'
       ? 'You organize a personal knowledge base into thematic folders. Reply only with the folder name or NONE.'
