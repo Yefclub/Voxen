@@ -489,10 +489,11 @@ def _resolve_folder_decision(raw: str, existing_folders: list[str]) -> str | Non
     for name in existing_folders:
         if name.casefold() == cleaned.casefold():
             return name
-    # Match fuzzy simples: pasta existente contida ou contém a resposta.
+    # Match por token (evita "ia" ∈ "história"). Só se ambos ≥ 3 chars.
+    cleaned_tokens = {t for t in cleaned.casefold().replace("-", " ").split() if len(t) >= 3}
     for name in existing_folders:
-        a, b = name.casefold(), cleaned.casefold()
-        if a == b or a in b or b in a:
+        name_tokens = {t for t in name.casefold().replace("-", " ").split() if len(t) >= 3}
+        if cleaned_tokens and name_tokens and cleaned_tokens == name_tokens:
             return name
     # Novo nome: sanitiza e limita.
     name = cleaned.strip(" .:-")

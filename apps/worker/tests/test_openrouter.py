@@ -121,10 +121,12 @@ def test_resolve_title_decision_keep_variants() -> None:
 
 
 def test_resolve_folder_decision_reuses_existing_and_none() -> None:
-    existing = ["Anime", "Produtividade", "Machine Learning"]
+    existing = ["Anime", "Produtividade", "Machine Learning", "IA"]
     assert _resolve_folder_decision("NONE", existing) is None
     assert _resolve_folder_decision("anime", existing) == "Anime"
     assert _resolve_folder_decision("História do Brasil", existing) == "História do Brasil"
+    # Não colidir substring curta ("ia" em "história")
+    assert _resolve_folder_decision("História do Brasil", ["IA"]) == "História do Brasil"
 
 
 async def test_classify_content_folder_payload() -> None:
