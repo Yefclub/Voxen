@@ -278,6 +278,12 @@ const ptBRMessages = {
   'library.reorgPartial':
     'Lote aplicado ({assigned} classificados). Ainda restam {remaining} sem pasta — rode de novo.',
   'library.reorgError': 'Falha ao organizar a biblioteca com IA.',
+  'library.clearFolders': 'Apagar pastas',
+  'library.clearFoldersConfirm':
+    'Apagar TODAS as pastas? Os conteúdos permanecem na biblioteca (sem pasta), liberando o Organizar com IA.',
+  'library.clearFoldersDone': '{deleted} pastas removidas · {items} conteúdos liberados.',
+  'library.clearFoldersError': 'Falha ao apagar as pastas.',
+  'library.loadMore': 'Carregar mais',
   'library.statusArchived': 'Arquivado',
   'library.statusTrash': 'Lixeira',
   'library.status.active': 'Ativos',
@@ -1253,6 +1259,12 @@ const enMessages: Record<I18nKey, string> = {
   'library.reorgPartial':
     'Batch applied ({assigned} assigned). {remaining} still without a folder — run again.',
   'library.reorgError': 'Failed to organize the library with AI.',
+  'library.clearFolders': 'Delete folders',
+  'library.clearFoldersConfirm':
+    'Delete ALL folders? Content stays in the library (unfoldered), so Organize with AI can run again.',
+  'library.clearFoldersDone': '{deleted} folders removed · {items} items unfoldered.',
+  'library.clearFoldersError': 'Failed to delete folders.',
+  'library.loadMore': 'Load more',
   'library.statusArchived': 'Archived',
   'library.statusTrash': 'Trash',
   'library.status.active': 'Active',
