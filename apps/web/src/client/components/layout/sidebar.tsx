@@ -267,7 +267,8 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
       <ul className="space-y-0.5">
         {items.map(({ to, labelKey, Icon }) => {
           // `/` não pode usar prefix match — senão fica ativo em todas as rotas.
-          const isActive = to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(to + '/');
+          const isActive =
+            to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(to + '/');
           return (
             <li key={to} className="relative">
               {isActive && (

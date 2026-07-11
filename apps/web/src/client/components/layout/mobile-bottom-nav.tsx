@@ -83,7 +83,9 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
       <div className="grid h-16 grid-cols-5 px-1">
         {ITEMS.map(({ to, labelKey, Icon }) => {
           const active =
-            to === '/' ? location.pathname === '/' : location.pathname === to || location.pathname.startsWith(`${to}/`);
+            to === '/'
+              ? location.pathname === '/'
+              : location.pathname === to || location.pathname.startsWith(`${to}/`);
           return (
             <NavLink
               key={to}
