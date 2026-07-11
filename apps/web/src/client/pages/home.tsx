@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Globe, Link2, PlayCircle, Plus, RefreshCw, Upload, X } from 'lucide-react';
-import { motion } from 'motion/react';
+import {
+  ArrowRight,
+  Globe,
+  Link2,
+  PlayCircle,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  Upload,
+  X,
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -13,7 +23,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { Spinner } from '../components/ui/spinner';
 import { ApiError, apiPost } from '../lib/api';
 import { uploadMedia } from '../lib/upload';
-import { useFetch, useSse } from '../lib/hooks';
+import { useFetch, useMe, useSse } from '../lib/hooks';
 import { formatRelative } from '../lib/format';
 import { jobStatusBadge, stageLabel } from '../lib/job-display';
 import type { JobStatus, JobSummary } from '../lib/types';
@@ -31,7 +41,18 @@ interface ProgressEvent {
   ts: string;
 }
 
-export function JobsPage(): React.ReactElement {
+const MEDIA_ACCEPT =
+  'audio/*,video/*,image/png,image/jpeg,image/webp,image/gif,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/markdown,text/csv,text/html,application/json,application/xml,application/epub+zip,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.mp4,.mov,.m4v,.webm,.mkv,.avi,.png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.pptx,.xls,.xlsx,.csv,.txt,.md,.json,.xml,.html,.htm,.epub';
+
+function hasFileDrag(types: readonly string[] | DOMStringList | undefined): boolean {
+  if (!types) return false;
+  for (let i = 0; i < types.length; i++) {
+    if (types[i] === 'Files') return true;
+  }
+  return false;
+}
+
+export function HomePage(): React.ReactElement {
   const [mode, setMode] = useState<'link' | 'upload'>('link');
   const [url, setUrl] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
@@ -39,14 +60,17 @@ export function JobsPage(): React.ReactElement {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepthRef = useRef(0);
+  const uploadInFlightRef = useRef(false);
   const { data, loading, refresh } = useFetch<{ jobs: JobSummary[] }>('/api/jobs');
+  const { data: me } = useMe();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const sharedUrlLockRef = useRef<string | null>(null);
   const { locale, t } = useI18n();
+  const firstName = me?.user?.name?.split(' ')[0] ?? t('dashboard.fallbackName');
 
-  // Detecta tipo enquanto user digita — UI mostra badge "Vídeo do YouTube",
-  // "Página web", etc. Reaproveita o mesmo regex do back (parseVideoUrl).
   const detected: DetectedSource | null = useMemo(
     () => (url.trim() ? detectSourceFromUrl(url.trim()) : null),
     [url],
@@ -121,6 +145,57 @@ export function JobsPage(): React.ReactElement {
     [navigate, refresh, t],
   );
 
+  const startUpload = useCallback(
+    async (file: File): Promise<void> => {
+      if (uploadInFlightRef.current) return;
+      uploadInFlightRef.current = true;
+      setError(null);
+      setMode('upload');
+      setMediaFile(file);
+      setUploading(true);
+      setUploadProgress(0);
+      try {
+        const result = await uploadMedia(file, {
+          onProgress: (percent) => setUploadProgress(percent),
+        });
+        const jobId = result.jobId;
+        setMediaFile(null);
+        refresh();
+        toast.success(
+          result.kind === 'image'
+            ? t('jobs.toast.imageQueued')
+            : result.kind === 'document'
+              ? t('jobs.toast.documentQueued')
+              : t('jobs.toast.fileQueued'),
+          {
+            description:
+              result.kind === 'image'
+                ? t('jobs.toast.imageDescription')
+                : result.kind === 'document'
+                  ? t('jobs.toast.documentDescription')
+                  : t('jobs.toast.mediaDescription'),
+            action: {
+              label: t('common.open'),
+              onClick: () => navigate(`/jobs/${jobId}`),
+            },
+          },
+        );
+        navigate(`/jobs/${jobId}`);
+      } catch (err) {
+        if (err instanceof ApiError) {
+          setError(err.status === 413 ? t('jobs.error.uploadTooLarge') : err.message);
+        } else {
+          setError(t('jobs.error.unexpected'));
+        }
+      } finally {
+        uploadInFlightRef.current = false;
+        setUploading(false);
+        setUploadProgress(0);
+      }
+    },
+    [navigate, refresh, t],
+  );
+
   async function onSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setError(null);
@@ -137,51 +212,62 @@ export function JobsPage(): React.ReactElement {
   async function onUploadSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (!mediaFile) return;
-    setError(null);
-    setUploading(true);
-    setUploadProgress(0);
-    try {
-      const result = await uploadMedia(mediaFile, {
-        onProgress: (percent) => setUploadProgress(percent),
-      });
-      const jobId = result.jobId;
-      setMediaFile(null);
-      refresh();
-      toast.success(
-        result.kind === 'image'
-          ? t('jobs.toast.imageQueued')
-          : result.kind === 'document'
-            ? t('jobs.toast.documentQueued')
-            : t('jobs.toast.fileQueued'),
-        {
-          description:
-            result.kind === 'image'
-              ? t('jobs.toast.imageDescription')
-              : result.kind === 'document'
-                ? t('jobs.toast.documentDescription')
-                : t('jobs.toast.mediaDescription'),
-          action: {
-            label: t('common.open'),
-            onClick: () => navigate(`/jobs/${jobId}`),
-          },
-        },
-      );
-      navigate(`/jobs/${jobId}`);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        // 413 só ocorre no fallback via app (CF/limite do servidor).
-        setError(err.status === 413 ? t('jobs.error.uploadTooLarge') : err.message);
-      } else {
-        setError(t('jobs.error.unexpected'));
-      }
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
+    await startUpload(mediaFile);
+  }
+
+  function onContentPaste(e: React.ClipboardEvent<HTMLInputElement>): void {
+    const files = e.clipboardData?.files;
+    if (files && files.length > 0) {
+      e.preventDefault();
+      const file = files[0];
+      if (file) void startUpload(file);
     }
   }
 
+  useEffect(() => {
+    function onDragEnter(e: DragEvent): void {
+      if (!hasFileDrag(e.dataTransfer?.types)) return;
+      e.preventDefault();
+      dragDepthRef.current += 1;
+      setDragOver(true);
+    }
+    function onDragLeave(e: DragEvent): void {
+      if (!hasFileDrag(e.dataTransfer?.types) && dragDepthRef.current === 0) return;
+      e.preventDefault();
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) setDragOver(false);
+    }
+    function onDragOver(e: DragEvent): void {
+      if (!hasFileDrag(e.dataTransfer?.types)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    }
+    function onDrop(e: DragEvent): void {
+      if (!hasFileDrag(e.dataTransfer?.types)) return;
+      e.preventDefault();
+      dragDepthRef.current = 0;
+      setDragOver(false);
+      const file = e.dataTransfer?.files?.[0];
+      if (file) void startUpload(file);
+    }
+
+    window.addEventListener('dragenter', onDragEnter);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [startUpload]);
+
   const jobs = data?.jobs ?? [];
   const hasActiveJobs = jobs.some((job) => job.status === 'QUEUED' || job.status === 'RUNNING');
+  const queued = jobs.filter((j) => j.status === 'QUEUED' || j.status === 'RUNNING').length;
+  const done = jobs.filter((j) => j.status === 'DONE').length;
+  const failed = jobs.filter((j) => j.status === 'FAILED').length;
 
   useEffect(() => {
     if (searchParams.get('shared') !== '1') return;
@@ -248,18 +334,42 @@ export function JobsPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
-        <header className="space-y-2 sm:space-y-3">
-          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
-            <PlayCircle className="h-3.5 w-3.5 text-rose-400" />
-            {t('jobs.eyebrow')}
+      <div className="relative mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
+        <header className="space-y-3 sm:space-y-4">
+          <motion.div
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.4 }}
+            className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium"
+          >
+            <Sparkles className="h-3 w-3 text-emerald-400" />
+            {t('home.eyebrow')}
+          </motion.div>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="space-y-1.5">
+              <h1 className="font-display text-3xl font-semibold tracking-[-0.03em] text-balance sm:text-4xl">
+                {t('home.greeting', { name: firstName })}
+              </h1>
+              <p className="hidden max-w-2xl text-[15px] leading-relaxed text-[var(--color-app-muted)] sm:block">
+                {t('home.description')}
+              </p>
+            </div>
+            {!loading && jobs.length > 0 && (
+              <div className="flex flex-wrap gap-2 text-xs tabular-nums text-[var(--color-app-muted)]">
+                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-amber-200">
+                  {queued} {t('dashboard.processing').toLowerCase()}
+                </span>
+                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
+                  {done} {t('home.statReady')}
+                </span>
+                {failed > 0 && (
+                  <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-rose-200">
+                    {failed} {t('dashboard.failed').toLowerCase()}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-          <h1 className="font-display text-2xl font-semibold tracking-[-0.03em] sm:text-4xl">
-            {t('jobs.title')}
-          </h1>
-          <p className="hidden max-w-2xl text-[15px] leading-relaxed text-[var(--color-app-muted)] sm:block">
-            {t('jobs.description')}
-          </p>
         </header>
 
         <motion.div
@@ -335,10 +445,11 @@ export function JobsPage(): React.ReactElement {
                           type="url"
                           value={url}
                           onChange={(e) => setUrl(e.target.value)}
-                          placeholder="https://youtu.be/... · x.com/.../status/... · exemplo.com/artigo"
+                          onPaste={onContentPaste}
+                          placeholder={t('home.urlPlaceholder')}
                           autoComplete="off"
                           required
-                          className="pl-10 font-mono h-11 text-[15px]"
+                          className="pl-10 font-mono h-12 text-[15px]"
                         />
                       </div>
                       <Button
@@ -346,7 +457,7 @@ export function JobsPage(): React.ReactElement {
                         variant="primary"
                         size="lg"
                         disabled={submitting || url.trim().length === 0}
-                        className="h-11 w-full px-5 sm:w-auto"
+                        className="h-12 w-full px-5 sm:w-auto"
                       >
                         {submitting ? <Spinner /> : <Plus className="h-4 w-4" />}
                         {t('jobs.add')}
@@ -361,7 +472,7 @@ export function JobsPage(): React.ReactElement {
                     <Label htmlFor="media">{t('jobs.uploadLabel')}</Label>
                     <div className="space-y-2.5 sm:flex sm:gap-2.5 sm:space-y-0">
                       <div className="flex gap-2.5 sm:flex-1">
-                        <label className="relative flex h-11 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 text-sm text-[var(--color-app-muted)] transition-colors hover:border-emerald-400/50 hover:text-zinc-100">
+                        <label className="relative flex h-12 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 text-sm text-[var(--color-app-muted)] transition-colors hover:border-emerald-400/50 hover:text-zinc-100">
                           <Upload className="h-4 w-4 shrink-0" />
                           <span className="truncate">
                             {mediaFile ? mediaFile.name : t('jobs.selectFile')}
@@ -369,7 +480,7 @@ export function JobsPage(): React.ReactElement {
                           <input
                             id="media"
                             type="file"
-                            accept="audio/*,video/*,image/png,image/jpeg,image/webp,image/gif,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/markdown,text/csv,text/html,application/json,application/xml,application/epub+zip,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.mp4,.mov,.m4v,.webm,.mkv,.avi,.png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.pptx,.xls,.xlsx,.csv,.txt,.md,.json,.xml,.html,.htm,.epub"
+                            accept={MEDIA_ACCEPT}
                             className="sr-only"
                             onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)}
                           />
@@ -379,7 +490,7 @@ export function JobsPage(): React.ReactElement {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-11 w-11"
+                            className="h-12 w-11"
                             onClick={() => setMediaFile(null)}
                             aria-label={t('jobs.removeFile')}
                           >
@@ -392,7 +503,7 @@ export function JobsPage(): React.ReactElement {
                         variant="primary"
                         size="lg"
                         disabled={uploading || !mediaFile}
-                        className="h-11 w-full px-5 sm:w-auto"
+                        className="h-12 w-full px-5 sm:w-auto"
                       >
                         {uploading ? <Spinner /> : <Upload className="h-4 w-4" />}
                         {t('jobs.send')}
@@ -480,6 +591,34 @@ export function JobsPage(): React.ReactElement {
           )}
         </section>
       </div>
+
+      <AnimatePresence>
+        {dragOver && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+            aria-live="polite"
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              className="mx-6 flex max-w-md flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-emerald-400/50 bg-[var(--color-app-bg-elevated)]/95 px-10 py-12 text-center shadow-2xl"
+            >
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10">
+                <Upload className="h-6 w-6 text-emerald-400" />
+              </div>
+              <p className="font-display text-lg font-semibold tracking-tight text-zinc-100">
+                {t('home.dropTitle')}
+              </p>
+              <p className="text-sm text-[var(--color-app-muted)]">{t('home.dropHint')}</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </AnimatedPage>
   );
 }

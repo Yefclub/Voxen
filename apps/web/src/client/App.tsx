@@ -10,13 +10,12 @@ import { PendentePage } from './pages/pendente';
 import { QrLoginPage } from './pages/qr-login';
 import { OnboardingPage } from './pages/onboarding';
 import { SetupPage } from './pages/setup';
-import { DashboardPage } from './pages/dashboard';
+import { HomePage } from './pages/home';
 import { AdminUsuariosPage } from './pages/admin-usuarios';
 import { AdminCustosPage } from './pages/admin-custos';
 import { AdminIntegracoesPage } from './pages/admin-integracoes';
 import { ContaPage } from './pages/conta';
 import { ChatPage } from './pages/chat';
-import { JobsPage } from './pages/jobs';
 import { JobDetalhePage } from './pages/jobs-detalhe';
 import { TranscricoesPage } from './pages/transcricoes';
 import { TranscricaoDetalhePage } from './pages/transcricoes-detalhe';
@@ -47,6 +46,12 @@ type ViewTransitionHandle = {
 type ViewTransitionDocument = Document & {
   startViewTransition?: (callback: () => void) => ViewTransitionHandle;
 };
+
+/** Redirect que preserva search/hash (PWA share target em /jobs?shared=1&…). */
+function RedirectPreserveSearch({ to }: { to: string }): React.ReactElement {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
+}
 
 function AppRoutes(): React.ReactElement {
   const location = useLocation();
@@ -85,8 +90,8 @@ function AppRoutes(): React.ReactElement {
 
       {/* App autenticado */}
       <Route element={<AppLayout />}>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/dashboard" element={<RedirectPreserveSearch to="/" />} />
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/chat/:id" element={<ChatPage />} />
         <Route path="/setup" element={<SetupPage />} />
@@ -94,7 +99,7 @@ function AppRoutes(): React.ReactElement {
         <Route path="/admin/custos" element={<AdminCustosPage />} />
         <Route path="/admin/integracoes" element={<AdminIntegracoesPage />} />
         <Route path="/conta" element={<ContaPage />} />
-        <Route path="/jobs" element={<JobsPage />} />
+        <Route path="/jobs" element={<RedirectPreserveSearch to="/" />} />
         <Route path="/jobs/:id" element={<JobDetalhePage />} />
         <Route path="/transcricoes" element={<TranscricoesPage />} />
         <Route path="/transcricoes/:id" element={<TranscricaoDetalhePage />} />
@@ -105,7 +110,7 @@ function AppRoutes(): React.ReactElement {
       </Route>
 
       {/* Fallback */}
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
