@@ -259,6 +259,18 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
     if not segments:
         raise PermanentError("Transcrição vazia — nenhum texto extraído.")
 
+    source_for_label = video_url.detect_source(source_url) or "VIDEO"
+    content_for_title = "\n".join(seg.text.strip() for seg in segments if seg.text.strip())
+    generated_title = await _maybe_generate_title(
+        user_id=user_id,
+        job_id=job_id,
+        content=content_for_title,
+        source_label=f"Vídeo {source_for_label}",
+        fallback_title=probe_info.title,
+        fallback_model=model,
+        log=log,
+    )
+
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "uploading", percent=80)
     new_transcript_id = await _persist(
@@ -271,6 +283,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
         model=model,
         cost_usd=cost_total if method == "API" else None,
         language=language,
+        title_override=generated_title,
     )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
