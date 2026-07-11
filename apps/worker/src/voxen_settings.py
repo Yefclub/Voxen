@@ -119,3 +119,15 @@ async def get_summary_timeout_sec(default: float = 120.0) -> float:
     if value < 30 or value > 600:
         return default
     return value
+
+
+async def get_app_language() -> str:
+    """Idioma da instância: pt-BR (default) ou en."""
+    enc = await db.get_setting_enc("app_language")
+    if enc is None:
+        return "pt-BR"
+    try:
+        value = decrypt(enc, get_master_key()).strip()
+    except Exception:
+        return "pt-BR"
+    return "en" if value == "en" else "pt-BR"
