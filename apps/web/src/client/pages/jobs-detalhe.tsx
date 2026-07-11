@@ -159,7 +159,7 @@ export function JobDetalhePage(): React.ReactElement {
     <AnimatedPage>
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-5 sm:space-y-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
         <Button variant="ghost" size="sm" asChild className="-ml-2 hidden sm:inline-flex">
-          <Link to="/jobs">
+          <Link to="/">
             <ArrowLeft className="h-3.5 w-3.5" />
             {t('jobDetail.backToQueue')}
           </Link>

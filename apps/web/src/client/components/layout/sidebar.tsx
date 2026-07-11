@@ -5,13 +5,12 @@ import {
   ArrowLeft,
   ChevronDown,
   DollarSign,
-  LayoutDashboard,
+  House,
   FolderPlus,
   ListVideo,
   LogOut,
   Network,
   Notebook,
-  PlayCircle,
   Plug,
   PanelLeftClose,
   PanelLeftOpen,
@@ -33,7 +32,7 @@ import { NotesTree } from '../notes/notes-tree';
 export interface NavItem {
   to: string;
   labelKey: I18nKey;
-  Icon: typeof LayoutDashboard;
+  Icon: typeof House;
   adminOnly?: boolean;
 }
 
@@ -44,8 +43,7 @@ export interface NavItem {
  * em `lib/mobile-nav.ts`.
  */
 export const NAV: NavItem[] = [
-  { to: '/dashboard', labelKey: 'shell.nav.dashboard', Icon: LayoutDashboard },
-  { to: '/jobs', labelKey: 'shell.nav.jobs', Icon: PlayCircle },
+  { to: '/', labelKey: 'shell.nav.home', Icon: House },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
   { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow },
@@ -258,7 +256,9 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
     <nav className="flex-1 p-3 overflow-y-auto">
       <ul className="space-y-0.5">
         {items.map(({ to, labelKey, Icon }) => {
-          const isActive = pathname === to || pathname.startsWith(to + '/');
+          // `/` não pode usar prefix match — senão fica ativo em todas as rotas.
+          const isActive =
+            to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(to + '/');
           return (
             <li key={to} className="relative">
               {isActive && (
@@ -337,11 +337,11 @@ function NotasModeBody({
       <div className="p-3 flex flex-col gap-2 shrink-0">
         <button
           type="button"
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/')}
           className="flex items-center gap-2 h-9 rounded-lg px-3 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          {t('shell.backToDashboard')}
+          {t('shell.backToHome')}
         </button>
         <div className="flex gap-1.5">
           <button

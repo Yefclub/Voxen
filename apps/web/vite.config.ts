@@ -91,7 +91,7 @@ export default defineConfig({
           {
             name: 'Capturar conteúdo',
             short_name: 'Capturar',
-            url: '/jobs',
+            url: '/',
             icons: [{ src: '/voxen-maskable-192.png', sizes: '192x192', type: 'image/png' }],
           },
           {

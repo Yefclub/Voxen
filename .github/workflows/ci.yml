@@ -134,6 +134,21 @@ jobs:
       - run: uv run pytest
         working-directory: apps/worker
 
+
+  # Stubs: branch protection still requires these check names after apps/chat removal.
+  # Remove from branch protection + delete these jobs in a follow-up.
+  lint-py-chat-stub:
+    name: Lint Python (apps/chat)
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "apps/chat removed — MCP only. Stub keeps required status check green."
+
+  test-py-chat-stub:
+    name: Test Python (apps/chat)
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "apps/chat removed — MCP only. Stub keeps required status check green."
+
   docker-build:
     name: Docker build (apps + Easypanel)
     runs-on: ubuntu-latest

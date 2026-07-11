@@ -50,7 +50,7 @@ export function LoginPage(): React.ReactElement {
         'from' in location.state &&
         typeof location.state.from === 'string'
           ? location.state.from
-          : '/dashboard';
+          : '/';
       navigate(nextPath);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {

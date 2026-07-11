@@ -64,6 +64,17 @@ class TitleGenerationResult:
     tokens_out: int
 
 
+@dataclass(frozen=True)
+class FolderClassificationResult:
+    """folder_name=None significa sem pasta (NONE)."""
+
+    folder_name: str | None
+    cost_usd: Decimal
+    model: str
+    tokens_in: int
+    tokens_out: int
+
+
 async def transcribe_audio(
     *,
     audio_path: Path,
@@ -407,6 +418,91 @@ def _clean_generated_title(value: str) -> str:
     if len(title) > 90:
         title = title[:90].rsplit(" ", 1)[0] or title[:80]
     return title.strip(" .")
+
+
+async def classify_content_folder(
+    *,
+    title: str,
+    content: str,
+    existing_folders: list[str],
+    api_key: str,
+    model: str,
+    client: httpx.AsyncClient | None = None,
+) -> FolderClassificationResult:
+    """Classifica o conteúdo em uma pasta (1:1) reutilizando nomes existentes quando couber."""
+    excerpt = content.strip().replace("\x00", " ")[:6_000]
+    folders_block = (
+        "\n".join(f"- {name}" for name in existing_folders[:80])
+        if existing_folders
+        else "(nenhuma pasta ainda)"
+    )
+    prompt = (
+        f"Título: {title.strip() or '(sem título)'}\n\n"
+        f"Pastas existentes do usuário:\n{folders_block}\n\n"
+        "Escolha UMA pasta de biblioteca (filtro/aba) para este conteúdo.\n"
+        "Regras:\n"
+        "1. Se alguma pasta existente servir bem, responda exatamente com o nome dela.\n"
+        "2. Se nenhuma servir, invente um nome curto em português do Brasil "
+        "(1–3 palavras, máximo 40 caracteres, Title Case quando fizer sentido). "
+        "Exemplos: Anime, Produtividade, História do Brasil, Machine Learning.\n"
+        "3. Se o conteúdo for impossível de classificar com segurança, responda: NONE\n"
+        "4. Não use aspas. Não explique. Responda só o nome ou NONE.\n\n"
+        f"Conteúdo:\n{excerpt}"
+    )
+    payload: dict[str, object] = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Você organiza uma base de conhecimento pessoal em pastas temáticas. "
+                    "Responda apenas com o nome da pasta ou NONE."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 24,
+        "usage": {"include": True},
+    }
+    result = await _chat_completion_document(
+        payload=payload, api_key=api_key, model=model, client=client
+    )
+    folder_name = _resolve_folder_decision(result.text, existing_folders)
+    return FolderClassificationResult(
+        folder_name=folder_name,
+        cost_usd=result.cost_usd,
+        model=result.model,
+        tokens_in=result.tokens_in,
+        tokens_out=result.tokens_out,
+    )
+
+
+def _resolve_folder_decision(raw: str, existing_folders: list[str]) -> str | None:
+    cleaned = " ".join(raw.replace("\n", " ").split()).strip(" \"'“”‘’#")
+    if not cleaned:
+        return None
+    token = cleaned.upper()
+    if token in {"NONE", "NENHUMA", "N/A", "NA", "NULL"}:
+        return None
+    # Prefere match exato (case-insensitive) com pasta existente.
+    for name in existing_folders:
+        if name.casefold() == cleaned.casefold():
+            return name
+    # Match por token (evita "ia" ∈ "história"). Só se ambos ≥ 3 chars.
+    cleaned_tokens = {t for t in cleaned.casefold().replace("-", " ").split() if len(t) >= 3}
+    for name in existing_folders:
+        name_tokens = {t for t in name.casefold().replace("-", " ").split() if len(t) >= 3}
+        if cleaned_tokens and name_tokens and cleaned_tokens == name_tokens:
+            return name
+    # Novo nome: sanitiza e limita.
+    name = cleaned.strip(" .:-")
+    if len(name) > 40:
+        name = name[:40].rsplit(" ", 1)[0] or name[:40]
+    name = name.strip()
+    if len(name) < 2:
+        return None
+    return name
 
 
 def _document_payload(

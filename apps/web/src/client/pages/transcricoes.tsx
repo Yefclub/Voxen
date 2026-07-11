@@ -276,7 +276,7 @@ export function TranscricoesPage(): React.ReactElement {
               </div>
               {!isSearching && (
                 <Button variant="primary" size="lg" asChild className="mt-3">
-                  <Link to="/jobs">{t('library.addFirst')}</Link>
+                  <Link to="/">{t('library.addFirst')}</Link>
                 </Button>
               )}
             </CardContent>

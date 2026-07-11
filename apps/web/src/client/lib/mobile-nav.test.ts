@@ -11,7 +11,10 @@ describe('isBottomNavTab', () => {
     '/jobs/123',
     '/transcricoes/xyz',
     '/grafo/node-1',
-    '/notas',
+    '/dashboard',
+    '/jobs',
+    '/chat',
+    '/chat/abc',
     '/notas/abc',
     '/automacoes',
     '/setup',
@@ -19,9 +22,6 @@ describe('isBottomNavTab', () => {
     '/admin/usuarios',
     '/admin/custos',
     '/admin/integracoes',
-    '/',
-    '/chat',
-    '/chat/abc',
   ])('NÃO trata %s como aba de topo', (path) => {
     expect(isBottomNavTab(path)).toBe(false);
   });
@@ -35,7 +35,8 @@ describe('showsMobileBack', () => {
   test.each([
     '/jobs/123',
     '/transcricoes/xyz',
-    '/notas',
+    '/dashboard',
+    '/jobs',
     '/notas/abc',
     '/automacoes',
     '/setup',
@@ -48,7 +49,7 @@ describe('showsMobileBack', () => {
   });
 
   test('é o complemento exato de isBottomNavTab', () => {
-    for (const p of ['/dashboard', '/jobs/a', '/notas', '/grafo', '/setup']) {
+    for (const p of ['/', '/dashboard', '/jobs/a', '/notas', '/grafo', '/setup', '/chat']) {
       expect(showsMobileBack(p)).toBe(!isBottomNavTab(p));
     }
   });
@@ -60,21 +61,18 @@ describe('hasOwnMobileChrome', () => {
     expect(hasOwnMobileChrome('/grafo/node-1')).toBe(true);
   });
 
-  test.each(['/dashboard', '/notas/abc', '/setup', '/jobs/1'])(
-    '%s não tem chrome próprio',
-    (path) => {
-      expect(hasOwnMobileChrome(path)).toBe(false);
-    },
-  );
+  test.each(['/', '/notas/abc', '/setup', '/jobs/1'])('%s não tem chrome próprio', (path) => {
+    expect(hasOwnMobileChrome(path)).toBe(false);
+  });
 });
 
 describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobileChrome)', () => {
   const shouldShowBack = (p: string): boolean => showsMobileBack(p) && !hasOwnMobileChrome(p);
 
   test('abas de topo: sem voltar', () => {
-    expect(shouldShowBack('/dashboard')).toBe(false);
-    expect(shouldShowBack('/jobs')).toBe(false);
+    expect(shouldShowBack('/')).toBe(false);
     expect(shouldShowBack('/transcricoes')).toBe(false);
+    expect(shouldShowBack('/notas')).toBe(false);
   });
 
   test('/grafo (aba + chrome próprio): sem voltar', () => {

@@ -1,10 +1,11 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
+  House,
   ListVideo,
   LogOut,
   LayoutDashboard,
   Network,
-  PlayCircle,
+  Notebook,
   ShieldCheck,
   User as UserIcon,
 } from 'lucide-react';
@@ -34,9 +35,9 @@ interface MobileNavItem {
 }
 
 const ITEMS: MobileNavItem[] = [
-  { to: '/dashboard', labelKey: 'shell.nav.dashboard', Icon: LayoutDashboard },
-  { to: '/jobs', labelKey: 'shell.nav.jobs', Icon: PlayCircle },
+  { to: '/', labelKey: 'shell.nav.home', Icon: House },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
+  { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },
 ];
 
@@ -61,8 +62,8 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
   const { t } = useI18n();
   const { refresh } = useMe();
 
-  // Destinos únicos que NÃO são abas da bottom-nav (dashboard, notas, automações,
-  // setup + admin) entram no menu do Perfil pra não dependerem do swipe/drawer.
+  // Destinos únicos que NÃO são abas da bottom-nav (notas, automações, setup +
+  // admin) entram no menu do Perfil pra não dependerem do swipe/drawer.
   // Fonte canônica = NAV da sidebar; aplica o mesmo gate de admin por role.
   const menuItems = NAV.filter(
     (n) => !isBottomNavTab(n.to) && (!n.adminOnly || user.role === 'ADMIN'),
@@ -82,11 +83,15 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
     >
       <div className="grid h-16 grid-cols-5 px-1">
         {ITEMS.map(({ to, labelKey, Icon }) => {
-          const active = location.pathname === to || location.pathname.startsWith(`${to}/`);
+          const active =
+            to === '/'
+              ? location.pathname === '/'
+              : location.pathname === to || location.pathname.startsWith(`${to}/`);
           return (
             <NavLink
               key={to}
               to={to}
+              end={to === '/'}
               className={cn(
                 'flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition-colors',
                 active ? 'text-emerald-300' : 'text-[var(--color-app-muted)] active:text-zinc-100',

@@ -70,7 +70,7 @@ export function AppLayout(): React.ReactElement {
   }
   // Admin com onboarding feito mas tentando reentrar → manda pro painel
   if (data.onboardingDone && location.pathname === '/onboarding') {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/" replace />;
   }
   // User comum sem onboarding feito → tela de espera (admin precisa terminar)
   if (!data.onboardingDone && data.user.role !== 'ADMIN') {
