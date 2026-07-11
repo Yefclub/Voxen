@@ -352,6 +352,89 @@ describeIfDb('library organization API', () => {
     expect(stored).toBe(0);
   });
 
+  it('clears all folders and unfolders transcripts', async () => {
+    await signUp('clear-folders@voxen.local', 'senha-super-segura-123', 'Clear Folders');
+    const signin = await signIn('clear-folders@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'clear-folders@voxen.local' } });
+    const folder = await db.libraryFolder.create({
+      data: { userId: user.id, name: 'Lixo Meta' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/clear-folders',
+        title: 'Item organizado',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/clear-folders.md`,
+        plainText: 'texto',
+        frontmatter: {},
+        folderId: folder.id,
+      },
+    });
+
+    const clear = await app.fetch(
+      new Request('http://localhost/api/library/folders/clear', {
+        method: 'POST',
+        headers: { cookie },
+      }),
+    );
+    expect(clear.status).toBe(200);
+    const clearBody = (await clear.json()) as { deleted: number; affectedTranscripts: number };
+    expect(clearBody.deleted).toBe(1);
+    expect(clearBody.affectedTranscripts).toBe(1);
+    expect(await db.libraryFolder.count({ where: { userId: user.id } })).toBe(0);
+    const refreshed = await db.transcript.findUniqueOrThrow({ where: { id: transcript.id } });
+    expect(refreshed.folderId).toBeNull();
+  });
+
+  it('paginates transcript list with limit/offset', async () => {
+    await signUp('page-list@voxen.local', 'senha-super-segura-123', 'Page List');
+    const signin = await signIn('page-list@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'page-list@voxen.local' } });
+    for (let i = 0; i < 5; i++) {
+      await db.transcript.create({
+        data: {
+          userId: user.id,
+          source: 'WEB',
+          url: `https://example.com/page-${i}`,
+          title: `Item ${i}`,
+          durationSec: 0,
+          language: 'pt',
+          transcriptionMethod: 'SCRAPE',
+          mdPath: `workspaces/${user.id}/transcripts/page-${i}.md`,
+          plainText: `texto ${i}`,
+          frontmatter: {},
+        },
+      });
+    }
+
+    const page1 = await app.fetch(
+      new Request('http://localhost/api/transcripts?limit=2&offset=0', { headers: { cookie } }),
+    );
+    expect(page1.status).toBe(200);
+    const body1 = (await page1.json()) as {
+      transcripts: { id: string }[];
+      total: number;
+      hasMore: boolean;
+    };
+    expect(body1.transcripts).toHaveLength(2);
+    expect(body1.total).toBe(5);
+    expect(body1.hasMore).toBe(true);
+
+    const page2 = await app.fetch(
+      new Request('http://localhost/api/transcripts?limit=2&offset=2', { headers: { cookie } }),
+    );
+    const body2 = (await page2.json()) as { transcripts: { id: string }[]; hasMore: boolean };
+    expect(body2.transcripts).toHaveLength(2);
+    expect(body2.hasMore).toBe(true);
+    expect(body2.transcripts[0]?.id).not.toBe(body1.transcripts[0]?.id);
+  });
+
   it('rejects POST /api/notes linked to a foreign or nonexistent transcript', async () => {
     await signUp('notes-link-a@voxen.local', 'senha-super-segura-123', 'Link A');
     const signin = await signIn('notes-link-a@voxen.local', 'senha-super-segura-123');
