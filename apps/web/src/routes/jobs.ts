@@ -853,22 +853,61 @@ function normalizeWebUrl(raw: string): string | null {
 
 jobsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
-  const jobs = await db.job.findMany({
-    where: { userId },
-    orderBy: { queuedAt: 'desc' },
-    take: 50,
-    select: {
-      id: true,
-      status: true,
-      sourceUrl: true,
-      errorMsg: true,
-      transcriptId: true,
-      queuedAt: true,
-      startedAt: true,
-      finishedAt: true,
-    },
+  const pageRaw = Number(c.req.query('page') ?? '1');
+  const limitRaw = Number(c.req.query('limit') ?? '10');
+  const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1;
+  const limit =
+    Number.isFinite(limitRaw) && limitRaw >= 1 && limitRaw <= 50 ? Math.floor(limitRaw) : 10;
+  const skip = (page - 1) * limit;
+
+  const [total, jobs] = await Promise.all([
+    db.job.count({ where: { userId } }),
+    db.job.findMany({
+      where: { userId },
+      orderBy: { queuedAt: 'desc' },
+      skip,
+      take: limit,
+      select: {
+        id: true,
+        status: true,
+        sourceUrl: true,
+        errorMsg: true,
+        transcriptId: true,
+        queuedAt: true,
+        startedAt: true,
+        finishedAt: true,
+        transcript: {
+          select: {
+            title: true,
+            thumbnailUrl: true,
+            source: true,
+            durationSec: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  return c.json({
+    jobs: jobs.map((job) => ({
+      id: job.id,
+      status: job.status,
+      sourceUrl: job.sourceUrl,
+      errorMsg: job.errorMsg,
+      transcriptId: job.transcriptId,
+      queuedAt: job.queuedAt,
+      startedAt: job.startedAt,
+      finishedAt: job.finishedAt,
+      title: job.transcript?.title ?? null,
+      thumbnailUrl: job.transcript?.thumbnailUrl ?? null,
+      transcriptSource: job.transcript?.source ?? null,
+      durationSec: job.transcript?.durationSec ?? null,
+    })),
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
   });
-  return c.json({ jobs });
 });
 
 jobsRoutes.get('/:id', async (c) => {
