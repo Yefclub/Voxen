@@ -1,12 +1,12 @@
 /**
  * Taxonomia de rotas pra navegação mobile (sem header). Destinos do bottom-nav
- * são "abas de topo" — não mostram botão de voltar. Todo o resto (detalhes,
- * dashboard, notas, automações, admin, setup, conta) é sub-página → mostra
- * voltar. Pura e determinística pra ser testável sem DOM/router.
+ * são "abas de topo" — não mostram botão de voltar. Todo o resto (detalhes de
+ * job, notas, automações, admin, setup, conta) é sub-página → mostra voltar.
+ * Pura e determinística pra ser testável sem DOM/router.
  *
  * Mantenha em sincronia com `mobile-bottom-nav.tsx` (lista `ITEMS`).
  */
-export const BOTTOM_NAV_TABS = ['/chat', '/jobs', '/transcricoes', '/grafo'] as const;
+export const BOTTOM_NAV_TABS = ['/', '/chat', '/transcricoes', '/grafo'] as const;
 
 /**
  * `true` quando o pathname é exatamente uma aba do bottom-nav. Match exato:

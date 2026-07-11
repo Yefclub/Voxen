@@ -55,8 +55,8 @@ export function OnboardingPage(): React.ReactElement {
   if (data && !data.user) return <Navigate to="/entrar" replace />;
   if (data && data.user && data.user.status !== 'APPROVED')
     return <Navigate to="/pendente" replace />;
-  if (data && data.user && data.user.role !== 'ADMIN') return <Navigate to="/dashboard" replace />;
-  if (data?.onboardingDone) return <Navigate to="/dashboard" replace />;
+  if (data && data.user && data.user.role !== 'ADMIN') return <Navigate to="/" replace />;
+  if (data?.onboardingDone) return <Navigate to="/" replace />;
 
   return (
     <OnboardingContent userName={data?.user?.name ?? ''} refresh={refresh} navigate={navigate} />
@@ -205,7 +205,7 @@ function OnboardingContent({
       });
       await refresh();
       setStep('pronto');
-      setTimeout(() => navigate('/dashboard'), 1400);
+      setTimeout(() => navigate('/'), 1400);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('onboarding.error.finish'));
     } finally {
