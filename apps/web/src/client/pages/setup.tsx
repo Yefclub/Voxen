@@ -4,14 +4,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowRight,
   CheckCircle2,
-  DownloadCloud,
   ExternalLink,
   KeyRound,
   Languages,
-  Mail,
   RotateCw,
   Sparkles,
-  Timer,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -45,8 +42,6 @@ interface SetupStatus {
   visionModel: string | null;
   documentModel: string | null;
   xAnalysisModel: string | null;
-  adminEmail: string | null;
-  summaryTimeoutSec: string | null;
   hasApiKey: boolean;
 }
 
@@ -64,8 +59,6 @@ export function SetupPage(): React.ReactElement {
   const [visionModel, setVisionModel] = useState('');
   const [documentModel, setDocumentModel] = useState('');
   const [xAnalysisModel, setXAnalysisModel] = useState('');
-  const [adminEmail, setAdminEmail] = useState('');
-  const [summaryTimeoutSec, setSummaryTimeoutSec] = useState('');
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -88,8 +81,6 @@ export function SetupPage(): React.ReactElement {
       setVisionModel(s.visionModel ?? '');
       setDocumentModel(s.documentModel ?? '');
       setXAnalysisModel(s.xAnalysisModel ?? '');
-      setAdminEmail(s.adminEmail ?? '');
-      setSummaryTimeoutSec(s.summaryTimeoutSec ?? '');
     }
 
     async function load(): Promise<void> {
@@ -141,8 +132,6 @@ export function SetupPage(): React.ReactElement {
     setVisionModel(s.visionModel ?? '');
     setDocumentModel(s.documentModel ?? '');
     setXAnalysisModel(s.xAnalysisModel ?? '');
-    setAdminEmail(s.adminEmail ?? '');
-    setSummaryTimeoutSec(s.summaryTimeoutSec ?? '');
   }
 
   async function validateAndListModels(e: React.FormEvent): Promise<void> {
@@ -211,8 +200,6 @@ export function SetupPage(): React.ReactElement {
       body.default_vision_model = visionModel;
       body.default_document_model = documentModel;
       body.default_x_analysis_model = xAnalysisModel;
-      body.admin_email = adminEmail.trim();
-      body.summary_timeout_sec = summaryTimeoutSec.trim();
       if (apiKey.trim()) {
         body.openrouter_api_key = apiKey.trim();
       }
@@ -589,55 +576,6 @@ export function SetupPage(): React.ReactElement {
                       optional
                       hint={t('setup.models.xHint')}
                     />
-                  </CardContent>
-                </Card>
-
-                <Card elevated>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-display">
-                      <DownloadCloud className="h-4 w-4 text-emerald-400" />
-                      {t('setup.operation.title')}
-                    </CardTitle>
-                    <CardDescription>{t('setup.operation.description')}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>{t('setup.operation.adminEmail')}</Label>
-                        <div className="relative">
-                          <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-app-muted)]" />
-                          <Input
-                            type="email"
-                            value={adminEmail}
-                            onChange={(e) => setAdminEmail(e.target.value)}
-                            placeholder={t('setup.operation.adminEmailPlaceholder')}
-                            className="pl-9"
-                          />
-                        </div>
-                        <p className="mt-1 text-[11px] text-[var(--color-app-muted)] leading-snug">
-                          {t('setup.operation.adminEmailHint')}
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>{t('setup.operation.summaryTimeout')}</Label>
-                        <div className="relative">
-                          <Timer className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-app-muted)]" />
-                          <Input
-                            type="number"
-                            min={30}
-                            max={600}
-                            step={5}
-                            value={summaryTimeoutSec}
-                            onChange={(e) => setSummaryTimeoutSec(e.target.value)}
-                            placeholder="90"
-                            className="pl-9"
-                          />
-                        </div>
-                        <p className="mt-1 text-[11px] text-[var(--color-app-muted)] leading-snug">
-                          {t('setup.operation.summaryTimeoutHint')}
-                        </p>
-                      </div>
-                    </div>
                   </CardContent>
                 </Card>
 

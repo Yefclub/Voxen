@@ -12,7 +12,7 @@
 import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
-import { getSetting, setSetting, deleteSetting, isLikelyNetscapeCookieFile } from '../lib/settings';
+import { getSetting, setSetting } from '../lib/settings';
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
 
 type AdminVariables = {
@@ -285,44 +285,6 @@ adminRoutes.delete('/proxy-agent/token', async (c) => {
   // Limpa o authfile (passa a {} -> nega conexões) e recarrega (best-effort).
   const { syncChiselAuthfile } = await import('../lib/proxy-agent-tunnel');
   await syncChiselAuthfile();
-  return c.json({ ok: true });
-});
-
-// ----------------------------------------------------------------------------
-// Cookies do yt-dlp — secret cifrado (cookies.txt formato Netscape)
-// ----------------------------------------------------------------------------
-// Destrava extração autenticada: Instagram serve rendition só-vídeo (sem áudio)
-// sem login; YouTube dispara anti-bot. Com cookies de uma sessão logada, o
-// yt-dlp obtém a mídia completa. Write-only: o valor NUNCA é reexibido nem
-// logado. Worker materializa em arquivo temp 600. Ver spec 063.
-
-// GET /api/admin/yt-dlp-cookies — status (apenas `configured`, nunca o valor).
-adminRoutes.get('/yt-dlp-cookies', async (c) => {
-  const stored = await getSetting('yt_dlp_cookies').catch(() => null);
-  return c.json({ configured: !!stored });
-});
-
-// PUT /api/admin/yt-dlp-cookies — salva o conteúdo do cookies.txt (cifrado).
-adminRoutes.put('/yt-dlp-cookies', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { cookies?: string };
-  const cookies = body.cookies;
-  if (typeof cookies !== 'string' || !isLikelyNetscapeCookieFile(cookies)) {
-    return c.json(
-      {
-        error:
-          'Conteúdo não parece um cookies.txt (formato Netscape). ' +
-          'Exporte com uma extensão de browser e cole o arquivo inteiro.',
-      },
-      400,
-    );
-  }
-  await setSetting('yt_dlp_cookies', cookies);
-  return c.json({ configured: true });
-});
-
-// DELETE /api/admin/yt-dlp-cookies — remove o setting.
-adminRoutes.delete('/yt-dlp-cookies', async (c) => {
-  await deleteSetting('yt_dlp_cookies');
   return c.json({ ok: true });
 });
 
