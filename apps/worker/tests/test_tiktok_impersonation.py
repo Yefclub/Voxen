@@ -69,6 +69,31 @@ def test_friendly_error_tiktok_rehydration() -> None:
     assert "upload" in msg.lower()
 
 
+def test_friendly_error_http_403() -> None:
+    msg = pipeline._friendly_external_error(RuntimeError("HTTP Error 403: Forbidden"))
+    assert msg is not None
+    assert "403" in msg or "recusou" in msg.lower()
+
+
+def test_friendly_error_rate_limit() -> None:
+    msg = pipeline._friendly_external_error(RuntimeError("HTTP Error 429: Too Many Requests"))
+    assert msg is not None
+    assert "rate" in msg.lower() or "requisi" in msg.lower()
+
+
+def test_is_tiktok_rehydration_error() -> None:
+    assert pipeline._is_tiktok_rehydration_error(
+        RuntimeError("ERROR: [TikTok] Unable to extract universal data for rehydration")
+    )
+    assert not pipeline._is_tiktok_rehydration_error(RuntimeError("HTTP Error 404"))
+
+
+def test_runtime_versions_has_ytdlp() -> None:
+    versions = ytdl.runtime_versions()
+    assert "yt_dlp_version" in versions
+    assert versions["yt_dlp_version"] not in ("",)
+
+
 def test_friendly_error_no_audio_codec() -> None:
     # Reels/posts servidos só-vídeo fazem o FFmpegExtractAudio estourar no ffprobe.
     exc = RuntimeError(

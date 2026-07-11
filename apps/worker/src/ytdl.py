@@ -247,9 +247,9 @@ def _youtube_video_id(url: str) -> str | None:
     return None
 
 
-async def probe(url: str) -> VideoProbe:
+async def probe(url: str, *, force_impersonate: str | None = None) -> VideoProbe:
     """Extrai metadata SEM baixar áudio (`skip_download=True`)."""
-    base_opts = await _runtime_options()
+    base_opts = await _runtime_options(force_impersonate=force_impersonate)
     opts = {
         **base_opts,
         "skip_download": True,
@@ -349,9 +349,14 @@ async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path) -> Pat
     return candidates[0]
 
 
-async def download_audio_opus(url: str, out_dir: Path) -> Path:
+async def download_audio_opus(
+    url: str,
+    out_dir: Path,
+    *,
+    force_impersonate: str | None = None,
+) -> Path:
     """Extrai áudio como opus mono 16kHz 32kbps (spec 002)."""
-    base_opts = await _runtime_options()
+    base_opts = await _runtime_options(force_impersonate=force_impersonate)
     out_template = str(out_dir / "%(id)s.%(ext)s")
     opts = {
         **base_opts,
@@ -444,7 +449,25 @@ async def _download_with_cookies(url: str, opts: dict[str, Any]) -> None:
     await asyncio.to_thread(_run)
 
 
-async def _runtime_options() -> dict[str, Any]:
+def runtime_versions() -> dict[str, str]:
+    """Versões de runtime para log no boot (diagnóstico de extrator quebrado)."""
+    versions: dict[str, str] = {}
+    try:
+        from yt_dlp.version import __version__ as ytdlp_ver
+
+        versions["yt_dlp_version"] = str(ytdlp_ver)
+    except Exception:  # noqa: BLE001
+        versions["yt_dlp_version"] = "unavailable"
+    try:
+        import curl_cffi
+
+        versions["curl_cffi_version"] = str(getattr(curl_cffi, "__version__", "present"))
+    except Exception:  # noqa: BLE001
+        versions["curl_cffi_version"] = "unavailable"
+    return versions
+
+
+async def _runtime_options(*, force_impersonate: str | None = None) -> dict[str, Any]:
     """Opções base do yt-dlp.
 
     A única configuração runtime suportada é um proxy opcional controlado pelo
@@ -453,6 +476,8 @@ async def _runtime_options() -> dict[str, Any]:
     Em deploys home-lab (IP residencial), o proxy normalmente não é necessário.
     Em VPS o YouTube tende a bloquear; o fluxo recomendado é upload manual ou
     proxy residencial controlado pelo operador.
+
+    `force_impersonate`: força um alvo (ex.: "chrome") — usado no retry TikTok.
     """
     opts: dict[str, Any] = {
         "retries": 3,
@@ -492,7 +517,9 @@ async def _runtime_options() -> dict[str, Any]:
     # alvo automaticamente — por isso o caso comum não precisa de config. O env
     # `YTDLP_IMPERSONATE` (ex.: "chrome", "chrome-124:windows-10") força um alvo
     # específico quando uma plataforma quebra com o padrão.
-    impersonate_raw = (os.environ.get("YTDLP_IMPERSONATE") or "").strip()
+    impersonate_raw = (force_impersonate or "").strip() or (
+        os.environ.get("YTDLP_IMPERSONATE") or ""
+    ).strip()
     if impersonate_raw and impersonate_raw.lower() not in ("0", "false", "off", "none"):
         try:
             from yt_dlp.networking.impersonate import ImpersonateTarget
