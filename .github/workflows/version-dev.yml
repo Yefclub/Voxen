@@ -86,7 +86,8 @@ jobs:
           if [ -n "$LAST_BUMP" ]; then
             COMMITS=$(git log --reverse --first-parent --format=%H "${LAST_BUMP}..HEAD")
           else
-            COMMITS=$(git rev-parse HEAD)
+            # Repo sem bump ainda: varre os últimos merges first-parent.
+            COMMITS=$(git log --reverse --first-parent --format=%H -n 80)
           fi
           QUEUE=""
           for sha in $COMMITS; do
@@ -109,13 +110,24 @@ jobs:
           $f|$PR_NUM|$CDATE|$AUTHOR"
             done
           done
+          # Sobras no working tree (commits squashed que o range perdeu):
+          # consome qualquer .md ainda em unreleased/ não enfileirado.
+          for f in changelog/unreleased/*.md; do
+            [ -f "$f" ] || continue
+            case "$f" in *.md) ;; *) continue ;; esac
+            if printf '%s\n' "$QUEUE" | awk -v p="$f|" 'index($0, p) == 1 {found=1} END{exit !found}'; then
+              continue
+            fi
+            QUEUE="${QUEUE}
+          $f|||github-actions[bot]"
+          done
           COUNT=0
           CONSUMED=""
           while IFS='|' read -r f PR_NUM CDATE AUTHOR; do
             f=$(printf '%s' "$f" | sed 's/^[[:space:]]*//')
             [ -z "$f" ] && continue
             if RN_SOURCE="$f" RN_VERSION="$NEW_VER" RN_PR="$PR_NUM" RN_AUTHOR="$AUTHOR" \
-               RN_DATE="$CDATE" node "$RN_SCRIPT" add-dev; then
+               RN_DATE="${CDATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" node "$RN_SCRIPT" add-dev; then
               COUNT=$((COUNT + 1))
               CONSUMED="$CONSUMED $f"
             fi
@@ -124,7 +136,6 @@ jobs:
             git rm -q --ignore-unmatch $CONSUMED 2>/dev/null || true
           fi
           echo "[changelog] $COUNT entrada(s) consumida(s) desde ${LAST_BUMP:-inicio}"
-
       - name: Commit on branch, open PR, auto-merge
         env:
           NEW_VER: ${{ steps.version.outputs.version }}
