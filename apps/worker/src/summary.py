@@ -19,10 +19,33 @@ from .cancellation import is_cancelled
 
 OR_BASE_URL = openrouter.OR_BASE_URL
 
-SUMMARIZE_PROMPT = """Você recebe a transcrição de um vídeo. Produza um RESUMO em markdown,
+
+def build_summarize_prompt(language: str) -> str:
+    """Prompt de resumo no idioma da instância. Nunca usa o termo TL;DR."""
+    if language == "en":
+        return """You receive a video transcript. Produce a SUMMARY in markdown,
+in English, structured exactly like this:
+
+## In short
+2-3 sentences capturing the essence of the video.
+
+## Key points
+- A list of 4 to 8 bullets, each with the core idea. When useful, cite the
+  passage with a minute timestamp in the format `[mm:ss]` (or `[hh:mm:ss]` if > 1h).
+
+## Conclusion
+A short paragraph with the main takeaway.
+
+RULES:
+- Do not invent content. Only use what is in the transcript.
+- Clear, direct English. No emojis.
+- Do not use English acronyms for the short summary section (never "too long; didn't read").
+- Do not add an extra top-level heading; start directly with "## In short"."""
+
+    return """Você recebe a transcrição de um vídeo. Produza um RESUMO em markdown,
 em português brasileiro, estruturado assim:
 
-## TL;DR
+## Em poucas linhas
 2-3 frases capturando a essência do vídeo.
 
 ## Principais pontos
@@ -35,7 +58,8 @@ Parágrafo curto com a mensagem principal ou take-away.
 REGRAS:
 - Não invente conteúdo. Só use o que está na transcrição.
 - Português direto, sem rodeios. Sem emojis.
-- Não adicione cabeçalho extra; comece direto pelo "## TL;DR"."""
+- Não use abreviações em inglês para o resumo curto (nunca "too long; didn't read").
+- Não adicione cabeçalho extra; comece direto pelo "## Em poucas linhas"."""
 
 
 async def maybe_generate(
@@ -72,14 +96,19 @@ async def maybe_generate(
         if len(text) > 60_000:
             text = text[:60_000] + "\n\n[…transcrição truncada para resumo…]"
 
+        language = await voxen_settings.get_app_language()
+        prompt = build_summarize_prompt(language)
+        title_label = "Video title" if language == "en" else "Título do vídeo"
+        body_label = "Transcript" if language == "en" else "Transcrição"
+
         timeout = await voxen_settings.get_summary_timeout_sec()
         payload: dict[str, object] = {
             "model": model,
             "messages": [
-                {"role": "system", "content": SUMMARIZE_PROMPT},
+                {"role": "system", "content": prompt},
                 {
                     "role": "user",
-                    "content": f"Título do vídeo: {row['title']}\n\nTranscrição:\n\n{text}",
+                    "content": f"{title_label}: {row['title']}\n\n{body_label}:\n\n{text}",
                 },
             ],
             "stream": False,
@@ -149,11 +178,15 @@ async def maybe_generate(
                 tokens_out=tokens_out,
                 cost_usd=cost_usd,
                 job_id=job_id,
-                meta={"source": "transcript_summary", "transcript_id": transcript_id},
+                meta={
+                    "source": "transcript_summary",
+                    "transcript_id": transcript_id,
+                    "language": language,
+                },
             )
         except Exception:  # noqa: BLE001
             log.exception("summary-cost-event-failed", transcript_id=transcript_id)
 
-        log.info("summary-done", transcript_id=transcript_id)
+        log.info("summary-done", transcript_id=transcript_id, language=language)
     except Exception:  # noqa: BLE001 — resumo é melhoria, não bloqueia
         log.exception("summary-failed", transcript_id=transcript_id)

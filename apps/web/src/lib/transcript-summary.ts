@@ -4,14 +4,36 @@
 // ============================================================================
 
 import { db } from './db';
-import { getSetting } from './settings';
+import { getAppLanguage, getSetting, type AppLanguage } from './settings';
 
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 
-export const SUMMARIZE_PROMPT = `Você recebe a transcrição de um vídeo. Produza um RESUMO em markdown,
+export function buildSummarizePrompt(language: AppLanguage): string {
+  if (language === 'en') {
+    return `You receive a video transcript. Produce a SUMMARY in markdown,
+in English, structured exactly like this:
+
+## In short
+2-3 sentences capturing the essence of the video.
+
+## Key points
+- A list of 4 to 8 bullets, each with the core idea. When useful, cite the
+  passage with a minute timestamp in the format \`[mm:ss]\` (or \`[hh:mm:ss]\` if > 1h).
+
+## Conclusion
+A short paragraph with the main takeaway.
+
+RULES:
+- Do not invent content. Only use what is in the transcript.
+- Clear, direct English. No emojis.
+- Do not use English acronyms for the short summary section (never "too long; didn't read").
+- Do not add an extra top-level heading; start directly with "## In short".`;
+  }
+
+  return `Você recebe a transcrição de um vídeo. Produza um RESUMO em markdown,
 em português brasileiro, estruturado assim:
 
-## TL;DR
+## Em poucas linhas
 2-3 frases capturando a essência do vídeo.
 
 ## Principais pontos
@@ -24,7 +46,12 @@ Parágrafo curto com a mensagem principal ou take-away.
 REGRAS:
 - Não invente conteúdo. Só use o que está na transcrição.
 - Português direto, sem rodeios. Sem emojis.
-- Não adicione cabeçalho extra; comece direto pelo "## TL;DR".`;
+- Não use abreviações em inglês para o resumo curto (nunca "too long; didn't read").
+- Não adicione cabeçalho extra; comece direto pelo "## Em poucas linhas".`;
+}
+
+/** @deprecated Use buildSummarizePrompt(await getAppLanguage()) */
+export const SUMMARIZE_PROMPT = buildSummarizePrompt('pt-BR');
 
 export class TranscriptSummaryError extends Error {
   constructor(
@@ -68,6 +95,11 @@ export async function generateAndPersistTranscriptSummary(input: {
     }
   }
 
+  const language = await getAppLanguage();
+  const prompt = buildSummarizePrompt(language);
+  const titleLabel = language === 'en' ? 'Video title' : 'Título do vídeo';
+  const bodyLabel = language === 'en' ? 'Transcript' : 'Transcrição';
+
   let res: Response;
   try {
     res = await fetch(`${OR_BASE_URL}/chat/completions`, {
@@ -79,10 +111,10 @@ export async function generateAndPersistTranscriptSummary(input: {
       body: JSON.stringify({
         model,
         messages: [
-          { role: 'system', content: SUMMARIZE_PROMPT },
+          { role: 'system', content: prompt },
           {
             role: 'user',
-            content: `Título do vídeo: ${input.title}\n\nTranscrição:\n\n${text}`,
+            content: `${titleLabel}: ${input.title}\n\n${bodyLabel}:\n\n${text}`,
           },
         ],
         stream: false,
@@ -135,7 +167,11 @@ export async function generateAndPersistTranscriptSummary(input: {
       tokensIn,
       tokensOut,
       costUsd,
-      meta: { source: 'transcript_summary', transcript_id: input.transcriptId },
+      meta: {
+        source: 'transcript_summary',
+        transcript_id: input.transcriptId,
+        language,
+      },
     },
   });
 
