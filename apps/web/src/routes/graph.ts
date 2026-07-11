@@ -19,7 +19,7 @@ import {
   reindexTranscriptsBrain,
 } from '../lib/brain';
 import { db } from '../lib/db';
-import { graphCacheKey } from '../lib/graph-cache';
+import { graphCacheKey, invalidateGraphCache } from '../lib/graph-cache';
 import { getRedisPublisher } from '../lib/redis';
 
 type Vars = { userId: string };
@@ -194,14 +194,59 @@ graphRoutes.get('/', async (c) => {
     totalEdges: edges.length,
     insights,
   };
-  try {
-    await getRedisPublisher().set(cacheKey, JSON.stringify(response), 'EX', CACHE_TTL_SEC);
-  } catch {
-    // ignora
+  // Não cacheia enquanto um reindex está em andamento: o estado atual está
+  // prestes a mudar e o reindex invalida o cache ao terminar.
+  if (!isBrainReindexInFlight(userId)) {
+    try {
+      await getRedisPublisher().set(cacheKey, JSON.stringify(response), 'EX', CACHE_TTL_SEC);
+    } catch {
+      // ignora
+    }
   }
   return c.json(response);
 });
 
+// Reindex do Brain em andamento, por usuário. Reindexar a biblioteca inteira
+// leva dezenas de segundos; fazer isso SÍNCRONO dentro do GET estourava o
+// proxy/healthcheck → 502. O guard evita empilhar reindexes concorrentes (cada
+// GET sem cache dispararia um). Escopo do processo (o web roda single-instance).
+const brainReindexInFlight = new Set<string>();
+
+function isBrainReindexInFlight(userId: string): boolean {
+  return brainReindexInFlight.has(userId);
+}
+
+// Dispara o reindex do Brain em BACKGROUND (fire-and-forget). O GET nunca
+// bloqueia nesse trabalho. Ao terminar, invalida o cache do grafo para o
+// próximo load servir o estado fresco. Um reindex por usuário por vez.
+function scheduleBrainReindex(userId: string): void {
+  if (brainReindexInFlight.has(userId)) return;
+  brainReindexInFlight.add(userId);
+  void (async () => {
+    try {
+      await reindexLibraryFoldersBrain(userId);
+      await reindexNotesBrain(userId);
+      await reindexTranscriptsBrain(userId);
+      await invalidateGraphCache(userId);
+    } catch (err) {
+      console.warn('[graph] background reindex failed', { userId, err });
+    } finally {
+      brainReindexInFlight.delete(userId);
+    }
+  })();
+}
+
+// Acima deste número de fontes (transcrições + notas + pastas), reindexar de
+// forma síncrona dentro do GET demora demais e estoura o proxy/healthcheck
+// (502). Bibliotecas até esse tamanho reindexam na hora (resposta imediata já
+// coberta); maiores vão para o background.
+const SYNC_REINDEX_MAX_SOURCES = 25;
+
+// Decide se o Brain precisa reindexar. Bibliotecas pequenas reindexam de forma
+// síncrona (o grafo sai pronto na mesma resposta). Bibliotecas grandes agendam
+// o reindex em BACKGROUND e o handler devolve o estado materializado atual na
+// hora — o grafo se atualiza sozinho no próximo load (o cache é invalidado ao
+// fim). Isso mata o 502 causado pelo reindex síncrono da biblioteca inteira.
 async function ensureBrainCoverage(userId: string, force: boolean): Promise<void> {
   const [transcripts, notes, folders, brainNodes, staleSourceNodes] = await Promise.all([
     db.transcript.count({ where: { userId, status: 'ACTIVE' } }),
@@ -221,6 +266,11 @@ async function ensureBrainCoverage(userId: string, force: boolean): Promise<void
     !force &&
     (expectedSourceNodes === 0 || (brainNodes >= expectedSourceNodes && staleSourceNodes === 0))
   ) {
+    return;
+  }
+
+  if (expectedSourceNodes > SYNC_REINDEX_MAX_SOURCES) {
+    scheduleBrainReindex(userId);
     return;
   }
 
