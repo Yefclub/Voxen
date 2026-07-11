@@ -257,6 +257,14 @@ const ptBRMessages = {
   'library.createFolder': 'Criar',
   'library.folderSaved': 'Pasta atualizada.',
   'library.folderError': 'Falha ao atualizar pasta.',
+  'library.reorgAction': 'Organizar com IA',
+  'library.reorgRunning': 'Organizando…',
+  'library.reorgNothing': 'Nada para organizar — todos os conteúdos ativos já têm pasta.',
+  'library.reorgDone':
+    'Organização concluída: {assigned} classificados, {skipped} sem pasta, {failed} falhas.',
+  'library.reorgPartial':
+    'Lote aplicado ({assigned} classificados). Ainda restam {remaining} sem pasta — rode de novo.',
+  'library.reorgError': 'Falha ao organizar a biblioteca com IA.',
   'library.statusArchived': 'Arquivado',
   'library.statusTrash': 'Lixeira',
   'library.status.active': 'Ativos',
@@ -1212,6 +1220,14 @@ const enMessages: Record<I18nKey, string> = {
   'library.createFolder': 'Create',
   'library.folderSaved': 'Folder updated.',
   'library.folderError': 'Failed to update folder.',
+  'library.reorgAction': 'Organize with AI',
+  'library.reorgRunning': 'Organizing…',
+  'library.reorgNothing': 'Nothing to organize — all active items already have a folder.',
+  'library.reorgDone':
+    'Organization done: {assigned} assigned, {skipped} left unfoldered, {failed} failed.',
+  'library.reorgPartial':
+    'Batch applied ({assigned} assigned). {remaining} still without a folder — run again.',
+  'library.reorgError': 'Failed to organize the library with AI.',
   'library.statusArchived': 'Archived',
   'library.statusTrash': 'Trash',
   'library.status.active': 'Active',

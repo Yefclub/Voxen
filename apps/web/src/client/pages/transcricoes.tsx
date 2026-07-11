@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Folder, FolderPlus, Globe, Library, Loader2, Search, X } from 'lucide-react';
+import { Folder, FolderPlus, Globe, Library, Loader2, Search, Sparkles, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '../components/ui/card';
@@ -69,6 +69,7 @@ export function TranscricoesPage(): React.ReactElement {
   const [q, setQ] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [reorganizing, setReorganizing] = useState(false);
   const debouncedQ = useDebounced(q, 250);
   const url = useMemo(() => {
     const params = new URLSearchParams();
@@ -78,7 +79,7 @@ export function TranscricoesPage(): React.ReactElement {
     const suffix = params.toString();
     return `/api/transcripts${suffix ? `?${suffix}` : ''}`;
   }, [debouncedQ, folderId, status]);
-  const { data, loading } = useFetch<SearchResponse>(url);
+  const { data, loading, refresh: refreshTranscripts } = useFetch<SearchResponse>(url);
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
   const transcripts = data?.transcripts ?? [];
@@ -117,6 +118,58 @@ export function TranscricoesPage(): React.ReactElement {
     }
   }
 
+  async function reorganizeWithAi(): Promise<void> {
+    if (reorganizing) return;
+    setReorganizing(true);
+    let totalAssigned = 0;
+    let totalFailed = 0;
+    let totalSkipped = 0;
+    try {
+      // Processa em lotes até esgotar itens sem pasta (cap de 20 lotes = 300 itens).
+      for (let i = 0; i < 20; i++) {
+        const body = await apiPost<{
+          processed: number;
+          assigned: number;
+          skipped: number;
+          failed: number;
+          remaining: number;
+          pendingTotal: number;
+        }>('/api/library/reorganize', { limit: 15 });
+        totalAssigned += body.assigned;
+        totalFailed += body.failed;
+        totalSkipped += body.skipped;
+        if (body.pendingTotal === 0 && body.processed === 0) {
+          toast.message(t('library.reorgNothing'));
+          break;
+        }
+        if (body.remaining === 0) {
+          toast.success(
+            t('library.reorgDone', {
+              assigned: totalAssigned,
+              skipped: totalSkipped,
+              failed: totalFailed,
+            }),
+          );
+          break;
+        }
+        if (i === 19) {
+          toast.success(
+            t('library.reorgPartial', {
+              assigned: totalAssigned,
+              remaining: body.remaining,
+            }),
+          );
+        }
+      }
+      refreshFolders();
+      refreshTranscripts();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('library.reorgError'));
+    } finally {
+      setReorganizing(false);
+    }
+  }
+
   return (
     <AnimatedPage>
       <div className="mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
@@ -125,12 +178,31 @@ export function TranscricoesPage(): React.ReactElement {
             <Library className="h-3.5 w-3.5 text-violet-400" />
             {t('library.eyebrow')}
           </div>
-          <h1 className="font-display text-2xl font-semibold tracking-[-0.03em] sm:text-4xl">
-            {t('library.title')}
-          </h1>
-          <p className="hidden max-w-2xl text-[15px] leading-relaxed text-[var(--color-app-muted)] sm:block">
-            {t('library.description')}
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-2 sm:space-y-3">
+              <h1 className="font-display text-2xl font-semibold tracking-[-0.03em] sm:text-4xl">
+                {t('library.title')}
+              </h1>
+              <p className="hidden max-w-2xl text-[15px] leading-relaxed text-[var(--color-app-muted)] sm:block">
+                {t('library.description')}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={reorganizing}
+              onClick={() => void reorganizeWithAi()}
+              className="shrink-0"
+            >
+              {reorganizing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+              )}
+              {reorganizing ? t('library.reorgRunning') : t('library.reorgAction')}
+            </Button>
+          </div>
         </header>
 
         <div className="relative">
