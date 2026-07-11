@@ -100,41 +100,7 @@ jobs:
         run: bun test
         working-directory: apps/web
 
-  lint-py-chat:
-    name: Lint Python (apps/chat)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-      - uses: astral-sh/setup-uv@v8.1.0
-      - name: Install deps
-        run: uv sync --frozen
-        working-directory: apps/chat
-      - name: Ruff
-        run: uv run ruff check .
-        working-directory: apps/chat
-      - name: Ruff format check
-        run: uv run ruff format --check .
-        working-directory: apps/chat
-      - name: Mypy
-        run: uv run mypy src
-        working-directory: apps/chat
 
-  test-py-chat:
-    name: Test Python (apps/chat)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-      - uses: astral-sh/setup-uv@v8.1.0
-      - run: uv sync --frozen
-        working-directory: apps/chat
-      - run: uv run pytest
-        working-directory: apps/chat
 
   lint-py-worker:
     name: Lint Python (apps/worker)
@@ -179,14 +145,6 @@ jobs:
         with:
           context: .
           file: apps/web/Dockerfile
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Build chat
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: apps/chat/Dockerfile
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -21,7 +21,6 @@ import { transcriptsRoutes } from './routes/transcripts';
 import { onboardingRoutes } from './routes/onboarding';
 import { accountRoutes } from './routes/account';
 import { costRoutes } from './routes/cost';
-import { chatRoutes } from './routes/chat';
 import { notesRoutes } from './routes/notes';
 import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
@@ -103,7 +102,7 @@ function deployTimestampToIso(value?: string): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-// Healthcheck deep — checa DB + Redis + chat service + S3 em paralelo.
+// Healthcheck deep — checa DB + Redis + S3 em paralelo.
 // 200 se todos ok, 503 se algum falhar. Pra monitoramento externo (Uptime
 // Kuma, Healthchecks.io). Rate-limit por IP pra evitar DoS amplificado
 // (cada hit gera 4 round-trips reais).
@@ -125,7 +124,7 @@ app.get('/health/deep', async (c) => {
     }
   };
 
-  const [postgres, redis, chat, s3] = await Promise.all([
+  const [postgres, redis, s3] = await Promise.all([
     timed(async () => {
       await db.$queryRaw`SELECT 1`;
     }),
@@ -134,17 +133,12 @@ app.get('/health/deep', async (c) => {
       if (pong !== 'PONG') throw new Error(`Resposta inesperada: ${pong}`);
     }),
     timed(async () => {
-      const chatUrl = (process.env.CHAT_SERVICE_URL ?? 'http://chat:8001') + '/health';
-      const res = await fetch(chatUrl, { signal: AbortSignal.timeout(3000) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    }),
-    timed(async () => {
       const { headBucket } = await import('./lib/s3-health');
       await headBucket();
     }),
   ]);
 
-  const checks = { postgres, redis, chat, s3 };
+  const checks = { postgres, redis, s3 };
   const allOk = Object.values(checks).every((c) => c.ok);
   return c.json({ ok: allOk, checks }, allOk ? 200 : 503);
 });
@@ -247,8 +241,6 @@ app.route('/api/account', accountRoutes);
 // Painel de custos (admin)
 app.route('/api/admin/custos', costRoutes);
 
-// Chat (proxy autenticado pro serviço chat:8001)
-app.route('/api/chat', chatRoutes);
 // KB manual de notas (CRUD + FTS + tree)
 app.route('/api/notes', notesRoutes);
 // Organização compartilhada da biblioteca

@@ -2,7 +2,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   ListVideo,
   LogOut,
-  MessagesSquare,
+  LayoutDashboard,
   Network,
   PlayCircle,
   ShieldCheck,
@@ -30,11 +30,11 @@ import { isBottomNavTab } from '../../lib/mobile-nav';
 interface MobileNavItem {
   to: string;
   labelKey: I18nKey;
-  Icon: typeof MessagesSquare;
+  Icon: typeof LayoutDashboard;
 }
 
 const ITEMS: MobileNavItem[] = [
-  { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessagesSquare },
+  { to: '/dashboard', labelKey: 'shell.nav.dashboard', Icon: LayoutDashboard },
   { to: '/jobs', labelKey: 'shell.nav.jobs', Icon: PlayCircle },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },

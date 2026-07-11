@@ -1,5 +1,4 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'motion/react';
 import { LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
@@ -13,67 +12,9 @@ import {
 } from '../ui/dropdown-menu';
 import { useMe } from '../../lib/hooks';
 import { apiPost } from '../../lib/api';
-import { useChatContextState } from '../../lib/chat-context-ctx';
 import type { MeUser } from '../../lib/types';
 import { Badge } from '../ui/badge';
-import { cn } from '../../lib/utils';
-import { useI18n, type TranslateFn } from '../../lib/i18n';
-
-function ContextIndicator({
-  tokens,
-  limit,
-  onOpenSummary,
-  t,
-}: {
-  tokens: number;
-  limit: number;
-  onOpenSummary?: () => void;
-  t: TranslateFn;
-}): React.ReactElement {
-  const pct = limit > 0 ? (tokens / limit) * 100 : 0;
-  const tone = pct >= 80 ? 'rose' : pct >= 60 ? 'amber' : 'emerald';
-  const toneClass = {
-    emerald: { bar: 'bg-emerald-500', text: 'text-emerald-300' },
-    amber: { bar: 'bg-amber-500', text: 'text-amber-300' },
-    rose: { bar: 'bg-rose-500', text: 'text-rose-300' },
-  } as const;
-  const toneStyles = toneClass[tone];
-  // Compacto pra caber ao lado do avatar — só barrinha + % + título.
-  return (
-    <div
-      className="hidden sm:flex items-center gap-2.5 pl-3 pr-3 py-1.5 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/60"
-      title={t('shell.contextTitle', {
-        tokens: tokens.toLocaleString(),
-        limit: limit.toLocaleString(),
-      })}
-    >
-      <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)] font-medium">
-        Ctx
-      </span>
-      <div className="w-20 h-1.5 rounded-full bg-[var(--color-app-bg)] overflow-hidden">
-        <motion.div
-          className={cn('h-full rounded-full', toneStyles.bar)}
-          initial={{ width: 0 }}
-          animate={{ width: `${Math.min(100, Math.max(2, pct))}%` }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        />
-      </div>
-      <span className={cn('text-[11px] tabular-nums font-mono', toneStyles.text)}>
-        {pct.toFixed(0)}%
-      </span>
-      {onOpenSummary && (
-        <button
-          type="button"
-          onClick={onOpenSummary}
-          className="text-[10px] uppercase tracking-wider text-violet-300 hover:text-violet-200 transition-colors"
-          title={t('shell.contextSummary')}
-        >
-          ↗
-        </button>
-      )}
-    </div>
-  );
-}
+import { useI18n } from '../../lib/i18n';
 
 function initials(name: string): string {
   return name
@@ -88,15 +29,13 @@ function initials(name: string): string {
 /**
  * Cabeçalho do shell — **desktop-only**. No mobile NÃO há header nenhum no topo
  * (ver `app-layout`): a navegação é bottom-nav + botão de voltar flutuante +
- * edge-swipe pro drawer. Hospeda o indicador de contexto do chat e o menu de
- * usuário (que no mobile vivem na bottom-nav).
+ * edge-swipe pro drawer. Hospeda o menu de usuário (que no mobile vive na
+ * bottom-nav).
  */
 export function Topbar({ user, title }: { user: MeUser; title?: string }): React.ReactElement {
   const navigate = useNavigate();
   const { refresh } = useMe();
   const { t } = useI18n();
-  const { usage, lastCompaction, requestOpenSummary } = useChatContextState();
-
   const onSignOut = async (): Promise<void> => {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
     await refresh();
@@ -113,14 +52,6 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
       </div>
 
       <div className="flex items-center gap-4">
-        {usage && (
-          <ContextIndicator
-            tokens={usage.tokens}
-            limit={usage.limit}
-            onOpenSummary={lastCompaction ? requestOpenSummary : undefined}
-            t={t}
-          />
-        )}
         {/* Avatar/menu de usuário: só no desktop (< md vai pra bottom-nav). */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

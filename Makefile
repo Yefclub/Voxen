@@ -19,7 +19,7 @@ export VOXEN_BUILT_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 ensure-env: ## Cria/completa .env local sem sobrescrever secrets existentes
 	@scripts/ensure-env.sh
 
-dev: ensure-env ## Sobe tudo localmente (postgres, redis, minio, web, chat, worker)
+dev: ensure-env ## Sobe tudo localmente (postgres, redis, minio, web, worker)
 	docker compose up -d --build
 	@echo ""
 	@echo "✓ Voxen rodando em http://localhost:3000 (v$(VOXEN_VERSION))"
@@ -55,8 +55,7 @@ test: test-ts test-py ## Roda todos os testes (TS + Python)
 test-ts: ## Testes do apps/web (Bun)
 	cd apps/web && bun test
 
-test-py: ## Testes do chat e worker (pytest via uv)
-	cd apps/chat && uv run pytest
+test-py: ## Testes do worker (pytest via uv)
 	cd apps/worker && uv run pytest
 
 # --- Lint / format / typecheck ---
@@ -66,7 +65,6 @@ lint-ts:
 	cd apps/web && bun run lint
 
 lint-py:
-	cd apps/chat && uv run ruff check .
 	cd apps/worker && uv run ruff check .
 
 format: format-ts format-py ## Aplica formatacao (Prettier + Ruff)
@@ -75,7 +73,6 @@ format-ts:
 	cd apps/web && bun run format
 
 format-py:
-	cd apps/chat && uv run ruff format .
 	cd apps/worker && uv run ruff format .
 
 format-check: format-check-ts format-check-py ## Verifica formatacao sem alterar arquivos
@@ -84,12 +81,10 @@ format-check-ts:
 	cd apps/web && bun run format:check
 
 format-check-py:
-	cd apps/chat && uv run ruff format --check .
 	cd apps/worker && uv run ruff format --check .
 
 typecheck:
 	cd apps/web && bun run typecheck
-	cd apps/chat && uv run mypy src
 	cd apps/worker && uv run mypy src
 
 # --- DB ---

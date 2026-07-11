@@ -1,8 +1,7 @@
 // ============================================================================
-// /admin/integracoes — config de tokens Telegram + MCP
+// /admin/integracoes — config de tokens MCP e integrações
 // ============================================================================
 // Página admin pra:
-//  - setar/revogar token do bot Telegram (cifrado em Setting)
 //  - rotacionar/revogar token MCP (Bearer pro endpoint /mcp)
 // ============================================================================
 
@@ -14,19 +13,15 @@ import {
   Check,
   Cookie,
   Copy,
-  Eye,
-  EyeOff,
   KeyRound,
   Network,
   RotateCw,
-  Send,
   Sparkles,
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import { Spinner } from '../components/ui/spinner';
@@ -58,11 +53,6 @@ function originToTunnelUrl(origin: string): string | null {
   } catch {
     return null;
   }
-}
-
-interface TelegramAdminStatus {
-  configured: boolean;
-  tokenPreview: string | null;
 }
 
 interface McpAdminStatus {
@@ -112,170 +102,11 @@ export function AdminIntegracoesPage(): React.ReactElement {
           </p>
         </header>
 
-        <TelegramSection />
         <McpSection />
         <ProxyAgentSection />
         <CookiesSection />
       </div>
     </AnimatedPage>
-  );
-}
-
-function TelegramSection(): React.ReactElement {
-  const { t } = useI18n();
-  const [status, setStatus] = useState<TelegramAdminStatus | null>(null);
-  const [token, setToken] = useState('');
-  const [showToken, setShowToken] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [confirmRevoke, setConfirmRevoke] = useState(false);
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  async function refresh(): Promise<void> {
-    try {
-      const s = await apiGet<TelegramAdminStatus>('/api/admin/telegram');
-      setStatus(s);
-    } catch {
-      setStatus({ configured: false, tokenPreview: null });
-    }
-  }
-
-  async function save(): Promise<void> {
-    if (!token.trim()) {
-      toast.error(t('admin.integrations.telegram.tokenMissing'));
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await fetch('/api/admin/telegram', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(data.error ?? t('admin.integrations.telegram.saveError'));
-      toast.success(t('admin.integrations.telegram.saved'));
-      setToken('');
-      await refresh();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : t('admin.integrations.telegram.genericError'),
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function revoke(): Promise<void> {
-    try {
-      const res = await fetch('/api/admin/telegram', {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error(t('admin.integrations.telegram.revokeFailed'));
-      toast.success(t('admin.integrations.telegram.revoked'));
-      await refresh();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : t('admin.integrations.telegram.genericError'),
-      );
-    }
-  }
-
-  if (!status) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <Spinner />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-      <Card elevated>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 font-display">
-            <Send className="h-4 w-4 text-violet-400" />
-            {t('admin.integrations.telegram.title')}
-          </CardTitle>
-          <CardDescription>
-            {t('admin.integrations.telegram.description', {
-              format: '1234567890:AAH…',
-              botFather: '@BotFather',
-            })}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {status.configured && (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
-              <Check className="h-4 w-4 text-emerald-400" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-100">{t('admin.integrations.telegram.active')}</p>
-                <p className="text-[11px] text-[var(--color-app-muted)] font-mono">
-                  {t('admin.integrations.telegram.token').toLowerCase()}:{' '}
-                  {status.tokenPreview ?? '••••'}
-                </p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmRevoke(true)}>
-                <Trash2 className="h-3.5 w-3.5" />
-                {t('admin.integrations.revoke')}
-              </Button>
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="tg-token">
-              {status.configured
-                ? t('admin.integrations.telegram.replaceToken')
-                : t('admin.integrations.telegram.token')}
-            </Label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Input
-                  id="tg-token"
-                  type={showToken ? 'text' : 'password'}
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder="1234567890:AAH..."
-                  className="font-mono pr-10"
-                  spellCheck={false}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowToken((v) => !v)}
-                  className="absolute inset-y-0 right-3 flex items-center text-[var(--color-app-muted)] hover:text-zinc-100"
-                  aria-label={
-                    showToken ? t('admin.integrations.hide') : t('admin.integrations.show')
-                  }
-                >
-                  {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              <Button
-                variant="primary"
-                onClick={() => void save()}
-                disabled={saving || !token.trim()}
-              >
-                {saving ? <Spinner /> : t('common.save')}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <ConfirmDialog
-        open={confirmRevoke}
-        onOpenChange={setConfirmRevoke}
-        title={t('admin.integrations.telegram.revokeTitle')}
-        description={t('admin.integrations.telegram.revokeDescription')}
-        confirmLabel={t('admin.integrations.revoke')}
-        variant="destructive"
-        onConfirm={revoke}
-      />
-    </motion.div>
   );
 }
 
@@ -310,9 +141,7 @@ function McpSection(): React.ReactElement {
       toast.success(t('admin.integrations.mcp.generated'));
       await refresh();
     } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : t('admin.integrations.telegram.genericError'),
-      );
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
     } finally {
       setRotating(false);
     }
@@ -324,14 +153,12 @@ function McpSection(): React.ReactElement {
         method: 'DELETE',
         credentials: 'include',
       });
-      if (!res.ok) throw new Error(t('admin.integrations.telegram.revokeFailed'));
+      if (!res.ok) throw new Error(t('common.error'));
       toast.success(t('admin.integrations.mcp.revoked'));
       setNewToken(null);
       await refresh();
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : t('admin.integrations.telegram.genericError'),
-      );
+      toast.error(err instanceof Error ? err.message : t('common.error'));
     }
   }
 
@@ -357,9 +184,7 @@ function McpSection(): React.ReactElement {
       toast.success(t('admin.integrations.mcp.promptCopied'));
       setTimeout(() => setPromptCopied(false), 1800);
     } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : t('admin.integrations.telegram.genericError'),
-      );
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
     } finally {
       setCopyingPrompt(false);
     }
@@ -396,7 +221,7 @@ function McpSection(): React.ReactElement {
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-zinc-100">{t('admin.integrations.mcp.enabled')}</p>
                 <p className="text-[11px] text-[var(--color-app-muted)] font-mono">
-                  {t('admin.integrations.telegram.token').toLowerCase()}:{' '}
+                  {t('admin.integrations.mcp.copyToken').toLowerCase()}:{' '}
                   {status.tokenPreview ?? '••••'}
                 </p>
               </div>
@@ -531,9 +356,7 @@ function ProxyAgentSection(): React.ReactElement {
       toast.success(t('admin.integrations.proxy.generated'));
       await refresh();
     } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : t('admin.integrations.telegram.genericError'),
-      );
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
     } finally {
       setGenerating(false);
     }
@@ -545,14 +368,12 @@ function ProxyAgentSection(): React.ReactElement {
         method: 'DELETE',
         credentials: 'include',
       });
-      if (!res.ok) throw new Error(t('admin.integrations.telegram.revokeFailed'));
+      if (!res.ok) throw new Error(t('common.error'));
       toast.success(t('admin.integrations.proxy.revoked'));
       setNewToken(null);
       await refresh();
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : t('admin.integrations.telegram.genericError'),
-      );
+      toast.error(err instanceof Error ? err.message : t('common.error'));
     }
   }
 
@@ -794,9 +615,7 @@ function CookiesSection(): React.ReactElement {
       setCookies('');
       await refresh();
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : t('admin.integrations.telegram.genericError'),
-      );
+      toast.error(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setSaving(false);
     }
@@ -808,13 +627,11 @@ function CookiesSection(): React.ReactElement {
         method: 'DELETE',
         credentials: 'include',
       });
-      if (!res.ok) throw new Error(t('admin.integrations.telegram.revokeFailed'));
+      if (!res.ok) throw new Error(t('common.error'));
       toast.success(t('admin.integrations.cookies.removed'));
       await refresh();
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : t('admin.integrations.telegram.genericError'),
-      );
+      toast.error(err instanceof Error ? err.message : t('common.error'));
     }
   }
 

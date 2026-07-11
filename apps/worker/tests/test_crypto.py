@@ -1,4 +1,4 @@
-"""Tests for apps/chat voxen_crypto module.
+"""Tests for apps/worker voxen_crypto module.
 
 Cobre roundtrip, error paths (tampering, formato, chave errada),
 e load_master_key.

@@ -17,6 +17,10 @@ import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { rateLimit } from '../lib/rate-limit';
 import { deleteS3Object, s3Bucket, s3Client } from '../lib/s3';
+import {
+  generateAndPersistTranscriptSummary,
+  TranscriptSummaryError,
+} from '../lib/transcript-summary';
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
@@ -553,7 +557,7 @@ transcriptsRoutes.delete('/:id', async (c) => {
   return c.json({ ok: true, deletedId: id });
 });
 
-// POST /api/transcripts/:id/summary — gerar / regenerar resumo via chat service.
+// POST /api/transcripts/:id/summary — gerar / regenerar resumo via OpenRouter.
 // Anti-abuso: throttle 1/min por transcript + se já tem summary, exige
 // { force: true } pra não queimar tokens da OR num clique acidental.
 transcriptsRoutes.post('/:id/summary', async (c) => {
@@ -595,28 +599,21 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
     );
   }
 
-  const upstreamUrl =
-    (process.env.CHAT_SERVICE_URL ?? 'http://chat:8001') + '/summarize-transcript';
-  const upstream = await fetch(upstreamUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Voxen-User-Id': userId,
-    },
-    body: JSON.stringify({
-      transcript_id: transcript.id,
+  try {
+    const summaryMd = await generateAndPersistTranscriptSummary({
+      userId,
+      transcriptId: transcript.id,
       title: transcript.title,
-      plain_text: transcript.plainText,
-    }),
-  });
-  const data = (await upstream.json().catch(() => ({}))) as {
-    summary_md?: string;
-    detail?: string;
-  };
-  if (!upstream.ok) {
-    return c.json({ error: data.detail ?? 'Falha ao gerar resumo.' }, upstream.status as 200);
+      plainText: transcript.plainText,
+    });
+    return c.json({ summaryMd });
+  } catch (err) {
+    if (err instanceof TranscriptSummaryError) {
+      return c.json({ error: err.message }, err.status as 400);
+    }
+    console.error('[transcripts] summary failed:', err);
+    return c.json({ error: 'Falha ao gerar resumo.' }, 502);
   }
-  return c.json({ summaryMd: data.summary_md ?? null });
 });
 
 function normalizeStatus(value: string | undefined): 'ACTIVE' | 'ARCHIVED' | 'TRASH' | 'ALL' {

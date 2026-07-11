@@ -160,7 +160,6 @@ PY
 
 export NODE_ENV="${NODE_ENV:-production}"
 export PORT="${PORT:-3000}"
-export CHAT_SERVICE_URL="${CHAT_SERVICE_URL:-http://127.0.0.1:8001}"
 export S3_REGION="${S3_REGION:-us-east-1}"
 export S3_FORCE_PATH_STYLE="${S3_FORCE_PATH_STYLE:-true}"
 
@@ -242,21 +241,14 @@ start_chisel || echo "[easypanel] AVISO: chisel server não iniciou (seguindo se
 terminate() {
   trap - TERM INT
   echo "[easypanel] stopping services..."
-  kill -TERM "$chat_pid" "$worker_pid" "$web_pid" 2>/dev/null || true
+  kill -TERM "$worker_pid" "$web_pid" 2>/dev/null || true
   if [[ -f "$CHISEL_PIDFILE" ]]; then
     kill -TERM "$(cat "$CHISEL_PIDFILE" 2>/dev/null)" 2>/dev/null || true
   fi
-  wait "$chat_pid" "$worker_pid" "$web_pid" 2>/dev/null || true
+  wait "$worker_pid" "$web_pid" 2>/dev/null || true
 }
 
 trap terminate TERM INT
-
-echo "[easypanel] starting chat on 127.0.0.1:8001..."
-(
-  cd /app/apps/chat
-  exec .venv/bin/uvicorn src.main:app --host 127.0.0.1 --port 8001
-) &
-chat_pid=$!
 
 echo "[easypanel] starting worker..."
 (
@@ -273,7 +265,7 @@ echo "[easypanel] starting web on 0.0.0.0:${PORT}..."
 web_pid=$!
 
 set +e
-wait -n "$chat_pid" "$worker_pid" "$web_pid"
+wait -n "$worker_pid" "$web_pid"
 status=$?
 set -e
 
