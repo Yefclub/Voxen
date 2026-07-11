@@ -722,7 +722,10 @@ function JobRow({
         isUpload={isUpload}
         durationSec={job.durationSec ?? null}
       />
-      <Badge variant={variant} className="hidden shrink-0 min-w-28 justify-center text-center sm:inline-flex">
+      <Badge
+        variant={variant}
+        className="hidden shrink-0 min-w-28 justify-center text-center sm:inline-flex"
+      >
         {isActive ? stageLabel(stage, t) : label}
       </Badge>
       <div className="flex-1 min-w-0 space-y-1.5">
