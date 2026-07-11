@@ -17,6 +17,7 @@ import {
   Plus,
   ShieldCheck,
   Settings as SettingsIcon,
+  Sparkles,
   Workflow,
 } from 'lucide-react';
 import type { MeUser } from '../../lib/types';
@@ -26,7 +27,7 @@ import { useIsDesktop } from '../../lib/use-media-query';
 import { useNotes } from '../../lib/use-notes';
 import { useI18n, type I18nKey } from '../../lib/i18n';
 import { apiPost } from '../../lib/api';
-import { useFetch, useMe } from '../../lib/hooks';
+import { useMe } from '../../lib/hooks';
 import { NotesTree } from '../notes/notes-tree';
 
 export interface NavItem {
@@ -140,7 +141,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
           >
             <SidebarHeader onCollapse={toggle} />
             <SidebarModeBody user={user} />
-            <SidebarVersionInfo />
+            <SidebarChangelogButton />
             <SidebarSignOut />
           </motion.aside>
         )}
@@ -149,48 +150,18 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   );
 }
 
-interface VersionPayload {
-  version: string;
-  gitSha: string | null;
-  builtAt: string;
-}
-
-export function SidebarVersionInfo(): React.ReactElement {
-  const { locale, t } = useI18n();
-  const { data } = useFetch<VersionPayload>('/api/version');
-  const shortSha = data?.gitSha?.slice(0, 7) ?? null;
-  const builtAt = data?.builtAt
-    ? new Date(data.builtAt).toLocaleString(locale === 'pt-BR' ? 'pt-BR' : 'en-US')
-    : null;
-  const title = data?.version
-    ? [
-        t('shell.versionInfo', { version: data.version }),
-        shortSha ? t('shell.versionSha', { sha: shortSha }) : null,
-        builtAt ? t('shell.versionBuiltAt', { date: builtAt }) : null,
-        t('shell.versionOpenChangelog'),
-      ]
-        .filter(Boolean)
-        .join('\n')
-    : t('shell.versionFallback');
+export function SidebarChangelogButton(): React.ReactElement {
+  const { t } = useI18n();
 
   return (
     <div className="shrink-0 px-3 py-1.5">
       <Link
         to="/novidades"
-        title={title}
-        className="block truncate text-center font-mono text-[10px] leading-none text-[var(--color-app-muted)]/70 transition-colors hover:text-zinc-300"
+        title={t('shell.versionOpenChangelog')}
+        className="flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-zinc-100"
       >
-        {data?.version ? (
-          <>
-            <span className="font-sans text-[10px] font-medium tracking-tight">
-              {t('shell.nav.changelog')}
-            </span>
-            <span className="mx-1 opacity-40">·</span>v{data.version}
-            {shortSha ? <span> · {shortSha}</span> : null}
-          </>
-        ) : (
-          t('shell.versionFallback')
-        )}
+        <Sparkles className="h-4 w-4 shrink-0" />
+        <span className="truncate">{t('shell.nav.changelog')}</span>
       </Link>
     </div>
   );
