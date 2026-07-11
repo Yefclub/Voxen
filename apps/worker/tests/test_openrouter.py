@@ -114,8 +114,7 @@ def test_resolve_title_decision_keep_variants() -> None:
         == "Título Bom do Canal"
     )
     assert (
-        _resolve_title_decision("Novo título editorial", "arquivo.mp4")
-        == "Novo título editorial"
+        _resolve_title_decision("Novo título editorial", "arquivo.mp4") == "Novo título editorial"
     )
 
 
