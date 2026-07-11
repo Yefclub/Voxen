@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: version-dev-${{ github.repository }}-${{ github.ref_name }}
@@ -24,8 +25,9 @@ concurrency:
 jobs:
   version-dev:
     runs-on: ubuntu-latest
-    # Evita loop infinito: não re-bump se o push já for o commit do bot.
+    # Evita loop: não re-bump se o push já for o commit/PR do bot de versão.
     # Aspas externas obrigatórias: o ":" em "chore: set version" quebra o YAML.
+    # Branch protection exige PR — o bot abre PR + auto-merge (não pusha em dev).
     if: "${{ github.event_name == 'workflow_dispatch' || (github.event.head_commit != null && !startsWith(github.event.head_commit.message, 'chore: set version to ')) }}"
     steps:
       - uses: actions/checkout@v6
@@ -123,9 +125,10 @@ jobs:
           fi
           echo "[changelog] $COUNT entrada(s) consumida(s) desde ${LAST_BUMP:-inicio}"
 
-      - name: Commit and push
+      - name: Commit on branch, open PR, auto-merge
         env:
           NEW_VER: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -138,17 +141,44 @@ jobs:
             echo "No version change, skip commit"
             exit 0
           fi
+
+          # Evita pilha de PRs se já houver um bump aberto.
+          OPEN=$(gh pr list --base dev --state open --search "chore: set version to" --json number --jq 'length')
+          if [ "${OPEN:-0}" != "0" ]; then
+            echo "Já existe PR de version-dev aberta — pulando."
+            exit 0
+          fi
+
+          BRANCH="chore/version-dev-${NEW_VER//./-}"
           git commit -m "chore: set version to $NEW_VER for dev"
-          for attempt in 1 2 3 4 5; do
-            if git pull --rebase origin "${{ github.ref_name }}" && git push origin "${{ github.ref_name }}"; then
-              {
-                echo "## Dev version"
-                echo ""
-                echo "- Versão: \`$NEW_VER\`"
-                echo "- Commit: \`chore: set version to $NEW_VER for dev\`"
-              } >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-            sleep "$((attempt * 3))"
-          done
-          exit 1
+          git checkout -B "$BRANCH"
+          git push -u origin "$BRANCH" --force
+
+          PR_URL=$(gh pr create --base dev --head "$BRANCH" \
+            --title "chore: set version to $NEW_VER for dev" \
+            --body "Bump automático de versão em dev (\`$NEW_VER\`) + consumo de changelog/unreleased.")
+          echo "PR: $PR_URL"
+
+          # Auto-merge quando CI ficar verde (branch protection exige checks).
+          if ! gh pr merge --auto --squash --delete-branch "$PR_URL"; then
+            echo "Auto-merge não habilitou; tentando merge direto se CLEAN…"
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              state=$(gh pr view "$PR_URL" --json mergeStateStatus -q .mergeStateStatus)
+              if [ "$state" = "CLEAN" ]; then
+                gh pr merge --squash --delete-branch "$PR_URL"
+                break
+              fi
+              if [ "$state" = "UNKNOWN" ] || [ "$state" = "BLOCKED" ] || [ "$state" = "UNSTABLE" ]; then
+                sleep 30
+                continue
+              fi
+              sleep 30
+            done
+          fi
+
+          {
+            echo "## Dev version"
+            echo ""
+            echo "- Versão: \`$NEW_VER\`"
+            echo "- PR: $PR_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
