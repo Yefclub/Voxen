@@ -105,6 +105,26 @@ def test_friendly_error_no_audio_codec() -> None:
     assert "upload" in msg.lower()
 
 
+def test_friendly_error_proxy_refused() -> None:
+    # Erro real quando o túnel SOCKS do Agente de Proxy está fora do ar.
+    exc = RuntimeError(
+        "ERROR: [vm.tiktok] ZSXL5NWgh: Unable to download webpage: "
+        "SocksHTTPSConnection(host='vt.tiktok.com', port=443): Failed to establish "
+        "a new connection: [Errno 111] Connection refused"
+    )
+    msg = pipeline._friendly_external_error(exc)
+    assert msg is not None
+    assert "proxy" in msg.lower()
+    assert "integra" in msg.lower()
+
+
+def test_friendly_error_connection_refused_without_proxy_not_matched() -> None:
+    # Guarda contra falso-positivo: connection-refused SEM proxy/socks não deve
+    # virar a mensagem de "proxy fora do ar".
+    exc = RuntimeError("Failed to establish a new connection: [Errno 111] Connection refused")
+    assert pipeline._friendly_external_error(exc) is None
+
+
 def test_friendly_error_non_tiktok_returns_none() -> None:
     assert pipeline._friendly_external_error(RuntimeError("algo sem relação")) is None
 

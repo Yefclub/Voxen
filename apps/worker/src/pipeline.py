@@ -143,6 +143,19 @@ def _is_tiktok_rehydration_error(exc: BaseException) -> bool:
 
 def _friendly_external_error(exc: BaseException) -> str | None:
     text = str(exc).lower()
+    # Proxy/túnel de download fora do ar: o egress está configurado para sair por
+    # um proxy (ex.: SOCKS do Agente de Proxy residencial em 127.0.0.1:1080) e a
+    # conexão com ELE foi recusada — não com a plataforma. Sem isso, TODO download
+    # falha igual. Mensagem acionável em vez do stack cru de "Connection refused".
+    if "connection refused" in text and (
+        "socks" in text or "proxy" in text or "127.0.0.1:1080" in text
+    ):
+        return (
+            "O download está configurado para sair por um proxy, mas ele está fora "
+            "do ar (conexão recusada). Se você usa o Agente de Proxy residencial, "
+            "verifique em Admin → Integrações se ele está conectado; ou remova/ajuste "
+            "o proxy nas configurações para o servidor baixar direto."
+        )
     if "tiktok" in text and (
         "unable to extract" in text or "rehydration" in text or "universal data" in text
     ):
