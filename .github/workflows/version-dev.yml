@@ -1,12 +1,13 @@
 # ============================================================================
-# version-dev — metadata SemVer para dev, sem mutar package.json
+# version-dev — bump package.json para X.Y.Z-dev.<unix> no merge em dev
 # ============================================================================
-# Regra: `dev` não ganha commit/tag automático de pre-release. A versão estável
-# vive em package.json e tags vX.Y.Z; builds de dev usam metadata efêmera
-# ligada à próxima versão patch: `X.Y.Z-dev.<unix_epoch_seconds>`.
+# Estilo Orbital: cada push em `dev` (merge de PR) gera commit
+#   chore: set version to X.Y.Z-dev.<timestamp> for dev
+# nos package.json (raiz + apps/web) e consome changelog/unreleased/*.md
+# para releases.json + CHANGELOG.md.
 # ============================================================================
 
-name: Dev version metadata
+name: Dev version bump
 
 on:
   push:
@@ -14,52 +15,139 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: version-dev-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   version-dev:
     runs-on: ubuntu-latest
+    # Evita loop infinito: não re-bump se o push já for o commit do bot.
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore: set version to ') }}
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync branch with remote
+        run: |
+          set -euo pipefail
+          git fetch origin "${{ github.ref_name }}"
+          git checkout -- . 2>/dev/null || true
+          git pull --rebase origin "${{ github.ref_name }}"
 
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
 
-      - name: Compute dev metadata
+      - name: Add or refresh -dev.timestamp in version
         id: version
         run: |
           set -euo pipefail
-          LAST_STABLE=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -Em1 '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
-          if [[ -n "$LAST_STABLE" ]]; then
-            BASE_VER="${LAST_STABLE#v}"
-          else
-            BASE_VER=$(node -p "require('./package.json').version.split('-')[0]")
+          VER=$(node -p "require('./package.json').version")
+          BASE_VER=${VER%-dev*}
+          TS=$(date -u +%s)
+          NEW_VER="${BASE_VER}-dev.${TS}"
+          echo "version=$NEW_VER" >> "$GITHUB_OUTPUT"
+          export NEW_VER
+          node -e '
+            const fs = require("fs");
+            const files = ["./package.json", "./apps/web/package.json"];
+            for (const f of files) {
+              if (!fs.existsSync(f)) continue;
+              const j = JSON.parse(fs.readFileSync(f, "utf8"));
+              j.version = process.env.NEW_VER;
+              fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");
+            }
+          '
+          echo "Set version to $NEW_VER"
+
+      - name: Changelog (dev, best-effort)
+        continue-on-error: true
+        env:
+          NEW_VER: ${{ steps.version.outputs.version }}
+          RN_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -uo pipefail
+          RN_SCRIPT="scripts/release-notes.mjs"
+          if [ ! -f "$RN_SCRIPT" ]; then
+            echo "[changelog] scripts/release-notes.mjs ausente — pulando."
+            exit 0
           fi
-          NEXT_VER=$(BASE_VER="$BASE_VER" node -e "
-            const v = process.env.BASE_VER.split('.').map(Number);
-            if (v.length !== 3 || v.some(Number.isNaN)) throw new Error('Invalid base version: ' + process.env.BASE_VER);
-            v[2] += 1;
-            console.log(v.join('.'));
-          ")
-          STAMP=$(date -u +%s)
-          SHORT_SHA="${GITHUB_SHA::7}"
-          DEV_VER="${NEXT_VER}-dev.${STAMP}"
-          {
-            echo "base_version=$BASE_VER"
-            echo "next_version=$NEXT_VER"
-            echo "dev_version=$DEV_VER"
-            echo "short_sha=$SHORT_SHA"
-          } >> "$GITHUB_OUTPUT"
-          {
-            echo "## Dev version"
-            echo ""
-            echo "- Última estável: \`$BASE_VER\`"
-            echo "- Próxima patch base: \`$NEXT_VER\`"
-            echo "- Versão dev: \`$DEV_VER\`"
-            echo "- Commit: \`$SHORT_SHA\`"
-            echo ""
-            echo "Nenhum arquivo, commit ou tag foi criado por este workflow."
-          } >> "$GITHUB_STEP_SUMMARY"
+          LAST_BUMP=$(git log --first-parent --format='%H%x09%s' -n 400 \
+            | awk -F'\t' '!f && $2 ~ /^chore: set version to .* for dev$/ {print $1; f=1}')
+          if [ -n "$LAST_BUMP" ]; then
+            COMMITS=$(git log --reverse --first-parent --format=%H "${LAST_BUMP}..HEAD")
+          else
+            COMMITS=$(git rev-parse HEAD)
+          fi
+          QUEUE=""
+          for sha in $COMMITS; do
+            FILES=$(git diff-tree -m --first-parent --no-commit-id --diff-filter=A --name-only -r "$sha" -- changelog/unreleased)
+            [ -z "$FILES" ] && continue
+            SUBJ=$(git log -1 --format=%s "$sha")
+            PR_NUM=""
+            if [[ "$SUBJ" =~ \(#([0-9]+)\)[[:space:]]*$ ]]; then
+              PR_NUM="${BASH_REMATCH[1]}"
+            elif [[ "$SUBJ" =~ ^Merge\ pull\ request\ \#([0-9]+) ]]; then
+              PR_NUM="${BASH_REMATCH[1]}"
+            fi
+            AUTHOR=$(git log -1 --format=%an "$sha")
+            CDATE=$(git log -1 --format=%cI "$sha")
+            for f in $FILES; do
+              case "$f" in *.md) ;; *) continue ;; esac
+              [ -f "$f" ] || continue
+              QUEUE=$(printf '%s\n' "$QUEUE" | awk -v p="$f|" 'index($0, p) != 1')
+              QUEUE="${QUEUE}
+          $f|$PR_NUM|$CDATE|$AUTHOR"
+            done
+          done
+          COUNT=0
+          CONSUMED=""
+          while IFS='|' read -r f PR_NUM CDATE AUTHOR; do
+            f=$(printf '%s' "$f" | sed 's/^[[:space:]]*//')
+            [ -z "$f" ] && continue
+            if RN_SOURCE="$f" RN_VERSION="$NEW_VER" RN_PR="$PR_NUM" RN_AUTHOR="$AUTHOR" \
+               RN_DATE="$CDATE" node "$RN_SCRIPT" add-dev; then
+              COUNT=$((COUNT + 1))
+              CONSUMED="$CONSUMED $f"
+            fi
+          done < <(printf '%s\n' "$QUEUE")
+          if [ -n "$CONSUMED" ]; then
+            git rm -q --ignore-unmatch $CONSUMED 2>/dev/null || true
+          fi
+          echo "[changelog] $COUNT entrada(s) consumida(s) desde ${LAST_BUMP:-inicio}"
+
+      - name: Commit and push
+        env:
+          NEW_VER: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json apps/web/package.json
+          git add releases.json CHANGELOG.md 2>/dev/null || true
+          git add -A changelog 2>/dev/null || true
+          git checkout -- . 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "No version change, skip commit"
+            exit 0
+          fi
+          git commit -m "chore: set version to $NEW_VER for dev"
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin "${{ github.ref_name }}" && git push origin "${{ github.ref_name }}"; then
+              {
+                echo "## Dev version"
+                echo ""
+                echo "- Versão: \`$NEW_VER\`"
+                echo "- Commit: \`chore: set version to $NEW_VER for dev\`"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep "$((attempt * 3))"
+          done
+          exit 1
