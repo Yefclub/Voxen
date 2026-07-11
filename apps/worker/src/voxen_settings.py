@@ -108,7 +108,7 @@ async def get_admin_email() -> str | None:
 
 
 async def get_summary_timeout_sec(default: float = 120.0) -> float:
-    """Timeout da chamada worker → chat service para resumo best-effort."""
+    """Timeout da chamada OpenRouter para resumo best-effort no worker."""
     enc = await db.get_setting_enc("summary_timeout_sec")
     if enc is None:
         return default
@@ -119,12 +119,3 @@ async def get_summary_timeout_sec(default: float = 120.0) -> float:
     if value < 30 or value > 600:
         return default
     return value
-
-
-async def get_telegram_bot_token() -> str | None:
-    """Bot Telegram token (cifrado em Settings). Necessário pra automations
-    com delivery=TELEGRAM."""
-    enc = await db.get_setting_enc("telegram_bot_token")
-    if enc is None:
-        return None
-    return decrypt(enc, get_master_key())

@@ -37,21 +37,6 @@ COPY prisma ./prisma
 COPY apps/web ./apps/web
 COPY packages ./packages
 
-FROM python:3.13-slim AS chat-builder
-WORKDIR /app/apps/chat
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
-COPY apps/chat/pyproject.toml ./
-COPY apps/chat/uv.lock* ./
-RUN uv sync --frozen --no-install-project || uv sync --no-install-project
-
-COPY apps/chat/src ./src
-RUN uv sync --frozen --no-editable || uv sync --no-editable
 
 FROM python:3.13-slim AS worker-builder
 WORKDIR /app/apps/worker
@@ -110,7 +95,6 @@ ENV NODE_ENV=production \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=3000 \
-    CHAT_SERVICE_URL=http://127.0.0.1:8001 \
     S3_REGION=us-east-1 \
     S3_FORCE_PATH_STYLE=true \
     DENO_DIR=/tmp/voxen-deno \
@@ -150,8 +134,6 @@ COPY --from=web-server-builder --chown=voxen:voxen /app/packages ./packages
 COPY --from=web-server-builder --chown=voxen:voxen /app/prisma ./prisma
 COPY --from=web-front-builder --chown=voxen:voxen /app/apps/web/dist ./apps/web/dist
 
-COPY --from=chat-builder --chown=voxen:voxen /app/apps/chat/.venv ./apps/chat/.venv
-COPY --from=chat-builder --chown=voxen:voxen /app/apps/chat/src ./apps/chat/src
 COPY --from=worker-builder --chown=voxen:voxen /app/apps/worker/.venv ./apps/worker/.venv
 COPY --from=worker-builder --chown=voxen:voxen /app/apps/worker/src ./apps/worker/src
 

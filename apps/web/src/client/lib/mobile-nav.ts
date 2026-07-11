@@ -6,11 +6,11 @@
  *
  * Mantenha em sincronia com `mobile-bottom-nav.tsx` (lista `ITEMS`).
  */
-export const BOTTOM_NAV_TABS = ['/', '/chat', '/transcricoes', '/grafo'] as const;
+export const BOTTOM_NAV_TABS = ['/', '/transcricoes', '/notas', '/grafo'] as const;
 
 /**
  * `true` quando o pathname é exatamente uma aba do bottom-nav. Match exato:
- * `/chat/:id`, `/jobs/:id` etc. são sub-páginas, não a aba raiz.
+ * `/jobs/:id`, `/transcricoes/:id` etc. são sub-páginas, não a aba raiz.
  */
 export function isBottomNavTab(pathname: string): boolean {
   return (BOTTOM_NAV_TABS as readonly string[]).includes(pathname);

@@ -15,7 +15,6 @@ import { AdminUsuariosPage } from './pages/admin-usuarios';
 import { AdminCustosPage } from './pages/admin-custos';
 import { AdminIntegracoesPage } from './pages/admin-integracoes';
 import { ContaPage } from './pages/conta';
-import { ChatPage } from './pages/chat';
 import { JobDetalhePage } from './pages/jobs-detalhe';
 import { TranscricoesPage } from './pages/transcricoes';
 import { TranscricaoDetalhePage } from './pages/transcricoes-detalhe';
@@ -92,8 +91,8 @@ function AppRoutes(): React.ReactElement {
       <Route element={<AppLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/dashboard" element={<RedirectPreserveSearch to="/" />} />
-        <Route path="/chat" element={<ChatPage />} />
-        <Route path="/chat/:id" element={<ChatPage />} />
+        <Route path="/chat" element={<RedirectPreserveSearch to="/" />} />
+        <Route path="/chat/:id" element={<RedirectPreserveSearch to="/" />} />
         <Route path="/setup" element={<SetupPage />} />
         <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
         <Route path="/admin/custos" element={<AdminCustosPage />} />

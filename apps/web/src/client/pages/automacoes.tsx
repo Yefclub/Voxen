@@ -9,7 +9,6 @@ import {
   Pause,
   X,
   Clock,
-  Send,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -39,7 +38,7 @@ function useBodyScrollLock(active: boolean): void {
 
 type AutomationType = 'PERIODIC_SUMMARY' | 'WEB_RESEARCH';
 type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
-type Delivery = 'IN_APP' | 'TELEGRAM' | 'BOTH';
+type Delivery = 'IN_APP';
 type Status = 'ACTIVE' | 'PAUSED';
 type RunStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
 
@@ -85,7 +84,6 @@ export function AutomacoesPage(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Automation | null>(null);
-  const [hasTelegram, setHasTelegram] = useState<boolean>(false);
   const [runViewer, setRunViewer] = useState<{ automation: Automation; runs: Run[] } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Automation | null>(null);
 
@@ -107,11 +105,6 @@ export function AutomacoesPage(): React.ReactElement {
 
   useEffect(() => {
     void fetchAutomations();
-    // Detecta telegram via /api/account/telegram-link (existente)
-    fetch('/api/account/telegram', { credentials: 'include' })
-      .then((r) => r.json())
-      .then((d: { linked?: boolean }) => setHasTelegram(!!d.linked))
-      .catch(() => setHasTelegram(false));
   }, [fetchAutomations]);
 
   async function runNow(id: string): Promise<void> {
@@ -234,7 +227,6 @@ export function AutomacoesPage(): React.ReactElement {
         {formOpen && (
           <AutomationForm
             initial={editing}
-            hasTelegram={hasTelegram}
             t={t}
             onClose={() => {
               setFormOpen(false);
@@ -344,12 +336,6 @@ function AutomationCard({
             {a.status === 'PAUSED' && (
               <span className="text-[11px] uppercase tracking-wide font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">
                 {t('automations.paused')}
-              </span>
-            )}
-            {(a.delivery === 'TELEGRAM' || a.delivery === 'BOTH') && (
-              <span className="text-[11px] flex items-center gap-1 font-medium text-sky-700 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 px-1.5 py-0.5 rounded">
-                <Send className="size-3" />
-                Telegram
               </span>
             )}
           </div>
@@ -519,13 +505,11 @@ function promptPlaceholder(type: AutomationType, t: TranslateFn): string {
 
 function AutomationForm({
   initial,
-  hasTelegram,
   t,
   onClose,
   onSaved,
 }: {
   initial: Automation | null;
-  hasTelegram: boolean;
   t: TranslateFn;
   onClose: () => void;
   onSaved: () => void;
@@ -539,7 +523,7 @@ function AutomationForm({
   const [minute, setMinute] = useState(initial?.minute ?? 0);
   const [dayOfWeek, setDayOfWeek] = useState<number>(initial?.dayOfWeek ?? 0);
   const [dayOfMonth, setDayOfMonth] = useState<number>(initial?.dayOfMonth ?? 1);
-  const [delivery, setDelivery] = useState<Delivery>(initial?.delivery ?? 'IN_APP');
+  const delivery: Delivery = 'IN_APP';
   const [submitting, setSubmitting] = useState(false);
   useBodyScrollLock(true);
 
@@ -750,46 +734,9 @@ function AutomationForm({
             </Field>
           </div>
 
-          <Field label={t('automations.form.delivery')}>
-            <div className="space-y-1.5">
-              {[
-                {
-                  v: 'IN_APP' as const,
-                  label: t('automations.delivery.inApp'),
-                  requiresTg: false,
-                },
-                {
-                  v: 'TELEGRAM' as const,
-                  label: t('automations.delivery.telegram'),
-                  requiresTg: true,
-                },
-                { v: 'BOTH' as const, label: t('automations.delivery.both'), requiresTg: true },
-              ].map((opt) => {
-                const disabled = opt.requiresTg && !hasTelegram;
-                return (
-                  <label
-                    key={opt.v}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm text-zinc-100 ${
-                      delivery === opt.v
-                        ? 'border-violet-500 bg-violet-500/10'
-                        : 'border-[var(--color-app-border)]'
-                    } ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[var(--color-app-surface-hover)]'}`}
-                    title={disabled ? t('automations.delivery.telegramRequired') : ''}
-                  >
-                    <input
-                      type="radio"
-                      name="delivery"
-                      checked={delivery === opt.v}
-                      onChange={() => !disabled && setDelivery(opt.v)}
-                      disabled={disabled}
-                      className="accent-violet-600"
-                    />
-                    {opt.label}
-                  </label>
-                );
-              })}
-            </div>
-          </Field>
+          {/* Delivery: apenas IN_APP (Telegram removido). Mantemos o campo
+              no payload por compatibilidade com o schema. */}
+          <input type="hidden" name="delivery" value="IN_APP" />
 
           <div className="text-[11px] text-[var(--color-app-muted)]">
             {t('automations.form.timezone', { timezone })}
@@ -905,12 +852,6 @@ function RunsModal({
                       {r.triggeredBy === 'manual' && (
                         <span className="text-[10px] uppercase text-[var(--color-app-muted)]">
                           {t('automations.manual')}
-                        </span>
-                      )}
-                      {r.telegramSent && (
-                        <span className="text-[10px] flex items-center gap-1 text-sky-700 dark:text-sky-400">
-                          <Send className="size-3" />
-                          {t('automations.sent')}
                         </span>
                       )}
                     </div>

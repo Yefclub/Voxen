@@ -3,8 +3,8 @@ import {
   House,
   ListVideo,
   LogOut,
-  MessagesSquare,
   Network,
+  Notebook,
   ShieldCheck,
   User as UserIcon,
 } from 'lucide-react';
@@ -30,13 +30,13 @@ import { isBottomNavTab } from '../../lib/mobile-nav';
 interface MobileNavItem {
   to: string;
   labelKey: I18nKey;
-  Icon: typeof MessagesSquare;
+  Icon: typeof House;
 }
 
 const ITEMS: MobileNavItem[] = [
   { to: '/', labelKey: 'shell.nav.home', Icon: House },
-  { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessagesSquare },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
+  { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },
 ];
 

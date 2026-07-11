@@ -10,7 +10,7 @@ import { SidebarModeBody, SidebarSignOut, SidebarVersionInfo } from './sidebar';
  * Drawer de navegação mobile (<md). Abaixo de 768px a sidebar desktop NÃO é
  * montada — este drawer (+ bottom-nav) é a navegação do shell. Cobre a tela
  * inteira no mobile e reaproveita o corpo modo-aware da sidebar (nav |
- * conversas do chat | árvore de notas) e o botão Sair, então qualquer item
+ * árvore de notas) e o botão Sair, então qualquer item
  * novo aparece automaticamente aqui também.
  *
  * Abre via swipe da borda esquerda → direita (bônus — os destinos únicos também

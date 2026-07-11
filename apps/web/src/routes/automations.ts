@@ -41,7 +41,7 @@ automationsRoutes.use('*', async (c, next) => {
 
 const FrequencyEnum = z.enum(['DAILY', 'WEEKLY', 'MONTHLY']);
 const TypeEnum = z.enum(['PERIODIC_SUMMARY', 'WEB_RESEARCH']);
-const DeliveryEnum = z.enum(['IN_APP', 'TELEGRAM', 'BOTH']);
+const DeliveryEnum = z.enum(['IN_APP']);
 const StatusEnum = z.enum(['ACTIVE', 'PAUSED']);
 
 // Valida que `tz` é uma zona IANA reconhecida pelo runtime. Sem isso,
@@ -128,13 +128,6 @@ automationsRoutes.post('/', async (c) => {
   }
   if (data.frequency === 'MONTHLY' && data.dayOfMonth == null) {
     return c.json({ error: 'Frequência MONTHLY exige dayOfMonth.' }, 400);
-  }
-  // Se delivery exige Telegram mas user não linkou, rejeita
-  if (data.delivery !== 'IN_APP') {
-    const link = await db.telegramLink.findUnique({ where: { userId }, select: { id: true } });
-    if (!link) {
-      return c.json({ error: 'Telegram não vinculado em /conta.' }, 400);
-    }
   }
   const nextRunAt = computeNextRun(
     {

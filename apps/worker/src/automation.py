@@ -3,18 +3,15 @@
 Componentes:
 - scheduler_tick: varre Automation ACTIVE com nextRunAt <= NOW(), cria
   AutomationRun PENDING e enfileira via Redis.
-- process_run: pega um run PENDING, chama chat:8001/automation/run, salva
-  output + custos, dispara Telegram se aplicável.
+- process_run: claim PENDING e marca FAILED — runtime do agente vivia em
+  apps/chat (removido). CRUD/scheduler preservados; reimplementação futura.
 - Reconciliation: pega AutomationRun status=PENDING órfãos.
 """
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
-from decimal import Decimal
 
-import httpx
 import structlog
 
 from . import db, events
@@ -22,9 +19,10 @@ from .automation_schedule import compute_next_run
 
 log = structlog.get_logger(__name__)
 
-CHAT_SERVICE_URL = os.environ.get("CHAT_SERVICE_URL", "http://chat:8001")
-AUTOMATION_TIMEOUT_SEC = 300.0  # 5 min — tools podem demorar (web_search etc)
-TELEGRAM_TRUNCATE = 4000
+AUTOMATION_AGENT_REMOVED_MSG = (
+    "Agente de automação removido (apps/chat). "
+    "Use o MCP server (/mcp) como interface de agente por enquanto."
+)
 
 
 async def scheduler_tick() -> int:
@@ -165,9 +163,11 @@ async def reap_stale_running_runs() -> int:
 
 
 async def process_run(run_id: str) -> None:
-    """Pega um AutomationRun pelo id, executa via chat service, persiste
-    resultado + custos + delivery Telegram."""
-    # Claim atomicamente: PENDING → RUNNING
+    """Claim PENDING → FAILED: runtime do agente (apps/chat) foi removido.
+
+    Mantemos scheduler + CRUD + tabelas. Entrega Telegram e call HTTP ao
+    chat service saíram com o serviço. Reimplementação futura via MCP/worker.
+    """
     async with db.connection() as conn:
         claimed = await conn.fetchrow(
             """
@@ -182,84 +182,12 @@ async def process_run(run_id: str) -> None:
         log.info("automation-run-skipped-not-pending", run_id=run_id)
         return
 
-    # Busca automation + user details
-    async with db.connection() as conn:
-        a = await conn.fetchrow(
-            """
-            SELECT a.id, a."userId", a.name, a.type, a.prompt, a.delivery,
-                   a.timezone, u.name AS user_name, tl."chatId" AS telegram_chat_id
-            FROM "Automation" a
-            JOIN "User" u ON u.id = a."userId"
-            LEFT JOIN "TelegramLink" tl ON tl."userId" = a."userId"
-            WHERE a.id = $1
-            """,
-            claimed["automationId"],
-        )
-    if not a:
-        await _mark_failed(run_id, "Automação não encontrada (deletada?)")
-        return
-
-    log.info("automation-run-starting", run_id=run_id, type=a["type"])
-    try:
-        async with httpx.AsyncClient(timeout=AUTOMATION_TIMEOUT_SEC) as client:
-            res = await client.post(
-                f"{CHAT_SERVICE_URL}/automation/run",
-                headers={"X-Voxen-User-Id": a["userId"]},
-                json={
-                    "automation_type": a["type"],
-                    "prompt": a["prompt"],
-                    "automation_id": a["id"],
-                    "user_name": a["user_name"] or "usuário",
-                    "user_timezone": a["timezone"],
-                },
-            )
-        if res.status_code != 200:
-            await _mark_failed(
-                run_id,
-                f"Chat service retornou {res.status_code}: {res.text[:200]}",
-            )
-            return
-        data = res.json()
-    except Exception as e:  # noqa: BLE001
-        log.exception("automation-run-http-failed", run_id=run_id)
-        await _mark_failed(run_id, f"Falha de rede: {e}")
-        return
-
-    output_md = data.get("output_md", "")
-    tokens_in = int(data.get("tokens_in", 0) or 0)
-    tokens_out = int(data.get("tokens_out", 0) or 0)
-    note_id = data.get("note_id")
-    try:
-        cost_usd = Decimal(str(data.get("cost_usd", "0")))
-    except (ValueError, ArithmeticError):
-        cost_usd = Decimal("0")
-
-    async with db.connection() as conn:
-        await conn.execute(
-            """
-            UPDATE "AutomationRun"
-            SET status = 'SUCCESS', "finishedAt" = NOW(),
-                "outputMd" = $2, "tokensIn" = $3, "tokensOut" = $4,
-                "costUsd" = $5, "noteId" = $6
-            WHERE id = $1
-            """,
-            run_id,
-            output_md,
-            tokens_in,
-            tokens_out,
-            cost_usd,
-            note_id,
-        )
-    log.info("automation-run-success", run_id=run_id, tokens_in=tokens_in, tokens_out=tokens_out)
-
-    # Delivery Telegram (opcional)
-    if a["delivery"] in ("TELEGRAM", "BOTH") and a["telegram_chat_id"]:
-        await _send_telegram(
-            chat_id=a["telegram_chat_id"],
-            automation_name=a["name"],
-            output_md=output_md,
-            run_id=run_id,
-        )
+    log.warning(
+        "automation-run-agent-removed",
+        run_id=run_id,
+        automation_id=claimed["automationId"],
+    )
+    await _mark_failed(run_id, AUTOMATION_AGENT_REMOVED_MSG)
 
 
 async def _mark_failed(run_id: str, error_msg: str) -> None:
@@ -274,53 +202,3 @@ async def _mark_failed(run_id: str, error_msg: str) -> None:
             error_msg[:1000],
         )
     log.warning("automation-run-failed", run_id=run_id, error=error_msg[:200])
-
-
-async def _send_telegram(
-    *,
-    chat_id: int,
-    automation_name: str,
-    output_md: str,
-    run_id: str,
-) -> None:
-    """Envia output_md ao chat_id via bot Telegram. Best-effort — falha
-    não marca a run como FAILED (output já foi salvo)."""
-    # Bot token via setting cifrado
-    from . import voxen_settings
-
-    token = await voxen_settings.get_telegram_bot_token()
-    if not token:
-        log.warning("telegram-send-skipped-no-token", run_id=run_id)
-        return
-
-    truncated = output_md
-    if len(truncated) > TELEGRAM_TRUNCATE:
-        truncated = truncated[:TELEGRAM_TRUNCATE] + "\n\n...(truncado)"
-    message = f"📋 *{automation_name}*\n\n{truncated}"
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": message,
-                    "parse_mode": "Markdown",
-                    "disable_web_page_preview": True,
-                },
-            )
-        if res.status_code == 200:
-            async with db.connection() as conn:
-                await conn.execute(
-                    'UPDATE "AutomationRun" SET "telegramSent" = TRUE WHERE id = $1',
-                    run_id,
-                )
-            log.info("telegram-sent", run_id=run_id, chat_id=chat_id)
-        else:
-            log.warning(
-                "telegram-send-non-200",
-                run_id=run_id,
-                status=res.status_code,
-                body=res.text[:200],
-            )
-    except Exception:  # noqa: BLE001
-        log.exception("telegram-send-failed", run_id=run_id)

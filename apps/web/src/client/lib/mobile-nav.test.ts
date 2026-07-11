@@ -7,13 +7,14 @@ describe('isBottomNavTab', () => {
   });
 
   test.each([
-    '/chat/abc',
+    '/dashboard/extra',
     '/jobs/123',
     '/transcricoes/xyz',
     '/grafo/node-1',
     '/dashboard',
     '/jobs',
-    '/notas',
+    '/chat',
+    '/chat/abc',
     '/notas/abc',
     '/automacoes',
     '/setup',
@@ -32,12 +33,10 @@ describe('showsMobileBack', () => {
   });
 
   test.each([
-    '/chat/abc',
     '/jobs/123',
     '/transcricoes/xyz',
     '/dashboard',
     '/jobs',
-    '/notas',
     '/notas/abc',
     '/automacoes',
     '/setup',
@@ -50,7 +49,7 @@ describe('showsMobileBack', () => {
   });
 
   test('é o complemento exato de isBottomNavTab', () => {
-    for (const p of ['/', '/chat', '/chat/a', '/dashboard', '/grafo', '/setup']) {
+    for (const p of ['/', '/dashboard', '/jobs/a', '/notas', '/grafo', '/setup', '/chat']) {
       expect(showsMobileBack(p)).toBe(!isBottomNavTab(p));
     }
   });
@@ -62,12 +61,9 @@ describe('hasOwnMobileChrome', () => {
     expect(hasOwnMobileChrome('/grafo/node-1')).toBe(true);
   });
 
-  test.each(['/', '/chat', '/notas/abc', '/setup', '/jobs/1'])(
-    '%s não tem chrome próprio',
-    (path) => {
-      expect(hasOwnMobileChrome(path)).toBe(false);
-    },
-  );
+  test.each(['/', '/notas/abc', '/setup', '/jobs/1'])('%s não tem chrome próprio', (path) => {
+    expect(hasOwnMobileChrome(path)).toBe(false);
+  });
 });
 
 describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobileChrome)', () => {
@@ -75,8 +71,8 @@ describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobi
 
   test('abas de topo: sem voltar', () => {
     expect(shouldShowBack('/')).toBe(false);
-    expect(shouldShowBack('/chat')).toBe(false);
     expect(shouldShowBack('/transcricoes')).toBe(false);
+    expect(shouldShowBack('/notas')).toBe(false);
   });
 
   test('/grafo (aba + chrome próprio): sem voltar', () => {
@@ -84,16 +80,10 @@ describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobi
     expect(shouldShowBack('/grafo/node-1')).toBe(false);
   });
 
-  test.each([
-    '/chat/abc',
-    '/jobs/123',
-    '/dashboard',
-    '/notas/abc',
-    '/automacoes',
-    '/setup',
-    '/conta',
-    '/admin/usuarios',
-  ])('sub-página %s: mostra voltar', (path) => {
-    expect(shouldShowBack(path)).toBe(true);
-  });
+  test.each(['/jobs/123', '/notas/abc', '/automacoes', '/setup', '/conta', '/admin/usuarios'])(
+    'sub-página %s: mostra voltar',
+    (path) => {
+      expect(shouldShowBack(path)).toBe(true);
+    },
+  );
 });

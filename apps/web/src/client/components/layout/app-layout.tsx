@@ -8,7 +8,6 @@ import { useMe } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
 import { useJobsWatcher } from '../../lib/use-jobs-watcher';
 import { useVersionMonitor } from '../../lib/use-version-monitor';
-import { ChatContextProvider } from '../../lib/chat-context-ctx';
 import { useIsDesktop } from '../../lib/use-media-query';
 import { useEdgeSwipe } from '../../lib/use-edge-swipe';
 import { showsMobileBack, hasOwnMobileChrome } from '../../lib/mobile-nav';
@@ -79,11 +78,10 @@ export function AppLayout(): React.ReactElement {
   }
 
   // App shell de altura fixa: o cabeçalho (Topbar) fica travado no topo e o
-  // conteúdo rola dentro do <main>. /chat e /grafo ocupam a tela toda e
-  // gerenciam a própria altura, então não recebem o overflow-y-auto/padding.
-  const isChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
+  // conteúdo rola dentro do <main>. /grafo ocupa a tela toda e gerencia a
+  // própria altura, então não recebe o overflow-y-auto/padding.
   const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
-  const isFullBleed = isChat || isGraph;
+  const isFullBleed = isGraph;
   // Botão de voltar flutuante (mobile): só em sub-páginas (não abas de topo) e
   // nunca em rotas que já têm chrome próprio de nav (ex.: /grafo).
   const showBack = showsMobileBack(location.pathname) && !hasOwnMobileChrome(location.pathname);
@@ -97,7 +95,7 @@ export function AppLayout(): React.ReactElement {
       backPad;
 
   return (
-    <ChatContextProvider>
+    <>
       <div className="flex h-dvh overflow-hidden bg-[var(--color-app-bg)]">
         <Sidebar user={data.user} />
         <MobileNavDrawer
@@ -115,14 +113,14 @@ export function AppLayout(): React.ReactElement {
           {!isFullBleed && <MobileBottomNav user={data.user} />}
         </div>
       </div>
-    </ChatContextProvider>
+    </>
   );
 }
 
 /**
  * Agrupa rotas por seção pra animar a troca ENTRE seções sem remontar ao
- * navegar dentro da mesma seção (ex.: /chat/a→/chat/b, /notas/x→/notas/y,
- * /jobs/1→/jobs/2 preservam estado e scroll).
+ * navegar dentro da mesma seção (ex.: /notas/x→/notas/y, /jobs/1→/jobs/2
+ * preservam estado e scroll).
  */
 function getSectionKey(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean);
@@ -137,7 +135,7 @@ function getSectionKey(pathname: string): string {
  * entrada via <AnimatedPage> sem NUNCA segurar a montagem do próximo conteúdo —
  * o que antes deixava a tela em branco ao navegar no build de produção.
  * Navegar dentro da mesma seção não remonta (mesma key), preservando estado e
- * scroll do chat, das notas e das páginas de detalhe.
+ * scroll das notas e das páginas de detalhe.
  */
 function AnimatedOutlet(): React.ReactElement {
   const location = useLocation();

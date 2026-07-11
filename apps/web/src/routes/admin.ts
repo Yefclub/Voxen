@@ -222,37 +222,6 @@ adminRoutes.delete('/mcp', async (c) => {
 });
 
 // ----------------------------------------------------------------------------
-// Telegram bot — setting do token (cifrado em DB)
-// ----------------------------------------------------------------------------
-adminRoutes.get('/telegram', async (c) => {
-  const token = await getSetting('telegram_bot_token').catch(() => null);
-  return c.json({
-    configured: !!token,
-    tokenPreview: token ? token.slice(0, 8) + '…' : null,
-  });
-});
-
-adminRoutes.put('/telegram', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { token?: string };
-  const token = body.token?.trim();
-  if (!token || token.length < 30) {
-    return c.json({ error: 'Token Telegram inválido (formato esperado: <id>:<hash>).' }, 400);
-  }
-  // Formato bot token: "1234567890:AAH...".
-  if (!/^\d+:[A-Za-z0-9_-]+$/.test(token)) {
-    return c.json({ error: 'Token fora do formato esperado.' }, 400);
-  }
-  await setSetting('telegram_bot_token', token);
-  return c.json({ configured: true });
-});
-
-adminRoutes.delete('/telegram', async (c) => {
-  const { deleteSetting } = await import('../lib/settings');
-  await deleteSetting('telegram_bot_token');
-  return c.json({ ok: true });
-});
-
-// ----------------------------------------------------------------------------
 // Agente de Proxy (túnel residencial) — token de conexão (cifrado em DB)
 // ----------------------------------------------------------------------------
 // Esta entrega cobre só a app web (token + status + UI). O runtime do chisel

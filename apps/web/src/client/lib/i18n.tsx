@@ -540,7 +540,7 @@ const ptBRMessages = {
 
   'admin.integrations.title': 'Integrações',
   'admin.integrations.description':
-    'Configure tokens para o bot do Telegram e o servidor MCP. Ambos ficam cifrados no banco com a master key.',
+    'Configure tokens do servidor MCP e integrações. Secrets ficam cifrados no banco com a master key.',
   'admin.integrations.telegram.title': 'Bot do Telegram',
   'admin.integrations.telegram.description':
     'Cole o token do bot (formato {format}). Crie um bot via {botFather} no Telegram.',
@@ -1492,7 +1492,7 @@ const enMessages: Record<I18nKey, string> = {
 
   'admin.integrations.title': 'Integrations',
   'admin.integrations.description':
-    'Configure tokens for the Telegram bot and MCP server. Both are encrypted in the database with the master key.',
+    'Configure MCP server tokens and integrations. Secrets are encrypted in the database with the master key.',
   'admin.integrations.telegram.title': 'Telegram bot',
   'admin.integrations.telegram.description':
     'Paste the bot token ({format}). Create a bot through {botFather} on Telegram.',

@@ -83,9 +83,9 @@ export async function listModels(
 }
 
 /**
- * Lista modelos multimodais (aceitam imagem como entrada). Usado pelo agente
- * pra entender imagens enviadas no chat ou no telegram. Filtra
- * `input_modalities=image,text` direto na OR.
+ * Lista modelos multimodais (aceitam imagem como entrada). Usado na análise
+ * de imagens enviadas como mídia. Filtra `input_modalities=image,text` direto
+ * na OR.
  */
 export async function listVisionModels(key: string, fetcher: Fetcher = fetch): Promise<OrModel[]> {
   let res: Response;
