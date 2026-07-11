@@ -1,17 +1,19 @@
-import { useEffect } from 'react';
-import { toast } from 'sonner';
-import { useI18n } from './i18n';
-import {
-  formatUpdateMessage,
-  resolveServerBuild,
-  shouldNotify,
-  type VersionPayload,
-} from './version-monitor-core';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { resolveServerBuild, shouldNotify, type VersionPayload } from './version-monitor-core';
+
+export interface VersionUpdate {
+  fromVersion: string | null;
+  toVersion: string | null;
+  serverBuild: string | null;
+}
+
+export interface VersionMonitorState {
+  update: VersionUpdate | null;
+  apply: () => void;
+  dismiss: () => void;
+}
 
 const VERSION_POLL_MS = 60_000;
-// Id fixo: sonner deduplica por id, então o toast nunca aparece em dobro
-// mesmo com vários ciclos de poll detectando a mesma versão nova.
-const UPDATE_TOAST_ID = 'voxen-version-update';
 // Build já tratado pelo usuário (dispensado OU acionado). Persistido pra que o
 // toast NÃO reapareça em loop pro mesmo build — o furo principal do sistema
 // antigo. Só um serverBuild diferente do registrado aqui volta a notificar.
@@ -69,7 +71,6 @@ async function nukeCachesAndServiceWorker(): Promise<void> {
  */
 async function applyUpdate(serverBuild: string | null): Promise<void> {
   if (serverBuild) writeHandledBuild(serverBuild);
-  toast.dismiss(UPDATE_TOAST_ID);
 
   let reloaded = false;
   const reloadOnce = (): void => {
@@ -113,8 +114,9 @@ async function applyUpdate(serverBuild: string | null): Promise<void> {
 
 /**
  * Monitor de versão (padrão Orbital): reconsulta /api/version a cada 60s +
- * nos eventos focus/online/visibilitychange e mostra toast com a transição de
- * versão (de→para) e ação de recarregar quando detecta build novo.
+ * nos eventos focus/online/visibilitychange e expõe a transição de versão
+ * (de→para) quando detecta build novo — renderizada como modal pelo
+ * `<UpdateModal>`, com ações de recarregar/dispensar.
  *
  * À prova de loop:
  *  - Persiste em localStorage o build que o usuário dispensou OU acionou; o
@@ -131,15 +133,17 @@ async function applyUpdate(serverBuild: string | null): Promise<void> {
  * 2. Fallback (dev Vite, builds antigos sem o meta): baseline da primeira
  *    resposta de /api/version.
  */
-export function useVersionMonitor(enabled: boolean): void {
-  const { t } = useI18n();
+export function useVersionMonitor(enabled: boolean): VersionMonitorState {
+  const [update, setUpdate] = useState<VersionUpdate | null>(null);
+  // Evita re-emitir o mesmo build a cada poll enquanto o modal está aberto.
+  const shownBuildRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
     const buildMeta =
       document.querySelector('meta[name="voxen-build"]')?.getAttribute('content') || null;
     // version amigável do bundle carregado (quando o meta = gitSha, fica null e
-    // o toast cai pro formato "(Y)").
+    // o modal cai pro formato "(Y)").
     let loadedVersion: string | null = null;
     // baseline de identidade (dev sem meta).
     let baseline: string | null = null;
@@ -181,23 +185,12 @@ export function useVersionMonitor(enabled: boolean): void {
       if (!shouldNotify({ serverBuild, loadedBuild, lastHandledBuild: readHandledBuild() })) {
         return;
       }
-
-      const message = formatUpdateMessage(t, {
-        loadedVersion,
-        serverVersion: payload.version ?? null,
-      });
-      toast(message, {
-        id: UPDATE_TOAST_ID,
-        duration: Infinity,
-        closeButton: true,
-        // Dispensar persiste: o mesmo build não reaparece.
-        onDismiss: () => {
-          if (serverBuild) writeHandledBuild(serverBuild);
-        },
-        action: {
-          label: t('shell.updateAction'),
-          onClick: () => void applyUpdate(serverBuild),
-        },
+      if (shownBuildRef.current === serverBuild) return;
+      shownBuildRef.current = serverBuild;
+      setUpdate({
+        fromVersion: loadedVersion,
+        toVersion: payload.version ?? null,
+        serverBuild,
       });
     };
 
@@ -222,5 +215,17 @@ export function useVersionMonitor(enabled: boolean): void {
       window.removeEventListener('online', onWake);
       document.removeEventListener('visibilitychange', onWake);
     };
-  }, [enabled, t]);
+  }, [enabled]);
+
+  const apply = useCallback(() => {
+    if (update) void applyUpdate(update.serverBuild);
+  }, [update]);
+
+  const dismiss = useCallback(() => {
+    // Dispensar persiste: o mesmo build não reaparece.
+    if (update?.serverBuild) writeHandledBuild(update.serverBuild);
+    setUpdate(null);
+  }, [update]);
+
+  return { update, apply, dismiss };
 }

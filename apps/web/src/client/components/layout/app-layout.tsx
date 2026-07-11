@@ -8,6 +8,7 @@ import { useMe } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
 import { useJobsWatcher } from '../../lib/use-jobs-watcher';
 import { useVersionMonitor } from '../../lib/use-version-monitor';
+import { UpdateModal } from '../update-modal';
 import { useIsDesktop } from '../../lib/use-media-query';
 import { useEdgeSwipe } from '../../lib/use-edge-swipe';
 import { showsMobileBack, hasOwnMobileChrome } from '../../lib/mobile-nav';
@@ -37,8 +38,8 @@ export function AppLayout(): React.ReactElement {
   useJobsWatcher(!!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone), (path) =>
     navigate(path),
   );
-  // Aviso de versão nova do backend (toast persistente com ação de recarregar)
-  useVersionMonitor(!!data?.user);
+  // Aviso de versão nova do backend — modal centralizado com o que mudou.
+  const versionMonitor = useVersionMonitor(!!data?.user);
 
   // O scroll vive no <main> (shell de altura fixa). Resetar ao topo a cada troca
   // de rota pra não herdar a posição da página anterior.
@@ -96,6 +97,7 @@ export function AppLayout(): React.ReactElement {
 
   return (
     <>
+      <UpdateModal monitor={versionMonitor} />
       <div className="flex h-dvh overflow-hidden bg-[var(--color-app-bg)]">
         <Sidebar user={data.user} />
         <MobileNavDrawer
