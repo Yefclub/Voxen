@@ -118,6 +118,13 @@ def test_friendly_error_proxy_refused() -> None:
     assert "integra" in msg.lower()
 
 
+def test_friendly_error_connection_refused_without_proxy_not_matched() -> None:
+    # Guarda contra falso-positivo: connection-refused SEM proxy/socks não deve
+    # virar a mensagem de "proxy fora do ar".
+    exc = RuntimeError("Failed to establish a new connection: [Errno 111] Connection refused")
+    assert pipeline._friendly_external_error(exc) is None
+
+
 def test_friendly_error_non_tiktok_returns_none() -> None:
     assert pipeline._friendly_external_error(RuntimeError("algo sem relação")) is None
 
