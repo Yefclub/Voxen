@@ -8,7 +8,6 @@ import {
   ShieldCheck,
   User as UserIcon,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import {
@@ -31,7 +30,7 @@ import { isBottomNavTab } from '../../lib/mobile-nav';
 interface MobileNavItem {
   to: string;
   labelKey: I18nKey;
-  Icon: typeof LayoutDashboard;
+  Icon: typeof House;
 }
 
 const ITEMS: MobileNavItem[] = [
