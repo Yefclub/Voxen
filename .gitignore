@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 .pnpm-store/
+# Projeto usa pnpm — nunca commitar lockfile de bun
+bun.lock
+bun.lockb
 .venv/
 __pycache__/
 *.pyc
