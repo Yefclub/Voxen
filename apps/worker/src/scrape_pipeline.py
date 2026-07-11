@@ -183,12 +183,14 @@ async def _maybe_generate_title(
         model = await voxen_settings.get_default_chat_model()
         if not api_key or not model:
             return fallback_title
+        language = await voxen_settings.get_app_language()
         result = await generate_content_title(
             content=clean_content,
             source_label="Página web",
             fallback_title=fallback_title,
             api_key=api_key,
             model=model,
+            language=language,
         )
         await db.insert_cost_event(
             user_id=user_id,
