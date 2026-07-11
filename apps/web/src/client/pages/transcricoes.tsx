@@ -162,8 +162,7 @@ export function TranscricoesPage(): React.ReactElement {
         }
       }
       refreshFolders();
-      // força refetch da lista
-      setSearchParams(new URLSearchParams(searchParams), { replace: true });
+      refreshTranscripts();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('library.reorgError'));
     } finally {
