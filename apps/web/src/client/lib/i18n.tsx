@@ -62,8 +62,6 @@ const ptBRMessages = {
     'As entradas aparecem quando PRs com changelog/unreleased são mergeadas em dev.',
   'novidades.promoted': '{count} mudanças incluídas',
   'shell.updateAvailable': 'Nova versão disponível',
-  'shell.updateAvailableTo': 'Nova versão disponível ({to})',
-  'shell.updateAvailableFromTo': 'Nova versão disponível ({from} → {to})',
   'shell.updateAction': 'Atualizar agora',
   'shell.updateModalSubtitle':
     'O Voxen foi atualizado enquanto você usava. Recarregue para pegar a versão mais recente.',
@@ -1044,8 +1042,6 @@ const enMessages: Record<I18nKey, string> = {
   'novidades.emptyHint': 'Entries appear when PRs with changelog/unreleased files merge into dev.',
   'novidades.promoted': '{count} included changes',
   'shell.updateAvailable': 'New version available',
-  'shell.updateAvailableTo': 'New version available ({to})',
-  'shell.updateAvailableFromTo': 'New version available ({from} → {to})',
   'shell.updateAction': 'Update now',
   'shell.updateModalSubtitle':
     'Voxen was updated while you were using it. Reload to get the latest version.',
