@@ -35,6 +35,7 @@ from .openrouter import (
     analyze_image,
     analyze_pdf_native,
     analyze_x_url,
+    classify_content_folder,
     generate_content_title,
     transcribe_audio,
 )
@@ -845,6 +846,66 @@ async def _transcribe_via_api(
     return tuple(all_segments), model, total_cost
 
 
+async def _maybe_assign_folder(
+    *,
+    user_id: str,
+    job_id: str,
+    transcript_id: str,
+    title: str,
+    content: str,
+    fallback_model: str | None,
+    log: Any,  # noqa: ANN401
+) -> None:
+    """Classifica o conteúdo em pasta 1:1 (cria se faltar). Best-effort."""
+    clean_content = content.strip()
+    if len(clean_content) < 40 and len(title.strip()) < 3:
+        return
+    try:
+        api_key = await voxen_settings.get_openrouter_api_key()
+        model = await voxen_settings.get_default_chat_model()
+        model = model or fallback_model
+        if not api_key or not model:
+            return
+        existing = await db.list_library_folder_names(user_id)
+        result = await _retry_transient_or(
+            lambda: classify_content_folder(
+                title=title,
+                content=clean_content or title,
+                existing_folders=existing,
+                api_key=api_key,
+                model=model,
+            ),
+            tries=2,
+        )
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="CHAT",
+            model=result.model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+            job_id=job_id,
+            meta={"source": "folder_classification", "folder_name": result.folder_name},
+        )
+        if not result.folder_name:
+            log.info("folder-classification-none", transcript_id=transcript_id)
+            return
+        folder_id = await db.ensure_library_folder(user_id, result.folder_name)
+        await db.set_transcript_folder(transcript_id, folder_id)
+        log.info(
+            "folder-assigned",
+            transcript_id=transcript_id,
+            folder_id=folder_id,
+            folder_name=result.folder_name,
+        )
+    except Exception as e:  # noqa: BLE001 — pasta é enriquecimento best-effort
+        log.warning(
+            "folder-classification-failed",
+            transcript_id=transcript_id,
+            error=str(e)[:240],
+        )
+
+
 async def _maybe_generate_title(
     *,
     user_id: str,
@@ -912,6 +973,7 @@ async def _persist(
     original_mime_type: str | None = None,
     preview_object_key: str | None = None,
     preview_mime_type: str | None = None,
+    log: Any | None = None,  # noqa: ANN401
 ) -> str:
     # Gera transcript_id e doc completo
     transcribed_at = datetime.now(UTC)
@@ -1019,6 +1081,16 @@ async def _persist(
             thumbnail_url=doc.thumbnail_url,
             plain_text=plain_text,
         )
+    assign_log = log or logger
+    await _maybe_assign_folder(
+        user_id=user_id,
+        job_id=job_id,
+        transcript_id=transcript_id,
+        title=doc.title,
+        content=plain_text,
+        fallback_model=model,
+        log=assign_log,
+    )
     return transcript_id
 
 
