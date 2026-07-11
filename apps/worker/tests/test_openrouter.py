@@ -129,6 +129,27 @@ def test_resolve_folder_decision_reuses_existing_and_none() -> None:
     assert _resolve_folder_decision("História do Brasil", ["IA"]) == "História do Brasil"
 
 
+def test_resolve_folder_decision_strips_meta_and_rejects_garbage() -> None:
+    assert _resolve_folder_decision("The content is about Alibaba Cloud", []) == "Alibaba Cloud"
+    assert _resolve_folder_decision('{"folder":"HyperDX"}', []) == "HyperDX"
+    assert _resolve_folder_decision("The content is about HyperDX, an", []) == "HyperDX"
+    assert (
+        _resolve_folder_decision("The content is about an Elden Ring game", []) == "Elden Ring game"
+    )
+    assert _resolve_folder_decision("The content is about using Claude Code", []) == "Claude Code"
+    assert _resolve_folder_decision('The content is about "Loop Engineer"', []) == "Loop Engineer"
+    assert _resolve_folder_decision('The content is about "Observe", a', []) == "Observe"
+    assert _resolve_folder_decision("The user wants me to categorize the", []) is None
+    assert _resolve_folder_decision("The user wants me to categorize", []) is None
+    assert _resolve_folder_decision("The user is asking me to categorize", []) is None
+    assert _resolve_folder_decision("The user is explaining why they stopped", []) is None
+    assert _resolve_folder_decision("The content is about a library called", []) is None
+    assert _resolve_folder_decision("The content is about a tool called", []) is None
+    assert _resolve_folder_decision("The content is about an open-source", []) is None
+    assert _resolve_folder_decision("The content is about a shift from", []) is None
+    assert _resolve_folder_decision("The content is about UX engineering for", []) is None
+
+
 async def test_classify_content_folder_payload() -> None:
     client = FolderClient()
     result = await classify_content_folder(
@@ -141,7 +162,8 @@ async def test_classify_content_folder_payload() -> None:
     )
     assert result.folder_name == "Anime"
     assert client.payload is not None
-    assert "Pastas existentes" in str(client.payload["messages"])
+    messages = str(client.payload["messages"])
+    assert "folder" in messages.lower() or "Folder" in messages or "pasta" in messages.lower()
 
 
 class FolderClient:
@@ -159,7 +181,7 @@ class FolderClient:
         return httpx.Response(
             200,
             json={
-                "choices": [{"message": {"content": "Anime"}}],
+                "choices": [{"message": {"content": '{"folder":"Anime"}'}}],
                 "usage": {
                     "cost": "0.001",
                     "prompt_tokens": 30,

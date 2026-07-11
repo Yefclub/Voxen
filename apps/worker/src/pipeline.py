@@ -930,6 +930,7 @@ async def _maybe_assign_folder(
         if not api_key or not model:
             return
         existing = await db.list_library_folder_names(user_id)
+        language = await voxen_settings.get_app_language()
         result = await _retry_transient_or(
             lambda: classify_content_folder(
                 title=title,
@@ -937,6 +938,7 @@ async def _maybe_assign_folder(
                 existing_folders=existing,
                 api_key=api_key,
                 model=model,
+                language=language,
             ),
             tries=2,
         )
