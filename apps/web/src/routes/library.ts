@@ -281,6 +281,8 @@ libraryRoutes.post('/reorganize', async (c) => {
 
 // Limpa TODAS as pastas do usuário: conteúdos ficam (folderId → null via onDelete SetNull).
 // Libera de novo o "Organizar com IA" (só classifica folderId null).
+// Brain cleanup é best-effort e NÃO bloqueia a resposta (evita 502 por timeout
+// quando há dezenas de pastas/conteúdos e reindex síncrono estoura o proxy).
 libraryRoutes.post('/folders/clear', async (c) => {
   const userId = c.get('userId');
   const folders = await db.libraryFolder.findMany({
@@ -291,21 +293,21 @@ libraryRoutes.post('/folders/clear', async (c) => {
     return c.json({ ok: true, deleted: 0, affectedTranscripts: 0 });
   }
   const folderIds = folders.map((f) => f.id);
-  const affectedTranscripts = await db.transcript.findMany({
+  const affectedCount = await db.transcript.count({
     where: { userId, folderId: { in: folderIds } },
-    select: { id: true },
   });
   await db.libraryFolder.deleteMany({ where: { userId } });
-  await deleteBrainForSources(userId, 'FOLDER', folderIds);
-  await reindexTranscriptsBrain(
-    userId,
-    affectedTranscripts.map((item) => item.id),
-  );
-  await invalidateGraphCache(userId);
+  // folderId já vai null (onDelete SetNull). Nós FOLDER do brain + arestas
+  // em cascata; não reindexa todos os transcripts síncrono.
+  void deleteBrainForSources(userId, 'FOLDER', folderIds)
+    .then(() => invalidateGraphCache(userId))
+    .catch((err) => {
+      console.warn('[library] clear folders brain cleanup failed', { userId, err });
+    });
   return c.json({
     ok: true,
     deleted: folderIds.length,
-    affectedTranscripts: affectedTranscripts.length,
+    affectedTranscripts: affectedCount,
   });
 });
 
