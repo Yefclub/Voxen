@@ -5,5 +5,10 @@ export function Skeleton({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>): React.ReactElement {
-  return <div className={cn('animate-pulse rounded-md bg-zinc-800/70', className)} {...props} />;
+  return (
+    <div
+      className={cn('animate-pulse rounded-md bg-[var(--color-app-surface-hover)]', className)}
+      {...props}
+    />
+  );
 }
