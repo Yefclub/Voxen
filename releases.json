@@ -1,1 +1,62 @@
-[]
+[
+  {
+    "version": "0.10.0-dev.1783761739",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Versionamento em dev via PR (compatível com branch protection)",
+    "body": "O bump automático `X.Y.Z-dev.timestamp` agora abre uma PR de versão e usa\nauto-merge, respeitando a proteção da branch `dev` (sem push direto).",
+    "pr": null,
+    "author": null,
+    "date": "2026-07-11T09:34:19Z"
+  },
+  {
+    "version": "0.10.0-dev.1783761739",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Correção do detector de PR de versão aberta",
+    "body": "O workflow de versionamento em dev não criava a PR de bump porque a busca\nde PRs abertas era ampla demais. Agora só considera títulos que começam com\n`chore: set version to `.",
+    "pr": null,
+    "author": null,
+    "date": "2026-07-11T09:34:19Z"
+  },
+  {
+    "version": "0.10.0-dev.1783761739",
+    "channel": "dev",
+    "type": "infra",
+    "title": "Versionamento automático em dev e changelog por PR",
+    "body": "A cada merge em `dev`, o Voxen agora grava a versão no `package.json` no formato\n`X.Y.Z-dev.<timestamp>` (commit `chore: set version to … for dev`), no mesmo\nestilo da Orbital.\n\nAlém disso, cada PR de produto passa a incluir um arquivo em\n`changelog/unreleased/` com a nota para o usuário final. No merge, a nota entra\nem `releases.json` e no `CHANGELOG.md` — base da página de Novidades.",
+    "pr": null,
+    "author": null,
+    "date": "2026-07-11T09:34:19Z"
+  },
+  {
+    "version": "0.10.0-dev.1783761739",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Página de Novidades com o histórico de versões",
+    "body": "Nova página **/novidades** na aplicação, acessível pelo rodapé da sidebar\n(versão clicável). Lista as notas de changelog de dev e produção geradas\nautomaticamente a partir das PRs, com filtros por canal.",
+    "pr": null,
+    "author": null,
+    "date": "2026-07-11T09:34:19Z"
+  },
+  {
+    "version": "0.10.0-dev.1783761739",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Biblioteca mais compacta, pastas e paginação",
+    "body": "A página de **Transcrições** ficou mais densa e fácil de escanear:\n\n- Cards em **lista minimalista** (thumb pequena, meta numa linha)\n- Pastas em chips (Todas / Sem pasta / pastas) com visual mais limpo\n- Botão **Apagar pastas** remove a organização sem apagar conteúdos — libera o Organizar com IA de novo\n- **Carregar mais** com paginação real na API (24 itens por página)",
+    "pr": null,
+    "author": null,
+    "date": "2026-07-11T09:34:19Z"
+  },
+  {
+    "version": "0.10.0-dev.1783761739",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Correção do workflow de versionamento em dev",
+    "body": "O commit automático de versão em `dev` (`X.Y.Z-dev.timestamp`) volta a funcionar —\no arquivo do workflow tinha um erro de YAML no filtro do commit do bot.",
+    "pr": null,
+    "author": null,
+    "date": "2026-07-11T09:34:19Z"
+  }
+]
