@@ -46,36 +46,3 @@ export function shouldNotify({
   if (serverBuild === lastHandledBuild) return false;
   return true;
 }
-
-export interface UpdateMessageArgs {
-  /** Versão amigável do bundle carregado (pode ser desconhecida no PWA). */
-  loadedVersion?: string | null;
-  /** Versão amigável servida agora. */
-  serverVersion?: string | null;
-}
-
-type Translate = (
-  key: 'shell.updateAvailable' | 'shell.updateAvailableTo' | 'shell.updateAvailableFromTo',
-  vars?: Record<string, string | number>,
-) => string;
-
-/**
- * Texto do toast com a transição de versão:
- *  - ambas conhecidas → "Nova versão disponível (X → Y)"
- *  - só a nova        → "Nova versão disponível (Y)"
- *  - nenhuma          → texto genérico
- */
-export function formatUpdateMessage(
-  t: Translate,
-  { loadedVersion, serverVersion }: UpdateMessageArgs,
-): string {
-  const to = serverVersion?.trim() || null;
-  const from = loadedVersion?.trim() || null;
-  if (to && from && from !== to) {
-    return t('shell.updateAvailableFromTo', { from, to });
-  }
-  if (to) {
-    return t('shell.updateAvailableTo', { to });
-  }
-  return t('shell.updateAvailable');
-}
