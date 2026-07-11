@@ -2,19 +2,19 @@
 
 [Português (Brasil)](README.md) | [English](docs/en/README.md)
 
-Plataforma web self-hosted de **biblioteca multimodal** com transcrição, análise de documentos/imagens e **chat-agente** que navega o acervo. Sem embeddings — abordagem harness/Karpathy.
+Plataforma web self-hosted de **biblioteca multimodal** com transcrição, análise de documentos/imagens e grafo de conhecimento. Acesso de agentes externos via **MCP**. Sem embeddings — abordagem harness/Karpathy.
 
 ## O que faz
 
 1. Cola um link ou envia um arquivo de áudio, vídeo, imagem ou documento
 2. Backend extrai conteúdo, faz chunking/transcrição quando necessário e usa OpenRouter para análise
 3. Salva como `.md` com metadados, timestamps quando existirem, link original e **resumo IA** em markdown
-4. Chat com agente Agno que lê / busca / resume / dispara novas análises via Postgres FTS + tools
+4. Organiza em pastas (IA + manual) e expõe o acervo via **MCP** e grafo Brain
 
 ## Stack
 
 - **Web/API**: Bun + Hono + Vite + React + Tailwind v4 + shadcn/ui (tema zinc)
-- **Chat**: Python + FastAPI + tool-calling sobre OpenRouter (streaming SSE)
+- **MCP**: Streamable HTTP no app web (`/mcp`) para clientes externos (Claude, Cursor, etc.)
 - **Worker**: Python + ARQ + extrator de mídia (`yt-dlp` internamente) + `ffmpeg`
 - **Auth**: better-auth (email/senha) com aprovação manual do admin
 - **DB**: Postgres 17 + Prisma + FTS (`tsvector` GIN, dicionário `portuguese`)
@@ -34,7 +34,7 @@ make dev
 
 Abre em `http://localhost:3000`. Primeiro cadastro vira admin e cai no onboarding (cola OpenRouter API key + escolhe modelos default). Pronto.
 
-`make dev` cria/completa `.env` se necessário, sobe Postgres, Redis, MinIO, web, chat e worker. MinIO fica em `http://localhost:9001`.
+`make dev` cria/completa `.env` se necessário, sobe Postgres, Redis, MinIO, web e worker. MinIO fica em `http://localhost:9001`.
 
 ## Subir em produção
 

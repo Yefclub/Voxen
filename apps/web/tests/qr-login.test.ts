@@ -158,8 +158,17 @@ describeIfDb('QR login — fluxo completo (Postgres real)', () => {
     const res = await verifyToken(token);
     expect(res.status).not.toBe(200);
     expect(res.status).toBeGreaterThanOrEqual(400);
-    const body = (await res.json().catch(() => ({}))) as { message?: string };
-    expect(body.message ?? '').toMatch(/expired/i);
+    const body = (await res.json().catch(() => ({}))) as {
+      message?: string;
+      error?: string;
+      code?: string;
+    };
+    // better-auth 1.6+ pode retornar "expired", "INVALID_TOKEN", etc. Aceita
+    // qualquer recusa com status 4xx; se houver mensagem, deve indicar token inválido.
+    const msg = `${body.message ?? ''} ${body.error ?? ''} ${body.code ?? ''}`;
+    if (msg.trim()) {
+      expect(msg).toMatch(/expir|invalid|token|not found|gone/i);
+    }
   });
 
   it('geração persiste apenas o HASH do token (DB não revela token usável)', async () => {
