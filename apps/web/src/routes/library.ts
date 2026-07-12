@@ -21,6 +21,7 @@ import {
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { classifyFolderForContent } from '../lib/folder-classify';
+import { generateTitleForContent } from '../lib/title-generate';
 import { isSetupComplete } from '../lib/settings';
 
 type Vars = { userId: string };
@@ -276,6 +277,108 @@ libraryRoutes.post('/reorganize', async (c) => {
     failed,
     remaining,
     pendingTotal,
+  });
+});
+
+function titleSourceLabel(item: { source: string; channel: string | null; url: string }): string {
+  if (item.source === 'WEB') return 'Página web';
+  if (item.source === 'UPLOAD') return 'Upload';
+  return item.channel ? `${item.channel} · ${item.source}` : `Conteúdo ${item.source}`;
+}
+
+// POST /api/library/regenerate-titles — regenera o título editorial via IA em
+// lote, drenando o acervo por cursor (createdAt+id desc). Idempotente: re-rodar
+// devolve KEEP para títulos já bons. CUSTA créditos (1 chamada LLM por item).
+libraryRoutes.post('/regenerate-titles', async (c) => {
+  const userId = c.get('userId');
+  if (!(await isSetupComplete())) {
+    return c.json({ error: 'Setup incompleto.' }, 412);
+  }
+
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number; cursor?: string };
+  const limitRaw = Number(body.limit ?? 15);
+  const limit =
+    Number.isFinite(limitRaw) && limitRaw >= 1 && limitRaw <= 40 ? Math.floor(limitRaw) : 15;
+  const cursor = typeof body.cursor === 'string' && body.cursor ? body.cursor : null;
+
+  const pendingTotal = await db.transcript.count({ where: { userId, status: 'ACTIVE' } });
+
+  const batch = await db.transcript.findMany({
+    where: { userId, status: 'ACTIVE' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: limit,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    select: {
+      id: true,
+      title: true,
+      source: true,
+      channel: true,
+      url: true,
+      plainText: true,
+      summaryMd: true,
+    },
+  });
+
+  let changed = 0;
+  let kept = 0;
+  let skipped = 0;
+  let failed = 0;
+  const changedIds: string[] = [];
+
+  for (const item of batch) {
+    try {
+      const content = ((item.plainText ?? '') || (item.summaryMd ?? '')).trim();
+      if (content.length < 40) {
+        skipped += 1;
+        continue;
+      }
+      const result = await generateTitleForContent({
+        title: item.title,
+        content,
+        sourceLabel: titleSourceLabel(item),
+      });
+      await db.costEvent.create({
+        data: {
+          userId,
+          kind: 'CHAT',
+          model: result.model,
+          tokensIn: result.tokensIn,
+          tokensOut: result.tokensOut,
+          costUsd: result.costUsd,
+          meta: { source: 'title_generation_backfill', transcript_id: item.id },
+        },
+      });
+      if (result.changed) {
+        await db.transcript.updateMany({
+          where: { id: item.id, userId },
+          data: { title: result.title },
+        });
+        changedIds.push(item.id);
+        changed += 1;
+      } else {
+        kept += 1;
+      }
+    } catch {
+      failed += 1;
+    }
+  }
+
+  if (changedIds.length > 0) {
+    await reindexTranscriptsBrain(userId, changedIds).catch(() => {});
+    await invalidateGraphCache(userId).catch(() => {});
+  }
+
+  // Continua enquanto o lote veio cheio (há mais para drenar).
+  const nextCursor = batch.length === limit ? (batch[batch.length - 1]?.id ?? null) : null;
+
+  return c.json({
+    processed: batch.length,
+    changed,
+    kept,
+    skipped,
+    failed,
+    pendingTotal,
+    nextCursor,
   });
 });
 
