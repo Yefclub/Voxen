@@ -23,7 +23,7 @@ export type GlobalSettingKey =
   // Modelo dedicado a pesquisa na web. A tool `web_search` usa a server tool
   // OpenRouter `openrouter:web_search`; não depende do sufixo deprecated :online.
   | 'default_web_search_model'
-  // Modelo multimodal pra entender imagens (upload via chat/telegram).
+  // Modelo multimodal pra entender imagens (upload de mídia).
   // Filtrado por modalities=['image'] no /api/openrouter/models.
   | 'default_vision_model'
   // Modelo multimodal/documental pra PDF nativo e análise de documentos.
@@ -36,19 +36,27 @@ export type GlobalSettingKey =
   // YouTube bloqueia downloads de datacenter (proxy residencial controlado
   // pelo operador).
   | 'yt_dlp_proxy_urls'
+  // Conteúdo do cookies.txt (formato Netscape) para extração autenticada via
+  // yt-dlp (Instagram serve rendition só-vídeo sem login; YouTube anti-bot).
+  // Secret cifrado — espelha yt_dlp_proxy_urls. NUNCA retornado em texto por
+  // endpoint nem logado; worker materializa em arquivo temp 600. Ver spec 063.
+  | 'yt_dlp_cookies'
   | 'allow_signups'
   | 'onboarding_done'
-  // Opcional: email do admin do deploy. Quando setado, scraper inclui
-  // `From: <email>` no User-Agent (boa-prática pra sites identificarem o operador).
-  | 'admin_email'
-  // Opcional: timeout (segundos) da chamada de summarize-transcript no chat
-  // service. Default 90s. Útil pra textos muito longos ou modelos lentos.
+  // Opcional: timeout (segundos) da chamada de resumo via OpenRouter.
+  // Default 120s. Útil pra textos muito longos ou modelos lentos.
   | 'summary_timeout_sec'
   // MCP server token (formato `<userId>:<token>`). Endpoint /mcp aceita
   // Bearer <token> e mapeia pro userId. Apenas 1 token por instância no MVP.
   | 'mcp_api_token'
-  // Telegram bot token (cifrado). Quando setado, worker telegram conecta.
-  | 'telegram_bot_token';
+  // Token de conexão do agente de proxy residencial (chisel). Cifrado em DB.
+  // O agente residencial usa este token pra autenticar o túnel reverso.
+  // Apenas 1 token por instância no MVP. Ver spec 058.
+  | 'proxy_agent_token'
+  // Switch on/off do Agente de Proxy: 'true'/'false'. Controla se o worker
+  // roteia a extração pelo SOCKS do túnel (yt_dlp_proxy_urls). Independente do
+  // token — desligar não apaga o token nem exige reinstalar o agente.
+  | 'proxy_agent_enabled';
 
 const X_ANALYSIS_SETTING_KEYS = [
   'default_x_analysis_model',

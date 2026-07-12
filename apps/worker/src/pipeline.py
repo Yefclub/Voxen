@@ -35,6 +35,7 @@ from .openrouter import (
     analyze_image,
     analyze_pdf_native,
     analyze_x_url,
+    classify_content_folder,
     generate_content_title,
     transcribe_audio,
 )
@@ -133,8 +134,28 @@ async def process_job(job_id: str) -> None:
         clear_cancelled(job_id)
 
 
+def _is_tiktok_rehydration_error(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return "tiktok" in text and (
+        "unable to extract" in text or "rehydration" in text or "universal data" in text
+    )
+
+
 def _friendly_external_error(exc: BaseException) -> str | None:
     text = str(exc).lower()
+    # Proxy/túnel de download fora do ar: o egress está configurado para sair por
+    # um proxy (ex.: SOCKS do Agente de Proxy residencial em 127.0.0.1:1080) e a
+    # conexão com ELE foi recusada — não com a plataforma. Sem isso, TODO download
+    # falha igual. Mensagem acionável em vez do stack cru de "Connection refused".
+    if "connection refused" in text and (
+        "socks" in text or "proxy" in text or "127.0.0.1:1080" in text
+    ):
+        return (
+            "O download está configurado para sair por um proxy, mas ele está fora "
+            "do ar (conexão recusada). Se você usa o Agente de Proxy residencial, "
+            "verifique em Admin → Integrações se ele está conectado; ou remova/ajuste "
+            "o proxy nas configurações para o servidor baixar direto."
+        )
     if "tiktok" in text and (
         "unable to extract" in text or "rehydration" in text or "universal data" in text
     ):
@@ -156,10 +177,44 @@ def _friendly_external_error(exc: BaseException) -> str | None:
             "ou peça ao admin para configurar um proxy residencial nas configurações da instância. "
             "Por que isso acontece em VPS? Veja docs/DEPLOY.md (Home-lab vs VPS)."
         )
-    if "private video" in text or "login required" in text or "members-only" in text:
+    if "http error 403" in text or "status code 403" in text or "access denied" in text:
         return (
-            "Este vídeo exige login ou não está público. "
-            "Envie um link público ou faça upload do arquivo."
+            "A plataforma recusou o download (HTTP 403 / acesso negado). "
+            "Em VPS isso é comum: configure proxy residencial e/ou cookies nas "
+            "integrações, ou envie o arquivo por upload."
+        )
+    if "http error 429" in text or "too many requests" in text or "rate-limit" in text:
+        return (
+            "A plataforma limitou requisições (rate limit). Aguarde alguns minutos e tente de novo."
+        )
+    if "geo" in text and ("restrict" in text or "blocked" in text or "not available" in text):
+        return (
+            "Este conteúdo não está disponível na região do servidor (bloqueio geográfico). "
+            "Use proxy residencial ou upload manual."
+        )
+    if "format is not available" in text or "requested format is not available" in text:
+        return (
+            "Não encontrei um formato de mídia compatível neste link. "
+            "Tente outro link ou envie o arquivo por upload."
+        )
+    if "unable to obtain file audio codec" in text or ("ffprobe" in text and "audio" in text):
+        return (
+            "Este conteúdo foi servido sem faixa de áudio (a plataforma entregou só "
+            "vídeo, ou exige login). Não dá pra transcrever sem áudio. Tente novamente "
+            "em alguns minutos; se for Instagram, configure cookies de login nas "
+            "integrações, ou envie o arquivo por upload manual."
+        )
+    if (
+        "private video" in text
+        or "login required" in text
+        or "members-only" in text
+        or "fresh cookies" in text
+        or ("instagram" in text and ("login" in text or "cookie" in text))
+    ):
+        return (
+            "Este conteúdo exige login ou cookies frescos. "
+            "Peça ao admin para atualizar cookies (Netscape) nas integrações, "
+            "ou envie um link público / arquivo por upload."
         )
     if "video unavailable" in text or "this video is unavailable" in text:
         return (
@@ -193,7 +248,18 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
         cost_total: Decimal | None = None
         language = transcript_fetch.language
     else:
-        probe_info = await _retry_transient(lambda: ytdl.probe(source_url), tries=3)
+        try:
+            probe_info = await _retry_transient(lambda: ytdl.probe(source_url), tries=3)
+        except _TRANSIENT_EXC as e:
+            # TikTok: retry forçando impersonate chrome quando rehydration falha.
+            if _is_tiktok_rehydration_error(e) and video_url.detect_source(source_url) == "TIKTOK":
+                log.warning("tiktok-probe-retry-impersonate-chrome", error=str(e)[:200])
+                probe_info = await _retry_transient(
+                    lambda: ytdl.probe(source_url, force_impersonate="chrome"),
+                    tries=2,
+                )
+            else:
+                raise
         if probe_info.duration_sec > ytdl.MAX_DURATION_SEC:
             raise PermanentError("Vídeo excede a duração máxima de 4 horas.")
 
@@ -235,9 +301,26 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                 language = subtitle_lang.split("-")[0]
             else:
                 log.info("path-api")
-                audio_path = await _retry_transient(
-                    lambda: ytdl.download_audio_opus(source_url, tmpdir), tries=3
-                )
+                try:
+                    audio_path = await _retry_transient(
+                        lambda: ytdl.download_audio_opus(source_url, tmpdir), tries=3
+                    )
+                except _TRANSIENT_EXC as e:
+                    if video_url.detect_source(
+                        source_url
+                    ) == "TIKTOK" and _is_tiktok_rehydration_error(e):
+                        log.warning(
+                            "tiktok-audio-retry-impersonate-chrome",
+                            error=str(e)[:200],
+                        )
+                        audio_path = await _retry_transient(
+                            lambda: ytdl.download_audio_opus(
+                                source_url, tmpdir, force_impersonate="chrome"
+                            ),
+                            tries=2,
+                        )
+                    else:
+                        raise
                 await events.publish_job_event(user_id, job_id, "transcribing", percent=30)
                 segments, model, cost_total = await _transcribe_via_api(
                     audio_path=audio_path,
@@ -253,6 +336,18 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
     if not segments:
         raise PermanentError("Transcrição vazia — nenhum texto extraído.")
 
+    source_for_label = video_url.detect_source(source_url) or "VIDEO"
+    content_for_title = "\n".join(seg.text.strip() for seg in segments if seg.text.strip())
+    generated_title = await _maybe_generate_title(
+        user_id=user_id,
+        job_id=job_id,
+        content=content_for_title,
+        source_label=f"Vídeo {source_for_label}",
+        fallback_title=probe_info.title,
+        fallback_model=model,
+        log=log,
+    )
+
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "uploading", percent=80)
     new_transcript_id = await _persist(
@@ -265,6 +360,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
         model=model,
         cost_usd=cost_total if method == "API" else None,
         language=language,
+        title_override=generated_title,
     )
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
@@ -826,6 +922,68 @@ async def _transcribe_via_api(
     return tuple(all_segments), model, total_cost
 
 
+async def _maybe_assign_folder(
+    *,
+    user_id: str,
+    job_id: str,
+    transcript_id: str,
+    title: str,
+    content: str,
+    fallback_model: str | None,
+    log: Any,  # noqa: ANN401
+) -> None:
+    """Classifica o conteúdo em pasta 1:1 (cria se faltar). Best-effort."""
+    clean_content = content.strip()
+    if len(clean_content) < 40 and len(title.strip()) < 3:
+        return
+    try:
+        api_key = await voxen_settings.get_openrouter_api_key()
+        model = await voxen_settings.get_default_chat_model()
+        model = model or fallback_model
+        if not api_key or not model:
+            return
+        existing = await db.list_library_folder_names(user_id)
+        language = await voxen_settings.get_app_language()
+        result = await _retry_transient_or(
+            lambda: classify_content_folder(
+                title=title,
+                content=clean_content or title,
+                existing_folders=existing,
+                api_key=api_key,
+                model=model,
+                language=language,
+            ),
+            tries=2,
+        )
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="CHAT",
+            model=result.model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+            job_id=job_id,
+            meta={"source": "folder_classification", "folder_name": result.folder_name},
+        )
+        if not result.folder_name:
+            log.info("folder-classification-none", transcript_id=transcript_id)
+            return
+        folder_id = await db.ensure_library_folder(user_id, result.folder_name)
+        await db.set_transcript_folder(transcript_id, folder_id)
+        log.info(
+            "folder-assigned",
+            transcript_id=transcript_id,
+            folder_id=folder_id,
+            folder_name=result.folder_name,
+        )
+    except Exception as e:  # noqa: BLE001 — pasta é enriquecimento best-effort
+        log.warning(
+            "folder-classification-failed",
+            transcript_id=transcript_id,
+            error=str(e)[:240],
+        )
+
+
 async def _maybe_generate_title(
     *,
     user_id: str,
@@ -845,6 +1003,7 @@ async def _maybe_generate_title(
         model = model or fallback_model
         if not api_key or not model:
             return None
+        language = await voxen_settings.get_app_language()
         result = await _retry_transient_or(
             lambda: generate_content_title(
                 content=clean_content,
@@ -852,6 +1011,7 @@ async def _maybe_generate_title(
                 fallback_title=fallback_title,
                 api_key=api_key,
                 model=model,
+                language=language,
             ),
             tries=2,
         )
@@ -893,6 +1053,7 @@ async def _persist(
     original_mime_type: str | None = None,
     preview_object_key: str | None = None,
     preview_mime_type: str | None = None,
+    log: Any | None = None,  # noqa: ANN401
 ) -> str:
     # Gera transcript_id e doc completo
     transcribed_at = datetime.now(UTC)
@@ -1000,6 +1161,16 @@ async def _persist(
             thumbnail_url=doc.thumbnail_url,
             plain_text=plain_text,
         )
+    assign_log = log or logger
+    await _maybe_assign_folder(
+        user_id=user_id,
+        job_id=job_id,
+        transcript_id=transcript_id,
+        title=doc.title,
+        content=plain_text,
+        fallback_model=model,
+        log=assign_log,
+    )
     return transcript_id
 
 

@@ -1,7 +1,8 @@
-"""Testes do summary.maybe_generate (best-effort, delega pro chat service)."""
+"""Testes do summary.maybe_generate (best-effort, OpenRouter direto no worker)."""
 
 from __future__ import annotations
 
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -24,6 +25,17 @@ class _FakeLogger:
         self.events.append(("exception", event))
 
 
+def _patch_db_fetch(monkeypatch: pytest.MonkeyPatch, row: dict[str, object] | None) -> MagicMock:
+    fake_conn = MagicMock()
+    fake_conn.fetchrow = AsyncMock(return_value=row)
+    fake_conn.execute = AsyncMock()
+    fake_ctx = MagicMock()
+    fake_ctx.__aenter__ = AsyncMock(return_value=fake_conn)
+    fake_ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(summary.db, "connection", lambda: fake_ctx)
+    return fake_conn
+
+
 async def test_skip_when_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _job_id: True)
     log = _FakeLogger()
@@ -33,13 +45,7 @@ async def test_skip_when_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
 
 async def test_skip_when_row_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
-
-    fake_conn = MagicMock()
-    fake_conn.fetchrow = AsyncMock(return_value=None)
-    fake_ctx = MagicMock()
-    fake_ctx.__aenter__ = AsyncMock(return_value=fake_conn)
-    fake_ctx.__aexit__ = AsyncMock(return_value=False)
-    monkeypatch.setattr(summary.db, "connection", lambda: fake_ctx)
+    _patch_db_fetch(monkeypatch, None)
 
     log = _FakeLogger()
     await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
@@ -48,37 +54,66 @@ async def test_skip_when_row_missing(monkeypatch: pytest.MonkeyPatch) -> None:
 
 async def test_skip_when_plain_text_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
-
-    fake_conn = MagicMock()
-    fake_conn.fetchrow = AsyncMock(return_value={"title": "X", "plainText": ""})
-    fake_ctx = MagicMock()
-    fake_ctx.__aenter__ = AsyncMock(return_value=fake_conn)
-    fake_ctx.__aexit__ = AsyncMock(return_value=False)
-    monkeypatch.setattr(summary.db, "connection", lambda: fake_ctx)
+    _patch_db_fetch(monkeypatch, {"title": "X", "plainText": ""})
 
     log = _FakeLogger()
     await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
     assert ("info", "summary-skipped-empty-text") in log.events
 
 
+async def test_skip_when_missing_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
+    _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem ipsum"})
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_openrouter_api_key",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_default_chat_model",
+        AsyncMock(return_value="openai/gpt-4o-mini"),
+    )
+
+    log = _FakeLogger()
+    await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
+    assert ("warning", "summary-skipped-missing-config") in log.events
+
+
 async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
+    fake_conn = _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem ipsum"})
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_openrouter_api_key",
+        AsyncMock(return_value="sk-test"),
+    )
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_default_chat_model",
+        AsyncMock(return_value="openai/gpt-4o-mini"),
+    )
     monkeypatch.setattr(
         summary.voxen_settings,
         "get_summary_timeout_sec",
         AsyncMock(return_value=42.0),
     )
-
-    fake_conn = MagicMock()
-    fake_conn.fetchrow = AsyncMock(return_value={"title": "T", "plainText": "lorem ipsum"})
-    fake_ctx = MagicMock()
-    fake_ctx.__aenter__ = AsyncMock(return_value=fake_conn)
-    fake_ctx.__aexit__ = AsyncMock(return_value=False)
-    monkeypatch.setattr(summary.db, "connection", lambda: fake_ctx)
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
+    insert_cost = AsyncMock()
+    monkeypatch.setattr(summary.db, "insert_cost_event", insert_cost)
 
     fake_response = MagicMock()
     fake_response.status_code = 200
-    fake_response.json = MagicMock(return_value={"summary_md": "## TL;DR\nfoo"})
+    fake_response.json = MagicMock(
+        return_value={
+            "choices": [{"message": {"content": "## Em poucas linhas\nfoo"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "cost": "0.001"},
+        }
+    )
     seen_timeout: dict[str, object] = {}
 
     async def fake_post(self: httpx.AsyncClient, *args: object, **kw: object) -> object:
@@ -96,28 +131,46 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
     ):
         log = _FakeLogger()
         await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
+
     assert ("info", "summary-done") in log.events
     assert seen_timeout["value"] == 42.0
+    fake_conn.execute.assert_awaited()
+    insert_cost.assert_awaited()
+    kwargs = insert_cost.await_args.kwargs
+    assert kwargs["kind"] == "CHAT"
+    assert kwargs["cost_usd"] == Decimal("0.001")
+    assert kwargs["meta"]["transcript_id"] == "t1"
 
 
 async def test_logs_empty_when_200_without_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
+    _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem"})
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_openrouter_api_key",
+        AsyncMock(return_value="sk-test"),
+    )
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_default_chat_model",
+        AsyncMock(return_value="openai/gpt-4o-mini"),
+    )
     monkeypatch.setattr(
         summary.voxen_settings,
         "get_summary_timeout_sec",
         AsyncMock(return_value=120.0),
     )
-
-    fake_conn = MagicMock()
-    fake_conn.fetchrow = AsyncMock(return_value={"title": "T", "plainText": "lorem"})
-    fake_ctx = MagicMock()
-    fake_ctx.__aenter__ = AsyncMock(return_value=fake_conn)
-    fake_ctx.__aexit__ = AsyncMock(return_value=False)
-    monkeypatch.setattr(summary.db, "connection", lambda: fake_ctx)
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
 
     fake_response = MagicMock()
     fake_response.status_code = 200
-    fake_response.json = MagicMock(return_value={"summary_md": ""})
+    fake_response.json = MagicMock(
+        return_value={"choices": [{"message": {"content": ""}}], "usage": {}}
+    )
 
     async def fake_post(self: httpx.AsyncClient, *args: object, **kw: object) -> object:
         return fake_response
@@ -130,18 +183,27 @@ async def test_logs_empty_when_200_without_summary(monkeypatch: pytest.MonkeyPat
 
 async def test_warns_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
+    _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem"})
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_openrouter_api_key",
+        AsyncMock(return_value="sk-test"),
+    )
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_default_chat_model",
+        AsyncMock(return_value="openai/gpt-4o-mini"),
+    )
     monkeypatch.setattr(
         summary.voxen_settings,
         "get_summary_timeout_sec",
         AsyncMock(return_value=120.0),
     )
-
-    fake_conn = MagicMock()
-    fake_conn.fetchrow = AsyncMock(return_value={"title": "T", "plainText": "lorem"})
-    fake_ctx = MagicMock()
-    fake_ctx.__aenter__ = AsyncMock(return_value=fake_conn)
-    fake_ctx.__aexit__ = AsyncMock(return_value=False)
-    monkeypatch.setattr(summary.db, "connection", lambda: fake_ctx)
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
 
     fake_response = MagicMock()
     fake_response.status_code = 502
@@ -168,3 +230,12 @@ async def test_exception_is_logged_but_not_raised(monkeypatch: pytest.MonkeyPatc
     # Não levanta — best-effort
     await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
     assert ("exception", "summary-failed") in log.events
+
+
+def test_build_summarize_prompt_no_tldr_pt_and_en() -> None:
+    pt = summary.build_summarize_prompt("pt-BR")
+    en = summary.build_summarize_prompt("en")
+    assert "## TL;DR" not in pt and "## TLDR" not in pt
+    assert "Em poucas linhas" in pt
+    assert "## TL;DR" not in en and "## TLDR" not in en
+    assert "In short" in en

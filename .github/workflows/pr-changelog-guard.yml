@@ -1,0 +1,92 @@
+# ============================================================================
+# PR Changelog Guard — exige changeset em changelog/unreleased/*.md
+# ============================================================================
+# Isento: PRs que só tocam .github/, docs/, *.md de raiz, LICENSE, dotfiles.
+# Release (base main): exige changelog/RELEASE.md curado.
+# ============================================================================
+
+name: PR Changelog Guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Require a changelog file
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -uo pipefail
+          if [ "$BASE_REF" = "main" ]; then
+            WATCH="changelog/RELEASE.md"
+            IS_RELEASE=1
+          else
+            WATCH="changelog/unreleased"
+            IS_RELEASE=0
+          fi
+          git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
+          BASE=$(git merge-base "origin/$BASE_REF" HEAD 2>/dev/null || echo "")
+          if [ -z "$BASE" ]; then BASE=$(git rev-parse --verify -q HEAD~1 || echo ""); fi
+
+          # PR automática de version-dev: título começa com "chore: set version to "
+          TITLE=$(gh pr view "${{ github.event.pull_request.number }}" --json title -q .title 2>/dev/null || echo "")
+          if [ "$IS_RELEASE" = 0 ] && [[ "$TITLE" == chore:\ set\ version\ to\ * ]]; then
+            echo "[changelog] PR de version-dev (isento) — changelog não exigido."
+            exit 0
+          fi
+
+          if [ "$IS_RELEASE" = 0 ] && [ -n "$BASE" ]; then
+            ALL=$(git diff --name-only "$BASE" HEAD 2>/dev/null || echo "")
+            NON_EXEMPT=0
+            for f in $ALL; do
+              case "$f" in
+                .github/*|docs/*|*.md|.gitignore|.gitattributes|.editorconfig|.prettierignore|LICENSE*|changelog/*|releases.json|scripts/release-notes.mjs|package.json|apps/*/package.json) ;;
+                *) NON_EXEMPT=1 ;;
+              esac
+            done
+            if [ -n "$ALL" ] && [ "$NON_EXEMPT" = 0 ]; then
+              echo "[changelog] PR só toca infra/CI/docs/version (isento) — changelog não exigido."
+              exit 0
+            fi
+          fi
+
+          if [ -n "$BASE" ]; then
+            CHANGED=$(git diff --name-only --diff-filter=AM "$BASE" HEAD -- "$WATCH")
+          else
+            CHANGED=$(git ls-files "$WATCH")
+          fi
+          MD=""
+          for f in $CHANGED; do case "$f" in *.md) MD="$MD $f" ;; esac; done
+
+          if [ -z "${MD// }" ]; then
+            if [ "$IS_RELEASE" = 1 ]; then
+              echo "::error::PR de release sem changelog/RELEASE.md (changelog curado de produção)."
+            else
+              echo "::error::PR sem changelog. Crie changelog/unreleased/<slug>.md (tipo + titulo + corpo)."
+            fi
+            exit 1
+          fi
+
+          FAIL=0
+          for f in $MD; do
+            if ! RN_SOURCE="$f" node scripts/release-notes.mjs check; then FAIL=1; fi
+          done
+          if [ "$FAIL" != 0 ]; then
+            echo "::error::Arquivo de changelog inválido."
+            exit 1
+          fi
+          echo "[changelog] OK — changelog presente e válido."

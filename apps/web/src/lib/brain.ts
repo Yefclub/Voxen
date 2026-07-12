@@ -1,4 +1,4 @@
-import type { Prisma } from '../../prisma-generated/client';
+import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 
 type BrainSourceType = 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL';
@@ -16,6 +16,10 @@ type BrainEdgeKind =
 type ContentStatus = 'ACTIVE' | 'ARCHIVED' | 'TRASH';
 
 type JsonObject = Prisma.InputJsonObject;
+
+function isBrainFkError(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003';
+}
 
 type BrainNodeInput = {
   userId: string;
@@ -268,7 +272,12 @@ export async function reindexTranscriptsBrain(
       })
     ).map((item) => item.id);
   for (const id of ids) {
-    await reindexTranscriptBrain(userId, id);
+    try {
+      await reindexTranscriptBrain(userId, id);
+    } catch (err) {
+      // Reindex de um item não deve derrubar o lote (ex.: corrida de FK no grafo).
+      console.warn('[brain] reindexTranscriptBrain failed', { userId, id, err });
+    }
   }
 }
 
@@ -357,7 +366,11 @@ export async function reindexNotesBrain(userId: string): Promise<void> {
   });
   const indexes = buildNoteIndexes(notes);
   for (const note of notes) {
-    await reindexNoteRecord(userId, note, indexes);
+    try {
+      await reindexNoteRecord(userId, note, indexes);
+    } catch (err) {
+      console.warn('[brain] reindexNoteRecord failed', { userId, noteId: note.id, err });
+    }
   }
 }
 
@@ -469,10 +482,13 @@ async function deleteAutomaticContentEdgesForSource(
 }
 
 async function deleteOrphanAutomaticConceptNodes(userId: string): Promise<void> {
+  // Grace de 2 min: evita apagar tópico/entidade "recém-nascido" no meio do
+  // reindex concorrente (upsert node → cleanup órfão → upsert edge = P2003).
   await db.$executeRaw`
     DELETE FROM "BrainNode" n
     WHERE n."userId" = ${userId}
       AND n."sourceType" IS NULL
+      AND n."updatedAt" < NOW() - INTERVAL '2 minutes'
       AND (
         (n.type = 'TOPIC'::"BrainNodeType" AND n.metadata->>'method' = 'keyword')
         OR (n.type = 'ENTITY'::"BrainNodeType" AND n.metadata->>'method' = 'entity-heuristic')
@@ -964,40 +980,70 @@ async function upsertBrainNode(input: BrainNodeInput) {
 }
 
 async function upsertBrainEdge(input: BrainEdgeInput) {
-  const edge = await db.brainEdge.upsert({
-    where: {
-      userId_fromNodeId_toNodeId_kind_method: {
+  // Até 2 tentativas: corrida com orphan cleanup / reindex paralelo pode apagar
+  // nó ou aresta entre o upsert e o BrainSource.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const endpoints = await db.brainNode.findMany({
+        where: {
+          userId: input.userId,
+          id: { in: [input.fromNodeId, input.toNodeId] },
+        },
+        select: { id: true },
+      });
+      if (endpoints.length < 2) {
+        return null;
+      }
+      const edge = await db.brainEdge.upsert({
+        where: {
+          userId_fromNodeId_toNodeId_kind_method: {
+            userId: input.userId,
+            fromNodeId: input.fromNodeId,
+            toNodeId: input.toNodeId,
+            kind: input.kind,
+            method: input.method,
+          },
+        },
+        update: {
+          confidence: input.confidence ?? 1,
+          status: input.status ?? 'ACTIVE',
+          metadata: input.metadata ?? {},
+        },
+        create: {
+          userId: input.userId,
+          fromNodeId: input.fromNodeId,
+          toNodeId: input.toNodeId,
+          kind: input.kind,
+          method: input.method,
+          confidence: input.confidence ?? 1,
+          status: input.status ?? 'ACTIVE',
+          metadata: input.metadata ?? {},
+        },
+      });
+      await addBrainSource({
         userId: input.userId,
-        fromNodeId: input.fromNodeId,
-        toNodeId: input.toNodeId,
-        kind: input.kind,
-        method: input.method,
-      },
-    },
-    update: {
-      confidence: input.confidence ?? 1,
-      status: input.status ?? 'ACTIVE',
-      metadata: input.metadata ?? {},
-    },
-    create: {
-      userId: input.userId,
-      fromNodeId: input.fromNodeId,
-      toNodeId: input.toNodeId,
-      kind: input.kind,
-      method: input.method,
-      confidence: input.confidence ?? 1,
-      status: input.status ?? 'ACTIVE',
-      metadata: input.metadata ?? {},
-    },
-  });
-  await addBrainSource({
-    userId: input.userId,
-    edgeId: edge.id,
-    sourceType: input.sourceType,
-    sourceId: input.sourceId,
-    excerpt: input.excerpt ?? null,
-  });
-  return edge;
+        edgeId: edge.id,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        excerpt: input.excerpt ?? null,
+      });
+      return edge;
+    } catch (err) {
+      if (isBrainFkError(err) && attempt === 0) continue;
+      if (isBrainFkError(err)) {
+        console.warn('[brain] upsertBrainEdge FK skipped', {
+          userId: input.userId,
+          from: input.fromNodeId,
+          to: input.toNodeId,
+          kind: input.kind,
+          method: input.method,
+        });
+        return null;
+      }
+      throw err;
+    }
+  }
+  return null;
 }
 
 async function addBrainSource(input: {
@@ -1008,16 +1054,45 @@ async function addBrainSource(input: {
   sourceId: string;
   excerpt?: string | null;
 }): Promise<void> {
-  await db.brainSource.create({
-    data: {
-      userId: input.userId,
-      nodeId: input.nodeId ?? null,
-      edgeId: input.edgeId ?? null,
-      sourceType: input.sourceType,
-      sourceId: input.sourceId,
-      excerpt: input.excerpt ? truncate(input.excerpt, EVIDENCE_LIMIT) : null,
-    },
-  });
+  try {
+    if (input.edgeId) {
+      const edge = await db.brainEdge.findFirst({
+        where: { id: input.edgeId, userId: input.userId },
+        select: { id: true },
+      });
+      if (!edge) return;
+    }
+    if (input.nodeId) {
+      const node = await db.brainNode.findFirst({
+        where: { id: input.nodeId, userId: input.userId },
+        select: { id: true },
+      });
+      if (!node) return;
+    }
+    await db.brainSource.create({
+      data: {
+        userId: input.userId,
+        nodeId: input.nodeId ?? null,
+        edgeId: input.edgeId ?? null,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        excerpt: input.excerpt ? truncate(input.excerpt, EVIDENCE_LIMIT) : null,
+      },
+    });
+  } catch (err) {
+    // Aresta/nó sumiu entre o check e o create (reindex concorrente).
+    if (isBrainFkError(err)) {
+      console.warn('[brain] addBrainSource FK skipped', {
+        userId: input.userId,
+        edgeId: input.edgeId ?? null,
+        nodeId: input.nodeId ?? null,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+      });
+      return;
+    }
+    throw err;
+  }
 }
 
 function buildNoteIndexes(notes: NoteRecord[]): {

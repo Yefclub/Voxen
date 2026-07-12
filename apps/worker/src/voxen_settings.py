@@ -84,6 +84,19 @@ async def get_yt_dlp_proxy_urls() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_yt_dlp_cookies() -> str | None:
+    """Conteúdo do cookies.txt (formato Netscape) para extração autenticada.
+
+    Secret cifrado (mesma master key). Quando setado, o worker materializa o
+    conteúdo num arquivo temporário 600 e passa via `cookiefile` ao yt-dlp.
+    NUNCA logar o retorno desta função.
+    """
+    enc = await db.get_setting_enc("yt_dlp_cookies")
+    if enc is None:
+        return None
+    return decrypt(enc, get_master_key())
+
+
 async def get_admin_email() -> str | None:
     """Email do admin do deploy — opcional. Quando setado, scraper inclui
     `From: <email>` no User-Agent (boa-prática RFC 7231 §5.5.1).
@@ -95,7 +108,7 @@ async def get_admin_email() -> str | None:
 
 
 async def get_summary_timeout_sec(default: float = 120.0) -> float:
-    """Timeout da chamada worker → chat service para resumo best-effort."""
+    """Timeout da chamada OpenRouter para resumo best-effort no worker."""
     enc = await db.get_setting_enc("summary_timeout_sec")
     if enc is None:
         return default
@@ -108,10 +121,13 @@ async def get_summary_timeout_sec(default: float = 120.0) -> float:
     return value
 
 
-async def get_telegram_bot_token() -> str | None:
-    """Bot Telegram token (cifrado em Settings). Necessário pra automations
-    com delivery=TELEGRAM."""
-    enc = await db.get_setting_enc("telegram_bot_token")
+async def get_app_language() -> str:
+    """Idioma da instância: pt-BR (default) ou en."""
+    enc = await db.get_setting_enc("app_language")
     if enc is None:
-        return None
-    return decrypt(enc, get_master_key())
+        return "pt-BR"
+    try:
+        value = decrypt(enc, get_master_key()).strip()
+    except Exception:
+        return "pt-BR"
+    return "en" if value == "en" else "pt-BR"

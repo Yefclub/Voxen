@@ -17,6 +17,10 @@ import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { rateLimit } from '../lib/rate-limit';
 import { deleteS3Object, s3Bucket, s3Client } from '../lib/s3';
+import {
+  generateAndPersistTranscriptSummary,
+  TranscriptSummaryError,
+} from '../lib/transcript-summary';
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
@@ -70,6 +74,8 @@ transcriptsRoutes.get('/', async (c) => {
   const query = (c.req.query('q') ?? '').trim();
   const status = normalizeStatus(c.req.query('status'));
   const folderId = normalizeFolderId(c.req.query('folderId'));
+  const limit = parseListLimit(c.req.query('limit'));
+  const offset = parseListOffset(c.req.query('offset'));
   const where = {
     userId,
     ...(status === 'ALL' ? {} : { status }),
@@ -77,19 +83,29 @@ transcriptsRoutes.get('/', async (c) => {
   };
 
   if (query.length === 0) {
-    const transcripts = await db.transcript.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      select: TRANSCRIPT_LIST_SELECT,
+    const [transcripts, total] = await Promise.all([
+      db.transcript.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit,
+        skip: offset,
+        select: TRANSCRIPT_LIST_SELECT,
+      }),
+      db.transcript.count({ where }),
+    ]);
+    return c.json({
+      transcripts,
+      query: '',
+      total,
+      limit,
+      offset,
+      hasMore: offset + transcripts.length < total,
     });
-    return c.json({ transcripts, query: '' });
   }
 
   // Busca FTS em portuguese — o trigger SQL mantém o tsvector "searchVector"
   // sincronizado com `plainText`. ts_rank ordena por relevância.
-  // Usamos plainto_tsquery (sanitiza input, não exige operadores) e
-  // limitamos a 100 resultados.
+  // Usamos plainto_tsquery (sanitiza input, não exige operadores).
   const rows =
     status === 'ALL'
       ? await db.$queryRaw<SearchRow[]>`
@@ -128,7 +144,7 @@ transcriptsRoutes.get('/', async (c) => {
       AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
       AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
     ORDER BY rank DESC, t."createdAt" DESC
-    LIMIT 100
+    LIMIT ${limit} OFFSET ${offset}
   `
       : await db.$queryRaw<SearchRow[]>`
     SELECT
@@ -167,9 +183,36 @@ transcriptsRoutes.get('/', async (c) => {
       AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
       AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
     ORDER BY rank DESC, t."createdAt" DESC
-    LIMIT 100
+    LIMIT ${limit} OFFSET ${offset}
   `;
-  return c.json({ transcripts: rows.map(mapSearchRow), query });
+
+  const totalRows =
+    status === 'ALL'
+      ? await db.$queryRaw<{ count: bigint }[]>`
+    SELECT COUNT(*)::bigint AS count
+    FROM "Transcript" t
+    WHERE t."userId" = ${userId}
+      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
+      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+  `
+      : await db.$queryRaw<{ count: bigint }[]>`
+    SELECT COUNT(*)::bigint AS count
+    FROM "Transcript" t
+    WHERE t."userId" = ${userId}
+      AND t.status = ${status}::"ContentStatus"
+      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
+      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+  `;
+  const total = Number(totalRows[0]?.count ?? 0);
+  const transcripts = rows.map(mapSearchRow);
+  return c.json({
+    transcripts,
+    query,
+    total,
+    limit,
+    offset,
+    hasMore: offset + transcripts.length < total,
+  });
 });
 
 const TRANSCRIPT_LIST_SELECT = {
@@ -553,7 +596,7 @@ transcriptsRoutes.delete('/:id', async (c) => {
   return c.json({ ok: true, deletedId: id });
 });
 
-// POST /api/transcripts/:id/summary — gerar / regenerar resumo via chat service.
+// POST /api/transcripts/:id/summary — gerar / regenerar resumo via OpenRouter.
 // Anti-abuso: throttle 1/min por transcript + se já tem summary, exige
 // { force: true } pra não queimar tokens da OR num clique acidental.
 transcriptsRoutes.post('/:id/summary', async (c) => {
@@ -595,28 +638,21 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
     );
   }
 
-  const upstreamUrl =
-    (process.env.CHAT_SERVICE_URL ?? 'http://chat:8001') + '/summarize-transcript';
-  const upstream = await fetch(upstreamUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Voxen-User-Id': userId,
-    },
-    body: JSON.stringify({
-      transcript_id: transcript.id,
+  try {
+    const summaryMd = await generateAndPersistTranscriptSummary({
+      userId,
+      transcriptId: transcript.id,
       title: transcript.title,
-      plain_text: transcript.plainText,
-    }),
-  });
-  const data = (await upstream.json().catch(() => ({}))) as {
-    summary_md?: string;
-    detail?: string;
-  };
-  if (!upstream.ok) {
-    return c.json({ error: data.detail ?? 'Falha ao gerar resumo.' }, upstream.status as 200);
+      plainText: transcript.plainText,
+    });
+    return c.json({ summaryMd });
+  } catch (err) {
+    if (err instanceof TranscriptSummaryError) {
+      return c.json({ error: err.message }, err.status as 400);
+    }
+    console.error('[transcripts] summary failed:', err);
+    return c.json({ error: 'Falha ao gerar resumo.' }, 502);
   }
-  return c.json({ summaryMd: data.summary_md ?? null });
 });
 
 function normalizeStatus(value: string | undefined): 'ACTIVE' | 'ARCHIVED' | 'TRASH' | 'ALL' {
@@ -630,6 +666,21 @@ function normalizeFolderId(value: string | undefined): string | null | undefined
   if (!value) return undefined;
   if (value === 'none') return null;
   return value;
+}
+
+const DEFAULT_LIST_LIMIT = 24;
+const MAX_LIST_LIMIT = 50;
+
+function parseListLimit(value: string | undefined): number {
+  const n = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_LIST_LIMIT;
+  return Math.min(n, MAX_LIST_LIMIT);
+}
+
+function parseListOffset(value: string | undefined): number {
+  const n = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, 10_000);
 }
 
 function mapSearchRow(row: SearchRow): SearchRow & { folder: { id: string; name: string } | null } {

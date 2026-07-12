@@ -65,33 +65,27 @@ export default defineConfig({
             sizes: '1280x800',
             type: 'image/png',
             form_factor: 'wide',
-            label: 'Chat com pesquisa na web e fontes',
+            label: 'Biblioteca e captura de conteúdo',
           },
           {
             src: '/screenshots/narrow.png',
             sizes: '860x1864',
             type: 'image/png',
             form_factor: 'narrow',
-            label: 'Chat no mobile',
+            label: 'App no mobile',
           },
         ],
         shortcuts: [
           {
-            name: 'Novo chat',
-            short_name: 'Chat',
-            url: '/chat',
+            name: 'Capturar conteúdo',
+            short_name: 'Capturar',
+            url: '/',
             icons: [{ src: '/voxen-maskable-192.png', sizes: '192x192', type: 'image/png' }],
           },
           {
             name: 'Biblioteca',
             short_name: 'Biblioteca',
             url: '/transcricoes',
-            icons: [{ src: '/voxen-maskable-192.png', sizes: '192x192', type: 'image/png' }],
-          },
-          {
-            name: 'Capturar conteúdo',
-            short_name: 'Capturar',
-            url: '/jobs',
             icons: [{ src: '/voxen-maskable-192.png', sizes: '192x192', type: 'image/png' }],
           },
           {

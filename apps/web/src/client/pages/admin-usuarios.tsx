@@ -3,6 +3,7 @@ import { Check, Lock, ShieldCheck, Users as UsersIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
+import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
 import { Badge } from '../components/ui/badge';
 import { Spinner } from '../components/ui/spinner';
@@ -19,7 +20,7 @@ interface InstanceResponse {
 }
 
 export function AdminUsuariosPage(): React.ReactElement {
-  const { data, loading, refresh } = useFetch<{ users: AdminUser[] }>('/api/admin/usuarios');
+  const { data, loading, error, refresh } = useFetch<{ users: AdminUser[] }>('/api/admin/usuarios');
   const { locale, t } = useI18n();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [allowSignups, setAllowSignups] = useState<boolean | null>(null);
@@ -153,7 +154,9 @@ export function AdminUsuariosPage(): React.ReactElement {
 
           {loading && <Skeleton className="h-32 w-full" />}
 
-          {!loading && pending.length === 0 && (
+          {!loading && error && <FetchError message={error} onRetry={refresh} />}
+
+          {!loading && !error && pending.length === 0 && (
             <Card>
               <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
                 {t('admin.users.noPending')}

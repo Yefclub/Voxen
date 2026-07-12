@@ -55,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [web, chat, worker]
+        app: [web, worker]
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v4
@@ -91,14 +91,14 @@ jobs:
       - name: Install bandit
         run: uv tool install bandit
       - name: Scan
-        run: bandit -r apps/chat/src apps/worker/src -ll
+        run: bandit -r apps/worker/src -ll
 
   pip-audit:
     name: pip-audit
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [chat, worker]
+        app: [worker]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

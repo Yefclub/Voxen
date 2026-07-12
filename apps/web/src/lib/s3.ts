@@ -32,11 +32,15 @@ export function s3Bucket(): string {
   return envOr('S3_BUCKET', 'GARAGE_BUCKET') ?? 'voxen-transcripts';
 }
 
-let cachedClient: S3Client | null = null;
+function s3ForcePathStyle(): boolean {
+  return (envOr('S3_FORCE_PATH_STYLE') ?? 'true').toLowerCase() !== 'false';
+}
 
-export function s3Client(): S3Client {
-  if (cachedClient) return cachedClient;
+function s3Region(): string {
+  return envOr('S3_REGION', 'GARAGE_REGION') ?? 'us-east-1';
+}
 
+function s3Credentials(): { accessKeyId: string; secretAccessKey: string } {
   const accessKey =
     envOr('S3_ACCESS_KEY', 'GARAGE_ACCESS_KEY') ??
     readCredsFile('S3_ACCESS_KEY') ??
@@ -49,15 +53,61 @@ export function s3Client(): S3Client {
   if (!accessKey || !secretKey) {
     throw new Error('S3 credenciais ausentes: defina S3_ACCESS_KEY e S3_SECRET_KEY');
   }
+  return { accessKeyId: accessKey, secretAccessKey: secretKey };
+}
 
-  const forcePathStyle = (envOr('S3_FORCE_PATH_STYLE') ?? 'true').toLowerCase() !== 'false';
+let cachedClient: S3Client | null = null;
+
+export function s3Client(): S3Client {
+  if (cachedClient) return cachedClient;
+
   cachedClient = new S3Client({
     endpoint: envOr('S3_ENDPOINT', 'GARAGE_ENDPOINT') ?? 'http://minio:9000',
-    region: envOr('S3_REGION', 'GARAGE_REGION') ?? 'us-east-1',
-    credentials: { accessKeyId: accessKey, secretAccessKey: secretKey },
-    forcePathStyle,
+    region: s3Region(),
+    credentials: s3Credentials(),
+    forcePathStyle: s3ForcePathStyle(),
   });
   return cachedClient;
+}
+
+/**
+ * Base URL do S3/MinIO alcançável pelo BROWSER (ex.: https://s3.dominio.com).
+ * Distinto do `S3_ENDPOINT` interno (`http://minio:9000`), que só a rede Docker
+ * enxerga. Quando ausente, o upload presigned fica indisponível e o front cai
+ * no fluxo de upload via app.
+ */
+export function s3PublicEndpoint(): string | undefined {
+  return envOr('S3_PUBLIC_ENDPOINT');
+}
+
+/** Indica se o upload presigned direto pro S3 está habilitado. */
+export function presignEnabled(): boolean {
+  return Boolean(s3PublicEndpoint());
+}
+
+let cachedPresignClient: S3Client | null = null;
+
+/**
+ * Client de presign: usa `S3_PUBLIC_ENDPOINT` como endpoint pra que a URL
+ * assinada seja alcançável pelo browser. Mesmas credenciais/região/path-style
+ * do client interno. Lança se `S3_PUBLIC_ENDPOINT` não estiver definido —
+ * sempre cheque `presignEnabled()` antes de chamar.
+ */
+export function presignClient(): S3Client {
+  if (cachedPresignClient) return cachedPresignClient;
+
+  const endpoint = s3PublicEndpoint();
+  if (!endpoint) {
+    throw new Error('S3_PUBLIC_ENDPOINT ausente: upload presigned indisponível');
+  }
+
+  cachedPresignClient = new S3Client({
+    endpoint,
+    region: s3Region(),
+    credentials: s3Credentials(),
+    forcePathStyle: s3ForcePathStyle(),
+  });
+  return cachedPresignClient;
 }
 
 export async function deleteS3Object(key: string): Promise<void> {

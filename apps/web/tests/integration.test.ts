@@ -156,6 +156,218 @@ describeIfDb('auth + admin approval flow', () => {
     expect(body.prompt).toContain('Voxen');
   });
 
+  it('admin gera token de proxy: persiste cifrado e GET não vaza', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    // Estado inicial: não configurado.
+    const before = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', { headers: { cookie } }),
+    );
+    expect(before.status).toBe(200);
+    const beforeBody = (await before.json()) as {
+      configured: boolean;
+      connected: boolean;
+      conflict: boolean;
+    };
+    expect(beforeBody.configured).toBe(false);
+    expect(beforeBody.connected).toBe(false);
+    expect(beforeBody.conflict).toBe(false);
+
+    // Gera o token.
+    const gen = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent/token', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(gen.status).toBe(200);
+    const genBody = (await gen.json()) as { token: string };
+    // 32 bytes -> base64url (sem padding) = 43 chars. Garante entropia.
+    expect(genBody.token.length).toBeGreaterThanOrEqual(43);
+    expect(genBody.token).toMatch(/^[A-Za-z0-9_-]+$/);
+
+    // Persistido CIFRADO no DB (valueEnc != texto puro do token).
+    const row = await db.setting.findFirst({
+      where: { scope: 'GLOBAL', userId: null, key: 'proxy_agent_token' },
+      select: { valueEnc: true },
+    });
+    expect(row).not.toBeNull();
+    expect(row!.valueEnc).not.toContain(genBody.token);
+
+    // GET reporta configured=true mas NUNCA devolve o token.
+    const after = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', { headers: { cookie } }),
+    );
+    const afterBody = (await after.json()) as Record<string, unknown>;
+    expect(afterBody.configured).toBe(true);
+    // Sem agente conectado no ambiente de teste, o probe TCP a 127.0.0.1:1080 falha.
+    expect(afterBody.connected).toBe(false);
+    expect(afterBody.conflict).toBe(false);
+    expect(JSON.stringify(afterBody)).not.toContain(genBody.token);
+
+    // Revoga.
+    const del = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent/token', {
+        method: 'DELETE',
+        headers: { cookie },
+      }),
+    );
+    expect(del.status).toBe(200);
+    const gone = await db.setting.findFirst({
+      where: { scope: 'GLOBAL', userId: null, key: 'proxy_agent_token' },
+    });
+    expect(gone).toBeNull();
+  });
+
+  it('switch do proxy: PATCH liga/desliga o roteamento sem apagar o token', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    // Gera o token → liga o switch e aponta o worker pro SOCKS local.
+    const gen = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent/token', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(gen.status).toBe(200);
+
+    const proxyKey = { scope: 'GLOBAL' as const, userId: null, key: 'yt_dlp_proxy_urls' };
+    const afterGen = (await (
+      await app.fetch(
+        new Request('http://localhost/api/admin/proxy-agent', { headers: { cookie } }),
+      )
+    ).json()) as { enabled: boolean };
+    expect(afterGen.enabled).toBe(true);
+    expect(await db.setting.findFirst({ where: proxyKey })).not.toBeNull();
+
+    // Desliga: enabled=false e o proxy local é removido (worker baixa direto).
+    const off = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      }),
+    );
+    expect(off.status).toBe(200);
+    const afterOff = (await (
+      await app.fetch(
+        new Request('http://localhost/api/admin/proxy-agent', { headers: { cookie } }),
+      )
+    ).json()) as { enabled: boolean; configured: boolean };
+    expect(afterOff.enabled).toBe(false);
+    expect(afterOff.configured).toBe(true); // token permanece
+    expect(await db.setting.findFirst({ where: proxyKey })).toBeNull();
+
+    // Liga de novo: o proxy local volta.
+    const on = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }),
+    );
+    expect(on.status).toBe(200);
+    expect(await db.setting.findFirst({ where: proxyKey })).not.toBeNull();
+
+    // Body inválido → 400.
+    const bad = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: 'yes' }),
+      }),
+    );
+    expect(bad.status).toBe(400);
+  });
+
+  it('switch do proxy: PATCH enabled=true sem token é recusado (409)', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    // Não ligou o setting sem token.
+    const enabledRow = await db.setting.findFirst({
+      where: { scope: 'GLOBAL', userId: null, key: 'proxy_agent_enabled' },
+    });
+    expect(enabledRow).toBeNull();
+  });
+
+  it('user comum recebe 403 em /api/admin/proxy-agent PATCH', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('user@voxen.local', 'senha-super-segura-456', 'User');
+    const adminSignin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const adminCookie = extractCookie(adminSignin);
+    const pending = await db.user.findUnique({ where: { email: 'user@voxen.local' } });
+    await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${pending!.id}/approve`, {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    const userSignin = await signIn('user@voxen.local', 'senha-super-segura-456');
+    const userCookie = extractCookie(userSignin);
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', {
+        method: 'PATCH',
+        headers: { cookie: userCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('user comum recebe 403 em /api/admin/proxy-agent', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('user@voxen.local', 'senha-super-segura-456', 'User');
+    const adminSignin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const adminCookie = extractCookie(adminSignin);
+    const pending = await db.user.findUnique({ where: { email: 'user@voxen.local' } });
+    await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${pending!.id}/approve`, {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    const userSignin = await signIn('user@voxen.local', 'senha-super-segura-456');
+    const userCookie = extractCookie(userSignin);
+
+    const getRes = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', { headers: { cookie: userCookie } }),
+    );
+    expect(getRes.status).toBe(403);
+
+    const postRes = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent/token', {
+        method: 'POST',
+        headers: { cookie: userCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(postRes.status).toBe(403);
+  });
+
+  it('non-authenticated recebe 401 em /api/admin/proxy-agent', async () => {
+    const res = await app.fetch(new Request('http://localhost/api/admin/proxy-agent'));
+    expect(res.status).toBe(401);
+  });
+
   it('user comum recebe 403 em /api/admin/usuarios', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     await signUp('user@voxen.local', 'senha-super-segura-456', 'User');

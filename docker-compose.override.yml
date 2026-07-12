@@ -13,11 +13,6 @@ services:
     environment:
       NODE_ENV: development
 
-  chat:
-    volumes:
-      - ./apps/chat/src:/app/src:ro
-    ports:
-      - '8001:8001'   # expor pra debug local; em prod fica fechado na voxen-net
 
   worker:
     volumes:

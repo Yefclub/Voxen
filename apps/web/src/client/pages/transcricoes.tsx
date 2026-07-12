@@ -1,18 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Folder, FolderPlus, Globe, Library, Loader2, Search, X } from 'lucide-react';
-import { motion } from 'motion/react';
+import {
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  Globe,
+  Library,
+  Loader2,
+  Search,
+  Sparkles,
+  Trash2,
+  Type,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Button } from '../components/ui/button';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { FetchError } from '../components/ui/fetch-error';
 import { apiPost } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import { formatDuration, formatRelative, formatUsd } from '../lib/format';
-import type { JobStatus } from '../lib/types';
-import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motion/animated-page';
+import { AnimatedPage } from '../components/motion/animated-page';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
+
+const PAGE_SIZE = 24;
 
 interface TranscriptSummary {
   id: string;
@@ -35,6 +49,10 @@ interface TranscriptSummary {
 interface SearchResponse {
   transcripts: TranscriptSummary[];
   query: string;
+  total?: number;
+  limit?: number;
+  offset?: number;
+  hasMore?: boolean;
 }
 
 interface LibraryFolder {
@@ -51,6 +69,8 @@ interface FoldersResponse {
 }
 
 type StatusFilter = 'active' | 'archived' | 'trash';
+/** null = todas; 'none' = sem pasta; string = id da pasta */
+type FolderFilter = string | null;
 
 function useDebounced<T>(value: T, ms = 250): T {
   const [debounced, setDebounced] = useState(value);
@@ -65,26 +85,55 @@ export function TranscricoesPage(): React.ReactElement {
   const { locale, t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const status = normalizeStatusFilter(searchParams.get('status'));
-  const folderId = searchParams.get('folderId');
+  const folderFilter = normalizeFolderFilter(searchParams.get('folderId'));
   const [q, setQ] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [reorganizing, setReorganizing] = useState(false);
+  const [regeneratingTitles, setRegeneratingTitles] = useState(false);
+  const [clearingFolders, setClearingFolders] = useState(false);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [confirmRetitleOpen, setConfirmRetitleOpen] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [items, setItems] = useState<TranscriptSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const debouncedQ = useDebounced(q, 250);
-  const url = useMemo(() => {
+
+  const listUrl = useMemo(() => {
     const params = new URLSearchParams();
     if (debouncedQ) params.set('q', debouncedQ);
     if (status !== 'active') params.set('status', status);
-    if (folderId) params.set('folderId', folderId);
-    const suffix = params.toString();
-    return `/api/transcripts${suffix ? `?${suffix}` : ''}`;
-  }, [debouncedQ, folderId, status]);
-  const { data, loading } = useFetch<SearchResponse>(url);
+    if (folderFilter === 'none') params.set('folderId', 'none');
+    else if (folderFilter) params.set('folderId', folderFilter);
+    params.set('limit', String(PAGE_SIZE));
+    params.set('offset', String(offset));
+    return `/api/transcripts?${params.toString()}`;
+  }, [debouncedQ, folderFilter, offset, status]);
+
+  const { data, loading, error, refresh: refreshTranscripts } = useFetch<SearchResponse>(listUrl);
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
-  const transcripts = data?.transcripts ?? [];
   const folders = foldersData?.folders ?? [];
   const isSearching = debouncedQ.length > 0;
   const queryChanging = q !== debouncedQ;
+
+  // Acumula páginas (carregar mais) ou substitui na primeira página / troca de filtro.
+  useEffect(() => {
+    if (!data) return;
+    const page = data.transcripts ?? [];
+    setTotal(data.total ?? page.length);
+    setHasMore(Boolean(data.hasMore));
+    setItems((prev) => (offset === 0 ? page : mergeById(prev, page)));
+    setLoadingMore(false);
+  }, [data, offset]);
+
+  // Reset paginação ao mudar filtros/busca.
+  useEffect(() => {
+    setOffset(0);
+    setItems([]);
+  }, [debouncedQ, folderFilter, status]);
 
   function setStatus(next: StatusFilter): void {
     const params = new URLSearchParams(searchParams);
@@ -93,10 +142,11 @@ export function TranscricoesPage(): React.ReactElement {
     setSearchParams(params, { replace: true });
   }
 
-  function setFolder(next: string | null): void {
+  function setFolder(next: FolderFilter): void {
     const params = new URLSearchParams(searchParams);
-    if (next) params.set('folderId', next);
-    else params.delete('folderId');
+    if (next === null) params.delete('folderId');
+    else if (next === 'none') params.set('folderId', 'none');
+    else params.set('folderId', next);
     setSearchParams(params, { replace: true });
   }
 
@@ -117,27 +167,239 @@ export function TranscricoesPage(): React.ReactElement {
     }
   }
 
+  async function clearAllFolders(): Promise<void> {
+    if (clearingFolders || folders.length === 0) return;
+    setClearingFolders(true);
+    try {
+      const body = await apiPost<{ deleted: number; affectedTranscripts: number }>(
+        '/api/library/folders/clear',
+      );
+      toast.success(
+        t('library.clearFoldersDone', {
+          deleted: body.deleted,
+          items: body.affectedTranscripts,
+        }),
+      );
+      setFolder(null);
+      refreshFolders();
+      setOffset(0);
+      refreshTranscripts();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('library.clearFoldersError'));
+    } finally {
+      setClearingFolders(false);
+    }
+  }
+
+  async function reorganizeWithAi(): Promise<void> {
+    if (reorganizing) return;
+    setReorganizing(true);
+    let totalAssigned = 0;
+    let totalFailed = 0;
+    let totalSkipped = 0;
+    try {
+      for (let i = 0; i < 20; i++) {
+        const body = await apiPost<{
+          processed: number;
+          assigned: number;
+          skipped: number;
+          failed: number;
+          remaining: number;
+          pendingTotal: number;
+        }>('/api/library/reorganize', { limit: 15 });
+        totalAssigned += body.assigned;
+        totalFailed += body.failed;
+        totalSkipped += body.skipped;
+        if (body.pendingTotal === 0 && body.processed === 0) {
+          toast.message(t('library.reorgNothing'));
+          break;
+        }
+        if (body.remaining === 0) {
+          toast.success(
+            t('library.reorgDone', {
+              assigned: totalAssigned,
+              skipped: totalSkipped,
+              failed: totalFailed,
+            }),
+          );
+          break;
+        }
+        if (i === 19) {
+          toast.success(
+            t('library.reorgPartial', {
+              assigned: totalAssigned,
+              remaining: body.remaining,
+            }),
+          );
+        }
+      }
+      refreshFolders();
+      setOffset(0);
+      refreshTranscripts();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('library.reorgError'));
+    } finally {
+      setReorganizing(false);
+    }
+  }
+
+  // Regenera os títulos via IA drenando o acervo por cursor. Custa créditos
+  // (1 chamada LLM por conteúdo); títulos já bons voltam KEEP e são mantidos.
+  async function regenerateTitles(): Promise<void> {
+    if (regeneratingTitles) return;
+    setRegeneratingTitles(true);
+    let totalChanged = 0;
+    let totalKept = 0;
+    let totalFailed = 0;
+    let cursor: string | null = null;
+    try {
+      for (let i = 0; i < 60; i++) {
+        const body: {
+          processed: number;
+          changed: number;
+          kept: number;
+          skipped: number;
+          failed: number;
+          pendingTotal: number;
+          nextCursor: string | null;
+        } = await apiPost('/api/library/regenerate-titles', { limit: 15, cursor });
+        totalChanged += body.changed;
+        totalKept += body.kept;
+        totalFailed += body.failed;
+        if (i === 0 && body.pendingTotal === 0) {
+          toast.message(t('library.retitleNothing'));
+          break;
+        }
+        // Falha sistêmica (ex.: chave da OpenRouter inválida): o lote inteiro
+        // falhou. Aborta em vez de gastar créditos rodando os 60 lotes.
+        if (body.processed > 0 && body.failed === body.processed) {
+          toast.error(t('library.retitleError'));
+          break;
+        }
+        cursor = body.nextCursor;
+        if (!cursor) {
+          toast.success(
+            t('library.retitleDone', {
+              changed: totalChanged,
+              kept: totalKept,
+              failed: totalFailed,
+            }),
+          );
+          break;
+        }
+        if (i === 59) {
+          toast.success(t('library.retitlePartial', { changed: totalChanged }));
+        }
+      }
+      setOffset(0);
+      refreshTranscripts();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('library.retitleError'));
+    } finally {
+      setRegeneratingTitles(false);
+    }
+  }
+
+  function loadMore(): void {
+    if (!hasMore || loading || loadingMore) return;
+    setLoadingMore(true);
+    setOffset((n) => n + PAGE_SIZE);
+  }
+
+  const pageLoading = loading && offset === 0 && items.length === 0;
+  const sortedFolders = useMemo(
+    () => [...folders].sort((a, b) => a.name.localeCompare(b.name, locale)),
+    [folders, locale],
+  );
+
   return (
     <AnimatedPage>
-      <div className="mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
-        <header className="space-y-2 sm:space-y-3">
-          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
-            <Library className="h-3.5 w-3.5 text-violet-400" />
-            {t('library.eyebrow')}
+      <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-[var(--color-app-muted)] font-medium">
+              <Library className="h-3 w-3 text-zinc-400" />
+              {t('library.eyebrow')}
+            </div>
+            <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">
+              {t('library.title')}
+            </h1>
           </div>
-          <h1 className="font-display text-2xl font-semibold tracking-[-0.03em] sm:text-4xl">
-            {t('library.title')}
-          </h1>
-          <p className="hidden max-w-2xl text-[15px] leading-relaxed text-[var(--color-app-muted)] sm:block">
-            {t('library.description')}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={reorganizing}
+              onClick={() => void reorganizeWithAi()}
+              className="h-8 text-xs"
+            >
+              {reorganizing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+              )}
+              {reorganizing ? t('library.reorgRunning') : t('library.reorgAction')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={regeneratingTitles}
+              onClick={() => setConfirmRetitleOpen(true)}
+              className="h-8 text-xs"
+              title={t('library.retitleHint')}
+            >
+              {regeneratingTitles ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Type className="h-3.5 w-3.5 text-violet-400" />
+              )}
+              {regeneratingTitles ? t('library.retitleRunning') : t('library.retitleAction')}
+            </Button>
+            {folders.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={clearingFolders}
+                onClick={() => setConfirmClearOpen(true)}
+                className="h-8 text-xs text-zinc-400 hover:text-red-300"
+              >
+                {clearingFolders ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                {t('library.clearFolders')}
+              </Button>
+            )}
+          </div>
         </header>
 
+        <ConfirmDialog
+          open={confirmClearOpen}
+          onOpenChange={setConfirmClearOpen}
+          variant="destructive"
+          title={t('library.clearFolders')}
+          description={t('library.clearFoldersConfirm')}
+          confirmLabel={t('library.clearFolders')}
+          loading={clearingFolders}
+          onConfirm={clearAllFolders}
+        />
+
+        <ConfirmDialog
+          open={confirmRetitleOpen}
+          onOpenChange={setConfirmRetitleOpen}
+          title={t('library.retitleAction')}
+          description={t('library.retitleConfirm')}
+          confirmLabel={t('library.retitleAction')}
+          loading={regeneratingTitles}
+          onConfirm={regenerateTitles}
+        />
+
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none z-10" />
-          {/* type="text" em vez de "search" — o type=search injeta um botão
-              nativo de clear no Chrome/Safari que sobrepõe a lupa após digitar.
-              Mantemos UX equivalente com nosso próprio botão (X à direita). */}
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none z-10" />
           <input
             type="text"
             value={q}
@@ -145,164 +407,224 @@ export function TranscricoesPage(): React.ReactElement {
             placeholder={t('library.searchPlaceholder')}
             autoComplete="off"
             spellCheck={false}
-            className="w-full h-12 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/60 backdrop-blur-sm pl-11 pr-12 text-[15px] text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15 transition-colors"
+            className="w-full h-10 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/50 pl-9 pr-10 text-sm text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60 focus:ring-1 focus:ring-zinc-500/20 transition-colors"
           />
           {q.length > 0 && (
             <button
               type="button"
               onClick={() => setQ('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)] transition-colors"
+              className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]"
               aria-label={t('library.clearSearch')}
             >
               {queryChanging ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
-                <X className="h-3.5 w-3.5" />
+                <X className="h-3 w-3" />
               )}
             </button>
           )}
         </div>
 
-        <section className="-mt-2 space-y-3 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/40 p-3 sm:-mt-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
-              <Folder className="h-3.5 w-3.5 text-amber-400" />
-              {t('library.folders')}
-            </div>
-            <div className="flex min-w-0 gap-2">
-              <input
-                type="text"
-                value={newFolderName}
-                onChange={(event) => setNewFolderName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') void createFolder();
-                }}
-                placeholder={t('library.newFolderPlaceholder')}
-                className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15"
-                disabled={creatingFolder}
-                maxLength={120}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={creatingFolder || newFolderName.trim().length === 0}
-                onClick={() => void createFolder()}
-              >
-                {creatingFolder ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <FolderPlus className="h-3.5 w-3.5" />
-                )}
-                <span className="hidden sm:inline">{t('library.createFolder')}</span>
-              </Button>
-            </div>
-          </div>
+        {/* Pastas — barra compacta */}
+        <section className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
+            <FolderChip
+              active={folderFilter === null}
+              onClick={() => setFolder(null)}
+              icon={<FolderOpen className="h-3 w-3" />}
+              label={t('library.allFolders')}
+            />
+            <FolderChip
+              active={folderFilter === 'none'}
+              onClick={() => setFolder('none')}
+              icon={<Folder className="h-3 w-3 opacity-50" />}
+              label={t('library.noFolder')}
+            />
+            {sortedFolders.map((folder) => (
+              <FolderChip
+                key={folder.id}
+                active={folderFilter === folder.id}
+                onClick={() => setFolder(folder.id)}
+                icon={<Folder className="h-3 w-3 text-amber-500/80" />}
+                label={folder.name}
+                count={folder._count.transcripts}
+              />
+            ))}
+          </div>
+          <div className="flex min-w-0 gap-2">
+            <input
+              type="text"
+              value={newFolderName}
+              onChange={(event) => setNewFolderName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void createFolder();
+              }}
+              placeholder={t('library.newFolderPlaceholder')}
+              className="h-8 min-w-0 flex-1 rounded-md border border-[var(--color-app-border)] bg-transparent px-2.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500/60"
+              disabled={creatingFolder}
+              maxLength={120}
+            />
             <Button
               type="button"
-              variant={!folderId ? 'secondary' : 'ghost'}
+              variant="outline"
               size="sm"
-              onClick={() => setFolder(null)}
+              disabled={creatingFolder || newFolderName.trim().length === 0}
+              onClick={() => void createFolder()}
+              className="h-8 px-2.5 text-xs"
             >
-              {t('library.allFolders')}
+              {creatingFolder ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <FolderPlus className="h-3 w-3" />
+              )}
+              <span className="hidden sm:inline">{t('library.createFolder')}</span>
             </Button>
-            {folders.map((folder) => (
-              <Button
-                key={folder.id}
-                type="button"
-                variant={folderId === folder.id ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => setFolder(folder.id)}
-                className="max-w-[220px]"
-              >
-                <Folder className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-                <span className="truncate">{folder.name}</span>
-                <span className="tabular-nums text-[var(--color-app-muted)]">
-                  {folder._count.transcripts}
-                </span>
-              </Button>
-            ))}
           </div>
         </section>
 
-        <div className="-mt-2 flex flex-wrap items-center gap-2 sm:-mt-4">
+        <div className="flex flex-wrap items-center gap-1.5">
           {(['active', 'archived', 'trash'] as const).map((item) => (
-            <Button
+            <button
               key={item}
               type="button"
-              variant={status === item ? 'secondary' : 'ghost'}
-              size="sm"
               onClick={() => setStatus(item)}
+              className={[
+                'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                status === item
+                  ? 'bg-zinc-100/10 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-100/5',
+              ].join(' ')}
             >
               {statusFilterLabel(item, t)}
-            </Button>
+            </button>
           ))}
+          {!pageLoading && total > 0 && (
+            <span className="ml-auto text-[11px] tabular-nums text-[var(--color-app-muted)]">
+              {items.length}
+              {total > items.length ? ` / ${total}` : ''}
+            </span>
+          )}
         </div>
 
-        {isSearching && !loading && (
-          <p className="text-xs text-[var(--color-app-muted)] -mt-6">
-            <span className="tabular-nums">{transcripts.length}</span>{' '}
+        {isSearching && !pageLoading && (
+          <p className="text-[11px] text-[var(--color-app-muted)] -mt-2">
+            <span className="tabular-nums">{total}</span>{' '}
             {t('library.searchResults', {
-              count: transcripts.length,
-              label:
-                transcripts.length === 1 ? t('library.resultSingular') : t('library.resultPlural'),
+              count: total,
+              label: total === 1 ? t('library.resultSingular') : t('library.resultPlural'),
               query: debouncedQ,
             })}
           </p>
         )}
 
-        {loading && (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {pageLoading && (
+          <div className="space-y-2">
             {[0, 1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="min-h-[430px] rounded-2xl" />
+              <Skeleton key={i} className="h-[72px] rounded-lg" />
             ))}
           </div>
         )}
 
-        {!loading && transcripts.length === 0 && (
+        {!pageLoading && error && items.length === 0 && (
           <Card elevated>
-            <CardContent className="py-20 text-center space-y-4">
-              <div className="mx-auto h-12 w-12 rounded-2xl bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
-                <Search className="h-5 w-5 text-violet-400" />
+            <FetchError message={error} onRetry={refreshTranscripts} />
+          </Card>
+        )}
+
+        {!pageLoading && !error && items.length === 0 && (
+          <Card elevated>
+            <CardContent className="py-14 text-center space-y-3">
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-zinc-100/[0.03]">
+                <Search className="h-4 w-4 text-zinc-500" />
               </div>
-              <div className="space-y-1.5">
-                <p className="font-display text-lg font-semibold tracking-tight">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">
                   {isSearching ? t('library.noResults') : t('library.empty')}
                 </p>
-                <p className="text-sm text-[var(--color-app-muted)]">
+                <p className="text-xs text-[var(--color-app-muted)]">
                   {isSearching ? t('library.tryOtherKeywords') : t('library.emptyDescription')}
                 </p>
               </div>
               {!isSearching && (
-                <Button variant="primary" size="lg" asChild className="mt-3">
-                  <Link to="/jobs">{t('library.addFirst')}</Link>
+                <Button variant="primary" size="sm" asChild className="mt-2">
+                  <Link to="/">{t('library.addFirst')}</Link>
                 </Button>
               )}
             </CardContent>
           </Card>
         )}
 
-        {!loading && transcripts.length > 0 && (
-          <StaggerContainer className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
-            {transcripts.map((transcript) => (
-              <StaggerItem key={transcript.id} className="h-full">
-                <TranscriptCard
-                  t={transcript}
-                  highlightQuery={debouncedQ}
-                  locale={locale}
-                  translate={t}
-                />
-              </StaggerItem>
+        {!pageLoading && items.length > 0 && (
+          <div className="space-y-1.5">
+            {items.map((transcript) => (
+              <TranscriptRow
+                key={transcript.id}
+                t={transcript}
+                highlightQuery={debouncedQ}
+                locale={locale}
+                translate={t}
+              />
             ))}
-          </StaggerContainer>
+          </div>
+        )}
+
+        {hasMore && (
+          <div className="flex justify-center pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={loadingMore || loading}
+              onClick={loadMore}
+              className="h-8 text-xs"
+            >
+              {loadingMore || (loading && offset > 0) ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : null}
+              {t('library.loadMore')}
+            </Button>
+          </div>
         )}
       </div>
     </AnimatedPage>
   );
 }
 
-function TranscriptCard({
+function FolderChip({
+  active,
+  onClick,
+  icon,
+  label,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  count?: number;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      className={[
+        'inline-flex max-w-[180px] items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+        active
+          ? 'border-zinc-500/40 bg-zinc-100/10 text-zinc-100'
+          : 'border-transparent bg-zinc-100/[0.03] text-zinc-400 hover:bg-zinc-100/[0.06] hover:text-zinc-200',
+      ].join(' ')}
+    >
+      <span className="shrink-0">{icon}</span>
+      <span className="truncate">{label}</span>
+      {typeof count === 'number' && (
+        <span className="tabular-nums text-[10px] text-zinc-500">{count}</span>
+      )}
+    </button>
+  );
+}
+
+function TranscriptRow({
   t,
   highlightQuery,
   locale,
@@ -316,110 +638,86 @@ function TranscriptCard({
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   const previewSrc = t.thumbnailUrl || `/api/transcripts/${t.id}/preview`;
+  const showDuration = t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript;
+
   return (
-    <motion.div
-      className="h-full"
-      whileHover={{ y: -3 }}
-      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+    <Link
+      to={`/transcricoes/${t.id}`}
+      className="group flex items-center gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-zinc-100/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40"
     >
-      <Link
-        to={`/transcricoes/${t.id}`}
-        className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 rounded-2xl"
-      >
-        <Card
-          hoverable
-          elevated
-          className="flex h-full min-h-[168px] flex-row overflow-hidden p-0 transition-colors duration-200 sm:min-h-[430px] sm:flex-col"
-        >
-          <div className="relative h-auto w-28 shrink-0 overflow-hidden bg-[var(--color-app-bg-elevated)] sm:w-full sm:aspect-video">
-            <img
-              src={previewSrc}
-              alt=""
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-              loading="lazy"
-            />
-            <div
-              aria-hidden
-              className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent"
-            />
-            {t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript && (
-              <div className="absolute bottom-2 right-2">
-                <Badge
-                  variant="default"
-                  className="bg-black/60 backdrop-blur-sm border-white/10 text-[10px] tabular-nums"
-                >
-                  {formatDuration(t.durationSec)}
-                </Badge>
-              </div>
-            )}
-          </div>
+      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-[var(--color-app-bg-elevated)] sm:h-14 sm:w-[88px]">
+        <img
+          src={previewSrc}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          loading="lazy"
+        />
+      </div>
 
-          <CardContent className="flex min-h-0 flex-1 flex-col space-y-2 px-4 py-3 sm:space-y-3 sm:px-5 sm:pb-5 sm:pt-4">
-            <div>
-              <h3 className="max-w-full break-words text-[15px] font-semibold leading-snug tracking-tight line-clamp-2 [overflow-wrap:anywhere] group-hover:text-violet-300 transition-colors font-display">
-                {highlightInText(t.title, highlightQuery)}
-              </h3>
-              <p className="min-h-[18px] text-xs text-[var(--color-app-muted)] mt-1.5 truncate">
-                {t.channel ?? t.folder?.name ?? ''}
-              </p>
-            </div>
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <h3 className="truncate text-[13px] font-medium leading-snug text-zinc-100 group-hover:text-zinc-50">
+          {highlightInText(t.title, highlightQuery)}
+        </h3>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--color-app-muted)]">
+          <span className="inline-flex items-center gap-1 shrink-0">
+            {t.source === 'WEB' && <Globe className="h-2.5 w-2.5" />}
+            {displaySource(t.source, translate)}
+          </span>
+          {showDuration && <span className="tabular-nums">{formatDuration(t.durationSec)}</span>}
+          {t.channel && <span className="truncate max-w-[140px]">{t.channel}</span>}
+          {t.folder && (
+            <span className="inline-flex min-w-0 max-w-[120px] items-center gap-1 truncate text-zinc-500">
+              <Folder className="h-2.5 w-2.5 shrink-0 text-amber-500/70" />
+              <span className="truncate">{t.folder.name}</span>
+            </span>
+          )}
+          {t.status === 'ARCHIVED' && (
+            <Badge variant="muted" className="h-4 px-1 text-[9px]">
+              {translate('library.statusArchived')}
+            </Badge>
+          )}
+          {t.status === 'TRASH' && (
+            <Badge variant="danger" className="h-4 px-1 text-[9px]">
+              {translate('library.statusTrash')}
+            </Badge>
+          )}
+        </div>
+        {t.snippet && (
+          <p className="hidden text-[11px] leading-relaxed text-zinc-500 line-clamp-1 sm:block">
+            {renderSnippet(t.snippet)}
+          </p>
+        )}
+      </div>
 
-            <p className="hidden h-[54px] text-xs leading-relaxed text-[var(--color-app-subtle)] line-clamp-3 sm:block">
-              {t.snippet ? renderSnippet(t.snippet) : null}
-            </p>
-
-            <div className="flex max-h-[48px] flex-wrap content-start items-start gap-1.5 overflow-hidden pt-0.5 sm:h-[50px] sm:max-h-none sm:gap-2 sm:pt-1">
-              {/* Source primário — diferencia Vídeo / Web e plataforma */}
-              <Badge variant={t.source === 'WEB' ? 'muted' : 'success'} className="text-[10px]">
-                {t.source === 'WEB' && <Globe className="h-2.5 w-2.5" />}
-                {displaySource(t.source, translate)}
-              </Badge>
-              {t.status === 'ARCHIVED' && (
-                <Badge variant="muted" className="text-[10px]">
-                  {translate('library.statusArchived')}
-                </Badge>
-              )}
-              {t.status === 'TRASH' && (
-                <Badge variant="danger" className="text-[10px]">
-                  {translate('library.statusTrash')}
-                </Badge>
-              )}
-              {/* Método (só faz sentido pra vídeos) */}
-              {t.source !== 'WEB' && (
-                <Badge
-                  variant={t.transcriptionMethod === 'SUBTITLES' ? 'success' : 'default'}
-                  className="text-[10px]"
-                >
-                  {displayMethod(t.transcriptionMethod, translate)}
-                </Badge>
-              )}
-              {t.language && (
-                <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
-                  {t.language}
-                </Badge>
-              )}
-              {t.folder && (
-                <Badge variant="muted" className="max-w-full text-[10px]">
-                  <Folder className="h-2.5 w-2.5 shrink-0" />
-                  <span className="truncate">{t.folder.name}</span>
-                </Badge>
-              )}
-            </div>
-
-            <div className="mt-auto flex items-center justify-between border-t border-[var(--color-app-border)] pt-2 text-[11px] text-[var(--color-app-muted)] sm:pt-3">
-              <span>{formatRelative(new Date(t.createdAt), locale)}</span>
-              <span className="tabular-nums font-mono">{formatUsd(t.costUsd)}</span>
-            </div>
-          </CardContent>
-        </Card>
-      </Link>
-    </motion.div>
+      <div className="hidden shrink-0 flex-col items-end gap-0.5 text-[10px] text-[var(--color-app-muted)] sm:flex">
+        <span>{formatRelative(new Date(t.createdAt), locale)}</span>
+        <span className="font-mono tabular-nums opacity-70">{formatUsd(t.costUsd)}</span>
+      </div>
+    </Link>
   );
+}
+
+function mergeById(prev: TranscriptSummary[], next: TranscriptSummary[]): TranscriptSummary[] {
+  const seen = new Set(prev.map((t) => t.id));
+  const merged = [...prev];
+  for (const item of next) {
+    if (!seen.has(item.id)) {
+      seen.add(item.id);
+      merged.push(item);
+    }
+  }
+  return merged;
 }
 
 function normalizeStatusFilter(value: string | null): StatusFilter {
   if (value === 'archived' || value === 'trash') return value;
   return 'active';
+}
+
+function normalizeFolderFilter(value: string | null): FolderFilter {
+  if (!value) return null;
+  if (value === 'none') return 'none';
+  return value;
 }
 
 function statusFilterLabel(status: StatusFilter, t: TranslateFn): string {
@@ -450,29 +748,12 @@ function displaySource(source: TranscriptSummary['source'], t: TranslateFn): str
   }
 }
 
-function displayMethod(method: TranscriptSummary['transcriptionMethod'], t: TranslateFn): string {
-  switch (method) {
-    case 'SUBTITLES':
-      return t('library.method.subtitles');
-    case 'VISION':
-      return t('library.method.vision');
-    case 'DOCUMENT':
-      return t('library.method.document');
-    case 'X_SEARCH':
-      return 'X';
-    case 'SCRAPE':
-      return 'Web';
-    case 'API':
-      return t('library.method.ai');
-  }
-}
-
 function highlightInText(text: string, query: string): React.ReactNode {
   if (!query) return text;
   const tokens = query
     .trim()
     .split(/\s+/)
-    .filter((t) => t.length >= 2);
+    .filter((tok) => tok.length >= 2);
   if (tokens.length === 0) return text;
   const re = new RegExp(`(${tokens.map(escapeRegex).join('|')})`, 'gi');
   const parts = text.split(re);
@@ -504,5 +785,3 @@ function renderSnippet(snippet: string): React.ReactNode {
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-
-export type { JobStatus };

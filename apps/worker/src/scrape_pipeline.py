@@ -10,7 +10,7 @@ import structlog
 from . import db, events, scraper, storage, summary, voxen_settings
 from .cancellation import CancelledException, is_cancelled
 from .openrouter import generate_content_title
-from .pipeline import PermanentError  # reusa exceção pro process_job tratar igual
+from .pipeline import PermanentError, _maybe_assign_folder  # noqa: PLC2701
 
 log = structlog.get_logger(__name__)
 
@@ -155,6 +155,15 @@ async def _persist(
             thumbnail_url=thumbnail_url,
             plain_text=result.plain_text,
         )
+    await _maybe_assign_folder(
+        user_id=user_id,
+        job_id=job_id,
+        transcript_id=transcript_id,
+        title=title,
+        content=result.plain_text,
+        fallback_model=None,
+        log=log,
+    )
     return transcript_id
 
 
@@ -174,12 +183,14 @@ async def _maybe_generate_title(
         model = await voxen_settings.get_default_chat_model()
         if not api_key or not model:
             return fallback_title
+        language = await voxen_settings.get_app_language()
         result = await generate_content_title(
             content=clean_content,
             source_label="Página web",
             fallback_title=fallback_title,
             api_key=api_key,
             model=model,
+            language=language,
         )
         await db.insert_cost_event(
             user_id=user_id,

@@ -76,8 +76,6 @@ setupRoutes.get('/', async (c) => {
       visionModel: null,
       documentModel: null,
       xAnalysisModel: null,
-      adminEmail: null,
-      summaryTimeoutSec: null,
       hasApiKey: false,
     });
   }
@@ -90,8 +88,6 @@ setupRoutes.get('/', async (c) => {
     visionModel,
     documentModel,
     xAnalysisModel,
-    adminEmail,
-    summaryTimeoutSec,
     apiKey,
   ] = await Promise.all([
     getSetting('default_chat_model'),
@@ -100,8 +96,6 @@ setupRoutes.get('/', async (c) => {
     getSetting('default_vision_model'),
     getSetting('default_document_model'),
     getDefaultXAnalysisModel(),
-    getSetting('admin_email'),
-    getSetting('summary_timeout_sec'),
     getSetting('openrouter_api_key'),
   ]);
   return c.json({
@@ -113,12 +107,7 @@ setupRoutes.get('/', async (c) => {
     visionModel,
     documentModel,
     xAnalysisModel,
-    adminEmail,
-    summaryTimeoutSec,
     hasApiKey: !!apiKey,
-    ytDlp: {
-      proxies: !!(await getSetting('yt_dlp_proxy_urls')),
-    },
   });
 });
 
@@ -189,9 +178,6 @@ const SaveBody = z.object({
   default_document_model: z.string().optional(),
   // Opcional: modelo Grok/xAI para analisar posts/threads do X via busca nativa.
   default_x_analysis_model: z.string().optional(),
-  yt_dlp_proxy_urls: z.string().optional(),
-  admin_email: z.string().optional(),
-  summary_timeout_sec: z.string().optional(),
 });
 
 setupRoutes.post('/', async (c) => {
@@ -207,34 +193,8 @@ setupRoutes.post('/', async (c) => {
     default_vision_model,
     default_document_model,
     default_x_analysis_model,
-    yt_dlp_proxy_urls,
-    admin_email,
-    summary_timeout_sec,
     app_language,
   } = parsed.data;
-
-  const normalizedAdminEmail = admin_email?.trim();
-  if (
-    normalizedAdminEmail !== undefined &&
-    normalizedAdminEmail !== '' &&
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedAdminEmail)
-  ) {
-    return c.json({ error: 'Email do operador inválido.' }, 400);
-  }
-
-  const normalizedSummaryTimeout = summary_timeout_sec?.trim();
-  let summaryTimeoutToSave: string | null | undefined;
-  if (normalizedSummaryTimeout !== undefined) {
-    if (normalizedSummaryTimeout === '') {
-      summaryTimeoutToSave = null;
-    } else {
-      const parsedTimeout = Number(normalizedSummaryTimeout);
-      if (!Number.isFinite(parsedTimeout) || parsedTimeout < 30 || parsedTimeout > 600) {
-        return c.json({ error: 'Timeout de resumo deve ficar entre 30 e 600 segundos.' }, 400);
-      }
-      summaryTimeoutToSave = String(Math.round(parsedTimeout));
-    }
-  }
 
   // Se a key veio no payload, valida + persiste. Senão, usa a já cifrada
   // (admin está só atualizando os modelos default).
@@ -291,27 +251,6 @@ setupRoutes.post('/', async (c) => {
       await deleteDefaultXAnalysisModel();
     } else {
       await setDefaultXAnalysisModel(default_x_analysis_model);
-    }
-  }
-  if (yt_dlp_proxy_urls !== undefined) {
-    if (yt_dlp_proxy_urls.trim() === '') {
-      await deleteSetting('yt_dlp_proxy_urls');
-    } else {
-      await setSetting('yt_dlp_proxy_urls', yt_dlp_proxy_urls);
-    }
-  }
-  if (normalizedAdminEmail !== undefined) {
-    if (normalizedAdminEmail === '') {
-      await deleteSetting('admin_email');
-    } else {
-      await setSetting('admin_email', normalizedAdminEmail);
-    }
-  }
-  if (summaryTimeoutToSave !== undefined) {
-    if (summaryTimeoutToSave === null) {
-      await deleteSetting('summary_timeout_sec');
-    } else {
-      await setSetting('summary_timeout_sec', summaryTimeoutToSave);
     }
   }
   if (app_language !== undefined) {

@@ -18,15 +18,20 @@ import { db } from '../lib/db';
 import { getDefaultXAnalysisModel, getSetting, isSetupComplete } from '../lib/settings';
 import { parseVideoUrl } from '../lib/video-url';
 import {
-  MAX_IMAGE_UPLOAD_BYTES,
-  MAX_MEDIA_UPLOAD_BYTES,
   MAX_MEDIA_UPLOAD_REQUEST_BYTES,
-  MAX_DOCUMENT_UPLOAD_BYTES,
   detectUploadKind,
+  maxBytesForKind,
   putUploadFile,
   sanitizeUploadFilename,
+  tooLargeMessageForKind,
+  uploadObjectKey,
   uploadSourceUrl,
+  type UploadKind,
 } from '../lib/media-upload';
+import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { deleteS3Object, presignClient, presignEnabled, s3Bucket, s3Client } from '../lib/s3';
+import { rateLimit } from '../lib/rate-limit';
 import { createSubscriber } from '../lib/redis';
 import {
   isTerminalStage,
@@ -341,6 +346,44 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
   };
 }
 
+function jobTypeForKind(
+  kind: UploadKind,
+): 'UPLOAD_AND_ANALYZE_IMAGE' | 'UPLOAD_AND_ANALYZE_DOCUMENT' | 'UPLOAD_AND_TRANSCRIBE' {
+  if (kind === 'image') return 'UPLOAD_AND_ANALYZE_IMAGE';
+  if (kind === 'document') return 'UPLOAD_AND_ANALYZE_DOCUMENT';
+  return 'UPLOAD_AND_TRANSCRIBE';
+}
+
+/**
+ * Cria + enfileira o job de upload. Pré-requisito: o objeto já está no S3 sob a
+ * key `uploadObjectKey(userId, uploadId, filename)`. Compartilhado entre o
+ * upload via app (`createUploadJobForUser`) e o confirm do fluxo presigned.
+ */
+async function enqueueUploadJob(
+  userId: string,
+  uploadId: string,
+  filename: string,
+  kind: UploadKind,
+): Promise<{ jobId: string; status: string; sourceUrl: string }> {
+  const sourceUrl = uploadSourceUrl(uploadId, filename);
+  const job = await db.job.create({
+    data: {
+      userId,
+      type: jobTypeForKind(kind),
+      status: 'QUEUED',
+      sourceUrl,
+    },
+    select: { id: true, status: true, sourceUrl: true },
+  });
+
+  await notifyNewJob(job.id).catch((err) => {
+    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+  });
+  await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
+
+  return { jobId: job.id, status: job.status, sourceUrl: job.sourceUrl };
+}
+
 export async function createUploadJobForUser(
   userId: string,
   media: File,
@@ -366,11 +409,8 @@ export async function createUploadJobForUser(
       error: 'Formato não suportado. Envie áudio, vídeo, imagem ou documento.',
     };
   }
-  if (kind === 'image' && media.size > MAX_IMAGE_UPLOAD_BYTES) {
-    return { outcome: 'error', status: 413, error: 'Imagem muito grande. O limite é 20 MiB.' };
-  }
-  if (kind === 'document' && media.size > MAX_DOCUMENT_UPLOAD_BYTES) {
-    return { outcome: 'error', status: 413, error: 'Documento muito grande. O limite é 50 MiB.' };
+  if (media.size > maxBytesForKind(kind)) {
+    return { outcome: 'error', status: 413, error: tooLargeMessageForKind(kind) };
   }
   if (kind === 'document') {
     const documentModel = await getSetting('default_document_model').catch(() => null);
@@ -382,12 +422,8 @@ export async function createUploadJobForUser(
       };
     }
   }
-  if (kind === 'media' && media.size > MAX_MEDIA_UPLOAD_BYTES) {
-    return { outcome: 'error', status: 413, error: 'Arquivo muito grande. O limite é 500 MiB.' };
-  }
 
   const uploadId = crypto.randomUUID();
-  const sourceUrl = uploadSourceUrl(uploadId, filename);
   try {
     await putUploadFile({
       userId,
@@ -405,27 +441,8 @@ export async function createUploadJobForUser(
     };
   }
 
-  const job = await db.job.create({
-    data: {
-      userId,
-      type:
-        kind === 'image'
-          ? 'UPLOAD_AND_ANALYZE_IMAGE'
-          : kind === 'document'
-            ? 'UPLOAD_AND_ANALYZE_DOCUMENT'
-            : 'UPLOAD_AND_TRANSCRIBE',
-      status: 'QUEUED',
-      sourceUrl,
-    },
-    select: { id: true, status: true, sourceUrl: true },
-  });
-
-  await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
-  });
-  await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
-
-  return { outcome: 'created', jobId: job.id, status: job.status, sourceUrl, kind };
+  const enqueued = await enqueueUploadJob(userId, uploadId, filename, kind);
+  return { outcome: 'created', ...enqueued, kind };
 }
 
 function autoJobResponse(c: Context, result: AutoJobResult): Response {
@@ -584,6 +601,177 @@ jobsRoutes.post('/upload', async (c) => {
   );
 });
 
+// Limites do presign por user (anti-abuso acidental, não quota comercial).
+const PRESIGN_MAX_PER_MINUTE = 30;
+const PRESIGN_EXPIRES_SEC = 300;
+
+const PresignBody = z.object({
+  filename: z.string().min(1).max(512),
+  contentType: z.string().min(1).max(255),
+  size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+});
+
+const ConfirmBody = z.object({
+  uploadId: z.string().uuid(),
+  filename: z.string().min(1).max(512),
+  contentType: z.string().min(1).max(255),
+});
+
+// POST /api/jobs/upload/presign — gera presigned PUT URL pra upload direto pro S3.
+// Aditivo: se S3_PUBLIC_ENDPOINT não estiver setado, retorna { enabled: false }
+// e o front cai no fluxo de upload via app (/api/jobs/upload).
+jobsRoutes.post('/upload/presign', async (c) => {
+  const userId = c.get('userId');
+
+  if (!presignEnabled()) {
+    return c.json({ enabled: false }, 200);
+  }
+
+  if (!(await isSetupComplete())) {
+    return c.json(
+      { error: 'Setup incompleto. Aguarde o administrador concluir a configuração.' },
+      412,
+    );
+  }
+
+  const rl = await rateLimit(`voxen:rl:presign:${userId}`, PRESIGN_MAX_PER_MINUTE, 60);
+  if (!rl.allowed) {
+    return c.json({ error: 'Muitas solicitações de upload. Tente novamente em instantes.' }, 429);
+  }
+
+  const parsed = PresignBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ error: 'Payload inválido.' }, 400);
+  }
+
+  const filename = sanitizeUploadFilename(parsed.data.filename);
+  const contentType = parsed.data.contentType || 'application/octet-stream';
+  const kind = detectUploadKind(filename, contentType);
+  if (!kind) {
+    return c.json(
+      { error: 'Formato não suportado. Envie áudio, vídeo, imagem ou documento.' },
+      400,
+    );
+  }
+  if (parsed.data.size <= 0) {
+    return c.json({ error: 'Arquivo vazio.' }, 400);
+  }
+  if (parsed.data.size > maxBytesForKind(kind)) {
+    return c.json({ error: tooLargeMessageForKind(kind) }, 413);
+  }
+  if (kind === 'document') {
+    const documentModel = await getSetting('default_document_model').catch(() => null);
+    if (!documentModel) {
+      return c.json(
+        { error: 'Análise documental ainda não está configurada. Defina um modelo de documento.' },
+        412,
+      );
+    }
+  }
+
+  // Key SEMPRE derivada do userId da sessão + uploadId aleatório — o client
+  // nunca escolhe o path (impede escrita em workspace alheio).
+  const uploadId = crypto.randomUUID();
+  const key = uploadObjectKey(userId, uploadId, filename);
+
+  let url: string;
+  try {
+    url = await getSignedUrl(
+      presignClient(),
+      new PutObjectCommand({ Bucket: s3Bucket(), Key: key, ContentType: contentType }),
+      { expiresIn: PRESIGN_EXPIRES_SEC },
+    );
+  } catch (err) {
+    // Não logar a URL (contém assinatura) — só a key.
+    console.error(`[jobs] presign failed (key=${key}):`, err instanceof Error ? err.message : err);
+    return c.json({ error: 'Falha ao gerar URL de upload.' }, 502);
+  }
+
+  return c.json({
+    enabled: true,
+    uploadId,
+    sourceUrl: uploadSourceUrl(uploadId, filename),
+    key,
+    url,
+    method: 'PUT',
+    headers: { 'Content-Type': contentType },
+    expiresIn: PRESIGN_EXPIRES_SEC,
+  });
+});
+
+// POST /api/jobs/upload/confirm — confirma um upload presigned e enfileira o job.
+// Valida por HeadObject (existência + tamanho REAL, não o size informado pelo
+// client) antes de criar o job.
+jobsRoutes.post('/upload/confirm', async (c) => {
+  const userId = c.get('userId');
+
+  if (!(await isSetupComplete())) {
+    return c.json(
+      { error: 'Setup incompleto. Aguarde o administrador concluir a configuração.' },
+      412,
+    );
+  }
+
+  const parsed = ConfirmBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ error: 'Payload inválido.' }, 400);
+  }
+
+  const filename = sanitizeUploadFilename(parsed.data.filename);
+  const contentType = parsed.data.contentType || 'application/octet-stream';
+  const kind = detectUploadKind(filename, contentType);
+  if (!kind) {
+    return c.json(
+      { error: 'Formato não suportado. Envie áudio, vídeo, imagem ou documento.' },
+      400,
+    );
+  }
+  if (kind === 'document') {
+    const documentModel = await getSetting('default_document_model').catch(() => null);
+    if (!documentModel) {
+      return c.json(
+        { error: 'Análise documental ainda não está configurada. Defina um modelo de documento.' },
+        412,
+      );
+    }
+  }
+
+  // Key derivada do userId da sessão — o client não pode apontar pra outro path.
+  const key = uploadObjectKey(userId, parsed.data.uploadId, filename);
+
+  let contentLength: number;
+  try {
+    const head = await s3Client().send(new HeadObjectCommand({ Bucket: s3Bucket(), Key: key }));
+    contentLength = head.ContentLength ?? 0;
+  } catch (err) {
+    const name = err instanceof Error ? err.name : '';
+    if (name === 'NotFound' || name === 'NoSuchKey') {
+      return c.json({ error: 'Upload não encontrado. Reenvie o arquivo.' }, 400);
+    }
+    console.error(
+      `[jobs] confirm HeadObject failed (key=${key}):`,
+      err instanceof Error ? err.message : err,
+    );
+    return c.json({ error: 'Falha ao validar upload no armazenamento S3.' }, 502);
+  }
+
+  if (contentLength <= 0) {
+    await deleteS3Object(key).catch(() => undefined);
+    return c.json({ error: 'Arquivo vazio.' }, 400);
+  }
+  // Tamanho REAL do objeto (não confiar no size informado no presign).
+  if (contentLength > maxBytesForKind(kind)) {
+    await deleteS3Object(key).catch(() => undefined);
+    return c.json({ error: tooLargeMessageForKind(kind) }, 413);
+  }
+
+  const enqueued = await enqueueUploadJob(userId, parsed.data.uploadId, filename, kind);
+  return c.json(
+    { jobId: enqueued.jobId, status: enqueued.status, sourceUrl: enqueued.sourceUrl, kind },
+    201,
+  );
+});
+
 // POST /api/jobs/scrape — agenda scraping de página web (spec 004)
 jobsRoutes.post('/scrape', async (c) => {
   const userId = c.get('userId');
@@ -665,22 +853,61 @@ function normalizeWebUrl(raw: string): string | null {
 
 jobsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
-  const jobs = await db.job.findMany({
-    where: { userId },
-    orderBy: { queuedAt: 'desc' },
-    take: 50,
-    select: {
-      id: true,
-      status: true,
-      sourceUrl: true,
-      errorMsg: true,
-      transcriptId: true,
-      queuedAt: true,
-      startedAt: true,
-      finishedAt: true,
-    },
+  const pageRaw = Number(c.req.query('page') ?? '1');
+  const limitRaw = Number(c.req.query('limit') ?? '10');
+  const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1;
+  const limit =
+    Number.isFinite(limitRaw) && limitRaw >= 1 && limitRaw <= 50 ? Math.floor(limitRaw) : 10;
+  const skip = (page - 1) * limit;
+
+  const [total, jobs] = await Promise.all([
+    db.job.count({ where: { userId } }),
+    db.job.findMany({
+      where: { userId },
+      orderBy: { queuedAt: 'desc' },
+      skip,
+      take: limit,
+      select: {
+        id: true,
+        status: true,
+        sourceUrl: true,
+        errorMsg: true,
+        transcriptId: true,
+        queuedAt: true,
+        startedAt: true,
+        finishedAt: true,
+        transcript: {
+          select: {
+            title: true,
+            thumbnailUrl: true,
+            source: true,
+            durationSec: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  return c.json({
+    jobs: jobs.map((job) => ({
+      id: job.id,
+      status: job.status,
+      sourceUrl: job.sourceUrl,
+      errorMsg: job.errorMsg,
+      transcriptId: job.transcriptId,
+      queuedAt: job.queuedAt,
+      startedAt: job.startedAt,
+      finishedAt: job.finishedAt,
+      title: job.transcript?.title ?? null,
+      thumbnailUrl: job.transcript?.thumbnailUrl ?? null,
+      transcriptSource: job.transcript?.source ?? null,
+      durationSec: job.transcript?.durationSec ?? null,
+    })),
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
   });
-  return c.json({ jobs });
 });
 
 jobsRoutes.get('/:id', async (c) => {

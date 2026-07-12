@@ -2,7 +2,7 @@
 # Voxen — docker compose (dev e prod usam o mesmo arquivo, com overrides)
 # ============================================================================
 # Pré-requisito: docker + docker compose. Nada mais.
-# Sobe: postgres + redis + minio + web + chat + worker
+# Sobe: postgres + redis + minio + web + worker
 # Bucket MinIO é criado automaticamente; secrets vêm do .env da raiz.
 # ============================================================================
 
@@ -116,7 +116,8 @@ services:
       S3_BUCKET: ${S3_BUCKET:-voxen-transcripts}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
-      CHAT_SERVICE_URL: http://chat:8001
+      # Opcional: habilita upload presigned direto pro S3 (ver docs/DEPLOY.md).
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
     ports:
       - '3000:3000'
     networks:
@@ -127,32 +128,6 @@ services:
       timeout: 5s
       retries: 5
 
-  chat:
-    build:
-      context: .
-      dockerfile: apps/chat/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-voxen}:${POSTGRES_PASSWORD:-dev_change_me_in_prod}@postgres:5432/${POSTGRES_DB:-voxen}
-      MASTER_KEY: ${MASTER_KEY:-dm94ZW5fZGV2X21hc3Rlcl9rZXlfMzJfYnl0ZXMhISE=}
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-voxen}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-voxen_dev_minio_password}
-      S3_BUCKET: ${S3_BUCKET:-voxen-transcripts}
-      S3_REGION: ${S3_REGION:-us-east-1}
-      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
-    networks:
-      - voxen-net
-    healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:8001/health']
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   worker:
     build:
@@ -176,7 +151,6 @@ services:
       S3_BUCKET: ${S3_BUCKET:-voxen-transcripts}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
-      CHAT_SERVICE_URL: http://chat:8001
       YTDLP_BGUTIL_BASE_URL: ${YTDLP_BGUTIL_BASE_URL:-}
     networks:
       - voxen-net

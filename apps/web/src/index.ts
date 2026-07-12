@@ -21,13 +21,14 @@ import { transcriptsRoutes } from './routes/transcripts';
 import { onboardingRoutes } from './routes/onboarding';
 import { accountRoutes } from './routes/account';
 import { costRoutes } from './routes/cost';
-import { chatRoutes } from './routes/chat';
 import { notesRoutes } from './routes/notes';
 import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
 import { graphRoutes } from './routes/graph';
+import { releasesRoutes } from './routes/releases';
 import { shareTargetRoutes } from './routes/share-target';
 import { getRedisPublisher } from './lib/redis';
+import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
 import { s3Bucket, s3Client } from './lib/s3';
 
@@ -102,15 +103,12 @@ function deployTimestampToIso(value?: string): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-// Healthcheck deep — checa DB + Redis + chat service + S3 em paralelo.
+// Healthcheck deep — checa DB + Redis + S3 em paralelo.
 // 200 se todos ok, 503 se algum falhar. Pra monitoramento externo (Uptime
 // Kuma, Healthchecks.io). Rate-limit por IP pra evitar DoS amplificado
 // (cada hit gera 4 round-trips reais).
 app.get('/health/deep', async (c) => {
-  const ip =
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
-    c.req.header('x-real-ip') ??
-    'unknown';
+  const ip = clientIp(c);
   const rl = await rateLimit(`voxen:rl:health-deep:${ip}`, 30, 60);
   if (!rl.allowed) {
     return c.json({ error: 'Rate limit. Tente em alguns segundos.' }, 429);
@@ -127,7 +125,7 @@ app.get('/health/deep', async (c) => {
     }
   };
 
-  const [postgres, redis, chat, s3] = await Promise.all([
+  const [postgres, redis, s3] = await Promise.all([
     timed(async () => {
       await db.$queryRaw`SELECT 1`;
     }),
@@ -136,17 +134,12 @@ app.get('/health/deep', async (c) => {
       if (pong !== 'PONG') throw new Error(`Resposta inesperada: ${pong}`);
     }),
     timed(async () => {
-      const chatUrl = (process.env.CHAT_SERVICE_URL ?? 'http://chat:8001') + '/health';
-      const res = await fetch(chatUrl, { signal: AbortSignal.timeout(3000) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    }),
-    timed(async () => {
       const { headBucket } = await import('./lib/s3-health');
       await headBucket();
     }),
   ]);
 
-  const checks = { postgres, redis, chat, s3 };
+  const checks = { postgres, redis, s3 };
   const allOk = Object.values(checks).every((c) => c.ok);
   return c.json({ ok: allOk, checks }, allOk ? 200 : 503);
 });
@@ -249,8 +242,6 @@ app.route('/api/account', accountRoutes);
 // Painel de custos (admin)
 app.route('/api/admin/custos', costRoutes);
 
-// Chat (proxy autenticado pro serviço chat:8001)
-app.route('/api/chat', chatRoutes);
 // KB manual de notas (CRUD + FTS + tree)
 app.route('/api/notes', notesRoutes);
 // Organização compartilhada da biblioteca
@@ -261,6 +252,8 @@ app.route('/api/automations', automationsRoutes);
 app.route('/mcp', mcpRoutes);
 // Graph view (visualização Obsidian-like da KB)
 app.route('/api/graph', graphRoutes);
+// Changelog / release notes (releases.json)
+app.route('/api/releases', releasesRoutes);
 // PWA Web Share Target (Android/Chrome instalado)
 app.route('/share-target', shareTargetRoutes);
 
@@ -389,9 +382,43 @@ app.get('*', async (c) => {
 // O default precisa ter `{ port, fetch }` (formato BunServeOptions).
 const port = Number(process.env.PORT ?? 3000);
 
+// Sincroniza o authfile do chisel embutido com o `proxy_agent_token` no boot
+// (uma vez). Best-effort: roda fora do path de serve e nunca quebra o startup.
+// Só em produção (entrypoint seta NODE_ENV=production): em dev/test o import de
+// `../src/index` pelos testes não deve tocar /run/voxen nem DB.
+if (process.env.NODE_ENV === 'production') {
+  void import('./lib/proxy-agent-tunnel')
+    .then(({ syncChiselAuthfile }) => syncChiselAuthfile())
+    .catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[proxy-agent] sync no boot falhou: ${message}`);
+    });
+}
+
+// Proxy de WebSocket do túnel: antes de cair no Hono, tentamos fazer upgrade do
+// path do túnel (default /_tunnel) e encaminhar pro chisel server local. Só
+// intercepta o path EXATO do túnel; qualquer outra rota segue pro Hono normal.
+import { tryUpgradeTunnel, tunnelWebSocketHandler } from './lib/tunnel-proxy';
+import type { Server } from 'bun';
+
 export default {
   port,
-  fetch: app.fetch,
+  // `server` é injetado pelo Bun no runtime real. Em testes, importadores chamam
+  // `app.fetch(req)` direto (sem server) — por isso é opcional: sem server não há
+  // como fazer `server.upgrade`, então pulamos o proxy e seguimos pro Hono.
+  // Tipamos o retorno como `Response | Promise<Response>` pra não poluir os
+  // callers de teste (que fazem `const res = await app.fetch(req)`); no upgrade
+  // bem-sucedido o Bun aceita `undefined` em runtime — encapsulamos com cast.
+  fetch(req: Request, server?: Server<unknown>): Response | Promise<Response> {
+    if (server) {
+      const upgraded = tryUpgradeTunnel(req, server);
+      // `tryUpgradeTunnel`: `undefined` = upgrade aceito (o Bun assume a resposta);
+      // `Response` = interceptou e recusou; `null` = não é o path do túnel.
+      if (upgraded !== null) return upgraded as unknown as Response;
+    }
+    return app.fetch(req, server ? { server } : undefined);
+  },
+  websocket: tunnelWebSocketHandler,
 };
 
 // Em testes, importadores fazem `import app from '../src/index'` e Bun NÃO

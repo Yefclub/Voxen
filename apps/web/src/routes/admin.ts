@@ -12,7 +12,8 @@
 import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
-import { getSetting, setSetting } from '../lib/settings';
+import { deleteSetting, getSetting, setSetting } from '../lib/settings';
+import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
 
 type AdminVariables = {
   adminUserId: string;
@@ -221,35 +222,118 @@ adminRoutes.delete('/mcp', async (c) => {
 });
 
 // ----------------------------------------------------------------------------
-// Telegram bot — setting do token (cifrado em DB)
+// Agente de Proxy (túnel residencial) — token de conexão (cifrado em DB)
 // ----------------------------------------------------------------------------
-adminRoutes.get('/telegram', async (c) => {
-  const token = await getSetting('telegram_bot_token').catch(() => null);
+// Esta entrega cobre só a app web (token + status + UI). O runtime do chisel
+// (servidor de túnel, cliente no agente, integração com worker) vem em PRs
+// separadas. Ver spec 058. O token NUNCA é reexibido nem logado.
+
+// GET /api/admin/proxy-agent — status (configured, tunnelUrl, connected, conflict).
+// NUNCA retorna o token (nem cifrado). O `connected` é REAL: faz um TCP connect
+// best-effort (timeout curto) ao SOCKS reverso local — que o chisel só abre quando
+// há um agente conectado. `conflict` lê o log do chisel buscando "address already
+// in use" (2º agente tentou bindar). Ambos best-effort: em dev (sem chisel) viram
+// false sem erro. As probes correm em paralelo pra não pendurar o request.
+adminRoutes.get('/proxy-agent', async (c) => {
+  const stored = await getSetting('proxy_agent_token').catch(() => null);
+  const configured = !!stored;
+  const enabledRaw = await getSetting('proxy_agent_enabled').catch(() => null);
+  // Só faz sentido "ligado" quando há token; default = ligado (o token só é
+  // gerado quando se quer usar o proxy). 'false' explícito desliga.
+  const enabled = configured && enabledRaw !== 'false';
+  const [connected, conflict] = await Promise.all([probeAgentConnected(), readConflictFlag()]);
   return c.json({
-    configured: !!token,
-    tokenPreview: token ? token.slice(0, 8) + '…' : null,
+    configured,
+    enabled,
+    tunnelUrl: deriveTunnelUrl(),
+    connected,
+    conflict,
   });
 });
 
-adminRoutes.put('/telegram', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { token?: string };
-  const token = body.token?.trim();
-  if (!token || token.length < 30) {
-    return c.json({ error: 'Token Telegram inválido (formato esperado: <id>:<hash>).' }, 400);
+// PATCH /api/admin/proxy-agent — liga/desliga o roteamento pelo agente de proxy
+// SEM mexer no token nem no túnel. ON: aponta o worker pro SOCKS local; OFF:
+// remove o proxy local (worker baixa direto). Não sobrescreve proxy http custom.
+adminRoutes.patch('/proxy-agent', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  if (typeof body.enabled !== 'boolean') {
+    return c.json({ error: 'Campo "enabled" obrigatório (boolean).' }, 400);
   }
-  // Formato bot token: "1234567890:AAH...".
-  if (!/^\d+:[A-Za-z0-9_-]+$/.test(token)) {
-    return c.json({ error: 'Token fora do formato esperado.' }, 400);
+  // Não dá pra ativar sem um token (o worker apontaria pra um túnel inexistente
+  // e as extrações falhariam em silêncio). A UI já desabilita o switch sem token;
+  // o endpoint replica a guarda.
+  if (body.enabled) {
+    const stored = await getSetting('proxy_agent_token').catch(() => null);
+    if (!stored) {
+      return c.json({ error: 'Gere o token do agente de proxy antes de ativar.' }, 409);
+    }
   }
-  await setSetting('telegram_bot_token', token);
-  return c.json({ configured: true });
+  await setSetting('proxy_agent_enabled', body.enabled ? 'true' : 'false');
+  const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
+  if (body.enabled) {
+    if (!currentProxy) {
+      await setSetting('yt_dlp_proxy_urls', LOCAL_TUNNEL_SOCKS_URL);
+    }
+  } else if (currentProxy === LOCAL_TUNNEL_SOCKS_URL) {
+    await deleteSetting('yt_dlp_proxy_urls');
+  }
+  return c.json({ enabled: body.enabled });
 });
 
-adminRoutes.delete('/telegram', async (c) => {
+// POST /api/admin/proxy-agent/token — gera/rotaciona o token.
+// Retorna o token em texto puro UMA vez (não recuperável depois) + a URL do
+// túnel. Sobrescreve qualquer token anterior.
+adminRoutes.post('/proxy-agent/token', async (c) => {
+  // 32 bytes aleatórios -> base64url. Alta entropia pra autenticar o túnel.
+  const tokenBytes = new Uint8Array(32);
+  crypto.getRandomValues(tokenBytes);
+  const token = toBase64Url(tokenBytes);
+  await setSetting('proxy_agent_token', token);
+  // Gerar token = intenção de usar o proxy → liga o switch.
+  await setSetting('proxy_agent_enabled', 'true');
+  // Aponta o worker pro SOCKS local do túnel (worker já é socks5-capable, spec
+  // 058). Só seta se ainda não houver um proxy customizado configurado pelo
+  // operador — não sobrescrevemos um http proxy intencional.
+  const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
+  if (!currentProxy) {
+    await setSetting('yt_dlp_proxy_urls', LOCAL_TUNNEL_SOCKS_URL);
+  }
+  // Sincroniza o authfile do chisel e recarrega o servidor (best-effort).
+  const { syncChiselAuthfile } = await import('../lib/proxy-agent-tunnel');
+  await syncChiselAuthfile();
+  return c.json({
+    token,
+    tunnelUrl: deriveTunnelUrl(),
+    warning: 'Salve este token agora — não será exibido novamente.',
+  });
+});
+
+// DELETE /api/admin/proxy-agent/token — revoga (apaga setting).
+adminRoutes.delete('/proxy-agent/token', async (c) => {
   const { deleteSetting } = await import('../lib/settings');
-  await deleteSetting('telegram_bot_token');
+  await deleteSetting('proxy_agent_token');
+  await deleteSetting('proxy_agent_enabled');
+  // Limpa o proxy do worker SOMENTE se for exatamente o SOCKS local do túnel —
+  // não apaga um proxy http custom que o operador tenha configurado.
+  const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
+  if (currentProxy === LOCAL_TUNNEL_SOCKS_URL) {
+    await deleteSetting('yt_dlp_proxy_urls');
+  }
+  // Limpa o authfile (passa a {} -> nega conexões) e recarrega (best-effort).
+  const { syncChiselAuthfile } = await import('../lib/proxy-agent-tunnel');
+  await syncChiselAuthfile();
   return c.json({ ok: true });
 });
+
+// SOCKS5 local exposto pelo túnel chisel (bind em 127.0.0.1:1080 na VPS).
+// socks5h => resolução de DNS no lado do agente residencial.
+const LOCAL_TUNNEL_SOCKS_URL = 'socks5h://127.0.0.1:1080';
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
 function normalizeAppOrigin(value: unknown): string | null {
   if (typeof value !== 'string') return null;

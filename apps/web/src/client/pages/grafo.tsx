@@ -2,7 +2,7 @@
 // /grafo — visualização do Voxen Brain
 // ============================================================================
 // Spec: .specs/020-brain-knowledge-harness.md
-// Tech: react-force-graph-3d/Three.js com fallback Sigma/SVG determinístico.
+// Tech: Reagraph (WebGL/R3F) com fallback Sigma/SVG determinístico.
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -10,14 +10,15 @@ import { useNavigate } from 'react-router-dom';
 import Graph from 'graphology';
 import type SigmaRenderer from 'sigma';
 import type {
-  ForceGraphMethods,
-  ForceGraphProps,
-  GraphData as ForceGraphData,
-  LinkObject,
-  NodeObject,
-} from 'react-force-graph-3d';
-import { ArrowLeft, BrainCircuit, Network, RotateCw, Search } from 'lucide-react';
+  GraphCanvas as GraphCanvasType,
+  GraphCanvasRef,
+  GraphEdge as ReagraphEdge,
+  GraphNode as ReagraphNode,
+  Theme,
+} from 'reagraph';
+import { ArrowLeft, Box, BrainCircuit, Network, RotateCw, Search, Square } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { FetchError } from '../components/ui/fetch-error';
 import { Spinner } from '../components/ui/spinner';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { useFetch } from '../lib/hooks';
@@ -114,33 +115,10 @@ interface SigmaGraphModel {
   graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>;
   layout: GraphLayout;
   neighborhoods: Map<string, Set<string>>;
-  forceData: ForceGraphData<ForceGraphNode, ForceGraphLink>;
+  reagraphNodes: ReagraphNode[];
+  reagraphEdges: ReagraphEdge[];
+  nodeById: Map<string, GraphNode>;
 }
-
-interface ForceGraphNode extends GraphNode {
-  value: number;
-  color: string;
-  group: GraphNodeType;
-  x: number;
-  y: number;
-  z: number;
-}
-
-interface ForceGraphLink extends GraphEdge {
-  source: string;
-  target: string;
-  value: number;
-  color: string;
-}
-
-type ForceGraph3DComponent = React.ComponentType<
-  ForceGraphProps<ForceGraphNode, ForceGraphLink> & {
-    ref?: React.MutableRefObject<ForceGraphMethods<ForceGraphNode, ForceGraphLink> | undefined>;
-  }
->;
-
-type RenderedForceNode = NodeObject<ForceGraphNode>;
-type RenderedForceLink = LinkObject<ForceGraphNode, ForceGraphLink>;
 
 const GRAPH_VIEWBOX = { width: 1000, height: 620 };
 const SOURCE_NODE_TYPES = new Set<GraphNodeType>(['transcript', 'note', 'folder']);
@@ -169,31 +147,64 @@ export const EDGE_COLORS: Record<GraphEdge['kind'], string> = {
   next_to: 'rgba(163, 230, 53, 0.7)',
 };
 
-// Ações de mouse do TrackballControls (three.MOUSE). Valores literais pra não
-// importar 'three' estaticamente no bundle principal — o three só entra no chunk
-// lazy do react-force-graph. ROTATE/LEFT=0, DOLLY/MIDDLE=1, PAN/RIGHT=2.
-const MOUSE_ROTATE = 0;
-const MOUSE_PAN = 2;
-const DOUBLE_CLICK_MS = 350;
+// reagraph puxa three.js + react-three-fiber; carregar sob demanda (import
+// dinâmico) mantém esse peso fora do bundle principal. Por isso o tema é
+// construído a partir do darkTheme só quando o módulo chega.
+type GraphCanvasComponent = typeof GraphCanvasType;
 
-interface PanControls {
-  mouseButtons: { LEFT: number; MIDDLE: number; RIGHT: number };
-}
-
-// Não sequestrar o Espaço quando o foco está num elemento interativo (digitar
-// num campo, ativar um botão/link). O pan por Espaço só vale sobre o canvas.
-function isInteractiveTarget(): boolean {
-  const el = typeof document === 'undefined' ? null : document.activeElement;
-  if (!(el instanceof HTMLElement)) return false;
-  if (el.isContentEditable) return true;
-  return (
-    ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(el.tagName) ||
-    el.getAttribute('role') === 'button'
-  );
+function buildVoxenTheme(darkTheme: Theme): Theme {
+  return {
+    ...darkTheme,
+    canvas: {
+      background: '#09090b',
+      fog: null,
+    },
+    node: {
+      ...darkTheme.node,
+      fill: '#71717a',
+      activeFill: '#fafafa',
+      opacity: 1,
+      selectedOpacity: 1,
+      inactiveOpacity: 0.22,
+      label: {
+        color: '#e4e4e7',
+        stroke: '#09090b',
+        activeColor: '#fafafa',
+        backgroundColor: 'rgba(9, 9, 11, 0.72)',
+        backgroundOpacity: 0.85,
+        padding: 4,
+        radius: 4,
+      },
+    },
+    ring: {
+      fill: '#52525b',
+      activeFill: '#a78bfa',
+    },
+    edge: {
+      ...darkTheme.edge,
+      fill: '#3f3f46',
+      activeFill: '#a1a1aa',
+      opacity: 0.55,
+      selectedOpacity: 1,
+      inactiveOpacity: 0.08,
+      label: {
+        color: '#a1a1aa',
+        activeColor: '#e4e4e7',
+        stroke: '#09090b',
+      },
+    },
+    arrow: {
+      fill: '#52525b',
+      activeFill: '#d4d4d8',
+    },
+    lasso: darkTheme.lasso,
+  };
 }
 
 export function GrafoPage(): React.ReactElement {
   const [forceTick, setForceTick] = useState(0);
+  // Grafo 3D por padrão (orbita/gira); toggle para o 2D plano (pan).
+  const [is3d, setIs3d] = useState(true);
   const graphPath = forceTick > 0 ? `/api/graph?force=1&t=${forceTick}` : '/api/graph';
   const { data, loading, error } = useFetch<GraphResp>(graphPath);
   const [search, setSearch] = useState('');
@@ -219,7 +230,10 @@ export function GrafoPage(): React.ReactElement {
     };
   }, [data, search]);
 
-  const graphModel = useMemo(() => (filtered ? buildSigmaGraphModel(filtered) : null), [filtered]);
+  const graphModel = useMemo(
+    () => (filtered ? buildSigmaGraphModel(filtered, t) : null),
+    [filtered, t],
+  );
 
   useEffect(() => {
     if (selectedId && filtered && !filtered.nodes.some((node) => node.id === selectedId)) {
@@ -244,6 +258,7 @@ export function GrafoPage(): React.ReactElement {
         <BrainGraphCanvas
           model={graphModel}
           selectedId={selectedId}
+          is3d={is3d}
           translate={t}
           onSelect={setSelectedId}
           onOpen={openNode}
@@ -254,9 +269,9 @@ export function GrafoPage(): React.ReactElement {
             <Spinner />
           </div>
         )}
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-rose-300">
-            {error}
+        {error && !loading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <FetchError message={error} onRetry={() => setForceTick(Date.now())} />
           </div>
         )}
         {!loading && data && data.nodes.length === 0 && (
@@ -269,7 +284,7 @@ export function GrafoPage(): React.ReactElement {
                 <p className="font-display text-lg font-semibold">{t('graph.emptyTitle')}</p>
                 <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
                   {t('graph.emptyDescriptionBefore')} <code className="text-zinc-300">/notas</code>{' '}
-                  {t('graph.emptyDescriptionMiddle')} <code className="text-zinc-300">/jobs</code>{' '}
+                  {t('graph.emptyDescriptionMiddle')} <code className="text-zinc-300">/</code>{' '}
                   {t('graph.emptyDescriptionAfter')}
                 </p>
               </div>
@@ -282,10 +297,10 @@ export function GrafoPage(): React.ReactElement {
           <div className="pointer-events-auto mx-auto flex max-w-5xl flex-wrap items-center gap-2.5 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/80 px-3 py-2.5 shadow-lg backdrop-blur-xl sm:gap-3">
             <button
               type="button"
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/')}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-zinc-100"
-              aria-label={t('shell.backToDashboard')}
-              title={t('shell.backToDashboard')}
+              aria-label={t('shell.backToHome')}
+              title={t('shell.backToHome')}
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
@@ -308,6 +323,16 @@ export function GrafoPage(): React.ReactElement {
             <Button
               variant="outline"
               size="default"
+              onClick={() => setIs3d((prev) => !prev)}
+              title={t(is3d ? 'graph.switchTo2d' : 'graph.switchTo3d')}
+              aria-label={t(is3d ? 'graph.switchTo2d' : 'graph.switchTo3d')}
+            >
+              {is3d ? <Box className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">{is3d ? '3D' : '2D'}</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="default"
               onClick={() => setForceTick(Date.now())}
               disabled={loading}
             >
@@ -322,7 +347,7 @@ export function GrafoPage(): React.ReactElement {
         {hasGraph && (
           <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 px-4">
             <p className="rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/70 px-3 py-1.5 text-center text-[11px] text-[var(--color-app-muted)] backdrop-blur-md">
-              {t('graph.controlsHint')}
+              {t(is3d ? 'graph.controlsHint3d' : 'graph.controlsHint')}
             </p>
           </div>
         )}
@@ -384,50 +409,30 @@ function StatDot({
 function BrainGraphCanvas({
   model,
   selectedId,
+  is3d,
   translate,
   onSelect,
   onOpen,
 }: {
   model: SigmaGraphModel | null;
   selectedId: string | null;
+  is3d: boolean;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
   onOpen: (node: GraphNode) => void;
 }): React.ReactElement {
-  const graphRef = useRef<ForceGraphMethods<ForceGraphNode, ForceGraphLink> | undefined>(undefined);
-  const observerRef = useRef<ResizeObserver | null>(null);
-  const [ForceGraph3D, setForceGraph3D] = useState<ForceGraph3DComponent | null>(null);
+  const graphRef = useRef<GraphCanvasRef | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [webglFailed, setWebglFailed] = useState(false);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const lastClickRef = useRef<{ id: string; time: number } | null>(null);
+  const [reagraph, setReagraph] = useState<{
+    GraphCanvas: GraphCanvasComponent;
+    theme: Theme;
+  } | null>(null);
   const fittedRef = useRef(false);
-
-  // Ref callback: mede o container assim que ele (re)monta e o re-observa. Com um
-  // useEffect([]) o observer não pegava o tamanho quando o <div> do canvas só
-  // aparecia depois de o model carregar — o size ficava 0 e o ForceGraph caía no
-  // fallback 900x560, deixando o grafo pequeno e descentralizado.
-  const measureRef = useCallback((node: HTMLDivElement | null) => {
-    observerRef.current?.disconnect();
-    observerRef.current = null;
-    if (!node || !('ResizeObserver' in window)) return;
-    const apply = (width: number, height: number): void =>
-      setSize({
-        width: Math.max(320, Math.floor(width)),
-        height: Math.max(420, Math.floor(height)),
-      });
-    const initial = node.getBoundingClientRect();
-    apply(initial.width, initial.height);
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) apply(entry.contentRect.width, entry.contentRect.height);
-    });
-    observer.observe(node);
-    observerRef.current = observer;
-  }, []);
 
   useEffect(() => {
     setWebglFailed(false);
-    setForceGraph3D(null);
+    setReagraph(null);
     fittedRef.current = false;
     if (!model || model.layout.nodes.length === 0) return;
     if (!supportsWebGL()) {
@@ -435,9 +440,11 @@ function BrainGraphCanvas({
       return;
     }
     let cancelled = false;
-    void import('react-force-graph-3d')
+    void import('reagraph')
       .then((mod) => {
-        if (!cancelled) setForceGraph3D(() => mod.default as ForceGraph3DComponent);
+        if (!cancelled) {
+          setReagraph({ GraphCanvas: mod.GraphCanvas, theme: buildVoxenTheme(mod.darkTheme) });
+        }
       })
       .catch(() => {
         if (!cancelled) setWebglFailed(true);
@@ -448,78 +455,39 @@ function BrainGraphCanvas({
   }, [model]);
 
   const activeId = hoveredId ?? selectedId;
-  const activeNeighbors = activeId ? (model?.neighborhoods.get(activeId) ?? new Set()) : null;
-
-  const isActiveNode = useCallback(
-    (nodeId: string): boolean => {
-      if (!activeId || !activeNeighbors) return true;
-      return nodeId === activeId || activeNeighbors.has(nodeId);
-    },
-    [activeId, activeNeighbors],
-  );
-
-  const isActiveLink = useCallback(
-    (link: RenderedForceLink): boolean => {
-      if (!activeId) return true;
-      return linkEndpointId(link.source) === activeId || linkEndpointId(link.target) === activeId;
-    },
-    [activeId],
-  );
-
-  const focusNode = useCallback((node: RenderedForceNode) => {
-    const x = finiteCoord(node.x);
-    const y = finiteCoord(node.y);
-    const z = finiteCoord(node.z);
-    graphRef.current?.cameraPosition({ x: x * 1.35, y: y * 1.35, z: z + 190 }, { x, y, z }, 520);
-  }, []);
+  const actives = useMemo(() => {
+    if (!activeId || !model) return undefined;
+    const neighbors = model.neighborhoods.get(activeId);
+    if (!neighbors) return [activeId];
+    return [activeId, ...neighbors];
+  }, [activeId, model]);
 
   useEffect(() => {
     if (!model || !selectedId || !graphRef.current) return;
-    const node = model.forceData.nodes.find((item) => item.id === selectedId);
-    if (node) focusNode(node);
-  }, [focusNode, model, selectedId]);
+    try {
+      graphRef.current.centerGraph([selectedId]);
+    } catch {
+      /* camera ainda não pronta */
+    }
+  }, [model, selectedId]);
+
+  // Trocar 2D/3D re-layouta o grafo — re-enquadra a câmera no novo layout.
+  useEffect(() => {
+    fittedRef.current = false;
+  }, [is3d]);
 
   useEffect(() => {
-    if (!ForceGraph3D || !graphRef.current) return;
+    if (!model || !reagraph || fittedRef.current) return;
     const timer = window.setTimeout(() => {
-      graphRef.current?.zoomToFit(650, 70);
-    }, 280);
+      try {
+        graphRef.current?.fitNodesInView(undefined, { animated: true });
+        fittedRef.current = true;
+      } catch {
+        /* ignore */
+      }
+    }, 400);
     return () => window.clearTimeout(timer);
-  }, [ForceGraph3D, model]);
-
-  // Pan extra além do giro (arraste) e zoom (scroll) padrão: botão do meio
-  // (scroll-click) sempre move, e Espaço + arraste alterna o botão esquerdo
-  // pra mover. Configura o TrackballControls assim que ele existe.
-  useEffect(() => {
-    if (!ForceGraph3D) return;
-    let cancelled = false;
-    let cleanupKeys: (() => void) | undefined;
-    const timer = window.setTimeout(() => {
-      if (cancelled) return;
-      const controls = graphRef.current?.controls() as PanControls | undefined;
-      if (!controls?.mouseButtons) return;
-      controls.mouseButtons.MIDDLE = MOUSE_PAN;
-      const onKeyDown = (event: KeyboardEvent): void => {
-        if (event.code !== 'Space' || event.repeat || isInteractiveTarget()) return;
-        event.preventDefault();
-        controls.mouseButtons.LEFT = MOUSE_PAN;
-      };
-      const onKeyUp = (event: KeyboardEvent): void => {
-        if (event.code === 'Space') controls.mouseButtons.LEFT = MOUSE_ROTATE;
-      };
-      window.addEventListener('keydown', onKeyDown);
-      window.addEventListener('keyup', onKeyUp);
-      cleanupKeys = () => {
-        window.removeEventListener('keydown', onKeyDown);
-        window.removeEventListener('keyup', onKeyUp);
-      };
-    }, 160);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-      cleanupKeys?.();
-    };
-  }, [ForceGraph3D]);
+  }, [model, reagraph, is3d]);
 
   if (!model || model.layout.nodes.length === 0) {
     return <div className="absolute inset-0" />;
@@ -537,94 +505,39 @@ function BrainGraphCanvas({
     );
   }
 
-  const width = size.width || 900;
-  const height = size.height || 560;
+  const GraphCanvas = reagraph?.GraphCanvas;
 
   return (
-    <div
-      ref={measureRef}
-      className="absolute inset-0 overflow-hidden bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:44px_44px]"
-    >
-      {!ForceGraph3D && (
+    <div className="absolute inset-0 overflow-hidden bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:48px_48px]">
+      {!GraphCanvas && (
         <div className="absolute inset-0 z-10 flex items-center justify-center">
           <Spinner />
         </div>
       )}
-      {ForceGraph3D && (
-        <ForceGraph3D
+      {GraphCanvas && reagraph && (
+        <GraphCanvas
           ref={graphRef}
-          graphData={model.forceData}
-          nodeId="id"
-          linkSource="source"
-          linkTarget="target"
-          width={width}
-          height={height}
-          backgroundColor="rgba(0,0,0,0)"
-          showNavInfo={false}
-          enableNodeDrag
-          enableNavigationControls
-          enablePointerInteraction
-          forceEngine="d3"
-          numDimensions={3}
-          cooldownTicks={260}
-          onEngineStop={() => {
-            if (fittedRef.current) return;
-            fittedRef.current = true;
-            graphRef.current?.zoomToFit(450, 60);
-          }}
-          d3AlphaDecay={0.018}
-          d3VelocityDecay={0.28}
-          warmupTicks={80}
-          nodeRelSize={4.8}
-          nodeResolution={18}
-          nodeOpacity={0.96}
-          nodeVal={(node) => node.value}
-          nodeColor={(node) => {
-            const id = String(node.id);
-            if (!isActiveNode(id)) return '#3f3f46';
-            if (id === selectedId) return '#fafafa';
-            return node.color;
-          }}
-          nodeLabel={(node) => `${node.label}\n${nodeTypeLabel(node.type, translate)}`}
-          linkColor={(link) => (isActiveLink(link) ? link.color : 'rgba(82, 82, 91, 0.16)')}
-          linkOpacity={0.68}
-          linkWidth={(link) => {
-            const base = link.kind === 'links_to' ? 2.4 : link.kind === 'related_to' ? 1.8 : 1.25;
-            return isActiveLink(link) ? base * 1.25 : Math.max(0.35, base * 0.55);
-          }}
-          linkLabel={(link) => `${edgeKindLabel(link.kind, translate)} · ${link.method}`}
-          linkDirectionalParticles={(link) => {
-            if (activeId && isActiveLink(link)) return 4;
-            if (link.kind === 'links_to') return 2;
-            if (link.kind === 'related_to') return 1;
-            return 0;
-          }}
-          linkDirectionalParticleWidth={(link) => (isActiveLink(link) ? 2.1 : 1.2)}
-          linkDirectionalParticleSpeed={(link) => (link.kind === 'related_to' ? 0.003 : 0.0045)}
-          linkDirectionalParticleColor={(link) => link.color}
+          nodes={model.reagraphNodes}
+          edges={model.reagraphEdges}
+          theme={reagraph.theme}
+          layoutType={is3d ? 'forceDirected3d' : 'forceDirected2d'}
+          labelType="auto"
+          edgeInterpolation="curved"
+          cameraMode={is3d ? 'rotate' : 'pan'}
+          animated
+          draggable
+          selections={selectedId ? [selectedId] : []}
+          actives={actives}
           onNodeClick={(node) => {
-            const id = String(node.id);
-            const now = Date.now();
-            const last = lastClickRef.current;
-            if (last && last.id === id && now - last.time < DOUBLE_CLICK_MS) {
-              lastClickRef.current = null;
-              onOpen(node);
-              return;
-            }
-            lastClickRef.current = { id, time: now };
-            onSelect(id);
-            focusNode(node);
+            onSelect(node.id);
           }}
-          onNodeHover={(node) => setHoveredId(node?.id ? String(node.id) : null)}
-          onNodeDrag={() => graphRef.current?.d3ReheatSimulation()}
-          onNodeDragEnd={(node) => {
-            delete node.fx;
-            delete node.fy;
-            delete node.fz;
-            graphRef.current?.d3ReheatSimulation();
+          onNodeDoubleClick={(node) => {
+            const original = model.nodeById.get(node.id);
+            if (original) onOpen(original);
           }}
-          onBackgroundClick={() => onSelect(null)}
-          showPointerCursor={(object) => Boolean(object)}
+          onNodePointerOver={(node) => setHoveredId(node.id)}
+          onNodePointerOut={() => setHoveredId(null)}
+          onCanvasClick={() => onSelect(null)}
         />
       )}
     </div>
@@ -942,14 +855,31 @@ function countType(data: GraphResp, type: GraphNodeType): number {
   return data.nodes.filter((node) => node.type === type).length;
 }
 
-export function buildSigmaGraphModel(data: GraphResp): SigmaGraphModel {
+export function buildSigmaGraphModel(data: GraphResp, translate?: TranslateFn): SigmaGraphModel {
   const layout = buildGraphLayout(data);
   const graph = new Graph<SigmaNodeAttributes, SigmaEdgeAttributes>({
     multi: true,
     type: 'undirected',
   });
   const neighborhoods = new Map<string, Set<string>>();
-  const forceData = buildForceGraphData(layout);
+  const nodeById = new Map(layout.nodes.map((node) => [node.id, node as GraphNode]));
+  const reagraphNodes: ReagraphNode[] = layout.nodes.map((node) => ({
+    id: node.id,
+    label: node.label,
+    subLabel: translate ? translate(`graph.node.${node.type}`) : node.type,
+    fill: NODE_COLORS[node.type],
+    size: Math.max(4, Math.min(14, 5 + node.weight * (SOURCE_NODE_TYPES.has(node.type) ? 1.4 : 1))),
+    data: node,
+  }));
+  const reagraphEdges: ReagraphEdge[] = layout.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.from,
+    target: edge.to,
+    label: translate ? translate(`graph.edge.${edge.kind}`) : edge.kind,
+    size: edge.kind === 'links_to' ? 2.2 : edge.kind === 'related_to' ? 1.6 : 1.1,
+    fill: EDGE_COLORS[edge.kind],
+    data: edge,
+  }));
 
   for (const node of layout.nodes) {
     neighborhoods.set(node.id, new Set([node.id]));
@@ -979,30 +909,7 @@ export function buildSigmaGraphModel(data: GraphResp): SigmaGraphModel {
     });
   }
 
-  return { graph, layout, neighborhoods, forceData };
-}
-
-export function buildForceGraphData(
-  layout: GraphLayout,
-): ForceGraphData<ForceGraphNode, ForceGraphLink> {
-  return {
-    nodes: layout.nodes.map((node, index) => ({
-      ...node,
-      value: Math.max(1.2, node.weight * (SOURCE_NODE_TYPES.has(node.type) ? 1.35 : 1)),
-      color: NODE_COLORS[node.type],
-      group: node.type,
-      x: (node.x - GRAPH_VIEWBOX.width / 2) * 0.55,
-      y: (node.y - GRAPH_VIEWBOX.height / 2) * 0.55,
-      z: seededDepth(node.id, index, SOURCE_NODE_TYPES.has(node.type)),
-    })),
-    links: layout.edges.map((edge) => ({
-      ...edge,
-      source: edge.from,
-      target: edge.to,
-      value: edgeVisualWeight(edge),
-      color: EDGE_COLORS[edge.kind],
-    })),
-  };
+  return { graph, layout, neighborhoods, reagraphNodes, reagraphEdges, nodeById };
 }
 
 export function nodePath(node: GraphNode): string | null {
@@ -1010,14 +917,6 @@ export function nodePath(node: GraphNode): string | null {
   if (node.sourceType === 'TRANSCRIPT') return `/transcricoes/${node.sourceId}`;
   if (node.sourceType === 'NOTE') return `/notas/${node.sourceId}`;
   return null;
-}
-
-function nodeTypeLabel(type: GraphNodeType, translate: TranslateFn): string {
-  return translate(`graph.node.${type}`);
-}
-
-function edgeKindLabel(kind: GraphEdge['kind'], translate: TranslateFn): string {
-  return translate(`graph.edge.${kind}`);
 }
 
 export function buildGraphLayout(data: GraphResp): GraphLayout {
@@ -1180,30 +1079,6 @@ function edgePath(edge: GraphLayoutEdge): string {
   const cx = midX + (-dy / length) * curve;
   const cy = midY + (dx / length) * curve;
   return `M ${fromNode.x.toFixed(1)} ${fromNode.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${toNode.x.toFixed(1)} ${toNode.y.toFixed(1)}`;
-}
-
-function edgeVisualWeight(edge: GraphEdge): number {
-  if (edge.kind === 'links_to') return 2.4;
-  if (edge.kind === 'related_to') return 1.9;
-  if (edge.kind === 'belongs_to') return 1.55;
-  return 1.2;
-}
-
-function seededDepth(id: string, index: number, isSource: boolean): number {
-  const span = isSource ? 130 : 220;
-  const centered = (hashString(`${id}:${index}`) % (span * 2)) - span;
-  return centered * (isSource ? 0.65 : 1);
-}
-
-function linkEndpointId(endpoint: unknown): string {
-  if (typeof endpoint === 'object' && endpoint !== null && 'id' in endpoint) {
-    return String((endpoint as { id?: string | number }).id);
-  }
-  return String(endpoint);
-}
-
-function finiteCoord(value: number | undefined): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
 function supportsWebGL(): boolean {

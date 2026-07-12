@@ -4,17 +4,19 @@ import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { X } from 'lucide-react';
 import type { MeUser } from '../../lib/types';
 import { useI18n } from '../../lib/i18n';
-import { SidebarModeBody, SidebarSignOut, SidebarVersionInfo } from './sidebar';
-
-const DRAWER_WIDTH = 280;
+import { SidebarModeBody, SidebarSignOut, SidebarChangelogButton } from './sidebar';
 
 /**
- * Drawer de navegação mobile (<md). A sidebar desktop é `hidden md:flex` —
- * abaixo de 768px este drawer é a ÚNICA navegação do shell. Reaproveita o
- * corpo modo-aware da sidebar (nav | conversas do chat | árvore de notas) e o
- * botão Sair, então qualquer item novo aparece automaticamente aqui também.
+ * Drawer de navegação mobile (<md). Abaixo de 768px a sidebar desktop NÃO é
+ * montada — este drawer (+ bottom-nav) é a navegação do shell. Cobre a tela
+ * inteira no mobile e reaproveita o corpo modo-aware da sidebar (nav |
+ * árvore de notas) e o botão Sair, então qualquer item
+ * novo aparece automaticamente aqui também.
  *
- * Fecha em: mudança de rota, clique no backdrop, botão X e tecla Escape.
+ * Abre via swipe da borda esquerda → direita (bônus — os destinos únicos também
+ * vivem no menu do Perfil da bottom-nav, então o acesso não depende do gesto).
+ * Fecha em: mudança de rota, clique no backdrop, botão X, swipe de volta e tecla
+ * Escape. (Swipe é tratado no AppLayout via useEdgeSwipe.)
  */
 export function MobileNavDrawer({
   user,
@@ -85,13 +87,12 @@ export function MobileNavDrawer({
           role="dialog"
           aria-modal="true"
           aria-label={t('shell.menu')}
-          initial={{ x: -(DRAWER_WIDTH + 24) }}
+          initial={{ x: '-100%' }}
           animate={{ x: 0 }}
-          exit={{ x: -(DRAWER_WIDTH + 24) }}
-          transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-          className="md:hidden fixed top-0 bottom-0 left-0 z-50 flex max-w-[85vw] flex-col rounded-r-2xl border-r border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/95 backdrop-blur-xl overflow-hidden focus:outline-none"
+          exit={{ x: '-100%' }}
+          transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+          className="md:hidden fixed inset-0 z-50 flex w-full flex-col border-r border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/98 backdrop-blur-xl overflow-hidden focus:outline-none"
           style={{
-            width: DRAWER_WIDTH,
             paddingTop: 'env(safe-area-inset-top)',
             paddingBottom: 'env(safe-area-inset-bottom)',
           }}
@@ -123,13 +124,14 @@ export function MobileNavDrawer({
               <X className="h-4 w-4" />
             </button>
           </div>
-          {/* LayoutGroup com id próprio: a sidebar desktop fica montada (oculta
-              via CSS) e usa os mesmos layoutId (pill/dot) — sem o escopo, o
-              motion animaria entre os dois lugares. */}
+          {/* LayoutGroup com id próprio escopa os layoutId (pill/dot) deste
+              drawer. No mobile a sidebar desktop nem é montada, mas o escopo é
+              defensivo: garante que o motion nunca tente animar a pill entre o
+              drawer e uma futura sidebar montada simultaneamente. */}
           <LayoutGroup id="mobile-nav">
             <SidebarModeBody user={user} />
           </LayoutGroup>
-          <SidebarVersionInfo />
+          <SidebarChangelogButton />
           <SidebarSignOut />
         </motion.aside>
       )}

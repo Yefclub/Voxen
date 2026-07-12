@@ -13,6 +13,9 @@ from decimal import Decimal
 from typing import Any
 
 import asyncpg
+import structlog
+
+log = structlog.get_logger(__name__)
 
 _pool: asyncpg.Pool | None = None
 
@@ -487,6 +490,8 @@ async def _remove_transcript_brain_refreshable_sources(
 
 
 async def _delete_orphan_keyword_topic_nodes(conn: asyncpg.Connection, user_id: str) -> None:
+    # Grace de 2 min: evita apagar tópico recém-criado no meio do reindex
+    # concorrente (upsert node → cleanup → insert edge = FK violation).
     await conn.execute(
         """
         DELETE FROM "BrainNode" n
@@ -494,6 +499,7 @@ async def _delete_orphan_keyword_topic_nodes(conn: asyncpg.Connection, user_id: 
           AND n.type = 'TOPIC'::"BrainNodeType"
           AND n."sourceType" IS NULL
           AND n.metadata->>'method' = 'keyword'
+          AND n."updatedAt" < NOW() - INTERVAL '2 minutes'
           AND NOT EXISTS (
             SELECT 1
             FROM "BrainEdge" be
@@ -544,20 +550,28 @@ async def _upsert_transcript_topic_edges(
         )
         if not edge_row:
             continue
-        await conn.execute(
-            """
-            INSERT INTO "BrainSource" (
-                id, "userId", "edgeId", "sourceType", "sourceId", excerpt, "createdAt"
-            ) VALUES (
-                $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, NOW()
+        try:
+            await conn.execute(
+                """
+                INSERT INTO "BrainSource" (
+                    id, "userId", "edgeId", "sourceType", "sourceId", excerpt, "createdAt"
+                ) VALUES (
+                    $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, NOW()
+                )
+                """,
+                generate_cuid(),
+                user_id,
+                edge_row["id"],
+                transcript_id,
+                topic["excerpt"],
             )
-            """,
-            generate_cuid(),
-            user_id,
-            edge_row["id"],
-            transcript_id,
-            topic["excerpt"],
-        )
+        except Exception:  # noqa: BLE001
+            # Aresta pode ter sumido por reindex concorrente (FK edgeId).
+            log.warning(
+                "brain-source-insert-skipped",
+                edge_id=edge_row["id"],
+                transcript_id=transcript_id,
+            )
 
 
 async def _upsert_topic_node(
@@ -641,6 +655,69 @@ def _topic_excerpt(text: str, slug: str) -> str | None:
         if slug in _normalize_topic_text(sentence):
             return _truncate(sentence, 600)
     return _truncate(text, 600)
+
+
+async def list_library_folder_names(user_id: str) -> list[str]:
+    """Nomes das pastas do workspace (raiz e aninhadas) para classificação."""
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT name
+            FROM "LibraryFolder"
+            WHERE "userId" = $1
+            ORDER BY name ASC
+            """,
+            user_id,
+        )
+    return [str(row["name"]) for row in rows if row["name"]]
+
+
+async def ensure_library_folder(user_id: str, name: str) -> str:
+    """Reusa pasta pelo nome (case-insensitive) ou cria no root. Retorna id."""
+    clean = " ".join(name.split()).strip()
+    if not clean:
+        raise ValueError("nome de pasta vazio")
+    async with connection() as conn:
+        existing = await conn.fetchrow(
+            """
+            SELECT id, name
+            FROM "LibraryFolder"
+            WHERE "userId" = $1 AND lower(name) = lower($2)
+            ORDER BY "createdAt" ASC
+            LIMIT 1
+            """,
+            user_id,
+            clean,
+        )
+        if existing:
+            return str(existing["id"])
+        folder_id = generate_cuid()
+        await conn.execute(
+            """
+            INSERT INTO "LibraryFolder" (
+                id, "userId", "parentId", name, "createdAt", "updatedAt"
+            ) VALUES (
+                $1, $2, NULL, $3, NOW(), NOW()
+            )
+            """,
+            folder_id,
+            user_id,
+            clean[:120],
+        )
+        return folder_id
+
+
+async def set_transcript_folder(transcript_id: str, folder_id: str) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE "Transcript"
+            SET "folderId" = $2, "updatedAt" = NOW()
+            WHERE id = $1
+            """,
+            transcript_id,
+            folder_id,
+        )
 
 
 async def mark_job_done(job_id: str) -> None:

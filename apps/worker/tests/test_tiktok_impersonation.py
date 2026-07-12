@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+import pytest
+import yt_dlp.utils
+
 from src import pipeline, ytdl
 
 
@@ -66,5 +69,78 @@ def test_friendly_error_tiktok_rehydration() -> None:
     assert "upload" in msg.lower()
 
 
+def test_friendly_error_http_403() -> None:
+    msg = pipeline._friendly_external_error(RuntimeError("HTTP Error 403: Forbidden"))
+    assert msg is not None
+    assert "403" in msg or "recusou" in msg.lower()
+
+
+def test_friendly_error_rate_limit() -> None:
+    msg = pipeline._friendly_external_error(RuntimeError("HTTP Error 429: Too Many Requests"))
+    assert msg is not None
+    assert "rate" in msg.lower() or "requisi" in msg.lower()
+
+
+def test_is_tiktok_rehydration_error() -> None:
+    assert pipeline._is_tiktok_rehydration_error(
+        RuntimeError("ERROR: [TikTok] Unable to extract universal data for rehydration")
+    )
+    assert not pipeline._is_tiktok_rehydration_error(RuntimeError("HTTP Error 404"))
+
+
+def test_runtime_versions_has_ytdlp() -> None:
+    versions = ytdl.runtime_versions()
+    assert "yt_dlp_version" in versions
+    assert versions["yt_dlp_version"] not in ("",)
+
+
+def test_friendly_error_no_audio_codec() -> None:
+    # Reels/posts servidos só-vídeo fazem o FFmpegExtractAudio estourar no ffprobe.
+    exc = RuntimeError(
+        "ERROR: Postprocessing: WARNING: unable to obtain file audio codec with ffprobe"
+    )
+    msg = pipeline._friendly_external_error(exc)
+    assert msg is not None
+    assert "áudio" in msg.lower()
+    assert "upload" in msg.lower()
+
+
+def test_friendly_error_proxy_refused() -> None:
+    # Erro real quando o túnel SOCKS do Agente de Proxy está fora do ar.
+    exc = RuntimeError(
+        "ERROR: [vm.tiktok] ZSXL5NWgh: Unable to download webpage: "
+        "SocksHTTPSConnection(host='vt.tiktok.com', port=443): Failed to establish "
+        "a new connection: [Errno 111] Connection refused"
+    )
+    msg = pipeline._friendly_external_error(exc)
+    assert msg is not None
+    assert "proxy" in msg.lower()
+    assert "integra" in msg.lower()
+
+
+def test_friendly_error_connection_refused_without_proxy_not_matched() -> None:
+    # Guarda contra falso-positivo: connection-refused SEM proxy/socks não deve
+    # virar a mensagem de "proxy fora do ar".
+    exc = RuntimeError("Failed to establish a new connection: [Errno 111] Connection refused")
+    assert pipeline._friendly_external_error(exc) is None
+
+
 def test_friendly_error_non_tiktok_returns_none() -> None:
     assert pipeline._friendly_external_error(RuntimeError("algo sem relação")) is None
+
+
+async def test_no_audio_short_circuits_without_retry() -> None:
+    # Falha determinística "sem áudio" não deve retentar: _retry_transient detecta
+    # o erro amigável e levanta PermanentError na 1ª tentativa (spec 002).
+    calls = 0
+
+    async def fn() -> None:
+        nonlocal calls
+        calls += 1
+        raise yt_dlp.utils.PostProcessingError(
+            "ERROR: Postprocessing: WARNING: unable to obtain file audio codec with ffprobe"
+        )
+
+    with pytest.raises(pipeline.PermanentError):
+        await pipeline._retry_transient(fn, tries=3)
+    assert calls == 1  # sem retries (curto-circuito)

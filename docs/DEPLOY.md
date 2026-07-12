@@ -80,6 +80,59 @@ S3_FORCE_PATH_STYLE=true
 > formato é o mesmo em todos os modos: `openssl rand -base64 32`. Faça backup
 > desse valor junto com Postgres e MinIO.
 
+### Upload direto (presigned) — arquivos grandes atrás do Cloudflare
+
+Por padrão, o upload de arquivos passa pelo app (browser → app → S3). Atrás do
+Cloudflare, o corpo da requisição é cortado em ~100 MiB, inviabilizando uploads
+grandes (mídia até 500 MiB). Para contornar, o Voxen suporta **upload direto do
+browser pro S3/MinIO via presigned URL** — o corpo nunca passa pelo app nem pelo
+Cloudflare.
+
+É **opt-in com fallback**: sem `S3_PUBLIC_ENDPOINT`, o upload usa o fluxo via app
+(sujeito ao limite do proxy). Para habilitar:
+
+1. **Exponha o MinIO/S3 num domínio público** alcançável pelo browser (ex.:
+   `s3.seudominio.com`), com TLS. Pode ser o mesmo MinIO via reverse proxy, ou
+   um endpoint S3 externo.
+
+2. **Defina `S3_PUBLIC_ENDPOINT`** no `.env` (ou no painel do serviço web):
+
+   ```bash
+   S3_PUBLIC_ENDPOINT=https://s3.seudominio.com
+   ```
+
+3. **Aplique CORS no bucket** permitindo `PUT`/`HEAD` da origin do app. Via
+   Makefile (usa `mc` num container na rede do compose):
+
+   ```bash
+   make minio-cors APP_ORIGIN=https://voxen.seudominio.com
+   ```
+
+   Equivalente manual com `aws` CLI contra o endpoint S3:
+
+   ```bash
+   cat > cors.json <<'JSON'
+   { "CORSRules": [ {
+       "AllowedOrigins": ["https://voxen.seudominio.com"],
+       "AllowedMethods": ["PUT", "HEAD", "GET"],
+       "AllowedHeaders": ["*"],
+       "ExposeHeaders": ["ETag"],
+       "MaxAgeSeconds": 3000
+   } ] }
+   JSON
+   aws --endpoint-url https://s3.seudominio.com s3api put-bucket-cors \
+     --bucket voxen-transcripts --cors-configuration file://cors.json
+   ```
+
+4. **Reinicie o web** (`docker compose up -d web`) e teste um upload grande pela
+   UI. Sem CORS, o navegador bloqueia o `PUT` presigned (erro de origem cruzada)
+   e o front cai no fallback via app automaticamente.
+
+> Segurança: a presigned URL expira em 300s e a key do objeto é sempre derivada
+> do usuário da sessão + um UUID aleatório — o cliente nunca escolhe o caminho do
+> objeto. Após o `PUT`, o app valida o objeto por `HeadObject` (tamanho real)
+> antes de enfileirar o job.
+
 ---
 
 ## Home-lab
@@ -149,10 +202,10 @@ bloqueada pelo provedor. Duas estratégias funcionam bem:
 ## Servidor + nginx do host
 
 > ⚠ **Aviso para VPS/cloud**: o YouTube aplica soft-block agressivo em IPs de
-> datacenter desde 2025. Você provavelmente vai precisar configurar um proxy
-> residencial nas configurações da instância (Setup → Extração de mídia) ou
-> orientar usuários a usarem o upload manual quando o download for bloqueado.
-> Detalhes em [Home-lab vs VPS](#home-lab-vs-vps).
+> datacenter desde 2025. Você provavelmente vai precisar rotear a extração de
+> mídia pelo [Agente de proxy residencial](#agente-de-proxy-residencial) — que
+> sai por um IP de casa — ou orientar usuários a usarem o upload manual quando o
+> download for bloqueado. Detalhes em [Home-lab vs VPS](#home-lab-vs-vps).
 
 Cenário comum em VPS Linux com nginx instalado nativamente, ou em servidor
 físico próprio.
@@ -672,11 +725,12 @@ funcionam direto, sem necessidade de configurações extras de mitigação.
 1. **Upload manual**: continua funcionando 100%. Quando um link do YouTube
    for bloqueado, o usuário baixa pelo navegador (com ferramenta local de
    sua preferência) e faz upload pelo Voxen.
-2. **Proxy residencial controlado**: contrate um proxy residencial pago
-   (ex.: Bright Data, Oxylabs, Scrapeless) e cole a(s) URL(s) em Setup →
-   Extração de mídia. O Voxen escolhe aleatoriamente uma URL por download.
-   Use apenas proxies que você controla; proxies públicos gratuitos são
-   instáveis e podem ser maliciosos.
+2. **Agente de proxy residencial (recomendado)**: rode o
+   [Agente de proxy residencial](#agente-de-proxy-residencial) num host com IP
+   de casa (mini-PC, NAS, Raspberry Pi). O Voxen abre um túnel reverso pra esse
+   agente e o worker passa a baixar saindo pela sua internet residencial — sem
+   abrir portas no roteador de casa, sem contratar proxy pago. É o jeito de ter
+   o IP residencial mesmo com a aplicação rodando numa VPS.
 3. **Transcript/legendas primeiro**: o worker tenta obter legendas do YouTube
    antes de baixar áudio. Quando há transcript acessível, a transcrição não
    consome OpenRouter e evita o download de mídia; quando não há, o fluxo cai
@@ -686,13 +740,27 @@ funcionam direto, sem necessidade de configurações extras de mitigação.
    Voxen então passa esse provider ao `yt-dlp` e prefere o client `mweb`. Não
    use providers públicos; isso é mitigação frágil, não garantia de download.
 5. **Híbrido**: rode Voxen no VPS (uptime, HTTPS gerenciado) e direcione o
-   tráfego do worker por um proxy/VPN residencial. Avançado, requer
-   configuração de rede mais cuidadosa.
+   tráfego do worker por um IP residencial. O caminho suportado pra isso é o
+   [Agente de proxy residencial](#agente-de-proxy-residencial) (item 2); ele
+   resolve o "híbrido" sem configuração de rede manual nem VPN.
 6. **Impersonation de browser (TikTok/Instagram)**: o worker já inclui o
    backend `curl_cffi`, e extractors como o do TikTok pedem impersonation de
    browser (TLS/JA3) automaticamente. Se uma plataforma quebrar com o padrão,
    force um alvo definindo `YTDLP_IMPERSONATE` no ambiente do worker (ex.:
    `chrome` ou `chrome-124:windows-10`). Vazio = auto-seleção pelo extractor.
+7. **Cookies do yt-dlp (extração autenticada)**: alguns conteúdos só vêm
+   completos com uma sessão logada. O **Instagram** serve um rendition só-vídeo
+   (sem áudio) quando não há login — o download de áudio então falha; o
+   **YouTube** às vezes dispara o anti-bot ("Sign in to confirm you're not a
+   bot"). Em **Admin → Integrações → Cookies do yt-dlp**, cole o conteúdo de um
+   `cookies.txt` (formato Netscape) exportado por uma extensão de browser (ex.:
+   "Get cookies.txt LOCALLY") estando logado na conta. O worker passa esses
+   cookies ao `yt-dlp` em todos os caminhos (probe, áudio, legendas). O valor é
+   **cifrado em DB** com a master key, nunca é reexibido nem logado, e o worker o
+   materializa só num arquivo temporário `600` de vida curta. Trade-offs:
+   cookies **expiram** (reexporte quando pararem de funcionar), são da **conta do
+   próprio owner**, e o uso deve **respeitar os termos de uso** de cada
+   plataforma. Combine com proxy residencial quando o bloqueio for por IP.
 
 ### Decisão arquitetural
 
@@ -701,6 +769,119 @@ conhecimento pessoal/de pequenos times. O modelo casa naturalmente com
 home-lab: 1-10 usuários, hardware modesto, dados em casa. VPS continua
 suportada para quem precisa de uptime ou não tem hardware doméstico, com a
 ressalva acima.
+
+---
+
+## Agente de proxy residencial
+
+Se o Voxen roda numa VPS (IP de datacenter), o YouTube e plataformas similares
+costumam bloquear os downloads. O **agente de proxy residencial** resolve isso
+sem você precisar mover a aplicação: você roda um container leve num host com
+**IP residencial** (mini-PC, NAS, Raspberry Pi, Easypanel doméstico) e ele
+roteia só o tráfego de extração de mídia pela sua internet de casa. A aplicação
+inteira continua na VPS.
+
+### Como funciona
+
+O host de casa fica atrás de NAT/CGNAT, então quem disca é o agente (túnel
+reverso). O agente conecta de volta ao Voxen por TLS e passa a oferecer, **só
+em `127.0.0.1:1080` dentro do servidor Voxen**, um SOCKS5 cujo egress sai pela
+sua internet residencial. O worker usa esse SOCKS automaticamente. Nenhuma porta
+é aberta no roteador de casa, e o SOCKS nunca é exposto à rede.
+
+```
+[ Worker (Voxen) ] --socks5h://127.0.0.1:1080--> [ chisel server (voxen-app) ]
+                                                          ^  túnel TLS (wss) via /_tunnel
+                                                          |
+                                          [ voxen-proxy-agent (seu IP residencial) ]
+                                                          |
+                                                          v
+                                                 internet de casa --> YouTube/IG/TikTok
+```
+
+O túnel usa [chisel](https://github.com/jpillora/chisel) (MIT). O servidor já
+vem embutido na imagem `voxen-app` e o agente é a imagem
+`ghcr.io/yefclub/voxen-proxy-agent`.
+
+### Pré-requisitos
+
+- **TLS no host do Voxen.** A `APP_BASE_URL` deve ser `https://` — o agente só
+  aceita discar por TLS. Em Easypanel/Cloudflare/nginx isso já está coberto.
+- **Path do túnel acessível.** O agente conecta na **própria URL do Voxen** no
+  path `/_tunnel` (proxy WebSocket interno encaminha pro chisel embutido). Não é
+  preciso subdomínio `tunnel.` separado nem expor a porta de controle (8088)
+  publicamente. Se um reverse proxy na frente do Voxen filtra paths, libere o
+  upgrade de WebSocket em `/_tunnel`.
+- **Um host com IP residencial e Docker.** Só precisa de saída na porta 443; sem
+  porta de entrada.
+
+### 1. Gerar o token (UI de Integrações)
+
+1. Entre como admin → **Admin → Integrações → Agente de Proxy**.
+2. Clique em **Gerar token**. O token aparece **uma única vez** — copie agora
+   (ele fica cifrado no banco e não é reexibido; depois só dá pra rotacionar ou
+   revogar).
+3. A página mostra a **URL de conexão do túnel** (derivada da `APP_BASE_URL`,
+   algo como `https://voxen.seudominio.com/_tunnel`) e um **snippet
+   `docker run`** já com URL e token preenchidos.
+
+### 2. Rodar o agente no host residencial
+
+Copie o snippet da UI, ou use o modelo abaixo (substitua URL e token):
+
+```bash
+docker run -d --name voxen-proxy-agent --restart unless-stopped \
+  -e VOXEN_TUNNEL_URL="https://voxen.seudominio.com/_tunnel" \
+  -e VOXEN_TUNNEL_TOKEN="cole-o-token-aqui" \
+  ghcr.io/yefclub/voxen-proxy-agent:latest
+```
+
+> O agente não expõe portas no host de casa — **não use `-p`**. Reconexão é
+> automática e infinita. Detalhes de variáveis e Docker Compose em
+> [`apps/proxy-agent/README.md`](../apps/proxy-agent/README.md).
+
+Ao gerar o token, o Voxen aponta o worker pro SOCKS local do túnel
+automaticamente (setting `yt_dlp_proxy_urls = socks5h://127.0.0.1:1080`). Não há
+configuração manual de proxy: o setting é gerenciado pelo próprio fluxo de
+token (setado ao gerar, limpo ao revogar).
+
+### 3. Verificar status ao vivo
+
+A seção do Agente de Proxy mostra o estado **em tempo real** (polling a cada
+~9s):
+
+- **Conectado e funcionando** (verde) — o agente discou e o SOCKS reverso está
+  no ar; os próximos downloads sairão pelo IP residencial.
+- **Desconectado** (cinza) — nenhum agente conectado (ainda subindo, token
+  errado, ou TLS/path do túnel bloqueado).
+
+Pra confirmar no worker, cada job que usa proxy loga uma linha `proxy-active`
+com o proxy **mascarado** (esquema + host + porta, sem credenciais) — auditoria
+de que o egress saiu pelo agente.
+
+### Conexão única (single) + conflito
+
+Só **um** agente pode estar conectado por vez. A garantia vem do port-bind: o
+SOCKS reverso liga `127.0.0.1:1080` e um 2º agente não consegue bindar a mesma
+porta. Quando isso acontece, o Voxen detecta (o servidor loga `address already
+in use`) e a UI mostra um aviso âmbar **"Múltiplos agentes detectados — rode
+apenas um"**. Se vir esse aviso, derrube os agentes extras e mantenha só um.
+
+### Rotação e revogação
+
+- **Rotacionar**: gere o token de novo — o anterior para de funcionar na hora.
+  Atualize o `VOXEN_TUNNEL_TOKEN` do agente e recrie o container.
+- **Revogar**: o botão **Revogar token** apaga o token e fecha o túnel; o setting
+  do proxy do worker é limpo (volta a baixar pelo IP do próprio servidor).
+
+### Troubleshooting do agente
+
+| Sintoma                               | Causa provável                                                   | Fix                                                                                                     |
+| ------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| UI fica "Desconectado" após subir     | URL/token errados, ou path `/_tunnel` bloqueado no reverse proxy | Confira `docker logs voxen-proxy-agent`; valide a URL da UI; libere upgrade de WebSocket em `/_tunnel`  |
+| Agente recusa iniciar com erro de URL | `VOXEN_TUNNEL_URL` sem `https://` (TLS obrigatório)              | Use a URL `https://` da UI; o agente normaliza `wss://`→`https://`, mas rejeita `ws://`/`http://`       |
+| Aviso âmbar "múltiplos agentes"       | Mais de um agente discando ao mesmo tempo                        | Mantenha **um só** agente rodando (single-connection); derrube os extras                                |
+| Downloads ainda bloqueados com agente | Worker não está usando o SOCKS, ou token expirado                | Confira a linha `proxy-active` nos logs do worker; rotacione o token; confirme status "Conectado" na UI |
 
 ---
 
@@ -715,6 +896,6 @@ ressalva acima.
 | SSE corta a cada 60s                 | nginx com `proxy_buffering on`        | Garanta `proxy_buffering off` no location (já vem no `voxen.conf.example`)                                                          |
 | `MASTER_KEY não definido`            | Environment sem master key            | Gere com `openssl rand -base64 32` e salve no `.env`/Environment                                                                    |
 | `NoSuchBucket` no `/health/deep`     | Bucket MinIO não criado               | `make minio-init` ou crie `voxen-transcripts` na console                                                                            |
-| "YouTube bloqueou o download" em VPS | IP de datacenter marcado pelo YouTube | Veja [Home-lab vs VPS](#home-lab-vs-vps). Opções: migrar pra home-lab, configurar proxy residencial em Setup, ou usar upload manual |
+| "YouTube bloqueou o download" em VPS | IP de datacenter marcado pelo YouTube | Veja [Home-lab vs VPS](#home-lab-vs-vps). Opções: migrar pra home-lab, instalar o [Agente de proxy residencial](#agente-de-proxy-residencial), ou usar upload manual |
 
 Pra debug profundo, leia [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) e [`docs/SECURITY.md`](SECURITY.md).

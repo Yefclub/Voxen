@@ -4,8 +4,10 @@
 // Endpoints sempre escopados por userId:
 //   GET    /api/library/folders
 //   POST   /api/library/folders
+//   POST   /api/library/folders/clear — apaga todas as pastas (conteúdos ficam)
 //   PATCH  /api/library/folders/:id
 //   DELETE /api/library/folders/:id
+//   POST   /api/library/reorganize — classifica com IA só o que não tem pasta
 // ============================================================================
 
 import { Hono } from 'hono';
@@ -18,6 +20,9 @@ import {
 } from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
+import { classifyFolderForContent } from '../lib/folder-classify';
+import { generateTitleForContent } from '../lib/title-generate';
+import { isSetupComplete } from '../lib/settings';
 
 type Vars = { userId: string };
 
@@ -146,6 +151,267 @@ libraryRoutes.patch('/folders/:id', async (c) => {
   await reindexLibraryFolderBrain(userId, folder.id);
   await invalidateGraphCache(userId);
   return c.json({ folder });
+});
+
+// POST /api/library/reorganize — só transcripts ACTIVE com folderId null.
+// Processa em lotes (default 15) pra não estourar timeout do request.
+libraryRoutes.post('/reorganize', async (c) => {
+  const userId = c.get('userId');
+  if (!(await isSetupComplete())) {
+    return c.json({ error: 'Setup incompleto.' }, 412);
+  }
+
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
+  const limitRaw = Number(body.limit ?? 15);
+  const limit =
+    Number.isFinite(limitRaw) && limitRaw >= 1 && limitRaw <= 40 ? Math.floor(limitRaw) : 15;
+
+  const pendingTotal = await db.transcript.count({
+    where: { userId, status: 'ACTIVE', folderId: null },
+  });
+  if (pendingTotal === 0) {
+    return c.json({
+      processed: 0,
+      assigned: 0,
+      skipped: 0,
+      failed: 0,
+      remaining: 0,
+      pendingTotal: 0,
+    });
+  }
+
+  const batch = await db.transcript.findMany({
+    where: { userId, status: 'ACTIVE', folderId: null },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    select: { id: true, title: true, plainText: true },
+  });
+
+  let assigned = 0;
+  let skipped = 0;
+  let failed = 0;
+  const folderNames = (
+    await db.libraryFolder.findMany({
+      where: { userId },
+      select: { name: true },
+      orderBy: { name: 'asc' },
+    })
+  ).map((f) => f.name);
+
+  const assignedIds: string[] = [];
+
+  for (const item of batch) {
+    try {
+      const content = (item.plainText ?? '').trim();
+      if (content.length < 40 && item.title.trim().length < 3) {
+        skipped += 1;
+        continue;
+      }
+      const result = await classifyFolderForContent({
+        title: item.title,
+        content: content || item.title,
+        existingFolders: folderNames,
+      });
+      await db.costEvent.create({
+        data: {
+          userId,
+          kind: 'CHAT',
+          model: result.model,
+          tokensIn: result.tokensIn,
+          tokensOut: result.tokensOut,
+          costUsd: result.costUsd,
+          meta: {
+            source: 'folder_classification_backfill',
+            transcript_id: item.id,
+            folder_name: result.folderName,
+          },
+        },
+      });
+      if (!result.folderName) {
+        skipped += 1;
+        continue;
+      }
+      const existing = await db.libraryFolder.findFirst({
+        where: { userId, name: { equals: result.folderName, mode: 'insensitive' } },
+        select: { id: true, name: true },
+      });
+      let folderId: string;
+      let folderName: string;
+      if (existing) {
+        folderId = existing.id;
+        folderName = existing.name;
+      } else {
+        const created = await db.libraryFolder.create({
+          data: { userId, name: result.folderName.slice(0, 120), parentId: null },
+          select: { id: true, name: true },
+        });
+        folderId = created.id;
+        folderName = created.name;
+        folderNames.push(folderName);
+        await reindexLibraryFolderBrain(userId, folderId).catch(() => {});
+      }
+      await db.transcript.updateMany({
+        where: { id: item.id, userId, folderId: null },
+        data: { folderId },
+      });
+      assignedIds.push(item.id);
+      assigned += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  if (assignedIds.length > 0) {
+    await reindexTranscriptsBrain(userId, assignedIds).catch(() => {});
+    await invalidateGraphCache(userId).catch(() => {});
+  }
+
+  const remaining = await db.transcript.count({
+    where: { userId, status: 'ACTIVE', folderId: null },
+  });
+
+  return c.json({
+    processed: batch.length,
+    assigned,
+    skipped,
+    failed,
+    remaining,
+    pendingTotal,
+  });
+});
+
+function titleSourceLabel(item: { source: string; channel: string | null; url: string }): string {
+  if (item.source === 'WEB') return 'Página web';
+  if (item.source === 'UPLOAD') return 'Upload';
+  return item.channel ? `${item.channel} · ${item.source}` : `Conteúdo ${item.source}`;
+}
+
+// POST /api/library/regenerate-titles — regenera o título editorial via IA em
+// lote, drenando o acervo por cursor (createdAt+id desc). Idempotente: re-rodar
+// devolve KEEP para títulos já bons. CUSTA créditos (1 chamada LLM por item).
+libraryRoutes.post('/regenerate-titles', async (c) => {
+  const userId = c.get('userId');
+  if (!(await isSetupComplete())) {
+    return c.json({ error: 'Setup incompleto.' }, 412);
+  }
+
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number; cursor?: string };
+  const limitRaw = Number(body.limit ?? 15);
+  const limit =
+    Number.isFinite(limitRaw) && limitRaw >= 1 && limitRaw <= 40 ? Math.floor(limitRaw) : 15;
+  const cursor = typeof body.cursor === 'string' && body.cursor ? body.cursor : null;
+
+  const pendingTotal = await db.transcript.count({ where: { userId, status: 'ACTIVE' } });
+
+  const batch = await db.transcript.findMany({
+    where: { userId, status: 'ACTIVE' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: limit,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    select: {
+      id: true,
+      title: true,
+      source: true,
+      channel: true,
+      url: true,
+      plainText: true,
+      summaryMd: true,
+    },
+  });
+
+  let changed = 0;
+  let kept = 0;
+  let skipped = 0;
+  let failed = 0;
+  const changedIds: string[] = [];
+
+  for (const item of batch) {
+    try {
+      const content = ((item.plainText ?? '') || (item.summaryMd ?? '')).trim();
+      if (content.length < 40) {
+        skipped += 1;
+        continue;
+      }
+      const result = await generateTitleForContent({
+        title: item.title,
+        content,
+        sourceLabel: titleSourceLabel(item),
+      });
+      await db.costEvent.create({
+        data: {
+          userId,
+          kind: 'CHAT',
+          model: result.model,
+          tokensIn: result.tokensIn,
+          tokensOut: result.tokensOut,
+          costUsd: result.costUsd,
+          meta: { source: 'title_generation_backfill', transcript_id: item.id },
+        },
+      });
+      if (result.changed) {
+        await db.transcript.updateMany({
+          where: { id: item.id, userId },
+          data: { title: result.title },
+        });
+        changedIds.push(item.id);
+        changed += 1;
+      } else {
+        kept += 1;
+      }
+    } catch {
+      failed += 1;
+    }
+  }
+
+  if (changedIds.length > 0) {
+    await reindexTranscriptsBrain(userId, changedIds).catch(() => {});
+    await invalidateGraphCache(userId).catch(() => {});
+  }
+
+  // Continua enquanto o lote veio cheio (há mais para drenar).
+  const nextCursor = batch.length === limit ? (batch[batch.length - 1]?.id ?? null) : null;
+
+  return c.json({
+    processed: batch.length,
+    changed,
+    kept,
+    skipped,
+    failed,
+    pendingTotal,
+    nextCursor,
+  });
+});
+
+// Limpa TODAS as pastas do usuário: conteúdos ficam (folderId → null via onDelete SetNull).
+// Libera de novo o "Organizar com IA" (só classifica folderId null).
+// Brain cleanup é best-effort e NÃO bloqueia a resposta (evita 502 por timeout
+// quando há dezenas de pastas/conteúdos e reindex síncrono estoura o proxy).
+libraryRoutes.post('/folders/clear', async (c) => {
+  const userId = c.get('userId');
+  const folders = await db.libraryFolder.findMany({
+    where: { userId },
+    select: { id: true },
+  });
+  if (folders.length === 0) {
+    return c.json({ ok: true, deleted: 0, affectedTranscripts: 0 });
+  }
+  const folderIds = folders.map((f) => f.id);
+  const affectedCount = await db.transcript.count({
+    where: { userId, folderId: { in: folderIds } },
+  });
+  await db.libraryFolder.deleteMany({ where: { userId } });
+  // folderId já vai null (onDelete SetNull). Nós FOLDER do brain + arestas
+  // em cascata; não reindexa todos os transcripts síncrono.
+  void deleteBrainForSources(userId, 'FOLDER', folderIds)
+    .then(() => invalidateGraphCache(userId))
+    .catch((err) => {
+      console.warn('[library] clear folders brain cleanup failed', { userId, err });
+    });
+  return c.json({
+    ok: true,
+    deleted: folderIds.length,
+    affectedTranscripts: affectedCount,
+  });
 });
 
 libraryRoutes.delete('/folders/:id', async (c) => {

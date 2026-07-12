@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 .pnpm-store/
+# Projeto usa pnpm — nunca commitar lockfile de bun
+bun.lock
+bun.lockb
 .venv/
 __pycache__/
 *.pyc
@@ -60,3 +63,4 @@ Thumbs.db
 # Claude / agentes locais
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.claude/worktrees/

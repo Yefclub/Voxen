@@ -40,7 +40,8 @@ const VOXEN_INSTRUCTIONS = [
   '1. Para achar conteúdo, comece por voxen_search_transcripts / voxen_search_notes',
   '   (retornam trechos curtos + id). Só então use voxen_read_transcript /',
   '   voxen_read_note com o id para ler o conteúdo completo. Isso economiza tokens.',
-  '2. Para navegar relações e entidades, use as tools voxen_brain_*.',
+  '2. Para navegar relações e entidades, use as tools voxen_brain_*',
+  '   (search, neighbors, sources, path até 3 hops, hubs).',
   '',
   'Fluxo de escrita:',
   '- voxen_create_note / voxen_update_note: salvar ou editar informação na KB.',
@@ -690,11 +691,18 @@ function registerBrainTools(server: McpServer, userId: string): void {
     {
       title: 'Conexão entre dois nós',
       description:
-        'Tenta encontrar a conexão (caminho de até 2 saltos) entre dois nós do Brain. Use para ' +
+        'Tenta encontrar a conexão (caminho de até 3 saltos) entre dois nós do Brain. Use para ' +
         'explicar COMO duas entidades/tópicos se relacionam no acervo.',
       inputSchema: {
         from_node_id: z.string().min(1).describe('ID ou key do nó de origem.'),
         to_node_id: z.string().min(1).describe('ID ou key do nó de destino.'),
+        max_depth: z
+          .number()
+          .int()
+          .min(1)
+          .max(3)
+          .optional()
+          .describe('Profundidade máxima (1–3). Default 3.'),
       },
       annotations: { ...READ_ONLY, title: 'Conexão entre dois nós' },
     },
@@ -702,6 +710,7 @@ function registerBrainTools(server: McpServer, userId: string): void {
       const fromRef = args.from_node_id.trim();
       const toRef = args.to_node_id.trim();
       if (!fromRef || !toRef) return fail('from_node_id e to_node_id são obrigatórios.');
+      const maxDepth = args.max_depth ?? 3;
       type PathRow = {
         id: string;
         kind: string;
@@ -769,14 +778,94 @@ function registerBrainTools(server: McpServer, userId: string): void {
               ELSE e2."fromNodeId"
             END
           LIMIT 5
+        ),
+        three_hop AS (
+          SELECT e1.id || ':' || e2.id || ':' || e3.id AS id,
+                 e1.kind::text || ' -> ' || e2.kind::text || ' -> ' || e3.kind::text AS kind,
+                 e1.method || ' -> ' || e2.method || ' -> ' || e3.method AS method,
+                 e1."fromNodeId",
+                 e3."toNodeId",
+                 via1.id AS "viaNodeId",
+                 via1.label || ' / ' || via2.label AS "viaLabel",
+                 3 AS depth
+          FROM active_edges e1
+          JOIN active_edges e2 ON e1.id <> e2.id
+          JOIN active_edges e3 ON e3.id <> e1.id AND e3.id <> e2.id
+          JOIN endpoints ep ON TRUE
+          JOIN "BrainNode" via1
+            ON via1.id = CASE
+              WHEN e1."fromNodeId" = ep.from_id THEN e1."toNodeId"
+              ELSE e1."fromNodeId"
+            END
+          JOIN "BrainNode" via2
+            ON via2.id = CASE
+              WHEN e2."fromNodeId" = via1.id THEN e2."toNodeId"
+              WHEN e2."toNodeId" = via1.id THEN e2."fromNodeId"
+              ELSE NULL
+            END
+          WHERE ep.from_id IS NOT NULL
+            AND ep.to_id IS NOT NULL
+            AND (e1."fromNodeId" = ep.from_id OR e1."toNodeId" = ep.from_id)
+            AND via2.id IS NOT NULL
+            AND (e3."fromNodeId" = ep.to_id OR e3."toNodeId" = ep.to_id)
+            AND (
+              (e3."fromNodeId" = via2.id AND e3."toNodeId" = ep.to_id)
+              OR (e3."toNodeId" = via2.id AND e3."fromNodeId" = ep.to_id)
+              OR (e3."fromNodeId" = via2.id OR e3."toNodeId" = via2.id)
+            )
+          LIMIT 5
         )
         SELECT * FROM direct
+        WHERE ${maxDepth} >= 1
         UNION ALL
         SELECT * FROM two_hop
+        WHERE ${maxDepth} >= 2
+        UNION ALL
+        SELECT * FROM three_hop
+        WHERE ${maxDepth} >= 3
         ORDER BY depth ASC
-        LIMIT 10
+        LIMIT 15
       `;
-      return ok({ paths });
+      return ok({ paths, maxDepth });
+    },
+  );
+
+  server.registerTool(
+    'voxen_brain_hubs',
+    {
+      title: 'Hubs do grafo (god nodes)',
+      description:
+        'Lista os nós mais conectados do Brain (maior grau). Use para ver o que concentra ' +
+        'relações no acervo — tópicos/entidades “centrais”.',
+      inputSchema: {
+        limit: z.number().int().min(1).max(30).optional().describe('Quantos hubs (default 10).'),
+      },
+      annotations: { ...READ_ONLY, title: 'Hubs do grafo' },
+    },
+    async (args) => {
+      const limit = args.limit ?? 10;
+      type HubRow = {
+        id: string;
+        key: string;
+        label: string;
+        type: string;
+        degree: number;
+      };
+      const hubs = await db.$queryRaw<HubRow[]>`
+        SELECT n.id, n.key, n.label, n.type::text AS type,
+               COUNT(e.id)::int AS degree
+        FROM "BrainNode" n
+        JOIN "BrainEdge" e
+          ON e."userId" = n."userId"
+         AND e.status = 'ACTIVE'::"ContentStatus"
+         AND (e."fromNodeId" = n.id OR e."toNodeId" = n.id)
+        WHERE n."userId" = ${userId}
+          AND n.status = 'ACTIVE'::"ContentStatus"
+        GROUP BY n.id
+        ORDER BY degree DESC
+        LIMIT ${limit}
+      `;
+      return ok({ hubs });
     },
   );
 }

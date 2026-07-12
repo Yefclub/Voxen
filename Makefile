@@ -1,4 +1,4 @@
-.PHONY: help ensure-env dev update build down restart logs ps test test-ts test-py lint lint-ts lint-py format format-ts format-py format-check format-check-ts format-check-py typecheck migrate seed shell-db shell-redis minio-init master-key-show reset-password backup clean
+.PHONY: help ensure-env dev update build down restart logs ps test test-ts test-py lint lint-ts lint-py format format-ts format-py format-check format-check-ts format-check-py typecheck migrate seed shell-db shell-redis minio-init minio-cors master-key-show reset-password backup clean
 
 # ============================================================================
 # Voxen — one-command development
@@ -19,7 +19,7 @@ export VOXEN_BUILT_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 ensure-env: ## Cria/completa .env local sem sobrescrever secrets existentes
 	@scripts/ensure-env.sh
 
-dev: ensure-env ## Sobe tudo localmente (postgres, redis, minio, web, chat, worker)
+dev: ensure-env ## Sobe tudo localmente (postgres, redis, minio, web, worker)
 	docker compose up -d --build
 	@echo ""
 	@echo "✓ Voxen rodando em http://localhost:3000 (v$(VOXEN_VERSION))"
@@ -55,8 +55,7 @@ test: test-ts test-py ## Roda todos os testes (TS + Python)
 test-ts: ## Testes do apps/web (Bun)
 	cd apps/web && bun test
 
-test-py: ## Testes do chat e worker (pytest via uv)
-	cd apps/chat && uv run pytest
+test-py: ## Testes do worker (pytest via uv)
 	cd apps/worker && uv run pytest
 
 # --- Lint / format / typecheck ---
@@ -66,7 +65,6 @@ lint-ts:
 	cd apps/web && bun run lint
 
 lint-py:
-	cd apps/chat && uv run ruff check .
 	cd apps/worker && uv run ruff check .
 
 format: format-ts format-py ## Aplica formatacao (Prettier + Ruff)
@@ -75,7 +73,6 @@ format-ts:
 	cd apps/web && bun run format
 
 format-py:
-	cd apps/chat && uv run ruff format .
 	cd apps/worker && uv run ruff format .
 
 format-check: format-check-ts format-check-py ## Verifica formatacao sem alterar arquivos
@@ -84,12 +81,10 @@ format-check-ts:
 	cd apps/web && bun run format:check
 
 format-check-py:
-	cd apps/chat && uv run ruff format --check .
 	cd apps/worker && uv run ruff format --check .
 
 typecheck:
 	cd apps/web && bun run typecheck
-	cd apps/chat && uv run mypy src
 	cd apps/worker && uv run mypy src
 
 # --- DB ---
@@ -108,6 +103,13 @@ shell-redis: ## redis-cli
 # --- Infra utilidades ---
 minio-init: ## Reroda criação do bucket MinIO (idempotente)
 	docker compose up minio-init
+
+minio-cors: ## Aplica CORS no bucket p/ upload presigned: make minio-cors APP_ORIGIN=https://app.dominio.com
+	@if [ -z "$(APP_ORIGIN)" ]; then \
+		echo "Erro: defina APP_ORIGIN. Ex.: make minio-cors APP_ORIGIN=https://app.seudominio.com"; \
+		exit 2; \
+	fi
+	APP_ORIGIN="$(APP_ORIGIN)" sh scripts/minio-cors.sh
 
 master-key-show: ## Mostra a master key (cuidado — secret)
 	@grep '^MASTER_KEY=' .env | sed 's/^MASTER_KEY=//'

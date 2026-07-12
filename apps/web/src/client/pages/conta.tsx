@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import {
-  Check,
-  Copy as CopyIcon,
   Eye,
   EyeOff,
   KeyRound,
-  Send,
-  Unlink,
+  QrCode,
+  RefreshCw,
+  ShieldAlert,
+  Smartphone,
   Upload,
   User as UserIcon,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -320,7 +321,7 @@ export function ContaPage(): React.ReactElement {
           </CardContent>
         </Card>
 
-        <TelegramLinkCard />
+        <QrLoginCard />
 
         <motion.p
           initial={{ opacity: 0 }}
@@ -335,187 +336,106 @@ export function ContaPage(): React.ReactElement {
   );
 }
 
-interface TelegramStatus {
-  linked: boolean;
-  username?: string | null;
-  chatId?: string;
-  linkedAt?: string;
-}
-
-function TelegramLinkCard(): React.ReactElement {
-  const { locale, t } = useI18n();
-  const [status, setStatus] = useState<TelegramStatus | null>(null);
-  const [code, setCode] = useState<string | null>(null);
-  const [codeExpiresAt, setCodeExpiresAt] = useState<number | null>(null);
+function QrLoginCard(): React.ReactElement {
+  const { t } = useI18n();
+  const [loginUrl, setLoginUrl] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [remaining, setRemaining] = useState(0);
   const [generating, setGenerating] = useState(false);
-  const [unlinking, setUnlinking] = useState(false);
-  const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  async function refresh(): Promise<void> {
-    try {
-      const s = await apiGet<TelegramStatus>('/api/account/telegram');
-      setStatus(s);
-    } catch {
-      setStatus({ linked: false });
-    }
-  }
-
-  async function genCode(): Promise<void> {
+  async function generate(): Promise<void> {
     setGenerating(true);
     try {
-      const r = await apiPost<{ code: string; expiresInSec: number }>(
-        '/api/account/telegram/code',
+      const r = await apiPost<{ loginUrl: string; expiresInSec: number }>(
+        '/api/account/qr-login',
         {},
       );
-      setCode(r.code);
-      setCodeExpiresAt(Date.now() + r.expiresInSec * 1000);
-      toast.success(t('account.telegram.codeGenerated'));
+      setLoginUrl(r.loginUrl);
+      setExpiresAt(Date.now() + r.expiresInSec * 1000);
+      setRemaining(r.expiresInSec);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t('account.telegram.codeError'));
+      toast.error(err instanceof ApiError ? err.message : t('account.qrLogin.error'));
     } finally {
       setGenerating(false);
     }
   }
 
-  async function copyCode(): Promise<void> {
-    if (!code) return;
-    try {
-      await navigator.clipboard.writeText(`/start ${code}`);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // ignora
-    }
-  }
-
-  async function unlink(): Promise<void> {
-    setUnlinking(true);
-    try {
-      const res = await fetch('/api/account/telegram', {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error(t('account.telegram.unlinkFailed'));
-      toast.success(t('account.telegram.unlinked'));
-      setStatus({ linked: false });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('common.error'));
-    } finally {
-      setUnlinking(false);
-    }
-  }
-
-  // Poll status quando código está ativo — detecta vínculo automaticamente
+  // Countdown: zera o QR quando expira (o token já não vale mais no servidor).
   useEffect(() => {
-    if (!code) return;
-    const timer = setInterval(() => {
-      void apiGet<TelegramStatus>('/api/account/telegram')
-        .then((s) => {
-          if (s.linked) {
-            setStatus(s);
-            setCode(null);
-            setCodeExpiresAt(null);
-            toast.success(t('account.telegram.linked'));
-          } else if (codeExpiresAt && Date.now() > codeExpiresAt) {
-            setCode(null);
-            setCodeExpiresAt(null);
-            toast.warning(t('account.telegram.codeExpired'));
-          }
-        })
-        .catch(() => undefined);
-    }, 3000);
+    if (!expiresAt) return;
+    const tick = (): void => {
+      const secs = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      setRemaining(secs);
+      if (secs <= 0) {
+        setLoginUrl(null);
+        setExpiresAt(null);
+      }
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [code, codeExpiresAt]);
-
-  if (!status) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <Spinner />
-        </CardContent>
-      </Card>
-    );
-  }
+  }, [expiresAt]);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 font-display">
-          <Send className="h-4 w-4 text-violet-400" />
-          {t('account.telegram.title')}
+          <QrCode className="h-4 w-4 text-emerald-400" />
+          {t('account.qrLogin.title')}
         </CardTitle>
-        <CardDescription>{t('account.telegram.description')}</CardDescription>
+        <CardDescription>{t('account.qrLogin.description')}</CardDescription>
       </CardHeader>
       <CardContent>
-        {status.linked ? (
-          <div className="space-y-3">
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
-              <Check className="h-4 w-4 text-emerald-400" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-100">
-                  {status.username
-                    ? t('account.telegram.linkedAs', { username: status.username })
-                    : t('account.telegram.linkedStatus')}
-                </p>
-                <p className="text-[11px] text-[var(--color-app-muted)] tabular-nums">
-                  {t('account.telegram.chatId')} <span className="font-mono">{status.chatId}</span>
-                  {status.linkedAt && (
-                    <>
-                      {' · '}
-                      {t('account.telegram.since', {
-                        date: formatDateTime(new Date(status.linkedAt), locale),
-                      })}
-                    </>
-                  )}
-                </p>
+        {loginUrl ? (
+          <div className="space-y-4">
+            <div className="flex flex-col items-center gap-3">
+              <div className="rounded-xl bg-white p-3">
+                <QRCodeSVG value={loginUrl} size={200} level="M" marginSize={0} />
               </div>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => void unlink()} disabled={unlinking}>
-              {unlinking ? <Spinner /> : <Unlink className="h-3.5 w-3.5" />}
-              {t('account.telegram.unlink')}
-            </Button>
-          </div>
-        ) : code ? (
-          <div className="space-y-3">
-            <div className="rounded-lg border border-violet-500/30 bg-violet-500/5 px-4 py-4">
-              <p className="text-[11px] uppercase tracking-wider text-violet-300 font-medium mb-2">
-                {t('account.telegram.sendToBot')}
+              <p className="text-[13px] text-[var(--color-app-muted)] flex items-center gap-1.5">
+                <Smartphone className="h-3.5 w-3.5" />
+                {t('account.qrLogin.scanHint')}
               </p>
-              <code className="block font-mono text-2xl font-bold tracking-wider text-zinc-100 tabular-nums break-all">
-                /start {code}
-              </code>
-              <p className="text-[11px] text-[var(--color-app-muted)] mt-2">
-                {t('account.telegram.expires')}
+              <p className="text-xs text-[var(--color-app-muted)] tabular-nums">
+                {t('account.qrLogin.expiresIn', { seconds: remaining })}
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => void copyCode()}>
-              {copied ? (
-                <>
-                  <Check className="h-3.5 w-3.5" />
-                  {t('common.copied')}
-                </>
-              ) : (
-                <>
-                  <CopyIcon className="h-3.5 w-3.5" />
-                  {t('account.telegram.copyCommand')}
-                </>
-              )}
+
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-start gap-2.5">
+              <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-[13px] text-amber-200/90 leading-relaxed">
+                {t('account.qrLogin.warning')}
+              </p>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void generate()}
+              disabled={generating}
+            >
+              {generating ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />}
+              {t('account.qrLogin.regenerate')}
             </Button>
           </div>
         ) : (
-          <Button
-            variant="primary"
-            size="default"
-            onClick={() => void genCode()}
-            disabled={generating}
-          >
-            {generating ? <Spinner /> : <Send className="h-3.5 w-3.5" />}
-            {t('account.telegram.generateCode')}
-          </Button>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-start gap-2.5">
+              <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-[13px] text-amber-200/90 leading-relaxed">
+                {t('account.qrLogin.warning')}
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="default"
+              onClick={() => void generate()}
+              disabled={generating}
+            >
+              {generating ? <Spinner /> : <QrCode className="h-3.5 w-3.5" />}
+              {t('account.qrLogin.generate')}
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>

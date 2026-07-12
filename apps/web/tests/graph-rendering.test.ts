@@ -139,11 +139,11 @@ describe('graph rendering helpers', () => {
     expect(model.graph.size).toBe(1);
     expect(model.graph.getNodeAttribute('note-1', 'label')).toBe('Nota conectada');
     expect(model.neighborhoods.get('note-1')?.has('topic-1')).toBe(true);
-    expect(model.forceData.nodes).toHaveLength(2);
-    expect(model.forceData.links).toHaveLength(1);
-    expect(model.forceData.nodes.every((node) => Number.isFinite(node.z))).toBe(true);
-    expect(model.forceData.links[0]?.source).toBe('note-1');
-    expect(model.forceData.links[0]?.target).toBe('topic-1');
+    expect(model.reagraphNodes).toHaveLength(2);
+    expect(model.reagraphEdges).toHaveLength(1);
+    expect(model.reagraphEdges[0]?.source).toBe('note-1');
+    expect(model.reagraphEdges[0]?.target).toBe('topic-1');
+    expect(model.nodeById.get('note-1')?.label).toBe('Nota conectada');
   });
 });
 

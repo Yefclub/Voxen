@@ -15,6 +15,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Spinner } from '../components/ui/spinner';
 import { useFetch, useSse } from '../lib/hooks';
 import type { JobSummary } from '../lib/types';
@@ -63,11 +64,11 @@ export function JobDetalhePage(): React.ReactElement {
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const openedTranscriptRef = useRef<string | null>(null);
 
   async function onCancel(): Promise<void> {
     if (!id) return;
-    if (!window.confirm(t('jobDetail.cancelConfirm'))) return;
     setCancelling(true);
     try {
       await apiPost(`/api/jobs/${id}/cancel`);
@@ -159,7 +160,7 @@ export function JobDetalhePage(): React.ReactElement {
     <AnimatedPage>
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-5 sm:space-y-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
         <Button variant="ghost" size="sm" asChild className="-ml-2 hidden sm:inline-flex">
-          <Link to="/jobs">
+          <Link to="/">
             <ArrowLeft className="h-3.5 w-3.5" />
             {t('jobDetail.backToQueue')}
           </Link>
@@ -245,10 +246,25 @@ export function JobDetalhePage(): React.ReactElement {
                   ) : (
                     <span />
                   )}
-                  <Button variant="destructive" size="sm" onClick={onCancel} disabled={cancelling}>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setConfirmCancelOpen(true)}
+                    disabled={cancelling}
+                  >
                     {cancelling ? <Spinner /> : <X className="h-3.5 w-3.5" />}
                     {t('jobDetail.cancel')}
                   </Button>
+                  <ConfirmDialog
+                    open={confirmCancelOpen}
+                    onOpenChange={setConfirmCancelOpen}
+                    variant="destructive"
+                    title={t('jobDetail.cancel')}
+                    description={t('jobDetail.cancelConfirm')}
+                    confirmLabel={t('jobDetail.cancel')}
+                    loading={cancelling}
+                    onConfirm={onCancel}
+                  />
                 </div>
               </div>
             )}
