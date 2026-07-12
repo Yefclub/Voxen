@@ -627,6 +627,9 @@ const ptBRMessages = {
   'admin.integrations.proxy.title': 'Agente de Proxy',
   'admin.integrations.proxy.description':
     'Roteie a extração de mídia por um agente residencial (IP de casa) quando o YouTube bloqueia downloads de datacenter. O token autentica o túnel e fica cifrado no banco.',
+  'admin.integrations.proxy.enableLabel': 'Rotear extração pelo agente',
+  'admin.integrations.proxy.enableHint':
+    'Quando ligado, o worker baixa via o agente residencial. Desligado, baixa direto pelo servidor. Não apaga o token nem desconecta o agente.',
   'admin.integrations.proxy.configured': 'Token configurado',
   'admin.integrations.proxy.notConfigured': 'Nenhum token configurado.',
   'admin.integrations.proxy.generated': 'Token gerado. Copie agora — não será exibido novamente.',
@@ -1593,6 +1596,9 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.proxy.title': 'Proxy Agent',
   'admin.integrations.proxy.description':
     'Route media extraction through a residential agent (home IP) when YouTube blocks datacenter downloads. The token authenticates the tunnel and is encrypted in the database.',
+  'admin.integrations.proxy.enableLabel': 'Route extraction through the agent',
+  'admin.integrations.proxy.enableHint':
+    'When on, the worker downloads via the residential agent. When off, it downloads directly from the server. Does not delete the token or disconnect the agent.',
   'admin.integrations.proxy.configured': 'Token configured',
   'admin.integrations.proxy.notConfigured': 'No token configured.',
   'admin.integrations.proxy.generated': 'Token generated. Copy it now. It will not be shown again.',
