@@ -5,7 +5,7 @@
 // Tech: Reagraph (WebGL/R3F) com fallback Sigma/SVG determinístico.
 // ============================================================================
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Graph from 'graphology';
 import type SigmaRenderer from 'sigma';
@@ -16,13 +16,23 @@ import type {
   GraphNode as ReagraphNode,
   Theme,
 } from 'reagraph';
-import { ArrowLeft, Box, BrainCircuit, Network, RotateCw, Search, Square } from 'lucide-react';
+import {
+  ArrowLeft,
+  Box,
+  BrainCircuit,
+  Info,
+  Network,
+  RotateCw,
+  Search,
+  Square,
+} from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { FetchError } from '../components/ui/fetch-error';
 import { Spinner } from '../components/ui/spinner';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { useFetch } from '../lib/hooks';
 import { useI18n, type TranslateFn } from '../lib/i18n';
+import { useIsCoarsePointer, useIsDesktop } from '../lib/use-media-query';
 import { cn } from '../lib/utils';
 
 type GraphNodeType =
@@ -89,6 +99,7 @@ interface GraphLayoutEdge extends GraphEdge {
 interface GraphLayout {
   nodes: GraphLayoutNode[];
   edges: GraphLayoutEdge[];
+  viewBox: { width: number; height: number };
 }
 
 interface SigmaNodeAttributes {
@@ -112,6 +123,7 @@ interface SigmaEdgeAttributes {
 }
 
 interface SigmaGraphModel {
+  data: GraphResp;
   graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>;
   layout: GraphLayout;
   neighborhoods: Map<string, Set<string>>;
@@ -120,8 +132,30 @@ interface SigmaGraphModel {
   nodeById: Map<string, GraphNode>;
 }
 
+export interface GraphLayoutOptions {
+  viewBox?: { width: number; height: number };
+  minNodeRadius?: number;
+  maxNodeRadius?: number;
+}
+
 const GRAPH_VIEWBOX = { width: 1000, height: 620 };
 const SOURCE_NODE_TYPES = new Set<GraphNodeType>(['transcript', 'note', 'folder']);
+
+// Clamps de proporção (largura/altura) pro viewBox responsivo do fallback SVG
+// (ver `resolveGraphViewBox`) — cobrem folgadamente qualquer celular/tablet/
+// desktop real (retrato mais estreito comum ~0.43, ultrawide comum ~2.1) e só
+// entram em ação em containers com proporção patológica (ex.: sliver de
+// devtools), evitando layouts esticados demais.
+const MIN_VIEWBOX_ASPECT_RATIO = 0.4;
+const MAX_VIEWBOX_ASPECT_RATIO = 2.5;
+
+const DEFAULT_MIN_NODE_RADIUS = 13;
+const DEFAULT_MAX_NODE_RADIUS = 32;
+// Alvo de toque maior em telas coarse (touch): o raio mínimo de 13 (espaço
+// SVG) já rende pequeno em CSS px numa tela de celular; 17 dá ~30% a mais
+// sem mexer no resto do layout (só o piso sobe — nós já grandes por grau de
+// conexão não são afetados). Mudança pequena e localizada, como pedido.
+const TOUCH_MIN_NODE_RADIUS = 17;
 
 export const NODE_COLORS: Record<GraphNodeType, string> = {
   transcript: '#a78bfa',
@@ -203,12 +237,18 @@ function buildVoxenTheme(darkTheme: Theme): Theme {
 
 export function GrafoPage(): React.ReactElement {
   const [forceTick, setForceTick] = useState(0);
-  // Grafo 3D por padrão (orbita/gira); toggle para o 2D plano (pan).
-  const [is3d, setIs3d] = useState(true);
+  const isDesktop = useIsDesktop();
+  const coarsePointer = useIsCoarsePointer();
+  // Grafo 3D por padrão no desktop (orbita/gira); no mobile abre em 2D (pan)
+  // — arrastar pra girar é um gesto ruim em touchscreen. O toggle continua
+  // disponível nos dois casos, isto só decide o valor inicial.
+  const [is3d, setIs3d] = useState(() => resolveDefaultIs3d(isDesktop));
   const graphPath = forceTick > 0 ? `/api/graph?force=1&t=${forceTick}` : '/api/graph';
   const { data, loading, error } = useFetch<GraphResp>(graphPath);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const statsPanelId = useId();
   const navigate = useNavigate();
   const { t } = useI18n();
 
@@ -230,9 +270,16 @@ export function GrafoPage(): React.ReactElement {
     };
   }, [data, search]);
 
+  const nodeRadiusBounds = useMemo(() => resolveNodeRadiusBounds(coarsePointer), [coarsePointer]);
   const graphModel = useMemo(
-    () => (filtered ? buildSigmaGraphModel(filtered, t) : null),
-    [filtered, t],
+    () =>
+      filtered
+        ? buildSigmaGraphModel(filtered, t, {
+            minNodeRadius: nodeRadiusBounds.min,
+            maxNodeRadius: nodeRadiusBounds.max,
+          })
+        : null,
+    [filtered, t, nodeRadiusBounds],
   );
 
   useEffect(() => {
@@ -250,6 +297,7 @@ export function GrafoPage(): React.ReactElement {
   );
 
   const stats = filtered ?? data;
+  const statsData = stats && stats.nodes.length > 0 ? stats : null;
   const hasGraph = Boolean(graphModel && graphModel.layout.nodes.length > 0);
 
   return (
@@ -302,52 +350,86 @@ export function GrafoPage(): React.ReactElement {
             em /grafo (~106px de conteúdo + 16px de right-4, com folga) pra
             a pill (mx-auto max-w-5xl) nunca se estender até lá. */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+5rem)] sm:px-4 sm:pb-4 md:pt-4 md:pr-[9rem]">
-          <div className="pointer-events-auto mx-auto flex max-w-5xl flex-wrap items-center gap-2.5 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/80 px-3 py-2.5 shadow-lg backdrop-blur-xl sm:gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
-              aria-label={t('shell.backToHome')}
-              title={t('shell.backToHome')}
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div className="hidden items-center gap-2 sm:flex">
-              <BrainCircuit className="h-4 w-4 text-violet-400" />
-              <span className="font-display text-sm font-semibold">{t('graph.title')}</span>
+          <div className="pointer-events-auto mx-auto flex max-w-5xl flex-col gap-2">
+            {/* Fileira primária: sempre as mesmas 4 ações (voltar, busca, 2D/3D,
+                atualizar) + o toggle de estatísticas no mobile. GraphStats
+                completo (4-6 itens) só entra direto na fileira a partir de
+                `md` — no mobile ele lotava uma barra já estreita e quebrava
+                em várias linhas (fica atrás do botão de info, 2ª fileira). */}
+            <div className="flex flex-wrap items-center gap-2.5 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/80 px-3 py-2.5 shadow-lg backdrop-blur-xl sm:gap-3">
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+                aria-label={t('shell.backToHome')}
+                title={t('shell.backToHome')}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="hidden items-center gap-2 sm:flex">
+                <BrainCircuit className="h-4 w-4 text-violet-400" />
+                <span className="font-display text-sm font-semibold">{t('graph.title')}</span>
+              </div>
+              <div className="relative min-w-[150px] flex-1">
+                <span className="pointer-events-none absolute left-3 top-1/2 z-10 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-[var(--color-app-muted)]">
+                  <Search className="h-4 w-4" />
+                </span>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={t('graph.searchPlaceholder')}
+                  className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/60 pl-9 pr-3 text-[13px] text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={() => setIs3d((prev) => !prev)}
+                title={t(is3d ? 'graph.switchTo2d' : 'graph.switchTo3d')}
+                aria-label={t(is3d ? 'graph.switchTo2d' : 'graph.switchTo3d')}
+              >
+                {is3d ? <Box className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                <span className="hidden sm:inline">{is3d ? '3D' : '2D'}</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={() => setForceTick(Date.now())}
+                disabled={loading}
+              >
+                <RotateCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+                <span className="hidden sm:inline">{t('graph.refresh')}</span>
+              </Button>
+              {statsData && (
+                <GraphStats data={statsData} translate={t} className="ml-auto hidden md:flex" />
+              )}
+              {statsData && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setStatsOpen((prev) => !prev)}
+                  aria-expanded={statsOpen}
+                  aria-controls={statsPanelId}
+                  aria-label={t(statsOpen ? 'graph.hideStats' : 'graph.showStats')}
+                  title={t(statsOpen ? 'graph.hideStats' : 'graph.showStats')}
+                  className="ml-auto md:hidden"
+                >
+                  <Info className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </div>
-            <div className="relative min-w-[150px] flex-1">
-              <span className="pointer-events-none absolute left-3 top-1/2 z-10 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-[var(--color-app-muted)]">
-                <Search className="h-4 w-4" />
-              </span>
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t('graph.searchPlaceholder')}
-                className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/60 pl-9 pr-3 text-[13px] text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="default"
-              onClick={() => setIs3d((prev) => !prev)}
-              title={t(is3d ? 'graph.switchTo2d' : 'graph.switchTo3d')}
-              aria-label={t(is3d ? 'graph.switchTo2d' : 'graph.switchTo3d')}
-            >
-              {is3d ? <Box className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-              <span className="hidden sm:inline">{is3d ? '3D' : '2D'}</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="default"
-              onClick={() => setForceTick(Date.now())}
-              disabled={loading}
-            >
-              <RotateCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-              <span className="hidden sm:inline">{t('graph.refresh')}</span>
-            </Button>
-            {stats && stats.nodes.length > 0 && <GraphStats data={stats} translate={t} />}
+            {/* Fileira secundária: estatísticas do grafo, só no mobile e só
+                quando o usuário pede (botão de info acima) — no desktop as
+                estatísticas já aparecem direto na fileira primária. */}
+            {statsData && statsOpen && (
+              <div
+                id={statsPanelId}
+                className="rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/80 px-3 py-2.5 shadow-lg backdrop-blur-xl md:hidden"
+              >
+                <GraphStats data={statsData} translate={t} className="flex" />
+              </div>
+            )}
           </div>
         </div>
 
@@ -367,15 +449,26 @@ export function GrafoPage(): React.ReactElement {
 function GraphStats({
   data,
   translate,
+  className,
 }: {
   data: GraphResp;
   translate: TranslateFn;
+  /** Utilitários de display/posição — o caller decide (fileira inline no
+   * desktop via `ml-auto hidden md:flex`, ou painel dedicado no mobile via
+   * `flex`). Sem valor baked-in aqui pra não conflitar com o `display` que o
+   * caller escolhe. */
+  className: string;
 }): React.ReactElement {
   const concepts = data.nodes.filter(
     (node) => node.type !== 'transcript' && node.type !== 'note' && node.type !== 'folder',
   ).length;
   return (
-    <div className="ml-auto flex flex-wrap items-center gap-3 text-[11px] tabular-nums text-[var(--color-app-muted)]">
+    <div
+      className={cn(
+        'flex-wrap items-center gap-3 text-[11px] tabular-nums text-[var(--color-app-muted)]',
+        className,
+      )}
+    >
       <StatDot
         color="bg-violet-400"
         label={`${countType(data, 'transcript')} ${translate('graph.transcripts')}`}
@@ -686,7 +779,7 @@ function BrainGraph2DCanvas({
   if (webglFailed) {
     return (
       <BrainGraphSvg
-        layout={model.layout}
+        model={model}
         selectedId={selectedId}
         translate={translate}
         onSelect={onSelect}
@@ -703,29 +796,70 @@ function BrainGraph2DCanvas({
 }
 
 function BrainGraphSvg({
-  layout,
+  model,
   selectedId,
   translate,
   onSelect,
   onOpen,
 }: {
-  layout: GraphLayout;
+  model: SigmaGraphModel;
   selectedId: string | null;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
   onOpen: (node: GraphNode) => void;
 }): React.ReactElement {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const coarsePointer = useIsCoarsePointer();
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+
+  // Mede o container real (layout effect: antes do paint, evita flash com o
+  // viewBox padrão) e recalcula em resizes seguintes via ResizeObserver — sem
+  // isso o viewBox fica fixo em paisagem e sobra espaço vazio em cima/embaixo
+  // em telas retrato (a maioria dos celulares). Ver `resolveGraphViewBox`.
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setContainerSize({ width: rect.width, height: rect.height });
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      setContainerSize({ width, height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const viewBox = useMemo(
+    () => resolveGraphViewBox(containerSize?.width ?? 0, containerSize?.height ?? 0),
+    [containerSize],
+  );
+  const radiusBounds = useMemo(() => resolveNodeRadiusBounds(coarsePointer), [coarsePointer]);
+  const layout = useMemo(
+    () =>
+      buildGraphLayout(model.data, {
+        viewBox,
+        minNodeRadius: radiusBounds.min,
+        maxNodeRadius: radiusBounds.max,
+      }),
+    [model, viewBox, radiusBounds],
+  );
+
   return (
-    <div className="absolute inset-0 overflow-hidden">
+    <div ref={containerRef} className="absolute inset-0 overflow-hidden">
       <svg
         role="img"
         aria-label={translate('graph.title')}
         className="h-full w-full"
-        viewBox={`0 0 ${GRAPH_VIEWBOX.width} ${GRAPH_VIEWBOX.height}`}
+        viewBox={`0 0 ${viewBox.width} ${viewBox.height}`}
         preserveAspectRatio="xMidYMid meet"
         onClick={() => onSelect(null)}
       >
-        <rect width={GRAPH_VIEWBOX.width} height={GRAPH_VIEWBOX.height} fill="transparent" />
+        <rect width={viewBox.width} height={viewBox.height} fill="transparent" />
         <g opacity="0.75">
           {layout.edges.map((edge) => (
             <path
@@ -863,8 +997,12 @@ function countType(data: GraphResp, type: GraphNodeType): number {
   return data.nodes.filter((node) => node.type === type).length;
 }
 
-export function buildSigmaGraphModel(data: GraphResp, translate?: TranslateFn): SigmaGraphModel {
-  const layout = buildGraphLayout(data);
+export function buildSigmaGraphModel(
+  data: GraphResp,
+  translate?: TranslateFn,
+  layoutOptions: GraphLayoutOptions = {},
+): SigmaGraphModel {
+  const layout = buildGraphLayout(data, layoutOptions);
   const graph = new Graph<SigmaNodeAttributes, SigmaEdgeAttributes>({
     multi: true,
     type: 'undirected',
@@ -892,8 +1030,8 @@ export function buildSigmaGraphModel(data: GraphResp, translate?: TranslateFn): 
   for (const node of layout.nodes) {
     neighborhoods.set(node.id, new Set([node.id]));
     graph.addNode(node.id, {
-      x: (node.x - GRAPH_VIEWBOX.width / 2) / 150,
-      y: (node.y - GRAPH_VIEWBOX.height / 2) / 150,
+      x: (node.x - layout.viewBox.width / 2) / 150,
+      y: (node.y - layout.viewBox.height / 2) / 150,
       size: Math.max(4, node.radius / 2.4),
       color: NODE_COLORS[node.type],
       label: node.label,
@@ -917,7 +1055,7 @@ export function buildSigmaGraphModel(data: GraphResp, translate?: TranslateFn): 
     });
   }
 
-  return { graph, layout, neighborhoods, reagraphNodes, reagraphEdges, nodeById };
+  return { data, graph, layout, neighborhoods, reagraphNodes, reagraphEdges, nodeById };
 }
 
 export function nodePath(node: GraphNode): string | null {
@@ -927,9 +1065,68 @@ export function nodePath(node: GraphNode): string | null {
   return null;
 }
 
-export function buildGraphLayout(data: GraphResp): GraphLayout {
-  const width = GRAPH_VIEWBOX.width;
-  const height = GRAPH_VIEWBOX.height;
+/**
+ * Decide se o grafo abre em 3D (orbita, arrastar gira a câmera) ou 2D
+ * (plano, arrastar move a câmera) por padrão. Rotação orbital via drag é um
+ * gesto ruim em touchscreen (fácil de disparar sem querer, difícil de
+ * controlar com precisão) comparado a mouse — por isso mobile/telas estreitas
+ * (`isDesktop === false`) abrem em 2D. O toggle na barra de controles
+ * continua disponível pra o usuário ligar o 3D se quiser; isto só decide o
+ * valor inicial (não força o estado a mudar se o usuário redimensionar a
+ * janela depois).
+ */
+export function resolveDefaultIs3d(isDesktop: boolean): boolean {
+  return isDesktop;
+}
+
+/**
+ * Recalcula o viewBox do fallback SVG a partir do tamanho real do container,
+ * preservando a área do viewBox padrão (mesma densidade visual de nós) mas
+ * ajustando a proporção pra bater com a tela. Sem isso, o viewBox fixo em
+ * paisagem (1000x620, ~1.6:1) força `preserveAspectRatio="xMidYMid meet"` a
+ * escalar pela largura em telas retrato (a maioria dos celulares), deixando
+ * faixas vazias grandes em cima/embaixo e o grafo pequeno/apertado no meio.
+ * A proporção real do container é clampada entre `MIN_VIEWBOX_ASPECT_RATIO` e
+ * `MAX_VIEWBOX_ASPECT_RATIO` — cobre qualquer celular/tablet/desktop real, só
+ * age em proporções patológicas (evita layouts esticados demais). Sem medida
+ * real (largura ou altura <= 0, ex.: antes do primeiro layout medido), cai
+ * pro viewBox padrão.
+ */
+export function resolveGraphViewBox(
+  containerWidth: number,
+  containerHeight: number,
+): { width: number; height: number } {
+  if (!(containerWidth > 0) || !(containerHeight > 0)) return GRAPH_VIEWBOX;
+  const area = GRAPH_VIEWBOX.width * GRAPH_VIEWBOX.height;
+  const aspect = clamp(
+    containerWidth / containerHeight,
+    MIN_VIEWBOX_ASPECT_RATIO,
+    MAX_VIEWBOX_ASPECT_RATIO,
+  );
+  const height = Math.sqrt(area / aspect);
+  const width = aspect * height;
+  return { width: Math.round(width), height: Math.round(height) };
+}
+
+/**
+ * Limites de raio dos nós do grafo (espaço do layout/SVG, antes de qualquer
+ * escala de tela). Em ponteiro coarse (touch), o mínimo sobe de 13 para 17
+ * (~30%) — alvo de toque maior sem distorcer o resto do layout, já que só o
+ * piso muda (nós já grandes por grau de conexão não são afetados).
+ */
+export function resolveNodeRadiusBounds(coarsePointer: boolean): { min: number; max: number } {
+  return {
+    min: coarsePointer ? TOUCH_MIN_NODE_RADIUS : DEFAULT_MIN_NODE_RADIUS,
+    max: DEFAULT_MAX_NODE_RADIUS,
+  };
+}
+
+export function buildGraphLayout(data: GraphResp, options: GraphLayoutOptions = {}): GraphLayout {
+  const viewBox = options.viewBox ?? GRAPH_VIEWBOX;
+  const minNodeRadius = options.minNodeRadius ?? DEFAULT_MIN_NODE_RADIUS;
+  const maxNodeRadius = Math.max(minNodeRadius, options.maxNodeRadius ?? DEFAULT_MAX_NODE_RADIUS);
+  const width = viewBox.width;
+  const height = viewBox.height;
   const center = { x: width / 2, y: height / 2 };
   const degree = new Map<string, number>();
   for (const edge of data.edges) {
@@ -973,7 +1170,11 @@ export function buildGraphLayout(data: GraphResp): GraphLayout {
 
   const layoutNodes = orderedNodes.map<GraphLayoutNode>((node) => {
     const point = positions.get(node.id) ?? center;
-    const radius = clamp(11 + Math.min(degree.get(node.id) ?? 0, 8) * 2.3, 13, 32);
+    const radius = clamp(
+      11 + Math.min(degree.get(node.id) ?? 0, 8) * 2.3,
+      minNodeRadius,
+      maxNodeRadius,
+    );
     const sourceBoost = SOURCE_NODE_TYPES.has(node.type) ? 3 : 0;
     return {
       ...node,
@@ -992,7 +1193,7 @@ export function buildGraphLayout(data: GraphResp): GraphLayout {
     })
     .filter((edge): edge is GraphLayoutEdge => edge !== null);
 
-  return { nodes: layoutNodes, edges: layoutEdges };
+  return { nodes: layoutNodes, edges: layoutEdges, viewBox: { width, height } };
 }
 
 function compareGraphNodes(a: GraphNode, b: GraphNode): number {
