@@ -1,5 +1,17 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { Check, LogOut, Moon, ShieldCheck, Sun, User as UserIcon } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Check,
+  Eraser,
+  LoaderCircle,
+  LogOut,
+  Moon,
+  ShieldCheck,
+  Sun,
+  User as UserIcon,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
+import { play } from 'cuelume';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import {
@@ -18,6 +30,8 @@ import { useI18n } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme-provider';
 import { APP_THEMES, type AppTheme } from '../../lib/theme';
 import { cn } from '../../lib/utils';
+import { useIsDesktop } from '../../lib/use-media-query';
+import { requestClearConversation, setSounds, useChatShell } from '../../lib/chat-shell-state';
 
 function initials(name: string): string {
   return name
@@ -43,9 +57,13 @@ const THEME_LABEL_KEY: Record<AppTheme, 'theme.zinc' | 'theme.emerald' | 'theme.
  */
 export function Topbar({ user, title }: { user: MeUser; title?: string }): React.ReactElement {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isDesktop = useIsDesktop();
   const { refresh } = useMe();
   const { t } = useI18n();
   const { theme, setTheme, toggleAppearance } = useTheme();
+  // Botões de chat (sons + limpar) só na rota de chat — no desktop `/` É o chat.
+  const inChat = location.pathname === '/chat' || (location.pathname === '/' && isDesktop);
   const onSignOut = async (): Promise<void> => {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
     await refresh();
@@ -62,6 +80,8 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
+        {inChat && <ChatShellControls />}
+
         <button
           type="button"
           onClick={() => void toggleAppearance()}
@@ -149,5 +169,48 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
         </DropdownMenu>
       </div>
     </header>
+  );
+}
+
+/**
+ * Controles do chat no cabeçalho global (só na rota de chat): som on/off e
+ * limpar conversa. Leem/escrevem no store `chat-shell-state` — o `chat.tsx`
+ * publica `streaming`/`isEmpty` e consome o pedido de limpar via signal.
+ */
+function ChatShellControls(): React.ReactElement {
+  const { t } = useI18n();
+  const { soundsEnabled, streaming, isEmpty } = useChatShell();
+
+  return (
+    <div className="flex items-center gap-2">
+      {streaming && (
+        <span className="hidden items-center gap-1.5 text-xs text-[var(--color-accent-primary)] sm:inline-flex">
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> {t('chat.responding')}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          const next = !soundsEnabled;
+          setSounds(next);
+          if (next) play('success');
+        }}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
+        aria-label={soundsEnabled ? t('chat.soundsOff') : t('chat.soundsOn')}
+        title={soundsEnabled ? t('chat.soundsOff') : t('chat.soundsOn')}
+      >
+        {soundsEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+      </button>
+      <button
+        type="button"
+        onClick={() => requestClearConversation()}
+        disabled={streaming || isEmpty}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] disabled:cursor-not-allowed disabled:opacity-40"
+        aria-label={t('chat.clearConversation')}
+        title={t('chat.clearConversation')}
+      >
+        <Eraser className="h-4 w-4" />
+      </button>
+    </div>
   );
 }
