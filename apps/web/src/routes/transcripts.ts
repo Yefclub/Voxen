@@ -17,6 +17,9 @@ import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { rateLimit } from '../lib/rate-limit';
 import { deleteS3Object, s3Bucket, s3Client } from '../lib/s3';
+import { isSetupComplete } from '../lib/settings';
+import { generateTagsForContent, slugifyTag } from '../lib/tags-generate';
+import { applyTagsToTranscript, type AppliedTag } from '../lib/tags';
 import {
   generateAndPersistTranscriptSummary,
   TranscriptSummaryError,
@@ -94,7 +97,7 @@ transcriptsRoutes.get('/', async (c) => {
       db.transcript.count({ where }),
     ]);
     return c.json({
-      transcripts,
+      transcripts: await withTags(userId, transcripts),
       query: '',
       total,
       limit,
@@ -106,6 +109,9 @@ transcriptsRoutes.get('/', async (c) => {
   // Busca FTS em portuguese — o trigger SQL mantém o tsvector "searchVector"
   // sincronizado com `plainText`. ts_rank ordena por relevância.
   // Usamos plainto_tsquery (sanitiza input, não exige operadores).
+  // Além do FTS, casamos por nome/slug de tag do conteúdo (spec 075, R6).
+  const tagLike = `%${query}%`;
+  const tagSlugLike = `%${slugifyTag(query)}%`;
   const rows =
     status === 'ALL'
       ? await db.$queryRaw<SearchRow[]>`
@@ -142,7 +148,16 @@ transcriptsRoutes.get('/', async (c) => {
     LEFT JOIN "LibraryFolder" f ON f.id = t."folderId" AND f."userId" = t."userId"
     WHERE t."userId" = ${userId}
       AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
-      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+      AND (
+        t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR EXISTS (
+          SELECT 1 FROM "TranscriptTag" tt
+          JOIN "Tag" tg ON tg.id = tt."tagId"
+          WHERE tt."transcriptId" = t.id
+            AND tg."userId" = ${userId}
+            AND (tg.name ILIKE ${tagLike} OR tg.slug ILIKE ${tagSlugLike})
+        )
+      )
     ORDER BY rank DESC, t."createdAt" DESC
     LIMIT ${limit} OFFSET ${offset}
   `
@@ -181,7 +196,16 @@ transcriptsRoutes.get('/', async (c) => {
     WHERE t."userId" = ${userId}
       AND t.status = ${status}::"ContentStatus"
       AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
-      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+      AND (
+        t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR EXISTS (
+          SELECT 1 FROM "TranscriptTag" tt
+          JOIN "Tag" tg ON tg.id = tt."tagId"
+          WHERE tt."transcriptId" = t.id
+            AND tg."userId" = ${userId}
+            AND (tg.name ILIKE ${tagLike} OR tg.slug ILIKE ${tagSlugLike})
+        )
+      )
     ORDER BY rank DESC, t."createdAt" DESC
     LIMIT ${limit} OFFSET ${offset}
   `;
@@ -193,7 +217,16 @@ transcriptsRoutes.get('/', async (c) => {
     FROM "Transcript" t
     WHERE t."userId" = ${userId}
       AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
-      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+      AND (
+        t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR EXISTS (
+          SELECT 1 FROM "TranscriptTag" tt
+          JOIN "Tag" tg ON tg.id = tt."tagId"
+          WHERE tt."transcriptId" = t.id
+            AND tg."userId" = ${userId}
+            AND (tg.name ILIKE ${tagLike} OR tg.slug ILIKE ${tagSlugLike})
+        )
+      )
   `
       : await db.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*)::bigint AS count
@@ -201,10 +234,19 @@ transcriptsRoutes.get('/', async (c) => {
     WHERE t."userId" = ${userId}
       AND t.status = ${status}::"ContentStatus"
       AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
-      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+      AND (
+        t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR EXISTS (
+          SELECT 1 FROM "TranscriptTag" tt
+          JOIN "Tag" tg ON tg.id = tt."tagId"
+          WHERE tt."transcriptId" = t.id
+            AND tg."userId" = ${userId}
+            AND (tg.name ILIKE ${tagLike} OR tg.slug ILIKE ${tagSlugLike})
+        )
+      )
   `;
   const total = Number(totalRows[0]?.count ?? 0);
-  const transcripts = rows.map(mapSearchRow);
+  const transcripts = await withTags(userId, rows.map(mapSearchRow));
   return c.json({
     transcripts,
     query,
@@ -238,6 +280,44 @@ const TRANSCRIPT_LIST_SELECT = {
   trashedAt: true,
   createdAt: true,
 } as const;
+
+// Carrega as tags (id/name/slug) de um conjunto de transcripts, escopadas por
+// userId, e devolve um mapa transcriptId -> tags (ordenadas por nome).
+async function loadTagsForTranscripts(
+  userId: string,
+  transcriptIds: string[],
+): Promise<Map<string, AppliedTag[]>> {
+  const map = new Map<string, AppliedTag[]>();
+  if (transcriptIds.length === 0) return map;
+  const links = await db.transcriptTag.findMany({
+    where: { transcriptId: { in: transcriptIds }, tag: { userId } },
+    select: {
+      transcriptId: true,
+      tag: { select: { id: true, name: true, slug: true } },
+    },
+  });
+  for (const link of links) {
+    const list = map.get(link.transcriptId) ?? [];
+    list.push(link.tag);
+    map.set(link.transcriptId, list);
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }
+  return map;
+}
+
+// Anexa `tags` a cada item de uma lista de transcripts (in-place funcional).
+async function withTags<T extends { id: string }>(
+  userId: string,
+  items: T[],
+): Promise<(T & { tags: AppliedTag[] })[]> {
+  const map = await loadTagsForTranscripts(
+    userId,
+    items.map((i) => i.id),
+  );
+  return items.map((i) => ({ ...i, tags: map.get(i.id) ?? [] }));
+}
 
 transcriptsRoutes.get('/:id', async (c) => {
   const userId = c.get('userId');
@@ -309,7 +389,8 @@ transcriptsRoutes.get('/:id', async (c) => {
     }
   })();
 
-  return c.json({ transcript: { ...transcript, totalCostUsd }, markdown });
+  const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
+  return c.json({ transcript: { ...transcript, totalCostUsd, tags }, markdown });
 });
 
 transcriptsRoutes.get('/:id/original', async (c) => {
@@ -524,6 +605,77 @@ transcriptsRoutes.patch('/:id/organization', async (c) => {
   await reindexTranscriptBrain(userId, id);
   await invalidateGraphCache(userId);
   return c.json({ transcript });
+});
+
+// POST /api/transcripts/:id/generate-tags — gera tags via IA para UM conteúdo
+// (spec 075). Re-gera e faz merge (dedup por slug); nunca duplica. Throttle
+// 1/min por transcript pra não queimar tokens em cliques repetidos.
+transcriptsRoutes.post('/:id/generate-tags', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  if (!(await isSetupComplete())) {
+    return c.json({ error: 'Setup incompleto.' }, 412);
+  }
+
+  const rl = await rateLimit(`voxen:rl:tags:${id}`, 1, 60);
+  if (!rl.allowed) {
+    return c.json(
+      { error: `Aguarde ${rl.resetIn}s antes de gerar tags novamente.`, retryAfter: rl.resetIn },
+      429,
+    );
+  }
+
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId },
+    select: { id: true, title: true, plainText: true, summaryMd: true, folderId: true },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+
+  const content = ((transcript.summaryMd ?? '') || (transcript.plainText ?? '')).trim();
+  if (content.length < 40 && transcript.title.trim().length < 3) {
+    return c.json({ error: 'Conteúdo curto demais para gerar tags.' }, 422);
+  }
+
+  const existingTags = (
+    await db.tag.findMany({ where: { userId }, select: { name: true }, orderBy: { name: 'asc' } })
+  ).map((t) => t.name);
+
+  let result: Awaited<ReturnType<typeof generateTagsForContent>>;
+  try {
+    result = await generateTagsForContent({
+      title: transcript.title,
+      content: content || transcript.title,
+      existingTags,
+    });
+  } catch (err) {
+    console.error('[transcripts] falha ao gerar tags:', err);
+    return c.json({ error: 'Falha ao gerar tags. Tente novamente.' }, 502);
+  }
+
+  await db.costEvent.create({
+    data: {
+      userId,
+      kind: 'CHAT',
+      model: result.model,
+      tokensIn: result.tokensIn,
+      tokensOut: result.tokensOut,
+      costUsd: result.costUsd,
+      meta: { source: 'tag_generation', transcript_id: transcript.id, tags: result.tags },
+    },
+  });
+
+  if (result.tags.length === 0) {
+    return c.json({ tags: [] as AppliedTag[], generated: 0 });
+  }
+
+  const applied = await applyTagsToTranscript(
+    userId,
+    { id: transcript.id, folderId: transcript.folderId },
+    result.tags,
+  );
+  // Devolve TODAS as tags do conteúdo (merge acumulado), não só as novas.
+  const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
+  return c.json({ tags, generated: applied.length });
 });
 
 const LifecycleBody = z.object({

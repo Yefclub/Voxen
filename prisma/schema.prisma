@@ -76,6 +76,7 @@ model User {
   telegramLink    TelegramLink?
   automations     Automation[]
   automationRuns  AutomationRun[]
+  tags            Tag[]
 
   @@index([status])
   @@index([role])
@@ -237,6 +238,7 @@ model Transcript {
   chunks              Chunk[]
   job                 Job?
   conversations       Conversation[]
+  tags                TranscriptTag[]
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, status, createdAt(sort: Desc)])
@@ -259,9 +261,42 @@ model LibraryFolder {
   parent      LibraryFolder?  @relation("LibraryFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
   children    LibraryFolder[] @relation("LibraryFolderTree")
   transcripts Transcript[]
+  tag         Tag?            @relation("TagFolder")
 
   @@index([userId, parentId])
   @@index([userId, updatedAt(sort: Desc)])
+}
+
+// Tags geradas por IA (N:N com Transcript). Cada tag também "aponta" para uma
+// LibraryFolder de mesmo nome (auto-criada), então tag e pasta convivem: a pasta
+// segue como vínculo único de navegação/Brain, a tag como vínculo múltiplo de
+// organização/busca. Dedup por (userId, slug). Ver spec 075.
+model Tag {
+  id          String          @id @default(cuid())
+  userId      String
+  name        String
+  slug        String          // normalizado: minúsculas, sem acento, [a-z0-9-]
+  folderId    String?         @unique
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder      LibraryFolder?  @relation("TagFolder", fields: [folderId], references: [id], onDelete: SetNull)
+  transcripts TranscriptTag[]
+
+  @@unique([userId, slug])
+  @@index([userId, name])
+}
+
+// Join N:N entre Transcript e Tag.
+model TranscriptTag {
+  transcriptId String
+  tagId        String
+  createdAt    DateTime   @default(now())
+  transcript   Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  tag          Tag        @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([transcriptId, tagId])
+  @@index([tagId])
 }
 
 // Opcional: chunks granulares pra busca por timestamp range / re-rank
