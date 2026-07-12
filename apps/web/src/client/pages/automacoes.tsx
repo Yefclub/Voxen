@@ -597,7 +597,7 @@ function AutomationForm({
         transition={{ duration: 0.2 }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
-        className="bg-[var(--color-app-surface)] rounded-2xl border border-[var(--color-app-border)] shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto"
+        className="bg-[var(--color-app-surface)] rounded-2xl border border-[var(--color-app-border)] shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
       >
         <div className="px-6 py-4 border-b border-[var(--color-app-border)] flex items-center justify-between sticky top-0 bg-[var(--color-app-surface)]">
           <h2 className="font-semibold text-[var(--color-app-fg)]">
@@ -830,7 +830,7 @@ function RunsModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-3">
           {runs.length === 0 ? (
             <div className="py-8 text-center text-sm text-[var(--color-app-muted)]">
               {t('automations.noRuns')}
@@ -873,7 +873,9 @@ function RunsModal({
                   {isOpen && (
                     <div className="border-t border-[var(--color-app-border)] px-4 py-3 bg-[var(--color-app-bg)]/40">
                       {r.status === 'FAILED' && r.errorMessage && (
-                        <div className="text-sm text-rose-300 mb-2">⚠️ {r.errorMessage}</div>
+                        <div className="text-sm text-rose-300 mb-2 break-words">
+                          ⚠️ {r.errorMessage}
+                        </div>
                       )}
                       {r.outputMd ? (
                         <Markdown>{r.outputMd}</Markdown>

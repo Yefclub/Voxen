@@ -138,7 +138,7 @@ export function NovidadesPage(): React.ReactElement {
                 ) : null}
 
                 {(entry.body || entry.summary) && (
-                  <div className="prose-release space-y-2 text-[13px] leading-relaxed text-[var(--color-app-muted)] whitespace-pre-wrap">
+                  <div className="prose-release space-y-2 break-words text-[13px] leading-relaxed text-[var(--color-app-muted)] whitespace-pre-wrap">
                     {(entry.body || entry.summary || '').trim()}
                   </div>
                 )}

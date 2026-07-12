@@ -41,6 +41,8 @@ export const AlertDescription = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('text-sm opacity-90', className)} {...props} />
+  // break-words: mensagens de erro vindas de API/servidor são conteúdo não
+  // controlado — um token/URL longo sem espaço não pode estourar o alerta.
+  <div ref={ref} className={cn('text-sm opacity-90 break-words', className)} {...props} />
 ));
 AlertDescription.displayName = 'AlertDescription';

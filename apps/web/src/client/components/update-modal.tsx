@@ -120,7 +120,7 @@ export function UpdateModal({
         </div>
 
         {/* O que mudou */}
-        <div className="max-h-[44dvh] overflow-y-auto px-6 py-5">
+        <div className="max-h-[44dvh] overflow-y-auto overflow-x-hidden px-6 py-5">
           <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-app-muted)]">
             {t('shell.updateWhatsNew')}
           </h3>
@@ -148,7 +148,7 @@ export function UpdateModal({
                     )}
                   </div>
                   {note.title && (note.body || note.summary) && (
-                    <p className="mt-1 whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--color-app-muted)]">
+                    <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-[var(--color-app-muted)]">
                       {(note.body || note.summary || '').trim()}
                     </p>
                   )}

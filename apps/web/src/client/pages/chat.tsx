@@ -188,7 +188,7 @@ function ToolRow({ tool, onApprove }: { tool: ToolEvent; onApprove: (id: string)
         <Collapsible open={open}>
           <div className="ml-[26px] mb-1 mt-0.5 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)] px-3 py-2">
             {tool.input !== undefined && (
-              <p className="text-[11px] leading-relaxed text-[var(--color-app-muted)]">
+              <p className="text-[11px] leading-relaxed text-[var(--color-app-muted)] break-words">
                 {t('chat.toolParamsSafe')}
               </p>
             )}
@@ -206,7 +206,7 @@ function ToolRow({ tool, onApprove }: { tool: ToolEvent; onApprove: (id: string)
                 </button>
               </div>
             ) : tool.output !== undefined ? (
-              <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
+              <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-app-muted)] break-words">
                 {toolSummary(tool.output)}
               </p>
             ) : null}
@@ -801,7 +801,7 @@ export function ChatPage(): React.ReactElement {
             role="log"
             aria-live="off"
             aria-label={t('chat.historyLabel')}
-            className="relative min-h-0 flex-1 overflow-y-auto px-4 py-5"
+            className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5"
           >
             <div className="mx-auto flex w-full max-w-3xl flex-col">
               {visibleMessages.map((message) => {
@@ -810,7 +810,7 @@ export function ChatPage(): React.ReactElement {
                 if (message.role === 'USER') {
                   return (
                     <article key={message.id} className="mb-5 flex justify-end">
-                      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[var(--color-accent-primary-soft)] px-4 py-2.5 text-[14.5px] leading-relaxed text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-primary)]/15">
+                      <div className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-[var(--color-accent-primary-soft)] px-4 py-2.5 text-[14.5px] leading-relaxed text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-primary)]/15">
                         {message.content}
                       </div>
                     </article>
