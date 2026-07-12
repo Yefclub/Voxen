@@ -286,6 +286,26 @@ describeIfDb('auth + admin approval flow', () => {
     expect(bad.status).toBe(400);
   });
 
+  it('switch do proxy: PATCH enabled=true sem token é recusado (409)', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/admin/proxy-agent', {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    // Não ligou o setting sem token.
+    const enabledRow = await db.setting.findFirst({
+      where: { scope: 'GLOBAL', userId: null, key: 'proxy_agent_enabled' },
+    });
+    expect(enabledRow).toBeNull();
+  });
+
   it('user comum recebe 403 em /api/admin/proxy-agent PATCH', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     await signUp('user@voxen.local', 'senha-super-segura-456', 'User');

@@ -325,3 +325,20 @@ faz SURFACE desse sinal na UI.
       tipo, `R:127.0.0.1:1080`, senão "access denied"). Com os fixes, o chisel
       conecta e abre `proxy#R:127.0.0.1:1080=>socks: Listening`.
 - [ ] (Opcional) Host-key pinning automático (fingerprint) entregue na UI.
+
+## Switch de ativação (`proxy_agent_enabled`)
+
+Setting booleano que liga/desliga o roteamento pela agente **sem** mexer no token
+nem no túnel (permite pausar/religar sem reinstalar o agente residencial):
+
+- `proxy_agent_enabled` é a fonte de verdade do switch; default = ligado quando há
+  token (`configured && proxy_agent_enabled !== 'false'`).
+- When o switch liga (`PATCH /api/admin/proxy-agent {enabled:true}`), the system
+  shall exigir um token existente (409 se não houver) e apontar o worker pro
+  SOCKS local (`yt_dlp_proxy_urls = socks5h://127.0.0.1:1080`), sem sobrescrever
+  proxy http custom.
+- When o switch desliga, the system shall remover o `yt_dlp_proxy_urls` local
+  (worker baixa direto), preservando `proxy_agent_token` e o authfile do chisel.
+- Gerar/rotacionar token (POST) liga o switch; revogar (DELETE) desliga.
+- UI: `<Switch>` no card do Agente de Proxy (Admin → Integrações), desabilitado
+  sem token, no padrão de `allow_signups`.

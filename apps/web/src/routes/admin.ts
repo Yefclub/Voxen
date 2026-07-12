@@ -12,7 +12,7 @@
 import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
-import { getSetting, setSetting } from '../lib/settings';
+import { deleteSetting, getSetting, setSetting } from '../lib/settings';
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
 
 type AdminVariables = {
@@ -259,6 +259,15 @@ adminRoutes.patch('/proxy-agent', async (c) => {
   if (typeof body.enabled !== 'boolean') {
     return c.json({ error: 'Campo "enabled" obrigatório (boolean).' }, 400);
   }
+  // Não dá pra ativar sem um token (o worker apontaria pra um túnel inexistente
+  // e as extrações falhariam em silêncio). A UI já desabilita o switch sem token;
+  // o endpoint replica a guarda.
+  if (body.enabled) {
+    const stored = await getSetting('proxy_agent_token').catch(() => null);
+    if (!stored) {
+      return c.json({ error: 'Gere o token do agente de proxy antes de ativar.' }, 409);
+    }
+  }
   await setSetting('proxy_agent_enabled', body.enabled ? 'true' : 'false');
   const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
   if (body.enabled) {
@@ -266,7 +275,6 @@ adminRoutes.patch('/proxy-agent', async (c) => {
       await setSetting('yt_dlp_proxy_urls', LOCAL_TUNNEL_SOCKS_URL);
     }
   } else if (currentProxy === LOCAL_TUNNEL_SOCKS_URL) {
-    const { deleteSetting } = await import('../lib/settings');
     await deleteSetting('yt_dlp_proxy_urls');
   }
   return c.json({ enabled: body.enabled });
