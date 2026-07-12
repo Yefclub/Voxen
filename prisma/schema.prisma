@@ -64,6 +64,8 @@ model User {
   jobs            Job[]
   costEvents      CostEvent[]
   conversations   Conversation[]
+  chatApprovals   ChatApproval[]
+  chatStreamLease ChatStreamLease?
   notes           Note[]
   libraryFolders  LibraryFolder[]
   brainNodes      BrainNode[]
@@ -453,8 +455,10 @@ model CostEvent {
 
 model Conversation {
   id              String        @id @default(cuid())
-  userId          String
-  title           String        @default("Nova conversa")
+  // Uma linha do tempo canônica por workspace. Contextos de transcrição
+  // entram como referências/mensagens, nunca como outra sessão.
+  userId          String        @unique
+  title           String        @default("Vox")
   thinking        Boolean       @default(false)
   // Conversa contextual de uma transcrição (chat por transcrição). Null = chat
   // geral. SetNull no delete da transcrição: a conversa sobrevive como geral.
@@ -468,9 +472,53 @@ model Conversation {
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcript      Transcript?   @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
   messages       ChatMessage[]
+  approvals      ChatApproval[]
+  compactionLease ChatCompactionLease?
 
-  @@index([userId, updatedAt(sort: Desc)])
-  @@index([userId, transcriptId])
+  @@index([updatedAt(sort: Desc)])
+  @@index([transcriptId])
+}
+
+enum ChatApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model ChatApproval {
+  id             String             @id
+  userId         String
+  conversationId String
+  action         String
+  payload        Json
+  status         ChatApprovalStatus @default(PENDING)
+  expiresAt      DateTime
+  createdAt      DateTime           @default(now())
+  decidedAt      DateTime?
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation   Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, expiresAt])
+  @@index([conversationId, createdAt])
+}
+
+model ChatCompactionLease {
+  conversationId String   @id
+  ownerId        String
+  expiresAt      DateTime
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model ChatStreamLease {
+  userId    String   @id
+  ownerId   String
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 
 enum ChatRole {

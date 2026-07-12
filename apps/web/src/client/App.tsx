@@ -22,6 +22,7 @@ import { NotasPage } from './pages/notas';
 import { AutomacoesPage } from './pages/automacoes';
 import { GrafoPage } from './pages/grafo';
 import { NovidadesPage } from './pages/novidades';
+import { ChatPage } from './pages/chat';
 import { I18nProvider, useI18n } from './lib/i18n';
 import { useMe } from './lib/hooks';
 
@@ -92,8 +93,8 @@ function AppRoutes(): React.ReactElement {
       <Route element={<AppLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/dashboard" element={<RedirectPreserveSearch to="/" />} />
-        <Route path="/chat" element={<RedirectPreserveSearch to="/" />} />
-        <Route path="/chat/:id" element={<RedirectPreserveSearch to="/" />} />
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/chat/:id" element={<RedirectPreserveSearch to="/chat" />} />
         <Route path="/setup" element={<SetupPage />} />
         <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
         <Route path="/admin/custos" element={<AdminCustosPage />} />
