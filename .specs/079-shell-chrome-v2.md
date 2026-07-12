@@ -133,14 +133,34 @@ em toda rota não full-bleed. Cálculo: o pill do `Topbar` fica em
 de ~0.6rem já que a verificação visual (Playwright) está desligada nesta
 entrega. **Ressalva:** este valor pode precisar de ajuste fino no deploy.
 
-**`/grafo` sem padding-top (mantido full-bleed).** A barra flutuante própria
-do grafo (`grafo.tsx`, `absolute inset-x-0 top-0`, centralizada até
-`max-w-5xl`) já ocupa a faixa de altura 0–~76px do topo. Com o `Topbar` novo
-também flutuando em `top-4 right-4` na MESMA faixa de altura (antes o Topbar
-antigo reservava 64px de fluxo acima do canvas do grafo, então nunca
-colidiam), existe risco real de sobreposição horizontal em larguras de tela
-onde a pill centralizada do grafo (que cresce até 1024px) se aproxima do
-canto superior direito — ver ressalva na entrega da PR.
+**`/grafo` sem padding-top (mantido full-bleed) — RISCO CONFIRMADO de colisão
+visual com o `Topbar`.** A barra flutuante própria do grafo (`grafo.tsx`,
+`absolute inset-x-0 top-0 z-20`, centralizada até `max-w-5xl`) ocupava a
+faixa de altura 0–~76px do topo com segurança porque o Topbar **antigo** era
+`hidden` no mobile e reservava 64px de fluxo no desktop (empurrando o canvas
+do grafo, e portanto sua barra, para `y=64`). Nenhuma das duas condições vale
+mais: o `Topbar` novo é `fixed`/`z-30`, aparece em mobile e desktop, e
+`/grafo` (via `isFullBleed`) não ganha nenhum padding-top compensatório —
+então as duas barras passam a ocupar a MESMA faixa de altura.
+Confirmado por investigação dedicada (dupla checagem, incluindo leitura
+direta de `grafo.tsx`):
+
+- **Mobile**: colisão praticamente garantida — a barra do grafo sempre ocupa
+  a largura cheia da viewport (o `max-w-5xl` nunca chega a limitar em tela
+  pequena), e o `Topbar` aparece no mobile pela primeira vez, no mesmo canto.
+- **Desktop**: muito provável em larguras comuns de laptop (~1024–1350px de
+  viewport lógica) — nessas larguras a pill centralizada do grafo (que cresce
+  até 1024px) termina a poucos pixels (ou sobrepondo) o canto onde o `Topbar`
+  fica. Cálculo: sem colisão só a partir de ~1268px de largura de viewport.
+- Como `Topbar` tem `z-30` > `z-20` da barra do grafo, ele renderiza **por
+  cima**, provavelmente cobrindo os badges de `GraphStats` ou os botões de
+  2D/3D e refresh.
+
+Não corrigido nesta PR — fora do escopo combinado (o pedido original era
+"confirme, não precisa mudar"), e qualquer correção de `grafo.tsx` (reduzir
+`max-w-5xl`, reservar `padding-right`, reposicionar) merece verificação
+visual real, que está desligada nesta entrega. Ver ressalva de alta
+prioridade no corpo da PR.
 
 ## Critérios de Aceite
 
@@ -169,7 +189,10 @@ canto superior direito — ver ressalva na entrega da PR.
 - Verificação visual via Playwright (desligada nesta entrega por decisão do
   owner — conferência acontece no deploy).
 - Ajuste do `max-w-5xl`/posicionamento da barra flutuante do grafo
-  (`grafo.tsx`) para eliminar o risco de sobreposição com o `Topbar` — só
-  documentado como ressalva, não implementado.
+  (`grafo.tsx`) para eliminar a colisão **confirmada** com o `Topbar` (ver
+  seção de decisões acima) — documentado como ressalva de alta prioridade,
+  não implementado nesta PR. Recomendação para acompanhamento: reduzir o
+  `max-w-5xl` da barra do grafo ou reservar `padding-right` na faixa onde o
+  `Topbar` fica; qualquer uma das duas precisa de verificação visual real.
 - Alterações em `BOTTOM_NAV_TABS`/itens da bottom-nav em si (fora da
   visibilidade da barra inteira na rota de chat).
