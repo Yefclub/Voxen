@@ -7,6 +7,7 @@ import {
   Globe,
   Library,
   Loader2,
+  MoreHorizontal,
   Search,
   Sparkles,
   Tags,
@@ -21,9 +22,15 @@ import { Skeleton } from '../components/ui/skeleton';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { FetchError } from '../components/ui/fetch-error';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { apiPost } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import { formatDuration, formatRelative, formatUsd } from '../lib/format';
+import {
+  filterFoldersByQuery,
+  LIBRARY_FOLDER_CHIP_LIMIT,
+  splitFolderChips,
+} from '../lib/library-folders';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ContentIngestCard } from '../components/ingest/content-ingest-card';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
@@ -366,6 +373,14 @@ export function TranscricoesPage(): React.ReactElement {
     () => [...folders].sort((a, b) => a.name.localeCompare(b.name, locale)),
     [folders, locale],
   );
+  const { visible: visibleFolders, overflow: overflowFolders } = useMemo(
+    () => splitFolderChips(sortedFolders, LIBRARY_FOLDER_CHIP_LIMIT),
+    [sortedFolders],
+  );
+  const activeFolderHidden =
+    folderFilter !== null &&
+    folderFilter !== 'none' &&
+    overflowFolders.some((folder) => folder.id === folderFilter);
 
   return (
     <AnimatedPage>
@@ -513,7 +528,7 @@ export function TranscricoesPage(): React.ReactElement {
               icon={<Folder className="h-3 w-3 opacity-50" />}
               label={t('library.noFolder')}
             />
-            {sortedFolders.map((folder) => (
+            {visibleFolders.map((folder) => (
               <FolderChip
                 key={folder.id}
                 active={folderFilter === folder.id}
@@ -523,6 +538,16 @@ export function TranscricoesPage(): React.ReactElement {
                 count={folder._count.transcripts}
               />
             ))}
+            {overflowFolders.length > 0 && (
+              <FolderOverflowMenu
+                folders={sortedFolders}
+                hiddenCount={overflowFolders.length}
+                active={activeFolderHidden}
+                activeFolderId={folderFilter}
+                onSelect={setFolder}
+                translate={t}
+              />
+            )}
           </div>
           <div className="flex min-w-0 gap-2">
             <input
@@ -694,6 +719,105 @@ function FolderChip({
         <span className="tabular-nums text-[10px] text-[var(--color-app-muted)]">{count}</span>
       )}
     </button>
+  );
+}
+
+/**
+ * Chip final "+K mais" da fileira de pastas. Abre um popover pesquisável com
+ * a lista completa de pastas (não só as escondidas — assim o usuário acha
+ * qualquer pasta ali, mesmo uma que já apareça como chip direto).
+ */
+function FolderOverflowMenu({
+  folders,
+  hiddenCount,
+  active,
+  activeFolderId,
+  onSelect,
+  translate,
+}: {
+  folders: LibraryFolder[];
+  hiddenCount: number;
+  active: boolean;
+  activeFolderId: FolderFilter;
+  onSelect: (id: string) => void;
+  translate: TranslateFn;
+}): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const filtered = useMemo(() => filterFoldersByQuery(folders, query), [folders, query]);
+
+  function handleOpenChange(next: boolean): void {
+    setOpen(next);
+    if (!next) setQuery('');
+  }
+
+  function handleSelect(id: string): void {
+    onSelect(id);
+    setOpen(false);
+  }
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title={translate('library.moreFolders', { count: hiddenCount })}
+          className={[
+            'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+            active
+              ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+              : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
+            'data-[state=open]:bg-[var(--color-app-surface-hover)] data-[state=open]:text-[var(--color-app-fg)]',
+          ].join(' ')}
+        >
+          <MoreHorizontal className="h-3 w-3 shrink-0" />
+          <span>{translate('library.moreFolders', { count: hiddenCount })}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-0">
+        <div className="border-b border-[var(--color-app-border)] p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--color-app-muted)]" />
+            <input
+              type="text"
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={translate('library.folderSearchPlaceholder')}
+              autoComplete="off"
+              spellCheck={false}
+              className="h-8 w-full rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg)] pl-7 pr-2 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
+            />
+          </div>
+        </div>
+        <div className="max-h-64 overflow-y-auto p-1">
+          {filtered.length === 0 && (
+            <p className="px-2 py-3 text-center text-[11px] text-[var(--color-app-muted)]">
+              {translate('library.folderSearchEmpty')}
+            </p>
+          )}
+          {filtered.map((folder) => (
+            <button
+              key={folder.id}
+              type="button"
+              onClick={() => handleSelect(folder.id)}
+              className={[
+                'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                activeFolderId === folder.id
+                  ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                  : 'text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
+              ].join(' ')}
+            >
+              <Folder className="h-3 w-3 shrink-0 text-amber-500/80" />
+              <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+              <span className="shrink-0 tabular-nums text-[10px] text-[var(--color-app-muted)]">
+                {folder._count.transcripts}
+              </span>
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
