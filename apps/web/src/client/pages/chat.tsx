@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowUp,
   Check,
   ChevronDown,
   ChevronRight,
@@ -12,7 +13,6 @@ import {
   NotebookPen,
   Paperclip,
   Search,
-  Send,
   Video,
   Wrench,
   X,
@@ -29,15 +29,21 @@ import { uploadMedia } from '../lib/upload';
 import {
   CHAT_UPLOAD_ACCEPT,
   attachmentKind,
-  completedToolCount,
   formatToolDuration,
   hasToolLabel,
   prettifyToolName,
-  summarizeFamilies,
-  toolBlockState,
   toolFamily,
   type ToolFamily,
 } from '../lib/chat-tools';
+import {
+  applySegmentEvent,
+  closeTrailingReasoning,
+  segmentsFromPersistedTools,
+  segmentsReasoningDuration,
+  segmentsRunning,
+  type MessageSegment,
+  type ToolEvent,
+} from '../lib/chat-segments';
 import {
   getSoundsEnabled,
   setChatEmpty,
@@ -45,14 +51,6 @@ import {
   useChatShell,
 } from '../lib/chat-shell-state';
 
-type ToolState = 'running' | 'completed' | 'error' | 'approval-required';
-type ToolEvent = {
-  id: string;
-  name: string;
-  state: ToolState;
-  input?: unknown;
-  output?: unknown;
-};
 type ChatMessage = {
   id: string;
   role: 'USER' | 'ASSISTANT' | 'SYSTEM';
@@ -61,10 +59,9 @@ type ChatMessage = {
   tools: ToolEvent[] | null;
   compactedAt: string | null;
   createdAt: string;
-  /** Live-only reasoning stream; not persisted. */
-  reasoning?: string;
-  reasoningStartedAt?: number;
-  reasoningEndedAt?: number;
+  /** Live-only: segments cronológicos (raciocínio + grupos de ferramentas)
+   * construídos durante o streaming (spec 078). Nunca persistido. */
+  segments?: MessageSegment[];
 };
 type Snapshot = { conversation: { id: string; compactionCount: number }; messages: ChatMessage[] };
 type StreamEvent =
@@ -85,16 +82,6 @@ const FAMILY_ICON: Record<ToolFamily, typeof Search> = {
   web: Globe,
   transcript: Video,
   other: Wrench,
-};
-
-const FAMILY_LABEL_KEY: Record<ToolFamily, I18nKey> = {
-  search: 'chat.family.search',
-  read: 'chat.family.read',
-  notes: 'chat.family.notes',
-  brain: 'chat.family.brain',
-  web: 'chat.family.web',
-  transcript: 'chat.family.transcript',
-  other: 'chat.family.other',
 };
 
 function toolLabel(name: string, t: TranslateFn): string {
@@ -231,20 +218,23 @@ function ToolRow({ tool, onApprove }: { tool: ToolEvent; onApprove: (id: string)
 }
 
 // ---------------------------------------------------------------------------
-// Toolblock — agrupa as ferramentas de uma resposta; roda → resumo colapsável
+// Bloco de pensamento — raciocínio e ferramentas num único container
+// cronológico (spec 078): "Pensando" (shimmer) enquanto algo roda —
+// raciocínio chegando OU ferramenta em execução/aprovação pendente — e
+// "Pensou por Xs" (cronômetro de parede honesto) ao terminar. Por dentro, os
+// segments aparecem NA ORDEM real de chegada dos eventos SSE.
 // ---------------------------------------------------------------------------
-function ToolBlock({
-  tools,
+function ThinkingBlock({
+  segments,
   live,
   onApprove,
 }: {
-  tools: ToolEvent[];
+  segments: MessageSegment[];
   live: boolean;
   onApprove: (id: string) => void;
 }): React.ReactElement {
   const { t } = useI18n();
-  const blockState = toolBlockState(tools);
-  const running = blockState === 'running';
+  const running = segmentsRunning(segments);
   // Timeline aberta enquanto roda; recolhe ao terminar (usuário reabre no header).
   const [expanded, setExpanded] = useState(true);
   // Cronômetro de parede (honesto): conta do 1º evento até terminar. Só há
@@ -269,134 +259,64 @@ function ToolBlock({
     return () => window.clearInterval(id);
   }, [running, frozen]);
 
-  const total = tools.length;
-  const done = completedToolCount(tools);
-  const families = useMemo(() => summarizeFamilies(tools), [tools]);
-  const duration = frozen ?? (running ? elapsed : null);
-
-  return (
-    <section className="my-1.5">
-      <button
-        type="button"
-        onClick={() => !running && setExpanded((v) => !v)}
-        disabled={running}
-        className={cn(
-          'flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors',
-          !running && 'hover:bg-[var(--color-app-surface-hover)]',
-        )}
-      >
-        {running ? (
-          <>
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--color-app-subtle)]" />
-            <span className="text-[12.5px] font-medium text-[var(--color-app-subtle)]">
-              {t('chat.working')}
-            </span>
-            <span className="text-[11.5px] tabular-nums text-[var(--color-app-muted)]">
-              · {done}/{total}
-            </span>
-          </>
-        ) : (
-          <>
-            <Wrench className="h-3.5 w-3.5 shrink-0 text-[var(--color-app-muted)]" />
-            <span className="text-[12.5px] font-medium text-[var(--color-app-subtle)]">
-              {t('chat.actionsCount', { count: total })}
-            </span>
-            <span className="flex items-center gap-2.5 pl-1">
-              {families.map(({ family, count }) => {
-                const FIcon = FAMILY_ICON[family];
-                return (
-                  <span
-                    key={family}
-                    className="flex items-center gap-1 text-[11px] text-[var(--color-app-muted)]"
-                    title={t(FAMILY_LABEL_KEY[family])}
-                  >
-                    <FIcon className="h-3 w-3" />
-                    {count}
-                  </span>
-                );
-              })}
-            </span>
-            {duration != null && (
-              <span className="text-[11.5px] tabular-nums text-[var(--color-app-muted)]">
-                · {formatToolDuration(duration)}
-              </span>
-            )}
-            <ChevronDown
-              className={cn(
-                'ml-auto h-3.5 w-3.5 shrink-0 text-[var(--color-app-muted)] transition-transform',
-                expanded && 'rotate-180',
-              )}
-            />
-          </>
-        )}
-      </button>
-      <Collapsible open={expanded}>
-        <div className="mt-0.5 flex flex-col">
-          {tools.map((tool) => (
-            <ToolRow key={tool.id} tool={tool} onApprove={onApprove} />
-          ))}
-        </div>
-      </Collapsible>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Raciocínio — shimmer "Pensando" ao vivo → botão "Pensou por Xs" colapsável
-// ---------------------------------------------------------------------------
-function ReasoningBlock({
-  text,
-  streaming,
-  startedAt,
-  endedAt,
-}: {
-  text: string;
-  streaming: boolean;
-  startedAt?: number;
-  endedAt?: number;
-}): React.ReactElement | null {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(streaming);
-  const durationMs =
-    startedAt != null ? (endedAt ?? (streaming ? Date.now() : startedAt)) - startedAt : null;
-
-  useEffect(() => {
-    setOpen(streaming);
-  }, [streaming]);
-
-  if (!text && !streaming) return null;
+  // `frozen`/`startedAtRef` são estado local — não sobrevivem quando `send()`
+  // troca a mensagem pelo snapshot do servidor (a `key` muda pro id real do
+  // banco e o React remonta este componente com `live=false`, zerando o
+  // cronômetro). Nesse caso, cai pro fallback: a duração derivada dos
+  // próprios timestamps dos segments de raciocínio (preservados pelo swap).
+  const duration = frozen ?? (running ? elapsed : segmentsReasoningDuration(segments));
 
   return (
     <section className="mb-2.5 flex flex-col gap-1">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => !running && setExpanded((v) => !v)}
+        disabled={running}
         className="flex items-center gap-1.5 self-start rounded-md px-1 py-0.5 text-left"
       >
-        {streaming ? (
+        {running ? (
           <span className="text-shimmer text-[12.5px] font-medium">{t('chat.thinking')}</span>
         ) : (
           <>
             <ChevronRight
               className={cn(
                 'h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform',
-                open && 'rotate-90',
+                expanded && 'rotate-90',
               )}
             />
             <span className="text-[12.5px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]">
-              {durationMs != null && durationMs > 0
-                ? t('chat.thoughtFor', { duration: formatToolDuration(durationMs) })
+              {duration != null
+                ? t('chat.thoughtFor', { duration: formatToolDuration(duration) })
                 : t('chat.reasoning')}
             </span>
           </>
         )}
       </button>
-      <Collapsible open={open && Boolean(text)}>
-        <p className="ml-2 whitespace-pre-wrap border-l-2 border-[var(--color-app-border)] py-0.5 pl-3 text-[12.5px] leading-relaxed text-[var(--color-app-muted)]">
-          {text}
-        </p>
+      <Collapsible open={expanded}>
+        <div className="ml-2 flex flex-col gap-2.5 border-l-2 border-[var(--color-app-border)] py-0.5 pl-3">
+          {segments.map((segment) =>
+            segment.type === 'reasoning' ? (
+              <p
+                key={segment.id}
+                className={cn(
+                  'whitespace-pre-wrap text-[12.5px] leading-relaxed',
+                  live && segment.endedAt == null
+                    ? 'text-shimmer'
+                    : 'text-[var(--color-app-muted)]',
+                )}
+              >
+                {segment.text}
+              </p>
+            ) : (
+              <div key={segment.id} className="flex flex-col">
+                {segment.tools.map((tool) => (
+                  <ToolRow key={tool.id} tool={tool} onApprove={onApprove} />
+                ))}
+              </div>
+            ),
+          )}
+        </div>
       </Collapsible>
-      {streaming && !text && <div className="ml-1 mt-0.5 h-3 w-28 rounded shimmer" aria-hidden />}
     </section>
   );
 }
@@ -581,7 +501,7 @@ function Composer({
               className="grid h-9 w-9 place-items-center rounded-full bg-[var(--color-accent-primary)] text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label={t('chat.send')}
             >
-              <Send className="h-4 w-4" />
+              <ArrowUp className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -608,11 +528,12 @@ export function ChatPage(): React.ReactElement {
   const streamingAssistantId = useRef<string | null>(null);
   const { clearSignal } = useChatShell();
   const lastClearSignal = useRef(clearSignal);
-  type LiveReasoning = { text: string; startedAt?: number; endedAt?: number };
   // MutableRefObject: React 19 RefObject.current is readonly and control-flow
   // narrows after `= null`, which breaks later reads in the same function.
-  const liveReasoningRef = useRef<LiveReasoning | null>(null) as {
-    current: LiveReasoning | null;
+  // Espelha os segments ao vivo (spec 078) pra sobreviver ao snapshot final —
+  // o GET pós-stream devolve mensagens frescas do servidor, sem `segments`.
+  const liveSegmentsRef = useRef<MessageSegment[] | null>(null) as {
+    current: MessageSegment[] | null;
   };
 
   const visibleMessages = useMemo(
@@ -734,7 +655,7 @@ export function ChatPage(): React.ReactElement {
       createdAt: new Date().toISOString(),
     };
     streamingAssistantId.current = localAssistant.id;
-    liveReasoningRef.current = null;
+    liveSegmentsRef.current = null;
     setMessages((current) => [...current, localUser, localAssistant]);
     setInput('');
     setNearBottom(true);
@@ -760,39 +681,20 @@ export function ChatPage(): React.ReactElement {
           setMessages((current) =>
             current.map((message) => {
               if (message.id !== localAssistant.id) return message;
-              const next = {
-                ...message,
-                content: message.content + event.delta,
-                reasoningEndedAt:
-                  message.reasoning && !message.reasoningEndedAt
-                    ? Date.now()
-                    : message.reasoningEndedAt,
-              };
-              if (next.reasoning) {
-                liveReasoningRef.current = {
-                  text: next.reasoning,
-                  startedAt: next.reasoningStartedAt,
-                  endedAt: next.reasoningEndedAt,
-                };
-              }
-              return next;
+              // Texto final encerra o raciocínio em aberto (se houver) — a
+              // partir daqui esse segmento não recebe mais deltas.
+              const segments = closeTrailingReasoning(message.segments ?? [], Date.now());
+              liveSegmentsRef.current = segments;
+              return { ...message, content: message.content + event.delta, segments };
             }),
           );
         } else if (event.type === 'reasoning') {
           setMessages((current) =>
             current.map((message) => {
               if (message.id !== localAssistant.id) return message;
-              const next = {
-                ...message,
-                reasoning: (message.reasoning ?? '') + event.delta,
-                reasoningStartedAt: message.reasoningStartedAt ?? Date.now(),
-              };
-              liveReasoningRef.current = {
-                text: next.reasoning ?? '',
-                startedAt: next.reasoningStartedAt,
-                endedAt: next.reasoningEndedAt,
-              };
-              return next;
+              const segments = applySegmentEvent(message.segments ?? [], event, Date.now());
+              liveSegmentsRef.current = segments;
+              return { ...message, segments };
             }),
           );
         } else if (event.type === 'status') {
@@ -801,15 +703,9 @@ export function ChatPage(): React.ReactElement {
           setMessages((current) =>
             current.map((message) => {
               if (message.id !== localAssistant.id) return message;
-              const tools = message.tools ?? [];
-              const index = tools.findIndex((tool) => tool.id === event.tool.id);
-              return {
-                ...message,
-                tools:
-                  index >= 0
-                    ? tools.map((tool, i) => (i === index ? event.tool : tool))
-                    : [...tools, event.tool],
-              };
+              const segments = applySegmentEvent(message.segments ?? [], event, Date.now());
+              liveSegmentsRef.current = segments;
+              return { ...message, segments };
             }),
           );
         } else if (event.type === 'compaction') {
@@ -842,29 +738,17 @@ export function ChatPage(): React.ReactElement {
           }
         }
       }
-      const liveReasoning = liveReasoningRef.current as LiveReasoning | null;
-      if (liveReasoning && liveReasoning.endedAt == null) {
-        liveReasoningRef.current = {
-          ...liveReasoning,
-          endedAt: Date.now(),
-        };
+      // Turno termina com raciocínio ainda aberto (ex.: sem chamada de
+      // ferramenta nem texto final) — fecha pra não ficar "Pensando" pra sempre.
+      if (liveSegmentsRef.current) {
+        liveSegmentsRef.current = closeTrailingReasoning(liveSegmentsRef.current, Date.now());
       }
       const snapshot = await apiGet<Snapshot>('/api/chat');
-      const preserved = liveReasoningRef.current as LiveReasoning | null;
+      const preservedSegments = liveSegmentsRef.current;
       setMessages(
         snapshot.messages.map((message, index, list) => {
-          if (
-            preserved &&
-            message.role === 'ASSISTANT' &&
-            index === list.length - 1 &&
-            !message.reasoning
-          ) {
-            return {
-              ...message,
-              reasoning: preserved.text,
-              reasoningStartedAt: preserved.startedAt,
-              reasoningEndedAt: preserved.endedAt,
-            };
+          if (preservedSegments && message.role === 'ASSISTANT' && index === list.length - 1) {
+            return { ...message, segments: preservedSegments };
           }
           return message;
         }),
@@ -875,7 +759,7 @@ export function ChatPage(): React.ReactElement {
     } finally {
       abortRef.current = null;
       streamingAssistantId.current = null;
-      liveReasoningRef.current = null;
+      liveSegmentsRef.current = null;
       setStreaming(false);
       setStatus(null);
     }
@@ -932,19 +816,12 @@ export function ChatPage(): React.ReactElement {
                     </article>
                   );
                 }
+                const segments = message.segments ?? segmentsFromPersistedTools(message.tools);
                 return (
                   <article key={message.id} className="mb-6 flex flex-col">
-                    {(message.reasoning || isStreamingAssistant) && (
-                      <ReasoningBlock
-                        text={message.reasoning ?? ''}
-                        streaming={Boolean(isStreamingAssistant && !message.reasoningEndedAt)}
-                        startedAt={message.reasoningStartedAt}
-                        endedAt={message.reasoningEndedAt}
-                      />
-                    )}
-                    {message.tools && message.tools.length > 0 && (
-                      <ToolBlock
-                        tools={message.tools}
+                    {segments.length > 0 && (
+                      <ThinkingBlock
+                        segments={segments}
                         live={isStreamingAssistant}
                         onApprove={(id) => void approve(id)}
                       />
@@ -954,7 +831,7 @@ export function ChatPage(): React.ReactElement {
                         <Markdown>{message.content}</Markdown>
                       </div>
                     )}
-                    {isStreamingAssistant && !message.content && !message.reasoning && (
+                    {isStreamingAssistant && !message.content && segments.length === 0 && (
                       <span className="inline-flex items-center gap-1.5 text-sm text-[var(--color-app-muted)]">
                         <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                         {status ?? t('chat.thinking')}
@@ -974,7 +851,7 @@ export function ChatPage(): React.ReactElement {
                       behavior: 'smooth',
                     });
                   }}
-                  className="sticky bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--color-app-fg)] shadow-lg"
+                  className="sticky bottom-3 self-center rounded-full border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--color-app-fg)] shadow-lg"
                 >
                   {t('chat.scrollLatest')}
                 </button>

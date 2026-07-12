@@ -611,8 +611,18 @@ export async function streamAssistantReply(options: {
     stopWhen: stepCountIs(12),
     abortSignal,
     timeout: { totalMs: 90_000, stepMs: 30_000, toolMs: 15_000 },
-    // Soft-fail: models without reasoning emit a warning and continue normally.
-    reasoning: 'medium',
+    // OpenRouter não está na lista de providers com suporte nativo ao parâmetro
+    // top-level `reasoning` do AI SDK (ai-sdk.dev/docs/ai-sdk-core/reasoning) —
+    // o SDK descarta esse parâmetro silenciosamente (warning) pra providers não
+    // suportados. Como o Voxen só usa OpenRouter, o esforço de raciocínio tem
+    // que ir via `providerOptions.openrouter.reasoning` (README oficial do
+    // @openrouter/ai-sdk-provider). Modelos sem raciocínio ignoram a opção e
+    // seguem normalmente (soft-fail).
+    providerOptions: {
+      openrouter: {
+        reasoning: { effort: 'medium' },
+      },
+    },
   });
 
   try {

@@ -1,14 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import {
   attachmentKind,
-  completedToolCount,
   formatToolDuration,
   hasToolLabel,
   prettifyToolName,
-  summarizeFamilies,
   toolBlockState,
   toolFamily,
-  type ToolLike,
 } from '../src/client/lib/chat-tools';
 
 describe('toolFamily', () => {
@@ -45,24 +42,6 @@ describe('prettifyToolName / hasToolLabel', () => {
   });
 });
 
-describe('summarizeFamilies', () => {
-  it('agrupa por família na ordem da primeira ocorrência', () => {
-    const tools: ToolLike[] = [
-      { name: 'search_transcripts', state: 'completed' },
-      { name: 'read_lines', state: 'completed' },
-      { name: 'search_notes', state: 'completed' },
-      { name: 'read_section', state: 'completed' },
-    ];
-    expect(summarizeFamilies(tools)).toEqual([
-      { family: 'search', count: 2 },
-      { family: 'read', count: 2 },
-    ]);
-  });
-  it('lista vazia retorna vazio', () => {
-    expect(summarizeFamilies([])).toEqual([]);
-  });
-});
-
 describe('toolBlockState', () => {
   it('running enquanto houver ferramenta rodando', () => {
     expect(
@@ -85,18 +64,6 @@ describe('toolBlockState', () => {
   });
   it('done quando todas concluíram sem erro', () => {
     expect(toolBlockState([{ name: 'a', state: 'completed' }])).toBe('done');
-  });
-});
-
-describe('completedToolCount', () => {
-  it('conta concluídas e com erro, ignora em execução', () => {
-    expect(
-      completedToolCount([
-        { name: 'a', state: 'completed' },
-        { name: 'b', state: 'error' },
-        { name: 'c', state: 'running' },
-      ]),
-    ).toBe(2);
   });
 });
 
