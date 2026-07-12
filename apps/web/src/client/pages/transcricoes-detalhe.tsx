@@ -15,6 +15,7 @@ import {
   NotebookPen,
   RotateCcw,
   Sparkles,
+  Tags,
   Trash2,
   Wand2,
 } from 'lucide-react';
@@ -45,6 +46,7 @@ interface TranscriptDetail {
   id: string;
   folderId: string | null;
   folder: { id: string; name: string; parentId: string | null } | null;
+  tags: { id: string; name: string; slug: string }[];
   status: 'ACTIVE' | 'ARCHIVED' | 'TRASH';
   source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB' | 'UPLOAD';
   url: string;
@@ -121,6 +123,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     useFetch<FoldersResponse>('/api/library/folders');
   const [generating, setGenerating] = useState(false);
   const [organizing, setOrganizing] = useState(false);
+  const [taggingLoading, setTaggingLoading] = useState(false);
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [creatingLinkedNote, setCreatingLinkedNote] = useState(false);
@@ -162,6 +165,41 @@ export function TranscricaoDetalhePage(): React.ReactElement {
       });
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function generateTags(): Promise<void> {
+    if (!id || taggingLoading) return;
+    setTaggingLoading(true);
+    try {
+      const res = await fetch(`/api/transcripts/${id}/generate-tags`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        tags?: { id: string; name: string; slug: string }[];
+        generated?: number;
+      };
+      if (!res.ok) {
+        toast.error(body.error ?? translate('library.tagsError'));
+        return;
+      }
+      if ((body.generated ?? 0) === 0) {
+        toast.message(translate('library.tagsNoneGenerated'));
+      } else {
+        toast.success(translate('library.tagsGenerated', { count: body.generated ?? 0 }));
+      }
+      refresh();
+      refreshFolders();
+    } catch (e) {
+      toast.error(translate('library.tagsError'), {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setTaggingLoading(false);
     }
   }
 
@@ -481,6 +519,13 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                   onMove={moveToFolder}
                   onCreate={createFolder}
                   t={translate}
+                />
+                <TagsControl
+                  tags={t.tags}
+                  loading={taggingLoading}
+                  onGenerate={generateTags}
+                  disabled={t.status === 'TRASH'}
+                  translate={translate}
                 />
                 {/* Duração só faz sentido pra vídeos */}
                 {t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript && (
@@ -836,6 +881,60 @@ function LibraryFolderControl({
           {t('library.createFolder')}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function TagsControl({
+  tags,
+  loading,
+  onGenerate,
+  disabled,
+  translate,
+}: {
+  tags: { id: string; name: string; slug: string }[];
+  loading: boolean;
+  onGenerate: () => Promise<void>;
+  disabled: boolean;
+  translate: TranslateFn;
+}): React.ReactElement {
+  return (
+    <div className="space-y-2.5 border-t border-[var(--color-app-border)] pt-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
+          <Tags className="h-3.5 w-3.5 text-violet-400" />
+          {translate('library.tagsLabel')}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 text-[11px]"
+          disabled={loading || disabled}
+          onClick={() => void onGenerate()}
+          title={translate('library.tagsHint')}
+        >
+          {loading ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Sparkles className="h-3 w-3 text-violet-400" />
+          )}
+          {loading ? translate('library.tagsRunning') : translate('library.tagsAction')}
+        </Button>
+      </div>
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map((tag) => (
+            <span
+              key={tag.id}
+              className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-zinc-500/25 bg-zinc-100/[0.04] px-2 py-0.5 text-[11px] text-zinc-300"
+            >
+              <Tags className="h-2.5 w-2.5 shrink-0 text-violet-400/80" />
+              <span className="truncate">{tag.name}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
   Loader2,
   Search,
   Sparkles,
+  Tags,
   Trash2,
   Type,
   X,
@@ -42,6 +43,7 @@ interface TranscriptSummary {
   costUsd: string | null;
   folderId: string | null;
   folder: { id: string; name: string } | null;
+  tags: { id: string; name: string; slug: string }[];
   status: 'ACTIVE' | 'ARCHIVED' | 'TRASH';
   createdAt: string;
   snippet?: string;
@@ -92,6 +94,7 @@ export function TranscricoesPage(): React.ReactElement {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [reorganizing, setReorganizing] = useState(false);
   const [regeneratingTitles, setRegeneratingTitles] = useState(false);
+  const [generatingTags, setGeneratingTags] = useState(false);
   const [clearingFolders, setClearingFolders] = useState(false);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [confirmRetitleOpen, setConfirmRetitleOpen] = useState(false);
@@ -244,6 +247,57 @@ export function TranscricoesPage(): React.ReactElement {
     }
   }
 
+  // Gera tags via IA só para conteúdo sem tag, drenando em lotes. Custa créditos
+  // (1 chamada de IA por conteúdo). Cada tag também vira/reaproveita uma pasta.
+  async function generateTagsBatch(): Promise<void> {
+    if (generatingTags) return;
+    setGeneratingTags(true);
+    let totalTagged = 0;
+    let totalSkipped = 0;
+    let totalFailed = 0;
+    try {
+      for (let i = 0; i < 30; i++) {
+        const body = await apiPost<{
+          processed: number;
+          tagged: number;
+          skipped: number;
+          failed: number;
+          remaining: number;
+          pendingTotal: number;
+        }>('/api/library/generate-tags', { limit: 10 });
+        totalTagged += body.tagged;
+        totalSkipped += body.skipped;
+        totalFailed += body.failed;
+        if (body.pendingTotal === 0 && body.processed === 0) {
+          toast.message(t('library.tagsNothing'));
+          break;
+        }
+        if (body.remaining === 0) {
+          toast.success(
+            t('library.tagsDone', {
+              tagged: totalTagged,
+              skipped: totalSkipped,
+              failed: totalFailed,
+            }),
+          );
+          break;
+        }
+        if (i === 29) {
+          toast.success(
+            t('library.tagsPartial', { tagged: totalTagged, remaining: body.remaining }),
+          );
+        }
+      }
+      refreshFolders();
+      setOffset(0);
+      refreshTranscripts();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('library.tagsError'));
+    } finally {
+      setGeneratingTags(false);
+    }
+  }
+
   // Regenera os títulos via IA drenando o acervo por cursor. Custa créditos
   // (1 chamada LLM por conteúdo); títulos já bons voltam KEEP e são mantidos.
   async function regenerateTitles(): Promise<void> {
@@ -357,6 +411,22 @@ export function TranscricoesPage(): React.ReactElement {
                 <Type className="h-3.5 w-3.5 text-violet-400" />
               )}
               {regeneratingTitles ? t('library.retitleRunning') : t('library.retitleAction')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={generatingTags}
+              onClick={() => void generateTagsBatch()}
+              className="h-8 text-xs"
+              title={t('library.tagsHint')}
+            >
+              {generatingTags ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Tags className="h-3.5 w-3.5 text-violet-400" />
+              )}
+              {generatingTags ? t('library.tagsRunning') : t('library.tagsAction')}
             </Button>
             {folders.length > 0 && (
               <Button
@@ -685,6 +755,22 @@ function TranscriptRow({
             </Badge>
           )}
         </div>
+        {t.tags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 pt-0.5">
+            {t.tags.slice(0, 4).map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex max-w-[130px] items-center gap-1 truncate rounded-full border border-zinc-500/25 bg-zinc-100/[0.04] px-1.5 py-0.5 text-[10px] text-zinc-300"
+              >
+                <Tags className="h-2.5 w-2.5 shrink-0 text-violet-400/80" />
+                <span className="truncate">{tag.name}</span>
+              </span>
+            ))}
+            {t.tags.length > 4 && (
+              <span className="text-[10px] text-zinc-500">+{t.tags.length - 4}</span>
+            )}
+          </div>
+        )}
         {t.snippet && (
           <p className="hidden text-[11px] leading-relaxed text-zinc-500 line-clamp-1 sm:block">
             {renderSnippet(t.snippet)}

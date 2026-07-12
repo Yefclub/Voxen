@@ -297,6 +297,17 @@ const ptBRMessages = {
   'library.retitlePartial':
     '{changed} títulos atualizados até agora — rode de novo para continuar.',
   'library.retitleError': 'Falha ao regenerar títulos.',
+  'library.tagsAction': 'Gerar tags',
+  'library.tagsRunning': 'Gerando tags…',
+  'library.tagsHint': 'Gera tags com IA para conteúdos sem tag (consome créditos).',
+  'library.tagsNothing': 'Nada para taguear — todos os conteúdos ativos já têm tags.',
+  'library.tagsDone': 'Tags geradas: {tagged} conteúdos, {skipped} pulados, {failed} falhas.',
+  'library.tagsPartial':
+    'Lote aplicado ({tagged} conteúdos). Ainda restam {remaining} sem tag — rode de novo.',
+  'library.tagsError': 'Falha ao gerar tags.',
+  'library.tagsGenerated': '{count} tags aplicadas.',
+  'library.tagsNoneGenerated': 'A IA não sugeriu tags para este conteúdo.',
+  'library.tagsLabel': 'Tags',
   'library.clearFolders': 'Apagar pastas',
   'library.clearFoldersConfirm':
     'Apagar TODAS as pastas? Os conteúdos permanecem na biblioteca (sem pasta), liberando o Organizar com IA.',
@@ -1296,6 +1307,17 @@ const enMessages: Record<I18nKey, string> = {
   'library.retitleDone': 'Titles regenerated: {changed} updated, {kept} kept, {failed} failed.',
   'library.retitlePartial': '{changed} titles updated so far — run again to continue.',
   'library.retitleError': 'Failed to regenerate titles.',
+  'library.tagsAction': 'Generate tags',
+  'library.tagsRunning': 'Generating tags…',
+  'library.tagsHint': 'Generates AI tags for untagged content (uses credits).',
+  'library.tagsNothing': 'Nothing to tag — all active content already has tags.',
+  'library.tagsDone': 'Tags generated: {tagged} items, {skipped} skipped, {failed} failed.',
+  'library.tagsPartial':
+    'Batch applied ({tagged} items). {remaining} still without tags — run again.',
+  'library.tagsError': 'Failed to generate tags.',
+  'library.tagsGenerated': '{count} tags applied.',
+  'library.tagsNoneGenerated': 'AI did not suggest any tags for this content.',
+  'library.tagsLabel': 'Tags',
   'library.clearFolders': 'Delete folders',
   'library.clearFoldersConfirm':
     'Delete ALL folders? Content stays in the library (unfoldered), so Organize with AI can run again.',
