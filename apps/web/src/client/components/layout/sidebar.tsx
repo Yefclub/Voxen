@@ -6,6 +6,7 @@ import {
   ChevronDown,
   DollarSign,
   House,
+  MessageCircle,
   FolderPlus,
   ListVideo,
   LogOut,
@@ -45,6 +46,7 @@ export interface NavItem {
  */
 export const NAV: NavItem[] = [
   { to: '/', labelKey: 'shell.nav.home', Icon: House },
+  { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessageCircle },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
   { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow },

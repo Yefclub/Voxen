@@ -27,6 +27,7 @@ import { mcpRoutes } from './routes/mcp';
 import { graphRoutes } from './routes/graph';
 import { releasesRoutes } from './routes/releases';
 import { shareTargetRoutes } from './routes/share-target';
+import { chatRoutes } from './routes/chat';
 import { getRedisPublisher } from './lib/redis';
 import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
@@ -254,6 +255,8 @@ app.route('/mcp', mcpRoutes);
 app.route('/api/graph', graphRoutes);
 // Changelog / release notes (releases.json)
 app.route('/api/releases', releasesRoutes);
+// Conversa canônica por usuário, streaming e ferramentas do acervo.
+app.route('/api/chat', chatRoutes);
 // PWA Web Share Target (Android/Chrome instalado)
 app.route('/share-target', shareTargetRoutes);
 
