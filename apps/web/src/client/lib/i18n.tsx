@@ -147,14 +147,10 @@ const ptBRMessages = {
   'job.toast.cancelled': 'Transcrição cancelada.',
   'job.toast.view': 'Ver',
 
-  'home.eyebrow': 'Base de conhecimento',
   'home.greeting': 'Olá, {name}.',
-  'home.description':
-    'Cole um link ou solte um arquivo para indexar. YouTube, Instagram, TikTok, X, páginas web, áudio, vídeo, imagem ou documento.',
   'home.urlPlaceholder': 'https://youtu.be/... · x.com/.../status/... · exemplo.com/artigo',
   'home.dropTitle': 'Solte o arquivo para indexar',
   'home.dropHint': 'Áudio, vídeo, imagem ou documento — o upload começa na hora.',
-  'home.statReady': 'prontos',
   'jobs.eyebrow': 'Indexar conteúdo',
   'jobs.title': 'Capturar',
   'jobs.description':
@@ -381,9 +377,7 @@ const ptBRMessages = {
   'dashboard.welcome': 'Bem-vindo de volta',
   'dashboard.fallbackName': 'Olá',
   'dashboard.newContent': 'Novo conteúdo',
-  'dashboard.processing': 'Em processamento',
   'dashboard.readyTranscripts': 'Transcrições prontas',
-  'dashboard.failed': 'Com erro',
   'dashboard.recentActivity': 'Atividade recente',
   'dashboard.itemSingular': 'item',
   'dashboard.itemPlural': 'itens',
@@ -1178,14 +1172,10 @@ const enMessages: Record<I18nKey, string> = {
   'job.toast.cancelled': 'Transcription cancelled.',
   'job.toast.view': 'View',
 
-  'home.eyebrow': 'Knowledge base',
   'home.greeting': 'Hello, {name}.',
-  'home.description':
-    'Paste a link or drop a file to index. YouTube, Instagram, TikTok, X, web pages, audio, video, image, or document.',
   'home.urlPlaceholder': 'https://youtu.be/... · x.com/.../status/... · example.com/article',
   'home.dropTitle': 'Drop the file to index',
   'home.dropHint': 'Audio, video, image, or document — upload starts immediately.',
-  'home.statReady': 'ready',
   'jobs.eyebrow': 'Index content',
   'jobs.title': 'Capture',
   'jobs.description':
@@ -1409,9 +1399,7 @@ const enMessages: Record<I18nKey, string> = {
   'dashboard.welcome': 'Welcome back',
   'dashboard.fallbackName': 'Hello',
   'dashboard.newContent': 'New content',
-  'dashboard.processing': 'Processing',
   'dashboard.readyTranscripts': 'Ready transcripts',
-  'dashboard.failed': 'Failed',
   'dashboard.recentActivity': 'Recent activity',
   'dashboard.itemSingular': 'item',
   'dashboard.itemPlural': 'items',
