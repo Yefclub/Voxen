@@ -111,7 +111,7 @@ export function AdminCustosPage(): React.ReactElement {
               <CardContent className="pt-6 pb-5">
                 <div className="flex items-center gap-2 mb-4">
                   <LineChart className="h-3.5 w-3.5 text-violet-400" />
-                  <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
+                  <h2 className="text-sm font-semibold tracking-tight text-[var(--color-app-subtle)]">
                     {t('admin.costs.last30days')}
                   </h2>
                 </div>
@@ -129,7 +129,7 @@ export function AdminCustosPage(): React.ReactElement {
 
             {/* Por modelo */}
             <section className="space-y-3">
-              <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
+              <h2 className="text-sm font-semibold tracking-tight text-[var(--color-app-subtle)]">
                 {t('admin.costs.byModel')}
               </h2>
               {loading || !data ? (
@@ -146,7 +146,9 @@ export function AdminCustosPage(): React.ReactElement {
                     {data.byModel.map((m) => (
                       <li key={m.model} className="flex items-center gap-4 px-5 py-4">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-mono text-zinc-200 truncate">{m.model}</p>
+                          <p className="text-sm font-mono text-[var(--color-app-subtle)] truncate">
+                            {m.model}
+                          </p>
                           <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
                             {m.events}{' '}
                             {m.events === 1
@@ -168,7 +170,7 @@ export function AdminCustosPage(): React.ReactElement {
 
             {/* Por uso */}
             <section className="space-y-3">
-              <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
+              <h2 className="text-sm font-semibold tracking-tight text-[var(--color-app-subtle)]">
                 {t('admin.costs.byUse')}
               </h2>
               {loading || !data ? (
@@ -185,7 +187,9 @@ export function AdminCustosPage(): React.ReactElement {
                     {data.byKind.map((k) => (
                       <li key={k.kind} className="flex items-center gap-4 px-5 py-4">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-zinc-200 truncate">{kindLabel(k.kind, t)}</p>
+                          <p className="text-sm text-[var(--color-app-subtle)] truncate">
+                            {kindLabel(k.kind, t)}
+                          </p>
                           <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
                             {k.events}{' '}
                             {k.events === 1
@@ -205,7 +209,7 @@ export function AdminCustosPage(): React.ReactElement {
 
             {/* Por user */}
             <section className="space-y-3">
-              <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
+              <h2 className="text-sm font-semibold tracking-tight text-[var(--color-app-subtle)]">
                 {t('admin.costs.byUser')}
               </h2>
               {loading || !data ? (
@@ -222,7 +226,7 @@ export function AdminCustosPage(): React.ReactElement {
                     {data.byUser.map((u) => (
                       <li key={u.userId} className="flex items-center gap-4 px-5 py-4">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-zinc-200 truncate">
+                          <p className="text-sm text-[var(--color-app-subtle)] truncate">
                             {u.name ?? t('admin.costs.removedUser')}
                           </p>
                           <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
@@ -325,8 +329,8 @@ function RangeChip({
       onClick={onClick}
       className={
         active
-          ? 'px-3 h-7 rounded-md text-xs font-medium bg-zinc-100 text-zinc-900'
-          : 'px-3 h-7 rounded-md text-xs font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors'
+          ? 'px-3 h-7 rounded-md text-xs font-medium bg-[var(--color-app-inverted)] text-[var(--color-app-inverted-fg)]'
+          : 'px-3 h-7 rounded-md text-xs font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors'
       }
     >
       {children}

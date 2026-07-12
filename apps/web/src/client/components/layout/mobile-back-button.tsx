@@ -29,7 +29,7 @@ export function MobileBackButton(): React.ReactElement {
       onClick={goBack}
       aria-label={t('common.back')}
       title={t('common.back')}
-      className="md:hidden fixed left-3 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/80 text-zinc-100 backdrop-blur-md shadow-lg shadow-black/20 transition-colors active:bg-[var(--color-app-surface)]"
+      className="md:hidden fixed left-3 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/80 text-[var(--color-app-fg)] backdrop-blur-md shadow-lg shadow-black/20 transition-colors active:bg-[var(--color-app-surface)]"
       style={{ top: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
     >
       <ArrowLeft className="h-5 w-5" />

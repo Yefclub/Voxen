@@ -373,7 +373,7 @@ export function TranscricoesPage(): React.ReactElement {
         <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-[var(--color-app-muted)] font-medium">
-              <Library className="h-3 w-3 text-zinc-400" />
+              <Library className="h-3 w-3 text-[var(--color-app-muted)]" />
               {t('library.eyebrow')}
             </div>
             <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">
@@ -435,7 +435,7 @@ export function TranscricoesPage(): React.ReactElement {
                 size="sm"
                 disabled={clearingFolders}
                 onClick={() => setConfirmClearOpen(true)}
-                className="h-8 text-xs text-zinc-400 hover:text-red-300"
+                className="h-8 text-xs text-[var(--color-app-muted)] hover:text-red-300"
               >
                 {clearingFolders ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -480,13 +480,13 @@ export function TranscricoesPage(): React.ReactElement {
             placeholder={t('library.searchPlaceholder')}
             autoComplete="off"
             spellCheck={false}
-            className="w-full h-10 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/50 pl-9 pr-10 text-sm text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60 focus:ring-1 focus:ring-zinc-500/20 transition-colors"
+            className="w-full h-10 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/50 pl-9 pr-10 text-sm text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60 focus:ring-1 focus:ring-zinc-500/20 transition-colors"
           />
           {q.length > 0 && (
             <button
               type="button"
               onClick={() => setQ('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]"
+              className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]"
               aria-label={t('library.clearSearch')}
             >
               {queryChanging ? (
@@ -533,7 +533,7 @@ export function TranscricoesPage(): React.ReactElement {
                 if (event.key === 'Enter') void createFolder();
               }}
               placeholder={t('library.newFolderPlaceholder')}
-              className="h-8 min-w-0 flex-1 rounded-md border border-[var(--color-app-border)] bg-transparent px-2.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500/60"
+              className="h-8 min-w-0 flex-1 rounded-md border border-[var(--color-app-border)] bg-transparent px-2.5 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
               disabled={creatingFolder}
               maxLength={120}
             />
@@ -564,8 +564,8 @@ export function TranscricoesPage(): React.ReactElement {
               className={[
                 'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
                 status === item
-                  ? 'bg-zinc-100/10 text-zinc-100'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-100/5',
+                  ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                  : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
               ].join(' ')}
             >
               {statusFilterLabel(item, t)}
@@ -607,8 +607,8 @@ export function TranscricoesPage(): React.ReactElement {
         {!pageLoading && !error && items.length === 0 && (
           <Card elevated>
             <CardContent className="py-14 text-center space-y-3">
-              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-zinc-100/[0.03]">
-                <Search className="h-4 w-4 text-zinc-500" />
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]">
+                <Search className="h-4 w-4 text-[var(--color-app-muted)]" />
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium">
@@ -684,14 +684,14 @@ function FolderChip({
       className={[
         'inline-flex max-w-[180px] items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
         active
-          ? 'border-zinc-500/40 bg-zinc-100/10 text-zinc-100'
-          : 'border-transparent bg-zinc-100/[0.03] text-zinc-400 hover:bg-zinc-100/[0.06] hover:text-zinc-200',
+          ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+          : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
       ].join(' ')}
     >
       <span className="shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
       {typeof count === 'number' && (
-        <span className="tabular-nums text-[10px] text-zinc-500">{count}</span>
+        <span className="tabular-nums text-[10px] text-[var(--color-app-muted)]">{count}</span>
       )}
     </button>
   );
@@ -716,7 +716,7 @@ function TranscriptRow({
   return (
     <Link
       to={`/transcricoes/${t.id}`}
-      className="group flex items-center gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-zinc-100/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40"
+      className="group flex items-center gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40"
     >
       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-[var(--color-app-bg-elevated)] sm:h-14 sm:w-[88px]">
         <img
@@ -728,7 +728,7 @@ function TranscriptRow({
       </div>
 
       <div className="min-w-0 flex-1 space-y-0.5">
-        <h3 className="truncate text-[13px] font-medium leading-snug text-zinc-100 group-hover:text-zinc-50">
+        <h3 className="truncate text-[13px] font-medium leading-snug text-[var(--color-app-fg)] group-hover:text-[var(--color-app-fg)]">
           {highlightInText(t.title, highlightQuery)}
         </h3>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--color-app-muted)]">
@@ -739,7 +739,7 @@ function TranscriptRow({
           {showDuration && <span className="tabular-nums">{formatDuration(t.durationSec)}</span>}
           {t.channel && <span className="truncate max-w-[140px]">{t.channel}</span>}
           {t.folder && (
-            <span className="inline-flex min-w-0 max-w-[120px] items-center gap-1 truncate text-zinc-500">
+            <span className="inline-flex min-w-0 max-w-[120px] items-center gap-1 truncate text-[var(--color-app-muted)]">
               <Folder className="h-2.5 w-2.5 shrink-0 text-amber-500/70" />
               <span className="truncate">{t.folder.name}</span>
             </span>
@@ -760,19 +760,21 @@ function TranscriptRow({
             {t.tags.slice(0, 4).map((tag) => (
               <span
                 key={tag.id}
-                className="inline-flex max-w-[130px] items-center gap-1 truncate rounded-full border border-zinc-500/25 bg-zinc-100/[0.04] px-1.5 py-0.5 text-[10px] text-zinc-300"
+                className="inline-flex max-w-[130px] items-center gap-1 truncate rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-app-subtle)]"
               >
                 <Tags className="h-2.5 w-2.5 shrink-0 text-violet-400/80" />
                 <span className="truncate">{tag.name}</span>
               </span>
             ))}
             {t.tags.length > 4 && (
-              <span className="text-[10px] text-zinc-500">+{t.tags.length - 4}</span>
+              <span className="text-[10px] text-[var(--color-app-muted)]">
+                +{t.tags.length - 4}
+              </span>
             )}
           </div>
         )}
         {t.snippet && (
-          <p className="hidden text-[11px] leading-relaxed text-zinc-500 line-clamp-1 sm:block">
+          <p className="hidden text-[11px] leading-relaxed text-[var(--color-app-muted)] line-clamp-1 sm:block">
             {renderSnippet(t.snippet)}
           </p>
         )}

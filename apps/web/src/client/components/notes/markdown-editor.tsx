@@ -16,16 +16,20 @@ import { useI18n } from '../../lib/i18n';
 
 // Highlight estilo Voxen — combina com o tema dark zinc + acentos violet/emerald
 const voxenHighlight = HighlightStyle.define([
-  { tag: t.heading1, class: 'text-zinc-100 font-display text-2xl font-bold' },
-  { tag: t.heading2, class: 'text-zinc-100 font-display text-xl font-semibold' },
-  { tag: t.heading3, class: 'text-zinc-100 font-display text-lg font-semibold' },
-  { tag: t.heading4, class: 'text-zinc-200 font-medium' },
-  { tag: t.strong, class: 'text-zinc-100 font-semibold' },
-  { tag: t.emphasis, class: 'italic text-zinc-200' },
+  { tag: t.heading1, class: 'text-[var(--color-app-fg)] font-display text-2xl font-bold' },
+  { tag: t.heading2, class: 'text-[var(--color-app-fg)] font-display text-xl font-semibold' },
+  { tag: t.heading3, class: 'text-[var(--color-app-fg)] font-display text-lg font-semibold' },
+  { tag: t.heading4, class: 'text-[var(--color-app-subtle)] font-medium' },
+  { tag: t.strong, class: 'text-[var(--color-app-fg)] font-semibold' },
+  { tag: t.emphasis, class: 'italic text-[var(--color-app-subtle)]' },
   { tag: t.link, color: 'oklch(72% 0.18 290)', textDecoration: 'underline' },
   { tag: t.url, color: 'oklch(73% 0.16 159)' },
-  { tag: t.quote, class: 'text-zinc-400 italic border-l-2 border-zinc-700 pl-3' },
-  { tag: t.list, class: 'text-zinc-200' },
+  {
+    tag: t.quote,
+    class:
+      'text-[var(--color-app-muted)] italic border-l-2 border-[var(--color-app-border-strong)] pl-3',
+  },
+  { tag: t.list, class: 'text-[var(--color-app-subtle)]' },
   {
     tag: t.monospace,
     color: 'oklch(80% 0.16 78)',

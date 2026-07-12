@@ -283,8 +283,10 @@ export function GrafoPage(): React.ReactElement {
               <div className="space-y-1.5">
                 <p className="font-display text-lg font-semibold">{t('graph.emptyTitle')}</p>
                 <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
-                  {t('graph.emptyDescriptionBefore')} <code className="text-zinc-300">/notas</code>{' '}
-                  {t('graph.emptyDescriptionMiddle')} <code className="text-zinc-300">/</code>{' '}
+                  {t('graph.emptyDescriptionBefore')}{' '}
+                  <code className="text-[var(--color-app-subtle)]">/notas</code>{' '}
+                  {t('graph.emptyDescriptionMiddle')}{' '}
+                  <code className="text-[var(--color-app-subtle)]">/</code>{' '}
                   {t('graph.emptyDescriptionAfter')}
                 </p>
               </div>
@@ -298,7 +300,7 @@ export function GrafoPage(): React.ReactElement {
             <button
               type="button"
               onClick={() => navigate('/')}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-zinc-100"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
               aria-label={t('shell.backToHome')}
               title={t('shell.backToHome')}
             >
@@ -309,7 +311,7 @@ export function GrafoPage(): React.ReactElement {
               <span className="font-display text-sm font-semibold">{t('graph.title')}</span>
             </div>
             <div className="relative min-w-[150px] flex-1">
-              <span className="pointer-events-none absolute left-3 top-1/2 z-10 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-zinc-400">
+              <span className="pointer-events-none absolute left-3 top-1/2 z-10 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-[var(--color-app-muted)]">
                 <Search className="h-4 w-4" />
               </span>
               <input
@@ -317,7 +319,7 @@ export function GrafoPage(): React.ReactElement {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t('graph.searchPlaceholder')}
-                className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/60 pl-9 pr-3 text-[13px] text-zinc-100 placeholder:text-[var(--color-app-muted)] transition-colors focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+                className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/60 pl-9 pr-3 text-[13px] text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] transition-colors focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
               />
             </div>
             <Button
@@ -793,7 +795,7 @@ function BrainGraphNode({
       <text
         y={labelY}
         textAnchor="middle"
-        className="select-none fill-zinc-100 font-sans text-[11px] font-medium"
+        className="select-none fill-[var(--color-app-fg)] font-sans text-[11px] font-medium"
         paintOrder="stroke"
         stroke="#18181b"
         strokeWidth="3"

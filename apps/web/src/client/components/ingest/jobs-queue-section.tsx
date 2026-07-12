@@ -214,7 +214,7 @@ function JobRow({
     <Link
       to={jobDestination(job)}
       aria-label={`${job.transcriptId ? t('common.open') : t('jobs.details')}: ${displayTitle}`}
-      className="group flex flex-col gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-zinc-100/[0.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40 sm:flex-row sm:items-center sm:gap-4"
+      className="group flex flex-col gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40 sm:flex-row sm:items-center sm:gap-4"
     >
       <JobPreview
         previewSrc={previewSrc}
@@ -229,7 +229,7 @@ function JobRow({
         {isActive ? stageLabel(stage, t) : label}
       </Badge>
       <div className="flex-1 min-w-0 space-y-1.5">
-        <p className="text-sm text-zinc-100 truncate font-medium tracking-tight font-display">
+        <p className="text-sm text-[var(--color-app-fg)] truncate font-medium tracking-tight font-display">
           {displayTitle}
         </p>
         <p className="text-xs text-[var(--color-app-muted)] truncate font-mono">
@@ -264,7 +264,7 @@ function JobRow({
           <p className="text-xs text-rose-300 mt-1 line-clamp-2 break-words">{job.errorMsg}</p>
         )}
       </div>
-      <span className="inline-flex w-full shrink-0 items-center justify-end gap-1 text-xs text-[var(--color-app-muted)] transition-colors group-hover:text-zinc-100 sm:w-auto">
+      <span className="inline-flex w-full shrink-0 items-center justify-end gap-1 text-xs text-[var(--color-app-muted)] transition-colors group-hover:text-[var(--color-app-fg)] sm:w-auto">
         {job.transcriptId ? t('common.open') : t('jobs.details')}
         <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
       </span>
@@ -296,7 +296,7 @@ function JobPreview({
           }}
         />
         {typeof durationSec === 'number' && durationSec > 0 && (
-          <span className="absolute bottom-1 right-1 rounded bg-black/65 px-1 py-0.5 text-[9px] tabular-nums text-zinc-100">
+          <span className="absolute bottom-1 right-1 rounded bg-black/65 px-1 py-0.5 text-[9px] tabular-nums text-[var(--color-app-fg)]">
             {formatDuration(durationSec)}
           </span>
         )}
@@ -308,7 +308,7 @@ function JobPreview({
     INSTAGRAM: 'from-fuchsia-500/15 to-pink-500/5 text-fuchsia-300/80 border-fuchsia-500/20',
     TIKTOK: 'from-emerald-500/15 to-cyan-500/5 text-emerald-300/80 border-emerald-500/20',
     X: 'from-sky-500/15 to-blue-500/5 text-sky-300/80 border-sky-500/20',
-    WEB: 'from-zinc-500/10 to-zinc-500/5 text-zinc-400 border-zinc-500/20',
+    WEB: 'from-zinc-500/10 to-zinc-500/5 text-[var(--color-app-muted)] border-zinc-500/20',
   } as const;
   const cls = isUpload
     ? 'from-emerald-500/15 to-violet-500/5 text-emerald-300/80 border-emerald-500/20'

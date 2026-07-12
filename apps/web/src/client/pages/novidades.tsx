@@ -57,7 +57,7 @@ export function NovidadesPage(): React.ReactElement {
         <div className="space-y-3">
           <Link
             to="/"
-            className="inline-flex items-center gap-1.5 text-xs text-[var(--color-app-muted)] hover:text-zinc-200"
+            className="inline-flex items-center gap-1.5 text-xs text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]"
           >
             <ArrowLeft className="h-3 w-3" />
             {t('novidades.back')}
@@ -81,8 +81,8 @@ export function NovidadesPage(): React.ReactElement {
               className={[
                 'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors',
                 channel === item
-                  ? 'bg-zinc-100/10 text-zinc-100'
-                  : 'text-zinc-500 hover:bg-zinc-100/5 hover:text-zinc-300',
+                  ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                  : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
               ].join(' ')}
             >
               {t(`novidades.channel.${item}`)}
@@ -115,7 +115,9 @@ export function NovidadesPage(): React.ReactElement {
                 className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/30 px-4 py-4 sm:px-5"
               >
                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs text-zinc-300">v{entry.version}</span>
+                  <span className="font-mono text-xs text-[var(--color-app-subtle)]">
+                    v{entry.version}
+                  </span>
                   <Badge
                     variant={entry.channel === 'prod' ? 'success' : 'muted'}
                     className="text-[10px]"
@@ -137,32 +139,37 @@ export function NovidadesPage(): React.ReactElement {
                 </div>
 
                 {entry.channel === 'prod' && entry.title ? (
-                  <h2 className="mb-2 text-base font-semibold tracking-tight text-zinc-100">
+                  <h2 className="mb-2 text-base font-semibold tracking-tight text-[var(--color-app-fg)]">
                     {entry.title}
                   </h2>
                 ) : null}
 
                 {entry.channel !== 'prod' && (entry.title || entry.summary) ? (
-                  <h2 className="mb-2 text-[15px] font-medium tracking-tight text-zinc-100">
+                  <h2 className="mb-2 text-[15px] font-medium tracking-tight text-[var(--color-app-fg)]">
                     {entry.title || entry.summary}
                   </h2>
                 ) : null}
 
                 {(entry.body || entry.summary) && (
-                  <div className="prose-release space-y-2 text-[13px] leading-relaxed text-zinc-400 whitespace-pre-wrap">
+                  <div className="prose-release space-y-2 text-[13px] leading-relaxed text-[var(--color-app-muted)] whitespace-pre-wrap">
                     {(entry.body || entry.summary || '').trim()}
                   </div>
                 )}
 
                 {entry.channel === 'prod' && entry.promoted && entry.promoted.length > 0 && (
                   <details className="mt-3">
-                    <summary className="cursor-pointer text-[11px] text-zinc-500 hover:text-zinc-300">
+                    <summary className="cursor-pointer text-[11px] text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]">
                       {t('novidades.promoted', { count: entry.promoted.length })}
                     </summary>
                     <ul className="mt-2 space-y-2 border-l border-[var(--color-app-border)] pl-3">
                       {entry.promoted.map((p, i) => (
-                        <li key={`${p.pr ?? i}-${p.title}`} className="text-[12px] text-zinc-400">
-                          <span className="font-medium text-zinc-300">{p.title}</span>
+                        <li
+                          key={`${p.pr ?? i}-${p.title}`}
+                          className="text-[12px] text-[var(--color-app-muted)]"
+                        >
+                          <span className="font-medium text-[var(--color-app-subtle)]">
+                            {p.title}
+                          </span>
                           {p.prUrl && (
                             <a
                               href={p.prUrl}

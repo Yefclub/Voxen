@@ -177,10 +177,12 @@ export function AutomacoesPage(): React.ReactElement {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="size-10 rounded-xl bg-[var(--color-app-surface)] flex items-center justify-center ring-1 ring-[var(--color-app-border)]">
-            <Workflow className="size-5 text-zinc-300" />
+            <Workflow className="size-5 text-[var(--color-app-subtle)]" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-zinc-100">{t('automations.title')}</h1>
+            <h1 className="text-xl font-semibold text-[var(--color-app-fg)]">
+              {t('automations.title')}
+            </h1>
             <p className="text-sm text-[var(--color-app-muted)]">{t('automations.description')}</p>
           </div>
         </div>
@@ -278,7 +280,9 @@ function EmptyState({ onCreate, t }: { onCreate: () => void; t: TranslateFn }): 
   return (
     <div className="rounded-xl border border-dashed border-[var(--color-app-border)] p-12 text-center">
       <Workflow className="size-10 text-[var(--color-app-muted)] mx-auto mb-3" />
-      <h2 className="text-base font-medium text-zinc-200 mb-1">{t('automations.emptyTitle')}</h2>
+      <h2 className="text-base font-medium text-[var(--color-app-subtle)] mb-1">
+        {t('automations.emptyTitle')}
+      </h2>
       <p className="text-sm text-[var(--color-app-muted)] mb-4 max-w-md mx-auto">
         {t('automations.emptyDescription')}
       </p>
@@ -329,7 +333,7 @@ function AutomationCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-medium text-zinc-100 truncate">{a.name}</h3>
+            <h3 className="font-medium text-[var(--color-app-fg)] truncate">{a.name}</h3>
             <span className="text-[11px] uppercase tracking-wide font-medium text-[var(--color-app-muted)] bg-[var(--color-app-bg-elevated)] px-1.5 py-0.5 rounded">
               {typeLabel(a.type, t)}
             </span>
@@ -406,7 +410,7 @@ function IconButton({
       className={`size-8 rounded-lg flex items-center justify-center transition-colors ${
         danger
           ? 'text-[var(--color-app-muted)] hover:text-rose-400 hover:bg-rose-500/10'
-          : 'text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]'
+          : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]'
       }`}
     >
       {children}
@@ -596,14 +600,14 @@ function AutomationForm({
         className="bg-[var(--color-app-surface)] rounded-2xl border border-[var(--color-app-border)] shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto"
       >
         <div className="px-6 py-4 border-b border-[var(--color-app-border)] flex items-center justify-between sticky top-0 bg-[var(--color-app-surface)]">
-          <h2 className="font-semibold text-zinc-100">
+          <h2 className="font-semibold text-[var(--color-app-fg)]">
             {isEdit ? t('automations.form.editTitle') : t('automations.form.newTitle')}
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label={t('common.close')}
-            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
           >
             <X className="size-4" />
           </button>
@@ -616,7 +620,7 @@ function AutomationForm({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t('automations.form.namePlaceholder')}
-              className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
               maxLength={120}
               required
             />
@@ -635,7 +639,7 @@ function AutomationForm({
                   className={`px-3 py-2 rounded-lg border text-sm text-left transition-colors ${
                     type === automationType
                       ? 'border-violet-500 bg-violet-500/10 text-violet-200'
-                      : 'border-[var(--color-app-border)] text-zinc-100 hover:bg-[var(--color-app-surface-hover)]'
+                      : 'border-[var(--color-app-border)] text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]'
                   }`}
                 >
                   <div className="font-medium">{typeLabel(automationType, t)}</div>
@@ -655,7 +659,7 @@ function AutomationForm({
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={promptPlaceholder(type, t)}
               rows={5}
-              className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
               maxLength={4000}
               required
             />
@@ -671,7 +675,7 @@ function AutomationForm({
                   className={`flex-1 px-3 py-2 rounded-lg border text-sm transition-colors ${
                     frequency === f
                       ? 'border-violet-500 bg-violet-500/10 text-violet-200'
-                      : 'border-[var(--color-app-border)] text-zinc-100 hover:bg-[var(--color-app-surface-hover)]'
+                      : 'border-[var(--color-app-border)] text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]'
                   }`}
                 >
                   {frequencyLabel(f, t)}
@@ -685,7 +689,7 @@ function AutomationForm({
               <select
                 value={dayOfWeek}
                 onChange={(e) => setDayOfWeek(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
               >
                 {dayLabels(t).map((d, i) => (
                   <option key={i} value={i}>
@@ -704,7 +708,7 @@ function AutomationForm({
                 max={31}
                 value={dayOfMonth}
                 onChange={(e) => setDayOfMonth(Math.max(1, Math.min(31, Number(e.target.value))))}
-                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
               />
               <p className="text-[11px] text-[var(--color-app-muted)] mt-1">
                 {t('automations.form.monthHint')}
@@ -720,7 +724,7 @@ function AutomationForm({
                 max={23}
                 value={hour}
                 onChange={(e) => setHour(Math.max(0, Math.min(23, Number(e.target.value))))}
-                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
               />
             </Field>
             <Field label={t('automations.form.minute')}>
@@ -730,7 +734,7 @@ function AutomationForm({
                 max={59}
                 value={minute}
                 onChange={(e) => setMinute(Math.max(0, Math.min(59, Number(e.target.value))))}
-                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-zinc-100 text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
               />
             </Field>
           </div>
@@ -767,7 +771,9 @@ function Field({
 }): React.ReactElement {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-zinc-300 mb-1.5 block">{label}</span>
+      <span className="text-xs font-medium text-[var(--color-app-subtle)] mb-1.5 block">
+        {label}
+      </span>
       {children}
     </label>
   );
@@ -811,14 +817,14 @@ function RunsModal({
       >
         <div className="px-6 py-4 border-b border-[var(--color-app-border)] flex items-center justify-between">
           <div>
-            <h2 className="font-semibold text-zinc-100">{automation.name}</h2>
+            <h2 className="font-semibold text-[var(--color-app-fg)]">{automation.name}</h2>
             <p className="text-xs text-[var(--color-app-muted)]">{t('automations.recentRuns')}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label={t('common.close')}
-            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
           >
             <X className="size-4" />
           </button>
@@ -845,7 +851,7 @@ function RunsModal({
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <RunStatusBadge status={r.status} t={t} />
-                      <span className="text-sm text-zinc-300">
+                      <span className="text-sm text-[var(--color-app-subtle)]">
                         {new Date(ts).toLocaleString(locale, {
                           dateStyle: 'short',
                           timeStyle: 'short',

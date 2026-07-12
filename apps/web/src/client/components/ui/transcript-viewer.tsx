@@ -42,13 +42,13 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
   return (
     <TooltipProvider delayDuration={120} skipDelayDuration={300}>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-200">
+        <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-subtle)]">
           {t('transcript.title')}
         </h2>
         <button
           type="button"
           onClick={() => void copy()}
-          className="flex items-center gap-1.5 text-[11px] text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors px-2.5 py-1.5 rounded-md border border-[var(--color-app-border)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface)]"
+          className="flex items-center gap-1.5 text-[11px] text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors px-2.5 py-1.5 rounded-md border border-[var(--color-app-border)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface)]"
         >
           {copied ? (
             <>
@@ -74,7 +74,7 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
 
 function SegmentSpan({ seg }: { seg: Segment }): React.ReactElement {
   const content = (
-    <span className="rounded-sm transition-colors duration-150 hover:bg-violet-500/[0.14] hover:text-zinc-100 focus:outline-none focus-visible:bg-violet-500/[0.18] focus-visible:text-zinc-100">
+    <span className="rounded-sm transition-colors duration-150 hover:bg-violet-500/[0.14] hover:text-[var(--color-app-fg)] focus:outline-none focus-visible:bg-violet-500/[0.18] focus-visible:text-[var(--color-app-fg)]">
       {seg.text}
     </span>
   );

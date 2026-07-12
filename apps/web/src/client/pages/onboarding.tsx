@@ -311,7 +311,7 @@ function OnboardingContent({
               />
               <form onSubmit={submitKey} className="space-y-5">
                 <FieldLabel htmlFor="key">OpenRouter API key</FieldLabel>
-                <div className="rounded-xl border border-[var(--color-app-border)] bg-zinc-100/[0.03] backdrop-blur-sm focus-within:border-violet-400/60 focus-within:bg-violet-500/[0.06]">
+                <div className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] backdrop-blur-sm focus-within:border-violet-400/60 focus-within:bg-violet-500/[0.06]">
                   <div className="relative">
                     <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
                     <input
@@ -324,7 +324,7 @@ function OnboardingContent({
                       spellCheck={false}
                       required
                       minLength={20}
-                      className="w-full bg-transparent text-sm pl-10 pr-4 py-3.5 rounded-xl focus:outline-none placeholder:text-zinc-600 font-mono"
+                      className="w-full bg-transparent text-sm pl-10 pr-4 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)] font-mono"
                     />
                   </div>
                 </div>
@@ -332,7 +332,7 @@ function OnboardingContent({
                   href="https://openrouter.ai/keys"
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors"
                 >
                   {t('onboarding.keyCta')}
                   <ExternalLink className="h-3 w-3" />
@@ -471,7 +471,7 @@ function OnboardingContent({
                       className="h-full w-full object-cover"
                     />
                   )}
-                  <AvatarFallback className="bg-transparent text-zinc-100 font-semibold text-2xl">
+                  <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-2xl">
                     {userName
                       .split(/\s+/)
                       .map((p) => p[0])
@@ -653,7 +653,7 @@ function StepDot({
         done
           ? 'bg-emerald-500 border-emerald-400 text-emerald-950'
           : active
-            ? 'bg-zinc-100 border-zinc-100 text-zinc-950'
+            ? 'bg-[var(--color-app-inverted)] border-[var(--color-app-inverted)] text-[var(--color-app-inverted-fg)]'
             : 'bg-transparent border-[var(--color-app-border-strong)] text-[var(--color-app-muted)]',
       )}
     >
@@ -685,7 +685,7 @@ function GhostButton({
   return (
     <button
       {...props}
-      className="h-9 px-3.5 inline-flex items-center justify-center gap-1.5 text-sm font-medium text-[var(--color-app-muted)] hover:text-zinc-100 rounded-md hover:bg-[var(--color-app-surface)] transition-colors"
+      className="h-9 px-3.5 inline-flex items-center justify-center gap-1.5 text-sm font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] rounded-md hover:bg-[var(--color-app-surface)] transition-colors"
     >
       {children}
     </button>

@@ -117,7 +117,7 @@ export function MobileNavDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="ml-auto flex items-center justify-center h-7 w-7 rounded-md text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+              className="ml-auto flex items-center justify-center h-7 w-7 rounded-md text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors"
               aria-label={t('shell.closeMenu')}
               title={t('shell.closeMenu')}
             >

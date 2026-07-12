@@ -362,7 +362,7 @@ export function SetupPage(): React.ReactElement {
                       href="https://openrouter.ai/keys"
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-zinc-100 underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
+                      className="inline-flex items-center gap-1 text-[var(--color-app-fg)] underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
                     >
                       OpenRouter
                       <ExternalLink className="h-3 w-3" />
@@ -655,7 +655,7 @@ function PageHeader({
         <Sparkles className="h-3.5 w-3.5" />
         {badge}
       </div>
-      <h1 className="font-display text-3xl font-semibold text-zinc-100">{title}</h1>
+      <h1 className="font-display text-3xl font-semibold text-[var(--color-app-fg)]">{title}</h1>
       <p className="max-w-2xl text-sm text-[var(--color-app-muted)] leading-relaxed">{sub}</p>
     </header>
   );
@@ -681,7 +681,7 @@ function StepDot({
           done
             ? 'bg-emerald-500 border-emerald-400 text-emerald-950'
             : active
-              ? 'bg-zinc-100 border-zinc-100 text-zinc-950'
+              ? 'bg-[var(--color-app-inverted)] border-[var(--color-app-inverted)] text-[var(--color-app-inverted-fg)]'
               : 'bg-transparent border-[var(--color-app-border-strong)] text-[var(--color-app-muted)]',
         ].join(' ')}
       >
@@ -690,7 +690,7 @@ function StepDot({
       <span
         className={
           active || done
-            ? 'text-zinc-100 text-sm font-medium'
+            ? 'text-[var(--color-app-fg)] text-sm font-medium'
             : 'text-[var(--color-app-muted)] text-sm'
         }
       >

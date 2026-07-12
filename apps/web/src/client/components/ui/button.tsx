@@ -15,17 +15,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-zinc-100 text-zinc-900 hover:bg-white',
+        default:
+          'bg-[var(--color-app-inverted)] text-[var(--color-app-inverted-fg)] hover:bg-[var(--color-app-inverted-hover)]',
         primary: 'bg-emerald-500 text-emerald-950 font-semibold hover:bg-emerald-400',
         violet: 'bg-violet-500 text-violet-950 font-semibold hover:bg-violet-400',
         secondary:
-          'bg-[var(--color-app-surface)] text-zinc-100 border border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
+          'bg-[var(--color-app-surface)] text-[var(--color-app-fg)] border border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
         outline:
-          'border border-[var(--color-app-border-strong)] bg-transparent text-zinc-100 hover:bg-[var(--color-app-surface)]',
+          'border border-[var(--color-app-border-strong)] bg-transparent text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)]',
         ghost:
-          'bg-transparent text-zinc-300 hover:bg-[var(--color-app-surface)] hover:text-zinc-100',
+          'bg-transparent text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
         destructive: 'bg-rose-500/10 text-rose-300 border border-rose-500/30 hover:bg-rose-500/20',
-        link: 'text-zinc-100 underline-offset-4 hover:underline px-0 hover:text-emerald-400',
+        link: 'text-[var(--color-app-fg)] underline-offset-4 hover:underline px-0 hover:text-emerald-400',
       },
       size: {
         default: 'h-9 px-4',

@@ -34,6 +34,14 @@
   --color-accent-primary: #19c37d;
   --color-accent-primary-soft: rgba(25, 195, 125, 0.1);
 
+  /* Superfície sólida de alto contraste (botão default / chip forte) — inverte por tema */
+  --color-app-inverted: #ececec;
+  --color-app-inverted-fg: #18181b;
+  --color-app-inverted-hover: #ffffff;
+
+  /* Realce sutil no topo de cards "elevated" — claro no dark, discreto no light */
+  --color-app-elevate: rgba(255, 255, 255, 0.04);
+
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
@@ -58,6 +66,10 @@
   --color-app-subtle: #b4b4b4;
   --color-accent-primary: #19c37d;
   --color-accent-primary-soft: rgba(25, 195, 125, 0.1);
+  --color-app-inverted: #ececec;
+  --color-app-inverted-fg: #18181b;
+  --color-app-inverted-hover: #ffffff;
+  --color-app-elevate: rgba(255, 255, 255, 0.04);
   --color-accent-emerald: oklch(73% 0.16 159);
   --color-accent-emerald-soft: oklch(73% 0.16 159 / 0.18);
   --color-accent-violet: oklch(72% 0.18 290);
@@ -65,6 +77,7 @@
   --theme-html-bg: #212121;
   --theme-mesh-a: transparent;
   --theme-mesh-b: transparent;
+  --theme-mesh-c: oklch(28% 0.005 250 / 0.35);
   --theme-selection: oklch(72% 0.18 290 / 0.28);
   --theme-focus: oklch(72% 0.18 290 / 0.55);
 }
@@ -82,9 +95,14 @@
   --color-app-subtle: oklch(78% 0.005 250);
   --color-accent-primary: oklch(73% 0.16 159);
   --color-accent-primary-soft: oklch(73% 0.16 159 / 0.18);
+  --color-app-inverted: oklch(98.5% 0 0);
+  --color-app-inverted-fg: oklch(22% 0.01 165);
+  --color-app-inverted-hover: #ffffff;
+  --color-app-elevate: rgba(255, 255, 255, 0.04);
   --theme-html-bg: #19211f;
   --theme-mesh-a: oklch(72% 0.18 290 / 0.08);
   --theme-mesh-b: oklch(73% 0.16 159 / 0.06);
+  --theme-mesh-c: oklch(28% 0.005 250 / 0.3);
   --theme-selection: oklch(72% 0.18 290 / 0.3);
   --theme-focus: oklch(72% 0.18 290 / 0.6);
 }
@@ -102,6 +120,10 @@
   --color-app-subtle: #52525b;
   --color-accent-primary: #0f9f6e;
   --color-accent-primary-soft: rgba(15, 159, 110, 0.12);
+  --color-app-inverted: #18181b;
+  --color-app-inverted-fg: #fafafa;
+  --color-app-inverted-hover: #27272a;
+  --color-app-elevate: rgba(0, 0, 0, 0.02);
   --color-accent-emerald: oklch(55% 0.14 159);
   --color-accent-emerald-soft: oklch(55% 0.14 159 / 0.14);
   --color-accent-violet: oklch(52% 0.18 290);
@@ -109,6 +131,7 @@
   --theme-html-bg: #f7f7f8;
   --theme-mesh-a: oklch(72% 0.18 290 / 0.04);
   --theme-mesh-b: oklch(73% 0.16 159 / 0.04);
+  --theme-mesh-c: transparent;
   --theme-selection: oklch(72% 0.18 290 / 0.22);
   --theme-focus: oklch(52% 0.18 290 / 0.5);
 }
@@ -191,7 +214,7 @@
         var(--theme-mesh-b, transparent),
         transparent 60%
       ),
-      radial-gradient(ellipse 70% 50% at 50% 50%, oklch(28% 0.005 250 / 0.35), transparent 70%);
+      radial-gradient(ellipse 70% 50% at 50% 50%, var(--theme-mesh-c, transparent), transparent 70%);
   }
 
   /* Noise grain — dá calor à imagem */
@@ -307,11 +330,7 @@
     position: relative;
   }
   .surface-elevated {
-    background: linear-gradient(
-      180deg,
-      oklch(30% 0.006 250 / 0.6) 0%,
-      var(--color-app-surface) 100%
-    );
+    background: linear-gradient(180deg, var(--color-app-elevate) 0%, var(--color-app-surface) 100%);
     border: 1px solid var(--color-app-border);
     border-radius: var(--radius-lg);
   }
@@ -345,7 +364,7 @@
 
   /* Texto com gradiente sutil (uso esparso, só em h1 hero) */
   .text-gradient {
-    background: linear-gradient(180deg, oklch(98.5% 0 0) 0%, oklch(78% 0.005 250) 100%);
+    background: linear-gradient(180deg, var(--color-app-fg) 0%, var(--color-app-subtle) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;

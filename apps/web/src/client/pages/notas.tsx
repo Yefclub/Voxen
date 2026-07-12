@@ -214,7 +214,7 @@ function NoteEditor({
             }}
             onBlur={() => void save()}
             placeholder={t('notes.untitled')}
-            className="flex-1 bg-transparent text-xl font-display font-semibold tracking-tight text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none"
+            className="flex-1 bg-transparent text-xl font-display font-semibold tracking-tight text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none"
           />
           <span className="text-[11px] uppercase tracking-wider tabular-nums">
             {saving ? (
