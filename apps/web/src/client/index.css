@@ -381,6 +381,50 @@
     }
   }
 
+  /* Text shimmer (raciocínio "Pensando") — gradiente animado sobre o texto */
+  .text-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--color-app-muted) 0%,
+      var(--color-app-muted) 35%,
+      var(--color-app-fg) 50%,
+      var(--color-app-muted) 65%,
+      var(--color-app-muted) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: text-shimmer-slide 2s linear infinite;
+  }
+  @keyframes text-shimmer-slide {
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  /* Colapsável do chat — motion grid-template-rows 0fr↔1fr (padrão do mockup) */
+  .chat-collapsible {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.28s var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
+  }
+  .chat-collapsible[data-open='true'] {
+    grid-template-rows: 1fr;
+  }
+  .chat-collapsible > .chat-collapsible-inner {
+    overflow: hidden;
+    min-height: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chat-collapsible {
+      transition: none;
+    }
+    .text-shimmer {
+      animation: none;
+    }
+  }
+
   /* Tipografia ajudante */
   .text-muted {
     color: var(--color-app-muted);
