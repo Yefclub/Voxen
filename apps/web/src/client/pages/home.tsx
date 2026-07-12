@@ -3,11 +3,11 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
   Globe,
+  House,
   Link2,
   PlayCircle,
   Plus,
   RefreshCw,
-  Sparkles,
   Upload,
   X,
 } from 'lucide-react';
@@ -357,42 +357,37 @@ export function HomePage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="relative mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
-        <header className="space-y-3 sm:space-y-4">
-          <motion.div
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.4 }}
-            className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium"
-          >
-            <Sparkles className="h-3 w-3 text-emerald-400" />
-            {t('home.eyebrow')}
-          </motion.div>
-          <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="relative mx-auto max-w-5xl space-y-5 px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
+              <House className="h-3 w-3 text-zinc-400" />
+              {t('home.eyebrow')}
+            </div>
             <div className="space-y-1.5">
-              <h1 className="font-display text-3xl font-semibold tracking-[-0.03em] text-balance sm:text-4xl">
+              <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">
                 {t('home.greeting', { name: firstName })}
               </h1>
-              <p className="hidden max-w-2xl text-[15px] leading-relaxed text-[var(--color-app-muted)] sm:block">
+              <p className="hidden max-w-2xl text-sm leading-relaxed text-[var(--color-app-muted)] sm:block">
                 {t('home.description')}
               </p>
             </div>
-            {!loading && jobs.length > 0 && (
-              <div className="flex flex-wrap gap-2 text-xs tabular-nums text-[var(--color-app-muted)]">
-                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-amber-200">
-                  {queued} {t('dashboard.processing').toLowerCase()}
-                </span>
-                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
-                  {done} {t('home.statReady')}
-                </span>
-                {failed > 0 && (
-                  <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-rose-200">
-                    {failed} {t('dashboard.failed').toLowerCase()}
-                  </span>
-                )}
-              </div>
-            )}
           </div>
+          {!loading && jobs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 text-[11px] tabular-nums text-[var(--color-app-muted)]">
+              <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-200">
+                {queued} {t('dashboard.processing').toLowerCase()}
+              </span>
+              <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                {done} {t('home.statReady')}
+              </span>
+              {failed > 0 && (
+                <span className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-rose-200">
+                  {failed} {t('dashboard.failed').toLowerCase()}
+                </span>
+              )}
+            </div>
+          )}
         </header>
 
         <motion.div
@@ -400,16 +395,8 @@ export function HomePage(): React.ReactElement {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
         >
-          <Card elevated className="overflow-hidden relative">
-            <div
-              aria-hidden
-              className="absolute inset-0 opacity-40 pointer-events-none"
-              style={{
-                background:
-                  'radial-gradient(ellipse 80% 50% at 0% 0%, oklch(73% 0.16 159 / 0.08), transparent 60%)',
-              }}
-            />
-            <CardContent className="pt-6 relative">
+          <Card elevated>
+            <CardContent className="pt-6">
               <div className="space-y-4">
                 <div className="inline-flex rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] p-1">
                   <button
@@ -564,10 +551,10 @@ export function HomePage(): React.ReactElement {
           </Card>
         </motion.div>
 
-        <section className="space-y-4">
+        <section className="space-y-3" aria-labelledby="queue-title">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <h2 className="font-display text-xl font-semibold tracking-tight">
+              <h2 id="queue-title" className="font-display text-xl font-semibold tracking-tight">
                 {t('jobs.queueTitle')}
               </h2>
               {queueTotal > 0 && (
@@ -577,7 +564,7 @@ export function HomePage(): React.ReactElement {
                 </span>
               )}
             </div>
-            <Button variant="ghost" size="sm" onClick={refresh}>
+            <Button variant="ghost" size="sm" onClick={refresh} className="h-8 text-xs">
               <RefreshCw className="h-3.5 w-3.5" />
               {t('jobs.refresh')}
             </Button>
@@ -607,17 +594,13 @@ export function HomePage(): React.ReactElement {
 
           {!loading && jobs.length > 0 && (
             <>
-              <Card>
-                <StaggerContainer delay={0.05}>
-                  <ul className="divide-y divide-[var(--color-app-border)]">
-                    {jobs.map((j) => (
-                      <StaggerItem key={j.id}>
-                        <JobRow job={j} onUpdate={refresh} locale={locale} t={t} />
-                      </StaggerItem>
-                    ))}
-                  </ul>
-                </StaggerContainer>
-              </Card>
+              <StaggerContainer delay={0.05} className="space-y-1.5">
+                {jobs.map((j) => (
+                  <StaggerItem key={j.id}>
+                    <JobRow job={j} onUpdate={refresh} locale={locale} t={t} />
+                  </StaggerItem>
+                ))}
+              </StaggerContainer>
               {totalPages > 1 && (
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs text-[var(--color-app-muted)] tabular-nums">
@@ -727,7 +710,11 @@ function JobRow({
   const displayTitle = job.title?.trim() || displayJobSource(job.sourceUrl);
 
   return (
-    <li className="group flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-[var(--color-app-surface-hover)]/50 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
+    <Link
+      to={jobDestination(job)}
+      aria-label={`${job.transcriptId ? t('common.open') : t('jobs.details')}: ${displayTitle}`}
+      className="group flex flex-col gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-zinc-100/[0.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40 sm:flex-row sm:items-center sm:gap-4"
+    >
       <JobPreview
         previewSrc={previewSrc}
         source={source}
@@ -776,23 +763,16 @@ function JobRow({
           <p className="text-xs text-rose-300 mt-1 line-clamp-2 break-words">{job.errorMsg}</p>
         )}
       </div>
-      {job.transcriptId ? (
-        <Button variant="ghost" size="sm" asChild className="w-full sm:w-auto">
-          <Link to={`/transcricoes/${job.transcriptId}`}>
-            {t('common.open')}
-            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-          </Link>
-        </Button>
-      ) : (
-        <Button variant="ghost" size="sm" asChild className="w-full sm:w-auto">
-          <Link to={`/jobs/${job.id}`}>
-            {t('jobs.details')}
-            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-          </Link>
-        </Button>
-      )}
-    </li>
+      <span className="inline-flex w-full shrink-0 items-center justify-end gap-1 text-xs text-[var(--color-app-muted)] transition-colors group-hover:text-zinc-100 sm:w-auto">
+        {job.transcriptId ? t('common.open') : t('jobs.details')}
+        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+      </span>
+    </Link>
   );
+}
+
+export function jobDestination(job: Pick<JobSummary, 'id' | 'transcriptId'>): string {
+  return job.transcriptId ? `/transcricoes/${job.transcriptId}` : `/jobs/${job.id}`;
 }
 
 function JobPreview({
