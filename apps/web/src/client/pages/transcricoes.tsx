@@ -19,6 +19,7 @@ import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { FetchError } from '../components/ui/fetch-error';
 import { apiPost } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import { formatDuration, formatRelative, formatUsd } from '../lib/format';
@@ -111,7 +112,7 @@ export function TranscricoesPage(): React.ReactElement {
     return `/api/transcripts?${params.toString()}`;
   }, [debouncedQ, folderFilter, offset, status]);
 
-  const { data, loading, refresh: refreshTranscripts } = useFetch<SearchResponse>(listUrl);
+  const { data, loading, error, refresh: refreshTranscripts } = useFetch<SearchResponse>(listUrl);
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
   const folders = foldersData?.folders ?? [];
@@ -488,7 +489,7 @@ export function TranscricoesPage(): React.ReactElement {
               type="button"
               onClick={() => setStatus(item)}
               className={[
-                'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors',
+                'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
                 status === item
                   ? 'bg-zinc-100/10 text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-100/5',
@@ -524,7 +525,13 @@ export function TranscricoesPage(): React.ReactElement {
           </div>
         )}
 
-        {!pageLoading && items.length === 0 && (
+        {!pageLoading && error && items.length === 0 && (
+          <Card elevated>
+            <FetchError message={error} onRetry={refreshTranscripts} />
+          </Card>
+        )}
+
+        {!pageLoading && !error && items.length === 0 && (
           <Card elevated>
             <CardContent className="py-14 text-center space-y-3">
               <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-zinc-100/[0.03]">
@@ -602,7 +609,7 @@ function FolderChip({
       onClick={onClick}
       title={label}
       className={[
-        'inline-flex max-w-[180px] items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors',
+        'inline-flex max-w-[180px] items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
         active
           ? 'border-zinc-500/40 bg-zinc-100/10 text-zinc-100'
           : 'border-transparent bg-zinc-100/[0.03] text-zinc-400 hover:bg-zinc-100/[0.06] hover:text-zinc-200',

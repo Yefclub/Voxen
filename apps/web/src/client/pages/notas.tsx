@@ -12,6 +12,7 @@ import { Eye, EyeOff, FileText, Library, Loader2, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
+import { FetchError } from '../components/ui/fetch-error';
 import { Markdown } from '../components/ui/markdown';
 import { MarkdownEditor } from '../components/notes/markdown-editor';
 import { Spinner } from '../components/ui/spinner';
@@ -97,7 +98,7 @@ function NoteEditor({
   onTogglePreview: () => void;
   onSaved: () => void;
 }): React.ReactElement {
-  const { data, loading } = useFetch<GetResp>(`/api/notes/${noteId}`);
+  const { data, loading, error, refresh } = useFetch<GetResp>(`/api/notes/${noteId}`);
   const { t } = useI18n();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -176,6 +177,14 @@ function NoteEditor({
       inFlight.current?.abort();
     };
   }, []);
+
+  if (!loading && error) {
+    return (
+      <Card elevated className="flex items-center justify-center min-h-[400px]">
+        <FetchError message={error} onRetry={refresh} />
+      </Card>
+    );
+  }
 
   if (loading || !data) {
     return (

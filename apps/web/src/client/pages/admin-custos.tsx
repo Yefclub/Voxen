@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { DollarSign, LineChart, ShieldCheck } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Card, CardContent } from '../components/ui/card';
+import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
 import { formatUsd } from '../lib/format';
@@ -29,7 +30,9 @@ interface CostResponse {
 
 export function AdminCustosPage(): React.ReactElement {
   const [range, setRange] = useState<'month' | 'all'>('month');
-  const { data, loading } = useFetch<CostResponse>(`/api/admin/custos?range=${range}`);
+  const { data, loading, error, refresh } = useFetch<CostResponse>(
+    `/api/admin/custos?range=${range}`,
+  );
   const { locale, t } = useI18n();
 
   return (
@@ -81,6 +84,12 @@ export function AdminCustosPage(): React.ReactElement {
             />
           </StaggerItem>
         </StaggerContainer>
+
+        {!loading && error && (
+          <Card>
+            <FetchError message={error} onRetry={refresh} />
+          </Card>
+        )}
 
         {/* Switcher de range */}
         <div className="flex items-center gap-2 -mb-4">

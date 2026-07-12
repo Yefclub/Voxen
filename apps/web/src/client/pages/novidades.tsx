@@ -5,6 +5,7 @@ import { useFetch } from '../lib/hooks';
 import { useI18n } from '../lib/i18n';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { Badge } from '../components/ui/badge';
+import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
 
 type ReleaseEntry = {
@@ -47,7 +48,7 @@ export function NovidadesPage(): React.ReactElement {
     if (channel !== 'all') params.set('channel', channel);
     return `/api/releases?${params.toString()}`;
   }, [channel]);
-  const { data, loading } = useFetch<ReleasesResponse>(url);
+  const { data, loading, error, refresh } = useFetch<ReleasesResponse>(url);
   const releases = data?.releases ?? [];
 
   return (
@@ -97,7 +98,9 @@ export function NovidadesPage(): React.ReactElement {
           </div>
         )}
 
-        {!loading && releases.length === 0 && (
+        {!loading && error && <FetchError message={error} onRetry={refresh} />}
+
+        {!loading && !error && releases.length === 0 && (
           <div className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/40 px-5 py-10 text-center">
             <p className="text-sm font-medium">{t('novidades.empty')}</p>
             <p className="mt-1 text-xs text-[var(--color-app-muted)]">{t('novidades.emptyHint')}</p>
