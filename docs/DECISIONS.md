@@ -133,6 +133,24 @@ latência/custo e quebra o determinismo. A escolhida é **custo zero, latência
 zero, 100% determinística e no Postgres** — coerente com esta ADR. Sem pgvector,
 sem embeddings, sem reindex.
 
+### Extensão — Harness de recuperação progressiva (spec 074, 2026-07-12)
+
+O harness ganhou um fluxo de recuperação **progressiva** (padrão dos editores de
+código com IA), ainda sem embeddings. A lógica compartilhada vive em
+`apps/web/src/lib/retrieval.ts` (funções de parsing puras + acessos read-only
+escopados por `userId`), consumida tanto pelo agente in-app (`lib/chat/runtime.ts`)
+quanto pelo servidor MCP (`routes/mcp.ts`).
+
+Fluxo: **buscar** (FTS `ts_headline`+`ts_rank`) → **ver estrutura** (outline do
+`.md` canônico do S3) → **ler só o trecho** (por linhas / seção / intervalo de
+tempo) → **expandir contexto** sob demanda → **relacionar** (vizinhança no Brain +
+FTS) → **validar citações** (checagem determinística de substring normalizada,
+sem LLM). `read_transcript` (documento inteiro) fica como último recurso, caro.
+
+Fonte de estrutura/timestamps é o `.md` canônico no S3 (`Transcript.mdPath`),
+não o `plainText` (texto corrido pra FTS). Todas as saídas têm cap de linhas/chars.
+Mantém a ADR: determinístico, custo zero de indexação, sem pgvector/embeddings.
+
 ---
 
 ## ADR-005 — ARQ em vez de BullMQ
