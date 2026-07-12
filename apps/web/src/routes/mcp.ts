@@ -24,6 +24,17 @@ import { getSetting } from '../lib/settings';
 import { createAutoJobForUser } from './jobs';
 import { reindexNotesBrain } from '../lib/brain';
 import { invalidateGraphCache } from '../lib/graph-cache';
+import {
+  expandContextFromMd,
+  findRelated,
+  ftsSearchTranscripts,
+  loadTranscriptMd,
+  parseOutline,
+  readLinesFromMd,
+  readSectionFromMd,
+  readTimespanFromMd,
+  verifyClaimAgainstMd,
+} from '../lib/retrieval';
 
 export const mcpRoutes = new Hono();
 
@@ -36,12 +47,19 @@ const VOXEN_INSTRUCTIONS = [
   '(YouTube/Instagram/TikTok), páginas web indexadas, uploads, notas manuais e o',
   'grafo "Voxen Brain". A maioria das tools é de leitura; algumas criam conteúdo.',
   '',
-  'Fluxo de leitura:',
-  '1. Para achar conteúdo, comece por voxen_search_transcripts / voxen_search_notes',
-  '   (retornam trechos curtos + id). Só então use voxen_read_transcript /',
-  '   voxen_read_note com o id para ler o conteúdo completo. Isso economiza tokens.',
-  '2. Para navegar relações e entidades, use as tools voxen_brain_*',
-  '   (search, neighbors, sources, path até 3 hops, hubs).',
+  'Fluxo de leitura PROGRESSIVA (recupere só o necessário, sem embeddings):',
+  '1. Busque primeiro por termos/títulos/tópicos: voxen_search_transcripts /',
+  '   voxen_search_notes / voxen_brain_search (retornam trechos curtos + id).',
+  '2. Antes de abrir conteúdo, veja a ESTRUTURA: voxen_outline (seções, linhas, timestamps).',
+  '3. Leia só trechos específicos: voxen_read_lines (linhas), voxen_read_section (seção),',
+  '   voxen_read_timespan (intervalo de tempo). Não leia o documento inteiro por padrão.',
+  '4. Expanda contexto (voxen_expand_context) só quando o trecho lido não bastar.',
+  '5. voxen_read_transcript (documento completo) é ÚLTIMO recurso — caro; evite.',
+  '6. Relacione com docs/tópicos próximos: voxen_related e voxen_brain_*',
+  '   (neighbors, sources, path até 3 hops, hubs).',
+  '7. Monte um contexto mínimo; cite doc + linhas/seção + timestamp do que usar.',
+  '8. Valide afirmações factuais fortes com voxen_verify_citations antes de afirmá-las;',
+  '   se não houver evidência suficiente, diga isso — não invente.',
   '',
   'Fluxo de escrita:',
   '- voxen_create_note / voxen_update_note: salvar ou editar informação na KB.',
@@ -330,20 +348,7 @@ function registerTranscriptTools(server: McpServer, userId: string): void {
     async (args) => {
       const query = args.query.trim();
       if (!query) return fail('Parâmetro query vazio.');
-      const limit = bounded(args.limit, 8, 1, 25);
-      type Row = { id: string; title: string; snippet: string; rank: number };
-      const rows = await db.$queryRaw<Row[]>`
-        SELECT id, title,
-          ts_headline('portuguese', "plainText", plainto_tsquery('portuguese', ${query}),
-            'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
-          ts_rank("searchVector", plainto_tsquery('portuguese', ${query})) AS rank
-        FROM "Transcript"
-        WHERE "userId" = ${userId}
-          AND status = 'ACTIVE'::"ContentStatus"
-          AND "searchVector" @@ plainto_tsquery('portuguese', ${query})
-        ORDER BY rank DESC, "createdAt" DESC
-        LIMIT ${limit}
-      `;
+      const rows = await ftsSearchTranscripts(userId, query, bounded(args.limit, 8, 1, 25));
       return ok({ results: rows });
     },
   );
@@ -411,11 +416,12 @@ function registerTranscriptTools(server: McpServer, userId: string): void {
   server.registerTool(
     'voxen_read_transcript',
     {
-      title: 'Ler transcrição',
+      title: 'Ler transcrição (completa)',
       description:
-        'Lê o conteúdo completo de uma transcrição pelo `transcript_id` (obtido em ' +
-        'voxen_search_transcripts ou voxen_list_transcripts). Retorna o texto puro e o resumo ' +
-        '(se houver). Conteúdo pode ser longo — prefira buscar antes para mirar o item certo.',
+        'ÚLTIMO RECURSO (caro): lê o conteúdo COMPLETO de uma transcrição pelo `transcript_id`. ' +
+        'Prefira o fluxo progressivo: voxen_search_transcripts -> voxen_outline -> ' +
+        'voxen_read_lines / voxen_read_section / voxen_read_timespan. Use isto só quando ' +
+        'precisar mesmo do documento inteiro.',
       inputSchema: {
         transcript_id: z.string().min(1).describe('ID da transcrição a ler.'),
       },
@@ -425,7 +431,7 @@ function registerTranscriptTools(server: McpServer, userId: string): void {
         text: z.string(),
         summary: z.string().nullable(),
       },
-      annotations: { ...READ_ONLY, title: 'Ler transcrição' },
+      annotations: { ...READ_ONLY, title: 'Ler transcrição (completa)' },
     },
     async (args) => {
       const t = await db.transcript.findFirst({
@@ -434,6 +440,231 @@ function registerTranscriptTools(server: McpServer, userId: string): void {
       });
       if (!t) return fail('Transcrição não encontrada (ou fora do escopo do token).');
       return ok({ id: t.id, title: t.title, text: t.plainText, summary: t.summaryMd ?? null });
+    },
+  );
+
+  registerProgressiveTools(server, userId);
+}
+
+// Ferramentas de recuperação PROGRESSIVA sobre o `.md` canônico (S3): estrutura,
+// leitura por linhas/seção/tempo, expansão de contexto, relacionados e
+// verificação de citações. Toda a lógica vem de lib/retrieval.ts (compartilhada
+// com o agente in-app). Read-only e escopadas por userId.
+function registerProgressiveTools(server: McpServer, userId: string): void {
+  server.registerTool(
+    'voxen_outline',
+    {
+      title: 'Estrutura da transcrição',
+      description:
+        'PASSO 2 do fluxo: lista a ESTRUTURA do `.md` de uma transcrição — seções (headings) ' +
+        'com heading, timestamp inicial (hh:mm:ss + seg), linha inicial e nº de linhas, mais o ' +
+        'total de linhas. Use após buscar e antes de abrir conteúdo, para mirar o trecho certo. ' +
+        'Sem texto pesado.',
+      inputSchema: {
+        transcript_id: z.string().min(1).describe('ID da transcrição.'),
+      },
+      annotations: { ...READ_ONLY, title: 'Estrutura da transcrição' },
+    },
+    async (args) => {
+      const doc = await loadTranscriptMd(userId, args.transcript_id.trim());
+      if (!doc) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      const outline = parseOutline(doc.md);
+      return ok({ id: doc.id, title: doc.title, ...outline });
+    },
+  );
+
+  server.registerTool(
+    'voxen_read_lines',
+    {
+      title: 'Ler linhas',
+      description:
+        'PASSO 3: lê um intervalo de linhas [from, to] (1-indexed, inclusivo, cap de 200 linhas) ' +
+        'do `.md`. Prefira isto a ler o documento inteiro.',
+      inputSchema: {
+        transcript_id: z.string().min(1).describe('ID da transcrição.'),
+        from: z.number().int().min(1).describe('Primeira linha (1-indexed).'),
+        to: z.number().int().min(1).describe('Última linha (inclusiva).'),
+      },
+      annotations: { ...READ_ONLY, title: 'Ler linhas' },
+    },
+    async (args) => {
+      const doc = await loadTranscriptMd(userId, args.transcript_id.trim());
+      if (!doc) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      return ok({ id: doc.id, title: doc.title, ...readLinesFromMd(doc.md, args.from, args.to) });
+    },
+  );
+
+  server.registerTool(
+    'voxen_read_section',
+    {
+      title: 'Ler seção',
+      description:
+        'PASSO 3: lê as linhas de uma seção do outline, por `heading` (match parcial, ' +
+        'case-insensitive) OU por `index` (posição no outline de voxen_outline).',
+      inputSchema: {
+        transcript_id: z.string().min(1).describe('ID da transcrição.'),
+        heading: z.string().min(1).optional().describe('Heading da seção (match parcial).'),
+        index: z.number().int().min(0).optional().describe('Índice da seção no outline.'),
+      },
+      annotations: { ...READ_ONLY, title: 'Ler seção' },
+    },
+    async (args) => {
+      if (args.heading === undefined && args.index === undefined) {
+        return fail('Informe heading ou index.');
+      }
+      const doc = await loadTranscriptMd(userId, args.transcript_id.trim());
+      if (!doc) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      const result = readSectionFromMd(doc.md, { heading: args.heading, index: args.index });
+      if (!result) return fail('Seção não encontrada.');
+      return ok({ id: doc.id, title: doc.title, ...result });
+    },
+  );
+
+  server.registerTool(
+    'voxen_read_timespan',
+    {
+      title: 'Ler intervalo de tempo',
+      description:
+        'PASSO 3: lê as linhas cujo timestamp cai em [from_sec, to_sec] (segundos, inclusivo, ' +
+        'cap de 200 linhas). Útil para ancorar num momento do vídeo.',
+      inputSchema: {
+        transcript_id: z.string().min(1).describe('ID da transcrição.'),
+        from_sec: z.number().int().min(0).describe('Início em segundos.'),
+        to_sec: z.number().int().min(0).describe('Fim em segundos (inclusivo).'),
+      },
+      annotations: { ...READ_ONLY, title: 'Ler intervalo de tempo' },
+    },
+    async (args) => {
+      const doc = await loadTranscriptMd(userId, args.transcript_id.trim());
+      if (!doc) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      return ok({
+        id: doc.id,
+        title: doc.title,
+        ...readTimespanFromMd(doc.md, args.from_sec, args.to_sec),
+      });
+    },
+  );
+
+  server.registerTool(
+    'voxen_expand_context',
+    {
+      title: 'Expandir contexto',
+      description:
+        'PASSO 4: dada uma âncora (`line` OU `sec`), devolve uma janela de `radius` linhas ' +
+        'antes/depois. Use só quando o trecho lido não bastar.',
+      inputSchema: {
+        transcript_id: z.string().min(1).describe('ID da transcrição.'),
+        line: z.number().int().min(1).optional().describe('Linha-âncora (1-indexed).'),
+        sec: z.number().int().min(0).optional().describe('Timestamp-âncora em segundos.'),
+        radius: z
+          .number()
+          .int()
+          .min(0)
+          .max(200)
+          .optional()
+          .describe('Linhas antes/depois (padrão 8).'),
+      },
+      annotations: { ...READ_ONLY, title: 'Expandir contexto' },
+    },
+    async (args) => {
+      if (args.line === undefined && args.sec === undefined) {
+        return fail('Informe line ou sec.');
+      }
+      const doc = await loadTranscriptMd(userId, args.transcript_id.trim());
+      if (!doc) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      const result = expandContextFromMd(doc.md, { line: args.line, sec: args.sec }, args.radius);
+      if (!result) return fail('Âncora não encontrada.');
+      return ok({ id: doc.id, title: doc.title, ...result });
+    },
+  );
+
+  server.registerTool(
+    'voxen_related',
+    {
+      title: 'Documentos relacionados',
+      description:
+        'PASSO 6: dado um `transcript_id` E/OU uma `query`, retorna transcrições/notas ' +
+        'relacionadas via Brain (vizinhança no grafo) + FTS por título/tópico. Retorna ' +
+        'id, título, tipo e motivo.',
+      inputSchema: {
+        transcript_id: z.string().min(1).optional().describe('ID da transcrição de origem.'),
+        query: z
+          .string()
+          .min(1)
+          .max(300)
+          .optional()
+          .describe('Termos de busca (alternativa/complemento).'),
+        limit: z.number().int().min(1).max(25).optional().describe('Máx. itens (padrão 10).'),
+      },
+      annotations: { ...READ_ONLY, title: 'Documentos relacionados' },
+    },
+    async (args) => {
+      if (!args.transcript_id && !args.query) return fail('Informe transcript_id ou query.');
+      const results = await findRelated(userId, {
+        transcriptId: args.transcript_id,
+        query: args.query,
+        limit: args.limit,
+      });
+      return ok({ results });
+    },
+  );
+
+  server.registerTool(
+    'voxen_verify_citations',
+    {
+      title: 'Verificar citações',
+      description:
+        'PASSO 9: verifica DETERMINISTICAMENTE (sem LLM) se cada citação existe no trecho ' +
+        'indicado do `.md`. Para cada claim, re-lê o trecho (por linhas, por tempo, ou o ' +
+        'documento inteiro) e checa se a `quote` está presente (comparação normalizada). Use ' +
+        'antes de afirmar fatos fortes.',
+      inputSchema: {
+        claims: z
+          .array(
+            z.object({
+              transcript_id: z.string().min(1),
+              quote: z.string().min(1).max(2000),
+              from_line: z.number().int().min(1).optional(),
+              to_line: z.number().int().min(1).optional(),
+              from_sec: z.number().int().min(0).optional(),
+              to_sec: z.number().int().min(0).optional(),
+            }),
+          )
+          .min(1)
+          .max(20)
+          .describe('Lista de citações a verificar.'),
+      },
+      annotations: { ...READ_ONLY, title: 'Verificar citações' },
+    },
+    async (args) => {
+      const cache = new Map<string, string | null>();
+      const results = [];
+      for (const claim of args.claims) {
+        const tid = claim.transcript_id.trim();
+        let md = cache.get(tid);
+        if (md === undefined) {
+          const doc = await loadTranscriptMd(userId, tid);
+          md = doc?.md ?? null;
+          cache.set(tid, md);
+        }
+        if (md === null) {
+          results.push({
+            transcriptId: tid,
+            supported: false,
+            error: 'Transcrição não encontrada.',
+          });
+          continue;
+        }
+        const verdict = verifyClaimAgainstMd(md, {
+          quote: claim.quote,
+          fromLine: claim.from_line,
+          toLine: claim.to_line,
+          fromSec: claim.from_sec,
+          toSec: claim.to_sec,
+        });
+        results.push({ transcriptId: tid, ...verdict });
+      }
+      return ok({ results });
     },
   );
 }
