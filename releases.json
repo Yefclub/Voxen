@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1783824951",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Home alinhada à Biblioteca",
+    "body": "A Home agora usa a hierarquia visual compacta da Biblioteca. Os itens da fila podem ser selecionados por toda a linha: conteúdos concluídos abrem sua transcrição e os demais abrem o detalhe do processamento.",
+    "pr": 346,
+    "author": "Kalyel",
+    "date": "2026-07-11T23:55:40-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/346"
+  },
+  {
     "version": "0.11.0-dev.1783821598",
     "channel": "dev",
     "type": "ui",

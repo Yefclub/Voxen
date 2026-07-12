@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.11.0-dev.1783824951 — 2026-07-11 · Dev
+
+### 🎨 Home alinhada à Biblioteca
+
+A Home agora usa a hierarquia visual compacta da Biblioteca. Os itens da fila podem ser selecionados por toda a linha: conteúdos concluídos abrem sua transcrição e os demais abrem o detalhe do processamento.
+
 ## v0.11.0-dev.1783821598 — 2026-07-12 · Dev
 
 ### 🎨 Erros de carregamento com "tentar novamente" e foco de teclado visível
