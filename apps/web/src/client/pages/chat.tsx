@@ -39,6 +39,7 @@ import {
   applySegmentEvent,
   closeTrailingReasoning,
   segmentsFromPersistedTools,
+  segmentsReasoningDuration,
   segmentsRunning,
   type MessageSegment,
   type ToolEvent,
@@ -258,7 +259,12 @@ function ThinkingBlock({
     return () => window.clearInterval(id);
   }, [running, frozen]);
 
-  const duration = frozen ?? (running ? elapsed : null);
+  // `frozen`/`startedAtRef` são estado local — não sobrevivem quando `send()`
+  // troca a mensagem pelo snapshot do servidor (a `key` muda pro id real do
+  // banco e o React remonta este componente com `live=false`, zerando o
+  // cronômetro). Nesse caso, cai pro fallback: a duração derivada dos
+  // próprios timestamps dos segments de raciocínio (preservados pelo swap).
+  const duration = frozen ?? (running ? elapsed : segmentsReasoningDuration(segments));
 
   return (
     <section className="mb-2.5 flex flex-col gap-1">

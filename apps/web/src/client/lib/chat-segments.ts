@@ -147,3 +147,30 @@ export function segmentsRunning(segments: readonly MessageSegment[]): boolean {
       : toolBlockState(segment.tools) === 'running',
   );
 }
+
+/**
+ * Duração (ms) do turno derivada dos timestamps dos PRÓPRIOS segments de
+ * raciocínio: do `startedAt` do primeiro ao `endedAt` do último. Serve de
+ * fallback pro cronômetro local do `ThinkingBlock` (`startedAtRef`/`frozen`),
+ * que é estado de componente e por isso NÃO sobrevive quando `send()` troca
+ * as mensagens pelo snapshot do servidor ao fim do turno — o React remonta o
+ * componente (a mensagem ganha o id real do banco, mudando a `key`), zerando
+ * esse estado local. Como o snapshot não persiste raciocínio, `segments` (com
+ * os timestamps) é reanexado na mensagem por `send()`; esta função deriva a
+ * MESMA duração a partir só desse dado, sem depender de nenhum estado local.
+ *
+ * `null` se não há segmento de raciocínio (turno só de ferramentas — sem
+ * duração, como já era antes desta spec) ou se algum ainda está aberto (sem
+ * `endedAt` — não deveria ocorrer quando o turno já terminou).
+ */
+export function segmentsReasoningDuration(segments: readonly MessageSegment[]): number | null {
+  let start: number | null = null;
+  let end: number | null = null;
+  for (const segment of segments) {
+    if (segment.type !== 'reasoning') continue;
+    if (segment.endedAt == null) return null;
+    start = start == null ? segment.startedAt : Math.min(start, segment.startedAt);
+    end = end == null ? segment.endedAt : Math.max(end, segment.endedAt);
+  }
+  return start != null && end != null ? end - start : null;
+}

@@ -3,6 +3,7 @@ import {
   applySegmentEvent,
   closeTrailingReasoning,
   segmentsFromPersistedTools,
+  segmentsReasoningDuration,
   segmentsRunning,
   type MessageSegment,
   type ToolEvent,
@@ -175,5 +176,64 @@ describe('segmentsRunning', () => {
 
   it('array vazio não está rodando', () => {
     expect(segmentsRunning([])).toBe(false);
+  });
+});
+
+describe('segmentsReasoningDuration', () => {
+  it('um único segmento de raciocínio: endedAt - startedAt', () => {
+    const segments: MessageSegment[] = [
+      { type: 'reasoning', id: 'r0', text: 'x', startedAt: 1000, endedAt: 1800 },
+    ];
+    expect(segmentsReasoningDuration(segments)).toBe(800);
+  });
+
+  it('vários segmentos de raciocínio: do startedAt do primeiro ao endedAt do último', () => {
+    const segments: MessageSegment[] = [
+      { type: 'reasoning', id: 'r0', text: 'a', startedAt: 1000, endedAt: 1200 },
+      { type: 'tool-group', id: 'g0', tools: [{ id: 't1', name: 'search', state: 'completed' }] },
+      { type: 'reasoning', id: 'r1', text: 'b', startedAt: 1500, endedAt: 2100 },
+    ];
+    expect(segmentsReasoningDuration(segments)).toBe(2100 - 1000);
+  });
+
+  it('sem segmento de raciocínio (turno só de ferramentas) retorna null', () => {
+    const segments: MessageSegment[] = [
+      { type: 'tool-group', id: 'g0', tools: [{ id: 't1', name: 'search', state: 'completed' }] },
+    ];
+    expect(segmentsReasoningDuration(segments)).toBeNull();
+  });
+
+  it('raciocínio ainda aberto (sem endedAt) retorna null', () => {
+    const segments: MessageSegment[] = [
+      { type: 'reasoning', id: 'r0', text: 'x', startedAt: 1000 },
+    ];
+    expect(segmentsReasoningDuration(segments)).toBeNull();
+  });
+
+  it('array vazio retorna null', () => {
+    expect(segmentsReasoningDuration([])).toBeNull();
+  });
+
+  it('sobrevive ao swap pro snapshot: a duração continua correta a partir só dos segments, sem cronômetro local', () => {
+    // Simula um turno ao vivo completo (reasoning → tool → reasoning → texto
+    // final), exatamente como o handler SSE de send() constrói via
+    // applySegmentEvent, terminando com o fechamento explícito de fim de
+    // turno (closeTrailingReasoning) que send() aplica antes de reanexar os
+    // segments na mensagem vinda do snapshot do servidor. Depois do swap, o
+    // ThinkingBlock remonta com `live=false` e startedAtRef/frozen zerados —
+    // a duração tem que continuar vindo só destes segments.
+    let segments: MessageSegment[] = [];
+    segments = applySegmentEvent(segments, { type: 'reasoning', delta: 'vou buscar' }, 1_000);
+    segments = applySegmentEvent(segments, { type: 'tool', tool: tool('t1', 'running') }, 1_200);
+    segments = applySegmentEvent(segments, { type: 'tool', tool: tool('t1', 'completed') }, 1_400);
+    segments = applySegmentEvent(segments, { type: 'reasoning', delta: 'agora respondo' }, 1_600);
+    // fim do turno: texto final chega, fechando o raciocínio em aberto — é o
+    // que closeTrailingReasoning faz tanto no evento 'text' quanto no fim do
+    // loop de leitura do stream em send().
+    segments = closeTrailingReasoning(segments, 2_500);
+
+    // estado local do componente NÃO existe mais após o remount (live=false,
+    // frozen=null) — só os segments reanexados na mensagem restam.
+    expect(segmentsReasoningDuration(segments)).toBe(2_500 - 1_000);
   });
 });
