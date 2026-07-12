@@ -18,6 +18,7 @@ import type {
 } from 'reagraph';
 import { ArrowLeft, Box, BrainCircuit, Network, RotateCw, Search, Square } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { FetchError } from '../components/ui/fetch-error';
 import { Spinner } from '../components/ui/spinner';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { useFetch } from '../lib/hooks';
@@ -268,9 +269,9 @@ export function GrafoPage(): React.ReactElement {
             <Spinner />
           </div>
         )}
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-rose-300">
-            {error}
+        {error && !loading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <FetchError message={error} onRetry={() => setForceTick(Date.now())} />
           </div>
         )}
         {!loading && data && data.nodes.length === 0 && (

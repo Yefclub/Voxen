@@ -602,7 +602,8 @@ function AutomationForm({
           <button
             type="button"
             onClick={onClose}
-            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]"
+            aria-label={t('common.close')}
+            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
           >
             <X className="size-4" />
           </button>
@@ -816,7 +817,8 @@ function RunsModal({
           <button
             type="button"
             onClick={onClose}
-            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]"
+            aria-label={t('common.close')}
+            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
           >
             <X className="size-4" />
           </button>

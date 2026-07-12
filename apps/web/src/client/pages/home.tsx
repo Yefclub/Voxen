@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
+import { FetchError } from '../components/ui/fetch-error';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -72,7 +73,12 @@ export function HomePage(): React.ReactElement {
   const [queuePage, setQueuePage] = useState(1);
   const queueLimit = 10;
   const queueUrl = `/api/jobs?page=${queuePage}&limit=${queueLimit}`;
-  const { data, loading, refresh } = useFetch<{
+  const {
+    data,
+    loading,
+    error: queueError,
+    refresh,
+  } = useFetch<{
     jobs: JobSummary[];
     page: number;
     limit: number;
@@ -410,7 +416,7 @@ export function HomePage(): React.ReactElement {
                     type="button"
                     onClick={() => setMode('link')}
                     className={[
-                      'inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors',
+                      'inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
                       mode === 'link'
                         ? 'bg-[var(--color-app-surface)] text-zinc-100 shadow-sm'
                         : 'text-[var(--color-app-muted)] hover:text-zinc-100',
@@ -423,7 +429,7 @@ export function HomePage(): React.ReactElement {
                     type="button"
                     onClick={() => setMode('upload')}
                     className={[
-                      'inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors',
+                      'inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
                       mode === 'upload'
                         ? 'bg-[var(--color-app-surface)] text-zinc-100 shadow-sm'
                         : 'text-[var(--color-app-muted)] hover:text-zinc-100',
@@ -585,7 +591,13 @@ export function HomePage(): React.ReactElement {
             </div>
           )}
 
-          {!loading && jobs.length === 0 && (
+          {!loading && queueError && (
+            <Card>
+              <FetchError message={queueError} onRetry={refresh} />
+            </Card>
+          )}
+
+          {!loading && !queueError && jobs.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center text-sm text-[var(--color-app-muted)]">
                 {t('jobs.queueEmpty')}

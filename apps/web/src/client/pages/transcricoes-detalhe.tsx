@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
 import { apiPost, ApiError } from '../lib/api';
@@ -106,7 +107,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { locale, t: translate } = useI18n();
-  const { data, loading, refresh } = useFetch<ResponseBody>(
+  const { data, loading, error, refresh } = useFetch<ResponseBody>(
     id ? `/api/transcripts/${id}?includeTrash=1` : null,
   );
   const {
@@ -298,6 +299,14 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     } finally {
       setCreatingLinkedNote(false);
     }
+  }
+
+  if (!loading && error) {
+    return (
+      <div className="px-8 py-10 mx-auto max-w-5xl">
+        <FetchError message={error} onRetry={refresh} />
+      </div>
+    );
   }
 
   if (loading || !data) {
