@@ -30,7 +30,7 @@ import { useI18n } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme-provider';
 import { APP_THEMES, type AppTheme } from '../../lib/theme';
 import { cn } from '../../lib/utils';
-import { useIsDesktop } from '../../lib/use-media-query';
+import { isChatRoute } from '../../lib/mobile-nav';
 import { requestClearConversation, setSounds, useChatShell } from '../../lib/chat-shell-state';
 
 function initials(name: string): string {
@@ -50,20 +50,22 @@ const THEME_LABEL_KEY: Record<AppTheme, 'theme.zinc' | 'theme.emerald' | 'theme.
 };
 
 /**
- * Cabeçalho do shell — **desktop-only**. No mobile NÃO há header nenhum no topo
- * (ver `app-layout`): a navegação é bottom-nav + botão de voltar flutuante +
- * edge-swipe pro drawer. Hospeda o menu de usuário (que no mobile vive na
- * bottom-nav).
+ * Cabeçalho do shell — pill flutuante no canto superior direito, mesma
+ * linguagem visual da sidebar (`fixed`, `rounded-2xl`, blur). Aparece em
+ * mobile e desktop agora (antes era desktop-only com uma barra full-width; a
+ * navegação mobile passou a ter os mesmos controles do desktop, incluindo o
+ * avatar — pequena redundância com a bottom-nav, mais simples que branch por
+ * breakpoint). Hospeda o toggle de tema, os controles do chat (quando
+ * aplicável) e o menu de usuário.
  */
-export function Topbar({ user, title }: { user: MeUser; title?: string }): React.ReactElement {
+export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   const navigate = useNavigate();
   const location = useLocation();
-  const isDesktop = useIsDesktop();
   const { refresh } = useMe();
   const { t } = useI18n();
   const { theme, setTheme, toggleAppearance } = useTheme();
-  // Botões de chat (sons + limpar) só na rota de chat — no desktop `/` É o chat.
-  const inChat = location.pathname === '/chat' || (location.pathname === '/' && isDesktop);
+  // Botões de chat (sons + limpar) só na rota de chat (`/` e `/chat`).
+  const inChat = isChatRoute(location.pathname);
   const onSignOut = async (): Promise<void> => {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
     await refresh();
@@ -72,102 +74,95 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
 
   return (
     <header
-      className="relative z-30 hidden h-16 shrink-0 items-center justify-between border-b border-[var(--color-app-border)] bg-[var(--color-app-bg)]/82 px-4 backdrop-blur-md md:flex sm:px-6"
-      style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      className="fixed right-4 z-30 flex items-center gap-2 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2.5 py-2 backdrop-blur-xl sm:gap-3"
+      style={{ top: 'calc(env(safe-area-inset-top) + 1rem)' }}
     >
-      <div className="flex items-center gap-2 sm:gap-4">
-        {title && <h1 className="text-base font-semibold font-display tracking-tight">{title}</h1>}
-      </div>
+      {inChat && <ChatShellControls />}
 
-      <div className="flex items-center gap-2 sm:gap-3">
-        {inChat && <ChatShellControls />}
+      <button
+        type="button"
+        onClick={() => void toggleAppearance()}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
+        aria-label={theme === 'light' ? t('theme.switchToDark') : t('theme.switchToLight')}
+        title={theme === 'light' ? t('theme.switchToDark') : t('theme.switchToLight')}
+      >
+        {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+      </button>
 
-        <button
-          type="button"
-          onClick={() => void toggleAppearance()}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
-          aria-label={theme === 'light' ? t('theme.switchToDark') : t('theme.switchToLight')}
-          title={theme === 'light' ? t('theme.switchToDark') : t('theme.switchToLight')}
-        >
-          {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-        </button>
-
-        {/* Avatar/menu de usuário: só no desktop (< md vai pra bottom-nav). */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="hidden md:block rounded-full ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 hover:opacity-90 transition-opacity"
-              aria-label={t('shell.userMenu')}
-            >
-              <Avatar className="h-9 w-9 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
-                {user.image && (
-                  <AvatarPrimitive.Image
-                    src={user.image}
-                    alt={user.name}
-                    className="h-full w-full object-cover"
-                  />
-                )}
-                <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-xs">
-                  {initials(user.name)}
-                </AvatarFallback>
-              </Avatar>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuLabel className="flex flex-col items-start gap-0.5 py-2.5">
-              <div className="flex items-center gap-2 w-full">
-                <span className="text-sm font-medium text-[var(--color-app-fg)] truncate flex-1">
-                  {user.name}
-                </span>
-                {user.role === 'ADMIN' && (
-                  <Badge variant="success" className="text-[9px] shrink-0">
-                    <ShieldCheck className="h-2.5 w-2.5" />
-                    {t('shell.admin')}
-                  </Badge>
-                )}
-              </div>
-              <span className="text-[11px] text-[var(--color-app-muted)] truncate w-full font-normal">
-                {user.email}
-              </span>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-[var(--color-app-muted)] font-medium py-1.5">
-              {t('theme.label')}
-            </DropdownMenuLabel>
-            {APP_THEMES.map((id) => (
-              <DropdownMenuItem
-                key={id}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void setTheme(id);
-                }}
-                className="flex items-center gap-2 cursor-pointer"
-              >
-                <Check
-                  className={cn(
-                    'h-3.5 w-3.5',
-                    theme === id ? 'opacity-100 text-[var(--color-accent-primary)]' : 'opacity-0',
-                  )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="rounded-full ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 hover:opacity-90 transition-opacity"
+            aria-label={t('shell.userMenu')}
+          >
+            <Avatar className="h-9 w-9 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
+              {user.image && (
+                <AvatarPrimitive.Image
+                  src={user.image}
+                  alt={user.name}
+                  className="h-full w-full object-cover"
                 />
-                <span className="truncate">{t(THEME_LABEL_KEY[id])}</span>
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/conta" className="flex items-center gap-2 cursor-pointer">
-                <UserIcon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
-                <span className="truncate">{t('common.profile')}</span>
-              </Link>
+              )}
+              <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-xs">
+                {initials(user.name)}
+              </AvatarFallback>
+            </Avatar>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          <DropdownMenuLabel className="flex flex-col items-start gap-0.5 py-2.5">
+            <div className="flex items-center gap-2 w-full">
+              <span className="text-sm font-medium text-[var(--color-app-fg)] truncate flex-1">
+                {user.name}
+              </span>
+              {user.role === 'ADMIN' && (
+                <Badge variant="success" className="text-[9px] shrink-0">
+                  <ShieldCheck className="h-2.5 w-2.5" />
+                  {t('shell.admin')}
+                </Badge>
+              )}
+            </div>
+            <span className="text-[11px] text-[var(--color-app-muted)] truncate w-full font-normal">
+              {user.email}
+            </span>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-[var(--color-app-muted)] font-medium py-1.5">
+            {t('theme.label')}
+          </DropdownMenuLabel>
+          {APP_THEMES.map((id) => (
+            <DropdownMenuItem
+              key={id}
+              onSelect={(event) => {
+                event.preventDefault();
+                void setTheme(id);
+              }}
+              className="flex items-center gap-2 cursor-pointer"
+            >
+              <Check
+                className={cn(
+                  'h-3.5 w-3.5',
+                  theme === id ? 'opacity-100 text-[var(--color-accent-primary)]' : 'opacity-0',
+                )}
+              />
+              <span className="truncate">{t(THEME_LABEL_KEY[id])}</span>
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem destructive onSelect={onSignOut}>
-              <LogOut className="h-3.5 w-3.5" />
-              {t('common.signOut')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link to="/conta" className="flex items-center gap-2 cursor-pointer">
+              <UserIcon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
+              <span className="truncate">{t('common.profile')}</span>
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem destructive onSelect={onSignOut}>
+            <LogOut className="h-3.5 w-3.5" />
+            {t('common.signOut')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </header>
   );
 }

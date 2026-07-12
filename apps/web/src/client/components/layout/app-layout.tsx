@@ -11,18 +11,25 @@ import { useVersionMonitor } from '../../lib/use-version-monitor';
 import { UpdateModal } from '../update-modal';
 import { useIsDesktop } from '../../lib/use-media-query';
 import { useEdgeSwipe } from '../../lib/use-edge-swipe';
-import { showsMobileBack, hasOwnMobileChrome } from '../../lib/mobile-nav';
+import {
+  showsMobileBack,
+  hasOwnMobileChrome,
+  isChatRoute,
+  hidesBottomNav,
+} from '../../lib/mobile-nav';
 import { MobileBackButton } from './mobile-back-button';
+import { MobileMenuButton } from './mobile-menu-button';
 
 export function AppLayout(): React.ReactElement {
   const { data, loading } = useMe();
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
-  // Navegação mobile (<md): NÃO há header no topo. A navegação é a bottom-nav
-  // (abas + menu do Perfil com os destinos únicos) + botão de voltar flutuante +
-  // swipe da borda pra abrir o drawer (bônus). Estado do drawer vive aqui pra
-  // ligar o edge-swipe ao overlay.
+  // Navegação mobile (<md): o Topbar flutuante não hospeda navegação — quem
+  // faz isso é a bottom-nav (abas + menu do Perfil com os destinos únicos) +
+  // botão de voltar flutuante + swipe da borda pra abrir o drawer (bônus).
+  // Estado do drawer vive aqui pra ligar o edge-swipe e o botão de abrir menu
+  // (rota de chat, onde a bottom-nav some) ao overlay.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isDesktop = useIsDesktop();
   // Swipe da borda esquerda → direita abre o drawer; swipe de volta fecha. Só
@@ -78,29 +85,39 @@ export function AppLayout(): React.ReactElement {
     return <Navigate to="/pendente" replace />;
   }
 
-  // App shell de altura fixa: o cabeçalho (Topbar) fica travado no topo e o
-  // conteúdo rola dentro do <main>. /grafo ocupa a tela toda e gerencia a
-  // própria altura, então não recebe o overflow-y-auto/padding.
-  // /chat também gerencia o próprio scroll (composer sticky); no mobile
-  // mantém padding da bottom-nav.
+  // App shell de altura fixa: o cabeçalho (Topbar) é um pill flutuante (não
+  // ocupa espaço em fluxo) e o conteúdo rola dentro do <main>. /grafo ocupa a
+  // tela toda e gerencia a própria altura, então não recebe overflow-y-auto
+  // nem padding. /chat (e `/`, que agora É o chat em toda viewport) também
+  // gerencia o próprio scroll (composer sticky).
   const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
-  // Desktop `/` renders chat via RootEntry; treat it like /chat for shell chrome.
-  const isChat = location.pathname === '/chat' || (location.pathname === '/' && isDesktop);
+  const isChat = isChatRoute(location.pathname);
   const isFullBleed = isGraph;
   // Botão de voltar flutuante (mobile): só em sub-páginas (não abas de topo) e
   // nunca em rotas que já têm chrome próprio de nav (ex.: /grafo).
   const showBack = showsMobileBack(location.pathname) && !hasOwnMobileChrome(location.pathname);
-  // Quando o botão de voltar flutuante aparece (mobile, sub-páginas não-fullbleed),
-  // o conteúdo ganha um padding-top pra não ficar atrás do botão. No desktop
-  // (md:) zera, pois lá existe header e o botão não renderiza.
-  const backPad = showBack ? ' pt-[calc(env(safe-area-inset-top)+3.5rem)] md:pt-0' : '';
+  // A bottom-nav mobile some na rota de chat (o rodapé é o promptbox, sem
+  // espaço pra barra de navegação) além das rotas full-bleed (grafo).
+  const hideBottomNav = hidesBottomNav(location.pathname, isDesktop);
+  // Sem bottom-nav no chat mobile, o acesso à navegação vira um botão
+  // flutuante que abre o drawer — nunca junto com o botão de voltar (a rota
+  // de chat nunca é sub-página, então showBack já é false ali; o `!showBack`
+  // é defensivo caso essa invariante mude no futuro).
+  const showMobileNavButton = isChat && !isDesktop && !showBack;
+  // Header flutuante (Topbar) fica sempre visível fora do full-bleed — reserva
+  // um padding-top generoso pro conteúdo não ficar atrás do pill, em mobile e
+  // desktop agora (antes só o botão de voltar mobile precisava desse respiro,
+  // pois o Topbar desktop reservava a própria altura em fluxo).
+  const headerPad = isFullBleed ? '' : ' pt-[calc(env(safe-area-inset-top)+5rem)]';
+  // O chat reserva o safe-area-inset-bottom pro composer não colar no
+  // home-indicator; no desktop nunca teve bottom-nav mesmo, então zera.
+  const chatBottomPad = isDesktop ? ' pb-0' : ' pb-[env(safe-area-inset-bottom)]';
   const mainClass = isFullBleed
     ? 'flex-1 min-h-0'
     : isChat
-      ? 'flex-1 min-h-0 overflow-hidden pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-0' +
-        backPad
+      ? 'flex-1 min-h-0 overflow-hidden' + chatBottomPad + headerPad
       : 'flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6' +
-        backPad;
+        headerPad;
 
   return (
     <>
@@ -116,10 +133,11 @@ export function AppLayout(): React.ReactElement {
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <Topbar user={data.user} />
           {showBack && <MobileBackButton />}
+          {showMobileNavButton && <MobileMenuButton onOpen={() => setMobileNavOpen(true)} />}
           <main ref={mainRef} className={mainClass}>
             <AnimatedOutlet />
           </main>
-          {!isFullBleed && <MobileBottomNav user={data.user} />}
+          {!hideBottomNav && <MobileBottomNav user={data.user} />}
         </div>
       </div>
     </>

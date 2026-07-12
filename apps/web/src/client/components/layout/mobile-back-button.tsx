@@ -3,14 +3,17 @@ import { ArrowLeft } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
 
 /**
- * Botão de voltar flutuante do mobile (<md). Como não há header no topo, este
- * botão sobrepõe o conteúdo no canto superior esquerdo pra dar o "voltar" em
- * sub-páginas. NÃO é uma barra de largura total — é um alvo compacto (≥40px)
- * com fundo translúcido + blur pra legibilidade sobre qualquer conteúdo.
+ * Botão de voltar flutuante do mobile (<md). O `Topbar` não hospeda
+ * navegação (é só tema/chat/avatar), então este botão sobrepõe o conteúdo no
+ * canto superior esquerdo pra dar o "voltar" em sub-páginas. NÃO é uma barra
+ * de largura total — é um alvo compacto (≥40px) com fundo translúcido + blur
+ * pra legibilidade sobre qualquer conteúdo.
  *
  * Quem decide se renderiza é o AppLayout (via `showsMobileBack`/`hasOwnMobileChrome`).
- * Ação: `navigate(-1)` (volta no histórico). Posiciona respeitando o
- * safe-area-inset-top pra não colidir com o notch/status bar.
+ * Nunca aparece junto com `MobileMenuButton` (mesma posição/tamanho, mutuamente
+ * exclusivos — ver `AppLayout`). Ação: `navigate(-1)` (volta no histórico).
+ * Posiciona respeitando o safe-area-inset-top pra não colidir com o
+ * notch/status bar.
  */
 export function MobileBackButton(): React.ReactElement {
   const navigate = useNavigate();

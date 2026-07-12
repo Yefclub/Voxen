@@ -294,8 +294,14 @@ export function GrafoPage(): React.ReactElement {
           </div>
         )}
 
-        {/* Barra de controles flutuante sobre o canvas */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 p-3 sm:p-4">
+        {/* Barra de controles flutuante sobre o canvas. O Topbar global (fixed,
+            top-4 right-4, z-30) ocupa a mesma faixa de altura agora — no
+            mobile empurramos esta barra pra baixo dele (empilha vertical,
+            já que não cabe lado a lado); no desktop reservamos um
+            padding-right (md:pr-[9rem]) maior que a largura real do Topbar
+            em /grafo (~106px de conteúdo + 16px de right-4, com folga) pra
+            a pill (mx-auto max-w-5xl) nunca se estender até lá. */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+5rem)] sm:px-4 sm:pb-4 md:pt-4 md:pr-[9rem]">
           <div className="pointer-events-auto mx-auto flex max-w-5xl flex-wrap items-center gap-2.5 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/80 px-3 py-2.5 shadow-lg backdrop-blur-xl sm:gap-3">
             <button
               type="button"
