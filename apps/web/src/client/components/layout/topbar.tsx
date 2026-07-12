@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { Check, LogOut, Moon, ShieldCheck, Sun, User as UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import {
@@ -15,6 +15,9 @@ import { apiPost } from '../../lib/api';
 import type { MeUser } from '../../lib/types';
 import { Badge } from '../ui/badge';
 import { useI18n } from '../../lib/i18n';
+import { useTheme } from '../../lib/theme-provider';
+import { APP_THEMES, type AppTheme } from '../../lib/theme';
+import { cn } from '../../lib/utils';
 
 function initials(name: string): string {
   return name
@@ -26,6 +29,12 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
+const THEME_LABEL_KEY: Record<AppTheme, 'theme.zinc' | 'theme.emerald' | 'theme.light'> = {
+  zinc: 'theme.zinc',
+  emerald: 'theme.emerald',
+  light: 'theme.light',
+};
+
 /**
  * Cabeçalho do shell — **desktop-only**. No mobile NÃO há header nenhum no topo
  * (ver `app-layout`): a navegação é bottom-nav + botão de voltar flutuante +
@@ -36,6 +45,7 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
   const navigate = useNavigate();
   const { refresh } = useMe();
   const { t } = useI18n();
+  const { theme, setTheme, toggleAppearance } = useTheme();
   const onSignOut = async (): Promise<void> => {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
     await refresh();
@@ -51,7 +61,17 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
         {title && <h1 className="text-base font-semibold font-display tracking-tight">{title}</h1>}
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <button
+          type="button"
+          onClick={() => void toggleAppearance()}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
+          aria-label={theme === 'light' ? t('theme.switchToDark') : t('theme.switchToLight')}
+          title={theme === 'light' ? t('theme.switchToDark') : t('theme.switchToLight')}
+        >
+          {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+        </button>
+
         {/* Avatar/menu de usuário: só no desktop (< md vai pra bottom-nav). */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -68,7 +88,7 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
                     className="h-full w-full object-cover"
                   />
                 )}
-                <AvatarFallback className="bg-transparent text-zinc-100 font-semibold text-xs">
+                <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-xs">
                   {initials(user.name)}
                 </AvatarFallback>
               </Avatar>
@@ -77,7 +97,7 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
           <DropdownMenuContent align="end" className="w-60">
             <DropdownMenuLabel className="flex flex-col items-start gap-0.5 py-2.5">
               <div className="flex items-center gap-2 w-full">
-                <span className="text-sm font-medium text-zinc-100 truncate flex-1">
+                <span className="text-sm font-medium text-[var(--color-app-fg)] truncate flex-1">
                   {user.name}
                 </span>
                 {user.role === 'ADMIN' && (
@@ -91,6 +111,28 @@ export function Topbar({ user, title }: { user: MeUser; title?: string }): React
                 {user.email}
               </span>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-[var(--color-app-muted)] font-medium py-1.5">
+              {t('theme.label')}
+            </DropdownMenuLabel>
+            {APP_THEMES.map((id) => (
+              <DropdownMenuItem
+                key={id}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  void setTheme(id);
+                }}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <Check
+                  className={cn(
+                    'h-3.5 w-3.5',
+                    theme === id ? 'opacity-100 text-[var(--color-accent-primary)]' : 'opacity-0',
+                  )}
+                />
+                <span className="truncate">{t(THEME_LABEL_KEY[id])}</span>
+              </DropdownMenuItem>
+            ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link to="/conta" className="flex items-center gap-2 cursor-pointer">

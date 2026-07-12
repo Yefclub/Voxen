@@ -10,7 +10,7 @@ import { PendentePage } from './pages/pendente';
 import { QrLoginPage } from './pages/qr-login';
 import { OnboardingPage } from './pages/onboarding';
 import { SetupPage } from './pages/setup';
-import { HomePage } from './pages/home';
+import { RootEntry } from './pages/root-entry';
 import { AdminUsuariosPage } from './pages/admin-usuarios';
 import { AdminCustosPage } from './pages/admin-custos';
 import { AdminIntegracoesPage } from './pages/admin-integracoes';
@@ -23,17 +23,21 @@ import { AutomacoesPage } from './pages/automacoes';
 import { GrafoPage } from './pages/grafo';
 import { NovidadesPage } from './pages/novidades';
 import { ChatPage } from './pages/chat';
+import { FilaPage } from './pages/fila';
 import { I18nProvider, useI18n } from './lib/i18n';
+import { ThemeProvider } from './lib/theme-provider';
 import { useMe } from './lib/hooks';
 
 export function App(): React.ReactElement {
   return (
     <I18nProvider>
-      <I18nRuntimeSync />
-      <BrowserRouter>
-        <Toaster />
-        <AppRoutes />
-      </BrowserRouter>
+      <ThemeProvider>
+        <I18nRuntimeSync />
+        <BrowserRouter>
+          <Toaster />
+          <AppRoutes />
+        </BrowserRouter>
+      </ThemeProvider>
     </I18nProvider>
   );
 }
@@ -48,9 +52,17 @@ type ViewTransitionDocument = Document & {
   startViewTransition?: (callback: () => void) => ViewTransitionHandle;
 };
 
-/** Redirect que preserva search/hash (PWA share target em /jobs?shared=1&…). */
+/** Redirect that preserves search/hash (legacy `/dashboard`, share-target query params). */
 function RedirectPreserveSearch({ to }: { to: string }): React.ReactElement {
   const location = useLocation();
+  return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
+}
+
+/** `/jobs` list → queue; share-target query → library ingest. */
+function JobsIndexRedirect(): React.ReactElement {
+  const location = useLocation();
+  const shared = new URLSearchParams(location.search).get('shared') === '1';
+  const to = shared ? '/transcricoes' : '/fila';
   return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
 }
 
@@ -91,7 +103,7 @@ function AppRoutes(): React.ReactElement {
 
       {/* App autenticado */}
       <Route element={<AppLayout />}>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<RootEntry />} />
         <Route path="/dashboard" element={<RedirectPreserveSearch to="/" />} />
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/chat/:id" element={<RedirectPreserveSearch to="/chat" />} />
@@ -100,7 +112,8 @@ function AppRoutes(): React.ReactElement {
         <Route path="/admin/custos" element={<AdminCustosPage />} />
         <Route path="/admin/integracoes" element={<AdminIntegracoesPage />} />
         <Route path="/conta" element={<ContaPage />} />
-        <Route path="/jobs" element={<RedirectPreserveSearch to="/" />} />
+        <Route path="/fila" element={<FilaPage />} />
+        <Route path="/jobs" element={<JobsIndexRedirect />} />
         <Route path="/jobs/:id" element={<JobDetalhePage />} />
         <Route path="/transcricoes" element={<TranscricoesPage />} />
         <Route path="/transcricoes/:id" element={<TranscricaoDetalhePage />} />

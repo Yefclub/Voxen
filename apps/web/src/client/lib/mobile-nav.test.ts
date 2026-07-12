@@ -13,6 +13,7 @@ describe('isBottomNavTab', () => {
     '/grafo/node-1',
     '/dashboard',
     '/jobs',
+    '/fila',
     '/chat',
     '/chat/abc',
     '/notas/abc',
@@ -37,6 +38,7 @@ describe('showsMobileBack', () => {
     '/transcricoes/xyz',
     '/dashboard',
     '/jobs',
+    '/fila',
     '/notas/abc',
     '/automacoes',
     '/setup',
@@ -49,7 +51,16 @@ describe('showsMobileBack', () => {
   });
 
   test('é o complemento exato de isBottomNavTab', () => {
-    for (const p of ['/', '/dashboard', '/jobs/a', '/notas', '/grafo', '/setup', '/chat']) {
+    for (const p of [
+      '/',
+      '/dashboard',
+      '/jobs/a',
+      '/fila',
+      '/notas',
+      '/grafo',
+      '/setup',
+      '/chat',
+    ]) {
       expect(showsMobileBack(p)).toBe(!isBottomNavTab(p));
     }
   });
@@ -80,10 +91,15 @@ describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobi
     expect(shouldShowBack('/grafo/node-1')).toBe(false);
   });
 
-  test.each(['/jobs/123', '/notas/abc', '/automacoes', '/setup', '/conta', '/admin/usuarios'])(
-    'sub-página %s: mostra voltar',
-    (path) => {
-      expect(shouldShowBack(path)).toBe(true);
-    },
-  );
+  test.each([
+    '/jobs/123',
+    '/fila',
+    '/notas/abc',
+    '/automacoes',
+    '/setup',
+    '/conta',
+    '/admin/usuarios',
+  ])('sub-página %s: mostra voltar', (path) => {
+    expect(shouldShowBack(path)).toBe(true);
+  });
 });

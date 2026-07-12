@@ -24,6 +24,7 @@ import { apiPost } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import { formatDuration, formatRelative, formatUsd } from '../lib/format';
 import { AnimatedPage } from '../components/motion/animated-page';
+import { ContentIngestCard } from '../components/ingest/content-ingest-card';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 
 const PAGE_SIZE = 24;
@@ -397,6 +398,8 @@ export function TranscricoesPage(): React.ReactElement {
           loading={regeneratingTitles}
           onConfirm={regenerateTitles}
         />
+
+        <ContentIngestCard />
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none z-10" />

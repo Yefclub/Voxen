@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { jobDestination } from './home';
+import { jobDestination } from './job-destination';
 
 describe('jobDestination', () => {
   it('abre a transcrição quando o job concluído possui transcriptId', () => {

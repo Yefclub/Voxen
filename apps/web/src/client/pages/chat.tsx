@@ -3,17 +3,19 @@ import {
   Check,
   ChevronDown,
   CircleStop,
+  Eraser,
   LoaderCircle,
   Send,
-  Sparkles,
   Volume2,
   VolumeX,
-  Wrench,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { play, setEnabled } from 'cuelume';
 import { Markdown } from '../components/ui/markdown';
-import { apiGet, apiPost } from '../lib/api';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { apiDelete, apiGet, apiPost } from '../lib/api';
+import { useMe } from '../lib/hooks';
+import { useI18n } from '../lib/i18n';
 import { cn } from '../lib/utils';
 
 type ToolState = 'running' | 'completed' | 'error' | 'approval-required';
@@ -32,10 +34,15 @@ type ChatMessage = {
   tools: ToolEvent[] | null;
   compactedAt: string | null;
   createdAt: string;
+  /** Live-only reasoning stream; not persisted. */
+  reasoning?: string;
+  reasoningStartedAt?: number;
+  reasoningEndedAt?: number;
 };
 type Snapshot = { conversation: { id: string; compactionCount: number }; messages: ChatMessage[] };
 type StreamEvent =
   | { type: 'text'; delta: string }
+  | { type: 'reasoning'; delta: string }
   | { type: 'tool'; tool: ToolEvent }
   | { type: 'status'; label: string }
   | { type: 'compaction'; before: number; after: number }
@@ -62,77 +69,86 @@ function approvalId(tool: ToolEvent): string | null {
     : null;
 }
 
-function ToolCard({
+function formatDuration(ms: number): string {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  return `${seconds}s`;
+}
+
+function ToolBlock({
   tool,
   onApprove,
 }: {
   tool: ToolEvent;
   onApprove: (id: string) => void;
 }): React.ReactElement {
-  const [open, setOpen] = useState(tool.state !== 'completed');
+  const { t } = useI18n();
+  const [open, setOpen] = useState(tool.state === 'running' || tool.state === 'approval-required');
   const pendingApproval = approvalId(tool);
   const stateLabel: Record<ToolState, string> = {
-    running: 'Executando',
-    completed: 'Concluída',
-    error: 'Falhou',
-    'approval-required': 'Aguardando confirmação',
+    running: t('chat.toolRunning'),
+    completed: t('chat.toolCompleted'),
+    error: t('chat.toolError'),
+    'approval-required': t('chat.toolApproval'),
   };
+
+  useEffect(() => {
+    if (tool.state === 'running' || tool.state === 'approval-required') setOpen(true);
+    else if (tool.state === 'completed') setOpen(false);
+  }, [tool.state]);
+
   return (
-    <section className="my-3 overflow-hidden rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/65">
+    <section className="my-2">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+        className="flex w-full items-center gap-2 py-1 text-left"
       >
-        <span
-          className={cn(
-            'flex h-6 w-6 items-center justify-center rounded-md',
-            tool.state === 'error'
-              ? 'bg-rose-500/15 text-rose-300'
-              : 'bg-emerald-500/10 text-emerald-300',
-          )}
-        >
+        <span className="flex h-4 w-4 items-center justify-center text-[var(--color-app-muted)]">
           {tool.state === 'running' ? (
-            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+            <LoaderCircle className="h-3.5 w-3.5 animate-spin text-[var(--color-accent-emerald)]" />
+          ) : tool.state === 'completed' ? (
+            <Check className="h-3.5 w-3.5 text-[var(--color-accent-emerald)]" />
+          ) : tool.state === 'error' ? (
+            <span className="text-[10px] font-semibold text-[var(--color-accent-rose)]">!</span>
           ) : (
-            <Wrench className="h-3.5 w-3.5" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent-amber)]" />
           )}
         </span>
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-zinc-200">
+        <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-app-muted)]">
           {tool.name.replaceAll('_', ' ')}
         </span>
-        <span className="text-[10px] uppercase tracking-wide text-[var(--color-app-muted)]">
+        <span className="text-[10px] text-[var(--color-app-muted)]/80">
           {stateLabel[tool.state]}
         </span>
         <ChevronDown
           className={cn(
-            'h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform',
+            'h-3 w-3 text-[var(--color-app-muted)] transition-transform',
             open && 'rotate-180',
           )}
         />
       </button>
       {open && (
-        <div className="border-t border-[var(--color-app-border)] px-3 py-3">
+        <div className="ml-[22px] border-l border-[var(--color-app-border)] pl-3 py-1.5">
           {tool.input !== undefined && (
             <p className="text-[11px] leading-relaxed text-[var(--color-app-muted)]">
-              Parâmetros recebidos com segurança.
+              {t('chat.toolParamsSafe')}
             </p>
           )}
           {pendingApproval ? (
-            <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/5 p-2.5">
-              <p className="text-xs leading-relaxed text-amber-100">
-                Esta ação altera sua base. Confirme antes de executá-la.
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-[var(--color-accent-amber)]/25 bg-[var(--color-accent-amber)]/5 p-2.5">
+              <p className="text-xs leading-relaxed text-[var(--color-app-subtle)]">
+                {t('chat.hitlConfirmHint')}
               </p>
               <button
                 type="button"
                 onClick={() => onApprove(pendingApproval)}
-                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-400 px-2.5 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-amber-300"
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-2.5 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90"
               >
-                <Check className="h-3.5 w-3.5" /> Confirmar
+                <Check className="h-3.5 w-3.5" /> {t('chat.confirm')}
               </button>
             </div>
           ) : tool.output !== undefined ? (
-            <p className="mt-2 text-xs leading-relaxed text-[var(--color-app-muted)]">
+            <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
               {toolSummary(tool.output)}
             </p>
           ) : null}
@@ -142,7 +158,139 @@ function ToolCard({
   );
 }
 
+function ReasoningBlock({
+  text,
+  streaming,
+  startedAt,
+  endedAt,
+}: {
+  text: string;
+  streaming: boolean;
+  startedAt?: number;
+  endedAt?: number;
+}): React.ReactElement | null {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(streaming);
+  const durationMs =
+    startedAt != null ? (endedAt ?? (streaming ? Date.now() : startedAt)) - startedAt : null;
+
+  useEffect(() => {
+    if (streaming) setOpen(true);
+    else setOpen(false);
+  }, [streaming]);
+
+  if (!text && !streaming) return null;
+
+  return (
+    <section className="mb-3">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-2 py-1 text-left"
+      >
+        {streaming ? (
+          <span className="text-[12px] font-medium text-[var(--color-app-muted)] animate-pulse">
+            {t('chat.thinking')}
+          </span>
+        ) : (
+          <>
+            <span className="text-[12px] text-[var(--color-app-muted)]">{t('chat.reasoning')}</span>
+            {durationMs != null && durationMs > 0 && (
+              <span className="text-[10px] text-[var(--color-app-muted)]/70">
+                {t('chat.thinkingDuration', { duration: formatDuration(durationMs) })}
+              </span>
+            )}
+          </>
+        )}
+        <ChevronDown
+          className={cn(
+            'ml-auto h-3 w-3 text-[var(--color-app-muted)] transition-transform',
+            open && 'rotate-180',
+          )}
+        />
+      </button>
+      {open && text && (
+        <div className="ml-0.5 border-l border-[var(--color-app-border)] pl-3 py-1">
+          <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--color-app-muted)]">
+            {text}
+          </p>
+        </div>
+      )}
+      {streaming && !text && <div className="ml-0.5 mt-1 h-3 w-28 rounded shimmer" aria-hidden />}
+    </section>
+  );
+}
+
+function Composer({
+  input,
+  setInput,
+  streaming,
+  onSend,
+  onStop,
+  autoFocus,
+  className,
+}: {
+  input: string;
+  setInput: (value: string) => void;
+  streaming: boolean;
+  onSend: () => void;
+  onStop: () => void;
+  autoFocus?: boolean;
+  className?: string;
+}): React.ReactElement {
+  const { t } = useI18n();
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSend();
+      }}
+      className={cn('w-full', className)}
+    >
+      <div className="flex items-end gap-2 rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface)] p-2 shadow-lg shadow-black/10 focus-within:border-[var(--color-accent-emerald)]/40">
+        <textarea
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              onSend();
+            }
+          }}
+          placeholder={t('prompt.placeholder')}
+          rows={1}
+          disabled={streaming}
+          autoFocus={autoFocus}
+          className="max-h-36 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-[var(--color-app-fg)] outline-none placeholder:text-[var(--color-app-muted)] disabled:opacity-60"
+        />
+        {streaming ? (
+          <button
+            type="button"
+            onClick={onStop}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-accent-rose)]/15 text-[var(--color-accent-rose)] hover:bg-[var(--color-accent-rose)]/25"
+            aria-label={t('chat.stop')}
+          >
+            <CircleStop className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-accent-emerald)] text-[var(--color-app-bg)] transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label={t('chat.send')}
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
 export function ChatPage(): React.ReactElement {
+  const { t } = useI18n();
+  const { data: me } = useMe();
+  const firstName = me?.user?.name?.split(' ')[0] ?? t('dashboard.fallbackName');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
@@ -150,8 +298,17 @@ export function ChatPage(): React.ReactElement {
   const [status, setStatus] = useState<string | null>(null);
   const [nearBottom, setNearBottom] = useState(true);
   const [soundsEnabled, setSoundsEnabled] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const streamingAssistantId = useRef<string | null>(null);
+  type LiveReasoning = { text: string; startedAt?: number; endedAt?: number };
+  // MutableRefObject: React 19 RefObject.current is readonly and control-flow
+  // narrows after `= null`, which breaks later reads in the same function.
+  const liveReasoningRef = useRef<LiveReasoning | null>(null) as {
+    current: LiveReasoning | null;
+  };
 
   const visibleMessages = useMemo(
     () =>
@@ -160,6 +317,7 @@ export function ChatPage(): React.ReactElement {
       ),
     [messages],
   );
+  const isEmpty = !loading && visibleMessages.length === 0;
 
   const refresh = async (): Promise<void> => {
     setLoading(true);
@@ -167,7 +325,7 @@ export function ChatPage(): React.ReactElement {
       const snapshot = await apiGet<Snapshot>('/api/chat');
       setMessages(snapshot.messages);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível carregar o chat.');
+      toast.error(error instanceof Error ? error.message : t('chat.loadError'));
     } finally {
       setLoading(false);
     }
@@ -204,7 +362,22 @@ export function ChatPage(): React.ReactElement {
       if (soundsEnabled) play('success');
       await refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível confirmar a ação.');
+      toast.error(error instanceof Error ? error.message : t('chat.approveError'));
+    }
+  }
+
+  async function clearHistory(): Promise<void> {
+    setClearing(true);
+    try {
+      await apiDelete<{ ok: true }>('/api/chat');
+      setMessages([]);
+      setStatus(null);
+      toast.success(t('chat.cleared'));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('shell.deleteConversationError'));
+      throw error;
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -229,10 +402,12 @@ export function ChatPage(): React.ReactElement {
       compactedAt: null,
       createdAt: new Date().toISOString(),
     };
+    streamingAssistantId.current = localAssistant.id;
+    liveReasoningRef.current = null;
     setMessages((current) => [...current, localUser, localAssistant]);
     setInput('');
     setStreaming(true);
-    setStatus('Pensando…');
+    setStatus(t('chat.thinking'));
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -244,18 +419,49 @@ export function ChatPage(): React.ReactElement {
         body: JSON.stringify({ content }),
         signal: controller.signal,
       });
-      if (!response.ok || !response.body) throw new Error('Não foi possível iniciar a resposta.');
+      if (!response.ok || !response.body) throw new Error(t('chat.streamStartError'));
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       const apply = (event: StreamEvent): void => {
         if (event.type === 'text') {
           setMessages((current) =>
-            current.map((message) =>
-              message.id === localAssistant.id
-                ? { ...message, content: message.content + event.delta }
-                : message,
-            ),
+            current.map((message) => {
+              if (message.id !== localAssistant.id) return message;
+              const next = {
+                ...message,
+                content: message.content + event.delta,
+                reasoningEndedAt:
+                  message.reasoning && !message.reasoningEndedAt
+                    ? Date.now()
+                    : message.reasoningEndedAt,
+              };
+              if (next.reasoning) {
+                liveReasoningRef.current = {
+                  text: next.reasoning,
+                  startedAt: next.reasoningStartedAt,
+                  endedAt: next.reasoningEndedAt,
+                };
+              }
+              return next;
+            }),
+          );
+        } else if (event.type === 'reasoning') {
+          setMessages((current) =>
+            current.map((message) => {
+              if (message.id !== localAssistant.id) return message;
+              const next = {
+                ...message,
+                reasoning: (message.reasoning ?? '') + event.delta,
+                reasoningStartedAt: message.reasoningStartedAt ?? Date.now(),
+              };
+              liveReasoningRef.current = {
+                text: next.reasoning ?? '',
+                startedAt: next.reasoningStartedAt,
+                endedAt: next.reasoningEndedAt,
+              };
+              return next;
+            }),
           );
         } else if (event.type === 'status') {
           setStatus(event.label);
@@ -276,7 +482,10 @@ export function ChatPage(): React.ReactElement {
           );
         } else if (event.type === 'compaction') {
           setStatus(
-            `Memória resumida: ${event.before.toLocaleString()} → ${event.after.toLocaleString()} tokens.`,
+            t('chat.compactionStatus', {
+              before: event.before.toLocaleString(),
+              after: event.after.toLocaleString(),
+            }),
           );
         } else if (event.type === 'error') {
           setStatus(event.message);
@@ -297,167 +506,206 @@ export function ChatPage(): React.ReactElement {
           try {
             apply(JSON.parse(dataLine.slice(6)) as StreamEvent);
           } catch {
-            /* ignora frame inválido */
+            /* ignore invalid frame */
           }
         }
       }
-      await refresh();
+      const liveReasoning = liveReasoningRef.current as LiveReasoning | null;
+      if (liveReasoning && liveReasoning.endedAt == null) {
+        liveReasoningRef.current = {
+          ...liveReasoning,
+          endedAt: Date.now(),
+        };
+      }
+      const snapshot = await apiGet<Snapshot>('/api/chat');
+      const preserved = liveReasoningRef.current as LiveReasoning | null;
+      setMessages(
+        snapshot.messages.map((message, index, list) => {
+          if (
+            preserved &&
+            message.role === 'ASSISTANT' &&
+            index === list.length - 1 &&
+            !message.reasoning
+          ) {
+            return {
+              ...message,
+              reasoning: preserved.text,
+              reasoningStartedAt: preserved.startedAt,
+              reasoningEndedAt: preserved.endedAt,
+            };
+          }
+          return message;
+        }),
+      );
     } catch (error) {
       if (!controller.signal.aborted)
-        toast.error(error instanceof Error ? error.message : 'Falha no streaming.');
+        toast.error(error instanceof Error ? error.message : t('chat.streamError'));
     } finally {
       abortRef.current = null;
+      streamingAssistantId.current = null;
+      liveReasoningRef.current = null;
       setStreaming(false);
       setStatus(null);
     }
   }
 
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      {streaming && (
+        <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-[var(--color-accent-emerald)]">
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> {status ?? t('chat.responding')}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          const next = !soundsEnabled;
+          setSoundsEnabled(next);
+          window.localStorage.setItem('voxen.chat.sounds', String(next));
+          setEnabled(next);
+          if (next) play('success');
+        }}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border)] text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)]"
+        aria-label={soundsEnabled ? t('chat.soundsOff') : t('chat.soundsOn')}
+        title={soundsEnabled ? t('chat.soundsOff') : t('chat.soundsOn')}
+      >
+        {soundsEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+      </button>
+      <button
+        type="button"
+        onClick={() => setClearOpen(true)}
+        disabled={streaming || isEmpty}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border)] text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] disabled:cursor-not-allowed disabled:opacity-40"
+        aria-label={t('chat.clearConversation')}
+        title={t('chat.clearConversation')}
+      >
+        <Eraser className="h-4 w-4" />
+      </button>
+    </div>
+  );
+
   return (
-    <main className="mx-auto flex h-[calc(100dvh-6.5rem)] w-full max-w-5xl flex-col px-3 pb-3 pt-2 md:h-[calc(100dvh-2rem)] md:px-0">
-      <header className="flex items-center justify-between border-b border-[var(--color-app-border)] px-2 pb-3">
-        <div>
-          <p className="font-display text-lg font-semibold tracking-tight text-zinc-100">
-            Conversar com Vox
-          </p>
-          <p className="mt-0.5 text-xs text-[var(--color-app-muted)]">
-            Uma conversa contínua, conectada ao seu acervo.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {streaming && (
-            <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-emerald-300">
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> {status ?? 'Respondendo'}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              const next = !soundsEnabled;
-              setSoundsEnabled(next);
-              window.localStorage.setItem('voxen.chat.sounds', String(next));
-              setEnabled(next);
-              if (next) play('success');
-            }}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border)] text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)]"
-            aria-label={soundsEnabled ? 'Desativar sons do chat' : 'Ativar sons do chat'}
-            title={soundsEnabled ? 'Desativar sons do chat' : 'Ativar sons do chat'}
-          >
-            {soundsEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-          </button>
-        </div>
+    <main className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col px-3 md:px-0">
+      <header className="flex shrink-0 items-center justify-end gap-2 px-1 py-2 md:py-3">
+        {headerActions}
       </header>
 
       <p className="sr-only" aria-live="polite">
-        {streaming ? (status ?? 'A Vox está respondendo.') : ''}
+        {streaming ? (status ?? t('chat.responding')) : ''}
       </p>
-      <div
-        ref={scrollerRef}
-        onScroll={onScroll}
-        role="log"
-        aria-live="off"
-        aria-label="Histórico da conversa"
-        className="relative flex-1 overflow-y-auto scroll-smooth px-1 py-5"
-      >
-        {loading ? (
-          <div className="flex h-full items-center justify-center text-sm text-[var(--color-app-muted)]">
-            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> Carregando conversa…
-          </div>
-        ) : visibleMessages.length === 0 ? (
-          <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center text-center">
-            <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/20 bg-emerald-400/10 text-emerald-300">
-              <Sparkles className="h-6 w-6" />
-            </span>
-            <h1 className="font-display text-xl font-semibold text-zinc-100">
-              O que você quer descobrir?
-            </h1>
-            <p className="mt-2 text-sm leading-relaxed text-[var(--color-app-muted)]">
-              Posso pesquisar transcrições, notas e conexões do Brain. Peça uma resposta baseada no
-              seu acervo.
-            </p>
-          </div>
-        ) : (
-          visibleMessages.map((message) => (
-            <article
-              key={message.id}
-              className={cn('mb-5 flex', message.role === 'USER' ? 'justify-end' : 'justify-start')}
-            >
-              <div
-                className={cn(
-                  'max-w-[92%] rounded-2xl px-4 py-3 md:max-w-[78%]',
-                  message.role === 'USER'
-                    ? 'bg-emerald-500/15 text-zinc-100 ring-1 ring-emerald-400/15'
-                    : 'bg-[var(--color-app-surface)]/80 ring-1 ring-[var(--color-app-border)]',
-                )}
-              >
-                {message.content && <Markdown>{message.content}</Markdown>}
-                {message.tools?.map((tool) => (
-                  <ToolCard key={tool.id} tool={tool} onApprove={(id) => void approve(id)} />
-                ))}
-              </div>
-            </article>
-          ))
-        )}
-        {!nearBottom && (
-          <button
-            type="button"
-            onClick={() => {
-              setNearBottom(true);
-              scrollerRef.current?.scrollTo({
-                top: scrollerRef.current.scrollHeight,
-                behavior: 'smooth',
-              });
-            }}
-            className="sticky bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 py-1.5 text-xs font-medium text-zinc-200 shadow-lg"
-          >
-            Ir ao mais recente
-          </button>
-        )}
-      </div>
 
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void send();
-        }}
-        className="border-t border-[var(--color-app-border)] pt-3"
-      >
-        {status && !streaming && <p className="mb-2 text-xs text-amber-200">{status}</p>}
-        <div className="flex items-end gap-2 rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface)] p-2 shadow-lg shadow-black/10 focus-within:border-emerald-400/45">
-          <textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-            placeholder="Pergunte sobre suas transcrições, notas ou Brain…"
-            rows={1}
-            disabled={streaming}
-            className="max-h-36 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-zinc-100 outline-none placeholder:text-[var(--color-app-muted)] disabled:opacity-60"
-          />
-          {streaming ? (
-            <button
-              type="button"
-              onClick={() => abortRef.current?.abort()}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/15 text-rose-200 hover:bg-rose-500/25"
-              aria-label="Interromper resposta"
-            >
-              <CircleStop className="h-4 w-4" />
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!input.trim()}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-400 text-zinc-950 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label="Enviar mensagem"
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          )}
+      {loading ? (
+        <div className="flex flex-1 items-center justify-center text-sm text-[var(--color-app-muted)]">
+          <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> {t('chat.loading')}
         </div>
-      </form>
+      ) : isEmpty ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 pb-8">
+          <h1 className="font-display mb-8 text-center text-2xl font-semibold tracking-tight text-[var(--color-app-fg)] md:text-3xl">
+            {t('home.greeting', { name: firstName })}
+          </h1>
+          <Composer
+            input={input}
+            setInput={setInput}
+            streaming={streaming}
+            onSend={() => void send()}
+            onStop={() => abortRef.current?.abort()}
+            autoFocus
+            className="w-full max-w-2xl"
+          />
+        </div>
+      ) : (
+        <>
+          <div
+            ref={scrollerRef}
+            onScroll={onScroll}
+            role="log"
+            aria-live="off"
+            aria-label={t('chat.historyLabel')}
+            className="relative min-h-0 flex-1 overflow-y-auto scroll-smooth px-1 py-3"
+          >
+            {visibleMessages.map((message) => {
+              const isStreamingAssistant = streaming && message.id === streamingAssistantId.current;
+              return (
+                <article
+                  key={message.id}
+                  className={cn(
+                    'mb-5 flex',
+                    message.role === 'USER' ? 'justify-end' : 'justify-start',
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'max-w-[92%] rounded-2xl px-4 py-3 md:max-w-[85%]',
+                      message.role === 'USER'
+                        ? 'bg-[var(--color-accent-emerald-soft)] text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-emerald)]/15'
+                        : 'bg-transparent',
+                    )}
+                  >
+                    {message.role === 'ASSISTANT' &&
+                      (message.reasoning || isStreamingAssistant) && (
+                        <ReasoningBlock
+                          text={message.reasoning ?? ''}
+                          streaming={Boolean(isStreamingAssistant && !message.reasoningEndedAt)}
+                          startedAt={message.reasoningStartedAt}
+                          endedAt={message.reasoningEndedAt}
+                        />
+                      )}
+                    {message.tools?.map((tool) => (
+                      <ToolBlock key={tool.id} tool={tool} onApprove={(id) => void approve(id)} />
+                    ))}
+                    {message.content && <Markdown>{message.content}</Markdown>}
+                    {isStreamingAssistant && !message.content && !message.reasoning && (
+                      <span className="inline-flex items-center gap-1.5 text-sm text-[var(--color-app-muted)]">
+                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                        {status ?? t('chat.thinking')}
+                      </span>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+            {!nearBottom && (
+              <button
+                type="button"
+                onClick={() => {
+                  setNearBottom(true);
+                  scrollerRef.current?.scrollTo({
+                    top: scrollerRef.current.scrollHeight,
+                    behavior: 'smooth',
+                  });
+                }}
+                className="sticky bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--color-app-fg)] shadow-lg"
+              >
+                {t('chat.scrollLatest')}
+              </button>
+            )}
+          </div>
+
+          <div className="shrink-0 border-t border-[var(--color-app-border)] px-1 pt-3 pb-3 md:pb-4">
+            {status && !streaming && (
+              <p className="mb-2 text-xs text-[var(--color-accent-amber)]">{status}</p>
+            )}
+            <Composer
+              input={input}
+              setInput={setInput}
+              streaming={streaming}
+              onSend={() => void send()}
+              onStop={() => abortRef.current?.abort()}
+            />
+          </div>
+        </>
+      )}
+
+      <ConfirmDialog
+        open={clearOpen}
+        onOpenChange={setClearOpen}
+        title={t('shell.deleteConversationTitle')}
+        description={t('shell.deleteConversationDescription')}
+        confirmLabel={t('common.delete')}
+        variant="destructive"
+        loading={clearing}
+        onConfirm={clearHistory}
+      />
     </main>
   );
 }

@@ -217,9 +217,26 @@ app.get('/api/me', async (c) => {
   }
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true, name: true, image: true, status: true, role: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      image: true,
+      status: true,
+      role: true,
+      theme: true,
+    },
   });
-  return c.json({ user, setupComplete, onboardingDone, language });
+  const theme =
+    user?.theme === 'emerald' || user?.theme === 'light' || user?.theme === 'zinc'
+      ? user.theme
+      : 'zinc';
+  return c.json({
+    user: user ? { ...user, theme } : null,
+    setupComplete,
+    onboardingDone,
+    language,
+  });
 });
 
 // Setup endpoints (protegidos por middleware ADMIN no próprio router)
