@@ -117,15 +117,18 @@ export function completedToolCount(tools: readonly ToolLike[]): number {
  */
 export function formatToolDuration(ms: number): string {
   const totalSeconds = Math.max(0, ms) / 1000;
-  if (totalSeconds >= 60) {
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = Math.round(totalSeconds % 60);
-    return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
-  }
   if (totalSeconds < 10) {
     return `${totalSeconds.toFixed(1).replace('.', ',')}s`;
   }
-  return `${Math.round(totalSeconds)}s`;
+  // Arredonda pra segundo inteiro ANTES de decidir minuto/segundo — evita tanto
+  // "60s" (59,6s) quanto "1m 60s" (119,6s) por arredondamento na borda.
+  const rounded = Math.round(totalSeconds);
+  if (rounded >= 60) {
+    const minutes = Math.floor(rounded / 60);
+    const seconds = rounded % 60;
+    return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+  }
+  return `${rounded}s`;
 }
 
 // ----------------------------------------------------------------------------

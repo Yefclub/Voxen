@@ -142,11 +142,16 @@ function Collapsible({
 // ---------------------------------------------------------------------------
 function ToolRow({ tool, onApprove }: { tool: ToolEvent; onApprove: (id: string) => void }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
   const family = toolFamily(tool.name);
   const Icon = FAMILY_ICON[family];
   const pendingApproval = approvalId(tool);
   const expandable = tool.output !== undefined || pendingApproval != null;
+  // Aprovação pendente (HITL): abre a linha automaticamente pra o botão
+  // "Confirmar" ficar visível — senão o usuário acha que o agente travou.
+  const [open, setOpen] = useState(pendingApproval != null);
+  useEffect(() => {
+    if (pendingApproval != null) setOpen(true);
+  }, [pendingApproval]);
 
   return (
     <div>

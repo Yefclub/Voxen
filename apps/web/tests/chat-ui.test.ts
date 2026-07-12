@@ -112,6 +112,10 @@ describe('formatToolDuration', () => {
     expect(formatToolDuration(65000)).toBe('1m 05s');
     expect(formatToolDuration(125000)).toBe('2m 05s');
   });
+  it('segundos que arredondam pra 60 sobem pro minuto', () => {
+    expect(formatToolDuration(119600)).toBe('2m 00s');
+    expect(formatToolDuration(59600)).toBe('1m 00s');
+  });
   it('negativo vira zero', () => {
     expect(formatToolDuration(-10)).toBe('0,0s');
   });

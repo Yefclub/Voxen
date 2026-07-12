@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
   ChevronDown,
@@ -209,16 +209,18 @@ function SidebarRail({
   onExpand: () => void;
 }): React.ReactElement {
   const { t } = useI18n();
+  const reduceMotion = useReducedMotion();
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN').filter(
     (n) => n.to !== '/',
   );
 
   return (
     <motion.nav
-      initial={{ opacity: 0, x: -16 }}
+      // Respeita prefers-reduced-motion: sem slide, aparição instantânea.
+      initial={reduceMotion ? false : { opacity: 0, x: -16 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -16 }}
-      transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -16 }}
+      transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }}
       className="hidden md:flex fixed top-4 bottom-4 left-4 z-40 flex-col items-center gap-1 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2 py-3 backdrop-blur-xl"
       style={{ width: RAIL_WIDTH }}
       aria-label={t('shell.openMenu')}
@@ -229,7 +231,7 @@ function SidebarRail({
             <button
               type="button"
               onClick={onExpand}
-              className="mb-1 flex h-9 w-9 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-zinc-100"
+              className="mb-1 flex h-9 w-9 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
               aria-label={t('shell.expandSidebar')}
             >
               <PanelLeftOpen className="h-4 w-4" />
@@ -251,7 +253,7 @@ function SidebarRail({
                     'flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
                     isActive
                       ? 'bg-[var(--color-app-surface-hover)] text-emerald-400'
-                      : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-zinc-100',
+                      : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
                   )}
                   aria-label={t(labelKey)}
                 >
