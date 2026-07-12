@@ -71,26 +71,6 @@ export function hasToolLabel(name: string): boolean {
   return KNOWN_TOOL_NAMES.includes(name);
 }
 
-export interface FamilySummary {
-  family: ToolFamily;
-  count: number;
-}
-
-/**
- * Resume as famílias das ferramentas na ordem da primeira ocorrência, com a
- * contagem por família — alimenta o header-resumo do toolblock colapsado.
- */
-export function summarizeFamilies(tools: readonly ToolLike[]): FamilySummary[] {
-  const order: ToolFamily[] = [];
-  const counts = new Map<ToolFamily, number>();
-  for (const tool of tools) {
-    const family = toolFamily(tool.name);
-    if (!counts.has(family)) order.push(family);
-    counts.set(family, (counts.get(family) ?? 0) + 1);
-  }
-  return order.map((family) => ({ family, count: counts.get(family) ?? 0 }));
-}
-
 /**
  * Estado agregado do toolblock:
  * - `running` se qualquer ferramenta está rodando ou aguardando confirmação;
@@ -104,11 +84,6 @@ export function toolBlockState(tools: readonly ToolLike[]): 'running' | 'error' 
     if (tool.state === 'error') hasError = true;
   }
   return hasError ? 'error' : 'done';
-}
-
-/** Quantidade de ferramentas concluídas (done ou erro contam como terminadas). */
-export function completedToolCount(tools: readonly ToolLike[]): number {
-  return tools.filter((tool) => tool.state === 'completed' || tool.state === 'error').length;
 }
 
 /**
