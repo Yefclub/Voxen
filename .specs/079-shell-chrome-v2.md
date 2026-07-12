@@ -133,17 +133,17 @@ em toda rota não full-bleed. Cálculo: o pill do `Topbar` fica em
 de ~0.6rem já que a verificação visual (Playwright) está desligada nesta
 entrega. **Ressalva:** este valor pode precisar de ajuste fino no deploy.
 
-**`/grafo` sem padding-top (mantido full-bleed) — RISCO CONFIRMADO de colisão
-visual com o `Topbar`.** A barra flutuante própria do grafo (`grafo.tsx`,
-`absolute inset-x-0 top-0 z-20`, centralizada até `max-w-5xl`) ocupava a
-faixa de altura 0–~76px do topo com segurança porque o Topbar **antigo** era
-`hidden` no mobile e reservava 64px de fluxo no desktop (empurrando o canvas
-do grafo, e portanto sua barra, para `y=64`). Nenhuma das duas condições vale
-mais: o `Topbar` novo é `fixed`/`z-30`, aparece em mobile e desktop, e
-`/grafo` (via `isFullBleed`) não ganha nenhum padding-top compensatório —
-então as duas barras passam a ocupar a MESMA faixa de altura.
-Confirmado por investigação dedicada (dupla checagem, incluindo leitura
-direta de `grafo.tsx`):
+**`/grafo` sem padding-top (mantido full-bleed) — colisão visual com o
+`Topbar` CONFIRMADA e CORRIGIDA nesta PR.** A barra flutuante própria do
+grafo (`grafo.tsx`, `absolute inset-x-0 top-0 z-20`, centralizada até
+`max-w-5xl`) ocupava a faixa de altura 0–~76px do topo com segurança porque
+o Topbar **antigo** era `hidden` no mobile e reservava 64px de fluxo no
+desktop (empurrando o canvas do grafo, e portanto sua barra, para `y=64`).
+Nenhuma das duas condições vale mais: o `Topbar` novo é `fixed`/`z-30`,
+aparece em mobile e desktop, e `/grafo` (via `isFullBleed`) não ganha nenhum
+padding-top compensatório — então as duas barras passam a ocupar a MESMA
+faixa de altura. Confirmado por investigação dedicada (dupla checagem,
+incluindo leitura direta de `grafo.tsx`):
 
 - **Mobile**: colisão praticamente garantida — a barra do grafo sempre ocupa
   a largura cheia da viewport (o `max-w-5xl` nunca chega a limitar em tela
@@ -151,16 +151,62 @@ direta de `grafo.tsx`):
 - **Desktop**: muito provável em larguras comuns de laptop (~1024–1350px de
   viewport lógica) — nessas larguras a pill centralizada do grafo (que cresce
   até 1024px) termina a poucos pixels (ou sobrepondo) o canto onde o `Topbar`
-  fica. Cálculo: sem colisão só a partir de ~1268px de largura de viewport.
-- Como `Topbar` tem `z-30` > `z-20` da barra do grafo, ele renderiza **por
-  cima**, provavelmente cobrindo os badges de `GraphStats` ou os botões de
-  2D/3D e refresh.
+  fica. Sem o fix, sem colisão só a partir de ~1268px de largura de viewport.
+- Como `Topbar` tem `z-30` > `z-20` da barra do grafo, ele renderizaria **por
+  cima**, cobrindo os badges de `GraphStats` ou os botões de 2D/3D e refresh.
 
-Não corrigido nesta PR — fora do escopo combinado (o pedido original era
-"confirme, não precisa mudar"), e qualquer correção de `grafo.tsx` (reduzir
-`max-w-5xl`, reservar `padding-right`, reposicionar) merece verificação
-visual real, que está desligada nesta entrega. Ver ressalva de alta
-prioridade no corpo da PR.
+**Fix aplicado** (container externo da barra, `grafo.tsx` linha ~304): troca
+de `p-3 sm:p-4` (padding uniforme) por padding decomposto por lado, com dois
+comportamentos diferentes por breakpoint — mobile empilha verticalmente
+(empurra a barra pra baixo do `Topbar`), desktop reserva espaço lateral
+(convive na mesma linha, com margem):
+
+```
+px-3 pb-3 pt-[calc(env(safe-area-inset-top)+5rem)]
+sm:px-4 sm:pb-4
+md:pt-4 md:pr-[9rem]
+```
+
+- **Mobile (< md, 768px)**: `pt-[calc(env(safe-area-inset-top)+5rem)]` —
+  mesmo valor usado no padding-top geral do `<main>` (ver acima), empurra a
+  barra do grafo pra baixo da faixa ocupada pelo `Topbar` em vez de competir
+  horizontalmente por espaço (que já é escasso no mobile).
+- **Desktop (≥ md)**: `md:pt-4` volta o padding-top ao valor original (a
+  barra continua na mesma linha horizontal, há espaço lateral suficiente);
+  `md:pr-[9rem]` (144px) reserva espaço à direita para a pill (`mx-auto
+  max-w-5xl`) nunca se estender até onde o `Topbar` está.
+
+**Critério de não-colisão (verificação geométrica, documentada por não ser
+automatizável sem Playwright/regressão visual — fora do escopo desta
+entrega):** o padding-right reservado deve ser maior ou igual à largura real
+ocupada pelo `Topbar` a partir da borda direita da viewport, em qualquer
+largura de tela.
+
+- Largura do `Topbar` em `/grafo` (sem `ChatShellControls`, que só aparece em
+  `isChatRoute`): toggle de tema (`h-9 w-9`=36px) + avatar (`h-9 w-9`=36px) +
+  `gap-3` (12px, breakpoint `sm+`, que cobre todo desktop) + `px-2.5` (20px)
+  + borda (2px) = **106px**.
+  - `right-4` do `Topbar` = 16px.
+  - Total ocupado a partir da borda direita = 106 + 16 = **122px**.
+- Padding-right reservado na barra do grafo = `9rem` = **144px**.
+- Margem de segurança = 144 − 122 = **22px** (~1.375rem) — folga proposital,
+  já que não há verificação visual nesta entrega.
+- **144px ≥ 122px ⇒ critério satisfeito em qualquer largura ≥ 768px** (o
+  padding-right é uma constante, não depende da largura da viewport — ao
+  contrário do problema original, que só colidia em faixas específicas
+  porque a pill crescia com a viewport disponível).
+- No mobile (< 768px), o critério muda de "não sobrepor horizontalmente"
+  para "não sobrepor verticalmente": a barra do grafo precisa começar depois
+  do fim do `Topbar` (`top: calc(safe-area + 1rem)` + altura ~3.375rem ⇒
+  termina em ~4.375rem). `pt-[calc(safe-area+5rem)]` ≥ isso, com a mesma
+  folga de ~0.6rem usada no padding-top geral do app.
+
+Se no futuro a largura do `Topbar` em `/grafo` mudar (ex.: adicionar um botão
+novo), este cálculo precisa ser refeito e o `md:pr-[9rem]` ajustado — não há
+teste automatizado que capture essa relação (limitação de Tailwind com
+valores arbitrários: não há uma forma direta de compartilhar uma constante
+JS testável com uma `className` estática sem introduzir CSS custom
+properties, o que ficou fora do escopo deste fix pontual).
 
 ## Critérios de Aceite
 
@@ -182,17 +228,18 @@ prioridade no corpo da PR.
       mobile e sempre oculta em `/grafo`.
 - [ ] `MobileMenuButton` novo, mobile-only, nunca renderiza junto com
       `MobileBackButton`.
+- [ ] Barra de controles do `/grafo` não colide mais com o `Topbar`: padding
+      decomposto por breakpoint (`px-3 pb-3 pt-[calc(safe-area+5rem)]
+      sm:px-4 sm:pb-4 md:pt-4 md:pr-[9rem]`) satisfaz o critério geométrico
+      documentado acima (144px reservados ≥ 122px ocupados pelo `Topbar` em
+      `/grafo`, com folga de 22px).
 - [ ] `make lint`, `make typecheck`, `bun test` (apps/web) verdes.
 
 ## Fora de Escopo
 
 - Verificação visual via Playwright (desligada nesta entrega por decisão do
-  owner — conferência acontece no deploy).
-- Ajuste do `max-w-5xl`/posicionamento da barra flutuante do grafo
-  (`grafo.tsx`) para eliminar a colisão **confirmada** com o `Topbar` (ver
-  seção de decisões acima) — documentado como ressalva de alta prioridade,
-  não implementado nesta PR. Recomendação para acompanhamento: reduzir o
-  `max-w-5xl` da barra do grafo ou reservar `padding-right` na faixa onde o
-  `Topbar` fica; qualquer uma das duas precisa de verificação visual real.
+  owner — conferência acontece no deploy). O fix da colisão `/grafo` ×
+  `Topbar` foi aplicado com base em cálculo geométrico (ver seção de
+  decisões), não em verificação visual real — vale conferir no deploy.
 - Alterações em `BOTTOM_NAV_TABS`/itens da bottom-nav em si (fora da
   visibilidade da barra inteira na rota de chat).
