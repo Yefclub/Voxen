@@ -12,7 +12,7 @@ export function Separator({
     <div
       role="separator"
       className={cn(
-        'shrink-0 bg-[var(--color-app-surface-hover)]',
+        'shrink-0 bg-[var(--color-app-border)]',
         orientation === 'horizontal' ? 'h-px w-full' : 'w-px h-full',
         className,
       )}
