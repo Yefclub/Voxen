@@ -1,5 +1,12 @@
 import { describe, test, expect } from 'bun:test';
-import { BOTTOM_NAV_TABS, isBottomNavTab, showsMobileBack, hasOwnMobileChrome } from './mobile-nav';
+import {
+  BOTTOM_NAV_TABS,
+  isBottomNavTab,
+  showsMobileBack,
+  hasOwnMobileChrome,
+  isChatRoute,
+  hidesBottomNav,
+} from './mobile-nav';
 
 describe('isBottomNavTab', () => {
   test.each([...BOTTOM_NAV_TABS])('reconhece a aba de topo %s (match exato)', (tab) => {
@@ -77,6 +84,53 @@ describe('hasOwnMobileChrome', () => {
   });
 });
 
+describe('isChatRoute', () => {
+  test.each(['/', '/chat'])('%s é rota de chat', (path) => {
+    expect(isChatRoute(path)).toBe(true);
+  });
+
+  test.each([
+    '/chat/abc',
+    '/transcricoes',
+    '/notas',
+    '/grafo',
+    '/fila',
+    '/setup',
+    '/conta',
+    '/admin/usuarios',
+  ])('%s NÃO é rota de chat (match exato)', (path) => {
+    expect(isChatRoute(path)).toBe(false);
+  });
+});
+
+describe('hidesBottomNav', () => {
+  test('rota de chat (/) no mobile esconde a bottom-nav', () => {
+    expect(hidesBottomNav('/', false)).toBe(true);
+  });
+
+  test('rota de chat (/chat) no mobile esconde a bottom-nav', () => {
+    expect(hidesBottomNav('/chat', false)).toBe(true);
+  });
+
+  test('rota de chat no DESKTOP não esconde (a bottom-nav nem monta lá, mas a decisão não depende disso)', () => {
+    expect(hidesBottomNav('/', true)).toBe(false);
+    expect(hidesBottomNav('/chat', true)).toBe(false);
+  });
+
+  test('grafo esconde a bottom-nav independente de desktop/mobile (chrome próprio)', () => {
+    expect(hidesBottomNav('/grafo', false)).toBe(true);
+    expect(hidesBottomNav('/grafo', true)).toBe(true);
+    expect(hidesBottomNav('/grafo/node-1', false)).toBe(true);
+  });
+
+  test.each(['/transcricoes', '/notas', '/fila', '/setup'])(
+    '%s mantém a bottom-nav visível no mobile',
+    (path) => {
+      expect(hidesBottomNav(path, false)).toBe(false);
+    },
+  );
+});
+
 describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobileChrome)', () => {
   const shouldShowBack = (p: string): boolean => showsMobileBack(p) && !hasOwnMobileChrome(p);
 
@@ -101,5 +155,9 @@ describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobi
     '/admin/usuarios',
   ])('sub-página %s: mostra voltar', (path) => {
     expect(shouldShowBack(path)).toBe(true);
+  });
+
+  test('/chat visitada diretamente (não é aba de topo): mostra voltar — motivo pelo qual o botão de abrir menu (AppLayout) exige !showBack', () => {
+    expect(shouldShowBack('/chat')).toBe(true);
   });
 });

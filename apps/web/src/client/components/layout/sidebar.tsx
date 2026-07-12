@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
@@ -106,19 +106,8 @@ export function SidebarModeBody({
 
 export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const location = useLocation();
-  const { t } = useI18n();
-  const { collapsed, toggle } = useSidebarCollapsed();
+  const { collapsed, setCollapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
-  // Force collapsed on chat routes without writing the localStorage preference.
-  // chatExpandOverride allows a temporary expand that resets on route change.
-  const [chatExpandOverride, setChatExpandOverride] = useState(false);
-  useEffect(() => {
-    setChatExpandOverride(false);
-  }, [location.pathname]);
-  const routeWantsCollapse =
-    location.pathname === '/chat' || (location.pathname === '/' && isDesktop);
-  const routeCollapse = routeWantsCollapse && !chatExpandOverride;
-  const effectiveCollapsed = routeCollapse || collapsed;
 
   // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
   // seu corpo modo-aware (que monta os hooks pesados de notas) NÃO
@@ -132,49 +121,24 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
     return null;
   }
 
-  function handleOpen(): void {
-    if (routeWantsCollapse) setChatExpandOverride(true);
-    else toggle();
-  }
-
-  function handleCollapse(): void {
-    if (routeWantsCollapse) setChatExpandOverride(false);
-    else toggle();
-  }
-
-  // Rail fino de ícones na rota de chat quando colapsada (troca o antigo botão
-  // flutuante). Fora do chat, colapsar mostra só o botão flutuante de sempre.
-  const showRail = effectiveCollapsed && routeWantsCollapse;
-  const showFloatingOpen = effectiveCollapsed && !routeWantsCollapse;
-
+  // Colapsada é o padrão em TODAS as páginas desktop (ver `sidebar-state.ts`):
+  // mostra o rail fino de ícones com tooltip. Expandir persiste (fica aberta
+  // até o usuário recolher de novo) — um único mecanismo de colapso, sem
+  // forçamento especial por rota.
   return (
     <>
       <AnimatePresence>
-        {showFloatingOpen && (
-          <motion.button
-            type="button"
-            onClick={handleOpen}
-            initial={{ opacity: 0, scale: 0.6, x: -12 }}
-            animate={{ opacity: 1, scale: 1, x: 0 }}
-            exit={{ opacity: 0, scale: 0.6, x: -12 }}
-            transition={{ type: 'spring', stiffness: 360, damping: 26, delay: 0.18 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="hidden md:flex fixed top-4 left-4 z-50 h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] transition-colors"
-            aria-label={t('shell.openMenu')}
-            title={t('shell.openMenu')}
-          >
-            <PanelLeftOpen className="h-4 w-4" />
-          </motion.button>
+        {collapsed && (
+          <SidebarRail
+            user={user}
+            pathname={location.pathname}
+            onExpand={() => setCollapsed(false)}
+          />
         )}
       </AnimatePresence>
 
       <AnimatePresence>
-        {showRail && <SidebarRail user={user} pathname={location.pathname} onExpand={handleOpen} />}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {!effectiveCollapsed && (
+        {!collapsed && (
           <motion.aside
             initial={{ x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
@@ -183,7 +147,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             className="hidden md:flex fixed top-4 bottom-4 left-4 z-40 flex-col rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl overflow-hidden"
             style={{ width: SIDEBAR_WIDTH }}
           >
-            <SidebarHeader onCollapse={handleCollapse} />
+            <SidebarHeader onCollapse={() => setCollapsed(true)} />
             <SidebarModeBody user={user} hideHome />
             <SidebarChangelogButton />
             <SidebarSignOut />
@@ -195,9 +159,10 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
 }
 
 /**
- * Rail vertical de ícones — exibido quando a sidebar está colapsada na rota de
- * chat (desktop). Botão de expandir no topo + atalhos de navegação (sem
- * "Início", redundante no chat) com tooltip do nome no hover. Desktop-only.
+ * Rail vertical de ícones — exibido quando a sidebar está colapsada, o padrão
+ * em toda página desktop (exceto /grafo, que não monta sidebar). Botão de
+ * expandir no topo + atalhos de navegação (sem "Início", redundante — o
+ * desktop já tem `/` como chat) com tooltip do nome no hover. Desktop-only.
  */
 function SidebarRail({
   user,
@@ -517,19 +482,11 @@ export function SidebarSpacer(): React.ReactElement | null {
   const location = useLocation();
   const isDesktop = useIsDesktop();
   const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
-  const routeCollapse = location.pathname === '/chat' || (location.pathname === '/' && isDesktop);
-  const effectiveCollapsed = routeCollapse || collapsed;
   // No mobile não há sidebar montada — sem spacer (evita reservar largura).
   if (!isDesktop) return null;
-  // Colapsada em chat mostra o rail (reserva a largura dele); colapsada em outra
-  // rota mostra só o botão flutuante (não reserva); aberta reserva a sidebar cheia.
-  const width = isGraph
-    ? 0
-    : !effectiveCollapsed
-      ? SIDEBAR_WIDTH + 32
-      : routeCollapse
-        ? RAIL_WIDTH + 16
-        : 0;
+  // /grafo não tem sidebar (full-bleed); colapsada reserva a largura do rail;
+  // expandida reserva a largura da sidebar cheia.
+  const width = isGraph ? 0 : collapsed ? RAIL_WIDTH + 16 : SIDEBAR_WIDTH + 32;
   return (
     <motion.div
       className="hidden md:block shrink-0"
