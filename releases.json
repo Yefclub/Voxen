@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.11.0-dev.1783833219",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Chat redesenhado, temas e nova organização da home",
+    "body": "O chat ganhou empty state no estilo SuperGrok, composer fixo, bloco de ferramentas/raciocínio mais limpo e botão para limpar a conversa com confirmação irreversível. A aplicação passa a ter temas zinc (padrão), emerald e light — selecionáveis no menu do usuário, com atalho claro/escuro no cabeçalho — e a preferência fica salva na conta. No desktop, `/` abre o chat; no mobile a home fica enxuta, o envio de links/arquivos vai para a Biblioteca e a fila de jobs ganha a rota `/fila`.",
+    "pr": null,
+    "author": "Kalyel",
+    "date": "2026-07-12T02:13:26-03:00"
+  },
+  {
+    "version": "0.11.0-dev.1783833219",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Chat Vox persistente com ferramentas e memória resumida",
+    "body": "O Vox passa a funcionar em uma única conversa contínua por conta. As respostas chegam em streaming, exibem raciocínio, fontes e chamadas de ferramentas, e podem pesquisar transcrições, notas e o Brain com isolamento por usuário. Quando o histórico fica longo, ele é resumido automaticamente sem perder o contexto recente. Ações de escrita em notas são propostas e só são executadas após aprovação explícita, e os sons de feedback são opcionais.",
+    "pr": 348,
+    "author": "Kalyel",
+    "date": "2026-07-12T00:19:03-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/348"
+  },
+  {
     "version": "0.11.0-dev.1783824951",
     "channel": "dev",
     "type": "ui",
