@@ -43,6 +43,7 @@ accountRoutes.get('/', async (c) => {
       image: true,
       role: true,
       status: true,
+      theme: true,
       monthlyBudgetUsd: true,
       createdAt: true,
     },
@@ -50,20 +51,28 @@ accountRoutes.get('/', async (c) => {
   return c.json({ user: u });
 });
 
-const PatchBody = z.object({
-  name: z.string().min(2).max(100),
-});
+const PatchBody = z
+  .object({
+    name: z.string().min(2).max(100).optional(),
+    theme: z.enum(['zinc', 'emerald', 'light']).optional(),
+  })
+  .refine((value) => value.name !== undefined || value.theme !== undefined, {
+    message: 'Informe name e/ou theme.',
+  });
 
 accountRoutes.patch('/', async (c) => {
   const userId = c.get('userId');
   const parsed = PatchBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
-    return c.json({ error: 'Nome inválido (mínimo 2 caracteres).' }, 400);
+    return c.json({ error: 'Dados inválidos.' }, 400);
   }
+  const data: { name?: string; theme?: 'zinc' | 'emerald' | 'light' } = {};
+  if (parsed.data.name !== undefined) data.name = parsed.data.name.trim();
+  if (parsed.data.theme !== undefined) data.theme = parsed.data.theme;
   const u = await db.user.update({
     where: { id: userId },
-    data: { name: parsed.data.name.trim() },
-    select: { id: true, name: true, email: true, image: true },
+    data,
+    select: { id: true, name: true, email: true, image: true, theme: true },
   });
   return c.json({ user: u });
 });

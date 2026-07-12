@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import {
   acquireChatStreamSlot,
   approveChatAction,
+  clearConversation,
   getOrCreateConversation,
   releaseChatStreamSlot,
 } from '../src/lib/chat/runtime';
@@ -82,5 +83,34 @@ describeIfDb('chat de sessão única', () => {
     expect(result.noteId).toBeTruthy();
     expect(await db.note.count({ where: { id: result.noteId, userId: user.id } })).toBe(1);
     await expect(approveChatAction(user.id, approvalId)).rejects.toThrow();
+  });
+
+  it('limpa mensagens e aprovações pendentes sem remover a conversa canônica', async () => {
+    const user = await db.user.create({
+      data: { email: 'chat-test-clear@voxen.local', name: 'Clear', status: 'APPROVED' },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    await db.chatMessage.createMany({
+      data: [
+        { conversationId: conversation.id, role: 'USER', content: 'Oi' },
+        { conversationId: conversation.id, role: 'ASSISTANT', content: 'Olá' },
+      ],
+    });
+    await db.chatApproval.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId: user.id,
+        conversationId: conversation.id,
+        action: 'create_note',
+        payload: { title: 'Pendente', content: 'x' },
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    await clearConversation(user.id);
+    expect(await db.chatMessage.count({ where: { conversationId: conversation.id } })).toBe(0);
+    expect(await db.chatApproval.count({ where: { conversationId: conversation.id } })).toBe(0);
+    expect(await db.conversation.count({ where: { id: conversation.id, userId: user.id } })).toBe(
+      1,
+    );
   });
 });

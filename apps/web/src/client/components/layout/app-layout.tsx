@@ -81,7 +81,11 @@ export function AppLayout(): React.ReactElement {
   // App shell de altura fixa: o cabeçalho (Topbar) fica travado no topo e o
   // conteúdo rola dentro do <main>. /grafo ocupa a tela toda e gerencia a
   // própria altura, então não recebe o overflow-y-auto/padding.
+  // /chat também gerencia o próprio scroll (composer sticky); no mobile
+  // mantém padding da bottom-nav.
   const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
+  // Desktop `/` renders chat via RootEntry; treat it like /chat for shell chrome.
+  const isChat = location.pathname === '/chat' || (location.pathname === '/' && isDesktop);
   const isFullBleed = isGraph;
   // Botão de voltar flutuante (mobile): só em sub-páginas (não abas de topo) e
   // nunca em rotas que já têm chrome próprio de nav (ex.: /grafo).
@@ -92,8 +96,11 @@ export function AppLayout(): React.ReactElement {
   const backPad = showBack ? ' pt-[calc(env(safe-area-inset-top)+3.5rem)] md:pt-0' : '';
   const mainClass = isFullBleed
     ? 'flex-1 min-h-0'
-    : 'flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6' +
-      backPad;
+    : isChat
+      ? 'flex-1 min-h-0 overflow-hidden pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-0' +
+        backPad
+      : 'flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6' +
+        backPad;
 
   return (
     <>

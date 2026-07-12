@@ -15,7 +15,7 @@ describe('PWA share target', () => {
 
     expect(res.status).toBe(303);
     const location = res.headers.get('location') ?? '';
-    expect(location.startsWith('/?')).toBe(true);
+    expect(location.startsWith('/transcricoes?')).toBe(true);
     expect(location).toContain('shared=1');
     expect(location).toContain('url=https%3A%2F%2Fexample.com%2Fartigo');
   });
@@ -32,6 +32,8 @@ describe('PWA share target', () => {
     );
 
     expect(res.status).toBe(303);
-    expect(res.headers.get('location')).toBe('/?shared=1&share_error=auth_required_file');
+    expect(res.headers.get('location')).toBe(
+      '/transcricoes?shared=1&share_error=auth_required_file',
+    );
   });
 });

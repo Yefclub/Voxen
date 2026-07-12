@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -6,6 +6,7 @@ import {
   ChevronDown,
   DollarSign,
   House,
+  ListOrdered,
   MessageCircle,
   FolderPlus,
   ListVideo,
@@ -48,6 +49,7 @@ export const NAV: NavItem[] = [
   { to: '/', labelKey: 'shell.nav.home', Icon: House },
   { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessageCircle },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
+  { to: '/fila', labelKey: 'shell.nav.queue', Icon: ListOrdered },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
   { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },
@@ -96,6 +98,16 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const { t } = useI18n();
   const { collapsed, toggle } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
+  // Force collapsed on chat routes without writing the localStorage preference.
+  // chatExpandOverride allows a temporary expand that resets on route change.
+  const [chatExpandOverride, setChatExpandOverride] = useState(false);
+  useEffect(() => {
+    setChatExpandOverride(false);
+  }, [location.pathname]);
+  const routeWantsCollapse =
+    location.pathname === '/chat' || (location.pathname === '/' && isDesktop);
+  const routeCollapse = routeWantsCollapse && !chatExpandOverride;
+  const effectiveCollapsed = routeCollapse || collapsed;
 
   // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
   // seu corpo modo-aware (que monta os hooks pesados de notas) NÃO
@@ -109,13 +121,23 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
     return null;
   }
 
+  function handleOpen(): void {
+    if (routeWantsCollapse) setChatExpandOverride(true);
+    else toggle();
+  }
+
+  function handleCollapse(): void {
+    if (routeWantsCollapse) setChatExpandOverride(false);
+    else toggle();
+  }
+
   return (
     <>
       <AnimatePresence>
-        {collapsed && (
+        {effectiveCollapsed && (
           <motion.button
             type="button"
-            onClick={toggle}
+            onClick={handleOpen}
             initial={{ opacity: 0, scale: 0.6, x: -12 }}
             animate={{ opacity: 1, scale: 1, x: 0 }}
             exit={{ opacity: 0, scale: 0.6, x: -12 }}
@@ -132,7 +154,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
       </AnimatePresence>
 
       <AnimatePresence>
-        {!collapsed && (
+        {!effectiveCollapsed && (
           <motion.aside
             initial={{ x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
@@ -141,7 +163,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             className="hidden md:flex fixed top-4 bottom-4 left-4 z-40 flex-col rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl overflow-hidden"
             style={{ width: SIDEBAR_WIDTH }}
           >
-            <SidebarHeader onCollapse={toggle} />
+            <SidebarHeader onCollapse={handleCollapse} />
             <SidebarModeBody user={user} />
             <SidebarChangelogButton />
             <SidebarSignOut />
@@ -398,12 +420,14 @@ export function SidebarSpacer(): React.ReactElement | null {
   const location = useLocation();
   const isDesktop = useIsDesktop();
   const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
+  const routeCollapse = location.pathname === '/chat' || (location.pathname === '/' && isDesktop);
+  const effectiveCollapsed = routeCollapse || collapsed;
   // No mobile não há sidebar montada — sem spacer (evita reservar largura).
   if (!isDesktop) return null;
   return (
     <motion.div
       className="hidden md:block shrink-0"
-      animate={{ width: collapsed || isGraph ? 0 : SIDEBAR_WIDTH + 32 }}
+      animate={{ width: effectiveCollapsed || isGraph ? 0 : SIDEBAR_WIDTH + 32 }}
       initial={false}
       transition={{ type: 'spring', stiffness: 320, damping: 32 }}
       aria-hidden

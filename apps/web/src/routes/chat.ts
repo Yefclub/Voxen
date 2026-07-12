@@ -6,6 +6,7 @@ import { rateLimit } from '../lib/rate-limit';
 import {
   approveChatAction,
   acquireChatStreamSlot,
+  clearConversation,
   getChatSnapshot,
   getOrCreateConversation,
   releaseChatStreamSlot,
@@ -43,6 +44,11 @@ chatRoutes.get('/', async (c) => {
       compactedAt: message.compactedAt?.toISOString() ?? null,
     })),
   });
+});
+
+chatRoutes.delete('/', async (c) => {
+  await clearConversation(c.get('userId'));
+  return c.json({ ok: true });
 });
 
 const SendBody = z.object({ content: z.string().trim().min(1).max(20_000) });
