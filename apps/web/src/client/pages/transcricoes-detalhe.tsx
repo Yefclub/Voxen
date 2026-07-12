@@ -792,7 +792,7 @@ function LinkedNotesCard({
                   <p className="truncate text-sm font-medium text-[var(--color-app-fg)]">
                     {note.title}
                   </p>
-                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--color-app-muted)]">
+                  <p className="mt-1 line-clamp-2 break-words text-xs leading-relaxed text-[var(--color-app-muted)]">
                     {preview}
                   </p>
                   <div className="mt-2 flex items-center justify-between gap-2">
