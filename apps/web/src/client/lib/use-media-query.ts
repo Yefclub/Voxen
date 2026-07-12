@@ -31,3 +31,14 @@ const DESKTOP_QUERY = '(min-width: 768px)';
 export function useIsDesktop(): boolean {
   return useMediaQuery(DESKTOP_QUERY);
 }
+
+// `pointer: coarse` identifica entrada primária touch (dedo) em vez de mouse —
+// diferente de largura de viewport (um notebook touchscreen é largo mas
+// coarse; uma janela desktop estreita é fine/mouse). Usado pra decisões de
+// alvo de toque (ex.: raio mínimo de nós do grafo) independente de breakpoint.
+const COARSE_POINTER_QUERY = '(pointer: coarse)';
+
+/** `true` quando o dispositivo de apontamento primário é touch (impreciso). */
+export function useIsCoarsePointer(): boolean {
+  return useMediaQuery(COARSE_POINTER_QUERY);
+}
