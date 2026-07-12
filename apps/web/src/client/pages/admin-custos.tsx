@@ -91,154 +91,158 @@ export function AdminCustosPage(): React.ReactElement {
           </Card>
         )}
 
-        {/* Switcher de range */}
-        <div className="flex items-center gap-2 -mb-4">
-          <span className="text-xs uppercase tracking-wider text-[var(--color-app-muted)]">
-            {t('admin.costs.detailBy')}
-          </span>
-          <RangeChip active={range === 'month'} onClick={() => setRange('month')}>
-            {t('admin.costs.thisMonth')}
-          </RangeChip>
-          <RangeChip active={range === 'all'} onClick={() => setRange('all')}>
-            {t('admin.costs.fullHistory')}
-          </RangeChip>
-        </div>
-
-        {/* Gráfico simples (últimos 30 dias) */}
-        <Card elevated>
-          <CardContent className="pt-6 pb-5">
-            <div className="flex items-center gap-2 mb-4">
-              <LineChart className="h-3.5 w-3.5 text-violet-400" />
-              <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
-                {t('admin.costs.last30days')}
-              </h2>
+        {!error && (
+          <>
+            {/* Switcher de range */}
+            <div className="flex items-center gap-2 -mb-4">
+              <span className="text-xs uppercase tracking-wider text-[var(--color-app-muted)]">
+                {t('admin.costs.detailBy')}
+              </span>
+              <RangeChip active={range === 'month'} onClick={() => setRange('month')}>
+                {t('admin.costs.thisMonth')}
+              </RangeChip>
+              <RangeChip active={range === 'all'} onClick={() => setRange('all')}>
+                {t('admin.costs.fullHistory')}
+              </RangeChip>
             </div>
-            {loading || !data ? (
-              <Skeleton className="h-32 w-full" />
-            ) : data.daily.length === 0 ? (
-              <p className="text-sm text-[var(--color-app-muted)] py-8 text-center">
-                {t('admin.costs.noSpending')}
-              </p>
-            ) : (
-              <DailyChart points={data.daily} locale={locale} />
-            )}
-          </CardContent>
-        </Card>
 
-        {/* Por modelo */}
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
-            {t('admin.costs.byModel')}
-          </h2>
-          {loading || !data ? (
-            <Skeleton className="h-32 w-full" />
-          ) : data.byModel.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
-                {t('admin.costs.empty')}
+            {/* Gráfico simples (últimos 30 dias) */}
+            <Card elevated>
+              <CardContent className="pt-6 pb-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <LineChart className="h-3.5 w-3.5 text-violet-400" />
+                  <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
+                    {t('admin.costs.last30days')}
+                  </h2>
+                </div>
+                {loading || !data ? (
+                  <Skeleton className="h-32 w-full" />
+                ) : data.daily.length === 0 ? (
+                  <p className="text-sm text-[var(--color-app-muted)] py-8 text-center">
+                    {t('admin.costs.noSpending')}
+                  </p>
+                ) : (
+                  <DailyChart points={data.daily} locale={locale} />
+                )}
               </CardContent>
             </Card>
-          ) : (
-            <Card>
-              <ul className="divide-y divide-[var(--color-app-border)]">
-                {data.byModel.map((m) => (
-                  <li key={m.model} className="flex items-center gap-4 px-5 py-4">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-mono text-zinc-200 truncate">{m.model}</p>
-                      <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
-                        {m.events}{' '}
-                        {m.events === 1
-                          ? t('admin.costs.callSingular')
-                          : t('admin.costs.callPlural')}
-                        {m.tokens > 0 &&
-                          ` · ${m.tokens.toLocaleString(locale)} ${t('admin.costs.tokens')}`}
-                      </p>
-                    </div>
-                    <span className="text-base font-display font-semibold tabular-nums">
-                      {formatUsd(m.total, locale)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-        </section>
 
-        {/* Por uso */}
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
-            {t('admin.costs.byUse')}
-          </h2>
-          {loading || !data ? (
-            <Skeleton className="h-28 w-full" />
-          ) : data.byKind.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
-                {t('admin.costs.empty')}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <ul className="divide-y divide-[var(--color-app-border)]">
-                {data.byKind.map((k) => (
-                  <li key={k.kind} className="flex items-center gap-4 px-5 py-4">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-200 truncate">{kindLabel(k.kind, t)}</p>
-                      <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
-                        {k.events}{' '}
-                        {k.events === 1
-                          ? t('admin.costs.eventSingular')
-                          : t('admin.costs.eventPlural')}
-                      </p>
-                    </div>
-                    <span className="text-base font-display font-semibold tabular-nums">
-                      {formatUsd(k.total, locale)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-        </section>
+            {/* Por modelo */}
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
+                {t('admin.costs.byModel')}
+              </h2>
+              {loading || !data ? (
+                <Skeleton className="h-32 w-full" />
+              ) : data.byModel.length === 0 ? (
+                <Card>
+                  <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
+                    {t('admin.costs.empty')}
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <ul className="divide-y divide-[var(--color-app-border)]">
+                    {data.byModel.map((m) => (
+                      <li key={m.model} className="flex items-center gap-4 px-5 py-4">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-mono text-zinc-200 truncate">{m.model}</p>
+                          <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
+                            {m.events}{' '}
+                            {m.events === 1
+                              ? t('admin.costs.callSingular')
+                              : t('admin.costs.callPlural')}
+                            {m.tokens > 0 &&
+                              ` · ${m.tokens.toLocaleString(locale)} ${t('admin.costs.tokens')}`}
+                          </p>
+                        </div>
+                        <span className="text-base font-display font-semibold tabular-nums">
+                          {formatUsd(m.total, locale)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </section>
 
-        {/* Por user */}
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
-            {t('admin.costs.byUser')}
-          </h2>
-          {loading || !data ? (
-            <Skeleton className="h-32 w-full" />
-          ) : data.byUser.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
-                {t('admin.costs.empty')}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <ul className="divide-y divide-[var(--color-app-border)]">
-                {data.byUser.map((u) => (
-                  <li key={u.userId} className="flex items-center gap-4 px-5 py-4">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-200 truncate">
-                        {u.name ?? t('admin.costs.removedUser')}
-                      </p>
-                      <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
-                        {u.email ?? t('admin.costs.noEmail')} · {u.events}{' '}
-                        {u.events === 1
-                          ? t('admin.costs.eventSingular')
-                          : t('admin.costs.eventPlural')}
-                      </p>
-                    </div>
-                    <span className="text-base font-display font-semibold tabular-nums">
-                      {formatUsd(u.total, locale)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-        </section>
+            {/* Por uso */}
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
+                {t('admin.costs.byUse')}
+              </h2>
+              {loading || !data ? (
+                <Skeleton className="h-28 w-full" />
+              ) : data.byKind.length === 0 ? (
+                <Card>
+                  <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
+                    {t('admin.costs.empty')}
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <ul className="divide-y divide-[var(--color-app-border)]">
+                    {data.byKind.map((k) => (
+                      <li key={k.kind} className="flex items-center gap-4 px-5 py-4">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-zinc-200 truncate">{kindLabel(k.kind, t)}</p>
+                          <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
+                            {k.events}{' '}
+                            {k.events === 1
+                              ? t('admin.costs.eventSingular')
+                              : t('admin.costs.eventPlural')}
+                          </p>
+                        </div>
+                        <span className="text-base font-display font-semibold tabular-nums">
+                          {formatUsd(k.total, locale)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </section>
+
+            {/* Por user */}
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold tracking-tight text-zinc-200">
+                {t('admin.costs.byUser')}
+              </h2>
+              {loading || !data ? (
+                <Skeleton className="h-32 w-full" />
+              ) : data.byUser.length === 0 ? (
+                <Card>
+                  <CardContent className="py-8 text-center text-sm text-[var(--color-app-muted)]">
+                    {t('admin.costs.empty')}
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <ul className="divide-y divide-[var(--color-app-border)]">
+                    {data.byUser.map((u) => (
+                      <li key={u.userId} className="flex items-center gap-4 px-5 py-4">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-zinc-200 truncate">
+                            {u.name ?? t('admin.costs.removedUser')}
+                          </p>
+                          <p className="text-xs text-[var(--color-app-muted)] mt-0.5 tabular-nums">
+                            {u.email ?? t('admin.costs.noEmail')} · {u.events}{' '}
+                            {u.events === 1
+                              ? t('admin.costs.eventSingular')
+                              : t('admin.costs.eventPlural')}
+                          </p>
+                        </div>
+                        <span className="text-base font-display font-semibold tabular-nums">
+                          {formatUsd(u.total, locale)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </section>
+          </>
+        )}
       </div>
     </AnimatedPage>
   );

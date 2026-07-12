@@ -21,7 +21,11 @@ export function FetchError({
 }): React.ReactElement {
   const { t } = useI18n();
   return (
-    <div className={cn('flex items-center justify-center px-6 py-12', className)}>
+    <div
+      role="alert"
+      aria-live="assertive"
+      className={cn('flex items-center justify-center px-6 py-12', className)}
+    >
       <div className="max-w-md space-y-3 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)]">
           <AlertTriangle className="h-5 w-5 text-rose-400" />
