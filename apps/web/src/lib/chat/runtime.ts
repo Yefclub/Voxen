@@ -2,6 +2,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateText, stepCountIs, streamText, tool, type ModelMessage } from 'ai';
 import { z } from 'zod';
 import type { Prisma } from '../../../prisma-generated/client';
+import { createAutoJobForUser } from '../../routes/jobs';
 import { reindexNotesBrain } from '../brain';
 import { db } from '../db';
 import { invalidateGraphCache } from '../graph-cache';
@@ -45,6 +46,14 @@ const AGENT_INSTRUCTIONS = [
   '8. Cite exatamente doc + linhas/seção + timestamp (hh:mm:ss) do que usar.',
   '9. Valide: cada afirmação factual forte precisa de evidência recuperada — use verify_citations.',
   '10. Se não houver evidência suficiente, diga isso claramente; não invente.',
+  '',
+  'Se o usuário compartilhar uma URL (vídeo do YouTube/Instagram/TikTok/X ou página web) que',
+  'não aparecer em search_transcripts, ela ainda não está no acervo: use',
+  'request_transcription(url) para enfileirar a transcrição/indexação — NUNCA diga que não tem',
+  'acesso à internet ou que não pode abrir links, isso é falso. Se vier jobId, informe que a',
+  'transcrição começou e pode levar alguns minutos; ofereça acompanhar com',
+  'get_job_status(jobId) ou avise que pode conferir depois. Se vier transcriptId (a URL já',
+  'existia), leia normalmente com as ferramentas acima.',
 ].join('\n');
 
 export type StoredToolEvent = {
@@ -360,6 +369,64 @@ export function buildTools(userId: string) {
           url: transcript.url,
           summary: transcript.summaryMd,
           content: transcript.plainText.slice(0, 20_000),
+        };
+      },
+    }),
+    request_transcription: tool({
+      description:
+        'Enfileira a transcrição/indexação de uma URL (vídeo do YouTube/Instagram/TikTok/X ou ' +
+        'página web) que AINDA NÃO está no acervo (search_transcripts não achou nada para ela). ' +
+        'Retorna outcome=created com jobId (acompanhe com get_job_status) OU ' +
+        'outcome=existing_transcript com transcriptId (a URL já foi transcrita — leia direto) OU ' +
+        'outcome=inflight (já está sendo processada) OU outcome=error.',
+      inputSchema: z.object({
+        url: z.string().min(1).max(2048),
+      }),
+      execute: async ({ url }) => {
+        const result = await createAutoJobForUser(userId, url);
+        switch (result.outcome) {
+          case 'created':
+            return {
+              outcome: 'created' as const,
+              jobId: result.jobId,
+              message:
+                'Job enfileirado. Use get_job_status(jobId) para acompanhar até status=DONE.',
+            };
+          case 'existing_transcript':
+            return {
+              outcome: 'existing_transcript' as const,
+              transcriptId: result.transcriptId,
+              message:
+                'Esta URL já foi transcrita — leia com as ferramentas de leitura existentes.',
+            };
+          case 'inflight':
+            return {
+              outcome: 'inflight' as const,
+              jobId: result.jobId ?? null,
+              message: 'Esta URL já está sendo processada. Acompanhe com get_job_status.',
+            };
+          default:
+            return { outcome: 'error' as const, error: result.error };
+        }
+      },
+    }),
+    get_job_status: tool({
+      description:
+        'Consulta o status de um job criado por request_transcription: QUEUED, RUNNING, DONE, ' +
+        'FAILED ou CANCELLED. Quando DONE, retorna transcriptId (leia com as ferramentas de ' +
+        'leitura); quando FAILED, retorna error.',
+      inputSchema: z.object({ jobId: z.string().min(1) }),
+      execute: async ({ jobId }) => {
+        const job = await db.job.findFirst({
+          where: { id: jobId, userId },
+          select: { id: true, status: true, transcriptId: true, errorMsg: true },
+        });
+        if (!job) return { error: 'Job não encontrado.' };
+        return {
+          id: job.id,
+          status: job.status,
+          transcriptId: job.transcriptId,
+          error: job.errorMsg,
         };
       },
     }),

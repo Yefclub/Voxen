@@ -50,6 +50,8 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   scrape_url: 'web',
   // transcrição
   transcribe_video: 'transcript',
+  request_transcription: 'transcript',
+  get_job_status: 'transcript',
 };
 
 /** Nomes com rótulo dedicado em i18n (`tools.<name>`). */
