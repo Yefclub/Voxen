@@ -21,7 +21,3 @@ Títulos podem ser avaliados e regenerados com IA, respeitando o idioma configur
 ## Preparação para o novo chat
 
 O chat in-app e a integração Telegram anteriores foram removidos por completo. O MCP e suas ferramentas sobre o acervo permanecem disponíveis enquanto a experiência de chat é redesenhada sobre uma arquitetura mais simples e sustentável.
-
-## Implantação
-
-Esta versão inclui migrations para pastas da biblioteca, Brain, vínculos de notas e preview de mídia. Execute `prisma migrate deploy` antes de servir a nova versão.
