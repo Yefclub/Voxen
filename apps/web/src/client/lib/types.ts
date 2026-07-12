@@ -29,6 +29,12 @@ export interface InstanceState {
   language: AppLanguage;
 }
 
+export interface VersionResponse {
+  version: string;
+  gitSha: string | null;
+  builtAt: string;
+}
+
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';
 
 export interface JobSummary {

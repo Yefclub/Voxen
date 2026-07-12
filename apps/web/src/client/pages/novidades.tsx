@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { useFetch } from '../lib/hooks';
 import { useI18n } from '../lib/i18n';
+import type { VersionResponse } from '../lib/types';
+import { resolveVersionEnvironment } from '../lib/version-env';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { Badge } from '../components/ui/badge';
 import { FetchError } from '../components/ui/fetch-error';
@@ -42,14 +43,10 @@ const TYPE_LABEL: Record<string, string> = {
 
 export function NovidadesPage(): React.ReactElement {
   const { locale, t } = useI18n();
-  const [channel, setChannel] = useState<'all' | 'prod' | 'dev'>('all');
-  const url = useMemo(() => {
-    const params = new URLSearchParams({ limit: '80' });
-    if (channel !== 'all') params.set('channel', channel);
-    return `/api/releases?${params.toString()}`;
-  }, [channel]);
-  const { data, loading, error, refresh } = useFetch<ReleasesResponse>(url);
+  const { data, loading, error, refresh } = useFetch<ReleasesResponse>('/api/releases?limit=80');
   const releases = data?.releases ?? [];
+  const { data: versionData } = useFetch<VersionResponse>('/api/version');
+  const environment = versionData ? resolveVersionEnvironment(versionData.version) : null;
 
   return (
     <AnimatedPage>
@@ -72,23 +69,13 @@ export function NovidadesPage(): React.ReactElement {
           <p className="text-sm text-[var(--color-app-muted)]">{t('novidades.description')}</p>
         </div>
 
-        <div className="flex flex-wrap gap-1.5">
-          {(['all', 'prod', 'dev'] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setChannel(item)}
-              className={[
-                'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors',
-                channel === item
-                  ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
-                  : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
-              ].join(' ')}
-            >
-              {t(`novidades.channel.${item}`)}
-            </button>
-          ))}
-        </div>
+        {environment && (
+          <Badge variant={environment === 'dev' ? 'warning' : 'success'} className="text-[10px]">
+            {environment === 'dev'
+              ? t('novidades.environment.dev')
+              : t('novidades.environment.prod')}
+          </Badge>
+        )}
 
         {loading && (
           <div className="space-y-3">
