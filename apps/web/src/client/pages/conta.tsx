@@ -180,7 +180,7 @@ export function ContaPage(): React.ReactElement {
                   className="h-full w-full object-cover"
                 />
               )}
-              <AvatarFallback className="bg-transparent text-zinc-100 font-semibold text-2xl">
+              <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-2xl">
                 {account.name
                   .split(/\s+/)
                   .map((p) => p[0])
@@ -269,7 +269,7 @@ export function ContaPage(): React.ReactElement {
                   <button
                     type="button"
                     onClick={() => setShowPwd((v) => !v)}
-                    className="absolute inset-y-0 right-3 flex items-center text-[var(--color-app-muted)] hover:text-zinc-100"
+                    className="absolute inset-y-0 right-3 flex items-center text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]"
                     aria-label={
                       showPwd ? t('admin.integrations.hide') : t('admin.integrations.show')
                     }

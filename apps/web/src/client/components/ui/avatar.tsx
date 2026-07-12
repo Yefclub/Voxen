@@ -9,7 +9,7 @@ export const Avatar = React.forwardRef<
   <AvatarPrimitive.Root
     ref={ref}
     className={cn(
-      'relative flex h-9 w-9 shrink-0 overflow-hidden rounded-full bg-zinc-800',
+      'relative flex h-9 w-9 shrink-0 overflow-hidden rounded-full bg-[var(--color-app-surface)]',
       className,
     )}
     {...props}
@@ -24,7 +24,7 @@ export const AvatarFallback = React.forwardRef<
   <AvatarPrimitive.Fallback
     ref={ref}
     className={cn(
-      'flex h-full w-full items-center justify-center text-xs font-semibold text-zinc-300',
+      'flex h-full w-full items-center justify-center text-xs font-semibold text-[var(--color-app-subtle)]',
       className,
     )}
     {...props}

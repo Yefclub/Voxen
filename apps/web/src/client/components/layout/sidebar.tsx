@@ -160,7 +160,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             transition={{ type: 'spring', stiffness: 360, damping: 26, delay: 0.18 }}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="hidden md:flex fixed top-4 left-4 z-50 h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] transition-colors"
+            className="hidden md:flex fixed top-4 left-4 z-50 h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] transition-colors"
             aria-label={t('shell.openMenu')}
             title={t('shell.openMenu')}
           >
@@ -277,7 +277,7 @@ export function SidebarChangelogButton(): React.ReactElement {
       <Link
         to="/novidades"
         title={t('shell.versionOpenChangelog')}
-        className="flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-zinc-100"
+        className="flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
       >
         <Sparkles className="h-4 w-4 shrink-0" />
         <span className="truncate">{t('shell.nav.changelog')}</span>
@@ -334,7 +334,7 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
       <button
         type="button"
         onClick={onCollapse}
-        className="ml-auto flex items-center justify-center h-7 w-7 rounded-md text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+        className="ml-auto flex items-center justify-center h-7 w-7 rounded-md text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors"
         aria-label={t('shell.collapse')}
         title={t('shell.collapse')}
       >
@@ -371,7 +371,9 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
                 className={cn(
                   'relative z-10 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
                   'transition-colors duration-150',
-                  isActive ? 'text-zinc-100' : 'text-[var(--color-app-muted)] hover:text-zinc-100',
+                  isActive
+                    ? 'text-[var(--color-app-fg)]'
+                    : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]',
                 )}
               >
                 <Icon
@@ -436,7 +438,7 @@ function NotasModeBody({
         <button
           type="button"
           onClick={() => navigate('/')}
-          className="flex items-center gap-2 h-9 rounded-lg px-3 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+          className="flex items-center gap-2 h-9 rounded-lg px-3 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           {t('shell.backToHome')}
@@ -446,7 +448,7 @@ function NotasModeBody({
             type="button"
             onClick={() => void onCreate('NOTE')}
             disabled={creating}
-            className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-sm font-medium text-zinc-100 hover:border-violet-500/40 hover:bg-violet-500/5 transition-colors disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-sm font-medium text-[var(--color-app-fg)] hover:border-violet-500/40 hover:bg-violet-500/5 transition-colors disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
             {t('shell.newNote')}
@@ -473,7 +475,7 @@ function NotasModeBody({
         <button
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
-          className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors"
+          className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors"
         >
           <ChevronDown
             className={cn('h-3 w-3 transition-transform', menuOpen ? '' : 'rotate-180')}
@@ -495,7 +497,7 @@ function NotasModeBody({
                   <li key={to}>
                     <NavLink
                       to={to}
-                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors"
                     >
                       <Icon className="h-4 w-4 shrink-0" />
                       <span className="truncate">{t(labelKey)}</span>

@@ -69,7 +69,7 @@ export function UploadMediaViewer({
             className="max-h-[420px] w-full object-contain"
             loading="lazy"
           />
-          <span className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-zinc-100 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-[var(--color-app-fg)] opacity-0 transition-opacity group-hover:opacity-100">
             <Maximize2 className="h-4 w-4" />
           </span>
         </button>

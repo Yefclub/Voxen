@@ -92,23 +92,23 @@ export function UpdateModal({
     >
       <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
         {/* Cabeçalho com destaque */}
-        <div className="flex items-start gap-4 border-b border-zinc-800 bg-gradient-to-b from-emerald-500/[0.07] to-transparent p-6">
+        <div className="flex items-start gap-4 border-b border-[var(--color-app-border)] bg-gradient-to-b from-emerald-500/[0.07] to-transparent p-6">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/30">
             <Sparkles className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1 pr-6">
-            <DialogTitle className="text-lg font-semibold tracking-tight text-zinc-100">
+            <DialogTitle className="text-lg font-semibold tracking-tight text-[var(--color-app-fg)]">
               {t('shell.updateAvailable')}
             </DialogTitle>
-            <DialogDescription className="mt-1 text-[13px] leading-relaxed text-zinc-400">
+            <DialogDescription className="mt-1 text-[13px] leading-relaxed text-[var(--color-app-muted)]">
               {t('shell.updateModalSubtitle')}
             </DialogDescription>
             {update.toVersion && (
               <div className="mt-3 flex items-center gap-1.5 font-mono text-[11px]">
                 {update.fromVersion && (
                   <>
-                    <span className="text-zinc-500">v{update.fromVersion}</span>
-                    <span className="text-zinc-600">→</span>
+                    <span className="text-[var(--color-app-muted)]">v{update.fromVersion}</span>
+                    <span className="text-[var(--color-app-muted)]">→</span>
                   </>
                 )}
                 <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/20">
@@ -121,7 +121,7 @@ export function UpdateModal({
 
         {/* O que mudou */}
         <div className="max-h-[44dvh] overflow-y-auto px-6 py-5">
-          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-app-muted)]">
             {t('shell.updateWhatsNew')}
           </h3>
           {loading ? (
@@ -131,7 +131,10 @@ export function UpdateModal({
           ) : notes && notes.length > 0 ? (
             <ul className="space-y-3.5">
               {notes.map((note, idx) => (
-                <li key={`${note.version}-${idx}`} className="border-l-2 border-zinc-800 pl-3">
+                <li
+                  key={`${note.version}-${idx}`}
+                  className="border-l-2 border-[var(--color-app-border)] pl-3"
+                >
                   <div className="flex flex-wrap items-center gap-2">
                     {note.type && (
                       <Badge variant="outline" className="text-[9px] uppercase">
@@ -139,13 +142,13 @@ export function UpdateModal({
                       </Badge>
                     )}
                     {(note.title || note.summary) && (
-                      <span className="text-[13px] font-medium text-zinc-200">
+                      <span className="text-[13px] font-medium text-[var(--color-app-subtle)]">
                         {note.title || note.summary}
                       </span>
                     )}
                   </div>
                   {note.title && (note.body || note.summary) && (
-                    <p className="mt-1 whitespace-pre-wrap text-[12px] leading-relaxed text-zinc-400">
+                    <p className="mt-1 whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--color-app-muted)]">
                       {(note.body || note.summary || '').trim()}
                     </p>
                   )}
@@ -153,12 +156,14 @@ export function UpdateModal({
               ))}
             </ul>
           ) : (
-            <p className="text-[13px] text-zinc-400">{t('shell.updateNotesEmpty')}</p>
+            <p className="text-[13px] text-[var(--color-app-muted)]">
+              {t('shell.updateNotesEmpty')}
+            </p>
           )}
         </div>
 
         {/* Ações */}
-        <div className="flex justify-end gap-2 border-t border-zinc-800 bg-zinc-900/40 px-6 py-4">
+        <div className="flex justify-end gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-6 py-4">
           <Button variant="ghost" size="sm" onClick={dismiss} disabled={applying}>
             {t('shell.updateLater')}
           </Button>

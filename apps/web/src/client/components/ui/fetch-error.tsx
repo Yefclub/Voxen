@@ -31,7 +31,7 @@ export function FetchError({
           <AlertTriangle className="h-5 w-5 text-rose-400" />
         </div>
         <div className="space-y-1.5">
-          <p className="font-display text-lg font-semibold text-zinc-100">
+          <p className="font-display text-lg font-semibold text-[var(--color-app-fg)]">
             {t('common.fetchErrorTitle')}
           </p>
           <p className="text-sm leading-relaxed text-[var(--color-app-muted)] break-words">

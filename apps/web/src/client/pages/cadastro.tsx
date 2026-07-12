@@ -127,7 +127,7 @@ export function CadastroPage(): React.ReactElement {
                   autoComplete="name"
                   required
                   minLength={2}
-                  className="w-full bg-transparent text-sm px-4 py-3.5 rounded-xl focus:outline-none placeholder:text-zinc-600"
+                  className="w-full bg-transparent text-sm px-4 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)]"
                 />
               </GlassInputWrapper>
             </div>
@@ -143,7 +143,7 @@ export function CadastroPage(): React.ReactElement {
                   placeholder={t('auth.emailPlaceholder')}
                   autoComplete="email"
                   required
-                  className="w-full bg-transparent text-sm px-4 py-3.5 rounded-xl focus:outline-none placeholder:text-zinc-600"
+                  className="w-full bg-transparent text-sm px-4 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)]"
                 />
               </GlassInputWrapper>
             </div>
@@ -161,12 +161,12 @@ export function CadastroPage(): React.ReactElement {
                     autoComplete="new-password"
                     minLength={12}
                     required
-                    className="w-full bg-transparent text-sm px-4 pr-11 py-3.5 rounded-xl focus:outline-none placeholder:text-zinc-600 font-mono tracking-[0.15em]"
+                    className="w-full bg-transparent text-sm px-4 pr-11 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)] font-mono tracking-[0.15em]"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute inset-y-0 right-3 flex items-center text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors"
+                    className="absolute inset-y-0 right-3 flex items-center text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors"
                     aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -190,7 +190,7 @@ export function CadastroPage(): React.ReactElement {
                     minLength={12}
                     required
                     className={cn(
-                      'w-full bg-transparent text-sm px-4 pr-11 py-3.5 rounded-xl focus:outline-none placeholder:text-zinc-600 font-mono tracking-[0.15em]',
+                      'w-full bg-transparent text-sm px-4 pr-11 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)] font-mono tracking-[0.15em]',
                       confirm.length > 0 && confirm !== password && 'text-rose-300',
                     )}
                   />
@@ -253,7 +253,7 @@ function FieldLabel({
 
 function GlassInputWrapper({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
-    <div className="rounded-xl border border-[var(--color-app-border)] bg-zinc-100/[0.03] backdrop-blur-sm transition-colors focus-within:border-violet-400/60 focus-within:bg-violet-500/[0.06] focus-within:ring-2 focus-within:ring-violet-500/15">
+    <div className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] backdrop-blur-sm transition-colors focus-within:border-violet-400/60 focus-within:bg-violet-500/[0.06] focus-within:ring-2 focus-within:ring-violet-500/15">
       {children}
     </div>
   );
@@ -286,7 +286,7 @@ function StrengthBar({
             className={cn(
               'h-1 flex-1 rounded-full transition-colors duration-300',
               i <= strength.score
-                ? (colors[strength.score] ?? 'bg-zinc-700')
+                ? (colors[strength.score] ?? 'bg-[var(--color-app-border-strong)]')
                 : 'bg-[var(--color-app-border)]',
             )}
           />

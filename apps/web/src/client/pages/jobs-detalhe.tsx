@@ -185,7 +185,7 @@ export function JobDetalhePage(): React.ReactElement {
                 <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
                   {t('jobDetail.eyebrow')} · {job.id.slice(0, 12)}
                 </p>
-                <h2 className="font-mono text-[15px] font-medium tracking-tight text-zinc-100 truncate">
+                <h2 className="font-mono text-[15px] font-medium tracking-tight text-[var(--color-app-fg)] truncate">
                   {displayJobSource(job.sourceUrl)}
                 </h2>
               </div>
@@ -218,11 +218,11 @@ export function JobDetalhePage(): React.ReactElement {
                       <span className="absolute inset-0 rounded-full bg-violet-400 animate-ping opacity-60" />
                       <span className="relative rounded-full bg-violet-400 h-full w-full" />
                     </span>
-                    <span className="text-sm font-medium text-zinc-100 truncate">
+                    <span className="text-sm font-medium text-[var(--color-app-fg)] truncate">
                       {stageLabel(currentStage, t)}
                     </span>
                   </div>
-                  <span className="text-2xl font-display font-semibold tabular-nums text-zinc-100">
+                  <span className="text-2xl font-display font-semibold tabular-nums text-[var(--color-app-fg)]">
                     {percent}
                     <span className="text-sm text-[var(--color-app-muted)] ml-0.5">%</span>
                   </span>
@@ -369,7 +369,9 @@ export function JobDetalhePage(): React.ReactElement {
                                     : 'bg-[var(--color-app-border-strong)]',
                             ].join(' ')}
                           />
-                          <span className="text-zinc-200">{stageLabel(e.stage, t)}</span>
+                          <span className="text-[var(--color-app-subtle)]">
+                            {stageLabel(e.stage, t)}
+                          </span>
                           {typeof e.chunkIndex === 'number' && (
                             <span className="ml-2 text-xs text-[var(--color-app-muted)] tabular-nums">
                               {t('jobDetail.block', { index: e.chunkIndex + 1 })}
@@ -389,7 +391,7 @@ export function JobDetalhePage(): React.ReactElement {
                   href={job.sourceUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-xs text-[var(--color-app-muted)] hover:text-zinc-100 inline-flex items-center gap-1.5 transition-colors group"
+                  className="text-xs text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] inline-flex items-center gap-1.5 transition-colors group"
                 >
                   {t('jobDetail.openOriginal')}
                   <ExternalLink className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />

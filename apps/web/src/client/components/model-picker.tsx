@@ -77,18 +77,18 @@ export function ModelPicker({
         )}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-zinc-950/30 text-emerald-300">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)] text-emerald-300">
             <SlidersHorizontal className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold text-zinc-100">
+            <span className="block truncate text-sm font-semibold text-[var(--color-app-fg)]">
               {selected?.name || value || t('modelPicker.notConfigured')}
             </span>
             <span className="mt-0.5 block truncate font-mono text-[11px] text-[var(--color-app-muted)]">
               {selected?.id || value || t('modelPicker.select')}
             </span>
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-[var(--color-app-muted)] transition-colors group-hover:text-zinc-200" />
+          <ChevronDown className="h-4 w-4 shrink-0 text-[var(--color-app-muted)] transition-colors group-hover:text-[var(--color-app-subtle)]" />
         </div>
       </button>
       {hint && <p className="text-[11px] leading-snug text-[var(--color-app-muted)]">{hint}</p>}
@@ -118,7 +118,7 @@ export function ModelPicker({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('modelPicker.filter')}
                 spellCheck={false}
-                className="h-10 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] pl-10 pr-3 text-sm text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none"
+                className="h-10 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] pl-10 pr-3 text-sm text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none"
               />
             </div>
           </div>
@@ -132,7 +132,7 @@ export function ModelPicker({
                   'mb-1 flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors',
                   !value
                     ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-                    : 'border-transparent text-zinc-300 hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)]',
+                    : 'border-transparent text-[var(--color-app-subtle)] hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)]',
                 )}
               >
                 <span className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-app-border)]">
@@ -196,10 +196,10 @@ function ModelRow({
         'flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors',
         selected
           ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-          : 'border-transparent text-zinc-300 hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)]',
+          : 'border-transparent text-[var(--color-app-subtle)] hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)]',
       )}
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--color-app-border)] bg-zinc-950/25 text-xs font-semibold uppercase text-zinc-300">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg)] text-xs font-semibold uppercase text-[var(--color-app-subtle)]">
         {provider.slice(0, 2)}
       </span>
       <span className="min-w-0 flex-1">

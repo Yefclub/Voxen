@@ -16,14 +16,14 @@ export const TooltipContent = React.forwardRef<
       sideOffset={sideOffset}
       collisionPadding={12}
       className={cn(
-        'z-50 overflow-hidden rounded-lg border border-[var(--color-app-border-strong)] bg-zinc-950/95 backdrop-blur-md px-3 py-1.5 text-xs text-zinc-100',
+        'z-50 overflow-hidden rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] backdrop-blur-md px-3 py-1.5 text-xs text-[var(--color-app-fg)]',
         'data-[state=delayed-open]:anim-in data-[state=instant-open]:anim-in',
         className,
       )}
       {...props}
     >
       {children}
-      <TooltipPrimitive.Arrow className="fill-zinc-950" />
+      <TooltipPrimitive.Arrow className="fill-[var(--color-app-bg-elevated)]" />
     </TooltipPrimitive.Content>
   </TooltipPrimitive.Portal>
 ));

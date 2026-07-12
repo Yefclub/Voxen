@@ -27,7 +27,7 @@ export function HomePage(): React.ReactElement {
         <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
-              <House className="h-3 w-3 text-zinc-400" />
+              <House className="h-3 w-3 text-[var(--color-app-muted)]" />
               {t('home.eyebrow')}
             </div>
             <div className="space-y-1.5">

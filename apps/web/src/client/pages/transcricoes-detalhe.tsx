@@ -467,7 +467,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             />
             {t.source === 'WEB' || isVisualTranscript || isDocumentTranscript ? (
               <section>
-                <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-200 mb-4">
+                <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-subtle)] mb-4">
                   {isDocumentTranscript
                     ? translate('library.documentAnalysis')
                     : isVisualTranscript
@@ -737,7 +737,7 @@ function LinkedNotesCard({
             value={title}
             onChange={(e) => onTitleChange(e.target.value)}
             placeholder={t('library.linkedNoteTitle')}
-            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
             disabled={creating}
             maxLength={200}
           />
@@ -745,7 +745,7 @@ function LinkedNotesCard({
             value={content}
             onChange={(e) => onContentChange(e.target.value)}
             placeholder={t('library.linkedNoteContent')}
-            className="min-h-24 w-full resize-y rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 py-2 text-xs leading-relaxed text-zinc-100 placeholder:text-zinc-600 focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+            className="min-h-24 w-full resize-y rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 text-xs leading-relaxed text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
             disabled={creating}
             maxLength={200_000}
           />
@@ -789,7 +789,9 @@ function LinkedNotesCard({
                   key={note.id}
                   className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/45 px-3 py-2.5"
                 >
-                  <p className="truncate text-sm font-medium text-zinc-100">{note.title}</p>
+                  <p className="truncate text-sm font-medium text-[var(--color-app-fg)]">
+                    {note.title}
+                  </p>
                   <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--color-app-muted)]">
                     {preview}
                   </p>
@@ -867,7 +869,7 @@ function LibraryFolderControl({
             if (e.key === 'Enter') void submit();
           }}
           placeholder={t('library.newFolderPlaceholder')}
-          className="min-w-0 flex-1 h-9 rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15"
+          className="min-w-0 flex-1 h-9 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15"
           disabled={organizing}
           maxLength={120}
         />
@@ -927,7 +929,7 @@ function TagsControl({
           {tags.map((tag) => (
             <span
               key={tag.id}
-              className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-zinc-500/25 bg-zinc-100/[0.04] px-2 py-0.5 text-[11px] text-zinc-300"
+              className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-0.5 text-[11px] text-[var(--color-app-subtle)]"
             >
               <Tags className="h-2.5 w-2.5 shrink-0 text-violet-400/80" />
               <span className="truncate">{tag.name}</span>
@@ -964,7 +966,7 @@ function SummaryBlock({
               <Wand2 className="h-4 w-4 text-violet-300" />
             </div>
             <div className="flex-1 space-y-1">
-              <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-100">
+              <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-fg)]">
                 {t('library.summary')}
               </h2>
               <p className="text-sm text-[var(--color-app-muted)]">
@@ -1002,7 +1004,7 @@ function SummaryBlock({
           <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
             <Wand2 className="h-3.5 w-3.5 text-violet-300" />
           </div>
-          <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-100">
+          <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-fg)]">
             {t('library.summary')}
           </h2>
         </div>
@@ -1058,8 +1060,8 @@ function MetaRow({
         <p
           className={
             mono
-              ? 'text-[13px] font-mono text-zinc-200 truncate mt-0.5 tabular-nums'
-              : 'text-sm text-zinc-200 mt-0.5'
+              ? 'text-[13px] font-mono text-[var(--color-app-subtle)] truncate mt-0.5 tabular-nums'
+              : 'text-sm text-[var(--color-app-subtle)] mt-0.5'
           }
           title={value}
         >

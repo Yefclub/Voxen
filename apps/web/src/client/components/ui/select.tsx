@@ -14,12 +14,12 @@ export const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex h-11 w-full items-center justify-between rounded-xl border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3.5 py-2 text-sm text-zinc-100',
-      'placeholder:text-zinc-600',
+      'flex h-11 w-full items-center justify-between rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3.5 py-2 text-sm text-[var(--color-app-fg)]',
+      'placeholder:text-[var(--color-app-muted)]',
       'transition-colors duration-150',
       'hover:border-[var(--color-app-border-strong)]',
       'focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15',
-      'data-[placeholder]:text-zinc-500',
+      'data-[placeholder]:text-[var(--color-app-muted)]',
       'disabled:cursor-not-allowed disabled:opacity-50',
       className,
     )}
@@ -44,7 +44,7 @@ export const SelectContent = React.forwardRef<
       sideOffset={6}
       className={cn(
         'relative z-50 max-h-[--radix-select-content-available-height] min-w-[--radix-select-trigger-width] overflow-hidden',
-        'rounded-xl border border-[var(--color-app-border-strong)] bg-zinc-950/95 backdrop-blur-md text-zinc-100 shadow-2xl shadow-black/40',
+        'rounded-xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] backdrop-blur-md text-[var(--color-app-fg)] shadow-2xl shadow-black/40',
         'data-[state=open]:anim-in',
         className,
       )}
@@ -71,8 +71,8 @@ export const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex w-full cursor-pointer select-none items-center rounded-md pl-3 pr-8 py-2 text-sm text-zinc-200 outline-none',
-      'focus:bg-[var(--color-app-surface-hover)] focus:text-zinc-100',
+      'relative flex w-full cursor-pointer select-none items-center rounded-md pl-3 pr-8 py-2 text-sm text-[var(--color-app-subtle)] outline-none',
+      'focus:bg-[var(--color-app-surface-hover)] focus:text-[var(--color-app-fg)]',
       'data-[state=checked]:text-emerald-300 data-[state=checked]:bg-emerald-500/8',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       'transition-colors duration-100',

@@ -121,7 +121,9 @@ export function AdminUsuariosPage(): React.ReactElement {
               {allowSignups ? <UsersIcon className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-zinc-100">{t('admin.users.newSignups')}</p>
+              <p className="text-sm font-medium text-[var(--color-app-fg)]">
+                {t('admin.users.newSignups')}
+              </p>
               <p className="text-xs text-[var(--color-app-muted)] mt-0.5 leading-relaxed">
                 {allowSignups === null
                   ? t('admin.users.loading')
@@ -143,7 +145,7 @@ export function AdminUsuariosPage(): React.ReactElement {
         </Card>
 
         <section className="space-y-4">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-300">
+          <h2 className="text-sm font-semibold tracking-tight text-[var(--color-app-subtle)]">
             {t('admin.users.pendingApproval')}
             {pending.length > 0 && (
               <Badge variant="warning" className="ml-2">
@@ -174,7 +176,9 @@ export function AdminUsuariosPage(): React.ReactElement {
                   >
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
-                        <span className="font-medium text-zinc-100 break-words">{u.name}</span>
+                        <span className="font-medium text-[var(--color-app-fg)] break-words">
+                          {u.name}
+                        </span>
                         <span className="text-sm text-[var(--color-app-muted)] break-all">
                           {u.email}
                         </span>
@@ -213,7 +217,7 @@ export function AdminUsuariosPage(): React.ReactElement {
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-300">
+          <h2 className="text-sm font-semibold tracking-tight text-[var(--color-app-subtle)]">
             {t('admin.users.allUsers')}
           </h2>
 
@@ -235,7 +239,9 @@ export function AdminUsuariosPage(): React.ReactElement {
                   >
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center gap-x-3 gap-y-1 flex-wrap min-w-0">
-                        <span className="font-medium text-zinc-100 break-words">{u.name}</span>
+                        <span className="font-medium text-[var(--color-app-fg)] break-words">
+                          {u.name}
+                        </span>
                         <span className="text-sm text-[var(--color-app-muted)] break-all">
                           {u.email}
                         </span>
