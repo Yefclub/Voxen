@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1783912875",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Navegação mobile mais compacta",
+    "body": "O cabeçalho flutuante e o botão que abre a navegação lateral agora ocupam menos\nespaço em telas pequenas. Controles, avatar, margens e sombra foram suavizados\nno mobile, mantendo a aparência atual do desktop.",
+    "pr": 368,
+    "author": "Kalyel",
+    "date": "2026-07-13T00:21:04-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/368"
+  },
+  {
     "version": "0.11.0-dev.1783910846",
     "channel": "dev",
     "type": "fix",

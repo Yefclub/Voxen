@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.11.0-dev.1783912875 — 2026-07-13 · Dev
+
+### 🎨 Navegação mobile mais compacta
+
+O cabeçalho flutuante e o botão que abre a navegação lateral agora ocupam menos
+espaço em telas pequenas. Controles, avatar, margens e sombra foram suavizados
+no mobile, mantendo a aparência atual do desktop.
+
 ## v0.11.0-dev.1783910846 — 2026-07-12 · Dev
 
 ### 🐛 Atualizações automáticas passam por todos os checks da PR
