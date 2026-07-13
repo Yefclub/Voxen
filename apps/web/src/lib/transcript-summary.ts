@@ -68,6 +68,7 @@ export async function generateAndPersistTranscriptSummary(input: {
   transcriptId: string;
   title: string;
   plainText: string;
+  abortSignal?: AbortSignal;
 }): Promise<string> {
   const apiKey = await getSetting('openrouter_api_key');
   if (!apiKey) {
@@ -120,7 +121,9 @@ export async function generateAndPersistTranscriptSummary(input: {
         stream: false,
         usage: { include: true },
       }),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: input.abortSignal
+        ? AbortSignal.any([input.abortSignal, AbortSignal.timeout(timeoutMs)])
+        : AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

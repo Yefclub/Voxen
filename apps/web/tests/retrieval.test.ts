@@ -5,12 +5,27 @@ import {
   normalizeForMatch,
   parseLineTimestamp,
   parseOutline,
+  promptSearchQuery,
   readLinesFromMd,
   readSectionFromMd,
   readTimespanFromMd,
   secondsToHms,
   verifyClaimAgainstMd,
 } from '../src/lib/retrieval';
+
+describe('promptSearchQuery', () => {
+  it('transforma prompt livre em uma consulta OR curta sem URLs ou stop words', () => {
+    expect(promptSearchQuery('Pesquise sobre política monetária e juros em https://x.com/a')).toBe(
+      'pesquise OR politica OR monetaria OR juros',
+    );
+  });
+
+  it('limita e deduplica termos para não despejar o prompt no FTS', () => {
+    expect(promptSearchQuery('alpha alpha beta gamma delta epsilon zeta eta theta iota')).toBe(
+      'alpha OR beta OR gamma OR delta OR epsilon OR zeta OR eta OR theta',
+    );
+  });
+});
 
 // `.md` de exemplo no formato canônico (docs/TRANSCRIPT-FORMAT.md): frontmatter,
 // headings e linhas timestamped `[hh:mm:ss](url?t=SEG) texto`.

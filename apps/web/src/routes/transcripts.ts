@@ -11,6 +11,7 @@
 import { Hono } from 'hono';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { z } from 'zod';
+import type { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
 import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '../lib/brain';
 import { db } from '../lib/db';
@@ -79,10 +80,18 @@ transcriptsRoutes.get('/', async (c) => {
   const folderId = normalizeFolderId(c.req.query('folderId'));
   const limit = parseListLimit(c.req.query('limit'));
   const offset = parseListOffset(c.req.query('offset'));
-  const where = {
+  const folderWhere: Prisma.TranscriptWhereInput =
+    folderId === undefined
+      ? {}
+      : folderId === null
+        ? { folderId: null, tags: { none: { tag: { folderId: { not: null } } } } }
+        : {
+            OR: [{ folderId }, { tags: { some: { tag: { userId, folderId } } } }],
+          };
+  const where: Prisma.TranscriptWhereInput = {
     userId,
     ...(status === 'ALL' ? {} : { status }),
-    ...(folderId !== undefined ? { folderId } : {}),
+    ...folderWhere,
   };
 
   if (query.length === 0) {
@@ -147,7 +156,24 @@ transcriptsRoutes.get('/', async (c) => {
     FROM "Transcript" t
     LEFT JOIN "LibraryFolder" f ON f.id = t."folderId" AND f."userId" = t."userId"
     WHERE t."userId" = ${userId}
-      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
+      AND (
+        ${folderId === undefined}
+        OR (${folderId === null} AND t."folderId" IS NULL AND NOT EXISTS (
+          SELECT 1 FROM "TranscriptTag" ft
+          JOIN "Tag" ftag ON ftag.id = ft."tagId"
+          WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+            AND ftag."folderId" IS NOT NULL
+        ))
+        OR (${typeof folderId === 'string'} AND (
+          t."folderId" = ${folderId ?? ''}
+          OR EXISTS (
+            SELECT 1 FROM "TranscriptTag" ft
+            JOIN "Tag" ftag ON ftag.id = ft."tagId"
+            WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+              AND ftag."folderId" = ${folderId ?? ''}
+          )
+        ))
+      )
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
         OR EXISTS (
@@ -195,7 +221,22 @@ transcriptsRoutes.get('/', async (c) => {
     LEFT JOIN "LibraryFolder" f ON f.id = t."folderId" AND f."userId" = t."userId"
     WHERE t."userId" = ${userId}
       AND t.status = ${status}::"ContentStatus"
-      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
+      AND (
+        ${folderId === undefined}
+        OR (${folderId === null} AND t."folderId" IS NULL AND NOT EXISTS (
+          SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+          WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+            AND ftag."folderId" IS NOT NULL
+        ))
+        OR (${typeof folderId === 'string'} AND (
+          t."folderId" = ${folderId ?? ''}
+          OR EXISTS (
+            SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+            WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+              AND ftag."folderId" = ${folderId ?? ''}
+          )
+        ))
+      )
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
         OR EXISTS (
@@ -216,7 +257,22 @@ transcriptsRoutes.get('/', async (c) => {
     SELECT COUNT(*)::bigint AS count
     FROM "Transcript" t
     WHERE t."userId" = ${userId}
-      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
+      AND (
+        ${folderId === undefined}
+        OR (${folderId === null} AND t."folderId" IS NULL AND NOT EXISTS (
+          SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+          WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+            AND ftag."folderId" IS NOT NULL
+        ))
+        OR (${typeof folderId === 'string'} AND (
+          t."folderId" = ${folderId ?? ''}
+          OR EXISTS (
+            SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+            WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+              AND ftag."folderId" = ${folderId ?? ''}
+          )
+        ))
+      )
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
         OR EXISTS (
@@ -233,7 +289,22 @@ transcriptsRoutes.get('/', async (c) => {
     FROM "Transcript" t
     WHERE t."userId" = ${userId}
       AND t.status = ${status}::"ContentStatus"
-      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
+      AND (
+        ${folderId === undefined}
+        OR (${folderId === null} AND t."folderId" IS NULL AND NOT EXISTS (
+          SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+          WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+            AND ftag."folderId" IS NOT NULL
+        ))
+        OR (${typeof folderId === 'string'} AND (
+          t."folderId" = ${folderId ?? ''}
+          OR EXISTS (
+            SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+            WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+              AND ftag."folderId" = ${folderId ?? ''}
+          )
+        ))
+      )
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
         OR EXISTS (
