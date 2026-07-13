@@ -170,8 +170,9 @@ com versão SemVer de desenvolvimento e changelog:
 - Toda feature entra por PR para `dev`.
 - `version-dev.yml` consome `changelog/unreleased`, atualiza `releases.json` e os
   `package.json`, e abre uma PR automática contra `dev`.
-- A PR automática dispara o CI explicitamente e só é mergeada quando os sete
-  required checks estão verdes no head atual e o estado de merge é `CLEAN`.
+- A PR automática reroda CI, Security e PR Changelog Guard no contexto do próprio
+  pull request e só é mergeada quando os 18 checks atuais estão verdes no head e
+  o estado de merge é `CLEAN`.
 - Uma PR de versão obsoleta é fechada e substituída por um snapshot completo, para
   que merges concorrentes não deixem notas presas na fila.
 - A imagem Easypanel em `dev` recebe tags `dev`, `dev-X.Y.Z-dev.<unix_epoch_seconds>` e `X.Y.Z-dev.<unix_epoch_seconds>`.

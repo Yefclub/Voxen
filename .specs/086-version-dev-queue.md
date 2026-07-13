@@ -2,9 +2,9 @@
 
 ## Contexto
 
-O workflow de versão criava uma PR com o `GITHUB_TOKEN`. Por proteção anti-loop do
-GitHub Actions, essa criação não disparava os workflows de `pull_request`; a PR
-ficava sem required checks e não podia ser mergeada. Enquanto ela permanecia
+O workflow de versão criava uma PR com o `GITHUB_TOKEN`. O GitHub registrava os
+workflows de `pull_request` como `action_required`, sem jobs no rollup; a PR ficava
+sem required checks executáveis e não podia ser mergeada. Enquanto ela permanecia
 aberta, merges posteriores apenas detectavam “já existe PR” e encerravam, deixando
 a versão e todas as novas notas presas em `changelog/unreleased`.
 
@@ -18,6 +18,8 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
   exatamente `dev`, inclusive em disparos manuais.
 - The system shall exigir os sete required checks registrados no SHA atual antes
   de mergear um bump de versão.
+- The system shall exigir também os checks não obrigatórios de segurança e
+  changelog, totalizando os 18 checks atuais, antes de considerar a PR `CLEAN`.
 - The system shall tratar rollup vazio ou pertencente a outro SHA como falha, nunca
   como CI verde.
 
@@ -26,8 +28,9 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 - When um merge em `dev` encontra uma PR automática de versão pendente, the system
   shall substituí-la por um snapshot novo que consuma todo o changelog ainda não
   publicado.
-- When a PR automática for criada, the system shall disparar explicitamente o
-  workflow de CI no head da branch.
+- When a PR automática for criada pelo `GITHUB_TOKEN`, the system shall localizar
+  e rerodar os runs `action_required` de CI, Security e PR Changelog Guard para
+  que os resultados sejam vinculados ao rollup da PR.
 - When os required checks concluírem com sucesso e a PR ficar `CLEAN`, the system
   shall fazer merge squash e excluir a branch automática.
 
@@ -53,8 +56,8 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 - [ ] Uma PR automática antiga não bloqueia novos bumps.
 - [ ] Um `workflow_dispatch` selecionado em qualquer ref diferente de `dev` não
       executa o job nem cria PR.
-- [ ] O workflow dispara CI explicitamente para a branch criada pelo bot.
-- [ ] O merge só ocorre com os sete required checks verdes no head atual.
+- [ ] O workflow reroda os três workflows de `pull_request` criados pelo bot.
+- [ ] O merge só ocorre com os 18 checks verdes no head atual.
 - [ ] Falha, timeout, rollup vazio ou head divergente mantêm a PR aberta.
 - [ ] O próximo bump consome todas as entradas acumuladas em
       `changelog/unreleased`.
@@ -66,9 +69,9 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 
 ## Riscos / Decisões pendentes
 
-- O workflow `CI` precisa manter o gatilho `workflow_dispatch`; a remoção futura
-  desse gatilho deve ser acompanhada por outra credencial capaz de criar eventos
-  de `pull_request`.
+- Os nomes `CI`, `Security` e `PR Changelog Guard`, além do total atual de 18
+  checks, são contratos operacionais. Se os workflows mudarem, esta automação e a
+  spec precisam ser atualizadas juntas.
 
 ## Histórico de decisão
 
@@ -76,3 +79,7 @@ Esta spec supersede somente o contrato de versionamento de desenvolvimento da
 spec 014. A decisão anterior removeu commits e tags de prerelease feitos
 diretamente em `dev`; o fluxo atual continua sem push direto e materializa versão
 e changelog por uma PR protegida pelos mesmos required checks da branch.
+
+> 2026-07-13: `workflow_dispatch` foi substituído por rerun dos workflows de
+> `pull_request`, porque a execução manual passou no SHA mas não apareceu no
+> rollup nem tornou a PR mergeável.
