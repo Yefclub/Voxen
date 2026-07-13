@@ -109,6 +109,10 @@ describeIfDb('chat de sessão única', () => {
     const result = await approveChatAction(user.id, approvalId);
     expect(result.noteId).toBeTruthy();
     expect(await db.note.count({ where: { id: result.noteId, userId: user.id } })).toBe(1);
+    const hitlMessage = await db.chatMessage.findFirst({
+      where: { conversationId: conversation.id, kind: 'HITL_RESPONSE' },
+    });
+    expect(hitlMessage?.tools).toBeNull();
     await expect(approveChatAction(user.id, approvalId)).rejects.toThrow();
   });
 
