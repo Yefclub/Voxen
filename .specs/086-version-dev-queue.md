@@ -14,6 +14,8 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 
 - The system shall manter no máximo uma PR automática de versão aberta contra
   `dev`.
+- The system shall executar a automação somente quando o ref de origem for
+  exatamente `dev`, inclusive em disparos manuais.
 - The system shall exigir os sete required checks registrados no SHA atual antes
   de mergear um bump de versão.
 - The system shall tratar rollup vazio ou pertencente a outro SHA como falha, nunca
@@ -49,6 +51,8 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 ## Critérios de Aceite
 
 - [ ] Uma PR automática antiga não bloqueia novos bumps.
+- [ ] Um `workflow_dispatch` selecionado em qualquer ref diferente de `dev` não
+      executa o job nem cria PR.
 - [ ] O workflow dispara CI explicitamente para a branch criada pelo bot.
 - [ ] O merge só ocorre com os sete required checks verdes no head atual.
 - [ ] Falha, timeout, rollup vazio ou head divergente mantêm a PR aberta.
@@ -65,3 +69,10 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 - O workflow `CI` precisa manter o gatilho `workflow_dispatch`; a remoção futura
   desse gatilho deve ser acompanhada por outra credencial capaz de criar eventos
   de `pull_request`.
+
+## Histórico de decisão
+
+Esta spec supersede somente o contrato de versionamento de desenvolvimento da
+spec 014. A decisão anterior removeu commits e tags de prerelease feitos
+diretamente em `dev`; o fluxo atual continua sem push direto e materializa versão
+e changelog por uma PR protegida pelos mesmos required checks da branch.

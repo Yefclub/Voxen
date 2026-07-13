@@ -19,8 +19,11 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  TARGET_BRANCH: dev
+
 concurrency:
-  group: version-dev-${{ github.repository }}-${{ github.ref_name }}
+  group: version-dev-${{ github.repository }}-dev
   cancel-in-progress: false
 
 jobs:
@@ -29,20 +32,20 @@ jobs:
     # Evita loop: não re-bump se o push já for o commit/PR do bot de versão.
     # Aspas externas obrigatórias: o ":" em "chore: set version" quebra o YAML.
     # Branch protection exige PR — o bot abre PR + auto-merge (não pusha em dev).
-    if: "${{ github.event_name == 'workflow_dispatch' || (github.event.head_commit != null && !startsWith(github.event.head_commit.message, 'chore: set version to ')) }}"
+    if: "${{ github.ref_name == 'dev' && (github.event_name == 'workflow_dispatch' || (github.event.head_commit != null && !startsWith(github.event.head_commit.message, 'chore: set version to '))) }}"
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sync branch with remote
         run: |
           set -euo pipefail
-          git fetch origin "${{ github.ref_name }}"
+          git fetch origin "$TARGET_BRANCH"
           git checkout -- . 2>/dev/null || true
-          git pull --rebase origin "${{ github.ref_name }}"
+          git pull --rebase origin "$TARGET_BRANCH"
 
       - uses: actions/setup-node@v6
         with:
@@ -158,19 +161,20 @@ jobs:
           # anti-loop do Actions). Antes, ela ficava sem checks e bloqueava para
           # sempre todos os bumps seguintes. Substituímos qualquer bump pendente
           # por um novo snapshot completo do `dev` atual.
-          OPEN_URL=$(gh pr list --base dev --state open --json title,url --jq \
-            '[.[] | select(.title | startswith("chore: set version to "))][0].url // ""')
-          if [ -n "$OPEN_URL" ]; then
+          OPEN_URLS=$(gh pr list --base "$TARGET_BRANCH" --state open --json title,url --jq \
+            '.[] | select(.title | startswith("chore: set version to ")) | .url')
+          while IFS= read -r OPEN_URL; do
+            [ -z "$OPEN_URL" ] && continue
             echo "Fechando bump obsoleto: $OPEN_URL"
             gh pr close "$OPEN_URL" --delete-branch || gh pr close "$OPEN_URL"
-          fi
+          done <<< "$OPEN_URLS"
 
           BRANCH="chore/version-dev-${NEW_VER//./-}"
           git commit -m "chore: set version to $NEW_VER for dev"
           git checkout -B "$BRANCH"
           git push -u origin "$BRANCH" --force
 
-          PR_URL=$(gh pr create --base dev --head "$BRANCH" \
+          PR_URL=$(gh pr create --base "$TARGET_BRANCH" --head "$BRANCH" \
             --title "chore: set version to $NEW_VER for dev" \
             --body "Bump automático de versão em dev (\`$NEW_VER\`) + consumo de changelog/unreleased.")
           echo "PR: $PR_URL"
