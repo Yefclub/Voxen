@@ -61,11 +61,19 @@ if [ -z "${EASYPANEL_API_KEY:-}" ]; then
   exit 1
 fi
 
+# Arquivo de resposta com nome imprevisível e 0600 (mktemp) — evita symlink
+# pré-plantado num caminho fixo em /tmp (CWE-377). Removido em sucesso; mantido
+# (e apontado na mensagem de erro) em falha, pra permitir diagnóstico.
+response_file="$(mktemp "${TMPDIR:-/tmp}/voxen-easypanel-deploy-response.XXXXXX")"
+
 fire_deploy() {
-  curl -s -o /tmp/voxen-easypanel-deploy-response.json -w '%{http_code}' \
+  # A chave NUNCA vai como argumento de linha de comando do curl (ficaria
+  # visível via `ps`/`/proc/<pid>/cmdline` pra outros usuários da máquina) —
+  # vai só pelo header lido via `-K -` (config do curl no stdin).
+  printf 'header = "Authorization: Bearer %s"\n' "${EASYPANEL_API_KEY}" | curl -s -K - \
+    -o "$response_file" -w '%{http_code}' \
     --max-time 20 \
     -X POST "${EASYPANEL_URL}/api/trpc/services.app.deployService" \
-    -H "Authorization: Bearer ${EASYPANEL_API_KEY}" \
     -H "Content-Type: application/json" \
     -d "{\"json\":{\"projectName\":\"${EASYPANEL_PROJECT}\",\"serviceName\":\"${EASYPANEL_SERVICE}\"}}" \
     2>/dev/null || echo "000"
@@ -85,8 +93,9 @@ if [ "$http_code" = "200" ]; then
   mkdir -p "$(dirname "$MARKER")"
   echo "$current_sha" > "$MARKER"
   echo "[easypanel-deploy] deploy disparado com sucesso pro SHA $current_sha (HTTP $http_code)."
+  rm -f "$response_file"
   exit 0
 fi
 
-echo "[easypanel-deploy] deploy FALHOU (HTTP $http_code) pro SHA $current_sha — marcador NÃO atualizado, tentará de novo na próxima chamada. Resposta em /tmp/voxen-easypanel-deploy-response.json." >&2
+echo "[easypanel-deploy] deploy FALHOU (HTTP $http_code) pro SHA $current_sha — marcador NÃO atualizado, tentará de novo na próxima chamada. Resposta em $response_file." >&2
 exit 1
