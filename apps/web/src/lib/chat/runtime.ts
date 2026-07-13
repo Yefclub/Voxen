@@ -289,14 +289,16 @@ export function buildTools(
         'Pesquisa a web atual usando o modelo configurado e devolve síntese com citações URL. ' +
         'Use para notícias, documentação, fatos recentes e fontes fora da biblioteca.',
       inputSchema: z.object({ query: z.string().min(1).max(1_000) }),
-      execute: async ({ query }) => researchWeb(userId, query, 'web', options.abortSignal),
+      execute: async ({ query }, execution) =>
+        researchWeb(userId, query, 'web', execution.abortSignal ?? options.abortSignal),
     }),
     search_x: tool({
       description:
         'Pesquisa publicações e threads do X usando o Modelo de análise do X (Grok) configurado. ' +
         'Use quando o usuário pedir conteúdo, tendências ou opiniões publicadas no X.',
       inputSchema: z.object({ query: z.string().min(1).max(1_000) }),
-      execute: async ({ query }) => researchWeb(userId, query, 'x', options.abortSignal),
+      execute: async ({ query }, execution) =>
+        researchWeb(userId, query, 'x', execution.abortSignal ?? options.abortSignal),
     }),
     outline_transcript: tool({
       description:
@@ -485,7 +487,8 @@ export function buildTools(
       inputSchema: z.object({
         url: z.string().min(1).max(2048),
       }),
-      execute: async ({ url }) => {
+      execute: async ({ url }, execution) => {
+        const toolSignal = execution.abortSignal ?? options.abortSignal;
         const result = await createAutoJobForUser(userId, url);
         switch (result.outcome) {
           case 'created': {
@@ -493,7 +496,7 @@ export function buildTools(
             return waitForTranscriptJob({
               userId,
               jobId: result.jobId,
-              abortSignal: options.abortSignal,
+              abortSignal: toolSignal,
               onProgress: (status) =>
                 options.emitStatus?.(
                   status === 'RUNNING'
@@ -504,7 +507,7 @@ export function buildTools(
           }
           case 'existing_transcript':
             return getTranscriptBrief(userId, result.transcriptId, {
-              abortSignal: options.abortSignal,
+              abortSignal: toolSignal,
             });
           case 'inflight': {
             if (!result.jobId) return { outcome: 'error' as const, error: result.error };
@@ -512,7 +515,7 @@ export function buildTools(
             return waitForTranscriptJob({
               userId,
               jobId: result.jobId,
-              abortSignal: options.abortSignal,
+              abortSignal: toolSignal,
               onProgress: (status) => options.emitStatus?.(`Transcrição: ${status.toLowerCase()}…`),
             });
           }
