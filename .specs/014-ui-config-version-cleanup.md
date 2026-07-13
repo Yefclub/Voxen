@@ -21,6 +21,10 @@ desnecessária entre `dev` e `main`.
 7. Simplificar release/versionamento: `dev` não deve receber commits automáticos
    de pre-release; tags estáveis continuam sendo fonte de release.
 
+> Decisão de versionamento supersedida pela spec 086: o workflow continua sem
+> push direto e sem tag de prerelease, mas passou a materializar versão e
+> changelog em uma PR automática protegida contra `dev`.
+
 ## Fora de escopo
 
 - Renomear a dependência `yt-dlp` ou remover seu uso interno.
@@ -39,7 +43,8 @@ desnecessária entre `dev` e `main`.
 - [x] O worker usa `summary_timeout_sec` no proxy para o chat service.
 - [x] Mensagens user-facing de bloqueio YouTube orientam "configurações de
       extração" em vez de "clients do yt-dlp".
-- [x] `version-dev.yml` deixa de commitar/tagear `vX.Y.Z-dev.N` em `dev`.
+- [x] `version-dev.yml` deixa de fazer push direto e de criar tags
+      `vX.Y.Z-dev.N`; desde a spec 086, versão e changelog entram por PR protegida.
 - [x] `version-main.yml` mantém release estável e sincroniza a versão estável
       de volta para `dev` após tag.
 - [x] Documentação descreve o novo fluxo de versão.
