@@ -9,6 +9,7 @@ Como rodar localmente, testar, fazer TDD/SDD, e contribuir.
 - Nada mais. Bun, Python, Postgres, Redis, MinIO — tudo em containers.
 
 Opcional (pra rodar tooling fora do container, ex: prisma generate, lint local):
+
 - `bun` 1.2+
 - `pnpm` 9+
 - `python` 3.13 + `uv`
@@ -71,6 +72,7 @@ Antes de implementar QUALQUER feature não-trivial (>2 arquivos, mudança de API
 4. Spec entra no MESMO PR da implementação
 
 EARS = Easy Approach to Requirements Syntax. 5 categorias:
+
 - **Ubiquitous**: `The system shall <X>.`
 - **Event-driven**: `When <event>, the system shall <X>.`
 - **State-driven**: `While <state>, the system shall <X>.`
@@ -127,12 +129,14 @@ cd apps/chat && uv run pytest   # só chat
 4. Implementar com TDD
 5. `make format-check && make lint && make typecheck && make test && docker compose build`
 6. Commit com conventional message (título em inglês):
+
    ```
    feat(scope): descrição concisa do que mudou
-   
+
    Corpo em PT-BR explicando contexto e detalhes.
    Refs .specs/NNN-slug.md
    ```
+
 7. `git push -u origin feat/<slug>`
 8. `gh pr create --base dev --title "<título em PT-BR>" --body "..."`
 9. Aguardar CI verde
@@ -146,6 +150,7 @@ Tipos: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `style`, `bui
 Scope: nome do app ou área (`web`, `chat`, `worker`, `infra`, `auth`, `transcribe`).
 
 Exemplos:
+
 ```
 feat(transcribe): salva timestamps em formato clicável no .md
 fix(auth): corrige redirect após aprovação do admin
@@ -155,18 +160,26 @@ docs(spec): adiciona .specs/003-painel-custos.md
 
 ### Versioning — SemVer estável em main, prerelease em dev
 
-`package.json` guarda a última versão estável do produto. Tags estáveis usam
-SemVer completo: `vX.Y.Z`. A branch `dev` não cria commits/tags automáticos de
-pré-release a cada merge; builds de dev usam uma versão efêmera SemVer ligada à
-próxima patch estável: `X.Y.Z-dev.<unix_epoch_seconds>`.
+`package.json` guarda a versão materializada do build. Tags estáveis usam SemVer
+completo: `vX.Y.Z`. Em `dev`, cada lote pendente de merges gera uma PR automática
+com versão SemVer de desenvolvimento e changelog:
+`X.Y.Z-dev.<unix_epoch_seconds>`.
 
 **Branch `dev`**:
+
 - Toda feature entra por PR para `dev`.
-- `version-dev.yml` calcula e publica a versão dev no summary do workflow.
+- `version-dev.yml` consome `changelog/unreleased`, atualiza `releases.json` e os
+  `package.json`, e abre uma PR automática contra `dev`.
+- A PR automática reroda CI, Security e PR Changelog Guard no contexto do próprio
+  pull request e só é mergeada quando os três workflows terminam em `success`, os
+  sete required checks exatos estão verdes no head e o estado é `CLEAN`.
+- Uma PR de versão obsoleta é fechada e substituída por um snapshot completo, para
+  que merges concorrentes não deixem notas presas na fila.
 - A imagem Easypanel em `dev` recebe tags `dev`, `dev-X.Y.Z-dev.<unix_epoch_seconds>` e `X.Y.Z-dev.<unix_epoch_seconds>`.
-- O workflow não altera arquivos, não commita e não cria tag.
+- O workflow nunca faz push direto em `dev` e não cria tag de prerelease.
 
 **Release estável em `main`**:
+
 - Prepare uma branch de release a partir de `dev`: `pnpm release:prepare patch`
   (ou `minor`/`major`) e commite `package.json` + `apps/web/package.json`.
 - Abra PR para `main` com label `release:patch`, `release:minor` ou
@@ -178,10 +191,11 @@ próxima patch estável: `X.Y.Z-dev.<unix_epoch_seconds>`.
 - Sincronize `main` de volta em `dev` por PR normal quando houver commit de
   release que `dev` ainda não contém.
 
-Esse fluxo é compatível com branch protection: nenhum workflow precisa commitar
-direto em `main` ou `dev`.
+Esse fluxo é compatível com branch protection: nenhum workflow faz push direto
+em `main` ou `dev`; toda alteração materializada passa por PR e required checks.
 
 **Versão visível na UI**: `/api/version` retorna em ordem:
+
 1. env `VOXEN_VERSION` (CI/deploy injeta build arg; dev local pode usar
    `git describe --tags --always --dirty`)
 2. deploy Easypanel por GitHub source: `package.json` próxima patch +
@@ -228,10 +242,10 @@ direto em `main` ou `dev`.
 
 ## Troubleshooting
 
-| Sintoma | Causa provável | Fix |
-|---|---|---|
-| `make dev` falha no MinIO | bucket/init falhou | `docker compose logs minio minio-init` |
-| Web container reinicia em loop | `MASTER_KEY` ausente/inválida | `make master-key-show` e confira se é base64 de 32 bytes |
-| Worker não pega jobs | Redis password errado | Conferir `REDIS_URL` no compose vs `REDIS_PASSWORD` |
-| Migration falha | Schema drift | `pnpm prisma migrate reset` (DEV ONLY — perde dados) |
-| FTS retorna vazio | Trigger não rodou | Verificar trigger `transcript_search_vector_update` no DB |
+| Sintoma                        | Causa provável                | Fix                                                       |
+| ------------------------------ | ----------------------------- | --------------------------------------------------------- |
+| `make dev` falha no MinIO      | bucket/init falhou            | `docker compose logs minio minio-init`                    |
+| Web container reinicia em loop | `MASTER_KEY` ausente/inválida | `make master-key-show` e confira se é base64 de 32 bytes  |
+| Worker não pega jobs           | Redis password errado         | Conferir `REDIS_URL` no compose vs `REDIS_PASSWORD`       |
+| Migration falha                | Schema drift                  | `pnpm prisma migrate reset` (DEV ONLY — perde dados)      |
+| FTS retorna vazio              | Trigger não rodou             | Verificar trigger `transcript_search_vector_update` no DB |

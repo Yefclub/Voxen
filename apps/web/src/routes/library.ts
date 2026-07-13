@@ -56,21 +56,43 @@ const PatchFolderBody = z.object({
 
 libraryRoutes.get('/folders', async (c) => {
   const userId = c.get('userId');
-  const folders = await db.libraryFolder.findMany({
-    where: { userId },
-    orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
-    select: {
-      id: true,
-      parentId: true,
-      name: true,
-      createdAt: true,
-      updatedAt: true,
-      _count: {
-        select: { transcripts: true, children: true },
+  const [folders, memberCounts] = await Promise.all([
+    db.libraryFolder.findMany({
+      where: { userId },
+      orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        parentId: true,
+        name: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: { select: { children: true } },
       },
-    },
+    }),
+    db.$queryRaw<Array<{ id: string; count: bigint }>>`
+      SELECT f.id, COUNT(m.id)::bigint AS count
+      FROM "LibraryFolder" f
+      LEFT JOIN LATERAL (
+        SELECT t.id FROM "Transcript" t
+        WHERE t."userId" = ${userId} AND t."folderId" = f.id
+        UNION
+        SELECT tt."transcriptId" AS id
+        FROM "TranscriptTag" tt
+        JOIN "Tag" tag ON tag.id = tt."tagId"
+        JOIN "Transcript" t ON t.id = tt."transcriptId" AND t."userId" = ${userId}
+        WHERE tag."userId" = ${userId} AND tag."folderId" = f.id
+      ) m ON TRUE
+      WHERE f."userId" = ${userId}
+      GROUP BY f.id
+    `,
+  ]);
+  const counts = new Map(memberCounts.map((item) => [item.id, Number(item.count)]));
+  return c.json({
+    folders: folders.map((folder) => ({
+      ...folder,
+      _count: { children: folder._count.children, transcripts: counts.get(folder.id) ?? 0 },
+    })),
   });
-  return c.json({ folders });
 });
 
 libraryRoutes.post('/folders', async (c) => {

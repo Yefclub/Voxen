@@ -4,6 +4,7 @@ import {
   approveChatAction,
   clearConversation,
   getOrCreateConversation,
+  getChatSnapshot,
   releaseChatStreamSlot,
 } from '../src/lib/chat/runtime';
 import { db } from '../src/lib/db';
@@ -50,6 +51,32 @@ describeIfDb('chat de sessão única', () => {
       getOrCreateConversation(secondUser.id),
     ]);
     expect(first.id).not.toBe(second.id);
+  });
+
+  it('restaura raciocínio e ferramentas persistidos no snapshot', async () => {
+    const user = await db.user.create({
+      data: { email: 'chat-test-segments@voxen.local', name: 'Segments', status: 'APPROVED' },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const segments = [
+      { type: 'reasoning', id: 'r0', text: 'Vou consultar', startedAt: 10, endedAt: 20 },
+      {
+        type: 'tool-group',
+        id: 'g0',
+        tools: [{ id: 't0', name: 'search_transcripts', state: 'completed' }],
+      },
+    ];
+    await db.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: 'Resposta',
+        tools: segments[1]?.tools,
+        segments,
+      },
+    });
+    const snapshot = await getChatSnapshot(user.id);
+    expect(snapshot.messages[0]?.segments).toEqual(segments);
   });
 
   it('aceita apenas um stream ativo por usuário e libera o slot pelo dono', async () => {

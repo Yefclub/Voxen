@@ -108,6 +108,60 @@ describeIfDb('library organization API', () => {
     expect(stored.folderId).toBe(createBody.folder.id);
   });
 
+  it('lista e conta um conteúdo em todas as pastas virtuais das suas tags', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const [folderA, folderB] = await Promise.all([
+      db.libraryFolder.create({ data: { userId: user.id, name: 'Produto' } }),
+      db.libraryFolder.create({ data: { userId: user.id, name: 'Pesquisa' } }),
+    ]);
+    const [tagA, tagB] = await Promise.all([
+      db.tag.create({
+        data: { userId: user.id, name: 'Produto', slug: 'produto', folderId: folderA.id },
+      }),
+      db.tag.create({
+        data: { userId: user.id, name: 'Pesquisa', slug: 'pesquisa', folderId: folderB.id },
+      }),
+    ]);
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        folderId: folderA.id,
+        source: 'WEB',
+        url: 'https://example.com/multi-tag',
+        title: 'Conteúdo multi-tag',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/multi-tag.md`,
+        plainText: 'produto pesquisa estratégia',
+        frontmatter: {},
+        tags: { create: [{ tagId: tagA.id }, { tagId: tagB.id }] },
+      },
+    });
+
+    const list = await app.fetch(
+      new Request(`http://localhost/api/transcripts?folderId=${folderB.id}`, {
+        headers: { cookie },
+      }),
+    );
+    expect(list.status).toBe(200);
+    const listBody = (await list.json()) as { transcripts: Array<{ id: string }>; total: number };
+    expect(listBody.transcripts.map((item) => item.id)).toContain(transcript.id);
+    expect(listBody.total).toBe(1);
+
+    const folders = await app.fetch(
+      new Request('http://localhost/api/library/folders', { headers: { cookie } }),
+    );
+    const body = (await folders.json()) as {
+      folders: Array<{ id: string; _count: { transcripts: number } }>;
+    };
+    expect(body.folders.find((item) => item.id === folderA.id)?._count.transcripts).toBe(1);
+    expect(body.folders.find((item) => item.id === folderB.id)?._count.transcripts).toBe(1);
+  });
+
   it('hides trashed transcripts from default library list', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');

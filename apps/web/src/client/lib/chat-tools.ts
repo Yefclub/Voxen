@@ -47,6 +47,7 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   brain_path: 'brain',
   // web
   web_search: 'web',
+  search_x: 'web',
   scrape_url: 'web',
   // transcrição
   transcribe_video: 'transcript',

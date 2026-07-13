@@ -255,6 +255,7 @@ export function AdminCustosPage(): React.ReactElement {
 function kindLabel(kind: string, t: TranslateFn): string {
   const labels: Record<string, string> = {
     CHAT: t('admin.costs.kind.chat'),
+    WEB_SEARCH: t('admin.costs.kind.web'),
     TRANSCRIBE: t('admin.costs.kind.transcribe'),
     DOCUMENT: t('admin.costs.kind.document'),
     X_SEARCH: t('admin.costs.kind.x'),

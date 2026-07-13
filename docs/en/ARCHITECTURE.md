@@ -91,10 +91,17 @@ Postgres stores durable relational data and full-text search vectors. Redis back
 
 ### Chat
 
-1. The user sends a question.
-2. The web app proxies the request to `apps/chat`.
-3. The agent uses tools to search and read transcripts.
-4. The answer streams back through SSE.
+1. The user sends a question and the web app persists it.
+2. Postgres FTS preloads compact title, summary, and tag suggestions.
+3. The AI SDK agent confirms relevant context with progressive retrieval tools.
+4. Current facts use `web_search`; X content uses `search_x` with the configured Grok model.
+5. A new URL makes `request_transcription` wait for the worker and return a summary/tag/related brief.
+6. Text, reasoning, and tool events stream through SSE and persist as chronological segments.
+7. Reload restores that timeline, while stored reasoning is never fed back into model context.
+
+Tag-backed folders are virtual many-to-many memberships: `Transcript.folderId`
+remains the primary folder, while list and count operations also include
+`TranscriptTag -> Tag.folderId` without duplicating content.
 
 ## Design Direction
 
