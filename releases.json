@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1783910846",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Atualizações automáticas passam por todos os checks da PR",
+    "body": "O bump de desenvolvimento agora reexecuta CI, segurança e validação de changelog\nno contexto da própria PR. Isso permite publicar a nova versão e suas novidades\nsem deixar o rollup preso em aprovação manual.",
+    "pr": 365,
+    "author": "Kalyel",
+    "date": "2026-07-12T23:47:15-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/365"
+  },
+  {
     "version": "0.11.0-dev.1783907036",
     "channel": "dev",
     "type": "fix",

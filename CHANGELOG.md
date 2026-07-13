@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.11.0-dev.1783910846 — 2026-07-12 · Dev
+
+### 🐛 Atualizações automáticas passam por todos os checks da PR
+
+O bump de desenvolvimento agora reexecuta CI, segurança e validação de changelog
+no contexto da própria PR. Isso permite publicar a nova versão e suas novidades
+sem deixar o rollup preso em aprovação manual.
+
 ## v0.11.0-dev.1783907036 — 2026-07-12 · Dev
 
 ### 🐛 Novidades voltam a acompanhar cada atualização de desenvolvimento
