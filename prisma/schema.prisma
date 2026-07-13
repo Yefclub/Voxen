@@ -462,6 +462,7 @@ model Job {
 
 enum CostEventKind {
   CHAT
+  WEB_SEARCH
   TRANSCRIBE
   DOCUMENT
   X_SEARCH
@@ -584,6 +585,9 @@ model ChatMessage {
   content        String          @db.Text
   // tools usadas pela resposta (array de {name, args, preview}) — JSONB
   tools          Json?
+  // Linha do tempo visual do turno (raciocínio + grupos de tools). Nunca é
+  // reenviada ao modelo; serve para restaurar a UI após reload.
+  segments       Json?
   // Quando setado, esta mensagem foi "compactada" — significa que seu
   // conteúdo já foi substituído por uma COMPACTION_SUMMARY mais recente.
   // Fica no DB pra histórico (user pode expandir e ver), mas NÃO é enviada

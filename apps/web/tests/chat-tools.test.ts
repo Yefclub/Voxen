@@ -38,6 +38,35 @@ async function runTool(t: unknown, input: unknown): Promise<unknown> {
   return execute(input, { toolCallId: 'test-call', messages: [] });
 }
 
+async function finishQueuedJob(userId: string, sourceUrl: string, title: string): Promise<string> {
+  let job: { id: string } | null = null;
+  for (let attempt = 0; attempt < 100 && !job; attempt += 1) {
+    job = await db.job.findFirst({ where: { userId, sourceUrl }, select: { id: true } });
+    if (!job) await Bun.sleep(20);
+  }
+  if (!job) throw new Error('Job não foi criado a tempo.');
+  const transcript = await db.transcript.create({
+    data: {
+      userId,
+      source: 'YOUTUBE',
+      url: sourceUrl,
+      title,
+      durationSec: 60,
+      language: 'pt',
+      transcriptionMethod: 'SUBTITLES',
+      mdPath: `workspaces/${userId}/transcripts/${job.id}.md`,
+      plainText: 'conteúdo curto para o brief',
+      summaryMd: 'Resumo pronto.',
+      frontmatter: {},
+    },
+  });
+  await db.job.update({
+    where: { id: job.id },
+    data: { status: 'DONE', transcriptId: transcript.id, finishedAt: new Date() },
+  });
+  return transcript.id;
+}
+
 describe('buildTools (agente in-app)', () => {
   const tools = buildTools('user-test');
   const names = Object.keys(tools);
@@ -68,6 +97,11 @@ describe('buildTools (agente in-app)', () => {
     for (const name of ['request_transcription', 'get_job_status']) {
       expect(names).toContain(name);
     }
+  });
+
+  it('expõe pesquisa web e pesquisa no X', () => {
+    expect(names).toContain('web_search');
+    expect(names).toContain('search_x');
   });
 
   it('cada ferramenta tem inputSchema e execute', () => {
@@ -105,18 +139,26 @@ describeIfDb('request_transcription (com DB)', () => {
     await deleteSetting('openrouter_api_key').catch(() => {});
   });
 
-  it('outcome created enfileira job novo', async () => {
+  it('job novo só retorna depois de concluído, com brief em vez de jobId', async () => {
     const tools = buildTools(userId);
-    const result = (await runTool(tools.request_transcription, {
+    const pending = runTool(tools.request_transcription, {
       url: 'https://www.youtube.com/watch?v=chatTool001',
-    })) as { outcome: 'created'; jobId: string; message: string };
-    expect(result.outcome).toBe('created');
-    expect(typeof result.jobId).toBe('string');
-    expect(result.message).toContain('get_job_status');
-    const job = await db.job.findUnique({ where: { id: result.jobId } });
-    expect(job?.userId).toBe(userId);
-    expect(job?.status).toBe('QUEUED');
-    expect(job?.sourceUrl).toBe('https://youtu.be/chatTool001');
+    });
+    const transcriptId = await finishQueuedJob(
+      userId,
+      'https://youtu.be/chatTool001',
+      'Conteúdo concluído',
+    );
+    const result = (await pending) as {
+      transcriptId: string;
+      summary: string | null;
+      tags: string[];
+      nextStep: string;
+    };
+    expect(result.transcriptId).toBe(transcriptId);
+    expect(result.summary).toBe('Resumo pronto.');
+    expect(result.tags).toEqual([]);
+    expect(result.nextStep).toContain('read_transcript');
   });
 
   it('outcome existing_transcript aponta a transcrição existente (não duplica job)', async () => {
@@ -138,8 +180,7 @@ describeIfDb('request_transcription (com DB)', () => {
     const tools = buildTools(userId);
     const result = (await runTool(tools.request_transcription, {
       url: 'https://www.youtube.com/watch?v=chatTool002',
-    })) as { outcome: 'existing_transcript'; transcriptId: string; message: string };
-    expect(result.outcome).toBe('existing_transcript');
+    })) as { transcriptId: string };
     expect(result.transcriptId).toBe(existing.id);
     const jobCount = await db.job.count({
       where: { userId, sourceUrl: 'https://youtu.be/chatTool002' },
@@ -147,7 +188,7 @@ describeIfDb('request_transcription (com DB)', () => {
     expect(jobCount).toBe(0);
   });
 
-  it('outcome inflight quando a URL já está em processamento', async () => {
+  it('job inflight também aguarda e devolve o brief concluído', async () => {
     const inflight = await db.job.create({
       data: {
         userId,
@@ -158,11 +199,31 @@ describeIfDb('request_transcription (com DB)', () => {
       select: { id: true },
     });
     const tools = buildTools(userId);
-    const result = (await runTool(tools.request_transcription, {
+    const pending = runTool(tools.request_transcription, {
       url: 'https://www.youtube.com/watch?v=chatTool003',
-    })) as { outcome: 'inflight'; jobId: string | null; message: string };
-    expect(result.outcome).toBe('inflight');
-    expect(result.jobId).toBe(inflight.id);
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId,
+        source: 'YOUTUBE',
+        url: 'https://youtu.be/chatTool003',
+        title: 'Inflight concluído',
+        durationSec: 60,
+        language: 'pt',
+        transcriptionMethod: 'SUBTITLES',
+        mdPath: `workspaces/${userId}/transcripts/chatTool003.md`,
+        plainText: 'corpo',
+        summaryMd: 'Brief inflight.',
+        frontmatter: {},
+      },
+    });
+    await db.job.update({
+      where: { id: inflight.id },
+      data: { status: 'DONE', transcriptId: transcript.id },
+    });
+    const result = (await pending) as { transcriptId: string; summary: string | null };
+    expect(result.transcriptId).toBe(transcript.id);
+    expect(result.summary).toBe('Brief inflight.');
   });
 
   it('outcome error para URL inválida (sem detalhes internos)', async () => {
@@ -185,11 +246,15 @@ describeIfDb('request_transcription (com DB)', () => {
     });
     try {
       const tools = buildTools(other.id);
-      const result = (await runTool(tools.request_transcription, {
+      const pending = runTool(tools.request_transcription, {
         url: 'https://www.youtube.com/watch?v=chatTool004',
-      })) as { outcome: 'created'; jobId: string; message: string };
-      expect(result.outcome).toBe('created');
-      const job = await db.job.findUnique({ where: { id: result.jobId } });
+      });
+      await finishQueuedJob(other.id, 'https://youtu.be/chatTool004', 'Outro workspace');
+      const result = (await pending) as { transcriptId: string };
+      const job = await db.job.findFirst({
+        where: { transcriptId: result.transcriptId },
+        select: { userId: true },
+      });
       expect(job?.userId).toBe(other.id);
       expect(job?.userId).not.toBe(userId);
     } finally {

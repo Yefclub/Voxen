@@ -21,7 +21,7 @@ export type ToolEvent = {
   output?: unknown;
 };
 
-/** Segmento de raciocínio: texto acumulado + janela de tempo (só ao vivo). */
+/** Segmento de raciocínio: texto acumulado + janela de tempo persistível. */
 export type ReasoningSegment = {
   type: 'reasoning';
   id: string;
@@ -123,8 +123,8 @@ export function applySegmentEvent(
 }
 
 /**
- * Constrói os segments de uma mensagem histórica/recarregada (só `tools`
- * persistido — raciocínio nunca é salvo, intencionalmente). Um único
+ * Compatibilidade para mensagens históricas sem `segments` (só `tools`
+ * persistido). Um único
  * tool-group com todas as ferramentas na ordem persistida, sem segmento de
  * raciocínio.
  */
@@ -155,9 +155,8 @@ export function segmentsRunning(segments: readonly MessageSegment[]): boolean {
  * que é estado de componente e por isso NÃO sobrevive quando `send()` troca
  * as mensagens pelo snapshot do servidor ao fim do turno — o React remonta o
  * componente (a mensagem ganha o id real do banco, mudando a `key`), zerando
- * esse estado local. Como o snapshot não persiste raciocínio, `segments` (com
- * os timestamps) é reanexado na mensagem por `send()`; esta função deriva a
- * MESMA duração a partir só desse dado, sem depender de nenhum estado local.
+ * esse estado local. Esta função deriva a duração a partir dos timestamps
+ * persistidos, sem depender de estado local.
  *
  * `null` se não há segmento de raciocínio (turno só de ferramentas — sem
  * duração, como já era antes desta spec) ou se algum ainda está aberto (sem

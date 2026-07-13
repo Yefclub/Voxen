@@ -342,7 +342,48 @@ export async function loadTranscriptMd(
   return { id: t.id, title: t.title, url: t.url, md };
 }
 
-export type FtsResult = { id: string; title: string; snippet: string; rank: number };
+export type FtsResult = {
+  id: string;
+  title: string;
+  snippet: string;
+  rank: number;
+  summary: string | null;
+  tags: string[];
+};
+
+const PROMPT_STOP_WORDS = new Set([
+  'para',
+  'com',
+  'uma',
+  'que',
+  'como',
+  'por',
+  'dos',
+  'das',
+  'isso',
+  'esta',
+  'esse',
+  'sobre',
+  'the',
+  'and',
+  'from',
+  'this',
+  'that',
+  'what',
+]);
+
+/** Converte um prompt livre numa consulta OR curta e segura para websearch_to_tsquery. */
+export function promptSearchQuery(prompt: string): string {
+  const words = prompt
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, ' ')
+    .match(/[a-z0-9]{3,}/g);
+  if (!words) return '';
+  const unique = [...new Set(words.filter((word) => !PROMPT_STOP_WORDS.has(word)))].slice(0, 8);
+  return unique.join(' OR ');
+}
 
 /**
  * Busca full-text forte nas transcrições do usuário (Postgres FTS, dicionário
@@ -358,17 +399,35 @@ export async function ftsSearchTranscripts(
   if (!q) return [];
   const take = clampInt(limit, 8, 1, 25);
   return db.$queryRaw<FtsResult[]>`
-    SELECT id, title,
-      ts_headline('portuguese', "plainText", plainto_tsquery('portuguese', ${q}),
+    SELECT t.id, t.title,
+      ts_headline('portuguese', t."plainText", websearch_to_tsquery('portuguese', ${q}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
-      ts_rank("searchVector", plainto_tsquery('portuguese', ${q})) AS rank
-    FROM "Transcript"
-    WHERE "userId" = ${userId}
-      AND status = 'ACTIVE'::"ContentStatus"
-      AND "searchVector" @@ plainto_tsquery('portuguese', ${q})
-    ORDER BY rank DESC, "createdAt" DESC
+      ts_rank(t."searchVector", websearch_to_tsquery('portuguese', ${q})) AS rank,
+      LEFT(t."summaryMd", 800) AS summary,
+      COALESCE((
+        SELECT array_agg(tag.name ORDER BY tag.name)
+        FROM "TranscriptTag" tt
+        JOIN "Tag" tag ON tag.id = tt."tagId" AND tag."userId" = t."userId"
+        WHERE tt."transcriptId" = t.id
+      ), ARRAY[]::text[]) AS tags
+    FROM "Transcript" t
+    WHERE t."userId" = ${userId}
+      AND t.status = 'ACTIVE'::"ContentStatus"
+      AND t."searchVector" @@ websearch_to_tsquery('portuguese', ${q})
+    ORDER BY rank DESC, t."createdAt" DESC
     LIMIT ${take}
   `;
+}
+
+/** Pré-busca best-effort usada pelo harness antes do primeiro step do modelo. */
+export async function preloadRelevantContent(
+  userId: string,
+  prompt: string,
+  limit = 5,
+): Promise<FtsResult[]> {
+  const query = promptSearchQuery(prompt);
+  if (!query) return [];
+  return ftsSearchTranscripts(userId, query, limit);
 }
 
 export type RelatedItem = {
@@ -384,7 +443,6 @@ export type RelatedItem = {
  *    nós conectados -> resolvidos a transcrições/notas por sourceId);
  *  - FTS por título (quando há transcriptId) ou pela query informada.
  * Escopado por userId. Não inclui a própria transcrição de origem.
- * TODO: incluir tags quando a feature de tags mergear.
  */
 export async function findRelated(
   userId: string,
@@ -411,6 +469,40 @@ export async function findRelated(
 
   // 1) Vizinhança no Brain a partir da transcrição de origem.
   if (input.transcriptId) {
+    const originTags = await db.transcriptTag.findMany({
+      where: { transcriptId: input.transcriptId, transcript: { userId, status: 'ACTIVE' } },
+      select: { tagId: true, tag: { select: { name: true } } },
+    });
+    if (originTags.length > 0) {
+      const tagIds = originTags.map((item) => item.tagId);
+      const tagNames = new Map(originTags.map((item) => [item.tagId, item.tag.name]));
+      const shared = await db.transcript.findMany({
+        where: {
+          userId,
+          status: 'ACTIVE',
+          id: { not: input.transcriptId },
+          tags: { some: { tagId: { in: tagIds } } },
+        },
+        select: {
+          id: true,
+          title: true,
+          tags: { where: { tagId: { in: tagIds } }, select: { tagId: true } },
+        },
+        take: limit,
+      });
+      for (const item of shared) {
+        const names = item.tags
+          .map((tag) => tagNames.get(tag.tagId))
+          .filter((name): name is string => Boolean(name));
+        push({
+          id: item.id,
+          title: item.title,
+          kind: 'transcript',
+          reason: `Tags em comum: ${names.join(', ')}`,
+        });
+      }
+    }
+
     const originNodes = await db.brainNode.findMany({
       where: { userId, status: 'ACTIVE', sourceType: 'TRANSCRIPT', sourceId: input.transcriptId },
       select: { id: true },

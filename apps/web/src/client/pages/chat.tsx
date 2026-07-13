@@ -59,8 +59,7 @@ type ChatMessage = {
   tools: ToolEvent[] | null;
   compactedAt: string | null;
   createdAt: string;
-  /** Live-only: segments cronológicos (raciocínio + grupos de ferramentas)
-   * construídos durante o streaming (spec 078). Nunca persistido. */
+  /** Segmentos cronológicos persistidos; durante o stream são atualizados localmente. */
   segments?: MessageSegment[];
 };
 type Snapshot = { conversation: { id: string; compactionCount: number }; messages: ChatMessage[] };
@@ -530,8 +529,7 @@ export function ChatPage(): React.ReactElement {
   const lastClearSignal = useRef(clearSignal);
   // MutableRefObject: React 19 RefObject.current is readonly and control-flow
   // narrows after `= null`, which breaks later reads in the same function.
-  // Espelha os segments ao vivo (spec 078) pra sobreviver ao snapshot final —
-  // o GET pós-stream devolve mensagens frescas do servidor, sem `segments`.
+  // Espelha os segments ao vivo até o snapshot final persistido chegar.
   const liveSegmentsRef = useRef<MessageSegment[] | null>(null) as {
     current: MessageSegment[] | null;
   };
@@ -744,15 +742,7 @@ export function ChatPage(): React.ReactElement {
         liveSegmentsRef.current = closeTrailingReasoning(liveSegmentsRef.current, Date.now());
       }
       const snapshot = await apiGet<Snapshot>('/api/chat');
-      const preservedSegments = liveSegmentsRef.current;
-      setMessages(
-        snapshot.messages.map((message, index, list) => {
-          if (preservedSegments && message.role === 'ASSISTANT' && index === list.length - 1) {
-            return { ...message, segments: preservedSegments };
-          }
-          return message;
-        }),
-      );
+      setMessages(snapshot.messages);
     } catch (error) {
       if (!controller.signal.aborted)
         toast.error(error instanceof Error ? error.message : t('chat.streamError'));

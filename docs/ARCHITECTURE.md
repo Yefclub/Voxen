@@ -198,17 +198,20 @@ Spec completa: `.specs/000-setup-inicial.md`.
 ### Chat com agente
 
 ```
-1. User abre /chat, manda pergunta
-2. apps/web POST /api/chat/stream com {messages, workspace_id}
-3. apps/web faz pipe SSE pra apps/chat /chat/stream
-4. apps/chat invoca Agno agent com tools
-5. Agno raciocina: "user perguntou sobre X — vou search_transcripts('X')"
-6. Tool retorna trechos com timestamps + transcript_id
-7. Agno: "achei em 3 vídeos, vou read_transcript_section(id, 120, 180) pro mais relevante"
-8. Agno compõe resposta com citações: "no vídeo 'X' aos 2:00, ele diz [...]"
-9. Stream chega no browser → React renderiza com Markdown + links pros timestamps
-10. cost_events logado: chat tokens, model
+1. User abre /chat e envia uma pergunta
+2. apps/web persiste a mensagem e pré-busca títulos, resumos e tags relevantes via Postgres FTS
+3. O agente AI SDK recebe só essas sugestões compactas e usa tools progressivas para confirmar
+4. Para fatos atuais, usa web_search; para X, search_x com o modelo Grok configurado
+5. Para uma URL nova, request_transcription aguarda o worker e retorna brief (summary + tags + related)
+6. O agente abre outline/linhas/seções e só lê o documento completo como último recurso
+7. Texto, raciocínio e tools chegam por SSE e são persistidos como segmentos cronológicos
+8. Um reload restaura a mesma timeline; raciocínio persistido nunca volta ao contexto do modelo
+9. cost_events registra chat, pesquisa web/X, resumo e organização
 ```
+
+As pastas ligadas a tags são associações virtuais N:N: `Transcript.folderId`
+continua sendo a pasta primária, mas listagem e contagem unem esse vínculo com
+`TranscriptTag -> Tag.folderId` sem duplicar conteúdos.
 
 ### Painel de custos
 
