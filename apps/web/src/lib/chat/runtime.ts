@@ -656,7 +656,6 @@ export async function approveChatAction(
         role: 'SYSTEM',
         kind: 'HITL_RESPONSE',
         content: `Nota “${note.title}” criada após confirmação do usuário.`,
-        tools: [{ approvalId, state: 'approved', noteId: note.id }],
       },
     });
     return { message: `Nota “${note.title}” criada.`, noteId: note.id };

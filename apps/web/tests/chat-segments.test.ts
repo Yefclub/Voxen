@@ -147,6 +147,27 @@ describe('segmentsFromPersistedTools (mensagem histórica)', () => {
     expect(segmentsFromPersistedTools(undefined)).toEqual([]);
     expect(segmentsFromPersistedTools([])).toEqual([]);
   });
+
+  it('descarta entradas malformadas (sem name/id, ou state desconhecido) em vez de quebrar', () => {
+    const good = tool('t1', 'completed');
+    const malformed = [
+      { approvalId: 'x', state: 'approved', noteId: 'n1' },
+      { id: 't2', state: 'completed' },
+      { id: 't3', name: '', state: 'completed' },
+      { id: 't4', name: 'ok', state: 'bogus' },
+      null,
+      'garbage',
+    ] as unknown as ToolEvent[];
+    const segments = segmentsFromPersistedTools([good, ...malformed]);
+    expect(segments).toEqual([{ type: 'tool-group', id: 'tool-group-history', tools: [good] }]);
+  });
+
+  it('só entradas malformadas retorna array vazio', () => {
+    const malformed = [
+      { approvalId: 'x', state: 'approved', noteId: 'n1' },
+    ] as unknown as ToolEvent[];
+    expect(segmentsFromPersistedTools(malformed)).toEqual([]);
+  });
 });
 
 describe('segmentsRunning', () => {

@@ -12,6 +12,13 @@
 
 import { toolBlockState, type ToolState } from './chat-tools';
 
+const VALID_TOOL_STATES: readonly ToolState[] = [
+  'running',
+  'completed',
+  'error',
+  'approval-required',
+];
+
 /** Evento de ferramenta — mesma forma do `StoredToolEvent` do backend. */
 export type ToolEvent = {
   id: string;
@@ -123,6 +130,24 @@ export function applySegmentEvent(
 }
 
 /**
+ * `tools` vem de uma coluna JSONB sem validação de schema — dados
+ * historicamente malformados (ou gravados por um bug futuro) não podem
+ * chegar ao render, já que `name`/`state` inválidos derrubam o toolblock
+ * inteiro (ex.: incidente com `HITL_RESPONSE` sem `name`, ver CHANGELOG).
+ */
+function isValidToolEvent(tool: unknown): tool is ToolEvent {
+  if (!tool || typeof tool !== 'object') return false;
+  const candidate = tool as Record<string, unknown>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.name === 'string' &&
+    candidate.name.length > 0 &&
+    typeof candidate.state === 'string' &&
+    VALID_TOOL_STATES.includes(candidate.state as ToolState)
+  );
+}
+
+/**
  * Compatibilidade para mensagens históricas sem `segments` (só `tools`
  * persistido). Um único
  * tool-group com todas as ferramentas na ordem persistida, sem segmento de
@@ -132,7 +157,9 @@ export function segmentsFromPersistedTools(
   tools: readonly ToolEvent[] | null | undefined,
 ): MessageSegment[] {
   if (!tools || tools.length === 0) return [];
-  return [{ type: 'tool-group', id: 'tool-group-history', tools: [...tools] }];
+  const valid = tools.filter(isValidToolEvent);
+  if (valid.length === 0) return [];
+  return [{ type: 'tool-group', id: 'tool-group-history', tools: valid }];
 }
 
 /**
