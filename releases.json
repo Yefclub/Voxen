@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1783971428",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Chat quebrava para sempre após aprovar criação de nota via IA",
+    "body": "Corrigido crash que derrubava o chat inteiro (tela \"Algo deu errado\") sempre que uma conversa com uma confirmação de nota aprovada era carregada. A causa era um dado malformado gravado na mensagem de confirmação, que o render de ferramentas não conseguia interpretar. Também foi adicionada uma validação de segurança para que dados malformados (deste ou de qualquer bug futuro) nunca mais consigam quebrar o chat inteiro — são simplesmente ignorados no render.",
+    "pr": 373,
+    "author": "Kalyel",
+    "date": "2026-07-13T16:36:57-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/373"
+  },
+  {
     "version": "0.11.0-dev.1783967660",
     "channel": "dev",
     "type": "infra",
