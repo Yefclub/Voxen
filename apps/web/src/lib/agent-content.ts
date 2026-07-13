@@ -17,6 +17,7 @@ export type TranscriptBrief = {
 export async function getTranscriptBrief(
   userId: string,
   transcriptId: string,
+  options: { enrichMissing?: boolean; abortSignal?: AbortSignal } = {},
 ): Promise<TranscriptBrief> {
   const transcript = await db.transcript.findFirst({
     where: { id: transcriptId, userId, status: 'ACTIVE' },
@@ -33,25 +34,37 @@ export async function getTranscriptBrief(
   if (!transcript) throw new Error('Transcrição não encontrada.');
 
   let summary = transcript.summaryMd;
-  if (!summary && transcript.plainText.trim()) {
-    summary = await generateAndPersistTranscriptSummary({
-      userId,
-      transcriptId: transcript.id,
-      title: transcript.title,
-      plainText: transcript.plainText,
-    }).catch(() => null);
+  if (options.enrichMissing !== false && !summary && transcript.plainText.trim()) {
+    try {
+      summary = await generateAndPersistTranscriptSummary({
+        userId,
+        transcriptId: transcript.id,
+        title: transcript.title,
+        plainText: transcript.plainText,
+        abortSignal: options.abortSignal,
+      });
+    } catch (error) {
+      if (options.abortSignal?.aborted) throw error;
+      summary = null;
+    }
   }
 
   let tags = transcript.tags.map((item) => item.tag.name);
-  if (tags.length === 0 && transcript.plainText.trim()) {
+  if (options.enrichMissing !== false && tags.length === 0 && transcript.plainText.trim()) {
     const existingTags = (
       await db.tag.findMany({ where: { userId }, select: { name: true }, orderBy: { name: 'asc' } })
     ).map((item) => item.name);
-    const generated = await generateTagsForContent({
-      title: transcript.title,
-      content: summary || transcript.plainText,
-      existingTags,
-    }).catch(() => null);
+    let generated = null;
+    try {
+      generated = await generateTagsForContent({
+        title: transcript.title,
+        content: summary || transcript.plainText,
+        existingTags,
+        abortSignal: options.abortSignal,
+      });
+    } catch (error) {
+      if (options.abortSignal?.aborted) throw error;
+    }
     if (generated?.tags.length) {
       const applied = await applyTagsToTranscript(
         userId,
@@ -112,7 +125,9 @@ export async function waitForTranscriptJob(options: {
     }
     if (job.status === 'DONE') {
       if (!job.transcriptId) throw new Error('Job concluído sem transcrição.');
-      return getTranscriptBrief(options.userId, job.transcriptId);
+      return getTranscriptBrief(options.userId, job.transcriptId, {
+        abortSignal: options.abortSignal,
+      });
     }
     if (job.status === 'FAILED' || job.status === 'CANCELLED') {
       throw new Error(job.errorMsg || `Transcrição ${job.status.toLowerCase()}.`);

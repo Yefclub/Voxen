@@ -18,6 +18,8 @@ pastas correspondentes e o MCP devolvia menos metadados que a IA interna.
   como dados não confiáveis, nunca como instruções.
 - The system shall expor busca web e busca no X à IA quando os respectivos
   modelos OpenRouter estiverem configurados.
+- The system shall usar o modelo de chat como fallback da pesquisa web quando
+  não houver um modelo web dedicado, preservando o contrato do setup.
 - The system shall retornar resumo, tags e conteúdos relacionados nas respostas
   compactas de transcrição, sem enviar o texto integral por padrão.
 - The system shall considerar a relação N:N de tags como associação virtual às
@@ -29,7 +31,7 @@ pastas correspondentes e o MCP devolvia menos metadados que a IA interna.
 
 - When o usuário enviar um prompt, the system shall pré-buscar conteúdos
   relevantes no acervo e informar ao modelo títulos, ids, tags e resumos curtos
-  como sugestões de contexto.
+  como sugestões de contexto dentro de um bloco explicitamente não confiável.
 - When a ferramenta interna solicitar uma nova transcrição, the system shall
   aguardar a conclusão do job e devolver um brief com resumo, tags e relacionados
   antes de permitir a resposta final.
@@ -44,6 +46,8 @@ pastas correspondentes e o MCP devolvia menos metadados que a IA interna.
 - While a transcrição interna estiver em andamento, the system shall emitir
   status periódicos e manter o stream ativo sem instruir o modelo a responder
   apenas com o identificador do job.
+- While o usuário não interromper o turno, the system shall propagar o mesmo
+  sinal de cancelamento a pesquisa web/X, resumo e geração de tags.
 
 ### Unwanted behavior
 
@@ -54,6 +58,8 @@ pastas correspondentes e o MCP devolvia menos metadados que a IA interna.
   devolver erro seguro e não apresentar a ingestão como concluída.
 - If uma mensagem histórica não tiver `segments`, then the system shall manter a
   compatibilidade reconstruindo ao menos as ferramentas persistidas.
+- If uma ferramenta MCP declarar `readOnlyHint`, then the system shall não gerar
+  resumo, tags, pastas, custos ou qualquer outra mutação durante a chamada.
 
 ## Critérios de Aceite
 

@@ -9,6 +9,13 @@ export type WebResearchResult = {
   model: string;
 };
 
+export function selectResearchModel(
+  scope: 'web' | 'x',
+  models: { web: string | null; chat: string | null; x: string | null },
+): string | null {
+  return scope === 'x' ? models.x : (models.web ?? models.chat);
+}
+
 export function buildWebResearchPayload(model: string, query: string, scope: 'web' | 'x') {
   const scopedQuery =
     scope === 'x' ? `${query}\nPesquise prioritariamente publicações e threads em x.com.` : query;
@@ -22,7 +29,12 @@ export function buildWebResearchPayload(model: string, query: string, scope: 'we
       },
       { role: 'user', content: scopedQuery },
     ],
-    tools: [{ type: 'openrouter:web_search', engine: 'auto', max_results: 8 }],
+    tools: [
+      {
+        type: 'openrouter:web_search',
+        parameters: { engine: 'auto', max_results: 8 },
+      },
+    ],
     usage: { include: true },
   };
 }
@@ -31,11 +43,15 @@ export async function researchWeb(
   userId: string,
   query: string,
   scope: 'web' | 'x',
+  abortSignal?: AbortSignal,
 ): Promise<WebResearchResult> {
-  const [apiKey, model] = await Promise.all([
+  const [apiKey, webModel, chatModel, xModel] = await Promise.all([
     getSetting('openrouter_api_key'),
-    scope === 'x' ? getDefaultXAnalysisModel() : getSetting('default_web_search_model'),
+    getSetting('default_web_search_model'),
+    getSetting('default_chat_model'),
+    getDefaultXAnalysisModel(),
   ]);
+  const model = selectResearchModel(scope, { web: webModel, chat: chatModel, x: xModel });
   if (!apiKey) throw new Error('Chave OpenRouter não configurada.');
   if (!model) {
     throw new Error(
@@ -49,7 +65,9 @@ export async function researchWeb(
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(buildWebResearchPayload(model, query, scope)),
-    signal: AbortSignal.timeout(90_000),
+    signal: abortSignal
+      ? AbortSignal.any([abortSignal, AbortSignal.timeout(90_000)])
+      : AbortSignal.timeout(90_000),
   });
   if (!response.ok) {
     const body = await response.text().catch(() => '');

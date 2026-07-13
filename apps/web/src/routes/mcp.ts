@@ -71,7 +71,8 @@ const VOXEN_INSTRUCTIONS = [
   'Fluxo de escrita:',
   '- voxen_create_note / voxen_update_note: salvar ou editar informação na KB.',
   '- voxen_request_transcription(url) enfileira um job; acompanhe com',
-  '  voxen_get_job_status(job_id) até DONE e então voxen_read_transcript no resultado.',
+  '  voxen_get_job_status(job_id) até DONE. Use o brief retornado (resumo, tags e relacionados)',
+  '  e só então outline/trechos específicos; documento completo continua sendo último recurso.',
   '',
   'Regras de resposta: sintetize, compare fontes, explicite contradições e diferencie evidência',
   'de inferência. Cite títulos/ids/trechos ao usar o que recuperar; não invente conteúdo quando',
@@ -253,8 +254,8 @@ function registerWriteTools(server: McpServer, userId: string): void {
       description:
         'Enfileira a transcrição/indexação de uma URL (vídeo YouTube/Instagram/TikTok/X ou ' +
         'página web). Retorna um job_id; acompanhe com voxen_get_job_status(job_id) até ' +
-        'status=DONE e então leia com voxen_read_transcript. Se a URL já foi transcrita, ' +
-        'retorna o transcript_id existente.',
+        'status=DONE para receber um brief com resumo, tags e relacionados. Se a URL já foi ' +
+        'transcrita, devolve o brief imediatamente. Leia o documento completo só como último recurso.',
       inputSchema: {
         url: z.string().min(1).max(2048).describe('URL do vídeo ou página a transcrever/indexar.'),
       },
@@ -311,8 +312,8 @@ function registerWriteTools(server: McpServer, userId: string): void {
       title: 'Status de um job',
       description:
         'Consulta o status de um job de transcrição/indexação: QUEUED, RUNNING, DONE, FAILED ' +
-        'ou CANCELLED. Quando DONE, retorna transcript_id (use voxen_read_transcript); quando ' +
-        'FAILED, retorna o erro.',
+        'ou CANCELLED. Quando DONE, retorna transcript_id e um brief read-only com resumo, tags e ' +
+        'relacionados já armazenados; quando FAILED, retorna o erro.',
       inputSchema: {
         job_id: z.string().min(1).describe('ID do job retornado por request_transcription.'),
       },
@@ -333,7 +334,7 @@ function registerWriteTools(server: McpServer, userId: string): void {
       if (!job) return fail('Job não encontrado.');
       const brief =
         job.status === 'DONE' && job.transcriptId
-          ? await getTranscriptBrief(userId, job.transcriptId)
+          ? await getTranscriptBrief(userId, job.transcriptId, { enrichMissing: false })
           : null;
       return ok({
         id: job.id,
@@ -356,7 +357,8 @@ function registerTranscriptTools(server: McpServer, userId: string): void {
         'usuário: vídeos de YouTube/Instagram/TikTok, páginas web indexadas e uploads. ' +
         'USE ISTO PRIMEIRO para localizar conteúdo relevante — retorna trechos curtos com o ' +
         'termo destacado (« »), o título e um score de relevância (rank), NÃO o texto completo. ' +
-        'Depois chame voxen_read_transcript com o `id` retornado para ler o conteúdo. ' +
+        'Depois use voxen_outline e leia linhas/seções específicas; só use ' +
+        'voxen_read_transcript se resumo e trechos não bastarem. ' +
         'Passe palavras-chave do tema (não precisa de operadores). ' +
         'Ex.: query="política monetária juros".',
       inputSchema: {

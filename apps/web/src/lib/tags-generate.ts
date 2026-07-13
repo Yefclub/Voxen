@@ -233,6 +233,7 @@ export async function generateTagsForContent(input: {
   title: string;
   content: string;
   existingTags: string[];
+  abortSignal?: AbortSignal;
 }): Promise<TagsGenerationResult> {
   const apiKey = await getSetting('openrouter_api_key');
   const model = await getSetting('default_chat_model');
@@ -264,7 +265,9 @@ export async function generateTagsForContent(input: {
       reasoning: { enabled: false },
       usage: { include: true },
     }),
-    signal: AbortSignal.timeout(60_000),
+    signal: input.abortSignal
+      ? AbortSignal.any([input.abortSignal, AbortSignal.timeout(60_000)])
+      : AbortSignal.timeout(60_000),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
