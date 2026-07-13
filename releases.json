@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1783913992",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Vox pesquisa, conecta e preserva melhor o contexto",
+    "body": "O chat agora mantém o raciocínio visível depois de recarregar a página, pesquisa\na web e o X com os modelos configurados e procura automaticamente conteúdos\nrelacionados na Biblioteca antes de responder. Ao receber uma URL, a Vox aguarda\na ingestão e trabalha com resumo, tags e relacionados, abrindo a transcrição\ncompleta somente quando necessário.\n\nAs pastas geradas por tags passam a exibir todo conteúdo associado, inclusive\nquando um item possui várias tags. O MCP também entrega resumos e tags e orienta\nagentes externos com o mesmo fluxo rico de recuperação, verificação e segurança.",
+    "pr": 369,
+    "author": "Kalyel",
+    "date": "2026-07-13T00:39:39-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/369"
+  },
+  {
     "version": "0.11.0-dev.1783912875",
     "channel": "dev",
     "type": "ui",
