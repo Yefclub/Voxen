@@ -18,8 +18,9 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
   exatamente `dev`, inclusive em disparos manuais.
 - The system shall exigir os sete required checks registrados no SHA atual antes
   de mergear um bump de versão.
-- The system shall exigir também os checks não obrigatórios de segurança e
-  changelog, totalizando os 18 checks atuais, antes de considerar a PR `CLEAN`.
+- The system shall exigir conclusão `success` dos workflows CI, Security e PR
+  Changelog Guard, além dos sete required checks identificados por nome exato,
+  antes de considerar a PR `CLEAN`.
 - The system shall tratar rollup vazio ou pertencente a outro SHA como falha, nunca
   como CI verde.
 
@@ -57,7 +58,8 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 - [ ] Um `workflow_dispatch` selecionado em qualquer ref diferente de `dev` não
       executa o job nem cria PR.
 - [ ] O workflow reroda os três workflows de `pull_request` criados pelo bot.
-- [ ] O merge só ocorre com os 18 checks verdes no head atual.
+- [ ] O merge só ocorre com os três workflows concluídos em `success` e os sete
+      required checks exatos verdes no head atual.
 - [ ] Falha, timeout, rollup vazio ou head divergente mantêm a PR aberta.
 - [ ] O próximo bump consome todas as entradas acumuladas em
       `changelog/unreleased`.
@@ -69,9 +71,9 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 
 ## Riscos / Decisões pendentes
 
-- Os nomes `CI`, `Security` e `PR Changelog Guard`, além do total atual de 18
-  checks, são contratos operacionais. Se os workflows mudarem, esta automação e a
-  spec precisam ser atualizadas juntas.
+- Os nomes `CI`, `Security` e `PR Changelog Guard` e os sete contexts exigidos
+  pela proteção são contratos operacionais. Se mudarem, esta automação e a spec
+  precisam ser atualizadas juntas.
 
 ## Histórico de decisão
 
@@ -83,3 +85,8 @@ e changelog por uma PR protegida pelos mesmos required checks da branch.
 > 2026-07-13: `workflow_dispatch` foi substituído por rerun dos workflows de
 > `pull_request`, porque a execução manual passou no SHA mas não apareceu no
 > rollup nem tornou a PR mergeável.
+
+> 2026-07-13: canário descartável `29219882995` comprovou que o próprio
+> `GITHUB_TOKEN` rerodou o Changelog Guard (`29219890990`, tentativa 2,
+> `triggering_actor=github-actions[bot]`); a PR e a branch do canário foram
+> removidas após o teste.

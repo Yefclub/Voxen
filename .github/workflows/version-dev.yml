@@ -13,12 +13,6 @@ on:
   push:
     branches: [dev]
   workflow_dispatch:
-    inputs:
-      rerun_canary:
-        description: "Canário temporário: prova rerun com GITHUB_TOKEN"
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   actions: write
@@ -33,72 +27,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  rerun-canary:
-    runs-on: ubuntu-latest
-    if: "${{ github.event_name == 'workflow_dispatch' && inputs.rerun_canary == true }}"
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: dev
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Prove GITHUB_TOKEN can rerun an action-required PR workflow
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          BRANCH="chore/version-rerun-canary-${GITHUB_RUN_ID}"
-          PR_URL=""
-          cleanup() {
-            if [ -n "$PR_URL" ]; then
-              gh pr close "$PR_URL" --delete-branch >/dev/null 2>&1 || true
-            else
-              git push origin --delete "$BRANCH" >/dev/null 2>&1 || true
-            fi
-          }
-          trap cleanup EXIT
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -B "$BRANCH" origin/dev
-          printf '# Version rerun canary\n\nRun: %s\n' "$GITHUB_RUN_ID" > docs/version-rerun-canary.md
-          git add docs/version-rerun-canary.md
-          git commit -m "docs: add version rerun canary"
-          git push -u origin "$BRANCH"
-          PR_URL=$(gh pr create --base dev --head "$BRANCH" \
-            --title "docs: canário de rerun do version-dev" \
-            --body "Canário descartável para validar o rerun de checks com GITHUB_TOKEN. Não mergear.")
-
-          HEAD_SHA=$(git rev-parse HEAD)
-          GUARD_RUN=""
-          for attempt in $(seq 1 20); do
-            RUNS=$(gh run list --branch "$BRANCH" --event pull_request --limit 20 \
-              --json databaseId,workflowName,headSha,conclusion)
-            GUARD_RUN=$(printf '%s' "$RUNS" | jq -r --arg sha "$HEAD_SHA" \
-              '[.[] | select(.headSha == $sha and .workflowName == "PR Changelog Guard" and .conclusion == "action_required")][0].databaseId // empty')
-            [ -n "$GUARD_RUN" ] && break
-            sleep 3
-          done
-          [ -n "$GUARD_RUN" ] || { echo "Guard action_required não registrado"; exit 1; }
-
-          gh run rerun "$GUARD_RUN"
-          gh run watch "$GUARD_RUN" --exit-status
-          ACTOR=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GUARD_RUN" \
-            --jq '.triggering_actor.login')
-          ATTEMPT=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GUARD_RUN" --jq '.run_attempt')
-          [ "$ACTOR" = "github-actions[bot]" ] || {
-            echo "Rerun não foi disparado pelo GITHUB_TOKEN: $ACTOR"
-            exit 1
-          }
-          [ "${ATTEMPT:-0}" -ge 2 ] || { echo "Rerun não avançou tentativa"; exit 1; }
-          echo "Canário aprovado: run=$GUARD_RUN attempt=$ATTEMPT actor=$ACTOR"
-
   version-dev:
     runs-on: ubuntu-latest
     # Evita loop: não re-bump se o push já for o commit/PR do bot de versão.
     # Aspas externas obrigatórias: o ":" em "chore: set version" quebra o YAML.
     # Branch protection exige PR — o bot abre PR + auto-merge (não pusha em dev).
-    if: "${{ github.ref_name == 'dev' && inputs.rerun_canary != true && (github.event_name == 'workflow_dispatch' || (github.event.head_commit != null && !startsWith(github.event.head_commit.message, 'chore: set version to '))) }}"
+    if: "${{ github.ref_name == 'dev' && (github.event_name == 'workflow_dispatch' || (github.event.head_commit != null && !startsWith(github.event.head_commit.message, 'chore: set version to '))) }}"
     steps:
       - uses: actions/checkout@v6
         with:
