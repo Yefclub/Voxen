@@ -5,6 +5,7 @@ import {
   healStaleRunningInSegments,
   healStaleRunningTools,
   isToolErrorOutput,
+  type ToolEventLike,
 } from '../src/lib/chat/tool-outcomes';
 
 const runtimeSource = readFileSync(join(import.meta.dir, '../src/lib/chat/runtime.ts'), 'utf8');
@@ -21,10 +22,11 @@ describe('isToolErrorOutput', () => {
 
 describe('healStaleRunningTools', () => {
   test('converts running tools to error', () => {
-    const { tools, changed } = healStaleRunningTools([
+    const input: ToolEventLike[] = [
       { id: '1', name: 'request_transcription', state: 'running' },
       { id: '2', name: 'search_transcripts', state: 'completed', output: { results: [] } },
-    ]);
+    ];
+    const { tools, changed } = healStaleRunningTools(input);
     expect(changed).toBe(true);
     expect(tools[0]?.state).toBe('error');
     expect(isToolErrorOutput(tools[0]?.output)).toBe(true);
@@ -32,9 +34,10 @@ describe('healStaleRunningTools', () => {
   });
 
   test('is a no-op when nothing is running', () => {
-    const { changed } = healStaleRunningTools([
+    const input: ToolEventLike[] = [
       { id: '1', name: 'search_transcripts', state: 'error', output: { error: 'x' } },
-    ]);
+    ];
+    const { changed } = healStaleRunningTools(input);
     expect(changed).toBe(false);
   });
 });
@@ -42,10 +45,9 @@ describe('healStaleRunningTools', () => {
 describe('healStaleRunningInSegments', () => {
   test('heals tools inside tool-group segments', () => {
     const { segments, changed } = healStaleRunningInSegments([
-      { type: 'reasoning' as const, id: 'r1', text: '…', startedAt: 1, endedAt: 2 },
+      { type: 'reasoning' as const },
       {
         type: 'tool-group' as const,
-        id: 'g1',
         tools: [{ id: 't1', name: 'request_transcription', state: 'running' as const }],
       },
     ]);
