@@ -31,8 +31,10 @@ import {
   attachmentKind,
   formatToolDuration,
   hasToolLabel,
+  pendingHitlFromTools,
   prettifyToolName,
   toolFamily,
+  type PendingHitl,
   type ToolFamily,
 } from '../lib/chat-tools';
 import {
@@ -98,14 +100,6 @@ function toolSummary(value: unknown): string {
   return 'Consulta concluída. Os resultados foram usados na resposta.';
 }
 
-function approvalId(tool: ToolEvent): string | null {
-  if (!tool.output || typeof tool.output !== 'object') return null;
-  const value = tool.output as Record<string, unknown>;
-  return value.approvalRequired === true && typeof value.approvalId === 'string'
-    ? value.approvalId
-    : null;
-}
-
 // ---------------------------------------------------------------------------
 // Colapsável (motion grid-template-rows 0fr↔1fr) — respeita reduced-motion via CSS
 // ---------------------------------------------------------------------------
@@ -124,20 +118,16 @@ function Collapsible({
 }
 
 // ---------------------------------------------------------------------------
-// Linha de ferramenta (ícone por família + label + status discreto + detalhe)
+// Linha de ferramenta (ícone por família + label + status discreto + detalhe).
+// HITL confirm UI lives above the composer (spec 090) — not here.
 // ---------------------------------------------------------------------------
-function ToolRow({ tool, onApprove }: { tool: ToolEvent; onApprove: (id: string) => void }) {
+function ToolRow({ tool }: { tool: ToolEvent }) {
   const { t } = useI18n();
   const family = toolFamily(tool.name);
   const Icon = FAMILY_ICON[family];
-  const pendingApproval = approvalId(tool);
-  const expandable = tool.output !== undefined || pendingApproval != null;
-  // Aprovação pendente (HITL): abre a linha automaticamente pra o botão
-  // "Confirmar" ficar visível — senão o usuário acha que o agente travou.
-  const [open, setOpen] = useState(pendingApproval != null);
-  useEffect(() => {
-    if (pendingApproval != null) setOpen(true);
-  }, [pendingApproval]);
+  const awaitingHitl = tool.state === 'approval-required';
+  const expandable = tool.output !== undefined && !awaitingHitl;
+  const [open, setOpen] = useState(false);
 
   return (
     <div>
@@ -153,7 +143,7 @@ function ToolRow({ tool, onApprove }: { tool: ToolEvent; onApprove: (id: string)
         <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
           {tool.state === 'running' ? (
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--color-app-subtle)]" />
-          ) : tool.state === 'approval-required' ? (
+          ) : awaitingHitl ? (
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent-amber)]" />
           ) : tool.state === 'error' ? (
             <span className="text-[11px] font-bold leading-none text-[var(--color-accent-rose)]">
@@ -169,10 +159,13 @@ function ToolRow({ tool, onApprove }: { tool: ToolEvent; onApprove: (id: string)
             'min-w-0 flex-1 truncate text-[12.5px] font-medium',
             tool.state === 'error'
               ? 'text-[var(--color-accent-rose)]'
-              : 'text-[var(--color-app-subtle)]',
+              : awaitingHitl
+                ? 'text-[var(--color-accent-amber)]'
+                : 'text-[var(--color-app-subtle)]',
           )}
         >
           {toolLabel(tool.name, t)}
+          {awaitingHitl ? ` · ${t('chat.hitlAwaiting')}` : ''}
         </span>
         {expandable && (
           <ChevronDown
@@ -191,20 +184,7 @@ function ToolRow({ tool, onApprove }: { tool: ToolEvent; onApprove: (id: string)
                 {t('chat.toolParamsSafe')}
               </p>
             )}
-            {pendingApproval ? (
-              <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-[var(--color-accent-amber)]/25 bg-[var(--color-accent-amber)]/5 p-2.5">
-                <p className="text-xs leading-relaxed text-[var(--color-app-subtle)]">
-                  {t('chat.hitlConfirmHint')}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => onApprove(pendingApproval)}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-2.5 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90"
-                >
-                  <Check className="h-3.5 w-3.5" /> {t('chat.confirm')}
-                </button>
-              </div>
-            ) : tool.output !== undefined ? (
+            {tool.output !== undefined ? (
               <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-app-muted)] break-words">
                 {toolSummary(tool.output)}
               </p>
@@ -219,18 +199,15 @@ function ToolRow({ tool, onApprove }: { tool: ToolEvent; onApprove: (id: string)
 // ---------------------------------------------------------------------------
 // Bloco de pensamento — raciocínio e ferramentas num único container
 // cronológico (spec 078): "Pensando" (shimmer) enquanto algo roda —
-// raciocínio chegando OU ferramenta em execução/aprovação pendente — e
-// "Pensou por Xs" (cronômetro de parede honesto) ao terminar. Por dentro, os
-// segments aparecem NA ORDEM real de chegada dos eventos SSE.
+// raciocínio chegando OU ferramenta em execução — e "Pensou por Xs" ao
+// terminar. HITL fica acima do composer (spec 090), não neste bloco.
 // ---------------------------------------------------------------------------
 function ThinkingBlock({
   segments,
   live,
-  onApprove,
 }: {
   segments: MessageSegment[];
   live: boolean;
-  onApprove: (id: string) => void;
 }): React.ReactElement {
   const { t } = useI18n();
   const running = segmentsRunning(segments);
@@ -309,7 +286,7 @@ function ThinkingBlock({
             ) : (
               <div key={segment.id} className="flex flex-col">
                 {segment.tools.map((tool) => (
-                  <ToolRow key={tool.id} tool={tool} onApprove={onApprove} />
+                  <ToolRow key={tool.id} tool={tool} />
                 ))}
               </div>
             ),
@@ -317,6 +294,48 @@ function ThinkingBlock({
         </div>
       </Collapsible>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HITL sticky acima do composer (spec 090) — padrão de mercado / Cursor.
+// ---------------------------------------------------------------------------
+function HitlConfirmBar({
+  pending,
+  onApprove,
+}: {
+  pending: PendingHitl[];
+  onApprove: (id: string) => void;
+}): React.ReactElement | null {
+  const { t } = useI18n();
+  if (pending.length === 0) return null;
+  return (
+    <div className="mb-2 flex flex-col gap-2" role="region" aria-label={t('chat.hitlRegion')}>
+      {pending.map((item) => (
+        <div
+          key={item.approvalId}
+          className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-accent-amber)]/30 bg-[var(--color-accent-amber)]/10 px-3 py-2.5"
+        >
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-[var(--color-app-fg)]">
+              {item.title
+                ? t('chat.hitlProposeNote', { title: item.title })
+                : t('chat.confirmationTitle')}
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
+              {t('chat.hitlConfirmHint')}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onApprove(item.approvalId)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90"
+          >
+            <Check className="h-3.5 w-3.5" /> {t('chat.confirm')}
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -541,6 +560,25 @@ export function ChatPage(): React.ReactElement {
       ),
     [messages],
   );
+  const pendingHitl = useMemo(() => {
+    const seen = new Set<string>();
+    const pending: PendingHitl[] = [];
+    for (const message of visibleMessages) {
+      if (message.role === 'USER') continue;
+      const tools =
+        message.segments?.flatMap((segment) =>
+          segment.type === 'tool-group' ? segment.tools : [],
+        ) ??
+        message.tools ??
+        [];
+      for (const item of pendingHitlFromTools(tools)) {
+        if (seen.has(item.approvalId)) continue;
+        seen.add(item.approvalId);
+        pending.push(item);
+      }
+    }
+    return pending;
+  }, [visibleMessages]);
   const isEmpty = !loading && visibleMessages.length === 0;
 
   const refresh = async (): Promise<void> => {
@@ -810,11 +848,7 @@ export function ChatPage(): React.ReactElement {
                 return (
                   <article key={message.id} className="mb-6 flex flex-col">
                     {segments.length > 0 && (
-                      <ThinkingBlock
-                        segments={segments}
-                        live={isStreamingAssistant}
-                        onApprove={(id) => void approve(id)}
-                      />
+                      <ThinkingBlock segments={segments} live={isStreamingAssistant} />
                     )}
                     {message.content && (
                       <div className="text-[15px] leading-relaxed text-[var(--color-app-fg)]">
@@ -854,6 +888,7 @@ export function ChatPage(): React.ReactElement {
               {status && !streaming && (
                 <p className="mb-2 text-xs text-[var(--color-accent-amber)]">{status}</p>
               )}
+              <HitlConfirmBar pending={pendingHitl} onApprove={(id) => void approve(id)} />
               <Composer
                 input={input}
                 setInput={setInput}

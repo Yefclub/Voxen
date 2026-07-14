@@ -96,6 +96,45 @@ describeIfDb('chat de sessão única', () => {
     });
     const conversation = await getOrCreateConversation(user.id);
     const approvalId = crypto.randomUUID();
+    await db.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: '',
+        tools: [
+          {
+            id: 'tool-1',
+            name: 'propose_create_note',
+            state: 'approval-required',
+            output: {
+              approvalRequired: true,
+              approvalId,
+              action: 'create_note',
+              title: 'Nota aprovada',
+            },
+          },
+        ],
+        segments: [
+          {
+            type: 'tool-group',
+            id: 'g0',
+            tools: [
+              {
+                id: 'tool-1',
+                name: 'propose_create_note',
+                state: 'approval-required',
+                output: {
+                  approvalRequired: true,
+                  approvalId,
+                  action: 'create_note',
+                  title: 'Nota aprovada',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
     await db.chatApproval.create({
       data: {
         id: approvalId,
@@ -103,7 +142,7 @@ describeIfDb('chat de sessão única', () => {
         conversationId: conversation.id,
         action: 'create_note',
         payload: { title: 'Nota aprovada', content: 'Conteúdo seguro' },
-        expiresAt: new Date(Date.now() + 60_000),
+        expiresAt: null,
       },
     });
     const result = await approveChatAction(user.id, approvalId);
@@ -113,7 +152,36 @@ describeIfDb('chat de sessão única', () => {
       where: { conversationId: conversation.id, kind: 'HITL_RESPONSE' },
     });
     expect(hitlMessage?.tools).toBeNull();
+    const assistant = await db.chatMessage.findFirst({
+      where: { conversationId: conversation.id, role: 'ASSISTANT' },
+    });
+    const tools = assistant?.tools as Array<{
+      state: string;
+      output?: { approvalRequired?: boolean };
+    }>;
+    expect(tools?.[0]?.state).toBe('completed');
+    expect(tools?.[0]?.output?.approvalRequired).toBe(false);
     await expect(approveChatAction(user.id, approvalId)).rejects.toThrow();
+  });
+
+  it('aceita aprovação pendente mesmo com expiresAt no passado (sem TTL)', async () => {
+    const user = await db.user.create({
+      data: { email: 'chat-test-approval-ttl@voxen.local', name: 'TTL', status: 'APPROVED' },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const approvalId = crypto.randomUUID();
+    await db.chatApproval.create({
+      data: {
+        id: approvalId,
+        userId: user.id,
+        conversationId: conversation.id,
+        action: 'create_note',
+        payload: { title: 'Nota antiga', content: 'ainda válida' },
+        expiresAt: new Date(Date.now() - 60_000),
+      },
+    });
+    const result = await approveChatAction(user.id, approvalId);
+    expect(result.noteId).toBeTruthy();
   });
 
   it('limpa mensagens e aprovações pendentes sem remover a conversa canônica', async () => {
@@ -134,7 +202,7 @@ describeIfDb('chat de sessão única', () => {
         conversationId: conversation.id,
         action: 'create_note',
         payload: { title: 'Pendente', content: 'x' },
-        expiresAt: new Date(Date.now() + 60_000),
+        expiresAt: null,
       },
     });
     await clearConversation(user.id);

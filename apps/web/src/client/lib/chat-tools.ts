@@ -75,18 +75,47 @@ export function hasToolLabel(name: string): boolean {
 }
 
 /**
- * Estado agregado do toolblock:
- * - `running` se qualquer ferramenta está rodando ou aguardando confirmação;
+ * Estado agregado do toolblock (spec 090):
+ * - `running` só enquanto a ferramenta está de fato em execução;
+ * - aprovação pendente NÃO conta como running (HITL vive fora do “Pensando”);
  * - senão `error` se alguma falhou;
  * - senão `done`.
  */
 export function toolBlockState(tools: readonly ToolLike[]): 'running' | 'error' | 'done' {
   let hasError = false;
   for (const tool of tools) {
-    if (tool.state === 'running' || tool.state === 'approval-required') return 'running';
+    if (tool.state === 'running') return 'running';
     if (tool.state === 'error') hasError = true;
   }
   return hasError ? 'error' : 'done';
+}
+
+export type PendingHitl = {
+  approvalId: string;
+  toolName: string;
+  title: string | null;
+  action: string | null;
+};
+
+/** Extrai aprovações HITL ainda pendentes a partir do output de ferramentas. */
+export function pendingHitlFromTools(
+  tools: readonly { name: string; state: ToolState; output?: unknown }[] | null | undefined,
+): PendingHitl[] {
+  if (!tools?.length) return [];
+  const pending: PendingHitl[] = [];
+  for (const tool of tools) {
+    if (tool.state !== 'approval-required' || !tool.output || typeof tool.output !== 'object')
+      continue;
+    const output = tool.output as Record<string, unknown>;
+    if (output.approvalRequired !== true || typeof output.approvalId !== 'string') continue;
+    pending.push({
+      approvalId: output.approvalId,
+      toolName: tool.name,
+      title: typeof output.title === 'string' ? output.title : null,
+      action: typeof output.action === 'string' ? output.action : null,
+    });
+  }
+  return pending;
 }
 
 /**

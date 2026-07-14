@@ -60,6 +60,10 @@ const AGENT_INSTRUCTIONS = [
   'request_transcription(url). A ferramenta aguarda a ingestão e devolve resumo, tags e conteúdos',
   'relacionados. Responda somente depois de receber esse brief. Leia a transcrição completa apenas',
   'se o resumo não bastar para a pergunta.',
+  '',
+  'Quando propor criar uma nota (propose_create_note), a interface pedirá confirmação ao usuário',
+  'e o turno será pausado. Não tente criar a nota de outro modo nem repita a ferramenta no mesmo',
+  'turno. Se a ação não for aprovada, informe isso e não insista.',
 ].join('\n');
 
 export type StoredToolEvent = {
@@ -73,16 +77,6 @@ export type StoredToolEvent = {
 export type StoredMessageSegment =
   | { type: 'reasoning'; id: string; text: string; startedAt: number; endedAt?: number }
   | { type: 'tool-group'; id: string; tools: StoredToolEvent[] };
-
-function isApprovalOutput(output: unknown): output is Record<string, unknown> {
-  if (!output || typeof output !== 'object') return false;
-  const value = output as Record<string, unknown>;
-  return (
-    value.approvalRequired === true &&
-    typeof value.approvalId === 'string' &&
-    typeof value.action === 'string'
-  );
-}
 
 export type ChatStreamEvent =
   | { type: 'status'; label: string }
@@ -609,19 +603,87 @@ export function buildTools(
     }),
     propose_create_note: tool({
       description:
-        'Propõe criar uma nota. Esta ferramenta nunca escreve sozinha: a interface pedirá confirmação explícita ao usuário.',
+        'Propõe criar uma nota. A interface pede confirmação explícita; não escreve sozinha neste turno.',
       inputSchema: z.object({
         title: z.string().min(1).max(200),
         content: z.string().max(200_000),
       }),
+      // Primary write path is approveChatAction (UI confirm). This execute only
+      // runs if a future resume injects tool-approval-response into streamText.
       execute: async ({ title, content }) => ({
-        approvalRequired: true,
-        approvalId: crypto.randomUUID(),
-        action: 'create_note',
+        status: 'awaiting_or_handled_by_ui',
         title,
-        content,
+        contentLength: content.length,
       }),
     }),
+  };
+}
+
+function toolMatchesApproval(tool: Record<string, unknown>, approvalId: string): boolean {
+  if (!tool.output || typeof tool.output !== 'object') return false;
+  const output = tool.output as Record<string, unknown>;
+  return output.approvalRequired === true && output.approvalId === approvalId;
+}
+
+/** Marks matching tools/segments as completed after HITL approval (spec 090). */
+function resolveApprovalInMessageJson(
+  tools: unknown,
+  segments: unknown,
+  approvalId: string,
+  noteId: string,
+): { tools: Prisma.InputJsonValue | undefined; segments: Prisma.InputJsonValue | undefined } {
+  let nextTools: unknown = tools;
+  let toolsChanged = false;
+  if (Array.isArray(tools)) {
+    nextTools = tools.map((raw) => {
+      if (!raw || typeof raw !== 'object') return raw;
+      const tool = raw as Record<string, unknown>;
+      if (!toolMatchesApproval(tool, approvalId)) return raw;
+      toolsChanged = true;
+      const prev =
+        tool.output && typeof tool.output === 'object'
+          ? (tool.output as Record<string, unknown>)
+          : {};
+      return {
+        ...tool,
+        state: 'completed',
+        output: { ...prev, approvalRequired: false, approved: true, noteId },
+      };
+    });
+  }
+
+  let nextSegments: unknown = segments;
+  let segmentsChanged = false;
+  if (Array.isArray(segments)) {
+    nextSegments = segments.map((raw) => {
+      if (!raw || typeof raw !== 'object') return raw;
+      const segment = raw as Record<string, unknown>;
+      if (segment.type !== 'tool-group' || !Array.isArray(segment.tools)) return raw;
+      let groupChanged = false;
+      const groupTools = segment.tools.map((toolRaw) => {
+        if (!toolRaw || typeof toolRaw !== 'object') return toolRaw;
+        const tool = toolRaw as Record<string, unknown>;
+        if (!toolMatchesApproval(tool, approvalId)) return toolRaw;
+        groupChanged = true;
+        const prev =
+          tool.output && typeof tool.output === 'object'
+            ? (tool.output as Record<string, unknown>)
+            : {};
+        return {
+          ...tool,
+          state: 'completed',
+          output: { ...prev, approvalRequired: false, approved: true, noteId },
+        };
+      });
+      if (!groupChanged) return raw;
+      segmentsChanged = true;
+      return { ...segment, tools: groupTools };
+    });
+  }
+
+  return {
+    tools: toolsChanged ? (nextTools as Prisma.InputJsonValue) : undefined,
+    segments: segmentsChanged ? (nextSegments as Prisma.InputJsonValue) : undefined,
   };
 }
 
@@ -632,12 +694,12 @@ export async function approveChatAction(
   const result = await db.$transaction(async (tx) => {
     const now = new Date();
     const approval = await tx.chatApproval.findFirst({
-      where: { id: approvalId, userId, status: 'PENDING', expiresAt: { gt: now } },
+      where: { id: approvalId, userId, status: 'PENDING' },
       select: { id: true, action: true, payload: true, conversationId: true },
     });
-    if (!approval) throw new Error('Confirmação não encontrada, expirada ou já utilizada.');
+    if (!approval) throw new Error('Confirmação não encontrada ou já utilizada.');
     const consumed = await tx.chatApproval.updateMany({
-      where: { id: approval.id, userId, status: 'PENDING', expiresAt: { gt: now } },
+      where: { id: approval.id, userId, status: 'PENDING' },
       data: { status: 'APPROVED', decidedAt: now },
     });
     if (consumed.count !== 1) throw new Error('Confirmação já utilizada.');
@@ -650,6 +712,29 @@ export async function approveChatAction(
     const content = typeof payload.content === 'string' ? payload.content : '';
     if (!title) throw new Error('Confirmação inválida.');
     const note = await tx.note.create({ data: { userId, kind: 'NOTE', title, content } });
+    const assistantMessages = await tx.chatMessage.findMany({
+      where: { conversationId: approval.conversationId, role: 'ASSISTANT' },
+      select: { id: true, tools: true, segments: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 40,
+    });
+    for (const message of assistantMessages) {
+      const resolved = resolveApprovalInMessageJson(
+        message.tools,
+        message.segments,
+        approvalId,
+        note.id,
+      );
+      if (resolved.tools === undefined && resolved.segments === undefined) continue;
+      await tx.chatMessage.update({
+        where: { id: message.id },
+        data: {
+          ...(resolved.tools !== undefined ? { tools: resolved.tools } : {}),
+          ...(resolved.segments !== undefined ? { segments: resolved.segments } : {}),
+        },
+      });
+      break;
+    }
     await tx.chatMessage.create({
       data: {
         conversationId: approval.conversationId,
@@ -809,6 +894,11 @@ export async function streamAssistantReply(options: {
       abortSignal,
       emitStatus: (label) => emit({ type: 'status', label }),
     }),
+    // Structural HITL pause (spec 090 / AI SDK toolApproval): do not execute
+    // propose_create_note; emit tool-approval-request and end the turn.
+    toolApproval: {
+      propose_create_note: 'user-approval',
+    },
     stopWhen: stepCountIs(12),
     abortSignal,
     timeout: { totalMs: 12 * 60_000, stepMs: 90_000, toolMs: 10 * 60_000 },
@@ -848,33 +938,69 @@ export async function streamAssistantReply(options: {
         tools.push(event);
         appendTool(segments, event);
         emit({ type: 'tool', tool: event });
+      } else if (type === 'tool-approval-request') {
+        const approvalId =
+          typeof part.approvalId === 'string' ? part.approvalId : crypto.randomUUID();
+        const toolCall =
+          part.toolCall && typeof part.toolCall === 'object'
+            ? (part.toolCall as Record<string, unknown>)
+            : null;
+        const toolCallId = String(toolCall?.toolCallId ?? part.toolCallId ?? crypto.randomUUID());
+        const toolName = String(toolCall?.toolName ?? part.toolName ?? 'propose_create_note');
+        const input = toolCall?.input ?? toolCall?.args;
+        const inputRecord =
+          input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+        const action = toolName === 'propose_create_note' ? 'create_note' : toolName;
+        const output = {
+          approvalRequired: true,
+          approvalId,
+          action,
+          title: typeof inputRecord.title === 'string' ? inputRecord.title : undefined,
+          content: typeof inputRecord.content === 'string' ? inputRecord.content : undefined,
+        };
+        const current = tools.find((event) => event.id === toolCallId);
+        const event: StoredToolEvent = {
+          ...(current ?? { id: toolCallId, name: toolName, state: 'approval-required' }),
+          name: toolName,
+          state: 'approval-required',
+          input,
+          output,
+        };
+        await db.chatApproval.upsert({
+          where: { id: approvalId },
+          create: {
+            id: approvalId,
+            userId,
+            conversationId,
+            action,
+            payload: {
+              ...inputRecord,
+              approvalId,
+              action,
+              approvalRequired: true,
+            } as Prisma.InputJsonValue,
+            expiresAt: null,
+          },
+          update: {},
+        });
+        const index = tools.findIndex((item) => item.id === event.id);
+        if (index >= 0) tools[index] = event;
+        else tools.push(event);
+        appendTool(segments, event);
+        emit({ type: 'tool', tool: event });
       } else if (type === 'tool-result') {
         const id = String(part.toolCallId ?? '');
         const current = tools.find((event) => event.id === id);
         const output = part.output;
-        const outputRecord =
-          output && typeof output === 'object' ? (output as Record<string, unknown>) : null;
         const event: StoredToolEvent = {
           ...(current ?? {
             id: id || crypto.randomUUID(),
             name: String(part.toolName ?? 'ferramenta'),
             state: 'completed',
           }),
-          state: outputRecord?.approvalRequired === true ? 'approval-required' : 'completed',
+          state: 'completed',
           output,
         };
-        if (event.state === 'approval-required' && isApprovalOutput(output)) {
-          await db.chatApproval.create({
-            data: {
-              id: String(output.approvalId),
-              userId,
-              conversationId,
-              action: String(output.action),
-              payload: output as Prisma.InputJsonValue,
-              expiresAt: new Date(Date.now() + 15 * 60_000),
-            },
-          });
-        }
         const index = tools.findIndex((item) => item.id === event.id);
         if (index >= 0) tools[index] = event;
         else tools.push(event);
@@ -915,33 +1041,16 @@ export async function streamAssistantReply(options: {
     outputTokens: 0,
   }));
   closeReasoning(segments);
+  const awaitingHitl = tools.some((event) => event.state === 'approval-required');
   const assistant = await db.chatMessage.create({
     data: {
       conversationId,
       role: 'ASSISTANT',
-      content: answer || 'Não consegui gerar uma resposta. Tente novamente.',
+      content: answer || (awaitingHitl ? '' : 'Não consegui gerar uma resposta. Tente novamente.'),
       tools: tools as unknown as Prisma.InputJsonValue,
       segments: segments as unknown as Prisma.InputJsonValue,
     },
   });
-  const approvals = tools
-    .map((event) => ({ event, output: event.output }))
-    .filter((entry): entry is { event: StoredToolEvent; output: Record<string, unknown> } =>
-      isApprovalOutput(entry.output),
-    );
-  if (approvals.length > 0) {
-    await db.chatApproval.createMany({
-      data: approvals.map(({ output }) => ({
-        id: String(output.approvalId),
-        userId,
-        conversationId,
-        action: String(output.action),
-        payload: output as Prisma.InputJsonValue,
-        expiresAt: new Date(Date.now() + 15 * 60_000),
-      })),
-      skipDuplicates: true,
-    });
-  }
   await db.costEvent.create({
     data: {
       userId,
