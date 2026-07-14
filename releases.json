@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784071986",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Agente lista acervo por data de ingestão (resuma minha semana)",
+    "body": "Novas tools `list_transcripts` e `list_notes` com `since`/`until` em `createdAt`.\nPerguntas como “resuma minha semana” passam a listar o intake real da janela\nantes de ler e sintetizar — sem depender só de busca por termo.",
+    "pr": 386,
+    "author": "Kalyel",
+    "date": "2026-07-14T20:32:50-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/386"
+  },
+  {
     "version": "0.11.0-dev.1784065901",
     "channel": "dev",
     "type": "fix",
