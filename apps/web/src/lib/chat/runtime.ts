@@ -23,6 +23,11 @@ import {
 import { getSetting } from '../settings';
 import { researchWeb } from '../web-research';
 import { parseTemporalBounds } from './temporal-bounds';
+import {
+  healStaleRunningInSegments,
+  healStaleRunningTools,
+  isToolErrorOutput,
+} from './tool-outcomes';
 
 const KEEP_RECENT = 6;
 const DEFAULT_CONTEXT_LIMIT = 32_000;
@@ -130,7 +135,44 @@ export async function getChatSnapshot(userId: string) {
       createdAt: true,
     },
   });
-  return { conversation, messages };
+  // Persisted `running` tools are always stale once a turn is saved — heal so
+  // reloads don't leave the Thinking block stuck on "Pensando…".
+  const healedMessages = await Promise.all(
+    messages.map(async (message) => {
+      if (message.role !== 'ASSISTANT') return message;
+      const toolsRaw = Array.isArray(message.tools) ? (message.tools as StoredToolEvent[]) : null;
+      const segmentsRaw = Array.isArray(message.segments)
+        ? (message.segments as StoredMessageSegment[])
+        : null;
+      const healedTools = toolsRaw
+        ? healStaleRunningTools(toolsRaw, 'A ferramenta não concluiu a operação.')
+        : { tools: toolsRaw, changed: false };
+      const healedSegments = segmentsRaw
+        ? healStaleRunningInSegments(segmentsRaw, 'A ferramenta não concluiu a operação.')
+        : { segments: segmentsRaw, changed: false };
+      if (!healedTools.changed && !healedSegments.changed) return message;
+      const next = {
+        ...message,
+        tools: healedTools.tools ?? message.tools,
+        segments: healedSegments.segments ?? message.segments,
+      };
+      await db.chatMessage
+        .update({
+          where: { id: message.id },
+          data: {
+            ...(healedTools.changed
+              ? { tools: healedTools.tools as unknown as Prisma.InputJsonValue }
+              : {}),
+            ...(healedSegments.changed
+              ? { segments: healedSegments.segments as unknown as Prisma.InputJsonValue }
+              : {}),
+          },
+        })
+        .catch(() => undefined);
+      return next;
+    }),
+  );
+  return { conversation, messages: healedMessages };
 }
 
 /** Clears the user's canonical conversation history. Keeps the Conversation row. */
@@ -593,38 +635,48 @@ export function buildTools(
       }),
       execute: async ({ url }, execution) => {
         const toolSignal = execution.abortSignal ?? options.abortSignal;
-        const result = await createAutoJobForUser(userId, url);
-        switch (result.outcome) {
-          case 'created': {
-            options.emitStatus?.('Transcrevendo e organizando o conteúdo…');
-            return waitForTranscriptJob({
-              userId,
-              jobId: result.jobId,
-              abortSignal: toolSignal,
-              onProgress: (status) =>
-                options.emitStatus?.(
-                  status === 'RUNNING'
-                    ? 'Lendo, resumindo e criando tags…'
-                    : 'Aguardando a transcrição…',
-                ),
-            });
+        try {
+          const result = await createAutoJobForUser(userId, url);
+          switch (result.outcome) {
+            case 'created': {
+              options.emitStatus?.('Transcrevendo e organizando o conteúdo…');
+              return await waitForTranscriptJob({
+                userId,
+                jobId: result.jobId,
+                abortSignal: toolSignal,
+                onProgress: (status) =>
+                  options.emitStatus?.(
+                    status === 'RUNNING'
+                      ? 'Lendo, resumindo e criando tags…'
+                      : 'Aguardando a transcrição…',
+                  ),
+              });
+            }
+            case 'existing_transcript':
+              return await getTranscriptBrief(userId, result.transcriptId, {
+                abortSignal: toolSignal,
+              });
+            case 'inflight': {
+              if (!result.jobId) return { outcome: 'error' as const, error: result.error };
+              options.emitStatus?.('Aguardando a transcrição que já está em andamento…');
+              return await waitForTranscriptJob({
+                userId,
+                jobId: result.jobId,
+                abortSignal: toolSignal,
+                onProgress: (status) =>
+                  options.emitStatus?.(`Transcrição: ${status.toLowerCase()}…`),
+              });
+            }
+            default:
+              return { outcome: 'error' as const, error: result.error };
           }
-          case 'existing_transcript':
-            return getTranscriptBrief(userId, result.transcriptId, {
-              abortSignal: toolSignal,
-            });
-          case 'inflight': {
-            if (!result.jobId) return { outcome: 'error' as const, error: result.error };
-            options.emitStatus?.('Aguardando a transcrição que já está em andamento…');
-            return waitForTranscriptJob({
-              userId,
-              jobId: result.jobId,
-              abortSignal: toolSignal,
-              onProgress: (status) => options.emitStatus?.(`Transcrição: ${status.toLowerCase()}…`),
-            });
-          }
-          default:
-            return { outcome: 'error' as const, error: result.error };
+        } catch (error) {
+          // Return a structured failure instead of throwing — throwing can abort
+          // the stream without a tool-error part and leave the UI stuck on running.
+          const message =
+            error instanceof Error ? error.message : 'Não foi possível concluir a transcrição.';
+          options.emitStatus?.(message);
+          return { outcome: 'error' as const, error: message };
         }
       },
     }),
@@ -1238,7 +1290,7 @@ export async function streamAssistantReply(options: {
   let answer = '';
   const tools: StoredToolEvent[] = [];
   const segments: StoredMessageSegment[] = [];
-  emit({ type: 'status', label: 'Consultando seu acervo…' });
+  emit({ type: 'status', label: 'Buscando na sua biblioteca…' });
   const relevant = await preloadRelevantContent(userId, content, 5).catch(() => []);
   const suggestions = buildLibrarySuggestionsInstructions(relevant);
   const result = streamText({
@@ -1351,13 +1403,14 @@ export async function streamAssistantReply(options: {
         const id = String(part.toolCallId ?? '');
         const current = tools.find((event) => event.id === id);
         const output = part.output;
+        const failed = isToolErrorOutput(output);
         const event: StoredToolEvent = {
           ...(current ?? {
             id: id || crypto.randomUUID(),
             name: String(part.toolName ?? 'ferramenta'),
-            state: 'completed',
+            state: failed ? 'error' : 'completed',
           }),
-          state: 'completed',
+          state: failed ? 'error' : 'completed',
           output,
         };
         const index = tools.findIndex((item) => item.id === event.id);
@@ -1365,9 +1418,22 @@ export async function streamAssistantReply(options: {
         else tools.push(event);
         appendTool(segments, event);
         emit({ type: 'tool', tool: event });
+        if (failed) {
+          const detail =
+            output &&
+            typeof output === 'object' &&
+            typeof (output as { error?: unknown }).error === 'string'
+              ? (output as { error: string }).error
+              : 'A ferramenta falhou.';
+          emit({ type: 'status', label: detail.slice(0, 160) });
+        }
       } else if (type === 'tool-error' || type === 'tool-output-denied') {
         const id = String(part.toolCallId ?? '');
         const current = tools.find((event) => event.id === id);
+        const errorText =
+          typeof part.errorText === 'string'
+            ? part.errorText
+            : 'A ferramenta não pôde concluir a operação.';
         const event: StoredToolEvent = {
           ...(current ?? {
             id: id || crypto.randomUUID(),
@@ -1375,18 +1441,14 @@ export async function streamAssistantReply(options: {
             state: 'error',
           }),
           state: 'error',
-          output: {
-            error:
-              typeof part.errorText === 'string'
-                ? part.errorText
-                : 'A ferramenta não pôde concluir a operação.',
-          },
+          output: { error: errorText },
         };
         const index = tools.findIndex((item) => item.id === event.id);
         if (index >= 0) tools[index] = event;
         else tools.push(event);
         appendTool(segments, event);
         emit({ type: 'tool', tool: event });
+        emit({ type: 'status', label: errorText.slice(0, 160) });
       }
     }
   } catch (error) {
@@ -1400,12 +1462,44 @@ export async function streamAssistantReply(options: {
     outputTokens: 0,
   }));
   closeReasoning(segments);
+  // Never persist `running` — a crashed/aborted stream would otherwise leave
+  // the Thinking UI stuck on "Pensando…" forever after reload.
+  const healedTools = healStaleRunningTools(tools);
+  if (healedTools.changed) {
+    tools.length = 0;
+    tools.push(...healedTools.tools);
+    const healedSegments = healStaleRunningInSegments(segments);
+    if (healedSegments.changed) {
+      segments.length = 0;
+      segments.push(...healedSegments.segments);
+    }
+    for (const event of tools) {
+      if (event.state === 'error') emit({ type: 'tool', tool: event });
+    }
+  }
   const awaitingHitl = tools.some((event) => event.state === 'approval-required');
+  const failedTools = tools.filter((event) => event.state === 'error');
+  const failureFallback =
+    failedTools.length > 0
+      ? failedTools
+          .map((event) => {
+            const output = event.output;
+            if (
+              output &&
+              typeof output === 'object' &&
+              typeof (output as { error?: unknown }).error === 'string'
+            ) {
+              return (output as { error: string }).error;
+            }
+            return `A ferramenta ${event.name} falhou.`;
+          })
+          .join(' ')
+      : 'Não consegui gerar uma resposta. Tente novamente.';
   const assistant = await db.chatMessage.create({
     data: {
       conversationId,
       role: 'ASSISTANT',
-      content: answer || (awaitingHitl ? '' : 'Não consegui gerar uma resposta. Tente novamente.'),
+      content: answer || (awaitingHitl ? '' : failureFallback),
       tools: tools as unknown as Prisma.InputJsonValue,
       segments: segments as unknown as Prisma.InputJsonValue,
     },
