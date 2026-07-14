@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784062200",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Confirmações antigas de nota voltam a funcionar ou somem do chat",
+    "body": "Pedidos de criação de nota feitos antes da pausa HITL — que apareciam no card\nacima do prompt mas falhavam com “não encontrada ou já utilizada” — agora são\nrecuperados a partir do conteúdo ainda salvo na mensagem, ou o card é removido\nquando a confirmação já tinha sido usada.",
+    "pr": 379,
+    "author": "Kalyel",
+    "date": "2026-07-14T17:49:42-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/379"
+  },
+  {
     "version": "0.11.0-dev.1784061257",
     "channel": "dev",
     "type": "fix",
