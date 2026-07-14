@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleStop,
+  Copy,
   FileText,
   Globe,
   Loader2,
@@ -300,6 +301,53 @@ function ThinkingBlock({
 // ---------------------------------------------------------------------------
 // HITL sticky acima do composer (spec 090) — padrão de mercado / Cursor.
 // ---------------------------------------------------------------------------
+function MessageCopyButton({
+  text,
+  align = 'start',
+}: {
+  text: string;
+  align?: 'start' | 'end';
+}): React.ReactElement | null {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trimmed = text.trim();
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+  if (!trimmed) return null;
+
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(trimmed);
+      setCopied(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard may be unavailable (permissions / insecure context).
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      className={cn(
+        'mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--color-app-muted)] transition-opacity hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
+        'opacity-70 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100',
+        align === 'end' ? 'self-end' : 'self-start',
+      )}
+      aria-label={t('chat.copyMessage')}
+      title={t('chat.copyMessage')}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      <span>{copied ? t('common.copied') : t('common.copy')}</span>
+    </button>
+  );
+}
+
 function HitlConfirmBar({
   pending,
   onApprove,
@@ -831,7 +879,7 @@ export function ChatPage(): React.ReactElement {
             role="log"
             aria-live="off"
             aria-label={t('chat.historyLabel')}
-            className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5"
+            className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-5 pt-12 md:py-5"
           >
             <div className="mx-auto flex w-full max-w-3xl flex-col">
               {visibleMessages.map((message) => {
@@ -839,23 +887,29 @@ export function ChatPage(): React.ReactElement {
                   streaming && message.id === streamingAssistantId.current;
                 if (message.role === 'USER') {
                   return (
-                    <article key={message.id} className="mb-5 flex justify-end">
+                    <article key={message.id} className="group mb-5 flex flex-col items-end">
                       <div className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-[var(--color-accent-primary-soft)] px-4 py-2.5 text-[14.5px] leading-relaxed text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-primary)]/15">
                         {message.content}
                       </div>
+                      <MessageCopyButton text={message.content} align="end" />
                     </article>
                   );
                 }
                 const segments = message.segments ?? segmentsFromPersistedTools(message.tools);
                 return (
-                  <article key={message.id} className="mb-6 flex flex-col">
+                  <article key={message.id} className="group mb-6 flex flex-col">
                     {segments.length > 0 && (
                       <ThinkingBlock segments={segments} live={isStreamingAssistant} />
                     )}
                     {message.content && (
-                      <div className="text-[15px] leading-relaxed text-[var(--color-app-fg)]">
-                        <Markdown>{message.content}</Markdown>
-                      </div>
+                      <>
+                        <div className="text-[15px] leading-relaxed text-[var(--color-app-fg)]">
+                          <Markdown>{message.content}</Markdown>
+                        </div>
+                        {!isStreamingAssistant && (
+                          <MessageCopyButton text={message.content} align="start" />
+                        )}
+                      </>
                     )}
                     {isStreamingAssistant && !message.content && segments.length === 0 && (
                       <span className="inline-flex items-center gap-1.5 text-sm text-[var(--color-app-muted)]">

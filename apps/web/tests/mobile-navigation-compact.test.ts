@@ -6,19 +6,18 @@ function readClientSource(relativePath: string): string {
 }
 
 describe('chrome de navegação mobile compacto', () => {
-  test('compacta o topbar somente abaixo do breakpoint desktop', () => {
+  test('topbar mobile transparente e controles 32 px alinhados ao botão da sidebar', () => {
     const source = readClientSource('components/layout/topbar.tsx');
 
     expect(source).toContain('right-2');
     expect(source).toContain('md:right-4');
-    expect(source).toContain('gap-1');
-    expect(source).toContain('md:gap-3');
-    expect(source).toContain('px-1.5 py-1.5');
-    expect(source).toContain('md:px-2.5 md:py-2');
+    expect(source).toContain('bg-transparent');
+    expect(source).toContain('md:bg-[var(--color-app-bg-elevated)]/85');
     expect(source).toContain('top-[calc(env(safe-area-inset-top)+0.5rem)]');
     expect(source).toContain('md:top-[calc(env(safe-area-inset-top)+1rem)]');
-    expect(source.match(/h-8 w-8/g)).toHaveLength(4);
-    expect(source.match(/md:h-9 md:w-9/g)).toHaveLength(4);
+    expect(source).toContain('h-8 w-8');
+    expect(source).toContain('md:h-9 md:w-9');
+    expect(source).toContain('bg-[var(--color-app-bg)]/75');
     expect(source).toContain('md:inline-flex');
     expect(source).not.toContain('sm:inline-flex');
   });
@@ -33,9 +32,12 @@ describe('chrome de navegação mobile compacto', () => {
     expect(source).toContain('<PanelLeftOpen className="h-4 w-4" />');
   });
 
-  test('reduz a reserva vertical mobile sem alterar os 5rem do desktop', () => {
+  test('chat mobile só reserva safe-area; demais rotas mantêm 4rem / desktop 5rem', () => {
     const source = readClientSource('components/layout/app-layout.tsx');
 
+    expect(source).toContain(
+      'pt-[env(safe-area-inset-top)] md:pt-[calc(env(safe-area-inset-top)+5rem)]',
+    );
     expect(source).toContain('pt-[calc(env(safe-area-inset-top)+4rem)]');
     expect(source).toContain('md:pt-[calc(env(safe-area-inset-top)+5rem)]');
   });
