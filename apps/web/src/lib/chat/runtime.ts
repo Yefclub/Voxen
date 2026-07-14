@@ -609,9 +609,10 @@ export function buildTools(
         content: z.string().max(200_000),
       }),
       // Primary write path is approveChatAction (UI confirm). This execute only
-      // runs if a future resume injects tool-approval-response into streamText.
+      // runs if a future resume injects tool-approval-response into streamText;
+      // it must not create the note (avoids double-write with the UI path).
       execute: async ({ title, content }) => ({
-        status: 'awaiting_or_handled_by_ui',
+        handledBy: 'ui_approve',
         title,
         contentLength: content.length,
       }),
@@ -712,11 +713,19 @@ export async function approveChatAction(
     const content = typeof payload.content === 'string' ? payload.content : '';
     if (!title) throw new Error('Confirmação inválida.');
     const note = await tx.note.create({ data: { userId, kind: 'NOTE', title, content } });
+    // Locate by approvalId in JSON (not a recent-window take) so a pending HITL
+    // buried under many later assistant turns still clears its card (spec 090).
     const assistantMessages = await tx.chatMessage.findMany({
-      where: { conversationId: approval.conversationId, role: 'ASSISTANT' },
+      where: {
+        conversationId: approval.conversationId,
+        role: 'ASSISTANT',
+        OR: [
+          { tools: { string_contains: approvalId } },
+          { segments: { string_contains: approvalId } },
+        ],
+      },
       select: { id: true, tools: true, segments: true },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: 40,
     });
     for (const message of assistantMessages) {
       const resolved = resolveApprovalInMessageJson(
