@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784064873",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Chat mais calmo no markdown, com copiar mensagem e chrome mobile transparente",
+    "body": "Links e código inline nas respostas da Vox deixam de aparecer como badges\nfortes. Dá para copiar a mensagem do usuário ou da IA pelo botão abaixo do\ntexto. No celular, o cabeçalho fica transparente e do mesmo tamanho do botão\nda sidebar, com o histórico passando por baixo.",
+    "pr": 381,
+    "author": "Kalyel",
+    "date": "2026-07-14T18:34:20-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/381"
+  },
+  {
     "version": "0.11.0-dev.1784062200",
     "channel": "dev",
     "type": "fix",

@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.11.0-dev.1784064873 — 2026-07-14 · Dev
+
+### 🎨 Chat mais calmo no markdown, com copiar mensagem e chrome mobile transparente
+
+Links e código inline nas respostas da Vox deixam de aparecer como badges
+fortes. Dá para copiar a mensagem do usuário ou da IA pelo botão abaixo do
+texto. No celular, o cabeçalho fica transparente e do mesmo tamanho do botão
+da sidebar, com o histórico passando por baixo.
+
 ## v0.11.0-dev.1784062200 — 2026-07-14 · Dev
 
 ### 🐛 Confirmações antigas de nota voltam a funcionar ou somem do chat
