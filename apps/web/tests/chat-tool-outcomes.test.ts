@@ -44,18 +44,18 @@ describe('healStaleRunningTools', () => {
 
 describe('healStaleRunningInSegments', () => {
   test('heals tools inside tool-group segments', () => {
+    const tools: ToolEventLike[] = [
+      { id: 't1', name: 'request_transcription', state: 'running' },
+    ];
     const { segments, changed } = healStaleRunningInSegments([
       { type: 'reasoning' as const },
-      {
-        type: 'tool-group' as const,
-        tools: [{ id: 't1', name: 'request_transcription', state: 'running' as const }],
-      },
+      { type: 'tool-group' as const, tools },
     ]);
     expect(changed).toBe(true);
     const group = segments[1];
     expect(group?.type).toBe('tool-group');
     if (group?.type !== 'tool-group') return;
-    expect(group.tools[0]?.state).toBe('error');
+    expect(group.tools[0]?.state).toEqual('error' as ToolEventLike['state']);
   });
 });
 
