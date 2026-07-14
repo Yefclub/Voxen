@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.11.0-dev.1784059366 — 2026-07-14 · Dev
+
+### ✨ Confirmação da IA pausa o chat e fica acima do prompt
+
+Quando a Vox propõe criar uma nota, o turno agora pausa de verdade em vez de continuar “pensando” em volta do botão. O pedido de confirmação aparece logo acima da caixa de mensagem, sobrevive se você sair e voltar depois, e não expira por tempo. No celular, os botões do cabeçalho direito ficam do mesmo tamanho do botão que abre o menu.
+
 ## v0.11.0-dev.1783971428 — 2026-07-13 · Dev
 
 ### 🐛 Chat quebrava para sempre após aprovar criação de nota via IA
