@@ -820,13 +820,15 @@ export function ChatPage(): React.ReactElement {
   }, [messages, nearBottom, streaming]);
 
   // Shrink spacer as the assistant reply grows during an anchored turn.
+  // Re-attach when the scroller mounts (loading/empty → conversation view).
   useEffect(() => {
+    if (loading || isEmpty) return;
     const content = contentWrapRef.current;
     if (!content || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => handleContentGrowth());
     observer.observe(content);
     return () => observer.disconnect();
-  }, []);
+  }, [loading, isEmpty]);
 
   function onScroll(): void {
     const element = scrollerRef.current;

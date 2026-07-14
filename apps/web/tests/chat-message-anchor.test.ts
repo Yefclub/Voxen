@@ -22,4 +22,10 @@ describe('chat message anchor wiring (spec 092)', () => {
     expect(chatSource).toContain("scrollPhaseRef.current === 'anchor'");
     expect(chatSource).toContain('handleContentGrowth');
   });
+
+  test('ResizeObserver re-attaches after the conversation scroller mounts', () => {
+    expect(chatSource).toContain('if (loading || isEmpty) return;');
+    expect(chatSource).toContain('}, [loading, isEmpty]);');
+    expect(chatSource).toContain('new ResizeObserver(() => handleContentGrowth())');
+  });
 });
