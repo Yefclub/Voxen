@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784073052",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Chat ancora a mensagem enviada no topo e deixa espaço para a resposta",
+    "body": "Ao enviar uma mensagem, a bolha do usuário sobe para o topo da área do chat\n(estilo ChatGPT/Orbital) e a resposta nasce no espaço abaixo. Um espaçador\nencolhe durante o stream para evitar saltos; rolar para cima cancela o\nacompanhamento automático.",
+    "pr": 385,
+    "author": "Kalyel",
+    "date": "2026-07-14T20:50:42-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/385"
+  },
+  {
     "version": "0.11.0-dev.1784071986",
     "channel": "dev",
     "type": "feat",
