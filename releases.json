@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784059366",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Confirmação da IA pausa o chat e fica acima do prompt",
+    "body": "Quando a Vox propõe criar uma nota, o turno agora pausa de verdade em vez de continuar “pensando” em volta do botão. O pedido de confirmação aparece logo acima da caixa de mensagem, sobrevive se você sair e voltar depois, e não expira por tempo. No celular, os botões do cabeçalho direito ficam do mesmo tamanho do botão que abre o menu.",
+    "pr": 375,
+    "author": "Kalyel",
+    "date": "2026-07-14T17:02:30-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/375"
+  },
+  {
     "version": "0.11.0-dev.1783971428",
     "channel": "dev",
     "type": "fix",
