@@ -3,6 +3,7 @@ import {
   attachmentKind,
   formatToolDuration,
   hasToolLabel,
+  pendingHitlFromTools,
   prettifyToolName,
   toolBlockState,
   toolFamily,
@@ -50,6 +51,39 @@ describe('prettifyToolName / hasToolLabel', () => {
   });
 });
 
+describe('pendingHitlFromTools', () => {
+  it('extrai aprovações pendentes com approvalId', () => {
+    expect(
+      pendingHitlFromTools([
+        {
+          name: 'propose_create_note',
+          state: 'approval-required',
+          output: {
+            approvalRequired: true,
+            approvalId: '11111111-1111-1111-1111-111111111111',
+            action: 'create_note',
+            title: 'Minha nota',
+          },
+        },
+        { name: 'web_search', state: 'completed', output: { ok: true } },
+      ]),
+    ).toEqual([
+      {
+        approvalId: '11111111-1111-1111-1111-111111111111',
+        toolName: 'propose_create_note',
+        title: 'Minha nota',
+        action: 'create_note',
+      },
+    ]);
+  });
+
+  it('ignora ferramentas sem pedido de aprovação', () => {
+    expect(
+      pendingHitlFromTools([{ name: 'propose_create_note', state: 'completed', output: {} }]),
+    ).toEqual([]);
+  });
+});
+
 describe('toolBlockState', () => {
   it('running enquanto houver ferramenta rodando', () => {
     expect(
@@ -59,8 +93,8 @@ describe('toolBlockState', () => {
       ]),
     ).toBe('running');
   });
-  it('running enquanto houver aprovação pendente', () => {
-    expect(toolBlockState([{ name: 'a', state: 'approval-required' }])).toBe('running');
+  it('approval-required não conta como running (HITL fora do Pensando)', () => {
+    expect(toolBlockState([{ name: 'a', state: 'approval-required' }])).toBe('done');
   });
   it('error se alguma falhou e nenhuma roda', () => {
     expect(

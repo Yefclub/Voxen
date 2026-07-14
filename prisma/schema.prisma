@@ -531,7 +531,8 @@ model ChatApproval {
   action         String
   payload        Json
   status         ChatApprovalStatus @default(PENDING)
-  expiresAt      DateTime
+  /// Null = no wall-clock TTL (spec 090). Legacy rows may still have a timestamp.
+  expiresAt      DateTime?
   createdAt      DateTime           @default(now())
   decidedAt      DateTime?
   user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)

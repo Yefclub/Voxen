@@ -178,13 +178,16 @@ describe('segmentsRunning', () => {
     expect(segmentsRunning(segments)).toBe(true);
   });
 
-  it('true se algum tool-group tem ferramenta running/approval-required', () => {
+  it('true se algum tool-group tem ferramenta running', () => {
     expect(
       segmentsRunning([{ type: 'tool-group', id: 'g0', tools: [tool('t1', 'running')] }]),
     ).toBe(true);
+  });
+
+  it('false se só há approval-required (HITL não mantém Pensando)', () => {
     expect(
       segmentsRunning([{ type: 'tool-group', id: 'g0', tools: [tool('t1', 'approval-required')] }]),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('false quando tudo terminou (reasoning fechado + tools completos/erro)', () => {

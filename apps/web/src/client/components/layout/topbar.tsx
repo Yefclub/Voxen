@@ -79,15 +79,11 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
       <button
         type="button"
         onClick={() => void toggleAppearance()}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] md:h-9 md:w-9"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] md:h-9 md:w-9 md:rounded-lg"
         aria-label={theme === 'light' ? t('theme.switchToDark') : t('theme.switchToLight')}
         title={theme === 'light' ? t('theme.switchToDark') : t('theme.switchToLight')}
       >
-        {theme === 'light' ? (
-          <Moon className="h-3.5 w-3.5 md:h-4 md:w-4" />
-        ) : (
-          <Sun className="h-3.5 w-3.5 md:h-4 md:w-4" />
-        )}
+        {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
       </button>
 
       <DropdownMenu>
@@ -191,25 +187,21 @@ function ChatShellControls(): React.ReactElement {
           setSounds(next);
           if (next) play('success');
         }}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] md:h-9 md:w-9"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] md:h-9 md:w-9 md:rounded-lg"
         aria-label={soundsEnabled ? t('chat.soundsOff') : t('chat.soundsOn')}
         title={soundsEnabled ? t('chat.soundsOff') : t('chat.soundsOn')}
       >
-        {soundsEnabled ? (
-          <Volume2 className="h-3.5 w-3.5 md:h-4 md:w-4" />
-        ) : (
-          <VolumeX className="h-3.5 w-3.5 md:h-4 md:w-4" />
-        )}
+        {soundsEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
       </button>
       <button
         type="button"
         onClick={() => requestClearConversation()}
         disabled={streaming || isEmpty}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] disabled:cursor-not-allowed disabled:opacity-40 md:h-9 md:w-9"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] disabled:cursor-not-allowed disabled:opacity-40 md:h-9 md:w-9 md:rounded-lg"
         aria-label={t('chat.clearConversation')}
         title={t('chat.clearConversation')}
       >
-        <Eraser className="h-3.5 w-3.5 md:h-4 md:w-4" />
+        <Eraser className="h-4 w-4" />
       </button>
     </div>
   );

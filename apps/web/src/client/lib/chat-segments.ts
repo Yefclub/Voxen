@@ -164,8 +164,8 @@ export function segmentsFromPersistedTools(
 
 /**
  * `true` se algo ainda está em andamento: um raciocínio sem `endedAt`, ou
- * qualquer tool-group com ferramenta `running`/`approval-required`. Alimenta
- * o header do bloco de pensamento unificado ("Pensando" vs "Pensou por Xs").
+ * qualquer tool-group com ferramenta `running`. Aprovação pendente (HITL) não
+ * conta — o card fica acima do composer (spec 090).
  */
 export function segmentsRunning(segments: readonly MessageSegment[]): boolean {
   return segments.some((segment) =>
