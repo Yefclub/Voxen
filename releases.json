@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784061257",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Confirmação de nota antiga deixa de ficar presa no chat",
+    "body": "Ao confirmar uma proposta de nota que ficou pendente sob muitas respostas\nposteriores da IA, o card de confirmação agora some corretamente. Antes, só as\núltimas mensagens eram atualizadas e o pedido podia reaparecer como se ainda\nestivesse aberto.",
+    "pr": 377,
+    "author": "Kalyel",
+    "date": "2026-07-14T17:34:03-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/377"
+  },
+  {
     "version": "0.11.0-dev.1784059366",
     "channel": "dev",
     "type": "feat",
