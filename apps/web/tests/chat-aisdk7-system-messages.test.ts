@@ -2,10 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const runtimeSource = readFileSync(
-  join(import.meta.dir, '../src/lib/chat/runtime.ts'),
-  'utf8',
-);
+const runtimeSource = readFileSync(join(import.meta.dir, '../src/lib/chat/runtime.ts'), 'utf8');
 
 describe('AI SDK 7 system message handling in chat runtime', () => {
   test('streamText opts into trusted SYSTEM history via allowSystemInMessages', () => {

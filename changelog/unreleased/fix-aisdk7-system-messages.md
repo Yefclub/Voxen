@@ -1,3 +1,9 @@
-### Fixed
+---
+tipo: fix
+titulo: Chat deixa de quebrar no AI SDK 7 com histórico SYSTEM
+---
 
-- Chat no longer crashes on AI SDK 7 when the conversation history includes server `SYSTEM` rows (compaction summaries / HITL responses); `streamText` opts into `allowSystemInMessages` for trusted DB history, and compaction uses `instructions` instead of deprecated `system`.
+Conversas com resumo de compactação ou resposta HITL voltam a responder
+normalmente. O runtime passa a permitir mensagens SYSTEM confiáveis do
+servidor no `streamText` e a compactação usa `instructions` em vez de
+`system`.
