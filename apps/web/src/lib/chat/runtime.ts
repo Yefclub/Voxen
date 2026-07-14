@@ -22,6 +22,7 @@ import {
 } from '../retrieval';
 import { getSetting } from '../settings';
 import { researchWeb } from '../web-research';
+import { parseTemporalBounds } from './temporal-bounds';
 
 const KEEP_RECENT = 6;
 const DEFAULT_CONTEXT_LIMIT = 32_000;
@@ -38,18 +39,23 @@ const AGENT_INSTRUCTIONS = [
   'responda com uma explicação clara e verificável.',
   '',
   'Recupere contexto de forma PROGRESSIVA (sem embeddings), gastando o mínimo de contexto:',
-  '1. Busque primeiro por termos/títulos/tópicos/entidades (search_transcripts, search_notes,',
-  '   brain_search) — retornam trechos curtos + id.',
-  '2. Antes de abrir conteúdo, veja a ESTRUTURA com outline_transcript (seções, linhas, tempos).',
-  '3. Leia só trechos específicos: read_lines (intervalo de linhas), read_section (seção),',
+  '1. Para perguntas TEMPORAIS de intake (“o que entrou esta semana”, “resuma meus últimos',
+  '   dias”, “principais achados recentes”), use list_transcripts / list_notes com since/until',
+  '   em ISO-8601 sobre createdAt (data de ingestão no Voxen, não publishedAt da fonte).',
+  '   Se a semana/local não for clara, use os últimos 7 dias. Depois outline/read dos itens',
+  '   relevantes e resuma com citações — NÃO diga que só busca por termo.',
+  '2. Para tópicos/termos/entidades, busque com search_transcripts, search_notes, brain_search',
+  '   — retornam trechos curtos + id.',
+  '3. Antes de abrir conteúdo, veja a ESTRUTURA com outline_transcript (seções, linhas, tempos).',
+  '4. Leia só trechos específicos: read_lines (intervalo de linhas), read_section (seção),',
   '   read_timespan (intervalo de tempo). Não leia o documento inteiro por padrão.',
-  '4. Expanda contexto (expand_context) só quando o trecho lido não bastar.',
-  '5. read_transcript (documento completo) é ÚLTIMO recurso — caro; evite.',
-  '6. Relacione trechos com docs/fontes/tópicos próximos usando related.',
-  '7. Monte um Context Pack mínimo: só o que sustenta a resposta, sem conteúdo irrelevante.',
-  '8. Cite exatamente doc + linhas/seção + timestamp (hh:mm:ss) do que usar.',
-  '9. Valide: cada afirmação factual forte precisa de evidência recuperada — use verify_citations.',
-  '10. Se não houver evidência suficiente, diga isso claramente; não invente.',
+  '5. Expanda contexto (expand_context) só quando o trecho lido não bastar.',
+  '6. read_transcript (documento completo) é ÚLTIMO recurso — caro; evite.',
+  '7. Relacione trechos com docs/fontes/tópicos próximos usando related.',
+  '8. Monte um Context Pack mínimo: só o que sustenta a resposta, sem conteúdo irrelevante.',
+  '9. Cite exatamente doc + linhas/seção + timestamp (hh:mm:ss) do que usar.',
+  '10. Valide: cada afirmação factual forte precisa de evidência recuperada — use verify_citations.',
+  '11. Se não houver evidência suficiente, diga isso claramente; não invente.',
   '',
   'Você possui ferramentas reais de pesquisa na web e no X. Para fatos atuais ou externos, use',
   'web_search; para posts, threads e tendências no X, use search_x. Nunca alegue genericamente',
@@ -260,16 +266,119 @@ export function buildLibrarySuggestionsInstructions(items: readonly FtsResult[])
   ].join('\n');
 }
 
+const temporalListInputSchema = z.object({
+  since: z
+    .string()
+    .min(1)
+    .max(40)
+    .optional()
+    .describe('ISO-8601 inclusive lower bound on createdAt (ingestion time).'),
+  until: z
+    .string()
+    .min(1)
+    .max(40)
+    .optional()
+    .describe('ISO-8601 exclusive upper bound on createdAt (ingestion time).'),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
 export function buildTools(
   userId: string,
   options: { abortSignal?: AbortSignal; emitStatus?: (label: string) => void } = {},
 ) {
   return {
+    list_transcripts: tool({
+      description:
+        'Lista transcrições do workspace por data de INGESTÃO (createdAt), mais recentes ' +
+        'primeiro. Use para “o que entrou esta semana/últimos dias” com since/until em ' +
+        'ISO-8601. Sem since/until, devolve os mais recentes. Retorna metadata + summary ' +
+        'curto — depois use outline/read nos ids relevantes.',
+      inputSchema: temporalListInputSchema,
+      execute: async ({ since, until, limit }) => {
+        const bounds = parseTemporalBounds(since, until);
+        if (!bounds.ok) return { error: bounds.error };
+        const take = limit ?? 30;
+        const rows = await db.transcript.findMany({
+          where: {
+            userId,
+            status: 'ACTIVE',
+            ...(bounds.since || bounds.until
+              ? {
+                  createdAt: {
+                    ...(bounds.since ? { gte: bounds.since } : {}),
+                    ...(bounds.until ? { lt: bounds.until } : {}),
+                  },
+                }
+              : {}),
+          },
+          orderBy: { createdAt: 'desc' },
+          take,
+          select: {
+            id: true,
+            source: true,
+            title: true,
+            createdAt: true,
+            summaryMd: true,
+            tags: { select: { tag: { select: { name: true } } } },
+          },
+        });
+        return {
+          transcripts: rows.map((row) => ({
+            id: row.id,
+            source: row.source,
+            title: row.title,
+            createdAt: row.createdAt.toISOString(),
+            summary: row.summaryMd,
+            tags: row.tags.map((item) => item.tag.name),
+          })),
+          count: rows.length,
+        };
+      },
+    }),
+    list_notes: tool({
+      description:
+        'Lista notas (kind NOTE) do workspace por data de criação (createdAt), mais recentes ' +
+        'primeiro. Use com since/until em ISO-8601 para janelas temporais (“notas desta ' +
+        'semana”). Sem since/until, devolve as mais recentes. Pastas (FOLDER) são omitidas.',
+      inputSchema: temporalListInputSchema,
+      execute: async ({ since, until, limit }) => {
+        const bounds = parseTemporalBounds(since, until);
+        if (!bounds.ok) return { error: bounds.error };
+        const take = limit ?? 30;
+        const rows = await db.note.findMany({
+          where: {
+            userId,
+            kind: 'NOTE',
+            ...(bounds.since || bounds.until
+              ? {
+                  createdAt: {
+                    ...(bounds.since ? { gte: bounds.since } : {}),
+                    ...(bounds.until ? { lt: bounds.until } : {}),
+                  },
+                }
+              : {}),
+          },
+          orderBy: { createdAt: 'desc' },
+          take,
+          select: { id: true, title: true, createdAt: true, updatedAt: true },
+        });
+        return {
+          notes: rows.map((row) => ({
+            id: row.id,
+            title: row.title,
+            createdAt: row.createdAt.toISOString(),
+            updatedAt: row.updatedAt.toISOString(),
+          })),
+          count: rows.length,
+        };
+      },
+    }),
     search_transcripts: tool({
       description:
-        'PASSO 1 (busca). Busca full-text forte (Postgres FTS, português) nas transcrições do ' +
-        'workspace. Retorna trechos curtos com o termo destacado (« »), título, id e rank — ' +
-        'NUNCA o texto completo. Use primeiro para localizar o conteúdo certo.',
+        'PASSO 1 (busca por termo). Busca full-text forte (Postgres FTS, português) nas ' +
+        'transcrições do workspace. Retorna trechos curtos com o termo destacado (« »), ' +
+        'título, id e rank — NUNCA o texto completo. Para intake por data, prefira ' +
+        'list_transcripts com since/until.',
       inputSchema: z.object({
         query: z.string().min(1).max(300),
         limit: z.number().int().min(1).max(25).optional(),
