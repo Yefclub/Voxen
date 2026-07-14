@@ -239,6 +239,89 @@ describeIfDb('chat de sessão única', () => {
     expect(tools?.[0]?.output?.approvalRequired).toBe(false);
   });
 
+  it('revive aprovação ausente a partir do payload na mensagem assistant', async () => {
+    const user = await db.user.create({
+      data: { email: 'chat-test-approval-revive@voxen.local', name: 'Revive', status: 'APPROVED' },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const approvalId = crypto.randomUUID();
+    await db.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: 'Quer que eu confirme a criação da nota?',
+        tools: [
+          {
+            id: 'tool-legacy',
+            name: 'propose_create_note',
+            state: 'approval-required',
+            output: {
+              approvalRequired: true,
+              approvalId,
+              action: 'create_note',
+              title: 'Nota legado',
+              content: 'conteúdo recuperado da mensagem',
+            },
+          },
+        ],
+      },
+    });
+    // No ChatApproval row — simulates pre-090 expiry / missing row.
+    const result = await approveChatAction(user.id, approvalId);
+    expect(result.noteId).toBeTruthy();
+    expect(await db.note.count({ where: { id: result.noteId, userId: user.id } })).toBe(1);
+    expect(await db.chatApproval.count({ where: { id: approvalId, status: 'APPROVED' } })).toBe(1);
+  });
+
+  it('snapshot descarta card fantasma de aprovação já utilizada', async () => {
+    const user = await db.user.create({
+      data: { email: 'chat-test-approval-ghost@voxen.local', name: 'Ghost', status: 'APPROVED' },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const approvalId = crypto.randomUUID();
+    await db.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: '',
+        tools: [
+          {
+            id: 'tool-ghost',
+            name: 'propose_create_note',
+            state: 'approval-required',
+            output: {
+              approvalRequired: true,
+              approvalId,
+              action: 'create_note',
+              title: 'Já criada',
+              content: 'x',
+            },
+          },
+        ],
+      },
+    });
+    await db.chatApproval.create({
+      data: {
+        id: approvalId,
+        userId: user.id,
+        conversationId: conversation.id,
+        action: 'create_note',
+        payload: { title: 'Já criada', content: 'x' },
+        status: 'APPROVED',
+        decidedAt: new Date(),
+        expiresAt: null,
+      },
+    });
+    const snapshot = await getChatSnapshot(user.id);
+    const assistant = snapshot.messages.find((message) => message.role === 'ASSISTANT');
+    const tools = assistant?.tools as Array<{
+      state: string;
+      output?: { approvalRequired?: boolean };
+    }>;
+    expect(tools?.[0]?.state).toBe('completed');
+    expect(tools?.[0]?.output?.approvalRequired).toBe(false);
+  });
+
   it('limpa mensagens e aprovações pendentes sem remover a conversa canônica', async () => {
     const user = await db.user.create({
       data: { email: 'chat-test-clear@voxen.local', name: 'Clear', status: 'APPROVED' },
