@@ -48,6 +48,16 @@ import {
   type ToolEvent,
 } from '../lib/chat-segments';
 import {
+  ANCHOR_MOUNT_RETRY_FRAMES,
+  canRearmFollow,
+  isUserScrollUp,
+  nextSpacerHeight,
+  planAnchor,
+  shouldAnchor,
+  shouldReengageFollow,
+  type ScrollPhase,
+} from '../lib/chat-scroll';
+import {
   getSoundsEnabled,
   setChatEmpty,
   setChatStreaming,
@@ -589,9 +599,17 @@ export function ChatPage(): React.ReactElement {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const contentWrapRef = useRef<HTMLDivElement>(null);
+  const spacerNodeRef = useRef<HTMLDivElement>(null);
   const didInitialScroll = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const streamingAssistantId = useRef<string | null>(null);
+  const pendingAnchorIdRef = useRef<string | null>(null);
+  const scrollPhaseRef = useRef<ScrollPhase>('free');
+  const spacerHeightRef = useRef(0);
+  const reserveEndRef = useRef(0);
+  const prevScrollTopRef = useRef(0);
+  const programmaticScrollRef = useRef(false);
   const { clearSignal } = useChatShell();
   const lastClearSignal = useRef(clearSignal);
   // MutableRefObject: React 19 RefObject.current is readonly and control-flow
@@ -600,6 +618,109 @@ export function ChatPage(): React.ReactElement {
   const liveSegmentsRef = useRef<MessageSegment[] | null>(null) as {
     current: MessageSegment[] | null;
   };
+
+  function applySpacerHeight(px: number): void {
+    spacerHeightRef.current = px;
+    if (spacerNodeRef.current) spacerNodeRef.current.style.height = `${Math.max(0, px)}px`;
+  }
+
+  function markProgrammaticScroll(): void {
+    programmaticScrollRef.current = true;
+    requestAnimationFrame(() => {
+      programmaticScrollRef.current = false;
+    });
+  }
+
+  function scrollToBottom(smooth: boolean): void {
+    const element = scrollerRef.current;
+    if (!element) return;
+    scrollPhaseRef.current = 'free';
+    applySpacerHeight(0);
+    reserveEndRef.current = 0;
+    setNearBottom(true);
+    markProgrammaticScroll();
+    element.scrollTo({
+      top: element.scrollHeight,
+      behavior: smooth ? 'smooth' : 'auto',
+    });
+  }
+
+  function anchorUserMessage(messageId: string, retriesLeft: number): void {
+    const container = scrollerRef.current;
+    if (!container) return;
+    const el = container.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
+    if (!el) {
+      if (retriesLeft > 0) {
+        requestAnimationFrame(() => anchorUserMessage(messageId, retriesLeft - 1));
+        return;
+      }
+      pendingAnchorIdRef.current = null;
+      scrollToBottom(false);
+      return;
+    }
+
+    // Composer sits outside the scroller in Voxen — visible band is the scroller itself.
+    const composerHeight = 0;
+    if (
+      !shouldAnchor({
+        messageHeight: el.getBoundingClientRect().height,
+        clientHeight: container.clientHeight,
+        composerHeight,
+      })
+    ) {
+      pendingAnchorIdRef.current = null;
+      scrollToBottom(false);
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const plan = planAnchor({
+      messageTop: container.scrollTop + (elRect.top - containerRect.top),
+      clientHeight: container.clientHeight,
+      scrollHeight: container.scrollHeight,
+      currentSpacerHeight: spacerHeightRef.current,
+    });
+
+    applySpacerHeight(plan.spacerHeight);
+    reserveEndRef.current = plan.reserveEnd;
+    scrollPhaseRef.current = 'anchor';
+    setNearBottom(false);
+    pendingAnchorIdRef.current = null;
+    markProgrammaticScroll();
+    container.scrollTo({ top: plan.targetScrollTop, behavior: 'auto' });
+    prevScrollTopRef.current = plan.targetScrollTop;
+  }
+
+  function handleContentGrowth(): void {
+    if (scrollPhaseRef.current !== 'anchor') return;
+    const container = scrollerRef.current;
+    const content = contentWrapRef.current;
+    if (!container || !content) return;
+
+    const next = nextSpacerHeight({
+      reserveEnd: reserveEndRef.current,
+      scrollHeight: container.scrollHeight,
+      currentSpacerHeight: spacerHeightRef.current,
+    });
+    if (next !== spacerHeightRef.current) applySpacerHeight(next);
+
+    const contentRect = content.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    if (
+      shouldReengageFollow({
+        contentBottomViewport: contentRect.bottom,
+        containerBottomViewport: containerRect.bottom,
+        composerHeight: 0,
+        clientHeight: container.clientHeight,
+      })
+    ) {
+      scrollPhaseRef.current = 'free';
+      applySpacerHeight(0);
+      reserveEndRef.current = 0;
+      setNearBottom(true);
+    }
+  }
 
   const visibleMessages = useMemo(
     () =>
@@ -674,21 +795,73 @@ export function ChatPage(): React.ReactElement {
     if (!element) return;
     element.scrollTop = element.scrollHeight;
     didInitialScroll.current = true;
+    prevScrollTopRef.current = element.scrollTop;
   }, [loading, visibleMessages.length]);
 
+  // After send: pin the new user bubble near the top (spec 092 / Orbital).
+  useLayoutEffect(() => {
+    const id = pendingAnchorIdRef.current;
+    if (!id || loading) return;
+    requestAnimationFrame(() => anchorUserMessage(id, ANCHOR_MOUNT_RETRY_FRAMES));
+  }, [messages, loading]);
+
+  // Legacy stick-to-bottom only in free phase (disabled while anchored).
   useEffect(() => {
     if (!didInitialScroll.current) return;
-    if (nearBottom)
-      scrollerRef.current?.scrollTo({
-        top: scrollerRef.current.scrollHeight,
-        behavior: streaming ? 'auto' : 'smooth',
-      });
+    if (scrollPhaseRef.current === 'anchor') return;
+    if (!nearBottom) return;
+    const element = scrollerRef.current;
+    if (!element) return;
+    markProgrammaticScroll();
+    element.scrollTo({
+      top: element.scrollHeight,
+      behavior: streaming ? 'auto' : 'smooth',
+    });
   }, [messages, nearBottom, streaming]);
+
+  // Shrink spacer as the assistant reply grows during an anchored turn.
+  useEffect(() => {
+    const content = contentWrapRef.current;
+    if (!content || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => handleContentGrowth());
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
 
   function onScroll(): void {
     const element = scrollerRef.current;
     if (!element) return;
-    setNearBottom(element.scrollHeight - element.scrollTop - element.clientHeight < 96);
+    const scrollTop = element.scrollTop;
+    const distanceToBottom = element.scrollHeight - scrollTop - element.clientHeight;
+
+    if (programmaticScrollRef.current) {
+      prevScrollTopRef.current = scrollTop;
+      return;
+    }
+
+    if (
+      scrollPhaseRef.current === 'anchor' &&
+      isUserScrollUp(prevScrollTopRef.current, scrollTop)
+    ) {
+      scrollPhaseRef.current = 'free';
+      applySpacerHeight(0);
+      reserveEndRef.current = 0;
+      setNearBottom(false);
+      prevScrollTopRef.current = scrollTop;
+      return;
+    }
+
+    if (
+      canRearmFollow({
+        distanceToBottom,
+        spacerHeight: spacerHeightRef.current,
+      })
+    ) {
+      setNearBottom(true);
+    } else if (distanceToBottom >= 96) {
+      setNearBottom(false);
+    }
+    prevScrollTopRef.current = scrollTop;
   }
 
   async function approve(id: string): Promise<void> {
@@ -742,9 +915,11 @@ export function ChatPage(): React.ReactElement {
     };
     streamingAssistantId.current = localAssistant.id;
     liveSegmentsRef.current = null;
+    pendingAnchorIdRef.current = localUser.id;
+    scrollPhaseRef.current = 'free';
     setMessages((current) => [...current, localUser, localAssistant]);
     setInput('');
-    setNearBottom(true);
+    setNearBottom(false);
     setStreaming(true);
     setStatus(t('chat.thinking'));
     const controller = new AbortController();
@@ -882,55 +1057,58 @@ export function ChatPage(): React.ReactElement {
             className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-5 pt-12 md:py-5"
           >
             <div className="mx-auto flex w-full max-w-3xl flex-col">
-              {visibleMessages.map((message) => {
-                const isStreamingAssistant =
-                  streaming && message.id === streamingAssistantId.current;
-                if (message.role === 'USER') {
+              <div ref={contentWrapRef} className="flex flex-col">
+                {visibleMessages.map((message) => {
+                  const isStreamingAssistant =
+                    streaming && message.id === streamingAssistantId.current;
+                  if (message.role === 'USER') {
+                    return (
+                      <article
+                        key={message.id}
+                        data-message-id={message.id}
+                        className="group mb-5 flex flex-col items-end"
+                      >
+                        <div className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-[var(--color-accent-primary-soft)] px-4 py-2.5 text-[14.5px] leading-relaxed text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-primary)]/15">
+                          {message.content}
+                        </div>
+                        <MessageCopyButton text={message.content} align="end" />
+                      </article>
+                    );
+                  }
+                  const segments = message.segments ?? segmentsFromPersistedTools(message.tools);
                   return (
-                    <article key={message.id} className="group mb-5 flex flex-col items-end">
-                      <div className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-[var(--color-accent-primary-soft)] px-4 py-2.5 text-[14.5px] leading-relaxed text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-primary)]/15">
-                        {message.content}
-                      </div>
-                      <MessageCopyButton text={message.content} align="end" />
+                    <article key={message.id} className="group mb-6 flex flex-col">
+                      {segments.length > 0 && (
+                        <ThinkingBlock segments={segments} live={isStreamingAssistant} />
+                      )}
+                      {message.content && (
+                        <>
+                          <div className="text-[15px] leading-relaxed text-[var(--color-app-fg)]">
+                            <Markdown>{message.content}</Markdown>
+                          </div>
+                          {!isStreamingAssistant && (
+                            <MessageCopyButton text={message.content} align="start" />
+                          )}
+                        </>
+                      )}
+                      {isStreamingAssistant && !message.content && segments.length === 0 && (
+                        <span className="inline-flex items-center gap-1.5 text-sm text-[var(--color-app-muted)]">
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                          {status ?? t('chat.thinking')}
+                        </span>
+                      )}
                     </article>
                   );
-                }
-                const segments = message.segments ?? segmentsFromPersistedTools(message.tools);
-                return (
-                  <article key={message.id} className="group mb-6 flex flex-col">
-                    {segments.length > 0 && (
-                      <ThinkingBlock segments={segments} live={isStreamingAssistant} />
-                    )}
-                    {message.content && (
-                      <>
-                        <div className="text-[15px] leading-relaxed text-[var(--color-app-fg)]">
-                          <Markdown>{message.content}</Markdown>
-                        </div>
-                        {!isStreamingAssistant && (
-                          <MessageCopyButton text={message.content} align="start" />
-                        )}
-                      </>
-                    )}
-                    {isStreamingAssistant && !message.content && segments.length === 0 && (
-                      <span className="inline-flex items-center gap-1.5 text-sm text-[var(--color-app-muted)]">
-                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                        {status ?? t('chat.thinking')}
-                      </span>
-                    )}
-                  </article>
-                );
-              })}
+                })}
+              </div>
+              {/* Anchor spacer (spec 092): makes the sent message scrollable to the top;
+                  height is applied via DOM to avoid re-render churn while streaming. */}
+              <div ref={spacerNodeRef} aria-hidden="true" />
 
               {!nearBottom && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setNearBottom(true);
-                    scrollerRef.current?.scrollTo({
-                      top: scrollerRef.current.scrollHeight,
-                      behavior: 'smooth',
-                    });
-                  }}
+                  onClick={() => scrollToBottom(true)}
                   className="sticky bottom-3 self-center rounded-full border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--color-app-fg)] shadow-lg"
                 >
                   {t('chat.scrollLatest')}
