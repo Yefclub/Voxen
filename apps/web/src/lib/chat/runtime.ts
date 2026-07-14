@@ -1030,7 +1030,8 @@ async function maybeCompact(
     const provider = createOpenRouter({ apiKey: modelConfig.apiKey });
     const { text, usage } = await generateText({
       model: provider(modelConfig.model),
-      system:
+      // AI SDK 7: top-level system instructions use `instructions` (not `system`).
+      instructions:
         'Resuma o histórico para memória de agente. Preserve fatos confirmados, decisões, preferências, tarefas abertas, fontes e contradições. Não revele nem invente cadeia de raciocínio.',
       prompt: compacted.map((message) => `[${message.role}] ${message.content}`).join('\n\n'),
       timeout: { totalMs: 60_000 },
@@ -1134,6 +1135,10 @@ export async function streamAssistantReply(options: {
   const result = streamText({
     model: provider(modelConfig.model),
     instructions: AGENT_INSTRUCTIONS + suggestions,
+    // AI SDK 7 rejects role:system inside `messages` unless opted in. Our
+    // SYSTEM rows (compaction summaries, HITL responses) are server-authored
+    // only — never from the client — so allowing them preserves trusted history.
+    allowSystemInMessages: true,
     messages: toModelMessages(active),
     tools: buildTools(userId, {
       abortSignal,
