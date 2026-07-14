@@ -35,7 +35,9 @@ describe('chrome de navegação mobile compacto', () => {
   test('chat mobile só reserva safe-area; demais rotas mantêm 4rem / desktop 5rem', () => {
     const source = readClientSource('components/layout/app-layout.tsx');
 
-    expect(source).toContain("pt-[env(safe-area-inset-top)] md:pt-[calc(env(safe-area-inset-top)+5rem)]");
+    expect(source).toContain(
+      'pt-[env(safe-area-inset-top)] md:pt-[calc(env(safe-area-inset-top)+5rem)]',
+    );
     expect(source).toContain('pt-[calc(env(safe-area-inset-top)+4rem)]');
     expect(source).toContain('md:pt-[calc(env(safe-area-inset-top)+5rem)]');
   });

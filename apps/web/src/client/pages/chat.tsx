@@ -887,10 +887,7 @@ export function ChatPage(): React.ReactElement {
                   streaming && message.id === streamingAssistantId.current;
                 if (message.role === 'USER') {
                   return (
-                    <article
-                      key={message.id}
-                      className="group mb-5 flex flex-col items-end"
-                    >
+                    <article key={message.id} className="group mb-5 flex flex-col items-end">
                       <div className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-[var(--color-accent-primary-soft)] px-4 py-2.5 text-[14.5px] leading-relaxed text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-primary)]/15">
                         {message.content}
                       </div>
