@@ -713,20 +713,23 @@ export async function approveChatAction(
     const content = typeof payload.content === 'string' ? payload.content : '';
     if (!title) throw new Error('Confirmação inválida.');
     const note = await tx.note.create({ data: { userId, kind: 'NOTE', title, content } });
-    // Locate by approvalId in JSON (not a recent-window take) so a pending HITL
-    // buried under many later assistant turns still clears its card (spec 090).
-    const assistantMessages = await tx.chatMessage.findMany({
-      where: {
-        conversationId: approval.conversationId,
-        role: 'ASSISTANT',
-        OR: [
-          { tools: { string_contains: approvalId } },
-          { segments: { string_contains: approvalId } },
-        ],
-      },
-      select: { id: true, tools: true, segments: true },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    });
+    // Locate by approvalId in JSON text (not a recent-window take) so a pending
+    // HITL buried under many later assistant turns still clears its card.
+    // Prisma JsonFilter.string_contains is unreliable for array/object JSONB.
+    const approvalNeedle = `%${approvalId}%`;
+    const assistantMessages = await tx.$queryRaw<
+      Array<{ id: string; tools: Prisma.JsonValue; segments: Prisma.JsonValue }>
+    >`
+      SELECT id, tools, segments
+      FROM "ChatMessage"
+      WHERE "conversationId" = ${approval.conversationId}
+        AND role = 'ASSISTANT'
+        AND (
+          COALESCE(tools::text, '') LIKE ${approvalNeedle}
+          OR COALESCE(segments::text, '') LIKE ${approvalNeedle}
+        )
+      ORDER BY "createdAt" DESC, id DESC
+    `;
     for (const message of assistantMessages) {
       const resolved = resolveApprovalInMessageJson(
         message.tools,
