@@ -609,9 +609,10 @@ export function buildTools(
         content: z.string().max(200_000),
       }),
       // Primary write path is approveChatAction (UI confirm). This execute only
-      // runs if a future resume injects tool-approval-response into streamText.
+      // runs if a future resume injects tool-approval-response into streamText;
+      // it must not create the note (avoids double-write with the UI path).
       execute: async ({ title, content }) => ({
-        status: 'awaiting_or_handled_by_ui',
+        handledBy: 'ui_approve',
         title,
         contentLength: content.length,
       }),
@@ -712,12 +713,23 @@ export async function approveChatAction(
     const content = typeof payload.content === 'string' ? payload.content : '';
     if (!title) throw new Error('Confirmação inválida.');
     const note = await tx.note.create({ data: { userId, kind: 'NOTE', title, content } });
-    const assistantMessages = await tx.chatMessage.findMany({
-      where: { conversationId: approval.conversationId, role: 'ASSISTANT' },
-      select: { id: true, tools: true, segments: true },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: 40,
-    });
+    // Locate by approvalId in JSON text (not a recent-window take) so a pending
+    // HITL buried under many later assistant turns still clears its card.
+    // Prisma JsonFilter.string_contains is unreliable for array/object JSONB.
+    const approvalNeedle = `%${approvalId}%`;
+    const assistantMessages = await tx.$queryRaw<
+      Array<{ id: string; tools: Prisma.JsonValue; segments: Prisma.JsonValue }>
+    >`
+      SELECT id, tools, segments
+      FROM "ChatMessage"
+      WHERE "conversationId" = ${approval.conversationId}
+        AND role = 'ASSISTANT'
+        AND (
+          COALESCE(tools::text, '') LIKE ${approvalNeedle}
+          OR COALESCE(segments::text, '') LIKE ${approvalNeedle}
+        )
+      ORDER BY "createdAt" DESC, id DESC
+    `;
     for (const message of assistantMessages) {
       const resolved = resolveApprovalInMessageJson(
         message.tools,

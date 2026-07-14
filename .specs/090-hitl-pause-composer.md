@@ -89,3 +89,7 @@ persistente e fixa perto do composer, e só então executar o efeito colateral.
   atual e evita double-create.
 - `expiresAt` passa a ser opcional no banco; registros antigos com data no
   passado continuam aprováveis se ainda estiverem `PENDING`.
+
+> 2026-07-14: `approveChatAction` passa a localizar a mensagem pelo
+> `approvalId` no JSON (SQL `LIKE` em `tools`/`segments`), sem janela
+> `take: 40`, para não deixar card HITL fantasma em conversas longas.

@@ -184,6 +184,61 @@ describeIfDb('chat de sessão única', () => {
     expect(result.noteId).toBeTruthy();
   });
 
+  it('resolve HITL enterrado sob muitas mensagens assistant posteriores', async () => {
+    const user = await db.user.create({
+      data: { email: 'chat-test-approval-deep@voxen.local', name: 'Deep', status: 'APPROVED' },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const approvalId = crypto.randomUUID();
+    const pendingMessage = await db.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: '',
+        tools: [
+          {
+            id: 'tool-deep',
+            name: 'propose_create_note',
+            state: 'approval-required',
+            output: {
+              approvalRequired: true,
+              approvalId,
+              action: 'create_note',
+              title: 'Nota antiga',
+            },
+          },
+        ],
+      },
+    });
+    await db.chatApproval.create({
+      data: {
+        id: approvalId,
+        userId: user.id,
+        conversationId: conversation.id,
+        action: 'create_note',
+        payload: { title: 'Nota antiga', content: 'ainda pendente' },
+        expiresAt: null,
+      },
+    });
+    // More than the old take:40 window of later assistant turns.
+    await db.chatMessage.createMany({
+      data: Array.from({ length: 45 }, (_, index) => ({
+        conversationId: conversation.id,
+        role: 'ASSISTANT' as const,
+        content: `turno posterior ${index}`,
+      })),
+    });
+    const result = await approveChatAction(user.id, approvalId);
+    expect(result.noteId).toBeTruthy();
+    const updated = await db.chatMessage.findUnique({ where: { id: pendingMessage.id } });
+    const tools = updated?.tools as Array<{
+      state: string;
+      output?: { approvalRequired?: boolean };
+    }>;
+    expect(tools?.[0]?.state).toBe('completed');
+    expect(tools?.[0]?.output?.approvalRequired).toBe(false);
+  });
+
   it('limpa mensagens e aprovações pendentes sem remover a conversa canônica', async () => {
     const user = await db.user.create({
       data: { email: 'chat-test-clear@voxen.local', name: 'Clear', status: 'APPROVED' },
