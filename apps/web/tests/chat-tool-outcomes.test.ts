@@ -44,9 +44,7 @@ describe('healStaleRunningTools', () => {
 
 describe('healStaleRunningInSegments', () => {
   test('heals tools inside tool-group segments', () => {
-    const tools: ToolEventLike[] = [
-      { id: 't1', name: 'request_transcription', state: 'running' },
-    ];
+    const tools: ToolEventLike[] = [{ id: 't1', name: 'request_transcription', state: 'running' }];
     const { segments, changed } = healStaleRunningInSegments([
       { type: 'reasoning' as const },
       { type: 'tool-group' as const, tools },
