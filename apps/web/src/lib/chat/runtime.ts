@@ -109,6 +109,7 @@ export async function getOrCreateConversation(userId: string) {
 
 export async function getChatSnapshot(userId: string) {
   const conversation = await getOrCreateConversation(userId);
+  await reconcileStaleHitl(userId, conversation.id);
   const messages = await db.chatMessage.findMany({
     where: { conversationId: conversation.id },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -620,10 +621,88 @@ export function buildTools(
   };
 }
 
+type DbTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
 function toolMatchesApproval(tool: Record<string, unknown>, approvalId: string): boolean {
   if (!tool.output || typeof tool.output !== 'object') return false;
   const output = tool.output as Record<string, unknown>;
   return output.approvalRequired === true && output.approvalId === approvalId;
+}
+
+function collectApprovalIdsFromJson(value: unknown, into: Set<string>): void {
+  if (!Array.isArray(value)) return;
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const item = raw as Record<string, unknown>;
+    if (item.type === 'tool-group' && Array.isArray(item.tools)) {
+      collectApprovalIdsFromJson(item.tools, into);
+      continue;
+    }
+    if (item.state !== 'approval-required' || !item.output || typeof item.output !== 'object')
+      continue;
+    const output = item.output as Record<string, unknown>;
+    if (output.approvalRequired === true && typeof output.approvalId === 'string') {
+      into.add(output.approvalId);
+    }
+  }
+}
+
+function extractCreateNotePayload(output: Record<string, unknown>): {
+  action: string;
+  title: string;
+  content: string;
+} | null {
+  const action = typeof output.action === 'string' ? output.action : 'create_note';
+  if (action !== 'create_note') return null;
+  const title = typeof output.title === 'string' ? output.title.trim() : '';
+  const content = typeof output.content === 'string' ? output.content : '';
+  if (!title) return null;
+  return { action, title, content };
+}
+
+async function findAssistantMessagesWithApproval(
+  tx: DbTx,
+  conversationId: string,
+  approvalId: string,
+): Promise<Array<{ id: string; tools: Prisma.JsonValue; segments: Prisma.JsonValue }>> {
+  const approvalNeedle = `%${approvalId}%`;
+  return tx.$queryRaw`
+    SELECT id, tools, segments
+    FROM "ChatMessage"
+    WHERE "conversationId" = ${conversationId}
+      AND role = 'ASSISTANT'
+      AND (
+        COALESCE(tools::text, '') LIKE ${approvalNeedle}
+        OR COALESCE(segments::text, '') LIKE ${approvalNeedle}
+      )
+    ORDER BY "createdAt" DESC, id DESC
+  `;
+}
+
+function recoverCreateNotePayloadFromMessages(
+  messages: Array<{ tools: Prisma.JsonValue; segments: Prisma.JsonValue }>,
+  approvalId: string,
+): { action: string; title: string; content: string } | null {
+  for (const message of messages) {
+    const bags = [message.tools, message.segments];
+    for (const bag of bags) {
+      if (!Array.isArray(bag)) continue;
+      for (const raw of bag) {
+        if (!raw || typeof raw !== 'object') continue;
+        const item = raw as Record<string, unknown>;
+        const tools = item.type === 'tool-group' && Array.isArray(item.tools) ? item.tools : [item];
+        for (const toolRaw of tools) {
+          if (!toolRaw || typeof toolRaw !== 'object') continue;
+          const tool = toolRaw as Record<string, unknown>;
+          if (!toolMatchesApproval(tool, approvalId)) continue;
+          const output = tool.output as Record<string, unknown>;
+          const payload = extractCreateNotePayload(output);
+          if (payload) return payload;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 /** Marks matching tools/segments as completed after HITL approval (spec 090). */
@@ -631,7 +710,7 @@ function resolveApprovalInMessageJson(
   tools: unknown,
   segments: unknown,
   approvalId: string,
-  noteId: string,
+  noteId: string | null,
 ): { tools: Prisma.InputJsonValue | undefined; segments: Prisma.InputJsonValue | undefined } {
   let nextTools: unknown = tools;
   let toolsChanged = false;
@@ -648,7 +727,12 @@ function resolveApprovalInMessageJson(
       return {
         ...tool,
         state: 'completed',
-        output: { ...prev, approvalRequired: false, approved: true, noteId },
+        output: {
+          ...prev,
+          approvalRequired: false,
+          approved: noteId != null,
+          ...(noteId != null ? { noteId } : { dismissed: true }),
+        },
       };
     });
   }
@@ -673,7 +757,12 @@ function resolveApprovalInMessageJson(
         return {
           ...tool,
           state: 'completed',
-          output: { ...prev, approvalRequired: false, approved: true, noteId },
+          output: {
+            ...prev,
+            approvalRequired: false,
+            approved: noteId != null,
+            ...(noteId != null ? { noteId } : { dismissed: true }),
+          },
         };
       });
       if (!groupChanged) return raw;
@@ -688,17 +777,173 @@ function resolveApprovalInMessageJson(
   };
 }
 
+async function clearApprovalGhostInConversation(
+  tx: DbTx,
+  conversationId: string,
+  approvalId: string,
+): Promise<void> {
+  const messages = await findAssistantMessagesWithApproval(tx, conversationId, approvalId);
+  for (const message of messages) {
+    const resolved = resolveApprovalInMessageJson(
+      message.tools,
+      message.segments,
+      approvalId,
+      null,
+    );
+    if (resolved.tools === undefined && resolved.segments === undefined) continue;
+    await tx.chatMessage.update({
+      where: { id: message.id },
+      data: {
+        ...(resolved.tools !== undefined ? { tools: resolved.tools } : {}),
+        ...(resolved.segments !== undefined ? { segments: resolved.segments } : {}),
+      },
+    });
+  }
+}
+
+/**
+ * Legacy HITL rows (pre spec 090) may be missing/EXPIRED while the assistant
+ * message still shows approval-required. Revive recoverable create_note
+ * payloads; dismiss ghosts that were already decided.
+ */
+async function reconcileStaleHitl(userId: string, conversationId: string): Promise<void> {
+  const messages = await db.chatMessage.findMany({
+    where: { conversationId, role: 'ASSISTANT' },
+    select: { id: true, tools: true, segments: true },
+  });
+  const approvalIds = new Set<string>();
+  for (const message of messages) {
+    collectApprovalIdsFromJson(message.tools, approvalIds);
+    collectApprovalIdsFromJson(message.segments, approvalIds);
+  }
+  if (approvalIds.size === 0) return;
+
+  const existing = await db.chatApproval.findMany({
+    where: { userId, id: { in: [...approvalIds] } },
+    select: { id: true, status: true },
+  });
+  const byId = new Map(existing.map((row) => [row.id, row.status]));
+
+  await db.$transaction(async (tx) => {
+    for (const approvalId of approvalIds) {
+      const status = byId.get(approvalId);
+      if (status === 'PENDING') continue;
+      if (status === 'APPROVED' || status === 'REJECTED') {
+        await clearApprovalGhostInConversation(tx, conversationId, approvalId);
+        continue;
+      }
+      const matched = messages.filter((message) => {
+        const ids = new Set<string>();
+        collectApprovalIdsFromJson(message.tools, ids);
+        collectApprovalIdsFromJson(message.segments, ids);
+        return ids.has(approvalId);
+      });
+      const payload = recoverCreateNotePayloadFromMessages(matched, approvalId);
+      if (!payload) {
+        await clearApprovalGhostInConversation(tx, conversationId, approvalId);
+        continue;
+      }
+      await tx.chatApproval.upsert({
+        where: { id: approvalId },
+        create: {
+          id: approvalId,
+          userId,
+          conversationId,
+          action: payload.action,
+          payload: {
+            ...payload,
+            approvalId,
+            approvalRequired: true,
+          } as Prisma.InputJsonValue,
+          expiresAt: null,
+          status: 'PENDING',
+        },
+        update: {
+          status: 'PENDING',
+          decidedAt: null,
+          expiresAt: null,
+          action: payload.action,
+          payload: {
+            ...payload,
+            approvalId,
+            approvalRequired: true,
+          } as Prisma.InputJsonValue,
+        },
+      });
+    }
+  });
+}
+
+async function ensurePendingApproval(
+  tx: DbTx,
+  userId: string,
+  approvalId: string,
+): Promise<{ id: string; action: string; payload: unknown; conversationId: string }> {
+  const pending = await tx.chatApproval.findFirst({
+    where: { id: approvalId, userId, status: 'PENDING' },
+    select: { id: true, action: true, payload: true, conversationId: true },
+  });
+  if (pending) return pending;
+
+  const existing = await tx.chatApproval.findFirst({
+    where: { id: approvalId, userId },
+    select: { id: true, status: true, conversationId: true },
+  });
+  if (existing?.status === 'APPROVED' || existing?.status === 'REJECTED') {
+    await clearApprovalGhostInConversation(tx, existing.conversationId, approvalId);
+    throw new Error('Confirmação já utilizada.');
+  }
+
+  const conversation = await tx.conversation.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+  if (!conversation) throw new Error('Confirmação não encontrada ou já utilizada.');
+
+  const matched = await findAssistantMessagesWithApproval(tx, conversation.id, approvalId);
+  const recovered = recoverCreateNotePayloadFromMessages(matched, approvalId);
+  if (!recovered) {
+    await clearApprovalGhostInConversation(tx, conversation.id, approvalId);
+    throw new Error('Confirmação não encontrada ou já utilizada.');
+  }
+
+  return tx.chatApproval.upsert({
+    where: { id: approvalId },
+    create: {
+      id: approvalId,
+      userId,
+      conversationId: conversation.id,
+      action: recovered.action,
+      payload: {
+        ...recovered,
+        approvalId,
+        approvalRequired: true,
+      } as Prisma.InputJsonValue,
+      expiresAt: null,
+      status: 'PENDING',
+    },
+    update: {
+      status: 'PENDING',
+      decidedAt: null,
+      expiresAt: null,
+      action: recovered.action,
+      payload: {
+        ...recovered,
+        approvalId,
+        approvalRequired: true,
+      } as Prisma.InputJsonValue,
+    },
+    select: { id: true, action: true, payload: true, conversationId: true },
+  });
+}
+
 export async function approveChatAction(
   userId: string,
   approvalId: string,
 ): Promise<{ message: string; noteId?: string }> {
   const result = await db.$transaction(async (tx) => {
     const now = new Date();
-    const approval = await tx.chatApproval.findFirst({
-      where: { id: approvalId, userId, status: 'PENDING' },
-      select: { id: true, action: true, payload: true, conversationId: true },
-    });
-    if (!approval) throw new Error('Confirmação não encontrada ou já utilizada.');
+    const approval = await ensurePendingApproval(tx, userId, approvalId);
     const consumed = await tx.chatApproval.updateMany({
       where: { id: approval.id, userId, status: 'PENDING' },
       data: { status: 'APPROVED', decidedAt: now },
@@ -713,23 +958,11 @@ export async function approveChatAction(
     const content = typeof payload.content === 'string' ? payload.content : '';
     if (!title) throw new Error('Confirmação inválida.');
     const note = await tx.note.create({ data: { userId, kind: 'NOTE', title, content } });
-    // Locate by approvalId in JSON text (not a recent-window take) so a pending
-    // HITL buried under many later assistant turns still clears its card.
-    // Prisma JsonFilter.string_contains is unreliable for array/object JSONB.
-    const approvalNeedle = `%${approvalId}%`;
-    const assistantMessages = await tx.$queryRaw<
-      Array<{ id: string; tools: Prisma.JsonValue; segments: Prisma.JsonValue }>
-    >`
-      SELECT id, tools, segments
-      FROM "ChatMessage"
-      WHERE "conversationId" = ${approval.conversationId}
-        AND role = 'ASSISTANT'
-        AND (
-          COALESCE(tools::text, '') LIKE ${approvalNeedle}
-          OR COALESCE(segments::text, '') LIKE ${approvalNeedle}
-        )
-      ORDER BY "createdAt" DESC, id DESC
-    `;
+    const assistantMessages = await findAssistantMessagesWithApproval(
+      tx,
+      approval.conversationId,
+      approvalId,
+    );
     for (const message of assistantMessages) {
       const resolved = resolveApprovalInMessageJson(
         message.tools,

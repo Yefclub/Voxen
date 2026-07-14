@@ -648,9 +648,11 @@ export function ChatPage(): React.ReactElement {
       const result = await apiPost<{ message: string }>('/api/chat/approve', { approvalId: id });
       toast.success(result.message);
       if (getSoundsEnabled()) play('success');
-      await refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('chat.approveError'));
+    } finally {
+      // Always reload: success clears the card; stale/already-used heals ghosts.
+      await refresh().catch(() => undefined);
     }
   }
 
