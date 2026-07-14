@@ -84,12 +84,12 @@ function CodeBlock({
   );
 }
 
-// Código inline (`código`). Slot dedicado do Streamdown.
+// Código inline (`código`). Quiet — same weight as body text (spec 091).
 function InlineCode({
   children,
 }: React.ComponentPropsWithoutRef<'code'> & ExtraProps): React.ReactElement {
   return (
-    <code className="rounded bg-[var(--color-app-surface)] border border-[var(--color-app-border)] px-1.5 py-0.5 text-[0.85em] font-mono text-emerald-300">
+    <code className="rounded px-1 py-0.5 text-[0.92em] font-mono text-[var(--color-app-subtle)] bg-[var(--color-app-surface)]/50">
       {children}
     </code>
   );
@@ -101,7 +101,12 @@ function Anchor({
   children,
 }: React.ComponentPropsWithoutRef<'a'> & ExtraProps): React.ReactElement {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer">
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-[var(--color-app-subtle)] underline decoration-[var(--color-app-border-strong)] underline-offset-2 transition-colors hover:text-[var(--color-app-fg)] hover:decoration-[var(--color-app-muted)]"
+    >
       {children}
     </a>
   );
@@ -159,13 +164,12 @@ export const Markdown = memo(function Markdown({
         'text-[14.5px] leading-relaxed text-[var(--color-app-fg)] break-words',
         '[&_p+p]:mt-3 [&_p+ul]:mt-3 [&_p+ol]:mt-3 [&_ul+p]:mt-3 [&_ol+p]:mt-3',
         '[&_p]:leading-relaxed',
-        '[&_strong]:text-[var(--color-app-fg)] [&_strong]:font-semibold',
+        '[&_strong]:text-[var(--color-app-fg)] [&_strong]:font-medium',
         '[&_em]:text-[var(--color-app-subtle)]',
-        '[&_a]:text-violet-300 [&_a]:underline [&_a]:decoration-violet-500/40 [&_a]:underline-offset-2 hover:[&_a]:decoration-violet-300',
         '[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1',
         '[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1',
         '[&_li]:leading-relaxed',
-        '[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-violet-500/50 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-[var(--color-app-subtle)]',
+        '[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--color-app-border-strong)] [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-[var(--color-app-subtle)]',
         '[&_h1]:font-display [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h1]:mt-4',
         '[&_h2]:font-display [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:mt-4',
         '[&_h3]:font-display [&_h3]:text-base [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:mt-3',

@@ -49,14 +49,13 @@ const THEME_LABEL_KEY: Record<AppTheme, 'theme.zinc' | 'theme.emerald' | 'theme.
   light: 'theme.light',
 };
 
+/** Same 32×32 chrome target as MobileMenuButton on mobile (spec 091). */
+const chromeControlClass =
+  'inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/75 text-[var(--color-app-muted)] shadow-sm shadow-black/10 backdrop-blur-md transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] md:h-9 md:w-9 md:rounded-lg md:bg-transparent md:shadow-none md:backdrop-blur-none';
+
 /**
- * Cabeçalho do shell — pill flutuante no canto superior direito, mesma
- * linguagem visual da sidebar (`fixed`, pill com blur). Aparece em
- * mobile e desktop agora (antes era desktop-only com uma barra full-width; a
- * navegação mobile passou a ter os mesmos controles do desktop, incluindo o
- * avatar — pequena redundância com a bottom-nav, mais simples que branch por
- * breakpoint). Hospeda o toggle de tema, os controles do chat (quando
- * aplicável) e o menu de usuário.
+ * Cabeçalho do shell — no mobile os controles flutuam individuais e
+ * transparentes (histórico passa por baixo); no desktop mantém o pill.
  */
 export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   const navigate = useNavigate();
@@ -64,7 +63,6 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   const { refresh } = useMe();
   const { t } = useI18n();
   const { theme, setTheme, toggleAppearance } = useTheme();
-  // Botões de chat (sons + limpar) só na rota de chat (`/` e `/chat`).
   const inChat = isChatRoute(location.pathname);
   const onSignOut = async (): Promise<void> => {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
@@ -73,13 +71,18 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   };
 
   return (
-    <header className="fixed right-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 flex items-center gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/75 px-1.5 py-1.5 backdrop-blur-md md:right-4 md:top-[calc(env(safe-area-inset-top)+1rem)] md:gap-3 md:rounded-2xl md:bg-[var(--color-app-bg-elevated)]/85 md:px-2.5 md:py-2 md:backdrop-blur-xl">
+    <header
+      className={cn(
+        'fixed right-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 flex items-center gap-1.5 border-0 bg-transparent p-0 shadow-none backdrop-blur-none',
+        'md:right-4 md:top-[calc(env(safe-area-inset-top)+1rem)] md:gap-3 md:rounded-2xl md:border md:border-[var(--color-app-border)] md:bg-[var(--color-app-bg-elevated)]/85 md:px-2.5 md:py-2 md:backdrop-blur-xl',
+      )}
+    >
       {inChat && <ChatShellControls />}
 
       <button
         type="button"
         onClick={() => void toggleAppearance()}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] md:h-9 md:w-9 md:rounded-lg"
+        className={chromeControlClass}
         aria-label={theme === 'light' ? t('theme.switchToDark') : t('theme.switchToLight')}
         title={theme === 'light' ? t('theme.switchToDark') : t('theme.switchToLight')}
       >
@@ -90,10 +93,13 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="rounded-full ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 hover:opacity-90 transition-opacity"
+            className={cn(
+              chromeControlClass,
+              'overflow-hidden p-0 ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 md:rounded-full',
+            )}
             aria-label={t('shell.userMenu')}
           >
-            <Avatar className="h-8 w-8 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)] md:h-9 md:w-9">
+            <Avatar className="h-8 w-8 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 md:h-9 md:w-9">
               {user.image && (
                 <AvatarPrimitive.Image
                   src={user.image}
@@ -164,17 +170,12 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   );
 }
 
-/**
- * Controles do chat no cabeçalho global (só na rota de chat): som on/off e
- * limpar conversa. Leem/escrevem no store `chat-shell-state` — o `chat.tsx`
- * publica `streaming`/`isEmpty` e consome o pedido de limpar via signal.
- */
 function ChatShellControls(): React.ReactElement {
   const { t } = useI18n();
   const { soundsEnabled, streaming, isEmpty } = useChatShell();
 
   return (
-    <div className="flex items-center gap-1 md:gap-2">
+    <div className="flex items-center gap-1.5 md:gap-2">
       {streaming && (
         <span className="hidden items-center gap-1.5 text-xs text-[var(--color-accent-primary)] md:inline-flex">
           <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> {t('chat.responding')}
@@ -187,7 +188,7 @@ function ChatShellControls(): React.ReactElement {
           setSounds(next);
           if (next) play('success');
         }}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] md:h-9 md:w-9 md:rounded-lg"
+        className={chromeControlClass}
         aria-label={soundsEnabled ? t('chat.soundsOff') : t('chat.soundsOn')}
         title={soundsEnabled ? t('chat.soundsOff') : t('chat.soundsOn')}
       >
@@ -197,7 +198,7 @@ function ChatShellControls(): React.ReactElement {
         type="button"
         onClick={() => requestClearConversation()}
         disabled={streaming || isEmpty}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] disabled:cursor-not-allowed disabled:opacity-40 md:h-9 md:w-9 md:rounded-lg"
+        className={cn(chromeControlClass, 'disabled:cursor-not-allowed disabled:opacity-40')}
         aria-label={t('chat.clearConversation')}
         title={t('chat.clearConversation')}
       >
