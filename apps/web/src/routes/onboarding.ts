@@ -11,6 +11,7 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { s3Bucket, s3Client } from '../lib/s3';
+import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
 import { setSetting } from '../lib/settings';
 
 type Vars = { userId: string };
@@ -34,6 +35,7 @@ onboardingRoutes.use('*', async (c, next) => {
 const FinishBody = z.object({
   allow_signups: z.boolean(),
   app_language: z.enum(['pt-BR', 'en']).optional(),
+  app_timezone: z.string().min(1).max(64).optional(),
 });
 
 onboardingRoutes.post('/', async (c) => {
@@ -46,9 +48,15 @@ onboardingRoutes.post('/', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'Payload inválido.' }, 400);
   }
+  if (parsed.data.app_timezone !== undefined && !isValidIanaTimezone(parsed.data.app_timezone)) {
+    return c.json({ error: 'Timezone IANA inválido.' }, 400);
+  }
   await setSetting('allow_signups', parsed.data.allow_signups ? 'true' : 'false');
   if (parsed.data.app_language !== undefined) {
     await setSetting('app_language', parsed.data.app_language);
+  }
+  if (parsed.data.app_timezone !== undefined) {
+    await setSetting('app_timezone', normalizeAppTimezone(parsed.data.app_timezone));
   }
   await setSetting('onboarding_done', 'true');
   return c.json({ ok: true });

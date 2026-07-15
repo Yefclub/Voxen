@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Lock, ShieldCheck, Users as UsersIcon, X } from 'lucide-react';
+import { Check, Globe2, Lock, ShieldCheck, Users as UsersIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -14,9 +14,11 @@ import type { AdminUser } from '../lib/types';
 import { formatRelative } from '../lib/format';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { useI18n, type TranslateFn } from '../lib/i18n';
+import { TimezoneSelect } from '../components/timezone-select';
 
 interface InstanceResponse {
   allowSignups: boolean;
+  timezone: string;
 }
 
 export function AdminUsuariosPage(): React.ReactElement {
@@ -24,7 +26,9 @@ export function AdminUsuariosPage(): React.ReactElement {
   const { locale, t } = useI18n();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [allowSignups, setAllowSignups] = useState<boolean | null>(null);
+  const [timezone, setTimezone] = useState<string | null>(null);
   const [togglingSignups, setTogglingSignups] = useState(false);
+  const [savingTimezone, setSavingTimezone] = useState(false);
 
   useEffect(() => {
     // Guarda contra setState após unmount (apiGet não aceita AbortController).
@@ -33,6 +37,7 @@ export function AdminUsuariosPage(): React.ReactElement {
       .then((s) => {
         if (cancelled) return;
         setAllowSignups(s.allowSignups);
+        setTimezone(s.timezone);
       })
       .catch(() => undefined);
     return () => {
@@ -71,10 +76,11 @@ export function AdminUsuariosPage(): React.ReactElement {
     setAllowSignups(next);
     setTogglingSignups(true);
     try {
-      await api<InstanceResponse>('/api/admin/instance', {
+      const res = await api<InstanceResponse>('/api/admin/instance', {
         method: 'PATCH',
         body: JSON.stringify({ allowSignups: next }),
       });
+      if (res.timezone) setTimezone(res.timezone);
       toast.success(next ? t('admin.users.signupsOpen') : t('admin.users.signupsClosed'), {
         description: next
           ? t('admin.users.signupsOpenDescription')
@@ -85,6 +91,27 @@ export function AdminUsuariosPage(): React.ReactElement {
       toast.error(err instanceof ApiError ? err.message : t('admin.users.updateError'));
     } finally {
       setTogglingSignups(false);
+    }
+  }
+
+  async function saveTimezone(next: string): Promise<void> {
+    const previous = timezone;
+    setTimezone(next);
+    setSavingTimezone(true);
+    try {
+      const res = await api<InstanceResponse>('/api/admin/instance', {
+        method: 'PATCH',
+        body: JSON.stringify({ timezone: next }),
+      });
+      setTimezone(res.timezone);
+      toast.success(t('admin.users.timezoneSaved'), {
+        description: t('admin.users.timezoneSavedDescription', { timezone: res.timezone }),
+      });
+    } catch (err) {
+      setTimezone(previous);
+      toast.error(err instanceof ApiError ? err.message : t('admin.users.updateError'));
+    } finally {
+      setSavingTimezone(false);
     }
   }
 
@@ -141,6 +168,37 @@ export function AdminUsuariosPage(): React.ReactElement {
                 aria-label={t('admin.users.allowSignups')}
               />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Fuso da instância (spec 095) */}
+        <Card elevated>
+          <CardContent className="pt-5 pb-5 space-y-4">
+            <div className="flex items-start gap-4">
+              <div className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center border bg-violet-500/10 border-violet-500/30 text-violet-300">
+                <Globe2 className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <p className="text-sm font-medium text-[var(--color-app-fg)]">
+                  {t('admin.users.timezoneTitle')}
+                </p>
+                <p className="text-xs text-[var(--color-app-muted)] leading-relaxed">
+                  {t('admin.users.timezoneDescription')}
+                </p>
+              </div>
+              {savingTimezone && <Spinner className="text-[var(--color-app-muted)] shrink-0" />}
+            </div>
+            {timezone === null ? (
+              <p className="text-xs text-[var(--color-app-muted)]">{t('admin.users.loading')}</p>
+            ) : (
+              <TimezoneSelect
+                id="admin-instance-timezone"
+                value={timezone}
+                onChange={(next) => void saveTimezone(next)}
+                disabled={savingTimezone}
+                hint={t('admin.users.timezoneHint')}
+              />
+            )}
           </CardContent>
         </Card>
 

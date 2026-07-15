@@ -20,8 +20,9 @@ import {
   verifyClaimAgainstMd,
   type FtsResult,
 } from '../retrieval';
-import { getSetting } from '../settings';
+import { getAppTimezone, getSetting } from '../settings';
 import { researchWeb } from '../web-research';
+import { buildAgentClockInstructions, buildInstanceClock } from '../app-timezone';
 import { parseTemporalBounds } from './temporal-bounds';
 import {
   healStaleRunningInSegments,
@@ -45,9 +46,11 @@ const AGENT_INSTRUCTIONS = [
   '',
   'Recupere contexto de forma PROGRESSIVA (sem embeddings), gastando o mínimo de contexto:',
   '1. Para perguntas TEMPORAIS de intake (“o que entrou esta semana”, “resuma meus últimos',
-  '   dias”, “principais achados recentes”), use list_transcripts / list_notes com since/until',
-  '   em ISO-8601 sobre createdAt (data de ingestão no Voxen, não publishedAt da fonte).',
-  '   Se a semana/local não for clara, use os últimos 7 dias. Depois outline/read dos itens',
+  '   dias”, “principais achados recentes”, “hoje”), use list_transcripts / list_notes com',
+  '   since/until em ISO-8601 UTC sobre createdAt (ingestão no Voxen, não publishedAt).',
+  '   Converta o calendário local usando o bloco <instance_clock> injetado a cada turno',
+  '   (start_of_local_day_utc, start_of_local_week_monday_utc, now_utc). Se a janela não for',
+  '   clara, use os últimos 7 dias a partir de now_utc. Depois outline/read dos itens',
   '   relevantes e resuma com citações — NÃO diga que só busca por termo.',
   '2. Para tópicos/termos/entidades, busque com search_transcripts, search_notes, brain_search',
   '   — retornam trechos curtos + id.',
@@ -1305,9 +1308,11 @@ export async function streamAssistantReply(options: {
   emit({ type: 'status', label: 'Buscando na sua biblioteca…' });
   const relevant = await preloadRelevantContent(userId, content, 5).catch(() => []);
   const suggestions = buildLibrarySuggestionsInstructions(relevant);
+  const timezone = await getAppTimezone().catch(() => 'America/Sao_Paulo');
+  const clock = buildAgentClockInstructions(buildInstanceClock(new Date(), timezone));
   const result = streamText({
     model: provider(modelConfig.model),
-    instructions: AGENT_INSTRUCTIONS + suggestions,
+    instructions: AGENT_INSTRUCTIONS + clock + suggestions,
     // AI SDK 7 rejects role:system inside `messages` unless opted in. Our
     // SYSTEM rows (compaction summaries, HITL responses) are server-authored
     // only — never from the client — so allowing them preserves trusted history.

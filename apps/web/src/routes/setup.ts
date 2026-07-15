@@ -17,10 +17,12 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
+import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
 import {
   deleteDefaultXAnalysisModel,
   deleteSetting,
   getAppLanguage,
+  getAppTimezone,
   getDefaultXAnalysisModel,
   getSetting,
   isSetupComplete,
@@ -65,11 +67,12 @@ setupRoutes.use('*', async (c, next) => {
 
 setupRoutes.get('/', async (c) => {
   const complete = await isSetupComplete();
-  const language = await getAppLanguage();
+  const [language, timezone] = await Promise.all([getAppLanguage(), getAppTimezone()]);
   if (!complete) {
     return c.json({
       complete,
       language,
+      timezone,
       chatModel: null,
       transcriptionModel: null,
       webSearchModel: null,
@@ -101,6 +104,7 @@ setupRoutes.get('/', async (c) => {
   return c.json({
     complete,
     language,
+    timezone,
     chatModel,
     transcriptionModel,
     webSearchModel,
@@ -165,6 +169,7 @@ setupRoutes.post('/models', async (c) => {
 
 const SaveBody = z.object({
   app_language: z.enum(['pt-BR', 'en']).optional(),
+  app_timezone: z.string().min(1).max(64).optional(),
   // opcional pra permitir trocar só os modelos sem reenviar a key
   openrouter_api_key: z.string().min(20).optional(),
   default_chat_model: z.string().min(1),
@@ -194,7 +199,12 @@ setupRoutes.post('/', async (c) => {
     default_document_model,
     default_x_analysis_model,
     app_language,
+    app_timezone,
   } = parsed.data;
+
+  if (app_timezone !== undefined && !isValidIanaTimezone(app_timezone)) {
+    return c.json({ error: 'Timezone IANA inválido.' }, 400);
+  }
 
   // Se a key veio no payload, valida + persiste. Senão, usa a já cifrada
   // (admin está só atualizando os modelos default).
@@ -255,6 +265,9 @@ setupRoutes.post('/', async (c) => {
   }
   if (app_language !== undefined) {
     await setSetting('app_language', app_language);
+  }
+  if (app_timezone !== undefined) {
+    await setSetting('app_timezone', normalizeAppTimezone(app_timezone));
   }
 
   return c.json({ complete: true });
