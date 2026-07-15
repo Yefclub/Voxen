@@ -896,6 +896,9 @@ const ptBRMessages = {
   'graph.loading': 'Carregando o mapa…',
   'graph.refreshing': 'Atualizando',
   'graph.loading3d': 'Preparando visão 3D…',
+  'graph.renderProfile.detailed': 'detalhado',
+  'graph.renderProfile.balanced': 'equilibrado',
+  'graph.renderProfile.dense': 'alta densidade',
   'graph.buildingTitle': 'Organizando seu Brain',
   'graph.buildingDescription':
     'O primeiro mapa aparecerá automaticamente assim que as fontes forem indexadas.',
@@ -1982,6 +1985,9 @@ const enMessages: Record<I18nKey, string> = {
   'graph.loading': 'Loading map…',
   'graph.refreshing': 'Refreshing',
   'graph.loading3d': 'Preparing 3D view…',
+  'graph.renderProfile.detailed': 'detailed',
+  'graph.renderProfile.balanced': 'balanced',
+  'graph.renderProfile.dense': 'high density',
   'graph.buildingTitle': 'Organizing your Brain',
   'graph.buildingDescription':
     'The first map will appear automatically as soon as your sources are indexed.',

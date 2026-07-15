@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type SigmaRenderer from 'sigma';
-import type { GraphCanvas as GraphCanvasType, GraphCanvasRef, Theme } from 'reagraph';
+import type {
+  GraphCanvas as GraphCanvasType,
+  GraphCanvasRef,
+  NodePositionArgs,
+  Theme,
+} from 'reagraph';
 import {
   ArrowLeft,
   Box,
@@ -44,6 +49,11 @@ import {
   type SigmaGraphModel,
   type SigmaNodeAttributes,
 } from '../lib/graph-model';
+import {
+  DEFAULT_GRAPH_MODE,
+  resolveGraphRenderProfile,
+  type GraphMode,
+} from '../lib/graph-renderer';
 import { useFetch } from '../lib/hooks';
 import { useI18n, type TranslateFn } from '../lib/i18n';
 import { useIsCoarsePointer } from '../lib/use-media-query';
@@ -66,13 +76,38 @@ export {
 } from '../lib/graph-model';
 export type { GraphResp } from '../lib/graph-model';
 
-type GraphMode = '2d' | '3d';
 type GraphCanvasComponent = typeof GraphCanvasType;
+interface ReagraphModule {
+  GraphCanvas: GraphCanvasComponent;
+  darkTheme: Theme;
+}
+type SigmaRendererConstructor = typeof SigmaRenderer;
+
+const EMPTY_REAGRAPH_NODES: SigmaGraphModel['reagraphNodes'] = [];
+const EMPTY_REAGRAPH_EDGES: SigmaGraphModel['reagraphEdges'] = [];
+const GRAPH_GL_OPTIONS = {
+  antialias: false,
+  alpha: false,
+  powerPreference: 'high-performance' as const,
+};
+let reagraphModulePromise: Promise<ReagraphModule> | null = null;
+let sigmaModulePromise: Promise<SigmaRendererConstructor> | null = null;
+let cachedWebGLSupport: boolean | null = null;
+
+function loadReagraph(): Promise<ReagraphModule> {
+  reagraphModulePromise ??= import('reagraph');
+  return reagraphModulePromise;
+}
+
+function loadSigma(): Promise<SigmaRendererConstructor> {
+  sigmaModulePromise ??= import('sigma').then((module) => module.default);
+  return sigmaModulePromise;
+}
 
 function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
   return {
     ...baseTheme,
-    canvas: { background: palette.canvas, fog: null },
+    canvas: { background: palette.canvas, fog: palette.canvas },
     node: {
       ...baseTheme.node,
       fill: palette.nodes.content,
@@ -113,7 +148,7 @@ export function GrafoPage(): React.ReactElement {
     () => new Set(ALL_GRAPH_NODE_TYPES),
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mode, setMode] = useState<GraphMode>('2d');
+  const [mode, setMode] = useState<GraphMode>(DEFAULT_GRAPH_MODE);
   const [explorerOpen, setExplorerOpen] = useState(false);
   const coarsePointer = useIsCoarsePointer();
   const navigate = useNavigate();
@@ -320,6 +355,7 @@ export function GrafoPage(): React.ReactElement {
               model={model}
               selectedId={selectedId}
               mode={mode}
+              coarsePointer={coarsePointer}
               palette={palette}
               translate={t}
               onSelect={selectNode}
@@ -803,6 +839,7 @@ function BrainGraphCanvas({
   model,
   selectedId,
   mode,
+  coarsePointer,
   palette,
   translate,
   onSelect,
@@ -812,6 +849,7 @@ function BrainGraphCanvas({
   model: SigmaGraphModel | null;
   selectedId: string | null;
   mode: GraphMode;
+  coarsePointer: boolean;
   palette: GraphPalette;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
@@ -823,6 +861,7 @@ function BrainGraphCanvas({
       <BrainGraph3DCanvas
         model={model}
         selectedId={selectedId}
+        coarsePointer={coarsePointer}
         palette={palette}
         translate={translate}
         onSelect={onSelect}
@@ -846,6 +885,7 @@ function BrainGraphCanvas({
 function BrainGraph3DCanvas({
   model,
   selectedId,
+  coarsePointer,
   palette,
   translate,
   onSelect,
@@ -854,34 +894,43 @@ function BrainGraph3DCanvas({
 }: {
   model: SigmaGraphModel | null;
   selectedId: string | null;
+  coarsePointer: boolean;
   palette: GraphPalette;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
   onOpen: (node: GraphNode) => void;
   onFallback: () => void;
 }): React.ReactElement {
+  const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<GraphCanvasRef | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [reagraph, setReagraph] = useState<{
-    GraphCanvas: GraphCanvasComponent;
-    theme: Theme;
-  } | null>(null);
+  const [reagraph, setReagraph] = useState<ReagraphModule | null>(null);
+  const profile = useMemo(
+    () => resolveGraphRenderProfile(model?.graph.order ?? 0, model?.graph.size ?? 0, coarsePointer),
+    [coarsePointer, model?.graph.order, model?.graph.size],
+  );
+  const graphTheme = useMemo(
+    () => (reagraph ? buildVoxenTheme(reagraph.darkTheme, palette) : null),
+    [palette, reagraph],
+  );
+  const layoutOverrides = useMemo(
+    () =>
+      ({
+        getNodePosition: (id: string, { drags }: NodePositionArgs) =>
+          drags?.[id]?.position ?? model?.positions3d.get(id) ?? { x: 0, y: 0, z: 0 },
+      }) as unknown as React.ComponentProps<GraphCanvasComponent>['layoutOverrides'],
+    [model?.positions3d],
+  );
 
   useEffect(() => {
-    setReagraph(null);
-    if (!model || model.layout.nodes.length === 0) return;
     if (!supportsWebGL()) {
       onFallback();
       return;
     }
     let cancelled = false;
-    void import('reagraph')
+    void loadReagraph()
       .then((module) => {
-        if (!cancelled)
-          setReagraph({
-            GraphCanvas: module.GraphCanvas,
-            theme: buildVoxenTheme(module.darkTheme, palette),
-          });
+        if (!cancelled) setReagraph(module);
       })
       .catch(() => {
         if (!cancelled) onFallback();
@@ -889,7 +938,18 @@ function BrainGraph3DCanvas({
     return () => {
       cancelled = true;
     };
-  }, [model, onFallback, palette]);
+  }, [onFallback]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const handleContextLost = (event: Event): void => {
+      event.preventDefault();
+      onFallback();
+    };
+    container.addEventListener('webglcontextlost', handleContextLost, true);
+    return () => container.removeEventListener('webglcontextlost', handleContextLost, true);
+  }, [onFallback]);
 
   const activeId = hoveredId ?? selectedId;
   const actives = useMemo(() => {
@@ -898,16 +958,16 @@ function BrainGraph3DCanvas({
   }, [activeId, model]);
 
   useEffect(() => {
-    if (!model || !reagraph) return;
+    if (!model || model.graph.order === 0 || !reagraph) return;
     const timer = window.setTimeout(() => {
       try {
-        graphRef.current?.fitNodesInView(undefined, { animated: true });
+        graphRef.current?.fitNodesInView(undefined, { animated: profile.animated });
       } catch {
         // A câmera ainda pode estar preparando a cena.
       }
-    }, 260);
+    }, 180);
     return () => window.clearTimeout(timer);
-  }, [model, reagraph]);
+  }, [model?.topologyKey, profile.animated, reagraph]);
 
   useEffect(() => {
     if (!reagraph || !selectedId) return;
@@ -918,10 +978,9 @@ function BrainGraph3DCanvas({
     }
   }, [reagraph, selectedId]);
 
-  if (!model || model.layout.nodes.length === 0) return <div className="absolute inset-0" />;
   const GraphCanvas = reagraph?.GraphCanvas;
   return (
-    <div className="absolute inset-0">
+    <div ref={containerRef} className="absolute inset-0">
       {!GraphCanvas && (
         <div className="absolute inset-0 z-10 flex items-center justify-center">
           <div className="flex items-center gap-2 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/90 px-3 py-1.5 text-xs text-[var(--color-app-muted)] backdrop-blur-md">
@@ -930,29 +989,54 @@ function BrainGraph3DCanvas({
           </div>
         </div>
       )}
-      {GraphCanvas && reagraph && (
+      {GraphCanvas && graphTheme && (
         <GraphCanvas
           ref={graphRef}
-          nodes={model.reagraphNodes}
-          edges={model.reagraphEdges}
-          theme={reagraph.theme}
-          layoutType="forceDirected3d"
-          labelType="auto"
-          edgeInterpolation="curved"
-          cameraMode="rotate"
-          animated={model.graph.order <= 220}
-          draggable
+          nodes={model?.reagraphNodes ?? EMPTY_REAGRAPH_NODES}
+          edges={model?.reagraphEdges ?? EMPTY_REAGRAPH_EDGES}
+          theme={graphTheme}
+          layoutType="custom"
+          layoutOverrides={layoutOverrides}
+          labelType={profile.labelType}
+          edgeInterpolation={profile.edgeInterpolation}
+          edgeArrowPosition="none"
+          cameraMode="orbit"
+          minDistance={180}
+          maxDistance={8_000}
+          animated={profile.animated}
+          draggable={profile.draggable}
+          aggregateEdges={profile.aggregateEdges}
+          glOptions={GRAPH_GL_OPTIONS}
           selections={selectedId ? [selectedId] : []}
           actives={actives}
           onNodeClick={(node) => onSelect(node.id)}
           onNodeDoubleClick={(node) => {
-            const original = model.nodeById.get(node.id);
+            const original = model?.nodeById.get(node.id);
             if (original) onOpen(original);
           }}
           onNodePointerOver={(node) => setHoveredId(node.id)}
           onNodePointerOut={() => setHoveredId(null)}
           onCanvasClick={() => onSelect(null)}
-        />
+        >
+          <ambientLight intensity={0.72} />
+          <directionalLight position={[450, 700, 900]} intensity={1.15} />
+          <pointLight position={[-700, -300, 550]} intensity={0.72} />
+        </GraphCanvas>
+      )}
+      {GraphCanvas && model && model.graph.order > 0 && (
+        <>
+          <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/82 px-2.5 py-1 text-[10px] font-medium text-[var(--color-app-muted)] shadow-sm backdrop-blur-md">
+            3D · {translate(`graph.renderProfile.${profile.tier}`)}
+          </div>
+          <div className="absolute bottom-3 right-3 z-10 flex flex-col gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md">
+            <CanvasButton
+              label={translate('graph.fitView')}
+              onClick={() => graphRef.current?.fitNodesInView(undefined, { animated: true })}
+            >
+              <Focus className="h-3.5 w-3.5" />
+            </CanvasButton>
+          </div>
+        </>
       )}
     </div>
   );
@@ -975,68 +1059,84 @@ function BrainGraph2DCanvas({
 }): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null>(null);
+  const modelRef = useRef(model);
+  const paletteRef = useRef(palette);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [webglFailed, setWebglFailed] = useState(false);
   const [rendererVersion, setRendererVersion] = useState(0);
-
-  useEffect(() => setWebglFailed(false), [model]);
+  const [SigmaConstructor, setSigmaConstructor] = useState<SigmaRendererConstructor | null>(null);
+  const hasModel = Boolean(model);
+  modelRef.current = model;
+  paletteRef.current = palette;
 
   useEffect(() => {
-    if (!model || model.layout.nodes.length === 0 || !containerRef.current) return;
     let cancelled = false;
-    let renderer: SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null;
-    let resizeObserver: ResizeObserver | null = null;
-    void import('sigma')
-      .then(({ default: Sigma }) => {
-        if (cancelled || !containerRef.current) return;
-        try {
-          renderer = new Sigma(model.graph, containerRef.current, {
-            allowInvalidContainer: true,
-            defaultNodeColor: palette.nodes.content,
-            defaultEdgeColor: palette.neutralEdge,
-            enableEdgeEvents: false,
-            hideEdgesOnMove: true,
-            hideLabelsOnMove: true,
-            itemSizesReference: 'screen',
-            labelColor: { color: palette.label },
-            labelDensity: model.graph.order > 300 ? 0.08 : model.graph.order > 140 ? 0.16 : 0.3,
-            labelFont: 'Inter, system-ui, sans-serif',
-            labelRenderedSizeThreshold: model.graph.order > 250 ? 10 : 8,
-            labelSize: 12,
-            maxCameraRatio: 3.4,
-            minCameraRatio: 0.08,
-            renderEdgeLabels: false,
-            zIndex: true,
-          });
-          rendererRef.current = renderer;
-          renderer.on('clickNode', ({ node }) => onSelect(node));
-          renderer.on('doubleClickNode', ({ node, event }) => {
-            event.preventSigmaDefault();
-            if (model.graph.hasNode(node)) onOpen(model.graph.getNodeAttributes(node).original);
-          });
-          renderer.on('clickStage', () => onSelect(null));
-          renderer.on('enterNode', ({ node }) => setHoveredId(node));
-          renderer.on('leaveNode', () => setHoveredId(null));
-          if ('ResizeObserver' in window) {
-            resizeObserver = new ResizeObserver(() => renderer?.resize());
-            resizeObserver.observe(containerRef.current);
-          }
-          renderer.refresh();
-          setRendererVersion((version) => version + 1);
-        } catch {
-          setWebglFailed(true);
-        }
+    void loadSigma()
+      .then((Sigma) => {
+        if (!cancelled) setSigmaConstructor(() => Sigma);
       })
       .catch(() => {
         if (!cancelled) setWebglFailed(true);
       });
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const initialModel = modelRef.current;
+    const initialPalette = paletteRef.current;
+    if (webglFailed || !SigmaConstructor || !initialModel || !containerRef.current) return;
+    const container = containerRef.current;
+    let renderer: SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    const handleContextLost = (event: Event): void => {
+      event.preventDefault();
+      setWebglFailed(true);
+    };
+    container.addEventListener('webglcontextlost', handleContextLost, true);
+    try {
+      renderer = new SigmaConstructor(
+        initialModel.graph,
+        containerRef.current,
+        sigmaRendererSettings(initialModel, initialPalette),
+      );
+      rendererRef.current = renderer;
+      renderer.on('clickNode', ({ node }) => onSelect(node));
+      renderer.on('doubleClickNode', ({ node, event }) => {
+        event.preventSigmaDefault();
+        const currentModel = modelRef.current;
+        if (currentModel?.graph.hasNode(node))
+          onOpen(currentModel.graph.getNodeAttributes(node).original);
+      });
+      renderer.on('clickStage', () => onSelect(null));
+      renderer.on('enterNode', ({ node }) => setHoveredId(node));
+      renderer.on('leaveNode', () => setHoveredId(null));
+      if ('ResizeObserver' in window) {
+        resizeObserver = new ResizeObserver(() => renderer?.resize());
+        resizeObserver.observe(containerRef.current);
+      }
+      renderer.refresh();
+      setRendererVersion((version) => version + 1);
+    } catch {
+      setWebglFailed(true);
+    }
+    return () => {
       resizeObserver?.disconnect();
+      container.removeEventListener('webglcontextlost', handleContextLost, true);
       renderer?.kill();
       rendererRef.current = null;
     };
-  }, [model, onOpen, onSelect, palette]);
+  }, [SigmaConstructor, hasModel, onOpen, onSelect, webglFailed]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !model) return;
+    renderer.setGraph(model.graph);
+    renderer.setSettings(sigmaRendererSettings(model, palette));
+    renderer.refresh();
+    setRendererVersion((version) => version + 1);
+  }, [model, palette]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -1099,7 +1199,7 @@ function BrainGraph2DCanvas({
     void camera.animate({ x: 0.5, y: 0.5, ratio: 1, angle: 0 }, { duration: 220 });
   }, []);
 
-  if (!model || model.layout.nodes.length === 0) return <div className="absolute inset-0" />;
+  if (!model) return <div className="absolute inset-0" />;
   if (webglFailed) {
     return (
       <BrainGraphSvg
@@ -1115,19 +1215,42 @@ function BrainGraph2DCanvas({
   return (
     <div className="absolute inset-0 overflow-hidden">
       <div ref={containerRef} aria-label={translate('graph.title')} className="h-full w-full" />
-      <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md">
-        <CanvasButton label={translate('graph.zoomIn')} onClick={() => moveCamera(0.72)}>
-          <ZoomIn className="h-3.5 w-3.5" />
-        </CanvasButton>
-        <CanvasButton label={translate('graph.zoomOut')} onClick={() => moveCamera(1.38)}>
-          <ZoomOut className="h-3.5 w-3.5" />
-        </CanvasButton>
-        <CanvasButton label={translate('graph.fitView')} onClick={resetCamera}>
-          <Focus className="h-3.5 w-3.5" />
-        </CanvasButton>
-      </div>
+      {model.graph.order > 0 && (
+        <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md">
+          <CanvasButton label={translate('graph.zoomIn')} onClick={() => moveCamera(0.72)}>
+            <ZoomIn className="h-3.5 w-3.5" />
+          </CanvasButton>
+          <CanvasButton label={translate('graph.zoomOut')} onClick={() => moveCamera(1.38)}>
+            <ZoomOut className="h-3.5 w-3.5" />
+          </CanvasButton>
+          <CanvasButton label={translate('graph.fitView')} onClick={resetCamera}>
+            <Focus className="h-3.5 w-3.5" />
+          </CanvasButton>
+        </div>
+      )}
     </div>
   );
+}
+
+function sigmaRendererSettings(model: SigmaGraphModel, palette: GraphPalette) {
+  return {
+    allowInvalidContainer: true,
+    defaultNodeColor: palette.nodes.content,
+    defaultEdgeColor: palette.neutralEdge,
+    enableEdgeEvents: false,
+    hideEdgesOnMove: true,
+    hideLabelsOnMove: true,
+    itemSizesReference: 'screen' as const,
+    labelColor: { color: palette.label },
+    labelDensity: model.graph.order > 300 ? 0.08 : model.graph.order > 140 ? 0.16 : 0.3,
+    labelFont: 'Inter, system-ui, sans-serif',
+    labelRenderedSizeThreshold: model.graph.order > 250 ? 10 : 8,
+    labelSize: 12,
+    maxCameraRatio: 3.4,
+    minCameraRatio: 0.08,
+    renderEdgeLabels: false,
+    zIndex: true,
+  };
 }
 
 function CanvasButton({
@@ -1351,11 +1474,18 @@ function nodeShapeElement(
 }
 
 function supportsWebGL(): boolean {
+  if (cachedWebGLSupport !== null) return cachedWebGLSupport;
   if (typeof document === 'undefined') return false;
   try {
     const canvas = document.createElement('canvas');
-    return Boolean(canvas.getContext('webgl2') ?? canvas.getContext('webgl'));
+    const context = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+    cachedWebGLSupport = Boolean(context);
+    context?.getExtension('WEBGL_lose_context')?.loseContext();
+    canvas.width = 0;
+    canvas.height = 0;
+    return cachedWebGLSupport;
   } catch {
+    cachedWebGLSupport = false;
     return false;
   }
 }

@@ -4,6 +4,7 @@ import {
   buildGraphCommunities,
   buildGraphInsights,
   buildGraphLayout,
+  buildGraphPositions3D,
   filterGraphData,
   resolveGraphPalette,
   type GraphResp,
@@ -139,9 +140,16 @@ describe('graph insights and deterministic layout', () => {
     } satisfies GraphResp;
 
     const layout = buildGraphLayout(large);
+    const positions3d = buildGraphPositions3D(large);
 
     expect(layout.nodes).toHaveLength(500);
     expect(layout.edges).toHaveLength(1_500);
+    expect(positions3d.size).toBe(500);
+    expect(
+      [...positions3d.values()].every(
+        (item) => Number.isFinite(item.x) && Number.isFinite(item.y) && Number.isFinite(item.z),
+      ),
+    ).toBe(true);
     expect(layout.nodes.every((item) => Number.isFinite(item.x) && Number.isFinite(item.y))).toBe(
       true,
     );
