@@ -78,14 +78,17 @@ mesma auditoria (botão "Ir ao mais recente" esticado, ícone de enviar).
 
 ### State-driven
 
-- While qualquer segmento do turno estiver em andamento — raciocínio sem fim
-  marcado, ou ferramenta em execução/aguardando aprovação, em qualquer grupo — the
-  system shall exibir o cabeçalho do bloco de pensamento como "Pensando" (efeito
-  de shimmer).
-- While o bloco de pensamento não estiver em andamento, the system shall exibir
-  "Pensou por Xs" com a duração de parede acumulada desde o primeiro evento do
-  turno até o fim — somente em turnos ao vivo; mensagens recarregadas não exibem
-  duração.
+- While o turno do assistente ainda estiver ao vivo no stream (`live`) **ou**
+  qualquer segmento estiver em andamento — raciocínio sem fim marcado, ou
+  ferramenta em execução, em qualquer grupo — the system shall exibir o cabeçalho
+  do bloco de pensamento como "Pensando" (efeito de shimmer) e manter a timeline
+  expandida. Gaps entre tools (nenhum segment `running` por um instante) NÃO
+  devem colapsar o bloco nem trocar o cabeçalho para "Pensou por Xs".
+- While o turno não estiver mais ao vivo e nenhum segmento estiver em andamento,
+  the system shall exibir "Pensou por Xs" com a duração de parede acumulada desde
+  o primeiro evento do turno até o fim — somente em turnos que rodaram ao vivo
+  nesta sessão; mensagens recarregadas sem timestamps de raciocínio não exibem
+  duração (ou usam a duração derivada dos segments persistidos quando houver).
 - While o botão "Ir ao mais recente" estiver visível, the system shall
   centralizá-lo horizontalmente como uma pill de largura própria, sem esticar
   para a largura do container pai.
