@@ -1,5 +1,6 @@
 import {
   Component,
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -47,6 +48,7 @@ import {
   resolveGraphPalette,
   resolveGraphViewBox,
   resolveNodeRadiusBounds,
+  toOpaqueGraphColor,
   type GraphEdge,
   type GraphLayoutNode,
   type GraphNode,
@@ -57,6 +59,7 @@ import {
   type SigmaGraphModel,
   type SigmaNodeAttributes,
 } from '../lib/graph-model';
+import { resolveGraphPollingAction } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
   resolveGraphRenderProfile,
@@ -67,6 +70,7 @@ import { useI18n, type TranslateFn } from '../lib/i18n';
 import { useIsCoarsePointer } from '../lib/use-media-query';
 import { useTheme } from '../lib/theme-provider';
 import { cn } from '../lib/utils';
+import type { GraphIndexStatus } from '../../shared/graph-index';
 
 export {
   ALL_GRAPH_NODE_TYPES,
@@ -152,23 +156,40 @@ function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
         radius: 5,
       },
     },
-    ring: { fill: palette.neutralEdge, activeFill: palette.nodes.transcript },
+    ring: {
+      fill: toOpaqueGraphColor(palette.neutralEdge),
+      activeFill: palette.nodes.transcript,
+    },
     edge: {
       ...baseTheme.edge,
-      fill: palette.neutralEdge,
-      activeFill: palette.label,
+      fill: toOpaqueGraphColor(palette.neutralEdge),
+      activeFill: toOpaqueGraphColor(palette.label),
       opacity: 0.42,
       selectedOpacity: 1,
       inactiveOpacity: 0.05,
       label: { color: palette.label, activeColor: palette.selected, stroke: palette.labelStroke },
     },
-    arrow: { fill: palette.neutralEdge, activeFill: palette.label },
+    arrow: {
+      fill: toOpaqueGraphColor(palette.neutralEdge),
+      activeFill: toOpaqueGraphColor(palette.label),
+    },
     lasso: baseTheme.lasso,
   };
 }
 
+function latestGraphIndexStatus(
+  snapshotStatus?: GraphIndexStatus,
+  polledStatus?: GraphIndexStatus | null,
+): GraphIndexStatus | null {
+  if (!snapshotStatus) return polledStatus ?? null;
+  if (!polledStatus) return snapshotStatus;
+  return Date.parse(polledStatus.updatedAt) >= Date.parse(snapshotStatus.updatedAt)
+    ? polledStatus
+    : snapshotStatus;
+}
+
 export function GrafoPage(): React.ReactElement {
-  const [refreshTick, setRefreshTick] = useState(0);
+  const [graphRequest, setGraphRequest] = useState({ tick: 0, force: false });
   const [search, setSearch] = useState('');
   const deferredSearch = useDebouncedValue(search, 140);
   const [activeTypes, setActiveTypes] = useState<Set<GraphNodeType>>(
@@ -181,8 +202,20 @@ export function GrafoPage(): React.ReactElement {
   const navigate = useNavigate();
   const { t } = useI18n();
   const { theme } = useTheme();
-  const graphPath = refreshTick > 0 ? `/api/graph?refresh=1&t=${refreshTick}` : '/api/graph';
+  const graphPath =
+    graphRequest.tick > 0
+      ? `/api/graph?${graphRequest.force ? 'force=1&' : 'refresh=1&'}t=${graphRequest.tick}`
+      : '/api/graph';
   const { data, loading, error } = useFetch<GraphResp>(graphPath);
+  const {
+    data: polledIndexStatus,
+    error: statusError,
+    refresh: refreshIndexStatus,
+  } = useFetch<GraphIndexStatus>('/api/graph/status');
+  const indexStatus = latestGraphIndexStatus(data?.indexStatus, polledIndexStatus);
+  const indexing = indexStatus?.state === 'running' || (!indexStatus && data?.indexing === true);
+  const indexFailed = indexStatus?.state === 'error';
+  const previousIndexState = useRef<GraphIndexStatus['state'] | null>(null);
 
   const filtered = useMemo(
     () => (data ? filterGraphData(data, deferredSearch, activeTypes) : null),
@@ -212,10 +245,24 @@ export function GrafoPage(): React.ReactElement {
   );
 
   useEffect(() => {
-    if (!data?.indexing) return;
-    const timer = window.setTimeout(() => setRefreshTick(Date.now()), 1800);
+    if (!indexStatus) {
+      const timer = window.setTimeout(refreshIndexStatus, 2_500);
+      return () => window.clearTimeout(timer);
+    }
+    const action = resolveGraphPollingAction(
+      previousIndexState.current,
+      indexStatus,
+      data?.indexing === true,
+    );
+    previousIndexState.current = indexStatus.state;
+    if (action === 'refresh-snapshot') {
+      setGraphRequest({ tick: Date.now(), force: false });
+      return;
+    }
+    if (action !== 'poll-status') return;
+    const timer = window.setTimeout(refreshIndexStatus, 2_500);
     return () => window.clearTimeout(timer);
-  }, [data?.generatedAt, data?.indexing]);
+  }, [data?.indexing, indexStatus, refreshIndexStatus, statusError]);
 
   useEffect(() => {
     if (selectedId && filtered && !filtered.nodes.some((node) => node.id === selectedId)) {
@@ -272,10 +319,15 @@ export function GrafoPage(): React.ReactElement {
                     <h1 className="truncate font-display text-base font-semibold">
                       {t('graph.title')}
                     </h1>
-                    {data?.indexing ? (
+                    {indexing ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-500">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
                         {t('graph.indexing')}
+                      </span>
+                    ) : indexFailed ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-400/25 bg-rose-400/10 px-2 py-0.5 text-[10px] font-medium text-rose-500">
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
+                        {t('graph.indexError')}
                       </span>
                     ) : (
                       data && (
@@ -350,10 +402,13 @@ export function GrafoPage(): React.ReactElement {
               <Button
                 variant="outline"
                 size="default"
-                onClick={() => setRefreshTick(Date.now())}
-                disabled={loading}
+                onClick={() => {
+                  setGraphRequest({ tick: Date.now(), force: true });
+                  refreshIndexStatus();
+                }}
+                disabled={loading || indexing}
               >
-                <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+                <RefreshCw className={cn('h-3.5 w-3.5', (loading || indexing) && 'animate-spin')} />
                 <span className="hidden sm:inline">{t('graph.refresh')}</span>
               </Button>
             </div>
@@ -415,13 +470,16 @@ export function GrafoPage(): React.ReactElement {
             )}
             {error && !loading && (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--color-app-bg)]/80 px-4 backdrop-blur-sm">
-                <FetchError message={error} onRetry={() => setRefreshTick(Date.now())} />
+                <FetchError
+                  message={error}
+                  onRetry={() => setGraphRequest({ tick: Date.now(), force: false })}
+                />
               </div>
             )}
-            {!loading && data && data.nodes.length === 0 && !data.indexing && (
+            {!loading && data && data.nodes.length === 0 && !indexing && !indexFailed && (
               <GraphEmptyState translate={t} onNavigate={navigate} />
             )}
-            {data?.indexing && data.nodes.length === 0 && (
+            {indexing && data && data.nodes.length === 0 && (
               <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6">
                 <div className="max-w-sm rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/90 p-6 text-center shadow-xl backdrop-blur-xl">
                   <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]">
@@ -431,6 +489,25 @@ export function GrafoPage(): React.ReactElement {
                   <p className="mt-1.5 text-xs leading-relaxed text-[var(--color-app-muted)]">
                     {t('graph.buildingDescription')}
                   </p>
+                </div>
+              </div>
+            )}
+            {indexFailed && data && data.nodes.length === 0 && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center px-6">
+                <div className="max-w-sm rounded-2xl border border-rose-400/20 bg-[var(--color-app-bg-elevated)]/95 p-6 text-center shadow-xl backdrop-blur-xl">
+                  <p className="font-display text-sm font-semibold">{t('graph.indexErrorTitle')}</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-[var(--color-app-muted)]">
+                    {t('graph.indexErrorDescription')}
+                  </p>
+                  <Button
+                    className="mt-4"
+                    onClick={() => {
+                      setGraphRequest({ tick: Date.now(), force: true });
+                      refreshIndexStatus();
+                    }}
+                  >
+                    {t('graph.retryIndex')}
+                  </Button>
                 </div>
               </div>
             )}
@@ -862,7 +939,7 @@ function GraphEmptyState({
   );
 }
 
-function BrainGraphCanvas({
+const BrainGraphCanvas = memo(function BrainGraphCanvas({
   model,
   selectedId,
   mode,
@@ -907,7 +984,7 @@ function BrainGraphCanvas({
       onOpen={onOpen}
     />
   );
-}
+});
 
 export function BrainGraph3DCanvas({
   model,
@@ -989,17 +1066,26 @@ export function BrainGraph3DCanvas({
     return [...(model.neighborhoods.get(activeId) ?? new Set([activeId]))];
   }, [activeId, model]);
 
+  const fitGraphView = useCallback((animated: boolean) => {
+    try {
+      graphRef.current?.fitNodesInView(undefined, { animated });
+    } catch {
+      // A câmera ainda pode estar preparando a cena.
+    }
+  }, []);
+
   useEffect(() => {
     if (!model || model.graph.order === 0 || !reagraph) return;
-    const timer = window.setTimeout(() => {
-      try {
-        graphRef.current?.fitNodesInView(undefined, { animated: profile.animated });
-      } catch {
-        // A câmera ainda pode estar preparando a cena.
-      }
-    }, 180);
-    return () => window.clearTimeout(timer);
-  }, [model?.topologyKey, profile.animated, reagraph]);
+    const frame =
+      typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame(() => fitGraphView(false))
+        : null;
+    const timer = window.setTimeout(() => fitGraphView(profile.animated), 180);
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [fitGraphView, model?.topologyKey, profile.animated, reagraph]);
 
   useEffect(() => {
     if (!reagraph || !selectedId) return;
@@ -1063,10 +1149,7 @@ export function BrainGraph3DCanvas({
             3D · {translate(`graph.renderProfile.${profile.tier}`)}
           </div>
           <div className="absolute bottom-3 right-3 z-10 flex flex-col gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md">
-            <CanvasButton
-              label={translate('graph.fitView')}
-              onClick={() => graphRef.current?.fitNodesInView(undefined, { animated: true })}
-            >
+            <CanvasButton label={translate('graph.fitView')} onClick={() => fitGraphView(true)}>
               <Focus className="h-3.5 w-3.5" />
             </CanvasButton>
           </div>

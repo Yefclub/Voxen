@@ -877,6 +877,11 @@ const ptBRMessages = {
   'graph.title': 'Brain',
   'graph.subtitle': 'Explore conexões, comunidades e fontes do seu conhecimento.',
   'graph.indexing': 'Organizando',
+  'graph.indexError': 'Pausado',
+  'graph.indexErrorTitle': 'A organização do Brain foi pausada',
+  'graph.indexErrorDescription':
+    'O mapa existente continua disponível. Tente novamente para retomar a indexação com segurança.',
+  'graph.retryIndex': 'Tentar novamente',
   'graph.ready': 'Atualizado',
   'graph.nodes': 'nós',
   'graph.relations': 'relações',
@@ -1966,6 +1971,11 @@ const enMessages: Record<I18nKey, string> = {
   'graph.title': 'Brain',
   'graph.subtitle': 'Explore connections, communities, and sources across your knowledge.',
   'graph.indexing': 'Organizing',
+  'graph.indexError': 'Paused',
+  'graph.indexErrorTitle': 'Brain organization was paused',
+  'graph.indexErrorDescription':
+    'Your existing map remains available. Try again to resume indexing safely.',
+  'graph.retryIndex': 'Try again',
   'graph.ready': 'Up to date',
   'graph.nodes': 'nodes',
   'graph.relations': 'relations',

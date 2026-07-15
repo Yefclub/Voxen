@@ -7,6 +7,7 @@ import {
   buildGraphPositions3D,
   buildSigmaGraphModel,
   nodePath,
+  toOpaqueGraphColor,
 } from '../src/client/lib/graph-model';
 import { DEFAULT_GRAPH_MODE, resolveGraphRenderProfile } from '../src/client/lib/graph-renderer';
 
@@ -34,6 +35,12 @@ describe('graph rendering helpers', () => {
       expect(color.toLowerCase()).not.toContain('oklch');
       expect(color).toMatch(SVG_SAFE_COLOR);
     }
+  });
+
+  test('converts transparent CSS colors to opaque RGB for Three.js', () => {
+    expect(toOpaqueGraphColor('rgba(56, 189, 248, 0.72)')).toBe('#38bdf8');
+    expect(toOpaqueGraphColor('rgb(148, 163, 184)')).toBe('#94a3b8');
+    expect(toOpaqueGraphColor('#a78bfa')).toBe('#a78bfa');
   });
 
   test('creates finite positions and connects rendered edges to nodes', () => {
@@ -161,6 +168,7 @@ describe('graph rendering helpers', () => {
     expect(model.reagraphEdges).toHaveLength(1);
     expect(model.reagraphEdges[0]?.source).toBe('note-1');
     expect(model.reagraphEdges[0]?.target).toBe('topic-1');
+    expect(model.reagraphEdges[0]?.fill).toBe('#38bdf8');
     expect(model.nodeById.get('note-1')?.label).toBe('Nota conectada');
   });
 
