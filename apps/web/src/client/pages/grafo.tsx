@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import type SigmaRenderer from 'sigma';
 import type {
@@ -102,6 +110,25 @@ function loadReagraph(): Promise<ReagraphModule> {
 function loadSigma(): Promise<SigmaRendererConstructor> {
   sigmaModulePromise ??= import('sigma').then((module) => module.default);
   return sigmaModulePromise;
+}
+
+class GraphRendererBoundary extends Component<
+  { children: React.ReactNode; onFailure: () => void },
+  { failed: boolean }
+> {
+  override state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  override componentDidCatch(): void {
+    this.props.onFailure();
+  }
+
+  override render(): React.ReactNode {
+    return this.state.failed ? null : this.props.children;
+  }
 }
 
 function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
@@ -882,7 +909,7 @@ function BrainGraphCanvas({
   );
 }
 
-function BrainGraph3DCanvas({
+export function BrainGraph3DCanvas({
   model,
   selectedId,
   coarsePointer,
@@ -947,8 +974,13 @@ function BrainGraph3DCanvas({
       event.preventDefault();
       onFallback();
     };
+    const handleContextCreationError = (): void => onFallback();
     container.addEventListener('webglcontextlost', handleContextLost, true);
-    return () => container.removeEventListener('webglcontextlost', handleContextLost, true);
+    container.addEventListener('webglcontextcreationerror', handleContextCreationError, true);
+    return () => {
+      container.removeEventListener('webglcontextlost', handleContextLost, true);
+      container.removeEventListener('webglcontextcreationerror', handleContextCreationError, true);
+    };
   }, [onFallback]);
 
   const activeId = hoveredId ?? selectedId;
@@ -990,38 +1022,40 @@ function BrainGraph3DCanvas({
         </div>
       )}
       {GraphCanvas && graphTheme && (
-        <GraphCanvas
-          ref={graphRef}
-          nodes={model?.reagraphNodes ?? EMPTY_REAGRAPH_NODES}
-          edges={model?.reagraphEdges ?? EMPTY_REAGRAPH_EDGES}
-          theme={graphTheme}
-          layoutType="custom"
-          layoutOverrides={layoutOverrides}
-          labelType={profile.labelType}
-          edgeInterpolation={profile.edgeInterpolation}
-          edgeArrowPosition="none"
-          cameraMode="orbit"
-          minDistance={180}
-          maxDistance={8_000}
-          animated={profile.animated}
-          draggable={profile.draggable}
-          aggregateEdges={profile.aggregateEdges}
-          glOptions={GRAPH_GL_OPTIONS}
-          selections={selectedId ? [selectedId] : []}
-          actives={actives}
-          onNodeClick={(node) => onSelect(node.id)}
-          onNodeDoubleClick={(node) => {
-            const original = model?.nodeById.get(node.id);
-            if (original) onOpen(original);
-          }}
-          onNodePointerOver={(node) => setHoveredId(node.id)}
-          onNodePointerOut={() => setHoveredId(null)}
-          onCanvasClick={() => onSelect(null)}
-        >
-          <ambientLight intensity={0.72} />
-          <directionalLight position={[450, 700, 900]} intensity={1.15} />
-          <pointLight position={[-700, -300, 550]} intensity={0.72} />
-        </GraphCanvas>
+        <GraphRendererBoundary onFailure={onFallback}>
+          <GraphCanvas
+            ref={graphRef}
+            nodes={model?.reagraphNodes ?? EMPTY_REAGRAPH_NODES}
+            edges={model?.reagraphEdges ?? EMPTY_REAGRAPH_EDGES}
+            theme={graphTheme}
+            layoutType="custom"
+            layoutOverrides={layoutOverrides}
+            labelType={profile.labelType}
+            edgeInterpolation={profile.edgeInterpolation}
+            edgeArrowPosition="none"
+            cameraMode="rotate"
+            minDistance={180}
+            maxDistance={8_000}
+            animated={profile.animated}
+            draggable={profile.draggable}
+            aggregateEdges={profile.aggregateEdges}
+            glOptions={GRAPH_GL_OPTIONS}
+            selections={selectedId ? [selectedId] : []}
+            actives={actives}
+            onNodeClick={(node) => onSelect(node.id)}
+            onNodeDoubleClick={(node) => {
+              const original = model?.nodeById.get(node.id);
+              if (original) onOpen(original);
+            }}
+            onNodePointerOver={(node) => setHoveredId(node.id)}
+            onNodePointerOut={() => setHoveredId(null)}
+            onCanvasClick={() => onSelect(null)}
+          >
+            <ambientLight intensity={0.72} />
+            <directionalLight position={[450, 700, 900]} intensity={1.15} />
+            <pointLight position={[-700, -300, 550]} intensity={0.72} />
+          </GraphCanvas>
+        </GraphRendererBoundary>
       )}
       {GraphCanvas && model && model.graph.order > 0 && (
         <>
@@ -1478,7 +1512,7 @@ function supportsWebGL(): boolean {
   if (typeof document === 'undefined') return false;
   try {
     const canvas = document.createElement('canvas');
-    const context = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+    const context = canvas.getContext('webgl2', GRAPH_GL_OPTIONS) as WebGL2RenderingContext | null;
     cachedWebGLSupport = Boolean(context);
     context?.getExtension('WEBGL_lose_context')?.loseContext();
     canvas.width = 0;

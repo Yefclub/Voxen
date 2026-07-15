@@ -91,7 +91,7 @@ tema. O renderer 2D existe apenas como fallback explícito ou automático.
 
 ### Optional
 
-- Where WebGL não estiver disponível ou o contexto 3D falhar, the system shall
+- Where WebGL2 não estiver disponível ou o contexto 3D falhar, the system shall
   apresentar a visão 2D e, se necessário, um fallback SVG navegável com o mesmo
   conjunto filtrado e cores compatíveis com o tema.
 
@@ -117,7 +117,10 @@ tema. O renderer 2D existe apenas como fallback explícito ou automático.
       `x/y/z` finitas para 500 nós e não depende de simulação contínua.
 - [x] O perfil visual reduz trabalho de arestas, rótulos, animações e arraste
       em grafos médios e grandes.
-- [x] A detecção de WebGL é executada uma vez e libera seu contexto de teste.
+- [x] A detecção de WebGL2 é executada uma vez, libera seu contexto de teste e
+      falhas reais de criação ou perda acionam o fallback.
+- [x] As opções de contexto do renderer priorizam desempenho e prevalecem sobre
+      os defaults da dependência Reagraph.
 - [x] O fallback Sigma usa um programa gráfico registrado e preserva o tipo
       semântico em atributo separado.
 - [x] O GET do grafo nunca aguarda reindexação completa e retorna `indexing`
