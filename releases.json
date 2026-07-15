@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784080174",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Fuso horário da instância e relógio da Vox no chat",
+    "body": "Configuração IANA de fuso no onboarding, em Configurações e em Admin → Usuários.\nA cada turno o agente recebe data/hora local, dia da semana, offset e marcos UTC\npara “hoje” / “esta semana” sem adivinhar o fuso do servidor.",
+    "pr": 398,
+    "author": "Kalyel",
+    "date": "2026-07-14T22:49:24-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/398"
+  },
+  {
     "version": "0.11.0-dev.1784078888",
     "channel": "dev",
     "type": "fix",
