@@ -4,13 +4,7 @@ import { getRedisPublisher } from './redis';
 export interface GraphIndexRedis {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ...args: Array<string | number>): Promise<unknown>;
-  eval(
-    script: string,
-    numberOfKeys: number,
-    key: string,
-    owner: string,
-    ttlMs?: number,
-  ): Promise<unknown>;
+  eval(script: string, numberOfKeys: number, ...args: Array<string | number>): Promise<unknown>;
 }
 
 export const GRAPH_INDEX_LEASE_TTL_MS = 120_000;
@@ -31,6 +25,14 @@ return 0
 const RELEASE_LEASE_SCRIPT = `
 if redis.call('get', KEYS[1]) == ARGV[1] then
   return redis.call('del', KEYS[1])
+end
+return 0
+`;
+
+const WRITE_OWNED_STATUS_SCRIPT = `
+if redis.call('get', KEYS[1]) == ARGV[1] then
+  redis.call('set', KEYS[2], ARGV[2], 'EX', ARGV[3])
+  return 1
 end
 return 0
 `;
@@ -91,13 +93,30 @@ export async function writeGraphIndexStatus(
   status: GraphIndexStatus,
   redis: GraphIndexRedis = redisClient(),
 ): Promise<void> {
-  const ttl =
-    status.state === 'running'
-      ? RUNNING_STATUS_TTL_SEC
-      : status.state === 'error'
-        ? ERROR_STATUS_TTL_SEC
-        : READY_STATUS_TTL_SEC;
-  await redis.set(graphIndexStatusKey(userId), JSON.stringify(status), 'EX', ttl);
+  await redis.set(
+    graphIndexStatusKey(userId),
+    JSON.stringify(status),
+    'EX',
+    graphIndexStatusTtl(status),
+  );
+}
+
+export async function writeOwnedGraphIndexStatus(
+  userId: string,
+  runId: string,
+  status: GraphIndexStatus,
+  redis: GraphIndexRedis = redisClient(),
+): Promise<boolean> {
+  const result = await redis.eval(
+    WRITE_OWNED_STATUS_SCRIPT,
+    2,
+    graphIndexLeaseKey(userId),
+    graphIndexStatusKey(userId),
+    runId,
+    JSON.stringify(status),
+    graphIndexStatusTtl(status),
+  );
+  return Number(result) === 1;
 }
 
 export async function readGraphIndexStatus(
@@ -126,11 +145,17 @@ export async function readGraphIndexStatus(
       // A corrupt status is treated as absent and rebuilt from the lease.
     }
   }
-  if (status?.state === 'running' && leaseOwner !== status.runId) {
-    return { ...status, state: 'idle', updatedAt: now, recoverable: true };
+  if (leaseOwner) {
+    if (status?.state === 'running' && status.runId === leaseOwner) return status;
+    return {
+      state: 'running',
+      runId: leaseOwner,
+      startedAt: status?.runId === leaseOwner ? status.startedAt : undefined,
+      updatedAt: now,
+    };
   }
-  if (!status && leaseOwner) {
-    return { state: 'running', runId: leaseOwner, updatedAt: now };
+  if (status?.state === 'running') {
+    return { ...status, state: 'idle', updatedAt: now, recoverable: true };
   }
   return status ?? { state: 'idle', updatedAt: now };
 }
@@ -144,4 +169,31 @@ export function shouldStartGraphIndex(
   if (force) return true;
   if (status.state !== 'error') return true;
   return !status.retryAfter || Date.parse(status.retryAfter) <= now;
+}
+
+export function reconcileGraphIndexStatus(
+  remoteStatus: GraphIndexStatus,
+  localStatus: GraphIndexStatus | undefined,
+  localInFlight: boolean,
+): GraphIndexStatus {
+  if (remoteStatus.state === 'running') return remoteStatus;
+  if (localInFlight && localStatus?.state === 'running') return localStatus;
+  if (
+    remoteStatus.state === 'idle' &&
+    remoteStatus.recoverable &&
+    localStatus &&
+    localStatus.runId === remoteStatus.runId &&
+    (localStatus.state === 'ready' || localStatus.state === 'error')
+  ) {
+    return localStatus;
+  }
+  return remoteStatus;
+}
+
+function graphIndexStatusTtl(status: GraphIndexStatus): number {
+  return status.state === 'running'
+    ? RUNNING_STATUS_TTL_SEC
+    : status.state === 'error'
+      ? ERROR_STATUS_TTL_SEC
+      : READY_STATUS_TTL_SEC;
 }
