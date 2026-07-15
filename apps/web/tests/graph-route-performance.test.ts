@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { shouldScheduleGraphReindex } from '../src/lib/graph-index-state';
+import { isGraphSnapshotIndexing, shouldScheduleGraphReindex } from '../src/lib/graph-index-state';
 
 describe('shouldScheduleGraphReindex', () => {
   test('does nothing when indexed coverage is current', () => {
@@ -49,5 +49,16 @@ describe('shouldScheduleGraphReindex', () => {
         staleSourceNodes: 0,
       }),
     ).toBe(false);
+  });
+});
+
+describe('isGraphSnapshotIndexing', () => {
+  test('keeps polling and cache disabled when reindex finishes during snapshot reads', () => {
+    expect(isGraphSnapshotIndexing(true, false)).toBe(true);
+  });
+
+  test('reports current in-flight work and releases a stable snapshot', () => {
+    expect(isGraphSnapshotIndexing(false, true)).toBe(true);
+    expect(isGraphSnapshotIndexing(false, false)).toBe(false);
   });
 });

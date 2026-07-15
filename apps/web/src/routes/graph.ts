@@ -20,7 +20,7 @@ import {
 } from '../lib/brain';
 import { db } from '../lib/db';
 import { graphCacheKey, invalidateGraphCache } from '../lib/graph-cache';
-import { shouldScheduleGraphReindex } from '../lib/graph-index-state';
+import { isGraphSnapshotIndexing, shouldScheduleGraphReindex } from '../lib/graph-index-state';
 import { getRedisPublisher } from '../lib/redis';
 
 type Vars = { userId: string };
@@ -119,6 +119,10 @@ graphRoutes.get('/', async (c) => {
   }
 
   await ensureBrainCoverage(userId, force);
+  // Captura o estado antes de ler o snapshot. Se o job terminar no meio das
+  // queries, ainda devolvemos indexing=true e não recriamos um cache antigo
+  // depois da invalidação feita pelo próprio reindex.
+  const indexingAtReadStart = isBrainReindexInFlight(userId);
 
   const rawNodes = await db.brainNode.findMany({
     where: { userId, status: 'ACTIVE' },
@@ -189,18 +193,19 @@ graphRoutes.get('/', async (c) => {
   }));
 
   const insights = buildInsights(nodes, edges, degree);
+  const indexing = isGraphSnapshotIndexing(indexingAtReadStart, isBrainReindexInFlight(userId));
   const response = {
     nodes,
     edges,
     totalNodes: nodes.length,
     totalEdges: edges.length,
     insights,
-    indexing: isBrainReindexInFlight(userId),
+    indexing,
     generatedAt: new Date().toISOString(),
   };
   // Não cacheia enquanto um reindex está em andamento: o estado atual está
   // prestes a mudar e o reindex invalida o cache ao terminar.
-  if (!isBrainReindexInFlight(userId)) {
+  if (!indexing) {
     try {
       await getRedisPublisher().set(cacheKey, JSON.stringify(response), 'EX', CACHE_TTL_SEC);
     } catch {

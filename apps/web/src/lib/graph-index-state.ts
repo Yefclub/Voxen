@@ -14,3 +14,15 @@ export function shouldScheduleGraphReindex(state: GraphIndexState): boolean {
     state.staleSourceNodes > 0
   );
 }
+
+/**
+ * Mantém o snapshot conservador quando um reindex terminou durante a leitura.
+ * Nesse caso a resposta atual não pode ser cacheada e o cliente deve buscar o
+ * estado materializado mais uma vez.
+ */
+export function isGraphSnapshotIndexing(
+  indexingAtReadStart: boolean,
+  indexingAtReadEnd: boolean,
+): boolean {
+  return indexingAtReadStart || indexingAtReadEnd;
+}
