@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.11.0-dev.1784078888 — 2026-07-14 · Dev
+
+### 🐛 Âncora da mensagem no topo não some na primeira ferramenta
+
+O reengage do stick-to-bottom só ocorre com espaçador esgotado e após
+começar o texto final da resposta (ou ao fim do turno). Tools e raciocínio
+sozinhos não desancoram a mensagem enviada.
+
+## v0.11.0-dev.1784078888 — 2026-07-14 · Dev
+
+### 🐛 Vox deixa de falar em nomes de ferramentas pro usuário
+
+O system prompt proíbe citar tools, parâmetros e IDs internos na resposta
+final. Próximos passos passam a ser em linguagem natural de produto.
+
+## v0.11.0-dev.1784078888 — 2026-07-14 · Dev
+
+### 🐛 Bloco Pensando deixa de piscar entre ferramentas
+
+O bloco de raciocínio do chat fica aberto enquanto o turno está ao vivo
+(`live`) e só recolhe quando o stream termina — gaps entre tool-results
+não colapsam mais a timeline.
+
 ## v0.11.0-dev.1784074880 — 2026-07-14 · Dev
 
 ### 🐛 Erro de ferramenta deixa de travar o chat em “Pensando…”
