@@ -672,6 +672,219 @@ async def list_library_folder_names(user_id: str) -> list[str]:
     return [str(row["name"]) for row in rows if row["name"]]
 
 
+async def list_tag_names(user_id: str) -> list[str]:
+    """Nomes de tags do workspace (para reuso no prompt de geração)."""
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT name
+            FROM "Tag"
+            WHERE "userId" = $1
+            ORDER BY name ASC
+            """,
+            user_id,
+        )
+    return [str(row["name"]) for row in rows if row["name"]]
+
+
+async def list_transcript_tag_names(transcript_id: str) -> list[str]:
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT t.name
+            FROM "TranscriptTag" tt
+            JOIN "Tag" t ON t.id = tt."tagId"
+            WHERE tt."transcriptId" = $1
+            ORDER BY tt."createdAt" ASC
+            """,
+            transcript_id,
+        )
+    return [str(row["name"]) for row in rows if row["name"]]
+
+
+async def get_transcript_title_summary_folder(
+    transcript_id: str,
+) -> tuple[str, str, str | None] | None:
+    """title, content (summaryMd or plainText), folderId — para auto-tags."""
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT title, "plainText", "summaryMd", "folderId"
+            FROM "Transcript"
+            WHERE id = $1
+            """,
+            transcript_id,
+        )
+    if not row:
+        return None
+    title = str(row["title"] or "")
+    summary = (row["summaryMd"] or "").strip()
+    plain = (row["plainText"] or "").strip()
+    content = summary or plain
+    folder_id = row["folderId"]
+    return title, content, (str(folder_id) if folder_id else None)
+
+
+async def apply_tags_to_transcript(
+    *,
+    user_id: str,
+    transcript_id: str,
+    tag_names: list[str],
+    current_folder_id: str | None,
+) -> list[str]:
+    """
+    Cria/reutiliza Tag + pasta, liga TranscriptTag, seta folderId só se vazio
+    (R-FOLDER, spec 075). Retorna nomes aplicados.
+    """
+    from .tags import pick_folder_id, slugify_tag
+
+    applied: list[str] = []
+    first_folder_id: str | None = None
+
+    async with connection() as conn:
+        for raw_name in tag_names:
+            name = " ".join((raw_name or "").split()).strip()[:120]
+            if not name:
+                continue
+            slug = slugify_tag(name)
+            if not slug:
+                continue
+
+            existing = await conn.fetchrow(
+                """
+                SELECT id, name, "folderId"
+                FROM "Tag"
+                WHERE "userId" = $1 AND slug = $2
+                """,
+                user_id,
+                slug,
+            )
+            if existing:
+                tag_id = str(existing["id"])
+                tag_name = str(existing["name"])
+                folder_id = existing["folderId"]
+                if not folder_id:
+                    folder_id = await _ensure_folder_for_tag_conn(conn, user_id, tag_name)
+                    await conn.execute(
+                        """
+                        UPDATE "Tag" SET "folderId" = $2, "updatedAt" = NOW()
+                        WHERE id = $1
+                        """,
+                        tag_id,
+                        folder_id,
+                    )
+                else:
+                    folder_id = str(folder_id)
+            else:
+                folder_id = await _ensure_folder_for_tag_conn(conn, user_id, name)
+                tag_id = generate_cuid()
+                try:
+                    await conn.execute(
+                        """
+                        INSERT INTO "Tag" (
+                            id, "userId", name, slug, "folderId", "createdAt", "updatedAt"
+                        ) VALUES (
+                            $1, $2, $3, $4, $5, NOW(), NOW()
+                        )
+                        """,
+                        tag_id,
+                        user_id,
+                        name,
+                        slug,
+                        folder_id,
+                    )
+                    tag_name = name
+                except Exception:  # noqa: BLE001 — corrida UNIQUE(userId, slug)
+                    raced = await conn.fetchrow(
+                        """
+                        SELECT id, name, "folderId"
+                        FROM "Tag"
+                        WHERE "userId" = $1 AND slug = $2
+                        """,
+                        user_id,
+                        slug,
+                    )
+                    if not raced:
+                        raise
+                    tag_id = str(raced["id"])
+                    tag_name = str(raced["name"])
+                    folder_id = str(raced["folderId"] or folder_id)
+
+            await conn.execute(
+                """
+                INSERT INTO "TranscriptTag" ("transcriptId", "tagId", "createdAt")
+                VALUES ($1, $2, NOW())
+                ON CONFLICT ("transcriptId", "tagId") DO NOTHING
+                """,
+                transcript_id,
+                tag_id,
+            )
+            applied.append(tag_name)
+            if first_folder_id is None:
+                first_folder_id = folder_id
+
+        target = pick_folder_id(current_folder_id, first_folder_id)
+        if target and current_folder_id is None:
+            await conn.execute(
+                """
+                UPDATE "Transcript"
+                SET "folderId" = $2, "updatedAt" = NOW()
+                WHERE id = $1 AND "folderId" IS NULL AND "userId" = $3
+                """,
+                transcript_id,
+                target,
+                user_id,
+            )
+
+    return applied
+
+
+async def _ensure_folder_for_tag_conn(conn: Any, user_id: str, name: str) -> str:
+    """Pasta livre (sem Tag.folderId) de mesmo nome, ou cria no root."""
+    clean = " ".join(name.split()).strip()[:120]
+    free = await conn.fetchrow(
+        """
+        SELECT f.id
+        FROM "LibraryFolder" f
+        LEFT JOIN "Tag" t ON t."folderId" = f.id
+        WHERE f."userId" = $1 AND lower(f.name) = lower($2) AND t.id IS NULL
+        ORDER BY f."createdAt" ASC
+        LIMIT 1
+        """,
+        user_id,
+        clean,
+    )
+    if free:
+        return str(free["id"])
+    # Reusa pasta existente mesmo com tag (outro caso) — ou cria.
+    existing = await conn.fetchrow(
+        """
+        SELECT id FROM "LibraryFolder"
+        WHERE "userId" = $1 AND lower(name) = lower($2)
+        ORDER BY "createdAt" ASC
+        LIMIT 1
+        """,
+        user_id,
+        clean,
+    )
+    if existing:
+        return str(existing["id"])
+    folder_id = generate_cuid()
+    await conn.execute(
+        """
+        INSERT INTO "LibraryFolder" (
+            id, "userId", "parentId", name, "createdAt", "updatedAt"
+        ) VALUES (
+            $1, $2, NULL, $3, NOW(), NOW()
+        )
+        """,
+        folder_id,
+        user_id,
+        clean,
+    )
+    return folder_id
+
+
 async def ensure_library_folder(user_id: str, name: str) -> str:
     """Reusa pasta pelo nome (case-insensitive) ou cria no root. Retorna id."""
     clean = " ".join(name.split()).strip()

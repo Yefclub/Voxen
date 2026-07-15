@@ -89,10 +89,14 @@ nome, auto-criada). Assim tag e pasta convivem: a pasta continua sendo o víncul
 
 ## Fora de Escopo
 
-- Geração automática de tags no worker (por ora só sob demanda via botão)
+- ~~Geração automática de tags no worker~~ — coberto pela **spec 096**
+  (auto-ingest após summary no pipeline ARQ).
 - Renomear/mesclar tags legadas, editar tags manualmente na UI
 - Filtro dedicado por tag na sidebar (busca por texto já cobre)
 - Hierarquia de tags
+
+> 2026-07-15: auto-tags no worker passaram a ser escopo da spec 096 (report de
+> links sem tags após ingestão).
 
 ## Riscos
 

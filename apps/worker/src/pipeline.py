@@ -20,6 +20,7 @@ from . import (
     events,
     storage,
     summary,
+    tags,
     uploaded_media,
     video_url,
     voxen_settings,
@@ -857,7 +858,94 @@ async def _generate_summary_with_progress(
         job_id=job_id,
         log=log,
     )
+    # Tags automáticas (spec 075 + 096): após o resumo, com o texto/resumo
+    # disponíveis. Best-effort — não derruba o job.
+    _check_cancel(job_id)
+    await events.publish_job_event(user_id, job_id, "tagging", percent=99)
+    await _maybe_generate_tags(
+        user_id=user_id,
+        job_id=job_id,
+        transcript_id=transcript_id,
+        log=log,
+    )
     await db.reindex_transcript_brain_node(user_id, transcript_id)
+
+
+async def _maybe_generate_tags(
+    *,
+    user_id: str,
+    job_id: str,
+    transcript_id: str,
+    log: Any,  # noqa: ANN401
+) -> None:
+    """Gera e persiste tags se o conteúdo ainda não tiver nenhuma (auto-ingest)."""
+    try:
+        row = await db.get_transcript_title_summary_folder(transcript_id)
+        if not row:
+            return
+        title, content, folder_id = row
+        clean = content.strip()
+        if len(clean) < 40 and len(title.strip()) < 3:
+            log.info("tags-skipped-short", transcript_id=transcript_id)
+            return
+        # Só auto-preenche quando ainda não há tags (lote/manual re-gera na UI).
+        existing_on_tx = await db.list_transcript_tag_names(transcript_id)
+        if existing_on_tx:
+            log.info(
+                "tags-skipped-already-present",
+                transcript_id=transcript_id,
+                count=len(existing_on_tx),
+            )
+            return
+        api_key = await voxen_settings.get_openrouter_api_key()
+        model = await voxen_settings.get_default_chat_model()
+        if not api_key or not model:
+            log.warning("tags-skipped-missing-config", transcript_id=transcript_id)
+            return
+        existing_tags = await db.list_tag_names(user_id)
+        language = await voxen_settings.get_app_language()
+        result = await _retry_transient_or(
+            lambda: tags.generate_content_tags(
+                title=title,
+                content=clean or title,
+                existing_tags=existing_tags,
+                api_key=api_key,
+                model=model,
+                language=language,
+            ),
+            tries=2,
+        )
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="CHAT",
+            model=result.model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+            job_id=job_id,
+            meta={"source": "tag_generation_auto", "tags": result.tags},
+        )
+        if not result.tags:
+            log.info("tags-empty", transcript_id=transcript_id)
+            return
+        applied = await db.apply_tags_to_transcript(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            tag_names=result.tags,
+            current_folder_id=folder_id,
+        )
+        log.info(
+            "tags-assigned",
+            transcript_id=transcript_id,
+            tags=applied,
+            count=len(applied),
+        )
+    except Exception as e:  # noqa: BLE001 — tags são enriquecimento best-effort
+        log.warning(
+            "tags-generation-failed",
+            transcript_id=transcript_id,
+            error=str(e)[:240],
+        )
 
 
 async def _transcribe_via_api(

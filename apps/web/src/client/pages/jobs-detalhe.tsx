@@ -51,6 +51,7 @@ const STAGE_ORDER = [
   'uploading',
   'indexing',
   'summarizing',
+  'tagging',
   'done',
 ];
 
