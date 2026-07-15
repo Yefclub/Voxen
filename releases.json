@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784126586",
+    "channel": "dev",
+    "type": "perf",
+    "title": "Grafo do Brain mais rápido e explorável",
+    "body": "# Grafo do Brain mais rápido e explorável\n\n- A visão 2D passa a abrir primeiro, com o modo 3D carregado somente quando\n  solicitado.\n- A página ganha filtros, hubs, comunidades, inspeção de nós e controles de\n  navegação organizados em uma interface compatível com todos os temas.\n- A atualização do Brain deixa de bloquear a resposta enquanto reindexa e\n  passa a informar o progresso automaticamente.\n- A conversa canônica passa a tolerar a disputa de criação observada pela\n  suíte concorrente do CI.",
+    "pr": 404,
+    "author": "Kalyel",
+    "date": "2026-07-15T11:42:50-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/404"
+  },
+  {
     "version": "0.11.0-dev.1784083142",
     "channel": "dev",
     "type": "ui",
