@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784083142",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Detalhe da transcrição com copiar resumo e barra de chat",
+    "body": "Página de conteúdo ganha botão de copiar o resumo, promptbox sticky no estilo do\nchat (Enter envia e abre a conversa com o contexto do item) e hierarquia visual\nmais limpa.",
+    "pr": 402,
+    "author": "Kalyel",
+    "date": "2026-07-14T23:38:45-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/402"
+  },
+  {
     "version": "0.11.0-dev.1784081644",
     "channel": "dev",
     "type": "feat",
