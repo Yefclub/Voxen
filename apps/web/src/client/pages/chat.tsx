@@ -209,9 +209,11 @@ function ToolRow({ tool }: { tool: ToolEvent }) {
 
 // ---------------------------------------------------------------------------
 // Bloco de pensamento — raciocínio e ferramentas num único container
-// cronológico (spec 078): "Pensando" (shimmer) enquanto algo roda —
-// raciocínio chegando OU ferramenta em execução — e "Pensou por Xs" ao
-// terminar. HITL fica acima do composer (spec 090), não neste bloco.
+// cronológico (spec 078): "Pensando" (shimmer) enquanto o turno está ao vivo
+// (`live`) OU algum segmento ainda roda — e "Pensou por Xs" só ao terminar o
+// turno. Gaps entre tools (running=false por milissegundos) NÃO colapsam o
+// bloco; isso evitava o flicker compacta/reabre no harness multi-step.
+// HITL fica acima do composer (spec 090), não neste bloco.
 // ---------------------------------------------------------------------------
 function ThinkingBlock({
   segments,
@@ -222,7 +224,10 @@ function ThinkingBlock({
 }): React.ReactElement {
   const { t } = useI18n();
   const running = segmentsRunning(segments);
-  // Timeline aberta enquanto roda; recolhe ao terminar (usuário reabre no header).
+  // Turno em voo: stream ainda aberto OU algum step de fato em andamento.
+  const inFlight = live || running;
+  // Timeline aberta enquanto o turno está em voo; recolhe só ao terminar
+  // (usuário reabre no header).
   const [expanded, setExpanded] = useState(true);
   // Cronômetro de parede (honesto): conta do 1º evento até terminar. Só há
   // timing em turnos ao vivo; blocos recarregados não exibem duração.
@@ -231,7 +236,7 @@ function ThinkingBlock({
   const [frozen, setFrozen] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!running) {
+    if (!inFlight) {
       setExpanded(false);
       if (startedAtRef.current != null && frozen == null) {
         setFrozen(Date.now() - startedAtRef.current);
@@ -244,24 +249,24 @@ function ThinkingBlock({
       if (startedAtRef.current != null) setElapsed(Date.now() - startedAtRef.current);
     }, 200);
     return () => window.clearInterval(id);
-  }, [running, frozen]);
+  }, [inFlight, frozen]);
 
   // `frozen`/`startedAtRef` são estado local — não sobrevivem quando `send()`
   // troca a mensagem pelo snapshot do servidor (a `key` muda pro id real do
   // banco e o React remonta este componente com `live=false`, zerando o
   // cronômetro). Nesse caso, cai pro fallback: a duração derivada dos
   // próprios timestamps dos segments de raciocínio (preservados pelo swap).
-  const duration = frozen ?? (running ? elapsed : segmentsReasoningDuration(segments));
+  const duration = frozen ?? (inFlight ? elapsed : segmentsReasoningDuration(segments));
 
   return (
     <section className="mb-2.5 flex flex-col gap-1">
       <button
         type="button"
-        onClick={() => !running && setExpanded((v) => !v)}
-        disabled={running}
+        onClick={() => !inFlight && setExpanded((v) => !v)}
+        disabled={inFlight}
         className="flex items-center gap-1.5 self-start rounded-md px-1 py-0.5 text-left"
       >
-        {running ? (
+        {inFlight ? (
           <span className="text-shimmer text-[12.5px] font-medium">{t('chat.thinking')}</span>
         ) : (
           <>
