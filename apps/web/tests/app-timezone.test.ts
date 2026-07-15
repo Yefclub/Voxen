@@ -59,7 +59,10 @@ describe('buildInstanceClock', () => {
   });
 
   test('agent instructions include trusted clock block and temporal guidance', () => {
-    const clock = buildInstanceClock(new Date(Date.UTC(2026, 6, 14, 18, 0, 0)), 'America/Sao_Paulo');
+    const clock = buildInstanceClock(
+      new Date(Date.UTC(2026, 6, 14, 18, 0, 0)),
+      'America/Sao_Paulo',
+    );
     const text = buildAgentClockInstructions(clock);
     expect(text).toContain('<instance_clock trusted="true">');
     expect(text).toContain('start_of_local_day_utc=');

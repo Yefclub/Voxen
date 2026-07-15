@@ -160,7 +160,7 @@ export function formatUtcOffset(date: Date, timezone: string): string {
     const raw = parts.find((p) => p.type === 'timeZoneName')?.value ?? '';
     // "GMT-3" | "GMT-03:00" | "GMT+5:30" | "Coordinated Universal Time"
     const m = raw.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/i);
-    if (m) {
+    if (m?.[1] && m[2]) {
       const sign = m[1];
       const hh = m[2].padStart(2, '0');
       const mm = (m[3] ?? '00').padStart(2, '0');

@@ -26,10 +26,7 @@ import type { OrModel } from '../lib/types';
 import { Spinner as Spin } from '../components/ui/spinner';
 import { ModelPicker } from '../components/model-picker';
 import { LOCALES, useI18n, type Locale } from '../lib/i18n';
-import {
-  detectBrowserTimezone,
-  TimezoneSelect,
-} from '../components/timezone-select';
+import { detectBrowserTimezone, TimezoneSelect } from '../components/timezone-select';
 
 interface ModelsResponse {
   chat: OrModel[];
