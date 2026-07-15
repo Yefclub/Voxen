@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.11.0-dev.1784081644",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Tags geradas automaticamente ao adicionar links e conteúdos",
+    "body": "O worker passa a criar tags por IA após o resumo de cada job (vídeo, web, upload,\nX). Conteúdos novos deixam de chegar sem tags; falhas de tag não derrubam o job.",
+    "pr": 400,
+    "author": "Kalyel",
+    "date": "2026-07-14T23:13:54-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/400"
+  },
+  {
+    "version": "0.11.0-dev.1784081644",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Fuso horário da instância e relógio da Vox no chat",
+    "body": "Configuração IANA de fuso no onboarding, em Configurações e em Admin → Usuários.\nA cada turno o agente recebe data/hora local, dia da semana, offset e marcos UTC\npara “hoje” / “esta semana” sem adivinhar o fuso do servidor.",
+    "pr": 398,
+    "author": "Kalyel",
+    "date": "2026-07-14T22:49:24-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/398"
+  },
+  {
     "version": "0.11.0-dev.1784078888",
     "channel": "dev",
     "type": "fix",

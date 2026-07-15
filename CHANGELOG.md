@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.11.0-dev.1784081644 — 2026-07-14 · Dev
+
+### ✨ Tags geradas automaticamente ao adicionar links e conteúdos
+
+O worker passa a criar tags por IA após o resumo de cada job (vídeo, web, upload,
+X). Conteúdos novos deixam de chegar sem tags; falhas de tag não derrubam o job.
+
+## v0.11.0-dev.1784081644 — 2026-07-14 · Dev
+
+### ✨ Fuso horário da instância e relógio da Vox no chat
+
+Configuração IANA de fuso no onboarding, em Configurações e em Admin → Usuários.
+A cada turno o agente recebe data/hora local, dia da semana, offset e marcos UTC
+para “hoje” / “esta semana” sem adivinhar o fuso do servidor.
+
 ## v0.11.0-dev.1784078888 — 2026-07-14 · Dev
 
 ### 🐛 Âncora da mensagem no topo não some na primeira ferramenta
