@@ -51,6 +51,9 @@ manutenção do MCP), `docs/TRANSCRIPT-FORMAT.md`.
   nunca devolvendo o documento inteiro sem intenção explícita.
 - The system shall instruir o agente (instructions do runtime e VOXEN_INSTRUCTIONS
   do MCP) a seguir o fluxo progressivo de dez passos.
+- The system shall instruir o agente in-app a **nunca** expor nomes de ferramentas,
+  parâmetros ou sintaxe de API na resposta final ao usuário; próximos passos em
+  linguagem natural de produto (as tools permanecem internas).
 
 ### Event-driven
 
