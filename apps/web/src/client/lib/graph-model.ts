@@ -131,6 +131,7 @@ export interface SigmaGraphModel {
   reagraphNodes: ReagraphNode[];
   reagraphEdges: ReagraphEdge[];
   positions3d: Map<string, GraphPosition3D>;
+  primaryNodeIds: string[];
   topologyKey: string;
   nodeById: Map<string, GraphNode>;
 }
@@ -382,14 +383,16 @@ export function buildSigmaGraphModel(
   layoutOptions: GraphLayoutOptions = {},
   palette: GraphPalette = resolveGraphPalette('zinc'),
 ): SigmaGraphModel {
-  const layout = buildGraphLayout(data, layoutOptions);
+  const communities = buildGraphCommunities(data);
+  const layout = buildGraphLayout(data, layoutOptions, communities);
   const graph = new Graph<SigmaNodeAttributes, SigmaEdgeAttributes>({
     multi: true,
     type: 'undirected',
   });
   const neighborhoods = new Map<string, Set<string>>();
   const nodeById = new Map(layout.nodes.map((node) => [node.id, node as GraphNode]));
-  const positions3d = buildGraphPositions3D(data);
+  const primaryNodeIds = communities[0]?.nodeIds ?? [];
+  const positions3d = buildGraphPositions3D(data, communities);
   const reagraphNodes: ReagraphNode[] = layout.nodes.map((node) => ({
     id: node.id,
     label: node.label,
@@ -446,27 +449,29 @@ export function buildSigmaGraphModel(
     reagraphNodes,
     reagraphEdges,
     positions3d,
+    primaryNodeIds,
     topologyKey: graphTopologyKey(data),
     nodeById,
   };
 }
 
-export function buildGraphPositions3D(data: GraphResp): Map<string, GraphPosition3D> {
-  const communities = buildGraphCommunities(data);
+export function buildGraphPositions3D(
+  data: GraphResp,
+  communities = buildGraphCommunities(data),
+): Map<string, GraphPosition3D> {
   const positions = new Map<string, GraphPosition3D>();
   const communityPhase = hashAngle(communities.map((community) => community.label).join('|'));
+  const satelliteCount = Math.max(communities.length - 1, 0);
   const communityOrbit =
     communities.length <= 1
       ? 0
-      : Math.min(1_150, 420 + Math.sqrt(Math.max(data.nodes.length, 1)) * 24);
+      : Math.min(1_500, 520 + Math.sqrt(Math.max(data.nodes.length, 1)) * 28);
 
   for (const community of communities) {
-    const center = fibonacciSpherePoint(
-      community.id,
-      communities.length,
-      communityOrbit,
-      communityPhase,
-    );
+    const center =
+      community.id === 0
+        ? { x: 0, y: 0, z: 0 }
+        : fibonacciSpherePoint(community.id - 1, satelliteCount, communityOrbit, communityPhase);
     const localExtent = Math.min(330, 90 + Math.sqrt(community.size) * 15);
     const angleOffset = hashAngle(community.label);
 
@@ -495,37 +500,18 @@ export function buildGraphPositions3D(data: GraphResp): Map<string, GraphPositio
   for (const node of data.nodes) {
     if (!positions.has(node.id)) positions.set(node.id, { x: 0, y: 0, z: 0 });
   }
-  if (positions.size > 0) {
-    const values = [...positions.values()];
-    const center = {
-      x:
-        (Math.min(...values.map((position) => position.x)) +
-          Math.max(...values.map((position) => position.x))) /
-        2,
-      y:
-        (Math.min(...values.map((position) => position.y)) +
-          Math.max(...values.map((position) => position.y))) /
-        2,
-      z:
-        (Math.min(...values.map((position) => position.z)) +
-          Math.max(...values.map((position) => position.z))) /
-        2,
-    };
-    for (const position of positions.values()) {
-      position.x -= center.x;
-      position.y -= center.y;
-      position.z -= center.z;
-    }
-  }
   return positions;
 }
 
-export function buildGraphLayout(data: GraphResp, options: GraphLayoutOptions = {}): GraphLayout {
+export function buildGraphLayout(
+  data: GraphResp,
+  options: GraphLayoutOptions = {},
+  communities = buildGraphCommunities(data),
+): GraphLayout {
   const viewBox = options.viewBox ?? GRAPH_VIEWBOX;
   const minNodeRadius = options.minNodeRadius ?? DEFAULT_MIN_NODE_RADIUS;
   const maxNodeRadius = Math.max(minNodeRadius, options.maxNodeRadius ?? DEFAULT_MAX_NODE_RADIUS);
   const degree = graphDegrees(data.edges);
-  const communities = buildGraphCommunities(data);
   const positions = new Map<string, { x: number; y: number; communityId: number }>();
   const aspect = viewBox.width / viewBox.height;
   const columns = Math.max(

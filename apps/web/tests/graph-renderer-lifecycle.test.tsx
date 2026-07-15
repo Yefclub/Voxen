@@ -10,12 +10,18 @@ import {
 let graphCanvasMounts = 0;
 let graphCanvasUnmounts = 0;
 let graphCanvasRenders = 0;
+const centerGraphMock = mock(() => undefined);
+const fitNodesInViewMock = mock(() => undefined);
+const zoomInMock = mock(() => undefined);
+const zoomOutMock = mock(() => undefined);
 
 const GraphCanvasMock = forwardRef(function GraphCanvasMock(props: Record<string, unknown>, ref) {
   graphCanvasRenders += 1;
   useImperativeHandle(ref, () => ({
-    centerGraph: mock(() => undefined),
-    fitNodesInView: mock(() => undefined),
+    centerGraph: centerGraphMock,
+    fitNodesInView: fitNodesInViewMock,
+    zoomIn: zoomInMock,
+    zoomOut: zoomOutMock,
     getGraph: mock(() => null),
     getControls: mock(() => null),
     exportCanvas: mock(() => ''),
@@ -112,6 +118,10 @@ beforeEach(() => {
   graphCanvasMounts = 0;
   graphCanvasUnmounts = 0;
   graphCanvasRenders = 0;
+  centerGraphMock.mockClear();
+  fitNodesInViewMock.mockClear();
+  zoomInMock.mockClear();
+  zoomOutMock.mockClear();
   listeners.clear();
 });
 
@@ -220,6 +230,30 @@ describe('BrainGraph3DCanvas lifecycle', () => {
         listener({ preventDefault: mock(() => undefined) } as unknown as Event);
     });
     expect(onFallback).toHaveBeenCalledTimes(1);
+
+    await act(async () => renderer.unmount());
+  });
+
+  test('exposes modern 3D camera controls and focuses the primary component', async () => {
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(renderGraph(), { createNodeMock: () => containerMock });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ 'aria-label': 'graph.zoomIn' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': 'graph.zoomOut' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': 'graph.focusCore' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': 'graph.fitAll' }).props.onClick();
+    });
+
+    expect(zoomInMock).toHaveBeenCalledTimes(1);
+    expect(zoomOutMock).toHaveBeenCalledTimes(1);
+    expect(fitNodesInViewMock).toHaveBeenCalledWith(['topic-1', 'entity-1'], {
+      animated: true,
+    });
+    expect(fitNodesInViewMock).toHaveBeenCalledWith(undefined, { animated: true });
 
     await act(async () => renderer.unmount());
   });

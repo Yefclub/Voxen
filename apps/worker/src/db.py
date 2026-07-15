@@ -21,6 +21,7 @@ _pool: asyncpg.Pool | None = None
 
 TOPIC_LIMIT = 8
 TOPIC_MIN_LEN = 4
+BRAIN_TOPIC_INDEX_VERSION = 1
 TOPIC_STOPWORDS = {
     "ainda",
     "algo",
@@ -289,7 +290,7 @@ async def upsert_transcript_brain_node(
         "language": language,
         "transcriptionMethod": transcription_method,
         "thumbnailUrl": thumbnail_url,
-        "topicIndexVersion": 1,
+        "topicIndexVersion": BRAIN_TOPIC_INDEX_VERSION,
     }
     await _remove_transcript_brain_refreshable_sources(conn, user_id, transcript_id)
     row = await conn.fetchrow(
@@ -306,7 +307,7 @@ async def upsert_transcript_brain_node(
             label = EXCLUDED.label,
             description = EXCLUDED.description,
             status = EXCLUDED.status,
-            metadata = EXCLUDED.metadata,
+            metadata = "BrainNode".metadata || EXCLUDED.metadata,
             "sourceType" = EXCLUDED."sourceType",
             "sourceId" = EXCLUDED."sourceId",
             "updatedAt" = NOW()
@@ -406,11 +407,12 @@ async def reindex_missing_transcript_brain_nodes(limit: int = 50) -> int:
             WHERE n.id IS NULL
                OR (
                     t.status = 'ACTIVE'::"ContentStatus"
-                AND COALESCE(n.metadata->>'topicIndexVersion', '') <> '1'
+                AND COALESCE(n.metadata->>'topicIndexVersion', '') <> $1
                )
             ORDER BY t."updatedAt" ASC
-            LIMIT $1
+            LIMIT $2
             """,
+            str(BRAIN_TOPIC_INDEX_VERSION),
             limit,
         )
     count = 0

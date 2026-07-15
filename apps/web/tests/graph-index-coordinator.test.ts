@@ -266,7 +266,10 @@ describe('graph index Redis coordinator', () => {
   });
 
   test('checks lease ownership between every expensive indexing phase', () => {
-    const routeSource = readFileSync(new URL('../src/routes/graph.ts', import.meta.url), 'utf8');
+    const routeSource = readFileSync(
+      new URL('../src/routes/graph.ts', import.meta.url),
+      'utf8',
+    ).replaceAll('\r\n', '\n');
     expect(routeSource).toContain(
       'await reindexLibraryFoldersBrain(userId);\n      await assertLeaseOwnership();\n      await reindexNotesBrain(userId);',
     );

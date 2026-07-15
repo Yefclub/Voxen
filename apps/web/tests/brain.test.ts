@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import app from '../src/index';
-import { BRAIN_INDEX_VERSION } from '../src/lib/brain';
+import { BRAIN_INDEX_VERSION, BRAIN_TOPIC_INDEX_VERSION } from '../src/lib/brain';
 import { db } from '../src/lib/db';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
@@ -195,6 +195,12 @@ describeIfDb('brain indexer', () => {
       },
     });
     expect(evidence.excerpt).toBe('Folder: Pesquisa');
+    const metadata = transcriptNode.metadata as {
+      brainIndexVersion?: number;
+      topicIndexVersion?: number;
+    };
+    expect(metadata.brainIndexVersion).toBe(BRAIN_INDEX_VERSION);
+    expect(metadata.topicIndexVersion).toBe(BRAIN_TOPIC_INDEX_VERSION);
   });
 
   it('GET /api/graph backfills Brain nodes for legacy content', async () => {

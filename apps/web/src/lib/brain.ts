@@ -93,6 +93,7 @@ type SemanticProfile = {
 };
 
 export const BRAIN_INDEX_VERSION = 3;
+export const BRAIN_TOPIC_INDEX_VERSION = 1;
 
 const DESCRIPTION_LIMIT = 800;
 const EVIDENCE_LIMIT = 600;
@@ -222,6 +223,7 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
       createdAt: transcript.createdAt.toISOString(),
       updatedAt: transcript.updatedAt.toISOString(),
       brainIndexVersion: BRAIN_INDEX_VERSION,
+      topicIndexVersion: BRAIN_TOPIC_INDEX_VERSION,
     },
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
