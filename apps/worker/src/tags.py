@@ -109,7 +109,11 @@ def _extract_candidates(raw: str) -> list[str]:
     json_source = fence.group(1) if fence else text
     arr_match = re.search(r"\[[\s\S]*\]", json_source)
     obj_match = re.search(r"\{[\s\S]*\}", json_source)
-    for candidate in (arr_match.group(0) if arr_match else None, obj_match.group(0) if obj_match else None):
+    candidates = (
+        arr_match.group(0) if arr_match else None,
+        obj_match.group(0) if obj_match else None,
+    )
+    for candidate in candidates:
         if not candidate:
             continue
         try:
