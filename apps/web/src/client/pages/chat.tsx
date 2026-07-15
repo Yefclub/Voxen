@@ -826,7 +826,6 @@ export function ChatPage(): React.ReactElement {
     if (!pending) return;
     pendingAutoSendRef.current = null;
     void send(pending);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot handoff after load
   }, [loading, streaming]);
 
   // Abre já no fim (sem animação) na primeira renderização com conteúdo.
