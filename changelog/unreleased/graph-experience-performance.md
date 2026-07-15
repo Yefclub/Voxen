@@ -1,3 +1,8 @@
+---
+tipo: perf
+titulo: Grafo do Brain mais rápido e explorável
+---
+
 # Grafo do Brain mais rápido e explorável
 
 - A visão 2D passa a abrir primeiro, com o modo 3D carregado somente quando
