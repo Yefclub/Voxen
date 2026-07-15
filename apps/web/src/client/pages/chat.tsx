@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowUp,
   Check,
@@ -57,6 +58,7 @@ import {
   shouldReengageFollow,
   type ScrollPhase,
 } from '../lib/chat-scroll';
+import type { ChatHandoffState } from '../lib/chat-handoff';
 import {
   getSoundsEnabled,
   setChatEmpty,
@@ -593,6 +595,8 @@ function Composer({
 
 export function ChatPage(): React.ReactElement {
   const { t } = useI18n();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { data: me } = useMe();
   const firstName = me?.user?.name?.split(' ')[0] ?? t('dashboard.fallbackName');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -610,6 +614,9 @@ export function ChatPage(): React.ReactElement {
   const abortRef = useRef<AbortController | null>(null);
   const streamingAssistantId = useRef<string | null>(null);
   const pendingAnchorIdRef = useRef<string | null>(null);
+  /** Handoff one-shot de outras páginas (detalhe de transcrição, etc.). */
+  const pendingAutoSendRef = useRef<string | null>(null);
+  const autoSendConsumedRef = useRef(false);
   const scrollPhaseRef = useRef<ScrollPhase>('free');
   const spacerHeightRef = useRef(0);
   const reserveEndRef = useRef(0);
@@ -780,6 +787,16 @@ export function ChatPage(): React.ReactElement {
     void refresh();
   }, []);
 
+  // Captura handoff (autoSend) do location.state e limpa a history entry.
+  useEffect(() => {
+    if (autoSendConsumedRef.current) return;
+    const handoff = (location.state as ChatHandoffState | null)?.autoSend?.trim();
+    if (!handoff) return;
+    autoSendConsumedRef.current = true;
+    pendingAutoSendRef.current = handoff;
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: {} });
+  }, [location.pathname, location.search, location.state, navigate]);
+
   // Publica streaming/isEmpty pro shell (topbar lê pra habilitar/mostrar botões).
   useEffect(() => {
     setChatStreaming(streaming);
@@ -801,6 +818,16 @@ export function ChatPage(): React.ReactElement {
       if (!streaming && !isEmpty) setClearOpen(true);
     }
   }, [clearSignal, streaming, isEmpty]);
+
+  // Dispara o handoff assim que o snapshot carregou e o chat está livre.
+  useEffect(() => {
+    if (loading || streaming) return;
+    const pending = pendingAutoSendRef.current;
+    if (!pending) return;
+    pendingAutoSendRef.current = null;
+    void send(pending);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot handoff after load
+  }, [loading, streaming]);
 
   // Abre já no fim (sem animação) na primeira renderização com conteúdo.
   useLayoutEffect(() => {
@@ -908,8 +935,8 @@ export function ChatPage(): React.ReactElement {
     }
   }
 
-  async function send(): Promise<void> {
-    const content = input.trim();
+  async function send(override?: string): Promise<void> {
+    const content = (override ?? input).trim();
     if (!content || streaming) return;
     const localUser: ChatMessage = {
       id: `local-user-${crypto.randomUUID()}`,

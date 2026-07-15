@@ -1,17 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
+  ArrowUp,
   Archive,
   Calendar,
+  Check,
   Clock,
+  Copy,
   ExternalLink,
   FileText,
   Folder,
   Globe,
   Languages,
   Loader2,
+  MessageSquare,
   NotebookPen,
   RotateCcw,
   Sparkles,
@@ -41,6 +45,8 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
+import { cn } from '../lib/utils';
+import { buildTranscriptChatMessage, type ChatHandoffState } from '../lib/chat-handoff';
 
 interface TranscriptDetail {
   id: string;
@@ -131,6 +137,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const [linkedNoteContent, setLinkedNoteContent] = useState('');
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [chatDraft, setChatDraft] = useState('');
 
   async function generateSummary(force: boolean): Promise<void> {
     if (!id) return;
@@ -314,6 +321,18 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     }
   }
 
+  function sendToChat(transcript: TranscriptDetail): void {
+    const text = chatDraft.trim();
+    if (!text) return;
+    const autoSend = buildTranscriptChatMessage({
+      userText: text,
+      transcriptId: transcript.id,
+      title: transcript.title,
+    });
+    const state: ChatHandoffState = { autoSend };
+    navigate('/', { state });
+  }
+
   async function createLinkedNote(transcript: TranscriptDetail): Promise<void> {
     const title = linkedNoteTitle.trim();
     if (!title) {
@@ -376,8 +395,8 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="mx-auto max-w-5xl overflow-x-clip px-4 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-        <Button variant="ghost" size="sm" asChild className="mb-8 -ml-2 hidden sm:inline-flex">
+      <div className="relative mx-auto max-w-5xl overflow-x-clip px-4 pb-28 pt-5 sm:px-6 sm:pb-32 sm:pt-8 lg:px-8 lg:pt-10">
+        <Button variant="ghost" size="sm" asChild className="mb-6 -ml-2 hidden sm:inline-flex">
           <Link to="/transcricoes">
             <ArrowLeft className="h-3.5 w-3.5" />
             {translate('library.detailBack')}
@@ -388,7 +407,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="mb-6 space-y-3 sm:mb-10 sm:space-y-4"
+          className="mb-6 space-y-4 sm:mb-8"
         >
           <div className="flex items-center gap-2 flex-wrap">
             {/* Source primário — clarifica origem do conteúdo */}
@@ -441,7 +460,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </Badge>
             )}
           </div>
-          <h1 className="max-w-full break-words font-display text-2xl font-semibold leading-[1.08] tracking-[-0.02em] text-balance [overflow-wrap:anywhere] sm:text-4xl lg:text-5xl">
+          <h1 className="max-w-full break-words font-display text-2xl font-semibold leading-[1.1] tracking-[-0.03em] text-balance [overflow-wrap:anywhere] sm:text-4xl lg:text-[2.75rem]">
             {t.title}
           </h1>
           {t.channel && (
@@ -449,15 +468,21 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               {t.channel}
             </p>
           )}
+          {canUseContextualActions && (
+            <p className="flex items-center gap-1.5 text-xs text-[var(--color-app-muted)]">
+              <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent-primary)]/80" />
+              {translate('library.chatBarHint')}
+            </p>
+          )}
         </motion.header>
 
-        <div className="grid grid-cols-1 gap-7 lg:grid-cols-[1fr_280px] lg:gap-10">
+        <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-8">
           {/* Coluna principal: resumo + transcrição */}
           <motion.article
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.1 }}
-            className="min-w-0 space-y-7 sm:space-y-10"
+            className="min-w-0 space-y-7 sm:space-y-8"
           >
             <SummaryBlock
               summary={t.summaryMd}
@@ -466,16 +491,16 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               t={translate}
             />
             {t.source === 'WEB' || isVisualTranscript || isDocumentTranscript ? (
-              <section>
-                <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-subtle)] mb-4">
+              <section className="space-y-3">
+                <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-subtle)] sm:text-lg">
                   {isDocumentTranscript
                     ? translate('library.documentAnalysis')
                     : isVisualTranscript
                       ? translate('library.analysis')
                       : translate('library.content')}
                 </h2>
-                <Card elevated>
-                  <CardContent className="px-6 py-5">
+                <Card elevated className="border-[var(--color-app-border)]/80">
+                  <CardContent className="px-5 py-5 sm:px-6">
                     <Markdown>{contentMarkdown}</Markdown>
                   </CardContent>
                 </Card>
@@ -675,6 +700,17 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           </motion.aside>
         </div>
       </div>
+
+      {canUseContextualActions && (
+        <TranscriptChatBar
+          value={chatDraft}
+          onChange={setChatDraft}
+          onSend={() => sendToChat(t)}
+          title={t.title}
+          t={translate}
+        />
+      )}
+
       <ConfirmDialog
         open={confirmRegen}
         onOpenChange={setConfirmRegen}
@@ -697,6 +733,75 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         loading={deleting}
       />
     </AnimatedPage>
+  );
+}
+
+/** Promptbox sticky — mesmo shell visual do Composer do chat (spec 097). */
+function TranscriptChatBar({
+  value,
+  onChange,
+  onSend,
+  title,
+  t,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSend: () => void;
+  title: string;
+  t: TranslateFn;
+}): React.ReactElement {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [value]);
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+      <div className="pointer-events-auto w-full max-w-3xl">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSend();
+          }}
+          className="w-full"
+        >
+          <div className="flex flex-col gap-1.5 rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)]/95 p-2 shadow-xl shadow-black/20 backdrop-blur-md transition-colors focus-within:border-[var(--color-accent-primary)]/50">
+            <p className="truncate px-2 pt-0.5 text-[11px] text-[var(--color-app-muted)]">
+              {t('library.chatBarContext', { title })}
+            </p>
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  onSend();
+                }
+              }}
+              placeholder={t('library.chatBarPlaceholder')}
+              rows={1}
+              className="max-h-40 min-h-9 w-full resize-none bg-transparent px-2 py-1.5 text-sm text-[var(--color-app-fg)] outline-none placeholder:text-[var(--color-app-muted)]"
+            />
+            <div className="flex items-center gap-1.5">
+              <span className="flex-1" />
+              <button
+                type="submit"
+                disabled={!value.trim()}
+                className="grid h-9 w-9 place-items-center rounded-full bg-[var(--color-accent-primary)] text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label={t('chat.send')}
+              >
+                <ArrowUp className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -957,19 +1062,41 @@ function SummaryBlock({
   onGenerate: () => void;
   t: TranslateFn;
 }): React.ReactElement {
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
+
+  async function copySummary(): Promise<void> {
+    if (!summary?.trim()) return;
+    try {
+      await navigator.clipboard.writeText(summary);
+      setCopied(true);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1500);
+      toast.success(t('library.summaryCopied'));
+    } catch {
+      toast.error(t('library.summaryCopyError'));
+    }
+  }
+
   if (!summary) {
     return (
-      <Card elevated>
-        <CardContent className="py-8 px-6 space-y-4">
+      <Card elevated className="overflow-hidden border-[var(--color-app-border)]/80">
+        <CardContent className="space-y-4 px-5 py-7 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/15">
               <Wand2 className="h-4 w-4 text-violet-300" />
             </div>
             <div className="flex-1 space-y-1">
               <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-fg)]">
                 {t('library.summary')}
               </h2>
-              <p className="text-sm text-[var(--color-app-muted)]">
+              <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
                 {t('library.summaryDescription')}
               </p>
             </div>
@@ -998,38 +1125,62 @@ function SummaryBlock({
     );
   }
   return (
-    <section>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <section className="group/summary space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/15">
             <Wand2 className="h-3.5 w-3.5 text-violet-300" />
           </div>
-          <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-fg)]">
+          <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-fg)] sm:text-lg">
             {t('library.summary')}
           </h2>
         </div>
-        <Button
-          onClick={onGenerate}
-          disabled={generating}
-          variant="ghost"
-          size="sm"
-          className="w-full sm:w-auto"
-        >
-          {generating ? (
-            <>
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {t('library.regenerating')}
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-3 w-3" />
-              {t('library.regenerateSummary')}
-            </>
-          )}
-        </Button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            type="button"
+            onClick={() => void copySummary()}
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]"
+            aria-label={t('library.copySummary')}
+            title={t('library.copySummary')}
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+            <span className="text-xs">{copied ? t('common.copied') : t('common.copy')}</span>
+          </Button>
+          <Button
+            onClick={onGenerate}
+            disabled={generating}
+            variant="ghost"
+            size="sm"
+            className="h-8"
+          >
+            {generating ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t('library.regenerating')}
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-3 w-3" />
+                {t('library.regenerateSummary')}
+              </>
+            )}
+          </Button>
+        </div>
       </div>
-      <Card elevated>
-        <CardContent className="px-6 py-5">
+      <Card
+        elevated
+        className={cn(
+          'border-[var(--color-app-border)]/80 transition-colors',
+          'hover:border-[var(--color-app-border-strong)]',
+        )}
+      >
+        <CardContent className="px-5 py-5 sm:px-6">
           <Markdown>{summary}</Markdown>
         </CardContent>
       </Card>
