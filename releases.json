@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784133009",
+    "channel": "dev",
+    "type": "perf",
+    "title": "Brain 3D persistente e fluido",
+    "body": "O Voxen Brain volta a abrir diretamente em 3D com um layout tridimensional\ndeterminístico, adaptativo e sem simulação contínua. O renderer permanece\nmontado durante interações e atualizações, evitando o acúmulo de contextos\nWebGL. A rotação volta a responder diretamente ao gesto, o contexto prioriza\ndesempenho e o fallback 2D cobre ausência ou falha de WebGL2 sem quebrar com\ntipos semânticos de nós.",
+    "pr": 406,
+    "author": "Kalyel",
+    "date": "2026-07-15T13:29:58-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/406"
+  },
+  {
     "version": "0.11.0-dev.1784126586",
     "channel": "dev",
     "type": "perf",
