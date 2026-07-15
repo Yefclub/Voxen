@@ -1,5 +1,7 @@
-### Fixed
+---
+tipo: fix
+titulo: Vox deixa de falar em nomes de ferramentas pro usuário
+---
 
-- Vox deixa de sugerir nomes de ferramentas e sintaxe de API na resposta final
-  (`outline_transcript(...)`, `related(...)`, etc.): o system prompt exige
-  linguagem natural de produto para o usuário.
+O system prompt proíbe citar tools, parâmetros e IDs internos na resposta
+final. Próximos passos passam a ser em linguagem natural de produto.
