@@ -174,6 +174,7 @@ describe('shouldReengageFollow', () => {
     containerBottomViewport: 900,
     composerHeight: 120,
     clientHeight: 800,
+    spacerHeight: 0,
   };
 
   test('stays off while content is far from the composer', () => {
@@ -191,6 +192,7 @@ describe('shouldReengageFollow', () => {
         composerHeight: 0,
         clientHeight: 800,
         contentBottomViewport: 880,
+        spacerHeight: 0,
       }),
     ).toBe(true);
     expect(
@@ -199,8 +201,39 @@ describe('shouldReengageFollow', () => {
         composerHeight: 0,
         clientHeight: 800,
         contentBottomViewport: 850,
+        spacerHeight: 0,
       }),
     ).toBe(false);
+  });
+
+  test('blocks reengage while anchor spacer still reserves space', () => {
+    expect(
+      shouldReengageFollow({
+        ...base,
+        contentBottomViewport: 880,
+        spacerHeight: SPACER_EPSILON_PX + 1,
+      }),
+    ).toBe(false);
+  });
+
+  test('blocks reengage when allowReengage is false (tools/reasoning-only phase)', () => {
+    expect(
+      shouldReengageFollow({
+        ...base,
+        contentBottomViewport: 880,
+        allowReengage: false,
+      }),
+    ).toBe(false);
+  });
+
+  test('allows reengage with residual spacer within epsilon', () => {
+    expect(
+      shouldReengageFollow({
+        ...base,
+        contentBottomViewport: 880,
+        spacerHeight: SPACER_EPSILON_PX,
+      }),
+    ).toBe(true);
   });
 });
 

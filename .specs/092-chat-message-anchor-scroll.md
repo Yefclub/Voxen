@@ -24,7 +24,8 @@ Referência: `Orbital/frontend/src/components/chat/chat-scroll.ts`.
 
 - When the user sends a new message, the system shall anchor that user message near the top of the scroller (gap ~12px) after the bubble mounts, using a spacer if needed.
 - When the assistant response grows during an anchored turn, the system shall shrink the spacer so the anchored message does not jump.
-- When the real content approaches the bottom of the scroller (~3% of viewport, min 24px), the system shall re-engage stick-to-bottom follow.
+- When the real content approaches the bottom of the scroller (~3% of viewport, min 24px), **and** the anchor spacer is exhausted (≤ epsilon), **and** reengage is allowed (final answer text has started, or the turn ended), the system shall re-engage stick-to-bottom follow.
+- While the turn is still only streaming reasoning/tools (no final text yet), the system shall **not** re-engage follow solely because the thinking block filled the viewport — the user message stays anchored.
 - When the user scrolls up during an anchored turn, the system shall exit anchor phase and stop auto-follow until they return near the bottom.
 
 ### Unwanted behavior

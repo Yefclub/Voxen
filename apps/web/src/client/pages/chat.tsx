@@ -610,6 +610,13 @@ export function ChatPage(): React.ReactElement {
   const reserveEndRef = useRef(0);
   const prevScrollTopRef = useRef(0);
   const programmaticScrollRef = useRef(false);
+  /**
+   * Gate do reengage da âncora (spec 092): durante o stream, só libera quando
+   * a resposta final já tem texto. Tools/raciocínio sozinhos não devem
+   * desancorar e voltar pro stick-to-bottom. Lido no ResizeObserver via ref
+   * (o observer é montado uma vez; closure stale).
+   */
+  const allowAnchorReengageRef = useRef(true);
   const { clearSignal } = useChatShell();
   const lastClearSignal = useRef(clearSignal);
   // MutableRefObject: React 19 RefObject.current is readonly and control-flow
@@ -713,6 +720,8 @@ export function ChatPage(): React.ReactElement {
         containerBottomViewport: containerRect.bottom,
         composerHeight: 0,
         clientHeight: container.clientHeight,
+        spacerHeight: spacerHeightRef.current,
+        allowReengage: allowAnchorReengageRef.current,
       })
     ) {
       scrollPhaseRef.current = 'free';
@@ -918,6 +927,8 @@ export function ChatPage(): React.ReactElement {
     streamingAssistantId.current = localAssistant.id;
     liveSegmentsRef.current = null;
     pendingAnchorIdRef.current = localUser.id;
+    // Bloqueia reengage até chegar texto final (tools/raciocínio não desancoram).
+    allowAnchorReengageRef.current = false;
     scrollPhaseRef.current = 'free';
     setMessages((current) => [...current, localUser, localAssistant]);
     setInput('');
@@ -941,6 +952,8 @@ export function ChatPage(): React.ReactElement {
       let buffer = '';
       const apply = (event: StreamEvent): void => {
         if (event.type === 'text') {
+          // Texto final: libera reengage se o conteúdo preencher o viewport.
+          allowAnchorReengageRef.current = true;
           setMessages((current) =>
             current.map((message) => {
               if (message.id !== localAssistant.id) return message;
@@ -1015,6 +1028,8 @@ export function ChatPage(): React.ReactElement {
       abortRef.current = null;
       streamingAssistantId.current = null;
       liveSegmentsRef.current = null;
+      // Turno acabou: se o conteúdo já encheu a reserva, pode colar no fundo.
+      allowAnchorReengageRef.current = true;
       setStreaming(false);
       setStatus(null);
     }

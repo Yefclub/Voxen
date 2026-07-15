@@ -132,13 +132,28 @@ export function reengageThresholdPx(clientHeight: number): number {
  * Religa o follow quando o fim do conteúdo real se aproxima do topo do
  * promptbox (overlay no rodapé do container). Medidas em coordenadas de
  * viewport (getBoundingClientRect).
+ *
+ * Gates extras (evitam saltar a âncora cedo demais no harness multi-tool):
+ * - `spacerHeight > SPACER_EPSILON`: ainda há reserva artificial sob a âncora —
+ *   o conteúdo ainda não consumiu o viewport reservado; não reengage.
+ * - `allowReengage === false`: o turno ainda está só em raciocínio/tools sem
+ *   texto final (ou o caller ainda não liberou) — manter a âncora.
  */
 export function shouldReengageFollow(params: {
   contentBottomViewport: number;
   containerBottomViewport: number;
   composerHeight: number;
   clientHeight: number;
+  /** Altura atual do espaçador de âncora; > epsilon bloqueia reengage. */
+  spacerHeight?: number;
+  /**
+   * Caller libera o reengage (ex.: já há texto final da resposta, ou o stream
+   * terminou). Default true para callers legados/testes só de geometria.
+   */
+  allowReengage?: boolean;
 }): boolean {
+  if (params.allowReengage === false) return false;
+  if ((params.spacerHeight ?? 0) > SPACER_EPSILON_PX) return false;
   const composerTop = params.containerBottomViewport - params.composerHeight;
   const gap = composerTop - params.contentBottomViewport;
   return gap <= reengageThresholdPx(params.clientHeight);
