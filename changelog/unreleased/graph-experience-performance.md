@@ -11,3 +11,5 @@ titulo: Grafo do Brain mais rápido e explorável
   navegação organizados em uma interface compatível com todos os temas.
 - A atualização do Brain deixa de bloquear a resposta enquanto reindexa e
   passa a informar o progresso automaticamente.
+- A conversa canônica passa a tolerar a disputa de criação observada pela
+  suíte concorrente do CI.
