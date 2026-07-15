@@ -31,6 +31,7 @@ import {
   renewGraphIndexLease,
   shouldStartGraphIndex,
   writeGraphIndexStatus,
+  writeGraphIndexStatusWithoutLease,
   writeOwnedGraphIndexStatus,
 } from '../lib/graph-index-coordinator';
 import { shouldScheduleGraphReindex } from '../lib/graph-index-state';
@@ -260,6 +261,21 @@ async function currentGraphIndexStatus(userId: string): Promise<GraphIndexStatus
       localStatus,
       brainReindexInFlight.has(userId),
     );
+    if (
+      status === localStatus &&
+      status !== remoteStatus &&
+      (status.state === 'ready' || status.state === 'error')
+    ) {
+      try {
+        if (!(await writeGraphIndexStatusWithoutLease(userId, status))) {
+          const latestStatus = await readGraphIndexStatus(userId);
+          localGraphIndexStatus.set(userId, latestStatus);
+          return latestStatus;
+        }
+      } catch {
+        // Mantém o terminal local enquanto o Redis ainda não estiver acessível.
+      }
+    }
     localGraphIndexStatus.set(userId, status);
     return status;
   } catch {

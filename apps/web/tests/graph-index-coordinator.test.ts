@@ -11,6 +11,7 @@ import {
   renewGraphIndexLease,
   shouldStartGraphIndex,
   writeGraphIndexStatus,
+  writeGraphIndexStatusWithoutLease,
   writeOwnedGraphIndexStatus,
   type GraphIndexRedis,
 } from '../src/lib/graph-index-coordinator';
@@ -48,6 +49,15 @@ class FakeRedis implements GraphIndexRedis {
     ...args: Array<string | number>
   ): Promise<number> {
     if (numberOfKeys === 2) {
+      if (args.length === 4) {
+        const [leaseKey, statusKey, payload, ttlSec] = args.map(String);
+        this.expire(leaseKey ?? '');
+        this.expire(statusKey ?? '');
+        if (!leaseKey || !statusKey || this.values.has(leaseKey)) return 0;
+        this.values.set(statusKey, payload ?? '');
+        this.expiresAt.set(statusKey, this.now + Number(ttlSec) * 1_000);
+        return 1;
+      }
       const [leaseKey, statusKey, owner, payload, ttlSec] = args.map(String);
       this.expire(leaseKey ?? '');
       this.expire(statusKey ?? '');
@@ -192,6 +202,51 @@ describe('graph index Redis coordinator', () => {
         true,
       ),
     ).toMatchObject({ runId: 'run-remote' });
+  });
+
+  test('keeps the newest local terminal state after Redis recovers', () => {
+    const localReady = {
+      state: 'ready' as const,
+      runId: 'run-local-ready',
+      updatedAt: '2026-07-15T12:03:00.000Z',
+    };
+    const remoteError = {
+      state: 'error' as const,
+      runId: 'run-remote-error',
+      updatedAt: '2026-07-15T12:01:00.000Z',
+    };
+    const localError = {
+      state: 'error' as const,
+      runId: 'run-local-error',
+      updatedAt: '2026-07-15T12:04:00.000Z',
+    };
+    const remoteReady = {
+      state: 'ready' as const,
+      runId: 'run-remote-ready',
+      updatedAt: '2026-07-15T12:02:00.000Z',
+    };
+
+    expect(reconcileGraphIndexStatus(remoteError, localReady, false)).toBe(localReady);
+    expect(reconcileGraphIndexStatus(remoteReady, localError, false)).toBe(localError);
+    expect(reconcileGraphIndexStatus(localReady, remoteError, false)).toBe(localReady);
+  });
+
+  test('publishes a recovered local terminal only when no lease is live', async () => {
+    const redis = new FakeRedis();
+    const localReady = {
+      state: 'ready' as const,
+      runId: 'run-local',
+      updatedAt: '2026-07-15T12:03:00.000Z',
+    };
+
+    expect(await writeGraphIndexStatusWithoutLease('user-1', localReady, redis)).toBe(true);
+    expect(JSON.parse((await redis.get(graphIndexStatusKey('user-1'))) ?? '{}')).toMatchObject(
+      localReady,
+    );
+    await acquireGraphIndexLease('user-1', 'run-remote', redis);
+    expect(
+      await writeGraphIndexStatusWithoutLease('user-1', { ...localReady, state: 'error' }, redis),
+    ).toBe(false);
   });
 
   test('honors an error cooldown but allows an explicit retry', () => {

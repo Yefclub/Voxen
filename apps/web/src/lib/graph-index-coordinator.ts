@@ -37,6 +37,14 @@ end
 return 0
 `;
 
+const WRITE_STATUS_WITHOUT_LEASE_SCRIPT = `
+if redis.call('exists', KEYS[1]) == 0 then
+  redis.call('set', KEYS[2], ARGV[1], 'EX', ARGV[2])
+  return 1
+end
+return 0
+`;
+
 function redisClient(): GraphIndexRedis {
   return getRedisPublisher() as unknown as GraphIndexRedis;
 }
@@ -119,6 +127,22 @@ export async function writeOwnedGraphIndexStatus(
   return Number(result) === 1;
 }
 
+export async function writeGraphIndexStatusWithoutLease(
+  userId: string,
+  status: GraphIndexStatus,
+  redis: GraphIndexRedis = redisClient(),
+): Promise<boolean> {
+  const result = await redis.eval(
+    WRITE_STATUS_WITHOUT_LEASE_SCRIPT,
+    2,
+    graphIndexLeaseKey(userId),
+    graphIndexStatusKey(userId),
+    JSON.stringify(status),
+    graphIndexStatusTtl(status),
+  );
+  return Number(result) === 1;
+}
+
 export async function readGraphIndexStatus(
   userId: string,
   redis: GraphIndexRedis = redisClient(),
@@ -179,11 +203,10 @@ export function reconcileGraphIndexStatus(
   if (remoteStatus.state === 'running') return remoteStatus;
   if (localInFlight && localStatus?.state === 'running') return localStatus;
   if (
-    remoteStatus.state === 'idle' &&
-    remoteStatus.recoverable &&
     localStatus &&
-    localStatus.runId === remoteStatus.runId &&
-    (localStatus.state === 'ready' || localStatus.state === 'error')
+    (localStatus.state === 'ready' || localStatus.state === 'error') &&
+    (remoteStatus.state === 'idle' ||
+      Date.parse(localStatus.updatedAt) > Date.parse(remoteStatus.updatedAt))
   ) {
     return localStatus;
   }
