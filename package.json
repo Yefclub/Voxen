@@ -15,6 +15,9 @@
       "vitest": "^4.1.0",
       "@smithy/types": "4.15.0",
       "@smithy/core": "3.25.1"
+    },
+    "patchedDependencies": {
+      "reagraph@4.32.0": "patches/reagraph@4.32.0.patch"
     }
   },
   "scripts": {

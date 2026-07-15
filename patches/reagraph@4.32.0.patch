@@ -1,0 +1,15 @@
+diff --git a/dist/index.js b/dist/index.js
+index 0117259db955318a0f68428fbe89c33dcfe4f2f4..8f46c126f2dd2314c3aab697de5d5c29d36c6b27 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -5297,8 +5297,8 @@ var GraphCanvas = forwardRef(({ cameraMode = "pan", layoutType = "forceDirected2
+ 	const { selections, actives, collapsedNodeIds } = rest;
+ 	const finalAnimated = edges.length + nodes.length > 400 ? false : animated;
+ 	const gl = useMemo(() => ({
+-		...glOptions,
+-		...GL_DEFAULTS
++		...GL_DEFAULTS,
++		...glOptions
+ 	}), [glOptions]);
+ 	const store = useRef(createStore({
+ 		selections,

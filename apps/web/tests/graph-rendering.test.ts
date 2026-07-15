@@ -1,13 +1,29 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import {
   EDGE_COLORS,
   NODE_COLORS,
   buildGraphLayout,
+  buildGraphPositions3D,
   buildSigmaGraphModel,
   nodePath,
 } from '../src/client/lib/graph-model';
+import { DEFAULT_GRAPH_MODE, resolveGraphRenderProfile } from '../src/client/lib/graph-renderer';
 
 const SVG_SAFE_COLOR = /^(#[0-9a-f]{6}|rgba?\([^)]+\))$/i;
+const GRAPH_PAGE_SOURCE = readFileSync(
+  new URL('../src/client/pages/grafo.tsx', import.meta.url),
+  'utf8',
+);
+const REAGRAPH_PATCH_SOURCE = readFileSync(
+  new URL('../../../patches/reagraph@4.32.0.patch', import.meta.url),
+  'utf8',
+);
+const ROOT_DOCKERFILE_SOURCE = readFileSync(
+  new URL('../../../Dockerfile', import.meta.url),
+  'utf8',
+);
+const WEB_DOCKERFILE_SOURCE = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 
 describe('graph rendering helpers', () => {
   test('uses SVG-compatible colors for graph styles', () => {
@@ -138,12 +154,91 @@ describe('graph rendering helpers', () => {
     expect(model.graph.order).toBe(2);
     expect(model.graph.size).toBe(1);
     expect(model.graph.getNodeAttribute('note-1', 'label')).toBe('Nota conectada');
+    expect(model.graph.getNodeAttribute('topic-1', 'type')).toBe('circle');
+    expect(model.graph.getNodeAttribute('topic-1', 'nodeType')).toBe('topic');
     expect(model.neighborhoods.get('note-1')?.has('topic-1')).toBe(true);
     expect(model.reagraphNodes).toHaveLength(2);
     expect(model.reagraphEdges).toHaveLength(1);
     expect(model.reagraphEdges[0]?.source).toBe('note-1');
     expect(model.reagraphEdges[0]?.target).toBe('topic-1');
     expect(model.nodeById.get('note-1')?.label).toBe('Nota conectada');
+  });
+
+  test('creates stable finite 3D positions with actual depth', () => {
+    const data = {
+      totalNodes: 5,
+      totalEdges: 3,
+      nodes: Array.from({ length: 5 }, (_, index) => ({
+        id: `node-${index}`,
+        key: `node:${index}`,
+        label: `Node ${index}`,
+        description: null,
+        type: index === 0 ? ('topic' as const) : ('entity' as const),
+        sourceType: 'MANUAL' as const,
+        sourceId: null,
+        weight: 5 - index,
+        updatedAt: '2026-07-15T00:00:00.000Z',
+      })),
+      edges: [
+        {
+          id: 'e-1',
+          from: 'node-0',
+          to: 'node-1',
+          kind: 'related_to' as const,
+          method: 'test',
+          confidence: '1',
+        },
+        {
+          id: 'e-2',
+          from: 'node-0',
+          to: 'node-2',
+          kind: 'related_to' as const,
+          method: 'test',
+          confidence: '1',
+        },
+        {
+          id: 'e-3',
+          from: 'node-3',
+          to: 'node-4',
+          kind: 'related_to' as const,
+          method: 'test',
+          confidence: '1',
+        },
+      ],
+    };
+
+    const first = buildGraphPositions3D(data);
+    const second = buildGraphPositions3D(data);
+
+    expect([...first.entries()]).toEqual([...second.entries()]);
+    expect(first.size).toBe(5);
+    for (const position of first.values()) {
+      expect(Number.isFinite(position.x)).toBe(true);
+      expect(Number.isFinite(position.y)).toBe(true);
+      expect(Number.isFinite(position.z)).toBe(true);
+    }
+    expect(
+      new Set([...first.values()].map((position) => position.z.toFixed(3))).size,
+    ).toBeGreaterThan(1);
+  });
+
+  test('defaults to 3D and scales visual work down for dense graphs', () => {
+    expect(DEFAULT_GRAPH_MODE).toBe('3d');
+
+    const detailed = resolveGraphRenderProfile(60, 120, false);
+    expect(detailed.tier).toBe('detailed');
+    expect(detailed.animated).toBe(true);
+    expect(detailed.edgeInterpolation).toBe('curved');
+
+    const balanced = resolveGraphRenderProfile(220, 650, false);
+    expect(balanced.tier).toBe('balanced');
+    expect(balanced.animated).toBe(false);
+
+    const dense = resolveGraphRenderProfile(500, 1_500, false);
+    expect(dense.tier).toBe('dense');
+    expect(dense.labelType).toBe('none');
+    expect(dense.edgeInterpolation).toBe('linear');
+    expect(dense.draggable).toBe(false);
   });
 });
 
@@ -173,5 +268,46 @@ describe('nodePath', () => {
     expect(nodePath(makeNode({ sourceType: null, sourceId: 's1' }))).toBeNull();
     // sem sourceId → null
     expect(nodePath(makeNode({ sourceType: 'TRANSCRIPT', sourceId: null }))).toBeNull();
+  });
+});
+
+describe('graph renderer lifecycle contracts', () => {
+  test('keeps the 3D renderer persistent across data and theme updates', () => {
+    expect(GRAPH_PAGE_SOURCE).toContain('void loadReagraph()');
+    expect(GRAPH_PAGE_SOURCE).not.toContain('setReagraph(null)');
+    expect(GRAPH_PAGE_SOURCE).toContain('}, [onFallback]);');
+    expect(GRAPH_PAGE_SOURCE).toContain('nodes={model?.reagraphNodes ?? EMPTY_REAGRAPH_NODES}');
+  });
+
+  test('uses manual rotation and falls back on WebGL2 creation or context failures', () => {
+    expect(GRAPH_PAGE_SOURCE).toContain('cameraMode="rotate"');
+    expect(GRAPH_PAGE_SOURCE).not.toContain('cameraMode="orbit"');
+    expect(GRAPH_PAGE_SOURCE).toContain("canvas.getContext('webgl2', GRAPH_GL_OPTIONS)");
+    expect(GRAPH_PAGE_SOURCE).not.toContain("canvas.getContext('webgl')");
+    expect(GRAPH_PAGE_SOURCE).toContain("addEventListener('webglcontextcreationerror'");
+    expect(GRAPH_PAGE_SOURCE).toContain('<GraphRendererBoundary onFailure={onFallback}>');
+  });
+
+  test('reuses Sigma and applies caller WebGL options after Reagraph defaults', () => {
+    expect(GRAPH_PAGE_SOURCE).toContain('renderer.setGraph(model.graph)');
+    expect(GRAPH_PAGE_SOURCE).toContain(
+      '[SigmaConstructor, hasModel, onOpen, onSelect, webglFailed]',
+    );
+    expect(REAGRAPH_PATCH_SOURCE.indexOf('+\t\t...GL_DEFAULTS')).toBeLessThan(
+      REAGRAPH_PATCH_SOURCE.indexOf('+\t\t...glOptions'),
+    );
+  });
+
+  test('copies pnpm patches before dependency installation in every image stage', () => {
+    for (const source of [ROOT_DOCKERFILE_SOURCE, WEB_DOCKERFILE_SOURCE]) {
+      expect(source.match(/COPY patches \.\/patches/g)?.length).toBe(2);
+      const stages = source.split(/(?=FROM )/).filter((stage) => stage.includes('pnpm install'));
+      expect(stages).toHaveLength(2);
+      for (const stage of stages) {
+        expect(stage.indexOf('COPY patches ./patches')).toBeLessThan(
+          stage.indexOf('RUN pnpm install'),
+        );
+      }
+    }
   });
 });

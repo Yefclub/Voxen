@@ -105,7 +105,8 @@ export interface SigmaNodeAttributes {
   size: number;
   color: string;
   label: string;
-  type: GraphNodeType;
+  type: 'circle';
+  nodeType: GraphNodeType;
   communityId: number;
   zIndex: number;
   original: GraphNode;
@@ -127,7 +128,15 @@ export interface SigmaGraphModel {
   neighborhoods: Map<string, Set<string>>;
   reagraphNodes: ReagraphNode[];
   reagraphEdges: ReagraphEdge[];
+  positions3d: Map<string, GraphPosition3D>;
+  topologyKey: string;
   nodeById: Map<string, GraphNode>;
+}
+
+export interface GraphPosition3D {
+  x: number;
+  y: number;
+  z: number;
 }
 
 export interface GraphLayoutOptions {
@@ -365,6 +374,7 @@ export function buildSigmaGraphModel(
   });
   const neighborhoods = new Map<string, Set<string>>();
   const nodeById = new Map(layout.nodes.map((node) => [node.id, node as GraphNode]));
+  const positions3d = buildGraphPositions3D(data);
   const reagraphNodes: ReagraphNode[] = layout.nodes.map((node) => ({
     id: node.id,
     label: node.label,
@@ -391,7 +401,8 @@ export function buildSigmaGraphModel(
       size: Math.max(3.5, Math.min(10, node.radius / 3)),
       color: palette.nodes[node.type],
       label: node.label,
-      type: node.type,
+      type: 'circle',
+      nodeType: node.type,
       communityId: node.communityId,
       zIndex: SOURCE_NODE_TYPES.has(node.type) ? 2 : 1,
       original: node,
@@ -412,7 +423,63 @@ export function buildSigmaGraphModel(
     });
   }
 
-  return { data, graph, layout, neighborhoods, reagraphNodes, reagraphEdges, nodeById };
+  return {
+    data,
+    graph,
+    layout,
+    neighborhoods,
+    reagraphNodes,
+    reagraphEdges,
+    positions3d,
+    topologyKey: graphTopologyKey(data),
+    nodeById,
+  };
+}
+
+export function buildGraphPositions3D(data: GraphResp): Map<string, GraphPosition3D> {
+  const communities = buildGraphCommunities(data);
+  const positions = new Map<string, GraphPosition3D>();
+  const communityOrbit =
+    communities.length <= 1
+      ? 0
+      : Math.min(1_150, 420 + Math.sqrt(Math.max(data.nodes.length, 1)) * 24);
+
+  for (const community of communities) {
+    const center = fibonacciSpherePoint(
+      community.id,
+      communities.length,
+      communityOrbit,
+      hashAngle(community.label),
+    );
+    const localExtent = Math.min(330, 90 + Math.sqrt(community.size) * 15);
+    const angleOffset = hashAngle(community.label);
+
+    community.nodeIds.forEach((nodeId, index) => {
+      if (index === 0) {
+        positions.set(nodeId, center);
+        return;
+      }
+
+      const progress = Math.cbrt(index / Math.max(community.size - 1, 1));
+      const localRadius = localExtent * (0.22 + progress * 0.78);
+      const direction = fibonacciSpherePoint(
+        index - 1,
+        Math.max(community.size - 1, 1),
+        localRadius,
+        hashAngle(nodeId) + angleOffset,
+      );
+      positions.set(nodeId, {
+        x: center.x + direction.x,
+        y: center.y + direction.y,
+        z: center.z + direction.z,
+      });
+    });
+  }
+
+  for (const node of data.nodes) {
+    if (!positions.has(node.id)) positions.set(node.id, { x: 0, y: 0, z: 0 });
+  }
+  return positions;
 }
 
 export function buildGraphLayout(data: GraphResp, options: GraphLayoutOptions = {}): GraphLayout {
@@ -528,6 +595,42 @@ function graphDegrees(edges: GraphEdge[]): Map<string, number> {
     degree.set(edge.to, (degree.get(edge.to) ?? 0) + 1);
   }
   return degree;
+}
+
+function fibonacciSpherePoint(
+  index: number,
+  total: number,
+  radius: number,
+  phase: number,
+): GraphPosition3D {
+  if (radius === 0) return { x: 0, y: 0, z: 0 };
+  if (total <= 1) return { x: Math.cos(phase) * radius, y: 0, z: Math.sin(phase) * radius };
+  const normalized = (index + 0.5) / total;
+  const y = 1 - normalized * 2;
+  const radial = Math.sqrt(Math.max(0, 1 - y * y));
+  const angle = phase + index * GOLDEN_ANGLE;
+  return {
+    x: Math.cos(angle) * radial * radius,
+    y: y * radius,
+    z: Math.sin(angle) * radial * radius,
+  };
+}
+
+function graphTopologyKey(data: GraphResp): string {
+  let hash = 2_166_136_261;
+  const add = (value: string): void => {
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16_777_619) >>> 0;
+    }
+  };
+  for (const node of data.nodes) add(node.id);
+  for (const edge of data.edges) add(`${edge.id}:${edge.from}:${edge.to}`);
+  return `${data.nodes.length}:${data.edges.length}:${hash.toString(36)}`;
+}
+
+function hashAngle(value: string): number {
+  return ((hashString(value) % 360) * Math.PI) / 180;
 }
 
 function searchableNodeText(node: GraphNode): string {

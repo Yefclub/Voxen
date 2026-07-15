@@ -12,6 +12,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
+COPY patches ./patches
 COPY apps/web/package.json apps/web/
 COPY packages/shared-types/package.json packages/shared-types/
 RUN pnpm install --frozen-lockfile --ignore-scripts
@@ -26,6 +27,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
+COPY patches ./patches
 COPY apps/web/package.json apps/web/
 COPY packages/shared-types/package.json packages/shared-types/
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts && \
