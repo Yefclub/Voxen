@@ -37,6 +37,7 @@ export function stageLabel(stage: string, t?: TranslateFn): string {
     uploading: t?.('job.stage.uploading') ?? 'Enviando para armazenamento',
     indexing: t?.('job.stage.indexing') ?? 'Indexando',
     summarizing: t?.('job.stage.summarizing') ?? 'Gerando resumo',
+    tagging: t?.('job.stage.tagging') ?? 'Gerando tags',
     done: t?.('job.stage.done') ?? 'Concluído',
     failed: t?.('job.stage.failed') ?? 'Falhou',
     cancelled: t?.('job.stage.cancelled') ?? 'Cancelado',
