@@ -55,9 +55,9 @@ def test_resolve_caps_at_5() -> None:
 def test_resolve_drops_noise() -> None:
     assert resolve_tags_decision('["The content is about anime","Anime"]', []) == ["Anime"]
     assert resolve_tags_decision('["conteúdo","misc","various","Anime"]', []) == ["Anime"]
-    assert resolve_tags_decision(
-        '["a really long tag with too many words here","OK Tag"]', []
-    ) == ["OK Tag"]
+    assert resolve_tags_decision('["a really long tag with too many words here","OK Tag"]', []) == [
+        "OK Tag"
+    ]
 
 
 def test_resolve_empty() -> None:

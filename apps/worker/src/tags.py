@@ -179,9 +179,7 @@ async def generate_content_tags(
 
     excerpt = content.strip().replace("\x00", " ")[:4_000]
     tags_block = (
-        "\n".join(f"- {name}" for name in existing_tags[:120])
-        if existing_tags
-        else "(none yet)"
+        "\n".join(f"- {name}" for name in existing_tags[:120]) if existing_tags else "(none yet)"
     )
     if language == "en":
         system = (
