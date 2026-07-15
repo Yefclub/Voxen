@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.11.0-dev.1784073052 — 2026-07-14 · Dev
+
+### 🎨 Chat ancora a mensagem enviada no topo e deixa espaço para a resposta
+
+Ao enviar uma mensagem, a bolha do usuário sobe para o topo da área do chat
+(estilo ChatGPT/Orbital) e a resposta nasce no espaço abaixo. Um espaçador
+encolhe durante o stream para evitar saltos; rolar para cima cancela o
+acompanhamento automático.
+
 ## v0.11.0-dev.1784071986 — 2026-07-14 · Dev
 
 ### ✨ Agente lista acervo por data de ingestão (resuma minha semana)
