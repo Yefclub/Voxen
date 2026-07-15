@@ -28,4 +28,12 @@ describe('chat message anchor wiring (spec 092)', () => {
     expect(chatSource).toContain('}, [loading, isEmpty]);');
     expect(chatSource).toContain('new ResizeObserver(() => handleContentGrowth())');
   });
+
+  test('gates reengage: spacer + allow only after final text (or turn end)', () => {
+    expect(chatSource).toContain('allowAnchorReengageRef');
+    expect(chatSource).toContain('allowAnchorReengageRef.current = false');
+    expect(chatSource).toContain('allowAnchorReengageRef.current = true');
+    expect(chatSource).toContain('spacerHeight: spacerHeightRef.current');
+    expect(chatSource).toContain('allowReengage: allowAnchorReengageRef.current');
+  });
 });
