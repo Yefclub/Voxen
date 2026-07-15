@@ -90,6 +90,12 @@ export function toolBlockState(tools: readonly ToolLike[]): 'running' | 'error' 
   return hasError ? 'error' : 'done';
 }
 
+export {
+  healStaleRunningTools,
+  isToolErrorOutput,
+  type ToolEventLike as HealableTool,
+} from '../../lib/chat/tool-outcomes';
+
 export type PendingHitl = {
   approvalId: string;
   toolName: string;
