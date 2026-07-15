@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784146544",
+    "channel": "dev",
+    "type": "perf",
+    "title": "Brain 3D abre com estabilidade e permanece centralizado",
+    "body": "O mapa do Brain agora acompanha a indexação por um status leve, sem baixar e\nreconstruir todos os nós e relações repetidamente. O trabalho é coordenado no\nRedis e pode ser retomado com segurança após reinícios, enquanto falhas reais\nparam o ciclo e oferecem uma tentativa explícita em vez de carregar para sempre.\n\nA distribuição 3D também passa a nascer centralizada na origem, reenquadra a\ncâmera quando a topologia muda e usa cores compatíveis com o renderer, reduzindo\ntravamentos e avisos repetidos durante a navegação.",
+    "pr": 408,
+    "author": "Kalyel",
+    "date": "2026-07-15T17:15:30-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/408"
+  },
+  {
     "version": "0.11.0-dev.1784133009",
     "channel": "dev",
     "type": "perf",
