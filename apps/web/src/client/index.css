@@ -136,6 +136,25 @@
   --theme-focus: oklch(52% 0.18 290 / 0.5);
 }
 
+.graph-canvas-grid {
+  background-color: var(--color-app-bg);
+  background-image:
+    radial-gradient(circle at 50% 38%, var(--color-accent-violet-soft), transparent 46%),
+    linear-gradient(
+      color-mix(in srgb, var(--color-app-border) 58%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-app-border) 58%, transparent) 1px,
+      transparent 1px
+    );
+  background-size:
+    auto,
+    44px 44px,
+    44px 44px;
+}
+
 @layer base {
   html {
     min-height: 100%;

@@ -47,6 +47,32 @@ function extractCookie(res: Response): string {
   return set.split(';')[0] ?? '';
 }
 
+interface GraphTestResponse {
+  indexing: boolean;
+  nodes: Array<{
+    id: string;
+    key: string;
+    type: string;
+    sourceType: string | null;
+    source?: string;
+  }>;
+  edges: Array<{ from: string; to: string; kind: string; method: string }>;
+}
+
+async function waitForGraphReindex(cookie: string, force = true): Promise<GraphTestResponse> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const query = attempt === 0 && force ? 'force=1' : `refresh=1&t=${attempt}`;
+    const response = await app.fetch(
+      new Request(`http://localhost/api/graph?${query}`, { headers: { cookie } }),
+    );
+    if (response.status !== 200) throw new Error(`Graph respondeu ${response.status}`);
+    const body = (await response.json()) as GraphTestResponse;
+    if (!body.indexing) return body;
+    await Bun.sleep(25);
+  }
+  throw new Error('Reindex do Brain não terminou dentro do timeout do teste.');
+}
+
 describeIfDb('brain indexer', () => {
   beforeEach(async () => {
     await wipeDb();
@@ -193,22 +219,7 @@ describeIfDb('brain indexer', () => {
 
     expect(await db.brainNode.count({ where: { userId: user.id } })).toBe(0);
 
-    const graph = await app.fetch(
-      new Request('http://localhost/api/graph?force=1', {
-        headers: { cookie },
-      }),
-    );
-    expect(graph.status).toBe(200);
-    const body = (await graph.json()) as {
-      nodes: Array<{
-        id: string;
-        key: string;
-        type: string;
-        sourceType: string | null;
-        source?: string;
-      }>;
-      edges: Array<{ from: string; to: string; kind: string; method: string }>;
-    };
+    const body = await waitForGraphReindex(cookie);
     expect(body.nodes).toContainEqual(
       expect.objectContaining({
         key: `TRANSCRIPT:${transcript.id}`,
@@ -277,12 +288,7 @@ describeIfDb('brain indexer', () => {
       },
     });
 
-    const graph = await app.fetch(
-      new Request('http://localhost/api/graph?force=1', {
-        headers: { cookie },
-      }),
-    );
-    expect(graph.status).toBe(200);
+    await waitForGraphReindex(cookie);
 
     const noteNode = await db.brainNode.findUniqueOrThrow({
       where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
@@ -358,12 +364,7 @@ describeIfDb('brain indexer', () => {
       },
     });
 
-    const graph = await app.fetch(
-      new Request('http://localhost/api/graph?force=1', {
-        headers: { cookie },
-      }),
-    );
-    expect(graph.status).toBe(200);
+    await waitForGraphReindex(cookie);
 
     const firstNode = await db.brainNode.findUniqueOrThrow({
       where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${first.id}` } },
@@ -426,10 +427,7 @@ describeIfDb('brain indexer', () => {
       data: { metadata: { brainIndexVersion: 1 } },
     });
 
-    const graph = await app.fetch(
-      new Request('http://localhost/api/graph', { headers: { cookie } }),
-    );
-    expect(graph.status).toBe(200);
+    await waitForGraphReindex(cookie, false);
 
     const node = await db.brainNode.findUniqueOrThrow({
       where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
@@ -461,12 +459,7 @@ describeIfDb('brain indexer', () => {
       },
     });
 
-    const graph = await app.fetch(
-      new Request('http://localhost/api/graph?force=1', {
-        headers: { cookie },
-      }),
-    );
-    expect(graph.status).toBe(200);
+    await waitForGraphReindex(cookie);
     expect(
       await db.brainNode.findUnique({
         where: { userId_key: { userId: user.id, key: 'TOPIC:automacao' } },

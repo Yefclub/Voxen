@@ -115,12 +115,6 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   // leve (sem fetches nem árvore de notas viva por trás).
   if (!isDesktop) return null;
 
-  // Em /grafo a navegação lateral some — o grafo ocupa a tela toda (o Topbar
-  // permanece, e a barra flutuante do grafo oferece o "voltar").
-  if (location.pathname === '/grafo' || location.pathname.startsWith('/grafo/')) {
-    return null;
-  }
-
   // Colapsada é o padrão em TODAS as páginas desktop (ver `sidebar-state.ts`):
   // mostra o rail fino de ícones com tooltip. Expandir persiste (fica aberta
   // até o usuário recolher de novo) — um único mecanismo de colapso, sem
@@ -160,7 +154,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
 
 /**
  * Rail vertical de ícones — exibido quando a sidebar está colapsada, o padrão
- * em toda página desktop (exceto /grafo, que não monta sidebar). Botão de
+ * em toda página desktop. Botão de
  * expandir no topo + atalhos de navegação (sem "Início", redundante — o
  * desktop já tem `/` como chat) com tooltip do nome no hover. Desktop-only.
  */
@@ -479,14 +473,10 @@ function NotasModeBody({
 
 export function SidebarSpacer(): React.ReactElement | null {
   const { collapsed } = useSidebarCollapsed();
-  const location = useLocation();
   const isDesktop = useIsDesktop();
-  const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
   // No mobile não há sidebar montada — sem spacer (evita reservar largura).
   if (!isDesktop) return null;
-  // /grafo não tem sidebar (full-bleed); colapsada reserva a largura do rail;
-  // expandida reserva a largura da sidebar cheia.
-  const width = isGraph ? 0 : collapsed ? RAIL_WIDTH + 16 : SIDEBAR_WIDTH + 32;
+  const width = collapsed ? RAIL_WIDTH + 16 : SIDEBAR_WIDTH + 32;
   return (
     <motion.div
       className="hidden md:block shrink-0"

@@ -20,6 +20,7 @@ import {
 } from '../lib/brain';
 import { db } from '../lib/db';
 import { graphCacheKey, invalidateGraphCache } from '../lib/graph-cache';
+import { isGraphSnapshotIndexing, shouldScheduleGraphReindex } from '../lib/graph-index-state';
 import { getRedisPublisher } from '../lib/redis';
 
 type Vars = { userId: string };
@@ -102,10 +103,11 @@ const CACHE_TTL_SEC = 60;
 graphRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const force = c.req.query('force') === '1';
+  const refresh = c.req.query('refresh') === '1';
 
   // Cache em Redis 60s
   const cacheKey = graphCacheKey(userId);
-  if (!force) {
+  if (!force && !refresh) {
     try {
       const cached = await getRedisPublisher().get(cacheKey);
       if (cached) {
@@ -117,6 +119,10 @@ graphRoutes.get('/', async (c) => {
   }
 
   await ensureBrainCoverage(userId, force);
+  // Captura o estado antes de ler o snapshot. Se o job terminar no meio das
+  // queries, ainda devolvemos indexing=true e não recriamos um cache antigo
+  // depois da invalidação feita pelo próprio reindex.
+  const indexingAtReadStart = isBrainReindexInFlight(userId);
 
   const rawNodes = await db.brainNode.findMany({
     where: { userId, status: 'ACTIVE' },
@@ -187,16 +193,19 @@ graphRoutes.get('/', async (c) => {
   }));
 
   const insights = buildInsights(nodes, edges, degree);
+  const indexing = isGraphSnapshotIndexing(indexingAtReadStart, isBrainReindexInFlight(userId));
   const response = {
     nodes,
     edges,
     totalNodes: nodes.length,
     totalEdges: edges.length,
     insights,
+    indexing,
+    generatedAt: new Date().toISOString(),
   };
   // Não cacheia enquanto um reindex está em andamento: o estado atual está
   // prestes a mudar e o reindex invalida o cache ao terminar.
-  if (!isBrainReindexInFlight(userId)) {
+  if (!indexing) {
     try {
       await getRedisPublisher().set(cacheKey, JSON.stringify(response), 'EX', CACHE_TTL_SEC);
     } catch {
@@ -236,17 +245,9 @@ function scheduleBrainReindex(userId: string): void {
   })();
 }
 
-// Acima deste número de fontes (transcrições + notas + pastas), reindexar de
-// forma síncrona dentro do GET demora demais e estoura o proxy/healthcheck
-// (502). Bibliotecas até esse tamanho reindexam na hora (resposta imediata já
-// coberta); maiores vão para o background.
-const SYNC_REINDEX_MAX_SOURCES = 25;
-
-// Decide se o Brain precisa reindexar. Bibliotecas pequenas reindexam de forma
-// síncrona (o grafo sai pronto na mesma resposta). Bibliotecas grandes agendam
-// o reindex em BACKGROUND e o handler devolve o estado materializado atual na
-// hora — o grafo se atualiza sozinho no próximo load (o cache é invalidado ao
-// fim). Isso mata o 502 causado pelo reindex síncrono da biblioteca inteira.
+// Decide se o Brain precisa reindexar e sempre agenda o passe em background.
+// O GET devolve o snapshot materializado atual inclusive em bibliotecas
+// pequenas: o caminho interativo nunca executa ingestão ou extração completa.
 async function ensureBrainCoverage(userId: string, force: boolean): Promise<void> {
   const [transcripts, notes, folders, brainNodes, staleSourceNodes] = await Promise.all([
     db.transcript.count({ where: { userId, status: 'ACTIVE' } }),
@@ -263,20 +264,15 @@ async function ensureBrainCoverage(userId: string, force: boolean): Promise<void
   ]);
   const expectedSourceNodes = transcripts + notes + folders;
   if (
-    !force &&
-    (expectedSourceNodes === 0 || (brainNodes >= expectedSourceNodes && staleSourceNodes === 0))
+    shouldScheduleGraphReindex({
+      force,
+      expectedSourceNodes,
+      indexedSourceNodes: brainNodes,
+      staleSourceNodes,
+    })
   ) {
-    return;
-  }
-
-  if (expectedSourceNodes > SYNC_REINDEX_MAX_SOURCES) {
     scheduleBrainReindex(userId);
-    return;
   }
-
-  await reindexLibraryFoldersBrain(userId);
-  await reindexNotesBrain(userId);
-  await reindexTranscriptsBrain(userId);
 }
 
 async function countStaleBrainSourceNodes(userId: string): Promise<number> {

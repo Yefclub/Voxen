@@ -2,26 +2,15 @@ import { describe, expect, test } from 'bun:test';
 import {
   buildGraphLayout,
   buildSigmaGraphModel,
-  resolveDefaultIs3d,
   resolveGraphViewBox,
   resolveNodeRadiusBounds,
-} from '../src/client/pages/grafo';
+} from '../src/client/lib/graph-model';
 
 const DEFAULT_VIEWBOX_AREA = 1000 * 620;
 
 function areaOf(box: { width: number; height: number }): number {
   return box.width * box.height;
 }
-
-describe('resolveDefaultIs3d', () => {
-  test('defaults to 3D on desktop viewports', () => {
-    expect(resolveDefaultIs3d(true)).toBe(true);
-  });
-
-  test('defaults to 2D on mobile/narrow viewports — drag-to-rotate is a bad touch gesture', () => {
-    expect(resolveDefaultIs3d(false)).toBe(false);
-  });
-});
 
 describe('resolveGraphViewBox', () => {
   test('falls back to the default landscape viewBox when unmeasured', () => {

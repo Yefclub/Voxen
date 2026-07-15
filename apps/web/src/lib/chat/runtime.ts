@@ -125,12 +125,21 @@ type ActiveMessage = {
 };
 
 export async function getOrCreateConversation(userId: string) {
-  return db.conversation.upsert({
-    where: { userId },
-    create: { userId, title: 'Vox' },
-    update: {},
-    select: { id: true, userId: true, compactionCount: true, updatedAt: true },
-  });
+  const select = { id: true, userId: true, compactionCount: true, updatedAt: true } as const;
+  try {
+    return await db.conversation.upsert({
+      where: { userId },
+      create: { userId, title: 'Vox' },
+      update: {},
+      select,
+    });
+  } catch (error) {
+    // Prisma pode implementar este upsert como read + create. Duas primeiras
+    // chamadas concorrentes então disputam o índice único de userId; a que
+    // perde deve reutilizar a conversa que acabou de ser confirmada.
+    if (!(error instanceof Error && 'code' in error && error.code === 'P2002')) throw error;
+    return db.conversation.findUniqueOrThrow({ where: { userId }, select });
+  }
 }
 
 export async function getChatSnapshot(userId: string) {

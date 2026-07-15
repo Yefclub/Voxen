@@ -5,7 +5,7 @@ import {
   buildGraphLayout,
   buildSigmaGraphModel,
   nodePath,
-} from '../src/client/pages/grafo';
+} from '../src/client/lib/graph-model';
 
 const SVG_SAFE_COLOR = /^(#[0-9a-f]{6}|rgba?\([^)]+\))$/i;
 
