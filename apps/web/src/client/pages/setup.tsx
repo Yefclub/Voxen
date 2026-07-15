@@ -23,6 +23,10 @@ import type { OrModel } from '../lib/types';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ModelPicker } from '../components/model-picker';
 import { LOCALES, useI18n, type Locale } from '../lib/i18n';
+import {
+  detectBrowserTimezone,
+  TimezoneSelect,
+} from '../components/timezone-select';
 
 interface ModelsResponse {
   chat: OrModel[];
@@ -36,6 +40,7 @@ interface ModelsResponse {
 interface SetupStatus {
   complete: boolean;
   language: Locale;
+  timezone: string;
   chatModel: string | null;
   transcriptionModel: string | null;
   webSearchModel: string | null;
@@ -52,6 +57,7 @@ export function SetupPage(): React.ReactElement {
   const [step, setStep] = useState<Step>('loading');
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [appLanguage, setAppLanguage] = useState<Locale>(locale);
+  const [appTimezone, setAppTimezone] = useState(() => detectBrowserTimezone());
   const [apiKey, setApiKey] = useState('');
   const [chatModel, setChatModel] = useState('');
   const [transcriptionModel, setTranscriptionModel] = useState('');
@@ -74,6 +80,7 @@ export function SetupPage(): React.ReactElement {
       setStatus(s);
       setAppLanguage(s.language);
       setLocale(s.language);
+      if (s.timezone) setAppTimezone(s.timezone);
       if (!s.complete) return;
       setChatModel(s.chatModel ?? '');
       setTranscriptionModel(s.transcriptionModel ?? '');
@@ -193,6 +200,7 @@ export function SetupPage(): React.ReactElement {
     try {
       const body: Record<string, string | boolean> = {
         app_language: appLanguage,
+        app_timezone: appTimezone,
         default_chat_model: chatModel,
         default_transcription_model: transcriptionModel,
       };
@@ -447,6 +455,18 @@ export function SetupPage(): React.ReactElement {
                           </span>
                         </button>
                       ))}
+                    </div>
+                    <div className="mt-5">
+                      <TimezoneSelect
+                        id="setup-timezone"
+                        value={appTimezone}
+                        onChange={(next) => {
+                          setSaved(false);
+                          setAppTimezone(next);
+                        }}
+                        label={t('setup.timezone.title')}
+                        hint={t('setup.timezone.description')}
+                      />
                     </div>
                   </CardContent>
                 </Card>

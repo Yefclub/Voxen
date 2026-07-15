@@ -12,7 +12,8 @@
 import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
-import { deleteSetting, getSetting, setSetting } from '../lib/settings';
+import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
+import { deleteSetting, getAppTimezone, getSetting, setSetting } from '../lib/settings';
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
 
 type AdminVariables = {
@@ -107,20 +108,44 @@ adminRoutes.post('/usuarios/:id/reject', async (c) => {
   return c.json({ user: updated });
 });
 
-// GET /api/admin/instance — estado da instância (allow_signups)
+// GET /api/admin/instance — estado da instância (allow_signups + timezone)
 adminRoutes.get('/instance', async (c) => {
-  const allowSignupsRaw = await getSetting('allow_signups').catch(() => null);
-  return c.json({ allowSignups: allowSignupsRaw !== 'false' });
+  const [allowSignupsRaw, timezone] = await Promise.all([
+    getSetting('allow_signups').catch(() => null),
+    getAppTimezone().catch(() => 'America/Sao_Paulo'),
+  ]);
+  return c.json({ allowSignups: allowSignupsRaw !== 'false', timezone });
 });
 
-// PATCH /api/admin/instance — atualiza flag de cadastros abertos
+// PATCH /api/admin/instance — cadastros abertos e/ou fuso da instância
 adminRoutes.patch('/instance', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-  if (typeof body.allowSignups !== 'boolean') {
-    return c.json({ error: 'Campo "allowSignups" obrigatório (boolean).' }, 400);
+  const hasSignups = typeof body.allowSignups === 'boolean';
+  const hasTimezone = typeof body.timezone === 'string';
+  if (!hasSignups && !hasTimezone) {
+    return c.json(
+      { error: 'Envie "allowSignups" (boolean) e/ou "timezone" (IANA) para atualizar.' },
+      400,
+    );
   }
-  await setSetting('allow_signups', body.allowSignups ? 'true' : 'false');
-  return c.json({ allowSignups: body.allowSignups });
+  if (hasTimezone) {
+    const tz = String(body.timezone).trim();
+    if (!isValidIanaTimezone(tz)) {
+      return c.json({ error: 'Timezone IANA inválido.' }, 400);
+    }
+    await setSetting('app_timezone', normalizeAppTimezone(tz));
+  }
+  if (hasSignups) {
+    await setSetting('allow_signups', body.allowSignups ? 'true' : 'false');
+  }
+  const [allowSignupsRaw, timezone] = await Promise.all([
+    getSetting('allow_signups').catch(() => null),
+    getAppTimezone(),
+  ]);
+  return c.json({
+    allowSignups: allowSignupsRaw !== 'false',
+    timezone,
+  });
 });
 
 // GET /api/admin/mcp — estado do MCP server (token configurado? qual user?).

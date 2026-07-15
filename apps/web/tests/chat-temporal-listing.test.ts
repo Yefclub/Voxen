@@ -43,7 +43,9 @@ describe('agent temporal listing tools (spec 093)', () => {
   });
 
   test('AGENT_INSTRUCTIONS prefer temporal list tools for weekly intake', () => {
-    expect(runtimeSource).toContain('list_transcripts / list_notes com since/until');
+    expect(runtimeSource).toContain('list_transcripts / list_notes com');
+    expect(runtimeSource).toContain('since/until em ISO-8601 UTC');
+    expect(runtimeSource).toContain('<instance_clock>');
     expect(runtimeSource).toContain('NÃO diga que só busca por termo');
   });
 });

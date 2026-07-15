@@ -620,6 +620,12 @@ const ptBRMessages = {
   'admin.users.signupOpenCopy': 'Qualquer pessoa pode criar conta; você aprova cada uma.',
   'admin.users.signupClosedCopy': 'Ninguém mais consegue criar conta. Só você usa a instância.',
   'admin.users.allowSignups': 'Permitir novos cadastros',
+  'admin.users.timezoneTitle': 'Fuso horário da instância',
+  'admin.users.timezoneDescription':
+    'Define o relógio da Vox: “hoje”, “esta semana” e listagens temporais no chat usam este fuso.',
+  'admin.users.timezoneHint': 'Alteração salva na hora. Formato IANA (ex.: America/Sao_Paulo).',
+  'admin.users.timezoneSaved': 'Fuso horário atualizado.',
+  'admin.users.timezoneSavedDescription': 'Instância em {timezone}.',
   'admin.users.pendingApproval': 'Aguardando aprovação',
   'admin.users.noPending': 'Nenhum cadastro pendente.',
   'admin.users.registered': 'Cadastrou-se {time}',
@@ -945,13 +951,20 @@ const ptBRMessages = {
     'A interface muda agora e a escolha fica salva para esta instância ao finalizar o onboarding.',
   'onboarding.language.ptHint': 'Idioma principal do projeto e da documentação.',
   'onboarding.language.enHint': 'English interface foundation for open-source users.',
-  'onboarding.connection.eyebrow': '02 · Conexão',
+  'onboarding.timezone.eyebrow': '02 · Fuso horário',
+  'onboarding.timezone.title': 'Qual o fuso da sua instância?',
+  'onboarding.timezone.sub':
+    'A Vox usa este fuso para “hoje”, “esta semana” e listas temporais. Detectamos o do navegador — ajuste se estiver errado.',
+  'onboarding.timezone.label': 'Fuso horário (IANA)',
+  'onboarding.timezone.hint':
+    'Ex.: America/Sao_Paulo. Você pode mudar depois em Admin → Usuários ou em Configurações.',
+  'onboarding.connection.eyebrow': '03 · Conexão',
   'onboarding.connection.title': 'Conecte com a OpenRouter',
   'onboarding.connection.sub':
     'Uma chave dá acesso aos modelos de transcrição (Whisper) e ao agente que conversa com sua biblioteca.',
   'onboarding.keyCta': 'Não tem chave? Gerar agora',
   'onboarding.validateContinue': 'Validar e continuar',
-  'onboarding.models.eyebrow': '03 · Modelos',
+  'onboarding.models.eyebrow': '04 · Modelos',
   'onboarding.models.title': 'Escolha os modelos padrão',
   'onboarding.models.sub':
     'Whisper Large Turbo é a melhor relação custo/qualidade para transcrição. Para o chat, prefira modelos com contexto grande.',
@@ -968,7 +981,7 @@ const ptBRMessages = {
     'Modelos OpenRouter com input nativo de arquivo/PDF. Vazio = análise documental desabilitada.',
   'onboarding.models.x': 'X / Grok',
   'onboarding.models.xHint': 'Analisa posts e threads do X com Grok/xAI e busca nativa no X.',
-  'onboarding.mode.eyebrow': '04 · Modo de uso',
+  'onboarding.mode.eyebrow': '05 · Modo de uso',
   'onboarding.mode.title': 'Quem vai usar esta instância?',
   'onboarding.mode.sub':
     'Você pode mudar essa configuração depois nas configurações administrativas.',
@@ -976,7 +989,7 @@ const ptBRMessages = {
   'onboarding.mode.teamDesc': 'Permitir que outros usuários se cadastrem (você aprova cada um).',
   'onboarding.mode.solo': 'Apenas você',
   'onboarding.mode.soloDesc': 'Fechar cadastros novos. Ninguém mais consegue criar conta.',
-  'onboarding.profile.eyebrow': '05 · Perfil (opcional)',
+  'onboarding.profile.eyebrow': '06 · Perfil (opcional)',
   'onboarding.profile.title': 'Coloque sua cara nisso',
   'onboarding.profile.sub': 'Adicione uma foto se quiser — ou pule e termine agora.',
   'onboarding.profile.upload': 'Enviar imagem',
@@ -1007,6 +1020,9 @@ const ptBRMessages = {
   'setup.language.title': 'Idioma da plataforma',
   'setup.language.description':
     'Define o idioma padrão da interface para esta instância. A mudança é aplicada na hora e persistida ao salvar.',
+  'setup.timezone.title': 'Fuso horário da instância',
+  'setup.timezone.description':
+    'Usado pelo chat (hoje/semana) e como referência temporal da Vox. Formato IANA (ex.: America/Sao_Paulo).',
   'setup.openrouter.title': 'OpenRouter',
   'setup.openrouter.description.active':
     'A chave salva permanece cifrada. Cole uma nova apenas quando quiser substituir a atual.',
@@ -1647,6 +1663,12 @@ const enMessages: Record<I18nKey, string> = {
   'admin.users.signupOpenCopy': 'Anyone can create an account; you approve each one.',
   'admin.users.signupClosedCopy': 'Nobody else can create an account. Only you use this instance.',
   'admin.users.allowSignups': 'Allow new signups',
+  'admin.users.timezoneTitle': 'Instance timezone',
+  'admin.users.timezoneDescription':
+    'Defines Vox’s clock: “today”, “this week”, and temporal listings in chat use this zone.',
+  'admin.users.timezoneHint': 'Saved immediately. IANA format (e.g. America/Sao_Paulo).',
+  'admin.users.timezoneSaved': 'Timezone updated.',
+  'admin.users.timezoneSavedDescription': 'Instance set to {timezone}.',
   'admin.users.pendingApproval': 'Awaiting approval',
   'admin.users.noPending': 'No pending signups.',
   'admin.users.registered': 'Signed up {time}',
@@ -1969,13 +1991,20 @@ const enMessages: Record<I18nKey, string> = {
     'The interface changes immediately and the choice is saved for this instance when onboarding is completed.',
   'onboarding.language.ptHint': 'Project and documentation primary language.',
   'onboarding.language.enHint': 'English interface foundation for open-source users.',
-  'onboarding.connection.eyebrow': '02 · Connection',
+  'onboarding.timezone.eyebrow': '02 · Timezone',
+  'onboarding.timezone.title': 'What is this instance’s timezone?',
+  'onboarding.timezone.sub':
+    'Vox uses this zone for “today”, “this week”, and temporal listings. We detected your browser zone — change it if wrong.',
+  'onboarding.timezone.label': 'Timezone (IANA)',
+  'onboarding.timezone.hint':
+    'E.g. America/Sao_Paulo. You can change it later under Admin → Users or Settings.',
+  'onboarding.connection.eyebrow': '03 · Connection',
   'onboarding.connection.title': 'Connect OpenRouter',
   'onboarding.connection.sub':
     'One key gives access to transcription models (Whisper) and the agent that chats with your library.',
   'onboarding.keyCta': 'No key yet? Generate one now',
   'onboarding.validateContinue': 'Validate and continue',
-  'onboarding.models.eyebrow': '03 · Models',
+  'onboarding.models.eyebrow': '04 · Models',
   'onboarding.models.title': 'Choose default models',
   'onboarding.models.sub':
     'Whisper Large Turbo is the best cost/quality option for transcription. For chat, prefer large-context models.',
@@ -1992,14 +2021,14 @@ const enMessages: Record<I18nKey, string> = {
     'OpenRouter models with native file/PDF input. Empty = document analysis disabled.',
   'onboarding.models.x': 'X / Grok',
   'onboarding.models.xHint': 'Analyzes X posts and threads with Grok/xAI and native X search.',
-  'onboarding.mode.eyebrow': '04 · Usage mode',
+  'onboarding.mode.eyebrow': '05 · Usage mode',
   'onboarding.mode.title': 'Who will use this instance?',
   'onboarding.mode.sub': 'You can change this later in the administrative settings.',
   'onboarding.mode.team': 'Team',
   'onboarding.mode.teamDesc': 'Allow other users to sign up (you approve each one).',
   'onboarding.mode.solo': 'Only you',
   'onboarding.mode.soloDesc': 'Close new signups. Nobody else can create an account.',
-  'onboarding.profile.eyebrow': '05 · Profile (optional)',
+  'onboarding.profile.eyebrow': '06 · Profile (optional)',
   'onboarding.profile.title': 'Make it yours',
   'onboarding.profile.sub': 'Add a photo if you want, or skip and finish now.',
   'onboarding.profile.upload': 'Upload image',
@@ -2029,6 +2058,9 @@ const enMessages: Record<I18nKey, string> = {
   'setup.language.title': 'Platform language',
   'setup.language.description':
     'Defines the default UI language for this instance. The change is applied immediately and persisted when you save.',
+  'setup.timezone.title': 'Instance timezone',
+  'setup.timezone.description':
+    'Used by chat (“today”/“this week”) and as Vox’s temporal reference. IANA format (e.g. America/Sao_Paulo).',
   'setup.openrouter.title': 'OpenRouter',
   'setup.openrouter.description.active':
     'The saved key remains encrypted. Paste a new one only when you want to replace it.',

@@ -26,6 +26,10 @@ import type { OrModel } from '../lib/types';
 import { Spinner as Spin } from '../components/ui/spinner';
 import { ModelPicker } from '../components/model-picker';
 import { LOCALES, useI18n, type Locale } from '../lib/i18n';
+import {
+  detectBrowserTimezone,
+  TimezoneSelect,
+} from '../components/timezone-select';
 
 interface ModelsResponse {
   chat: OrModel[];
@@ -36,7 +40,7 @@ interface ModelsResponse {
   web: OrModel[];
 }
 
-type Step = 'idioma' | 'key' | 'modelos' | 'modo' | 'perfil' | 'pronto';
+type Step = 'idioma' | 'fuso' | 'key' | 'modelos' | 'modo' | 'perfil' | 'pronto';
 
 export function OnboardingPage(): React.ReactElement {
   const navigate = useNavigate();
@@ -75,6 +79,7 @@ function OnboardingContent({
   const { locale, setLocale, t } = useI18n();
   const [step, setStep] = useState<Step>('idioma');
   const [appLanguage, setAppLanguage] = useState<Locale>(locale);
+  const [appTimezone, setAppTimezone] = useState(() => detectBrowserTimezone());
   const [apiKey, setApiKey] = useState('');
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [chatModel, setChatModel] = useState('');
@@ -95,7 +100,7 @@ function OnboardingContent({
   function chooseLanguage(next: Locale): void {
     setAppLanguage(next);
     setLocale(next);
-    setStep('key');
+    setStep('fuso');
   }
 
   async function submitKey(e: React.FormEvent): Promise<void> {
@@ -202,6 +207,7 @@ function OnboardingContent({
       await apiPost('/api/onboarding', {
         allow_signups: allowSignups,
         app_language: appLanguage,
+        app_timezone: appTimezone,
       });
       await refresh();
       setStep('pronto');
@@ -213,7 +219,7 @@ function OnboardingContent({
     }
   }
 
-  const stepOrder: Step[] = ['idioma', 'key', 'modelos', 'modo', 'perfil'];
+  const stepOrder: Step[] = ['idioma', 'fuso', 'key', 'modelos', 'modo', 'perfil'];
   const currentIdx = stepOrder.indexOf(step);
 
   if (step === 'pronto') {
@@ -302,6 +308,35 @@ function OnboardingContent({
             </Slide>
           )}
 
+          {step === 'fuso' && (
+            <Slide key="fuso">
+              <Heading
+                eyebrow={t('onboarding.timezone.eyebrow')}
+                title={t('onboarding.timezone.title')}
+                sub={t('onboarding.timezone.sub')}
+              />
+              <div className="space-y-5">
+                <TimezoneSelect
+                  id="onboarding-timezone"
+                  value={appTimezone}
+                  onChange={setAppTimezone}
+                  label={t('onboarding.timezone.label')}
+                  hint={t('onboarding.timezone.hint')}
+                />
+                <div className="flex justify-between pt-2">
+                  <GhostButton type="button" onClick={() => setStep('idioma')}>
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    {t('common.back')}
+                  </GhostButton>
+                  <PrimaryButton type="button" onClick={() => setStep('key')}>
+                    {t('common.continue')}
+                    <ArrowRight className="h-4 w-4" />
+                  </PrimaryButton>
+                </div>
+              </div>
+            </Slide>
+          )}
+
           {step === 'key' && (
             <Slide key="key">
               <Heading
@@ -338,7 +373,7 @@ function OnboardingContent({
                   <ExternalLink className="h-3 w-3" />
                 </a>
                 <div className="flex justify-between pt-2">
-                  <GhostButton type="button" onClick={() => setStep('idioma')}>
+                  <GhostButton type="button" onClick={() => setStep('fuso')}>
                     <ArrowLeft className="h-3.5 w-3.5" />
                     {t('common.back')}
                   </GhostButton>

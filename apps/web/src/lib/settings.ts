@@ -14,10 +14,13 @@
 import { db } from './db';
 import { encrypt, decrypt } from './crypto';
 import { getMasterKey } from './master-key';
+import { DEFAULT_APP_TIMEZONE, normalizeAppTimezone } from './app-timezone';
 
 export type GlobalSettingKey =
   | 'openrouter_api_key'
   | 'app_language'
+  /** IANA timezone da instância (spec 095). Default America/Sao_Paulo. */
+  | 'app_timezone'
   | 'default_chat_model'
   | 'default_transcription_model'
   // Modelo dedicado a pesquisa na web. A tool `web_search` usa a server tool
@@ -86,6 +89,11 @@ export async function getSettingByKey(key: string): Promise<string | null> {
 
 export async function getAppLanguage(): Promise<AppLanguage> {
   return normalizeAppLanguage(await getSetting('app_language'));
+}
+
+export async function getAppTimezone(): Promise<string> {
+  const raw = await getSetting('app_timezone').catch(() => null);
+  return normalizeAppTimezone(raw ?? DEFAULT_APP_TIMEZONE);
 }
 
 export async function getFirstSettingByKey(keys: readonly string[]): Promise<string | null> {
