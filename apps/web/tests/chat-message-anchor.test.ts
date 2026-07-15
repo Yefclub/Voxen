@@ -36,4 +36,11 @@ describe('chat message anchor wiring (spec 092)', () => {
     expect(chatSource).toContain('spacerHeight: spacerHeightRef.current');
     expect(chatSource).toContain('allowReengage: allowAnchorReengageRef.current');
   });
+
+  test('separates the latest CTA from programmatic anchor follow state', () => {
+    expect(chatSource).toContain('showScrollLatest');
+    expect(chatSource).toContain('nextScrollLatestVisibility');
+    expect(chatSource).toContain('{showScrollLatest && (');
+    expect(chatSource).not.toContain('{!nearBottom && (');
+  });
 });

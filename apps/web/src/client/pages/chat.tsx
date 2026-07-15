@@ -50,8 +50,10 @@ import {
 } from '../lib/chat-segments';
 import {
   ANCHOR_MOUNT_RETRY_FRAMES,
+  SCROLL_LATEST_SHOW_DISTANCE_PX,
   canRearmFollow,
   isUserScrollUp,
+  nextScrollLatestVisibility,
   nextSpacerHeight,
   planAnchor,
   shouldAnchor,
@@ -605,6 +607,7 @@ export function ChatPage(): React.ReactElement {
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [nearBottom, setNearBottom] = useState(true);
+  const [showScrollLatest, setShowScrollLatest] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -622,6 +625,8 @@ export function ChatPage(): React.ReactElement {
   const reserveEndRef = useRef(0);
   const prevScrollTopRef = useRef(0);
   const programmaticScrollRef = useRef(false);
+  const returningToEndRef = useRef(false);
+  const userScrollIntentUntilRef = useRef(0);
   /**
    * Gate do reengage da âncora (spec 092): durante o stream, só libera quando
    * a resposta final já tem texto. Tools/raciocínio sozinhos não devem
@@ -656,12 +661,22 @@ export function ChatPage(): React.ReactElement {
     scrollPhaseRef.current = 'free';
     applySpacerHeight(0);
     reserveEndRef.current = 0;
+    returningToEndRef.current = smooth;
+    userScrollIntentUntilRef.current = 0;
     setNearBottom(true);
+    setShowScrollLatest(false);
     markProgrammaticScroll();
     element.scrollTo({
       top: element.scrollHeight,
       behavior: smooth ? 'smooth' : 'auto',
     });
+  }
+
+  function markUserScrollIntent(): void {
+    // Wheel, touch e drag podem emitir vários scrolls depois do evento inicial.
+    userScrollIntentUntilRef.current = Date.now() + 750;
+    returningToEndRef.current = false;
+    programmaticScrollRef.current = false;
   }
 
   function anchorUserMessage(messageId: string, retriesLeft: number): void {
@@ -875,16 +890,33 @@ export function ChatPage(): React.ReactElement {
     if (!element) return;
     const scrollTop = element.scrollTop;
     const distanceToBottom = element.scrollHeight - scrollTop - element.clientHeight;
+    const userScrolledUp =
+      Date.now() <= userScrollIntentUntilRef.current &&
+      isUserScrollUp(prevScrollTopRef.current, scrollTop);
+
+    setShowScrollLatest((current) =>
+      nextScrollLatestVisibility({
+        current,
+        distanceToBottom,
+        userScrolledUp,
+        returningToEnd: returningToEndRef.current,
+      }),
+    );
+
+    if (returningToEndRef.current) {
+      if (distanceToBottom < SCROLL_LATEST_SHOW_DISTANCE_PX) {
+        returningToEndRef.current = false;
+      }
+      prevScrollTopRef.current = scrollTop;
+      return;
+    }
 
     if (programmaticScrollRef.current) {
       prevScrollTopRef.current = scrollTop;
       return;
     }
 
-    if (
-      scrollPhaseRef.current === 'anchor' &&
-      isUserScrollUp(prevScrollTopRef.current, scrollTop)
-    ) {
+    if (scrollPhaseRef.current === 'anchor' && userScrolledUp) {
       scrollPhaseRef.current = 'free';
       applySpacerHeight(0);
       reserveEndRef.current = 0;
@@ -964,6 +996,7 @@ export function ChatPage(): React.ReactElement {
     setMessages((current) => [...current, localUser, localAssistant]);
     setInput('');
     setNearBottom(false);
+    setShowScrollLatest(false);
     setStreaming(true);
     setStatus(t('chat.thinking'));
     const controller = new AbortController();
@@ -1099,6 +1132,22 @@ export function ChatPage(): React.ReactElement {
           <div
             ref={scrollerRef}
             onScroll={onScroll}
+            onWheelCapture={markUserScrollIntent}
+            onTouchMoveCapture={markUserScrollIntent}
+            onKeyDownCapture={(event) => {
+              if (
+                event.key === 'ArrowUp' ||
+                event.key === 'PageUp' ||
+                event.key === 'Home' ||
+                (event.key === ' ' && event.shiftKey)
+              ) {
+                markUserScrollIntent();
+              }
+            }}
+            onPointerDown={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              if (rect.right - event.clientX <= 24) markUserScrollIntent();
+            }}
             role="log"
             aria-live="off"
             aria-label={t('chat.historyLabel')}
@@ -1153,7 +1202,7 @@ export function ChatPage(): React.ReactElement {
                   height is applied via DOM to avoid re-render churn while streaming. */}
               <div ref={spacerNodeRef} aria-hidden="true" />
 
-              {!nearBottom && (
+              {showScrollLatest && (
                 <button
                   type="button"
                   onClick={() => scrollToBottom(true)}

@@ -29,7 +29,7 @@ describe('chat handoff wiring', () => {
       join(import.meta.dir, '../src/client/pages/transcricoes-detalhe.tsx'),
       'utf8',
     );
-    expect(page).toContain('TranscriptChatBar');
+    expect(page).toContain('TranscriptChatDock');
     expect(page).toContain('copySummary');
     expect(page).toContain('buildTranscriptChatMessage');
     expect(page).toContain('library.copySummary');
