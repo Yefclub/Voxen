@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.11.0-dev.1784077922 — 2026-07-14 · Dev
+
+### 🐛 Vox deixa de falar em nomes de ferramentas pro usuário
+
+O system prompt proíbe citar tools, parâmetros e IDs internos na resposta
+final. Próximos passos passam a ser em linguagem natural de produto.
+
+## v0.11.0-dev.1784077922 — 2026-07-14 · Dev
+
+### 🐛 Bloco Pensando deixa de piscar entre ferramentas
+
+O bloco de raciocínio do chat fica aberto enquanto o turno está ao vivo
+(`live`) e só recolhe quando o stream termina — gaps entre tool-results
+não colapsam mais a timeline.
+
 ## v0.11.0-dev.1784074880 — 2026-07-14 · Dev
 
 ### 🐛 Erro de ferramenta deixa de travar o chat em “Pensando…”

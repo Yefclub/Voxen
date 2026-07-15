@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.11.0-dev.1784077922",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Vox deixa de falar em nomes de ferramentas pro usuário",
+    "body": "O system prompt proíbe citar tools, parâmetros e IDs internos na resposta\nfinal. Próximos passos passam a ser em linguagem natural de produto.",
+    "pr": 394,
+    "author": "Kalyel",
+    "date": "2026-07-14T22:06:12-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/394"
+  },
+  {
+    "version": "0.11.0-dev.1784077922",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Bloco Pensando deixa de piscar entre ferramentas",
+    "body": "O bloco de raciocínio do chat fica aberto enquanto o turno está ao vivo\n(`live`) e só recolhe quando o stream termina — gaps entre tool-results\nnão colapsam mais a timeline.",
+    "pr": 392,
+    "author": "Kalyel",
+    "date": "2026-07-14T21:55:20-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/392"
+  },
+  {
     "version": "0.11.0-dev.1784074880",
     "channel": "dev",
     "type": "fix",
