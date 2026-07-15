@@ -2,6 +2,7 @@ import Graph from 'graphology';
 import type { GraphEdge as ReagraphEdge, GraphNode as ReagraphNode } from 'reagraph';
 import type { AppTheme } from './theme';
 import type { TranslateFn } from './i18n';
+import type { GraphIndexStatus } from '../../shared/graph-index';
 
 export type GraphNodeType =
   | 'transcript'
@@ -77,6 +78,7 @@ export interface GraphResp {
   totalEdges: number;
   insights?: GraphInsights;
   indexing?: boolean;
+  indexStatus?: GraphIndexStatus;
   generatedAt?: string;
 }
 
@@ -201,6 +203,19 @@ export const EDGE_COLORS: Record<GraphEdgeKind, string> = {
   related_to: 'rgba(148, 163, 184, 0.68)',
   next_to: 'rgba(163, 230, 53, 0.7)',
 };
+
+export function toOpaqueGraphColor(color: string): string {
+  const match = color.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+  if (!match) return color;
+  return `#${match
+    .slice(1, 4)
+    .map((channel) =>
+      Math.max(0, Math.min(255, Math.round(Number(channel))))
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
+}
 
 const LIGHT_NODE_COLORS: Record<GraphNodeType, string> = {
   transcript: '#7c3aed',
@@ -389,7 +404,7 @@ export function buildSigmaGraphModel(
     target: edge.to,
     label: translate ? translate(`graph.edge.${edge.kind}`) : edge.kind,
     size: edge.kind === 'links_to' ? 1.8 : edge.kind === 'related_to' ? 1.25 : 1,
-    fill: palette.edges[edge.kind],
+    fill: toOpaqueGraphColor(palette.edges[edge.kind]),
     data: edge,
   }));
 
@@ -439,6 +454,7 @@ export function buildSigmaGraphModel(
 export function buildGraphPositions3D(data: GraphResp): Map<string, GraphPosition3D> {
   const communities = buildGraphCommunities(data);
   const positions = new Map<string, GraphPosition3D>();
+  const communityPhase = hashAngle(communities.map((community) => community.label).join('|'));
   const communityOrbit =
     communities.length <= 1
       ? 0
@@ -449,7 +465,7 @@ export function buildGraphPositions3D(data: GraphResp): Map<string, GraphPositio
       community.id,
       communities.length,
       communityOrbit,
-      hashAngle(community.label),
+      communityPhase,
     );
     const localExtent = Math.min(330, 90 + Math.sqrt(community.size) * 15);
     const angleOffset = hashAngle(community.label);
@@ -478,6 +494,28 @@ export function buildGraphPositions3D(data: GraphResp): Map<string, GraphPositio
 
   for (const node of data.nodes) {
     if (!positions.has(node.id)) positions.set(node.id, { x: 0, y: 0, z: 0 });
+  }
+  if (positions.size > 0) {
+    const values = [...positions.values()];
+    const center = {
+      x:
+        (Math.min(...values.map((position) => position.x)) +
+          Math.max(...values.map((position) => position.x))) /
+        2,
+      y:
+        (Math.min(...values.map((position) => position.y)) +
+          Math.max(...values.map((position) => position.y))) /
+        2,
+      z:
+        (Math.min(...values.map((position) => position.z)) +
+          Math.max(...values.map((position) => position.z))) /
+        2,
+    };
+    for (const position of positions.values()) {
+      position.x -= center.x;
+      position.y -= center.y;
+      position.z -= center.z;
+    }
   }
   return positions;
 }

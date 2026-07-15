@@ -119,6 +119,22 @@ describe('graph insights and deterministic layout', () => {
     );
   });
 
+  test('centers the 3D bounds around the camera origin', () => {
+    const positions = [...buildGraphPositions3D(DATA).values()];
+    const bounds = {
+      minX: Math.min(...positions.map((position) => position.x)),
+      maxX: Math.max(...positions.map((position) => position.x)),
+      minY: Math.min(...positions.map((position) => position.y)),
+      maxY: Math.max(...positions.map((position) => position.y)),
+      minZ: Math.min(...positions.map((position) => position.z)),
+      maxZ: Math.max(...positions.map((position) => position.z)),
+    };
+
+    expect((bounds.minX + bounds.maxX) / 2).toBeCloseTo(0, 8);
+    expect((bounds.minY + bounds.maxY) / 2).toBeCloseTo(0, 8);
+    expect((bounds.minZ + bounds.maxZ) / 2).toBeCloseTo(0, 8);
+  });
+
   test('lays out the defensive cap of 500 nodes and 1,500 edges with finite coordinates', () => {
     const nodes = Array.from({ length: 500 }, (_, index) =>
       node(`node-${index}`, `Nó ${index}`, index % 5 === 0 ? 'transcript' : 'topic'),

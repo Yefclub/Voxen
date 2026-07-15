@@ -20,8 +20,23 @@ import {
 } from '../lib/brain';
 import { db } from '../lib/db';
 import { graphCacheKey, invalidateGraphCache } from '../lib/graph-cache';
-import { isGraphSnapshotIndexing, shouldScheduleGraphReindex } from '../lib/graph-index-state';
+import {
+  GRAPH_INDEX_ERROR_COOLDOWN_MS,
+  GRAPH_INDEX_HEARTBEAT_MS,
+  GRAPH_INDEX_LEASE_TTL_MS,
+  acquireGraphIndexLease,
+  readGraphIndexStatus,
+  reconcileGraphIndexStatus,
+  releaseGraphIndexLease,
+  renewGraphIndexLease,
+  shouldStartGraphIndex,
+  writeGraphIndexStatus,
+  writeGraphIndexStatusWithoutLease,
+  writeOwnedGraphIndexStatus,
+} from '../lib/graph-index-coordinator';
+import { shouldScheduleGraphReindex } from '../lib/graph-index-state';
 import { getRedisPublisher } from '../lib/redis';
+import type { GraphIndexErrorReason, GraphIndexStatus } from '../shared/graph-index';
 
 type Vars = { userId: string };
 
@@ -100,6 +115,19 @@ const NODE_LIMIT = 500;
 const EDGE_LIMIT = 1_500;
 const CACHE_TTL_SEC = 60;
 
+graphRoutes.get('/status', async (c) => {
+  const userId = c.get('userId');
+  const force = c.req.query('force') === '1';
+  let status = await currentGraphIndexStatus(userId);
+  if (
+    status.state === 'idle' ||
+    (status.state === 'error' && shouldStartGraphIndex(status, force))
+  ) {
+    status = await ensureBrainCoverage(userId, force);
+  }
+  return c.json(status);
+});
+
 graphRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const force = c.req.query('force') === '1';
@@ -118,11 +146,7 @@ graphRoutes.get('/', async (c) => {
     }
   }
 
-  await ensureBrainCoverage(userId, force);
-  // Captura o estado antes de ler o snapshot. Se o job terminar no meio das
-  // queries, ainda devolvemos indexing=true e não recriamos um cache antigo
-  // depois da invalidação feita pelo próprio reindex.
-  const indexingAtReadStart = isBrainReindexInFlight(userId);
+  const indexStatus = await ensureBrainCoverage(userId, force);
 
   const rawNodes = await db.brainNode.findMany({
     where: { userId, status: 'ACTIVE' },
@@ -193,7 +217,8 @@ graphRoutes.get('/', async (c) => {
   }));
 
   const insights = buildInsights(nodes, edges, degree);
-  const indexing = isGraphSnapshotIndexing(indexingAtReadStart, isBrainReindexInFlight(userId));
+  const latestStatus = await currentGraphIndexStatus(userId);
+  const indexing = indexStatus.state === 'running' || latestStatus.state === 'running';
   const response = {
     nodes,
     edges,
@@ -201,6 +226,7 @@ graphRoutes.get('/', async (c) => {
     totalEdges: edges.length,
     insights,
     indexing,
+    indexStatus: latestStatus,
     generatedAt: new Date().toISOString(),
   };
   // Não cacheia enquanto um reindex está em andamento: o estado atual está
@@ -215,40 +241,248 @@ graphRoutes.get('/', async (c) => {
   return c.json(response);
 });
 
-// Reindex do Brain em andamento, por usuário. Reindexar a biblioteca inteira
-// leva dezenas de segundos; fazer isso SÍNCRONO dentro do GET estourava o
-// proxy/healthcheck → 502. O guard evita empilhar reindexes concorrentes (cada
-// GET sem cache dispararia um). Escopo do processo (o web roda single-instance).
+// O Set é apenas o fallback local quando Redis estiver indisponível. A
+// exclusão entre instâncias e a recuperação após restart vivem no lease Redis.
 const brainReindexInFlight = new Set<string>();
+const localGraphIndexStatus = new Map<string, GraphIndexStatus>();
 
-function isBrainReindexInFlight(userId: string): boolean {
-  return brainReindexInFlight.has(userId);
+interface BrainCoverage {
+  expectedSourceNodes: number;
+  indexedSourceNodes: number;
+  staleSourceNodes: number;
 }
 
-// Dispara o reindex do Brain em BACKGROUND (fire-and-forget). O GET nunca
-// bloqueia nesse trabalho. Ao terminar, invalida o cache do grafo para o
-// próximo load servir o estado fresco. Um reindex por usuário por vez.
-function scheduleBrainReindex(userId: string): void {
-  if (brainReindexInFlight.has(userId)) return;
+async function currentGraphIndexStatus(userId: string): Promise<GraphIndexStatus> {
+  try {
+    const remoteStatus = await readGraphIndexStatus(userId);
+    const localStatus = localGraphIndexStatus.get(userId);
+    const status = reconcileGraphIndexStatus(
+      remoteStatus,
+      localStatus,
+      brainReindexInFlight.has(userId),
+    );
+    if (
+      status === localStatus &&
+      status !== remoteStatus &&
+      (status.state === 'ready' || status.state === 'error')
+    ) {
+      try {
+        if (!(await writeGraphIndexStatusWithoutLease(userId, status))) {
+          const latestStatus = await readGraphIndexStatus(userId);
+          localGraphIndexStatus.set(userId, latestStatus);
+          return latestStatus;
+        }
+      } catch {
+        // Mantém o terminal local enquanto o Redis ainda não estiver acessível.
+      }
+    }
+    localGraphIndexStatus.set(userId, status);
+    return status;
+  } catch {
+    return (
+      localGraphIndexStatus.get(userId) ?? {
+        state: brainReindexInFlight.has(userId) ? 'running' : 'idle',
+        updatedAt: new Date().toISOString(),
+      }
+    );
+  }
+}
+
+async function persistGraphIndexStatus(userId: string, status: GraphIndexStatus): Promise<void> {
+  localGraphIndexStatus.set(userId, status);
+  try {
+    await writeGraphIndexStatus(userId, status);
+  } catch {
+    // O fallback local mantém uma instância funcional durante falhas do Redis.
+  }
+}
+
+async function scheduleBrainReindex(
+  userId: string,
+  currentStatus: GraphIndexStatus,
+): Promise<GraphIndexStatus> {
+  if (brainReindexInFlight.has(userId)) return currentGraphIndexStatus(userId);
+  const runId = crypto.randomUUID();
+  let redisLease = false;
+  try {
+    redisLease = await acquireGraphIndexLease(userId, runId);
+    if (!redisLease) return currentGraphIndexStatus(userId);
+  } catch {
+    // Redis indisponível: ainda impedimos concorrência dentro desta instância.
+    if (brainReindexInFlight.has(userId)) return currentGraphIndexStatus(userId);
+  }
+
   brainReindexInFlight.add(userId);
-  void (async () => {
+  const now = new Date().toISOString();
+  const running: GraphIndexStatus = {
+    state: 'running',
+    runId,
+    startedAt: currentStatus.state === 'running' ? currentStatus.startedAt : now,
+    updatedAt: now,
+  };
+  localGraphIndexStatus.set(userId, running);
+  let runningStatusPublished = false;
+  if (redisLease) {
     try {
+      runningStatusPublished = await writeOwnedGraphIndexStatus(userId, runId, running);
+      if (!runningStatusPublished) {
+        brainReindexInFlight.delete(userId);
+        return currentGraphIndexStatus(userId);
+      }
+    } catch {
+      // O lease vivo continua sendo autoridade mesmo sem o payload de status.
+    }
+  }
+
+  void (async () => {
+    let leaseLost = false;
+    let leaseExpiresAt = redisLease ? Date.now() + GRAPH_INDEX_LEASE_TTL_MS : 0;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+    const startHeartbeat = (): void => {
+      if (heartbeat || !redisLease) return;
+      heartbeat = setInterval(() => {
+        void renewGraphIndexLease(userId, runId)
+          .then((renewed) => {
+            if (renewed) leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
+            else leaseLost = true;
+          })
+          .catch(() => {
+            // A lease ainda tem TTL; a próxima renovação pode recuperar.
+          });
+      }, GRAPH_INDEX_HEARTBEAT_MS);
+    };
+    const assertLeaseOwnership = async (): Promise<void> => {
+      if (leaseLost) throw new GraphIndexRunError('lease-lost');
+      if (redisLease) {
+        try {
+          if (!(await renewGraphIndexLease(userId, runId))) {
+            leaseLost = true;
+            throw new GraphIndexRunError('lease-lost');
+          }
+          leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
+          if (!runningStatusPublished) {
+            runningStatusPublished = await writeOwnedGraphIndexStatus(userId, runId, running);
+            if (!runningStatusPublished) throw new GraphIndexRunError('lease-lost');
+          }
+        } catch (err) {
+          if (err instanceof GraphIndexRunError) throw err;
+          if (Date.now() >= leaseExpiresAt) {
+            leaseLost = true;
+            throw new GraphIndexRunError('lease-lost');
+          }
+          // Redis pode oscilar por menos que o TTL; o heartbeat tentará novamente.
+        }
+        return;
+      }
+
+      try {
+        if (!(await acquireGraphIndexLease(userId, runId))) {
+          leaseLost = true;
+          throw new GraphIndexRunError('lease-lost');
+        }
+        redisLease = true;
+        leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
+        startHeartbeat();
+        runningStatusPublished = await writeOwnedGraphIndexStatus(userId, runId, running);
+        if (!runningStatusPublished) {
+          leaseLost = true;
+          throw new GraphIndexRunError('lease-lost');
+        }
+      } catch (err) {
+        if (err instanceof GraphIndexRunError) throw err;
+        // Redis continua indisponível; preserva o guard local desta instância.
+      }
+    };
+    const publishOwnedStatus = async (status: GraphIndexStatus): Promise<boolean> => {
+      if (!redisLease) {
+        localGraphIndexStatus.set(userId, status);
+        return true;
+      }
+      try {
+        const published = await writeOwnedGraphIndexStatus(userId, runId, status);
+        if (published) localGraphIndexStatus.set(userId, status);
+        return published;
+      } catch {
+        // Mantém o terminal local; o lease/status remoto será reconciliado pelo TTL.
+        localGraphIndexStatus.set(userId, status);
+        return true;
+      }
+    };
+    startHeartbeat();
+    try {
+      await assertLeaseOwnership();
       await reindexLibraryFoldersBrain(userId);
+      await assertLeaseOwnership();
       await reindexNotesBrain(userId);
+      await assertLeaseOwnership();
       await reindexTranscriptsBrain(userId);
+      await assertLeaseOwnership();
+
+      const coverage = await readBrainCoverage(userId);
+      if (shouldScheduleGraphReindex({ force: false, ...coverage })) {
+        throw new GraphIndexRunError('coverage-incomplete');
+      }
+      await assertLeaseOwnership();
       await invalidateGraphCache(userId);
+      await assertLeaseOwnership();
+      const ready: GraphIndexStatus = {
+        state: 'ready',
+        runId,
+        startedAt: running.startedAt,
+        updatedAt: new Date().toISOString(),
+      };
+      if (!(await publishOwnedStatus(ready))) {
+        throw new GraphIndexRunError('lease-lost');
+      }
     } catch (err) {
       console.warn('[graph] background reindex failed', { userId, err });
+      const reason: GraphIndexErrorReason =
+        err instanceof GraphIndexRunError ? err.reason : 'failed';
+      if (reason !== 'lease-lost') {
+        const failedAt = Date.now();
+        const failed: GraphIndexStatus = {
+          state: 'error',
+          runId,
+          startedAt: running.startedAt,
+          updatedAt: new Date(failedAt).toISOString(),
+          retryAfter: new Date(failedAt + GRAPH_INDEX_ERROR_COOLDOWN_MS).toISOString(),
+          reason,
+        };
+        await publishOwnedStatus(failed);
+      }
     } finally {
+      if (heartbeat) clearInterval(heartbeat);
+      if (redisLease) await releaseGraphIndexLease(userId, runId).catch(() => false);
       brainReindexInFlight.delete(userId);
+      const localStatus = localGraphIndexStatus.get(userId);
+      if (localStatus?.state === 'running' && localStatus.runId === runId) {
+        localGraphIndexStatus.delete(userId);
+      }
     }
   })();
+  return running;
 }
 
 // Decide se o Brain precisa reindexar e sempre agenda o passe em background.
 // O GET devolve o snapshot materializado atual inclusive em bibliotecas
 // pequenas: o caminho interativo nunca executa ingestão ou extração completa.
-async function ensureBrainCoverage(userId: string, force: boolean): Promise<void> {
+async function ensureBrainCoverage(userId: string, force: boolean): Promise<GraphIndexStatus> {
+  const status = await currentGraphIndexStatus(userId);
+  if (!shouldStartGraphIndex(status, force)) return status;
+  const coverage = await readBrainCoverage(userId);
+  if (shouldScheduleGraphReindex({ force, ...coverage })) {
+    return scheduleBrainReindex(userId, status);
+  }
+  const ready: GraphIndexStatus = {
+    state: 'ready',
+    runId: status.runId,
+    updatedAt: new Date().toISOString(),
+  };
+  await persistGraphIndexStatus(userId, ready);
+  return ready;
+}
+
+async function readBrainCoverage(userId: string): Promise<BrainCoverage> {
   const [transcripts, notes, folders, brainNodes, staleSourceNodes] = await Promise.all([
     db.transcript.count({ where: { userId, status: 'ACTIVE' } }),
     db.note.count({ where: { userId } }),
@@ -262,16 +496,16 @@ async function ensureBrainCoverage(userId: string, force: boolean): Promise<void
     }),
     countStaleBrainSourceNodes(userId),
   ]);
-  const expectedSourceNodes = transcripts + notes + folders;
-  if (
-    shouldScheduleGraphReindex({
-      force,
-      expectedSourceNodes,
-      indexedSourceNodes: brainNodes,
-      staleSourceNodes,
-    })
-  ) {
-    scheduleBrainReindex(userId);
+  return {
+    expectedSourceNodes: transcripts + notes + folders,
+    indexedSourceNodes: brainNodes,
+    staleSourceNodes,
+  };
+}
+
+class GraphIndexRunError extends Error {
+  constructor(readonly reason: GraphIndexErrorReason) {
+    super(reason);
   }
 }
 
