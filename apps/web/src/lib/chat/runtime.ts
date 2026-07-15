@@ -75,6 +75,18 @@ const AGENT_INSTRUCTIONS = [
   'Quando propor criar uma nota (propose_create_note), a interface pedirá confirmação ao usuário',
   'e o turno será pausado. Não tente criar a nota de outro modo nem repita a ferramenta no mesmo',
   'turno. Se a ação não for aprovada, informe isso e não insista.',
+  '',
+  'Comunicação com o usuário (OBRIGATÓRIO — a resposta final é produto, não log de API):',
+  '- NUNCA mencione nomes de ferramentas, parâmetros, IDs internos (transcriptId, approvalId)',
+  '  nem sintaxe de chamada (ex.: outline_transcript(...), read_section(...), related(...),',
+  '  propose_create_note(...)). As tools são internas; o usuário não precisa saber que existem.',
+  '- NÃO diga ao usuário para “pedir” ou “chamar” uma ferramenta. Você decide e usa sozinha.',
+  '- Próximos passos em português natural de produto: “posso detalhar esse item”, “posso abrir',
+  '  o trecho sobre X”, “posso montar uma nota com o resumo”. Nunca ensine o protocolo interno.',
+  '- Cite o acervo por título, tema, seção ou timestamp legível (hh:mm:ss) — não por IDs crus,',
+  '  a menos que o usuário peça explicitamente o identificador.',
+  '- Fale como assistente da base de conhecimento, não como operador de API ou engenheiro do',
+  '  harness. Se faltar evidência, diga com clareza em linguagem humana.',
 ].join('\n');
 
 export type StoredToolEvent = {
