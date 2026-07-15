@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784074880",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Erro de ferramenta deixa de travar o chat em “Pensando…”",
+    "body": "Falhas de tool (ex.: transcrição) passam a marcar erro de verdade, curam\nestados `running` órfãos e mostram fallback legível. O status inicial do\nturno agora é “Buscando na sua biblioteca…”.",
+    "pr": 390,
+    "author": "Kalyel",
+    "date": "2026-07-14T21:21:09-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/390"
+  },
+  {
     "version": "0.11.0-dev.1784073052",
     "channel": "dev",
     "type": "ui",
