@@ -3,6 +3,14 @@ import { ArrowUp, ChevronUp, MessageSquare } from 'lucide-react';
 import type { TranslateFn } from '../../lib/i18n';
 import { cn } from '../../lib/utils';
 
+function deviceSupportsHover(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(hover: hover)').matches
+  );
+}
+
 export function TranscriptChatDock({
   value,
   onChange,
@@ -43,10 +51,7 @@ export function TranscriptChatDock({
   }
 
   function activateTrigger(event: React.MouseEvent<HTMLButtonElement>): void {
-    const hasHover =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(hover: hover)').matches;
+    const hasHover = deviceSupportsHover();
     const pointerActivation = event.detail > 0;
     triggerPointerFocusRef.current = false;
 
@@ -65,11 +70,13 @@ export function TranscriptChatDock({
         data-testid="transcript-chat-dock"
         className="pointer-events-auto w-full max-w-3xl pb-[max(0.5rem,env(safe-area-inset-bottom))] transition-transform duration-300 ease-out motion-reduce:transition-none"
         style={{ transform: expanded ? 'translateY(0)' : 'translateY(calc(100% - 2rem))' }}
-        onMouseEnter={() => {
+        onPointerEnter={() => {
+          if (!deviceSupportsHover()) return;
           pointerInsideRef.current = true;
           setExpanded(true);
         }}
-        onMouseLeave={() => {
+        onPointerLeave={() => {
+          if (!deviceSupportsHover()) return;
           pointerInsideRef.current = false;
           collapseIfIdle();
         }}

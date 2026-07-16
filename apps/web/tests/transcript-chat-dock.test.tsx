@@ -1,5 +1,5 @@
 import React from 'react';
-import { afterAll, describe, expect, mock, test } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { TranscriptChatDock } from '../src/client/components/library/transcript-chat-dock';
 
@@ -9,6 +9,8 @@ Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', {
 });
 
 const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+const originalWindow = globalThis.window;
+let hasHover = false;
 Object.defineProperty(globalThis, 'requestAnimationFrame', {
   configurable: true,
   value: (callback: FrameRequestCallback) => {
@@ -16,11 +18,25 @@ Object.defineProperty(globalThis, 'requestAnimationFrame', {
     return 1;
   },
 });
+Object.defineProperty(globalThis, 'window', {
+  configurable: true,
+  value: {
+    matchMedia: () => ({ matches: hasHover }),
+  },
+});
+
+beforeEach(() => {
+  hasHover = false;
+});
 
 afterAll(() => {
   Object.defineProperty(globalThis, 'requestAnimationFrame', {
     configurable: true,
     value: originalRequestAnimationFrame,
+  });
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: originalWindow,
   });
 });
 
@@ -62,6 +78,7 @@ describe('TranscriptChatDock', () => {
   });
 
   test('expands on hover or focus and keeps a non-empty draft open', async () => {
+    hasHover = true;
     const focusTextarea = mock(() => undefined);
     let renderer!: ReactTestRenderer;
     await act(async () => {
@@ -74,10 +91,10 @@ describe('TranscriptChatDock', () => {
     });
 
     const shell = () => renderer.root.findByProps({ 'data-testid': 'transcript-chat-dock' });
-    await act(async () => shell().props.onMouseEnter());
+    await act(async () => shell().props.onPointerEnter({ pointerType: 'mouse' }));
     expect(shell().props.style.transform).toBe('translateY(0)');
 
-    await act(async () => shell().props.onMouseLeave());
+    await act(async () => shell().props.onPointerLeave({ pointerType: 'mouse' }));
     expect(shell().props.style.transform).toBe('translateY(calc(100% - 2rem))');
 
     const trigger = renderer.root.findByProps({
@@ -94,7 +111,7 @@ describe('TranscriptChatDock', () => {
     await act(async () =>
       shell().props.onBlurCapture({ currentTarget: { contains: () => false } }),
     );
-    await act(async () => shell().props.onMouseLeave());
+    await act(async () => shell().props.onPointerLeave({ pointerType: 'mouse' }));
     expect(shell().props.style.transform).toBe('translateY(0)');
   });
 
@@ -117,11 +134,14 @@ describe('TranscriptChatDock', () => {
 
     await act(async () => trigger().props.onPointerDown());
     await act(async () => shell().props.onFocusCapture());
+    await act(async () => shell().props.onPointerEnter({ pointerType: 'touch' }));
+    await act(async () => shell().props.onPointerEnter({ pointerType: 'pen' }));
     await act(async () => trigger().props.onClick(pointerClick));
     expect(shell().props.style.transform).toBe('translateY(0)');
 
     await act(async () => trigger().props.onPointerDown());
     await act(async () => shell().props.onFocusCapture());
+    await act(async () => shell().props.onPointerEnter({ pointerType: 'touch' }));
     await act(async () => trigger().props.onClick(pointerClick));
     expect(shell().props.style.transform).toBe('translateY(calc(100% - 2rem))');
     expect(blurTrigger).toHaveBeenCalledTimes(1);
