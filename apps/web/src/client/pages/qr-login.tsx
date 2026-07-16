@@ -57,7 +57,7 @@ export function QrLoginPage(): React.ReactElement {
   return (
     <div className="h-dvh overflow-y-auto overscroll-contain">
       <div className="min-h-full flex flex-col">
-        <main className="flex-1 flex items-center justify-center px-6 py-12">
+        <main className="flex-1 flex items-center justify-center px-4 py-6 sm:px-6 sm:py-12">
           <motion.div
             initial={{ opacity: 0, y: 12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}

@@ -8,10 +8,16 @@ import {
   releaseChatStreamSlot,
 } from '../src/lib/chat/runtime';
 import { db } from '../src/lib/db';
+import {
+  ChatTurnBusyError,
+  createChatTurn,
+  recoverOrphanedUserTurn,
+} from '../src/lib/chat/turn-runtime';
 
 const describeIfDb = process.env.DATABASE_URL ? describe : describe.skip;
 
 async function clean(): Promise<void> {
+  await db.chatTurn.deleteMany();
   await db.chatStreamLease.deleteMany();
   await db.chatCompactionLease.deleteMany();
   await db.chatApproval.deleteMany();
@@ -77,6 +83,70 @@ describeIfDb('chat de sessão única', () => {
     });
     const snapshot = await getChatSnapshot(user.id);
     expect(snapshot.messages[0]?.segments).toEqual(segments);
+  });
+
+  it('pagina apenas mensagens ativas e mantém ordem estável', async () => {
+    const user = await db.user.create({
+      data: { email: 'chat-test-pages@voxen.local', name: 'Pages', status: 'APPROVED' },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    await db.chatMessage.createMany({
+      data: Array.from({ length: 125 }, (_, index) => ({
+        conversationId: conversation.id,
+        role: index % 2 === 0 ? ('USER' as const) : ('ASSISTANT' as const),
+        content: `mensagem ${String(index).padStart(3, '0')}`,
+        compactedAt: index < 5 ? new Date() : null,
+      })),
+    });
+
+    const first = await getChatSnapshot(user.id);
+    expect(first.messages).toHaveLength(60);
+    expect(first.hasOlder).toBe(true);
+    expect(first.nextCursor).toBe(first.messages[0]!.id);
+    expect(first.messages.every((message) => message.compactedAt === null)).toBe(true);
+
+    const second = await getChatSnapshot(user.id, { before: first.nextCursor!, limit: 60 });
+    expect(second.messages).toHaveLength(60);
+    expect(second.hasOlder).toBe(false);
+    expect(new Set([...first.messages, ...second.messages].map((message) => message.id)).size).toBe(
+      120,
+    );
+  });
+
+  it('persiste o turno completo antes de processar e bloqueia concorrência', async () => {
+    const user = await db.user.create({
+      data: { email: 'chat-test-turn@voxen.local', name: 'Turn', status: 'APPROVED' },
+    });
+    const turn = await createChatTurn(user.id, 'Analise este link');
+    expect(turn.status).toBe('PENDING');
+    expect(await db.chatMessage.count({ where: { id: turn.userMessageId, role: 'USER' } })).toBe(1);
+    expect(
+      await db.chatMessage.count({ where: { id: turn.assistantMessageId, role: 'ASSISTANT' } }),
+    ).toBe(1);
+    await expect(createChatTurn(user.id, 'Segundo envio')).rejects.toBeInstanceOf(
+      ChatTurnBusyError,
+    );
+  });
+
+  it('recupera uma mensagem órfã uma única vez após restart', async () => {
+    const user = await db.user.create({
+      data: { email: 'chat-test-recover@voxen.local', name: 'Recover', status: 'APPROVED' },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const message = await db.chatMessage.create({
+      data: { conversationId: conversation.id, role: 'USER', content: 'Continue depois do link' },
+    });
+
+    const first = await recoverOrphanedUserTurn(user.id);
+    const second = await recoverOrphanedUserTurn(user.id);
+    expect(first).toBeTruthy();
+    expect(second).toBe(first);
+    expect(await db.chatTurn.count({ where: { userMessageId: message.id } })).toBe(1);
+    expect(
+      await db.chatMessage.count({
+        where: { conversationId: conversation.id, role: 'ASSISTANT', content: '' },
+      }),
+    ).toBe(1);
   });
 
   it('aceita apenas um stream ativo por usuário e libera o slot pelo dono', async () => {

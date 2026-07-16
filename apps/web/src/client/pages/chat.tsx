@@ -61,6 +61,7 @@ import {
   type ScrollPhase,
 } from '../lib/chat-scroll';
 import type { ChatHandoffState } from '../lib/chat-handoff';
+import { mergeChatMessagePages } from '../lib/chat-pagination';
 import {
   getSoundsEnabled,
   setChatEmpty,
@@ -79,7 +80,19 @@ type ChatMessage = {
   /** Segmentos cronológicos persistidos; durante o stream são atualizados localmente. */
   segments?: MessageSegment[];
 };
-type Snapshot = { conversation: { id: string; compactionCount: number }; messages: ChatMessage[] };
+type ActiveTurn = {
+  id: string;
+  status: 'PENDING' | 'RUNNING';
+  assistantMessageId: string;
+  updatedAt: string;
+};
+type Snapshot = {
+  conversation: { id: string; compactionCount: number };
+  messages: ChatMessage[];
+  hasOlder: boolean;
+  nextCursor: string | null;
+  activeTurn: ActiveTurn | null;
+};
 type StreamEvent =
   | { type: 'text'; delta: string }
   | { type: 'reasoning'; delta: string }
@@ -602,6 +615,10 @@ export function ChatPage(): React.ReactElement {
   const { data: me } = useMe();
   const firstName = me?.user?.name?.split(' ')[0] ?? t('dashboard.fallbackName');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [activeTurn, setActiveTurn] = useState<ActiveTurn | null>(null);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [streaming, setStreaming] = useState(false);
@@ -786,11 +803,25 @@ export function ChatPage(): React.ReactElement {
   }, [visibleMessages]);
   const isEmpty = !loading && visibleMessages.length === 0;
 
+  function applySnapshot(snapshot: Snapshot, replace = false): void {
+    setMessages((current) =>
+      replace
+        ? snapshot.messages
+        : mergeChatMessagePages(
+            current.filter((message) => !message.id.startsWith('local-')),
+            snapshot.messages,
+          ),
+    );
+    setHasOlder(snapshot.hasOlder);
+    setNextCursor(snapshot.nextCursor);
+    setActiveTurn(snapshot.activeTurn);
+  }
+
   const refresh = async (): Promise<void> => {
     setLoading(true);
     try {
       const snapshot = await apiGet<Snapshot>('/api/chat');
-      setMessages(snapshot.messages);
+      applySnapshot(snapshot, true);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('chat.loadError'));
     } finally {
@@ -798,9 +829,74 @@ export function ChatPage(): React.ReactElement {
     }
   };
 
+  async function loadOlderMessages(): Promise<void> {
+    if (!nextCursor || loadingOlder) return;
+    const scroller = scrollerRef.current;
+    const previousHeight = scroller?.scrollHeight ?? 0;
+    const previousTop = scroller?.scrollTop ?? 0;
+    setLoadingOlder(true);
+    try {
+      const snapshot = await apiGet<Snapshot>(
+        `/api/chat?before=${encodeURIComponent(nextCursor)}&limit=60`,
+      );
+      applySnapshot(snapshot);
+      requestAnimationFrame(() => {
+        if (!scroller) return;
+        scroller.scrollTop = previousTop + (scroller.scrollHeight - previousHeight);
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('chat.loadError'));
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
+
   useEffect(() => {
     void refresh();
   }, []);
+
+  // A conexão SSE é um observador, não a posse do turno. Em reload, retorno do
+  // background ou troca de rede, acompanha o estado persistido até terminar.
+  useEffect(() => {
+    if (!activeTurn) return;
+    streamingAssistantId.current = activeTurn.assistantMessageId;
+    setStreaming(true);
+    setStatus(t('chat.recovering'));
+    let disposed = false;
+    let polling = false;
+    const poll = async (): Promise<void> => {
+      if (disposed || polling) return;
+      polling = true;
+      try {
+        const snapshot = await apiGet<Snapshot>('/api/chat');
+        if (disposed) return;
+        applySnapshot(snapshot);
+        if (!snapshot.activeTurn) {
+          streamingAssistantId.current = null;
+          setStreaming(false);
+          setStatus(null);
+        }
+      } catch {
+        // Offline/background: o próximo tick, `online` ou visibilitychange retoma.
+      } finally {
+        polling = false;
+      }
+    };
+    const onResume = (): void => {
+      if (document.visibilityState === 'visible' || navigator.onLine) void poll();
+    };
+    const timer = window.setInterval(() => void poll(), 2_000);
+    window.addEventListener('online', onResume);
+    window.addEventListener('pageshow', onResume);
+    document.addEventListener('visibilitychange', onResume);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      window.removeEventListener('online', onResume);
+      window.removeEventListener('pageshow', onResume);
+      document.removeEventListener('visibilitychange', onResume);
+    };
+  }, [activeTurn?.id]);
 
   // Captura handoff (autoSend) do location.state e limpa a history entry.
   useEffect(() => {
@@ -1001,6 +1097,7 @@ export function ChatPage(): React.ReactElement {
     setStatus(t('chat.thinking'));
     const controller = new AbortController();
     abortRef.current = controller;
+    let persistedActiveTurn: ActiveTurn | null = null;
 
     try {
       const response = await fetch('/api/chat', {
@@ -1084,19 +1181,48 @@ export function ChatPage(): React.ReactElement {
         liveSegmentsRef.current = closeTrailingReasoning(liveSegmentsRef.current, Date.now());
       }
       const snapshot = await apiGet<Snapshot>('/api/chat');
-      setMessages(snapshot.messages);
+      persistedActiveTurn = snapshot.activeTurn;
+      applySnapshot(snapshot);
     } catch (error) {
       if (!controller.signal.aborted)
         toast.error(error instanceof Error ? error.message : t('chat.streamError'));
+      try {
+        const snapshot = await apiGet<Snapshot>('/api/chat');
+        persistedActiveTurn = snapshot.activeTurn;
+        applySnapshot(snapshot);
+      } catch {
+        // Offline: o turno continua durável e será restaurado no próximo acesso.
+      }
     } finally {
       abortRef.current = null;
-      streamingAssistantId.current = null;
       liveSegmentsRef.current = null;
       // Turno acabou: se o conteúdo já encheu a reserva, pode colar no fundo.
       allowAnchorReengageRef.current = true;
-      setStreaming(false);
-      setStatus(null);
+      if (persistedActiveTurn) {
+        streamingAssistantId.current = persistedActiveTurn.assistantMessageId;
+        setStreaming(true);
+        setStatus(t('chat.recovering'));
+      } else {
+        streamingAssistantId.current = null;
+        setStreaming(false);
+        setStatus(null);
+      }
     }
+  }
+
+  async function stopStreaming(): Promise<void> {
+    await apiPost('/api/chat/cancel').catch(() => undefined);
+    abortRef.current?.abort();
+    try {
+      const snapshot = await apiGet<Snapshot>('/api/chat');
+      applySnapshot(snapshot);
+    } catch {
+      // A confirmação visual será reconciliada no próximo refresh.
+    }
+    streamingAssistantId.current = null;
+    setActiveTurn(null);
+    setStreaming(false);
+    setStatus(null);
   }
 
   return (
@@ -1119,7 +1245,7 @@ export function ChatPage(): React.ReactElement {
             setInput={setInput}
             streaming={streaming}
             onSend={() => void send()}
-            onStop={() => abortRef.current?.abort()}
+            onStop={() => void stopStreaming()}
             autoFocus
             className="w-full max-w-2xl"
           />
@@ -1155,6 +1281,17 @@ export function ChatPage(): React.ReactElement {
           >
             <div className="mx-auto flex w-full max-w-3xl flex-col">
               <div ref={contentWrapRef} className="flex flex-col">
+                {hasOlder && (
+                  <button
+                    type="button"
+                    onClick={() => void loadOlderMessages()}
+                    disabled={loadingOlder}
+                    className="mb-5 inline-flex min-h-11 self-center items-center gap-2 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] px-4 py-2 text-xs font-medium text-[var(--color-app-subtle)] transition-colors hover:text-[var(--color-app-fg)] disabled:opacity-60"
+                  >
+                    {loadingOlder && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
+                    {loadingOlder ? t('chat.loadingOlder') : t('chat.loadOlder')}
+                  </button>
+                )}
                 {visibleMessages.map((message) => {
                   const isStreamingAssistant =
                     streaming && message.id === streamingAssistantId.current;
@@ -1225,7 +1362,7 @@ export function ChatPage(): React.ReactElement {
                 setInput={setInput}
                 streaming={streaming}
                 onSend={() => void send()}
-                onStop={() => abortRef.current?.abort()}
+                onStop={() => void stopStreaming()}
               />
             </div>
           </div>

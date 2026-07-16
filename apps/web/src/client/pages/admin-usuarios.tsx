@@ -121,13 +121,13 @@ export function AdminUsuariosPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-4 sm:px-8 py-8 sm:py-12 mx-auto max-w-6xl space-y-10">
+      <div className="mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-8 sm:py-12">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
             {t('admin.eyebrow')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
             {t('admin.users.title')}
           </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">

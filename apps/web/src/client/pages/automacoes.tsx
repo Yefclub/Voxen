@@ -173,7 +173,7 @@ export function AutomacoesPage(): React.ReactElement {
   }
 
   return (
-    <AnimatedPage className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+    <AnimatedPage className="max-w-5xl mx-auto px-4 py-5 space-y-5 sm:px-6 sm:py-8 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="size-10 rounded-xl bg-[var(--color-app-surface)] flex items-center justify-center ring-1 ring-[var(--color-app-border)]">
@@ -599,7 +599,7 @@ function AutomationForm({
         onSubmit={submit}
         className="bg-[var(--color-app-surface)] rounded-2xl border border-[var(--color-app-border)] shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
       >
-        <div className="px-6 py-4 border-b border-[var(--color-app-border)] flex items-center justify-between sticky top-0 bg-[var(--color-app-surface)]">
+        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-[var(--color-app-border)] flex items-center justify-between sticky top-0 bg-[var(--color-app-surface)]">
           <h2 className="font-semibold text-[var(--color-app-fg)]">
             {isEdit ? t('automations.form.editTitle') : t('automations.form.newTitle')}
           </h2>
@@ -613,7 +613,7 @@ function AutomationForm({
           </button>
         </div>
 
-        <div className="px-6 py-4 space-y-4">
+        <div className="px-4 py-4 sm:px-6 space-y-4">
           <Field label={t('automations.form.name')}>
             <input
               type="text"
@@ -748,7 +748,7 @@ function AutomationForm({
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-[var(--color-app-border)] flex items-center justify-end gap-2 sticky bottom-0 bg-[var(--color-app-surface)]">
+        <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-[var(--color-app-border)] flex flex-wrap items-center justify-end gap-2 sticky bottom-0 bg-[var(--color-app-surface)]">
           <Button type="button" variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>
@@ -815,7 +815,7 @@ function RunsModal({
         onClick={(e) => e.stopPropagation()}
         className="bg-[var(--color-app-surface)] rounded-2xl border border-[var(--color-app-border)] shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
       >
-        <div className="px-6 py-4 border-b border-[var(--color-app-border)] flex items-center justify-between">
+        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-[var(--color-app-border)] flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-[var(--color-app-fg)]">{automation.name}</h2>
             <p className="text-xs text-[var(--color-app-muted)]">{t('automations.recentRuns')}</p>
@@ -830,7 +830,7 @@ function RunsModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-3">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 space-y-3">
           {runs.length === 0 ? (
             <div className="py-8 text-center text-sm text-[var(--color-app-muted)]">
               {t('automations.noRuns')}

@@ -413,6 +413,26 @@ if (process.env.NODE_ENV === 'production') {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`[proxy-agent] sync no boot falhou: ${message}`);
     });
+
+  // Turnos do chat são duráveis: Redis impede execução duplicada e esta
+  // reconciliação retoma o que ficou pendente após restart/deploy.
+  void import('./lib/chat/turn-runtime')
+    .then(({ reconcilePendingChatTurns }) => {
+      void reconcilePendingChatTurns().catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[chat] reconciliação inicial falhou: ${message}`);
+      });
+      setInterval(() => {
+        void reconcilePendingChatTurns().catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(`[chat] reconciliação periódica falhou: ${message}`);
+        });
+      }, 30_000);
+    })
+    .catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[chat] runtime de continuidade indisponível: ${message}`);
+    });
 }
 
 // Proxy de WebSocket do túnel: antes de cair no Hono, tentamos fazer upgrade do

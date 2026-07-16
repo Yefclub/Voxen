@@ -67,6 +67,7 @@ model User {
   costEvents      CostEvent[]
   conversations   Conversation[]
   chatApprovals   ChatApproval[]
+  chatTurns       ChatTurn[]
   chatStreamLease ChatStreamLease?
   notes           Note[]
   libraryFolders  LibraryFolder[]
@@ -511,6 +512,7 @@ model Conversation {
   transcript      Transcript?   @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
   messages       ChatMessage[]
   approvals      ChatApproval[]
+  turns           ChatTurn[]
   compactionLease ChatCompactionLease?
 
   @@index([updatedAt(sort: Desc)])
@@ -558,6 +560,33 @@ model ChatStreamLease {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([expiresAt])
+}
+
+enum ChatTurnStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+  CANCELLED
+}
+
+model ChatTurn {
+  id                 String         @id @default(cuid())
+  userId             String
+  conversationId     String
+  userMessageId      String         @unique
+  assistantMessageId String         @unique
+  status             ChatTurnStatus @default(PENDING)
+  errorMsg           String?        @db.Text
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  finishedAt         DateTime?
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation       Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, updatedAt])
+  @@index([conversationId, createdAt(sort: Desc)])
+  @@index([status, updatedAt])
 }
 
 enum ChatRole {
