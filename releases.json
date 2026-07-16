@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.11.0-dev.1784187494",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Conversas mais discretas e sem atalhos fora de hora",
+    "body": "O botão **Ir ao mais recente** agora aparece somente depois que você se afasta\nintencionalmente do fim da conversa. Ele não surge mais ao abrir um chat novo,\ndurante o pensamento da Vox nem por causa do posicionamento automático das\nmensagens.\n\nNa página de uma transcrição, o campo contextual de conversa virou um dock fino:\numa faixa de 32 px permanece visível e o compositor completo se abre com hover,\nfoco ou toque. Rascunhos mantêm o dock aberto, e o envio com `Enter` continua\nlevando a pergunta para o chat canônico com o contexto da transcrição.",
+    "pr": 411,
+    "author": "Kalyel",
+    "date": "2026-07-16T04:36:53-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/411"
+  },
+  {
+    "version": "0.11.0-dev.1784187494",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Brain 3D estável, centralizado e mais fácil de navegar",
+    "body": "O Brain deixa de alternar indefinidamente entre passes de indexação incompatíveis:\no indexador rápido agora preserva a versão completa já registrada, enquanto o\npasse completo também reconhece a cobertura mínima atendida. Isso evita ciclos de\n**Organizando** e falhas de cobertura em conteúdos que já foram processados.\nO estado completo só é registrado depois que fontes, pastas, conceitos e relações\nterminam; se uma etapa falhar, a fonte continua pendente para uma nova tentativa.\nWeb e worker agora compartilham uma única trava distribuída por workspace: eles\nnão reescrevem o mesmo Brain ao mesmo tempo, e uma indisponibilidade temporária\nmantém o snapshot atual em vez de iniciar trabalho concorrente. Mudanças de fonte\ne nós órfãos também são detectados e reconciliados automaticamente. Um heartbeat\nrenova a trava durante passes longos sem adicionar uma chamada Redis a cada etapa.\n\nNo modo 3D, a maior comunidade passa a ocupar o centro real da cena e é o foco do\nprimeiro enquadramento. Comunidades menores ficam distribuídas ao redor do núcleo,\ncom controles separados para aproximar, afastar, focar o núcleo e mostrar todo o\ngrafo.",
+    "pr": 410,
+    "author": "Kalyel",
+    "date": "2026-07-16T04:26:06-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/410"
+  },
+  {
     "version": "0.11.0-dev.1784146544",
     "channel": "dev",
     "type": "perf",
