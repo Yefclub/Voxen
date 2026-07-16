@@ -24,6 +24,13 @@ type ContentStatus = 'ACTIVE' | 'ARCHIVED' | 'TRASH';
 
 type JsonObject = Prisma.InputJsonObject;
 
+type BrainEdgeWriteCheckpoint = {
+  method: string;
+  kind: BrainEdgeKind;
+  fromNodeId: string;
+  toNodeId: string;
+};
+
 function isBrainFkError(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003';
 }
@@ -43,6 +50,7 @@ type BrainNodeInput = {
 
 export type BrainReindexOptions = {
   beforeFinalize?: () => void | Promise<void>;
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
   assertLeaseOwnership?: BrainReindexGuard;
 };
 
@@ -122,6 +130,7 @@ type BrainEdgeInput = {
   sourceType: BrainSourceType;
   sourceId: string;
   excerpt?: string | null;
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
   assertLeaseOwnership?: BrainReindexGuard;
 };
 
@@ -401,6 +410,7 @@ export async function reindexTranscriptBrain(
       sourceType: 'TRANSCRIPT',
       sourceId: transcript.id,
       excerpt: `Folder: ${transcript.folder.name}`,
+      beforeEdgeWrite: options.beforeEdgeWrite,
       assertLeaseOwnership: options.assertLeaseOwnership,
     });
   }
@@ -413,6 +423,7 @@ export async function reindexTranscriptBrain(
     sourceId: transcript.id,
     status: transcript.status,
     text: `${transcript.title}\n${transcript.channel ?? ''}\n${transcript.summaryMd || transcript.plainText}`,
+    beforeEdgeWrite: options.beforeEdgeWrite,
     assertLeaseOwnership: options.assertLeaseOwnership,
   });
   await options.beforeFinalize?.();
@@ -838,6 +849,7 @@ async function indexConceptsForContent(input: {
   sourceId: string;
   status: ContentStatus;
   text: string;
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
   assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   if (input.status !== 'ACTIVE') return;
@@ -873,6 +885,7 @@ async function indexConceptsForContent(input: {
         count: topic.count,
         extractorVersion: 2,
       },
+      beforeEdgeWrite: input.beforeEdgeWrite,
       assertLeaseOwnership: input.assertLeaseOwnership,
     });
     indexed.push({
@@ -905,6 +918,7 @@ async function indexConceptsForContent(input: {
         count: entity.count,
         extractorVersion: 1,
       },
+      beforeEdgeWrite: input.beforeEdgeWrite,
       assertLeaseOwnership: input.assertLeaseOwnership,
     });
     indexed.push({
@@ -924,6 +938,7 @@ async function indexConceptsForContent(input: {
     sourceType: input.sourceType,
     sourceId: input.sourceId,
     concepts: indexed,
+    beforeEdgeWrite: input.beforeEdgeWrite,
     assertLeaseOwnership: input.assertLeaseOwnership,
   });
   await input.assertLeaseOwnership?.();
@@ -932,6 +947,7 @@ async function indexConceptsForContent(input: {
     contentNodeId: input.contentNodeId,
     sourceType: input.sourceType,
     sourceId: input.sourceId,
+    beforeEdgeWrite: input.beforeEdgeWrite,
     assertLeaseOwnership: input.assertLeaseOwnership,
   });
   await input.assertLeaseOwnership?.();
@@ -940,6 +956,7 @@ async function indexConceptsForContent(input: {
     contentNodeId: input.contentNodeId,
     sourceType: input.sourceType,
     sourceId: input.sourceId,
+    beforeEdgeWrite: input.beforeEdgeWrite,
     assertLeaseOwnership: input.assertLeaseOwnership,
   });
 }
@@ -969,6 +986,7 @@ async function connectContentBySharedConcepts(input: {
   sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
   sourceId: string;
   concepts: IndexedConcept[];
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
   assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   if (input.concepts.length === 0) return;
@@ -1062,6 +1080,7 @@ async function connectContentBySharedConcepts(input: {
         })),
         score: candidate.score,
       },
+      beforeEdgeWrite: input.beforeEdgeWrite,
       assertLeaseOwnership: input.assertLeaseOwnership,
     });
   }
@@ -1072,6 +1091,7 @@ async function connectContentBySemanticProfile(input: {
   contentNodeId: string;
   sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
   sourceId: string;
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
   assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   const current = await db.brainNode.findUnique({
@@ -1143,6 +1163,7 @@ async function connectContentBySemanticProfile(input: {
         reasons: candidate.reasons,
         score: candidate.score,
       },
+      beforeEdgeWrite: input.beforeEdgeWrite,
       assertLeaseOwnership: input.assertLeaseOwnership,
     });
   }
@@ -1153,6 +1174,7 @@ async function connectTimelineNeighbors(input: {
   contentNodeId: string;
   sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
   sourceId: string;
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
   assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   const current = await db.brainNode.findUnique({
@@ -1221,6 +1243,7 @@ async function connectTimelineNeighbors(input: {
         targetTimestamp: neighbor.timestamp.toISOString(),
         distanceDays,
       },
+      beforeEdgeWrite: input.beforeEdgeWrite,
       assertLeaseOwnership: input.assertLeaseOwnership,
     });
   }
@@ -1329,6 +1352,13 @@ async function upsertBrainEdge(input: BrainEdgeInput) {
           `Brain edge endpoint disappeared: ${input.fromNodeId} -> ${input.toNodeId}`,
         );
       }
+      await input.beforeEdgeWrite?.({
+        method: input.method,
+        kind: input.kind,
+        fromNodeId: input.fromNodeId,
+        toNodeId: input.toNodeId,
+      });
+      await input.assertLeaseOwnership?.();
       const edge = await db.brainEdge.upsert({
         where: {
           userId_fromNodeId_toNodeId_kind_method: {

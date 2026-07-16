@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import app from '../src/index';
 import {
   BRAIN_INDEX_VERSION,
@@ -314,21 +314,21 @@ describeIfDb('brain indexer', () => {
       where: { userId_key: { userId: user.id, key: `FOLDER:${folder.id}` } },
     });
 
-    const realUpsert = db.brainEdge.upsert.bind(db.brainEdge);
-    const injectFkRace = async (args: Parameters<typeof realUpsert>[0]) => {
-      await db.brainNode.delete({ where: { id: folderNode.id } });
-      return realUpsert(args);
-    };
-    const edgeUpsert = spyOn(db.brainEdge, 'upsert').mockImplementationOnce(injectFkRace as never);
+    let folderCheckpointObserved = false;
     let failure: unknown;
     try {
-      await reindexTranscriptBrain(user.id, transcript.id);
+      await reindexTranscriptBrain(user.id, transcript.id, {
+        beforeEdgeWrite: async (edge) => {
+          if (edge.method !== 'folder' || folderCheckpointObserved) return;
+          folderCheckpointObserved = true;
+          await db.brainNode.delete({ where: { id: folderNode.id } });
+        },
+      });
     } catch (err) {
       failure = err;
-    } finally {
-      edgeUpsert.mockRestore();
     }
 
+    expect(folderCheckpointObserved).toBe(true);
     expect(failure).toBeInstanceOf(Error);
     const incomplete = await db.brainNode.findUniqueOrThrow({
       where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
@@ -377,33 +377,26 @@ describeIfDb('brain indexer', () => {
     await reindexTranscriptBrain(user.id, first.id);
 
     let leaseOwned = true;
-    let sharedQueryObserved = false;
-    const realFindMany = db.brainEdge.findMany.bind(db.brainEdge);
-    const loseLeaseAfterSharedQuery = async (args: Parameters<typeof realFindMany>[0]) => {
-      const rows = await realFindMany(args);
-      sharedQueryObserved = true;
-      leaseOwned = false;
-      return rows;
-    };
-    const edgeFindMany = spyOn(db.brainEdge, 'findMany').mockImplementationOnce(
-      loseLeaseAfterSharedQuery as never,
-    );
+    let sharedCheckpointObserved = false;
     let failure: unknown;
     try {
       await reindexTranscriptBrain(user.id, second.id, {
+        beforeEdgeWrite: (edge) => {
+          if (edge.method !== 'shared-concepts') return;
+          sharedCheckpointObserved = true;
+          leaseOwned = false;
+        },
         assertLeaseOwnership: async () => {
-          if (!leaseOwned) throw new Error('lease-lost-after-shared-query');
+          if (!leaseOwned) throw new Error('lease-lost-before-shared-write');
         },
       });
     } catch (err) {
       failure = err;
-    } finally {
-      edgeFindMany.mockRestore();
     }
 
-    expect(sharedQueryObserved).toBe(true);
+    expect(sharedCheckpointObserved).toBe(true);
     expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toBe('lease-lost-after-shared-query');
+    expect((failure as Error).message).toBe('lease-lost-before-shared-write');
     const incomplete = await db.brainNode.findUniqueOrThrow({
       where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${second.id}` } },
     });
