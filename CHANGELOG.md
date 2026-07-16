@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.11.0-dev.1784197604 — 2026-07-16 · Dev
+
+### 🐛 Chat resiliente e experiência mobile contínua
+
+- Mantém respostas longas em execução mesmo quando o PWA perde a conexão e retoma turnos após reinícios.
+- Continua a resposta final depois que a transcrição de um link termina, sem deixar o chat preso.
+- Abre conversas extensas com paginação, melhora áreas seguras e formulários mobile e estabiliza o foco do grafo 3D.
+
 ## v0.11.0-dev.1784187494 — 2026-07-16 · Dev
 
 ### 🎨 Conversas mais discretas e sem atalhos fora de hora

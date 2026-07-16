@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784197604",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Chat resiliente e experiência mobile contínua",
+    "body": "- Mantém respostas longas em execução mesmo quando o PWA perde a conexão e retoma turnos após reinícios.\n- Continua a resposta final depois que a transcrição de um link termina, sem deixar o chat preso.\n- Abre conversas extensas com paginação, melhora áreas seguras e formulários mobile e estabiliza o foco do grafo 3D.",
+    "pr": 414,
+    "author": "Kalyel",
+    "date": "2026-07-16T07:26:33-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/414"
+  },
+  {
     "version": "0.11.0-dev.1784187494",
     "channel": "dev",
     "type": "ui",
