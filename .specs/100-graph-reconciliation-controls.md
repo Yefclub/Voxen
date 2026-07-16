@@ -89,6 +89,8 @@ básicas de navegação da câmera.
 
 - [x] Testes comprovam que o passe completo registra os dois marcadores de
       compatibilidade esperados.
+- [x] Testes comprovam que uma falha antes da finalização remove os marcadores
+      de conclusão e que nós auxiliares não recebem um falso estado completo.
 - [x] Testes comprovam que o passe compatível preserva o marcador completo e não
       se apresenta como índice completo quando ele ainda não existe.
 - [x] Após um passe completo, os critérios de cobertura convergem e não agendam

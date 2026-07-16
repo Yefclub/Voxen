@@ -279,8 +279,8 @@ async def upsert_transcript_brain_node(
     thumbnail_url: str | None,
     plain_text: str,
     status: str = "ACTIVE",
-) -> None:
-    """Materializa o nó CONTENT do Brain quando o worker conclui uma transcrição."""
+) -> bool:
+    """Materializa o CONTENT e informa se o índice de tópicos terminou por completo."""
     node_id = generate_cuid()
     key = f"TRANSCRIPT:{transcript_id}"
     metadata = {
@@ -290,9 +290,7 @@ async def upsert_transcript_brain_node(
         "language": language,
         "transcriptionMethod": transcription_method,
         "thumbnailUrl": thumbnail_url,
-        "topicIndexVersion": BRAIN_TOPIC_INDEX_VERSION,
     }
-    await _remove_transcript_brain_refreshable_sources(conn, user_id, transcript_id)
     row = await conn.fetchrow(
         """
         INSERT INTO "BrainNode" (
@@ -307,7 +305,7 @@ async def upsert_transcript_brain_node(
             label = EXCLUDED.label,
             description = EXCLUDED.description,
             status = EXCLUDED.status,
-            metadata = "BrainNode".metadata || EXCLUDED.metadata,
+            metadata = ("BrainNode".metadata - 'topicIndexVersion') || EXCLUDED.metadata,
             "sourceType" = EXCLUDED."sourceType",
             "sourceId" = EXCLUDED."sourceId",
             "updatedAt" = NOW()
@@ -323,6 +321,7 @@ async def upsert_transcript_brain_node(
         transcript_id,
     )
     brain_node_id = row["id"] if row else node_id
+    await _remove_transcript_brain_refreshable_sources(conn, user_id, transcript_id)
     await conn.execute(
         """
         INSERT INTO "BrainSource" (
@@ -337,7 +336,7 @@ async def upsert_transcript_brain_node(
         transcript_id,
         _truncate(title, 600),
     )
-    await _upsert_transcript_topic_edges(
+    topic_edges_complete = await _upsert_transcript_topic_edges(
         conn,
         user_id=user_id,
         transcript_id=transcript_id,
@@ -346,6 +345,21 @@ async def upsert_transcript_brain_node(
         text=plain_text,
         status=status,
     )
+    if not topic_edges_complete:
+        return False
+    await conn.execute(
+        """
+        UPDATE "BrainNode"
+        SET metadata = metadata || $3::jsonb,
+            "updatedAt" = NOW()
+        WHERE id = $1
+          AND "userId" = $2
+        """,
+        brain_node_id,
+        user_id,
+        json.dumps({"topicIndexVersion": BRAIN_TOPIC_INDEX_VERSION}),
+    )
+    return True
 
 
 async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> bool:
@@ -374,7 +388,7 @@ async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> boo
             )
             await _delete_orphan_keyword_topic_nodes(conn, user_id)
             return False
-        await upsert_transcript_brain_node(
+        completed = await upsert_transcript_brain_node(
             conn,
             user_id=user_id,
             transcript_id=transcript_id,
@@ -388,7 +402,7 @@ async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> boo
             plain_text=row["summaryMd"] or row["plainText"],
             status=row["status"],
         )
-        return True
+        return completed
 
 
 async def reindex_missing_transcript_brain_nodes(limit: int = 50) -> int:
@@ -522,9 +536,10 @@ async def _upsert_transcript_topic_edges(
     title: str,
     text: str,
     status: str,
-) -> None:
+) -> bool:
     if status != "ACTIVE":
-        return
+        return True
+    complete = True
     for topic in _extract_topics(f"{title}\n{text}"):
         topic_node_id = await _upsert_topic_node(conn, user_id, topic["slug"], topic["label"])
         edge_row = await conn.fetchrow(
@@ -551,6 +566,7 @@ async def _upsert_transcript_topic_edges(
             json.dumps({"term": topic["slug"], "count": topic["count"]}),
         )
         if not edge_row:
+            complete = False
             continue
         try:
             await conn.execute(
@@ -574,6 +590,8 @@ async def _upsert_transcript_topic_edges(
                 edge_id=edge_row["id"],
                 transcript_id=transcript_id,
             )
+            complete = False
+    return complete
 
 
 async def _upsert_topic_node(

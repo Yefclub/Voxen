@@ -31,6 +31,11 @@ type BrainNodeInput = {
   metadata?: JsonObject;
   sourceType?: BrainSourceType | null;
   sourceId?: string | null;
+  metadataMode?: 'replace' | 'merge' | 'reset-completion';
+};
+
+export type BrainReindexOptions = {
+  beforeFinalize?: () => void | Promise<void>;
 };
 
 type BrainEdgeInput = {
@@ -177,7 +182,11 @@ export async function deleteBrainForSources(
   }
 }
 
-export async function reindexTranscriptBrain(userId: string, transcriptId: string): Promise<void> {
+export async function reindexTranscriptBrain(
+  userId: string,
+  transcriptId: string,
+  options: BrainReindexOptions = {},
+): Promise<void> {
   const transcript = await db.transcript.findFirst({
     where: { id: transcriptId, userId },
     select: {
@@ -203,8 +212,6 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
     return;
   }
 
-  await deleteAutomaticContentEdgesForSource(userId, 'TRANSCRIPT', transcript.id);
-  await removeSourceEvidence(userId, 'TRANSCRIPT', transcript.id);
   const contentNode = await upsertBrainNode({
     userId,
     key: brainNodeKey('TRANSCRIPT', transcript.id),
@@ -222,12 +229,13 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
       folderId: transcript.folderId,
       createdAt: transcript.createdAt.toISOString(),
       updatedAt: transcript.updatedAt.toISOString(),
-      brainIndexVersion: BRAIN_INDEX_VERSION,
-      topicIndexVersion: BRAIN_TOPIC_INDEX_VERSION,
     },
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
+    metadataMode: 'reset-completion',
   });
+  await deleteAutomaticContentEdgesForSource(userId, 'TRANSCRIPT', transcript.id);
+  await removeSourceEvidence(userId, 'TRANSCRIPT', transcript.id);
   await addBrainSource({
     userId,
     nodeId: contentNode.id,
@@ -258,6 +266,11 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
     sourceId: transcript.id,
     status: transcript.status,
     text: `${transcript.title}\n${transcript.channel ?? ''}\n${transcript.summaryMd || transcript.plainText}`,
+  });
+  await options.beforeFinalize?.();
+  await finalizeBrainNodeIndex(userId, contentNode.id, {
+    brainIndexVersion: BRAIN_INDEX_VERSION,
+    topicIndexVersion: BRAIN_TOPIC_INDEX_VERSION,
   });
 }
 
@@ -293,8 +306,8 @@ export async function reindexLibraryFolderBrain(userId: string, folderId: string
     return;
   }
 
+  const folderNode = await upsertLibraryFolderNode(userId, folder, { resetCompletion: true });
   await removeSourceEvidence(userId, 'FOLDER', folder.id);
-  const folderNode = await upsertLibraryFolderNode(userId, folder);
   await addBrainSource({
     userId,
     nodeId: folderNode.id,
@@ -322,6 +335,9 @@ export async function reindexLibraryFolderBrain(userId: string, folderId: string
       });
     }
   }
+  await finalizeBrainNodeIndex(userId, folderNode.id, {
+    brainIndexVersion: BRAIN_INDEX_VERSION,
+  });
 }
 
 export async function reindexLibraryFoldersBrain(userId: string): Promise<void> {
@@ -381,9 +397,9 @@ async function reindexNoteRecord(
   note: NoteRecord,
   indexes: { byId: Map<string, NoteRecord>; byTitle: Map<string, NoteRecord> },
 ): Promise<void> {
+  const node = await upsertNoteNode(userId, note, { resetCompletion: true });
   await deleteAutomaticContentEdgesForSource(userId, 'NOTE', note.id);
   await removeSourceEvidence(userId, 'NOTE', note.id);
-  const node = await upsertNoteNode(userId, note);
   await addBrainSource({
     userId,
     nodeId: node.id,
@@ -409,7 +425,12 @@ async function reindexNoteRecord(
     }
   }
 
-  if (note.kind !== 'NOTE') return;
+  if (note.kind !== 'NOTE') {
+    await finalizeBrainNodeIndex(userId, node.id, {
+      brainIndexVersion: BRAIN_INDEX_VERSION,
+    });
+    return;
+  }
   for (const targetTitle of parseWikiLinks(note.content)) {
     const target = indexes.byTitle.get(targetTitle.toLowerCase());
     if (!target || target.id === note.id) continue;
@@ -434,6 +455,9 @@ async function reindexNoteRecord(
     sourceId: note.id,
     status: 'ACTIVE',
     text: `${note.title}\n${note.content}`,
+  });
+  await finalizeBrainNodeIndex(userId, node.id, {
+    brainIndexVersion: BRAIN_INDEX_VERSION,
   });
 }
 
@@ -504,7 +528,11 @@ async function deleteOrphanAutomaticConceptNodes(userId: string): Promise<void> 
   `;
 }
 
-async function upsertLibraryFolderNode(userId: string, folder: LibraryFolderRecord) {
+async function upsertLibraryFolderNode(
+  userId: string,
+  folder: LibraryFolderRecord,
+  options: { resetCompletion?: boolean } = {},
+) {
   return upsertBrainNode({
     userId,
     key: brainNodeKey('FOLDER', folder.id),
@@ -514,14 +542,18 @@ async function upsertLibraryFolderNode(userId: string, folder: LibraryFolderReco
     metadata: {
       parentId: folder.parentId,
       updatedAt: folder.updatedAt.toISOString(),
-      brainIndexVersion: BRAIN_INDEX_VERSION,
     },
     sourceType: 'FOLDER',
     sourceId: folder.id,
+    metadataMode: options.resetCompletion ? 'reset-completion' : 'merge',
   });
 }
 
-async function upsertNoteNode(userId: string, note: NoteRecord) {
+async function upsertNoteNode(
+  userId: string,
+  note: NoteRecord,
+  options: { resetCompletion?: boolean } = {},
+) {
   return upsertBrainNode({
     userId,
     key: brainNodeKey('NOTE', note.id),
@@ -533,10 +565,10 @@ async function upsertNoteNode(userId: string, note: NoteRecord) {
       kind: note.kind,
       parentId: note.parentId,
       updatedAt: note.updatedAt.toISOString(),
-      brainIndexVersion: BRAIN_INDEX_VERSION,
     },
     sourceType: 'NOTE',
     sourceId: note.id,
+    metadataMode: options.resetCompletion ? 'reset-completion' : 'merge',
   });
 }
 
@@ -587,6 +619,7 @@ async function indexConceptsForContent(input: {
   const entities = extractEntities(input.text);
 
   await updateContentSemanticProfile({
+    userId: input.userId,
     contentNodeId: input.contentNodeId,
     text: input.text,
     topics,
@@ -672,17 +705,12 @@ async function indexConceptsForContent(input: {
 }
 
 async function updateContentSemanticProfile(input: {
+  userId: string;
   contentNodeId: string;
   text: string;
   topics: TopicCandidate[];
   entities: EntityCandidate[];
 }): Promise<void> {
-  const node = await db.brainNode.findUnique({
-    where: { id: input.contentNodeId },
-    select: { metadata: true },
-  });
-  if (!node) return;
-  const metadata = jsonRecord(node.metadata);
   const profile: SemanticProfile = {
     extractorVersion: SEMANTIC_PROFILE_VERSION,
     topics: uniqueSlugs(input.topics.map((topic) => topic.slug)),
@@ -690,15 +718,8 @@ async function updateContentSemanticProfile(input: {
     keywords: extractProfileKeywords(input.text),
     indexedAt: new Date().toISOString(),
   };
-  await db.brainNode.update({
-    where: { id: input.contentNodeId },
-    data: {
-      metadata: {
-        ...metadata,
-        semanticProfile: profile,
-        brainIndexVersion: BRAIN_INDEX_VERSION,
-      } as JsonObject,
-    },
+  await mergeBrainNodeMetadata(input.userId, input.contentNodeId, {
+    semanticProfile: profile,
   });
 }
 
@@ -956,14 +977,16 @@ function canonicalEdge(left: string, right: string): [string, string] {
 }
 
 async function upsertBrainNode(input: BrainNodeInput) {
-  return db.brainNode.upsert({
+  const metadataMode = input.metadataMode ?? 'replace';
+  const metadata = input.metadata ?? {};
+  const upsertArgs = {
     where: { userId_key: { userId: input.userId, key: input.key } },
     update: {
       type: input.type,
       label: input.label,
       description: input.description ?? null,
       status: input.status ?? 'ACTIVE',
-      metadata: input.metadata ?? {},
+      ...(metadataMode === 'replace' ? { metadata } : {}),
       sourceType: input.sourceType ?? null,
       sourceId: input.sourceId ?? null,
     },
@@ -974,11 +997,59 @@ async function upsertBrainNode(input: BrainNodeInput) {
       label: input.label,
       description: input.description ?? null,
       status: input.status ?? 'ACTIVE',
-      metadata: input.metadata ?? {},
+      metadata,
       sourceType: input.sourceType ?? null,
       sourceId: input.sourceId ?? null,
     },
+  } satisfies Prisma.BrainNodeUpsertArgs;
+
+  if (metadataMode === 'replace') return db.brainNode.upsert(upsertArgs);
+
+  const metadataJson = JSON.stringify(metadata);
+  if (metadataMode === 'merge') {
+    const node = await db.brainNode.upsert(upsertArgs);
+    await mergeBrainNodeMetadata(input.userId, node.id, metadata);
+    return node;
+  }
+
+  return db.$transaction(async (tx) => {
+    const node = await tx.brainNode.upsert(upsertArgs);
+    await tx.$executeRaw`
+      UPDATE "BrainNode"
+      SET metadata = (
+            COALESCE(metadata, '{}'::jsonb)
+            - 'brainIndexVersion'
+            - 'topicIndexVersion'
+          ) || ${metadataJson}::jsonb,
+          "updatedAt" = NOW()
+      WHERE id = ${node.id}
+        AND "userId" = ${input.userId}
+    `;
+    return node;
   });
+}
+
+async function mergeBrainNodeMetadata(
+  userId: string,
+  nodeId: string,
+  metadata: JsonObject,
+): Promise<void> {
+  const metadataJson = JSON.stringify(metadata);
+  await db.$executeRaw`
+    UPDATE "BrainNode"
+    SET metadata = COALESCE(metadata, '{}'::jsonb) || ${metadataJson}::jsonb,
+        "updatedAt" = NOW()
+    WHERE id = ${nodeId}
+      AND "userId" = ${userId}
+  `;
+}
+
+async function finalizeBrainNodeIndex(
+  userId: string,
+  nodeId: string,
+  markers: JsonObject,
+): Promise<void> {
+  await mergeBrainNodeMetadata(userId, nodeId, markers);
 }
 
 async function upsertBrainEdge(input: BrainEdgeInput) {

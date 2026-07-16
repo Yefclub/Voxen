@@ -515,7 +515,7 @@ async function countStaleBrainSourceNodes(userId: string): Promise<number> {
     FROM "BrainNode"
     WHERE "userId" = ${userId}
       AND status = 'ACTIVE'::"ContentStatus"
-      AND "sourceType"::text IN ('TRANSCRIPT', 'NOTE')
+      AND "sourceType"::text IN ('TRANSCRIPT', 'NOTE', 'FOLDER')
       AND coalesce(metadata->>'brainIndexVersion', '0') <> ${String(BRAIN_INDEX_VERSION)}
   `;
   const count = rows[0]?.count ?? 0;

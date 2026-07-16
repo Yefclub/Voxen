@@ -1,6 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import app from '../src/index';
-import { BRAIN_INDEX_VERSION, BRAIN_TOPIC_INDEX_VERSION } from '../src/lib/brain';
+import {
+  BRAIN_INDEX_VERSION,
+  BRAIN_TOPIC_INDEX_VERSION,
+  reindexLibraryFolderBrain,
+  reindexNoteBrain,
+  reindexTranscriptBrain,
+} from '../src/lib/brain';
 import { db } from '../src/lib/db';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
@@ -201,6 +207,150 @@ describeIfDb('brain indexer', () => {
     };
     expect(metadata.brainIndexVersion).toBe(BRAIN_INDEX_VERSION);
     expect(metadata.topicIndexVersion).toBe(BRAIN_TOPIC_INDEX_VERSION);
+  });
+
+  it('leaves transcript completion markers absent when finalization fails', async () => {
+    await signUp('brain-finalization@voxen.local', 'senha-super-segura-123', 'Brain Finalization');
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'brain-finalization@voxen.local' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/brain-finalization',
+        title: 'Finalização segura do Brain',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/brain-finalization.md`,
+        plainText: 'Grafo semântico precisa concluir conceitos e conexões antes de finalizar.',
+        frontmatter: {},
+      },
+    });
+
+    const workerMetadata = JSON.stringify({ workerTopicExtractor: 'keyword-v1' });
+    await reindexTranscriptBrain(user.id, transcript.id, {
+      beforeFinalize: async () => {
+        await db.$executeRaw`
+          UPDATE "BrainNode"
+          SET metadata = metadata || ${workerMetadata}::jsonb
+          WHERE "userId" = ${user.id}
+            AND key = ${`TRANSCRIPT:${transcript.id}`}
+        `;
+      },
+    });
+    const completed = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+    });
+    const completedMetadata = completed.metadata as {
+      brainIndexVersion?: number;
+      topicIndexVersion?: number;
+      workerTopicExtractor?: string;
+    };
+    expect(completedMetadata.brainIndexVersion).toBe(BRAIN_INDEX_VERSION);
+    expect(completedMetadata.topicIndexVersion).toBe(BRAIN_TOPIC_INDEX_VERSION);
+    expect(completedMetadata.workerTopicExtractor).toBe('keyword-v1');
+
+    let failure: unknown;
+    try {
+      await reindexTranscriptBrain(user.id, transcript.id, {
+        beforeFinalize: () => {
+          throw new Error('fault-before-finalize');
+        },
+      });
+    } catch (err) {
+      failure = err;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe('fault-before-finalize');
+
+    const incomplete = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+    });
+    const metadata = incomplete.metadata as {
+      brainIndexVersion?: number;
+      topicIndexVersion?: number;
+      semanticProfile?: unknown;
+      workerTopicExtractor?: string;
+    };
+    expect(metadata.semanticProfile).toBeDefined();
+    expect(metadata.workerTopicExtractor).toBe('keyword-v1');
+    expect(metadata.brainIndexVersion).toBeUndefined();
+    expect(metadata.topicIndexVersion).toBeUndefined();
+  });
+
+  it('does not give auxiliary note and folder nodes false completion markers', async () => {
+    await signUp('brain-auxiliary@voxen.local', 'senha-super-segura-123', 'Brain Auxiliary');
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'brain-auxiliary@voxen.local' },
+    });
+    const target = await db.note.create({
+      data: {
+        userId: user.id,
+        kind: 'NOTE',
+        title: 'Nota auxiliar',
+        content: 'Conteúdo ainda não indexado diretamente.',
+      },
+    });
+    const source = await db.note.create({
+      data: {
+        userId: user.id,
+        kind: 'NOTE',
+        title: 'Nota principal',
+        content: 'Conecta com [[Nota auxiliar]].',
+      },
+    });
+    const folder = await db.libraryFolder.create({
+      data: { userId: user.id, name: 'Pasta auxiliar' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        folderId: folder.id,
+        source: 'WEB',
+        url: 'https://example.com/brain-auxiliary',
+        title: 'Transcrição com pasta auxiliar',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/brain-auxiliary.md`,
+        plainText: 'Conteúdo ligado a uma pasta ainda não indexada diretamente.',
+        frontmatter: {},
+      },
+    });
+
+    await reindexNoteBrain(user.id, source.id);
+    await reindexTranscriptBrain(user.id, transcript.id);
+
+    const auxiliaryNote = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `NOTE:${target.id}` } },
+    });
+    const auxiliaryFolder = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `FOLDER:${folder.id}` } },
+    });
+    expect(
+      (auxiliaryNote.metadata as { brainIndexVersion?: number }).brainIndexVersion,
+    ).toBeUndefined();
+    expect(
+      (auxiliaryFolder.metadata as { brainIndexVersion?: number }).brainIndexVersion,
+    ).toBeUndefined();
+
+    await reindexNoteBrain(user.id, target.id);
+    await reindexLibraryFolderBrain(user.id, folder.id);
+
+    const completedNote = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `NOTE:${target.id}` } },
+    });
+    const completedFolder = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `FOLDER:${folder.id}` } },
+    });
+    expect((completedNote.metadata as { brainIndexVersion?: number }).brainIndexVersion).toBe(
+      BRAIN_INDEX_VERSION,
+    );
+    expect((completedFolder.metadata as { brainIndexVersion?: number }).brainIndexVersion).toBe(
+      BRAIN_INDEX_VERSION,
+    );
   });
 
   it('GET /api/graph backfills Brain nodes for legacy content', async () => {

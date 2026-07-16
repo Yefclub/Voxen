@@ -7,6 +7,8 @@ O Brain deixa de alternar indefinidamente entre passes de indexação incompatí
 o indexador rápido agora preserva a versão completa já registrada, enquanto o
 passe completo também reconhece a cobertura mínima atendida. Isso evita ciclos de
 **Organizando** e falhas de cobertura em conteúdos que já foram processados.
+O estado completo só é registrado depois que fontes, pastas, conceitos e relações
+terminam; se uma etapa falhar, a fonte continua pendente para uma nova tentativa.
 
 No modo 3D, a maior comunidade passa a ocupar o centro real da cena e é o foco do
 primeiro enquadramento. Comunidades menores ficam distribuídas ao redor do núcleo,
