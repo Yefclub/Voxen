@@ -36,6 +36,9 @@ export const SPACER_EPSILON_PX = 8;
 /** Distância do fundo abaixo da qual o follow automático rearma (legado). */
 export const FOLLOW_REARM_DISTANCE_PX = 400;
 
+/** Distância mínima do fim para oferecer o retorno à mensagem mais recente. */
+export const SCROLL_LATEST_SHOW_DISTANCE_PX = 96;
+
 /** Tolerância para distinguir scroll manual para cima de jitter/reflow. */
 export const USER_SCROLL_UP_TOLERANCE_PX = 4;
 
@@ -176,4 +179,23 @@ export function canRearmFollow(params: {
 }): boolean {
   if (params.spacerHeight > SPACER_EPSILON_PX) return false;
   return params.distanceToBottom < FOLLOW_REARM_DISTANCE_PX;
+}
+
+/**
+ * Decide a visibilidade do CTA sem confundi-la com o follow automático.
+ *
+ * Uma âncora programática pode deixar o viewport longe do fim durante todo o
+ * turno, mas isso não representa intenção do usuário. O CTA só é armado por uma
+ * rolagem deliberada para cima e permanece até o retorno ao fim começar ou a
+ * distância ficar abaixo do limiar visual.
+ */
+export function nextScrollLatestVisibility(params: {
+  current: boolean;
+  distanceToBottom: number;
+  userScrolledUp: boolean;
+  returningToEnd: boolean;
+}): boolean {
+  if (params.returningToEnd) return false;
+  if (params.distanceToBottom < SCROLL_LATEST_SHOW_DISTANCE_PX) return false;
+  return params.current || params.userScrolledUp;
 }

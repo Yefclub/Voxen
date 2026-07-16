@@ -4,9 +4,11 @@ import {
   ANCHOR_TOP_GAP_PX,
   FOLLOW_REARM_DISTANCE_PX,
   REENGAGE_GAP_MIN_PX,
+  SCROLL_LATEST_SHOW_DISTANCE_PX,
   SPACER_EPSILON_PX,
   canRearmFollow,
   isUserScrollUp,
+  nextScrollLatestVisibility,
   nextSpacerHeight,
   planAnchor,
   reengageThresholdPx,
@@ -275,6 +277,68 @@ describe('canRearmFollow', () => {
       canRearmFollow({
         distanceToBottom: FOLLOW_REARM_DISTANCE_PX + 1,
         spacerHeight: 0,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('nextScrollLatestVisibility', () => {
+  test('does not show for an automatic anchor or streaming growth', () => {
+    expect(
+      nextScrollLatestVisibility({
+        current: false,
+        distanceToBottom: SCROLL_LATEST_SHOW_DISTANCE_PX + 200,
+        userScrolledUp: false,
+        returningToEnd: false,
+      }),
+    ).toBe(false);
+  });
+
+  test('shows only after a deliberate upward scroll far enough from the end', () => {
+    expect(
+      nextScrollLatestVisibility({
+        current: false,
+        distanceToBottom: SCROLL_LATEST_SHOW_DISTANCE_PX,
+        userScrolledUp: true,
+        returningToEnd: false,
+      }),
+    ).toBe(true);
+    expect(
+      nextScrollLatestVisibility({
+        current: false,
+        distanceToBottom: SCROLL_LATEST_SHOW_DISTANCE_PX - 1,
+        userScrolledUp: true,
+        returningToEnd: false,
+      }),
+    ).toBe(false);
+  });
+
+  test('stays visible while detached and hides near the end', () => {
+    expect(
+      nextScrollLatestVisibility({
+        current: true,
+        distanceToBottom: SCROLL_LATEST_SHOW_DISTANCE_PX + 1,
+        userScrolledUp: false,
+        returningToEnd: false,
+      }),
+    ).toBe(true);
+    expect(
+      nextScrollLatestVisibility({
+        current: true,
+        distanceToBottom: SCROLL_LATEST_SHOW_DISTANCE_PX - 1,
+        userScrolledUp: false,
+        returningToEnd: false,
+      }),
+    ).toBe(false);
+  });
+
+  test('stays hidden throughout a programmatic return to the end', () => {
+    expect(
+      nextScrollLatestVisibility({
+        current: true,
+        distanceToBottom: SCROLL_LATEST_SHOW_DISTANCE_PX + 500,
+        userScrolledUp: true,
+        returningToEnd: true,
       }),
     ).toBe(false);
   });

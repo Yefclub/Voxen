@@ -349,6 +349,7 @@ const ptBRMessages = {
   'library.chatBarHint': 'Pergunte sobre este conteúdo — envia direto para o chat.',
   'library.chatBarPlaceholder': 'Pergunte algo sobre este conteúdo…',
   'library.chatBarContext': 'Perguntando sobre: {title}',
+  'library.chatBarExpand': 'Abrir campo para conversar sobre esta transcrição',
   'library.regenerateTitle': 'Regenerar resumo?',
   'library.regenerateDescription':
     'Vai consumir tokens da OpenRouter pra gerar um resumo novo do zero. O atual será sobrescrito.',
@@ -1447,6 +1448,7 @@ const enMessages: Record<I18nKey, string> = {
   'library.chatBarHint': 'Ask about this content — sends you straight to chat.',
   'library.chatBarPlaceholder': 'Ask something about this content…',
   'library.chatBarContext': 'Asking about: {title}',
+  'library.chatBarExpand': 'Open the field to chat about this transcript',
   'library.regenerateTitle': 'Regenerate summary?',
   'library.regenerateDescription':
     'This will consume OpenRouter tokens to generate a new summary from scratch. The current one will be overwritten.',

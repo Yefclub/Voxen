@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
-  ArrowUp,
   Archive,
   Calendar,
   Check,
@@ -47,6 +46,7 @@ import {
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 import { cn } from '../lib/utils';
 import { buildTranscriptChatMessage, type ChatHandoffState } from '../lib/chat-handoff';
+import { TranscriptChatDock } from '../components/library/transcript-chat-dock';
 
 interface TranscriptDetail {
   id: string;
@@ -702,7 +702,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
       </div>
 
       {canUseContextualActions && (
-        <TranscriptChatBar
+        <TranscriptChatDock
           value={chatDraft}
           onChange={setChatDraft}
           onSend={() => sendToChat(t)}
@@ -733,75 +733,6 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         loading={deleting}
       />
     </AnimatedPage>
-  );
-}
-
-/** Promptbox sticky — mesmo shell visual do Composer do chat (spec 097). */
-function TranscriptChatBar({
-  value,
-  onChange,
-  onSend,
-  title,
-  t,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onSend: () => void;
-  title: string;
-  t: TranslateFn;
-}): React.ReactElement {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [value]);
-
-  return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
-      <div className="pointer-events-auto w-full max-w-3xl">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSend();
-          }}
-          className="w-full"
-        >
-          <div className="flex flex-col gap-1.5 rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)]/95 p-2 shadow-xl shadow-black/20 backdrop-blur-md transition-colors focus-within:border-[var(--color-accent-primary)]/50">
-            <p className="truncate px-2 pt-0.5 text-[11px] text-[var(--color-app-muted)]">
-              {t('library.chatBarContext', { title })}
-            </p>
-            <textarea
-              ref={textareaRef}
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  onSend();
-                }
-              }}
-              placeholder={t('library.chatBarPlaceholder')}
-              rows={1}
-              className="max-h-40 min-h-9 w-full resize-none bg-transparent px-2 py-1.5 text-sm text-[var(--color-app-fg)] outline-none placeholder:text-[var(--color-app-muted)]"
-            />
-            <div className="flex items-center gap-1.5">
-              <span className="flex-1" />
-              <button
-                type="submit"
-                disabled={!value.trim()}
-                className="grid h-9 w-9 place-items-center rounded-full bg-[var(--color-accent-primary)] text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label={t('chat.send')}
-              >
-                <ArrowUp className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
   );
 }
 
