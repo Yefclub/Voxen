@@ -119,20 +119,14 @@ describe('graph insights and deterministic layout', () => {
     );
   });
 
-  test('centers the 3D bounds around the camera origin', () => {
-    const positions = [...buildGraphPositions3D(DATA).values()];
-    const bounds = {
-      minX: Math.min(...positions.map((position) => position.x)),
-      maxX: Math.max(...positions.map((position) => position.x)),
-      minY: Math.min(...positions.map((position) => position.y)),
-      maxY: Math.max(...positions.map((position) => position.y)),
-      minZ: Math.min(...positions.map((position) => position.z)),
-      maxZ: Math.max(...positions.map((position) => position.z)),
-    };
+  test('anchors the primary 3D community at the origin and orbits satellites', () => {
+    const communities = buildGraphCommunities(DATA);
+    const positions = buildGraphPositions3D(DATA);
+    const primaryHub = communities[0]?.nodeIds[0];
 
-    expect((bounds.minX + bounds.maxX) / 2).toBeCloseTo(0, 8);
-    expect((bounds.minY + bounds.maxY) / 2).toBeCloseTo(0, 8);
-    expect((bounds.minZ + bounds.maxZ) / 2).toBeCloseTo(0, 8);
+    expect(primaryHub).toBe('topic-alpha');
+    expect(positions.get(primaryHub ?? '')).toEqual({ x: 0, y: 0, z: 0 });
+    expect(positions.get('isolated')).not.toEqual({ x: 0, y: 0, z: 0 });
   });
 
   test('lays out the defensive cap of 500 nodes and 1,500 edges with finite coordinates', () => {

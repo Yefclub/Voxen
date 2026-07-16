@@ -1007,6 +1007,7 @@ export function BrainGraph3DCanvas({
 }): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<GraphCanvasRef | null>(null);
+  const primaryNodeIdsRef = useRef<string[]>([]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [reagraph, setReagraph] = useState<ReagraphModule | null>(null);
   const profile = useMemo(
@@ -1025,6 +1026,7 @@ export function BrainGraph3DCanvas({
       }) as unknown as React.ComponentProps<GraphCanvasComponent>['layoutOverrides'],
     [model?.positions3d],
   );
+  primaryNodeIdsRef.current = model?.primaryNodeIds ?? [];
 
   useEffect(() => {
     if (!supportsWebGL()) {
@@ -1066,11 +1068,21 @@ export function BrainGraph3DCanvas({
     return [...(model.neighborhoods.get(activeId) ?? new Set([activeId]))];
   }, [activeId, model]);
 
-  const fitGraphView = useCallback((animated: boolean) => {
+  const fitGraphView = useCallback((scope: 'primary' | 'all', animated: boolean) => {
     try {
-      graphRef.current?.fitNodesInView(undefined, { animated });
+      const ids = scope === 'primary' ? primaryNodeIdsRef.current : undefined;
+      graphRef.current?.fitNodesInView(ids?.length ? ids : undefined, { animated });
     } catch {
       // A câmera ainda pode estar preparando a cena.
+    }
+  }, []);
+
+  const zoomGraph = useCallback((direction: 'in' | 'out') => {
+    try {
+      if (direction === 'in') graphRef.current?.zoomIn();
+      else graphRef.current?.zoomOut();
+    } catch {
+      // Os controles podem chegar antes de a câmera 3D estar pronta.
     }
   }, []);
 
@@ -1078,9 +1090,9 @@ export function BrainGraph3DCanvas({
     if (!model || model.graph.order === 0 || !reagraph) return;
     const frame =
       typeof window.requestAnimationFrame === 'function'
-        ? window.requestAnimationFrame(() => fitGraphView(false))
+        ? window.requestAnimationFrame(() => fitGraphView('primary', false))
         : null;
-    const timer = window.setTimeout(() => fitGraphView(profile.animated), 180);
+    const timer = window.setTimeout(() => fitGraphView('primary', profile.animated), 180);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
       window.clearTimeout(timer);
@@ -1149,8 +1161,23 @@ export function BrainGraph3DCanvas({
             3D · {translate(`graph.renderProfile.${profile.tier}`)}
           </div>
           <div className="absolute bottom-3 right-3 z-10 flex flex-col gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md">
-            <CanvasButton label={translate('graph.fitView')} onClick={() => fitGraphView(true)}>
+            <CanvasButton label={translate('graph.zoomIn')} onClick={() => zoomGraph('in')}>
+              <ZoomIn className="h-3.5 w-3.5" />
+            </CanvasButton>
+            <CanvasButton label={translate('graph.zoomOut')} onClick={() => zoomGraph('out')}>
+              <ZoomOut className="h-3.5 w-3.5" />
+            </CanvasButton>
+            <CanvasButton
+              label={translate('graph.focusCore')}
+              onClick={() => fitGraphView('primary', true)}
+            >
               <Focus className="h-3.5 w-3.5" />
+            </CanvasButton>
+            <CanvasButton
+              label={translate('graph.fitAll')}
+              onClick={() => fitGraphView('all', true)}
+            >
+              <Network className="h-3.5 w-3.5" />
             </CanvasButton>
           </div>
         </>

@@ -1,7 +1,15 @@
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import app from '../src/index';
-import { BRAIN_INDEX_VERSION } from '../src/lib/brain';
+import {
+  BRAIN_INDEX_VERSION,
+  BRAIN_TOPIC_INDEX_VERSION,
+  deleteBrainForSource,
+  reindexLibraryFolderBrain,
+  reindexNoteBrain,
+  reindexTranscriptBrain,
+} from '../src/lib/brain';
 import { db } from '../src/lib/db';
+import { acquireGraphIndexLease, releaseGraphIndexLease } from '../src/lib/graph-index-coordinator';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -195,6 +203,332 @@ describeIfDb('brain indexer', () => {
       },
     });
     expect(evidence.excerpt).toBe('Folder: Pesquisa');
+    const metadata = transcriptNode.metadata as {
+      brainIndexVersion?: number;
+      topicIndexVersion?: number;
+    };
+    expect(metadata.brainIndexVersion).toBe(BRAIN_INDEX_VERSION);
+    expect(metadata.topicIndexVersion).toBe(BRAIN_TOPIC_INDEX_VERSION);
+  });
+
+  it('leaves transcript completion markers absent when finalization fails', async () => {
+    await signUp('brain-finalization@voxen.local', 'senha-super-segura-123', 'Brain Finalization');
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'brain-finalization@voxen.local' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/brain-finalization',
+        title: 'Finalização segura do Brain',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/brain-finalization.md`,
+        plainText: 'Grafo semântico precisa concluir conceitos e conexões antes de finalizar.',
+        frontmatter: {},
+      },
+    });
+
+    const workerMetadata = JSON.stringify({ workerTopicExtractor: 'keyword-v1' });
+    await reindexTranscriptBrain(user.id, transcript.id, {
+      beforeFinalize: async () => {
+        await db.$executeRaw`
+          UPDATE "BrainNode"
+          SET metadata = metadata || ${workerMetadata}::jsonb
+          WHERE "userId" = ${user.id}
+            AND key = ${`TRANSCRIPT:${transcript.id}`}
+        `;
+      },
+    });
+    const completed = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+    });
+    const completedMetadata = completed.metadata as {
+      brainIndexVersion?: number;
+      topicIndexVersion?: number;
+      workerTopicExtractor?: string;
+    };
+    expect(completedMetadata.brainIndexVersion).toBe(BRAIN_INDEX_VERSION);
+    expect(completedMetadata.topicIndexVersion).toBe(BRAIN_TOPIC_INDEX_VERSION);
+    expect(completedMetadata.workerTopicExtractor).toBe('keyword-v1');
+
+    let leaseOwned = true;
+    let failure: unknown;
+    try {
+      await reindexTranscriptBrain(user.id, transcript.id, {
+        beforeFinalize: () => {
+          leaseOwned = false;
+        },
+        assertLeaseOwnership: async () => {
+          if (!leaseOwned) throw new Error('lease-lost-inside-item');
+        },
+      });
+    } catch (err) {
+      failure = err;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe('lease-lost-inside-item');
+
+    const incomplete = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+    });
+    const metadata = incomplete.metadata as {
+      brainIndexVersion?: number;
+      topicIndexVersion?: number;
+      semanticProfile?: unknown;
+      workerTopicExtractor?: string;
+    };
+    expect(metadata.semanticProfile).toBeDefined();
+    expect(metadata.workerTopicExtractor).toBe('keyword-v1');
+    expect(metadata.brainIndexVersion).toBeUndefined();
+    expect(metadata.topicIndexVersion).toBeUndefined();
+  });
+
+  it('leaves transcript markers absent after a real folder edge FK race', async () => {
+    await signUp('brain-edge-race@voxen.local', 'senha-super-segura-123', 'Brain Edge Race');
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'brain-edge-race@voxen.local' },
+    });
+    const folder = await db.libraryFolder.create({
+      data: { userId: user.id, name: 'Pasta removida durante a aresta' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        folderId: folder.id,
+        source: 'WEB',
+        url: 'https://example.com/brain-edge-race',
+        title: 'Corrida de FK do Brain',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/brain-edge-race.md`,
+        plainText: 'Conteúdo com pasta e conceitos para materialização completa.',
+        frontmatter: {},
+      },
+    });
+    await reindexTranscriptBrain(user.id, transcript.id);
+    const folderNode = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `FOLDER:${folder.id}` } },
+    });
+
+    let folderCheckpointObserved = false;
+    let failure: unknown;
+    try {
+      await reindexTranscriptBrain(user.id, transcript.id, {
+        beforeEdgeWrite: async (edge) => {
+          if (edge.method !== 'folder' || folderCheckpointObserved) return;
+          folderCheckpointObserved = true;
+          await db.brainNode.delete({ where: { id: folderNode.id } });
+        },
+      });
+    } catch (err) {
+      failure = err;
+    }
+
+    expect(folderCheckpointObserved).toBe(true);
+    expect(failure).toBeInstanceOf(Error);
+    const incomplete = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+    });
+    const metadata = incomplete.metadata as {
+      brainIndexVersion?: number;
+      topicIndexVersion?: number;
+    };
+    expect(metadata.brainIndexVersion).toBeUndefined();
+    expect(metadata.topicIndexVersion).toBeUndefined();
+  });
+
+  it('stops shared-concept linking after lease loss and leaves completion markers absent', async () => {
+    await signUp('brain-shared-loop@voxen.local', 'senha-super-segura-123', 'Shared Loop');
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'brain-shared-loop@voxen.local' },
+    });
+    const first = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/shared-loop-first',
+        title: 'Projeto Atlas origem',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/shared-loop-first.md`,
+        plainText: 'Projeto Atlas usa GraphRAG para conectar memorias e conhecimento.',
+        frontmatter: {},
+      },
+    });
+    const second = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/shared-loop-second',
+        title: 'Projeto Atlas destino',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/shared-loop-second.md`,
+        plainText: 'Projeto Atlas aplica GraphRAG em memorias e conhecimento.',
+        frontmatter: {},
+      },
+    });
+    await reindexTranscriptBrain(user.id, first.id);
+
+    let leaseOwned = true;
+    let sharedCheckpointObserved = false;
+    let failure: unknown;
+    try {
+      await reindexTranscriptBrain(user.id, second.id, {
+        beforeEdgeWrite: (edge) => {
+          if (edge.method !== 'shared-concepts') return;
+          sharedCheckpointObserved = true;
+          leaseOwned = false;
+        },
+        assertLeaseOwnership: async () => {
+          if (!leaseOwned) throw new Error('lease-lost-before-shared-write');
+        },
+      });
+    } catch (err) {
+      failure = err;
+    }
+
+    expect(sharedCheckpointObserved).toBe(true);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe('lease-lost-before-shared-write');
+    const incomplete = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${second.id}` } },
+    });
+    const metadata = incomplete.metadata as {
+      brainIndexVersion?: number;
+      topicIndexVersion?: number;
+    };
+    expect(metadata.brainIndexVersion).toBeUndefined();
+    expect(metadata.topicIndexVersion).toBeUndefined();
+    expect(
+      await db.brainEdge.count({
+        where: {
+          userId: user.id,
+          method: 'shared-concepts',
+          OR: [{ fromNodeId: incomplete.id }, { toNodeId: incomplete.id }],
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it('does not let a direct web reindex mutate while the worker owns the shared lease', async () => {
+    await signUp('brain-shared-lease@voxen.local', 'senha-super-segura-123', 'Shared Lease');
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'brain-shared-lease@voxen.local' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/brain-shared-lease',
+        title: 'Lease compartilhado',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/brain-shared-lease.md`,
+        plainText: 'Worker e web não podem materializar o Brain ao mesmo tempo.',
+        frontmatter: {},
+      },
+    });
+    const workerOwner = 'worker:test-shared-owner';
+    expect(await acquireGraphIndexLease(user.id, workerOwner)).toBe(true);
+    try {
+      await reindexTranscriptBrain(user.id, transcript.id);
+      expect(
+        await db.brainNode.findUnique({
+          where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+        }),
+      ).toBeNull();
+    } finally {
+      await releaseGraphIndexLease(user.id, workerOwner);
+    }
+
+    await reindexTranscriptBrain(user.id, transcript.id);
+    const completed = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+    });
+    expect((completed.metadata as { brainIndexVersion?: number }).brainIndexVersion).toBe(
+      BRAIN_INDEX_VERSION,
+    );
+  });
+
+  it('does not give auxiliary note and folder nodes false completion markers', async () => {
+    await signUp('brain-auxiliary@voxen.local', 'senha-super-segura-123', 'Brain Auxiliary');
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'brain-auxiliary@voxen.local' },
+    });
+    const target = await db.note.create({
+      data: {
+        userId: user.id,
+        kind: 'NOTE',
+        title: 'Nota auxiliar',
+        content: 'Conteúdo ainda não indexado diretamente.',
+      },
+    });
+    const source = await db.note.create({
+      data: {
+        userId: user.id,
+        kind: 'NOTE',
+        title: 'Nota principal',
+        content: 'Conecta com [[Nota auxiliar]].',
+      },
+    });
+    const folder = await db.libraryFolder.create({
+      data: { userId: user.id, name: 'Pasta auxiliar' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        folderId: folder.id,
+        source: 'WEB',
+        url: 'https://example.com/brain-auxiliary',
+        title: 'Transcrição com pasta auxiliar',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/brain-auxiliary.md`,
+        plainText: 'Conteúdo ligado a uma pasta ainda não indexada diretamente.',
+        frontmatter: {},
+      },
+    });
+
+    await reindexNoteBrain(user.id, source.id);
+    await reindexTranscriptBrain(user.id, transcript.id);
+
+    const auxiliaryNote = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `NOTE:${target.id}` } },
+    });
+    const auxiliaryFolder = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `FOLDER:${folder.id}` } },
+    });
+    expect(
+      (auxiliaryNote.metadata as { brainIndexVersion?: number }).brainIndexVersion,
+    ).toBeUndefined();
+    expect(
+      (auxiliaryFolder.metadata as { brainIndexVersion?: number }).brainIndexVersion,
+    ).toBeUndefined();
+
+    await reindexNoteBrain(user.id, target.id);
+    await reindexLibraryFolderBrain(user.id, folder.id);
+
+    const completedNote = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `NOTE:${target.id}` } },
+    });
+    const completedFolder = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `FOLDER:${folder.id}` } },
+    });
+    expect((completedNote.metadata as { brainIndexVersion?: number }).brainIndexVersion).toBe(
+      BRAIN_INDEX_VERSION,
+    );
+    expect((completedFolder.metadata as { brainIndexVersion?: number }).brainIndexVersion).toBe(
+      BRAIN_INDEX_VERSION,
+    );
   });
 
   it('GET /api/graph backfills Brain nodes for legacy content', async () => {
@@ -422,9 +756,14 @@ describeIfDb('brain indexer', () => {
     expect(noteRes.status).toBe(201);
     const noteBody = (await noteRes.json()) as { note: { id: string } };
 
-    await db.brainNode.update({
-      where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
-      data: { metadata: { brainIndexVersion: 1 } },
+    const sourceUpdatedAt = new Date(Date.now() + 1_000);
+    await db.note.update({
+      where: { id: noteBody.note.id },
+      data: {
+        title: 'Memória stale atualizada',
+        content: 'A fonte mudou sem conseguir executar o reindex direto.',
+        updatedAt: sourceUpdatedAt,
+      },
     });
 
     await waitForGraphReindex(cookie, false);
@@ -432,9 +771,54 @@ describeIfDb('brain indexer', () => {
     const node = await db.brainNode.findUniqueOrThrow({
       where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
     });
+    expect(node.label).toBe('Memória stale atualizada');
     expect((node.metadata as { brainIndexVersion?: number }).brainIndexVersion).toBe(
       BRAIN_INDEX_VERSION,
     );
+    expect((node.metadata as { updatedAt?: string }).updatedAt).toBe(sourceUpdatedAt.toISOString());
+  });
+
+  it('cleans an orphan source node after a post-commit delete misses the busy lease', async () => {
+    await signUp('orphan-brain@voxen.local', 'senha-super-segura-123', 'Orphan Brain');
+    const signin = await signIn('orphan-brain@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'orphan-brain@voxen.local' } });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/orphan-brain',
+        title: 'Fonte removida com lease ocupado',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/orphan-brain.md`,
+        plainText: 'O full pass precisa remover o nórfão depois.',
+        frontmatter: {},
+      },
+    });
+    await reindexTranscriptBrain(user.id, transcript.id);
+
+    const workerOwner = 'worker:test-orphan-delete';
+    expect(await acquireGraphIndexLease(user.id, workerOwner)).toBe(true);
+    try {
+      await db.transcript.delete({ where: { id: transcript.id } });
+      await deleteBrainForSource(user.id, 'TRANSCRIPT', transcript.id);
+      expect(
+        await db.brainNode.findUnique({
+          where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+        }),
+      ).not.toBeNull();
+    } finally {
+      await releaseGraphIndexLease(user.id, workerOwner);
+    }
+
+    await waitForGraphReindex(cookie, false);
+    expect(
+      await db.brainNode.findUnique({
+        where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+      }),
+    ).toBeNull();
   });
 
   it('removes automatic topic nodes when transcript leaves the active graph', async () => {
