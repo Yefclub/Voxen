@@ -217,6 +217,28 @@
     *::-webkit-scrollbar {
       display: none;
     }
+
+    /* iOS amplia automaticamente campos menores que 16px e desloca todo o
+       shell do PWA. Mantém composer, filtros e formulários estáveis ao focar. */
+    input,
+    textarea,
+    select {
+      font-size: 16px;
+    }
+
+    button,
+    a,
+    [role='button'] {
+      touch-action: manipulation;
+    }
+  }
+
+  @media (display-mode: standalone) {
+    html,
+    body,
+    #root {
+      overscroll-behavior: none;
+    }
   }
 
   /* Mesh gradient ambiente — depende do tema */

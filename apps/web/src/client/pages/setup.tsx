@@ -227,7 +227,7 @@ export function SetupPage(): React.ReactElement {
 
   if (step === 'loading') {
     return (
-      <div className="px-8 py-24 flex justify-center">
+      <div className="flex justify-center px-4 py-16 sm:px-8 sm:py-24">
         <Spinner size={22} className="text-[var(--color-app-muted)]" />
       </div>
     );
@@ -236,7 +236,7 @@ export function SetupPage(): React.ReactElement {
   if (step === 'done') {
     return (
       <AnimatedPage>
-        <div className="mx-auto max-w-3xl px-6 py-20 flex flex-col items-center text-center">
+        <div className="mx-auto flex max-w-3xl flex-col items-center px-4 py-12 text-center sm:px-6 sm:py-20">
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -274,7 +274,7 @@ export function SetupPage(): React.ReactElement {
   // Wizard de primeira configuração ou formulário direto de edição da instância.
   return (
     <AnimatedPage>
-      <div className="mx-auto max-w-4xl px-6 py-12">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-12">
         <PageHeader
           badge={editingConfigured ? t('setup.badge.edit') : t('setup.badge.initial')}
           title={

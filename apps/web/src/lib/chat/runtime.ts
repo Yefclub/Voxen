@@ -142,12 +142,30 @@ export async function getOrCreateConversation(userId: string) {
   }
 }
 
-export async function getChatSnapshot(userId: string) {
+export async function getChatSnapshot(
+  userId: string,
+  options: { before?: string; limit?: number } = {},
+) {
   const conversation = await getOrCreateConversation(userId);
   await reconcileStaleHitl(userId, conversation.id);
-  const messages = await db.chatMessage.findMany({
-    where: { conversationId: conversation.id },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  const limit = Math.min(100, Math.max(1, options.limit ?? 60));
+  if (options.before) {
+    const cursor = await db.chatMessage.findFirst({
+      where: {
+        id: options.before,
+        conversationId: conversation.id,
+        compactedAt: null,
+        kind: 'NORMAL',
+      },
+      select: { id: true },
+    });
+    if (!cursor) throw new Error('Cursor de histórico inválido.');
+  }
+  const newestFirst = await db.chatMessage.findMany({
+    where: { conversationId: conversation.id, compactedAt: null, kind: 'NORMAL' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    ...(options.before ? { cursor: { id: options.before }, skip: 1 } : {}),
+    take: limit + 1,
     select: {
       id: true,
       role: true,
@@ -159,6 +177,8 @@ export async function getChatSnapshot(userId: string) {
       createdAt: true,
     },
   });
+  const hasOlder = newestFirst.length > limit;
+  const messages = newestFirst.slice(0, limit).reverse();
   // Persisted `running` tools are always stale once a turn is saved — heal so
   // reloads don't leave the Thinking block stuck on "Pensando…".
   const healedMessages = await Promise.all(
@@ -196,7 +216,18 @@ export async function getChatSnapshot(userId: string) {
       return next;
     }),
   );
-  return { conversation, messages: healedMessages };
+  const activeTurn = await db.chatTurn.findFirst({
+    where: { userId, conversationId: conversation.id, status: { in: ['PENDING', 'RUNNING'] } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, status: true, assistantMessageId: true, updatedAt: true },
+  });
+  return {
+    conversation,
+    messages: healedMessages,
+    hasOlder,
+    nextCursor: hasOlder ? (messages[0]?.id ?? null) : null,
+    activeTurn,
+  };
 }
 
 /** Clears the user's canonical conversation history. Keeps the Conversation row. */
@@ -208,7 +239,9 @@ export async function clearConversation(userId: string): Promise<void> {
   if (!conversation) return;
   await db.$transaction([
     db.chatApproval.deleteMany({ where: { conversationId: conversation.id, userId } }),
+    db.chatTurn.deleteMany({ where: { conversationId: conversation.id, userId } }),
     db.chatMessage.deleteMany({ where: { conversationId: conversation.id } }),
+    db.conversation.update({ where: { id: conversation.id }, data: { thinking: false } }),
   ]);
 }
 
@@ -993,7 +1026,12 @@ async function clearApprovalGhostInConversation(
  */
 async function reconcileStaleHitl(userId: string, conversationId: string): Promise<void> {
   const messages = await db.chatMessage.findMany({
-    where: { conversationId, role: 'ASSISTANT' },
+    where: { conversationId, role: 'ASSISTANT', compactedAt: null, kind: 'NORMAL' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    // O snapshot não pode voltar a varrer uma conversa canônica inteira. HITL
+    // não expira; 200 respostas ativas cobrem a recuperação sem reintroduzir
+    // o custo não limitado que travava a abertura do chat.
+    take: 200,
     select: { id: true, tools: true, segments: true },
   });
   const approvalIds = new Set<string>();
@@ -1272,21 +1310,33 @@ export async function streamAssistantReply(options: {
   content: string;
   abortSignal: AbortSignal;
   emit: (event: ChatStreamEvent) => void;
-}): Promise<void> {
-  const { userId, conversationId, content, abortSignal, emit } = options;
-  await db.chatMessage.create({ data: { conversationId, role: 'USER', content } });
-  await db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+  userMessageId?: string;
+  assistantMessageId?: string;
+}): Promise<string> {
+  const { userId, conversationId, content, abortSignal, emit, assistantMessageId } = options;
+  if (!options.userMessageId) {
+    await db.chatMessage.create({ data: { conversationId, role: 'USER', content } });
+    await db.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() },
+    });
+  }
   let modelConfig: { apiKey: string; model: string };
   try {
     modelConfig = await getModelConfig();
   } catch {
     const message = 'O chat precisa ser configurado antes de responder.';
-    const assistant = await db.chatMessage.create({
-      data: { conversationId, role: 'ASSISTANT', content: message },
-    });
+    const assistant = assistantMessageId
+      ? await db.chatMessage.update({
+          where: { id: assistantMessageId },
+          data: { content: message, tools: [], segments: [] },
+        })
+      : await db.chatMessage.create({
+          data: { conversationId, role: 'ASSISTANT', content: message },
+        });
     emit({ type: 'error', message });
     emit({ type: 'done', messageId: assistant.id });
-    return;
+    return assistant.id;
   }
   const compaction = await maybeCompact(conversationId, modelConfig).catch(() => {
     emit({
@@ -1298,7 +1348,11 @@ export async function streamAssistantReply(options: {
   if (compaction) emit({ type: 'compaction', ...compaction });
 
   const active = (await db.chatMessage.findMany({
-    where: { conversationId, compactedAt: null },
+    where: {
+      conversationId,
+      compactedAt: null,
+      ...(assistantMessageId ? { id: { not: assistantMessageId } } : {}),
+    },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     select: {
       id: true,
@@ -1521,15 +1575,16 @@ export async function streamAssistantReply(options: {
           })
           .join(' ')
       : 'Não consegui gerar uma resposta. Tente novamente.';
-  const assistant = await db.chatMessage.create({
-    data: {
-      conversationId,
-      role: 'ASSISTANT',
-      content: answer || (awaitingHitl ? '' : failureFallback),
-      tools: tools as unknown as Prisma.InputJsonValue,
-      segments: segments as unknown as Prisma.InputJsonValue,
-    },
-  });
+  const assistantData = {
+    content: answer || (awaitingHitl ? '' : failureFallback),
+    tools: tools as unknown as Prisma.InputJsonValue,
+    segments: segments as unknown as Prisma.InputJsonValue,
+  };
+  const assistant = assistantMessageId
+    ? await db.chatMessage.update({ where: { id: assistantMessageId }, data: assistantData })
+    : await db.chatMessage.create({
+        data: { conversationId, role: 'ASSISTANT', ...assistantData },
+      });
   await db.costEvent.create({
     data: {
       userId,
@@ -1548,4 +1603,5 @@ export async function streamAssistantReply(options: {
     costUsd: 0,
   });
   emit({ type: 'done', messageId: assistant.id });
+  return assistant.id;
 }

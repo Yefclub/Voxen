@@ -69,7 +69,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     const copy = COPY[resolveLocale()];
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[var(--color-app-bg-elevated)] px-6 text-center">
+      <div className="flex min-h-dvh items-center justify-center bg-[var(--color-app-bg-elevated)] px-4 text-center sm:px-6">
         <div className="max-w-md space-y-5">
           <img
             src="/voxen-256.png"

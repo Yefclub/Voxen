@@ -8,7 +8,7 @@ export function AuthLayout(): React.ReactElement {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-dvh flex items-center justify-center">
         <Spinner size={20} className="text-[var(--color-app-muted)]" />
       </div>
     );

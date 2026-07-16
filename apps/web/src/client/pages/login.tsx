@@ -70,7 +70,7 @@ export function LoginPage(): React.ReactElement {
   const canSignUp = instance?.allowSignups ?? true;
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-[1.05fr_1fr]">
+    <div className="min-h-dvh grid lg:grid-cols-[1.05fr_1fr]">
       {/* Lado esquerdo: form */}
       <section className="flex flex-col items-center justify-center px-4 sm:px-8 lg:px-16 py-10 relative">
         {/* Mesh decorativa atrás */}

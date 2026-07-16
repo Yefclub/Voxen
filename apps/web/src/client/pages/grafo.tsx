@@ -1008,6 +1008,7 @@ export function BrainGraph3DCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<GraphCanvasRef | null>(null);
   const primaryNodeIdsRef = useRef<string[]>([]);
+  const renderedNodeIdsRef = useRef<Set<string>>(new Set());
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [reagraph, setReagraph] = useState<ReagraphModule | null>(null);
   const profile = useMemo(
@@ -1027,6 +1028,7 @@ export function BrainGraph3DCanvas({
     [model?.positions3d],
   );
   primaryNodeIdsRef.current = model?.primaryNodeIds ?? [];
+  renderedNodeIdsRef.current = new Set(model?.reagraphNodes.map((node) => node.id) ?? []);
 
   useEffect(() => {
     if (!supportsWebGL()) {
@@ -1065,12 +1067,17 @@ export function BrainGraph3DCanvas({
   const activeId = hoveredId ?? selectedId;
   const actives = useMemo(() => {
     if (!activeId || !model) return undefined;
-    return [...(model.neighborhoods.get(activeId) ?? new Set([activeId]))];
+    return [...(model.neighborhoods.get(activeId) ?? new Set([activeId]))].filter((id) =>
+      renderedNodeIdsRef.current.has(id),
+    );
   }, [activeId, model]);
 
   const fitGraphView = useCallback((scope: 'primary' | 'all', animated: boolean) => {
     try {
-      const ids = scope === 'primary' ? primaryNodeIdsRef.current : undefined;
+      const ids =
+        scope === 'primary'
+          ? primaryNodeIdsRef.current.filter((id) => renderedNodeIdsRef.current.has(id))
+          : undefined;
       graphRef.current?.fitNodesInView(ids?.length ? ids : undefined, { animated });
     } catch {
       // A câmera ainda pode estar preparando a cena.
@@ -1090,9 +1097,12 @@ export function BrainGraph3DCanvas({
     if (!model || model.graph.order === 0 || !reagraph) return;
     const frame =
       typeof window.requestAnimationFrame === 'function'
-        ? window.requestAnimationFrame(() => fitGraphView('primary', false))
+        ? window.requestAnimationFrame(() => fitGraphView('all', false))
         : null;
-    const timer = window.setTimeout(() => fitGraphView('primary', profile.animated), 180);
+    // A cena 3D aplica a nova topologia de forma assíncrona. Enquadrar por ids
+    // durante essa janela dispara "node not found" no Reagraph; o fit global
+    // usa a própria cena atual e permanece centralizado durante transições.
+    const timer = window.setTimeout(() => fitGraphView('all', profile.animated), 180);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
       window.clearTimeout(timer);
@@ -1100,13 +1110,13 @@ export function BrainGraph3DCanvas({
   }, [fitGraphView, model?.topologyKey, profile.animated, reagraph]);
 
   useEffect(() => {
-    if (!reagraph || !selectedId) return;
+    if (!reagraph || !selectedId || !renderedNodeIdsRef.current.has(selectedId)) return;
     try {
       graphRef.current?.centerGraph([selectedId]);
     } catch {
       // A seleção pode chegar antes de a câmera 3D estar pronta.
     }
-  }, [reagraph, selectedId]);
+  }, [model?.topologyKey, reagraph, selectedId]);
 
   const GraphCanvas = reagraph?.GraphCanvas;
   return (
@@ -1138,7 +1148,9 @@ export function BrainGraph3DCanvas({
             draggable={profile.draggable}
             aggregateEdges={profile.aggregateEdges}
             glOptions={GRAPH_GL_OPTIONS}
-            selections={selectedId ? [selectedId] : []}
+            selections={
+              selectedId && renderedNodeIdsRef.current.has(selectedId) ? [selectedId] : []
+            }
             actives={actives}
             onNodeClick={(node) => onSelect(node.id)}
             onNodeDoubleClick={(node) => {

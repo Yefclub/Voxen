@@ -151,13 +151,13 @@ export function ContaPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-4 sm:px-8 py-8 sm:py-12 mx-auto max-w-2xl space-y-8">
+      <div className="mx-auto max-w-2xl space-y-6 px-4 py-5 sm:space-y-8 sm:px-8 sm:py-12">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <UserIcon className="h-3.5 w-3.5 text-violet-400" />
             {t('account.eyebrow')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
             {t('account.title')}
           </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
@@ -171,7 +171,7 @@ export function ContaPage(): React.ReactElement {
             <CardTitle className="font-display text-lg">{t('account.avatarTitle')}</CardTitle>
             <CardDescription>{t('account.avatarDescription')}</CardDescription>
           </CardHeader>
-          <CardContent className="flex items-center gap-6">
+          <CardContent className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-6">
             <Avatar className="h-20 w-20 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-[var(--color-app-border-strong)]">
               {account.image && (
                 <AvatarPrimitive.Image

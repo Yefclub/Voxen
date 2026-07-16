@@ -48,7 +48,7 @@ export function OnboardingPage(): React.ReactElement {
   // wizard e resetar o state interno do <OnboardingContent>.
   if (loading && !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-dvh flex items-center justify-center">
         <Spin size={20} className="text-[var(--color-app-muted)]" />
       </div>
     );
@@ -553,7 +553,7 @@ function OnboardingContent({
 function FullScreenShell({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
     <div className="h-dvh overflow-y-auto overscroll-contain">
-      <div className="min-h-full flex items-center justify-center px-6 py-12 relative">
+      <div className="min-h-full flex items-center justify-center px-4 py-6 sm:px-6 sm:py-12 relative">
         <div
           aria-hidden
           className="absolute inset-0 pointer-events-none"
@@ -575,7 +575,7 @@ function Slide({ children }: { children: React.ReactNode }): React.ReactElement 
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-      className="rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-8"
+      className="rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-5 sm:p-8"
     >
       {children}
     </motion.div>

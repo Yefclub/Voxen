@@ -5,14 +5,17 @@ import { db } from '../lib/db';
 import { rateLimit } from '../lib/rate-limit';
 import {
   approveChatAction,
-  acquireChatStreamSlot,
   clearConversation,
   getChatSnapshot,
-  getOrCreateConversation,
-  releaseChatStreamSlot,
-  streamAssistantReply,
   type ChatStreamEvent,
 } from '../lib/chat/runtime';
+import {
+  cancelActiveChatTurn,
+  ChatTurnBusyError,
+  createChatTurn,
+  recoverOrphanedUserTurn,
+  runChatTurn,
+} from '../lib/chat/turn-runtime';
 
 type Vars = { userId: string };
 
@@ -31,7 +34,27 @@ chatRoutes.use('*', async (c, next) => {
 });
 
 chatRoutes.get('/', async (c) => {
-  const snapshot = await getChatSnapshot(c.get('userId'));
+  const query = z
+    .object({
+      before: z.string().min(1).optional(),
+      limit: z.coerce.number().int().min(1).max(100).optional(),
+    })
+    .safeParse(c.req.query());
+  if (!query.success) return c.json({ error: 'Paginação inválida.' }, 400);
+  const userId = c.get('userId');
+  if (!query.data.before) {
+    const turnId = await recoverOrphanedUserTurn(userId);
+    if (turnId) void runChatTurn(turnId).catch(() => undefined);
+  }
+  let snapshot: Awaited<ReturnType<typeof getChatSnapshot>>;
+  try {
+    snapshot = await getChatSnapshot(userId, query.data);
+  } catch (error) {
+    return c.json(
+      { error: error instanceof Error ? error.message : 'Não foi possível carregar o chat.' },
+      400,
+    );
+  }
   return c.json({
     conversation: {
       id: snapshot.conversation.id,
@@ -43,12 +66,23 @@ chatRoutes.get('/', async (c) => {
       createdAt: message.createdAt.toISOString(),
       compactedAt: message.compactedAt?.toISOString() ?? null,
     })),
+    hasOlder: snapshot.hasOlder,
+    nextCursor: snapshot.nextCursor,
+    activeTurn: snapshot.activeTurn
+      ? { ...snapshot.activeTurn, updatedAt: snapshot.activeTurn.updatedAt.toISOString() }
+      : null,
   });
 });
 
 chatRoutes.delete('/', async (c) => {
-  await clearConversation(c.get('userId'));
+  const userId = c.get('userId');
+  await cancelActiveChatTurn(userId);
+  await clearConversation(userId);
   return c.json({ ok: true });
+});
+
+chatRoutes.post('/cancel', async (c) => {
+  return c.json({ cancelled: await cancelActiveChatTurn(c.get('userId')) });
 });
 
 const SendBody = z.object({ content: z.string().trim().min(1).max(20_000) });
@@ -69,37 +103,44 @@ chatRoutes.post('/', async (c) => {
       { 'Retry-After': String(quota.resetIn) },
     );
   }
-  const streamOwnerId = await acquireChatStreamSlot(userId);
-  if (!streamOwnerId) {
-    return c.json({ error: 'Uma resposta já está em andamento. Aguarde a conclusão.' }, 409);
-  }
-  let conversation: Awaited<ReturnType<typeof getOrCreateConversation>>;
+  let turn: Awaited<ReturnType<typeof createChatTurn>>;
   try {
-    conversation = await getOrCreateConversation(userId);
+    turn = await createChatTurn(userId, parsed.data.content);
   } catch (error) {
-    await releaseChatStreamSlot(userId, streamOwnerId).catch(() => undefined);
+    if (error instanceof ChatTurnBusyError) return c.json({ error: error.message }, 409);
     throw error;
   }
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const emit = (event: ChatStreamEvent) => controller.enqueue(encodeSse(event));
-      void streamAssistantReply({
-        userId,
-        conversationId: conversation.id,
-        content: parsed.data.content,
-        abortSignal: c.req.raw.signal,
-        emit,
-      })
+      let open = true;
+      const emit = (event: ChatStreamEvent) => {
+        if (!open) return;
+        try {
+          controller.enqueue(encodeSse(event));
+        } catch {
+          // A conexão é somente observadora; o turno durável continua no servidor.
+          open = false;
+        }
+      };
+      emit({ type: 'status', label: 'Preparando resposta…' });
+      void runChatTurn(turn.id, emit)
         .catch((error: unknown) => {
           emit({
             type: 'error',
             message: error instanceof Error ? error.message : 'Falha inesperada no chat.',
           });
         })
-        .finally(async () => {
-          await releaseChatStreamSlot(userId, streamOwnerId).catch(() => undefined);
-          controller.close();
+        .finally(() => {
+          if (!open) return;
+          try {
+            controller.close();
+          } catch {
+            // Cliente desconectado; o resultado já foi persistido pelo turno.
+          }
         });
+    },
+    cancel() {
+      // Fechar ou colocar o PWA em background não cancela o processamento.
     },
   });
   return new Response(stream, {

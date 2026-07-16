@@ -144,7 +144,7 @@ export function JobDetalhePage(): React.ReactElement {
 
   if (!data?.job) {
     return (
-      <div className="px-8 py-20 flex justify-center">
+      <div className="flex justify-center px-4 py-14 sm:px-8 sm:py-20">
         <Spinner size={20} className="text-[var(--color-app-muted)]" />
       </div>
     );
@@ -180,7 +180,7 @@ export function JobDetalhePage(): React.ReactElement {
             />
           )}
 
-          <div className="relative px-6 pt-6 pb-5 border-b border-[var(--color-app-border)]">
+          <div className="relative border-b border-[var(--color-app-border)] px-4 pb-4 pt-5 sm:px-6 sm:pb-5 sm:pt-6">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="space-y-2 min-w-0 flex-1">
                 <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">

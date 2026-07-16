@@ -80,7 +80,7 @@ export function CadastroPage(): React.ReactElement {
   ]);
 
   return (
-    <div className="min-h-screen flex flex-col px-4 sm:px-8 lg:px-16 py-10 relative">
+    <div className="min-h-dvh flex flex-col px-4 py-6 sm:px-8 sm:py-10 lg:px-16 relative">
       <div
         aria-hidden
         className="absolute inset-0 pointer-events-none"

@@ -257,4 +257,32 @@ describe('BrainGraph3DCanvas lifecycle', () => {
 
     await act(async () => renderer.unmount());
   });
+
+  test('never sends removed node ids to camera controls after a topology update', async () => {
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(renderGraph(), { createNodeMock: () => containerMock });
+      await Promise.resolve();
+    });
+    const filtered = {
+      ...DATA,
+      nodes: DATA.nodes.slice(0, 1),
+      edges: [],
+      totalNodes: 1,
+      totalEdges: 0,
+    };
+    await act(async () => {
+      renderer.update(renderGraph(buildSigmaGraphModel(filtered)));
+      await Promise.resolve();
+    });
+    fitNodesInViewMock.mockClear();
+
+    await act(async () => {
+      renderer.root.findByProps({ 'aria-label': 'graph.focusCore' }).props.onClick();
+    });
+
+    expect(fitNodesInViewMock).toHaveBeenCalledTimes(1);
+    expect(fitNodesInViewMock).toHaveBeenCalledWith(['topic-1'], { animated: true });
+    await act(async () => renderer.unmount());
+  });
 });
