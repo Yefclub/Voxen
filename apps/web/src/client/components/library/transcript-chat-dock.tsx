@@ -20,6 +20,7 @@ export function TranscriptChatDock({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pointerInsideRef = useRef(false);
   const focusInsideRef = useRef(false);
+  const triggerPointerFocusRef = useRef(false);
   const contentId = useId();
   const hasDraft = value.trim().length > 0;
 
@@ -47,6 +48,7 @@ export function TranscriptChatDock({
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(hover: hover)').matches;
     const pointerActivation = event.detail > 0;
+    triggerPointerFocusRef.current = false;
 
     if (pointerActivation && !hasHover && expanded && !hasDraft) {
       focusInsideRef.current = false;
@@ -73,11 +75,12 @@ export function TranscriptChatDock({
         }}
         onFocusCapture={() => {
           focusInsideRef.current = true;
-          setExpanded(true);
+          if (!triggerPointerFocusRef.current) setExpanded(true);
         }}
         onBlurCapture={(event) => {
           if (event.relatedTarget && event.currentTarget.contains(event.relatedTarget)) return;
           focusInsideRef.current = false;
+          triggerPointerFocusRef.current = false;
           collapseIfIdle();
         }}
       >
@@ -94,6 +97,12 @@ export function TranscriptChatDock({
             aria-expanded={expanded}
             aria-controls={contentId}
             aria-label={t('library.chatBarExpand')}
+            onPointerDown={() => {
+              triggerPointerFocusRef.current = true;
+            }}
+            onPointerCancel={() => {
+              triggerPointerFocusRef.current = false;
+            }}
             onClick={activateTrigger}
             className="flex h-8 w-full items-center gap-2 px-3 text-left text-[11px] text-[var(--color-app-muted)] outline-none transition-colors hover:bg-[var(--color-app-surface)]/70 focus-visible:bg-[var(--color-app-surface)]/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/45"
           >

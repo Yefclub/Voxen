@@ -115,9 +115,13 @@ describe('TranscriptChatDock', () => {
       renderer.root.findByProps({ 'data-testid': 'transcript-chat-dock-trigger' });
     const pointerClick = { detail: 1, currentTarget: { blur: blurTrigger } };
 
+    await act(async () => trigger().props.onPointerDown());
+    await act(async () => shell().props.onFocusCapture());
     await act(async () => trigger().props.onClick(pointerClick));
     expect(shell().props.style.transform).toBe('translateY(0)');
 
+    await act(async () => trigger().props.onPointerDown());
+    await act(async () => shell().props.onFocusCapture());
     await act(async () => trigger().props.onClick(pointerClick));
     expect(shell().props.style.transform).toBe('translateY(calc(100% - 2rem))');
     expect(blurTrigger).toHaveBeenCalledTimes(1);
