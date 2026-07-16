@@ -369,7 +369,14 @@ async def _upsert_transcript_brain_node_with_lease(
 
     if not await lease.renew():
         return False
-    await _remove_transcript_brain_refreshable_sources(conn, user_id, transcript_id)
+    refreshable_sources_removed = await _remove_transcript_brain_refreshable_sources(
+        conn,
+        lease=lease,
+        user_id=user_id,
+        transcript_id=transcript_id,
+    )
+    if not refreshable_sources_removed:
+        return False
 
     if not await lease.renew():
         return False
@@ -405,7 +412,7 @@ async def _upsert_transcript_brain_node_with_lease(
 
     if not await lease.renew():
         return False
-    await conn.execute(
+    marker_result = await conn.execute(
         """
         UPDATE "BrainNode"
         SET metadata = metadata || $3::jsonb,
@@ -417,7 +424,7 @@ async def _upsert_transcript_brain_node_with_lease(
         user_id,
         json.dumps({"topicIndexVersion": BRAIN_TOPIC_INDEX_VERSION}),
     )
-    return True
+    return str(marker_result) == "UPDATE 1"
 
 
 async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> bool:
@@ -507,9 +514,13 @@ async def reindex_missing_transcript_brain_nodes(limit: int = 50) -> int:
 
 async def _remove_transcript_brain_refreshable_sources(
     conn: asyncpg.Connection,
+    *,
+    lease: GraphIndexLease,
     user_id: str,
     transcript_id: str,
-) -> None:
+) -> bool:
+    if not lease.locally_owned():
+        return False
     rows = await conn.fetch(
         """
         SELECT bs."edgeId"
@@ -523,6 +534,8 @@ async def _remove_transcript_brain_refreshable_sources(
         user_id,
         transcript_id,
     )
+    if not lease.locally_owned():
+        return False
     edge_ids = [row["edgeId"] for row in rows if row["edgeId"]]
     await conn.execute(
         """
@@ -537,6 +550,8 @@ async def _remove_transcript_brain_refreshable_sources(
         user_id,
         transcript_id,
     )
+    if not lease.locally_owned():
+        return False
     await conn.execute(
         """
         DELETE FROM "BrainSource"
@@ -548,8 +563,10 @@ async def _remove_transcript_brain_refreshable_sources(
         user_id,
         transcript_id,
     )
+    if not lease.locally_owned():
+        return False
     if not edge_ids:
-        return
+        return True
     remaining = await conn.fetch(
         """
         SELECT DISTINCT "edgeId"
@@ -558,6 +575,8 @@ async def _remove_transcript_brain_refreshable_sources(
         """,
         edge_ids,
     )
+    if not lease.locally_owned():
+        return False
     remaining_ids = {row["edgeId"] for row in remaining}
     orphan_edge_ids = [edge_id for edge_id in edge_ids if edge_id not in remaining_ids]
     if orphan_edge_ids:
@@ -571,7 +590,12 @@ async def _remove_transcript_brain_refreshable_sources(
             user_id,
             orphan_edge_ids,
         )
+        if not lease.locally_owned():
+            return False
         await _delete_orphan_keyword_topic_nodes(conn, user_id)
+        if not lease.locally_owned():
+            return False
+    return True
 
 
 async def _delete_orphan_keyword_topic_nodes(conn: asyncpg.Connection, user_id: str) -> None:

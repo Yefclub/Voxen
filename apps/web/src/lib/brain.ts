@@ -122,6 +122,7 @@ type BrainEdgeInput = {
   sourceType: BrainSourceType;
   sourceId: string;
   excerpt?: string | null;
+  assertLeaseOwnership?: BrainReindexGuard;
 };
 
 type NoteRecord = {
@@ -383,6 +384,7 @@ export async function reindexTranscriptBrain(
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
     excerpt: transcript.title,
+    assertLeaseOwnership: options.assertLeaseOwnership,
   });
 
   if (transcript.folder) {
@@ -399,6 +401,7 @@ export async function reindexTranscriptBrain(
       sourceType: 'TRANSCRIPT',
       sourceId: transcript.id,
       excerpt: `Folder: ${transcript.folder.name}`,
+      assertLeaseOwnership: options.assertLeaseOwnership,
     });
   }
 
@@ -483,6 +486,7 @@ export async function reindexLibraryFolderBrain(
     sourceType: 'FOLDER',
     sourceId: folder.id,
     excerpt: folder.name,
+    assertLeaseOwnership,
   });
 
   if (folder.parentId) {
@@ -503,6 +507,7 @@ export async function reindexLibraryFolderBrain(
         sourceType: 'FOLDER',
         sourceId: folder.id,
         excerpt: `Parent folder: ${parent.name}`,
+        assertLeaseOwnership,
       });
     }
   }
@@ -616,6 +621,7 @@ async function reindexNoteRecord(
     sourceType: 'NOTE',
     sourceId: note.id,
     excerpt: note.title,
+    assertLeaseOwnership,
   });
 
   if (note.parentId) {
@@ -633,6 +639,7 @@ async function reindexNoteRecord(
         sourceType: 'NOTE',
         sourceId: note.id,
         excerpt: `Parent note folder: ${parent.title}`,
+        assertLeaseOwnership,
       });
     }
   }
@@ -660,6 +667,7 @@ async function reindexNoteRecord(
       sourceId: note.id,
       excerpt: `[[${targetTitle}]]`,
       metadata: { targetTitle },
+      assertLeaseOwnership,
     });
   }
 
@@ -865,6 +873,7 @@ async function indexConceptsForContent(input: {
         count: topic.count,
         extractorVersion: 2,
       },
+      assertLeaseOwnership: input.assertLeaseOwnership,
     });
     indexed.push({
       nodeId: topicNode.id,
@@ -896,6 +905,7 @@ async function indexConceptsForContent(input: {
         count: entity.count,
         extractorVersion: 1,
       },
+      assertLeaseOwnership: input.assertLeaseOwnership,
     });
     indexed.push({
       nodeId: entityNode.id,
@@ -914,6 +924,7 @@ async function indexConceptsForContent(input: {
     sourceType: input.sourceType,
     sourceId: input.sourceId,
     concepts: indexed,
+    assertLeaseOwnership: input.assertLeaseOwnership,
   });
   await input.assertLeaseOwnership?.();
   await connectContentBySemanticProfile({
@@ -921,6 +932,7 @@ async function indexConceptsForContent(input: {
     contentNodeId: input.contentNodeId,
     sourceType: input.sourceType,
     sourceId: input.sourceId,
+    assertLeaseOwnership: input.assertLeaseOwnership,
   });
   await input.assertLeaseOwnership?.();
   await connectTimelineNeighbors({
@@ -928,6 +940,7 @@ async function indexConceptsForContent(input: {
     contentNodeId: input.contentNodeId,
     sourceType: input.sourceType,
     sourceId: input.sourceId,
+    assertLeaseOwnership: input.assertLeaseOwnership,
   });
 }
 
@@ -956,6 +969,7 @@ async function connectContentBySharedConcepts(input: {
   sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
   sourceId: string;
   concepts: IndexedConcept[];
+  assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   if (input.concepts.length === 0) return;
   const conceptById = new Map(input.concepts.map((concept) => [concept.nodeId, concept]));
@@ -984,6 +998,7 @@ async function connectContentBySharedConcepts(input: {
       },
     },
   });
+  await input.assertLeaseOwnership?.();
 
   const candidates = new Map<
     string,
@@ -1020,6 +1035,7 @@ async function connectContentBySharedConcepts(input: {
     .slice(0, RELATED_CONTENT_LIMIT);
 
   for (const candidate of ranked) {
+    await input.assertLeaseOwnership?.();
     const [fromNodeId, toNodeId] = canonicalEdge(input.contentNodeId, candidate.nodeId);
     const labels = candidate.concepts.slice(0, 5).map((concept) => concept.label);
     const confidence = Math.min(0.95, Number((0.42 + candidate.score * 0.11).toFixed(4)));
@@ -1046,6 +1062,7 @@ async function connectContentBySharedConcepts(input: {
         })),
         score: candidate.score,
       },
+      assertLeaseOwnership: input.assertLeaseOwnership,
     });
   }
 }
@@ -1055,11 +1072,13 @@ async function connectContentBySemanticProfile(input: {
   contentNodeId: string;
   sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
   sourceId: string;
+  assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   const current = await db.brainNode.findUnique({
     where: { id: input.contentNodeId },
     select: { id: true, label: true, metadata: true },
   });
+  await input.assertLeaseOwnership?.();
   if (!current) return;
   const currentMetadata = jsonRecord(current.metadata);
   const currentProfile = readSemanticProfile(currentMetadata);
@@ -1078,6 +1097,7 @@ async function connectContentBySemanticProfile(input: {
       metadata: true,
     },
   });
+  await input.assertLeaseOwnership?.();
 
   const ranked = candidates
     .map((candidate) => {
@@ -1103,6 +1123,7 @@ async function connectContentBySemanticProfile(input: {
     .slice(0, RELATED_CONTENT_LIMIT);
 
   for (const candidate of ranked) {
+    await input.assertLeaseOwnership?.();
     const [fromNodeId, toNodeId] = canonicalEdge(input.contentNodeId, candidate.nodeId);
     const reasonLabels = candidate.reasons.slice(0, 5).map((reason) => reason.label);
     await upsertBrainEdge({
@@ -1122,6 +1143,7 @@ async function connectContentBySemanticProfile(input: {
         reasons: candidate.reasons,
         score: candidate.score,
       },
+      assertLeaseOwnership: input.assertLeaseOwnership,
     });
   }
 }
@@ -1131,11 +1153,13 @@ async function connectTimelineNeighbors(input: {
   contentNodeId: string;
   sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
   sourceId: string;
+  assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   const current = await db.brainNode.findUnique({
     where: { id: input.contentNodeId },
     select: { metadata: true, updatedAt: true },
   });
+  await input.assertLeaseOwnership?.();
   if (!current) return;
   const currentTimestamp = contentTimestamp(jsonRecord(current.metadata), current.updatedAt);
   if (!currentTimestamp) return;
@@ -1156,6 +1180,7 @@ async function connectTimelineNeighbors(input: {
       updatedAt: true,
     },
   });
+  await input.assertLeaseOwnership?.();
   const neighbors = candidates
     .map((candidate) => {
       const timestamp = contentTimestamp(jsonRecord(candidate.metadata), candidate.updatedAt);
@@ -1175,6 +1200,7 @@ async function connectTimelineNeighbors(input: {
     .slice(0, TIMELINE_NEIGHBOR_LIMIT);
 
   for (const [index, neighbor] of neighbors.entries()) {
+    await input.assertLeaseOwnership?.();
     const [fromNodeId, toNodeId] = canonicalEdge(input.contentNodeId, neighbor.nodeId);
     const distanceDays = Number((neighbor.distanceMs / 86_400_000).toFixed(3));
     await upsertBrainEdge({
@@ -1195,6 +1221,7 @@ async function connectTimelineNeighbors(input: {
         targetTimestamp: neighbor.timestamp.toISOString(),
         distanceDays,
       },
+      assertLeaseOwnership: input.assertLeaseOwnership,
     });
   }
 }
@@ -1287,6 +1314,7 @@ async function upsertBrainEdge(input: BrainEdgeInput) {
   // nó ou aresta entre o upsert e o BrainSource.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
+      await input.assertLeaseOwnership?.();
       const endpoints = await db.brainNode.findMany({
         where: {
           userId: input.userId,
@@ -1294,6 +1322,7 @@ async function upsertBrainEdge(input: BrainEdgeInput) {
         },
         select: { id: true },
       });
+      await input.assertLeaseOwnership?.();
       if (endpoints.length < 2) {
         if (attempt === 0) continue;
         throw new Error(
@@ -1326,12 +1355,14 @@ async function upsertBrainEdge(input: BrainEdgeInput) {
           metadata: input.metadata ?? {},
         },
       });
+      await input.assertLeaseOwnership?.();
       await addBrainSource({
         userId: input.userId,
         edgeId: edge.id,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
         excerpt: input.excerpt ?? null,
+        assertLeaseOwnership: input.assertLeaseOwnership,
       });
       return edge;
     } catch (err) {
@@ -1358,13 +1389,16 @@ async function addBrainSource(input: {
   sourceType: BrainSourceType;
   sourceId: string;
   excerpt?: string | null;
+  assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   try {
+    await input.assertLeaseOwnership?.();
     if (input.edgeId) {
       const edge = await db.brainEdge.findFirst({
         where: { id: input.edgeId, userId: input.userId },
         select: { id: true },
       });
+      await input.assertLeaseOwnership?.();
       if (!edge) throw new Error(`Brain source edge disappeared: ${input.edgeId}`);
     }
     if (input.nodeId) {
@@ -1372,8 +1406,10 @@ async function addBrainSource(input: {
         where: { id: input.nodeId, userId: input.userId },
         select: { id: true },
       });
+      await input.assertLeaseOwnership?.();
       if (!node) throw new Error(`Brain source node disappeared: ${input.nodeId}`);
     }
+    await input.assertLeaseOwnership?.();
     await db.brainSource.create({
       data: {
         userId: input.userId,
@@ -1384,6 +1420,7 @@ async function addBrainSource(input: {
         excerpt: input.excerpt ? truncate(input.excerpt, EVIDENCE_LIMIT) : null,
       },
     });
+    await input.assertLeaseOwnership?.();
   } catch (err) {
     // Aresta/nó sumiu entre o check e o create: o passe precisa ficar incompleto.
     if (isBrainFkError(err)) {

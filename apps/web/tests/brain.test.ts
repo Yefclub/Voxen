@@ -341,6 +341,89 @@ describeIfDb('brain indexer', () => {
     expect(metadata.topicIndexVersion).toBeUndefined();
   });
 
+  it('stops shared-concept linking after lease loss and leaves completion markers absent', async () => {
+    await signUp('brain-shared-loop@voxen.local', 'senha-super-segura-123', 'Shared Loop');
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'brain-shared-loop@voxen.local' },
+    });
+    const first = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/shared-loop-first',
+        title: 'Projeto Atlas origem',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/shared-loop-first.md`,
+        plainText: 'Projeto Atlas usa GraphRAG para conectar memorias e conhecimento.',
+        frontmatter: {},
+      },
+    });
+    const second = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/shared-loop-second',
+        title: 'Projeto Atlas destino',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/shared-loop-second.md`,
+        plainText: 'Projeto Atlas aplica GraphRAG em memorias e conhecimento.',
+        frontmatter: {},
+      },
+    });
+    await reindexTranscriptBrain(user.id, first.id);
+
+    let leaseOwned = true;
+    let sharedQueryObserved = false;
+    const realFindMany = db.brainEdge.findMany.bind(db.brainEdge);
+    const loseLeaseAfterSharedQuery = async (args: Parameters<typeof realFindMany>[0]) => {
+      const rows = await realFindMany(args);
+      sharedQueryObserved = true;
+      leaseOwned = false;
+      return rows;
+    };
+    const edgeFindMany = spyOn(db.brainEdge, 'findMany').mockImplementationOnce(
+      loseLeaseAfterSharedQuery as never,
+    );
+    let failure: unknown;
+    try {
+      await reindexTranscriptBrain(user.id, second.id, {
+        assertLeaseOwnership: async () => {
+          if (!leaseOwned) throw new Error('lease-lost-after-shared-query');
+        },
+      });
+    } catch (err) {
+      failure = err;
+    } finally {
+      edgeFindMany.mockRestore();
+    }
+
+    expect(sharedQueryObserved).toBe(true);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe('lease-lost-after-shared-query');
+    const incomplete = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${second.id}` } },
+    });
+    const metadata = incomplete.metadata as {
+      brainIndexVersion?: number;
+      topicIndexVersion?: number;
+    };
+    expect(metadata.brainIndexVersion).toBeUndefined();
+    expect(metadata.topicIndexVersion).toBeUndefined();
+    expect(
+      await db.brainEdge.count({
+        where: {
+          userId: user.id,
+          method: 'shared-concepts',
+          OR: [{ fromNodeId: incomplete.id }, { toNodeId: incomplete.id }],
+        },
+      }),
+    ).toBe(0);
+  });
+
   it('does not let a direct web reindex mutate while the worker owns the shared lease', async () => {
     await signUp('brain-shared-lease@voxen.local', 'senha-super-segura-123', 'Shared Lease');
     const user = await db.user.findUniqueOrThrow({
