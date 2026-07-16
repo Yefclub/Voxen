@@ -918,6 +918,8 @@ const ptBRMessages = {
   'graph.zoomIn': 'Aproximar',
   'graph.zoomOut': 'Afastar',
   'graph.fitView': 'Reenquadrar grafo',
+  'graph.focusCore': 'Focar núcleo',
+  'graph.fitAll': 'Mostrar tudo',
   'graph.emptyDescription':
     'Adicione notas ou conteúdos à biblioteca para começar a formar seu mapa de conhecimento.',
   'graph.createNote': 'Criar nota',
@@ -2013,6 +2015,8 @@ const enMessages: Record<I18nKey, string> = {
   'graph.zoomIn': 'Zoom in',
   'graph.zoomOut': 'Zoom out',
   'graph.fitView': 'Fit graph to view',
+  'graph.focusCore': 'Focus core',
+  'graph.fitAll': 'Show all',
   'graph.emptyDescription': 'Add notes or library content to start building your knowledge map.',
   'graph.createNote': 'Create note',
   'graph.addContent': 'Open library',

@@ -220,6 +220,8 @@ describe('graph rendering helpers', () => {
 
     expect([...first.entries()]).toEqual([...second.entries()]);
     expect(first.size).toBe(5);
+    expect(first.get('node-0')).toEqual({ x: 0, y: 0, z: 0 });
+    expect(first.get('node-3')).not.toEqual({ x: 0, y: 0, z: 0 });
     for (const position of first.values()) {
       expect(Number.isFinite(position.x)).toBe(true);
       expect(Number.isFinite(position.y)).toBe(true);
@@ -228,6 +230,9 @@ describe('graph rendering helpers', () => {
     expect(
       new Set([...first.values()].map((position) => position.z.toFixed(3))).size,
     ).toBeGreaterThan(1);
+
+    const model = buildSigmaGraphModel(data);
+    expect(model.primaryNodeIds).toEqual(['node-0', 'node-1', 'node-2']);
   });
 
   test('defaults to 3D and scales visual work down for dense graphs', () => {

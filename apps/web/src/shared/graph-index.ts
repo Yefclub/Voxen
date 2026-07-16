@@ -1,6 +1,10 @@
 export type GraphIndexState = 'idle' | 'running' | 'ready' | 'error';
 
-export type GraphIndexErrorReason = 'coverage-incomplete' | 'failed' | 'lease-lost';
+export type GraphIndexErrorReason =
+  | 'coverage-incomplete'
+  | 'failed'
+  | 'lease-lost'
+  | 'redis-unavailable';
 
 export interface GraphIndexStatus {
   state: GraphIndexState;

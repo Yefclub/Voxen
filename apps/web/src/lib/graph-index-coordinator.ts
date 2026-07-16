@@ -198,10 +198,9 @@ export function shouldStartGraphIndex(
 export function reconcileGraphIndexStatus(
   remoteStatus: GraphIndexStatus,
   localStatus: GraphIndexStatus | undefined,
-  localInFlight: boolean,
+  _localInFlight: boolean,
 ): GraphIndexStatus {
   if (remoteStatus.state === 'running') return remoteStatus;
-  if (localInFlight && localStatus?.state === 'running') return localStatus;
   if (
     localStatus &&
     (localStatus.state === 'ready' || localStatus.state === 'error') &&
@@ -211,6 +210,21 @@ export function reconcileGraphIndexStatus(
     return localStatus;
   }
   return remoteStatus;
+}
+
+export function graphIndexRedisUnavailableStatus(
+  previous: GraphIndexStatus | undefined,
+  now = Date.now(),
+): GraphIndexStatus {
+  return {
+    state: 'error',
+    runId: previous?.runId,
+    startedAt: previous?.startedAt,
+    updatedAt: new Date(now).toISOString(),
+    retryAfter: new Date(now + GRAPH_INDEX_ERROR_COOLDOWN_MS).toISOString(),
+    reason: 'redis-unavailable',
+    recoverable: true,
+  };
 }
 
 function graphIndexStatusTtl(status: GraphIndexStatus): number {

@@ -14,6 +14,7 @@ import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import {
   BRAIN_INDEX_VERSION,
+  deleteOrphanedBrainSourceNodes,
   reindexLibraryFoldersBrain,
   reindexNotesBrain,
   reindexTranscriptsBrain,
@@ -25,6 +26,7 @@ import {
   GRAPH_INDEX_HEARTBEAT_MS,
   GRAPH_INDEX_LEASE_TTL_MS,
   acquireGraphIndexLease,
+  graphIndexRedisUnavailableStatus,
   readGraphIndexStatus,
   reconcileGraphIndexStatus,
   releaseGraphIndexLease,
@@ -241,8 +243,8 @@ graphRoutes.get('/', async (c) => {
   return c.json(response);
 });
 
-// O Set é apenas o fallback local quando Redis estiver indisponível. A
-// exclusão entre instâncias e a recuperação após restart vivem no lease Redis.
+// O Set evita duplicidade apenas depois que esta instância adquiriu o lease.
+// Sem Redis não há mutação do Brain nem fallback local de exclusão.
 const brainReindexInFlight = new Set<string>();
 const localGraphIndexStatus = new Map<string, GraphIndexStatus>();
 
@@ -279,12 +281,13 @@ async function currentGraphIndexStatus(userId: string): Promise<GraphIndexStatus
     localGraphIndexStatus.set(userId, status);
     return status;
   } catch {
-    return (
-      localGraphIndexStatus.get(userId) ?? {
-        state: brainReindexInFlight.has(userId) ? 'running' : 'idle',
-        updatedAt: new Date().toISOString(),
-      }
-    );
+    const localStatus = localGraphIndexStatus.get(userId);
+    if (brainReindexInFlight.has(userId) && localStatus?.state === 'running') {
+      return localStatus;
+    }
+    const unavailable = graphIndexRedisUnavailableStatus(localStatus);
+    localGraphIndexStatus.set(userId, unavailable);
+    return unavailable;
   }
 }
 
@@ -293,7 +296,7 @@ async function persistGraphIndexStatus(userId: string, status: GraphIndexStatus)
   try {
     await writeGraphIndexStatus(userId, status);
   } catch {
-    // O fallback local mantém uma instância funcional durante falhas do Redis.
+    // O snapshot continua legível; apenas o status terminal fica local até recuperar.
   }
 }
 
@@ -303,13 +306,14 @@ async function scheduleBrainReindex(
 ): Promise<GraphIndexStatus> {
   if (brainReindexInFlight.has(userId)) return currentGraphIndexStatus(userId);
   const runId = crypto.randomUUID();
-  let redisLease = false;
   try {
-    redisLease = await acquireGraphIndexLease(userId, runId);
-    if (!redisLease) return currentGraphIndexStatus(userId);
+    if (!(await acquireGraphIndexLease(userId, runId))) {
+      return currentGraphIndexStatus(userId);
+    }
   } catch {
-    // Redis indisponível: ainda impedimos concorrência dentro desta instância.
-    if (brainReindexInFlight.has(userId)) return currentGraphIndexStatus(userId);
+    const unavailable = graphIndexRedisUnavailableStatus(currentStatus);
+    localGraphIndexStatus.set(userId, unavailable);
+    return unavailable;
   }
 
   brainReindexInFlight.add(userId);
@@ -322,88 +326,90 @@ async function scheduleBrainReindex(
   };
   localGraphIndexStatus.set(userId, running);
   let runningStatusPublished = false;
-  if (redisLease) {
-    try {
-      runningStatusPublished = await writeOwnedGraphIndexStatus(userId, runId, running);
-      if (!runningStatusPublished) {
-        brainReindexInFlight.delete(userId);
-        return currentGraphIndexStatus(userId);
-      }
-    } catch {
-      // O lease vivo continua sendo autoridade mesmo sem o payload de status.
+  try {
+    runningStatusPublished = await writeOwnedGraphIndexStatus(userId, runId, running);
+    if (!runningStatusPublished) {
+      brainReindexInFlight.delete(userId);
+      await releaseGraphIndexLease(userId, runId).catch(() => false);
+      return currentGraphIndexStatus(userId);
     }
+  } catch {
+    // O lease vivo continua sendo autoridade mesmo sem o payload de status.
   }
 
   void (async () => {
     let leaseLost = false;
-    let leaseExpiresAt = redisLease ? Date.now() + GRAPH_INDEX_LEASE_TTL_MS : 0;
+    let leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
+    let nextRunningStatusPublishAttemptAt = Date.now() + GRAPH_INDEX_HEARTBEAT_MS;
     let heartbeat: ReturnType<typeof setInterval> | null = null;
+    const markLeaseLost = (): void => {
+      leaseLost = true;
+      const failedAt = Date.now();
+      localGraphIndexStatus.set(userId, {
+        state: 'error',
+        runId,
+        startedAt: running.startedAt,
+        updatedAt: new Date(failedAt).toISOString(),
+        retryAfter: new Date(failedAt + GRAPH_INDEX_ERROR_COOLDOWN_MS).toISOString(),
+        reason: 'lease-lost',
+        recoverable: true,
+      });
+    };
+    const renewOwnedLease = async (): Promise<void> => {
+      if (leaseLost) throw new GraphIndexRunError('lease-lost');
+      try {
+        if (!(await renewGraphIndexLease(userId, runId))) {
+          markLeaseLost();
+          throw new GraphIndexRunError('lease-lost');
+        }
+        leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
+      } catch (err) {
+        if (err instanceof GraphIndexRunError) throw err;
+        if (Date.now() >= leaseExpiresAt) {
+          markLeaseLost();
+          throw new GraphIndexRunError('lease-lost');
+        }
+      }
+    };
     const startHeartbeat = (): void => {
-      if (heartbeat || !redisLease) return;
+      if (heartbeat) return;
       heartbeat = setInterval(() => {
-        void renewGraphIndexLease(userId, runId)
-          .then((renewed) => {
-            if (renewed) leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
-            else leaseLost = true;
-          })
-          .catch(() => {
-            // A lease ainda tem TTL; a próxima renovação pode recuperar.
-          });
+        void renewOwnedLease().catch(() => {});
       }, GRAPH_INDEX_HEARTBEAT_MS);
     };
     const assertLeaseOwnership = async (): Promise<void> => {
-      if (leaseLost) throw new GraphIndexRunError('lease-lost');
-      if (redisLease) {
+      if (leaseLost || Date.now() >= leaseExpiresAt) {
+        markLeaseLost();
+        throw new GraphIndexRunError('lease-lost');
+      }
+      if (!runningStatusPublished && Date.now() >= nextRunningStatusPublishAttemptAt) {
+        nextRunningStatusPublishAttemptAt = Date.now() + GRAPH_INDEX_HEARTBEAT_MS;
         try {
-          if (!(await renewGraphIndexLease(userId, runId))) {
-            leaseLost = true;
-            throw new GraphIndexRunError('lease-lost');
-          }
-          leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
+          runningStatusPublished = await writeOwnedGraphIndexStatus(userId, runId, running);
           if (!runningStatusPublished) {
-            runningStatusPublished = await writeOwnedGraphIndexStatus(userId, runId, running);
-            if (!runningStatusPublished) throw new GraphIndexRunError('lease-lost');
+            markLeaseLost();
+            throw new GraphIndexRunError('lease-lost');
           }
         } catch (err) {
           if (err instanceof GraphIndexRunError) throw err;
           if (Date.now() >= leaseExpiresAt) {
-            leaseLost = true;
+            markLeaseLost();
             throw new GraphIndexRunError('lease-lost');
           }
-          // Redis pode oscilar por menos que o TTL; o heartbeat tentará novamente.
         }
-        return;
       }
-
-      try {
-        if (!(await acquireGraphIndexLease(userId, runId))) {
-          leaseLost = true;
-          throw new GraphIndexRunError('lease-lost');
-        }
-        redisLease = true;
-        leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
-        startHeartbeat();
-        runningStatusPublished = await writeOwnedGraphIndexStatus(userId, runId, running);
-        if (!runningStatusPublished) {
-          leaseLost = true;
-          throw new GraphIndexRunError('lease-lost');
-        }
-      } catch (err) {
-        if (err instanceof GraphIndexRunError) throw err;
-        // Redis continua indisponível; preserva o guard local desta instância.
+      if (Date.now() >= leaseExpiresAt - GRAPH_INDEX_HEARTBEAT_MS) {
+        await renewOwnedLease();
       }
     };
     const publishOwnedStatus = async (status: GraphIndexStatus): Promise<boolean> => {
-      if (!redisLease) {
-        localGraphIndexStatus.set(userId, status);
-        return true;
-      }
       try {
         const published = await writeOwnedGraphIndexStatus(userId, runId, status);
         if (published) localGraphIndexStatus.set(userId, status);
         return published;
       } catch {
-        // Mantém o terminal local; o lease/status remoto será reconciliado pelo TTL.
+        if (leaseLost || Date.now() >= leaseExpiresAt) return false;
+        // O lease ainda vive pelo TTL; preserva o terminal local até o Redis recuperar.
         localGraphIndexStatus.set(userId, status);
         return true;
       }
@@ -411,11 +417,13 @@ async function scheduleBrainReindex(
     startHeartbeat();
     try {
       await assertLeaseOwnership();
-      await reindexLibraryFoldersBrain(userId);
+      await deleteOrphanedBrainSourceNodes(userId, assertLeaseOwnership);
       await assertLeaseOwnership();
-      await reindexNotesBrain(userId);
+      await reindexLibraryFoldersBrain(userId, assertLeaseOwnership);
       await assertLeaseOwnership();
-      await reindexTranscriptsBrain(userId);
+      await reindexNotesBrain(userId, assertLeaseOwnership);
+      await assertLeaseOwnership();
+      await reindexTranscriptsBrain(userId, undefined, assertLeaseOwnership);
       await assertLeaseOwnership();
 
       const coverage = await readBrainCoverage(userId);
@@ -452,7 +460,7 @@ async function scheduleBrainReindex(
       }
     } finally {
       if (heartbeat) clearInterval(heartbeat);
-      if (redisLease) await releaseGraphIndexLease(userId, runId).catch(() => false);
+      await releaseGraphIndexLease(userId, runId).catch(() => false);
       brainReindexInFlight.delete(userId);
       const localStatus = localGraphIndexStatus.get(userId);
       if (localStatus?.state === 'running' && localStatus.runId === runId) {
@@ -512,11 +520,48 @@ class GraphIndexRunError extends Error {
 async function countStaleBrainSourceNodes(userId: string): Promise<number> {
   const rows = await db.$queryRaw<Array<{ count: number | bigint }>>`
     SELECT count(*)::int AS count
-    FROM "BrainNode"
-    WHERE "userId" = ${userId}
-      AND status = 'ACTIVE'::"ContentStatus"
-      AND "sourceType"::text IN ('TRANSCRIPT', 'NOTE')
-      AND coalesce(metadata->>'brainIndexVersion', '0') <> ${String(BRAIN_INDEX_VERSION)}
+    FROM "BrainNode" n
+    LEFT JOIN "Transcript" t
+      ON n."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+     AND t.id = n."sourceId"
+     AND t."userId" = n."userId"
+    LEFT JOIN "Note" note
+      ON n."sourceType" = 'NOTE'::"BrainSourceType"
+     AND note.id = n."sourceId"
+     AND note."userId" = n."userId"
+    LEFT JOIN "LibraryFolder" folder
+      ON n."sourceType" = 'FOLDER'::"BrainSourceType"
+     AND folder.id = n."sourceId"
+     AND folder."userId" = n."userId"
+    WHERE n."userId" = ${userId}
+      AND n."sourceType"::text IN ('TRANSCRIPT', 'NOTE', 'FOLDER')
+      AND (
+        (n."sourceType" = 'TRANSCRIPT'::"BrainSourceType" AND t.id IS NULL)
+        OR (n."sourceType" = 'NOTE'::"BrainSourceType" AND note.id IS NULL)
+        OR (n."sourceType" = 'FOLDER'::"BrainSourceType" AND folder.id IS NULL)
+        OR (
+          n.status = 'ACTIVE'::"ContentStatus"
+          AND (
+            coalesce(n.metadata->>'brainIndexVersion', '0') <>
+              ${String(BRAIN_INDEX_VERSION)}
+            OR (
+              n."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+              AND coalesce(n.metadata->>'updatedAt', '') <>
+                  to_char(t."updatedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            )
+            OR (
+              n."sourceType" = 'NOTE'::"BrainSourceType"
+              AND coalesce(n.metadata->>'updatedAt', '') <>
+                  to_char(note."updatedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            )
+            OR (
+              n."sourceType" = 'FOLDER'::"BrainSourceType"
+              AND coalesce(n.metadata->>'updatedAt', '') <>
+                  to_char(folder."updatedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            )
+          )
+        )
+      )
   `;
   const count = rows[0]?.count ?? 0;
   return typeof count === 'bigint' ? Number(count) : count;
