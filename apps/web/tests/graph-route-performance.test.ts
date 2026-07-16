@@ -50,6 +50,33 @@ describe('shouldScheduleGraphReindex', () => {
       }),
     ).toBe(false);
   });
+
+  test('schedules orphan cleanup when indexed coverage exceeds the source library', () => {
+    expect(
+      shouldScheduleGraphReindex({
+        force: false,
+        expectedSourceNodes: 0,
+        indexedSourceNodes: 1,
+        staleSourceNodes: 0,
+      }),
+    ).toBe(true);
+    expect(
+      shouldScheduleGraphReindex({
+        force: false,
+        expectedSourceNodes: 0,
+        indexedSourceNodes: 0,
+        staleSourceNodes: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldScheduleGraphReindex({
+        force: false,
+        expectedSourceNodes: 19,
+        indexedSourceNodes: 20,
+        staleSourceNodes: 0,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe('isGraphSnapshotIndexing', () => {

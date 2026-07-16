@@ -41,6 +41,8 @@ básicas de navegação da câmera.
   reenquadrar a comunidade principal e mostrar todo o grafo.
 - The system shall preservar a proveniência das relações entre conteúdos,
   conceitos, pastas e fontes.
+- The system shall serializar os indexadores web e worker pelo mesmo lease Redis
+  por usuário, sem mutação local quando a coordenação estiver indisponível.
 
 ### Event-driven
 
@@ -48,6 +50,10 @@ básicas de navegação da câmera.
   também a compatibilidade já atendida pelo mesmo passe.
 - When o índice compatível atualizar uma fonte já materializada pelo índice
   completo, the system shall preservar o marcador completo existente.
+- When uma fonte mudar enquanto outro indexador possuir o lease, the system shall
+  detectar a divergência pelo `updatedAt` e reconciliá-la em um passe posterior.
+- When uma fonte for removida sem conseguir limpar o Brain imediatamente, the
+  system shall remover seu nó órfão no próximo passe completo.
 - When um snapshot 3D for carregado ou sua topologia mudar, the system shall
   enquadrar a comunidade principal depois que a cena estiver pronta.
 - When o usuário acionar “Mostrar tudo”, the system shall enquadrar todos os nós
@@ -84,6 +90,11 @@ básicas de navegação da câmera.
   sem criar polling permanente.
 - If uma fonte falhar durante a reconciliação, then the system shall encerrar o
   passe com diagnóstico observável e tentativa explícita, sem loop imediato.
+- If Redis estiver indisponível antes da aquisição do lease, then the system
+  shall preservar o snapshot, retornar erro recuperável com cooldown e não
+  iniciar materialização local.
+- If o ownership do lease for perdido dentro de um item, then the system shall
+  interromper antes do marcador final e manter a fonte pendente.
 
 ## Critérios de Aceite
 
@@ -91,6 +102,14 @@ básicas de navegação da câmera.
       compatibilidade esperados.
 - [x] Testes comprovam que uma falha antes da finalização remove os marcadores
       de conclusão e que nós auxiliares não recebem um falso estado completo.
+- [x] Testes comprovam que FK/evidência ausente e perda do lease dentro do item
+      propagam falha e deixam os marcadores de conclusão ausentes.
+- [x] Web e worker usam a mesma chave, TTL e ownership; ocupado ou Redis
+      indisponível não permite duas materializações simultâneas.
+- [x] Passes longos renovam o lease por heartbeat e os guards locais não fazem
+      round-trip ao Redis em cada mutação curta.
+- [x] Cobertura detecta fontes atualizadas e nós órfãos, inclusive quando a
+      biblioteca ficou vazia, e o passe completo converge esses casos.
 - [x] Testes comprovam que o passe compatível preserva o marcador completo e não
       se apresenta como índice completo quando ele ainda não existe.
 - [x] Após um passe completo, os critérios de cobertura convergem e não agendam

@@ -1,13 +1,15 @@
-import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import app from '../src/index';
 import {
   BRAIN_INDEX_VERSION,
   BRAIN_TOPIC_INDEX_VERSION,
+  deleteBrainForSource,
   reindexLibraryFolderBrain,
   reindexNoteBrain,
   reindexTranscriptBrain,
 } from '../src/lib/brain';
 import { db } from '../src/lib/db';
+import { acquireGraphIndexLease, releaseGraphIndexLease } from '../src/lib/graph-index-coordinator';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -252,18 +254,22 @@ describeIfDb('brain indexer', () => {
     expect(completedMetadata.topicIndexVersion).toBe(BRAIN_TOPIC_INDEX_VERSION);
     expect(completedMetadata.workerTopicExtractor).toBe('keyword-v1');
 
+    let leaseOwned = true;
     let failure: unknown;
     try {
       await reindexTranscriptBrain(user.id, transcript.id, {
         beforeFinalize: () => {
-          throw new Error('fault-before-finalize');
+          leaseOwned = false;
+        },
+        assertLeaseOwnership: async () => {
+          if (!leaseOwned) throw new Error('lease-lost-inside-item');
         },
       });
     } catch (err) {
       failure = err;
     }
     expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toBe('fault-before-finalize');
+    expect((failure as Error).message).toBe('lease-lost-inside-item');
 
     const incomplete = await db.brainNode.findUniqueOrThrow({
       where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
@@ -278,6 +284,102 @@ describeIfDb('brain indexer', () => {
     expect(metadata.workerTopicExtractor).toBe('keyword-v1');
     expect(metadata.brainIndexVersion).toBeUndefined();
     expect(metadata.topicIndexVersion).toBeUndefined();
+  });
+
+  it('leaves transcript markers absent after a real folder edge FK race', async () => {
+    await signUp('brain-edge-race@voxen.local', 'senha-super-segura-123', 'Brain Edge Race');
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'brain-edge-race@voxen.local' },
+    });
+    const folder = await db.libraryFolder.create({
+      data: { userId: user.id, name: 'Pasta removida durante a aresta' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        folderId: folder.id,
+        source: 'WEB',
+        url: 'https://example.com/brain-edge-race',
+        title: 'Corrida de FK do Brain',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/brain-edge-race.md`,
+        plainText: 'Conteúdo com pasta e conceitos para materialização completa.',
+        frontmatter: {},
+      },
+    });
+    await reindexTranscriptBrain(user.id, transcript.id);
+    const folderNode = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `FOLDER:${folder.id}` } },
+    });
+
+    const realUpsert = db.brainEdge.upsert.bind(db.brainEdge);
+    const injectFkRace = async (args: Parameters<typeof realUpsert>[0]) => {
+      await db.brainNode.delete({ where: { id: folderNode.id } });
+      return realUpsert(args);
+    };
+    const edgeUpsert = spyOn(db.brainEdge, 'upsert').mockImplementationOnce(injectFkRace as never);
+    let failure: unknown;
+    try {
+      await reindexTranscriptBrain(user.id, transcript.id);
+    } catch (err) {
+      failure = err;
+    } finally {
+      edgeUpsert.mockRestore();
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    const incomplete = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+    });
+    const metadata = incomplete.metadata as {
+      brainIndexVersion?: number;
+      topicIndexVersion?: number;
+    };
+    expect(metadata.brainIndexVersion).toBeUndefined();
+    expect(metadata.topicIndexVersion).toBeUndefined();
+  });
+
+  it('does not let a direct web reindex mutate while the worker owns the shared lease', async () => {
+    await signUp('brain-shared-lease@voxen.local', 'senha-super-segura-123', 'Shared Lease');
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'brain-shared-lease@voxen.local' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/brain-shared-lease',
+        title: 'Lease compartilhado',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/brain-shared-lease.md`,
+        plainText: 'Worker e web não podem materializar o Brain ao mesmo tempo.',
+        frontmatter: {},
+      },
+    });
+    const workerOwner = 'worker:test-shared-owner';
+    expect(await acquireGraphIndexLease(user.id, workerOwner)).toBe(true);
+    try {
+      await reindexTranscriptBrain(user.id, transcript.id);
+      expect(
+        await db.brainNode.findUnique({
+          where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+        }),
+      ).toBeNull();
+    } finally {
+      await releaseGraphIndexLease(user.id, workerOwner);
+    }
+
+    await reindexTranscriptBrain(user.id, transcript.id);
+    const completed = await db.brainNode.findUniqueOrThrow({
+      where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+    });
+    expect((completed.metadata as { brainIndexVersion?: number }).brainIndexVersion).toBe(
+      BRAIN_INDEX_VERSION,
+    );
   });
 
   it('does not give auxiliary note and folder nodes false completion markers', async () => {
@@ -578,9 +680,14 @@ describeIfDb('brain indexer', () => {
     expect(noteRes.status).toBe(201);
     const noteBody = (await noteRes.json()) as { note: { id: string } };
 
-    await db.brainNode.update({
-      where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
-      data: { metadata: { brainIndexVersion: 1 } },
+    const sourceUpdatedAt = new Date(Date.now() + 1_000);
+    await db.note.update({
+      where: { id: noteBody.note.id },
+      data: {
+        title: 'Memória stale atualizada',
+        content: 'A fonte mudou sem conseguir executar o reindex direto.',
+        updatedAt: sourceUpdatedAt,
+      },
     });
 
     await waitForGraphReindex(cookie, false);
@@ -588,9 +695,54 @@ describeIfDb('brain indexer', () => {
     const node = await db.brainNode.findUniqueOrThrow({
       where: { userId_key: { userId: user.id, key: `NOTE:${noteBody.note.id}` } },
     });
+    expect(node.label).toBe('Memória stale atualizada');
     expect((node.metadata as { brainIndexVersion?: number }).brainIndexVersion).toBe(
       BRAIN_INDEX_VERSION,
     );
+    expect((node.metadata as { updatedAt?: string }).updatedAt).toBe(sourceUpdatedAt.toISOString());
+  });
+
+  it('cleans an orphan source node after a post-commit delete misses the busy lease', async () => {
+    await signUp('orphan-brain@voxen.local', 'senha-super-segura-123', 'Orphan Brain');
+    const signin = await signIn('orphan-brain@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'orphan-brain@voxen.local' } });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/orphan-brain',
+        title: 'Fonte removida com lease ocupado',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/orphan-brain.md`,
+        plainText: 'O full pass precisa remover o nórfão depois.',
+        frontmatter: {},
+      },
+    });
+    await reindexTranscriptBrain(user.id, transcript.id);
+
+    const workerOwner = 'worker:test-orphan-delete';
+    expect(await acquireGraphIndexLease(user.id, workerOwner)).toBe(true);
+    try {
+      await db.transcript.delete({ where: { id: transcript.id } });
+      await deleteBrainForSource(user.id, 'TRANSCRIPT', transcript.id);
+      expect(
+        await db.brainNode.findUnique({
+          where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+        }),
+      ).not.toBeNull();
+    } finally {
+      await releaseGraphIndexLease(user.id, workerOwner);
+    }
+
+    await waitForGraphReindex(cookie, false);
+    expect(
+      await db.brainNode.findUnique({
+        where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
+      }),
+    ).toBeNull();
   });
 
   it('removes automatic topic nodes when transcript leaves the active graph', async () => {

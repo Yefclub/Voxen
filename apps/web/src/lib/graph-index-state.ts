@@ -7,10 +7,12 @@ export interface GraphIndexState {
 
 /** Decide se o Brain precisa de um novo passe sem executar trabalho no GET. */
 export function shouldScheduleGraphReindex(state: GraphIndexState): boolean {
-  if (state.expectedSourceNodes === 0) return false;
+  if (state.expectedSourceNodes === 0) {
+    return state.indexedSourceNodes > 0 || state.staleSourceNodes > 0;
+  }
   return (
     state.force ||
-    state.indexedSourceNodes < state.expectedSourceNodes ||
+    state.indexedSourceNodes !== state.expectedSourceNodes ||
     state.staleSourceNodes > 0
   );
 }

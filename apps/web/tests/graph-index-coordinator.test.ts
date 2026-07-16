@@ -4,6 +4,7 @@ import {
   GRAPH_INDEX_LEASE_TTL_MS,
   acquireGraphIndexLease,
   graphIndexLeaseKey,
+  graphIndexRedisUnavailableStatus,
   graphIndexStatusKey,
   readGraphIndexStatus,
   reconcileGraphIndexStatus,
@@ -93,13 +94,15 @@ describe('graph index Redis coordinator', () => {
   test('allows only one owner and safely renews/releases its lease', async () => {
     const redis = new FakeRedis();
 
-    expect(await acquireGraphIndexLease('user-1', 'run-a', redis)).toBe(true);
-    expect(await acquireGraphIndexLease('user-1', 'run-b', redis)).toBe(false);
-    expect(await renewGraphIndexLease('user-1', 'run-b', redis)).toBe(false);
-    expect(await renewGraphIndexLease('user-1', 'run-a', redis)).toBe(true);
-    expect(await releaseGraphIndexLease('user-1', 'run-b', redis)).toBe(false);
-    expect(await releaseGraphIndexLease('user-1', 'run-a', redis)).toBe(true);
-    expect(await acquireGraphIndexLease('user-1', 'run-b', redis)).toBe(true);
+    expect(graphIndexLeaseKey('user-1')).toBe('voxen:graph:index:v1:lease:user-1');
+    expect(await acquireGraphIndexLease('user-1', 'web-run', redis)).toBe(true);
+    expect(await acquireGraphIndexLease('user-1', 'worker-run', redis)).toBe(false);
+    expect(await renewGraphIndexLease('user-1', 'worker-run', redis)).toBe(false);
+    expect(await renewGraphIndexLease('user-1', 'web-run', redis)).toBe(true);
+    expect(await releaseGraphIndexLease('user-1', 'worker-run', redis)).toBe(false);
+    expect(await releaseGraphIndexLease('user-1', 'web-run', redis)).toBe(true);
+    expect(await acquireGraphIndexLease('user-1', 'worker-run', redis)).toBe(true);
+    expect(await acquireGraphIndexLease('user-1', 'web-run', redis)).toBe(false);
   });
 
   test('turns an abandoned running status into recoverable idle after lease expiry', async () => {
@@ -184,7 +187,7 @@ describe('graph index Redis coordinator', () => {
     });
   });
 
-  test('keeps a local fallback running when Redis recovers without a lease', () => {
+  test('does not trust a local in-flight run after Redis reports no lease', () => {
     const local = {
       state: 'running' as const,
       runId: 'run-local',
@@ -194,7 +197,7 @@ describe('graph index Redis coordinator', () => {
       state: 'idle' as const,
       updatedAt: '2026-07-15T12:01:00.000Z',
     };
-    expect(reconcileGraphIndexStatus(remoteIdle, local, true)).toBe(local);
+    expect(reconcileGraphIndexStatus(remoteIdle, local, true)).toBe(remoteIdle);
     expect(
       reconcileGraphIndexStatus(
         { state: 'running', runId: 'run-remote', updatedAt: '2026-07-15T12:02:00.000Z' },
@@ -202,6 +205,28 @@ describe('graph index Redis coordinator', () => {
         true,
       ),
     ).toMatchObject({ runId: 'run-remote' });
+  });
+
+  test('turns Redis unavailability into a recoverable terminal cooldown', () => {
+    expect(
+      graphIndexRedisUnavailableStatus(
+        {
+          state: 'ready',
+          runId: 'previous-run',
+          startedAt: '2026-07-15T11:59:00.000Z',
+          updatedAt: '2026-07-15T12:00:00.000Z',
+        },
+        Date.parse('2026-07-15T12:01:00.000Z'),
+      ),
+    ).toEqual({
+      state: 'error',
+      runId: 'previous-run',
+      startedAt: '2026-07-15T11:59:00.000Z',
+      updatedAt: '2026-07-15T12:01:00.000Z',
+      retryAfter: '2026-07-15T12:06:00.000Z',
+      reason: 'redis-unavailable',
+      recoverable: true,
+    });
   });
 
   test('keeps the newest local terminal state after Redis recovers', () => {
@@ -271,13 +296,35 @@ describe('graph index Redis coordinator', () => {
       'utf8',
     ).replaceAll('\r\n', '\n');
     expect(routeSource).toContain(
-      'await reindexLibraryFoldersBrain(userId);\n      await assertLeaseOwnership();\n      await reindexNotesBrain(userId);',
+      'await deleteOrphanedBrainSourceNodes(userId, assertLeaseOwnership);\n      await assertLeaseOwnership();\n      await reindexLibraryFoldersBrain(userId, assertLeaseOwnership);',
     );
     expect(routeSource).toContain(
-      'await reindexNotesBrain(userId);\n      await assertLeaseOwnership();\n      await reindexTranscriptsBrain(userId);',
+      'await reindexLibraryFoldersBrain(userId, assertLeaseOwnership);\n      await assertLeaseOwnership();\n      await reindexNotesBrain(userId, assertLeaseOwnership);',
+    );
+    expect(routeSource).toContain(
+      'await reindexNotesBrain(userId, assertLeaseOwnership);\n      await assertLeaseOwnership();\n      await reindexTranscriptsBrain(userId, undefined, assertLeaseOwnership);',
     );
     expect(routeSource).toContain(
       'await invalidateGraphCache(userId);\n      await assertLeaseOwnership();',
+    );
+    expect(routeSource).not.toContain('preserva o guard local desta instância');
+
+    expect(routeSource).toContain(
+      '!runningStatusPublished && Date.now() >= nextRunningStatusPublishAttemptAt',
+    );
+
+    const brainSource = readFileSync(
+      new URL('../src/lib/brain.ts', import.meta.url),
+      'utf8',
+    ).replaceAll('\r\n', '\n');
+    expect(brainSource).toContain(
+      'await options.beforeFinalize?.();\n  await options.assertLeaseOwnership?.();\n  await finalizeBrainNodeIndex',
+    );
+    expect(brainSource).toContain(
+      'catch (err) {\n      await assertLeaseOwnership?.();\n      // Reindex de um item',
+    );
+    expect(brainSource).toContain(
+      'if (!(await acquireGraphIndexLease(userId, owner))) return false;',
     );
   });
 });

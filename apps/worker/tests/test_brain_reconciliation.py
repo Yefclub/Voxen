@@ -3,11 +3,35 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import asyncpg
 
 from src import db
+
+
+class _FakeLease:
+    def __init__(self, renew_results: list[bool] | None = None) -> None:
+        self.renew_results = iter(renew_results or [True] * 20)
+        self.renew_count = 0
+        self.release_count = 0
+
+    async def renew(self) -> bool:
+        self.renew_count += 1
+        return next(self.renew_results)
+
+    async def release(self) -> bool:
+        self.release_count += 1
+        return True
+
+    def locally_owned(self) -> bool:
+        return True
+
+    @asynccontextmanager
+    async def heartbeat(self) -> AsyncIterator[None]:
+        yield
 
 
 class _FakeConnection:
@@ -41,8 +65,12 @@ class _FakeConnection:
         return "OK"
 
 
-async def test_worker_preserves_full_index_metadata_and_finalizes_its_topic_version() -> None:
+async def test_worker_preserves_full_index_metadata_and_finalizes_its_topic_version(
+    monkeypatch: Any,
+) -> None:
     conn = _FakeConnection()
+    lease = _FakeLease()
+    monkeypatch.setattr(db, "acquire_graph_index_lease", lambda _user_id: _async_value(lease))
 
     completed = await db.upsert_transcript_brain_node(
         cast(asyncpg.Connection, conn),
@@ -70,8 +98,12 @@ async def test_worker_preserves_full_index_metadata_and_finalizes_its_topic_vers
     assert completed is True
 
 
-async def test_worker_leaves_topic_marker_absent_when_topic_evidence_fails() -> None:
+async def test_worker_leaves_topic_marker_absent_when_topic_evidence_fails(
+    monkeypatch: Any,
+) -> None:
     conn = _FakeConnection(fail_edge_source=True)
+    lease = _FakeLease()
+    monkeypatch.setattr(db, "acquire_graph_index_lease", lambda _user_id: _async_value(lease))
 
     completed = await db.upsert_transcript_brain_node(
         cast(asyncpg.Connection, conn),
@@ -91,3 +123,78 @@ async def test_worker_leaves_topic_marker_absent_when_topic_evidence_fails() -> 
     assert "topicIndexVersion" not in conn.metadata
     assert conn.metadata["workerMetadata"] == "preserved"
     assert completed is False
+
+
+async def test_worker_skips_all_db_calls_when_lease_is_occupied_or_redis_unavailable(
+    monkeypatch: Any,
+) -> None:
+    connection_calls = 0
+
+    @asynccontextmanager
+    async def forbidden_connection() -> AsyncIterator[asyncpg.Connection]:
+        nonlocal connection_calls
+        connection_calls += 1
+        raise AssertionError("DB must not be touched without the Redis lease")
+        yield cast(asyncpg.Connection, object())
+
+    monkeypatch.setattr(db, "connection", forbidden_connection)
+    monkeypatch.setattr(db, "acquire_graph_index_lease", lambda _user_id: _async_value(None))
+
+    assert await db.reindex_transcript_brain_node("user-1", "transcript-1") is False
+    assert await db.reindex_transcript_brain_node("user-1", "transcript-2") is False
+    assert connection_calls == 0
+
+    conn = _FakeConnection()
+    assert (
+        await db.upsert_transcript_brain_node(
+            cast(asyncpg.Connection, conn),
+            user_id="user-1",
+            transcript_id="transcript-1",
+            source="WEB",
+            url="https://example.com/item",
+            title="abc",
+            channel=None,
+            language="pt",
+            transcription_method="SCRAPE",
+            thumbnail_url=None,
+            plain_text="",
+        )
+        is False
+    )
+    assert conn.fetchrow_calls == []
+    assert conn.execute_calls == []
+
+
+async def test_worker_keeps_topic_marker_absent_when_lease_is_lost_before_finalize(
+    monkeypatch: Any,
+) -> None:
+    conn = _FakeConnection()
+    lease = _FakeLease([True, True, True, True, False])
+    monkeypatch.setattr(db, "acquire_graph_index_lease", lambda _user_id: _async_value(lease))
+
+    completed = await db.upsert_transcript_brain_node(
+        cast(asyncpg.Connection, conn),
+        user_id="user-1",
+        transcript_id="transcript-1",
+        source="WEB",
+        url="https://example.com/item",
+        title="abc",
+        channel=None,
+        language="pt",
+        transcription_method="SCRAPE",
+        thumbnail_url=None,
+        plain_text="",
+    )
+
+    assert completed is False
+    assert lease.renew_count == 5
+    assert lease.release_count == 1
+    assert "topicIndexVersion" not in conn.metadata
+    assert not any(
+        'UPDATE "BrainNode"' in query and "metadata = metadata ||" in query
+        for query, _args in conn.execute_calls
+    )
+
+
+async def _async_value(value: Any) -> Any:
+    return value

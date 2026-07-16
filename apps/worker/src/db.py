@@ -15,6 +15,8 @@ from typing import Any
 import asyncpg
 import structlog
 
+from .graph_index_lease import GraphIndexLease, acquire_graph_index_lease
+
 log = structlog.get_logger(__name__)
 
 _pool: asyncpg.Pool | None = None
@@ -280,7 +282,50 @@ async def upsert_transcript_brain_node(
     plain_text: str,
     status: str = "ACTIVE",
 ) -> bool:
-    """Materializa o CONTENT e informa se o índice de tópicos terminou por completo."""
+    """Materializa o CONTENT somente sob o lease compartilhado por usuário."""
+    lease = await acquire_graph_index_lease(user_id)
+    if lease is None:
+        return False
+    try:
+        async with lease.heartbeat():
+            return await _upsert_transcript_brain_node_with_lease(
+                conn,
+                lease=lease,
+                user_id=user_id,
+                transcript_id=transcript_id,
+                source=source,
+                url=url,
+                title=title,
+                channel=channel,
+                language=language,
+                transcription_method=transcription_method,
+                thumbnail_url=thumbnail_url,
+                plain_text=plain_text,
+                status=status,
+            )
+    finally:
+        await lease.release()
+
+
+async def _upsert_transcript_brain_node_with_lease(
+    conn: asyncpg.Connection,
+    *,
+    lease: GraphIndexLease,
+    user_id: str,
+    transcript_id: str,
+    source: str,
+    url: str,
+    title: str,
+    channel: str | None,
+    language: str,
+    transcription_method: str,
+    thumbnail_url: str | None,
+    plain_text: str,
+    status: str,
+) -> bool:
+    """Materializa o CONTENT e confirma ownership antes de cada fase mutável."""
+    if not await lease.renew():
+        return False
     node_id = generate_cuid()
     key = f"TRANSCRIPT:{transcript_id}"
     metadata = {
@@ -321,7 +366,13 @@ async def upsert_transcript_brain_node(
         transcript_id,
     )
     brain_node_id = row["id"] if row else node_id
+
+    if not await lease.renew():
+        return False
     await _remove_transcript_brain_refreshable_sources(conn, user_id, transcript_id)
+
+    if not await lease.renew():
+        return False
     await conn.execute(
         """
         INSERT INTO "BrainSource" (
@@ -336,8 +387,12 @@ async def upsert_transcript_brain_node(
         transcript_id,
         _truncate(title, 600),
     )
+
+    if not await lease.renew():
+        return False
     topic_edges_complete = await _upsert_transcript_topic_edges(
         conn,
+        lease=lease,
         user_id=user_id,
         transcript_id=transcript_id,
         content_node_id=brain_node_id,
@@ -346,6 +401,9 @@ async def upsert_transcript_brain_node(
         status=status,
     )
     if not topic_edges_complete:
+        return False
+
+    if not await lease.renew():
         return False
     await conn.execute(
         """
@@ -364,45 +422,56 @@ async def upsert_transcript_brain_node(
 
 async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> bool:
     """Reindexa um Transcript já persistido usando summaryMd quando existir."""
-    async with connection() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT source, url, title, channel, language, "transcriptionMethod",
-                   "thumbnailUrl", "plainText", "summaryMd", status
-            FROM "Transcript"
-            WHERE id = $1 AND "userId" = $2
-            """,
-            transcript_id,
-            user_id,
-        )
-        if not row:
-            await conn.execute(
-                """
-                DELETE FROM "BrainNode"
-                WHERE "userId" = $1
-                  AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
-                  AND "sourceId" = $2
-                """,
-                user_id,
-                transcript_id,
-            )
-            await _delete_orphan_keyword_topic_nodes(conn, user_id)
-            return False
-        completed = await upsert_transcript_brain_node(
-            conn,
-            user_id=user_id,
-            transcript_id=transcript_id,
-            source=row["source"],
-            url=row["url"],
-            title=row["title"],
-            channel=row["channel"],
-            language=row["language"],
-            transcription_method=row["transcriptionMethod"],
-            thumbnail_url=row["thumbnailUrl"],
-            plain_text=row["summaryMd"] or row["plainText"],
-            status=row["status"],
-        )
-        return completed
+    lease = await acquire_graph_index_lease(user_id)
+    if lease is None:
+        return False
+    try:
+        async with lease.heartbeat():
+            async with connection() as conn:
+                row = await conn.fetchrow(
+                    """
+                    SELECT source, url, title, channel, language, "transcriptionMethod",
+                           "thumbnailUrl", "plainText", "summaryMd", status
+                    FROM "Transcript"
+                    WHERE id = $1 AND "userId" = $2
+                    """,
+                    transcript_id,
+                    user_id,
+                )
+                if not row:
+                    if not await lease.renew():
+                        return False
+                    await conn.execute(
+                        """
+                        DELETE FROM "BrainNode"
+                        WHERE "userId" = $1
+                          AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+                          AND "sourceId" = $2
+                        """,
+                        user_id,
+                        transcript_id,
+                    )
+                    if not await lease.renew():
+                        return False
+                    await _delete_orphan_keyword_topic_nodes(conn, user_id)
+                    return False
+                return await _upsert_transcript_brain_node_with_lease(
+                    conn,
+                    lease=lease,
+                    user_id=user_id,
+                    transcript_id=transcript_id,
+                    source=row["source"],
+                    url=row["url"],
+                    title=row["title"],
+                    channel=row["channel"],
+                    language=row["language"],
+                    transcription_method=row["transcriptionMethod"],
+                    thumbnail_url=row["thumbnailUrl"],
+                    plain_text=row["summaryMd"] or row["plainText"],
+                    status=row["status"],
+                )
+    finally:
+        await lease.release()
 
 
 async def reindex_missing_transcript_brain_nodes(limit: int = 50) -> int:
@@ -530,6 +599,7 @@ async def _delete_orphan_keyword_topic_nodes(conn: asyncpg.Connection, user_id: 
 async def _upsert_transcript_topic_edges(
     conn: asyncpg.Connection,
     *,
+    lease: GraphIndexLease,
     user_id: str,
     transcript_id: str,
     content_node_id: str,
@@ -541,7 +611,11 @@ async def _upsert_transcript_topic_edges(
         return True
     complete = True
     for topic in _extract_topics(f"{title}\n{text}"):
+        if not lease.locally_owned():
+            return False
         topic_node_id = await _upsert_topic_node(conn, user_id, topic["slug"], topic["label"])
+        if not lease.locally_owned():
+            return False
         edge_row = await conn.fetchrow(
             """
             INSERT INTO "BrainEdge" (
@@ -568,6 +642,8 @@ async def _upsert_transcript_topic_edges(
         if not edge_row:
             complete = False
             continue
+        if not lease.locally_owned():
+            return False
         try:
             await conn.execute(
                 """
