@@ -669,13 +669,16 @@ describeIfDb('brain indexer', () => {
       where: { email: 'semantic-brain@voxen.local' },
     });
 
+    // Mesmo canal + domínio (sem overlap de tópicos) deve cruzar o limiar 1.2
+    // do semantic-profile (spec 103); só youtu.be já não basta — evita ligar
+    // todo o YouTube entre si.
     const first = await db.transcript.create({
       data: {
         userId: user.id,
         source: 'YOUTUBE',
         url: 'https://youtu.be/alpha-memory',
         title: 'Circuito Azul',
-        channel: 'Canal A',
+        channel: 'Canal Observatório',
         durationSec: 0,
         language: 'pt',
         transcriptionMethod: 'SCRAPE',
@@ -690,7 +693,7 @@ describeIfDb('brain indexer', () => {
         source: 'YOUTUBE',
         url: 'https://youtu.be/beta-memory',
         title: 'Ponte Laranja',
-        channel: 'Canal B',
+        channel: 'Canal Observatório',
         durationSec: 0,
         language: 'pt',
         transcriptionMethod: 'SCRAPE',
