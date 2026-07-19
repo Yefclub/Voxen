@@ -1,8 +1,8 @@
 # ============================================================================
 # version-dev — bump package.json para X.Y.Z-dev.<unix> no merge em dev
 # ============================================================================
-# Estilo Orbital: cada push em `dev` (merge de PR) gera commit
-#   chore: set version to X.Y.Z-dev.<timestamp> for dev
+# Cada push em `dev` (merge de PR) gera commit:
+#   set version to X.Y.Z-dev.<timestamp>
 # nos package.json (raiz + apps/web) e consome changelog/unreleased/*.md
 # para releases.json + CHANGELOG.md.
 # ============================================================================
@@ -30,9 +30,13 @@ jobs:
   version-dev:
     runs-on: ubuntu-latest
     # Evita loop: não re-bump se o push já for o commit/PR do bot de versão.
-    # Aspas externas obrigatórias: o ":" em "chore: set version" quebra o YAML.
+    # Aceita formato novo ("set version to ") e legado ("chore: set version to ").
     # Branch protection exige PR — o bot abre PR + auto-merge (não pusha em dev).
-    if: "${{ github.ref_name == 'dev' && (github.event_name == 'workflow_dispatch' || (github.event.head_commit != null && !startsWith(github.event.head_commit.message, 'chore: set version to '))) }}"
+    if: >-
+      ${{ github.ref_name == 'dev' && (github.event_name == 'workflow_dispatch' ||
+      (github.event.head_commit != null &&
+      !startsWith(github.event.head_commit.message, 'set version to ') &&
+      !startsWith(github.event.head_commit.message, 'chore: set version to '))) }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -86,7 +90,7 @@ jobs:
             exit 0
           fi
           LAST_BUMP=$(git log --first-parent --format='%H%x09%s' -n 400 \
-            | awk -F'\t' '!f && $2 ~ /^chore: set version to .* for dev$/ {print $1; f=1}')
+            | awk -F'\t' '!f && ($2 ~ /^set version to / || $2 ~ /^chore: set version to /) {print $1; f=1}')
           if [ -n "$LAST_BUMP" ]; then
             COMMITS=$(git log --reverse --first-parent --format=%H "${LAST_BUMP}..HEAD")
           else
@@ -162,7 +166,7 @@ jobs:
           # executável e bloqueava para sempre todos os bumps seguintes.
           # Substituímos qualquer bump pendente por um snapshot do `dev` atual.
           OPEN_URLS=$(gh pr list --base "$TARGET_BRANCH" --state open --json title,url --jq \
-            '.[] | select(.title | startswith("chore: set version to ")) | .url')
+            '.[] | select((.title | startswith("set version to ")) or (.title | startswith("chore: set version to "))) | .url')
           while IFS= read -r OPEN_URL; do
             [ -z "$OPEN_URL" ] && continue
             echo "Fechando bump obsoleto: $OPEN_URL"
@@ -170,12 +174,15 @@ jobs:
           done <<< "$OPEN_URLS"
 
           BRANCH="chore/version-dev-${NEW_VER//./-}"
-          git commit -m "chore: set version to $NEW_VER for dev"
+          # Mensagem limpa (sem chore/for dev). Squash usa o mesmo subject
+          # para o commit em dev não virar "… (#N)" com trailer de bot.
+          SUBJECT="set version to $NEW_VER"
+          git commit -m "$SUBJECT"
           git checkout -B "$BRANCH"
           git push -u origin "$BRANCH" --force
 
           PR_URL=$(gh pr create --base "$TARGET_BRANCH" --head "$BRANCH" \
-            --title "chore: set version to $NEW_VER for dev" \
+            --title "$SUBJECT" \
             --body "Bump automático de versão em dev (\`$NEW_VER\`) + consumo de changelog/unreleased.")
           echo "PR: $PR_URL"
 
@@ -267,7 +274,11 @@ jobs:
           for attempt in $(seq 1 20); do
             STATE=$(gh pr view "$PR_URL" --json mergeStateStatus --jq .mergeStateStatus)
             if [ "$STATE" = "CLEAN" ]; then
-              gh pr merge --squash --delete-branch "$PR_URL"
+              # subject/body explícitos: evita "… (#N)" e Co-authored-by no squash.
+              gh pr merge --squash --delete-branch \
+                --subject "$SUBJECT" \
+                --body "" \
+                "$PR_URL"
               break
             fi
             if [ "$attempt" = "20" ]; then
