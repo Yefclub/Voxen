@@ -1298,6 +1298,30 @@ async def _persist(
     if source is None:
         raise PermanentError(f"URL não reconhecida pelo detect_source: {source_url}")
 
+    # Espelha capa remota (TikTok/IG etc.) no S3; UI usa /preview estável.
+    from . import thumbnail as thumb_mod
+
+    if not preview_object_key and probe_info.thumbnail_url:
+        stable_thumb, mirrored_key, mirrored_mime = await thumb_mod.resolve_thumbnail_for_persist(
+            remote_url=probe_info.thumbnail_url,
+            user_id=user_id,
+            transcript_id=transcript_id,
+            source_url=source_url,
+        )
+        if mirrored_key:
+            preview_object_key = mirrored_key
+            preview_mime_type = mirrored_mime
+        thumbnail_for_doc = stable_thumb
+    else:
+        thumbnail_for_doc = (
+            f"/api/transcripts/{transcript_id}/preview"
+            if preview_object_key
+            else (probe_info.thumbnail_url or f"/api/transcripts/{transcript_id}/preview")
+        )
+        if thumbnail_for_doc.startswith("http"):
+            # Evita gravar CDN assinada mesmo sem mirror bem-sucedido.
+            thumbnail_for_doc = f"/api/transcripts/{transcript_id}/preview"
+
     doc = TranscriptDoc(
         transcript_id=transcript_id,
         user_id=user_id,
@@ -1309,7 +1333,7 @@ async def _persist(
         author=None,
         duration_sec=probe_info.duration_sec,
         published_at=probe_info.published_at,
-        thumbnail_url=probe_info.thumbnail_url or f"/api/transcripts/{transcript_id}/preview",
+        thumbnail_url=thumbnail_for_doc,
         language=language,
         transcription_method=method,
         model=model,

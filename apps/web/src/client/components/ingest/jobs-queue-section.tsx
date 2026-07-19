@@ -204,10 +204,16 @@ function JobRow({
   const source = detectSourceFromUrl(job.sourceUrl);
   const isUpload = isUploadSourceUrl(job.sourceUrl);
   const ytId = source === 'YOUTUBE' ? youtubeVideoId(job.sourceUrl) : null;
-  const previewSrc =
-    job.thumbnailUrl ||
-    (ytId ? `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg` : null) ||
-    (job.transcriptId ? `/api/transcripts/${job.transcriptId}/preview` : null);
+  // Nunca usa CDN assinada (TikTok etc.) no browser — só preview interno ou YT mqdefault.
+  // Host checado via URL.hostname (não includes) — evita open-redirect de substring.
+  const remoteIsSafeYt = isYtimgThumbnailUrl(job.thumbnailUrl);
+  const previewSrc: string | null = job.transcriptId
+    ? `/api/transcripts/${job.transcriptId}/preview`
+    : remoteIsSafeYt && job.thumbnailUrl
+      ? job.thumbnailUrl
+      : ytId
+        ? `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg`
+        : null;
   const displayTitle = job.title?.trim() || displayJobSource(job.sourceUrl);
 
   return (
@@ -323,4 +329,15 @@ function JobPreview({
       <Icon className="h-5 w-5" />
     </div>
   );
+}
+
+/** True só se o host da URL for ytimg.com (ou subdomínio). */
+function isYtimgThumbnailUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'ytimg.com' || host.endsWith('.ytimg.com');
+  } catch {
+    return false;
+  }
 }
