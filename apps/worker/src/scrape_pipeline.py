@@ -132,7 +132,7 @@ async def _persist(
 
     await storage.put_markdown(key=md_key, content=result.markdown)
 
-    frontmatter = {
+    frontmatter: dict[str, Any] = {
         "id": transcript_id,
         "userId": user_id,
         "source": "WEB",
@@ -145,7 +145,10 @@ async def _persist(
         "transcriptionMethod": "SCRAPE",
     }
     if preview_object_key:
-        frontmatter["preview"] = {"objectKey": preview_object_key, "mimeType": preview_mime_type}
+        frontmatter["preview"] = {
+            "objectKey": preview_object_key,
+            "mimeType": preview_mime_type,
+        }
 
     async with db.connection() as conn:
         await conn.execute(
