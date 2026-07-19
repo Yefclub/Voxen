@@ -111,6 +111,8 @@ export async function waitForTranscriptJob(options: {
   const deadline = Date.now() + (options.timeoutMs ?? 10 * 60_000);
   let lastStatus = '';
   let lastProgressAt = 0;
+  // Progresso a cada 5s: alimenta status SSE e reduz risco de proxy/Bun idle.
+  const progressEveryMs = 5_000;
   while (Date.now() < deadline) {
     if (options.abortSignal?.aborted) throw new Error('Transcrição interrompida.');
     const job = await db.job.findFirst({
@@ -118,7 +120,7 @@ export async function waitForTranscriptJob(options: {
       select: { status: true, transcriptId: true, errorMsg: true },
     });
     if (!job) throw new Error('Job de transcrição não encontrado.');
-    if (job.status !== lastStatus || Date.now() - lastProgressAt >= 10_000) {
+    if (job.status !== lastStatus || Date.now() - lastProgressAt >= progressEveryMs) {
       lastStatus = job.status;
       lastProgressAt = Date.now();
       options.onProgress?.(job.status);

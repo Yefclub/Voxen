@@ -13,9 +13,15 @@ const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 export const MAX_TAGS = 5;
 
 // Frases/raciocínio que o modelo às vezes cospe no lugar de uma tag curta.
+// Match por substring (não só prefixo): "Looking at the content" não começa com
+// "the content", mas ainda é ruído de raciocínio.
 const TAG_BAD_MARKERS = [
   'the content',
   'this content',
+  'looking at',
+  'its about',
+  "it's about",
+  'it is about',
   'the user',
   'i want',
   'i will',
@@ -81,7 +87,7 @@ function cleanTagName(raw: string): string | null {
   if (!name) return null;
 
   const lower = name.toLocaleLowerCase('en-US');
-  if (TAG_BAD_MARKERS.some((m) => lower.startsWith(m))) return null;
+  if (TAG_BAD_MARKERS.some((m) => lower.includes(m))) return null;
 
   const words = name.split(/\s+/).filter(Boolean);
   if (words.length > 4) return null; // tag deve ser curta (1-4 palavras)

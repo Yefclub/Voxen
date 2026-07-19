@@ -21,6 +21,10 @@ MAX_TAGS = 5
 TAG_BAD_MARKERS = (
     "the content",
     "this content",
+    "looking at",
+    "its about",
+    "it's about",
+    "it is about",
     "the user",
     "i want",
     "i will",
@@ -83,7 +87,8 @@ def _clean_tag_name(raw: str) -> str | None:
     if not name:
         return None
     lower = name.lower()
-    if any(lower.startswith(m) for m in TAG_BAD_MARKERS):
+    # Substring: raciocínio do modelo costuma prefixar ("Looking at the content").
+    if any(m in lower for m in TAG_BAD_MARKERS):
         return None
     words = name.split()
     if len(words) > 4:

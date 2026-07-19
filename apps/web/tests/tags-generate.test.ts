@@ -59,6 +59,8 @@ describe('resolveTagsDecision', () => {
 
   test('drops sentences / reasoning / generic labels', () => {
     expect(resolveTagsDecision('["The content is about anime","Anime"]', [])).toEqual(['Anime']);
+    expect(resolveTagsDecision('["Looking at the content","Docker"]', [])).toEqual(['Docker']);
+    expect(resolveTagsDecision('["Its about driver.js library","API"]', [])).toEqual(['API']);
     expect(resolveTagsDecision('["conteúdo","misc","various","Anime"]', [])).toEqual(['Anime']);
     expect(
       resolveTagsDecision('["a really long tag with too many words here","OK Tag"]', []),
