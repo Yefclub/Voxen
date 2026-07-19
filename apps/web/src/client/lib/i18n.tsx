@@ -910,7 +910,16 @@ const ptBRMessages = {
   'graph.switchToFull': 'Mostrar mapa completo (mais nós e arestas)',
   'graph.switchToMap': 'Voltar ao mapa rápido (recomendado)',
   'graph.truncatedHint': 'Recorte ativo — alterne para Completo se precisar de tudo.',
-  'graph.refreshing': 'Atualizando',
+  'graph.refreshing': 'Atualizando o mapa…',
+  'graph.reprocessBrain': 'Reprocessar cérebro',
+  'graph.reprocessBrainTitle': 'Reprocessar só o cérebro?',
+  'graph.reprocessBrainDescription':
+    'Reconstrói o mapa do Brain a partir dos títulos e textos que você já tem. Não chama o pipeline de ingestão de novo.',
+  'graph.reprocessBrainDoes':
+    'Atualiza nós, tópicos heurísticos e ligações automáticas do grafo.',
+  'graph.reprocessBrainDoesNot':
+    'Não gasta créditos de IA em tags/resumo/extract e não altera tags, resumos nem o conteúdo dos itens.',
+  'graph.reprocessBrainConfirm': 'Reprocessar cérebro',
   'graph.loading3d': 'Preparando visão 3D…',
   'graph.renderProfile.detailed': 'detalhado',
   'graph.renderProfile.balanced': 'equilibrado',
@@ -2017,7 +2026,16 @@ const enMessages: Record<I18nKey, string> = {
   'graph.switchToFull': 'Show full map (more nodes and edges)',
   'graph.switchToMap': 'Back to fast map (recommended)',
   'graph.truncatedHint': 'Sliced view — switch to Full if you need everything.',
-  'graph.refreshing': 'Refreshing',
+  'graph.refreshing': 'Refreshing map…',
+  'graph.reprocessBrain': 'Reprocess brain',
+  'graph.reprocessBrainTitle': 'Reprocess the brain only?',
+  'graph.reprocessBrainDescription':
+    'Rebuilds the Brain map from titles and text you already have. Does not re-run the full ingest pipeline.',
+  'graph.reprocessBrainDoes':
+    'Updates nodes, heuristic topics, and automatic graph links.',
+  'graph.reprocessBrainDoesNot':
+    'Does not spend AI credits on tags/summary/extract and does not change tags, summaries, or item content.',
+  'graph.reprocessBrainConfirm': 'Reprocess brain',
   'graph.loading3d': 'Preparing 3D view…',
   'graph.renderProfile.detailed': 'detailed',
   'graph.renderProfile.balanced': 'balanced',

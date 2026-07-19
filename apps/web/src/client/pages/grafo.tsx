@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { Button } from '../components/ui/button';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { FetchError } from '../components/ui/fetch-error';
 import { Spinner } from '../components/ui/spinner';
 import {
@@ -192,6 +193,7 @@ export function GrafoPage(): React.ReactElement {
   const [graphRequest, setGraphRequest] = useState({ tick: 0, force: false });
   /** map = recorte rápido (default); full = snapshot amplo (spec 103). */
   const [graphView, setGraphView] = useState<'map' | 'full'>('map');
+  const [reprocessOpen, setReprocessOpen] = useState(false);
   const [search, setSearch] = useState('');
   const deferredSearch = useDebouncedValue(search, 140);
   const [activeTypes, setActiveTypes] = useState<Set<GraphNodeType>>(
@@ -422,18 +424,36 @@ export function GrafoPage(): React.ReactElement {
               <Button
                 variant="outline"
                 size="default"
-                onClick={() => {
-                  setGraphRequest({ tick: Date.now(), force: true });
-                  refreshIndexStatus();
-                }}
+                onClick={() => setReprocessOpen(true)}
                 disabled={loading || indexing}
+                title={t('graph.reprocessBrainTitle')}
               >
                 <RefreshCw className={cn('h-3.5 w-3.5', (loading || indexing) && 'animate-spin')} />
-                <span className="hidden sm:inline">{t('graph.refresh')}</span>
+                <span className="hidden sm:inline">{t('graph.reprocessBrain')}</span>
               </Button>
             </div>
           </div>
         </header>
+
+        <ConfirmDialog
+          open={reprocessOpen}
+          onOpenChange={setReprocessOpen}
+          title={t('graph.reprocessBrainTitle')}
+          description={
+            <div className="space-y-2 text-sm text-[var(--color-app-muted)]">
+              <p>{t('graph.reprocessBrainDescription')}</p>
+              <ul className="list-disc space-y-1 pl-4">
+                <li>{t('graph.reprocessBrainDoes')}</li>
+                <li>{t('graph.reprocessBrainDoesNot')}</li>
+              </ul>
+            </div>
+          }
+          confirmLabel={t('graph.reprocessBrainConfirm')}
+          onConfirm={() => {
+            setGraphRequest({ tick: Date.now(), force: true });
+            refreshIndexStatus();
+          }}
+        />
 
         <div className="flex min-h-0 flex-1 gap-3 px-3 pb-3 md:px-4 md:pb-4">
           {data && filtered && insights && (
@@ -527,13 +547,7 @@ export function GrafoPage(): React.ReactElement {
                   <p className="mt-1.5 text-xs leading-relaxed text-[var(--color-app-muted)]">
                     {t('graph.indexErrorDescription')}
                   </p>
-                  <Button
-                    className="mt-4"
-                    onClick={() => {
-                      setGraphRequest({ tick: Date.now(), force: true });
-                      refreshIndexStatus();
-                    }}
-                  >
+                  <Button className="mt-4" onClick={() => setReprocessOpen(true)}>
                     {t('graph.retryIndex')}
                   </Button>
                 </div>

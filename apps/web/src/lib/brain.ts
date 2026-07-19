@@ -385,7 +385,10 @@ export async function reindexTranscriptBrain(
   await options.assertLeaseOwnership?.();
   await deleteAutomaticContentEdgesForSource(userId, 'TRANSCRIPT', transcript.id);
   await options.assertLeaseOwnership?.();
-  await removeSourceEvidence(userId, 'TRANSCRIPT', transcript.id);
+  // Só limpa evidência "refreshable" (keyword/related heurístico). NÃO apaga
+  // llm-grounded nem manual — reprocessar o cérebro não joga fora o extract
+  // caro nem gasta créditos de IA (spec 105).
+  await removeRefreshableSourceEvidence(userId, 'TRANSCRIPT', transcript.id);
   await options.assertLeaseOwnership?.();
   await addBrainSource({
     userId,
@@ -624,7 +627,7 @@ async function reindexNoteRecord(
   await assertLeaseOwnership?.();
   await deleteAutomaticContentEdgesForSource(userId, 'NOTE', note.id);
   await assertLeaseOwnership?.();
-  await removeSourceEvidence(userId, 'NOTE', note.id);
+  await removeRefreshableSourceEvidence(userId, 'NOTE', note.id);
   await assertLeaseOwnership?.();
   await addBrainSource({
     userId,
@@ -698,11 +701,31 @@ async function reindexNoteRecord(
   });
 }
 
+/** Métodos que o reprocesso do cérebro pode recriar sem LLM. */
+export const BRAIN_REFRESHABLE_EDGE_METHODS = [
+  'keyword',
+  'shared-concepts',
+  'semantic-profile',
+  'timeline-adjacent',
+  'entity-heuristic',
+] as const;
+
+/** Métodos preservados no reprocesso (não gastar IA de novo / não apagar manual). */
+export const BRAIN_PRESERVED_EDGE_METHODS = [
+  'manual',
+  'llm-grounded',
+  'wikilink',
+  'folder',
+  'folder-tree',
+  'note-tree',
+] as const;
+
 async function removeSourceEvidence(
   userId: string,
   sourceType: BrainSourceType,
   sourceId: string,
 ): Promise<void> {
+  // Hard delete (ex.: conteúdo removido) — limpa toda evidência da fonte.
   const affected = await db.brainSource.findMany({
     where: { userId, sourceType, sourceId },
     select: { edgeId: true },
@@ -720,6 +743,61 @@ async function removeSourceEvidence(
   if (orphanEdgeIds.length > 0) {
     await db.brainEdge.deleteMany({
       where: { userId, id: { in: orphanEdgeIds }, method: { not: 'manual' } },
+    });
+    await deleteOrphanAutomaticConceptNodes(userId);
+  }
+}
+
+/**
+ * Limpa só evidências/arestas recriáveis por heurística no reprocesso do Brain.
+ * Preserva llm-grounded (custa crédito) e manual/wikilink.
+ */
+async function removeRefreshableSourceEvidence(
+  userId: string,
+  sourceType: BrainSourceType,
+  sourceId: string,
+): Promise<void> {
+  const refreshable = [...BRAIN_REFRESHABLE_EDGE_METHODS];
+  const edgeSources = await db.brainSource.findMany({
+    where: {
+      userId,
+      sourceType,
+      sourceId,
+      edgeId: { not: null },
+      edge: { method: { in: refreshable } },
+    },
+    select: { id: true, edgeId: true },
+  });
+  const nodeSources = await db.brainSource.findMany({
+    where: {
+      userId,
+      sourceType,
+      sourceId,
+      edgeId: null,
+    },
+    select: { id: true },
+  });
+  const sourceIds = [...edgeSources.map((row) => row.id), ...nodeSources.map((row) => row.id)];
+  if (sourceIds.length > 0) {
+    await db.brainSource.deleteMany({ where: { userId, id: { in: sourceIds } } });
+  }
+
+  const edgeIds = [...new Set(edgeSources.map((item) => item.edgeId).filter(Boolean) as string[])];
+  if (edgeIds.length === 0) return;
+
+  const remaining = await db.brainSource.findMany({
+    where: { userId, edgeId: { in: edgeIds } },
+    select: { edgeId: true },
+  });
+  const remainingEdgeIds = new Set(remaining.map((item) => item.edgeId).filter(Boolean));
+  const orphanEdgeIds = edgeIds.filter((id) => !remainingEdgeIds.has(id));
+  if (orphanEdgeIds.length > 0) {
+    await db.brainEdge.deleteMany({
+      where: {
+        userId,
+        id: { in: orphanEdgeIds },
+        method: { in: refreshable },
+      },
     });
     await deleteOrphanAutomaticConceptNodes(userId);
   }
