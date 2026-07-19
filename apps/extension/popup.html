@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voxen</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div class="brand">
+          <img src="icons/icon-48.png" width="28" height="28" alt="" />
+          <div>
+            <h1>Voxen</h1>
+            <p class="muted">Enviar aba atual</p>
+          </div>
+        </div>
+        <button type="button" id="open-options" class="linkish" title="Configurações">
+          ⚙️
+        </button>
+      </header>
+
+      <section id="setup-needed" class="card hidden">
+        <p class="body">Configure a URL da sua instância Voxen antes de enviar.</p>
+        <button type="button" id="go-options" class="btn primary">Abrir configurações</button>
+      </section>
+
+      <section id="main" class="card hidden">
+        <div class="field">
+          <span class="label">Título</span>
+          <p id="tab-title" class="value">—</p>
+        </div>
+        <div class="field">
+          <span class="label">URL</span>
+          <p id="tab-url" class="value mono">—</p>
+        </div>
+        <p id="instance" class="muted tiny"></p>
+        <button type="button" id="submit" class="btn primary" disabled>
+          Enviar para o Voxen
+        </button>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+        <div id="actions" class="actions hidden">
+          <button type="button" id="open-login" class="btn ghost hidden">Fazer login</button>
+          <button type="button" id="open-job" class="btn ghost hidden">Ver job</button>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

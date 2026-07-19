@@ -10,6 +10,14 @@ import type { InstanceState } from '../lib/types';
 import { Logo } from '../components/ui/logo';
 import { useI18n } from '../lib/i18n';
 
+/** Path relativo seguro para redirect pós-login (?next= ou state.from). */
+function safeNextPath(raw: string | null | undefined, fallback = '/'): string {
+  if (!raw || typeof raw !== 'string') return fallback;
+  if (!raw.startsWith('/') || raw.startsWith('//')) return fallback;
+  if (raw.includes('://')) return fallback;
+  return raw;
+}
+
 export function LoginPage(): React.ReactElement {
   const { setLocale, t } = useI18n();
   const [email, setEmail] = useState('');
@@ -44,13 +52,15 @@ export function LoginPage(): React.ReactElement {
     try {
       await apiPost('/api/auth/sign-in/email', { email, password });
       await refresh();
-      const nextPath =
+      const fromState =
         typeof location.state === 'object' &&
         location.state !== null &&
         'from' in location.state &&
         typeof location.state.from === 'string'
           ? location.state.from
-          : '/';
+          : null;
+      const fromQuery = new URLSearchParams(location.search).get('next');
+      const nextPath = safeNextPath(fromQuery ?? fromState, '/');
       navigate(nextPath);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
