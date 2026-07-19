@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784446833",
+    "channel": "dev",
+    "type": "infra",
+    "title": "Higiene open-source e mensagens mais claras no guard de changelog",
+    "body": "Removemos referências internas de lab da documentação de fluxo e dos\ncomentários de deploy, e o CI agora explica com mais clareza o que falta\nquando uma PR não inclui o arquivo de changelog.",
+    "pr": 427,
+    "author": "Kalyel",
+    "date": "2026-07-19T04:40:20-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/427"
+  },
+  {
     "version": "0.11.0-dev.1784444893",
     "channel": "dev",
     "type": "chore",

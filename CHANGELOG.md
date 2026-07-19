@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.11.0-dev.1784446833 — 2026-07-19 · Dev
+
+### 🛠️ Higiene open-source e mensagens mais claras no guard de changelog
+
+Removemos referências internas de lab da documentação de fluxo e dos
+comentários de deploy, e o CI agora explica com mais clareza o que falta
+quando uma PR não inclui o arquivo de changelog.
+
 ## v0.11.0-dev.1784444893 — 2026-07-19 · Dev
 
 ### 🧹 Deploy manual e commits de versão limpos em dev
