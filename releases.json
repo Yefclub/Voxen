@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784455991",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Extensão Chromium sideload para capturar a aba atual",
+    "body": "Nova extensão Manifest V3 (Chrome/Edge/Brave) que envia a URL da aba para\n`POST /api/jobs/auto` da instância configurada, com página `/extensao` na\nsidebar para baixar o ZIP e instruções de instalação sideload.",
+    "pr": 433,
+    "author": "Kalyel",
+    "date": "2026-07-19T07:12:57-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/433"
+  },
+  {
     "version": "0.11.0-dev.1784454827",
     "channel": "dev",
     "type": "infra",

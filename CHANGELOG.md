@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.11.0-dev.1784455991 — 2026-07-19 · Dev
+
+### ✨ Extensão Chromium sideload para capturar a aba atual
+
+Nova extensão Manifest V3 (Chrome/Edge/Brave) que envia a URL da aba para
+`POST /api/jobs/auto` da instância configurada, com página `/extensao` na
+sidebar para baixar o ZIP e instruções de instalação sideload.
+
 ## v0.11.0-dev.1784454827 — 2026-07-19 · Dev
 
 ### 🛠️ Deploy no Easypanel só no commit de versão (mensagem limpa)
