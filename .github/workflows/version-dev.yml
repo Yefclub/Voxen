@@ -38,7 +38,7 @@ jobs:
       !startsWith(github.event.head_commit.message, 'set version to ') &&
       !startsWith(github.event.head_commit.message, 'chore: set version to '))) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0

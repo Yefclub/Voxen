@@ -20,7 +20,7 @@ jobs:
     name: Lint TS (apps/web)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.x
@@ -40,7 +40,7 @@ jobs:
     name: Typecheck TS (apps/web)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.x
@@ -84,7 +84,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
       MASTER_KEY: dm94ZW5fY2lfbWFzdGVyX2tleV8zMl9ieXRlcyEhISE=
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.x
@@ -106,7 +106,7 @@ jobs:
     name: Lint Python (apps/worker)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
@@ -124,7 +124,7 @@ jobs:
     name: Test Python (apps/worker)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
@@ -139,7 +139,7 @@ jobs:
     name: Docker build (apps + Easypanel)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - name: Build web
         uses: docker/build-push-action@v7
@@ -237,6 +237,6 @@ jobs:
     name: docker-compose validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Validate compose
         run: docker compose -f docker-compose.yml config -q
