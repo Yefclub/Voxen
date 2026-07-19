@@ -1,10 +1,11 @@
-import { normalizeBaseUrl, originPattern } from './lib/config.js';
+import { looksLikeVoxenTab, normalizeBaseUrl, originPattern } from './lib/config.js';
 
 const baseInput = document.getElementById('base-url');
 const tokenInput = document.getElementById('api-token');
 const form = document.getElementById('form');
 const statusEl = document.getElementById('status');
 const requestPermBtn = document.getElementById('request-perm');
+const detectBtn = document.getElementById('detect');
 
 function setStatus(kind, message) {
   statusEl.className = `status ${kind}`;
@@ -20,10 +21,41 @@ async function requestHostPermission(baseUrl) {
   return chrome.permissions.request({ origins: [pattern] });
 }
 
+async function detectFromTabs() {
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    if (!looksLikeVoxenTab(tab.url, tab.title)) continue;
+    try {
+      return new URL(tab.url).origin;
+    } catch {
+      /* skip */
+    }
+  }
+  return null;
+}
+
 async function load() {
   const stored = await chrome.storage.sync.get(['baseUrl', 'apiToken']);
   if (typeof stored.baseUrl === 'string') baseInput.value = stored.baseUrl;
   if (typeof stored.apiToken === 'string') tokenInput.value = stored.apiToken;
+}
+
+async function connect(baseUrl) {
+  const permitted = await requestHostPermission(baseUrl);
+  await chrome.storage.sync.set({
+    baseUrl,
+    apiToken: tokenInput.value.trim(),
+  });
+  baseInput.value = baseUrl;
+  if (!permitted) {
+    setStatus(
+      'err',
+      'Salvo, mas a permissão de host foi negada. Sem ela o envio com sessão não funciona.',
+    );
+    return false;
+  }
+  setStatus('ok', `Conectado a ${baseUrl}. Pode fechar esta aba e usar o ícone da extensão.`);
+  return true;
 }
 
 form.addEventListener('submit', async (e) => {
@@ -33,22 +65,20 @@ form.addEventListener('submit', async (e) => {
     setStatus('err', parsed.error);
     return;
   }
+  await connect(parsed.baseUrl);
+});
 
-  const permitted = await requestHostPermission(parsed.baseUrl);
-  await chrome.storage.sync.set({
-    baseUrl: parsed.baseUrl,
-    apiToken: tokenInput.value.trim(),
-  });
-  baseInput.value = parsed.baseUrl;
-
-  if (!permitted) {
+detectBtn.addEventListener('click', async () => {
+  setStatus('', 'Procurando abas do Voxen…');
+  const found = await detectFromTabs();
+  if (!found) {
     setStatus(
-      'err',
-      'Salvo, mas a permissão de host foi negada. O envio só funciona após autorizar o host.',
+      'warn',
+      'Nenhuma aba parece ser o Voxen. Abra a instância (ex.: /extensao) e tente de novo.',
     );
     return;
   }
-  setStatus('ok', `Salvo. Instância: ${parsed.baseUrl}`);
+  await connect(found);
 });
 
 requestPermBtn.addEventListener('click', async () => {
@@ -62,7 +92,7 @@ requestPermBtn.addEventListener('click', async () => {
     ok ? 'ok' : 'err',
     ok
       ? `Permissão concedida para ${parsed.baseUrl}`
-      : 'Permissão negada. Sem ela o Chromium bloqueia o fetch com cookies.',
+      : 'Permissão negada. O Chromium bloqueia cookies sem o host autorizado.',
   );
 });
 

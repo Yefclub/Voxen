@@ -1,10 +1,8 @@
 /**
  * Helpers puros de configuração da extensão Voxen.
- * Usados no popup/options/background e testados via bun test.
  */
 
 /**
- * Normaliza a base URL da instância (sem path trailing, com scheme).
  * @param {string} raw
  * @returns {{ ok: true, baseUrl: string } | { ok: false, error: string }}
  */
@@ -14,8 +12,6 @@ export function normalizeBaseUrl(raw) {
     return { ok: false, error: 'Informe a URL base da sua instância Voxen.' };
   }
 
-  // Scheme explícito que não seja http(s) → rejeita (evita `ftp://x` virar
-  // `https://ftp://x` se só checássemos ausência de http).
   const schemeMatch = /^([a-z][a-z0-9+.-]*):\/\//i.exec(trimmed);
   if (schemeMatch) {
     const scheme = schemeMatch[1].toLowerCase();
@@ -41,13 +37,10 @@ export function normalizeBaseUrl(raw) {
     return { ok: false, error: 'URL sem host.' };
   }
 
-  // Remove path/query/hash — a base é só origin (+ porta).
-  const baseUrl = url.origin;
-  return { ok: true, baseUrl };
+  return { ok: true, baseUrl: url.origin };
 }
 
 /**
- * Origem exata para chrome.permissions (scheme + host + porta).
  * @param {string} baseUrl
  * @returns {string | null}
  */
@@ -61,7 +54,6 @@ export function originPattern(baseUrl) {
 }
 
 /**
- * Monta URL de login com retorno relativo seguro.
  * @param {string} baseUrl
  * @param {string} [nextPath]
  */
@@ -71,7 +63,6 @@ export function loginUrl(baseUrl, nextPath = '/fila') {
 }
 
 /**
- * Endpoint unificado de ingestão.
  * @param {string} baseUrl
  */
 export function jobsAutoUrl(baseUrl) {
@@ -79,7 +70,37 @@ export function jobsAutoUrl(baseUrl) {
 }
 
 /**
- * Valida se a aba atual pode ser enviada (http/https).
+ * @param {string} baseUrl
+ * @param {string} jobId
+ */
+export function jobStatusUrl(baseUrl, jobId) {
+  return `${baseUrl.replace(/\/$/, '')}/api/jobs/${encodeURIComponent(jobId)}`;
+}
+
+/**
+ * @param {string} baseUrl
+ */
+export function extensionVersionUrl(baseUrl) {
+  return `${baseUrl.replace(/\/$/, '')}/extension/version.json`;
+}
+
+/**
+ * @param {string} baseUrl
+ * @param {string} jobId
+ */
+export function jobPageUrl(baseUrl, jobId) {
+  return `${baseUrl.replace(/\/$/, '')}/jobs/${encodeURIComponent(jobId)}`;
+}
+
+/**
+ * @param {string} baseUrl
+ * @param {string} transcriptId
+ */
+export function transcriptPageUrl(baseUrl, transcriptId) {
+  return `${baseUrl.replace(/\/$/, '')}/transcricoes/${encodeURIComponent(transcriptId)}`;
+}
+
+/**
  * @param {string | undefined} tabUrl
  */
 export function isSendableTabUrl(tabUrl) {
@@ -91,3 +112,34 @@ export function isSendableTabUrl(tabUrl) {
     return false;
   }
 }
+
+/**
+ * Heurística: aba parece ser uma instância Voxen (paths conhecidos).
+ * @param {string | undefined} tabUrl
+ * @param {string | undefined} tabTitle
+ */
+export function looksLikeVoxenTab(tabUrl, tabTitle) {
+  if (!isSendableTabUrl(tabUrl)) return false;
+  try {
+    const u = new URL(tabUrl);
+    const path = u.pathname || '/';
+    const known =
+      path === '/' ||
+      path.startsWith('/transcricoes') ||
+      path.startsWith('/fila') ||
+      path.startsWith('/extensao') ||
+      path.startsWith('/grafo') ||
+      path.startsWith('/chat') ||
+      path.startsWith('/notas') ||
+      path.startsWith('/entrar') ||
+      path.startsWith('/admin');
+    if (known) return true;
+    if (typeof tabTitle === 'string' && /\bvoxen\b/i.test(tabTitle)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** Versão embutida no package (espelha manifest). */
+export const EXTENSION_VERSION = '0.2.0';
