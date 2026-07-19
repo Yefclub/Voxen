@@ -20,11 +20,23 @@ def test_parse_keeps_only_grounded_items() -> None:
     raw = """
     {
       "entities": [
-        {"label": "LangExtract", "excerpt": "LangExtract extrai entidades com trechos literais", "confidence": 0.9},
-        {"label": "Inventado", "excerpt": "texto que nao existe no fonte", "confidence": 0.9}
+        {
+          "label": "LangExtract",
+          "excerpt": "LangExtract extrai entidades com trechos literais",
+          "confidence": 0.9
+        },
+        {
+          "label": "Inventado",
+          "excerpt": "texto que nao existe no fonte",
+          "confidence": 0.9
+        }
       ],
       "claims": [
-        {"label": "Voxen usa OpenRouter", "excerpt": "O Voxen usa OpenRouter para o chat", "confidence": 0.8}
+        {
+          "label": "Voxen usa OpenRouter",
+          "excerpt": "O Voxen usa OpenRouter para o chat",
+          "confidence": 0.8
+        }
       ]
     }
     """
