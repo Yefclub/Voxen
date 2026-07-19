@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784443300",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Reprocessar só o cérebro no grafo (sem gastar IA nem mexer no conteúdo)",
+    "body": "- Botão “Reprocessar cérebro” no `/grafo` com confirmação clara do que muda.\n- Reconstrói o mapa a partir do que já está salvo; não regenera tags, resumos nem extract LLM.\n- Preserva arestas `llm-grounded` e manuais no reprocesso heurístico.",
+    "pr": 423,
+    "author": "Kalyel",
+    "date": "2026-07-19T03:41:25-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/423"
+  },
+  {
     "version": "0.11.0-dev.1784440910",
     "channel": "dev",
     "type": "feat",
