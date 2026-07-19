@@ -204,10 +204,17 @@ function JobRow({
   const source = detectSourceFromUrl(job.sourceUrl);
   const isUpload = isUploadSourceUrl(job.sourceUrl);
   const ytId = source === 'YOUTUBE' ? youtubeVideoId(job.sourceUrl) : null;
-  const previewSrc =
-    job.thumbnailUrl ||
-    (ytId ? `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg` : null) ||
-    (job.transcriptId ? `/api/transcripts/${job.transcriptId}/preview` : null);
+  // Nunca usa CDN assinada (TikTok etc.) no browser — só preview interno ou YT mqdefault.
+  const remoteIsSafeYt =
+    !!job.thumbnailUrl &&
+    (job.thumbnailUrl.includes('i.ytimg.com') || job.thumbnailUrl.includes('ytimg.com'));
+  const previewSrc = job.transcriptId
+    ? `/api/transcripts/${job.transcriptId}/preview`
+    : remoteIsSafeYt
+      ? job.thumbnailUrl
+      : ytId
+        ? `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg`
+        : null;
   const displayTitle = job.title?.trim() || displayJobSource(job.sourceUrl);
 
   return (

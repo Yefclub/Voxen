@@ -9,7 +9,7 @@
 // ============================================================================
 
 import { Hono } from 'hono';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { z } from 'zod';
 import type { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
@@ -518,12 +518,14 @@ transcriptsRoutes.get('/:id/original', async (c) => {
 transcriptsRoutes.get('/:id/preview', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const transcript = await db.transcript.findFirst({
+  let transcript = await db.transcript.findFirst({
     where: { id, userId },
     select: {
       id: true,
       title: true,
       source: true,
+      url: true,
+      thumbnailUrl: true,
       previewObjectKey: true,
       previewMimeType: true,
       originalObjectKey: true,
@@ -531,6 +533,26 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
     },
   });
   if (!transcript) return c.text('', 404);
+
+  // Lazy-mirror: se ainda só temos URL remota (legado TikTok/IG), tenta
+  // baixar e gravar no S3 uma vez. Se a CDN já 403, cai no SVG.
+  if (!transcript.previewObjectKey && isHttpUrl(transcript.thumbnailUrl)) {
+    const mirrored = await tryMirrorRemoteThumbnail({
+      userId,
+      transcriptId: id,
+      remoteUrl: transcript.thumbnailUrl!,
+      referer: transcript.url,
+    });
+    if (mirrored) {
+      transcript = {
+        ...transcript,
+        previewObjectKey: mirrored.key,
+        previewMimeType: mirrored.mime,
+        thumbnailUrl: `/api/transcripts/${id}/preview`,
+      };
+    }
+  }
+
   // Só servimos a imagem original como preview se for raster segura
   // (png/jpeg/webp/gif). image/svg+xml é executável em navegação direta à URL →
   // cai no placeholder. A preview gerada (previewObjectKey) é sempre JPEG nosso.
@@ -572,6 +594,71 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
       'cache-control': 'private, max-age=300',
       'x-content-type-options': 'nosniff',
     },
+  });
+});
+
+/** POST /:id/refresh-thumbnail — tenta espelhar de novo a capa (URL remota ou re-probe leve). */
+transcriptsRoutes.post('/:id/refresh-thumbnail', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId, status: { not: 'TRASH' } },
+    select: {
+      id: true,
+      url: true,
+      thumbnailUrl: true,
+      previewObjectKey: true,
+    },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+
+  const remote =
+    isHttpUrl(transcript.thumbnailUrl) && transcript.thumbnailUrl
+      ? transcript.thumbnailUrl
+      : null;
+  if (!remote) {
+    // Já está no path interno / sem URL remota: limpa broken e usa placeholder.
+    await db.transcript.update({
+      where: { id },
+      data: {
+        thumbnailUrl: `/api/transcripts/${id}/preview`,
+      },
+    });
+    return c.json({
+      ok: true,
+      mirrored: false,
+      thumbnailUrl: `/api/transcripts/${id}/preview`,
+      hint: 'Sem URL remota para rebaixar; capa usa placeholder interno.',
+    });
+  }
+
+  const mirrored = await tryMirrorRemoteThumbnail({
+    userId,
+    transcriptId: id,
+    remoteUrl: remote,
+    referer: transcript.url,
+  });
+  if (!mirrored) {
+    await db.transcript.update({
+      where: { id },
+      data: { thumbnailUrl: `/api/transcripts/${id}/preview` },
+    });
+    return c.json(
+      {
+        ok: false,
+        mirrored: false,
+        thumbnailUrl: `/api/transcripts/${id}/preview`,
+        error:
+          'Não foi possível baixar a capa remota (URL expirada ou bloqueada). Usando placeholder.',
+      },
+      422,
+    );
+  }
+  return c.json({
+    ok: true,
+    mirrored: true,
+    thumbnailUrl: `/api/transcripts/${id}/preview`,
+    previewObjectKey: mirrored.key,
   });
 });
 
@@ -1007,6 +1094,106 @@ function sourceLabel(source: string): string {
   if (source === 'UPLOAD') return 'UPLOAD';
   if (source === 'X') return 'X';
   return source;
+}
+
+function isHttpUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.startsWith('https://') || url.startsWith('http://');
+}
+
+const THUMB_HOST_SUFFIXES = [
+  'ytimg.com',
+  'ggpht.com',
+  'googleusercontent.com',
+  'tiktokcdn.com',
+  'tiktokcdn-us.com',
+  'tiktokv.com',
+  'byteoversea.com',
+  'ibyteimg.com',
+  'cdninstagram.com',
+  'fbcdn.net',
+  'twimg.com',
+];
+
+function thumbHostAllowed(host: string): boolean {
+  const h = host.toLowerCase().replace(/\.$/, '');
+  if (!h || h === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return false;
+  return THUMB_HOST_SUFFIXES.some((s) => h === s || h.endsWith(`.${s}`));
+}
+
+function mimeFromContentType(ct: string | null, url: string): { ext: string; mime: string } {
+  const base = (ct ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+  if (base === 'image/jpeg' || base === 'image/jpg') return { ext: 'jpg', mime: 'image/jpeg' };
+  if (base === 'image/png') return { ext: 'png', mime: 'image/png' };
+  if (base === 'image/webp') return { ext: 'webp', mime: 'image/webp' };
+  if (base === 'image/gif') return { ext: 'gif', mime: 'image/gif' };
+  const path = url.toLowerCase();
+  if (path.includes('.png')) return { ext: 'png', mime: 'image/png' };
+  if (path.includes('.webp')) return { ext: 'webp', mime: 'image/webp' };
+  return { ext: 'jpg', mime: 'image/jpeg' };
+}
+
+async function tryMirrorRemoteThumbnail(opts: {
+  userId: string;
+  transcriptId: string;
+  remoteUrl: string;
+  referer?: string | null;
+}): Promise<{ key: string; mime: string } | null> {
+  let host: string;
+  try {
+    host = new URL(opts.remoteUrl).hostname;
+  } catch {
+    return null;
+  }
+  if (!thumbHostAllowed(host)) return null;
+
+  const headers: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (compatible; VoxenBot/1.0; +https://github.com/Yefclub/Voxen)',
+    Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+  };
+  if (opts.referer) headers.Referer = opts.referer;
+
+  try {
+    const res = await fetch(opts.remoteUrl, {
+      headers,
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength === 0 || buf.byteLength > 8 * 1024 * 1024) return null;
+    const isJpeg = buf[0] === 0xff && buf[1] === 0xd8;
+    const isPng = buf[0] === 0x89 && buf[1] === 0x50;
+    const isGif = buf[0] === 0x47 && buf[1] === 0x49;
+    const isWebp = buf.length > 12 && buf.toString('ascii', 8, 12) === 'WEBP';
+    if (!isJpeg && !isPng && !isGif && !isWebp) return null;
+
+    const { ext, mime } = mimeFromContentType(res.headers.get('content-type'), opts.remoteUrl);
+    const key = `workspaces/${opts.userId}/transcripts/${opts.transcriptId}/thumbnail.${ext}`;
+    await s3Client().send(
+      new PutObjectCommand({
+        Bucket: s3Bucket(),
+        Key: key,
+        Body: buf,
+        ContentType: mime,
+      }),
+    );
+    await db.transcript.update({
+      where: { id: opts.transcriptId },
+      data: {
+        previewObjectKey: key,
+        previewMimeType: mime,
+        thumbnailUrl: `/api/transcripts/${opts.transcriptId}/preview`,
+      },
+    });
+    return { key, mime };
+  } catch (err) {
+    console.warn(
+      '[transcripts] mirror thumbnail failed:',
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
 }
 
 function escapeXml(value: string): string {

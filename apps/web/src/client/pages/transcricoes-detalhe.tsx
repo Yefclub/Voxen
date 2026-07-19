@@ -36,6 +36,7 @@ import { TranscriptViewer } from '../components/ui/transcript-viewer';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { UploadMediaViewer } from '../components/ui/media-viewer';
+import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
 import {
   Select,
   SelectContent,
@@ -391,7 +392,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   const canUseContextualActions = t.status !== 'TRASH';
   const contentMarkdown = stripMarkdownFrontmatter(data.markdown);
-  const previewSrc = t.thumbnailUrl || `/api/transcripts/${t.id}/preview`;
+  const previewSrc = resolveTranscriptPreviewSrc(t.id, t.thumbnailUrl);
 
   return (
     <AnimatedPage>

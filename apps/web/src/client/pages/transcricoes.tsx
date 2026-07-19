@@ -34,6 +34,7 @@ import {
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ContentIngestCard } from '../components/ingest/content-ingest-card';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
+import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
 
 const PAGE_SIZE = 24;
 
@@ -834,7 +835,7 @@ function TranscriptRow({
 }): React.ReactElement {
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
-  const previewSrc = t.thumbnailUrl || `/api/transcripts/${t.id}/preview`;
+  const previewSrc = resolveTranscriptPreviewSrc(t.id, t.thumbnailUrl);
   const showDuration = t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript;
 
   return (
@@ -848,6 +849,15 @@ function TranscriptRow({
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
           loading="lazy"
+          onError={(e) => {
+            const el = e.currentTarget;
+            const fallback = `/api/transcripts/${t.id}/preview`;
+            if (el.src && !el.src.endsWith('/preview') && el.src !== fallback) {
+              el.src = fallback;
+              return;
+            }
+            el.style.opacity = '0';
+          }}
         />
       </div>
 
