@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.11.0-dev.1784440910 — 2026-07-19 · Dev
+
+### ✨ Compile grounded no Brain, clusters no mapa e embeddings opt-in
+
+- Após a ingestão, extrai entidades e claims com trecho literal (grounding) via OpenRouter.
+- Mapa rápido passa a mostrar hubs de comunidade (clusters) para grupos com 3+ nós.
+- Embeddings opcionais no metadata do conteúdo, com reordenação híbrida na busca FTS quando habilitados.
+
 ## v0.11.0-dev.1784437723 — 2026-07-19 · Dev
 
 ### ✨ Mapa do Brain rápido (2D padrão, recorte e arestas fortes)
