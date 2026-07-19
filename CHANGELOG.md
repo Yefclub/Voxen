@@ -1,5 +1,47 @@
 # Changelog
 
+## v0.11.0-dev.1784451878 — 2026-07-19 · Dev
+
+### 🐛 Capas estáveis no S3 e deploy Easypanel só manual
+
+Capas de vídeo/página (especialmente TikTok) deixam de apontar para CDN
+assinada no navegador: na ingestão a imagem é espelhada no storage e a
+UI usa só `/api/transcripts/:id/preview` (com placeholder se a CDN já
+tiver bloqueado). Também dá para pedir `POST .../refresh-thumbnail`.
+
+O script de deploy do Easypanel agora exige `VOXEN_ALLOW_DEPLOY=1` —
+sem isso não dispara redeploy (auto-deploy desligado de verdade).
+
+## v0.11.0-dev.1784450551 — 2026-07-19 · Dev
+
+### 🎨 Fonte original sob o título e grafo com núcleo centralizado
+
+Na página do conteúdo, o link da origem (YouTube, TikTok, web…) fica logo
+abaixo do título, clicável e legível. Na lista, o host da fonte aparece
+junto dos metadados.
+
+No grafo, a maior comunidade (concentração de ligações) fica no centro da
+cena; a câmera abre e reenquadra nesse núcleo. As cores dos títulos dos
+nós ganharam mais contraste (texto + contorno) no 2D e no 3D.
+
+## v0.11.0-dev.1784447963 — 2026-07-19 · Dev
+
+### 🔒 Atualizações de segurança em dependências transitivas
+
+Corrige alertas do Dependabot em dependências de build e do worker:
+
+- `shell-quote` 1.8.4 (crítico, dev)
+- `js-yaml` 4.2.0 e `@babel/core` 7.29.6 (tooling)
+- `aiohttp` ≥ 3.14.1 no worker (transitiva do S3/scraper)
+
+## v0.11.0-dev.1784447963 — 2026-07-19 · Dev
+
+### 🛠️ Higiene open-source e mensagens mais claras no guard de changelog
+
+Removemos referências internas de lab da documentação de fluxo e dos
+comentários de deploy, e o CI agora explica com mais clareza o que falta
+quando uma PR não inclui o arquivo de changelog.
+
 ## v0.11.0-dev.1784444893 — 2026-07-19 · Dev
 
 ### 🧹 Deploy manual e commits de versão limpos em dev

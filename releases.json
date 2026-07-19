@@ -1,5 +1,49 @@
 [
   {
+    "version": "0.11.0-dev.1784451878",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Capas estáveis no S3 e deploy Easypanel só manual",
+    "body": "Capas de vídeo/página (especialmente TikTok) deixam de apontar para CDN\nassinada no navegador: na ingestão a imagem é espelhada no storage e a\nUI usa só `/api/transcripts/:id/preview` (com placeholder se a CDN já\ntiver bloqueado). Também dá para pedir `POST .../refresh-thumbnail`.\n\nO script de deploy do Easypanel agora exige `VOXEN_ALLOW_DEPLOY=1` —\nsem isso não dispara redeploy (auto-deploy desligado de verdade).",
+    "pr": 432,
+    "author": "Kalyel",
+    "date": "2026-07-19T06:04:26-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/432"
+  },
+  {
+    "version": "0.11.0-dev.1784450551",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Fonte original sob o título e grafo com núcleo centralizado",
+    "body": "Na página do conteúdo, o link da origem (YouTube, TikTok, web…) fica logo\nabaixo do título, clicável e legível. Na lista, o host da fonte aparece\njunto dos metadados.\n\nNo grafo, a maior comunidade (concentração de ligações) fica no centro da\ncena; a câmera abre e reenquadra nesse núcleo. As cores dos títulos dos\nnós ganharam mais contraste (texto + contorno) no 2D e no 3D.",
+    "pr": 434,
+    "author": "Kalyel",
+    "date": "2026-07-19T05:42:15-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/434"
+  },
+  {
+    "version": "0.11.0-dev.1784447963",
+    "channel": "dev",
+    "type": "security",
+    "title": "Atualizações de segurança em dependências transitivas",
+    "body": "Corrige alertas do Dependabot em dependências de build e do worker:\n\n- `shell-quote` 1.8.4 (crítico, dev)\n- `js-yaml` 4.2.0 e `@babel/core` 7.29.6 (tooling)\n- `aiohttp` ≥ 3.14.1 no worker (transitiva do S3/scraper)",
+    "pr": 430,
+    "author": "Kalyel",
+    "date": "2026-07-19T04:53:10-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/430"
+  },
+  {
+    "version": "0.11.0-dev.1784447963",
+    "channel": "dev",
+    "type": "infra",
+    "title": "Higiene open-source e mensagens mais claras no guard de changelog",
+    "body": "Removemos referências internas de lab da documentação de fluxo e dos\ncomentários de deploy, e o CI agora explica com mais clareza o que falta\nquando uma PR não inclui o arquivo de changelog.",
+    "pr": 427,
+    "author": "Kalyel",
+    "date": "2026-07-19T04:40:20-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/427"
+  },
+  {
     "version": "0.11.0-dev.1784444893",
     "channel": "dev",
     "type": "chore",

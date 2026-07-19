@@ -36,6 +36,7 @@ import { TranscriptViewer } from '../components/ui/transcript-viewer';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { UploadMediaViewer } from '../components/ui/media-viewer';
+import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
 import {
   Select,
   SelectContent,
@@ -47,6 +48,7 @@ import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 import { cn } from '../lib/utils';
 import { buildTranscriptChatMessage, type ChatHandoffState } from '../lib/chat-handoff';
 import { TranscriptChatDock } from '../components/library/transcript-chat-dock';
+import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
 
 interface TranscriptDetail {
   id: string;
@@ -391,7 +393,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   const canUseContextualActions = t.status !== 'TRASH';
   const contentMarkdown = stripMarkdownFrontmatter(data.markdown);
-  const previewSrc = t.thumbnailUrl || `/api/transcripts/${t.id}/preview`;
+  const previewSrc = resolveTranscriptPreviewSrc(t.id, t.thumbnailUrl);
 
   return (
     <AnimatedPage>
@@ -466,6 +468,26 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           {t.channel && (
             <p className="text-[15px] text-[var(--color-app-muted)] break-words [overflow-wrap:anywhere]">
               {t.channel}
+            </p>
+          )}
+          {isExternalSourceUrl(t.url) && (
+            <a
+              href={t.url}
+              target="_blank"
+              rel="noreferrer"
+              className="group/source inline-flex max-w-full items-center gap-1.5 text-sm text-[var(--color-app-muted)] transition-colors hover:text-[var(--color-accent-primary)]"
+              title={t.url}
+            >
+              <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-70 group-hover/source:opacity-100" />
+              <span className="min-w-0 truncate font-mono text-[13px] tracking-tight">
+                {sourceDisplayLine(t.url) ?? t.url}
+              </span>
+            </a>
+          )}
+          {t.source === 'UPLOAD' && t.originalFilename && (
+            <p className="inline-flex max-w-full items-center gap-1.5 text-sm text-[var(--color-app-muted)]">
+              <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              <span className="min-w-0 truncate font-mono text-[13px]">{t.originalFilename}</span>
             </p>
           )}
           {canUseContextualActions && (

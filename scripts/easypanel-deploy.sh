@@ -2,8 +2,8 @@
 # ============================================================================
 # Dispara redeploy do serviço Voxen no Easypanel (self-hosted).
 # ============================================================================
-# MANUAL — não há hook automático pós-git-pull. Rode este script (ou o painel
-# Easypanel / workflow "Easypanel Image") quando quiser implantar.
+# MANUAL ONLY — auto-deploy desligado. Exige VOXEN_ALLOW_DEPLOY=1 no ambiente.
+# Rode este script (ou o painel Easypanel) só quando o owner pedir implantar.
 #
 # Idempotente: só deploya se a dev avançou desde o último deploy bem-sucedido
 # (marcador de SHA em disco). Seguro pra chamar repetidamente sem redeploy
@@ -31,6 +31,12 @@ EASYPANEL_URL="${EASYPANEL_URL:-http://localhost:3000}"
 EASYPANEL_PROJECT="${EASYPANEL_PROJECT:-yefclub}"
 EASYPANEL_SERVICE="${EASYPANEL_SERVICE:-voxen-app}"
 MARKER="${EASYPANEL_MARKER:-$HOME/.claude/voxen-last-deployed-sha}"
+
+# Fail-closed: sem flag explícita, não dispara API (evita hooks/agentes).
+if [ "${VOXEN_ALLOW_DEPLOY:-}" != "1" ] && [ "$DRY_RUN" != "1" ]; then
+  echo "[easypanel-deploy] bloqueado: defina VOXEN_ALLOW_DEPLOY=1 para implantar (auto-deploy desligado)." >&2
+  exit 0
+fi
 
 current_sha="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)"
 current_branch="$(git -C "$ROOT_DIR" branch --show-current 2>/dev/null || true)"

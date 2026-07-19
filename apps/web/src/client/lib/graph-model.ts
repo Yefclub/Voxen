@@ -253,9 +253,10 @@ export function resolveGraphPalette(theme: AppTheme): GraphPalette {
   if (theme === 'light') {
     return {
       canvas: '#f7f7f8',
-      label: '#18181b',
-      selected: '#18181b',
-      labelStroke: '#f7f7f8',
+      // Alto contraste: texto quase preto + halo branco (evita título ilegível).
+      label: '#09090b',
+      selected: '#09090b',
+      labelStroke: 'rgba(255, 255, 255, 0.92)',
       dimNode: 'rgba(161, 161, 170, 0.4)',
       dimEdge: 'rgba(161, 161, 170, 0.16)',
       neutralEdge: 'rgba(113, 113, 122, 0.28)',
@@ -263,11 +264,13 @@ export function resolveGraphPalette(theme: AppTheme): GraphPalette {
       edges: LIGHT_EDGE_COLORS,
     };
   }
+  const canvas = theme === 'emerald' ? '#19211f' : '#212121';
   return {
-    canvas: theme === 'emerald' ? '#19211f' : '#212121',
-    label: '#ececec',
-    selected: '#fafafa',
-    labelStroke: theme === 'emerald' ? '#19211f' : '#212121',
+    canvas,
+    // Texto claro + contorno escuro opaco — títulos legíveis sobre nós coloridos.
+    label: '#fafafa',
+    selected: '#ffffff',
+    labelStroke: canvas === '#19211f' ? 'rgba(15, 23, 20, 0.92)' : 'rgba(9, 9, 11, 0.92)',
     dimNode: 'rgba(82, 82, 91, 0.42)',
     dimEdge: 'rgba(82, 82, 91, 0.14)',
     neutralEdge: 'rgba(148, 163, 184, 0.34)',
@@ -520,20 +523,36 @@ export function buildGraphLayout(
   const maxNodeRadius = Math.max(minNodeRadius, options.maxNodeRadius ?? DEFAULT_MAX_NODE_RADIUS);
   const degree = graphDegrees(data.edges);
   const positions = new Map<string, { x: number; y: number; communityId: number }>();
-  const aspect = viewBox.width / viewBox.height;
-  const columns = Math.max(
-    1,
-    Math.min(communities.length, Math.ceil(Math.sqrt(communities.length * aspect))),
+  // Núcleo (maior comunidade, id 0) no centro do viewBox; satélites em anel —
+  // o usuário vê a concentração de dados no meio da tela.
+  const coreCenter = { x: viewBox.width / 2, y: viewBox.height / 2 };
+  const satelliteCount = Math.max(communities.length - 1, 0);
+  const orbitRadius =
+    satelliteCount === 0
+      ? 0
+      : Math.min(viewBox.width, viewBox.height) * (satelliteCount === 1 ? 0.28 : 0.32);
+  const coreMaxRadius = Math.max(
+    48,
+    Math.min(viewBox.width, viewBox.height) * (satelliteCount === 0 ? 0.36 : 0.22),
   );
-  const rows = Math.max(1, Math.ceil(communities.length / columns));
-  const cellWidth = viewBox.width / columns;
-  const cellHeight = viewBox.height / rows;
+  const satMaxRadius = Math.max(
+    28,
+    Math.min(viewBox.width, viewBox.height) * (satelliteCount <= 2 ? 0.16 : 0.12),
+  );
 
   for (const community of communities) {
-    const column = community.id % columns;
-    const row = Math.floor(community.id / columns);
-    const center = { x: (column + 0.5) * cellWidth, y: (row + 0.5) * cellHeight };
-    const maxRadius = Math.max(24, Math.min(cellWidth, cellHeight) * 0.38);
+    let center = coreCenter;
+    if (community.id > 0 && satelliteCount > 0) {
+      const angle =
+        ((community.id - 1) / satelliteCount) * Math.PI * 2 -
+        Math.PI / 2 +
+        ((hashString(community.label) % 40) * Math.PI) / 180;
+      center = {
+        x: coreCenter.x + Math.cos(angle) * orbitRadius,
+        y: coreCenter.y + Math.sin(angle) * orbitRadius,
+      };
+    }
+    const maxRadius = community.id === 0 ? coreMaxRadius : satMaxRadius;
     const angleOffset = ((hashString(community.label) % 360) * Math.PI) / 180;
     community.nodeIds.forEach((nodeId, index) => {
       if (index === 0) {
