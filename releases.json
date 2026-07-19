@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784433253",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Chat não cai mais com network error ao transcrever links",
+    "body": "- Mantém o stream SSE vivo durante transcrições longas (keepalive + idleTimeout do Bun).\n- Desconexões de transporte recuperam o turno em andamento sem toast de network error.\n- Rate limit do YouTube em legendas volta a cair no Whisper em vez de falhar o job.\n- Filtra tags geradas com raciocínio do modelo (ex.: \"Looking at the content\").",
+    "pr": 417,
+    "author": "Kalyel",
+    "date": "2026-07-19T00:53:58-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/417"
+  },
+  {
     "version": "0.11.0-dev.1784197604",
     "channel": "dev",
     "type": "fix",
