@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784437723",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Mapa do Brain rápido (2D padrão, recorte e arestas fortes)",
+    "body": "- Abre o grafo em 2D por padrão e só carrega 3D sob demanda.\n- `GET /api/graph?view=map` devolve um recorte enxuto (≤180 nós); `view=full` e `focus` cobrem o restante.\n- Omite arestas fracas de co-ocorrência no mapa e eleva o limiar de RELATED_TO no indexador.\n- Documenta LangExtract (padrão de grounding, sem a lib) e a estratégia do mapa em ADRs.",
+    "pr": 419,
+    "author": "Kalyel",
+    "date": "2026-07-19T02:08:28-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/419"
+  },
+  {
     "version": "0.11.0-dev.1784433253",
     "channel": "dev",
     "type": "fix",
