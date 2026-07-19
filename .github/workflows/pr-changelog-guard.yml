@@ -42,9 +42,9 @@ jobs:
           BASE=$(git merge-base "origin/$BASE_REF" HEAD 2>/dev/null || echo "")
           if [ -z "$BASE" ]; then BASE=$(git rev-parse --verify -q HEAD~1 || echo ""); fi
 
-          # PR automática de version-dev: título começa com "chore: set version to "
+          # PR automática de version-dev: "set version to …" (e legado chore:)
           TITLE=$(gh pr view "${{ github.event.pull_request.number }}" --json title -q .title 2>/dev/null || echo "")
-          if [ "$IS_RELEASE" = 0 ] && [[ "$TITLE" == chore:\ set\ version\ to\ * ]]; then
+          if [ "$IS_RELEASE" = 0 ] && { [[ "$TITLE" == set\ version\ to\ * ]] || [[ "$TITLE" == chore:\ set\ version\ to\ * ]]; }; then
             echo "[changelog] PR de version-dev (isento) — changelog não exigido."
             exit 0
           fi

@@ -1,9 +1,9 @@
 name: Easypanel Image
 
+# Deploy/imagem NÃO roda em todo push de dev — só manual ou release tag.
 on:
   workflow_dispatch:
   push:
-    branches: [dev, main]
     tags: ['v[0-9]+.[0-9]+.[0-9]+']
 
 permissions:
