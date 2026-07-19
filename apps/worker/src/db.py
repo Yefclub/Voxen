@@ -822,7 +822,13 @@ async def upsert_grounded_brain_items(
                         content_node_id,
                         concept_id,
                         conf,
-                        json.dumps({"term": slug, "kind": kind, "extractor": "openrouter-grounded"}),
+                        json.dumps(
+                            {
+                                "term": slug,
+                                "kind": kind,
+                                "extractor": "openrouter-grounded",
+                            }
+                        ),
                     )
                     if not edge_row:
                         continue
@@ -832,7 +838,8 @@ async def upsert_grounded_brain_items(
                         await conn.execute(
                             """
                             INSERT INTO "BrainSource" (
-                                id, "userId", "edgeId", "sourceType", "sourceId", excerpt, "createdAt"
+                                id, "userId", "edgeId", "sourceType", "sourceId",
+                                excerpt, "createdAt"
                             ) VALUES (
                                 $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, NOW()
                             )
