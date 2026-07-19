@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  isRemoteThumbnailUrl,
-  resolveTranscriptPreviewSrc,
-} from '../src/client/lib/preview-src';
+import { isRemoteThumbnailUrl, resolveTranscriptPreviewSrc } from '../src/client/lib/preview-src';
 
 describe('resolveTranscriptPreviewSrc', () => {
   test('sempre usa endpoint interno para CDN remota', () => {
