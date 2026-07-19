@@ -924,13 +924,39 @@ jobsRoutes.get('/:id', async (c) => {
       queuedAt: true,
       startedAt: true,
       finishedAt: true,
+      transcript: {
+        select: {
+          id: true,
+          title: true,
+          summaryMd: true,
+          source: true,
+          thumbnailUrl: true,
+        },
+      },
     },
   });
   if (!job) {
     // 404 (não 403) — evita vazar existência cross-workspace
     return c.json({ error: 'Job não encontrado.' }, 404);
   }
-  return c.json({ job });
+  // Resumo curto pra extensão / notificações (sem vazar markdown enorme).
+  const summary = job.transcript?.summaryMd?.trim().replace(/\s+/g, ' ').slice(0, 280) || null;
+  return c.json({
+    job: {
+      id: job.id,
+      status: job.status,
+      sourceUrl: job.sourceUrl,
+      errorMsg: job.errorMsg,
+      transcriptId: job.transcriptId,
+      queuedAt: job.queuedAt,
+      startedAt: job.startedAt,
+      finishedAt: job.finishedAt,
+      title: job.transcript?.title ?? null,
+      summary,
+      transcriptSource: job.transcript?.source ?? null,
+      thumbnailUrl: job.transcript?.thumbnailUrl ?? null,
+    },
+  });
 });
 
 jobsRoutes.post('/:id/retry', async (c) => {

@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Voxen",
-  "description": "Envia a aba atual para a sua instância self-hosted do Voxen.",
-  "version": "0.1.0",
+  "description": "Salve qualquer página na sua base Voxen self-hosted e receba o resumo quando estiver pronto.",
+  "version": "0.2.0",
   "action": {
-    "default_title": "Enviar para o Voxen",
+    "default_title": "Voxen — salvar aba",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
@@ -25,7 +25,7 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["storage", "activeTab", "tabs"],
+  "permissions": ["storage", "activeTab", "tabs", "notifications", "alarms"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "host_permissions": []
 }

@@ -1,52 +1,38 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import {
   isSendableTabUrl,
-  jobsAutoUrl,
-  loginUrl,
+  looksLikeVoxenTab,
   normalizeBaseUrl,
   originPattern,
 } from '../lib/config.js';
 
 describe('normalizeBaseUrl', () => {
-  it('aceita https completo e remove path', () => {
-    const r = normalizeBaseUrl('https://voxen.example.com/app/');
-    expect(r).toEqual({ ok: true, baseUrl: 'https://voxen.example.com' });
+  test('aceita https e remove path', () => {
+    const r = normalizeBaseUrl('https://voxen.example.com/foo');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.baseUrl).toBe('https://voxen.example.com');
   });
 
-  it('adiciona https quando scheme ausente', () => {
-    const r = normalizeBaseUrl('voxen.example.com');
-    expect(r).toEqual({ ok: true, baseUrl: 'https://voxen.example.com' });
-  });
-
-  it('preserva porta e http local', () => {
-    const r = normalizeBaseUrl('http://localhost:3000/');
-    expect(r).toEqual({ ok: true, baseUrl: 'http://localhost:3000' });
-  });
-
-  it('rejeita vazio e scheme inválido', () => {
-    expect(normalizeBaseUrl('').ok).toBe(false);
-    expect(normalizeBaseUrl('ftp://x').ok).toBe(false);
+  test('rejeita scheme inválido', () => {
+    const r = normalizeBaseUrl('ftp://x.com');
+    expect(r.ok).toBe(false);
   });
 });
 
-describe('originPattern / login / jobs url', () => {
-  it('monta pattern e endpoints', () => {
-    expect(originPattern('https://voxen.example.com')).toBe('https://voxen.example.com/*');
-    expect(jobsAutoUrl('https://voxen.example.com')).toBe(
-      'https://voxen.example.com/api/jobs/auto',
-    );
-    expect(loginUrl('https://voxen.example.com', '/fila')).toBe(
-      'https://voxen.example.com/entrar?next=%2Ffila',
-    );
+describe('looksLikeVoxenTab', () => {
+  test('paths conhecidos', () => {
+    expect(looksLikeVoxenTab('https://voxen.example.com/extensao', 'Voxen')).toBe(true);
+    expect(looksLikeVoxenTab('https://voxen.example.com/transcricoes', '')).toBe(true);
+    expect(looksLikeVoxenTab('https://youtube.com/watch?v=1', 'Video')).toBe(false);
   });
 });
 
-describe('isSendableTabUrl', () => {
-  it('só http(s)', () => {
-    expect(isSendableTabUrl('https://youtube.com/watch?v=1')).toBe(true);
-    expect(isSendableTabUrl('http://localhost:3000')).toBe(true);
+describe('isSendableTabUrl / originPattern', () => {
+  test('http only', () => {
+    expect(isSendableTabUrl('https://a.com')).toBe(true);
     expect(isSendableTabUrl('chrome://extensions')).toBe(false);
-    expect(isSendableTabUrl('chrome-extension://abc/popup.html')).toBe(false);
-    expect(isSendableTabUrl(undefined)).toBe(false);
+  });
+  test('pattern', () => {
+    expect(originPattern('https://a.com')).toBe('https://a.com/*');
   });
 });

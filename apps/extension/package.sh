@@ -37,5 +37,17 @@ UNPACKED="$OUT_DIR/unpacked"
 rm -rf "$UNPACKED"
 cp -R "$STAGE/voxen-extension" "$UNPACKED"
 
+# version.json estático (fallback); a API Hono sobrescreve com origin dinâmico.
+VERSION="$(node -p "JSON.parse(require('fs').readFileSync('$ROOT/manifest.json','utf8')).version" 2>/dev/null || echo 0.0.0)"
+cat > "$OUT_DIR/version.json" <<JSON
+{
+  "version": "$VERSION",
+  "zipUrl": "/extension/voxen-extension.zip",
+  "pageUrl": "/extensao",
+  "notes": "Voxen extension $VERSION"
+}
+JSON
+
 echo "✓ Extensão empacotada: $OUT_ZIP ($(du -h "$OUT_ZIP" | awk '{print $1}'))"
 echo "  Unpacked: $UNPACKED"
+echo "  version.json: $VERSION"

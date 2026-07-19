@@ -1,32 +1,30 @@
-# Voxen Browser Extension (Chromium MV3)
+# Extensão Voxen (Chromium MV3)
 
-Extensão sideload para Chrome/Edge/Brave: envia a URL da aba atual para
-`POST {APP_BASE_URL}/api/jobs/auto`.
+## v0.2
 
-## Desenvolvimento
+- UI redesenhada (popup + options)
+- Detectar instância aberta no browser
+- Acompanhar job em background + notificação com resumo
+- Checagem de update via `/extension/version.json`
+- Badge enquanto processa / quando há update
 
-1. Empacote (gera zip + unpacked em `apps/web/public/extension/`):
+## Instalar (sideload)
 
-   ```bash
-   bash apps/extension/package.sh
-   ```
+1. Baixe o ZIP em `/extensao` (ou rode `./package.sh`)
+2. `chrome://extensions` → Modo do desenvolvedor → Carregar sem compactação
+3. Opções → **Detectar instância** (com o Voxen aberto) ou cole a URL
+4. Login no Voxen no mesmo perfil
 
-2. Chrome → `chrome://extensions` → Modo do desenvolvedor → **Carregar sem compactação**
-   → selecione `apps/extension/` (ou `apps/web/public/extension/unpacked/`).
-
-3. Abra **Opções**, configure a URL base (ex.: `http://localhost:3000`), autorize o host
-   e faça login na instância no mesmo perfil do browser.
-
-## Auth (MVP)
-
-- Preferência: cookies da sessão better-auth com `credentials: 'include'` +
-  `optional_host_permissions` para a origem da instância.
-- Token Bearer opcional no storage (campo nas opções) — o endpoint de jobs hoje
-  autentica por sessão; o header fica reservado.
-- 401 → botão “Fazer login” abre `{base}/entrar?next=/fila`.
-
-## Testes
+## Empacotar
 
 ```bash
-cd apps/web && bun test ../extension/tests
+./apps/extension/package.sh
 ```
+
+Gera `apps/web/public/extension/voxen-extension.zip`.
+
+## Limitações do auto-update
+
+Chrome **não** atualiza “Load unpacked” sozinho. A extensão consulta a
+instância e avisa (badge ↑ + notificação). O usuário recarrega o ZIP/pasta.
+Chrome Web Store permitiria update silencioso no futuro.
