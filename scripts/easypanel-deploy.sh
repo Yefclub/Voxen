@@ -1,6 +1,6 @@
 #!/bin/sh
 # ============================================================================
-# Dispara redeploy do voxen-app no Easypanel (home lab, projeto yefclub).
+# Dispara redeploy do serviço Voxen no Easypanel (self-hosted).
 # ============================================================================
 # MANUAL — não há hook automático pós-git-pull. Rode este script (ou o painel
 # Easypanel / workflow "Easypanel Image") quando quiser implantar.
@@ -13,9 +13,9 @@
 # (EASYPANEL_API_KEY), tipicamente via um arquivo local fora do repo com
 # permissão restrita, sourced antes de chamar este script.
 #
-# Config (todas opcionais, com default pro home lab já validado):
+# Config (todas opcionais; sobrescreva para o seu deploy):
 #   EASYPANEL_URL      (default http://localhost:3000)
-#   EASYPANEL_PROJECT  (default yefclub)
+#   EASYPANEL_PROJECT  (default yefclub — exemplo; use o nome do seu projeto)
 #   EASYPANEL_SERVICE  (default voxen-app)
 #   EASYPANEL_MARKER   (default ~/.claude/voxen-last-deployed-sha)
 #

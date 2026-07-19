@@ -2,11 +2,11 @@
 
 ## Contexto
 
-O deploy de produção do Voxen (Easypanel, home lab, projeto `yefclub`, serviço
-`voxen-app`) hoje é sempre manual — o owner precisa disparar o redeploy à mão
-depois de cada merge em `dev`. Isso já causou desatualização perceptível (ex.:
-`/novidades` aparentando não ter changelog novo, quando na verdade o problema
-era a instância rodando uma imagem antiga).
+O deploy de produção do Voxen (Easypanel self-hosted, projeto e serviço
+configuráveis — defaults de exemplo `yefclub` / `voxen-app`) era sempre manual
+— o owner precisava disparar o redeploy à mão depois de cada merge em `dev`.
+Isso já causou desatualização perceptível (ex.: `/novidades` aparentando não
+ter changelog novo, quando na verdade a instância rodava uma imagem antiga).
 
 Este script fecha essa lacuna: dado o SHA atual da `dev`, dispara o redeploy
 via API tRPC do Easypanel se — e somente se — esse SHA ainda não foi
