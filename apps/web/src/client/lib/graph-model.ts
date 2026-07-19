@@ -76,6 +76,13 @@ export interface GraphResp {
   edges: GraphEdge[];
   totalNodes: number;
   totalEdges: number;
+  /** Universo candidatado antes do slice (spec 103). */
+  candidateNodes?: number;
+  candidateEdges?: number;
+  view?: 'map' | 'full';
+  truncated?: boolean;
+  focusId?: string | null;
+  hops?: number | null;
   insights?: GraphInsights;
   indexing?: boolean;
   indexStatus?: GraphIndexStatus;

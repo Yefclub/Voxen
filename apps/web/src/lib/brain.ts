@@ -1044,8 +1044,12 @@ async function connectContentBySharedConcepts(input: {
     candidates.set(mention.fromNodeId, current);
   }
 
+  // Spec 103: limiar mais alto — evita RELATED_TO cosmético por 1 token fraco.
   const ranked = [...candidates.values()]
-    .filter((candidate) => candidate.score >= 1.25 || candidate.concepts.length >= 2)
+    .filter(
+      (candidate) =>
+        candidate.score >= 2.25 || (candidate.concepts.length >= 2 && candidate.score >= 1.75),
+    )
     .sort((left, right) => {
       if (right.score !== left.score) return right.score - left.score;
       return left.label.localeCompare(right.label);
@@ -1571,7 +1575,8 @@ function scoreSemanticProfile(
     reasons.push({ kind: 'source', label: currentSource, value: currentSource, weight: 0.18 });
   }
 
-  if (score < 0.5 || reasons.length === 0) return null;
+  // Spec 103: exige overlap real (ex.: pasta+keyword ou ≥2 tópicos), não 1 token.
+  if (score < 1.2 || reasons.length === 0) return null;
   return { score: Number(score.toFixed(4)), reasons };
 }
 

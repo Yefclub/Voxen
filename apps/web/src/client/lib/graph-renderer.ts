@@ -12,8 +12,8 @@ export interface GraphRenderProfile {
   aggregateEdges: boolean;
 }
 
-export const DEFAULT_GRAPH_MODE: GraphMode = '3d';
-
+/** 2D (Sigma) por padrão — 3D só sob demanda (spec 103). */
+export const DEFAULT_GRAPH_MODE: GraphMode = '2d';
 export function resolveGraphRenderProfile(
   nodeCount: number,
   edgeCount: number,

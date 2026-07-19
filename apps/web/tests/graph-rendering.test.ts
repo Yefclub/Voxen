@@ -235,9 +235,9 @@ describe('graph rendering helpers', () => {
     expect(model.primaryNodeIds).toEqual(['node-0', 'node-1', 'node-2']);
   });
 
-  test('defaults to 3D and scales visual work down for dense graphs', () => {
-    expect(DEFAULT_GRAPH_MODE).toBe('3d');
-
+  test('defaults to 2D and scales visual work down for dense graphs', () => {
+    // Spec 103: 2D-first; 3D only on demand.
+    expect(DEFAULT_GRAPH_MODE).toBe('2d');
     const detailed = resolveGraphRenderProfile(60, 120, false);
     expect(detailed.tier).toBe('detailed');
     expect(detailed.animated).toBe(true);
