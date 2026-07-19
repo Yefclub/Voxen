@@ -151,10 +151,11 @@ function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
         color: palette.label,
         stroke: palette.labelStroke,
         activeColor: palette.selected,
+        // Halo semi-opaco no tom do canvas — título legível sobre nós coloridos.
         backgroundColor: palette.canvas,
-        backgroundOpacity: 0.82,
-        padding: 4,
-        radius: 5,
+        backgroundOpacity: 0.88,
+        padding: 6,
+        radius: 6,
       },
     },
     ring: {
@@ -1137,14 +1138,16 @@ export function BrainGraph3DCanvas({
 
   useEffect(() => {
     if (!model || model.graph.order === 0 || !reagraph) return;
+    // 1º frame: fit global (cena ainda montando; ids primários podem faltar).
+    // Depois: enquadra o núcleo (maior comunidade) — concentração de dados no centro.
     const frame =
       typeof window.requestAnimationFrame === 'function'
         ? window.requestAnimationFrame(() => fitGraphView('all', false))
         : null;
-    // A cena 3D aplica a nova topologia de forma assíncrona. Enquadrar por ids
-    // durante essa janela dispara "node not found" no Reagraph; o fit global
-    // usa a própria cena atual e permanece centralizado durante transições.
-    const timer = window.setTimeout(() => fitGraphView('all', profile.animated), 180);
+    const timer = window.setTimeout(() => {
+      const hasPrimary = primaryNodeIdsRef.current.some((id) => renderedNodeIdsRef.current.has(id));
+      fitGraphView(hasPrimary ? 'primary' : 'all', profile.animated);
+    }, 220);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
       window.clearTimeout(timer);
@@ -1334,6 +1337,44 @@ function BrainGraph2DCanvas({
     renderer.setSettings(sigmaRendererSettings(model, palette));
     renderer.refresh();
     setRendererVersion((version) => version + 1);
+    // Reenquadra o núcleo (maior comunidade) após troca de topologia.
+    const timer = window.setTimeout(() => {
+      const camera = renderer.getCamera();
+      const primary = model.primaryNodeIds;
+      if (primary.length === 0) {
+        void camera.animate({ x: 0, y: 0, ratio: 1, angle: 0 }, { duration: 0 });
+        return;
+      }
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      let count = 0;
+      for (const id of primary) {
+        const display = renderer.getNodeDisplayData(id);
+        if (!display) continue;
+        minX = Math.min(minX, display.x);
+        maxX = Math.max(maxX, display.x);
+        minY = Math.min(minY, display.y);
+        maxY = Math.max(maxY, display.y);
+        count += 1;
+      }
+      if (count === 0) {
+        void camera.animate({ x: 0, y: 0, ratio: 1, angle: 0 }, { duration: 0 });
+        return;
+      }
+      const span = Math.max(maxX - minX, maxY - minY, 0.35);
+      void camera.animate(
+        {
+          x: (minX + maxX) / 2,
+          y: (minY + maxY) / 2,
+          ratio: Math.min(1.4, Math.max(0.28, span * 1.35)),
+          angle: 0,
+        },
+        { duration: 0 },
+      );
+    }, 40);
+    return () => window.clearTimeout(timer);
   }, [model, palette]);
 
   useEffect(() => {
@@ -1392,9 +1433,42 @@ function BrainGraph2DCanvas({
     void camera.animate({ ...state, ratio: state.ratio * ratioFactor }, { duration: 180 });
   }, []);
   const resetCamera = useCallback(() => {
-    const camera = rendererRef.current?.getCamera();
-    if (!camera) return;
-    void camera.animate({ x: 0.5, y: 0.5, ratio: 1, angle: 0 }, { duration: 220 });
+    const renderer = rendererRef.current;
+    const camera = renderer?.getCamera();
+    if (!camera || !renderer) return;
+    // Grafo Sigma está centrado em (0,0) em coords de grafo (layout normalizado).
+    // 0.5/0.5 deslocava a câmera para fora do núcleo.
+    const primary = modelRef.current?.primaryNodeIds ?? [];
+    if (primary.length > 0) {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      let count = 0;
+      for (const id of primary) {
+        const display = renderer.getNodeDisplayData(id);
+        if (!display) continue;
+        minX = Math.min(minX, display.x);
+        maxX = Math.max(maxX, display.x);
+        minY = Math.min(minY, display.y);
+        maxY = Math.max(maxY, display.y);
+        count += 1;
+      }
+      if (count > 0) {
+        const span = Math.max(maxX - minX, maxY - minY, 0.35);
+        void camera.animate(
+          {
+            x: (minX + maxX) / 2,
+            y: (minY + maxY) / 2,
+            ratio: Math.min(1.4, Math.max(0.28, span * 1.35)),
+            angle: 0,
+          },
+          { duration: 240 },
+        );
+        return;
+      }
+    }
+    void camera.animate({ x: 0, y: 0, ratio: 1, angle: 0 }, { duration: 220 });
   }, []);
 
   if (!model) return <div className="absolute inset-0" />;
@@ -1440,10 +1514,11 @@ function sigmaRendererSettings(model: SigmaGraphModel, palette: GraphPalette) {
     hideLabelsOnMove: true,
     itemSizesReference: 'screen' as const,
     labelColor: { color: palette.label },
-    labelDensity: model.graph.order > 300 ? 0.08 : model.graph.order > 140 ? 0.16 : 0.3,
+    labelDensity: model.graph.order > 300 ? 0.1 : model.graph.order > 140 ? 0.2 : 0.36,
     labelFont: 'Inter, system-ui, sans-serif',
-    labelRenderedSizeThreshold: model.graph.order > 250 ? 10 : 8,
-    labelSize: 12,
+    labelWeight: '600',
+    labelRenderedSizeThreshold: model.graph.order > 250 ? 9 : 7,
+    labelSize: 13,
     maxCameraRatio: 3.4,
     minCameraRatio: 0.08,
     renderEdgeLabels: false,
