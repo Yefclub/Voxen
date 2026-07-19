@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.11.0-dev.1784443300 — 2026-07-19 · Dev
+
+### ✨ Reprocessar só o cérebro no grafo (sem gastar IA nem mexer no conteúdo)
+
+- Botão “Reprocessar cérebro” no `/grafo` com confirmação clara do que muda.
+- Reconstrói o mapa a partir do que já está salvo; não regenera tags, resumos nem extract LLM.
+- Preserva arestas `llm-grounded` e manuais no reprocesso heurístico.
+
 ## v0.11.0-dev.1784440910 — 2026-07-19 · Dev
 
 ### ✨ Compile grounded no Brain, clusters no mapa e embeddings opt-in
