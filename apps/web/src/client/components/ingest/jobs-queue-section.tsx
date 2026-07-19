@@ -208,9 +208,9 @@ function JobRow({
   const remoteIsSafeYt =
     !!job.thumbnailUrl &&
     (job.thumbnailUrl.includes('i.ytimg.com') || job.thumbnailUrl.includes('ytimg.com'));
-  const previewSrc = job.transcriptId
+  const previewSrc: string | null = job.transcriptId
     ? `/api/transcripts/${job.transcriptId}/preview`
-    : remoteIsSafeYt
+    : remoteIsSafeYt && job.thumbnailUrl
       ? job.thumbnailUrl
       : ytId
         ? `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg`

@@ -613,9 +613,7 @@ transcriptsRoutes.post('/:id/refresh-thumbnail', async (c) => {
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
 
   const remote =
-    isHttpUrl(transcript.thumbnailUrl) && transcript.thumbnailUrl
-      ? transcript.thumbnailUrl
-      : null;
+    isHttpUrl(transcript.thumbnailUrl) && transcript.thumbnailUrl ? transcript.thumbnailUrl : null;
   if (!remote) {
     // Já está no path interno / sem URL remota: limpa broken e usa placeholder.
     await db.transcript.update({

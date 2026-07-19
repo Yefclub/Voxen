@@ -119,7 +119,11 @@ async def _persist(
     )
     from . import thumbnail as thumb_mod
 
-    thumbnail_url, preview_object_key, preview_mime_type = await thumb_mod.resolve_thumbnail_for_persist(
+    (
+        thumbnail_url,
+        preview_object_key,
+        preview_mime_type,
+    ) = await thumb_mod.resolve_thumbnail_for_persist(
         remote_url=result.thumbnail_url,
         user_id=user_id,
         transcript_id=transcript_id,

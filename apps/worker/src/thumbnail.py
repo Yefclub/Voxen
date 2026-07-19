@@ -7,8 +7,8 @@ Persistimos bytes no storage próprio e a UI serve via /api/transcripts/:id/prev
 from __future__ import annotations
 
 import re
+import tempfile
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -44,7 +44,7 @@ def thumbnail_key(user_id: str, transcript_id: str, ext: str = "jpg") -> str:
 
 def _host_allowed(host: str) -> bool:
     h = host.lower().rstrip(".")
-    if not h or h in ("localhost", "127.0.0.1", "0.0.0.0"):
+    if not h or h in ("localhost", "127.0.0.1"):
         return False
     # Bloqueia IPs literais (SSRF básico)
     if re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", h):
@@ -101,9 +101,7 @@ async def mirror_remote_thumbnail(
         return None
 
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (compatible; VoxenBot/1.0; +https://github.com/Yefclub/Voxen)"
-        ),
+        "User-Agent": ("Mozilla/5.0 (compatible; VoxenBot/1.0; +https://github.com/Yefclub/Voxen)"),
         "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
     }
     if referer:
@@ -144,18 +142,21 @@ async def mirror_remote_thumbnail(
         return None
 
     key = thumbnail_key(user_id, transcript_id, ext)
-    tmp = Path(f"/tmp/voxen-thumb-{transcript_id}.{ext}")
+    tmp: Path | None = None
     try:
-        tmp.write_bytes(body)
+        with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as fh:
+            tmp = Path(fh.name)
+            fh.write(body)
         await storage.put_file(key=key, path=tmp, content_type=mime)
     except Exception as exc:  # noqa: BLE001
         log.warning("thumbnail-upload-failed", error=str(exc)[:200])
         return None
     finally:
-        try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     log.info("thumbnail-mirrored", key=key, mime=mime, bytes=len(body))
     return key, mime
