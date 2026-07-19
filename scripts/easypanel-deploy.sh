@@ -2,9 +2,12 @@
 # ============================================================================
 # Dispara redeploy do voxen-app no Easypanel (home lab, projeto yefclub).
 # ============================================================================
+# MANUAL — não há hook automático pós-git-pull. Rode este script (ou o painel
+# Easypanel / workflow "Easypanel Image") quando quiser implantar.
+#
 # Idempotente: só deploya se a dev avançou desde o último deploy bem-sucedido
-# (marcador de SHA em disco). Seguro pra chamar repetidamente (ex.: hook após
-# cada `git pull --ff-only`) sem disparar deploy duplicado pro mesmo commit.
+# (marcador de SHA em disco). Seguro pra chamar repetidamente sem redeploy
+# duplicado do mesmo commit.
 #
 # Nunca lê nem grava a API key em nenhum arquivo — ela deve vir do ambiente
 # (EASYPANEL_API_KEY), tipicamente via um arquivo local fora do repo com
