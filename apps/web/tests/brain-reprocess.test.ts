@@ -3,15 +3,14 @@ import { BRAIN_PRESERVED_EDGE_METHODS, BRAIN_REFRESHABLE_EDGE_METHODS } from '..
 
 describe('brain reprocess methods (spec 105)', () => {
   test('refreshable methods are only cheap heuristics', () => {
-    expect([...BRAIN_REFRESHABLE_EDGE_METHODS].sort()).toEqual(
-      [
-        'entity-heuristic',
-        'keyword',
-        'semantic-profile',
-        'shared-concepts',
-        'timeline-adjacent',
-      ].sort(),
-    );
+    const expected = [
+      'entity-heuristic',
+      'keyword',
+      'semantic-profile',
+      'shared-concepts',
+      'timeline-adjacent',
+    ] as const;
+    expect([...BRAIN_REFRESHABLE_EDGE_METHODS].sort()).toEqual([...expected].sort());
   });
 
   test('llm-grounded and manual are preserved (not refreshable)', () => {

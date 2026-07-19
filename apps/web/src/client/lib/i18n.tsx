@@ -915,8 +915,7 @@ const ptBRMessages = {
   'graph.reprocessBrainTitle': 'Reprocessar só o cérebro?',
   'graph.reprocessBrainDescription':
     'Reconstrói o mapa do Brain a partir dos títulos e textos que você já tem. Não chama o pipeline de ingestão de novo.',
-  'graph.reprocessBrainDoes':
-    'Atualiza nós, tópicos heurísticos e ligações automáticas do grafo.',
+  'graph.reprocessBrainDoes': 'Atualiza nós, tópicos heurísticos e ligações automáticas do grafo.',
   'graph.reprocessBrainDoesNot':
     'Não gasta créditos de IA em tags/resumo/extract e não altera tags, resumos nem o conteúdo dos itens.',
   'graph.reprocessBrainConfirm': 'Reprocessar cérebro',
@@ -2031,8 +2030,7 @@ const enMessages: Record<I18nKey, string> = {
   'graph.reprocessBrainTitle': 'Reprocess the brain only?',
   'graph.reprocessBrainDescription':
     'Rebuilds the Brain map from titles and text you already have. Does not re-run the full ingest pipeline.',
-  'graph.reprocessBrainDoes':
-    'Updates nodes, heuristic topics, and automatic graph links.',
+  'graph.reprocessBrainDoes': 'Updates nodes, heuristic topics, and automatic graph links.',
   'graph.reprocessBrainDoesNot':
     'Does not spend AI credits on tags/summary/extract and does not change tags, summaries, or item content.',
   'graph.reprocessBrainConfirm': 'Reprocess brain',
