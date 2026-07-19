@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784459422",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Extensão v0.2 — design, resumo do job e conexão em um clique",
+    "body": "A extensão de browser ganhou visual moderno, detecção automática da\ninstância aberta, acompanhamento do processamento com notificação e\nresumo quando o conteúdo fica pronto, além de aviso de atualização\nconsultando a própria instância.",
+    "pr": 440,
+    "author": "Kalyel",
+    "date": "2026-07-19T08:10:09-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/440"
+  },
+  {
     "version": "0.11.0-dev.1784455991",
     "channel": "dev",
     "type": "feat",

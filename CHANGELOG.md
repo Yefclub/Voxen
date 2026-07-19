@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.11.0-dev.1784459422 — 2026-07-19 · Dev
+
+### ✨ Extensão v0.2 — design, resumo do job e conexão em um clique
+
+A extensão de browser ganhou visual moderno, detecção automática da
+instância aberta, acompanhamento do processamento com notificação e
+resumo quando o conteúdo fica pronto, além de aviso de atualização
+consultando a própria instância.
+
 ## v0.11.0-dev.1784455991 — 2026-07-19 · Dev
 
 ### ✨ Extensão Chromium sideload para capturar a aba atual
