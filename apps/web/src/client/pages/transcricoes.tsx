@@ -34,6 +34,7 @@ import {
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ContentIngestCard } from '../components/ingest/content-ingest-card';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
+import { sourceHostname } from '../lib/source-url';
 
 const PAGE_SIZE = 24;
 
@@ -860,6 +861,11 @@ function TranscriptRow({
             {t.source === 'WEB' && <Globe className="h-2.5 w-2.5" />}
             {displaySource(t.source, translate)}
           </span>
+          {sourceHostname(t.url) && (
+            <span className="truncate max-w-[160px] font-mono text-[10px] opacity-80">
+              {sourceHostname(t.url)}
+            </span>
+          )}
           {showDuration && <span className="tabular-nums">{formatDuration(t.durationSec)}</span>}
           {t.channel && <span className="truncate max-w-[140px]">{t.channel}</span>}
           {t.folder && (
