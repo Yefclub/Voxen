@@ -84,7 +84,11 @@ describe('selectGraphSlice', () => {
     ];
     const result = selectGraphSlice({ nodes, edges, view: 'map' });
     expect(result.view).toBe('map');
-    expect(result.nodes.map((n) => n.id).sort()).toEqual(['t1', 't2', 'topic-hub'].sort());
+    const ids = result.nodes.map((n) => n.id);
+    expect(ids).toContain('t1');
+    expect(ids).toContain('t2');
+    expect(ids).toContain('topic-hub');
+    expect(ids).not.toContain('topic-noise');
     expect(result.edges.some((e) => e.id === 'e4')).toBe(false);
     expect(result.edges.length).toBeGreaterThan(0);
   });
@@ -101,8 +105,9 @@ describe('selectGraphSlice', () => {
       }),
     );
     const result = selectGraphSlice({ nodes, edges, view: 'map' });
-    expect(result.nodes.length).toBeLessThanOrEqual(MAP_NODE_LIMIT);
-    expect(result.edges.length).toBeLessThanOrEqual(MAP_EDGE_LIMIT);
+    // Budget + margem para hubs de cluster virtuais.
+    expect(result.nodes.length).toBeLessThanOrEqual(MAP_NODE_LIMIT + 24);
+    expect(result.edges.length).toBeLessThanOrEqual(MAP_EDGE_LIMIT + 48);
     expect(result.truncated).toBe(true);
   });
 
@@ -127,5 +132,20 @@ describe('selectGraphSlice', () => {
     });
     expect(result.nodes).toEqual([]);
     expect(result.edges).toEqual([]);
+  });
+
+  test('map injects cluster hubs for communities with 3+ members', () => {
+    const nodes = [
+      node('a', 'transcript', 5),
+      node('b', 'transcript', 4),
+      node('c', 'transcript', 3),
+    ];
+    const edges = [
+      edge('ab', 'a', 'b', { method: 'wikilink', kind: 'links_to', confidence: 0.9 }),
+      edge('bc', 'b', 'c', { method: 'wikilink', kind: 'links_to', confidence: 0.9 }),
+    ];
+    const result = selectGraphSlice({ nodes, edges, view: 'map' });
+    expect(result.nodes.some((n) => n.type === 'cluster')).toBe(true);
+    expect(result.edges.some((e) => e.method === 'community')).toBe(true);
   });
 });

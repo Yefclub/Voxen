@@ -529,7 +529,10 @@ async def _remove_transcript_brain_refreshable_sources(
         WHERE bs."userId" = $1
           AND bs."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
           AND bs."sourceId" = $2
-          AND (bs."edgeId" IS NULL OR be.method = 'keyword')
+          AND (
+            bs."edgeId" IS NULL
+            OR be.method IN ('keyword', 'llm-grounded')
+          )
         """,
         user_id,
         transcript_id,
@@ -545,7 +548,7 @@ async def _remove_transcript_brain_refreshable_sources(
           AND bs."userId" = $1
           AND bs."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
           AND bs."sourceId" = $2
-          AND be.method = 'keyword'
+          AND be.method IN ('keyword', 'llm-grounded')
         """,
         user_id,
         transcript_id,
@@ -585,7 +588,7 @@ async def _remove_transcript_brain_refreshable_sources(
             DELETE FROM "BrainEdge"
             WHERE "userId" = $1
               AND id = ANY($2::text[])
-              AND method = 'keyword'
+              AND method IN ('keyword', 'llm-grounded')
             """,
             user_id,
             orphan_edge_ids,
@@ -593,6 +596,9 @@ async def _remove_transcript_brain_refreshable_sources(
         if not lease.locally_owned():
             return False
         await _delete_orphan_keyword_topic_nodes(conn, user_id)
+        if not lease.locally_owned():
+            return False
+        await _delete_orphan_grounded_concept_nodes(conn, user_id)
         if not lease.locally_owned():
             return False
     return True
@@ -725,6 +731,198 @@ async def _upsert_topic_node(
         json.dumps({"method": "keyword"}),
     )
     return str(row["id"])
+
+
+async def _delete_orphan_grounded_concept_nodes(conn: asyncpg.Connection, user_id: str) -> None:
+    await conn.execute(
+        """
+        DELETE FROM "BrainNode" n
+        WHERE n."userId" = $1
+          AND n.type IN ('ENTITY'::"BrainNodeType", 'CLAIM'::"BrainNodeType")
+          AND n."sourceType" IS NULL
+          AND n.metadata->>'method' = 'llm-grounded'
+          AND n."updatedAt" < NOW() - INTERVAL '2 minutes'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "BrainEdge" be
+            WHERE be."userId" = n."userId"
+              AND (be."fromNodeId" = n.id OR be."toNodeId" = n.id)
+          )
+        """,
+        user_id,
+    )
+
+
+async def upsert_grounded_brain_items(
+    *,
+    user_id: str,
+    transcript_id: str,
+    items: list[dict[str, Any]],
+) -> int:
+    """Materializa entidades/claims grounded (method=llm-grounded). Best-effort."""
+    if not items:
+        return 0
+    lease = await acquire_graph_index_lease(user_id)
+    if lease is None:
+        return 0
+    created = 0
+    try:
+        async with lease.heartbeat():
+            async with connection() as conn:
+                content = await conn.fetchrow(
+                    """
+                    SELECT id FROM "BrainNode"
+                    WHERE "userId" = $1 AND key = $2
+                    """,
+                    user_id,
+                    f"TRANSCRIPT:{transcript_id}",
+                )
+                if not content:
+                    return 0
+                content_node_id = str(content["id"])
+                for item in items:
+                    if not lease.locally_owned():
+                        return created
+                    kind = str(item.get("kind") or "entity")
+                    label = str(item.get("label") or "").strip()
+                    excerpt = str(item.get("excerpt") or "").strip()
+                    conf = float(item.get("confidence") or 0.7)
+                    slug = str(item.get("slug") or "")
+                    if not label or not excerpt or not slug:
+                        continue
+                    node_type = "CLAIM" if kind == "claim" else "ENTITY"
+                    key_prefix = "CLAIM" if kind == "claim" else "ENTITY"
+                    concept_id = await _upsert_grounded_concept_node(
+                        conn,
+                        user_id=user_id,
+                        key=f"{key_prefix}:{slug}",
+                        node_type=node_type,
+                        label=label,
+                    )
+                    if not lease.locally_owned():
+                        return created
+                    edge_row = await conn.fetchrow(
+                        """
+                        INSERT INTO "BrainEdge" (
+                            id, "userId", "fromNodeId", "toNodeId", kind, confidence,
+                            method, status, metadata, "createdAt", "updatedAt"
+                        ) VALUES (
+                            $1, $2, $3, $4, 'MENTIONS'::"BrainEdgeKind", $5,
+                            'llm-grounded', 'ACTIVE'::"ContentStatus", $6::jsonb, NOW(), NOW()
+                        )
+                        ON CONFLICT ("userId", "fromNodeId", "toNodeId", kind, method) DO UPDATE SET
+                            confidence = EXCLUDED.confidence,
+                            status = EXCLUDED.status,
+                            metadata = EXCLUDED.metadata,
+                            "updatedAt" = NOW()
+                        RETURNING id
+                        """,
+                        generate_cuid(),
+                        user_id,
+                        content_node_id,
+                        concept_id,
+                        conf,
+                        json.dumps({"term": slug, "kind": kind, "extractor": "openrouter-grounded"}),
+                    )
+                    if not edge_row:
+                        continue
+                    if not lease.locally_owned():
+                        return created
+                    try:
+                        await conn.execute(
+                            """
+                            INSERT INTO "BrainSource" (
+                                id, "userId", "edgeId", "sourceType", "sourceId", excerpt, "createdAt"
+                            ) VALUES (
+                                $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, NOW()
+                            )
+                            """,
+                            generate_cuid(),
+                            user_id,
+                            edge_row["id"],
+                            transcript_id,
+                            _truncate(excerpt, 600),
+                        )
+                        created += 1
+                    except Exception:  # noqa: BLE001
+                        log.warning(
+                            "brain-grounded-source-skipped",
+                            transcript_id=transcript_id,
+                            edge_id=edge_row["id"],
+                        )
+    finally:
+        await lease.release()
+    return created
+
+
+async def _upsert_grounded_concept_node(
+    conn: asyncpg.Connection,
+    *,
+    user_id: str,
+    key: str,
+    node_type: str,
+    label: str,
+) -> str:
+    row = await conn.fetchrow(
+        """
+        INSERT INTO "BrainNode" (
+            id, "userId", key, type, label, description, status, metadata,
+            "sourceType", "sourceId", "createdAt", "updatedAt"
+        ) VALUES (
+            $1, $2, $3, $4::"BrainNodeType", $5, $6, 'ACTIVE'::"ContentStatus",
+            $7::jsonb, NULL, NULL, NOW(), NOW()
+        )
+        ON CONFLICT ("userId", key) DO UPDATE SET
+            type = EXCLUDED.type,
+            label = EXCLUDED.label,
+            description = EXCLUDED.description,
+            metadata = EXCLUDED.metadata,
+            "updatedAt" = NOW()
+        RETURNING id
+        """,
+        generate_cuid(),
+        user_id,
+        key,
+        node_type,
+        label,
+        "Conceito extraído com grounding (trecho literal no conteúdo).",
+        json.dumps({"method": "llm-grounded"}),
+    )
+    return str(row["id"])
+
+
+async def store_content_embedding(
+    *,
+    user_id: str,
+    transcript_id: str,
+    model: str,
+    vector: list[float],
+) -> bool:
+    """Persiste embedding no metadata do nó CONTENT (opt-in, sem pgvector)."""
+    if not vector:
+        return False
+    payload = {
+        "embedding": {
+            "model": model,
+            "dims": len(vector),
+            "vector": vector,
+            "updatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+    }
+    async with connection() as conn:
+        result = await conn.execute(
+            """
+            UPDATE "BrainNode"
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
+                "updatedAt" = NOW()
+            WHERE "userId" = $1
+              AND key = $2
+            """,
+            user_id,
+            f"TRANSCRIPT:{transcript_id}",
+            json.dumps(payload),
+        )
+    return str(result) == "UPDATE 1"
 
 
 def _extract_topics(value: str) -> list[dict[str, Any]]:

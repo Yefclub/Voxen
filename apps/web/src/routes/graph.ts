@@ -615,9 +615,13 @@ function evidenceTag(method: string, kind: string): 'EXTRACTED' | 'INFERRED' | '
     m.includes('keyword') ||
     m.includes('shared') ||
     m.includes('semantic') ||
-    m.includes('timeline')
+    m.includes('timeline') ||
+    m.includes('community')
   ) {
     return 'INFERRED';
+  }
+  if (m.includes('llm-grounded') || m.includes('grounded')) {
+    return 'EXTRACTED';
   }
   return 'AMBIGUOUS';
 }

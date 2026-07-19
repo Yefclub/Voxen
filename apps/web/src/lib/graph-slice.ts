@@ -28,7 +28,15 @@ export const FULL_EDGE_LIMIT = 1_500;
 /** RELATED_TO fracos abaixo disso somem do map view. */
 export const MAP_MIN_RELATED_CONFIDENCE = 0.55;
 
-const STRUCTURAL_METHODS = ['wikilink', 'folder', 'belongs', 'manual', 'hierarchy'];
+const STRUCTURAL_METHODS = [
+  'wikilink',
+  'folder',
+  'belongs',
+  'manual',
+  'hierarchy',
+  'llm-grounded',
+  'community',
+];
 const WEAK_METHODS = [
   'keyword',
   'shared-concepts',
@@ -179,15 +187,87 @@ export function selectGraphSlice<N extends SliceNode, E extends SliceEdge>(input
   const finalIds = new Set(finalNodes.map((n) => n.id));
   const finalEdges = strongEdges.filter((e) => finalIds.has(e.from) && finalIds.has(e.to));
 
+  const withClusters = injectClusterHubs(finalNodes, finalEdges);
+  // Cap final após hubs virtuais (clusters contam no budget do mapa).
+  const cappedNodes = withClusters.nodes.slice(0, MAP_NODE_LIMIT + 24);
+  const cappedIds = new Set(cappedNodes.map((n) => n.id));
+  const cappedEdges = withClusters.edges
+    .filter((e) => cappedIds.has(e.from) && cappedIds.has(e.to))
+    .slice(0, MAP_EDGE_LIMIT + 48);
   return {
-    nodes: finalNodes,
-    edges: finalEdges,
+    nodes: cappedNodes,
+    edges: cappedEdges,
     truncated:
       nodes.length > finalNodes.length ||
       edges.length > finalEdges.length ||
-      ranked.length > MAP_NODE_LIMIT,
+      ranked.length > MAP_NODE_LIMIT ||
+      withClusters.nodes.length > cappedNodes.length,
     view,
   };
+}
+
+/**
+ * Comunidades com ≥3 nós viram um hub virtual `cluster` (spec 104).
+ * Union-Find simples sobre arestas do recorte.
+ */
+export function injectClusterHubs<N extends SliceNode, E extends SliceEdge>(
+  nodes: N[],
+  edges: E[],
+): { nodes: N[]; edges: E[] } {
+  if (nodes.length < 3) return { nodes, edges };
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    let p = parent.get(x) ?? x;
+    if (p !== x) {
+      p = find(p);
+      parent.set(x, p);
+    }
+    return p;
+  };
+  for (const n of nodes) parent.set(n.id, n.id);
+  for (const e of edges) {
+    if (!parent.has(e.from) || !parent.has(e.to)) continue;
+    const a = find(e.from);
+    const b = find(e.to);
+    if (a !== b) parent.set(a, b);
+  }
+  const groups = new Map<string, N[]>();
+  for (const n of nodes) {
+    const root = find(n.id);
+    const list = groups.get(root) ?? [];
+    list.push(n);
+    groups.set(root, list);
+  }
+
+  const extraNodes: N[] = [];
+  const extraEdges: E[] = [];
+  let clusterIdx = 0;
+  for (const members of groups.values()) {
+    if (members.length < 3) continue;
+    const hub = [...members].sort((a, b) => b.weight - a.weight || a.id.localeCompare(b.id))[0]!;
+    const clusterId = `cluster:virtual:${clusterIdx}`;
+    clusterIdx += 1;
+    const clusterNode = {
+      ...hub,
+      id: clusterId,
+      type: 'cluster',
+      weight: Math.max(hub.weight, members.length),
+    } as N;
+    extraNodes.push(clusterNode);
+    for (const member of members.slice(0, 12)) {
+      if (member.id === hub.id) continue;
+      extraEdges.push({
+        id: `cluster-edge:${clusterId}:${member.id}`,
+        from: clusterId,
+        to: member.id,
+        kind: 'part_of',
+        method: 'community',
+        confidence: 0.85,
+      } as E);
+    }
+  }
+  if (extraNodes.length === 0) return { nodes, edges };
+  return { nodes: [...nodes, ...extraNodes], edges: [...edges, ...extraEdges] };
 }
 
 function egoNetwork<N extends SliceNode, E extends SliceEdge>(
