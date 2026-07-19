@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784454827",
+    "channel": "dev",
+    "type": "infra",
+    "title": "Deploy no Easypanel só no commit de versão (mensagem limpa)",
+    "body": "O script de deploy manual só aceita HEAD no formato\n`set version to X.Y.Z-dev.<timestamp>` — o mesmo padrão do Orbital, em que o\ndeploy roda depois do version-dev. Assim o log do Easypanel deixa de mostrar\no body inteiro da PR de feature e passa a mostrar só a linha de versão.",
+    "pr": 437,
+    "author": "Kalyel",
+    "date": "2026-07-19T06:53:34-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/437"
+  },
+  {
     "version": "0.11.0-dev.1784451878",
     "channel": "dev",
     "type": "fix",
