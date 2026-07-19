@@ -19,6 +19,8 @@ build/
 .turbo/
 .vite/
 apps/web/prisma-generated/
+# Espelho local do package.sh; o download oficial é o ZIP commitado
+apps/web/public/extension/unpacked/
 
 # Test / coverage
 coverage/

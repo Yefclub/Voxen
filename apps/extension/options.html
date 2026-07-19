@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voxen — Configurações</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <img src="icons/icon-128.png" width="56" height="56" alt="" />
+        <div>
+          <p class="eyebrow">Extensão do navegador</p>
+          <h1>Configurar Voxen</h1>
+          <p class="lead">
+            Informe a URL da sua instância self-hosted. A extensão envia a aba atual para
+            <code>POST /api/jobs/auto</code> usando a sessão do browser (cookie), se você
+            já estiver logado nessa origem.
+          </p>
+        </div>
+      </header>
+
+      <form id="form" class="card">
+        <label class="field">
+          <span class="label">URL base da instância</span>
+          <input
+            id="base-url"
+            name="baseUrl"
+            type="url"
+            inputmode="url"
+            placeholder="https://voxen.exemplo.com"
+            autocomplete="url"
+            required
+          />
+          <span class="hint">Sem path — só o host (e porta, se houver). Ex.: http://localhost:3000</span>
+        </label>
+
+        <label class="field">
+          <span class="label">Token de API (opcional)</span>
+          <input
+            id="api-token"
+            name="apiToken"
+            type="password"
+            autocomplete="off"
+            placeholder="Deixe vazio para usar cookies da sessão"
+          />
+          <span class="hint">
+            MVP: o endpoint de jobs autentica por sessão. Token Bearer só é enviado se
+            preenchido (reservado para integrações futuras). Prefira estar logado no
+            Voxen no mesmo perfil do Chrome/Edge.
+          </span>
+        </label>
+
+        <div class="row">
+          <button type="submit" class="btn primary" id="save">Salvar</button>
+          <button type="button" class="btn ghost" id="request-perm">Pedir permissão de host</button>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </form>
+
+      <section class="card notes">
+        <h2>Como autenticar</h2>
+        <ol>
+          <li>Abra a sua instância no Chrome/Edge e faça login normalmente.</li>
+          <li>Volte a qualquer aba e use o ícone da extensão → <strong>Enviar para o Voxen</strong>.</li>
+          <li>
+            Se receber 401, clique em <strong>Fazer login</strong> no popup, autentique e
+            reenvie.
+          </li>
+        </ol>
+        <p class="muted">
+          Cookies <code>SameSite</code> e host permission: com a permissão do host concedida,
+          o Chromium envia cookies da origem mesmo a partir de
+          <code>chrome-extension://</code>. Se a permissão for negada, o envio falha.
+        </p>
+      </section>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

@@ -78,10 +78,37 @@ const ptBRMessages = {
   'shell.nav.notes': 'Notas',
   'shell.nav.automations': 'Automações',
   'shell.nav.graph': 'Grafo',
+  'shell.nav.extension': 'Extensão',
   'shell.nav.users': 'Usuários',
   'shell.nav.costs': 'Custos',
   'shell.nav.integrations': 'Integrações',
   'shell.nav.settings': 'Configuração',
+
+  'extension.eyebrow': 'Browser',
+  'extension.title': 'Extensão do navegador',
+  'extension.description':
+    'Capture YouTube, Instagram, TikTok, X e páginas web direto da aba atual e envie para a fila desta instância Voxen.',
+  'extension.downloadTitle': 'Baixar pacote',
+  'extension.downloadDescription':
+    'ZIP Manifest V3 para Chrome, Edge, Brave e outros Chromium — instalação sideload (sem Chrome Web Store).',
+  'extension.downloadCta': 'Baixar voxen-extension.zip',
+  'extension.downloadHint': 'Descompacte e carregue a pasta no modo desenvolvedor.',
+  'extension.installTitle': 'Instalar (Chrome / Edge)',
+  'extension.installDescription': 'Modo do desenvolvedor → carregar sem compactação.',
+  'extension.install.step1': 'Baixe o ZIP e extraia a pasta voxen-extension.',
+  'extension.install.step2': 'Abra chrome://extensions (ou edge://extensions).',
+  'extension.install.step3': 'Ative o Modo do desenvolvedor.',
+  'extension.install.step4':
+    'Clique em “Carregar sem compactação” e selecione a pasta descompactada.',
+  'extension.install.step5Prefix': 'Nas opções da extensão, configure a URL base como',
+  'extension.install.step6':
+    'Faça login nesta instância no mesmo perfil do browser e use o ícone da extensão em qualquer aba.',
+  'extension.authTitle': 'Autenticação e CORS',
+  'extension.authDescription': 'Sessão do browser na sua instância.',
+  'extension.authBody':
+    'A extensão chama POST /api/jobs/auto com credentials:include. Com a permissão de host concedida, o Chromium envia os cookies da sessão better-auth da origem configurada. Se receber 401, abra o login pela própria extensão e reenvie.',
+  'extension.authCors':
+    'Host permission da extensão contorna CORS para a origem autorizada. Sem permissão de host, o fetch falha. Token Bearer opcional nas opções fica reservado; o endpoint de jobs autentica por sessão no MVP.',
   'shell.backToHome': 'Voltar ao início',
   'shell.newConversation': 'Nova conversa',
   'shell.searchConversations': 'Buscar conversas…',
@@ -1198,10 +1225,36 @@ const enMessages: Record<I18nKey, string> = {
   'shell.nav.notes': 'Notes',
   'shell.nav.automations': 'Automations',
   'shell.nav.graph': 'Graph',
+  'shell.nav.extension': 'Extension',
   'shell.nav.users': 'Users',
   'shell.nav.costs': 'Costs',
   'shell.nav.integrations': 'Integrations',
   'shell.nav.settings': 'Settings',
+
+  'extension.eyebrow': 'Browser',
+  'extension.title': 'Browser extension',
+  'extension.description':
+    'Capture YouTube, Instagram, TikTok, X, and web pages from the current tab and send them to this Voxen instance queue.',
+  'extension.downloadTitle': 'Download package',
+  'extension.downloadDescription':
+    'Manifest V3 ZIP for Chrome, Edge, Brave, and other Chromium browsers — sideload only (no Chrome Web Store).',
+  'extension.downloadCta': 'Download voxen-extension.zip',
+  'extension.downloadHint': 'Unzip and load the folder in developer mode.',
+  'extension.installTitle': 'Install (Chrome / Edge)',
+  'extension.installDescription': 'Developer mode → load unpacked.',
+  'extension.install.step1': 'Download the ZIP and extract the voxen-extension folder.',
+  'extension.install.step2': 'Open chrome://extensions (or edge://extensions).',
+  'extension.install.step3': 'Enable Developer mode.',
+  'extension.install.step4': 'Click “Load unpacked” and select the extracted folder.',
+  'extension.install.step5Prefix': 'In the extension options, set the base URL to',
+  'extension.install.step6':
+    'Sign in to this instance in the same browser profile, then use the extension icon on any tab.',
+  'extension.authTitle': 'Authentication and CORS',
+  'extension.authDescription': 'Browser session on your instance.',
+  'extension.authBody':
+    'The extension calls POST /api/jobs/auto with credentials:include. With host permission granted, Chromium sends better-auth session cookies for the configured origin. On 401, open login from the extension and retry.',
+  'extension.authCors':
+    'The extension host permission bypasses CORS for the authorized origin. Without host permission, fetch fails. Optional Bearer token in options is reserved; the jobs endpoint uses session auth in the MVP.',
   'shell.backToHome': 'Back to home',
   'shell.newConversation': 'New conversation',
   'shell.searchConversations': 'Search conversations…',
