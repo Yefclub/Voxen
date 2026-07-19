@@ -4,9 +4,9 @@ import { isTransientStreamDisconnect } from '../src/client/lib/chat-stream-error
 describe('isTransientStreamDisconnect', () => {
   test('detecta TypeError de fetch/network', () => {
     expect(isTransientStreamDisconnect(new TypeError('Failed to fetch'))).toBe(true);
-    expect(isTransientStreamDisconnect(new TypeError('NetworkError when attempting to fetch'))).toBe(
-      true,
-    );
+    expect(
+      isTransientStreamDisconnect(new TypeError('NetworkError when attempting to fetch')),
+    ).toBe(true);
     expect(isTransientStreamDisconnect(new TypeError('Load failed'))).toBe(true);
   });
 

@@ -296,13 +296,18 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                     content = sub_path.read_text(encoding="utf-8")
                     subtitle_segments = ytdl.parse_vtt_or_srt(content)
                     subtitle_lang = lang
-                except (_TRANSIENT_EXC, PermanentError) as e:
-                    # Rate-limit (429) era promovido a PermanentError no primeiro
-                    # hit e abortava o job sem cair no Whisper. Agora:
-                    # - 429 / transientes → fallback API
-                    # - outros PermanentError (antibot, geo, etc.) → propaga
-                    if isinstance(e, PermanentError) and not _is_rate_limit_error(e):
+                except PermanentError as e:
+                    # Rate-limit (429) era promovido a PermanentError e abortava
+                    # o job sem cair no Whisper. Outros PermanentError (antibot,
+                    # geo, etc.) continuam fatais.
+                    if not _is_rate_limit_error(e):
                         raise
+                    log.warning(
+                        "subtitle-failed-fallback-api",
+                        lang=lang,
+                        error=str(e)[:200],
+                    )
+                except _TRANSIENT_EXC as e:
                     log.warning(
                         "subtitle-failed-fallback-api",
                         lang=lang,
