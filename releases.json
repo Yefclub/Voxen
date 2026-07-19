@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1784451878",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Capas estáveis no S3 e deploy Easypanel só manual",
+    "body": "Capas de vídeo/página (especialmente TikTok) deixam de apontar para CDN\nassinada no navegador: na ingestão a imagem é espelhada no storage e a\nUI usa só `/api/transcripts/:id/preview` (com placeholder se a CDN já\ntiver bloqueado). Também dá para pedir `POST .../refresh-thumbnail`.\n\nO script de deploy do Easypanel agora exige `VOXEN_ALLOW_DEPLOY=1` —\nsem isso não dispara redeploy (auto-deploy desligado de verdade).",
+    "pr": 432,
+    "author": "Kalyel",
+    "date": "2026-07-19T06:04:26-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/432"
+  },
+  {
     "version": "0.11.0-dev.1784450551",
     "channel": "dev",
     "type": "ui",
