@@ -59,7 +59,11 @@ export type GlobalSettingKey =
   // Switch on/off do Agente de Proxy: 'true'/'false'. Controla se o worker
   // roteia a extração pelo SOCKS do túnel (yt_dlp_proxy_urls). Independente do
   // token — desligar não apaga o token nem exige reinstalar o agente.
-  | 'proxy_agent_enabled';
+  | 'proxy_agent_enabled'
+  /** Spec 104: embeddings opt-in ('true'/'false'). Default off — FTS continua default. */
+  | 'embeddings_enabled'
+  /** Modelo OpenRouter de embedding (ex.: openai/text-embedding-3-small). */
+  | 'embedding_model';
 
 const X_ANALYSIS_SETTING_KEYS = [
   'default_x_analysis_model',

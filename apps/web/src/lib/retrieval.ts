@@ -398,7 +398,7 @@ export async function ftsSearchTranscripts(
   const q = query.trim();
   if (!q) return [];
   const take = clampInt(limit, 8, 1, 25);
-  return db.$queryRaw<FtsResult[]>`
+  const lexical = await db.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
       ts_headline('portuguese', t."plainText", websearch_to_tsquery('portuguese', ${q}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
@@ -417,6 +417,62 @@ export async function ftsSearchTranscripts(
     ORDER BY rank DESC, t."createdAt" DESC
     LIMIT ${take}
   `;
+  return maybeHybridRerank(userId, q, lexical);
+}
+
+async function maybeHybridRerank(
+  userId: string,
+  query: string,
+  lexical: FtsResult[],
+): Promise<FtsResult[]> {
+  if (lexical.length < 2) return lexical;
+  try {
+    const { getSetting } = await import('./settings');
+    const enabled = (await getSetting('embeddings_enabled'))?.trim().toLowerCase();
+    if (enabled !== 'true' && enabled !== '1' && enabled !== 'yes' && enabled !== 'on') {
+      return lexical;
+    }
+    const { cosineSimilarity, fuseHybridScores, readEmbeddingFromMetadata } =
+      await import('./hybrid-search');
+    const nodes = await db.brainNode.findMany({
+      where: {
+        userId,
+        status: 'ACTIVE',
+        sourceType: 'TRANSCRIPT',
+        sourceId: { in: lexical.map((item) => item.id) },
+      },
+      select: { sourceId: true, metadata: true },
+    });
+    const byTranscript = new Map(
+      nodes
+        .map((node) => [node.sourceId, readEmbeddingFromMetadata(node.metadata)] as const)
+        .filter((entry): entry is [string, number[]] => Boolean(entry[0] && entry[1])),
+    );
+    if (byTranscript.size === 0) return lexical;
+
+    // Query embedding: se não houver, cai no lexical puro (sem chamada de rede no path de chat
+    // a menos que o operador habilite embeddings e exista cache futuro).
+    // Aqui só reordena com vetores já persistidos + similaridade entre hits via centroide FTS.
+    // Similaridade ao query exigiria embed da query no request — fazemos com o top lexical
+    // como âncora (MMR-lite): score = lex + cos(top0, item).
+    const topVec = byTranscript.get(lexical[0]?.id ?? '');
+    if (!topVec) return lexical;
+    const fused = fuseHybridScores(
+      lexical.map((item) => {
+        const vec = byTranscript.get(item.id);
+        return {
+          id: item.id,
+          lexicalScore: Number(item.rank) || 0,
+          vectorScore: vec ? cosineSimilarity(topVec, vec) : null,
+        };
+      }),
+      { alpha: 0.3 },
+    );
+    const byId = new Map(lexical.map((item) => [item.id, item]));
+    return fused.map((hit) => byId.get(hit.id)).filter((item): item is FtsResult => Boolean(item));
+  } catch {
+    return lexical;
+  }
 }
 
 /** Pré-busca best-effort usada pelo harness antes do primeiro step do modelo. */

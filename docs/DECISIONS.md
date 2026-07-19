@@ -348,5 +348,31 @@ ingestão” de entidades/claims.
 - Não aumenta superfície de supply-chain no worker agora.
 - Spec 103 não inclui compile LLM; fica backlog P1 (concept/claim grounded).
 - Apache-2.0 seria aceitável se (b) deixar de ser suficiente.
+- **2026-07-19:** implementado em spec 104 — extrator grounded OpenRouter no worker
+  (`brain_extract.py`) sem a lib LangExtract.
+
+---
+
+## ADR-012 — Compile grounded + clusters + embeddings opt-in
+
+**Data**: 2026-07-19
+**Status**: Aceita
+
+### Decisão
+
+1. **Compile na ingestão**: após tags, extrair entidades/claims com excerpt
+   literal (grounding). Materializar `ENTITY`/`CLAIM` + `MENTIONS` method
+   `llm-grounded`. Best-effort (não falha o job).
+2. **Clusters**: no map view, comunidades com ≥3 nós ganham hub virtual
+   `type=cluster` e arestas `part_of`/`community`.
+3. **Embeddings opt-in**: setting `embeddings_enabled`; vetor no
+   `BrainNode.metadata.embedding` (sem pgvector). Busca FTS default; com flag,
+   reordenação híbrida dos hits FTS.
+
+### Consequências
+
+- Arestas com citação real; grafo menos “palavra solta”.
+- Sem migração de schema / sem Neo4j.
+- Embeddings desligados por default — zero custo extra em deploys mínimos.
 
 ---

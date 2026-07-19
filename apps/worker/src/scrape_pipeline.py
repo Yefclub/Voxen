@@ -62,6 +62,18 @@ async def run(*, job_id: str, user_id: str, source_url: str, log: Any) -> None: 
         log=log,
     )
     await db.reindex_transcript_brain_node(user_id, new_transcript_id)
+    from .pipeline import _maybe_grounded_brain_extract, _maybe_store_embedding
+
+    await _maybe_grounded_brain_extract(
+        user_id=user_id,
+        transcript_id=new_transcript_id,
+        log=log,
+    )
+    await _maybe_store_embedding(
+        user_id=user_id,
+        transcript_id=new_transcript_id,
+        log=log,
+    )
 
     await db.mark_job_done(job_id)
     await events.publish_job_event(

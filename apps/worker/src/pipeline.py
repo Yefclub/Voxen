@@ -889,6 +889,125 @@ async def _generate_summary_with_progress(
         log=log,
     )
     await db.reindex_transcript_brain_node(user_id, transcript_id)
+    await _maybe_grounded_brain_extract(
+        user_id=user_id,
+        transcript_id=transcript_id,
+        log=log,
+    )
+    await _maybe_store_embedding(
+        user_id=user_id,
+        transcript_id=transcript_id,
+        log=log,
+    )
+
+
+async def _maybe_grounded_brain_extract(
+    *,
+    user_id: str,
+    transcript_id: str,
+    log: Any,  # noqa: ANN401
+) -> None:
+    """Compile grounded (spec 104): entidades/claims com excerpt literal."""
+    try:
+        from . import brain_extract
+
+        row = await db.get_transcript_title_summary_folder(transcript_id)
+        if not row:
+            return
+        title, content, _folder = row
+        if len((content or "").strip()) < 80:
+            return
+        api_key = await voxen_settings.get_openrouter_api_key()
+        model = await voxen_settings.get_default_chat_model()
+        if not api_key or not model:
+            log.info("brain-extract-skipped-missing-config", transcript_id=transcript_id)
+            return
+        language = await voxen_settings.get_app_language()
+        result = await brain_extract.extract_grounded_concepts(
+            title=title,
+            content=content,
+            api_key=api_key,
+            model=model,
+            language=language,
+        )
+        if not result.items:
+            log.info("brain-extract-empty", transcript_id=transcript_id)
+            return
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="CHAT",
+            model=result.model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+            meta={"source": "brain_grounded_extract", "transcript_id": transcript_id},
+        )
+        payload = [
+            {
+                "kind": item.kind,
+                "label": item.label,
+                "excerpt": item.excerpt,
+                "confidence": item.confidence,
+                "slug": brain_extract.slugify_label(item.label),
+            }
+            for item in result.items
+        ]
+        n = await db.upsert_grounded_brain_items(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            items=payload,
+        )
+        log.info(
+            "brain-extract-done",
+            transcript_id=transcript_id,
+            items=len(result.items),
+            edges=n,
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort
+        log.warning("brain-extract-failed", transcript_id=transcript_id, error=str(e)[:200])
+
+
+async def _maybe_store_embedding(
+    *,
+    user_id: str,
+    transcript_id: str,
+    log: Any,  # noqa: ANN401
+) -> None:
+    """Embedding opt-in no metadata do nó CONTENT (sem pgvector)."""
+    try:
+        if not await voxen_settings.get_embeddings_enabled():
+            return
+        from . import embeddings
+
+        row = await db.get_transcript_title_summary_folder(transcript_id)
+        if not row:
+            return
+        title, content, _folder = row
+        api_key = await voxen_settings.get_openrouter_api_key()
+        if not api_key:
+            return
+        model = await voxen_settings.get_embedding_model()
+        vector = await embeddings.embed_text(
+            text=f"{title}\n\n{content}",
+            api_key=api_key,
+            model=model,
+        )
+        if not vector:
+            return
+        ok = await db.store_content_embedding(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            model=model,
+            vector=vector,
+        )
+        log.info(
+            "embedding-stored" if ok else "embedding-store-skipped",
+            transcript_id=transcript_id,
+            dims=len(vector),
+            model=model,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.warning("embedding-failed", transcript_id=transcript_id, error=str(e)[:200])
 
 
 async def _maybe_generate_tags(
