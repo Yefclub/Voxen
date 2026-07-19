@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.11.0-dev.1784433253 — 2026-07-19 · Dev
+
+### 🐛 Chat não cai mais com network error ao transcrever links
+
+- Mantém o stream SSE vivo durante transcrições longas (keepalive + idleTimeout do Bun).
+- Desconexões de transporte recuperam o turno em andamento sem toast de network error.
+- Rate limit do YouTube em legendas volta a cair no Whisper em vez de falhar o job.
+- Filtra tags geradas com raciocínio do modelo (ex.: "Looking at the content").
+
 ## v0.11.0-dev.1784197604 — 2026-07-16 · Dev
 
 ### 🐛 Chat resiliente e experiência mobile contínua
