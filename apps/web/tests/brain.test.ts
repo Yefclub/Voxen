@@ -69,9 +69,11 @@ interface GraphTestResponse {
 
 async function waitForGraphReindex(cookie: string, force = true): Promise<GraphTestResponse> {
   for (let attempt = 0; attempt < 200; attempt += 1) {
-    const query = attempt === 0 && force ? 'force=1' : `refresh=1&t=${attempt}`;
+    // view=full: testes de indexação precisam do universo materializado, não do
+    // recorte map (spec 103) que omite tópicos de grau 1 e arestas fracas.
+    const base = attempt === 0 && force ? 'force=1' : `refresh=1&t=${attempt}`;
     const response = await app.fetch(
-      new Request(`http://localhost/api/graph?${query}`, { headers: { cookie } }),
+      new Request(`http://localhost/api/graph?view=full&${base}`, { headers: { cookie } }),
     );
     if (response.status !== 200) throw new Error(`Graph respondeu ${response.status}`);
     const body = (await response.json()) as GraphTestResponse;
