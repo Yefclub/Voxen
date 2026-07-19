@@ -190,6 +190,8 @@ function latestGraphIndexStatus(
 
 export function GrafoPage(): React.ReactElement {
   const [graphRequest, setGraphRequest] = useState({ tick: 0, force: false });
+  /** map = recorte rápido (default); full = snapshot amplo (spec 103). */
+  const [graphView, setGraphView] = useState<'map' | 'full'>('map');
   const [search, setSearch] = useState('');
   const deferredSearch = useDebouncedValue(search, 140);
   const [activeTypes, setActiveTypes] = useState<Set<GraphNodeType>>(
@@ -202,10 +204,15 @@ export function GrafoPage(): React.ReactElement {
   const navigate = useNavigate();
   const { t } = useI18n();
   const { theme } = useTheme();
-  const graphPath =
-    graphRequest.tick > 0
-      ? `/api/graph?${graphRequest.force ? 'force=1&' : 'refresh=1&'}t=${graphRequest.tick}`
-      : '/api/graph';
+  const graphPath = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('view', graphView);
+    if (graphRequest.tick > 0) {
+      params.set(graphRequest.force ? 'force' : 'refresh', '1');
+      params.set('t', String(graphRequest.tick));
+    }
+    return `/api/graph?${params.toString()}`;
+  }, [graphRequest.force, graphRequest.tick, graphView]);
   const { data, loading, error } = useFetch<GraphResp>(graphPath);
   const {
     data: polledIndexStatus,
@@ -389,6 +396,19 @@ export function GrafoPage(): React.ReactElement {
               <Button
                 variant="outline"
                 size="default"
+                onClick={() => {
+                  setGraphView((current) => (current === 'map' ? 'full' : 'map'));
+                  setGraphRequest({ tick: Date.now(), force: false });
+                }}
+                title={t(graphView === 'map' ? 'graph.switchToFull' : 'graph.switchToMap')}
+              >
+                <span className="text-xs font-medium">
+                  {graphView === 'map' ? t('graph.viewMap') : t('graph.viewFull')}
+                </span>
+              </Button>
+              <Button
+                variant="outline"
+                size="default"
                 onClick={() => setMode((current) => (current === '2d' ? '3d' : '2d'))}
                 title={t(mode === '2d' ? 'graph.switchTo3d' : 'graph.switchTo2d')}
               >
@@ -446,11 +466,19 @@ export function GrafoPage(): React.ReactElement {
             />
 
             {filtered && hasGraph && (
-              <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2.5 py-1 text-[10px] tabular-nums text-[var(--color-app-muted)] shadow-sm backdrop-blur-md">
-                {t('graph.visibleCount', {
-                  nodes: filtered.totalNodes,
-                  edges: filtered.totalEdges,
-                })}
+              <div className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[min(100%,18rem)] flex-col gap-1">
+                <div className="rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2.5 py-1 text-[10px] tabular-nums text-[var(--color-app-muted)] shadow-sm backdrop-blur-md">
+                  {t('graph.visibleCount', {
+                    nodes: filtered.totalNodes,
+                    edges: filtered.totalEdges,
+                  })}
+                  {data?.view === 'map' ? ` · ${t('graph.viewMap')}` : ''}
+                </div>
+                {data?.truncated ? (
+                  <div className="rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2.5 py-1 text-[10px] text-[var(--color-app-muted)] shadow-sm backdrop-blur-md">
+                    {t('graph.truncatedHint')}
+                  </div>
+                ) : null}
               </div>
             )}
 

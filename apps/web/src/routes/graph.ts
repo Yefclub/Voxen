@@ -6,8 +6,9 @@
 //   - Relações explícitas: wiki-links, hierarquia, pastas e evidências
 //
 // Spec: .specs/020-brain-knowledge-harness.md
-// Limite: 500 nós por user (cap defensivo — KBs maiores precisam paginação)
-// Cache: 60s em Redis (key voxen:graph:<userId>) — refresh manual disponível
+// Limite full: 500 nós / 1500 arestas (defensivo).
+// Map view (default): recorte rápido — ver graph-slice.ts / spec 103.
+// Cache: 60s em Redis (key voxen:graph:<userId>:<view>[:focus]) — refresh manual.
 // ============================================================================
 
 import { Hono } from 'hono';
@@ -37,6 +38,13 @@ import {
   writeOwnedGraphIndexStatus,
 } from '../lib/graph-index-coordinator';
 import { shouldScheduleGraphReindex } from '../lib/graph-index-state';
+import {
+  FULL_EDGE_LIMIT,
+  FULL_NODE_LIMIT,
+  parseGraphHops,
+  parseGraphView,
+  selectGraphSlice,
+} from '../lib/graph-slice';
 import { getRedisPublisher } from '../lib/redis';
 import type { GraphIndexErrorReason, GraphIndexStatus } from '../shared/graph-index';
 
@@ -113,8 +121,8 @@ interface GraphInsights {
   edgeEvidence: { extracted: number; inferred: number; ambiguous: number };
 }
 
-const NODE_LIMIT = 500;
-const EDGE_LIMIT = 1_500;
+const NODE_LIMIT = FULL_NODE_LIMIT;
+const EDGE_LIMIT = FULL_EDGE_LIMIT;
 const CACHE_TTL_SEC = 60;
 
 graphRoutes.get('/status', async (c) => {
@@ -134,9 +142,12 @@ graphRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const force = c.req.query('force') === '1';
   const refresh = c.req.query('refresh') === '1';
+  const view = parseGraphView(c.req.query('view'));
+  const focusId = c.req.query('focus')?.trim() || null;
+  const hops = parseGraphHops(c.req.query('hops'));
 
-  // Cache em Redis 60s
-  const cacheKey = graphCacheKey(userId);
+  // Cache em Redis 60s — chave por view/focus para não misturar recortes.
+  const cacheKey = `${graphCacheKey(userId)}:${view}${focusId ? `:f:${focusId}:h${hops}` : ''}`;
   if (!force && !refresh) {
     try {
       const cached = await getRedisPublisher().get(cacheKey);
@@ -150,6 +161,7 @@ graphRoutes.get('/', async (c) => {
 
   const indexStatus = await ensureBrainCoverage(userId, force);
 
+  // Busca o universo candidatado (cap full) e recorta no slice puro.
   const rawNodes = await db.brainNode.findMany({
     where: { userId, status: 'ACTIVE' },
     orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
@@ -196,7 +208,7 @@ graphRoutes.get('/', async (c) => {
     degree.set(edge.toNodeId, (degree.get(edge.toNodeId) ?? 0) + 1);
   }
 
-  const nodes = rawNodes.map<GraphNode>((node) => ({
+  const allNodes = rawNodes.map<GraphNode>((node) => ({
     id: node.id,
     key: node.key,
     label: node.label.slice(0, 120),
@@ -208,7 +220,7 @@ graphRoutes.get('/', async (c) => {
     weight: 1 + Math.min(degree.get(node.id) ?? 0, 8),
     updatedAt: node.updatedAt.toISOString(),
   }));
-  const edges = rawEdges.map<GraphEdge>((edge) => ({
+  const allEdges = rawEdges.map<GraphEdge>((edge) => ({
     id: edge.id,
     from: edge.fromNodeId,
     to: edge.toNodeId,
@@ -218,14 +230,34 @@ graphRoutes.get('/', async (c) => {
     evidence: evidenceTag(edge.method, edge.kind),
   }));
 
-  const insights = buildInsights(nodes, edges, degree);
+  const sliced = selectGraphSlice({
+    nodes: allNodes,
+    edges: allEdges,
+    view,
+    focusId,
+    hops,
+  });
+
+  const sliceDegree = new Map<string, number>();
+  for (const edge of sliced.edges) {
+    sliceDegree.set(edge.from, (sliceDegree.get(edge.from) ?? 0) + 1);
+    sliceDegree.set(edge.to, (sliceDegree.get(edge.to) ?? 0) + 1);
+  }
+
+  const insights = buildInsights(sliced.nodes, sliced.edges, sliceDegree);
   const latestStatus = await currentGraphIndexStatus(userId);
   const indexing = indexStatus.state === 'running' || latestStatus.state === 'running';
   const response = {
-    nodes,
-    edges,
-    totalNodes: nodes.length,
-    totalEdges: edges.length,
+    nodes: sliced.nodes,
+    edges: sliced.edges,
+    totalNodes: sliced.nodes.length,
+    totalEdges: sliced.edges.length,
+    candidateNodes: allNodes.length,
+    candidateEdges: allEdges.length,
+    view: sliced.view,
+    truncated: sliced.truncated,
+    focusId,
+    hops: focusId ? hops : null,
     insights,
     indexing,
     indexStatus: latestStatus,

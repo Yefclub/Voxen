@@ -282,3 +282,71 @@ Caminhos:
 - Quando/se Agno suportar AI SDK protocol oficialmente, migrar é simples
 
 ---
+
+## ADR-010 — Mapa do Brain 2D-first com slice (não dump 3D global)
+
+**Data**: 2026-07-19
+**Status**: Aceita
+
+### Contexto
+
+O `/grafo` abria em 3D com snapshot quase completo e arestas de co-ocorrência
+fracas. O mercado OSS de second-brain (Obsidian, Sigma, exploradores leves)
+prioriza mapa **rápido**, 2D WebGL e recortes (local/overview), não simulação
+3D do universo inteiro.
+
+### Decisão
+
+1. **Default 2D (Sigma)**; 3D (Reagraph) só sob demanda.
+2. **`view=map` por padrão** no `GET /api/graph`: ≤180 nós / ≤400 arestas,
+   conceitos só com grau ≥2, arestas fracas omitidas.
+3. **`view=full`** e **`focus`+`hops`** para dump e ego-network.
+4. Indexador Brain com limiar mais alto em `RELATED_TO` (shared-concepts /
+   semantic-profile).
+
+### Consequências
+
+- Tempo até interativo cai (sem bundle 3D no path crítico; payload menor).
+- Mapas densos com n-grama barulhento somem da UI padrão.
+- Full view permanece para diagnóstico e bases pequenas.
+- Spec: `.specs/103-graph-fast-map.md`.
+
+---
+
+## ADR-011 — LangExtract: adotar o padrão, não a lib (por agora)
+
+**Data**: 2026-07-19
+**Status**: Aceita
+
+### Contexto
+
+[LangExtract](https://github.com/google/langextract) (Google, **Apache-2.0**)
+extrai informação estruturada de texto com LLM, **source grounding** (offsets
+no texto) e few-shot. É o estado da arte open-source para “compile na
+ingestão” de entidades/claims.
+
+### Alternativas
+
+| Opção | Prós | Contras |
+|-------|------|---------|
+| (a) Dependência `langextract` no worker | Grounding maduro, viz HTML | Stack Gemini/Ollama-centric; Voxen é OpenRouter-first; deps extras; path de auth paralelo |
+| (b) Reimplementar o **padrão** (schema + few-shot + excerpt obrigatório) via OpenRouter | Cabe no ADR-004/harness; 1 chave; licença limpa | Mais código nosso |
+| (c) Ignorar grounding | Rápido | Arestas/claims sem citação — piora o Brain |
+
+### Decisão
+
+**(b) — adotar o padrão LangExtract sem a biblioteca neste ciclo.**
+
+- Extrações futuras de conceitos/claims **devem** exigir trecho literal
+  (`excerpt`) no texto-fonte (grounding).
+- Provider único: OpenRouter (settings cifrados), não chave Gemini à parte.
+- Reavaliar `langextract` se surgir provider OpenRouter de primeira classe
+  estável e o custo de manter o extrator próprio passar do custo da lib.
+
+### Consequências
+
+- Não aumenta superfície de supply-chain no worker agora.
+- Spec 103 não inclui compile LLM; fica backlog P1 (concept/claim grounded).
+- Apache-2.0 seria aceitável se (b) deixar de ser suficiente.
+
+---
