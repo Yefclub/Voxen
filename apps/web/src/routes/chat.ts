@@ -87,6 +87,10 @@ chatRoutes.post('/cancel', async (c) => {
 
 const SendBody = z.object({ content: z.string().trim().min(1).max(20_000) });
 
+/** Comentário SSE a cada ~15s de ociosidade (spec 065 + Bun idleTimeout). */
+export const CHAT_SSE_KEEPALIVE_MS = 15_000;
+const KEEPALIVE_BYTES = new TextEncoder().encode(': keepalive\n\n');
+
 function encodeSse(event: ChatStreamEvent): Uint8Array {
   return new TextEncoder().encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
 }
@@ -110,18 +114,53 @@ chatRoutes.post('/', async (c) => {
     if (error instanceof ChatTurnBusyError) return c.json({ error: error.message }, 409);
     throw error;
   }
+
+  // Keepalive: Bun fecha conexões ociosas em 10s por padrão; Cloudflare em ~100s.
+  // Durante request_transcription (minutos sem token de modelo) o stream morria e
+  // o browser mostrava "network error" mesmo com a transcrição concluindo no servidor.
+  let stopKeepalive: (() => void) | null = null;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       let open = true;
+      let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+
+      const stop = (): void => {
+        if (keepaliveTimer !== null) {
+          clearInterval(keepaliveTimer);
+          keepaliveTimer = null;
+        }
+      };
+      stopKeepalive = stop;
+
+      const armKeepalive = (): void => {
+        stop();
+        keepaliveTimer = setInterval(() => {
+          if (!open) {
+            stop();
+            return;
+          }
+          try {
+            controller.enqueue(KEEPALIVE_BYTES);
+          } catch {
+            open = false;
+            stop();
+          }
+        }, CHAT_SSE_KEEPALIVE_MS);
+      };
+
       const emit = (event: ChatStreamEvent) => {
         if (!open) return;
         try {
           controller.enqueue(encodeSse(event));
+          armKeepalive();
         } catch {
           // A conexão é somente observadora; o turno durável continua no servidor.
           open = false;
+          stop();
         }
       };
+
+      armKeepalive();
       emit({ type: 'status', label: 'Preparando resposta…' });
       void runChatTurn(turn.id, emit)
         .catch((error: unknown) => {
@@ -131,7 +170,9 @@ chatRoutes.post('/', async (c) => {
           });
         })
         .finally(() => {
+          stop();
           if (!open) return;
+          open = false;
           try {
             controller.close();
           } catch {
@@ -141,6 +182,7 @@ chatRoutes.post('/', async (c) => {
     },
     cancel() {
       // Fechar ou colocar o PWA em background não cancela o processamento.
+      stopKeepalive?.();
     },
   });
   return new Response(stream, {

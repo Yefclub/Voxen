@@ -142,6 +142,18 @@ def _is_tiktok_rehydration_error(exc: BaseException) -> bool:
     )
 
 
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    """HTTP 429 / rate-limit — retentável e, em legendas, elegível a fallback API."""
+    text = str(exc).lower()
+    return (
+        "http error 429" in text
+        or "too many requests" in text
+        or "rate-limit" in text
+        or "rate limit" in text
+        or "limitou requisições" in text
+    )
+
+
 def _friendly_external_error(exc: BaseException) -> str | None:
     text = str(exc).lower()
     # Proxy/túnel de download fora do ar: o egress está configurado para sair por
@@ -284,10 +296,18 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                     content = sub_path.read_text(encoding="utf-8")
                     subtitle_segments = ytdl.parse_vtt_or_srt(content)
                     subtitle_lang = lang
+                except PermanentError as e:
+                    # Rate-limit (429) era promovido a PermanentError e abortava
+                    # o job sem cair no Whisper. Outros PermanentError (antibot,
+                    # geo, etc.) continuam fatais.
+                    if not _is_rate_limit_error(e):
+                        raise
+                    log.warning(
+                        "subtitle-failed-fallback-api",
+                        lang=lang,
+                        error=str(e)[:200],
+                    )
                 except _TRANSIENT_EXC as e:
-                    # YouTube rate-limita download de subtitles (HTTP 429) com
-                    # frequência. Em vez de FAILED, caímos pro path API (Whisper) —
-                    # é mais caro mas funciona. Probe já passou, vídeo existe.
                     log.warning(
                         "subtitle-failed-fallback-api",
                         lang=lang,
@@ -1303,20 +1323,34 @@ async def _retry_transient[T](
     Captura `_TRANSIENT_EXC` (TransientError, OSError, yt-dlp YoutubeDLError,
     botocore BotoCoreError/ClientError). OpenRouter usa `_retry_transient_or`
     separado porque distingue auth (permanente) de 5xx (transiente).
+
+    Erros "amigáveis" determinísticos (antibot, geo, 403) viram PermanentError
+    na hora. Rate-limit (429) **retenta** com backoff maior e só vira
+    PermanentError após esgotar as tentativas — para o path de legendas ainda
+    poder fazer fallback pro Whisper.
     """
     last_exc: BaseException | None = None
     for attempt in range(tries):
         try:
             return await fn()
+        except PermanentError:
+            raise
         except _TRANSIENT_EXC as e:
             friendly = _friendly_external_error(e)
-            if friendly:
+            if friendly and not _is_rate_limit_error(e):
                 raise PermanentError(friendly) from e
             last_exc = e
             if attempt < tries - 1:
-                await asyncio.sleep(base_delay * (2**attempt))
+                delay = base_delay * (2**attempt)
+                if _is_rate_limit_error(e):
+                    # YouTube 429: espera um pouco mais entre tentativas.
+                    delay = max(delay, 5.0) * (attempt + 1)
+                await asyncio.sleep(delay)
             continue
     assert last_exc is not None
+    friendly = _friendly_external_error(last_exc)
+    if friendly:
+        raise PermanentError(friendly) from last_exc
     raise last_exc
 
 

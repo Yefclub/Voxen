@@ -24,6 +24,7 @@ import { play } from 'cuelume';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { ApiError, apiDelete, apiGet, apiPost } from '../lib/api';
+import { isTransientStreamDisconnect } from '../lib/chat-stream-errors';
 import { useMe } from '../lib/hooks';
 import { useI18n, type I18nKey, type TranslateFn } from '../lib/i18n';
 import { cn } from '../lib/utils';
@@ -1184,14 +1185,35 @@ export function ChatPage(): React.ReactElement {
       persistedActiveTurn = snapshot.activeTurn;
       applySnapshot(snapshot);
     } catch (error) {
-      if (!controller.signal.aborted)
-        toast.error(error instanceof Error ? error.message : t('chat.streamError'));
-      try {
-        const snapshot = await apiGet<Snapshot>('/api/chat');
-        persistedActiveTurn = snapshot.activeTurn;
-        applySnapshot(snapshot);
-      } catch {
-        // Offline: o turno continua durável e será restaurado no próximo acesso.
+      // Desconexão de transporte (Bun idle / proxy / rede) ≠ falha do turno.
+      // Tenta recuperar o estado canônico antes de alarmar o usuário.
+      if (!controller.signal.aborted) {
+        try {
+          const snapshot = await apiGet<Snapshot>('/api/chat');
+          persistedActiveTurn = snapshot.activeTurn;
+          applySnapshot(snapshot);
+          if (snapshot.activeTurn) {
+            // Turno ainda roda no servidor — sem toast de erro; UI mostra recovering.
+          } else if (isTransientStreamDisconnect(error)) {
+            toast.error(t('chat.streamDisconnected'));
+          } else {
+            toast.error(error instanceof Error ? error.message : t('chat.streamError'));
+          }
+        } catch {
+          if (isTransientStreamDisconnect(error)) {
+            toast.error(t('chat.streamDisconnected'));
+          } else {
+            toast.error(error instanceof Error ? error.message : t('chat.streamError'));
+          }
+        }
+      } else {
+        try {
+          const snapshot = await apiGet<Snapshot>('/api/chat');
+          persistedActiveTurn = snapshot.activeTurn;
+          applySnapshot(snapshot);
+        } catch {
+          // Offline: o turno continua durável e será restaurado no próximo acesso.
+        }
       }
     } finally {
       abortRef.current = null;

@@ -464,6 +464,8 @@ const ptBRMessages = {
   'chat.approveError': 'Não foi possível confirmar a ação.',
   'chat.streamStartError': 'Não foi possível iniciar a resposta.',
   'chat.streamError': 'Falha no streaming.',
+  'chat.streamDisconnected':
+    'A conexão caiu no meio da resposta. Se a transcrição terminar, a resposta volta sozinha.',
   'chat.responding': 'Respondendo',
   'chat.historyLabel': 'Histórico da conversa',
   'chat.scrollLatest': 'Ir ao mais recente',
@@ -1565,6 +1567,8 @@ const enMessages: Record<I18nKey, string> = {
   'chat.approveError': 'Could not confirm the action.',
   'chat.streamStartError': 'Could not start the response.',
   'chat.streamError': 'Streaming failed.',
+  'chat.streamDisconnected':
+    'The connection dropped mid-response. If transcription finishes, the reply will resume on its own.',
   'chat.responding': 'Responding',
   'chat.historyLabel': 'Conversation history',
   'chat.scrollLatest': 'Jump to latest',
