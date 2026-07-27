@@ -1,9 +1,10 @@
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useMe } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
+import { SessionUnavailable } from '../session-unavailable';
 
 export function AuthLayout(): React.ReactElement {
-  const { data, loading } = useMe();
+  const { data, loading, error, refresh } = useMe();
   const location = useLocation();
 
   if (loading) {
@@ -13,6 +14,8 @@ export function AuthLayout(): React.ReactElement {
       </div>
     );
   }
+
+  if (error && !data) return <SessionUnavailable onRetry={refresh} />;
 
   if (data?.user && data.user.status === 'APPROVED') {
     // Admin sem onboarding completo → manda pro wizard

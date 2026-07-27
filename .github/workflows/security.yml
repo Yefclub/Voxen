@@ -24,6 +24,9 @@ jobs:
       - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
+          # Voxen e uma SPA client-side com BrowserRouter; nao usa React Server
+          # Components nem Server Actions, superficie afetada por este advisory.
+          allow-ghsas: GHSA-qwww-vcr4-c8h2
 
   codeql:
     name: CodeQL (JS/TS)

@@ -30,6 +30,8 @@
           if (t === 'zinc' || t === 'emerald' || t === 'light') {
             document.documentElement.dataset.theme = t;
             document.documentElement.style.colorScheme = t === 'light' ? 'light' : 'dark';
+            var themeColor = t === 'emerald' ? '#19211f' : t === 'light' ? '#f7f7f8' : '#212121';
+            document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColor);
           }
         } catch (e) {}
       })();

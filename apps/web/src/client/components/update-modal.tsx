@@ -6,6 +6,7 @@ import { Spinner } from './ui/spinner';
 import { Badge } from './ui/badge';
 import { useI18n } from '../lib/i18n';
 import type { VersionMonitorState } from '../lib/use-version-monitor';
+import { useChatShell } from '../lib/chat-shell-state';
 
 interface ReleaseNote {
   version: string;
@@ -44,6 +45,7 @@ export function UpdateModal({
 }): React.ReactElement | null {
   const { t } = useI18n();
   const { update, apply, dismiss } = monitor;
+  const { streaming } = useChatShell();
   const [notes, setNotes] = useState<ReleaseNote[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -101,7 +103,7 @@ export function UpdateModal({
               {t('shell.updateAvailable')}
             </DialogTitle>
             <DialogDescription className="mt-1 text-[13px] leading-relaxed text-[var(--color-app-muted)]">
-              {t('shell.updateModalSubtitle')}
+              {streaming ? t('shell.updateBlockedStreaming') : t('shell.updateModalSubtitle')}
             </DialogDescription>
             {update.toVersion && (
               <div className="mt-3 flex items-center gap-1.5 font-mono text-[11px]">
@@ -167,7 +169,12 @@ export function UpdateModal({
           <Button variant="ghost" size="sm" onClick={dismiss} disabled={applying}>
             {t('shell.updateLater')}
           </Button>
-          <Button variant="primary" size="sm" onClick={handleApply} disabled={applying}>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleApply}
+            disabled={applying || streaming}
+          >
             {applying ? <Spinner size={16} /> : <RefreshCw className="h-4 w-4" />}
             {t('shell.updateAction')}
           </Button>

@@ -1,0 +1,3 @@
+# Voxen usa BrowserRouter em uma SPA e nao implementa React Server Components
+# ou Server Actions, superficie necessaria para este advisory.
+GHSA-qwww-vcr4-c8h2

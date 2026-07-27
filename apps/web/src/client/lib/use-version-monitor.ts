@@ -18,8 +18,8 @@ const VERSION_POLL_MS = 60_000;
 // toast NÃO reapareça em loop pro mesmo build — o furo principal do sistema
 // antigo. Só um serverBuild diferente do registrado aqui volta a notificar.
 const HANDLED_BUILD_KEY = 'voxen.versionMonitor.handledBuild';
-// Tempo até o fallback nuclear assumir se o reload normal não trouxe o build novo.
-const NUCLEAR_FALLBACK_MS = 3500;
+// Tempo até o fallback assumir se o reload normal não trouxe o build novo.
+const UPDATE_FALLBACK_MS = 3500;
 
 // localStorage defensivo: modo privado/erro não pode quebrar o monitor.
 // Fallback em memória mantém a dedupe dentro da sessão atual.
@@ -42,32 +42,11 @@ function writeHandledBuild(build: string): void {
   }
 }
 
-// Limpa caches do PWA + desregistra o SW pra forçar o servidor a entregar o
-// build fresco no reload. Tudo defensivo: ausência de caches/SW não lança.
-async function nukeCachesAndServiceWorker(): Promise<void> {
-  try {
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((key) => caches.delete(key)));
-    }
-  } catch {
-    // ignora falha de caches
-  }
-  try {
-    if ('serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(regs.map((reg) => reg.unregister()));
-    }
-  } catch {
-    // ignora falha de unregister
-  }
-}
-
 /**
  * Aplica o update do PWA. Persiste o build acionado ANTES de recarregar (pra não
  * reaparecer), tenta o caminho normal (SW update + controllerchange → reload) e,
- * se ele não recarregar em ~3,5s, dispara o fallback nuclear: limpa caches +
- * desregistra o SW + reload — garantindo pegar o build fresco do servidor.
+ * se ele não recarregar em ~3,5s, faz um reload simples. Nunca limpa caches nem
+ * desregistra o service worker: isso pode apagar trabalho ainda em andamento.
  */
 async function applyUpdate(serverBuild: string | null): Promise<void> {
   if (serverBuild) writeHandledBuild(serverBuild);
@@ -78,12 +57,12 @@ async function applyUpdate(serverBuild: string | null): Promise<void> {
     reloaded = true;
     window.location.reload();
   };
-  // Fallback nuclear: se o caminho normal não recarregou a tempo, limpa tudo e
-  // recarrega na marra. Só roda se o reloadOnce ainda não disparou.
-  const nuclearTimer = window.setTimeout(() => {
+  // Se o novo controller não assumir a tempo, o reload revalida a página sem
+  // destruir a instalação PWA nem seus caches.
+  const updateTimer = window.setTimeout(() => {
     if (reloaded) return;
-    void nukeCachesAndServiceWorker().finally(reloadOnce);
-  }, NUCLEAR_FALLBACK_MS);
+    reloadOnce();
+  }, UPDATE_FALLBACK_MS);
 
   try {
     if ('serviceWorker' in navigator) {
@@ -93,7 +72,7 @@ async function applyUpdate(serverBuild: string | null): Promise<void> {
         navigator.serviceWorker.addEventListener(
           'controllerchange',
           () => {
-            window.clearTimeout(nuclearTimer);
+            window.clearTimeout(updateTimer);
             reloadOnce();
           },
           { once: true },
@@ -107,8 +86,8 @@ async function applyUpdate(serverBuild: string | null): Promise<void> {
   } catch {
     // sem service worker / erro: cai no reload simples abaixo
   }
-  // Sem SW: o timer nuclear é desnecessário, recarrega já.
-  window.clearTimeout(nuclearTimer);
+  // Sem SW: o timer de fallback é desnecessário, recarrega já.
+  window.clearTimeout(updateTimer);
   window.location.reload();
 }
 
