@@ -274,3 +274,124 @@ async def test_worker_treats_zero_row_topic_marker_update_as_incomplete(
 
 async def _async_value(value: Any) -> Any:
     return value
+
+
+class _EmbeddingConnection:
+    def __init__(self, result: str = "UPDATE 1") -> None:
+        self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
+        self.result = result
+
+    async def execute(self, query: str, *args: object) -> str:
+        self.execute_calls.append((query, args))
+        return self.result
+
+
+async def test_worker_embedding_skips_db_when_lease_is_occupied_or_redis_unavailable(
+    monkeypatch: Any,
+) -> None:
+    connection_calls = 0
+
+    @asynccontextmanager
+    async def forbidden_connection() -> AsyncIterator[asyncpg.Connection]:
+        nonlocal connection_calls
+        connection_calls += 1
+        raise AssertionError("DB must not be touched without the Redis lease")
+        yield cast(asyncpg.Connection, object())
+
+    monkeypatch.setattr(db, "connection", forbidden_connection)
+    monkeypatch.setattr(db, "acquire_graph_index_lease", lambda _user_id: _async_value(None))
+
+    assert (
+        await db.store_content_embedding(
+            user_id="user-1",
+            transcript_id="transcript-1",
+            model="text-embedding-3-small",
+            vector=[0.1, 0.2],
+        )
+        is False
+    )
+    assert connection_calls == 0
+
+
+async def test_worker_embedding_writes_only_while_it_owns_the_lease(
+    monkeypatch: Any,
+) -> None:
+    lease = _FakeLease()
+    conn = _EmbeddingConnection()
+
+    @asynccontextmanager
+    async def embedding_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", embedding_connection)
+    monkeypatch.setattr(db, "acquire_graph_index_lease", lambda _user_id: _async_value(lease))
+
+    assert (
+        await db.store_content_embedding(
+            user_id="user-1",
+            transcript_id="transcript-1",
+            model="text-embedding-3-small",
+            vector=[0.1, 0.2],
+        )
+        is True
+    )
+    assert lease.renew_count == 1
+    assert lease.release_count == 1
+    assert len(conn.execute_calls) == 1
+    query, args = conn.execute_calls[0]
+    assert 'UPDATE "BrainNode"' in query
+    assert args[0] == "user-1"
+    assert args[1] == "TRANSCRIPT:transcript-1"
+
+
+async def test_worker_embedding_stops_before_write_when_local_lease_is_lost(
+    monkeypatch: Any,
+) -> None:
+    lease = _FakeLease()
+    conn = _EmbeddingConnection()
+
+    @asynccontextmanager
+    async def losing_connection() -> AsyncIterator[asyncpg.Connection]:
+        lease.owned = False
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", losing_connection)
+    monkeypatch.setattr(db, "acquire_graph_index_lease", lambda _user_id: _async_value(lease))
+
+    assert (
+        await db.store_content_embedding(
+            user_id="user-1",
+            transcript_id="transcript-1",
+            model="text-embedding-3-small",
+            vector=[0.1, 0.2],
+        )
+        is False
+    )
+    assert conn.execute_calls == []
+    assert lease.release_count == 1
+
+
+async def test_worker_embedding_releases_lease_when_content_node_is_missing(
+    monkeypatch: Any,
+) -> None:
+    lease = _FakeLease()
+    conn = _EmbeddingConnection(result="UPDATE 0")
+
+    @asynccontextmanager
+    async def embedding_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", embedding_connection)
+    monkeypatch.setattr(db, "acquire_graph_index_lease", lambda _user_id: _async_value(lease))
+
+    assert (
+        await db.store_content_embedding(
+            user_id="user-1",
+            transcript_id="missing-transcript",
+            model="text-embedding-3-small",
+            vector=[0.1, 0.2],
+        )
+        is False
+    )
+    assert len(conn.execute_calls) == 1
+    assert lease.release_count == 1
