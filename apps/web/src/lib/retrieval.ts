@@ -349,6 +349,8 @@ export type FtsResult = {
   rank: number;
   summary: string | null;
   tags: string[];
+  folder: string | null;
+  createdAt: Date;
 };
 
 const PROMPT_STOP_WORDS = new Set([
@@ -404,6 +406,8 @@ export async function ftsSearchTranscripts(
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
       ts_rank(t."searchVector", websearch_to_tsquery('portuguese', ${q})) AS rank,
       LEFT(t."summaryMd", 800) AS summary,
+      folder.name AS folder,
+      t."createdAt",
       COALESCE((
         SELECT array_agg(tag.name ORDER BY tag.name)
         FROM "TranscriptTag" tt
@@ -411,6 +415,7 @@ export async function ftsSearchTranscripts(
         WHERE tt."transcriptId" = t.id
       ), ARRAY[]::text[]) AS tags
     FROM "Transcript" t
+    LEFT JOIN "LibraryFolder" folder ON folder.id = t."folderId" AND folder."userId" = t."userId"
     WHERE t."userId" = ${userId}
       AND t.status = 'ACTIVE'::"ContentStatus"
       AND t."searchVector" @@ websearch_to_tsquery('portuguese', ${q})

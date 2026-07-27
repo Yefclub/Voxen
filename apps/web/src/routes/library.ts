@@ -95,6 +95,26 @@ libraryRoutes.get('/folders', async (c) => {
   });
 });
 
+// Tags com conteúdo ativo: alimentam a navegação direta da Biblioteca. A
+// contagem é feita no banco e sempre contém apenas o workspace autenticado.
+libraryRoutes.get('/tags', async (c) => {
+  const userId = c.get('userId');
+  const tags = await db.$queryRaw<Array<{ id: string; name: string; slug: string; count: bigint }>>`
+    SELECT tag.id, tag.name, tag.slug, COUNT(tt."transcriptId")::bigint AS count
+    FROM "Tag" tag
+    JOIN "TranscriptTag" tt ON tt."tagId" = tag.id
+    JOIN "Transcript" t ON t.id = tt."transcriptId"
+    WHERE tag."userId" = ${userId}
+      AND t."userId" = ${userId}
+      AND t.status = 'ACTIVE'::"ContentStatus"
+    GROUP BY tag.id, tag.name, tag.slug
+    ORDER BY count DESC, tag.name ASC
+  `;
+  return c.json({
+    tags: tags.map((tag) => ({ ...tag, count: Number(tag.count) })),
+  });
+});
+
 libraryRoutes.post('/folders', async (c) => {
   const userId = c.get('userId');
   const parsed = FolderBody.safeParse(await c.req.json().catch(() => null));
