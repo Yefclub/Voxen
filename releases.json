@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1785165340",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Brain mantém embeddings consistentes durante atualizações",
+    "body": "Quando os embeddings opcionais são atualizados, a Voxen agora coordena essa escrita com a atualização do Brain. Isso evita que um embedding concorra com a reconstrução do mapa de conhecimento do mesmo usuário.\n\nSe a coordenação estiver ocupada ou indisponível, o embedding é ignorado com segurança e pode ser atualizado em uma próxima execução, sem deixar o Brain em estado parcial.",
+    "pr": 456,
+    "author": "Kalyel",
+    "date": "2026-07-27T12:15:23-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/456"
+  },
+  {
     "version": "0.11.0-dev.1785163369",
     "channel": "dev",
     "type": "perf",
