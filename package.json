@@ -17,7 +17,9 @@
       "@smithy/core": "3.25.1",
       "shell-quote": "1.8.4",
       "js-yaml": "4.2.0",
-      "@babel/core": "7.29.6"
+      "@babel/core": "7.29.6",
+      "fast-uri": "3.1.4",
+      "postcss": "8.5.18"
     },
     "patchedDependencies": {
       "reagraph@4.32.0": "patches/reagraph@4.32.0.patch"
