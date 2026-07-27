@@ -14,4 +14,3 @@ As telas secundárias passam a carregar sob demanda na web. A aplicação abre c
 ## Brain mais confiável
 
 O processamento de embeddings do Brain passou a respeitar a mesma coordenação usada na indexação. Isso evita concorrência entre tarefas de fundo e protege o acervo quando uma atualização perde a posse do trabalho em andamento.
-
