@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { Sidebar, SidebarSpacer } from './sidebar';
 import { MobileNavDrawer } from './mobile-nav-drawer';
@@ -176,8 +176,19 @@ function AnimatedOutlet(): React.ReactElement {
   const location = useLocation();
   const outlet = useOutlet();
   return (
-    <div key={getSectionKey(location.pathname)} className="contents">
-      {outlet}
+    <Suspense fallback={<RouteLoading />}>
+      <div key={getSectionKey(location.pathname)} className="contents">
+        {outlet}
+      </div>
+    </Suspense>
+  );
+}
+
+function RouteLoading(): React.ReactElement {
+  return (
+    <div className="flex h-full min-h-48 items-center justify-center p-6">
+      <Spinner size={20} className="text-[var(--color-app-muted)]" />
+      <span className="sr-only">Carregando tela</span>
     </div>
   );
 }
