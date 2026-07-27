@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1785155159",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Voxen fica mais confiavel como app no celular",
+    "body": "O Voxen agora oferece instalacao como app no Android e instrucoes claras para adicionar ao Inicio no Safari do iPhone/iPad. A experiencia instalada acompanha melhor o tema escolhido e deixa de travar a orientacao da tela em retrato.\n\nAtualizacoes aguardam o fim de respostas em andamento antes de recarregar, preservando a sessao e o cache do app. Quando a conexao cai, a tela informa o problema e permite tentar novamente, sem tratar uma falha temporaria como logout.\n\nTambem ampliamos os alvos de toque no celular e melhoramos a acessibilidade dos dialogos de Automacoes, incluindo foco e fechamento por teclado.",
+    "pr": 446,
+    "author": "Kalyel",
+    "date": "2026-07-27T09:25:46-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/446"
+  },
+  {
     "version": "0.11.0-dev.1784459422",
     "channel": "dev",
     "type": "feat",
