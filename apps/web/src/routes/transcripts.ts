@@ -11,7 +11,7 @@
 import { Hono } from 'hono';
 import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { z } from 'zod';
-import type { Prisma } from '../../prisma-generated/client';
+import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
 import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '../lib/brain';
 import { db } from '../lib/db';
@@ -59,6 +59,70 @@ type SearchRow = {
   rank: number;
 };
 
+type TranscriptListFilters = {
+  userId: string;
+  status: 'ACTIVE' | 'ARCHIVED' | 'TRASH' | 'ALL';
+  folderId: string | null | undefined;
+  tagId: string | undefined;
+  from: Date | undefined;
+  to: Date | undefined;
+};
+
+function organizationWhere(
+  userId: string,
+  folderId: TranscriptListFilters['folderId'],
+): Prisma.TranscriptWhereInput {
+  if (folderId === undefined) return {};
+  if (folderId === null) {
+    return {
+      folderId: null,
+      tags: { none: { tag: { userId, folderId: { not: null } } } },
+    };
+  }
+  return {
+    OR: [{ folderId }, { tags: { some: { tag: { userId, folderId } } } }],
+  };
+}
+
+function buildTranscriptListWhere(filters: TranscriptListFilters): Prisma.TranscriptWhereInput {
+  const conditions: Prisma.TranscriptWhereInput[] = [{ userId: filters.userId }];
+  if (filters.status !== 'ALL') conditions.push({ status: filters.status });
+  const organization = organizationWhere(filters.userId, filters.folderId);
+  if (Object.keys(organization).length > 0) conditions.push(organization);
+  if (filters.tagId) {
+    conditions.push({ tags: { some: { tagId: filters.tagId, tag: { userId: filters.userId } } } });
+  }
+  if (filters.from || filters.to) {
+    conditions.push({
+      createdAt: {
+        ...(filters.from ? { gte: filters.from } : {}),
+        ...(filters.to ? { lt: filters.to } : {}),
+      },
+    });
+  }
+  return { AND: conditions };
+}
+
+function buildTranscriptListSqlExtra(filters: TranscriptListFilters): Prisma.Sql {
+  const conditions: Prisma.Sql[] = [];
+  if (filters.tagId) {
+    conditions.push(Prisma.sql`
+      EXISTS (
+        SELECT 1 FROM "TranscriptTag" selected_tag
+        JOIN "Tag" tag ON tag.id = selected_tag."tagId"
+        WHERE selected_tag."transcriptId" = t.id
+          AND selected_tag."tagId" = ${filters.tagId}
+          AND tag."userId" = ${filters.userId}
+      )
+    `);
+  }
+  if (filters.from) conditions.push(Prisma.sql`t."createdAt" >= ${filters.from}`);
+  if (filters.to) conditions.push(Prisma.sql`t."createdAt" < ${filters.to}`);
+  return conditions.length === 0
+    ? Prisma.empty
+    : Prisma.sql`AND ${Prisma.join(conditions, ' AND ')}`;
+}
+
 transcriptsRoutes.use('*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.json({ error: 'Não autenticado.' }, 401);
@@ -77,22 +141,16 @@ transcriptsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const query = (c.req.query('q') ?? '').trim();
   const status = normalizeStatus(c.req.query('status'));
-  const folderId = normalizeFolderId(c.req.query('folderId'));
+  const inbox = c.req.query('view') === 'inbox';
+  const folderId = inbox ? null : normalizeFolderId(c.req.query('folderId'));
+  const tagId = normalizeTagId(c.req.query('tagId'));
+  const from = parseCreatedAtBound(c.req.query('from'));
+  const to = parseCreatedAtBound(c.req.query('to'));
   const limit = parseListLimit(c.req.query('limit'));
   const offset = parseListOffset(c.req.query('offset'));
-  const folderWhere: Prisma.TranscriptWhereInput =
-    folderId === undefined
-      ? {}
-      : folderId === null
-        ? { folderId: null, tags: { none: { tag: { folderId: { not: null } } } } }
-        : {
-            OR: [{ folderId }, { tags: { some: { tag: { userId, folderId } } } }],
-          };
-  const where: Prisma.TranscriptWhereInput = {
-    userId,
-    ...(status === 'ALL' ? {} : { status }),
-    ...folderWhere,
-  };
+  const filters: TranscriptListFilters = { userId, status, folderId, tagId, from, to };
+  const where = buildTranscriptListWhere(filters);
+  const sqlExtra = buildTranscriptListSqlExtra(filters);
 
   if (query.length === 0) {
     const [transcripts, total] = await Promise.all([
@@ -174,6 +232,7 @@ transcriptsRoutes.get('/', async (c) => {
           )
         ))
       )
+      ${sqlExtra}
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
         OR EXISTS (
@@ -184,7 +243,7 @@ transcriptsRoutes.get('/', async (c) => {
             AND (tg.name ILIKE ${tagLike} OR tg.slug ILIKE ${tagSlugLike})
         )
       )
-    ORDER BY rank DESC, t."createdAt" DESC
+    ORDER BY rank DESC, t."createdAt" DESC, t.id DESC
     LIMIT ${limit} OFFSET ${offset}
   `
       : await db.$queryRaw<SearchRow[]>`
@@ -237,6 +296,7 @@ transcriptsRoutes.get('/', async (c) => {
           )
         ))
       )
+      ${sqlExtra}
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
         OR EXISTS (
@@ -247,7 +307,7 @@ transcriptsRoutes.get('/', async (c) => {
             AND (tg.name ILIKE ${tagLike} OR tg.slug ILIKE ${tagSlugLike})
         )
       )
-    ORDER BY rank DESC, t."createdAt" DESC
+    ORDER BY rank DESC, t."createdAt" DESC, t.id DESC
     LIMIT ${limit} OFFSET ${offset}
   `;
 
@@ -273,6 +333,7 @@ transcriptsRoutes.get('/', async (c) => {
           )
         ))
       )
+      ${sqlExtra}
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
         OR EXISTS (
@@ -305,6 +366,7 @@ transcriptsRoutes.get('/', async (c) => {
           )
         ))
       )
+      ${sqlExtra}
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
         OR EXISTS (
@@ -974,6 +1036,17 @@ function normalizeFolderId(value: string | undefined): string | null | undefined
   if (!value) return undefined;
   if (value === 'none') return null;
   return value;
+}
+
+function normalizeTagId(value: string | undefined): string | undefined {
+  const id = value?.trim();
+  return id && id.length <= 191 ? id : undefined;
+}
+
+function parseCreatedAtBound(value: string | undefined): Date | undefined {
+  if (!value || value.length > 40) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
 const DEFAULT_LIST_LIMIT = 24;

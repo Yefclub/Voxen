@@ -352,6 +352,8 @@ export function buildLibrarySuggestionsInstructions(items: readonly FtsResult[])
     id: cleanUntrustedMetadata(item.id, 100),
     title: cleanUntrustedMetadata(item.title, 180),
     tags: item.tags.slice(0, 8).map((tag) => cleanUntrustedMetadata(tag, 80)),
+    folder: item.folder ? cleanUntrustedMetadata(item.folder, 120) : null,
+    capturedAt: item.createdAt.toISOString(),
     summary: item.summary ? cleanUntrustedMetadata(item.summary, 320) : null,
   }));
   const serialized = JSON.stringify(metadata).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
@@ -418,6 +420,7 @@ export function buildTools(
             title: true,
             createdAt: true,
             summaryMd: true,
+            folder: { select: { name: true } },
             tags: { select: { tag: { select: { name: true } } } },
           },
         });
@@ -428,6 +431,7 @@ export function buildTools(
             title: row.title,
             createdAt: row.createdAt.toISOString(),
             summary: row.summaryMd,
+            folder: row.folder?.name ?? null,
             tags: row.tags.map((item) => item.tag.name),
           })),
           count: rows.length,
@@ -668,6 +672,8 @@ export function buildTools(
             url: true,
             plainText: true,
             summaryMd: true,
+            createdAt: true,
+            folder: { select: { name: true } },
             tags: { select: { tag: { select: { name: true } } } },
           },
         });
@@ -677,6 +683,8 @@ export function buildTools(
           title: transcript.title,
           url: transcript.url,
           summary: transcript.summaryMd,
+          folder: transcript.folder?.name ?? null,
+          createdAt: transcript.createdAt.toISOString(),
           tags: transcript.tags.map((item) => item.tag.name),
           content: transcript.plainText.slice(0, 20_000),
         };
