@@ -1,4 +1,5 @@
 ---
+tipo: feat
 titulo: Voxen 0.12.0 — Conhecimento vivo, conversa confiável e experiência móvel
 ---
 
