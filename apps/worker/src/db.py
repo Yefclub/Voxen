@@ -908,6 +908,9 @@ async def store_content_embedding(
     """Persiste embedding no metadata do nó CONTENT (opt-in, sem pgvector)."""
     if not vector:
         return False
+    lease = await acquire_graph_index_lease(user_id)
+    if lease is None:
+        return False
     payload = {
         "embedding": {
             "model": model,
@@ -916,20 +919,28 @@ async def store_content_embedding(
             "updatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         }
     }
-    async with connection() as conn:
-        result = await conn.execute(
-            """
-            UPDATE "BrainNode"
-            SET metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
-                "updatedAt" = NOW()
-            WHERE "userId" = $1
-              AND key = $2
-            """,
-            user_id,
-            f"TRANSCRIPT:{transcript_id}",
-            json.dumps(payload),
-        )
-    return str(result) == "UPDATE 1"
+    try:
+        async with lease.heartbeat():
+            if not await lease.renew():
+                return False
+            async with connection() as conn:
+                if not lease.locally_owned():
+                    return False
+                result = await conn.execute(
+                    """
+                    UPDATE "BrainNode"
+                    SET metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
+                        "updatedAt" = NOW()
+                    WHERE "userId" = $1
+                      AND key = $2
+                    """,
+                    user_id,
+                    f"TRANSCRIPT:{transcript_id}",
+                    json.dumps(payload),
+                )
+            return str(result) == "UPDATE 1"
+    finally:
+        await lease.release()
 
 
 def _extract_topics(value: str) -> list[dict[str, Any]]:
