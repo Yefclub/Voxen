@@ -162,6 +162,83 @@ describeIfDb('library organization API', () => {
     expect(body.folders.find((item) => item.id === folderB.id)?._count.transcripts).toBe(1);
   });
 
+  it('pesquisa e pagina tags ativas sem cruzar workspaces', async () => {
+    await signUp('tags-owner@voxen.local', 'senha-super-segura-123', 'Tags Owner');
+    const signin = await signIn('tags-owner@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const owner = await db.user.findUniqueOrThrow({ where: { email: 'tags-owner@voxen.local' } });
+    const names = ['Pesquisa Alfa', 'Pesquisa Beta', 'Produto'];
+    for (const [index, name] of names.entries()) {
+      const tag = await db.tag.create({
+        data: { userId: owner.id, name, slug: `tag-${index}` },
+      });
+      await db.transcript.create({
+        data: {
+          userId: owner.id,
+          source: 'WEB',
+          url: `https://example.com/tag-search-${index}`,
+          title: `Conteúdo ${name}`,
+          durationSec: 0,
+          language: 'pt',
+          transcriptionMethod: 'SCRAPE',
+          mdPath: `workspaces/${owner.id}/transcripts/tag-search-${index}.md`,
+          plainText: `conteúdo de ${name}`,
+          frontmatter: {},
+          tags: { create: { tagId: tag.id } },
+        },
+      });
+    }
+
+    const foreign = await db.user.create({
+      data: { email: 'tags-foreign@voxen.local', name: 'Tags Foreign', status: 'APPROVED' },
+    });
+    const foreignTag = await db.tag.create({
+      data: { userId: foreign.id, name: 'Pesquisa Externa', slug: 'pesquisa-externa' },
+    });
+    await db.transcript.create({
+      data: {
+        userId: foreign.id,
+        source: 'WEB',
+        url: 'https://example.com/tag-search-foreign',
+        title: 'Conteúdo externo',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${foreign.id}/transcripts/tag-search-foreign.md`,
+        plainText: 'conteúdo externo',
+        frontmatter: {},
+        tags: { create: { tagId: foreignTag.id } },
+      },
+    });
+
+    const pages = await Promise.all(
+      [0, 1].map((offset) =>
+        app.fetch(
+          new Request(`http://localhost/api/library/tags?q=pesquisa&limit=1&offset=${offset}`, {
+            headers: { cookie },
+          }),
+        ),
+      ),
+    );
+    const bodies = await Promise.all(
+      pages.map(async (page) => {
+        expect(page.status).toBe(200);
+        return (await page.json()) as {
+          tags: Array<{ name: string; count: number }>;
+          total: number;
+          hasMore: boolean;
+          limit: number;
+          offset: number;
+        };
+      }),
+    );
+
+    expect(bodies.map((body) => body.tags[0]?.name)).toEqual(['Pesquisa Alfa', 'Pesquisa Beta']);
+    expect(bodies[0]).toMatchObject({ total: 2, hasMore: true, limit: 1, offset: 0 });
+    expect(bodies[1]).toMatchObject({ total: 2, hasMore: false, limit: 1, offset: 1 });
+    expect(bodies.flatMap((body) => body.tags).every((tag) => tag.count === 1)).toBe(true);
+  });
+
   it('expõe Inbox, tags e período sem cruzar workspaces', async () => {
     await signUp('organizer@voxen.local', 'senha-super-segura-123', 'Organizer');
     const signin = await signIn('organizer@voxen.local', 'senha-super-segura-123');

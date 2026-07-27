@@ -44,6 +44,8 @@ import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
 import { sourceHostname } from '../lib/source-url';
 
 const PAGE_SIZE = 24;
+const TAG_CHIP_LIMIT = 6;
+const TAG_DISCOVERY_PAGE_SIZE = 24;
 
 interface TranscriptSummary {
   id: string;
@@ -95,6 +97,11 @@ interface LibraryTag {
 
 interface TagsResponse {
   tags: LibraryTag[];
+  total: number;
+  limit: number;
+  offset: number;
+  query: string;
+  hasMore: boolean;
 }
 
 type StatusFilter = 'active' | 'archived' | 'trash';
@@ -156,9 +163,12 @@ export function TranscricoesPage(): React.ReactElement {
   const { data, loading, error, refresh: refreshTranscripts } = useFetch<SearchResponse>(listUrl);
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
-  const { data: tagsData, refresh: refreshTags } = useFetch<TagsResponse>('/api/library/tags');
+  const { data: tagsData, refresh: refreshTags } = useFetch<TagsResponse>(
+    `/api/library/tags?limit=${TAG_CHIP_LIMIT}`,
+  );
   const folders = foldersData?.folders ?? [];
   const tags = tagsData?.tags ?? [];
+  const tagTotal = tagsData?.total ?? tags.length;
   const isSearching = debouncedQ.length > 0;
   const queryChanging = q !== debouncedQ;
 
@@ -438,15 +448,11 @@ export function TranscricoesPage(): React.ReactElement {
     () => splitFolderChips(sortedFolders, LIBRARY_FOLDER_CHIP_LIMIT),
     [sortedFolders],
   );
-  const { visible: visibleTags, overflow: overflowTags } = useMemo(
-    () => splitFolderChips(tags, LIBRARY_FOLDER_CHIP_LIMIT),
-    [tags],
-  );
   const activeFolderHidden =
     folderFilter !== null &&
     folderFilter !== 'none' &&
     overflowFolders.some((folder) => folder.id === folderFilter);
-  const activeTagHidden = tagFilter !== null && overflowTags.some((tag) => tag.id === tagFilter);
+  const activeTagHidden = tagFilter !== null && !tags.some((tag) => tag.id === tagFilter);
   const captureWeeks = useMemo(() => groupByCaptureWeek(items), [items]);
 
   return (
@@ -675,7 +681,7 @@ export function TranscricoesPage(): React.ReactElement {
           </div>
         </section>
 
-        {tags.length > 0 && (
+        {tagTotal > 0 && (
           <section className="space-y-2">
             <div className="flex items-center gap-2">
               <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
@@ -693,7 +699,7 @@ export function TranscricoesPage(): React.ReactElement {
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {visibleTags.map((tag) => (
+              {tags.map((tag) => (
                 <FolderChip
                   key={tag.id}
                   active={tagFilter === tag.id}
@@ -703,10 +709,9 @@ export function TranscricoesPage(): React.ReactElement {
                   count={tag.count}
                 />
               ))}
-              {overflowTags.length > 0 && (
+              {tagTotal > tags.length && (
                 <TagOverflowMenu
-                  tags={tags}
-                  hiddenCount={overflowTags.length}
+                  hiddenCount={tagTotal - tags.length}
                   active={activeTagHidden}
                   activeTagId={tagFilter}
                   onSelect={setTag}
@@ -970,14 +975,12 @@ function FolderOverflowMenu({
 }
 
 function TagOverflowMenu({
-  tags,
   hiddenCount,
   active,
   activeTagId,
   onSelect,
   translate,
 }: {
-  tags: LibraryTag[];
   hiddenCount: number;
   active: boolean;
   activeTagId: string | null;
@@ -986,11 +989,41 @@ function TagOverflowMenu({
 }): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const filtered = useMemo(() => filterFoldersByQuery(tags, query), [tags, query]);
+  const [offset, setOffset] = useState(0);
+  const [tags, setTags] = useState<LibraryTag[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const debouncedQuery = useDebounced(query, 200);
+  const normalizedQuery = debouncedQuery.trim().slice(0, 120);
+  const listUrl = useMemo(() => {
+    if (!open) return null;
+    const params = new URLSearchParams({
+      limit: String(TAG_DISCOVERY_PAGE_SIZE),
+      offset: String(offset),
+    });
+    if (normalizedQuery) params.set('q', normalizedQuery);
+    return `/api/library/tags?${params.toString()}`;
+  }, [normalizedQuery, offset, open]);
+  const { data, loading, error } = useFetch<TagsResponse>(listUrl);
+
+  useEffect(() => {
+    if (!data || data.offset !== offset || data.query !== normalizedQuery) return;
+    setTags((previous) => (offset === 0 ? data.tags : mergeById(previous, data.tags)));
+    setHasMore(data.hasMore);
+  }, [data, normalizedQuery, offset]);
 
   function handleOpenChange(next: boolean): void {
     setOpen(next);
+    setOffset(0);
+    setTags([]);
+    setHasMore(false);
     if (!next) setQuery('');
+  }
+
+  function setSearchQuery(next: string): void {
+    setQuery(next);
+    setOffset(0);
+    setTags([]);
+    setHasMore(false);
   }
 
   return (
@@ -1019,7 +1052,7 @@ function TagOverflowMenu({
               type="text"
               autoFocus
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={translate('library.tagSearchPlaceholder')}
               aria-label={translate('library.tagSearchLabel')}
               autoComplete="off"
@@ -1029,21 +1062,32 @@ function TagOverflowMenu({
           </div>
         </div>
         <div className="max-h-64 overflow-y-auto p-1">
-          {filtered.length === 0 && (
+          {loading && tags.length === 0 && (
+            <div className="flex justify-center px-2 py-4">
+              <Loader2 className="h-4 w-4 animate-spin text-[var(--color-app-muted)]" />
+            </div>
+          )}
+          {!loading && error && (
+            <p className="px-2 py-3 text-center text-[11px] text-[var(--color-app-muted)]">
+              {translate('library.tagLoadError')}
+            </p>
+          )}
+          {!loading && !error && tags.length === 0 && (
             <p className="px-2 py-3 text-center text-[11px] text-[var(--color-app-muted)]">
               {translate('library.tagSearchEmpty')}
             </p>
           )}
-          {filtered.map((tag) => (
+          {tags.map((tag) => (
             <button
               key={tag.id}
               type="button"
+              aria-pressed={activeTagId === tag.id}
               onClick={() => {
                 onSelect(tag.id);
                 setOpen(false);
               }}
               className={[
-                'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                'flex min-h-11 w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
                 activeTagId === tag.id
                   ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
                   : 'text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
@@ -1056,6 +1100,17 @@ function TagOverflowMenu({
               </span>
             </button>
           ))}
+          {hasMore && (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => setOffset(tags.length)}
+              className="flex min-h-10 w-full items-center justify-center gap-1.5 rounded px-2 py-1.5 text-[11px] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] disabled:opacity-60"
+            >
+              {loading && <Loader2 className="h-3 w-3 animate-spin" />}
+              {translate('library.loadMore')}
+            </button>
+          )}
         </div>
       </PopoverContent>
     </Popover>
@@ -1167,7 +1222,7 @@ function TranscriptRow({
   );
 }
 
-function mergeById(prev: TranscriptSummary[], next: TranscriptSummary[]): TranscriptSummary[] {
+function mergeById<T extends { id: string }>(prev: T[], next: T[]): T[] {
   const seen = new Set(prev.map((t) => t.id));
   const merged = [...prev];
   for (const item of next) {
