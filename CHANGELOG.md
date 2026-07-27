@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.11.0-dev.1785163369 — 2026-07-27 · Dev
+
+### ⚡ Telas mais rápidas ao navegar pela Voxen
+
+Chat, Biblioteca, Notas, Grafo, Automações e Administração passam a ser preparados somente quando você abre cada área. Isso reduz o trabalho do primeiro acesso, especialmente em conexão móvel e no app instalado.
+
+Ao trocar de tela, a navegação continua visível e a área de conteúdo mostra um indicador de carregamento acessível enquanto a página é preparada.
+
 ## v0.11.0-dev.1785161161 — 2026-07-27 · Dev
 
 ### ⚡ Biblioteca encontra tags grandes sem pesar no celular

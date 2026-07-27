@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1785163369",
+    "channel": "dev",
+    "type": "perf",
+    "title": "Telas mais rápidas ao navegar pela Voxen",
+    "body": "Chat, Biblioteca, Notas, Grafo, Automações e Administração passam a ser preparados somente quando você abre cada área. Isso reduz o trabalho do primeiro acesso, especialmente em conexão móvel e no app instalado.\n\nAo trocar de tela, a navegação continua visível e a área de conteúdo mostra um indicador de carregamento acessível enquanto a página é preparada.",
+    "pr": 454,
+    "author": "Kalyel",
+    "date": "2026-07-27T11:42:30-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/454"
+  },
+  {
     "version": "0.11.0-dev.1785161161",
     "channel": "dev",
     "type": "perf",
