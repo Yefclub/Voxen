@@ -10,7 +10,11 @@ import structlog
 from . import db, events, scraper, storage, summary, voxen_settings
 from .cancellation import CancelledException, is_cancelled
 from .openrouter import generate_content_title
-from .pipeline import PermanentError, _maybe_assign_folder  # noqa: PLC2701
+from .pipeline import (  # noqa: PLC2701
+    PermanentError,
+    _maybe_assign_folder,
+    _maybe_generate_tags,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -49,7 +53,27 @@ async def run(*, job_id: str, user_id: str, source_url: str, log: Any) -> None: 
     await summary.maybe_generate(
         user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
+    _check_cancel(job_id)
+    await events.publish_job_event(user_id, job_id, "tagging", percent=99)
+    await _maybe_generate_tags(
+        user_id=user_id,
+        job_id=job_id,
+        transcript_id=new_transcript_id,
+        log=log,
+    )
     await db.reindex_transcript_brain_node(user_id, new_transcript_id)
+    from .pipeline import _maybe_grounded_brain_extract, _maybe_store_embedding
+
+    await _maybe_grounded_brain_extract(
+        user_id=user_id,
+        transcript_id=new_transcript_id,
+        log=log,
+    )
+    await _maybe_store_embedding(
+        user_id=user_id,
+        transcript_id=new_transcript_id,
+        log=log,
+    )
 
     await db.mark_job_done(job_id)
     await events.publish_job_event(
@@ -93,11 +117,22 @@ async def _persist(
         fallback_title=result.title,
         log=log,
     )
-    thumbnail_url = result.thumbnail_url or f"/api/transcripts/{transcript_id}/preview"
+    from . import thumbnail as thumb_mod
+
+    (
+        thumbnail_url,
+        preview_object_key,
+        preview_mime_type,
+    ) = await thumb_mod.resolve_thumbnail_for_persist(
+        remote_url=result.thumbnail_url,
+        user_id=user_id,
+        transcript_id=transcript_id,
+        source_url=source_url,
+    )
 
     await storage.put_markdown(key=md_key, content=result.markdown)
 
-    frontmatter = {
+    frontmatter: dict[str, Any] = {
         "id": transcript_id,
         "userId": user_id,
         "source": "WEB",
@@ -109,6 +144,11 @@ async def _persist(
         "language": result.language,
         "transcriptionMethod": "SCRAPE",
     }
+    if preview_object_key:
+        frontmatter["preview"] = {
+            "objectKey": preview_object_key,
+            "mimeType": preview_mime_type,
+        }
 
     async with db.connection() as conn:
         await conn.execute(
@@ -117,11 +157,13 @@ async def _persist(
                 id, "userId", source, url, title, channel, author, "durationSec",
                 "publishedAt", "thumbnailUrl", language, "transcriptionMethod",
                 model, "costUsd", "mdPath", "plainText", frontmatter,
+                "previewObjectKey", "previewMimeType",
                 "createdAt", "updatedAt"
             ) VALUES (
                 $1, $2, 'WEB'::"TranscriptSource", $3, $4, $5, $6, 0,
                 $7, $8, $9, 'SCRAPE'::"TranscriptionMethod",
                 NULL, 0, $10, $11, $12::jsonb,
+                $13, $14,
                 NOW(), NOW()
             )
             """,
@@ -141,6 +183,8 @@ async def _persist(
             md_key,
             result.plain_text,
             json.dumps(frontmatter, default=str),
+            preview_object_key,
+            preview_mime_type,
         )
         await db.upsert_transcript_brain_node(
             conn,

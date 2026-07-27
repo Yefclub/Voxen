@@ -9,14 +9,18 @@
 // ============================================================================
 
 import { Hono } from 'hono';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { z } from 'zod';
+import type { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
 import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { rateLimit } from '../lib/rate-limit';
 import { deleteS3Object, s3Bucket, s3Client } from '../lib/s3';
+import { isSetupComplete } from '../lib/settings';
+import { generateTagsForContent, slugifyTag } from '../lib/tags-generate';
+import { applyTagsToTranscript, type AppliedTag } from '../lib/tags';
 import {
   generateAndPersistTranscriptSummary,
   TranscriptSummaryError,
@@ -76,10 +80,18 @@ transcriptsRoutes.get('/', async (c) => {
   const folderId = normalizeFolderId(c.req.query('folderId'));
   const limit = parseListLimit(c.req.query('limit'));
   const offset = parseListOffset(c.req.query('offset'));
-  const where = {
+  const folderWhere: Prisma.TranscriptWhereInput =
+    folderId === undefined
+      ? {}
+      : folderId === null
+        ? { folderId: null, tags: { none: { tag: { folderId: { not: null } } } } }
+        : {
+            OR: [{ folderId }, { tags: { some: { tag: { userId, folderId } } } }],
+          };
+  const where: Prisma.TranscriptWhereInput = {
     userId,
     ...(status === 'ALL' ? {} : { status }),
-    ...(folderId !== undefined ? { folderId } : {}),
+    ...folderWhere,
   };
 
   if (query.length === 0) {
@@ -94,7 +106,7 @@ transcriptsRoutes.get('/', async (c) => {
       db.transcript.count({ where }),
     ]);
     return c.json({
-      transcripts,
+      transcripts: await withTags(userId, transcripts),
       query: '',
       total,
       limit,
@@ -106,6 +118,9 @@ transcriptsRoutes.get('/', async (c) => {
   // Busca FTS em portuguese — o trigger SQL mantém o tsvector "searchVector"
   // sincronizado com `plainText`. ts_rank ordena por relevância.
   // Usamos plainto_tsquery (sanitiza input, não exige operadores).
+  // Além do FTS, casamos por nome/slug de tag do conteúdo (spec 075, R6).
+  const tagLike = `%${query}%`;
+  const tagSlugLike = `%${slugifyTag(query)}%`;
   const rows =
     status === 'ALL'
       ? await db.$queryRaw<SearchRow[]>`
@@ -141,8 +156,34 @@ transcriptsRoutes.get('/', async (c) => {
     FROM "Transcript" t
     LEFT JOIN "LibraryFolder" f ON f.id = t."folderId" AND f."userId" = t."userId"
     WHERE t."userId" = ${userId}
-      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
-      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+      AND (
+        ${folderId === undefined}
+        OR (${folderId === null} AND t."folderId" IS NULL AND NOT EXISTS (
+          SELECT 1 FROM "TranscriptTag" ft
+          JOIN "Tag" ftag ON ftag.id = ft."tagId"
+          WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+            AND ftag."folderId" IS NOT NULL
+        ))
+        OR (${typeof folderId === 'string'} AND (
+          t."folderId" = ${folderId ?? ''}
+          OR EXISTS (
+            SELECT 1 FROM "TranscriptTag" ft
+            JOIN "Tag" ftag ON ftag.id = ft."tagId"
+            WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+              AND ftag."folderId" = ${folderId ?? ''}
+          )
+        ))
+      )
+      AND (
+        t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR EXISTS (
+          SELECT 1 FROM "TranscriptTag" tt
+          JOIN "Tag" tg ON tg.id = tt."tagId"
+          WHERE tt."transcriptId" = t.id
+            AND tg."userId" = ${userId}
+            AND (tg.name ILIKE ${tagLike} OR tg.slug ILIKE ${tagSlugLike})
+        )
+      )
     ORDER BY rank DESC, t."createdAt" DESC
     LIMIT ${limit} OFFSET ${offset}
   `
@@ -180,8 +221,32 @@ transcriptsRoutes.get('/', async (c) => {
     LEFT JOIN "LibraryFolder" f ON f.id = t."folderId" AND f."userId" = t."userId"
     WHERE t."userId" = ${userId}
       AND t.status = ${status}::"ContentStatus"
-      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
-      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+      AND (
+        ${folderId === undefined}
+        OR (${folderId === null} AND t."folderId" IS NULL AND NOT EXISTS (
+          SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+          WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+            AND ftag."folderId" IS NOT NULL
+        ))
+        OR (${typeof folderId === 'string'} AND (
+          t."folderId" = ${folderId ?? ''}
+          OR EXISTS (
+            SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+            WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+              AND ftag."folderId" = ${folderId ?? ''}
+          )
+        ))
+      )
+      AND (
+        t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR EXISTS (
+          SELECT 1 FROM "TranscriptTag" tt
+          JOIN "Tag" tg ON tg.id = tt."tagId"
+          WHERE tt."transcriptId" = t.id
+            AND tg."userId" = ${userId}
+            AND (tg.name ILIKE ${tagLike} OR tg.slug ILIKE ${tagSlugLike})
+        )
+      )
     ORDER BY rank DESC, t."createdAt" DESC
     LIMIT ${limit} OFFSET ${offset}
   `;
@@ -192,19 +257,67 @@ transcriptsRoutes.get('/', async (c) => {
     SELECT COUNT(*)::bigint AS count
     FROM "Transcript" t
     WHERE t."userId" = ${userId}
-      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
-      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+      AND (
+        ${folderId === undefined}
+        OR (${folderId === null} AND t."folderId" IS NULL AND NOT EXISTS (
+          SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+          WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+            AND ftag."folderId" IS NOT NULL
+        ))
+        OR (${typeof folderId === 'string'} AND (
+          t."folderId" = ${folderId ?? ''}
+          OR EXISTS (
+            SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+            WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+              AND ftag."folderId" = ${folderId ?? ''}
+          )
+        ))
+      )
+      AND (
+        t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR EXISTS (
+          SELECT 1 FROM "TranscriptTag" tt
+          JOIN "Tag" tg ON tg.id = tt."tagId"
+          WHERE tt."transcriptId" = t.id
+            AND tg."userId" = ${userId}
+            AND (tg.name ILIKE ${tagLike} OR tg.slug ILIKE ${tagSlugLike})
+        )
+      )
   `
       : await db.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*)::bigint AS count
     FROM "Transcript" t
     WHERE t."userId" = ${userId}
       AND t.status = ${status}::"ContentStatus"
-      AND (${folderId === undefined} OR t."folderId" IS NOT DISTINCT FROM ${folderId ?? null})
-      AND t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+      AND (
+        ${folderId === undefined}
+        OR (${folderId === null} AND t."folderId" IS NULL AND NOT EXISTS (
+          SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+          WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+            AND ftag."folderId" IS NOT NULL
+        ))
+        OR (${typeof folderId === 'string'} AND (
+          t."folderId" = ${folderId ?? ''}
+          OR EXISTS (
+            SELECT 1 FROM "TranscriptTag" ft JOIN "Tag" ftag ON ftag.id = ft."tagId"
+            WHERE ft."transcriptId" = t.id AND ftag."userId" = ${userId}
+              AND ftag."folderId" = ${folderId ?? ''}
+          )
+        ))
+      )
+      AND (
+        t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR EXISTS (
+          SELECT 1 FROM "TranscriptTag" tt
+          JOIN "Tag" tg ON tg.id = tt."tagId"
+          WHERE tt."transcriptId" = t.id
+            AND tg."userId" = ${userId}
+            AND (tg.name ILIKE ${tagLike} OR tg.slug ILIKE ${tagSlugLike})
+        )
+      )
   `;
   const total = Number(totalRows[0]?.count ?? 0);
-  const transcripts = rows.map(mapSearchRow);
+  const transcripts = await withTags(userId, rows.map(mapSearchRow));
   return c.json({
     transcripts,
     query,
@@ -238,6 +351,44 @@ const TRANSCRIPT_LIST_SELECT = {
   trashedAt: true,
   createdAt: true,
 } as const;
+
+// Carrega as tags (id/name/slug) de um conjunto de transcripts, escopadas por
+// userId, e devolve um mapa transcriptId -> tags (ordenadas por nome).
+async function loadTagsForTranscripts(
+  userId: string,
+  transcriptIds: string[],
+): Promise<Map<string, AppliedTag[]>> {
+  const map = new Map<string, AppliedTag[]>();
+  if (transcriptIds.length === 0) return map;
+  const links = await db.transcriptTag.findMany({
+    where: { transcriptId: { in: transcriptIds }, tag: { userId } },
+    select: {
+      transcriptId: true,
+      tag: { select: { id: true, name: true, slug: true } },
+    },
+  });
+  for (const link of links) {
+    const list = map.get(link.transcriptId) ?? [];
+    list.push(link.tag);
+    map.set(link.transcriptId, list);
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }
+  return map;
+}
+
+// Anexa `tags` a cada item de uma lista de transcripts (in-place funcional).
+async function withTags<T extends { id: string }>(
+  userId: string,
+  items: T[],
+): Promise<(T & { tags: AppliedTag[] })[]> {
+  const map = await loadTagsForTranscripts(
+    userId,
+    items.map((i) => i.id),
+  );
+  return items.map((i) => ({ ...i, tags: map.get(i.id) ?? [] }));
+}
 
 transcriptsRoutes.get('/:id', async (c) => {
   const userId = c.get('userId');
@@ -309,7 +460,8 @@ transcriptsRoutes.get('/:id', async (c) => {
     }
   })();
 
-  return c.json({ transcript: { ...transcript, totalCostUsd }, markdown });
+  const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
+  return c.json({ transcript: { ...transcript, totalCostUsd, tags }, markdown });
 });
 
 transcriptsRoutes.get('/:id/original', async (c) => {
@@ -366,12 +518,14 @@ transcriptsRoutes.get('/:id/original', async (c) => {
 transcriptsRoutes.get('/:id/preview', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const transcript = await db.transcript.findFirst({
+  let transcript = await db.transcript.findFirst({
     where: { id, userId },
     select: {
       id: true,
       title: true,
       source: true,
+      url: true,
+      thumbnailUrl: true,
       previewObjectKey: true,
       previewMimeType: true,
       originalObjectKey: true,
@@ -379,6 +533,26 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
     },
   });
   if (!transcript) return c.text('', 404);
+
+  // Lazy-mirror: se ainda só temos URL remota (legado TikTok/IG), tenta
+  // baixar e gravar no S3 uma vez. Se a CDN já 403, cai no SVG.
+  if (!transcript.previewObjectKey && isHttpUrl(transcript.thumbnailUrl)) {
+    const mirrored = await tryMirrorRemoteThumbnail({
+      userId,
+      transcriptId: id,
+      remoteUrl: transcript.thumbnailUrl!,
+      referer: transcript.url,
+    });
+    if (mirrored) {
+      transcript = {
+        ...transcript,
+        previewObjectKey: mirrored.key,
+        previewMimeType: mirrored.mime,
+        thumbnailUrl: `/api/transcripts/${id}/preview`,
+      };
+    }
+  }
+
   // Só servimos a imagem original como preview se for raster segura
   // (png/jpeg/webp/gif). image/svg+xml é executável em navegação direta à URL →
   // cai no placeholder. A preview gerada (previewObjectKey) é sempre JPEG nosso.
@@ -420,6 +594,69 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
       'cache-control': 'private, max-age=300',
       'x-content-type-options': 'nosniff',
     },
+  });
+});
+
+/** POST /:id/refresh-thumbnail — tenta espelhar de novo a capa (URL remota ou re-probe leve). */
+transcriptsRoutes.post('/:id/refresh-thumbnail', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId, status: { not: 'TRASH' } },
+    select: {
+      id: true,
+      url: true,
+      thumbnailUrl: true,
+      previewObjectKey: true,
+    },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+
+  const remote =
+    isHttpUrl(transcript.thumbnailUrl) && transcript.thumbnailUrl ? transcript.thumbnailUrl : null;
+  if (!remote) {
+    // Já está no path interno / sem URL remota: limpa broken e usa placeholder.
+    await db.transcript.update({
+      where: { id },
+      data: {
+        thumbnailUrl: `/api/transcripts/${id}/preview`,
+      },
+    });
+    return c.json({
+      ok: true,
+      mirrored: false,
+      thumbnailUrl: `/api/transcripts/${id}/preview`,
+      hint: 'Sem URL remota para rebaixar; capa usa placeholder interno.',
+    });
+  }
+
+  const mirrored = await tryMirrorRemoteThumbnail({
+    userId,
+    transcriptId: id,
+    remoteUrl: remote,
+    referer: transcript.url,
+  });
+  if (!mirrored) {
+    await db.transcript.update({
+      where: { id },
+      data: { thumbnailUrl: `/api/transcripts/${id}/preview` },
+    });
+    return c.json(
+      {
+        ok: false,
+        mirrored: false,
+        thumbnailUrl: `/api/transcripts/${id}/preview`,
+        error:
+          'Não foi possível baixar a capa remota (URL expirada ou bloqueada). Usando placeholder.',
+      },
+      422,
+    );
+  }
+  return c.json({
+    ok: true,
+    mirrored: true,
+    thumbnailUrl: `/api/transcripts/${id}/preview`,
+    previewObjectKey: mirrored.key,
   });
 });
 
@@ -524,6 +761,77 @@ transcriptsRoutes.patch('/:id/organization', async (c) => {
   await reindexTranscriptBrain(userId, id);
   await invalidateGraphCache(userId);
   return c.json({ transcript });
+});
+
+// POST /api/transcripts/:id/generate-tags — gera tags via IA para UM conteúdo
+// (spec 075). Re-gera e faz merge (dedup por slug); nunca duplica. Throttle
+// 1/min por transcript pra não queimar tokens em cliques repetidos.
+transcriptsRoutes.post('/:id/generate-tags', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  if (!(await isSetupComplete())) {
+    return c.json({ error: 'Setup incompleto.' }, 412);
+  }
+
+  const rl = await rateLimit(`voxen:rl:tags:${id}`, 1, 60);
+  if (!rl.allowed) {
+    return c.json(
+      { error: `Aguarde ${rl.resetIn}s antes de gerar tags novamente.`, retryAfter: rl.resetIn },
+      429,
+    );
+  }
+
+  const transcript = await db.transcript.findFirst({
+    where: { id, userId },
+    select: { id: true, title: true, plainText: true, summaryMd: true, folderId: true },
+  });
+  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
+
+  const content = ((transcript.summaryMd ?? '') || (transcript.plainText ?? '')).trim();
+  if (content.length < 40 && transcript.title.trim().length < 3) {
+    return c.json({ error: 'Conteúdo curto demais para gerar tags.' }, 422);
+  }
+
+  const existingTags = (
+    await db.tag.findMany({ where: { userId }, select: { name: true }, orderBy: { name: 'asc' } })
+  ).map((t) => t.name);
+
+  let result: Awaited<ReturnType<typeof generateTagsForContent>>;
+  try {
+    result = await generateTagsForContent({
+      title: transcript.title,
+      content: content || transcript.title,
+      existingTags,
+    });
+  } catch (err) {
+    console.error('[transcripts] falha ao gerar tags:', err);
+    return c.json({ error: 'Falha ao gerar tags. Tente novamente.' }, 502);
+  }
+
+  await db.costEvent.create({
+    data: {
+      userId,
+      kind: 'CHAT',
+      model: result.model,
+      tokensIn: result.tokensIn,
+      tokensOut: result.tokensOut,
+      costUsd: result.costUsd,
+      meta: { source: 'tag_generation', transcript_id: transcript.id, tags: result.tags },
+    },
+  });
+
+  if (result.tags.length === 0) {
+    return c.json({ tags: [] as AppliedTag[], generated: 0 });
+  }
+
+  const applied = await applyTagsToTranscript(
+    userId,
+    { id: transcript.id, folderId: transcript.folderId },
+    result.tags,
+  );
+  // Devolve TODAS as tags do conteúdo (merge acumulado), não só as novas.
+  const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
+  return c.json({ tags, generated: applied.length });
 });
 
 const LifecycleBody = z.object({
@@ -784,6 +1092,106 @@ function sourceLabel(source: string): string {
   if (source === 'UPLOAD') return 'UPLOAD';
   if (source === 'X') return 'X';
   return source;
+}
+
+function isHttpUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.startsWith('https://') || url.startsWith('http://');
+}
+
+const THUMB_HOST_SUFFIXES = [
+  'ytimg.com',
+  'ggpht.com',
+  'googleusercontent.com',
+  'tiktokcdn.com',
+  'tiktokcdn-us.com',
+  'tiktokv.com',
+  'byteoversea.com',
+  'ibyteimg.com',
+  'cdninstagram.com',
+  'fbcdn.net',
+  'twimg.com',
+];
+
+function thumbHostAllowed(host: string): boolean {
+  const h = host.toLowerCase().replace(/\.$/, '');
+  if (!h || h === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return false;
+  return THUMB_HOST_SUFFIXES.some((s) => h === s || h.endsWith(`.${s}`));
+}
+
+function mimeFromContentType(ct: string | null, url: string): { ext: string; mime: string } {
+  const base = (ct ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+  if (base === 'image/jpeg' || base === 'image/jpg') return { ext: 'jpg', mime: 'image/jpeg' };
+  if (base === 'image/png') return { ext: 'png', mime: 'image/png' };
+  if (base === 'image/webp') return { ext: 'webp', mime: 'image/webp' };
+  if (base === 'image/gif') return { ext: 'gif', mime: 'image/gif' };
+  const path = url.toLowerCase();
+  if (path.includes('.png')) return { ext: 'png', mime: 'image/png' };
+  if (path.includes('.webp')) return { ext: 'webp', mime: 'image/webp' };
+  return { ext: 'jpg', mime: 'image/jpeg' };
+}
+
+async function tryMirrorRemoteThumbnail(opts: {
+  userId: string;
+  transcriptId: string;
+  remoteUrl: string;
+  referer?: string | null;
+}): Promise<{ key: string; mime: string } | null> {
+  let host: string;
+  try {
+    host = new URL(opts.remoteUrl).hostname;
+  } catch {
+    return null;
+  }
+  if (!thumbHostAllowed(host)) return null;
+
+  const headers: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (compatible; VoxenBot/1.0; +https://github.com/Yefclub/Voxen)',
+    Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+  };
+  if (opts.referer) headers.Referer = opts.referer;
+
+  try {
+    const res = await fetch(opts.remoteUrl, {
+      headers,
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength === 0 || buf.byteLength > 8 * 1024 * 1024) return null;
+    const isJpeg = buf[0] === 0xff && buf[1] === 0xd8;
+    const isPng = buf[0] === 0x89 && buf[1] === 0x50;
+    const isGif = buf[0] === 0x47 && buf[1] === 0x49;
+    const isWebp = buf.length > 12 && buf.toString('ascii', 8, 12) === 'WEBP';
+    if (!isJpeg && !isPng && !isGif && !isWebp) return null;
+
+    const { ext, mime } = mimeFromContentType(res.headers.get('content-type'), opts.remoteUrl);
+    const key = `workspaces/${opts.userId}/transcripts/${opts.transcriptId}/thumbnail.${ext}`;
+    await s3Client().send(
+      new PutObjectCommand({
+        Bucket: s3Bucket(),
+        Key: key,
+        Body: buf,
+        ContentType: mime,
+      }),
+    );
+    await db.transcript.update({
+      where: { id: opts.transcriptId },
+      data: {
+        previewObjectKey: key,
+        previewMimeType: mime,
+        thumbnailUrl: `/api/transcripts/${opts.transcriptId}/preview`,
+      },
+    });
+    return { key, mime };
+  } catch (err) {
+    console.warn(
+      '[transcripts] mirror thumbnail failed:',
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
 }
 
 function escapeXml(value: string): string {

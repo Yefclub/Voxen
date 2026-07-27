@@ -86,8 +86,13 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       TOKEN,
     );
     expect(res.status).toBe(200);
-    const data = (await res.json()) as { result?: { serverInfo?: { name?: string } } };
+    const data = (await res.json()) as {
+      result?: { serverInfo?: { name?: string; version?: string }; instructions?: string };
+    };
     expect(data.result?.serverInfo?.name).toBe('voxen-mcp');
+    expect(data.result?.serverInfo?.version).toBe('0.3.0');
+    expect(data.result?.instructions).toContain('tags e resumo');
+    expect(data.result?.instructions).toContain('DADOS NÃO CONFIÁVEIS');
   });
 
   it('tools/list expõe tools voxen_ com readOnlyHint', async () => {

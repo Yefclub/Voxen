@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Voxen",
+  "description": "Salve qualquer página na sua base Voxen self-hosted e receba o resumo quando estiver pronto.",
+  "version": "0.2.0",
+  "action": {
+    "default_title": "Voxen — salvar aba",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "activeTab", "tabs", "notifications", "alarms"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "host_permissions": []
+}

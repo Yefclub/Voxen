@@ -1,5 +1,12 @@
 import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
+import {
+  GRAPH_INDEX_HEARTBEAT_MS,
+  GRAPH_INDEX_LEASE_TTL_MS,
+  acquireGraphIndexLease,
+  releaseGraphIndexLease,
+  renewGraphIndexLease,
+} from './graph-index-coordinator';
 
 type BrainSourceType = 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL';
 type BrainNodeType = 'CONTENT' | 'FOLDER' | 'ENTITY' | 'TOPIC' | 'CLAIM' | 'EVENT' | 'CLUSTER';
@@ -17,6 +24,13 @@ type ContentStatus = 'ACTIVE' | 'ARCHIVED' | 'TRASH';
 
 type JsonObject = Prisma.InputJsonObject;
 
+type BrainEdgeWriteCheckpoint = {
+  method: string;
+  kind: BrainEdgeKind;
+  fromNodeId: string;
+  toNodeId: string;
+};
+
 function isBrainFkError(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003';
 }
@@ -31,7 +45,78 @@ type BrainNodeInput = {
   metadata?: JsonObject;
   sourceType?: BrainSourceType | null;
   sourceId?: string | null;
+  metadataMode?: 'replace' | 'merge' | 'reset-completion';
 };
+
+export type BrainReindexOptions = {
+  beforeFinalize?: () => void | Promise<void>;
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
+  assertLeaseOwnership?: BrainReindexGuard;
+};
+
+export type BrainReindexGuard = () => Promise<void>;
+
+class BrainIndexLeaseLostError extends Error {
+  constructor() {
+    super('Brain index lease lost');
+  }
+}
+
+async function runWithBrainIndexLease(
+  userId: string,
+  operation: (assertLeaseOwnership: BrainReindexGuard) => Promise<void>,
+): Promise<boolean> {
+  const owner = `web-direct:${crypto.randomUUID()}`;
+  try {
+    if (!(await acquireGraphIndexLease(userId, owner))) return false;
+  } catch {
+    return false;
+  }
+
+  let leaseLost = false;
+  let leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
+  const renewLease = async (): Promise<void> => {
+    if (leaseLost) throw new BrainIndexLeaseLostError();
+    try {
+      if (!(await renewGraphIndexLease(userId, owner))) {
+        leaseLost = true;
+        throw new BrainIndexLeaseLostError();
+      }
+      leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
+    } catch (err) {
+      if (err instanceof BrainIndexLeaseLostError) throw err;
+      if (Date.now() >= leaseExpiresAt) {
+        leaseLost = true;
+        throw new BrainIndexLeaseLostError();
+      }
+    }
+  };
+  const assertLeaseOwnership = async (): Promise<void> => {
+    if (leaseLost || Date.now() >= leaseExpiresAt) {
+      leaseLost = true;
+      throw new BrainIndexLeaseLostError();
+    }
+    if (Date.now() >= leaseExpiresAt - GRAPH_INDEX_HEARTBEAT_MS) {
+      await renewLease();
+    }
+  };
+  const heartbeat = setInterval(() => {
+    void renewLease().catch(() => {
+      // O guard entre fases interrompe a materialização e mantém o marker ausente.
+    });
+  }, GRAPH_INDEX_HEARTBEAT_MS);
+  try {
+    await assertLeaseOwnership();
+    await operation(assertLeaseOwnership);
+    return true;
+  } catch (err) {
+    if (err instanceof BrainIndexLeaseLostError) return false;
+    throw err;
+  } finally {
+    clearInterval(heartbeat);
+    await releaseGraphIndexLease(userId, owner).catch(() => false);
+  }
+}
 
 type BrainEdgeInput = {
   userId: string;
@@ -45,6 +130,8 @@ type BrainEdgeInput = {
   sourceType: BrainSourceType;
   sourceId: string;
   excerpt?: string | null;
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
+  assertLeaseOwnership?: BrainReindexGuard;
 };
 
 type NoteRecord = {
@@ -93,6 +180,7 @@ type SemanticProfile = {
 };
 
 export const BRAIN_INDEX_VERSION = 3;
+export const BRAIN_TOPIC_INDEX_VERSION = 1;
 
 const DESCRIPTION_LIMIT = 800;
 const EVIDENCE_LIMIT = 600;
@@ -159,10 +247,21 @@ export async function deleteBrainForSource(
   userId: string,
   sourceType: BrainSourceType,
   sourceId: string,
+  assertLeaseOwnership?: BrainReindexGuard,
 ): Promise<void> {
+  if (!assertLeaseOwnership) {
+    await runWithBrainIndexLease(userId, async (guard) => {
+      await deleteBrainForSource(userId, sourceType, sourceId, guard);
+    });
+    return;
+  }
+  await assertLeaseOwnership();
   await deleteAutomaticContentEdgesForSource(userId, sourceType, sourceId);
+  await assertLeaseOwnership();
   await removeSourceEvidence(userId, sourceType, sourceId);
+  await assertLeaseOwnership();
   await db.brainNode.deleteMany({ where: { userId, sourceType, sourceId } });
+  await assertLeaseOwnership();
   await deleteOrphanAutomaticConceptNodes(userId);
 }
 
@@ -170,13 +269,70 @@ export async function deleteBrainForSources(
   userId: string,
   sourceType: BrainSourceType,
   sourceIds: string[],
+  assertLeaseOwnership?: BrainReindexGuard,
 ): Promise<void> {
+  if (!assertLeaseOwnership) {
+    await runWithBrainIndexLease(userId, async (guard) => {
+      await deleteBrainForSources(userId, sourceType, sourceIds, guard);
+    });
+    return;
+  }
   for (const sourceId of sourceIds) {
-    await deleteBrainForSource(userId, sourceType, sourceId);
+    await assertLeaseOwnership();
+    await deleteBrainForSource(userId, sourceType, sourceId, assertLeaseOwnership);
   }
 }
 
-export async function reindexTranscriptBrain(userId: string, transcriptId: string): Promise<void> {
+export async function deleteOrphanedBrainSourceNodes(
+  userId: string,
+  assertLeaseOwnership: BrainReindexGuard,
+): Promise<void> {
+  await assertLeaseOwnership();
+  await db.$executeRaw`
+    DELETE FROM "BrainNode" n
+    WHERE n."userId" = ${userId}
+      AND (
+        (
+          n."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+          AND NOT EXISTS (
+            SELECT 1 FROM "Transcript" t
+            WHERE t.id = n."sourceId" AND t."userId" = n."userId"
+          )
+        )
+        OR (
+          n."sourceType" = 'NOTE'::"BrainSourceType"
+          AND NOT EXISTS (
+            SELECT 1 FROM "Note" note
+            WHERE note.id = n."sourceId" AND note."userId" = n."userId"
+          )
+        )
+        OR (
+          n."sourceType" = 'FOLDER'::"BrainSourceType"
+          AND NOT EXISTS (
+            SELECT 1 FROM "LibraryFolder" folder
+            WHERE folder.id = n."sourceId" AND folder."userId" = n."userId"
+          )
+        )
+      )
+  `;
+  await assertLeaseOwnership();
+  await deleteOrphanAutomaticConceptNodes(userId);
+}
+
+export async function reindexTranscriptBrain(
+  userId: string,
+  transcriptId: string,
+  options: BrainReindexOptions = {},
+): Promise<void> {
+  if (!options.assertLeaseOwnership) {
+    await runWithBrainIndexLease(userId, async (guard) => {
+      await reindexTranscriptBrain(userId, transcriptId, {
+        ...options,
+        assertLeaseOwnership: guard,
+      });
+    });
+    return;
+  }
   const transcript = await db.transcript.findFirst({
     where: { id: transcriptId, userId },
     select: {
@@ -198,12 +354,12 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
     },
   });
   if (!transcript) {
-    await deleteBrainForSource(userId, 'TRANSCRIPT', transcriptId);
+    await options.assertLeaseOwnership?.();
+    await deleteBrainForSource(userId, 'TRANSCRIPT', transcriptId, options.assertLeaseOwnership);
     return;
   }
 
-  await deleteAutomaticContentEdgesForSource(userId, 'TRANSCRIPT', transcript.id);
-  await removeSourceEvidence(userId, 'TRANSCRIPT', transcript.id);
+  await options.assertLeaseOwnership?.();
   const contentNode = await upsertBrainNode({
     userId,
     key: brainNodeKey('TRANSCRIPT', transcript.id),
@@ -221,21 +377,32 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
       folderId: transcript.folderId,
       createdAt: transcript.createdAt.toISOString(),
       updatedAt: transcript.updatedAt.toISOString(),
-      brainIndexVersion: BRAIN_INDEX_VERSION,
     },
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
+    metadataMode: 'reset-completion',
   });
+  await options.assertLeaseOwnership?.();
+  await deleteAutomaticContentEdgesForSource(userId, 'TRANSCRIPT', transcript.id);
+  await options.assertLeaseOwnership?.();
+  // Só limpa evidência "refreshable" (keyword/related heurístico). NÃO apaga
+  // llm-grounded nem manual — reprocessar o cérebro não joga fora o extract
+  // caro nem gasta créditos de IA (spec 105).
+  await removeRefreshableSourceEvidence(userId, 'TRANSCRIPT', transcript.id);
+  await options.assertLeaseOwnership?.();
   await addBrainSource({
     userId,
     nodeId: contentNode.id,
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
     excerpt: transcript.title,
+    assertLeaseOwnership: options.assertLeaseOwnership,
   });
 
   if (transcript.folder) {
+    await options.assertLeaseOwnership?.();
     const folderNode = await upsertLibraryFolderNode(userId, transcript.folder);
+    await options.assertLeaseOwnership?.();
     await upsertBrainEdge({
       userId,
       fromNodeId: contentNode.id,
@@ -246,9 +413,12 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
       sourceType: 'TRANSCRIPT',
       sourceId: transcript.id,
       excerpt: `Folder: ${transcript.folder.name}`,
+      beforeEdgeWrite: options.beforeEdgeWrite,
+      assertLeaseOwnership: options.assertLeaseOwnership,
     });
   }
 
+  await options.assertLeaseOwnership?.();
   await indexConceptsForContent({
     userId,
     contentNodeId: contentNode.id,
@@ -256,13 +426,28 @@ export async function reindexTranscriptBrain(userId: string, transcriptId: strin
     sourceId: transcript.id,
     status: transcript.status,
     text: `${transcript.title}\n${transcript.channel ?? ''}\n${transcript.summaryMd || transcript.plainText}`,
+    beforeEdgeWrite: options.beforeEdgeWrite,
+    assertLeaseOwnership: options.assertLeaseOwnership,
+  });
+  await options.beforeFinalize?.();
+  await options.assertLeaseOwnership?.();
+  await finalizeBrainNodeIndex(userId, contentNode.id, {
+    brainIndexVersion: BRAIN_INDEX_VERSION,
+    topicIndexVersion: BRAIN_TOPIC_INDEX_VERSION,
   });
 }
 
 export async function reindexTranscriptsBrain(
   userId: string,
   transcriptIds?: string[],
+  assertLeaseOwnership?: BrainReindexGuard,
 ): Promise<void> {
+  if (!assertLeaseOwnership) {
+    await runWithBrainIndexLease(userId, async (guard) => {
+      await reindexTranscriptsBrain(userId, transcriptIds, guard);
+    });
+    return;
+  }
   const ids =
     transcriptIds ??
     (
@@ -272,33 +457,50 @@ export async function reindexTranscriptsBrain(
       })
     ).map((item) => item.id);
   for (const id of ids) {
+    await assertLeaseOwnership?.();
     try {
-      await reindexTranscriptBrain(userId, id);
+      await reindexTranscriptBrain(userId, id, { assertLeaseOwnership });
     } catch (err) {
+      await assertLeaseOwnership?.();
       // Reindex de um item não deve derrubar o lote (ex.: corrida de FK no grafo).
       console.warn('[brain] reindexTranscriptBrain failed', { userId, id, err });
     }
   }
 }
 
-export async function reindexLibraryFolderBrain(userId: string, folderId: string): Promise<void> {
+export async function reindexLibraryFolderBrain(
+  userId: string,
+  folderId: string,
+  assertLeaseOwnership?: BrainReindexGuard,
+): Promise<void> {
+  if (!assertLeaseOwnership) {
+    await runWithBrainIndexLease(userId, async (guard) => {
+      await reindexLibraryFolderBrain(userId, folderId, guard);
+    });
+    return;
+  }
   const folder = await db.libraryFolder.findFirst({
     where: { id: folderId, userId },
     select: { id: true, parentId: true, name: true, updatedAt: true },
   });
   if (!folder) {
-    await deleteBrainForSource(userId, 'FOLDER', folderId);
+    await assertLeaseOwnership?.();
+    await deleteBrainForSource(userId, 'FOLDER', folderId, assertLeaseOwnership);
     return;
   }
 
+  await assertLeaseOwnership?.();
+  const folderNode = await upsertLibraryFolderNode(userId, folder, { resetCompletion: true });
+  await assertLeaseOwnership?.();
   await removeSourceEvidence(userId, 'FOLDER', folder.id);
-  const folderNode = await upsertLibraryFolderNode(userId, folder);
+  await assertLeaseOwnership?.();
   await addBrainSource({
     userId,
     nodeId: folderNode.id,
     sourceType: 'FOLDER',
     sourceId: folder.id,
     excerpt: folder.name,
+    assertLeaseOwnership,
   });
 
   if (folder.parentId) {
@@ -307,7 +509,9 @@ export async function reindexLibraryFolderBrain(userId: string, folderId: string
       select: { id: true, parentId: true, name: true, updatedAt: true },
     });
     if (parent) {
+      await assertLeaseOwnership?.();
       const parentNode = await upsertLibraryFolderNode(userId, parent);
+      await assertLeaseOwnership?.();
       await upsertBrainEdge({
         userId,
         fromNodeId: folderNode.id,
@@ -317,22 +521,47 @@ export async function reindexLibraryFolderBrain(userId: string, folderId: string
         sourceType: 'FOLDER',
         sourceId: folder.id,
         excerpt: `Parent folder: ${parent.name}`,
+        assertLeaseOwnership,
       });
     }
   }
+  await assertLeaseOwnership?.();
+  await finalizeBrainNodeIndex(userId, folderNode.id, {
+    brainIndexVersion: BRAIN_INDEX_VERSION,
+  });
 }
 
-export async function reindexLibraryFoldersBrain(userId: string): Promise<void> {
+export async function reindexLibraryFoldersBrain(
+  userId: string,
+  assertLeaseOwnership?: BrainReindexGuard,
+): Promise<void> {
+  if (!assertLeaseOwnership) {
+    await runWithBrainIndexLease(userId, async (guard) => {
+      await reindexLibraryFoldersBrain(userId, guard);
+    });
+    return;
+  }
   const folders = await db.libraryFolder.findMany({
     where: { userId },
     select: { id: true },
   });
   for (const folder of folders) {
-    await reindexLibraryFolderBrain(userId, folder.id);
+    await assertLeaseOwnership?.();
+    await reindexLibraryFolderBrain(userId, folder.id, assertLeaseOwnership);
   }
 }
 
-export async function reindexNoteBrain(userId: string, noteId: string): Promise<void> {
+export async function reindexNoteBrain(
+  userId: string,
+  noteId: string,
+  assertLeaseOwnership?: BrainReindexGuard,
+): Promise<void> {
+  if (!assertLeaseOwnership) {
+    await runWithBrainIndexLease(userId, async (guard) => {
+      await reindexNoteBrain(userId, noteId, guard);
+    });
+    return;
+  }
   const notes = await db.note.findMany({
     where: { userId },
     select: {
@@ -346,13 +575,24 @@ export async function reindexNoteBrain(userId: string, noteId: string): Promise<
   });
   const note = notes.find((item) => item.id === noteId);
   if (!note) {
-    await deleteBrainForSource(userId, 'NOTE', noteId);
+    await assertLeaseOwnership?.();
+    await deleteBrainForSource(userId, 'NOTE', noteId, assertLeaseOwnership);
     return;
   }
-  await reindexNoteRecord(userId, note, buildNoteIndexes(notes));
+  await assertLeaseOwnership?.();
+  await reindexNoteRecord(userId, note, buildNoteIndexes(notes), assertLeaseOwnership);
 }
 
-export async function reindexNotesBrain(userId: string): Promise<void> {
+export async function reindexNotesBrain(
+  userId: string,
+  assertLeaseOwnership?: BrainReindexGuard,
+): Promise<void> {
+  if (!assertLeaseOwnership) {
+    await runWithBrainIndexLease(userId, async (guard) => {
+      await reindexNotesBrain(userId, guard);
+    });
+    return;
+  }
   const notes = await db.note.findMany({
     where: { userId },
     select: {
@@ -366,9 +606,11 @@ export async function reindexNotesBrain(userId: string): Promise<void> {
   });
   const indexes = buildNoteIndexes(notes);
   for (const note of notes) {
+    await assertLeaseOwnership?.();
     try {
-      await reindexNoteRecord(userId, note, indexes);
+      await reindexNoteRecord(userId, note, indexes, assertLeaseOwnership);
     } catch (err) {
+      await assertLeaseOwnership?.();
       console.warn('[brain] reindexNoteRecord failed', { userId, noteId: note.id, err });
     }
   }
@@ -378,22 +620,30 @@ async function reindexNoteRecord(
   userId: string,
   note: NoteRecord,
   indexes: { byId: Map<string, NoteRecord>; byTitle: Map<string, NoteRecord> },
+  assertLeaseOwnership?: BrainReindexGuard,
 ): Promise<void> {
+  await assertLeaseOwnership?.();
+  const node = await upsertNoteNode(userId, note, { resetCompletion: true });
+  await assertLeaseOwnership?.();
   await deleteAutomaticContentEdgesForSource(userId, 'NOTE', note.id);
-  await removeSourceEvidence(userId, 'NOTE', note.id);
-  const node = await upsertNoteNode(userId, note);
+  await assertLeaseOwnership?.();
+  await removeRefreshableSourceEvidence(userId, 'NOTE', note.id);
+  await assertLeaseOwnership?.();
   await addBrainSource({
     userId,
     nodeId: node.id,
     sourceType: 'NOTE',
     sourceId: note.id,
     excerpt: note.title,
+    assertLeaseOwnership,
   });
 
   if (note.parentId) {
     const parent = indexes.byId.get(note.parentId);
     if (parent) {
+      await assertLeaseOwnership?.();
       const parentNode = await upsertNoteNode(userId, parent);
+      await assertLeaseOwnership?.();
       await upsertBrainEdge({
         userId,
         fromNodeId: node.id,
@@ -403,15 +653,24 @@ async function reindexNoteRecord(
         sourceType: 'NOTE',
         sourceId: note.id,
         excerpt: `Parent note folder: ${parent.title}`,
+        assertLeaseOwnership,
       });
     }
   }
 
-  if (note.kind !== 'NOTE') return;
+  if (note.kind !== 'NOTE') {
+    await assertLeaseOwnership?.();
+    await finalizeBrainNodeIndex(userId, node.id, {
+      brainIndexVersion: BRAIN_INDEX_VERSION,
+    });
+    return;
+  }
   for (const targetTitle of parseWikiLinks(note.content)) {
     const target = indexes.byTitle.get(targetTitle.toLowerCase());
     if (!target || target.id === note.id) continue;
+    await assertLeaseOwnership?.();
     const targetNode = await upsertNoteNode(userId, target);
+    await assertLeaseOwnership?.();
     await upsertBrainEdge({
       userId,
       fromNodeId: node.id,
@@ -422,9 +681,11 @@ async function reindexNoteRecord(
       sourceId: note.id,
       excerpt: `[[${targetTitle}]]`,
       metadata: { targetTitle },
+      assertLeaseOwnership,
     });
   }
 
+  await assertLeaseOwnership?.();
   await indexConceptsForContent({
     userId,
     contentNodeId: node.id,
@@ -432,14 +693,39 @@ async function reindexNoteRecord(
     sourceId: note.id,
     status: 'ACTIVE',
     text: `${note.title}\n${note.content}`,
+    assertLeaseOwnership,
+  });
+  await assertLeaseOwnership?.();
+  await finalizeBrainNodeIndex(userId, node.id, {
+    brainIndexVersion: BRAIN_INDEX_VERSION,
   });
 }
+
+/** Métodos que o reprocesso do cérebro pode recriar sem LLM. */
+export const BRAIN_REFRESHABLE_EDGE_METHODS = [
+  'keyword',
+  'shared-concepts',
+  'semantic-profile',
+  'timeline-adjacent',
+  'entity-heuristic',
+] as const;
+
+/** Métodos preservados no reprocesso (não gastar IA de novo / não apagar manual). */
+export const BRAIN_PRESERVED_EDGE_METHODS = [
+  'manual',
+  'llm-grounded',
+  'wikilink',
+  'folder',
+  'folder-tree',
+  'note-tree',
+] as const;
 
 async function removeSourceEvidence(
   userId: string,
   sourceType: BrainSourceType,
   sourceId: string,
 ): Promise<void> {
+  // Hard delete (ex.: conteúdo removido) — limpa toda evidência da fonte.
   const affected = await db.brainSource.findMany({
     where: { userId, sourceType, sourceId },
     select: { edgeId: true },
@@ -457,6 +743,61 @@ async function removeSourceEvidence(
   if (orphanEdgeIds.length > 0) {
     await db.brainEdge.deleteMany({
       where: { userId, id: { in: orphanEdgeIds }, method: { not: 'manual' } },
+    });
+    await deleteOrphanAutomaticConceptNodes(userId);
+  }
+}
+
+/**
+ * Limpa só evidências/arestas recriáveis por heurística no reprocesso do Brain.
+ * Preserva llm-grounded (custa crédito) e manual/wikilink.
+ */
+async function removeRefreshableSourceEvidence(
+  userId: string,
+  sourceType: BrainSourceType,
+  sourceId: string,
+): Promise<void> {
+  const refreshable = [...BRAIN_REFRESHABLE_EDGE_METHODS];
+  const edgeSources = await db.brainSource.findMany({
+    where: {
+      userId,
+      sourceType,
+      sourceId,
+      edgeId: { not: null },
+      edge: { method: { in: refreshable } },
+    },
+    select: { id: true, edgeId: true },
+  });
+  const nodeSources = await db.brainSource.findMany({
+    where: {
+      userId,
+      sourceType,
+      sourceId,
+      edgeId: null,
+    },
+    select: { id: true },
+  });
+  const sourceIds = [...edgeSources.map((row) => row.id), ...nodeSources.map((row) => row.id)];
+  if (sourceIds.length > 0) {
+    await db.brainSource.deleteMany({ where: { userId, id: { in: sourceIds } } });
+  }
+
+  const edgeIds = [...new Set(edgeSources.map((item) => item.edgeId).filter(Boolean) as string[])];
+  if (edgeIds.length === 0) return;
+
+  const remaining = await db.brainSource.findMany({
+    where: { userId, edgeId: { in: edgeIds } },
+    select: { edgeId: true },
+  });
+  const remainingEdgeIds = new Set(remaining.map((item) => item.edgeId).filter(Boolean));
+  const orphanEdgeIds = edgeIds.filter((id) => !remainingEdgeIds.has(id));
+  if (orphanEdgeIds.length > 0) {
+    await db.brainEdge.deleteMany({
+      where: {
+        userId,
+        id: { in: orphanEdgeIds },
+        method: { in: refreshable },
+      },
     });
     await deleteOrphanAutomaticConceptNodes(userId);
   }
@@ -502,7 +843,11 @@ async function deleteOrphanAutomaticConceptNodes(userId: string): Promise<void> 
   `;
 }
 
-async function upsertLibraryFolderNode(userId: string, folder: LibraryFolderRecord) {
+async function upsertLibraryFolderNode(
+  userId: string,
+  folder: LibraryFolderRecord,
+  options: { resetCompletion?: boolean } = {},
+) {
   return upsertBrainNode({
     userId,
     key: brainNodeKey('FOLDER', folder.id),
@@ -512,14 +857,18 @@ async function upsertLibraryFolderNode(userId: string, folder: LibraryFolderReco
     metadata: {
       parentId: folder.parentId,
       updatedAt: folder.updatedAt.toISOString(),
-      brainIndexVersion: BRAIN_INDEX_VERSION,
     },
     sourceType: 'FOLDER',
     sourceId: folder.id,
+    metadataMode: options.resetCompletion ? 'reset-completion' : 'merge',
   });
 }
 
-async function upsertNoteNode(userId: string, note: NoteRecord) {
+async function upsertNoteNode(
+  userId: string,
+  note: NoteRecord,
+  options: { resetCompletion?: boolean } = {},
+) {
   return upsertBrainNode({
     userId,
     key: brainNodeKey('NOTE', note.id),
@@ -531,10 +880,10 @@ async function upsertNoteNode(userId: string, note: NoteRecord) {
       kind: note.kind,
       parentId: note.parentId,
       updatedAt: note.updatedAt.toISOString(),
-      brainIndexVersion: BRAIN_INDEX_VERSION,
     },
     sourceType: 'NOTE',
     sourceId: note.id,
+    metadataMode: options.resetCompletion ? 'reset-completion' : 'merge',
   });
 }
 
@@ -578,13 +927,17 @@ async function indexConceptsForContent(input: {
   sourceId: string;
   status: ContentStatus;
   text: string;
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
+  assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   if (input.status !== 'ACTIVE') return;
   const indexed: IndexedConcept[] = [];
   const topics = extractTopics(input.text);
   const entities = extractEntities(input.text);
 
+  await input.assertLeaseOwnership?.();
   await updateContentSemanticProfile({
+    userId: input.userId,
     contentNodeId: input.contentNodeId,
     text: input.text,
     topics,
@@ -592,7 +945,9 @@ async function indexConceptsForContent(input: {
   });
 
   for (const topic of topics) {
+    await input.assertLeaseOwnership?.();
     const topicNode = await upsertTopicNode(input.userId, topic);
+    await input.assertLeaseOwnership?.();
     await upsertBrainEdge({
       userId: input.userId,
       fromNodeId: input.contentNodeId,
@@ -608,6 +963,8 @@ async function indexConceptsForContent(input: {
         count: topic.count,
         extractorVersion: 2,
       },
+      beforeEdgeWrite: input.beforeEdgeWrite,
+      assertLeaseOwnership: input.assertLeaseOwnership,
     });
     indexed.push({
       nodeId: topicNode.id,
@@ -620,7 +977,9 @@ async function indexConceptsForContent(input: {
   }
 
   for (const entity of entities) {
+    await input.assertLeaseOwnership?.();
     const entityNode = await upsertEntityNode(input.userId, entity);
+    await input.assertLeaseOwnership?.();
     await upsertBrainEdge({
       userId: input.userId,
       fromNodeId: input.contentNodeId,
@@ -637,6 +996,8 @@ async function indexConceptsForContent(input: {
         count: entity.count,
         extractorVersion: 1,
       },
+      beforeEdgeWrite: input.beforeEdgeWrite,
+      assertLeaseOwnership: input.assertLeaseOwnership,
     });
     indexed.push({
       nodeId: entityNode.id,
@@ -648,39 +1009,43 @@ async function indexConceptsForContent(input: {
     });
   }
 
+  await input.assertLeaseOwnership?.();
   await connectContentBySharedConcepts({
     userId: input.userId,
     contentNodeId: input.contentNodeId,
     sourceType: input.sourceType,
     sourceId: input.sourceId,
     concepts: indexed,
+    beforeEdgeWrite: input.beforeEdgeWrite,
+    assertLeaseOwnership: input.assertLeaseOwnership,
   });
+  await input.assertLeaseOwnership?.();
   await connectContentBySemanticProfile({
     userId: input.userId,
     contentNodeId: input.contentNodeId,
     sourceType: input.sourceType,
     sourceId: input.sourceId,
+    beforeEdgeWrite: input.beforeEdgeWrite,
+    assertLeaseOwnership: input.assertLeaseOwnership,
   });
+  await input.assertLeaseOwnership?.();
   await connectTimelineNeighbors({
     userId: input.userId,
     contentNodeId: input.contentNodeId,
     sourceType: input.sourceType,
     sourceId: input.sourceId,
+    beforeEdgeWrite: input.beforeEdgeWrite,
+    assertLeaseOwnership: input.assertLeaseOwnership,
   });
 }
 
 async function updateContentSemanticProfile(input: {
+  userId: string;
   contentNodeId: string;
   text: string;
   topics: TopicCandidate[];
   entities: EntityCandidate[];
 }): Promise<void> {
-  const node = await db.brainNode.findUnique({
-    where: { id: input.contentNodeId },
-    select: { metadata: true },
-  });
-  if (!node) return;
-  const metadata = jsonRecord(node.metadata);
   const profile: SemanticProfile = {
     extractorVersion: SEMANTIC_PROFILE_VERSION,
     topics: uniqueSlugs(input.topics.map((topic) => topic.slug)),
@@ -688,15 +1053,8 @@ async function updateContentSemanticProfile(input: {
     keywords: extractProfileKeywords(input.text),
     indexedAt: new Date().toISOString(),
   };
-  await db.brainNode.update({
-    where: { id: input.contentNodeId },
-    data: {
-      metadata: {
-        ...metadata,
-        semanticProfile: profile,
-        brainIndexVersion: BRAIN_INDEX_VERSION,
-      } as JsonObject,
-    },
+  await mergeBrainNodeMetadata(input.userId, input.contentNodeId, {
+    semanticProfile: profile,
   });
 }
 
@@ -706,6 +1064,8 @@ async function connectContentBySharedConcepts(input: {
   sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
   sourceId: string;
   concepts: IndexedConcept[];
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
+  assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   if (input.concepts.length === 0) return;
   const conceptById = new Map(input.concepts.map((concept) => [concept.nodeId, concept]));
@@ -734,6 +1094,7 @@ async function connectContentBySharedConcepts(input: {
       },
     },
   });
+  await input.assertLeaseOwnership?.();
 
   const candidates = new Map<
     string,
@@ -761,8 +1122,12 @@ async function connectContentBySharedConcepts(input: {
     candidates.set(mention.fromNodeId, current);
   }
 
+  // Spec 103: limiar mais alto — evita RELATED_TO cosmético por 1 token fraco.
   const ranked = [...candidates.values()]
-    .filter((candidate) => candidate.score >= 1.25 || candidate.concepts.length >= 2)
+    .filter(
+      (candidate) =>
+        candidate.score >= 2.25 || (candidate.concepts.length >= 2 && candidate.score >= 1.75),
+    )
     .sort((left, right) => {
       if (right.score !== left.score) return right.score - left.score;
       return left.label.localeCompare(right.label);
@@ -770,6 +1135,7 @@ async function connectContentBySharedConcepts(input: {
     .slice(0, RELATED_CONTENT_LIMIT);
 
   for (const candidate of ranked) {
+    await input.assertLeaseOwnership?.();
     const [fromNodeId, toNodeId] = canonicalEdge(input.contentNodeId, candidate.nodeId);
     const labels = candidate.concepts.slice(0, 5).map((concept) => concept.label);
     const confidence = Math.min(0.95, Number((0.42 + candidate.score * 0.11).toFixed(4)));
@@ -796,6 +1162,8 @@ async function connectContentBySharedConcepts(input: {
         })),
         score: candidate.score,
       },
+      beforeEdgeWrite: input.beforeEdgeWrite,
+      assertLeaseOwnership: input.assertLeaseOwnership,
     });
   }
 }
@@ -805,11 +1173,14 @@ async function connectContentBySemanticProfile(input: {
   contentNodeId: string;
   sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
   sourceId: string;
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
+  assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   const current = await db.brainNode.findUnique({
     where: { id: input.contentNodeId },
     select: { id: true, label: true, metadata: true },
   });
+  await input.assertLeaseOwnership?.();
   if (!current) return;
   const currentMetadata = jsonRecord(current.metadata);
   const currentProfile = readSemanticProfile(currentMetadata);
@@ -828,6 +1199,7 @@ async function connectContentBySemanticProfile(input: {
       metadata: true,
     },
   });
+  await input.assertLeaseOwnership?.();
 
   const ranked = candidates
     .map((candidate) => {
@@ -853,6 +1225,7 @@ async function connectContentBySemanticProfile(input: {
     .slice(0, RELATED_CONTENT_LIMIT);
 
   for (const candidate of ranked) {
+    await input.assertLeaseOwnership?.();
     const [fromNodeId, toNodeId] = canonicalEdge(input.contentNodeId, candidate.nodeId);
     const reasonLabels = candidate.reasons.slice(0, 5).map((reason) => reason.label);
     await upsertBrainEdge({
@@ -872,6 +1245,8 @@ async function connectContentBySemanticProfile(input: {
         reasons: candidate.reasons,
         score: candidate.score,
       },
+      beforeEdgeWrite: input.beforeEdgeWrite,
+      assertLeaseOwnership: input.assertLeaseOwnership,
     });
   }
 }
@@ -881,11 +1256,14 @@ async function connectTimelineNeighbors(input: {
   contentNodeId: string;
   sourceType: Extract<BrainSourceType, 'TRANSCRIPT' | 'NOTE'>;
   sourceId: string;
+  beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
+  assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   const current = await db.brainNode.findUnique({
     where: { id: input.contentNodeId },
     select: { metadata: true, updatedAt: true },
   });
+  await input.assertLeaseOwnership?.();
   if (!current) return;
   const currentTimestamp = contentTimestamp(jsonRecord(current.metadata), current.updatedAt);
   if (!currentTimestamp) return;
@@ -906,6 +1284,7 @@ async function connectTimelineNeighbors(input: {
       updatedAt: true,
     },
   });
+  await input.assertLeaseOwnership?.();
   const neighbors = candidates
     .map((candidate) => {
       const timestamp = contentTimestamp(jsonRecord(candidate.metadata), candidate.updatedAt);
@@ -925,6 +1304,7 @@ async function connectTimelineNeighbors(input: {
     .slice(0, TIMELINE_NEIGHBOR_LIMIT);
 
   for (const [index, neighbor] of neighbors.entries()) {
+    await input.assertLeaseOwnership?.();
     const [fromNodeId, toNodeId] = canonicalEdge(input.contentNodeId, neighbor.nodeId);
     const distanceDays = Number((neighbor.distanceMs / 86_400_000).toFixed(3));
     await upsertBrainEdge({
@@ -945,6 +1325,8 @@ async function connectTimelineNeighbors(input: {
         targetTimestamp: neighbor.timestamp.toISOString(),
         distanceDays,
       },
+      beforeEdgeWrite: input.beforeEdgeWrite,
+      assertLeaseOwnership: input.assertLeaseOwnership,
     });
   }
 }
@@ -954,14 +1336,16 @@ function canonicalEdge(left: string, right: string): [string, string] {
 }
 
 async function upsertBrainNode(input: BrainNodeInput) {
-  return db.brainNode.upsert({
+  const metadataMode = input.metadataMode ?? 'replace';
+  const metadata = input.metadata ?? {};
+  const upsertArgs = {
     where: { userId_key: { userId: input.userId, key: input.key } },
     update: {
       type: input.type,
       label: input.label,
       description: input.description ?? null,
       status: input.status ?? 'ACTIVE',
-      metadata: input.metadata ?? {},
+      ...(metadataMode === 'replace' ? { metadata } : {}),
       sourceType: input.sourceType ?? null,
       sourceId: input.sourceId ?? null,
     },
@@ -972,11 +1356,62 @@ async function upsertBrainNode(input: BrainNodeInput) {
       label: input.label,
       description: input.description ?? null,
       status: input.status ?? 'ACTIVE',
-      metadata: input.metadata ?? {},
+      metadata,
       sourceType: input.sourceType ?? null,
       sourceId: input.sourceId ?? null,
     },
+  } satisfies Prisma.BrainNodeUpsertArgs;
+
+  if (metadataMode === 'replace') return db.brainNode.upsert(upsertArgs);
+
+  const metadataJson = JSON.stringify(metadata);
+  if (metadataMode === 'merge') {
+    const node = await db.brainNode.upsert(upsertArgs);
+    await mergeBrainNodeMetadata(input.userId, node.id, metadata);
+    return node;
+  }
+
+  return db.$transaction(async (tx) => {
+    const node = await tx.brainNode.upsert(upsertArgs);
+    await tx.$executeRaw`
+      UPDATE "BrainNode"
+      SET metadata = (
+            COALESCE(metadata, '{}'::jsonb)
+            - 'brainIndexVersion'
+            - 'topicIndexVersion'
+          ) || ${metadataJson}::jsonb,
+          "updatedAt" = NOW()
+      WHERE id = ${node.id}
+        AND "userId" = ${input.userId}
+    `;
+    return node;
   });
+}
+
+async function mergeBrainNodeMetadata(
+  userId: string,
+  nodeId: string,
+  metadata: JsonObject,
+): Promise<number> {
+  const metadataJson = JSON.stringify(metadata);
+  return db.$executeRaw`
+    UPDATE "BrainNode"
+    SET metadata = COALESCE(metadata, '{}'::jsonb) || ${metadataJson}::jsonb,
+        "updatedAt" = NOW()
+    WHERE id = ${nodeId}
+      AND "userId" = ${userId}
+  `;
+}
+
+async function finalizeBrainNodeIndex(
+  userId: string,
+  nodeId: string,
+  markers: JsonObject,
+): Promise<void> {
+  const updated = await mergeBrainNodeMetadata(userId, nodeId, markers);
+  if (updated !== 1) {
+    throw new Error(`Brain source node disappeared before finalization: ${nodeId}`);
+  }
 }
 
 async function upsertBrainEdge(input: BrainEdgeInput) {
@@ -984,6 +1419,7 @@ async function upsertBrainEdge(input: BrainEdgeInput) {
   // nó ou aresta entre o upsert e o BrainSource.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
+      await input.assertLeaseOwnership?.();
       const endpoints = await db.brainNode.findMany({
         where: {
           userId: input.userId,
@@ -991,9 +1427,20 @@ async function upsertBrainEdge(input: BrainEdgeInput) {
         },
         select: { id: true },
       });
+      await input.assertLeaseOwnership?.();
       if (endpoints.length < 2) {
-        return null;
+        if (attempt === 0) continue;
+        throw new Error(
+          `Brain edge endpoint disappeared: ${input.fromNodeId} -> ${input.toNodeId}`,
+        );
       }
+      await input.beforeEdgeWrite?.({
+        method: input.method,
+        kind: input.kind,
+        fromNodeId: input.fromNodeId,
+        toNodeId: input.toNodeId,
+      });
+      await input.assertLeaseOwnership?.();
       const edge = await db.brainEdge.upsert({
         where: {
           userId_fromNodeId_toNodeId_kind_method: {
@@ -1020,30 +1467,31 @@ async function upsertBrainEdge(input: BrainEdgeInput) {
           metadata: input.metadata ?? {},
         },
       });
+      await input.assertLeaseOwnership?.();
       await addBrainSource({
         userId: input.userId,
         edgeId: edge.id,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
         excerpt: input.excerpt ?? null,
+        assertLeaseOwnership: input.assertLeaseOwnership,
       });
       return edge;
     } catch (err) {
       if (isBrainFkError(err) && attempt === 0) continue;
       if (isBrainFkError(err)) {
-        console.warn('[brain] upsertBrainEdge FK skipped', {
+        console.warn('[brain] upsertBrainEdge FK failed', {
           userId: input.userId,
           from: input.fromNodeId,
           to: input.toNodeId,
           kind: input.kind,
           method: input.method,
         });
-        return null;
       }
       throw err;
     }
   }
-  return null;
+  throw new Error(`Brain edge materialization failed: ${input.fromNodeId} -> ${input.toNodeId}`);
 }
 
 async function addBrainSource(input: {
@@ -1053,22 +1501,27 @@ async function addBrainSource(input: {
   sourceType: BrainSourceType;
   sourceId: string;
   excerpt?: string | null;
+  assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   try {
+    await input.assertLeaseOwnership?.();
     if (input.edgeId) {
       const edge = await db.brainEdge.findFirst({
         where: { id: input.edgeId, userId: input.userId },
         select: { id: true },
       });
-      if (!edge) return;
+      await input.assertLeaseOwnership?.();
+      if (!edge) throw new Error(`Brain source edge disappeared: ${input.edgeId}`);
     }
     if (input.nodeId) {
       const node = await db.brainNode.findFirst({
         where: { id: input.nodeId, userId: input.userId },
         select: { id: true },
       });
-      if (!node) return;
+      await input.assertLeaseOwnership?.();
+      if (!node) throw new Error(`Brain source node disappeared: ${input.nodeId}`);
     }
+    await input.assertLeaseOwnership?.();
     await db.brainSource.create({
       data: {
         userId: input.userId,
@@ -1079,17 +1532,17 @@ async function addBrainSource(input: {
         excerpt: input.excerpt ? truncate(input.excerpt, EVIDENCE_LIMIT) : null,
       },
     });
+    await input.assertLeaseOwnership?.();
   } catch (err) {
-    // Aresta/nó sumiu entre o check e o create (reindex concorrente).
+    // Aresta/nó sumiu entre o check e o create: o passe precisa ficar incompleto.
     if (isBrainFkError(err)) {
-      console.warn('[brain] addBrainSource FK skipped', {
+      console.warn('[brain] addBrainSource FK failed', {
         userId: input.userId,
         edgeId: input.edgeId ?? null,
         nodeId: input.nodeId ?? null,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
       });
-      return;
     }
     throw err;
   }
@@ -1200,7 +1653,8 @@ function scoreSemanticProfile(
     reasons.push({ kind: 'source', label: currentSource, value: currentSource, weight: 0.18 });
   }
 
-  if (score < 0.5 || reasons.length === 0) return null;
+  // Spec 103: exige overlap real (ex.: pasta+keyword ou ≥2 tópicos), não 1 token.
+  if (score < 1.2 || reasons.length === 0) return null;
   return { score: Number(score.toFixed(4)), reasons };
 }
 

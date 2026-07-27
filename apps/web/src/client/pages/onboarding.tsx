@@ -26,6 +26,7 @@ import type { OrModel } from '../lib/types';
 import { Spinner as Spin } from '../components/ui/spinner';
 import { ModelPicker } from '../components/model-picker';
 import { LOCALES, useI18n, type Locale } from '../lib/i18n';
+import { detectBrowserTimezone, TimezoneSelect } from '../components/timezone-select';
 
 interface ModelsResponse {
   chat: OrModel[];
@@ -36,7 +37,7 @@ interface ModelsResponse {
   web: OrModel[];
 }
 
-type Step = 'idioma' | 'key' | 'modelos' | 'modo' | 'perfil' | 'pronto';
+type Step = 'idioma' | 'fuso' | 'key' | 'modelos' | 'modo' | 'perfil' | 'pronto';
 
 export function OnboardingPage(): React.ReactElement {
   const navigate = useNavigate();
@@ -47,7 +48,7 @@ export function OnboardingPage(): React.ReactElement {
   // wizard e resetar o state interno do <OnboardingContent>.
   if (loading && !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-dvh flex items-center justify-center">
         <Spin size={20} className="text-[var(--color-app-muted)]" />
       </div>
     );
@@ -75,6 +76,7 @@ function OnboardingContent({
   const { locale, setLocale, t } = useI18n();
   const [step, setStep] = useState<Step>('idioma');
   const [appLanguage, setAppLanguage] = useState<Locale>(locale);
+  const [appTimezone, setAppTimezone] = useState(() => detectBrowserTimezone());
   const [apiKey, setApiKey] = useState('');
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [chatModel, setChatModel] = useState('');
@@ -95,7 +97,7 @@ function OnboardingContent({
   function chooseLanguage(next: Locale): void {
     setAppLanguage(next);
     setLocale(next);
-    setStep('key');
+    setStep('fuso');
   }
 
   async function submitKey(e: React.FormEvent): Promise<void> {
@@ -202,6 +204,7 @@ function OnboardingContent({
       await apiPost('/api/onboarding', {
         allow_signups: allowSignups,
         app_language: appLanguage,
+        app_timezone: appTimezone,
       });
       await refresh();
       setStep('pronto');
@@ -213,7 +216,7 @@ function OnboardingContent({
     }
   }
 
-  const stepOrder: Step[] = ['idioma', 'key', 'modelos', 'modo', 'perfil'];
+  const stepOrder: Step[] = ['idioma', 'fuso', 'key', 'modelos', 'modo', 'perfil'];
   const currentIdx = stepOrder.indexOf(step);
 
   if (step === 'pronto') {
@@ -302,6 +305,35 @@ function OnboardingContent({
             </Slide>
           )}
 
+          {step === 'fuso' && (
+            <Slide key="fuso">
+              <Heading
+                eyebrow={t('onboarding.timezone.eyebrow')}
+                title={t('onboarding.timezone.title')}
+                sub={t('onboarding.timezone.sub')}
+              />
+              <div className="space-y-5">
+                <TimezoneSelect
+                  id="onboarding-timezone"
+                  value={appTimezone}
+                  onChange={setAppTimezone}
+                  label={t('onboarding.timezone.label')}
+                  hint={t('onboarding.timezone.hint')}
+                />
+                <div className="flex justify-between pt-2">
+                  <GhostButton type="button" onClick={() => setStep('idioma')}>
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    {t('common.back')}
+                  </GhostButton>
+                  <PrimaryButton type="button" onClick={() => setStep('key')}>
+                    {t('common.continue')}
+                    <ArrowRight className="h-4 w-4" />
+                  </PrimaryButton>
+                </div>
+              </div>
+            </Slide>
+          )}
+
           {step === 'key' && (
             <Slide key="key">
               <Heading
@@ -311,7 +343,7 @@ function OnboardingContent({
               />
               <form onSubmit={submitKey} className="space-y-5">
                 <FieldLabel htmlFor="key">OpenRouter API key</FieldLabel>
-                <div className="rounded-xl border border-[var(--color-app-border)] bg-zinc-100/[0.03] backdrop-blur-sm focus-within:border-violet-400/60 focus-within:bg-violet-500/[0.06]">
+                <div className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] backdrop-blur-sm focus-within:border-violet-400/60 focus-within:bg-violet-500/[0.06]">
                   <div className="relative">
                     <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
                     <input
@@ -324,7 +356,7 @@ function OnboardingContent({
                       spellCheck={false}
                       required
                       minLength={20}
-                      className="w-full bg-transparent text-sm pl-10 pr-4 py-3.5 rounded-xl focus:outline-none placeholder:text-zinc-600 font-mono"
+                      className="w-full bg-transparent text-sm pl-10 pr-4 py-3.5 rounded-xl focus:outline-none placeholder:text-[var(--color-app-muted)] font-mono"
                     />
                   </div>
                 </div>
@@ -332,13 +364,13 @@ function OnboardingContent({
                   href="https://openrouter.ai/keys"
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors"
                 >
                   {t('onboarding.keyCta')}
                   <ExternalLink className="h-3 w-3" />
                 </a>
                 <div className="flex justify-between pt-2">
-                  <GhostButton type="button" onClick={() => setStep('idioma')}>
+                  <GhostButton type="button" onClick={() => setStep('fuso')}>
                     <ArrowLeft className="h-3.5 w-3.5" />
                     {t('common.back')}
                   </GhostButton>
@@ -471,7 +503,7 @@ function OnboardingContent({
                       className="h-full w-full object-cover"
                     />
                   )}
-                  <AvatarFallback className="bg-transparent text-zinc-100 font-semibold text-2xl">
+                  <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-2xl">
                     {userName
                       .split(/\s+/)
                       .map((p) => p[0])
@@ -521,7 +553,7 @@ function OnboardingContent({
 function FullScreenShell({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
     <div className="h-dvh overflow-y-auto overscroll-contain">
-      <div className="min-h-full flex items-center justify-center px-6 py-12 relative">
+      <div className="min-h-full flex items-center justify-center px-4 py-6 sm:px-6 sm:py-12 relative">
         <div
           aria-hidden
           className="absolute inset-0 pointer-events-none"
@@ -543,7 +575,7 @@ function Slide({ children }: { children: React.ReactNode }): React.ReactElement 
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-      className="rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-8"
+      className="rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-5 sm:p-8"
     >
       {children}
     </motion.div>
@@ -653,7 +685,7 @@ function StepDot({
         done
           ? 'bg-emerald-500 border-emerald-400 text-emerald-950'
           : active
-            ? 'bg-zinc-100 border-zinc-100 text-zinc-950'
+            ? 'bg-[var(--color-app-inverted)] border-[var(--color-app-inverted)] text-[var(--color-app-inverted-fg)]'
             : 'bg-transparent border-[var(--color-app-border-strong)] text-[var(--color-app-muted)]',
       )}
     >
@@ -685,7 +717,7 @@ function GhostButton({
   return (
     <button
       {...props}
-      className="h-9 px-3.5 inline-flex items-center justify-center gap-1.5 text-sm font-medium text-[var(--color-app-muted)] hover:text-zinc-100 rounded-md hover:bg-[var(--color-app-surface)] transition-colors"
+      className="h-9 px-3.5 inline-flex items-center justify-center gap-1.5 text-sm font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] rounded-md hover:bg-[var(--color-app-surface)] transition-colors"
     >
       {children}
     </button>

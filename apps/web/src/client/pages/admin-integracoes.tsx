@@ -215,7 +215,9 @@ function McpSection(): React.ReactElement {
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
               <Check className="h-4 w-4 text-emerald-400" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-100">{t('admin.integrations.mcp.enabled')}</p>
+                <p className="text-sm text-[var(--color-app-fg)]">
+                  {t('admin.integrations.mcp.enabled')}
+                </p>
                 <p className="text-[11px] text-[var(--color-app-muted)] font-mono">
                   {t('admin.integrations.mcp.copyToken').toLowerCase()}:{' '}
                   {status.tokenPreview ?? '••••'}
@@ -233,7 +235,7 @@ function McpSection(): React.ReactElement {
               <p className="text-[11px] uppercase tracking-wider text-amber-300 font-medium">
                 {t('admin.integrations.mcp.saveNow')}
               </p>
-              <code className="block font-mono text-[12px] tracking-tight text-zinc-100 break-all bg-[var(--color-app-bg-elevated)] rounded px-2 py-2 border border-[var(--color-app-border)]">
+              <code className="block font-mono text-[12px] tracking-tight text-[var(--color-app-fg)] break-all bg-[var(--color-app-bg-elevated)] rounded px-2 py-2 border border-[var(--color-app-border)]">
                 {newToken}
               </code>
               <Button variant="outline" size="sm" onClick={() => void copyToken()}>
@@ -265,7 +267,7 @@ function McpSection(): React.ReactElement {
                   <KeyRound className="h-4 w-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-zinc-100">
+                  <p className="text-sm font-medium text-[var(--color-app-fg)]">
                     {t('admin.integrations.mcp.promptTitle')}
                   </p>
                   <p className="mt-1 text-xs leading-relaxed text-[var(--color-app-muted)]">
@@ -466,7 +468,9 @@ function ProxyAgentSection(): React.ReactElement {
           {/* Switch on/off do roteamento pelo agente (não mexe no token/túnel). */}
           <div className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 px-4 py-3 flex items-center gap-3">
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-zinc-100">{t('admin.integrations.proxy.enableLabel')}</p>
+              <p className="text-sm text-[var(--color-app-fg)]">
+                {t('admin.integrations.proxy.enableLabel')}
+              </p>
               <p className="text-[11px] text-[var(--color-app-muted)] mt-0.5">
                 {t('admin.integrations.proxy.enableHint')}
               </p>
@@ -483,12 +487,12 @@ function ProxyAgentSection(): React.ReactElement {
           <div className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 px-4 py-3 flex items-center gap-3">
             <span
               className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                status.connected ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'
+                status.connected ? 'bg-emerald-400 animate-pulse' : 'bg-[var(--color-app-muted)]'
               }`}
               aria-hidden
             />
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-zinc-100">
+              <p className="text-sm text-[var(--color-app-fg)]">
                 {status.connected
                   ? t('admin.integrations.proxy.live.connected')
                   : t('admin.integrations.proxy.live.disconnected')}
@@ -508,7 +512,9 @@ function ProxyAgentSection(): React.ReactElement {
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
               <Check className="h-4 w-4 text-emerald-400" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-100">{t('admin.integrations.proxy.configured')}</p>
+                <p className="text-sm text-[var(--color-app-fg)]">
+                  {t('admin.integrations.proxy.configured')}
+                </p>
                 <p className="text-[11px] text-[var(--color-app-muted)] mt-0.5">
                   {t('admin.integrations.proxy.managedNote')}
                 </p>
@@ -529,7 +535,7 @@ function ProxyAgentSection(): React.ReactElement {
               <p className="text-[11px] uppercase tracking-wider text-amber-300 font-medium">
                 {t('admin.integrations.proxy.saveNow')}
               </p>
-              <code className="block font-mono text-[12px] tracking-tight text-zinc-100 break-all bg-[var(--color-app-bg-elevated)] rounded px-2 py-2 border border-[var(--color-app-border)]">
+              <code className="block font-mono text-[12px] tracking-tight text-[var(--color-app-fg)] break-all bg-[var(--color-app-bg-elevated)] rounded px-2 py-2 border border-[var(--color-app-border)]">
                 {newToken}
               </code>
               <Button variant="outline" size="sm" onClick={() => void copyToken()}>
@@ -552,7 +558,7 @@ function ProxyAgentSection(): React.ReactElement {
             <Label>{t('admin.integrations.proxy.tunnelUrl')}</Label>
             {displayTunnelUrl ? (
               <>
-                <code className="block font-mono text-[12px] text-zinc-100 break-all bg-[var(--color-app-bg-elevated)] rounded px-2 py-2 border border-[var(--color-app-border)]">
+                <code className="block font-mono text-[12px] text-[var(--color-app-fg)] break-all bg-[var(--color-app-bg-elevated)] rounded px-2 py-2 border border-[var(--color-app-border)]">
                   {displayTunnelUrl}
                 </code>
                 {!status.tunnelUrl && (
@@ -573,7 +579,7 @@ function ProxyAgentSection(): React.ReactElement {
             <p className="text-[11px] text-[var(--color-app-muted)] leading-relaxed">
               {t('admin.integrations.proxy.installHint')}
             </p>
-            <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed text-zinc-100 bg-[var(--color-app-bg-elevated)] rounded px-3 py-3 border border-[var(--color-app-border)]">
+            <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed text-[var(--color-app-fg)] bg-[var(--color-app-bg-elevated)] rounded px-3 py-3 border border-[var(--color-app-border)]">
               {snippet}
             </pre>
             <Button variant="outline" size="sm" onClick={() => void copySnippet()}>

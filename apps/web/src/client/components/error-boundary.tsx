@@ -69,7 +69,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     const copy = COPY[resolveLocale()];
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-6 text-center">
+      <div className="flex min-h-dvh items-center justify-center bg-[var(--color-app-bg-elevated)] px-4 text-center sm:px-6">
         <div className="max-w-md space-y-5">
           <img
             src="/voxen-256.png"
@@ -80,13 +80,17 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             className="mx-auto h-16 w-16 select-none opacity-90"
           />
           <div className="space-y-2">
-            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">{copy.title}</h1>
-            <p className="text-sm leading-relaxed text-zinc-400">{copy.description}</p>
+            <h1 className="text-xl font-semibold tracking-tight text-[var(--color-app-fg)]">
+              {copy.title}
+            </h1>
+            <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
+              {copy.description}
+            </p>
           </div>
           <button
             type="button"
             onClick={this.handleReload}
-            className="inline-flex items-center justify-center rounded-lg border border-zinc-700 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-white active:scale-95"
+            className="inline-flex items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-inverted)] px-4 py-2 text-sm font-medium text-[var(--color-app-inverted-fg)] transition-colors hover:bg-[var(--color-app-inverted-hover)] active:scale-95"
           >
             {copy.reload}
           </button>

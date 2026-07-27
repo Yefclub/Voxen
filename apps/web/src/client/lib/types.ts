@@ -1,6 +1,9 @@
+import type { AppTheme } from './theme';
+
 export type UserStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED';
 export type UserRole = 'ADMIN' | 'USER';
 export type AppLanguage = 'pt-BR' | 'en';
+export type { AppTheme };
 
 export interface MeUser {
   id: string;
@@ -9,6 +12,7 @@ export interface MeUser {
   image: string | null;
   status: UserStatus;
   role: UserRole;
+  theme: AppTheme;
 }
 
 export interface MeResponse {
@@ -23,6 +27,12 @@ export interface InstanceState {
   hasUsers: boolean;
   onboardingDone: boolean;
   language: AppLanguage;
+}
+
+export interface VersionResponse {
+  version: string;
+  gitSha: string | null;
+  builtAt: string;
 }
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';

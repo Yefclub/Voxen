@@ -1,13 +1,11 @@
 @import 'tailwindcss';
 
 /* ============================================================================
-   Voxen — Design system com personalidade
+   Voxen — Design system com temas (spec 073)
    ----------------------------------------------------------------------------
-   - Cinza neutro elevado (não preto) com viés verde sutil
-   - Duas tintas de acento: emerald (vida/ok) + violet (foco/destaque)
-   - Mesh gradient ambiente + noise overlay para textura
-   - Tipografia: Bricolage Grotesque (display) + Inter (UI) + JetBrains Mono
-   - Movimento: spring discreto via Motion (lib motion.dev)
+   Temas: zinc (padrão, cinza neutro) | emerald (viés verde) | light
+   Tokens semânticos --color-app-* / --color-accent-* são a fonte da verdade.
+   Tipografia: Bricolage Grotesque (display) + Inter (UI) + JetBrains Mono
    ============================================================================ */
 
 @theme {
@@ -15,25 +13,34 @@
   --font-display: 'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* Tons de cinza com leve verde, alinhados ao PWA mobile */
-  --color-app-bg: oklch(22% 0.01 165);
-  --color-app-bg-elevated: oklch(25% 0.01 165);
-  --color-app-surface: oklch(27.5% 0.011 165);
-  --color-app-surface-hover: oklch(31% 0.012 165);
-  --color-app-border: oklch(34% 0.011 165);
-  --color-app-border-strong: oklch(42% 0.013 165);
+  /* Defaults = zinc (overridden by [data-theme] below) */
+  --color-app-bg: #212121;
+  --color-app-bg-elevated: #2a2a2a;
+  --color-app-surface: #2f2f2f;
+  --color-app-surface-hover: #3a3a3a;
+  --color-app-border: #3a3a3a;
+  --color-app-border-strong: #4a4a4a;
 
-  --color-app-fg: oklch(98.5% 0 0);
-  --color-app-muted: oklch(68% 0.008 250);
-  --color-app-subtle: oklch(78% 0.005 250);
+  --color-app-fg: #ececec;
+  --color-app-muted: #8e8e8e;
+  --color-app-subtle: #b4b4b4;
 
-  /* Acentos */
   --color-accent-emerald: oklch(73% 0.16 159);
   --color-accent-emerald-soft: oklch(73% 0.16 159 / 0.18);
   --color-accent-violet: oklch(72% 0.18 290);
   --color-accent-violet-soft: oklch(72% 0.18 290 / 0.2);
   --color-accent-amber: oklch(80% 0.16 78);
   --color-accent-rose: oklch(70% 0.2 18);
+  --color-accent-primary: #19c37d;
+  --color-accent-primary-soft: rgba(25, 195, 125, 0.1);
+
+  /* Superfície sólida de alto contraste (botão default / chip forte) — inverte por tema */
+  --color-app-inverted: #ececec;
+  --color-app-inverted-fg: #18181b;
+  --color-app-inverted-hover: #ffffff;
+
+  /* Realce sutil no topo de cards "elevated" — claro no dark, discreto no light */
+  --color-app-elevate: rgba(255, 255, 255, 0.04);
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -44,19 +51,127 @@
   --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+/* Theme packs — applied via documentElement[data-theme] */
+:root,
+[data-theme='zinc'] {
+  color-scheme: dark;
+  --color-app-bg: #212121;
+  --color-app-bg-elevated: #2a2a2a;
+  --color-app-surface: #2f2f2f;
+  --color-app-surface-hover: #3a3a3a;
+  --color-app-border: #3a3a3a;
+  --color-app-border-strong: #4a4a4a;
+  --color-app-fg: #ececec;
+  --color-app-muted: #8e8e8e;
+  --color-app-subtle: #b4b4b4;
+  --color-accent-primary: #19c37d;
+  --color-accent-primary-soft: rgba(25, 195, 125, 0.1);
+  --color-app-inverted: #ececec;
+  --color-app-inverted-fg: #18181b;
+  --color-app-inverted-hover: #ffffff;
+  --color-app-elevate: rgba(255, 255, 255, 0.04);
+  --color-accent-emerald: oklch(73% 0.16 159);
+  --color-accent-emerald-soft: oklch(73% 0.16 159 / 0.18);
+  --color-accent-violet: oklch(72% 0.18 290);
+  --color-accent-violet-soft: oklch(72% 0.18 290 / 0.2);
+  --theme-html-bg: #212121;
+  --theme-mesh-a: transparent;
+  --theme-mesh-b: transparent;
+  --theme-mesh-c: oklch(28% 0.005 250 / 0.35);
+  --theme-selection: oklch(72% 0.18 290 / 0.28);
+  --theme-focus: oklch(72% 0.18 290 / 0.55);
+}
+
+[data-theme='emerald'] {
+  color-scheme: dark;
+  --color-app-bg: oklch(22% 0.01 165);
+  --color-app-bg-elevated: oklch(25% 0.01 165);
+  --color-app-surface: oklch(27.5% 0.011 165);
+  --color-app-surface-hover: oklch(31% 0.012 165);
+  --color-app-border: oklch(34% 0.011 165);
+  --color-app-border-strong: oklch(42% 0.013 165);
+  --color-app-fg: oklch(98.5% 0 0);
+  --color-app-muted: oklch(68% 0.008 250);
+  --color-app-subtle: oklch(78% 0.005 250);
+  --color-accent-primary: oklch(73% 0.16 159);
+  --color-accent-primary-soft: oklch(73% 0.16 159 / 0.18);
+  --color-app-inverted: oklch(98.5% 0 0);
+  --color-app-inverted-fg: oklch(22% 0.01 165);
+  --color-app-inverted-hover: #ffffff;
+  --color-app-elevate: rgba(255, 255, 255, 0.04);
+  --theme-html-bg: #19211f;
+  --theme-mesh-a: oklch(72% 0.18 290 / 0.08);
+  --theme-mesh-b: oklch(73% 0.16 159 / 0.06);
+  --theme-mesh-c: oklch(28% 0.005 250 / 0.3);
+  --theme-selection: oklch(72% 0.18 290 / 0.3);
+  --theme-focus: oklch(72% 0.18 290 / 0.6);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --color-app-bg: #f7f7f8;
+  --color-app-bg-elevated: #ffffff;
+  --color-app-surface: #ffffff;
+  --color-app-surface-hover: #f0f0f2;
+  --color-app-border: #e5e5e8;
+  --color-app-border-strong: #d4d4d8;
+  --color-app-fg: #18181b;
+  --color-app-muted: #71717a;
+  --color-app-subtle: #52525b;
+  --color-accent-primary: #0f9f6e;
+  --color-accent-primary-soft: rgba(15, 159, 110, 0.12);
+  --color-app-inverted: #18181b;
+  --color-app-inverted-fg: #fafafa;
+  --color-app-inverted-hover: #27272a;
+  --color-app-elevate: rgba(0, 0, 0, 0.02);
+  --color-accent-emerald: oklch(55% 0.14 159);
+  --color-accent-emerald-soft: oklch(55% 0.14 159 / 0.14);
+  --color-accent-violet: oklch(52% 0.18 290);
+  --color-accent-violet-soft: oklch(52% 0.18 290 / 0.14);
+  --theme-html-bg: #f7f7f8;
+  --theme-mesh-a: oklch(72% 0.18 290 / 0.04);
+  --theme-mesh-b: oklch(73% 0.16 159 / 0.04);
+  --theme-mesh-c: transparent;
+  --theme-selection: oklch(72% 0.18 290 / 0.22);
+  --theme-focus: oklch(52% 0.18 290 / 0.5);
+}
+
+.graph-canvas-grid {
+  background-color: var(--color-app-bg);
+  background-image:
+    radial-gradient(circle at 50% 38%, var(--color-accent-violet-soft), transparent 46%),
+    linear-gradient(
+      color-mix(in srgb, var(--color-app-border) 58%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-app-border) 58%, transparent) 1px,
+      transparent 1px
+    );
+  background-size:
+    auto,
+    44px 44px,
+    44px 44px;
+}
+
 @layer base {
   html {
     min-height: 100%;
     width: 100%;
     max-width: 100%;
     color-scheme: dark;
-    background: #19211f;
+    background: var(--theme-html-bg, #212121);
     color: var(--color-app-fg);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     overflow-x: hidden;
     overflow-x: clip;
     scrollbar-gutter: auto;
+  }
+
+  html[data-theme='light'] {
+    color-scheme: light;
   }
 
   body {
@@ -102,9 +217,31 @@
     *::-webkit-scrollbar {
       display: none;
     }
+
+    /* iOS amplia automaticamente campos menores que 16px e desloca todo o
+       shell do PWA. Mantém composer, filtros e formulários estáveis ao focar. */
+    input,
+    textarea,
+    select {
+      font-size: 16px;
+    }
+
+    button,
+    a,
+    [role='button'] {
+      touch-action: manipulation;
+    }
   }
 
-  /* Mesh gradient ambiente — leve, atrás de tudo */
+  @media (display-mode: standalone) {
+    html,
+    body,
+    #root {
+      overscroll-behavior: none;
+    }
+  }
+
+  /* Mesh gradient ambiente — depende do tema */
   body::before {
     content: '';
     position: fixed;
@@ -112,9 +249,13 @@
     pointer-events: none;
     z-index: 0;
     background:
-      radial-gradient(ellipse 60% 40% at 15% 0%, oklch(72% 0.18 290 / 0.08), transparent 60%),
-      radial-gradient(ellipse 60% 40% at 85% 100%, oklch(73% 0.16 159 / 0.06), transparent 60%),
-      radial-gradient(ellipse 70% 50% at 50% 50%, oklch(28% 0.005 250 / 0.5), transparent 70%);
+      radial-gradient(ellipse 60% 40% at 15% 0%, var(--theme-mesh-a, transparent), transparent 60%),
+      radial-gradient(
+        ellipse 60% 40% at 85% 100%,
+        var(--theme-mesh-b, transparent),
+        transparent 60%
+      ),
+      radial-gradient(ellipse 70% 50% at 50% 50%, var(--theme-mesh-c, transparent), transparent 70%);
   }
 
   /* Noise grain — dá calor à imagem */
@@ -156,13 +297,13 @@
   }
 
   ::selection {
-    background: oklch(72% 0.18 290 / 0.3);
+    background: var(--theme-selection, oklch(72% 0.18 290 / 0.28));
     color: var(--color-app-fg);
   }
 
   /* Focus ring elegante */
   :where(button, a, input, textarea, select, [role='button']):focus-visible {
-    outline: 2px solid oklch(72% 0.18 290 / 0.6);
+    outline: 2px solid var(--theme-focus, oklch(72% 0.18 290 / 0.55));
     outline-offset: 2px;
     border-radius: 4px;
   }
@@ -230,11 +371,7 @@
     position: relative;
   }
   .surface-elevated {
-    background: linear-gradient(
-      180deg,
-      oklch(30% 0.006 250 / 0.6) 0%,
-      var(--color-app-surface) 100%
-    );
+    background: linear-gradient(180deg, var(--color-app-elevate) 0%, var(--color-app-surface) 100%);
     border: 1px solid var(--color-app-border);
     border-radius: var(--radius-lg);
   }
@@ -268,7 +405,7 @@
 
   /* Texto com gradiente sutil (uso esparso, só em h1 hero) */
   .text-gradient {
-    background: linear-gradient(180deg, oklch(98.5% 0 0) 0%, oklch(78% 0.005 250) 100%);
+    background: linear-gradient(180deg, var(--color-app-fg) 0%, var(--color-app-subtle) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -301,6 +438,50 @@
     }
     to {
       transform: translateX(100%);
+    }
+  }
+
+  /* Text shimmer (raciocínio "Pensando") — gradiente animado sobre o texto */
+  .text-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--color-app-muted) 0%,
+      var(--color-app-muted) 35%,
+      var(--color-app-fg) 50%,
+      var(--color-app-muted) 65%,
+      var(--color-app-muted) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: text-shimmer-slide 2s linear infinite;
+  }
+  @keyframes text-shimmer-slide {
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  /* Colapsável do chat — motion grid-template-rows 0fr↔1fr (padrão do mockup) */
+  .chat-collapsible {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.28s var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
+  }
+  .chat-collapsible[data-open='true'] {
+    grid-template-rows: 1fr;
+  }
+  .chat-collapsible > .chat-collapsible-inner {
+    overflow: hidden;
+    min-height: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chat-collapsible {
+      transition: none;
+    }
+    .text-shimmer {
+      animation: none;
     }
   }
 

@@ -22,6 +22,8 @@ import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { classifyFolderForContent } from '../lib/folder-classify';
 import { generateTitleForContent } from '../lib/title-generate';
+import { generateTagsForContent } from '../lib/tags-generate';
+import { applyTagsToTranscript } from '../lib/tags';
 import { isSetupComplete } from '../lib/settings';
 
 type Vars = { userId: string };
@@ -54,21 +56,43 @@ const PatchFolderBody = z.object({
 
 libraryRoutes.get('/folders', async (c) => {
   const userId = c.get('userId');
-  const folders = await db.libraryFolder.findMany({
-    where: { userId },
-    orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
-    select: {
-      id: true,
-      parentId: true,
-      name: true,
-      createdAt: true,
-      updatedAt: true,
-      _count: {
-        select: { transcripts: true, children: true },
+  const [folders, memberCounts] = await Promise.all([
+    db.libraryFolder.findMany({
+      where: { userId },
+      orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        parentId: true,
+        name: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: { select: { children: true } },
       },
-    },
+    }),
+    db.$queryRaw<Array<{ id: string; count: bigint }>>`
+      SELECT f.id, COUNT(m.id)::bigint AS count
+      FROM "LibraryFolder" f
+      LEFT JOIN LATERAL (
+        SELECT t.id FROM "Transcript" t
+        WHERE t."userId" = ${userId} AND t."folderId" = f.id
+        UNION
+        SELECT tt."transcriptId" AS id
+        FROM "TranscriptTag" tt
+        JOIN "Tag" tag ON tag.id = tt."tagId"
+        JOIN "Transcript" t ON t.id = tt."transcriptId" AND t."userId" = ${userId}
+        WHERE tag."userId" = ${userId} AND tag."folderId" = f.id
+      ) m ON TRUE
+      WHERE f."userId" = ${userId}
+      GROUP BY f.id
+    `,
+  ]);
+  const counts = new Map(memberCounts.map((item) => [item.id, Number(item.count)]));
+  return c.json({
+    folders: folders.map((folder) => ({
+      ...folder,
+      _count: { children: folder._count.children, transcripts: counts.get(folder.id) ?? 0 },
+    })),
   });
-  return c.json({ folders });
 });
 
 libraryRoutes.post('/folders', async (c) => {
@@ -380,6 +404,102 @@ libraryRoutes.post('/regenerate-titles', async (c) => {
     pendingTotal,
     nextCursor,
   });
+});
+
+// POST /api/library/generate-tags — gera tags via IA só para conteúdo ACTIVE que
+// ainda não tem NENHUMA tag (spec 075). Processa em lote por request; a UI
+// chama em loop até drenar. Cada tag garante uma pasta e, se o conteúdo não tem
+// pasta, herda a da primeira tag. Best-effort: falha de item não derruba o lote.
+libraryRoutes.post('/generate-tags', async (c) => {
+  const userId = c.get('userId');
+  if (!(await isSetupComplete())) {
+    return c.json({ error: 'Setup incompleto.' }, 412);
+  }
+
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
+  const limitRaw = Number(body.limit ?? 10);
+  const limit =
+    Number.isFinite(limitRaw) && limitRaw >= 1 && limitRaw <= 30 ? Math.floor(limitRaw) : 10;
+
+  const pendingTotal = await db.transcript.count({
+    where: { userId, status: 'ACTIVE', tags: { none: {} } },
+  });
+  if (pendingTotal === 0) {
+    return c.json({
+      processed: 0,
+      tagged: 0,
+      skipped: 0,
+      failed: 0,
+      remaining: 0,
+      pendingTotal: 0,
+    });
+  }
+
+  const batch = await db.transcript.findMany({
+    where: { userId, status: 'ACTIVE', tags: { none: {} } },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    select: { id: true, title: true, plainText: true, summaryMd: true, folderId: true },
+  });
+
+  const existingTagNames = new Set(
+    (
+      await db.tag.findMany({ where: { userId }, select: { name: true }, orderBy: { name: 'asc' } })
+    ).map((t) => t.name),
+  );
+
+  let tagged = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const item of batch) {
+    try {
+      const content = ((item.summaryMd ?? '') || (item.plainText ?? '')).trim();
+      if (content.length < 40 && item.title.trim().length < 3) {
+        skipped += 1;
+        continue;
+      }
+      const result = await generateTagsForContent({
+        title: item.title,
+        content: content || item.title,
+        existingTags: [...existingTagNames],
+      });
+      await db.costEvent.create({
+        data: {
+          userId,
+          kind: 'CHAT',
+          model: result.model,
+          tokensIn: result.tokensIn,
+          tokensOut: result.tokensOut,
+          costUsd: result.costUsd,
+          meta: {
+            source: 'tag_generation_backfill',
+            transcript_id: item.id,
+            tags: result.tags,
+          },
+        },
+      });
+      if (result.tags.length === 0) {
+        skipped += 1;
+        continue;
+      }
+      const applied = await applyTagsToTranscript(
+        userId,
+        { id: item.id, folderId: item.folderId },
+        result.tags,
+      );
+      for (const t of applied) existingTagNames.add(t.name);
+      tagged += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  const remaining = await db.transcript.count({
+    where: { userId, status: 'ACTIVE', tags: { none: {} } },
+  });
+
+  return c.json({ processed: batch.length, tagged, skipped, failed, remaining, pendingTotal });
 });
 
 // Limpa TODAS as pastas do usuário: conteúdos ficam (folderId → null via onDelete SetNull).

@@ -42,9 +42,9 @@ jobs:
           BASE=$(git merge-base "origin/$BASE_REF" HEAD 2>/dev/null || echo "")
           if [ -z "$BASE" ]; then BASE=$(git rev-parse --verify -q HEAD~1 || echo ""); fi
 
-          # PR automática de version-dev: título começa com "chore: set version to "
+          # PR automática de version-dev: "set version to …" (e legado chore:)
           TITLE=$(gh pr view "${{ github.event.pull_request.number }}" --json title -q .title 2>/dev/null || echo "")
-          if [ "$IS_RELEASE" = 0 ] && [[ "$TITLE" == chore:\ set\ version\ to\ * ]]; then
+          if [ "$IS_RELEASE" = 0 ] && { [[ "$TITLE" == set\ version\ to\ * ]] || [[ "$TITLE" == chore:\ set\ version\ to\ * ]]; }; then
             echo "[changelog] PR de version-dev (isento) — changelog não exigido."
             exit 0
           fi
@@ -74,9 +74,48 @@ jobs:
 
           if [ -z "${MD// }" ]; then
             if [ "$IS_RELEASE" = 1 ]; then
-              echo "::error::PR de release sem changelog/RELEASE.md (changelog curado de produção)."
+              printf '%s\n' \
+                "" \
+                "===============================================================" \
+                "PR DE RELEASE (dev→main) SEM O CHANGELOG DE PRODUÇÃO — falhou." \
+                "" \
+                "A release precisa de um changelog CURADO, voltado ao usuário." \
+                "Colete as entradas de dev desde a última produção, filtre ruído" \
+                "interno (chore/infra/refactors) e destaque o que muda a UX." \
+                "" \
+                "→ Crie:  changelog/RELEASE.md" \
+                "" \
+                "  ---" \
+                "  titulo: Voxen <versão> — <tema da release>" \
+                "  ---" \
+                "" \
+                "  Corpo em markdown (seções por tema, não por PR)." \
+                "===============================================================" \
+                "" >&2
+              echo "::error::PR de release sem changelog/RELEASE.md (changelog curado de produção). Detalhes no log."
             else
-              echo "::error::PR sem changelog. Crie changelog/unreleased/<slug>.md (tipo + titulo + corpo)."
+              printf '%s\n' \
+                "" \
+                "===============================================================" \
+                "ESTA PR NÃO ADICIONA UM ARQUIVO DE CHANGELOG — por isso falhou." \
+                "" \
+                "Toda mudança de produto precisa de uma entrada em" \
+                "changelog/unreleased/<slug>.md (linguagem de usuário final)." \
+                "PRs só de infra/CI/docs estão isentas." \
+                "" \
+                "→ Crie UM arquivo:  changelog/unreleased/<slug-descritivo>.md" \
+                "" \
+                "  ---" \
+                "  tipo: feat        # feat|fix|perf|ui|infra|security|chore" \
+                "  titulo: Título claro voltado ao usuário" \
+                "  ---" \
+                "" \
+                "  Corpo em markdown: o que mudou, onde aparece e por quê." \
+                "" \
+                "Formato completo: changelog/README.md" \
+                "===============================================================" \
+                "" >&2
+              echo "::error::PR sem arquivo de changelog. Crie changelog/unreleased/<slug>.md (detalhes no log)."
             fi
             exit 1
           fi
@@ -86,7 +125,7 @@ jobs:
             if ! RN_SOURCE="$f" node scripts/release-notes.mjs check; then FAIL=1; fi
           done
           if [ "$FAIL" != 0 ]; then
-            echo "::error::Arquivo de changelog inválido."
+            echo "::error::Arquivo de changelog inválido (precisa de frontmatter tipo + titulo e corpo markdown). Veja changelog/README.md."
             exit 1
           fi
           echo "[changelog] OK — changelog presente e válido."

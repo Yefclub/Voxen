@@ -7,8 +7,9 @@ const alertVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-zinc-900/40 border-zinc-800 text-zinc-200',
-        info: 'bg-zinc-900/40 border-zinc-700 text-zinc-200',
+        default:
+          'bg-[var(--color-app-surface)] border-[var(--color-app-border)] text-[var(--color-app-subtle)]',
+        info: 'bg-[var(--color-app-surface)] border-[var(--color-app-border-strong)] text-[var(--color-app-subtle)]',
         success: 'bg-emerald-500/5 border-emerald-500/30 text-emerald-200',
         warning: 'bg-amber-500/5 border-amber-500/30 text-amber-200',
         destructive: 'bg-red-500/5 border-red-500/30 text-red-200',
@@ -40,6 +41,8 @@ export const AlertDescription = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('text-sm opacity-90', className)} {...props} />
+  // break-words: mensagens de erro vindas de API/servidor são conteúdo não
+  // controlado — um token/URL longo sem espaço não pode estourar o alerta.
+  <div ref={ref} className={cn('text-sm opacity-90 break-words', className)} {...props} />
 ));
 AlertDescription.displayName = 'AlertDescription';

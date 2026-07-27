@@ -1,18 +1,21 @@
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useMe } from '../../lib/hooks';
 import { Spinner } from '../ui/spinner';
+import { SessionUnavailable } from '../session-unavailable';
 
 export function AuthLayout(): React.ReactElement {
-  const { data, loading } = useMe();
+  const { data, loading, error, refresh } = useMe();
   const location = useLocation();
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-dvh flex items-center justify-center">
         <Spinner size={20} className="text-[var(--color-app-muted)]" />
       </div>
     );
   }
+
+  if (error && !data) return <SessionUnavailable onRetry={refresh} />;
 
   if (data?.user && data.user.status === 'APPROVED') {
     // Admin sem onboarding completo → manda pro wizard

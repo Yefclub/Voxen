@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Lock, ShieldCheck, Users as UsersIcon, X } from 'lucide-react';
+import { Check, Globe2, Lock, ShieldCheck, Users as UsersIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -14,9 +14,11 @@ import type { AdminUser } from '../lib/types';
 import { formatRelative } from '../lib/format';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { useI18n, type TranslateFn } from '../lib/i18n';
+import { TimezoneSelect } from '../components/timezone-select';
 
 interface InstanceResponse {
   allowSignups: boolean;
+  timezone: string;
 }
 
 export function AdminUsuariosPage(): React.ReactElement {
@@ -24,7 +26,9 @@ export function AdminUsuariosPage(): React.ReactElement {
   const { locale, t } = useI18n();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [allowSignups, setAllowSignups] = useState<boolean | null>(null);
+  const [timezone, setTimezone] = useState<string | null>(null);
   const [togglingSignups, setTogglingSignups] = useState(false);
+  const [savingTimezone, setSavingTimezone] = useState(false);
 
   useEffect(() => {
     // Guarda contra setState após unmount (apiGet não aceita AbortController).
@@ -33,6 +37,7 @@ export function AdminUsuariosPage(): React.ReactElement {
       .then((s) => {
         if (cancelled) return;
         setAllowSignups(s.allowSignups);
+        setTimezone(s.timezone);
       })
       .catch(() => undefined);
     return () => {
@@ -71,10 +76,11 @@ export function AdminUsuariosPage(): React.ReactElement {
     setAllowSignups(next);
     setTogglingSignups(true);
     try {
-      await api<InstanceResponse>('/api/admin/instance', {
+      const res = await api<InstanceResponse>('/api/admin/instance', {
         method: 'PATCH',
         body: JSON.stringify({ allowSignups: next }),
       });
+      if (res.timezone) setTimezone(res.timezone);
       toast.success(next ? t('admin.users.signupsOpen') : t('admin.users.signupsClosed'), {
         description: next
           ? t('admin.users.signupsOpenDescription')
@@ -88,19 +94,40 @@ export function AdminUsuariosPage(): React.ReactElement {
     }
   }
 
+  async function saveTimezone(next: string): Promise<void> {
+    const previous = timezone;
+    setTimezone(next);
+    setSavingTimezone(true);
+    try {
+      const res = await api<InstanceResponse>('/api/admin/instance', {
+        method: 'PATCH',
+        body: JSON.stringify({ timezone: next }),
+      });
+      setTimezone(res.timezone);
+      toast.success(t('admin.users.timezoneSaved'), {
+        description: t('admin.users.timezoneSavedDescription', { timezone: res.timezone }),
+      });
+    } catch (err) {
+      setTimezone(previous);
+      toast.error(err instanceof ApiError ? err.message : t('admin.users.updateError'));
+    } finally {
+      setSavingTimezone(false);
+    }
+  }
+
   const users = data?.users ?? [];
   const pending = users.filter((u) => u.status === 'PENDING');
   const others = users.filter((u) => u.status !== 'PENDING');
 
   return (
     <AnimatedPage>
-      <div className="px-4 sm:px-8 py-8 sm:py-12 mx-auto max-w-6xl space-y-10">
+      <div className="mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-8 sm:py-12">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
             {t('admin.eyebrow')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
             {t('admin.users.title')}
           </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
@@ -121,7 +148,9 @@ export function AdminUsuariosPage(): React.ReactElement {
               {allowSignups ? <UsersIcon className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-zinc-100">{t('admin.users.newSignups')}</p>
+              <p className="text-sm font-medium text-[var(--color-app-fg)]">
+                {t('admin.users.newSignups')}
+              </p>
               <p className="text-xs text-[var(--color-app-muted)] mt-0.5 leading-relaxed">
                 {allowSignups === null
                   ? t('admin.users.loading')
@@ -142,8 +171,39 @@ export function AdminUsuariosPage(): React.ReactElement {
           </CardContent>
         </Card>
 
+        {/* Fuso da instância (spec 095) */}
+        <Card elevated>
+          <CardContent className="pt-5 pb-5 space-y-4">
+            <div className="flex items-start gap-4">
+              <div className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center border bg-violet-500/10 border-violet-500/30 text-violet-300">
+                <Globe2 className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <p className="text-sm font-medium text-[var(--color-app-fg)]">
+                  {t('admin.users.timezoneTitle')}
+                </p>
+                <p className="text-xs text-[var(--color-app-muted)] leading-relaxed">
+                  {t('admin.users.timezoneDescription')}
+                </p>
+              </div>
+              {savingTimezone && <Spinner className="text-[var(--color-app-muted)] shrink-0" />}
+            </div>
+            {timezone === null ? (
+              <p className="text-xs text-[var(--color-app-muted)]">{t('admin.users.loading')}</p>
+            ) : (
+              <TimezoneSelect
+                id="admin-instance-timezone"
+                value={timezone}
+                onChange={(next) => void saveTimezone(next)}
+                disabled={savingTimezone}
+                hint={t('admin.users.timezoneHint')}
+              />
+            )}
+          </CardContent>
+        </Card>
+
         <section className="space-y-4">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-300">
+          <h2 className="text-sm font-semibold tracking-tight text-[var(--color-app-subtle)]">
             {t('admin.users.pendingApproval')}
             {pending.length > 0 && (
               <Badge variant="warning" className="ml-2">
@@ -174,7 +234,9 @@ export function AdminUsuariosPage(): React.ReactElement {
                   >
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
-                        <span className="font-medium text-zinc-100 break-words">{u.name}</span>
+                        <span className="font-medium text-[var(--color-app-fg)] break-words">
+                          {u.name}
+                        </span>
                         <span className="text-sm text-[var(--color-app-muted)] break-all">
                           {u.email}
                         </span>
@@ -213,7 +275,7 @@ export function AdminUsuariosPage(): React.ReactElement {
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-300">
+          <h2 className="text-sm font-semibold tracking-tight text-[var(--color-app-subtle)]">
             {t('admin.users.allUsers')}
           </h2>
 
@@ -235,7 +297,9 @@ export function AdminUsuariosPage(): React.ReactElement {
                   >
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center gap-x-3 gap-y-1 flex-wrap min-w-0">
-                        <span className="font-medium text-zinc-100 break-words">{u.name}</span>
+                        <span className="font-medium text-[var(--color-app-fg)] break-words">
+                          {u.name}
+                        </span>
                         <span className="text-sm text-[var(--color-app-muted)] break-all">
                           {u.email}
                         </span>

@@ -23,6 +23,7 @@ import type { OrModel } from '../lib/types';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ModelPicker } from '../components/model-picker';
 import { LOCALES, useI18n, type Locale } from '../lib/i18n';
+import { detectBrowserTimezone, TimezoneSelect } from '../components/timezone-select';
 
 interface ModelsResponse {
   chat: OrModel[];
@@ -36,6 +37,7 @@ interface ModelsResponse {
 interface SetupStatus {
   complete: boolean;
   language: Locale;
+  timezone: string;
   chatModel: string | null;
   transcriptionModel: string | null;
   webSearchModel: string | null;
@@ -52,6 +54,7 @@ export function SetupPage(): React.ReactElement {
   const [step, setStep] = useState<Step>('loading');
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [appLanguage, setAppLanguage] = useState<Locale>(locale);
+  const [appTimezone, setAppTimezone] = useState(() => detectBrowserTimezone());
   const [apiKey, setApiKey] = useState('');
   const [chatModel, setChatModel] = useState('');
   const [transcriptionModel, setTranscriptionModel] = useState('');
@@ -74,6 +77,7 @@ export function SetupPage(): React.ReactElement {
       setStatus(s);
       setAppLanguage(s.language);
       setLocale(s.language);
+      if (s.timezone) setAppTimezone(s.timezone);
       if (!s.complete) return;
       setChatModel(s.chatModel ?? '');
       setTranscriptionModel(s.transcriptionModel ?? '');
@@ -193,6 +197,7 @@ export function SetupPage(): React.ReactElement {
     try {
       const body: Record<string, string | boolean> = {
         app_language: appLanguage,
+        app_timezone: appTimezone,
         default_chat_model: chatModel,
         default_transcription_model: transcriptionModel,
       };
@@ -222,7 +227,7 @@ export function SetupPage(): React.ReactElement {
 
   if (step === 'loading') {
     return (
-      <div className="px-8 py-24 flex justify-center">
+      <div className="flex justify-center px-4 py-16 sm:px-8 sm:py-24">
         <Spinner size={22} className="text-[var(--color-app-muted)]" />
       </div>
     );
@@ -231,7 +236,7 @@ export function SetupPage(): React.ReactElement {
   if (step === 'done') {
     return (
       <AnimatedPage>
-        <div className="mx-auto max-w-3xl px-6 py-20 flex flex-col items-center text-center">
+        <div className="mx-auto flex max-w-3xl flex-col items-center px-4 py-12 text-center sm:px-6 sm:py-20">
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -269,7 +274,7 @@ export function SetupPage(): React.ReactElement {
   // Wizard de primeira configuração ou formulário direto de edição da instância.
   return (
     <AnimatedPage>
-      <div className="mx-auto max-w-4xl px-6 py-12">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-12">
         <PageHeader
           badge={editingConfigured ? t('setup.badge.edit') : t('setup.badge.initial')}
           title={
@@ -362,7 +367,7 @@ export function SetupPage(): React.ReactElement {
                       href="https://openrouter.ai/keys"
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-zinc-100 underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
+                      className="inline-flex items-center gap-1 text-[var(--color-app-fg)] underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
                     >
                       OpenRouter
                       <ExternalLink className="h-3 w-3" />
@@ -447,6 +452,18 @@ export function SetupPage(): React.ReactElement {
                           </span>
                         </button>
                       ))}
+                    </div>
+                    <div className="mt-5">
+                      <TimezoneSelect
+                        id="setup-timezone"
+                        value={appTimezone}
+                        onChange={(next) => {
+                          setSaved(false);
+                          setAppTimezone(next);
+                        }}
+                        label={t('setup.timezone.title')}
+                        hint={t('setup.timezone.description')}
+                      />
                     </div>
                   </CardContent>
                 </Card>
@@ -655,7 +672,7 @@ function PageHeader({
         <Sparkles className="h-3.5 w-3.5" />
         {badge}
       </div>
-      <h1 className="font-display text-3xl font-semibold text-zinc-100">{title}</h1>
+      <h1 className="font-display text-3xl font-semibold text-[var(--color-app-fg)]">{title}</h1>
       <p className="max-w-2xl text-sm text-[var(--color-app-muted)] leading-relaxed">{sub}</p>
     </header>
   );
@@ -681,7 +698,7 @@ function StepDot({
           done
             ? 'bg-emerald-500 border-emerald-400 text-emerald-950'
             : active
-              ? 'bg-zinc-100 border-zinc-100 text-zinc-950'
+              ? 'bg-[var(--color-app-inverted)] border-[var(--color-app-inverted)] text-[var(--color-app-inverted-fg)]'
               : 'bg-transparent border-[var(--color-app-border-strong)] text-[var(--color-app-muted)]',
         ].join(' ')}
       >
@@ -690,7 +707,7 @@ function StepDot({
       <span
         className={
           active || done
-            ? 'text-zinc-100 text-sm font-medium'
+            ? 'text-[var(--color-app-fg)] text-sm font-medium'
             : 'text-[var(--color-app-muted)] text-sm'
         }
       >

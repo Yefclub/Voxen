@@ -14,10 +14,13 @@
 import { db } from './db';
 import { encrypt, decrypt } from './crypto';
 import { getMasterKey } from './master-key';
+import { DEFAULT_APP_TIMEZONE, normalizeAppTimezone } from './app-timezone';
 
 export type GlobalSettingKey =
   | 'openrouter_api_key'
   | 'app_language'
+  /** IANA timezone da instância (spec 095). Default America/Sao_Paulo. */
+  | 'app_timezone'
   | 'default_chat_model'
   | 'default_transcription_model'
   // Modelo dedicado a pesquisa na web. A tool `web_search` usa a server tool
@@ -56,7 +59,11 @@ export type GlobalSettingKey =
   // Switch on/off do Agente de Proxy: 'true'/'false'. Controla se o worker
   // roteia a extração pelo SOCKS do túnel (yt_dlp_proxy_urls). Independente do
   // token — desligar não apaga o token nem exige reinstalar o agente.
-  | 'proxy_agent_enabled';
+  | 'proxy_agent_enabled'
+  /** Spec 104: embeddings opt-in ('true'/'false'). Default off — FTS continua default. */
+  | 'embeddings_enabled'
+  /** Modelo OpenRouter de embedding (ex.: openai/text-embedding-3-small). */
+  | 'embedding_model';
 
 const X_ANALYSIS_SETTING_KEYS = [
   'default_x_analysis_model',
@@ -86,6 +93,11 @@ export async function getSettingByKey(key: string): Promise<string | null> {
 
 export async function getAppLanguage(): Promise<AppLanguage> {
   return normalizeAppLanguage(await getSetting('app_language'));
+}
+
+export async function getAppTimezone(): Promise<string> {
+  const raw = await getSetting('app_timezone').catch(() => null);
+  return normalizeAppTimezone(raw ?? DEFAULT_APP_TIMEZONE);
 }
 
 export async function getFirstSettingByKey(keys: readonly string[]): Promise<string | null> {

@@ -15,12 +15,15 @@ from typing import Any
 import asyncpg
 import structlog
 
+from .graph_index_lease import GraphIndexLease, acquire_graph_index_lease
+
 log = structlog.get_logger(__name__)
 
 _pool: asyncpg.Pool | None = None
 
 TOPIC_LIMIT = 8
 TOPIC_MIN_LEN = 4
+BRAIN_TOPIC_INDEX_VERSION = 1
 TOPIC_STOPWORDS = {
     "ainda",
     "algo",
@@ -278,8 +281,51 @@ async def upsert_transcript_brain_node(
     thumbnail_url: str | None,
     plain_text: str,
     status: str = "ACTIVE",
-) -> None:
-    """Materializa o nó CONTENT do Brain quando o worker conclui uma transcrição."""
+) -> bool:
+    """Materializa o CONTENT somente sob o lease compartilhado por usuário."""
+    lease = await acquire_graph_index_lease(user_id)
+    if lease is None:
+        return False
+    try:
+        async with lease.heartbeat():
+            return await _upsert_transcript_brain_node_with_lease(
+                conn,
+                lease=lease,
+                user_id=user_id,
+                transcript_id=transcript_id,
+                source=source,
+                url=url,
+                title=title,
+                channel=channel,
+                language=language,
+                transcription_method=transcription_method,
+                thumbnail_url=thumbnail_url,
+                plain_text=plain_text,
+                status=status,
+            )
+    finally:
+        await lease.release()
+
+
+async def _upsert_transcript_brain_node_with_lease(
+    conn: asyncpg.Connection,
+    *,
+    lease: GraphIndexLease,
+    user_id: str,
+    transcript_id: str,
+    source: str,
+    url: str,
+    title: str,
+    channel: str | None,
+    language: str,
+    transcription_method: str,
+    thumbnail_url: str | None,
+    plain_text: str,
+    status: str,
+) -> bool:
+    """Materializa o CONTENT e confirma ownership antes de cada fase mutável."""
+    if not await lease.renew():
+        return False
     node_id = generate_cuid()
     key = f"TRANSCRIPT:{transcript_id}"
     metadata = {
@@ -289,9 +335,7 @@ async def upsert_transcript_brain_node(
         "language": language,
         "transcriptionMethod": transcription_method,
         "thumbnailUrl": thumbnail_url,
-        "topicIndexVersion": 1,
     }
-    await _remove_transcript_brain_refreshable_sources(conn, user_id, transcript_id)
     row = await conn.fetchrow(
         """
         INSERT INTO "BrainNode" (
@@ -306,7 +350,7 @@ async def upsert_transcript_brain_node(
             label = EXCLUDED.label,
             description = EXCLUDED.description,
             status = EXCLUDED.status,
-            metadata = EXCLUDED.metadata,
+            metadata = ("BrainNode".metadata - 'topicIndexVersion') || EXCLUDED.metadata,
             "sourceType" = EXCLUDED."sourceType",
             "sourceId" = EXCLUDED."sourceId",
             "updatedAt" = NOW()
@@ -322,6 +366,20 @@ async def upsert_transcript_brain_node(
         transcript_id,
     )
     brain_node_id = row["id"] if row else node_id
+
+    if not await lease.renew():
+        return False
+    refreshable_sources_removed = await _remove_transcript_brain_refreshable_sources(
+        conn,
+        lease=lease,
+        user_id=user_id,
+        transcript_id=transcript_id,
+    )
+    if not refreshable_sources_removed:
+        return False
+
+    if not await lease.renew():
+        return False
     await conn.execute(
         """
         INSERT INTO "BrainSource" (
@@ -336,8 +394,12 @@ async def upsert_transcript_brain_node(
         transcript_id,
         _truncate(title, 600),
     )
-    await _upsert_transcript_topic_edges(
+
+    if not await lease.renew():
+        return False
+    topic_edges_complete = await _upsert_transcript_topic_edges(
         conn,
+        lease=lease,
         user_id=user_id,
         transcript_id=transcript_id,
         content_node_id=brain_node_id,
@@ -345,49 +407,78 @@ async def upsert_transcript_brain_node(
         text=plain_text,
         status=status,
     )
+    if not topic_edges_complete:
+        return False
+
+    if not await lease.renew():
+        return False
+    marker_result = await conn.execute(
+        """
+        UPDATE "BrainNode"
+        SET metadata = metadata || $3::jsonb,
+            "updatedAt" = NOW()
+        WHERE id = $1
+          AND "userId" = $2
+        """,
+        brain_node_id,
+        user_id,
+        json.dumps({"topicIndexVersion": BRAIN_TOPIC_INDEX_VERSION}),
+    )
+    return str(marker_result) == "UPDATE 1"
 
 
 async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> bool:
     """Reindexa um Transcript já persistido usando summaryMd quando existir."""
-    async with connection() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT source, url, title, channel, language, "transcriptionMethod",
-                   "thumbnailUrl", "plainText", "summaryMd", status
-            FROM "Transcript"
-            WHERE id = $1 AND "userId" = $2
-            """,
-            transcript_id,
-            user_id,
-        )
-        if not row:
-            await conn.execute(
-                """
-                DELETE FROM "BrainNode"
-                WHERE "userId" = $1
-                  AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
-                  AND "sourceId" = $2
-                """,
-                user_id,
-                transcript_id,
-            )
-            await _delete_orphan_keyword_topic_nodes(conn, user_id)
-            return False
-        await upsert_transcript_brain_node(
-            conn,
-            user_id=user_id,
-            transcript_id=transcript_id,
-            source=row["source"],
-            url=row["url"],
-            title=row["title"],
-            channel=row["channel"],
-            language=row["language"],
-            transcription_method=row["transcriptionMethod"],
-            thumbnail_url=row["thumbnailUrl"],
-            plain_text=row["summaryMd"] or row["plainText"],
-            status=row["status"],
-        )
-        return True
+    lease = await acquire_graph_index_lease(user_id)
+    if lease is None:
+        return False
+    try:
+        async with lease.heartbeat():
+            async with connection() as conn:
+                row = await conn.fetchrow(
+                    """
+                    SELECT source, url, title, channel, language, "transcriptionMethod",
+                           "thumbnailUrl", "plainText", "summaryMd", status
+                    FROM "Transcript"
+                    WHERE id = $1 AND "userId" = $2
+                    """,
+                    transcript_id,
+                    user_id,
+                )
+                if not row:
+                    if not await lease.renew():
+                        return False
+                    await conn.execute(
+                        """
+                        DELETE FROM "BrainNode"
+                        WHERE "userId" = $1
+                          AND "sourceType" = 'TRANSCRIPT'::"BrainSourceType"
+                          AND "sourceId" = $2
+                        """,
+                        user_id,
+                        transcript_id,
+                    )
+                    if not await lease.renew():
+                        return False
+                    await _delete_orphan_keyword_topic_nodes(conn, user_id)
+                    return False
+                return await _upsert_transcript_brain_node_with_lease(
+                    conn,
+                    lease=lease,
+                    user_id=user_id,
+                    transcript_id=transcript_id,
+                    source=row["source"],
+                    url=row["url"],
+                    title=row["title"],
+                    channel=row["channel"],
+                    language=row["language"],
+                    transcription_method=row["transcriptionMethod"],
+                    thumbnail_url=row["thumbnailUrl"],
+                    plain_text=row["summaryMd"] or row["plainText"],
+                    status=row["status"],
+                )
+    finally:
+        await lease.release()
 
 
 async def reindex_missing_transcript_brain_nodes(limit: int = 50) -> int:
@@ -406,11 +497,12 @@ async def reindex_missing_transcript_brain_nodes(limit: int = 50) -> int:
             WHERE n.id IS NULL
                OR (
                     t.status = 'ACTIVE'::"ContentStatus"
-                AND COALESCE(n.metadata->>'topicIndexVersion', '') <> '1'
+                AND COALESCE(n.metadata->>'topicIndexVersion', '') <> $1
                )
             ORDER BY t."updatedAt" ASC
-            LIMIT $1
+            LIMIT $2
             """,
+            str(BRAIN_TOPIC_INDEX_VERSION),
             limit,
         )
     count = 0
@@ -422,9 +514,13 @@ async def reindex_missing_transcript_brain_nodes(limit: int = 50) -> int:
 
 async def _remove_transcript_brain_refreshable_sources(
     conn: asyncpg.Connection,
+    *,
+    lease: GraphIndexLease,
     user_id: str,
     transcript_id: str,
-) -> None:
+) -> bool:
+    if not lease.locally_owned():
+        return False
     rows = await conn.fetch(
         """
         SELECT bs."edgeId"
@@ -433,11 +529,16 @@ async def _remove_transcript_brain_refreshable_sources(
         WHERE bs."userId" = $1
           AND bs."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
           AND bs."sourceId" = $2
-          AND (bs."edgeId" IS NULL OR be.method = 'keyword')
+          AND (
+            bs."edgeId" IS NULL
+            OR be.method IN ('keyword', 'llm-grounded')
+          )
         """,
         user_id,
         transcript_id,
     )
+    if not lease.locally_owned():
+        return False
     edge_ids = [row["edgeId"] for row in rows if row["edgeId"]]
     await conn.execute(
         """
@@ -447,11 +548,13 @@ async def _remove_transcript_brain_refreshable_sources(
           AND bs."userId" = $1
           AND bs."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
           AND bs."sourceId" = $2
-          AND be.method = 'keyword'
+          AND be.method IN ('keyword', 'llm-grounded')
         """,
         user_id,
         transcript_id,
     )
+    if not lease.locally_owned():
+        return False
     await conn.execute(
         """
         DELETE FROM "BrainSource"
@@ -463,8 +566,10 @@ async def _remove_transcript_brain_refreshable_sources(
         user_id,
         transcript_id,
     )
+    if not lease.locally_owned():
+        return False
     if not edge_ids:
-        return
+        return True
     remaining = await conn.fetch(
         """
         SELECT DISTINCT "edgeId"
@@ -473,6 +578,8 @@ async def _remove_transcript_brain_refreshable_sources(
         """,
         edge_ids,
     )
+    if not lease.locally_owned():
+        return False
     remaining_ids = {row["edgeId"] for row in remaining}
     orphan_edge_ids = [edge_id for edge_id in edge_ids if edge_id not in remaining_ids]
     if orphan_edge_ids:
@@ -481,12 +588,20 @@ async def _remove_transcript_brain_refreshable_sources(
             DELETE FROM "BrainEdge"
             WHERE "userId" = $1
               AND id = ANY($2::text[])
-              AND method = 'keyword'
+              AND method IN ('keyword', 'llm-grounded')
             """,
             user_id,
             orphan_edge_ids,
         )
+        if not lease.locally_owned():
+            return False
         await _delete_orphan_keyword_topic_nodes(conn, user_id)
+        if not lease.locally_owned():
+            return False
+        await _delete_orphan_grounded_concept_nodes(conn, user_id)
+        if not lease.locally_owned():
+            return False
+    return True
 
 
 async def _delete_orphan_keyword_topic_nodes(conn: asyncpg.Connection, user_id: str) -> None:
@@ -514,17 +629,23 @@ async def _delete_orphan_keyword_topic_nodes(conn: asyncpg.Connection, user_id: 
 async def _upsert_transcript_topic_edges(
     conn: asyncpg.Connection,
     *,
+    lease: GraphIndexLease,
     user_id: str,
     transcript_id: str,
     content_node_id: str,
     title: str,
     text: str,
     status: str,
-) -> None:
+) -> bool:
     if status != "ACTIVE":
-        return
+        return True
+    complete = True
     for topic in _extract_topics(f"{title}\n{text}"):
+        if not lease.locally_owned():
+            return False
         topic_node_id = await _upsert_topic_node(conn, user_id, topic["slug"], topic["label"])
+        if not lease.locally_owned():
+            return False
         edge_row = await conn.fetchrow(
             """
             INSERT INTO "BrainEdge" (
@@ -549,7 +670,10 @@ async def _upsert_transcript_topic_edges(
             json.dumps({"term": topic["slug"], "count": topic["count"]}),
         )
         if not edge_row:
+            complete = False
             continue
+        if not lease.locally_owned():
+            return False
         try:
             await conn.execute(
                 """
@@ -572,6 +696,8 @@ async def _upsert_transcript_topic_edges(
                 edge_id=edge_row["id"],
                 transcript_id=transcript_id,
             )
+            complete = False
+    return complete
 
 
 async def _upsert_topic_node(
@@ -605,6 +731,205 @@ async def _upsert_topic_node(
         json.dumps({"method": "keyword"}),
     )
     return str(row["id"])
+
+
+async def _delete_orphan_grounded_concept_nodes(conn: asyncpg.Connection, user_id: str) -> None:
+    await conn.execute(
+        """
+        DELETE FROM "BrainNode" n
+        WHERE n."userId" = $1
+          AND n.type IN ('ENTITY'::"BrainNodeType", 'CLAIM'::"BrainNodeType")
+          AND n."sourceType" IS NULL
+          AND n.metadata->>'method' = 'llm-grounded'
+          AND n."updatedAt" < NOW() - INTERVAL '2 minutes'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "BrainEdge" be
+            WHERE be."userId" = n."userId"
+              AND (be."fromNodeId" = n.id OR be."toNodeId" = n.id)
+          )
+        """,
+        user_id,
+    )
+
+
+async def upsert_grounded_brain_items(
+    *,
+    user_id: str,
+    transcript_id: str,
+    items: list[dict[str, Any]],
+) -> int:
+    """Materializa entidades/claims grounded (method=llm-grounded). Best-effort."""
+    if not items:
+        return 0
+    lease = await acquire_graph_index_lease(user_id)
+    if lease is None:
+        return 0
+    created = 0
+    try:
+        async with lease.heartbeat():
+            async with connection() as conn:
+                content = await conn.fetchrow(
+                    """
+                    SELECT id FROM "BrainNode"
+                    WHERE "userId" = $1 AND key = $2
+                    """,
+                    user_id,
+                    f"TRANSCRIPT:{transcript_id}",
+                )
+                if not content:
+                    return 0
+                content_node_id = str(content["id"])
+                for item in items:
+                    if not lease.locally_owned():
+                        return created
+                    kind = str(item.get("kind") or "entity")
+                    label = str(item.get("label") or "").strip()
+                    excerpt = str(item.get("excerpt") or "").strip()
+                    conf = float(item.get("confidence") or 0.7)
+                    slug = str(item.get("slug") or "")
+                    if not label or not excerpt or not slug:
+                        continue
+                    node_type = "CLAIM" if kind == "claim" else "ENTITY"
+                    key_prefix = "CLAIM" if kind == "claim" else "ENTITY"
+                    concept_id = await _upsert_grounded_concept_node(
+                        conn,
+                        user_id=user_id,
+                        key=f"{key_prefix}:{slug}",
+                        node_type=node_type,
+                        label=label,
+                    )
+                    if not lease.locally_owned():
+                        return created
+                    edge_row = await conn.fetchrow(
+                        """
+                        INSERT INTO "BrainEdge" (
+                            id, "userId", "fromNodeId", "toNodeId", kind, confidence,
+                            method, status, metadata, "createdAt", "updatedAt"
+                        ) VALUES (
+                            $1, $2, $3, $4, 'MENTIONS'::"BrainEdgeKind", $5,
+                            'llm-grounded', 'ACTIVE'::"ContentStatus", $6::jsonb, NOW(), NOW()
+                        )
+                        ON CONFLICT ("userId", "fromNodeId", "toNodeId", kind, method) DO UPDATE SET
+                            confidence = EXCLUDED.confidence,
+                            status = EXCLUDED.status,
+                            metadata = EXCLUDED.metadata,
+                            "updatedAt" = NOW()
+                        RETURNING id
+                        """,
+                        generate_cuid(),
+                        user_id,
+                        content_node_id,
+                        concept_id,
+                        conf,
+                        json.dumps(
+                            {
+                                "term": slug,
+                                "kind": kind,
+                                "extractor": "openrouter-grounded",
+                            }
+                        ),
+                    )
+                    if not edge_row:
+                        continue
+                    if not lease.locally_owned():
+                        return created
+                    try:
+                        await conn.execute(
+                            """
+                            INSERT INTO "BrainSource" (
+                                id, "userId", "edgeId", "sourceType", "sourceId",
+                                excerpt, "createdAt"
+                            ) VALUES (
+                                $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, NOW()
+                            )
+                            """,
+                            generate_cuid(),
+                            user_id,
+                            edge_row["id"],
+                            transcript_id,
+                            _truncate(excerpt, 600),
+                        )
+                        created += 1
+                    except Exception:  # noqa: BLE001
+                        log.warning(
+                            "brain-grounded-source-skipped",
+                            transcript_id=transcript_id,
+                            edge_id=edge_row["id"],
+                        )
+    finally:
+        await lease.release()
+    return created
+
+
+async def _upsert_grounded_concept_node(
+    conn: asyncpg.Connection,
+    *,
+    user_id: str,
+    key: str,
+    node_type: str,
+    label: str,
+) -> str:
+    row = await conn.fetchrow(
+        """
+        INSERT INTO "BrainNode" (
+            id, "userId", key, type, label, description, status, metadata,
+            "sourceType", "sourceId", "createdAt", "updatedAt"
+        ) VALUES (
+            $1, $2, $3, $4::"BrainNodeType", $5, $6, 'ACTIVE'::"ContentStatus",
+            $7::jsonb, NULL, NULL, NOW(), NOW()
+        )
+        ON CONFLICT ("userId", key) DO UPDATE SET
+            type = EXCLUDED.type,
+            label = EXCLUDED.label,
+            description = EXCLUDED.description,
+            metadata = EXCLUDED.metadata,
+            "updatedAt" = NOW()
+        RETURNING id
+        """,
+        generate_cuid(),
+        user_id,
+        key,
+        node_type,
+        label,
+        "Conceito extraído com grounding (trecho literal no conteúdo).",
+        json.dumps({"method": "llm-grounded"}),
+    )
+    return str(row["id"])
+
+
+async def store_content_embedding(
+    *,
+    user_id: str,
+    transcript_id: str,
+    model: str,
+    vector: list[float],
+) -> bool:
+    """Persiste embedding no metadata do nó CONTENT (opt-in, sem pgvector)."""
+    if not vector:
+        return False
+    payload = {
+        "embedding": {
+            "model": model,
+            "dims": len(vector),
+            "vector": vector,
+            "updatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+    }
+    async with connection() as conn:
+        result = await conn.execute(
+            """
+            UPDATE "BrainNode"
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
+                "updatedAt" = NOW()
+            WHERE "userId" = $1
+              AND key = $2
+            """,
+            user_id,
+            f"TRANSCRIPT:{transcript_id}",
+            json.dumps(payload),
+        )
+    return str(result) == "UPDATE 1"
 
 
 def _extract_topics(value: str) -> list[dict[str, Any]]:
@@ -670,6 +995,219 @@ async def list_library_folder_names(user_id: str) -> list[str]:
             user_id,
         )
     return [str(row["name"]) for row in rows if row["name"]]
+
+
+async def list_tag_names(user_id: str) -> list[str]:
+    """Nomes de tags do workspace (para reuso no prompt de geração)."""
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT name
+            FROM "Tag"
+            WHERE "userId" = $1
+            ORDER BY name ASC
+            """,
+            user_id,
+        )
+    return [str(row["name"]) for row in rows if row["name"]]
+
+
+async def list_transcript_tag_names(transcript_id: str) -> list[str]:
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT t.name
+            FROM "TranscriptTag" tt
+            JOIN "Tag" t ON t.id = tt."tagId"
+            WHERE tt."transcriptId" = $1
+            ORDER BY tt."createdAt" ASC
+            """,
+            transcript_id,
+        )
+    return [str(row["name"]) for row in rows if row["name"]]
+
+
+async def get_transcript_title_summary_folder(
+    transcript_id: str,
+) -> tuple[str, str, str | None] | None:
+    """title, content (summaryMd or plainText), folderId — para auto-tags."""
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT title, "plainText", "summaryMd", "folderId"
+            FROM "Transcript"
+            WHERE id = $1
+            """,
+            transcript_id,
+        )
+    if not row:
+        return None
+    title = str(row["title"] or "")
+    summary = (row["summaryMd"] or "").strip()
+    plain = (row["plainText"] or "").strip()
+    content = summary or plain
+    folder_id = row["folderId"]
+    return title, content, (str(folder_id) if folder_id else None)
+
+
+async def apply_tags_to_transcript(
+    *,
+    user_id: str,
+    transcript_id: str,
+    tag_names: list[str],
+    current_folder_id: str | None,
+) -> list[str]:
+    """
+    Cria/reutiliza Tag + pasta, liga TranscriptTag, seta folderId só se vazio
+    (R-FOLDER, spec 075). Retorna nomes aplicados.
+    """
+    from .tags import pick_folder_id, slugify_tag
+
+    applied: list[str] = []
+    first_folder_id: str | None = None
+
+    async with connection() as conn:
+        for raw_name in tag_names:
+            name = " ".join((raw_name or "").split()).strip()[:120]
+            if not name:
+                continue
+            slug = slugify_tag(name)
+            if not slug:
+                continue
+
+            existing = await conn.fetchrow(
+                """
+                SELECT id, name, "folderId"
+                FROM "Tag"
+                WHERE "userId" = $1 AND slug = $2
+                """,
+                user_id,
+                slug,
+            )
+            if existing:
+                tag_id = str(existing["id"])
+                tag_name = str(existing["name"])
+                folder_id = existing["folderId"]
+                if not folder_id:
+                    folder_id = await _ensure_folder_for_tag_conn(conn, user_id, tag_name)
+                    await conn.execute(
+                        """
+                        UPDATE "Tag" SET "folderId" = $2, "updatedAt" = NOW()
+                        WHERE id = $1
+                        """,
+                        tag_id,
+                        folder_id,
+                    )
+                else:
+                    folder_id = str(folder_id)
+            else:
+                folder_id = await _ensure_folder_for_tag_conn(conn, user_id, name)
+                tag_id = generate_cuid()
+                try:
+                    await conn.execute(
+                        """
+                        INSERT INTO "Tag" (
+                            id, "userId", name, slug, "folderId", "createdAt", "updatedAt"
+                        ) VALUES (
+                            $1, $2, $3, $4, $5, NOW(), NOW()
+                        )
+                        """,
+                        tag_id,
+                        user_id,
+                        name,
+                        slug,
+                        folder_id,
+                    )
+                    tag_name = name
+                except Exception:  # noqa: BLE001 — corrida UNIQUE(userId, slug)
+                    raced = await conn.fetchrow(
+                        """
+                        SELECT id, name, "folderId"
+                        FROM "Tag"
+                        WHERE "userId" = $1 AND slug = $2
+                        """,
+                        user_id,
+                        slug,
+                    )
+                    if not raced:
+                        raise
+                    tag_id = str(raced["id"])
+                    tag_name = str(raced["name"])
+                    folder_id = str(raced["folderId"] or folder_id)
+
+            await conn.execute(
+                """
+                INSERT INTO "TranscriptTag" ("transcriptId", "tagId", "createdAt")
+                VALUES ($1, $2, NOW())
+                ON CONFLICT ("transcriptId", "tagId") DO NOTHING
+                """,
+                transcript_id,
+                tag_id,
+            )
+            applied.append(tag_name)
+            if first_folder_id is None:
+                first_folder_id = folder_id
+
+        target = pick_folder_id(current_folder_id, first_folder_id)
+        if target and current_folder_id is None:
+            await conn.execute(
+                """
+                UPDATE "Transcript"
+                SET "folderId" = $2, "updatedAt" = NOW()
+                WHERE id = $1 AND "folderId" IS NULL AND "userId" = $3
+                """,
+                transcript_id,
+                target,
+                user_id,
+            )
+
+    return applied
+
+
+async def _ensure_folder_for_tag_conn(conn: Any, user_id: str, name: str) -> str:
+    """Pasta livre (sem Tag.folderId) de mesmo nome, ou cria no root."""
+    clean = " ".join(name.split()).strip()[:120]
+    free = await conn.fetchrow(
+        """
+        SELECT f.id
+        FROM "LibraryFolder" f
+        LEFT JOIN "Tag" t ON t."folderId" = f.id
+        WHERE f."userId" = $1 AND lower(f.name) = lower($2) AND t.id IS NULL
+        ORDER BY f."createdAt" ASC
+        LIMIT 1
+        """,
+        user_id,
+        clean,
+    )
+    if free:
+        return str(free["id"])
+    # Reusa pasta existente mesmo com tag (outro caso) — ou cria.
+    existing = await conn.fetchrow(
+        """
+        SELECT id FROM "LibraryFolder"
+        WHERE "userId" = $1 AND lower(name) = lower($2)
+        ORDER BY "createdAt" ASC
+        LIMIT 1
+        """,
+        user_id,
+        clean,
+    )
+    if existing:
+        return str(existing["id"])
+    folder_id = generate_cuid()
+    await conn.execute(
+        """
+        INSERT INTO "LibraryFolder" (
+            id, "userId", "parentId", name, "createdAt", "updatedAt"
+        ) VALUES (
+            $1, $2, NULL, $3, NOW(), NOW()
+        )
+        """,
+        folder_id,
+        user_id,
+        clean,
+    )
+    return folder_id
 
 
 async def ensure_library_folder(user_id: str, name: str) -> str:

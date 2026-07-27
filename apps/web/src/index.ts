@@ -27,6 +27,8 @@ import { mcpRoutes } from './routes/mcp';
 import { graphRoutes } from './routes/graph';
 import { releasesRoutes } from './routes/releases';
 import { shareTargetRoutes } from './routes/share-target';
+import { chatRoutes } from './routes/chat';
+import { extensionMetaRoutes } from './routes/extension-meta';
 import { getRedisPublisher } from './lib/redis';
 import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
@@ -216,9 +218,26 @@ app.get('/api/me', async (c) => {
   }
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true, name: true, image: true, status: true, role: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      image: true,
+      status: true,
+      role: true,
+      theme: true,
+    },
   });
-  return c.json({ user, setupComplete, onboardingDone, language });
+  const theme =
+    user?.theme === 'emerald' || user?.theme === 'light' || user?.theme === 'zinc'
+      ? user.theme
+      : 'zinc';
+  return c.json({
+    user: user ? { ...user, theme } : null,
+    setupComplete,
+    onboardingDone,
+    language,
+  });
 });
 
 // Setup endpoints (protegidos por middleware ADMIN no próprio router)
@@ -254,8 +273,12 @@ app.route('/mcp', mcpRoutes);
 app.route('/api/graph', graphRoutes);
 // Changelog / release notes (releases.json)
 app.route('/api/releases', releasesRoutes);
+// Conversa canônica por usuário, streaming e ferramentas do acervo.
+app.route('/api/chat', chatRoutes);
 // PWA Web Share Target (Android/Chrome instalado)
 app.route('/share-target', shareTargetRoutes);
+// Extensão browser — version.json (update check)
+app.route('/extension', extensionMetaRoutes);
 
 // Avatar proxy: serve imagem do storage S3 de qualquer user autenticado
 app.get('/api/avatar/:userId', async (c) => {
@@ -393,6 +416,26 @@ if (process.env.NODE_ENV === 'production') {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`[proxy-agent] sync no boot falhou: ${message}`);
     });
+
+  // Turnos do chat são duráveis: Redis impede execução duplicada e esta
+  // reconciliação retoma o que ficou pendente após restart/deploy.
+  void import('./lib/chat/turn-runtime')
+    .then(({ reconcilePendingChatTurns }) => {
+      void reconcilePendingChatTurns().catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[chat] reconciliação inicial falhou: ${message}`);
+      });
+      setInterval(() => {
+        void reconcilePendingChatTurns().catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(`[chat] reconciliação periódica falhou: ${message}`);
+        });
+      }, 30_000);
+    })
+    .catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[chat] runtime de continuidade indisponível: ${message}`);
+    });
 }
 
 // Proxy de WebSocket do túnel: antes de cair no Hono, tentamos fazer upgrade do
@@ -401,8 +444,25 @@ if (process.env.NODE_ENV === 'production') {
 import { tryUpgradeTunnel, tunnelWebSocketHandler } from './lib/tunnel-proxy';
 import type { Server } from 'bun';
 
+function isLongLivedStreamRequest(req: Request): boolean {
+  if (req.method === 'POST') {
+    const path = new URL(req.url).pathname;
+    // Chat SSE: turno pode ficar aberto minutos (request_transcription).
+    return path === '/api/chat' || path.endsWith('/api/chat');
+  }
+  if (req.method === 'GET') {
+    const path = new URL(req.url).pathname;
+    // Jobs SSE: heartbeat a cada 10s, mas idle do Bun ainda pode matar a conexão.
+    return /\/api\/jobs\/[^/]+\/events$/.test(path);
+  }
+  return false;
+}
+
 export default {
   port,
+  // Bun.serve fecha conexões ociosas em 10s por padrão (inclui streams quietos).
+  // 255s é o máximo da API; streams longos desabilitam o timeout por request.
+  idleTimeout: 255,
   // `server` é injetado pelo Bun no runtime real. Em testes, importadores chamam
   // `app.fetch(req)` direto (sem server) — por isso é opcional: sem server não há
   // como fazer `server.upgrade`, então pulamos o proxy e seguimos pro Hono.
@@ -411,6 +471,10 @@ export default {
   // bem-sucedido o Bun aceita `undefined` em runtime — encapsulamos com cast.
   fetch(req: Request, server?: Server<unknown>): Response | Promise<Response> {
     if (server) {
+      if (isLongLivedStreamRequest(req)) {
+        // 0 = sem idle timeout nesta request (docs Bun: SSE / long streams).
+        server.timeout(req, 0);
+      }
       const upgraded = tryUpgradeTunnel(req, server);
       // `tryUpgradeTunnel`: `undefined` = upgrade aceito (o Bun assume a resposta);
       // `Response` = interceptou e recusou; `null` = não é o path do túnel.

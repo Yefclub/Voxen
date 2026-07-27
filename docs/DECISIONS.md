@@ -133,6 +133,24 @@ latência/custo e quebra o determinismo. A escolhida é **custo zero, latência
 zero, 100% determinística e no Postgres** — coerente com esta ADR. Sem pgvector,
 sem embeddings, sem reindex.
 
+### Extensão — Harness de recuperação progressiva (spec 074, 2026-07-12)
+
+O harness ganhou um fluxo de recuperação **progressiva** (padrão dos editores de
+código com IA), ainda sem embeddings. A lógica compartilhada vive em
+`apps/web/src/lib/retrieval.ts` (funções de parsing puras + acessos read-only
+escopados por `userId`), consumida tanto pelo agente in-app (`lib/chat/runtime.ts`)
+quanto pelo servidor MCP (`routes/mcp.ts`).
+
+Fluxo: **buscar** (FTS `ts_headline`+`ts_rank`) → **ver estrutura** (outline do
+`.md` canônico do S3) → **ler só o trecho** (por linhas / seção / intervalo de
+tempo) → **expandir contexto** sob demanda → **relacionar** (vizinhança no Brain +
+FTS) → **validar citações** (checagem determinística de substring normalizada,
+sem LLM). `read_transcript` (documento inteiro) fica como último recurso, caro.
+
+Fonte de estrutura/timestamps é o `.md` canônico no S3 (`Transcript.mdPath`),
+não o `plainText` (texto corrido pra FTS). Todas as saídas têm cap de linhas/chars.
+Mantém a ADR: determinístico, custo zero de indexação, sem pgvector/embeddings.
+
 ---
 
 ## ADR-005 — ARQ em vez de BullMQ
@@ -262,5 +280,99 @@ Caminhos:
 - Mais código pra manter (~50 linhas)
 - Sem útil-mas-açúcar do `useChat` — implementamos só o que precisamos
 - Quando/se Agno suportar AI SDK protocol oficialmente, migrar é simples
+
+---
+
+## ADR-010 — Mapa do Brain 2D-first com slice (não dump 3D global)
+
+**Data**: 2026-07-19
+**Status**: Aceita
+
+### Contexto
+
+O `/grafo` abria em 3D com snapshot quase completo e arestas de co-ocorrência
+fracas. O mercado OSS de second-brain (Obsidian, Sigma, exploradores leves)
+prioriza mapa **rápido**, 2D WebGL e recortes (local/overview), não simulação
+3D do universo inteiro.
+
+### Decisão
+
+1. **Default 2D (Sigma)**; 3D (Reagraph) só sob demanda.
+2. **`view=map` por padrão** no `GET /api/graph`: ≤180 nós / ≤400 arestas,
+   conceitos só com grau ≥2, arestas fracas omitidas.
+3. **`view=full`** e **`focus`+`hops`** para dump e ego-network.
+4. Indexador Brain com limiar mais alto em `RELATED_TO` (shared-concepts /
+   semantic-profile).
+
+### Consequências
+
+- Tempo até interativo cai (sem bundle 3D no path crítico; payload menor).
+- Mapas densos com n-grama barulhento somem da UI padrão.
+- Full view permanece para diagnóstico e bases pequenas.
+- Spec: `.specs/103-graph-fast-map.md`.
+
+---
+
+## ADR-011 — LangExtract: adotar o padrão, não a lib (por agora)
+
+**Data**: 2026-07-19
+**Status**: Aceita
+
+### Contexto
+
+[LangExtract](https://github.com/google/langextract) (Google, **Apache-2.0**)
+extrai informação estruturada de texto com LLM, **source grounding** (offsets
+no texto) e few-shot. É o estado da arte open-source para “compile na
+ingestão” de entidades/claims.
+
+### Alternativas
+
+| Opção | Prós | Contras |
+|-------|------|---------|
+| (a) Dependência `langextract` no worker | Grounding maduro, viz HTML | Stack Gemini/Ollama-centric; Voxen é OpenRouter-first; deps extras; path de auth paralelo |
+| (b) Reimplementar o **padrão** (schema + few-shot + excerpt obrigatório) via OpenRouter | Cabe no ADR-004/harness; 1 chave; licença limpa | Mais código nosso |
+| (c) Ignorar grounding | Rápido | Arestas/claims sem citação — piora o Brain |
+
+### Decisão
+
+**(b) — adotar o padrão LangExtract sem a biblioteca neste ciclo.**
+
+- Extrações futuras de conceitos/claims **devem** exigir trecho literal
+  (`excerpt`) no texto-fonte (grounding).
+- Provider único: OpenRouter (settings cifrados), não chave Gemini à parte.
+- Reavaliar `langextract` se surgir provider OpenRouter de primeira classe
+  estável e o custo de manter o extrator próprio passar do custo da lib.
+
+### Consequências
+
+- Não aumenta superfície de supply-chain no worker agora.
+- Spec 103 não inclui compile LLM; fica backlog P1 (concept/claim grounded).
+- Apache-2.0 seria aceitável se (b) deixar de ser suficiente.
+- **2026-07-19:** implementado em spec 104 — extrator grounded OpenRouter no worker
+  (`brain_extract.py`) sem a lib LangExtract.
+
+---
+
+## ADR-012 — Compile grounded + clusters + embeddings opt-in
+
+**Data**: 2026-07-19
+**Status**: Aceita
+
+### Decisão
+
+1. **Compile na ingestão**: após tags, extrair entidades/claims com excerpt
+   literal (grounding). Materializar `ENTITY`/`CLAIM` + `MENTIONS` method
+   `llm-grounded`. Best-effort (não falha o job).
+2. **Clusters**: no map view, comunidades com ≥3 nós ganham hub virtual
+   `type=cluster` e arestas `part_of`/`community`.
+3. **Embeddings opt-in**: setting `embeddings_enabled`; vetor no
+   `BrainNode.metadata.embedding` (sem pgvector). Busca FTS default; com flag,
+   reordenação híbrida dos hits FTS.
+
+### Consequências
+
+- Arestas com citação real; grafo menos “palavra solta”.
+- Sem migração de schema / sem Neo4j.
+- Embeddings desligados por default — zero custo extra em deploys mínimos.
 
 ---

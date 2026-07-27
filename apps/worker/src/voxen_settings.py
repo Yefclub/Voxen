@@ -23,6 +23,29 @@ def get_master_key() -> bytes:
     return _master_key_cache
 
 
+async def get_embeddings_enabled(default: bool = False) -> bool:
+    """Setting cifrada `embeddings_enabled` = true/false. Default False."""
+    enc = await db.get_setting_enc("embeddings_enabled")
+    if enc is None:
+        return default
+    try:
+        raw = decrypt(enc, get_master_key()).strip().lower()
+    except Exception:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
+async def get_embedding_model(default: str = "openai/text-embedding-3-small") -> str:
+    enc = await db.get_setting_enc("embedding_model")
+    if enc is None:
+        return default
+    try:
+        value = decrypt(enc, get_master_key()).strip()
+    except Exception:
+        return default
+    return value or default
+
+
 async def get_openrouter_api_key() -> str | None:
     enc = await db.get_setting_enc("openrouter_api_key")
     if enc is None:

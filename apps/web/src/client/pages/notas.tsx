@@ -43,13 +43,13 @@ export function NotasPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="px-4 sm:px-8 py-8 sm:py-10 mx-auto max-w-5xl space-y-8">
+      <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 sm:space-y-8 sm:px-8 sm:py-10">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <Library className="h-3.5 w-3.5 text-violet-400" />
             {t('notes.manualBase')}
           </div>
-          <h1 className="font-display text-4xl font-semibold tracking-[-0.03em]">
+          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
             {t('notes.title')}
           </h1>
           <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
@@ -204,7 +204,7 @@ function NoteEditor({
       transition={{ duration: 0.25 }}
     >
       <Card elevated className="overflow-hidden p-0 min-h-[calc(100dvh-280px)] flex flex-col">
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-[var(--color-app-border)]">
+        <div className="flex items-center gap-3 px-4 py-3 sm:px-6 sm:py-4 border-b border-[var(--color-app-border)]">
           <input
             type="text"
             value={title}
@@ -214,7 +214,7 @@ function NoteEditor({
             }}
             onBlur={() => void save()}
             placeholder={t('notes.untitled')}
-            className="flex-1 bg-transparent text-xl font-display font-semibold tracking-tight text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none"
+            className="flex-1 bg-transparent text-xl font-display font-semibold tracking-tight text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none"
           />
           <span className="text-[11px] uppercase tracking-wider tabular-nums">
             {saving ? (
@@ -251,7 +251,7 @@ function NoteEditor({
           </Button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
           {previewMode ? (
             <div className="prose-voxen">
               {content.trim() ? (

@@ -20,6 +20,7 @@ from . import (
     events,
     storage,
     summary,
+    tags,
     uploaded_media,
     video_url,
     voxen_settings,
@@ -138,6 +139,18 @@ def _is_tiktok_rehydration_error(exc: BaseException) -> bool:
     text = str(exc).lower()
     return "tiktok" in text and (
         "unable to extract" in text or "rehydration" in text or "universal data" in text
+    )
+
+
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    """HTTP 429 / rate-limit — retentável e, em legendas, elegível a fallback API."""
+    text = str(exc).lower()
+    return (
+        "http error 429" in text
+        or "too many requests" in text
+        or "rate-limit" in text
+        or "rate limit" in text
+        or "limitou requisições" in text
     )
 
 
@@ -283,10 +296,18 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                     content = sub_path.read_text(encoding="utf-8")
                     subtitle_segments = ytdl.parse_vtt_or_srt(content)
                     subtitle_lang = lang
+                except PermanentError as e:
+                    # Rate-limit (429) era promovido a PermanentError e abortava
+                    # o job sem cair no Whisper. Outros PermanentError (antibot,
+                    # geo, etc.) continuam fatais.
+                    if not _is_rate_limit_error(e):
+                        raise
+                    log.warning(
+                        "subtitle-failed-fallback-api",
+                        lang=lang,
+                        error=str(e)[:200],
+                    )
                 except _TRANSIENT_EXC as e:
-                    # YouTube rate-limita download de subtitles (HTTP 429) com
-                    # frequência. Em vez de FAILED, caímos pro path API (Whisper) —
-                    # é mais caro mas funciona. Probe já passou, vídeo existe.
                     log.warning(
                         "subtitle-failed-fallback-api",
                         lang=lang,
@@ -857,7 +878,213 @@ async def _generate_summary_with_progress(
         job_id=job_id,
         log=log,
     )
+    # Tags automáticas (spec 075 + 096): após o resumo, com o texto/resumo
+    # disponíveis. Best-effort — não derruba o job.
+    _check_cancel(job_id)
+    await events.publish_job_event(user_id, job_id, "tagging", percent=99)
+    await _maybe_generate_tags(
+        user_id=user_id,
+        job_id=job_id,
+        transcript_id=transcript_id,
+        log=log,
+    )
     await db.reindex_transcript_brain_node(user_id, transcript_id)
+    await _maybe_grounded_brain_extract(
+        user_id=user_id,
+        transcript_id=transcript_id,
+        log=log,
+    )
+    await _maybe_store_embedding(
+        user_id=user_id,
+        transcript_id=transcript_id,
+        log=log,
+    )
+
+
+async def _maybe_grounded_brain_extract(
+    *,
+    user_id: str,
+    transcript_id: str,
+    log: Any,  # noqa: ANN401
+) -> None:
+    """Compile grounded (spec 104): entidades/claims com excerpt literal."""
+    try:
+        from . import brain_extract
+
+        row = await db.get_transcript_title_summary_folder(transcript_id)
+        if not row:
+            return
+        title, content, _folder = row
+        if len((content or "").strip()) < 80:
+            return
+        api_key = await voxen_settings.get_openrouter_api_key()
+        model = await voxen_settings.get_default_chat_model()
+        if not api_key or not model:
+            log.info("brain-extract-skipped-missing-config", transcript_id=transcript_id)
+            return
+        language = await voxen_settings.get_app_language()
+        result = await brain_extract.extract_grounded_concepts(
+            title=title,
+            content=content,
+            api_key=api_key,
+            model=model,
+            language=language,
+        )
+        if not result.items:
+            log.info("brain-extract-empty", transcript_id=transcript_id)
+            return
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="CHAT",
+            model=result.model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+            meta={"source": "brain_grounded_extract", "transcript_id": transcript_id},
+        )
+        payload = [
+            {
+                "kind": item.kind,
+                "label": item.label,
+                "excerpt": item.excerpt,
+                "confidence": item.confidence,
+                "slug": brain_extract.slugify_label(item.label),
+            }
+            for item in result.items
+        ]
+        n = await db.upsert_grounded_brain_items(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            items=payload,
+        )
+        log.info(
+            "brain-extract-done",
+            transcript_id=transcript_id,
+            items=len(result.items),
+            edges=n,
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort
+        log.warning("brain-extract-failed", transcript_id=transcript_id, error=str(e)[:200])
+
+
+async def _maybe_store_embedding(
+    *,
+    user_id: str,
+    transcript_id: str,
+    log: Any,  # noqa: ANN401
+) -> None:
+    """Embedding opt-in no metadata do nó CONTENT (sem pgvector)."""
+    try:
+        if not await voxen_settings.get_embeddings_enabled():
+            return
+        from . import embeddings
+
+        row = await db.get_transcript_title_summary_folder(transcript_id)
+        if not row:
+            return
+        title, content, _folder = row
+        api_key = await voxen_settings.get_openrouter_api_key()
+        if not api_key:
+            return
+        model = await voxen_settings.get_embedding_model()
+        vector = await embeddings.embed_text(
+            text=f"{title}\n\n{content}",
+            api_key=api_key,
+            model=model,
+        )
+        if not vector:
+            return
+        ok = await db.store_content_embedding(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            model=model,
+            vector=vector,
+        )
+        log.info(
+            "embedding-stored" if ok else "embedding-store-skipped",
+            transcript_id=transcript_id,
+            dims=len(vector),
+            model=model,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.warning("embedding-failed", transcript_id=transcript_id, error=str(e)[:200])
+
+
+async def _maybe_generate_tags(
+    *,
+    user_id: str,
+    job_id: str,
+    transcript_id: str,
+    log: Any,  # noqa: ANN401
+) -> None:
+    """Gera e persiste tags se o conteúdo ainda não tiver nenhuma (auto-ingest)."""
+    try:
+        row = await db.get_transcript_title_summary_folder(transcript_id)
+        if not row:
+            return
+        title, content, folder_id = row
+        clean = content.strip()
+        if len(clean) < 40 and len(title.strip()) < 3:
+            log.info("tags-skipped-short", transcript_id=transcript_id)
+            return
+        # Só auto-preenche quando ainda não há tags (lote/manual re-gera na UI).
+        existing_on_tx = await db.list_transcript_tag_names(transcript_id)
+        if existing_on_tx:
+            log.info(
+                "tags-skipped-already-present",
+                transcript_id=transcript_id,
+                count=len(existing_on_tx),
+            )
+            return
+        api_key = await voxen_settings.get_openrouter_api_key()
+        model = await voxen_settings.get_default_chat_model()
+        if not api_key or not model:
+            log.warning("tags-skipped-missing-config", transcript_id=transcript_id)
+            return
+        existing_tags = await db.list_tag_names(user_id)
+        language = await voxen_settings.get_app_language()
+        result = await _retry_transient_or(
+            lambda: tags.generate_content_tags(
+                title=title,
+                content=clean or title,
+                existing_tags=existing_tags,
+                api_key=api_key,
+                model=model,
+                language=language,
+            ),
+            tries=2,
+        )
+        await db.insert_cost_event(
+            user_id=user_id,
+            kind="CHAT",
+            model=result.model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.cost_usd,
+            job_id=job_id,
+            meta={"source": "tag_generation_auto", "tags": result.tags},
+        )
+        if not result.tags:
+            log.info("tags-empty", transcript_id=transcript_id)
+            return
+        applied = await db.apply_tags_to_transcript(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            tag_names=result.tags,
+            current_folder_id=folder_id,
+        )
+        log.info(
+            "tags-assigned",
+            transcript_id=transcript_id,
+            tags=applied,
+            count=len(applied),
+        )
+    except Exception as e:  # noqa: BLE001 — tags são enriquecimento best-effort
+        log.warning(
+            "tags-generation-failed",
+            transcript_id=transcript_id,
+            error=str(e)[:240],
+        )
 
 
 async def _transcribe_via_api(
@@ -1071,6 +1298,30 @@ async def _persist(
     if source is None:
         raise PermanentError(f"URL não reconhecida pelo detect_source: {source_url}")
 
+    # Espelha capa remota (TikTok/IG etc.) no S3; UI usa /preview estável.
+    from . import thumbnail as thumb_mod
+
+    if not preview_object_key and probe_info.thumbnail_url:
+        stable_thumb, mirrored_key, mirrored_mime = await thumb_mod.resolve_thumbnail_for_persist(
+            remote_url=probe_info.thumbnail_url,
+            user_id=user_id,
+            transcript_id=transcript_id,
+            source_url=source_url,
+        )
+        if mirrored_key:
+            preview_object_key = mirrored_key
+            preview_mime_type = mirrored_mime
+        thumbnail_for_doc = stable_thumb
+    else:
+        thumbnail_for_doc = (
+            f"/api/transcripts/{transcript_id}/preview"
+            if preview_object_key
+            else (probe_info.thumbnail_url or f"/api/transcripts/{transcript_id}/preview")
+        )
+        if thumbnail_for_doc.startswith("http"):
+            # Evita gravar CDN assinada mesmo sem mirror bem-sucedido.
+            thumbnail_for_doc = f"/api/transcripts/{transcript_id}/preview"
+
     doc = TranscriptDoc(
         transcript_id=transcript_id,
         user_id=user_id,
@@ -1082,7 +1333,7 @@ async def _persist(
         author=None,
         duration_sec=probe_info.duration_sec,
         published_at=probe_info.published_at,
-        thumbnail_url=probe_info.thumbnail_url or f"/api/transcripts/{transcript_id}/preview",
+        thumbnail_url=thumbnail_for_doc,
         language=language,
         transcription_method=method,
         model=model,
@@ -1215,20 +1466,34 @@ async def _retry_transient[T](
     Captura `_TRANSIENT_EXC` (TransientError, OSError, yt-dlp YoutubeDLError,
     botocore BotoCoreError/ClientError). OpenRouter usa `_retry_transient_or`
     separado porque distingue auth (permanente) de 5xx (transiente).
+
+    Erros "amigáveis" determinísticos (antibot, geo, 403) viram PermanentError
+    na hora. Rate-limit (429) **retenta** com backoff maior e só vira
+    PermanentError após esgotar as tentativas — para o path de legendas ainda
+    poder fazer fallback pro Whisper.
     """
     last_exc: BaseException | None = None
     for attempt in range(tries):
         try:
             return await fn()
+        except PermanentError:
+            raise
         except _TRANSIENT_EXC as e:
             friendly = _friendly_external_error(e)
-            if friendly:
+            if friendly and not _is_rate_limit_error(e):
                 raise PermanentError(friendly) from e
             last_exc = e
             if attempt < tries - 1:
-                await asyncio.sleep(base_delay * (2**attempt))
+                delay = base_delay * (2**attempt)
+                if _is_rate_limit_error(e):
+                    # YouTube 429: espera um pouco mais entre tentativas.
+                    delay = max(delay, 5.0) * (attempt + 1)
+                await asyncio.sleep(delay)
             continue
     assert last_exc is not None
+    friendly = _friendly_external_error(last_exc)
+    if friendly:
+        raise PermanentError(friendly) from last_exc
     raise last_exc
 
 

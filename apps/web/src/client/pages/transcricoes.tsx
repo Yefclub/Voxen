@@ -7,8 +7,10 @@ import {
   Globe,
   Library,
   Loader2,
+  MoreHorizontal,
   Search,
   Sparkles,
+  Tags,
   Trash2,
   Type,
   X,
@@ -20,11 +22,20 @@ import { Skeleton } from '../components/ui/skeleton';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { FetchError } from '../components/ui/fetch-error';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { apiPost } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import { formatDuration, formatRelative, formatUsd } from '../lib/format';
+import {
+  filterFoldersByQuery,
+  LIBRARY_FOLDER_CHIP_LIMIT,
+  splitFolderChips,
+} from '../lib/library-folders';
 import { AnimatedPage } from '../components/motion/animated-page';
+import { ContentIngestCard } from '../components/ingest/content-ingest-card';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
+import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
+import { sourceHostname } from '../lib/source-url';
 
 const PAGE_SIZE = 24;
 
@@ -41,6 +52,7 @@ interface TranscriptSummary {
   costUsd: string | null;
   folderId: string | null;
   folder: { id: string; name: string } | null;
+  tags: { id: string; name: string; slug: string }[];
   status: 'ACTIVE' | 'ARCHIVED' | 'TRASH';
   createdAt: string;
   snippet?: string;
@@ -91,6 +103,7 @@ export function TranscricoesPage(): React.ReactElement {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [reorganizing, setReorganizing] = useState(false);
   const [regeneratingTitles, setRegeneratingTitles] = useState(false);
+  const [generatingTags, setGeneratingTags] = useState(false);
   const [clearingFolders, setClearingFolders] = useState(false);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [confirmRetitleOpen, setConfirmRetitleOpen] = useState(false);
@@ -243,6 +256,57 @@ export function TranscricoesPage(): React.ReactElement {
     }
   }
 
+  // Gera tags via IA só para conteúdo sem tag, drenando em lotes. Custa créditos
+  // (1 chamada de IA por conteúdo). Cada tag também vira/reaproveita uma pasta.
+  async function generateTagsBatch(): Promise<void> {
+    if (generatingTags) return;
+    setGeneratingTags(true);
+    let totalTagged = 0;
+    let totalSkipped = 0;
+    let totalFailed = 0;
+    try {
+      for (let i = 0; i < 30; i++) {
+        const body = await apiPost<{
+          processed: number;
+          tagged: number;
+          skipped: number;
+          failed: number;
+          remaining: number;
+          pendingTotal: number;
+        }>('/api/library/generate-tags', { limit: 10 });
+        totalTagged += body.tagged;
+        totalSkipped += body.skipped;
+        totalFailed += body.failed;
+        if (body.pendingTotal === 0 && body.processed === 0) {
+          toast.message(t('library.tagsNothing'));
+          break;
+        }
+        if (body.remaining === 0) {
+          toast.success(
+            t('library.tagsDone', {
+              tagged: totalTagged,
+              skipped: totalSkipped,
+              failed: totalFailed,
+            }),
+          );
+          break;
+        }
+        if (i === 29) {
+          toast.success(
+            t('library.tagsPartial', { tagged: totalTagged, remaining: body.remaining }),
+          );
+        }
+      }
+      refreshFolders();
+      setOffset(0);
+      refreshTranscripts();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('library.tagsError'));
+    } finally {
+      setGeneratingTags(false);
+    }
+  }
+
   // Regenera os títulos via IA drenando o acervo por cursor. Custa créditos
   // (1 chamada LLM por conteúdo); títulos já bons voltam KEEP e são mantidos.
   async function regenerateTitles(): Promise<void> {
@@ -311,6 +375,14 @@ export function TranscricoesPage(): React.ReactElement {
     () => [...folders].sort((a, b) => a.name.localeCompare(b.name, locale)),
     [folders, locale],
   );
+  const { visible: visibleFolders, overflow: overflowFolders } = useMemo(
+    () => splitFolderChips(sortedFolders, LIBRARY_FOLDER_CHIP_LIMIT),
+    [sortedFolders],
+  );
+  const activeFolderHidden =
+    folderFilter !== null &&
+    folderFilter !== 'none' &&
+    overflowFolders.some((folder) => folder.id === folderFilter);
 
   return (
     <AnimatedPage>
@@ -318,7 +390,7 @@ export function TranscricoesPage(): React.ReactElement {
         <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-[var(--color-app-muted)] font-medium">
-              <Library className="h-3 w-3 text-zinc-400" />
+              <Library className="h-3 w-3 text-[var(--color-app-muted)]" />
               {t('library.eyebrow')}
             </div>
             <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">
@@ -357,6 +429,22 @@ export function TranscricoesPage(): React.ReactElement {
               )}
               {regeneratingTitles ? t('library.retitleRunning') : t('library.retitleAction')}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={generatingTags}
+              onClick={() => void generateTagsBatch()}
+              className="h-8 text-xs"
+              title={t('library.tagsHint')}
+            >
+              {generatingTags ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Tags className="h-3.5 w-3.5 text-violet-400" />
+              )}
+              {generatingTags ? t('library.tagsRunning') : t('library.tagsAction')}
+            </Button>
             {folders.length > 0 && (
               <Button
                 type="button"
@@ -364,7 +452,7 @@ export function TranscricoesPage(): React.ReactElement {
                 size="sm"
                 disabled={clearingFolders}
                 onClick={() => setConfirmClearOpen(true)}
-                className="h-8 text-xs text-zinc-400 hover:text-red-300"
+                className="h-8 text-xs text-[var(--color-app-muted)] hover:text-red-300"
               >
                 {clearingFolders ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -398,6 +486,8 @@ export function TranscricoesPage(): React.ReactElement {
           onConfirm={regenerateTitles}
         />
 
+        <ContentIngestCard />
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none z-10" />
           <input
@@ -407,13 +497,13 @@ export function TranscricoesPage(): React.ReactElement {
             placeholder={t('library.searchPlaceholder')}
             autoComplete="off"
             spellCheck={false}
-            className="w-full h-10 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/50 pl-9 pr-10 text-sm text-zinc-100 placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60 focus:ring-1 focus:ring-zinc-500/20 transition-colors"
+            className="w-full h-10 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/50 pl-9 pr-10 text-sm text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60 focus:ring-1 focus:ring-zinc-500/20 transition-colors"
           />
           {q.length > 0 && (
             <button
               type="button"
               onClick={() => setQ('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface-hover)]"
+              className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]"
               aria-label={t('library.clearSearch')}
             >
               {queryChanging ? (
@@ -440,7 +530,7 @@ export function TranscricoesPage(): React.ReactElement {
               icon={<Folder className="h-3 w-3 opacity-50" />}
               label={t('library.noFolder')}
             />
-            {sortedFolders.map((folder) => (
+            {visibleFolders.map((folder) => (
               <FolderChip
                 key={folder.id}
                 active={folderFilter === folder.id}
@@ -450,6 +540,16 @@ export function TranscricoesPage(): React.ReactElement {
                 count={folder._count.transcripts}
               />
             ))}
+            {overflowFolders.length > 0 && (
+              <FolderOverflowMenu
+                folders={sortedFolders}
+                hiddenCount={overflowFolders.length}
+                active={activeFolderHidden}
+                activeFolderId={folderFilter}
+                onSelect={setFolder}
+                translate={t}
+              />
+            )}
           </div>
           <div className="flex min-w-0 gap-2">
             <input
@@ -460,7 +560,7 @@ export function TranscricoesPage(): React.ReactElement {
                 if (event.key === 'Enter') void createFolder();
               }}
               placeholder={t('library.newFolderPlaceholder')}
-              className="h-8 min-w-0 flex-1 rounded-md border border-[var(--color-app-border)] bg-transparent px-2.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500/60"
+              className="h-8 min-w-0 flex-1 rounded-md border border-[var(--color-app-border)] bg-transparent px-2.5 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
               disabled={creatingFolder}
               maxLength={120}
             />
@@ -491,8 +591,8 @@ export function TranscricoesPage(): React.ReactElement {
               className={[
                 'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
                 status === item
-                  ? 'bg-zinc-100/10 text-zinc-100'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-100/5',
+                  ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                  : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
               ].join(' ')}
             >
               {statusFilterLabel(item, t)}
@@ -534,8 +634,8 @@ export function TranscricoesPage(): React.ReactElement {
         {!pageLoading && !error && items.length === 0 && (
           <Card elevated>
             <CardContent className="py-14 text-center space-y-3">
-              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-zinc-100/[0.03]">
-                <Search className="h-4 w-4 text-zinc-500" />
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]">
+                <Search className="h-4 w-4 text-[var(--color-app-muted)]" />
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium">
@@ -611,16 +711,115 @@ function FolderChip({
       className={[
         'inline-flex max-w-[180px] items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
         active
-          ? 'border-zinc-500/40 bg-zinc-100/10 text-zinc-100'
-          : 'border-transparent bg-zinc-100/[0.03] text-zinc-400 hover:bg-zinc-100/[0.06] hover:text-zinc-200',
+          ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+          : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
       ].join(' ')}
     >
       <span className="shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
       {typeof count === 'number' && (
-        <span className="tabular-nums text-[10px] text-zinc-500">{count}</span>
+        <span className="tabular-nums text-[10px] text-[var(--color-app-muted)]">{count}</span>
       )}
     </button>
+  );
+}
+
+/**
+ * Chip final "+K mais" da fileira de pastas. Abre um popover pesquisável com
+ * a lista completa de pastas (não só as escondidas — assim o usuário acha
+ * qualquer pasta ali, mesmo uma que já apareça como chip direto).
+ */
+function FolderOverflowMenu({
+  folders,
+  hiddenCount,
+  active,
+  activeFolderId,
+  onSelect,
+  translate,
+}: {
+  folders: LibraryFolder[];
+  hiddenCount: number;
+  active: boolean;
+  activeFolderId: FolderFilter;
+  onSelect: (id: string) => void;
+  translate: TranslateFn;
+}): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const filtered = useMemo(() => filterFoldersByQuery(folders, query), [folders, query]);
+
+  function handleOpenChange(next: boolean): void {
+    setOpen(next);
+    if (!next) setQuery('');
+  }
+
+  function handleSelect(id: string): void {
+    onSelect(id);
+    setOpen(false);
+  }
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title={translate('library.moreFolders', { count: hiddenCount })}
+          className={[
+            'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+            active
+              ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+              : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
+            'data-[state=open]:bg-[var(--color-app-surface-hover)] data-[state=open]:text-[var(--color-app-fg)]',
+          ].join(' ')}
+        >
+          <MoreHorizontal className="h-3 w-3 shrink-0" />
+          <span>{translate('library.moreFolders', { count: hiddenCount })}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-0">
+        <div className="border-b border-[var(--color-app-border)] p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--color-app-muted)]" />
+            <input
+              type="text"
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={translate('library.folderSearchPlaceholder')}
+              autoComplete="off"
+              spellCheck={false}
+              className="h-8 w-full rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg)] pl-7 pr-2 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
+            />
+          </div>
+        </div>
+        <div className="max-h-64 overflow-y-auto p-1">
+          {filtered.length === 0 && (
+            <p className="px-2 py-3 text-center text-[11px] text-[var(--color-app-muted)]">
+              {translate('library.folderSearchEmpty')}
+            </p>
+          )}
+          {filtered.map((folder) => (
+            <button
+              key={folder.id}
+              type="button"
+              onClick={() => handleSelect(folder.id)}
+              className={[
+                'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                activeFolderId === folder.id
+                  ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                  : 'text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
+              ].join(' ')}
+            >
+              <Folder className="h-3 w-3 shrink-0 text-amber-500/80" />
+              <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+              <span className="shrink-0 tabular-nums text-[10px] text-[var(--color-app-muted)]">
+                {folder._count.transcripts}
+              </span>
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -637,13 +836,13 @@ function TranscriptRow({
 }): React.ReactElement {
   const isVisualTranscript = t.transcriptionMethod === 'VISION';
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
-  const previewSrc = t.thumbnailUrl || `/api/transcripts/${t.id}/preview`;
+  const previewSrc = resolveTranscriptPreviewSrc(t.id, t.thumbnailUrl);
   const showDuration = t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript;
 
   return (
     <Link
       to={`/transcricoes/${t.id}`}
-      className="group flex items-center gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-zinc-100/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40"
+      className="group flex items-center gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40"
     >
       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-[var(--color-app-bg-elevated)] sm:h-14 sm:w-[88px]">
         <img
@@ -651,11 +850,20 @@ function TranscriptRow({
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
           loading="lazy"
+          onError={(e) => {
+            const el = e.currentTarget;
+            const fallback = `/api/transcripts/${t.id}/preview`;
+            if (el.src && !el.src.endsWith('/preview') && el.src !== fallback) {
+              el.src = fallback;
+              return;
+            }
+            el.style.opacity = '0';
+          }}
         />
       </div>
 
       <div className="min-w-0 flex-1 space-y-0.5">
-        <h3 className="truncate text-[13px] font-medium leading-snug text-zinc-100 group-hover:text-zinc-50">
+        <h3 className="truncate text-[13px] font-medium leading-snug text-[var(--color-app-fg)] group-hover:text-[var(--color-app-fg)]">
           {highlightInText(t.title, highlightQuery)}
         </h3>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--color-app-muted)]">
@@ -663,10 +871,15 @@ function TranscriptRow({
             {t.source === 'WEB' && <Globe className="h-2.5 w-2.5" />}
             {displaySource(t.source, translate)}
           </span>
+          {sourceHostname(t.url) && (
+            <span className="truncate max-w-[160px] font-mono text-[10px] opacity-80">
+              {sourceHostname(t.url)}
+            </span>
+          )}
           {showDuration && <span className="tabular-nums">{formatDuration(t.durationSec)}</span>}
           {t.channel && <span className="truncate max-w-[140px]">{t.channel}</span>}
           {t.folder && (
-            <span className="inline-flex min-w-0 max-w-[120px] items-center gap-1 truncate text-zinc-500">
+            <span className="inline-flex min-w-0 max-w-[120px] items-center gap-1 truncate text-[var(--color-app-muted)]">
               <Folder className="h-2.5 w-2.5 shrink-0 text-amber-500/70" />
               <span className="truncate">{t.folder.name}</span>
             </span>
@@ -682,8 +895,26 @@ function TranscriptRow({
             </Badge>
           )}
         </div>
+        {t.tags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 pt-0.5">
+            {t.tags.slice(0, 4).map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex max-w-[130px] items-center gap-1 truncate rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-app-subtle)]"
+              >
+                <Tags className="h-2.5 w-2.5 shrink-0 text-violet-400/80" />
+                <span className="truncate">{tag.name}</span>
+              </span>
+            ))}
+            {t.tags.length > 4 && (
+              <span className="text-[10px] text-[var(--color-app-muted)]">
+                +{t.tags.length - 4}
+              </span>
+            )}
+          </div>
+        )}
         {t.snippet && (
-          <p className="hidden text-[11px] leading-relaxed text-zinc-500 line-clamp-1 sm:block">
+          <p className="hidden text-[11px] leading-relaxed text-[var(--color-app-muted)] line-clamp-1 sm:block">
             {renderSnippet(t.snippet)}
           </p>
         )}

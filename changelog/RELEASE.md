@@ -1,23 +1,24 @@
 ---
-titulo: Voxen 0.11 — Biblioteca inteligente, Brain 3D e base mais robusta
+tipo: feat
+titulo: Voxen 0.12.0 — Conhecimento vivo, conversa confiável e experiência móvel
 ---
 
-## Biblioteca e ingestão
+## Conversas que acompanham o trabalho
 
-A home agora concentra a entrada de conteúdo por URL, texto, arrastar e soltar ou upload direto para o S3/MinIO. A biblioteca ganhou cards compactos, paginação, pastas inteligentes, organização por IA e ações seguras em lote.
+A Vox agora mantém uma conversa contínua com contexto progressivo da Biblioteca, pesquisa na web e memória persistente. O chat mostra melhor o que está acontecendo durante respostas longas, recupera confirmações pendentes com segurança e evita que falhas transitórias interrompam o fluxo.
 
-## Brain e descoberta
+## Biblioteca e conhecimento conectados
 
-O Brain evoluiu com hubs, comunidades, caminhos de evidência e um grafo WebGL alternável entre 2D e 3D. A reindexação passou a ocorrer em background, reduzindo bloqueios e tornando falhas recuperáveis.
+A Biblioteca ganhou organização automática por tags e pastas, títulos mais consistentes, prévias melhores e acesso mais direto a transcrições, notas e conteúdos recentes. O Brain evoluiu para uma exploração 2D-first mais rápida, com conexões, comunidades e evidências que ajudam a entender como o acervo se relaciona.
 
-## Experiência e operação
+## Melhor em qualquer tela
 
-A aplicação ganhou uma página de Novidades, modal de atualização, diálogos e skeletons consistentes, estados de erro com retry e foco de teclado visível. O Agente de Proxy agora pode ser ligado ou desligado pela interface e apresenta erros mais acionáveis.
+O shell, o chat e o Grafo foram refinados para mobile. O Voxen pode ser instalado como aplicativo, orienta a instalação no celular e protege respostas em andamento durante atualizações. A navegação, os alvos de toque, os diálogos e os estados de conexão ficaram mais claros e acessíveis.
 
-## IA e qualidade do acervo
+## Captura e extensão
 
-Títulos podem ser avaliados e regenerados com IA, respeitando o idioma configurado e sem vazar preâmbulos de raciocínio. Os resumos também seguem o idioma da instância e evitam cabeçalhos artificiais.
+A extensão Chromium ficou mais simples de conectar e apresenta melhor o resumo das capturas. O Voxen também está mais robusto ao receber links, mídias, imagens e conteúdos compartilhados, com melhorias na fila, no proxy de download e na ingestão.
 
-## Preparação para o novo chat
+## Confiabilidade operacional
 
-O chat in-app e a integração Telegram anteriores foram removidos por completo. O MCP e suas ferramentas sobre o acervo permanecem disponíveis enquanto a experiência de chat é redesenhada sobre uma arquitetura mais simples e sustentável.
+Reforçamos o monitoramento de versão, o deploy no Easypanel, a segurança de dependências e a estabilidade do worker. Essas melhorias reduzem falhas difíceis de diagnosticar e tornam a atualização do Voxen mais previsível.

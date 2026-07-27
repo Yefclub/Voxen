@@ -140,5 +140,6 @@ function jobsRedirect(params: Record<string, string | null | undefined>): string
     if (value) search.set(key, value);
   }
   const query = search.toString();
-  return query ? `/?${query}` : '/';
+  // Library hosts ContentIngestCard (share-target landing).
+  return query ? `/transcricoes?${query}` : '/transcricoes';
 }

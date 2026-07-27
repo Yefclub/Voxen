@@ -15,9 +15,9 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
     <div
       ref={ref}
       className={cn(
-        'rounded-2xl text-zinc-100 transition-colors duration-200 ease-out',
+        'rounded-2xl text-[var(--color-app-fg)] transition-colors duration-200 ease-out',
         elevated
-          ? 'border border-[var(--color-app-border)] bg-gradient-to-b from-[oklch(30%_0.006_250/0.7)] to-[var(--color-app-surface)]'
+          ? 'border border-[var(--color-app-border)] bg-gradient-to-b from-[var(--color-app-elevate)] to-[var(--color-app-surface)]'
           : 'border border-[var(--color-app-border)] bg-[var(--color-app-surface)]',
         hoverable && 'hover:border-[var(--color-app-border-strong)]',
         className,

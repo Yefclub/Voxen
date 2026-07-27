@@ -1,20 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
   Archive,
   Calendar,
+  Check,
   Clock,
+  Copy,
   ExternalLink,
   FileText,
   Folder,
   Globe,
   Languages,
   Loader2,
+  MessageSquare,
   NotebookPen,
   RotateCcw,
   Sparkles,
+  Tags,
   Trash2,
   Wand2,
 } from 'lucide-react';
@@ -32,6 +36,7 @@ import { TranscriptViewer } from '../components/ui/transcript-viewer';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { UploadMediaViewer } from '../components/ui/media-viewer';
+import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
 import {
   Select,
   SelectContent,
@@ -40,11 +45,16 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
+import { cn } from '../lib/utils';
+import { buildTranscriptChatMessage, type ChatHandoffState } from '../lib/chat-handoff';
+import { TranscriptChatDock } from '../components/library/transcript-chat-dock';
+import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
 
 interface TranscriptDetail {
   id: string;
   folderId: string | null;
   folder: { id: string; name: string; parentId: string | null } | null;
+  tags: { id: string; name: string; slug: string }[];
   status: 'ACTIVE' | 'ARCHIVED' | 'TRASH';
   source: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB' | 'UPLOAD';
   url: string;
@@ -121,6 +131,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     useFetch<FoldersResponse>('/api/library/folders');
   const [generating, setGenerating] = useState(false);
   const [organizing, setOrganizing] = useState(false);
+  const [taggingLoading, setTaggingLoading] = useState(false);
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [creatingLinkedNote, setCreatingLinkedNote] = useState(false);
@@ -128,6 +139,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const [linkedNoteContent, setLinkedNoteContent] = useState('');
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [chatDraft, setChatDraft] = useState('');
 
   async function generateSummary(force: boolean): Promise<void> {
     if (!id) return;
@@ -162,6 +174,41 @@ export function TranscricaoDetalhePage(): React.ReactElement {
       });
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function generateTags(): Promise<void> {
+    if (!id || taggingLoading) return;
+    setTaggingLoading(true);
+    try {
+      const res = await fetch(`/api/transcripts/${id}/generate-tags`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        tags?: { id: string; name: string; slug: string }[];
+        generated?: number;
+      };
+      if (!res.ok) {
+        toast.error(body.error ?? translate('library.tagsError'));
+        return;
+      }
+      if ((body.generated ?? 0) === 0) {
+        toast.message(translate('library.tagsNoneGenerated'));
+      } else {
+        toast.success(translate('library.tagsGenerated', { count: body.generated ?? 0 }));
+      }
+      refresh();
+      refreshFolders();
+    } catch (e) {
+      toast.error(translate('library.tagsError'), {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setTaggingLoading(false);
     }
   }
 
@@ -276,6 +323,18 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     }
   }
 
+  function sendToChat(transcript: TranscriptDetail): void {
+    const text = chatDraft.trim();
+    if (!text) return;
+    const autoSend = buildTranscriptChatMessage({
+      userText: text,
+      transcriptId: transcript.id,
+      title: transcript.title,
+    });
+    const state: ChatHandoffState = { autoSend };
+    navigate('/', { state });
+  }
+
   async function createLinkedNote(transcript: TranscriptDetail): Promise<void> {
     const title = linkedNoteTitle.trim();
     if (!title) {
@@ -303,7 +362,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
   if (!loading && error) {
     return (
-      <div className="px-8 py-10 mx-auto max-w-5xl">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-10">
         <FetchError message={error} onRetry={refresh} />
       </div>
     );
@@ -311,7 +370,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
   if (loading || !data) {
     return (
-      <div className="px-8 py-10 mx-auto max-w-5xl">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-10">
         <Skeleton className="h-7 w-32 mb-8" />
         <Skeleton className="h-12 w-3/4 mb-3" />
         <Skeleton className="h-5 w-1/3 mb-10" />
@@ -334,12 +393,12 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   const canUseContextualActions = t.status !== 'TRASH';
   const contentMarkdown = stripMarkdownFrontmatter(data.markdown);
-  const previewSrc = t.thumbnailUrl || `/api/transcripts/${t.id}/preview`;
+  const previewSrc = resolveTranscriptPreviewSrc(t.id, t.thumbnailUrl);
 
   return (
     <AnimatedPage>
-      <div className="mx-auto max-w-5xl overflow-x-clip px-4 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-        <Button variant="ghost" size="sm" asChild className="mb-8 -ml-2 hidden sm:inline-flex">
+      <div className="relative mx-auto max-w-5xl overflow-x-clip px-4 pb-28 pt-5 sm:px-6 sm:pb-32 sm:pt-8 lg:px-8 lg:pt-10">
+        <Button variant="ghost" size="sm" asChild className="mb-6 -ml-2 hidden sm:inline-flex">
           <Link to="/transcricoes">
             <ArrowLeft className="h-3.5 w-3.5" />
             {translate('library.detailBack')}
@@ -350,7 +409,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="mb-6 space-y-3 sm:mb-10 sm:space-y-4"
+          className="mb-6 space-y-4 sm:mb-8"
         >
           <div className="flex items-center gap-2 flex-wrap">
             {/* Source primário — clarifica origem do conteúdo */}
@@ -403,7 +462,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               </Badge>
             )}
           </div>
-          <h1 className="max-w-full break-words font-display text-2xl font-semibold leading-[1.08] tracking-[-0.02em] text-balance [overflow-wrap:anywhere] sm:text-4xl lg:text-5xl">
+          <h1 className="max-w-full break-words font-display text-2xl font-semibold leading-[1.1] tracking-[-0.03em] text-balance [overflow-wrap:anywhere] sm:text-4xl lg:text-[2.75rem]">
             {t.title}
           </h1>
           {t.channel && (
@@ -411,15 +470,41 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               {t.channel}
             </p>
           )}
+          {isExternalSourceUrl(t.url) && (
+            <a
+              href={t.url}
+              target="_blank"
+              rel="noreferrer"
+              className="group/source inline-flex max-w-full items-center gap-1.5 text-sm text-[var(--color-app-muted)] transition-colors hover:text-[var(--color-accent-primary)]"
+              title={t.url}
+            >
+              <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-70 group-hover/source:opacity-100" />
+              <span className="min-w-0 truncate font-mono text-[13px] tracking-tight">
+                {sourceDisplayLine(t.url) ?? t.url}
+              </span>
+            </a>
+          )}
+          {t.source === 'UPLOAD' && t.originalFilename && (
+            <p className="inline-flex max-w-full items-center gap-1.5 text-sm text-[var(--color-app-muted)]">
+              <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              <span className="min-w-0 truncate font-mono text-[13px]">{t.originalFilename}</span>
+            </p>
+          )}
+          {canUseContextualActions && (
+            <p className="flex items-center gap-1.5 text-xs text-[var(--color-app-muted)]">
+              <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent-primary)]/80" />
+              {translate('library.chatBarHint')}
+            </p>
+          )}
         </motion.header>
 
-        <div className="grid grid-cols-1 gap-7 lg:grid-cols-[1fr_280px] lg:gap-10">
+        <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-8">
           {/* Coluna principal: resumo + transcrição */}
           <motion.article
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.1 }}
-            className="min-w-0 space-y-7 sm:space-y-10"
+            className="min-w-0 space-y-7 sm:space-y-8"
           >
             <SummaryBlock
               summary={t.summaryMd}
@@ -428,16 +513,16 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               t={translate}
             />
             {t.source === 'WEB' || isVisualTranscript || isDocumentTranscript ? (
-              <section>
-                <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-200 mb-4">
+              <section className="space-y-3">
+                <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-subtle)] sm:text-lg">
                   {isDocumentTranscript
                     ? translate('library.documentAnalysis')
                     : isVisualTranscript
                       ? translate('library.analysis')
                       : translate('library.content')}
                 </h2>
-                <Card elevated>
-                  <CardContent className="px-6 py-5">
+                <Card elevated className="border-[var(--color-app-border)]/80">
+                  <CardContent className="px-5 py-5 sm:px-6">
                     <Markdown>{contentMarkdown}</Markdown>
                   </CardContent>
                 </Card>
@@ -481,6 +566,13 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                   onMove={moveToFolder}
                   onCreate={createFolder}
                   t={translate}
+                />
+                <TagsControl
+                  tags={t.tags}
+                  loading={taggingLoading}
+                  onGenerate={generateTags}
+                  disabled={t.status === 'TRASH'}
+                  translate={translate}
                 />
                 {/* Duração só faz sentido pra vídeos */}
                 {t.source !== 'WEB' && !isVisualTranscript && !isDocumentTranscript && (
@@ -630,6 +722,17 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           </motion.aside>
         </div>
       </div>
+
+      {canUseContextualActions && (
+        <TranscriptChatDock
+          value={chatDraft}
+          onChange={setChatDraft}
+          onSend={() => sendToChat(t)}
+          title={t.title}
+          t={translate}
+        />
+      )}
+
       <ConfirmDialog
         open={confirmRegen}
         onOpenChange={setConfirmRegen}
@@ -692,7 +795,7 @@ function LinkedNotesCard({
             value={title}
             onChange={(e) => onTitleChange(e.target.value)}
             placeholder={t('library.linkedNoteTitle')}
-            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
             disabled={creating}
             maxLength={200}
           />
@@ -700,7 +803,7 @@ function LinkedNotesCard({
             value={content}
             onChange={(e) => onContentChange(e.target.value)}
             placeholder={t('library.linkedNoteContent')}
-            className="min-h-24 w-full resize-y rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 py-2 text-xs leading-relaxed text-zinc-100 placeholder:text-zinc-600 focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+            className="min-h-24 w-full resize-y rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 text-xs leading-relaxed text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
             disabled={creating}
             maxLength={200_000}
           />
@@ -744,8 +847,10 @@ function LinkedNotesCard({
                   key={note.id}
                   className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/45 px-3 py-2.5"
                 >
-                  <p className="truncate text-sm font-medium text-zinc-100">{note.title}</p>
-                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--color-app-muted)]">
+                  <p className="truncate text-sm font-medium text-[var(--color-app-fg)]">
+                    {note.title}
+                  </p>
+                  <p className="mt-1 line-clamp-2 break-words text-xs leading-relaxed text-[var(--color-app-muted)]">
                     {preview}
                   </p>
                   <div className="mt-2 flex items-center justify-between gap-2">
@@ -822,7 +927,7 @@ function LibraryFolderControl({
             if (e.key === 'Enter') void submit();
           }}
           placeholder={t('library.newFolderPlaceholder')}
-          className="min-w-0 flex-1 h-9 rounded-lg border border-[var(--color-app-border)] bg-zinc-100/[0.03] px-3 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15"
+          className="min-w-0 flex-1 h-9 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/15"
           disabled={organizing}
           maxLength={120}
         />
@@ -836,6 +941,60 @@ function LibraryFolderControl({
           {t('library.createFolder')}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function TagsControl({
+  tags,
+  loading,
+  onGenerate,
+  disabled,
+  translate,
+}: {
+  tags: { id: string; name: string; slug: string }[];
+  loading: boolean;
+  onGenerate: () => Promise<void>;
+  disabled: boolean;
+  translate: TranslateFn;
+}): React.ReactElement {
+  return (
+    <div className="space-y-2.5 border-t border-[var(--color-app-border)] pt-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
+          <Tags className="h-3.5 w-3.5 text-violet-400" />
+          {translate('library.tagsLabel')}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 text-[11px]"
+          disabled={loading || disabled}
+          onClick={() => void onGenerate()}
+          title={translate('library.tagsHint')}
+        >
+          {loading ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Sparkles className="h-3 w-3 text-violet-400" />
+          )}
+          {loading ? translate('library.tagsRunning') : translate('library.tagsAction')}
+        </Button>
+      </div>
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map((tag) => (
+            <span
+              key={tag.id}
+              className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-0.5 text-[11px] text-[var(--color-app-subtle)]"
+            >
+              <Tags className="h-2.5 w-2.5 shrink-0 text-violet-400/80" />
+              <span className="truncate">{tag.name}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -856,19 +1015,41 @@ function SummaryBlock({
   onGenerate: () => void;
   t: TranslateFn;
 }): React.ReactElement {
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
+
+  async function copySummary(): Promise<void> {
+    if (!summary?.trim()) return;
+    try {
+      await navigator.clipboard.writeText(summary);
+      setCopied(true);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1500);
+      toast.success(t('library.summaryCopied'));
+    } catch {
+      toast.error(t('library.summaryCopyError'));
+    }
+  }
+
   if (!summary) {
     return (
-      <Card elevated>
-        <CardContent className="py-8 px-6 space-y-4">
+      <Card elevated className="overflow-hidden border-[var(--color-app-border)]/80">
+        <CardContent className="space-y-4 px-5 py-7 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/15">
               <Wand2 className="h-4 w-4 text-violet-300" />
             </div>
             <div className="flex-1 space-y-1">
-              <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-100">
+              <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-fg)]">
                 {t('library.summary')}
               </h2>
-              <p className="text-sm text-[var(--color-app-muted)]">
+              <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
                 {t('library.summaryDescription')}
               </p>
             </div>
@@ -897,38 +1078,62 @@ function SummaryBlock({
     );
   }
   return (
-    <section>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <section className="group/summary space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/15">
             <Wand2 className="h-3.5 w-3.5 text-violet-300" />
           </div>
-          <h2 className="font-display text-lg font-semibold tracking-tight text-zinc-100">
+          <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-fg)] sm:text-lg">
             {t('library.summary')}
           </h2>
         </div>
-        <Button
-          onClick={onGenerate}
-          disabled={generating}
-          variant="ghost"
-          size="sm"
-          className="w-full sm:w-auto"
-        >
-          {generating ? (
-            <>
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {t('library.regenerating')}
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-3 w-3" />
-              {t('library.regenerateSummary')}
-            </>
-          )}
-        </Button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            type="button"
+            onClick={() => void copySummary()}
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]"
+            aria-label={t('library.copySummary')}
+            title={t('library.copySummary')}
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+            <span className="text-xs">{copied ? t('common.copied') : t('common.copy')}</span>
+          </Button>
+          <Button
+            onClick={onGenerate}
+            disabled={generating}
+            variant="ghost"
+            size="sm"
+            className="h-8"
+          >
+            {generating ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t('library.regenerating')}
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-3 w-3" />
+                {t('library.regenerateSummary')}
+              </>
+            )}
+          </Button>
+        </div>
       </div>
-      <Card elevated>
-        <CardContent className="px-6 py-5">
+      <Card
+        elevated
+        className={cn(
+          'border-[var(--color-app-border)]/80 transition-colors',
+          'hover:border-[var(--color-app-border-strong)]',
+        )}
+      >
+        <CardContent className="px-5 py-5 sm:px-6">
           <Markdown>{summary}</Markdown>
         </CardContent>
       </Card>
@@ -959,8 +1164,8 @@ function MetaRow({
         <p
           className={
             mono
-              ? 'text-[13px] font-mono text-zinc-200 truncate mt-0.5 tabular-nums'
-              : 'text-sm text-zinc-200 mt-0.5'
+              ? 'text-[13px] font-mono text-[var(--color-app-subtle)] truncate mt-0.5 tabular-nums'
+              : 'text-sm text-[var(--color-app-subtle)] mt-0.5'
           }
           title={value}
         >

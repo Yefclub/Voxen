@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
   ChevronDown,
   DollarSign,
   House,
+  ListOrdered,
+  MessageCircle,
   FolderPlus,
   ListVideo,
   LogOut,
@@ -15,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Puzzle,
   ShieldCheck,
   Settings as SettingsIcon,
   Sparkles,
@@ -29,6 +32,7 @@ import { useI18n, type I18nKey } from '../../lib/i18n';
 import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import { NotesTree } from '../notes/notes-tree';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
 export interface NavItem {
   to: string;
@@ -45,10 +49,13 @@ export interface NavItem {
  */
 export const NAV: NavItem[] = [
   { to: '/', labelKey: 'shell.nav.home', Icon: House },
+  { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessageCircle },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
+  { to: '/fila', labelKey: 'shell.nav.queue', Icon: ListOrdered },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
   { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },
+  { to: '/extensao', labelKey: 'shell.nav.extension', Icon: Puzzle },
   { to: '/admin/usuarios', labelKey: 'shell.nav.users', Icon: ShieldCheck, adminOnly: true },
   { to: '/admin/custos', labelKey: 'shell.nav.costs', Icon: DollarSign, adminOnly: true },
   { to: '/admin/integracoes', labelKey: 'shell.nav.integrations', Icon: Plug, adminOnly: true },
@@ -56,6 +63,7 @@ export const NAV: NavItem[] = [
 ];
 
 const SIDEBAR_WIDTH = 264;
+const RAIL_WIDTH = 60;
 
 /**
  * Corpo modo-aware da sidebar: nav (default) | notas (em /notas). Reutilizado
@@ -66,9 +74,18 @@ const SIDEBAR_WIDTH = 264;
  * limpo. AnimatePresence mode="wait" interno aqui acumulava estados pendentes
  * em cliques rápidos e travava.
  */
-export function SidebarModeBody({ user }: { user: MeUser }): React.ReactElement {
+export function SidebarModeBody({
+  user,
+  hideHome = false,
+}: {
+  user: MeUser;
+  /** Oculta o item "Início" (desktop: `/` já É o chat, então é redundante). */
+  hideHome?: boolean;
+}): React.ReactElement {
   const location = useLocation();
-  const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN');
+  const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN').filter(
+    (n) => !hideHome || n.to !== '/',
+  );
   const inNotas = location.pathname === '/notas' || location.pathname.startsWith('/notas/');
   const mode: 'nav' | 'notas' = inNotas ? 'notas' : 'nav';
 
@@ -91,8 +108,7 @@ export function SidebarModeBody({ user }: { user: MeUser }): React.ReactElement 
 
 export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const location = useLocation();
-  const { t } = useI18n();
-  const { collapsed, toggle } = useSidebarCollapsed();
+  const { collapsed, setCollapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
 
   // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
@@ -101,31 +117,19 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   // leve (sem fetches nem árvore de notas viva por trás).
   if (!isDesktop) return null;
 
-  // Em /grafo a navegação lateral some — o grafo ocupa a tela toda (o Topbar
-  // permanece, e a barra flutuante do grafo oferece o "voltar").
-  if (location.pathname === '/grafo' || location.pathname.startsWith('/grafo/')) {
-    return null;
-  }
-
+  // Colapsada é o padrão em TODAS as páginas desktop (ver `sidebar-state.ts`):
+  // mostra o rail fino de ícones com tooltip. Expandir persiste (fica aberta
+  // até o usuário recolher de novo) — um único mecanismo de colapso, sem
+  // forçamento especial por rota.
   return (
     <>
       <AnimatePresence>
         {collapsed && (
-          <motion.button
-            type="button"
-            onClick={toggle}
-            initial={{ opacity: 0, scale: 0.6, x: -12 }}
-            animate={{ opacity: 1, scale: 1, x: 0 }}
-            exit={{ opacity: 0, scale: 0.6, x: -12 }}
-            transition={{ type: 'spring', stiffness: 360, damping: 26, delay: 0.18 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="hidden md:flex fixed top-4 left-4 z-50 h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] transition-colors"
-            aria-label={t('shell.openMenu')}
-            title={t('shell.openMenu')}
-          >
-            <PanelLeftOpen className="h-4 w-4" />
-          </motion.button>
+          <SidebarRail
+            user={user}
+            pathname={location.pathname}
+            onExpand={() => setCollapsed(false)}
+          />
         )}
       </AnimatePresence>
 
@@ -139,14 +143,90 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             className="hidden md:flex fixed top-4 bottom-4 left-4 z-40 flex-col rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl overflow-hidden"
             style={{ width: SIDEBAR_WIDTH }}
           >
-            <SidebarHeader onCollapse={toggle} />
-            <SidebarModeBody user={user} />
+            <SidebarHeader onCollapse={() => setCollapsed(true)} />
+            <SidebarModeBody user={user} hideHome />
             <SidebarChangelogButton />
             <SidebarSignOut />
           </motion.aside>
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+/**
+ * Rail vertical de ícones — exibido quando a sidebar está colapsada, o padrão
+ * em toda página desktop. Botão de
+ * expandir no topo + atalhos de navegação (sem "Início", redundante — o
+ * desktop já tem `/` como chat) com tooltip do nome no hover. Desktop-only.
+ */
+function SidebarRail({
+  user,
+  pathname,
+  onExpand,
+}: {
+  user: MeUser;
+  pathname: string;
+  onExpand: () => void;
+}): React.ReactElement {
+  const { t } = useI18n();
+  const reduceMotion = useReducedMotion();
+  const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN').filter(
+    (n) => n.to !== '/',
+  );
+
+  return (
+    <motion.nav
+      // Respeita prefers-reduced-motion: sem slide, aparição instantânea.
+      initial={reduceMotion ? false : { opacity: 0, x: -16 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -16 }}
+      transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }}
+      className="hidden md:flex fixed top-4 bottom-4 left-4 z-40 flex-col items-center gap-1 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2 py-3 backdrop-blur-xl"
+      style={{ width: RAIL_WIDTH }}
+      aria-label={t('shell.openMenu')}
+    >
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onExpand}
+              className="mb-1 flex h-9 w-9 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
+              aria-label={t('shell.expandSidebar')}
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{t('shell.expandSidebar')}</TooltipContent>
+        </Tooltip>
+
+        <div className="my-1 h-px w-6 bg-[var(--color-app-border)]" />
+
+        {items.map(({ to, labelKey, Icon }) => {
+          const isActive = pathname === to || pathname.startsWith(to + '/');
+          return (
+            <Tooltip key={to}>
+              <TooltipTrigger asChild>
+                <NavLink
+                  to={to}
+                  className={cn(
+                    'flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
+                    isActive
+                      ? 'bg-[var(--color-app-surface-hover)] text-emerald-400'
+                      : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
+                  )}
+                  aria-label={t(labelKey)}
+                >
+                  <Icon className="h-[18px] w-[18px]" />
+                </NavLink>
+              </TooltipTrigger>
+              <TooltipContent side="right">{t(labelKey)}</TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </TooltipProvider>
+    </motion.nav>
   );
 }
 
@@ -158,7 +238,7 @@ export function SidebarChangelogButton(): React.ReactElement {
       <Link
         to="/novidades"
         title={t('shell.versionOpenChangelog')}
-        className="flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-zinc-100"
+        className="flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
       >
         <Sparkles className="h-4 w-4 shrink-0" />
         <span className="truncate">{t('shell.nav.changelog')}</span>
@@ -215,7 +295,7 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
       <button
         type="button"
         onClick={onCollapse}
-        className="ml-auto flex items-center justify-center h-7 w-7 rounded-md text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+        className="ml-auto flex items-center justify-center h-7 w-7 rounded-md text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors"
         aria-label={t('shell.collapse')}
         title={t('shell.collapse')}
       >
@@ -252,7 +332,9 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
                 className={cn(
                   'relative z-10 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
                   'transition-colors duration-150',
-                  isActive ? 'text-zinc-100' : 'text-[var(--color-app-muted)] hover:text-zinc-100',
+                  isActive
+                    ? 'text-[var(--color-app-fg)]'
+                    : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]',
                 )}
               >
                 <Icon
@@ -317,7 +399,7 @@ function NotasModeBody({
         <button
           type="button"
           onClick={() => navigate('/')}
-          className="flex items-center gap-2 h-9 rounded-lg px-3 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+          className="flex items-center gap-2 h-9 rounded-lg px-3 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           {t('shell.backToHome')}
@@ -327,7 +409,7 @@ function NotasModeBody({
             type="button"
             onClick={() => void onCreate('NOTE')}
             disabled={creating}
-            className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-sm font-medium text-zinc-100 hover:border-violet-500/40 hover:bg-violet-500/5 transition-colors disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-sm font-medium text-[var(--color-app-fg)] hover:border-violet-500/40 hover:bg-violet-500/5 transition-colors disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
             {t('shell.newNote')}
@@ -354,7 +436,7 @@ function NotasModeBody({
         <button
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
-          className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] hover:text-zinc-100 transition-colors"
+          className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors"
         >
           <ChevronDown
             className={cn('h-3 w-3 transition-transform', menuOpen ? '' : 'rotate-180')}
@@ -376,7 +458,7 @@ function NotasModeBody({
                   <li key={to}>
                     <NavLink
                       to={to}
-                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-zinc-100 hover:bg-[var(--color-app-surface)] transition-colors"
+                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors"
                     >
                       <Icon className="h-4 w-4 shrink-0" />
                       <span className="truncate">{t(labelKey)}</span>
@@ -393,15 +475,14 @@ function NotasModeBody({
 
 export function SidebarSpacer(): React.ReactElement | null {
   const { collapsed } = useSidebarCollapsed();
-  const location = useLocation();
   const isDesktop = useIsDesktop();
-  const isGraph = location.pathname === '/grafo' || location.pathname.startsWith('/grafo/');
   // No mobile não há sidebar montada — sem spacer (evita reservar largura).
   if (!isDesktop) return null;
+  const width = collapsed ? RAIL_WIDTH + 16 : SIDEBAR_WIDTH + 32;
   return (
     <motion.div
       className="hidden md:block shrink-0"
-      animate={{ width: collapsed || isGraph ? 0 : SIDEBAR_WIDTH + 32 }}
+      animate={{ width }}
       initial={false}
       transition={{ type: 'spring', stiffness: 320, damping: 32 }}
       aria-hidden

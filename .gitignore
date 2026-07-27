@@ -19,6 +19,8 @@ build/
 .turbo/
 .vite/
 apps/web/prisma-generated/
+# Espelho local do package.sh; o download oficial é o ZIP commitado
+apps/web/public/extension/unpacked/
 
 # Test / coverage
 coverage/
@@ -61,6 +63,7 @@ logs/
 Thumbs.db
 
 # Claude / agentes locais
+CLAUDE.local.md
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/worktrees/

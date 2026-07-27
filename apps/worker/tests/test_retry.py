@@ -100,6 +100,22 @@ async def test_retry_turns_youtube_antibot_into_permanent_error() -> None:
     assert attempts == 1
 
 
+async def test_retry_rate_limit_retries_then_permanent() -> None:
+    """429 não pode virar PermanentError no 1º hit — senão legendas não fazem fallback."""
+    attempts = 0
+
+    async def fn() -> None:
+        nonlocal attempts
+        attempts += 1
+        raise yt_dlp.utils.DownloadError(
+            "Unable to download video subtitles for 'pt': HTTP Error 429: Too Many Requests"
+        )
+
+    with pytest.raises(PermanentError, match="rate limit|limitou requisições"):
+        await _retry_transient(fn, tries=3, base_delay=0)
+    assert attempts == 3, "429 deve esgotar retries antes de PermanentError"
+
+
 async def test_runtime_options_without_proxy_returns_base_opts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

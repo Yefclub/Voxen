@@ -146,7 +146,7 @@ function TreeNode({
             )}
           />
           <Folder className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-          <span className="flex-1 truncate text-zinc-200">{node.title}</span>
+          <span className="flex-1 truncate text-[var(--color-app-subtle)]">{node.title}</span>
           <button
             type="button"
             onClick={(e) => {
@@ -192,7 +192,7 @@ function TreeNode({
           isActive ? 'text-violet-300' : 'text-violet-400',
         )}
       />
-      <span className="flex-1 truncate text-zinc-100">{node.title}</span>
+      <span className="flex-1 truncate text-[var(--color-app-fg)]">{node.title}</span>
       <button
         type="button"
         onClick={(e) => {

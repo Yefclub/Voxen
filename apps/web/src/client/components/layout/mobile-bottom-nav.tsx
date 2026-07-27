@@ -93,7 +93,9 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
               end={to === '/'}
               className={cn(
                 'flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition-colors',
-                active ? 'text-emerald-300' : 'text-[var(--color-app-muted)] active:text-zinc-100',
+                active
+                  ? 'text-emerald-300'
+                  : 'text-[var(--color-app-muted)] active:text-[var(--color-app-fg)]',
               )}
               aria-current={active ? 'page' : undefined}
             >
@@ -115,7 +117,7 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-[var(--color-app-muted)] transition-colors active:text-zinc-100"
+              className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-[var(--color-app-muted)] transition-colors active:text-[var(--color-app-fg)]"
               aria-label={t('shell.userMenu')}
             >
               <span className="flex h-8 w-10 items-center justify-center">
@@ -127,7 +129,7 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
                       className="h-full w-full object-cover"
                     />
                   )}
-                  <AvatarFallback className="bg-transparent text-zinc-100 font-semibold text-[10px]">
+                  <AvatarFallback className="bg-transparent text-[var(--color-app-fg)] font-semibold text-[10px]">
                     {initials(user.name)}
                   </AvatarFallback>
                 </Avatar>
@@ -144,7 +146,7 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
           >
             <DropdownMenuLabel className="flex flex-col items-start gap-0.5 py-2.5">
               <div className="flex items-center gap-2 w-full">
-                <span className="text-sm font-medium text-zinc-100 truncate flex-1">
+                <span className="text-sm font-medium text-[var(--color-app-fg)] truncate flex-1">
                   {user.name}
                 </span>
                 {user.role === 'ADMIN' && (

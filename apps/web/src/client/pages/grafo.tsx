@@ -1,239 +1,278 @@
-// ============================================================================
-// /grafo — visualização do Voxen Brain
-// ============================================================================
-// Spec: .specs/020-brain-knowledge-harness.md
-// Tech: Reagraph (WebGL/R3F) com fallback Sigma/SVG determinístico.
-// ============================================================================
-
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Component,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
-import Graph from 'graphology';
 import type SigmaRenderer from 'sigma';
 import type {
   GraphCanvas as GraphCanvasType,
   GraphCanvasRef,
-  GraphEdge as ReagraphEdge,
-  GraphNode as ReagraphNode,
+  NodePositionArgs,
   Theme,
 } from 'reagraph';
-import { ArrowLeft, Box, BrainCircuit, Network, RotateCw, Search, Square } from 'lucide-react';
+import {
+  ArrowLeft,
+  Box,
+  BrainCircuit,
+  ChevronRight,
+  ExternalLink,
+  Focus,
+  Layers3,
+  Network,
+  PanelLeft,
+  RefreshCw,
+  Search,
+  Square,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
+import { AnimatedPage } from '../components/motion/animated-page';
 import { Button } from '../components/ui/button';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { FetchError } from '../components/ui/fetch-error';
 import { Spinner } from '../components/ui/spinner';
-import { AnimatedPage } from '../components/motion/animated-page';
+import {
+  ALL_GRAPH_NODE_TYPES,
+  buildGraphInsights,
+  buildGraphLayout,
+  buildSigmaGraphModel,
+  edgePath,
+  filterGraphData,
+  nodePath,
+  resolveGraphPalette,
+  resolveGraphViewBox,
+  resolveNodeRadiusBounds,
+  toOpaqueGraphColor,
+  type GraphEdge,
+  type GraphLayoutNode,
+  type GraphNode,
+  type GraphNodeType,
+  type GraphPalette,
+  type GraphResp,
+  type SigmaEdgeAttributes,
+  type SigmaGraphModel,
+  type SigmaNodeAttributes,
+} from '../lib/graph-model';
+import { resolveGraphPollingAction } from '../lib/graph-loading';
+import {
+  DEFAULT_GRAPH_MODE,
+  resolveGraphRenderProfile,
+  type GraphMode,
+} from '../lib/graph-renderer';
 import { useFetch } from '../lib/hooks';
 import { useI18n, type TranslateFn } from '../lib/i18n';
+import { useIsCoarsePointer } from '../lib/use-media-query';
+import { useTheme } from '../lib/theme-provider';
 import { cn } from '../lib/utils';
+import type { GraphIndexStatus } from '../../shared/graph-index';
 
-type GraphNodeType =
-  | 'transcript'
-  | 'note'
-  | 'folder'
-  | 'entity'
-  | 'topic'
-  | 'claim'
-  | 'event'
-  | 'cluster'
-  | 'content';
+export {
+  ALL_GRAPH_NODE_TYPES,
+  EDGE_COLORS,
+  NODE_COLORS,
+  buildGraphCommunities,
+  buildGraphInsights,
+  buildGraphLayout,
+  buildSigmaGraphModel,
+  filterGraphData,
+  nodePath,
+  resolveGraphPalette,
+  resolveGraphViewBox,
+  resolveNodeRadiusBounds,
+} from '../lib/graph-model';
+export type { GraphResp } from '../lib/graph-model';
 
-interface GraphNode {
-  id: string;
-  key: string;
-  label: string;
-  description: string | null;
-  type: GraphNodeType;
-  source?: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB' | 'UPLOAD';
-  sourceType: 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL' | null;
-  sourceId: string | null;
-  weight: number;
-  updatedAt: string;
-}
-
-interface GraphEdge {
-  id: string;
-  from: string;
-  to: string;
-  kind:
-    | 'belongs_to'
-    | 'links_to'
-    | 'mentions'
-    | 'supports'
-    | 'contradicts'
-    | 'same_as'
-    | 'part_of'
-    | 'related_to'
-    | 'next_to';
-  method: string;
-  confidence: string;
-}
-
-interface GraphResp {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  totalNodes: number;
-  totalEdges: number;
-}
-
-interface GraphLayoutNode extends GraphNode {
-  x: number;
-  y: number;
-  radius: number;
-  labelLines: string[];
-}
-
-interface GraphLayoutEdge extends GraphEdge {
-  fromNode: GraphLayoutNode;
-  toNode: GraphLayoutNode;
-}
-
-interface GraphLayout {
-  nodes: GraphLayoutNode[];
-  edges: GraphLayoutEdge[];
-}
-
-interface SigmaNodeAttributes {
-  x: number;
-  y: number;
-  size: number;
-  color: string;
-  label: string;
-  type: GraphNodeType;
-  zIndex: number;
-  original: GraphNode;
-}
-
-interface SigmaEdgeAttributes {
-  size: number;
-  color: string;
-  kind: GraphEdge['kind'];
-  from: string;
-  to: string;
-  original: GraphEdge;
-}
-
-interface SigmaGraphModel {
-  graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>;
-  layout: GraphLayout;
-  neighborhoods: Map<string, Set<string>>;
-  reagraphNodes: ReagraphNode[];
-  reagraphEdges: ReagraphEdge[];
-  nodeById: Map<string, GraphNode>;
-}
-
-const GRAPH_VIEWBOX = { width: 1000, height: 620 };
-const SOURCE_NODE_TYPES = new Set<GraphNodeType>(['transcript', 'note', 'folder']);
-
-export const NODE_COLORS: Record<GraphNodeType, string> = {
-  transcript: '#a78bfa',
-  note: '#34d399',
-  folder: '#fbbf24',
-  entity: '#38bdf8',
-  topic: '#fb7185',
-  claim: '#f472b6',
-  event: '#2dd4bf',
-  cluster: '#a3e635',
-  content: '#94a3b8',
-};
-
-export const EDGE_COLORS: Record<GraphEdge['kind'], string> = {
-  belongs_to: 'rgba(251, 191, 36, 0.72)',
-  links_to: 'rgba(167, 139, 250, 0.78)',
-  mentions: 'rgba(56, 189, 248, 0.72)',
-  supports: 'rgba(52, 211, 153, 0.76)',
-  contradicts: 'rgba(248, 113, 113, 0.78)',
-  same_as: 'rgba(203, 213, 225, 0.7)',
-  part_of: 'rgba(45, 212, 191, 0.72)',
-  related_to: 'rgba(148, 163, 184, 0.68)',
-  next_to: 'rgba(163, 230, 53, 0.7)',
-};
-
-// reagraph puxa three.js + react-three-fiber; carregar sob demanda (import
-// dinâmico) mantém esse peso fora do bundle principal. Por isso o tema é
-// construído a partir do darkTheme só quando o módulo chega.
 type GraphCanvasComponent = typeof GraphCanvasType;
+interface ReagraphModule {
+  GraphCanvas: GraphCanvasComponent;
+  darkTheme: Theme;
+}
+type SigmaRendererConstructor = typeof SigmaRenderer;
 
-function buildVoxenTheme(darkTheme: Theme): Theme {
+const EMPTY_REAGRAPH_NODES: SigmaGraphModel['reagraphNodes'] = [];
+const EMPTY_REAGRAPH_EDGES: SigmaGraphModel['reagraphEdges'] = [];
+const GRAPH_GL_OPTIONS = {
+  antialias: false,
+  alpha: false,
+  powerPreference: 'high-performance' as const,
+};
+let reagraphModulePromise: Promise<ReagraphModule> | null = null;
+let sigmaModulePromise: Promise<SigmaRendererConstructor> | null = null;
+let cachedWebGLSupport: boolean | null = null;
+
+function loadReagraph(): Promise<ReagraphModule> {
+  reagraphModulePromise ??= import('reagraph');
+  return reagraphModulePromise;
+}
+
+function loadSigma(): Promise<SigmaRendererConstructor> {
+  sigmaModulePromise ??= import('sigma').then((module) => module.default);
+  return sigmaModulePromise;
+}
+
+class GraphRendererBoundary extends Component<
+  { children: React.ReactNode; onFailure: () => void },
+  { failed: boolean }
+> {
+  override state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  override componentDidCatch(): void {
+    this.props.onFailure();
+  }
+
+  override render(): React.ReactNode {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
   return {
-    ...darkTheme,
-    canvas: {
-      background: '#09090b',
-      fog: null,
-    },
+    ...baseTheme,
+    canvas: { background: palette.canvas, fog: palette.canvas },
     node: {
-      ...darkTheme.node,
-      fill: '#71717a',
-      activeFill: '#fafafa',
+      ...baseTheme.node,
+      fill: palette.nodes.content,
+      activeFill: palette.selected,
       opacity: 1,
       selectedOpacity: 1,
-      inactiveOpacity: 0.22,
+      inactiveOpacity: 0.18,
       label: {
-        color: '#e4e4e7',
-        stroke: '#09090b',
-        activeColor: '#fafafa',
-        backgroundColor: 'rgba(9, 9, 11, 0.72)',
-        backgroundOpacity: 0.85,
-        padding: 4,
-        radius: 4,
+        color: palette.label,
+        stroke: palette.labelStroke,
+        activeColor: palette.selected,
+        // Halo semi-opaco no tom do canvas — título legível sobre nós coloridos.
+        backgroundColor: palette.canvas,
+        backgroundOpacity: 0.88,
+        padding: 6,
+        radius: 6,
       },
     },
     ring: {
-      fill: '#52525b',
-      activeFill: '#a78bfa',
+      fill: toOpaqueGraphColor(palette.neutralEdge),
+      activeFill: palette.nodes.transcript,
     },
     edge: {
-      ...darkTheme.edge,
-      fill: '#3f3f46',
-      activeFill: '#a1a1aa',
-      opacity: 0.55,
+      ...baseTheme.edge,
+      fill: toOpaqueGraphColor(palette.neutralEdge),
+      activeFill: toOpaqueGraphColor(palette.label),
+      opacity: 0.42,
       selectedOpacity: 1,
-      inactiveOpacity: 0.08,
-      label: {
-        color: '#a1a1aa',
-        activeColor: '#e4e4e7',
-        stroke: '#09090b',
-      },
+      inactiveOpacity: 0.05,
+      label: { color: palette.label, activeColor: palette.selected, stroke: palette.labelStroke },
     },
     arrow: {
-      fill: '#52525b',
-      activeFill: '#d4d4d8',
+      fill: toOpaqueGraphColor(palette.neutralEdge),
+      activeFill: toOpaqueGraphColor(palette.label),
     },
-    lasso: darkTheme.lasso,
+    lasso: baseTheme.lasso,
   };
 }
 
+function latestGraphIndexStatus(
+  snapshotStatus?: GraphIndexStatus,
+  polledStatus?: GraphIndexStatus | null,
+): GraphIndexStatus | null {
+  if (!snapshotStatus) return polledStatus ?? null;
+  if (!polledStatus) return snapshotStatus;
+  return Date.parse(polledStatus.updatedAt) >= Date.parse(snapshotStatus.updatedAt)
+    ? polledStatus
+    : snapshotStatus;
+}
+
 export function GrafoPage(): React.ReactElement {
-  const [forceTick, setForceTick] = useState(0);
-  // Grafo 3D por padrão (orbita/gira); toggle para o 2D plano (pan).
-  const [is3d, setIs3d] = useState(true);
-  const graphPath = forceTick > 0 ? `/api/graph?force=1&t=${forceTick}` : '/api/graph';
-  const { data, loading, error } = useFetch<GraphResp>(graphPath);
+  const [graphRequest, setGraphRequest] = useState({ tick: 0, force: false });
+  /** map = recorte rápido (default); full = snapshot amplo (spec 103). */
+  const [graphView, setGraphView] = useState<'map' | 'full'>('map');
+  const [reprocessOpen, setReprocessOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const deferredSearch = useDebouncedValue(search, 140);
+  const [activeTypes, setActiveTypes] = useState<Set<GraphNodeType>>(
+    () => new Set(ALL_GRAPH_NODE_TYPES),
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mode, setMode] = useState<GraphMode>(DEFAULT_GRAPH_MODE);
+  const [explorerOpen, setExplorerOpen] = useState(false);
+  const coarsePointer = useIsCoarsePointer();
   const navigate = useNavigate();
   const { t } = useI18n();
-
-  const filtered = useMemo(() => {
-    if (!data) return null;
-    if (!search.trim()) return data;
-    const needle = search.trim().toLowerCase();
-    const matchedIds = new Set(
-      data.nodes.filter((node) => searchableNodeText(node).includes(needle)).map((node) => node.id),
-    );
-    for (const edge of data.edges) {
-      if (matchedIds.has(edge.from)) matchedIds.add(edge.to);
-      if (matchedIds.has(edge.to)) matchedIds.add(edge.from);
+  const { theme } = useTheme();
+  const graphPath = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('view', graphView);
+    if (graphRequest.tick > 0) {
+      params.set(graphRequest.force ? 'force' : 'refresh', '1');
+      params.set('t', String(graphRequest.tick));
     }
-    return {
-      ...data,
-      nodes: data.nodes.filter((node) => matchedIds.has(node.id)),
-      edges: data.edges.filter((edge) => matchedIds.has(edge.from) && matchedIds.has(edge.to)),
-    };
-  }, [data, search]);
+    return `/api/graph?${params.toString()}`;
+  }, [graphRequest.force, graphRequest.tick, graphView]);
+  const { data, loading, error } = useFetch<GraphResp>(graphPath);
+  const {
+    data: polledIndexStatus,
+    error: statusError,
+    refresh: refreshIndexStatus,
+  } = useFetch<GraphIndexStatus>('/api/graph/status');
+  const indexStatus = latestGraphIndexStatus(data?.indexStatus, polledIndexStatus);
+  const indexing = indexStatus?.state === 'running' || (!indexStatus && data?.indexing === true);
+  const indexFailed = indexStatus?.state === 'error';
+  const previousIndexState = useRef<GraphIndexStatus['state'] | null>(null);
 
-  const graphModel = useMemo(
-    () => (filtered ? buildSigmaGraphModel(filtered, t) : null),
-    [filtered, t],
+  const filtered = useMemo(
+    () => (data ? filterGraphData(data, deferredSearch, activeTypes) : null),
+    [activeTypes, data, deferredSearch],
   );
+  const insights = useMemo(
+    () => (filtered ? (filtered.insights ?? buildGraphInsights(filtered)) : null),
+    [filtered],
+  );
+  const palette = useMemo(() => resolveGraphPalette(theme), [theme]);
+  const radiusBounds = useMemo(() => resolveNodeRadiusBounds(coarsePointer), [coarsePointer]);
+  const model = useMemo(
+    () =>
+      filtered
+        ? buildSigmaGraphModel(
+            filtered,
+            t,
+            { minNodeRadius: radiusBounds.min, maxNodeRadius: radiusBounds.max },
+            palette,
+          )
+        : null,
+    [filtered, palette, radiusBounds, t],
+  );
+  const selectedNode = useMemo(
+    () => filtered?.nodes.find((node) => node.id === selectedId) ?? null,
+    [filtered, selectedId],
+  );
+
+  useEffect(() => {
+    if (!indexStatus) {
+      const timer = window.setTimeout(refreshIndexStatus, 2_500);
+      return () => window.clearTimeout(timer);
+    }
+    const action = resolveGraphPollingAction(
+      previousIndexState.current,
+      indexStatus,
+      data?.indexing === true,
+    );
+    previousIndexState.current = indexStatus.state;
+    if (action === 'refresh-snapshot') {
+      setGraphRequest({ tick: Date.now(), force: false });
+      return;
+    }
+    if (action !== 'poll-status') return;
+    const timer = window.setTimeout(refreshIndexStatus, 2_500);
+    return () => window.clearTimeout(timer);
+  }, [data?.indexing, indexStatus, refreshIndexStatus, statusError]);
 
   useEffect(() => {
     if (selectedId && filtered && !filtered.nodes.some((node) => node.id === selectedId)) {
@@ -248,297 +287,957 @@ export function GrafoPage(): React.ReactElement {
     },
     [navigate],
   );
-
-  const stats = filtered ?? data;
-  const hasGraph = Boolean(graphModel && graphModel.layout.nodes.length > 0);
+  const selectNode = useCallback((id: string | null) => {
+    setSelectedId(id);
+    if (id) setExplorerOpen(false);
+  }, []);
+  const toggleType = useCallback((type: GraphNodeType) => {
+    setActiveTypes((current) => {
+      const next = new Set(current);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }, []);
+  const resetFilters = useCallback(() => {
+    setActiveTypes(new Set(ALL_GRAPH_NODE_TYPES));
+    setSearch('');
+  }, []);
+  const fallbackTo2d = useCallback(() => setMode('2d'), []);
+  const hasGraph = Boolean(model && model.layout.nodes.length > 0);
 
   return (
     <AnimatedPage className="h-full">
-      <div className="relative h-full w-full overflow-hidden bg-[var(--color-app-bg-elevated)]">
-        <BrainGraphCanvas
-          model={graphModel}
-          selectedId={selectedId}
-          is3d={is3d}
-          translate={t}
-          onSelect={setSelectedId}
-          onOpen={openNode}
+      <div className="flex h-full min-h-0 flex-col bg-[var(--color-app-bg)] text-[var(--color-app-fg)]">
+        <header className="shrink-0 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+4.75rem)] md:px-4 md:pt-4 md:pr-36">
+          <div className="rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/92 p-3 shadow-sm backdrop-blur-xl md:p-3.5">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] md:hidden"
+                aria-label={t('shell.backToHome')}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--color-accent-violet)]/25 bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]">
+                  <BrainCircuit className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h1 className="truncate font-display text-base font-semibold">
+                      {t('graph.title')}
+                    </h1>
+                    {indexing ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-500">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+                        {t('graph.indexing')}
+                      </span>
+                    ) : indexFailed ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-400/25 bg-rose-400/10 px-2 py-0.5 text-[10px] font-medium text-rose-500">
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
+                        {t('graph.indexError')}
+                      </span>
+                    ) : (
+                      data && (
+                        <span className="hidden items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-500 sm:inline-flex">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                          {t('graph.ready')}
+                        </span>
+                      )
+                    )}
+                  </div>
+                  <p className="hidden truncate text-xs text-[var(--color-app-muted)] sm:block">
+                    {t('graph.subtitle')}
+                  </p>
+                </div>
+              </div>
+
+              {filtered && (
+                <div className="ml-auto hidden items-center gap-2 lg:flex">
+                  <MetricPill value={filtered.totalNodes} label={t('graph.nodes')} />
+                  <MetricPill value={filtered.totalEdges} label={t('graph.relations')} />
+                  <MetricPill
+                    value={insights?.communities.length ?? 0}
+                    label={t('graph.communities')}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2.5">
+              <label className="relative min-w-[190px] flex-1">
+                <span className="sr-only">{t('graph.searchPlaceholder')}</span>
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-app-muted)]" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={t('graph.searchPlaceholder')}
+                  className="h-10 w-full rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] pl-9 pr-9 text-sm text-[var(--color-app-fg)] outline-none transition focus:border-[var(--color-accent-violet)]/55 focus:ring-2 focus:ring-[var(--color-accent-violet-soft)]"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+                    aria-label={t('graph.clearSearch')}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </label>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={() => setExplorerOpen((current) => !current)}
+                className="xl:hidden"
+              >
+                <PanelLeft className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{t('graph.explore')}</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={() => {
+                  setGraphView((current) => (current === 'map' ? 'full' : 'map'));
+                  setGraphRequest({ tick: Date.now(), force: false });
+                }}
+                title={t(graphView === 'map' ? 'graph.switchToFull' : 'graph.switchToMap')}
+              >
+                <span className="text-xs font-medium">
+                  {graphView === 'map' ? t('graph.viewMap') : t('graph.viewFull')}
+                </span>
+              </Button>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={() => setMode((current) => (current === '2d' ? '3d' : '2d'))}
+                title={t(mode === '2d' ? 'graph.switchTo3d' : 'graph.switchTo2d')}
+              >
+                {mode === '2d' ? (
+                  <Box className="h-3.5 w-3.5" />
+                ) : (
+                  <Square className="h-3.5 w-3.5" />
+                )}
+                <span>{mode === '2d' ? '3D' : '2D'}</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={() => setReprocessOpen(true)}
+                disabled={loading || indexing}
+                title={t('graph.reprocessBrainTitle')}
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', (loading || indexing) && 'animate-spin')} />
+                <span className="hidden sm:inline">{t('graph.reprocessBrain')}</span>
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        <ConfirmDialog
+          open={reprocessOpen}
+          onOpenChange={setReprocessOpen}
+          title={t('graph.reprocessBrainTitle')}
+          description={
+            <div className="space-y-2 text-sm text-[var(--color-app-muted)]">
+              <p>{t('graph.reprocessBrainDescription')}</p>
+              <ul className="list-disc space-y-1 pl-4">
+                <li>{t('graph.reprocessBrainDoes')}</li>
+                <li>{t('graph.reprocessBrainDoesNot')}</li>
+              </ul>
+            </div>
+          }
+          confirmLabel={t('graph.reprocessBrainConfirm')}
+          onConfirm={() => {
+            setGraphRequest({ tick: Date.now(), force: true });
+            refreshIndexStatus();
+          }}
         />
 
-        {loading && !data && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <Spinner />
-          </div>
-        )}
-        {error && !loading && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <FetchError message={error} onRetry={() => setForceTick(Date.now())} />
-          </div>
-        )}
-        {!loading && data && data.nodes.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center px-6">
-            <div className="max-w-md space-y-3 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)]">
-                <Network className="h-5 w-5 text-violet-400" />
-              </div>
-              <div className="space-y-1.5">
-                <p className="font-display text-lg font-semibold">{t('graph.emptyTitle')}</p>
-                <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
-                  {t('graph.emptyDescriptionBefore')} <code className="text-zinc-300">/notas</code>{' '}
-                  {t('graph.emptyDescriptionMiddle')} <code className="text-zinc-300">/</code>{' '}
-                  {t('graph.emptyDescriptionAfter')}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Barra de controles flutuante sobre o canvas */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 p-3 sm:p-4">
-          <div className="pointer-events-auto mx-auto flex max-w-5xl flex-wrap items-center gap-2.5 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/80 px-3 py-2.5 shadow-lg backdrop-blur-xl sm:gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-zinc-100"
-              aria-label={t('shell.backToHome')}
-              title={t('shell.backToHome')}
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div className="hidden items-center gap-2 sm:flex">
-              <BrainCircuit className="h-4 w-4 text-violet-400" />
-              <span className="font-display text-sm font-semibold">{t('graph.title')}</span>
-            </div>
-            <div className="relative min-w-[150px] flex-1">
-              <span className="pointer-events-none absolute left-3 top-1/2 z-10 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-zinc-400">
-                <Search className="h-4 w-4" />
-              </span>
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t('graph.searchPlaceholder')}
-                className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/60 pl-9 pr-3 text-[13px] text-zinc-100 placeholder:text-[var(--color-app-muted)] transition-colors focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
+        <div className="flex min-h-0 flex-1 gap-3 px-3 pb-3 md:px-4 md:pb-4">
+          {data && filtered && insights && (
+            <aside className="hidden w-72 shrink-0 overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] xl:flex">
+              <GraphExplorer
+                sourceData={data}
+                visibleData={filtered}
+                insights={insights}
+                activeTypes={activeTypes}
+                palette={palette}
+                translate={t}
+                onToggleType={toggleType}
+                onReset={resetFilters}
+                onSelect={selectNode}
               />
-            </div>
-            <Button
-              variant="outline"
-              size="default"
-              onClick={() => setIs3d((prev) => !prev)}
-              title={t(is3d ? 'graph.switchTo2d' : 'graph.switchTo3d')}
-              aria-label={t(is3d ? 'graph.switchTo2d' : 'graph.switchTo3d')}
-            >
-              {is3d ? <Box className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-              <span className="hidden sm:inline">{is3d ? '3D' : '2D'}</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="default"
-              onClick={() => setForceTick(Date.now())}
-              disabled={loading}
-            >
-              <RotateCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-              <span className="hidden sm:inline">{t('graph.refresh')}</span>
-            </Button>
-            {stats && stats.nodes.length > 0 && <GraphStats data={stats} translate={t} />}
-          </div>
-        </div>
+            </aside>
+          )}
 
-        {/* Dica de navegação do canvas */}
-        {hasGraph && (
-          <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 px-4">
-            <p className="rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/70 px-3 py-1.5 text-center text-[11px] text-[var(--color-app-muted)] backdrop-blur-md">
-              {t(is3d ? 'graph.controlsHint3d' : 'graph.controlsHint')}
-            </p>
-          </div>
-        )}
+          <section className="graph-canvas-grid relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] shadow-inner">
+            <BrainGraphCanvas
+              model={model}
+              selectedId={selectedId}
+              mode={mode}
+              coarsePointer={coarsePointer}
+              palette={palette}
+              translate={t}
+              onSelect={selectNode}
+              onOpen={openNode}
+              onFallbackTo2d={fallbackTo2d}
+            />
+
+            {filtered && hasGraph && (
+              <div className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[min(100%,18rem)] flex-col gap-1">
+                <div className="rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2.5 py-1 text-[10px] tabular-nums text-[var(--color-app-muted)] shadow-sm backdrop-blur-md">
+                  {t('graph.visibleCount', {
+                    nodes: filtered.totalNodes,
+                    edges: filtered.totalEdges,
+                  })}
+                  {data?.view === 'map' ? ` · ${t('graph.viewMap')}` : ''}
+                </div>
+                {data?.truncated ? (
+                  <div className="rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2.5 py-1 text-[10px] text-[var(--color-app-muted)] shadow-sm backdrop-blur-md">
+                    {t('graph.truncatedHint')}
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {loading && !data && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--color-app-bg)]/70 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-3 text-sm text-[var(--color-app-muted)]">
+                  <Spinner />
+                  {t('graph.loading')}
+                </div>
+              </div>
+            )}
+            {loading && data && (
+              <div className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-2 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/90 px-2.5 py-1 text-[10px] text-[var(--color-app-muted)] backdrop-blur-md">
+                <Spinner size={12} />
+                {t('graph.refreshing')}
+              </div>
+            )}
+            {error && !loading && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--color-app-bg)]/80 px-4 backdrop-blur-sm">
+                <FetchError
+                  message={error}
+                  onRetry={() => setGraphRequest({ tick: Date.now(), force: false })}
+                />
+              </div>
+            )}
+            {!loading && data && data.nodes.length === 0 && !indexing && !indexFailed && (
+              <GraphEmptyState translate={t} onNavigate={navigate} />
+            )}
+            {indexing && data && data.nodes.length === 0 && (
+              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6">
+                <div className="max-w-sm rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/90 p-6 text-center shadow-xl backdrop-blur-xl">
+                  <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]">
+                    <Layers3 className="h-5 w-5 animate-pulse" />
+                  </div>
+                  <p className="font-display text-sm font-semibold">{t('graph.buildingTitle')}</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-[var(--color-app-muted)]">
+                    {t('graph.buildingDescription')}
+                  </p>
+                </div>
+              </div>
+            )}
+            {indexFailed && data && data.nodes.length === 0 && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center px-6">
+                <div className="max-w-sm rounded-2xl border border-rose-400/20 bg-[var(--color-app-bg-elevated)]/95 p-6 text-center shadow-xl backdrop-blur-xl">
+                  <p className="font-display text-sm font-semibold">{t('graph.indexErrorTitle')}</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-[var(--color-app-muted)]">
+                    {t('graph.indexErrorDescription')}
+                  </p>
+                  <Button className="mt-4" onClick={() => setReprocessOpen(true)}>
+                    {t('graph.retryIndex')}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {explorerOpen && data && filtered && insights && (
+              <>
+                <button
+                  type="button"
+                  className="absolute inset-0 z-20 bg-black/15 backdrop-blur-[1px] xl:hidden"
+                  aria-label={t('graph.closeExplorer')}
+                  onClick={() => setExplorerOpen(false)}
+                />
+                <aside className="absolute bottom-3 left-3 top-3 z-30 flex w-[min(20rem,calc(100%-1.5rem))] overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] shadow-2xl xl:hidden">
+                  <GraphExplorer
+                    sourceData={data}
+                    visibleData={filtered}
+                    insights={insights}
+                    activeTypes={activeTypes}
+                    palette={palette}
+                    translate={t}
+                    onToggleType={toggleType}
+                    onReset={resetFilters}
+                    onSelect={selectNode}
+                    onClose={() => setExplorerOpen(false)}
+                  />
+                </aside>
+              </>
+            )}
+
+            {selectedNode && filtered && (
+              <>
+                <aside className="absolute bottom-3 right-3 top-3 z-30 hidden w-80 overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/95 shadow-2xl backdrop-blur-xl md:flex">
+                  <GraphNodeInspector
+                    node={selectedNode}
+                    data={filtered}
+                    palette={palette}
+                    translate={t}
+                    onClose={() => setSelectedId(null)}
+                    onOpen={openNode}
+                    onSelect={selectNode}
+                  />
+                </aside>
+                <aside className="absolute inset-x-3 bottom-3 z-30 flex max-h-[62%] overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/98 shadow-2xl backdrop-blur-xl md:hidden">
+                  <GraphNodeInspector
+                    node={selectedNode}
+                    data={filtered}
+                    palette={palette}
+                    translate={t}
+                    onClose={() => setSelectedId(null)}
+                    onOpen={openNode}
+                    onSelect={selectNode}
+                  />
+                </aside>
+              </>
+            )}
+          </section>
+        </div>
       </div>
     </AnimatedPage>
   );
 }
 
-function GraphStats({
-  data,
-  translate,
-}: {
-  data: GraphResp;
-  translate: TranslateFn;
-}): React.ReactElement {
-  const concepts = data.nodes.filter(
-    (node) => node.type !== 'transcript' && node.type !== 'note' && node.type !== 'folder',
-  ).length;
-  return (
-    <div className="ml-auto flex flex-wrap items-center gap-3 text-[11px] tabular-nums text-[var(--color-app-muted)]">
-      <StatDot
-        color="bg-violet-400"
-        label={`${countType(data, 'transcript')} ${translate('graph.transcripts')}`}
-      />
-      <StatDot
-        color="bg-emerald-400"
-        label={`${countType(data, 'note')} ${translate('graph.notes')}`}
-      />
-      <StatDot
-        color="bg-amber-400"
-        label={`${countType(data, 'folder')} ${translate('graph.folders')}`}
-        square
-      />
-      <StatDot color="bg-sky-400" label={`${concepts} ${translate('graph.concepts')}`} />
-      <span className="text-[var(--color-app-muted)]/70">
-        {translate('graph.connections', { count: data.edges.length })}
-      </span>
-    </div>
-  );
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+  return debounced;
 }
 
-function StatDot({
-  color,
-  label,
-  square = false,
-}: {
-  color: string;
-  label: string;
-  square?: boolean;
-}): React.ReactElement {
+function MetricPill({ value, label }: { value: number; label: string }): React.ReactElement {
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={cn('h-2 w-2', square ? 'rounded-sm' : 'rounded-full', color)} />
+    <span className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] px-2.5 py-1 text-[11px] text-[var(--color-app-muted)]">
+      <strong className="mr-1 font-semibold tabular-nums text-[var(--color-app-fg)]">
+        {value}
+      </strong>
       {label}
     </span>
   );
 }
 
-function BrainGraphCanvas({
+function GraphExplorer({
+  sourceData,
+  visibleData,
+  insights,
+  activeTypes,
+  palette,
+  translate,
+  onToggleType,
+  onReset,
+  onSelect,
+  onClose,
+}: {
+  sourceData: GraphResp;
+  visibleData: GraphResp;
+  insights: NonNullable<GraphResp['insights']>;
+  activeTypes: ReadonlySet<GraphNodeType>;
+  palette: GraphPalette;
+  translate: TranslateFn;
+  onToggleType: (type: GraphNodeType) => void;
+  onReset: () => void;
+  onSelect: (id: string) => void;
+  onClose?: () => void;
+}): React.ReactElement {
+  const allActive = activeTypes.size === ALL_GRAPH_NODE_TYPES.length;
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="flex items-center justify-between border-b border-[var(--color-app-border)] px-4 py-3.5">
+        <div>
+          <p className="font-display text-sm font-semibold">{translate('graph.explore')}</p>
+          <p className="text-[11px] text-[var(--color-app-muted)]">
+            {translate('graph.resultSummary', {
+              nodes: visibleData.totalNodes,
+              total: sourceData.totalNodes,
+            })}
+          </p>
+        </div>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+            aria-label={translate('graph.closeExplorer')}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+        <section>
+          <div className="mb-2.5 flex items-center justify-between">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-app-muted)]">
+              {translate('graph.filters')}
+            </h2>
+            {!allActive && (
+              <button
+                type="button"
+                onClick={onReset}
+                className="text-[11px] font-medium text-[var(--color-accent-violet)] hover:underline"
+              >
+                {translate('graph.resetFilters')}
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {ALL_GRAPH_NODE_TYPES.map((type) => {
+              const active = activeTypes.has(type);
+              const count = sourceData.nodes.filter((node) => node.type === type).length;
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => onToggleType(type)}
+                  aria-pressed={active}
+                  className={cn(
+                    'flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-[11px] transition',
+                    active
+                      ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface)] text-[var(--color-app-fg)]'
+                      : 'border-transparent bg-transparent text-[var(--color-app-muted)] opacity-60 hover:bg-[var(--color-app-surface-hover)]',
+                  )}
+                >
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ background: palette.nodes[type] }}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{translate(`graph.node.${type}`)}</span>
+                  <span className="tabular-nums text-[var(--color-app-muted)]">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-app-muted)]">
+            {translate('graph.hubs')}
+          </h2>
+          <div className="space-y-1">
+            {insights.hubs.slice(0, 7).map((hub, index) => (
+              <button
+                key={hub.id}
+                type="button"
+                onClick={() => onSelect(hub.id)}
+                className="group flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-[var(--color-app-surface-hover)]"
+              >
+                <span className="w-4 text-center text-[10px] tabular-nums text-[var(--color-app-muted)]">
+                  {index + 1}
+                </span>
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: palette.nodes[hub.type] }}
+                />
+                <span className="min-w-0 flex-1 truncate text-xs font-medium">{hub.label}</span>
+                <span className="rounded-md bg-[var(--color-app-bg)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--color-app-muted)]">
+                  {hub.degree}
+                </span>
+              </button>
+            ))}
+            {insights.hubs.length === 0 && (
+              <p className="rounded-xl border border-dashed border-[var(--color-app-border)] px-3 py-4 text-center text-xs text-[var(--color-app-muted)]">
+                {translate('graph.noHubs')}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-app-muted)]">
+            {translate('graph.communities')}
+          </h2>
+          <div className="space-y-1.5">
+            {insights.communities.slice(0, 6).map((community) => (
+              <button
+                key={community.id}
+                type="button"
+                onClick={() => community.nodeIds[0] && onSelect(community.nodeIds[0])}
+                className="flex w-full items-center gap-3 rounded-xl border border-transparent px-2.5 py-2 text-left transition hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)]"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]">
+                  <Network className="h-3.5 w-3.5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium">{community.label}</span>
+                  <span className="text-[10px] text-[var(--color-app-muted)]">
+                    {translate('graph.communitySize', { count: community.size })}
+                  </span>
+                </span>
+                <ChevronRight className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {visibleData.totalEdges > 0 && (
+          <section>
+            <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-app-muted)]">
+              {translate('graph.evidence')}
+            </h2>
+            <EvidenceBar insights={insights} translate={translate} />
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EvidenceBar({
+  insights,
+  translate,
+}: {
+  insights: NonNullable<GraphResp['insights']>;
+  translate: TranslateFn;
+}): React.ReactElement {
+  const values = insights.edgeEvidence;
+  const total = values.extracted + values.inferred + values.ambiguous || 1;
+  return (
+    <div className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] p-3">
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-[var(--color-app-surface)]">
+        <span
+          className="bg-emerald-400"
+          style={{ width: `${(values.extracted / total) * 100}%` }}
+        />
+        <span className="bg-sky-400" style={{ width: `${(values.inferred / total) * 100}%` }} />
+        <span className="bg-zinc-500" style={{ width: `${(values.ambiguous / total) * 100}%` }} />
+      </div>
+      <div className="mt-2.5 grid grid-cols-3 gap-2 text-[9px] text-[var(--color-app-muted)]">
+        <span>
+          {translate('graph.evidenceExtracted')} · {values.extracted}
+        </span>
+        <span>
+          {translate('graph.evidenceInferred')} · {values.inferred}
+        </span>
+        <span>
+          {translate('graph.evidenceAmbiguous')} · {values.ambiguous}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function GraphNodeInspector({
+  node,
+  data,
+  palette,
+  translate,
+  onClose,
+  onOpen,
+  onSelect,
+}: {
+  node: GraphNode;
+  data: GraphResp;
+  palette: GraphPalette;
+  translate: TranslateFn;
+  onClose: () => void;
+  onOpen: (node: GraphNode) => void;
+  onSelect: (id: string) => void;
+}): React.ReactElement {
+  const byId = useMemo(() => new Map(data.nodes.map((item) => [item.id, item])), [data.nodes]);
+  const connections = useMemo(
+    () =>
+      data.edges
+        .filter((edge) => edge.from === node.id || edge.to === node.id)
+        .map((edge) => ({ edge, neighbor: byId.get(edge.from === node.id ? edge.to : edge.from) }))
+        .filter((item): item is { edge: GraphEdge; neighbor: GraphNode } => Boolean(item.neighbor)),
+    [byId, data.edges, node.id],
+  );
+  const path = nodePath(node);
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="flex items-start gap-3 border-b border-[var(--color-app-border)] p-4">
+        <span
+          className="mt-0.5 h-3 w-3 shrink-0 rounded-full"
+          style={{ background: palette.nodes[node.type] }}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-[var(--color-app-muted)]">
+            {translate(`graph.node.${node.type}`)}
+          </p>
+          <h2 className="mt-1 break-words font-display text-base font-semibold leading-snug">
+            {node.label}
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+          aria-label={translate('graph.closeInspector')}
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {node.description && (
+          <p className="mb-4 text-xs leading-relaxed text-[var(--color-app-subtle)]">
+            {node.description}
+          </p>
+        )}
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <div className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] p-3">
+            <p className="text-lg font-semibold tabular-nums">{connections.length}</p>
+            <p className="text-[10px] text-[var(--color-app-muted)]">
+              {translate('graph.connectionsLabel')}
+            </p>
+          </div>
+          <div className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] p-3">
+            <p className="truncate text-xs font-semibold">
+              {node.source ?? node.sourceType ?? 'Brain'}
+            </p>
+            <p className="mt-1 text-[10px] text-[var(--color-app-muted)]">
+              {translate('graph.source')}
+            </p>
+          </div>
+        </div>
+        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.13em] text-[var(--color-app-muted)]">
+          {translate('graph.connectionsLabel')}
+        </h3>
+        <div className="space-y-1">
+          {connections.slice(0, 14).map(({ edge, neighbor }) => (
+            <button
+              key={edge.id}
+              type="button"
+              onClick={() => onSelect(neighbor.id)}
+              className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-[var(--color-app-surface-hover)]"
+            >
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ background: palette.nodes[neighbor.type] }}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium">{neighbor.label}</span>
+                <span className="block truncate text-[10px] text-[var(--color-app-muted)]">
+                  {translate(`graph.edge.${edge.kind}`)}
+                </span>
+              </span>
+              <ChevronRight className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
+            </button>
+          ))}
+          {connections.length === 0 && (
+            <p className="rounded-xl border border-dashed border-[var(--color-app-border)] px-3 py-4 text-center text-xs text-[var(--color-app-muted)]">
+              {translate('graph.noConnections')}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {path && (
+        <div className="border-t border-[var(--color-app-border)] p-3">
+          <Button className="w-full" onClick={() => onOpen(node)}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            {translate('graph.openSource')}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GraphEmptyState({
+  translate,
+  onNavigate,
+}: {
+  translate: TranslateFn;
+  onNavigate: (path: string) => void;
+}): React.ReactElement {
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center px-6">
+      <div className="max-w-sm text-center">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-accent-violet)] shadow-sm">
+          <Network className="h-5 w-5" />
+        </div>
+        <h2 className="mt-4 font-display text-lg font-semibold">{translate('graph.emptyTitle')}</h2>
+        <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-app-muted)]">
+          {translate('graph.emptyDescription')}
+        </p>
+        <div className="mt-4 flex justify-center gap-2">
+          <Button variant="outline" onClick={() => onNavigate('/notas')}>
+            {translate('graph.createNote')}
+          </Button>
+          <Button onClick={() => onNavigate('/transcricoes')}>
+            {translate('graph.addContent')}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const BrainGraphCanvas = memo(function BrainGraphCanvas({
   model,
   selectedId,
-  is3d,
+  mode,
+  coarsePointer,
+  palette,
   translate,
   onSelect,
   onOpen,
+  onFallbackTo2d,
 }: {
   model: SigmaGraphModel | null;
   selectedId: string | null;
-  is3d: boolean;
+  mode: GraphMode;
+  coarsePointer: boolean;
+  palette: GraphPalette;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
   onOpen: (node: GraphNode) => void;
+  onFallbackTo2d: () => void;
 }): React.ReactElement {
+  if (mode === '3d') {
+    return (
+      <BrainGraph3DCanvas
+        model={model}
+        selectedId={selectedId}
+        coarsePointer={coarsePointer}
+        palette={palette}
+        translate={translate}
+        onSelect={onSelect}
+        onOpen={onOpen}
+        onFallback={onFallbackTo2d}
+      />
+    );
+  }
+  return (
+    <BrainGraph2DCanvas
+      model={model}
+      selectedId={selectedId}
+      palette={palette}
+      translate={translate}
+      onSelect={onSelect}
+      onOpen={onOpen}
+    />
+  );
+});
+
+export function BrainGraph3DCanvas({
+  model,
+  selectedId,
+  coarsePointer,
+  palette,
+  translate,
+  onSelect,
+  onOpen,
+  onFallback,
+}: {
+  model: SigmaGraphModel | null;
+  selectedId: string | null;
+  coarsePointer: boolean;
+  palette: GraphPalette;
+  translate: TranslateFn;
+  onSelect: (id: string | null) => void;
+  onOpen: (node: GraphNode) => void;
+  onFallback: () => void;
+}): React.ReactElement {
+  const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<GraphCanvasRef | null>(null);
+  const primaryNodeIdsRef = useRef<string[]>([]);
+  const renderedNodeIdsRef = useRef<Set<string>>(new Set());
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [webglFailed, setWebglFailed] = useState(false);
-  const [reagraph, setReagraph] = useState<{
-    GraphCanvas: GraphCanvasComponent;
-    theme: Theme;
-  } | null>(null);
-  const fittedRef = useRef(false);
+  const [reagraph, setReagraph] = useState<ReagraphModule | null>(null);
+  const profile = useMemo(
+    () => resolveGraphRenderProfile(model?.graph.order ?? 0, model?.graph.size ?? 0, coarsePointer),
+    [coarsePointer, model?.graph.order, model?.graph.size],
+  );
+  const graphTheme = useMemo(
+    () => (reagraph ? buildVoxenTheme(reagraph.darkTheme, palette) : null),
+    [palette, reagraph],
+  );
+  const layoutOverrides = useMemo(
+    () =>
+      ({
+        getNodePosition: (id: string, { drags }: NodePositionArgs) =>
+          drags?.[id]?.position ?? model?.positions3d.get(id) ?? { x: 0, y: 0, z: 0 },
+      }) as unknown as React.ComponentProps<GraphCanvasComponent>['layoutOverrides'],
+    [model?.positions3d],
+  );
+  primaryNodeIdsRef.current = model?.primaryNodeIds ?? [];
+  renderedNodeIdsRef.current = new Set(model?.reagraphNodes.map((node) => node.id) ?? []);
 
   useEffect(() => {
-    setWebglFailed(false);
-    setReagraph(null);
-    fittedRef.current = false;
-    if (!model || model.layout.nodes.length === 0) return;
     if (!supportsWebGL()) {
-      setWebglFailed(true);
+      onFallback();
       return;
     }
     let cancelled = false;
-    void import('reagraph')
-      .then((mod) => {
-        if (!cancelled) {
-          setReagraph({ GraphCanvas: mod.GraphCanvas, theme: buildVoxenTheme(mod.darkTheme) });
-        }
+    void loadReagraph()
+      .then((module) => {
+        if (!cancelled) setReagraph(module);
       })
       .catch(() => {
-        if (!cancelled) setWebglFailed(true);
+        if (!cancelled) onFallback();
       });
     return () => {
       cancelled = true;
     };
-  }, [model]);
+  }, [onFallback]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const handleContextLost = (event: Event): void => {
+      event.preventDefault();
+      onFallback();
+    };
+    const handleContextCreationError = (): void => onFallback();
+    container.addEventListener('webglcontextlost', handleContextLost, true);
+    container.addEventListener('webglcontextcreationerror', handleContextCreationError, true);
+    return () => {
+      container.removeEventListener('webglcontextlost', handleContextLost, true);
+      container.removeEventListener('webglcontextcreationerror', handleContextCreationError, true);
+    };
+  }, [onFallback]);
 
   const activeId = hoveredId ?? selectedId;
   const actives = useMemo(() => {
     if (!activeId || !model) return undefined;
-    const neighbors = model.neighborhoods.get(activeId);
-    if (!neighbors) return [activeId];
-    return [activeId, ...neighbors];
+    return [...(model.neighborhoods.get(activeId) ?? new Set([activeId]))].filter((id) =>
+      renderedNodeIdsRef.current.has(id),
+    );
   }, [activeId, model]);
 
-  useEffect(() => {
-    if (!model || !selectedId || !graphRef.current) return;
+  const fitGraphView = useCallback((scope: 'primary' | 'all', animated: boolean) => {
     try {
-      graphRef.current.centerGraph([selectedId]);
+      const ids =
+        scope === 'primary'
+          ? primaryNodeIdsRef.current.filter((id) => renderedNodeIdsRef.current.has(id))
+          : undefined;
+      graphRef.current?.fitNodesInView(ids?.length ? ids : undefined, { animated });
     } catch {
-      /* camera ainda não pronta */
+      // A câmera ainda pode estar preparando a cena.
     }
-  }, [model, selectedId]);
+  }, []);
 
-  // Trocar 2D/3D re-layouta o grafo — re-enquadra a câmera no novo layout.
-  useEffect(() => {
-    fittedRef.current = false;
-  }, [is3d]);
+  const zoomGraph = useCallback((direction: 'in' | 'out') => {
+    try {
+      if (direction === 'in') graphRef.current?.zoomIn();
+      else graphRef.current?.zoomOut();
+    } catch {
+      // Os controles podem chegar antes de a câmera 3D estar pronta.
+    }
+  }, []);
 
   useEffect(() => {
-    if (!model || !reagraph || fittedRef.current) return;
+    if (!model || model.graph.order === 0 || !reagraph) return;
+    // 1º frame: fit global (cena ainda montando; ids primários podem faltar).
+    // Depois: enquadra o núcleo (maior comunidade) — concentração de dados no centro.
+    const frame =
+      typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame(() => fitGraphView('all', false))
+        : null;
     const timer = window.setTimeout(() => {
-      try {
-        graphRef.current?.fitNodesInView(undefined, { animated: true });
-        fittedRef.current = true;
-      } catch {
-        /* ignore */
-      }
-    }, 400);
-    return () => window.clearTimeout(timer);
-  }, [model, reagraph, is3d]);
+      const hasPrimary = primaryNodeIdsRef.current.some((id) => renderedNodeIdsRef.current.has(id));
+      fitGraphView(hasPrimary ? 'primary' : 'all', profile.animated);
+    }, 220);
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [fitGraphView, model?.topologyKey, profile.animated, reagraph]);
 
-  if (!model || model.layout.nodes.length === 0) {
-    return <div className="absolute inset-0" />;
-  }
-
-  if (webglFailed) {
-    return (
-      <BrainGraph2DCanvas
-        model={model}
-        selectedId={selectedId}
-        translate={translate}
-        onSelect={onSelect}
-        onOpen={onOpen}
-      />
-    );
-  }
+  useEffect(() => {
+    if (!reagraph || !selectedId || !renderedNodeIdsRef.current.has(selectedId)) return;
+    try {
+      graphRef.current?.centerGraph([selectedId]);
+    } catch {
+      // A seleção pode chegar antes de a câmera 3D estar pronta.
+    }
+  }, [model?.topologyKey, reagraph, selectedId]);
 
   const GraphCanvas = reagraph?.GraphCanvas;
-
   return (
-    <div className="absolute inset-0 overflow-hidden bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:48px_48px]">
+    <div ref={containerRef} className="absolute inset-0">
       {!GraphCanvas && (
         <div className="absolute inset-0 z-10 flex items-center justify-center">
-          <Spinner />
+          <div className="flex items-center gap-2 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/90 px-3 py-1.5 text-xs text-[var(--color-app-muted)] backdrop-blur-md">
+            <Spinner size={14} />
+            {translate('graph.loading3d')}
+          </div>
         </div>
       )}
-      {GraphCanvas && reagraph && (
-        <GraphCanvas
-          ref={graphRef}
-          nodes={model.reagraphNodes}
-          edges={model.reagraphEdges}
-          theme={reagraph.theme}
-          layoutType={is3d ? 'forceDirected3d' : 'forceDirected2d'}
-          labelType="auto"
-          edgeInterpolation="curved"
-          cameraMode={is3d ? 'rotate' : 'pan'}
-          animated
-          draggable
-          selections={selectedId ? [selectedId] : []}
-          actives={actives}
-          onNodeClick={(node) => {
-            onSelect(node.id);
-          }}
-          onNodeDoubleClick={(node) => {
-            const original = model.nodeById.get(node.id);
-            if (original) onOpen(original);
-          }}
-          onNodePointerOver={(node) => setHoveredId(node.id)}
-          onNodePointerOut={() => setHoveredId(null)}
-          onCanvasClick={() => onSelect(null)}
-        />
+      {GraphCanvas && graphTheme && (
+        <GraphRendererBoundary onFailure={onFallback}>
+          <GraphCanvas
+            ref={graphRef}
+            nodes={model?.reagraphNodes ?? EMPTY_REAGRAPH_NODES}
+            edges={model?.reagraphEdges ?? EMPTY_REAGRAPH_EDGES}
+            theme={graphTheme}
+            layoutType="custom"
+            layoutOverrides={layoutOverrides}
+            labelType={profile.labelType}
+            edgeInterpolation={profile.edgeInterpolation}
+            edgeArrowPosition="none"
+            cameraMode="rotate"
+            minDistance={180}
+            maxDistance={8_000}
+            animated={profile.animated}
+            draggable={profile.draggable}
+            aggregateEdges={profile.aggregateEdges}
+            glOptions={GRAPH_GL_OPTIONS}
+            selections={
+              selectedId && renderedNodeIdsRef.current.has(selectedId) ? [selectedId] : []
+            }
+            actives={actives}
+            onNodeClick={(node) => onSelect(node.id)}
+            onNodeDoubleClick={(node) => {
+              const original = model?.nodeById.get(node.id);
+              if (original) onOpen(original);
+            }}
+            onNodePointerOver={(node) => setHoveredId(node.id)}
+            onNodePointerOut={() => setHoveredId(null)}
+            onCanvasClick={() => onSelect(null)}
+          >
+            <ambientLight intensity={0.72} />
+            <directionalLight position={[450, 700, 900]} intensity={1.15} />
+            <pointLight position={[-700, -300, 550]} intensity={0.72} />
+          </GraphCanvas>
+        </GraphRendererBoundary>
+      )}
+      {GraphCanvas && model && model.graph.order > 0 && (
+        <>
+          <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/82 px-2.5 py-1 text-[10px] font-medium text-[var(--color-app-muted)] shadow-sm backdrop-blur-md">
+            3D · {translate(`graph.renderProfile.${profile.tier}`)}
+          </div>
+          <div className="absolute bottom-3 right-3 z-10 flex flex-col gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md">
+            <CanvasButton label={translate('graph.zoomIn')} onClick={() => zoomGraph('in')}>
+              <ZoomIn className="h-3.5 w-3.5" />
+            </CanvasButton>
+            <CanvasButton label={translate('graph.zoomOut')} onClick={() => zoomGraph('out')}>
+              <ZoomOut className="h-3.5 w-3.5" />
+            </CanvasButton>
+            <CanvasButton
+              label={translate('graph.focusCore')}
+              onClick={() => fitGraphView('primary', true)}
+            >
+              <Focus className="h-3.5 w-3.5" />
+            </CanvasButton>
+            <CanvasButton
+              label={translate('graph.fitAll')}
+              onClick={() => fitGraphView('all', true)}
+            >
+              <Network className="h-3.5 w-3.5" />
+            </CanvasButton>
+          </div>
+        </>
       )}
     </div>
   );
@@ -547,189 +1246,385 @@ function BrainGraphCanvas({
 function BrainGraph2DCanvas({
   model,
   selectedId,
+  palette,
   translate,
   onSelect,
   onOpen,
 }: {
   model: SigmaGraphModel | null;
   selectedId: string | null;
+  palette: GraphPalette;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
   onOpen: (node: GraphNode) => void;
 }): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null>(null);
+  const modelRef = useRef(model);
+  const paletteRef = useRef(palette);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [webglFailed, setWebglFailed] = useState(false);
   const [rendererVersion, setRendererVersion] = useState(0);
+  const [SigmaConstructor, setSigmaConstructor] = useState<SigmaRendererConstructor | null>(null);
+  const hasModel = Boolean(model);
+  modelRef.current = model;
+  paletteRef.current = palette;
 
   useEffect(() => {
-    setWebglFailed(false);
-  }, [model]);
-
-  useEffect(() => {
-    if (!model || model.layout.nodes.length === 0 || !containerRef.current) return;
-    setWebglFailed(false);
     let cancelled = false;
-    let renderer: SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null;
-    let resizeObserver: ResizeObserver | null = null;
-
-    void import('sigma')
-      .then(({ default: Sigma }) => {
-        if (cancelled || !containerRef.current) return;
-        try {
-          renderer = new Sigma(model.graph, containerRef.current, {
-            allowInvalidContainer: true,
-            defaultNodeColor: '#94a3b8',
-            defaultEdgeColor: 'rgba(148, 163, 184, 0.42)',
-            enableEdgeEvents: true,
-            hideEdgesOnMove: true,
-            hideLabelsOnMove: false,
-            itemSizesReference: 'screen',
-            labelColor: { color: '#f4f4f5' },
-            labelDensity: 0.16,
-            labelFont: 'Inter, system-ui, sans-serif',
-            labelRenderedSizeThreshold: 8,
-            labelSize: 12,
-            maxCameraRatio: 2.8,
-            minCameraRatio: 0.12,
-            renderEdgeLabels: false,
-            zIndex: true,
-          });
-          rendererRef.current = renderer;
-          renderer.on('clickNode', ({ node }) => onSelect(node));
-          renderer.on('doubleClickNode', ({ node, event }) => {
-            event.preventSigmaDefault();
-            if (model.graph.hasNode(node)) onOpen(model.graph.getNodeAttributes(node).original);
-          });
-          renderer.on('clickStage', () => onSelect(null));
-          renderer.on('enterNode', ({ node }) => setHoveredId(node));
-          renderer.on('leaveNode', () => setHoveredId(null));
-          if ('ResizeObserver' in window) {
-            resizeObserver = new ResizeObserver(() => renderer?.resize());
-            resizeObserver.observe(containerRef.current);
-          }
-          renderer.refresh();
-          setRendererVersion((version) => version + 1);
-        } catch {
-          setWebglFailed(true);
-        }
+    void loadSigma()
+      .then((Sigma) => {
+        if (!cancelled) setSigmaConstructor(() => Sigma);
       })
       .catch(() => {
         if (!cancelled) setWebglFailed(true);
       });
-
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const initialModel = modelRef.current;
+    const initialPalette = paletteRef.current;
+    if (webglFailed || !SigmaConstructor || !initialModel || !containerRef.current) return;
+    const container = containerRef.current;
+    let renderer: SigmaRenderer<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    const handleContextLost = (event: Event): void => {
+      event.preventDefault();
+      setWebglFailed(true);
+    };
+    container.addEventListener('webglcontextlost', handleContextLost, true);
+    try {
+      renderer = new SigmaConstructor(
+        initialModel.graph,
+        containerRef.current,
+        sigmaRendererSettings(initialModel, initialPalette),
+      );
+      rendererRef.current = renderer;
+      renderer.on('clickNode', ({ node }) => onSelect(node));
+      renderer.on('doubleClickNode', ({ node, event }) => {
+        event.preventSigmaDefault();
+        const currentModel = modelRef.current;
+        if (currentModel?.graph.hasNode(node))
+          onOpen(currentModel.graph.getNodeAttributes(node).original);
+      });
+      renderer.on('clickStage', () => onSelect(null));
+      renderer.on('enterNode', ({ node }) => setHoveredId(node));
+      renderer.on('leaveNode', () => setHoveredId(null));
+      if ('ResizeObserver' in window) {
+        resizeObserver = new ResizeObserver(() => renderer?.resize());
+        resizeObserver.observe(containerRef.current);
+      }
+      renderer.refresh();
+      setRendererVersion((version) => version + 1);
+    } catch {
+      setWebglFailed(true);
+    }
+    return () => {
       resizeObserver?.disconnect();
+      container.removeEventListener('webglcontextlost', handleContextLost, true);
       renderer?.kill();
       rendererRef.current = null;
     };
-  }, [model, onSelect, onOpen]);
+  }, [SigmaConstructor, hasModel, onOpen, onSelect, webglFailed]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !model) return;
+    renderer.setGraph(model.graph);
+    renderer.setSettings(sigmaRendererSettings(model, palette));
+    renderer.refresh();
+    setRendererVersion((version) => version + 1);
+    // Reenquadra o núcleo (maior comunidade) após troca de topologia.
+    const timer = window.setTimeout(() => {
+      const camera = renderer.getCamera();
+      const primary = model.primaryNodeIds;
+      if (primary.length === 0) {
+        void camera.animate({ x: 0, y: 0, ratio: 1, angle: 0 }, { duration: 0 });
+        return;
+      }
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      let count = 0;
+      for (const id of primary) {
+        const display = renderer.getNodeDisplayData(id);
+        if (!display) continue;
+        minX = Math.min(minX, display.x);
+        maxX = Math.max(maxX, display.x);
+        minY = Math.min(minY, display.y);
+        maxY = Math.max(maxY, display.y);
+        count += 1;
+      }
+      if (count === 0) {
+        void camera.animate({ x: 0, y: 0, ratio: 1, angle: 0 }, { duration: 0 });
+        return;
+      }
+      const span = Math.max(maxX - minX, maxY - minY, 0.35);
+      void camera.animate(
+        {
+          x: (minX + maxX) / 2,
+          y: (minY + maxY) / 2,
+          ratio: Math.min(1.4, Math.max(0.28, span * 1.35)),
+          angle: 0,
+        },
+        { duration: 0 },
+      );
+    }, 40);
+    return () => window.clearTimeout(timer);
+  }, [model, palette]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !model) return;
     const activeId = hoveredId ?? selectedId;
-    const activeNeighbors = activeId ? (model.neighborhoods.get(activeId) ?? new Set()) : null;
-    renderer.setSetting('nodeReducer', (node, data) => {
-      if (!activeId || !activeNeighbors) return data;
+    const activeNeighbors = activeId
+      ? (model.neighborhoods.get(activeId) ?? new Set([activeId]))
+      : null;
+    renderer.setSetting('nodeReducer', (node, nodeData) => {
+      if (!activeId || !activeNeighbors) return nodeData;
       const isActive = node === activeId;
       const isNeighbor = activeNeighbors.has(node);
-      if (!isActive && !isNeighbor) {
+      if (!isActive && !isNeighbor)
         return {
-          ...data,
-          color: 'rgba(82, 82, 91, 0.42)',
+          ...nodeData,
+          color: palette.dimNode,
           label: '',
-          size: Math.max(3, data.size * 0.72),
+          size: Math.max(2.5, nodeData.size * 0.7),
           zIndex: 0,
         };
-      }
       return {
-        ...data,
-        color: isActive ? '#fafafa' : data.color,
-        size: data.size * (isActive ? 1.45 : 1.12),
+        ...nodeData,
+        color: isActive ? palette.selected : nodeData.color,
+        size: nodeData.size * (isActive ? 1.45 : 1.12),
         zIndex: isActive ? 4 : 3,
       };
     });
-    renderer.setSetting('edgeReducer', (_edge, data) => {
-      if (!activeId) return data;
-      const connected = data.from === activeId || data.to === activeId;
+    renderer.setSetting('edgeReducer', (_edge, edgeData) => {
+      if (!activeId) return edgeData;
+      const connected = edgeData.from === activeId || edgeData.to === activeId;
       return {
-        ...data,
-        color: connected ? data.color : 'rgba(82, 82, 91, 0.16)',
-        size: connected ? data.size * 1.35 : Math.max(0.35, data.size * 0.5),
+        ...edgeData,
+        color: connected ? edgeData.color : palette.dimEdge,
+        hidden: !connected,
+        size: connected ? edgeData.size * 1.4 : edgeData.size,
       };
     });
     renderer.refresh();
-  }, [hoveredId, model, rendererVersion, selectedId]);
+  }, [hoveredId, model, palette, rendererVersion, selectedId]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !model || !selectedId || !model.graph.hasNode(selectedId)) return;
-    const attrs = model.graph.getNodeAttributes(selectedId);
-    void renderer.getCamera().animate({ x: attrs.x, y: attrs.y, ratio: 0.62 }, { duration: 260 });
+    const display = renderer.getNodeDisplayData(selectedId);
+    if (!display) return;
+    void renderer
+      .getCamera()
+      .animate({ x: display.x, y: display.y, ratio: 0.52 }, { duration: 240 });
   }, [model, rendererVersion, selectedId]);
 
-  if (!model || model.layout.nodes.length === 0) {
-    return <div className="absolute inset-0" />;
-  }
+  const moveCamera = useCallback((ratioFactor: number) => {
+    const camera = rendererRef.current?.getCamera();
+    if (!camera) return;
+    const state = camera.getState();
+    void camera.animate({ ...state, ratio: state.ratio * ratioFactor }, { duration: 180 });
+  }, []);
+  const resetCamera = useCallback(() => {
+    const renderer = rendererRef.current;
+    const camera = renderer?.getCamera();
+    if (!camera || !renderer) return;
+    // Grafo Sigma está centrado em (0,0) em coords de grafo (layout normalizado).
+    // 0.5/0.5 deslocava a câmera para fora do núcleo.
+    const primary = modelRef.current?.primaryNodeIds ?? [];
+    if (primary.length > 0) {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      let count = 0;
+      for (const id of primary) {
+        const display = renderer.getNodeDisplayData(id);
+        if (!display) continue;
+        minX = Math.min(minX, display.x);
+        maxX = Math.max(maxX, display.x);
+        minY = Math.min(minY, display.y);
+        maxY = Math.max(maxY, display.y);
+        count += 1;
+      }
+      if (count > 0) {
+        const span = Math.max(maxX - minX, maxY - minY, 0.35);
+        void camera.animate(
+          {
+            x: (minX + maxX) / 2,
+            y: (minY + maxY) / 2,
+            ratio: Math.min(1.4, Math.max(0.28, span * 1.35)),
+            angle: 0,
+          },
+          { duration: 240 },
+        );
+        return;
+      }
+    }
+    void camera.animate({ x: 0, y: 0, ratio: 1, angle: 0 }, { duration: 220 });
+  }, []);
 
+  if (!model) return <div className="absolute inset-0" />;
   if (webglFailed) {
     return (
       <BrainGraphSvg
-        layout={model.layout}
+        model={model}
         selectedId={selectedId}
+        palette={palette}
         translate={translate}
         onSelect={onSelect}
         onOpen={onOpen}
       />
     );
   }
-
   return (
     <div className="absolute inset-0 overflow-hidden">
       <div ref={containerRef} aria-label={translate('graph.title')} className="h-full w-full" />
+      {model.graph.order > 0 && (
+        <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/88 p-1 shadow-lg backdrop-blur-md">
+          <CanvasButton label={translate('graph.zoomIn')} onClick={() => moveCamera(0.72)}>
+            <ZoomIn className="h-3.5 w-3.5" />
+          </CanvasButton>
+          <CanvasButton label={translate('graph.zoomOut')} onClick={() => moveCamera(1.38)}>
+            <ZoomOut className="h-3.5 w-3.5" />
+          </CanvasButton>
+          <CanvasButton label={translate('graph.fitView')} onClick={resetCamera}>
+            <Focus className="h-3.5 w-3.5" />
+          </CanvasButton>
+        </div>
+      )}
     </div>
   );
 }
 
+function sigmaRendererSettings(model: SigmaGraphModel, palette: GraphPalette) {
+  return {
+    allowInvalidContainer: true,
+    defaultNodeColor: palette.nodes.content,
+    defaultEdgeColor: palette.neutralEdge,
+    enableEdgeEvents: false,
+    hideEdgesOnMove: true,
+    hideLabelsOnMove: true,
+    itemSizesReference: 'screen' as const,
+    labelColor: { color: palette.label },
+    labelDensity: model.graph.order > 300 ? 0.1 : model.graph.order > 140 ? 0.2 : 0.36,
+    labelFont: 'Inter, system-ui, sans-serif',
+    labelWeight: '600',
+    labelRenderedSizeThreshold: model.graph.order > 250 ? 9 : 7,
+    labelSize: 13,
+    maxCameraRatio: 3.4,
+    minCameraRatio: 0.08,
+    renderEdgeLabels: false,
+    zIndex: true,
+  };
+}
+
+function CanvasButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-app-muted)] transition hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+    >
+      {children}
+    </button>
+  );
+}
+
 function BrainGraphSvg({
-  layout,
+  model,
   selectedId,
+  palette,
   translate,
   onSelect,
   onOpen,
 }: {
-  layout: GraphLayout;
+  model: SigmaGraphModel;
   selectedId: string | null;
+  palette: GraphPalette;
   translate: TranslateFn;
   onSelect: (id: string | null) => void;
   onOpen: (node: GraphNode) => void;
 }): React.ReactElement {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const coarsePointer = useIsCoarsePointer();
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+  useLayoutEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    const rect = element.getBoundingClientRect();
+    setContainerSize({ width: rect.width, height: rect.height });
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry)
+        setContainerSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const viewBox = useMemo(
+    () => resolveGraphViewBox(containerSize?.width ?? 0, containerSize?.height ?? 0),
+    [containerSize],
+  );
+  const radiusBounds = useMemo(() => resolveNodeRadiusBounds(coarsePointer), [coarsePointer]);
+  const layout = useMemo(
+    () =>
+      buildGraphLayout(model.data, {
+        viewBox,
+        minNodeRadius: radiusBounds.min,
+        maxNodeRadius: radiusBounds.max,
+      }),
+    [model, radiusBounds, viewBox],
+  );
+  const activeIds = selectedId
+    ? (model.neighborhoods.get(selectedId) ?? new Set([selectedId]))
+    : null;
+
   return (
-    <div className="absolute inset-0 overflow-hidden">
+    <div ref={containerRef} className="absolute inset-0 overflow-hidden">
       <svg
         role="img"
         aria-label={translate('graph.title')}
         className="h-full w-full"
-        viewBox={`0 0 ${GRAPH_VIEWBOX.width} ${GRAPH_VIEWBOX.height}`}
+        viewBox={`0 0 ${viewBox.width} ${viewBox.height}`}
         preserveAspectRatio="xMidYMid meet"
         onClick={() => onSelect(null)}
       >
-        <rect width={GRAPH_VIEWBOX.width} height={GRAPH_VIEWBOX.height} fill="transparent" />
-        <g opacity="0.75">
-          {layout.edges.map((edge) => (
-            <path
-              key={edge.id}
-              d={edgePath(edge)}
-              fill="none"
-              stroke={EDGE_COLORS[edge.kind]}
-              strokeLinecap="round"
-              strokeWidth={edge.kind === 'links_to' ? 2.4 : 1.6}
-              strokeDasharray={edge.kind === 'belongs_to' ? '6 8' : undefined}
-            />
-          ))}
+        <rect width={viewBox.width} height={viewBox.height} fill="transparent" />
+        <g>
+          {layout.edges.map((edge) => {
+            const connected = !selectedId || edge.from === selectedId || edge.to === selectedId;
+            return (
+              <path
+                key={edge.id}
+                d={edgePath(edge)}
+                fill="none"
+                stroke={connected ? palette.edges[edge.kind] : palette.dimEdge}
+                strokeLinecap="round"
+                strokeWidth={connected ? (edge.kind === 'links_to' ? 2.2 : 1.4) : 0.5}
+                opacity={connected ? 0.72 : 0.12}
+              />
+            );
+          })}
         </g>
         <g>
           {layout.nodes.map((node) => (
@@ -737,6 +1632,8 @@ function BrainGraphSvg({
               key={node.id}
               node={node}
               selected={node.id === selectedId}
+              dimmed={Boolean(activeIds && !activeIds.has(node.id))}
+              palette={palette}
               onSelect={onSelect}
               onOpen={onOpen}
             />
@@ -750,24 +1647,25 @@ function BrainGraphSvg({
 function BrainGraphNode({
   node,
   selected,
+  dimmed,
+  palette,
   onSelect,
   onOpen,
 }: {
   node: GraphLayoutNode;
   selected: boolean;
+  dimmed: boolean;
+  palette: GraphPalette;
   onSelect: (id: string) => void;
   onOpen: (node: GraphNode) => void;
 }): React.ReactElement {
-  const color = NODE_COLORS[node.type];
-  const stroke = selected ? '#fafafa' : '#18181b';
-  const strokeWidth = selected ? 4 : 1.5;
   const labelY = node.radius + 15;
-
   return (
     <g
       className="cursor-pointer outline-none"
       role="button"
       tabIndex={0}
+      opacity={dimmed ? 0.2 : 1}
       transform={`translate(${node.x} ${node.y})`}
       onClick={(event) => {
         event.stopPropagation();
@@ -781,21 +1679,26 @@ function BrainGraphNode({
         if (event.key === 'Enter') {
           event.preventDefault();
           onOpen(node);
-          return;
+        } else if (event.key === ' ') {
+          event.preventDefault();
+          onSelect(node.id);
         }
-        if (event.key !== ' ') return;
-        event.preventDefault();
-        onSelect(node.id);
       }}
     >
       <title>{node.label}</title>
-      {nodeShapeElement(node, color, stroke, strokeWidth)}
+      {nodeShapeElement(
+        node,
+        palette.nodes[node.type],
+        selected ? palette.selected : palette.canvas,
+        selected ? 4 : 1.5,
+      )}
       <text
         y={labelY}
         textAnchor="middle"
-        className="select-none fill-zinc-100 font-sans text-[11px] font-medium"
+        className="select-none font-sans text-[11px] font-medium"
+        fill={palette.label}
         paintOrder="stroke"
-        stroke="#18181b"
+        stroke={palette.labelStroke}
         strokeWidth="3"
         strokeLinejoin="round"
       >
@@ -831,7 +1734,7 @@ function nodeShapeElement(
       />
     );
   }
-  if (node.type === 'cluster') {
+  if (node.type === 'cluster')
     return (
       <polygon
         points={hexagonPoints(node.radius)}
@@ -840,253 +1743,22 @@ function nodeShapeElement(
         strokeWidth={strokeWidth}
       />
     );
-  }
   return <circle r={node.radius} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />;
 }
 
-function searchableNodeText(node: GraphNode): string {
-  return [node.label, node.description, node.key, node.type, node.source, node.sourceType]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-}
-
-function countType(data: GraphResp, type: GraphNodeType): number {
-  return data.nodes.filter((node) => node.type === type).length;
-}
-
-export function buildSigmaGraphModel(data: GraphResp, translate?: TranslateFn): SigmaGraphModel {
-  const layout = buildGraphLayout(data);
-  const graph = new Graph<SigmaNodeAttributes, SigmaEdgeAttributes>({
-    multi: true,
-    type: 'undirected',
-  });
-  const neighborhoods = new Map<string, Set<string>>();
-  const nodeById = new Map(layout.nodes.map((node) => [node.id, node as GraphNode]));
-  const reagraphNodes: ReagraphNode[] = layout.nodes.map((node) => ({
-    id: node.id,
-    label: node.label,
-    subLabel: translate ? translate(`graph.node.${node.type}`) : node.type,
-    fill: NODE_COLORS[node.type],
-    size: Math.max(4, Math.min(14, 5 + node.weight * (SOURCE_NODE_TYPES.has(node.type) ? 1.4 : 1))),
-    data: node,
-  }));
-  const reagraphEdges: ReagraphEdge[] = layout.edges.map((edge) => ({
-    id: edge.id,
-    source: edge.from,
-    target: edge.to,
-    label: translate ? translate(`graph.edge.${edge.kind}`) : edge.kind,
-    size: edge.kind === 'links_to' ? 2.2 : edge.kind === 'related_to' ? 1.6 : 1.1,
-    fill: EDGE_COLORS[edge.kind],
-    data: edge,
-  }));
-
-  for (const node of layout.nodes) {
-    neighborhoods.set(node.id, new Set([node.id]));
-    graph.addNode(node.id, {
-      x: (node.x - GRAPH_VIEWBOX.width / 2) / 150,
-      y: (node.y - GRAPH_VIEWBOX.height / 2) / 150,
-      size: Math.max(4, node.radius / 2.4),
-      color: NODE_COLORS[node.type],
-      label: node.label,
-      type: node.type,
-      zIndex: SOURCE_NODE_TYPES.has(node.type) ? 2 : 1,
-      original: node,
-    });
-  }
-
-  for (const edge of layout.edges) {
-    if (!graph.hasNode(edge.from) || !graph.hasNode(edge.to)) continue;
-    neighborhoods.get(edge.from)?.add(edge.to);
-    neighborhoods.get(edge.to)?.add(edge.from);
-    graph.addUndirectedEdgeWithKey(edge.id, edge.from, edge.to, {
-      size: edge.kind === 'links_to' ? 1.9 : 1.15,
-      color: EDGE_COLORS[edge.kind],
-      kind: edge.kind,
-      from: edge.from,
-      to: edge.to,
-      original: edge,
-    });
-  }
-
-  return { graph, layout, neighborhoods, reagraphNodes, reagraphEdges, nodeById };
-}
-
-export function nodePath(node: GraphNode): string | null {
-  if (!node.sourceId) return null;
-  if (node.sourceType === 'TRANSCRIPT') return `/transcricoes/${node.sourceId}`;
-  if (node.sourceType === 'NOTE') return `/notas/${node.sourceId}`;
-  return null;
-}
-
-export function buildGraphLayout(data: GraphResp): GraphLayout {
-  const width = GRAPH_VIEWBOX.width;
-  const height = GRAPH_VIEWBOX.height;
-  const center = { x: width / 2, y: height / 2 };
-  const degree = new Map<string, number>();
-  for (const edge of data.edges) {
-    degree.set(edge.from, (degree.get(edge.from) ?? 0) + 1);
-    degree.set(edge.to, (degree.get(edge.to) ?? 0) + 1);
-  }
-
-  const orderedNodes = [...data.nodes].sort(compareGraphNodes);
-  const sourceNodes = orderedNodes.filter((node) => SOURCE_NODE_TYPES.has(node.type));
-  const sourceAngles = new Map<string, number>();
-  const positions = new Map<string, { x: number; y: number }>();
-
-  if (sourceNodes.length > 0) {
-    const sourceRadius = sourceNodes.length === 1 ? 0 : 132 + Math.min(sourceNodes.length, 8) * 6;
-    sourceNodes.forEach((node, index) => {
-      const angle = angleForIndex(index, sourceNodes.length, -Math.PI / 2);
-      sourceAngles.set(node.id, angle);
-      positions.set(node.id, polarPoint(center, sourceRadius, angle));
-    });
-  }
-
-  const fallbackNodes = sourceNodes.length > 0 ? [] : orderedNodes;
-  fallbackNodes.forEach((node, index) => {
-    const radius = orderedNodes.length < 3 ? 95 : 205;
-    positions.set(node.id, polarPoint(center, radius, angleForIndex(index, orderedNodes.length)));
-  });
-
-  const conceptNodes = orderedNodes.filter((node) => !positions.has(node.id));
-  conceptNodes.forEach((node, index) => {
-    const neighborAngles = data.edges
-      .filter((edge) => edge.from === node.id || edge.to === node.id)
-      .map((edge) => (edge.from === node.id ? edge.to : edge.from))
-      .map((id) => sourceAngles.get(id))
-      .filter((angle): angle is number => typeof angle === 'number');
-    const angle =
-      averageAngle(neighborAngles) ??
-      angleForIndex(index, Math.max(conceptNodes.length, 1), Math.PI / 10);
-    const ring = 218 + (index % 4) * 34;
-    positions.set(node.id, polarPoint(center, ring, angle + ((index % 3) - 1) * 0.11));
-  });
-
-  const layoutNodes = orderedNodes.map<GraphLayoutNode>((node) => {
-    const point = positions.get(node.id) ?? center;
-    const radius = clamp(11 + Math.min(degree.get(node.id) ?? 0, 8) * 2.3, 13, 32);
-    const sourceBoost = SOURCE_NODE_TYPES.has(node.type) ? 3 : 0;
-    return {
-      ...node,
-      ...clampPoint(point, 58, width - 58, 56, height - 74),
-      radius: radius + sourceBoost,
-      labelLines: splitGraphLabel(node.label),
-    };
-  });
-  const byId = new Map(layoutNodes.map((node) => [node.id, node]));
-  const layoutEdges = data.edges
-    .map<GraphLayoutEdge | null>((edge) => {
-      const fromNode = byId.get(edge.from);
-      const toNode = byId.get(edge.to);
-      if (!fromNode || !toNode) return null;
-      return { ...edge, fromNode, toNode };
-    })
-    .filter((edge): edge is GraphLayoutEdge => edge !== null);
-
-  return { nodes: layoutNodes, edges: layoutEdges };
-}
-
-function compareGraphNodes(a: GraphNode, b: GraphNode): number {
-  const priority: Record<GraphNodeType, number> = {
-    transcript: 0,
-    folder: 1,
-    note: 2,
-    topic: 3,
-    entity: 4,
-    claim: 5,
-    event: 6,
-    cluster: 7,
-    content: 8,
-  };
-  return (
-    priority[a.type] - priority[b.type] || b.weight - a.weight || a.label.localeCompare(b.label)
-  );
-}
-
-function angleForIndex(index: number, total: number, offset = 0): number {
-  if (total <= 1) return offset;
-  return offset + (index / total) * Math.PI * 2;
-}
-
-function polarPoint(
-  center: { x: number; y: number },
-  radius: number,
-  angle: number,
-): { x: number; y: number } {
-  return {
-    x: center.x + Math.cos(angle) * radius,
-    y: center.y + Math.sin(angle) * radius,
-  };
-}
-
-function averageAngle(angles: number[]): number | null {
-  if (angles.length === 0) return null;
-  const vector = angles.reduce(
-    (acc, angle) => ({
-      x: acc.x + Math.cos(angle),
-      y: acc.y + Math.sin(angle),
-    }),
-    { x: 0, y: 0 },
-  );
-  return Math.atan2(vector.y / angles.length, vector.x / angles.length);
-}
-
-function clampPoint(
-  point: { x: number; y: number },
-  minX: number,
-  maxX: number,
-  minY: number,
-  maxY: number,
-): { x: number; y: number } {
-  return {
-    x: clamp(point.x, minX, maxX),
-    y: clamp(point.y, minY, maxY),
-  };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function splitGraphLabel(label: string): string[] {
-  const words = label.trim().split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  for (const word of words) {
-    const current = lines.at(-1);
-    if (!current || current.length + word.length + 1 > 20) {
-      lines.push(word.slice(0, 22));
-    } else {
-      lines[lines.length - 1] = `${current} ${word}`;
-    }
-    if (lines.length === 2) break;
-  }
-  if (lines.length === 0) return ['Sem titulo'];
-  if (words.join(' ').length > lines.join(' ').length) {
-    lines[lines.length - 1] = `${lines.at(-1)?.replace(/\.*$/, '')}...`;
-  }
-  return lines;
-}
-
-function edgePath(edge: GraphLayoutEdge): string {
-  const { fromNode, toNode } = edge;
-  const midX = (fromNode.x + toNode.x) / 2;
-  const midY = (fromNode.y + toNode.y) / 2;
-  const dx = toNode.x - fromNode.x;
-  const dy = toNode.y - fromNode.y;
-  const length = Math.hypot(dx, dy) || 1;
-  const curve = ((hashString(edge.id) % 7) - 3) * 5;
-  const cx = midX + (-dy / length) * curve;
-  const cy = midY + (dx / length) * curve;
-  return `M ${fromNode.x.toFixed(1)} ${fromNode.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${toNode.x.toFixed(1)} ${toNode.y.toFixed(1)}`;
-}
-
 function supportsWebGL(): boolean {
+  if (cachedWebGLSupport !== null) return cachedWebGLSupport;
   if (typeof document === 'undefined') return false;
   try {
     const canvas = document.createElement('canvas');
-    return Boolean(canvas.getContext('webgl2') ?? canvas.getContext('webgl'));
+    const context = canvas.getContext('webgl2', GRAPH_GL_OPTIONS) as WebGL2RenderingContext | null;
+    cachedWebGLSupport = Boolean(context);
+    context?.getExtension('WEBGL_lose_context')?.loseContext();
+    canvas.width = 0;
+    canvas.height = 0;
+    return cachedWebGLSupport;
   } catch {
+    cachedWebGLSupport = false;
     return false;
   }
 }
@@ -1096,12 +1768,4 @@ function hexagonPoints(radius: number): string {
     const angle = Math.PI / 6 + index * (Math.PI / 3);
     return `${(Math.cos(angle) * radius).toFixed(1)},${(Math.sin(angle) * radius).toFixed(1)}`;
   }).join(' ');
-}
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-  return hash;
 }
