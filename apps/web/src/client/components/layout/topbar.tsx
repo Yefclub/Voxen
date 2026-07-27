@@ -49,9 +49,9 @@ const THEME_LABEL_KEY: Record<AppTheme, 'theme.zinc' | 'theme.emerald' | 'theme.
   light: 'theme.light',
 };
 
-/** Same 32×32 chrome target as MobileMenuButton on mobile (spec 091). */
+/** Same comfortable 40×40 chrome target as MobileMenuButton on mobile. */
 const chromeControlClass =
-  'inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/75 text-[var(--color-app-muted)] shadow-sm shadow-black/10 backdrop-blur-md transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] md:h-9 md:w-9 md:rounded-lg md:bg-transparent md:shadow-none md:backdrop-blur-none';
+  'inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/75 text-[var(--color-app-muted)] shadow-sm shadow-black/10 backdrop-blur-md transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] md:h-9 md:w-9 md:rounded-lg md:bg-transparent md:shadow-none md:backdrop-blur-none';
 
 /**
  * Cabeçalho do shell — no mobile os controles flutuam individuais e

@@ -1,6 +1,12 @@
 export const APP_THEMES = ['zinc', 'emerald', 'light'] as const;
 export type AppTheme = (typeof APP_THEMES)[number];
 
+const THEME_COLORS: Record<AppTheme, string> = {
+  zinc: '#212121',
+  emerald: '#19211f',
+  light: '#f7f7f8',
+};
+
 export const DEFAULT_THEME: AppTheme = 'zinc';
 export const DARK_THEMES = ['zinc', 'emerald'] as const;
 export type DarkTheme = (typeof DARK_THEMES)[number];
@@ -24,6 +30,12 @@ export function applyThemeToDocument(theme: AppTheme): void {
   if (typeof document === 'undefined') return;
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColor(theme));
+}
+
+/** Cor do chrome do browser/PWA para o tema ativo. */
+export function themeColor(theme: AppTheme): string {
+  return THEME_COLORS[theme];
 }
 
 export function readStoredTheme(): AppTheme | null {

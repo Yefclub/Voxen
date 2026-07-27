@@ -18,7 +18,7 @@ export function MobileMenuButton({ onOpen }: { onOpen: () => void }): React.Reac
       onClick={onOpen}
       aria-label={t('shell.openMenu')}
       title={t('shell.openMenu')}
-      className="fixed left-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/75 text-[var(--color-app-fg)] shadow-sm shadow-black/10 backdrop-blur-md transition-colors active:bg-[var(--color-app-surface)] md:hidden"
+      className="fixed left-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/75 text-[var(--color-app-fg)] shadow-sm shadow-black/10 backdrop-blur-md transition-colors active:bg-[var(--color-app-surface)] md:hidden"
     >
       <PanelLeftOpen className="h-4 w-4" />
     </button>

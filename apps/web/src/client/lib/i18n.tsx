@@ -68,9 +68,25 @@ const ptBRMessages = {
   'shell.updateAction': 'Atualizar agora',
   'shell.updateModalSubtitle':
     'O Voxen foi atualizado enquanto você usava. Recarregue para pegar a versão mais recente.',
+  'shell.updateBlockedStreaming':
+    'Aguarde a resposta atual terminar antes de atualizar para não interromper a conversa.',
   'shell.updateWhatsNew': 'O que mudou',
   'shell.updateNotesEmpty': 'Melhorias e correções internas.',
   'shell.updateLater': 'Agora não',
+  'shell.sessionUnavailableTitle': 'Não foi possível confirmar sua sessão',
+  'shell.sessionUnavailableDescription':
+    'O servidor não respondeu. Sua sessão não foi encerrada; tente novamente em instantes.',
+  'shell.offlineTitle': 'Você está sem conexão',
+  'shell.offlineDescription':
+    'Reconecte-se para confirmar sua sessão e continuar usando os dados da sua base.',
+  'pwa.installTitle': 'Instale o Voxen',
+  'pwa.installDescription':
+    'Deixe o Voxen como um app no seu dispositivo para abrir mais rápido e compartilhar conteúdo direto para a sua base.',
+  'pwa.installIosDescription': 'Adicione o Voxen à Tela de Início para usá-lo como app.',
+  'pwa.installIosStepShare': 'Toque em Compartilhar no Safari.',
+  'pwa.installIosStepAdd': 'Escolha Adicionar à Tela de Início.',
+  'pwa.installLater': 'Agora não',
+  'pwa.installAction': 'Instalar app',
   'shell.nav.home': 'Início',
   'shell.nav.chat': 'Conversar',
   'shell.nav.library': 'Biblioteca',
@@ -1225,9 +1241,25 @@ const enMessages: Record<I18nKey, string> = {
   'shell.updateAction': 'Update now',
   'shell.updateModalSubtitle':
     'Voxen was updated while you were using it. Reload to get the latest version.',
+  'shell.updateBlockedStreaming':
+    'Wait for the current response to finish before updating so the conversation is not interrupted.',
   'shell.updateWhatsNew': "What's new",
   'shell.updateNotesEmpty': 'Internal improvements and fixes.',
   'shell.updateLater': 'Not now',
+  'shell.sessionUnavailableTitle': 'We could not confirm your session',
+  'shell.sessionUnavailableDescription':
+    'The server did not respond. Your session was not signed out; try again shortly.',
+  'shell.offlineTitle': 'You are offline',
+  'shell.offlineDescription':
+    'Reconnect to confirm your session and continue using your knowledge base.',
+  'pwa.installTitle': 'Install Voxen',
+  'pwa.installDescription':
+    'Keep Voxen as an app on your device to open it faster and share content directly into your knowledge base.',
+  'pwa.installIosDescription': 'Add Voxen to your Home Screen to use it as an app.',
+  'pwa.installIosStepShare': 'Tap Share in Safari.',
+  'pwa.installIosStepAdd': 'Choose Add to Home Screen.',
+  'pwa.installLater': 'Not now',
+  'pwa.installAction': 'Install app',
   'shell.nav.home': 'Home',
   'shell.nav.chat': 'Chat',
   'shell.nav.library': 'Library',

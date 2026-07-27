@@ -15,7 +15,7 @@ describe('chrome de navegação mobile compacto', () => {
     expect(source).toContain('md:bg-[var(--color-app-bg-elevated)]/85');
     expect(source).toContain('top-[calc(env(safe-area-inset-top)+0.5rem)]');
     expect(source).toContain('md:top-[calc(env(safe-area-inset-top)+1rem)]');
-    expect(source).toContain('h-8 w-8');
+    expect(source).toContain('h-10 w-10');
     expect(source).toContain('md:h-9 md:w-9');
     expect(source).toContain('bg-[var(--color-app-bg)]/75');
     expect(source).toContain('md:inline-flex');
@@ -26,7 +26,7 @@ describe('chrome de navegação mobile compacto', () => {
     const source = readClientSource('components/layout/mobile-menu-button.tsx');
 
     expect(source).toContain('left-2');
-    expect(source).toContain('h-8 w-8');
+    expect(source).toContain('h-10 w-10');
     expect(source).toContain('shadow-sm shadow-black/10');
     expect(source).toContain('top-[calc(env(safe-area-inset-top)+0.5rem)]');
     expect(source).toContain('<PanelLeftOpen className="h-4 w-4" />');

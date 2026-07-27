@@ -19,9 +19,10 @@ import {
 } from '../../lib/mobile-nav';
 import { MobileBackButton } from './mobile-back-button';
 import { MobileMenuButton } from './mobile-menu-button';
+import { SessionUnavailable } from '../session-unavailable';
 
 export function AppLayout(): React.ReactElement {
-  const { data, loading } = useMe();
+  const { data, loading, error, refresh } = useMe();
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
@@ -60,6 +61,10 @@ export function AppLayout(): React.ReactElement {
         <Spinner size={20} className="text-[var(--color-app-muted)]" />
       </div>
     );
+  }
+
+  if (error && !data) {
+    return <SessionUnavailable onRetry={refresh} />;
   }
 
   if (!data?.user) {

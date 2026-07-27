@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import {
   Workflow,
   Plus,
@@ -7,7 +7,6 @@ import {
   Pencil,
   Trash2,
   Pause,
-  X,
   Clock,
   CheckCircle2,
   AlertCircle,
@@ -18,6 +17,14 @@ import { AnimatedPage } from '../components/motion/animated-page';
 import { Markdown } from '../components/ui/markdown';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 
 /**
@@ -25,17 +32,6 @@ import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
  * do shadcn (Radix) para os modais próprios desta página, evitando que o fundo
  * role atrás. Restaura o valor anterior ao desmontar/fechar.
  */
-function useBodyScrollLock(active: boolean): void {
-  useEffect(() => {
-    if (!active) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [active]);
-}
-
 type AutomationType = 'PERIODIC_SUMMARY' | 'WEB_RESEARCH';
 type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 type Delivery = 'IN_APP';
@@ -225,32 +221,30 @@ export function AutomacoesPage(): React.ReactElement {
         </div>
       )}
 
-      <AnimatePresence>
-        {formOpen && (
-          <AutomationForm
-            initial={editing}
-            t={t}
-            onClose={() => {
-              setFormOpen(false);
-              setEditing(null);
-            }}
-            onSaved={async () => {
-              setFormOpen(false);
-              setEditing(null);
-              await fetchAutomations();
-            }}
-          />
-        )}
-        {runViewer && (
-          <RunsModal
-            automation={runViewer.automation}
-            runs={runViewer.runs}
-            locale={locale}
-            t={t}
-            onClose={() => setRunViewer(null)}
-          />
-        )}
-      </AnimatePresence>
+      {formOpen && (
+        <AutomationForm
+          initial={editing}
+          t={t}
+          onClose={() => {
+            setFormOpen(false);
+            setEditing(null);
+          }}
+          onSaved={async () => {
+            setFormOpen(false);
+            setEditing(null);
+            await fetchAutomations();
+          }}
+        />
+      )}
+      {runViewer && (
+        <RunsModal
+          automation={runViewer.automation}
+          runs={runViewer.runs}
+          locale={locale}
+          t={t}
+          onClose={() => setRunViewer(null)}
+        />
+      )}
 
       <ConfirmDialog
         open={pendingDelete != null}
@@ -529,8 +523,6 @@ function AutomationForm({
   const [dayOfMonth, setDayOfMonth] = useState<number>(initial?.dayOfMonth ?? 1);
   const delivery: Delivery = 'IN_APP';
   const [submitting, setSubmitting] = useState(false);
-  useBodyScrollLock(true);
-
   const timezone = useMemo(() => {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo';
@@ -583,182 +575,162 @@ function AutomationForm({
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <motion.form
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={submit}
-        className="bg-[var(--color-app-surface)] rounded-2xl border border-[var(--color-app-border)] shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
-      >
-        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-[var(--color-app-border)] flex items-center justify-between sticky top-0 bg-[var(--color-app-surface)]">
-          <h2 className="font-semibold text-[var(--color-app-fg)]">
-            {isEdit ? t('automations.form.editTitle') : t('automations.form.newTitle')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t('common.close')}
-            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => !open && !submitting && onClose()}>
+      <DialogContent className="max-w-xl gap-0 p-0">
+        <form onSubmit={submit}>
+          <DialogHeader className="sticky top-0 z-10 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3 pr-12 sm:px-6 sm:py-4 sm:pr-14">
+            <DialogTitle>
+              {isEdit ? t('automations.form.editTitle') : t('automations.form.newTitle')}
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="px-4 py-4 sm:px-6 space-y-4">
-          <Field label={t('automations.form.name')}>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('automations.form.namePlaceholder')}
-              className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
-              maxLength={120}
-              required
-            />
-          </Field>
+          <div className="px-4 py-4 sm:px-6 space-y-4">
+            <Field label={t('automations.form.name')}>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('automations.form.namePlaceholder')}
+                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                maxLength={120}
+                required
+              />
+            </Field>
 
-          <Field label={t('automations.form.type')}>
-            <div className="grid grid-cols-2 gap-2">
-              {(['PERIODIC_SUMMARY', 'WEB_RESEARCH'] as const).map((automationType) => (
-                <button
-                  key={automationType}
-                  type="button"
-                  onClick={() => {
-                    setType(automationType);
-                    if (!prompt.trim()) setPrompt(promptPlaceholder(automationType, t));
-                  }}
-                  className={`px-3 py-2 rounded-lg border text-sm text-left transition-colors ${
-                    type === automationType
-                      ? 'border-violet-500 bg-violet-500/10 text-violet-200'
-                      : 'border-[var(--color-app-border)] text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]'
-                  }`}
-                >
-                  <div className="font-medium">{typeLabel(automationType, t)}</div>
-                  <div className="text-[11px] text-[var(--color-app-muted)] mt-0.5">
-                    {automationType === 'PERIODIC_SUMMARY'
-                      ? t('automations.type.summaryDescription')
-                      : t('automations.type.webResearchDescription')}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </Field>
-
-          <Field label={t('automations.form.prompt')}>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder={promptPlaceholder(type, t)}
-              rows={5}
-              className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
-              maxLength={4000}
-              required
-            />
-          </Field>
-
-          <Field label={t('automations.form.frequency')}>
-            <div className="flex gap-2">
-              {(['DAILY', 'WEEKLY', 'MONTHLY'] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setFrequency(f)}
-                  className={`flex-1 px-3 py-2 rounded-lg border text-sm transition-colors ${
-                    frequency === f
-                      ? 'border-violet-500 bg-violet-500/10 text-violet-200'
-                      : 'border-[var(--color-app-border)] text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]'
-                  }`}
-                >
-                  {frequencyLabel(f, t)}
-                </button>
-              ))}
-            </div>
-          </Field>
-
-          {frequency === 'WEEKLY' && (
-            <Field label={t('automations.form.dayOfWeek')}>
-              <select
-                value={dayOfWeek}
-                onChange={(e) => setDayOfWeek(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
-              >
-                {dayLabels(t).map((d, i) => (
-                  <option key={i} value={i}>
-                    {d}
-                  </option>
+            <Field label={t('automations.form.type')}>
+              <div className="grid grid-cols-2 gap-2">
+                {(['PERIODIC_SUMMARY', 'WEB_RESEARCH'] as const).map((automationType) => (
+                  <button
+                    key={automationType}
+                    type="button"
+                    onClick={() => {
+                      setType(automationType);
+                      if (!prompt.trim()) setPrompt(promptPlaceholder(automationType, t));
+                    }}
+                    className={`px-3 py-2 rounded-lg border text-sm text-left transition-colors ${
+                      type === automationType
+                        ? 'border-violet-500 bg-violet-500/10 text-violet-200'
+                        : 'border-[var(--color-app-border)] text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]'
+                    }`}
+                  >
+                    <div className="font-medium">{typeLabel(automationType, t)}</div>
+                    <div className="text-[11px] text-[var(--color-app-muted)] mt-0.5">
+                      {automationType === 'PERIODIC_SUMMARY'
+                        ? t('automations.type.summaryDescription')
+                        : t('automations.type.webResearchDescription')}
+                    </div>
+                  </button>
                 ))}
-              </select>
+              </div>
             </Field>
-          )}
 
-          {frequency === 'MONTHLY' && (
-            <Field label={t('automations.form.dayOfMonth')}>
-              <input
-                type="number"
-                min={1}
-                max={31}
-                value={dayOfMonth}
-                onChange={(e) => setDayOfMonth(Math.max(1, Math.min(31, Number(e.target.value))))}
-                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
-              />
-              <p className="text-[11px] text-[var(--color-app-muted)] mt-1">
-                {t('automations.form.monthHint')}
-              </p>
-            </Field>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label={t('automations.form.hour')}>
-              <input
-                type="number"
-                min={0}
-                max={23}
-                value={hour}
-                onChange={(e) => setHour(Math.max(0, Math.min(23, Number(e.target.value))))}
-                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
+            <Field label={t('automations.form.prompt')}>
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder={promptPlaceholder(type, t)}
+                rows={5}
+                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                maxLength={4000}
+                required
               />
             </Field>
-            <Field label={t('automations.form.minute')}>
-              <input
-                type="number"
-                min={0}
-                max={59}
-                value={minute}
-                onChange={(e) => setMinute(Math.max(0, Math.min(59, Number(e.target.value))))}
-                className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
-              />
-            </Field>
-          </div>
 
-          {/* Delivery: apenas IN_APP (Telegram removido). Mantemos o campo
+            <Field label={t('automations.form.frequency')}>
+              <div className="flex gap-2">
+                {(['DAILY', 'WEEKLY', 'MONTHLY'] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setFrequency(f)}
+                    className={`flex-1 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                      frequency === f
+                        ? 'border-violet-500 bg-violet-500/10 text-violet-200'
+                        : 'border-[var(--color-app-border)] text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]'
+                    }`}
+                  >
+                    {frequencyLabel(f, t)}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            {frequency === 'WEEKLY' && (
+              <Field label={t('automations.form.dayOfWeek')}>
+                <select
+                  value={dayOfWeek}
+                  onChange={(e) => setDayOfWeek(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
+                >
+                  {dayLabels(t).map((d, i) => (
+                    <option key={i} value={i}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+
+            {frequency === 'MONTHLY' && (
+              <Field label={t('automations.form.dayOfMonth')}>
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={dayOfMonth}
+                  onChange={(e) => setDayOfMonth(Math.max(1, Math.min(31, Number(e.target.value))))}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
+                />
+                <p className="text-[11px] text-[var(--color-app-muted)] mt-1">
+                  {t('automations.form.monthHint')}
+                </p>
+              </Field>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('automations.form.hour')}>
+                <input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={hour}
+                  onChange={(e) => setHour(Math.max(0, Math.min(23, Number(e.target.value))))}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
+                />
+              </Field>
+              <Field label={t('automations.form.minute')}>
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={minute}
+                  onChange={(e) => setMinute(Math.max(0, Math.min(59, Number(e.target.value))))}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-[var(--color-app-fg)] text-sm"
+                />
+              </Field>
+            </div>
+
+            {/* Delivery: apenas IN_APP (Telegram removido). Mantemos o campo
               no payload por compatibilidade com o schema. */}
-          <input type="hidden" name="delivery" value="IN_APP" />
+            <input type="hidden" name="delivery" value="IN_APP" />
 
-          <div className="text-[11px] text-[var(--color-app-muted)]">
-            {t('automations.form.timezone', { timezone })}
+            <div className="text-[11px] text-[var(--color-app-muted)]">
+              {t('automations.form.timezone', { timezone })}
+            </div>
           </div>
-        </div>
 
-        <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-[var(--color-app-border)] flex flex-wrap items-center justify-end gap-2 sticky bottom-0 bg-[var(--color-app-surface)]">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting && <Loader2 className="size-4 mr-1.5 animate-spin" />}
-            {isEdit ? t('common.save') : t('common.create')}
-          </Button>
-        </div>
-      </motion.form>
-    </motion.div>
+          <DialogFooter className="sticky bottom-0 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3 sm:px-6 sm:py-4">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting && <Loader2 className="size-4 mr-1.5 animate-spin" />}
+              {isEdit ? t('common.save') : t('common.create')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -797,38 +769,14 @@ function RunsModal({
   onClose: () => void;
 }): React.ReactElement {
   const [expanded, setExpanded] = useState<string | null>(runs[0]?.id ?? null);
-  useBodyScrollLock(true);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-[var(--color-app-surface)] rounded-2xl border border-[var(--color-app-border)] shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
-      >
-        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-[var(--color-app-border)] flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold text-[var(--color-app-fg)]">{automation.name}</h2>
-            <p className="text-xs text-[var(--color-app-muted)]">{t('automations.recentRuns')}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t('common.close')}
-            className="size-8 rounded-lg flex items-center justify-center text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl gap-0 p-0">
+        <DialogHeader className="border-b border-[var(--color-app-border)] px-4 py-3 pr-12 sm:px-6 sm:py-4 sm:pr-14">
+          <DialogTitle>{automation.name}</DialogTitle>
+          <DialogDescription className="text-xs">{t('automations.recentRuns')}</DialogDescription>
+        </DialogHeader>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 space-y-3">
           {runs.length === 0 ? (
@@ -904,7 +852,7 @@ function RunsModal({
             })
           )}
         </div>
-      </motion.div>
-    </motion.div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -28,6 +28,7 @@ import { FilaPage } from './pages/fila';
 import { I18nProvider, useI18n } from './lib/i18n';
 import { ThemeProvider } from './lib/theme-provider';
 import { useMe } from './lib/hooks';
+import { PwaInstallPrompt } from './components/pwa-install-prompt';
 
 export function App(): React.ReactElement {
   return (
@@ -36,11 +37,17 @@ export function App(): React.ReactElement {
         <I18nRuntimeSync />
         <BrowserRouter>
           <Toaster />
+          <PwaInstallGate />
           <AppRoutes />
         </BrowserRouter>
       </ThemeProvider>
     </I18nProvider>
   );
+}
+
+function PwaInstallGate(): React.ReactElement {
+  const { data } = useMe();
+  return <PwaInstallPrompt enabled={Boolean(data?.user)} />;
 }
 
 type ViewTransitionHandle = {

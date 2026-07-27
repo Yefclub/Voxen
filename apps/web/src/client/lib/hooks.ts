@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiGet } from './api';
+import { ApiError, apiGet } from './api';
 import type { MeResponse } from './types';
 
 // ============================================================================
@@ -17,6 +17,13 @@ async function fetchMe(): Promise<void> {
     const data = await apiGet<MeResponse>('/api/me');
     meCache = { data, loading: false, error: null };
   } catch (e) {
+    // A sessao realmente expirada continua seguindo o fluxo de login. Falhas de
+    // rede/servidor ficam explicitas para nao desconectar um PWA instalado.
+    if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+      meCache = { data: null, loading: false, error: null };
+      meSubscribers.forEach((cb) => cb(meCache));
+      return;
+    }
     meCache = {
       data: null,
       loading: false,
