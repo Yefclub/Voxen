@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.12.0-dev.1785168327 — 2026-07-27 · Dev
+
+### 🔒 Atualização de segurança nos componentes internos da Voxen
+
+Atualizamos dependências internas usadas pela Voxen para versões com correções de segurança. A experiência de uso permanece a mesma, com uma base mais protegida para capturas, Biblioteca, chat e administração.
+
 ## v0.11.0-dev.1785165340 — 2026-07-27 · Dev
 
 ### 🐛 Brain mantém embeddings consistentes durante atualizações

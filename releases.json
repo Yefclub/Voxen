@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.12.0-dev.1785168327",
+    "channel": "dev",
+    "type": "security",
+    "title": "Atualização de segurança nos componentes internos da Voxen",
+    "body": "Atualizamos dependências internas usadas pela Voxen para versões com correções de segurança. A experiência de uso permanece a mesma, com uma base mais protegida para capturas, Biblioteca, chat e administração.",
+    "pr": null,
+    "author": "Kalyel",
+    "date": "2026-07-27T13:05:14-03:00"
+  },
+  {
     "version": "0.11.0-dev.1785165340",
     "channel": "dev",
     "type": "fix",
