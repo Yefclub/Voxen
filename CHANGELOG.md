@@ -1,5 +1,53 @@
 # Changelog
 
+## v0.12.0-dev.1785168327 — 2026-07-27 · Dev
+
+### 🔒 Atualização de segurança nos componentes internos da Voxen
+
+Atualizamos dependências internas usadas pela Voxen para versões com correções de segurança. A experiência de uso permanece a mesma, com uma base mais protegida para capturas, Biblioteca, chat e administração.
+
+## v0.11.0-dev.1785165340 — 2026-07-27 · Dev
+
+### 🐛 Brain mantém embeddings consistentes durante atualizações
+
+Quando os embeddings opcionais são atualizados, a Voxen agora coordena essa escrita com a atualização do Brain. Isso evita que um embedding concorra com a reconstrução do mapa de conhecimento do mesmo usuário.
+
+Se a coordenação estiver ocupada ou indisponível, o embedding é ignorado com segurança e pode ser atualizado em uma próxima execução, sem deixar o Brain em estado parcial.
+
+## v0.11.0-dev.1785163369 — 2026-07-27 · Dev
+
+### ⚡ Telas mais rápidas ao navegar pela Voxen
+
+Chat, Biblioteca, Notas, Grafo, Automações e Administração passam a ser preparados somente quando você abre cada área. Isso reduz o trabalho do primeiro acesso, especialmente em conexão móvel e no app instalado.
+
+Ao trocar de tela, a navegação continua visível e a área de conteúdo mostra um indicador de carregamento acessível enquanto a página é preparada.
+
+## v0.11.0-dev.1785161161 — 2026-07-27 · Dev
+
+### ⚡ Biblioteca encontra tags grandes sem pesar no celular
+
+A Biblioteca passa a carregar só as tags mais relevantes na tela inicial. Ao abrir o seletor, você pode buscar uma tag e carregar mais resultados sem trazer o catálogo inteiro para o celular.
+
+Isso mantém a organização por tags rápida mesmo quando a base de conhecimento cresce, preservando os filtros combinados de pasta, Inbox, semana, status e busca.
+
+## v0.11.0-dev.1785159812 — 2026-07-27 · Dev
+
+### ✨ Biblioteca Viva organiza conteúdos por semana, Inbox, pastas e tags
+
+A Biblioteca agora separa os conteúdos por semana de captura e permite reduzir o acervo pela semana atual ou anterior. O Inbox destaca materiais que ainda não entraram em uma pasta, enquanto pastas e tags aparecem como filtros visíveis com contagem de conteúdos.
+
+As combinações de busca, período, pasta, tag e status permanecem na URL para que uma organização possa ser compartilhada ou retomada. A Vox também recebe a pasta, tags e data de captura nos resultados da Biblioteca, deixando suas sugestões e leituras de contexto mais situadas.
+
+## v0.11.0-dev.1785155159 — 2026-07-27 · Dev
+
+### ✨ Voxen fica mais confiavel como app no celular
+
+O Voxen agora oferece instalacao como app no Android e instrucoes claras para adicionar ao Inicio no Safari do iPhone/iPad. A experiencia instalada acompanha melhor o tema escolhido e deixa de travar a orientacao da tela em retrato.
+
+Atualizacoes aguardam o fim de respostas em andamento antes de recarregar, preservando a sessao e o cache do app. Quando a conexao cai, a tela informa o problema e permite tentar novamente, sem tratar uma falha temporaria como logout.
+
+Tambem ampliamos os alvos de toque no celular e melhoramos a acessibilidade dos dialogos de Automacoes, incluindo foco e fechamento por teclado.
+
 ## v0.11.0-dev.1784459422 — 2026-07-19 · Dev
 
 ### ✨ Extensão v0.2 — design, resumo do job e conexão em um clique

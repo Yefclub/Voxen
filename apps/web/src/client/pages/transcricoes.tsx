@@ -5,6 +5,7 @@ import {
   FolderOpen,
   FolderPlus,
   Globe,
+  Inbox,
   Library,
   Loader2,
   MoreHorizontal,
@@ -31,6 +32,11 @@ import {
   LIBRARY_FOLDER_CHIP_LIMIT,
   splitFolderChips,
 } from '../lib/library-folders';
+import {
+  groupByCaptureWeek,
+  libraryWeekBounds,
+  type LibraryPeriod,
+} from '../lib/library-organization';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ContentIngestCard } from '../components/ingest/content-ingest-card';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
@@ -38,6 +44,8 @@ import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
 import { sourceHostname } from '../lib/source-url';
 
 const PAGE_SIZE = 24;
+const TAG_CHIP_LIMIT = 6;
+const TAG_DISCOVERY_PAGE_SIZE = 24;
 
 interface TranscriptSummary {
   id: string;
@@ -80,6 +88,22 @@ interface FoldersResponse {
   folders: LibraryFolder[];
 }
 
+interface LibraryTag {
+  id: string;
+  name: string;
+  slug: string;
+  count: number;
+}
+
+interface TagsResponse {
+  tags: LibraryTag[];
+  total: number;
+  limit: number;
+  offset: number;
+  query: string;
+  hasMore: boolean;
+}
+
 type StatusFilter = 'active' | 'archived' | 'trash';
 /** null = todas; 'none' = sem pasta; string = id da pasta */
 type FolderFilter = string | null;
@@ -97,7 +121,10 @@ export function TranscricoesPage(): React.ReactElement {
   const { locale, t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const status = normalizeStatusFilter(searchParams.get('status'));
-  const folderFilter = normalizeFolderFilter(searchParams.get('folderId'));
+  const inbox = searchParams.get('view') === 'inbox';
+  const folderFilter = inbox ? null : normalizeFolderFilter(searchParams.get('folderId'));
+  const tagFilter = normalizeTagFilter(searchParams.get('tagId'));
+  const period = normalizePeriodFilter(searchParams.get('period'));
   const [q, setQ] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -113,22 +140,35 @@ export function TranscricoesPage(): React.ReactElement {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const debouncedQ = useDebounced(q, 250);
+  const periodBounds = useMemo(() => libraryWeekBounds(period), [period]);
 
   const listUrl = useMemo(() => {
     const params = new URLSearchParams();
     if (debouncedQ) params.set('q', debouncedQ);
     if (status !== 'active') params.set('status', status);
-    if (folderFilter === 'none') params.set('folderId', 'none');
+    if (inbox) params.set('view', 'inbox');
+    else if (folderFilter === 'none') params.set('folderId', 'none');
     else if (folderFilter) params.set('folderId', folderFilter);
+    if (tagFilter) params.set('tagId', tagFilter);
+    if (period !== 'all') params.set('period', period);
+    if (periodBounds) {
+      params.set('from', periodBounds.from);
+      params.set('to', periodBounds.to);
+    }
     params.set('limit', String(PAGE_SIZE));
     params.set('offset', String(offset));
     return `/api/transcripts?${params.toString()}`;
-  }, [debouncedQ, folderFilter, offset, status]);
+  }, [debouncedQ, folderFilter, inbox, offset, period, periodBounds, status, tagFilter]);
 
   const { data, loading, error, refresh: refreshTranscripts } = useFetch<SearchResponse>(listUrl);
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
+  const { data: tagsData, refresh: refreshTags } = useFetch<TagsResponse>(
+    `/api/library/tags?limit=${TAG_CHIP_LIMIT}`,
+  );
   const folders = foldersData?.folders ?? [];
+  const tags = tagsData?.tags ?? [];
+  const tagTotal = tagsData?.total ?? tags.length;
   const isSearching = debouncedQ.length > 0;
   const queryChanging = q !== debouncedQ;
 
@@ -146,7 +186,7 @@ export function TranscricoesPage(): React.ReactElement {
   useEffect(() => {
     setOffset(0);
     setItems([]);
-  }, [debouncedQ, folderFilter, status]);
+  }, [debouncedQ, folderFilter, inbox, period, status, tagFilter]);
 
   function setStatus(next: StatusFilter): void {
     const params = new URLSearchParams(searchParams);
@@ -157,9 +197,35 @@ export function TranscricoesPage(): React.ReactElement {
 
   function setFolder(next: FolderFilter): void {
     const params = new URLSearchParams(searchParams);
+    params.delete('view');
     if (next === null) params.delete('folderId');
     else if (next === 'none') params.set('folderId', 'none');
     else params.set('folderId', next);
+    setSearchParams(params, { replace: true });
+  }
+
+  function setInbox(next: boolean): void {
+    const params = new URLSearchParams(searchParams);
+    if (next) {
+      params.set('view', 'inbox');
+      params.delete('folderId');
+    } else {
+      params.delete('view');
+    }
+    setSearchParams(params, { replace: true });
+  }
+
+  function setTag(next: string | null): void {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set('tagId', next);
+    else params.delete('tagId');
+    setSearchParams(params, { replace: true });
+  }
+
+  function setPeriod(next: LibraryPeriod): void {
+    const params = new URLSearchParams(searchParams);
+    if (next === 'all') params.delete('period');
+    else params.set('period', next);
     setSearchParams(params, { replace: true });
   }
 
@@ -195,6 +261,7 @@ export function TranscricoesPage(): React.ReactElement {
       );
       setFolder(null);
       refreshFolders();
+      refreshTags();
       setOffset(0);
       refreshTranscripts();
     } catch (error) {
@@ -247,6 +314,7 @@ export function TranscricoesPage(): React.ReactElement {
         }
       }
       refreshFolders();
+      refreshTags();
       setOffset(0);
       refreshTranscripts();
     } catch (error) {
@@ -298,6 +366,7 @@ export function TranscricoesPage(): React.ReactElement {
         }
       }
       refreshFolders();
+      refreshTags();
       setOffset(0);
       refreshTranscripts();
     } catch (error) {
@@ -383,6 +452,8 @@ export function TranscricoesPage(): React.ReactElement {
     folderFilter !== null &&
     folderFilter !== 'none' &&
     overflowFolders.some((folder) => folder.id === folderFilter);
+  const activeTagHidden = tagFilter !== null && !tags.some((tag) => tag.id === tagFilter);
+  const captureWeeks = useMemo(() => groupByCaptureWeek(items), [items]);
 
   return (
     <AnimatedPage>
@@ -515,25 +586,53 @@ export function TranscricoesPage(): React.ReactElement {
           )}
         </div>
 
-        {/* Pastas — barra compacta */}
+        <section className="space-y-2">
+          <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+            {t('library.added')}
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(['all', 'this-week', 'previous-week'] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setPeriod(item)}
+                aria-pressed={period === item}
+                className={[
+                  'min-h-11 rounded-md px-3 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                  period === item
+                    ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                    : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
+                ].join(' ')}
+              >
+                {item === 'all'
+                  ? t('library.allPeriods')
+                  : item === 'this-week'
+                    ? t('library.thisWeek')
+                    : t('library.previousWeek')}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Organização — Inbox e pastas em uma superfície única. */}
         <section className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <FolderChip
-              active={folderFilter === null}
+              active={inbox}
+              onClick={() => setInbox(!inbox)}
+              icon={<Inbox className="h-3 w-3 text-violet-400" />}
+              label={t('library.inbox')}
+            />
+            <FolderChip
+              active={!inbox && folderFilter === null}
               onClick={() => setFolder(null)}
               icon={<FolderOpen className="h-3 w-3" />}
               label={t('library.allFolders')}
             />
-            <FolderChip
-              active={folderFilter === 'none'}
-              onClick={() => setFolder('none')}
-              icon={<Folder className="h-3 w-3 opacity-50" />}
-              label={t('library.noFolder')}
-            />
             {visibleFolders.map((folder) => (
               <FolderChip
                 key={folder.id}
-                active={folderFilter === folder.id}
+                active={!inbox && folderFilter === folder.id}
                 onClick={() => setFolder(folder.id)}
                 icon={<Folder className="h-3 w-3 text-amber-500/80" />}
                 label={folder.name}
@@ -581,6 +680,47 @@ export function TranscricoesPage(): React.ReactElement {
             </Button>
           </div>
         </section>
+
+        {tagTotal > 0 && (
+          <section className="space-y-2">
+            <div className="flex items-center gap-2">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+                {t('library.tagsLabel')}
+              </p>
+              {tagFilter && (
+                <button
+                  type="button"
+                  onClick={() => setTag(null)}
+                  className="inline-flex h-5 items-center gap-1 rounded px-1 text-[10px] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+                >
+                  <X className="h-2.5 w-2.5" />
+                  {t('library.clearTagFilter')}
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {tags.map((tag) => (
+                <FolderChip
+                  key={tag.id}
+                  active={tagFilter === tag.id}
+                  onClick={() => setTag(tagFilter === tag.id ? null : tag.id)}
+                  icon={<Tags className="h-3 w-3 text-violet-400" />}
+                  label={tag.name}
+                  count={tag.count}
+                />
+              ))}
+              {tagTotal > tags.length && (
+                <TagOverflowMenu
+                  hiddenCount={tagTotal - tags.length}
+                  active={activeTagHidden}
+                  activeTagId={tagFilter}
+                  onSelect={setTag}
+                  translate={t}
+                />
+              )}
+            </div>
+          </section>
+        )}
 
         <div className="flex flex-wrap items-center gap-1.5">
           {(['active', 'archived', 'trash'] as const).map((item) => (
@@ -655,15 +795,24 @@ export function TranscricoesPage(): React.ReactElement {
         )}
 
         {!pageLoading && items.length > 0 && (
-          <div className="space-y-1.5">
-            {items.map((transcript) => (
-              <TranscriptRow
-                key={transcript.id}
-                t={transcript}
-                highlightQuery={debouncedQ}
-                locale={locale}
-                translate={t}
-              />
+          <div className="space-y-5">
+            {captureWeeks.map((week) => (
+              <section key={week.key} className="space-y-1.5">
+                <h2 className="px-1 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+                  {t('library.capturedWeek', { date: formatCaptureWeek(week.start, locale) })}
+                </h2>
+                <div className="space-y-1.5">
+                  {week.items.map((transcript) => (
+                    <TranscriptRow
+                      key={transcript.id}
+                      t={transcript}
+                      highlightQuery={debouncedQ}
+                      locale={locale}
+                      translate={t}
+                    />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         )}
@@ -708,8 +857,9 @@ function FolderChip({
       type="button"
       onClick={onClick}
       title={label}
+      aria-pressed={active}
       className={[
-        'inline-flex max-w-[180px] items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+        'inline-flex min-h-11 max-w-[180px] items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
         active
           ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
           : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
@@ -764,8 +914,9 @@ function FolderOverflowMenu({
         <button
           type="button"
           title={translate('library.moreFolders', { count: hiddenCount })}
+          aria-pressed={active}
           className={[
-            'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+            'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
             active
               ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
               : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
@@ -817,6 +968,149 @@ function FolderOverflowMenu({
               </span>
             </button>
           ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function TagOverflowMenu({
+  hiddenCount,
+  active,
+  activeTagId,
+  onSelect,
+  translate,
+}: {
+  hiddenCount: number;
+  active: boolean;
+  activeTagId: string | null;
+  onSelect: (id: string) => void;
+  translate: TranslateFn;
+}): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [tags, setTags] = useState<LibraryTag[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const debouncedQuery = useDebounced(query, 200);
+  const normalizedQuery = debouncedQuery.trim().slice(0, 120);
+  const listUrl = useMemo(() => {
+    if (!open) return null;
+    const params = new URLSearchParams({
+      limit: String(TAG_DISCOVERY_PAGE_SIZE),
+      offset: String(offset),
+    });
+    if (normalizedQuery) params.set('q', normalizedQuery);
+    return `/api/library/tags?${params.toString()}`;
+  }, [normalizedQuery, offset, open]);
+  const { data, loading, error } = useFetch<TagsResponse>(listUrl);
+
+  useEffect(() => {
+    if (!data || data.offset !== offset || data.query !== normalizedQuery) return;
+    setTags((previous) => (offset === 0 ? data.tags : mergeById(previous, data.tags)));
+    setHasMore(data.hasMore);
+  }, [data, normalizedQuery, offset]);
+
+  function handleOpenChange(next: boolean): void {
+    setOpen(next);
+    setOffset(0);
+    setTags([]);
+    setHasMore(false);
+    if (!next) setQuery('');
+  }
+
+  function setSearchQuery(next: string): void {
+    setQuery(next);
+    setOffset(0);
+    setTags([]);
+    setHasMore(false);
+  }
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title={translate('library.moreTags', { count: hiddenCount })}
+          aria-pressed={active}
+          className={[
+            'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+            active
+              ? 'border-[var(--color-app-border-strong)] bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+              : 'border-transparent bg-[var(--color-app-surface)] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-subtle)]',
+          ].join(' ')}
+        >
+          <MoreHorizontal className="h-3 w-3 shrink-0" />
+          <span>{translate('library.moreTags', { count: hiddenCount })}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-0">
+        <div className="border-b border-[var(--color-app-border)] p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--color-app-muted)]" />
+            <input
+              type="text"
+              autoFocus
+              value={query}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={translate('library.tagSearchPlaceholder')}
+              aria-label={translate('library.tagSearchLabel')}
+              autoComplete="off"
+              spellCheck={false}
+              className="h-8 w-full rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-bg)] pl-7 pr-2 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
+            />
+          </div>
+        </div>
+        <div className="max-h-64 overflow-y-auto p-1">
+          {loading && tags.length === 0 && (
+            <div className="flex justify-center px-2 py-4">
+              <Loader2 className="h-4 w-4 animate-spin text-[var(--color-app-muted)]" />
+            </div>
+          )}
+          {!loading && error && (
+            <p className="px-2 py-3 text-center text-[11px] text-[var(--color-app-muted)]">
+              {translate('library.tagLoadError')}
+            </p>
+          )}
+          {!loading && !error && tags.length === 0 && (
+            <p className="px-2 py-3 text-center text-[11px] text-[var(--color-app-muted)]">
+              {translate('library.tagSearchEmpty')}
+            </p>
+          )}
+          {tags.map((tag) => (
+            <button
+              key={tag.id}
+              type="button"
+              aria-pressed={activeTagId === tag.id}
+              onClick={() => {
+                onSelect(tag.id);
+                setOpen(false);
+              }}
+              className={[
+                'flex min-h-11 w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                activeTagId === tag.id
+                  ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                  : 'text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
+              ].join(' ')}
+            >
+              <Tags className="h-3 w-3 shrink-0 text-violet-400" />
+              <span className="min-w-0 flex-1 truncate">{tag.name}</span>
+              <span className="shrink-0 tabular-nums text-[10px] text-[var(--color-app-muted)]">
+                {tag.count}
+              </span>
+            </button>
+          ))}
+          {hasMore && (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => setOffset(tags.length)}
+              className="flex min-h-10 w-full items-center justify-center gap-1.5 rounded px-2 py-1.5 text-[11px] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] disabled:opacity-60"
+            >
+              {loading && <Loader2 className="h-3 w-3 animate-spin" />}
+              {translate('library.loadMore')}
+            </button>
+          )}
         </div>
       </PopoverContent>
     </Popover>
@@ -928,7 +1222,7 @@ function TranscriptRow({
   );
 }
 
-function mergeById(prev: TranscriptSummary[], next: TranscriptSummary[]): TranscriptSummary[] {
+function mergeById<T extends { id: string }>(prev: T[], next: T[]): T[] {
   const seen = new Set(prev.map((t) => t.id));
   const merged = [...prev];
   for (const item of next) {
@@ -949,6 +1243,22 @@ function normalizeFolderFilter(value: string | null): FolderFilter {
   if (!value) return null;
   if (value === 'none') return 'none';
   return value;
+}
+
+function normalizeTagFilter(value: string | null): string | null {
+  const id = value?.trim();
+  return id && id.length <= 191 ? id : null;
+}
+
+function normalizePeriodFilter(value: string | null): LibraryPeriod {
+  if (value === 'this-week' || value === 'previous-week') return value;
+  return 'all';
+}
+
+function formatCaptureWeek(value: Date, locale: Locale): string {
+  return new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', year: 'numeric' })
+    .format(value)
+    .replace(/\.$/, '');
 }
 
 function statusFilterLabel(status: StatusFilter, t: TranslateFn): string {

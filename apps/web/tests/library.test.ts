@@ -162,6 +162,230 @@ describeIfDb('library organization API', () => {
     expect(body.folders.find((item) => item.id === folderB.id)?._count.transcripts).toBe(1);
   });
 
+  it('pesquisa e pagina tags ativas sem cruzar workspaces', async () => {
+    await signUp('tags-owner@voxen.local', 'senha-super-segura-123', 'Tags Owner');
+    const signin = await signIn('tags-owner@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const owner = await db.user.findUniqueOrThrow({ where: { email: 'tags-owner@voxen.local' } });
+    const names = ['Pesquisa Alfa', 'Pesquisa Beta', 'Produto'];
+    for (const [index, name] of names.entries()) {
+      const tag = await db.tag.create({
+        data: { userId: owner.id, name, slug: `tag-${index}` },
+      });
+      await db.transcript.create({
+        data: {
+          userId: owner.id,
+          source: 'WEB',
+          url: `https://example.com/tag-search-${index}`,
+          title: `Conteúdo ${name}`,
+          durationSec: 0,
+          language: 'pt',
+          transcriptionMethod: 'SCRAPE',
+          mdPath: `workspaces/${owner.id}/transcripts/tag-search-${index}.md`,
+          plainText: `conteúdo de ${name}`,
+          frontmatter: {},
+          tags: { create: { tagId: tag.id } },
+        },
+      });
+    }
+
+    const foreign = await db.user.create({
+      data: { email: 'tags-foreign@voxen.local', name: 'Tags Foreign', status: 'APPROVED' },
+    });
+    const foreignTag = await db.tag.create({
+      data: { userId: foreign.id, name: 'Pesquisa Externa', slug: 'pesquisa-externa' },
+    });
+    await db.transcript.create({
+      data: {
+        userId: foreign.id,
+        source: 'WEB',
+        url: 'https://example.com/tag-search-foreign',
+        title: 'Conteúdo externo',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${foreign.id}/transcripts/tag-search-foreign.md`,
+        plainText: 'conteúdo externo',
+        frontmatter: {},
+        tags: { create: { tagId: foreignTag.id } },
+      },
+    });
+
+    const pages = await Promise.all(
+      [0, 1].map((offset) =>
+        app.fetch(
+          new Request(`http://localhost/api/library/tags?q=pesquisa&limit=1&offset=${offset}`, {
+            headers: { cookie },
+          }),
+        ),
+      ),
+    );
+    const bodies = await Promise.all(
+      pages.map(async (page) => {
+        expect(page.status).toBe(200);
+        return (await page.json()) as {
+          tags: Array<{ name: string; count: number }>;
+          total: number;
+          hasMore: boolean;
+          limit: number;
+          offset: number;
+        };
+      }),
+    );
+
+    expect(bodies.map((body) => body.tags[0]?.name)).toEqual(['Pesquisa Alfa', 'Pesquisa Beta']);
+    expect(bodies[0]).toMatchObject({ total: 2, hasMore: true, limit: 1, offset: 0 });
+    expect(bodies[1]).toMatchObject({ total: 2, hasMore: false, limit: 1, offset: 1 });
+    expect(bodies.flatMap((body) => body.tags).every((tag) => tag.count === 1)).toBe(true);
+  });
+
+  it('expõe Inbox, tags e período sem cruzar workspaces', async () => {
+    await signUp('organizer@voxen.local', 'senha-super-segura-123', 'Organizer');
+    const signin = await signIn('organizer@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'organizer@voxen.local' } });
+    const folder = await db.libraryFolder.create({ data: { userId: user.id, name: 'Produto' } });
+    const tag = await db.tag.create({
+      data: { userId: user.id, name: 'Estratégia', slug: 'estrategia', folderId: folder.id },
+    });
+    const now = new Date('2026-07-29T12:00:00.000Z');
+    const old = new Date('2026-07-12T12:00:00.000Z');
+    const base = {
+      userId: user.id,
+      source: 'WEB' as const,
+      durationSec: 0,
+      language: 'pt',
+      transcriptionMethod: 'SCRAPE' as const,
+      frontmatter: {},
+    };
+    const [inboxItem, taggedItem, tiedTaggedItem, oldTaggedItem] = await Promise.all([
+      db.transcript.create({
+        data: {
+          ...base,
+          url: 'https://example.com/inbox',
+          title: 'Conteúdo novo sem organização',
+          mdPath: `workspaces/${user.id}/transcripts/inbox.md`,
+          plainText: 'material para revisar',
+          createdAt: now,
+        },
+      }),
+      db.transcript.create({
+        data: {
+          ...base,
+          url: 'https://example.com/tagged',
+          title: 'Estratégia atual',
+          mdPath: `workspaces/${user.id}/transcripts/tagged.md`,
+          plainText: 'estratégia de produto pesquisável',
+          createdAt: now,
+          tags: { create: { tagId: tag.id } },
+        },
+      }),
+      db.transcript.create({
+        data: {
+          ...base,
+          url: 'https://example.com/tagged-tied',
+          title: 'Estratégia atual com empate',
+          mdPath: `workspaces/${user.id}/transcripts/tagged-tied.md`,
+          plainText: 'estratégia de produto pesquisável',
+          createdAt: now,
+          tags: { create: { tagId: tag.id } },
+        },
+      }),
+      db.transcript.create({
+        data: {
+          ...base,
+          url: 'https://example.com/old-tagged',
+          title: 'Estratégia anterior',
+          mdPath: `workspaces/${user.id}/transcripts/old-tagged.md`,
+          plainText: 'estratégia de produto pesquisável',
+          createdAt: old,
+          tags: { create: { tagId: tag.id } },
+        },
+      }),
+    ]);
+
+    await signUp('other@voxen.local', 'senha-super-segura-456', 'Other');
+    const other = await db.user.findUniqueOrThrow({ where: { email: 'other@voxen.local' } });
+    const foreignTag = await db.tag.create({
+      data: { userId: other.id, name: 'Estratégia externa', slug: 'estrategia-externa' },
+    });
+    await db.transcript.create({
+      data: {
+        ...base,
+        userId: other.id,
+        url: 'https://example.com/foreign',
+        title: 'Conteúdo externo',
+        mdPath: `workspaces/${other.id}/transcripts/foreign.md`,
+        plainText: 'conteúdo externo pesquisável',
+        tags: { create: { tagId: foreignTag.id } },
+      },
+    });
+
+    const inbox = await app.fetch(
+      new Request('http://localhost/api/transcripts?view=inbox', { headers: { cookie } }),
+    );
+    const inboxBody = (await inbox.json()) as { transcripts: Array<{ id: string }> };
+    expect(inbox.status).toBe(200);
+    expect(inboxBody.transcripts.map((item) => item.id)).toEqual([inboxItem.id]);
+
+    const tags = await app.fetch(
+      new Request('http://localhost/api/library/tags', { headers: { cookie } }),
+    );
+    const tagsBody = (await tags.json()) as {
+      tags: Array<{ id: string; name: string; slug: string; count: number }>;
+    };
+    expect(tags.status).toBe(200);
+    expect(tagsBody.tags).toEqual([
+      { id: tag.id, name: 'Estratégia', slug: 'estrategia', count: 3 },
+    ]);
+
+    const filtered = await app.fetch(
+      new Request(
+        `http://localhost/api/transcripts?tagId=${tag.id}&from=2026-07-27T00%3A00%3A00.000Z&to=2026-08-03T00%3A00%3A00.000Z`,
+        { headers: { cookie } },
+      ),
+    );
+    const filteredBody = (await filtered.json()) as { transcripts: Array<{ id: string }> };
+    expect(filtered.status).toBe(200);
+    expect(filteredBody.transcripts.map((item) => item.id)).toEqual(
+      expect.arrayContaining([taggedItem.id, tiedTaggedItem.id]),
+    );
+    expect(filteredBody.transcripts).toHaveLength(2);
+
+    const fts = await app.fetch(
+      new Request(
+        `http://localhost/api/transcripts?q=pesquisável&tagId=${tag.id}&from=2026-07-27T00%3A00%3A00.000Z&to=2026-08-03T00%3A00%3A00.000Z`,
+        { headers: { cookie } },
+      ),
+    );
+    const ftsBody = (await fts.json()) as { transcripts: Array<{ id: string }> };
+    expect(fts.status).toBe(200);
+    expect(ftsBody.transcripts.map((item) => item.id)).toEqual(
+      expect.arrayContaining([taggedItem.id, tiedTaggedItem.id]),
+    );
+    expect(ftsBody.transcripts).toHaveLength(2);
+    expect(ftsBody.transcripts.map((item) => item.id)).not.toContain(oldTaggedItem.id);
+
+    const pagedFts = await Promise.all(
+      [0, 1].map((offset) =>
+        app.fetch(
+          new Request(
+            `http://localhost/api/transcripts?q=pesquisável&tagId=${tag.id}&from=2026-07-27T00%3A00%3A00.000Z&to=2026-08-03T00%3A00%3A00.000Z&limit=1&offset=${offset}`,
+            { headers: { cookie } },
+          ),
+        ),
+      ),
+    );
+    const pagedIds = await Promise.all(
+      pagedFts.map(async (response) => {
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as { transcripts: Array<{ id: string }> };
+        return body.transcripts[0]?.id;
+      }),
+    );
+    expect(pagedIds).toEqual([taggedItem.id, tiedTaggedItem.id].sort((a, b) => b.localeCompare(a)));
+  });
+
   it('hides trashed transcripts from default library list', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
