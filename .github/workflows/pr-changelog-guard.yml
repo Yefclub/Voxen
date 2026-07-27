@@ -51,6 +51,10 @@ jobs:
 
           if [ "$IS_RELEASE" = 0 ] && [ -n "$BASE" ]; then
             ALL=$(git diff --name-only "$BASE" HEAD 2>/dev/null || echo "")
+            if [ -z "$ALL" ]; then
+              echo "[changelog] PR apenas reconcilia histórico (sem diferença de arquivos) — changelog não exigido."
+              exit 0
+            fi
             NON_EXEMPT=0
             for f in $ALL; do
               case "$f" in
