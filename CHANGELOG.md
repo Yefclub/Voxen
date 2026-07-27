@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.11.0-dev.1785161161 — 2026-07-27 · Dev
+
+### ⚡ Biblioteca encontra tags grandes sem pesar no celular
+
+A Biblioteca passa a carregar só as tags mais relevantes na tela inicial. Ao abrir o seletor, você pode buscar uma tag e carregar mais resultados sem trazer o catálogo inteiro para o celular.
+
+Isso mantém a organização por tags rápida mesmo quando a base de conhecimento cresce, preservando os filtros combinados de pasta, Inbox, semana, status e busca.
+
 ## v0.11.0-dev.1785159812 — 2026-07-27 · Dev
 
 ### ✨ Biblioteca Viva organiza conteúdos por semana, Inbox, pastas e tags

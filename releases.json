@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.11.0-dev.1785161161",
+    "channel": "dev",
+    "type": "perf",
+    "title": "Biblioteca encontra tags grandes sem pesar no celular",
+    "body": "A Biblioteca passa a carregar só as tags mais relevantes na tela inicial. Ao abrir o seletor, você pode buscar uma tag e carregar mais resultados sem trazer o catálogo inteiro para o celular.\n\nIsso mantém a organização por tags rápida mesmo quando a base de conhecimento cresce, preservando os filtros combinados de pasta, Inbox, semana, status e busca.",
+    "pr": 452,
+    "author": "Kalyel",
+    "date": "2026-07-27T11:05:45-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/452"
+  },
+  {
     "version": "0.11.0-dev.1785159812",
     "channel": "dev",
     "type": "feat",
