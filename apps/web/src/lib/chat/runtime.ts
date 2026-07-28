@@ -1057,10 +1057,10 @@ async function reconcileStaleHitl(userId: string, conversationId: string): Promi
   if (approvalIds.size === 0) return;
 
   const existing = await db.chatApproval.findMany({
-    where: { userId, id: { in: [...approvalIds] } },
-    select: { id: true, status: true },
+    where: { userId, providerApprovalId: { in: [...approvalIds] } },
+    select: { providerApprovalId: true, status: true },
   });
-  const byId = new Map(existing.map((row) => [row.id, row.status]));
+  const byId = new Map(existing.map((row) => [row.providerApprovalId, row.status]));
 
   await db.$transaction(async (tx) => {
     for (const approvalId of approvalIds) {
@@ -1082,11 +1082,11 @@ async function reconcileStaleHitl(userId: string, conversationId: string): Promi
         continue;
       }
       await tx.chatApproval.upsert({
-        where: { id: approvalId },
+        where: { userId_providerApprovalId: { userId, providerApprovalId: approvalId } },
         create: {
-          id: approvalId,
           userId,
           conversationId,
+          providerApprovalId: approvalId,
           action: payload.action,
           payload: {
             ...payload,
@@ -1118,13 +1118,13 @@ async function ensurePendingApproval(
   approvalId: string,
 ): Promise<{ id: string; action: string; payload: unknown; conversationId: string }> {
   const pending = await tx.chatApproval.findFirst({
-    where: { id: approvalId, userId, status: 'PENDING' },
+    where: { providerApprovalId: approvalId, userId, status: 'PENDING' },
     select: { id: true, action: true, payload: true, conversationId: true },
   });
   if (pending) return pending;
 
   const existing = await tx.chatApproval.findFirst({
-    where: { id: approvalId, userId },
+    where: { providerApprovalId: approvalId, userId },
     select: { id: true, status: true, conversationId: true },
   });
   if (existing?.status === 'APPROVED' || existing?.status === 'REJECTED') {
@@ -1146,11 +1146,11 @@ async function ensurePendingApproval(
   }
 
   return tx.chatApproval.upsert({
-    where: { id: approvalId },
+    where: { userId_providerApprovalId: { userId, providerApprovalId: approvalId } },
     create: {
-      id: approvalId,
       userId,
       conversationId: conversation.id,
+      providerApprovalId: approvalId,
       action: recovered.action,
       payload: {
         ...recovered,
@@ -1479,11 +1479,11 @@ export async function streamAssistantReply(options: {
           output,
         };
         await db.chatApproval.upsert({
-          where: { id: approvalId },
+          where: { userId_providerApprovalId: { userId, providerApprovalId: approvalId } },
           create: {
-            id: approvalId,
             userId,
             conversationId,
+            providerApprovalId: approvalId,
             action,
             payload: {
               ...inputRecord,

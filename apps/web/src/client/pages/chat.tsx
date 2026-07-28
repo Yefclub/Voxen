@@ -63,6 +63,7 @@ import {
 } from '../lib/chat-scroll';
 import type { ChatHandoffState } from '../lib/chat-handoff';
 import { mergeChatMessagePages } from '../lib/chat-pagination';
+import { claimPendingId, reconcileChatStart, sameActiveTurn } from '../lib/chat-reconciliation';
 import {
   getSoundsEnabled,
   setChatEmpty,
@@ -95,16 +96,6 @@ type Snapshot = {
   activeTurn: ActiveTurn | null;
 };
 
-function sameActiveTurn(left: ActiveTurn | null, right: ActiveTurn | null): boolean {
-  return (
-    left === right ||
-    (left != null &&
-      right != null &&
-      left.id === right.id &&
-      left.status === right.status &&
-      left.assistantMessageId === right.assistantMessageId)
-  );
-}
 type StreamEvent =
   | {
       type: 'start';
@@ -1063,8 +1054,7 @@ export function ChatPage(): React.ReactElement {
   }
 
   async function approve(id: string): Promise<void> {
-    if (approvingHitlRef.current.has(id)) return;
-    approvingHitlRef.current.add(id);
+    if (!claimPendingId(approvingHitlRef.current, id)) return;
     setApprovingHitl(new Set(approvingHitlRef.current));
     try {
       const result = await apiPost<{ message: string }>('/api/chat/approve', { approvalId: id });
@@ -1157,13 +1147,7 @@ export function ChatPage(): React.ReactElement {
           if (pendingAnchorIdRef.current === previousUserMessageId)
             pendingAnchorIdRef.current = event.userMessageId;
           setMessages((current) =>
-            current.map((message) => {
-              if (message.id === previousUserMessageId)
-                return { ...message, id: event.userMessageId, createdAt: event.startedAt };
-              if (message.id === previousAssistantMessageId)
-                return { ...message, id: event.assistantMessageId, createdAt: event.startedAt };
-              return message;
-            }),
+            reconcileChatStart(current, previousUserMessageId, previousAssistantMessageId, event),
           );
         } else if (event.type === 'text') {
           // Texto final: libera reengage se o conteúdo preencher o viewport.

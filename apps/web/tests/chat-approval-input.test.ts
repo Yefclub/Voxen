@@ -8,10 +8,10 @@ describe('chat approval input', () => {
     );
   });
 
-  test('normaliza espaços externos', () => {
+  test('preserva o identificador opaco byte a byte', () => {
     const result = ApprovalBody.safeParse({ approvalId: '  opaque-approval-id  ' });
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.approvalId).toBe('opaque-approval-id');
+    if (result.success) expect(result.data.approvalId).toBe('  opaque-approval-id  ');
   });
 
   test('recusa identificador vazio ou acima do limite', () => {

@@ -27,9 +27,11 @@ raciocínio.
 ### Ubiquitous (sempre verdadeiros)
 
 - The system shall aceitar identificadores HITL opacos, não vazios e limitados, sem exigir que
-  tenham formato UUID.
+  tenham formato UUID nem normalizar seus bytes.
 - The system shall validar a propriedade da aprovação pelo usuário e manter a execução da ação
   idempotente.
+- The system shall armazenar a identidade emitida pelo provider sob chave única composta pelo
+  usuário, permitindo o mesmo identificador em workspaces diferentes sem colisão.
 - The system shall usar estados operacionais que descrevam a fase real sem afirmar que houve
   busca na biblioteca em todo turno.
 - The system shall calcular a duração apresentada desde o início conhecido do turno até o fim do
@@ -72,6 +74,7 @@ raciocínio.
 - [ ] A rota de aprovação aceita um identificador opaco não-UUID emitido pelo runtime.
 - [ ] Identificadores HITL vazios ou acima do limite são recusados.
 - [ ] Testes de aprovação cobrem identificador opaco e preservam execução única por usuário.
+- [ ] Testes cobrem o mesmo identificador opaco em dois usuários sem cruzar payloads ou notas.
 - [ ] O estado inicial não afirma “Buscando na sua biblioteca…” em todo turno.
 - [ ] Compactação e preparação do contexto emitem estados operacionais coerentes.
 - [ ] Pré-busca e leitura de configuração independente são aguardadas em paralelo.

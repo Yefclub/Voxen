@@ -38,6 +38,25 @@ describe('chat pagination', () => {
     expect(merged[0]).toBe(current[0]);
   });
 
+  test('ignora diferenças apenas na ordem das propriedades JSON', () => {
+    const current = [
+      {
+        id: 'm1',
+        createdAt: '2026-07-16T10:01:00.000Z',
+        tool: { state: 'completed', output: { title: 'Nota', ok: true } },
+      },
+    ];
+    const incoming = [
+      {
+        tool: { output: { ok: true, title: 'Nota' }, state: 'completed' },
+        createdAt: '2026-07-16T10:01:00.000Z',
+        id: 'm1',
+      },
+    ];
+
+    expect(mergeChatMessagePages(current, incoming)).toBe(current);
+  });
+
   test('substitui apenas a mensagem que realmente mudou', () => {
     const first = { id: 'm1', createdAt: '2026-07-16T10:01:00.000Z', content: 'igual' };
     const second = { id: 'm2', createdAt: '2026-07-16T10:02:00.000Z', content: 'antes' };
