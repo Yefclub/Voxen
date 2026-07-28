@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.13.0-dev.1785219429 — 2026-07-28 · Dev
+
+### 🐛 Chat mais estável, rápido e confiável
+
+O chat agora descreve corretamente o que está fazendo antes de responder, prepara em paralelo
+as informações independentes de que precisa e mede o tempo de raciocínio desde o início real da
+solicitação.
+
+Também corrigimos a confirmação de criação de notas, inclusive para os identificadores usados
+pelo provedor de IA, e reduzimos remontagens e movimentos involuntários da conversa durante
+respostas e recuperações.
+
 ## v0.12.0-dev.1785168327 — 2026-07-27 · Dev
 
 ### 🔒 Atualização de segurança nos componentes internos da Voxen

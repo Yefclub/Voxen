@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785219429",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Chat mais estável, rápido e confiável",
+    "body": "O chat agora descreve corretamente o que está fazendo antes de responder, prepara em paralelo\nas informações independentes de que precisa e mede o tempo de raciocínio desde o início real da\nsolicitação.\n\nTambém corrigimos a confirmação de criação de notas, inclusive para os identificadores usados\npelo provedor de IA, e reduzimos remontagens e movimentos involuntários da conversa durante\nrespostas e recuperações.",
+    "pr": 465,
+    "author": "Kalyel",
+    "date": "2026-07-28T06:16:58Z",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/465"
+  },
+  {
     "version": "0.12.0-dev.1785168327",
     "channel": "dev",
     "type": "security",
