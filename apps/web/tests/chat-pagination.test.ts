@@ -20,4 +20,34 @@ describe('chat pagination', () => {
       { id: 'm4', createdAt: '2026-07-16T10:04:00.000Z', content: 'updated' },
     ]);
   });
+
+  test('preserva array e objetos quando o snapshot é semanticamente igual', () => {
+    const current = [
+      {
+        id: 'm1',
+        createdAt: '2026-07-16T10:01:00.000Z',
+        content: 'estável',
+        tools: [{ id: 't1', state: 'completed' }],
+      },
+    ];
+    const incoming = structuredClone(current);
+
+    const merged = mergeChatMessagePages(current, incoming);
+
+    expect(merged).toBe(current);
+    expect(merged[0]).toBe(current[0]);
+  });
+
+  test('substitui apenas a mensagem que realmente mudou', () => {
+    const first = { id: 'm1', createdAt: '2026-07-16T10:01:00.000Z', content: 'igual' };
+    const second = { id: 'm2', createdAt: '2026-07-16T10:02:00.000Z', content: 'antes' };
+    const current = [first, second];
+    const incoming = [{ ...first }, { ...second, content: 'depois' }];
+
+    const merged = mergeChatMessagePages(current, incoming);
+
+    expect(merged).not.toBe(current);
+    expect(merged[0]).toBe(first);
+    expect(merged[1]).toBe(incoming[1]);
+  });
 });

@@ -165,7 +165,7 @@ describeIfDb('chat de sessão única', () => {
       data: { email: 'chat-test-approval@voxen.local', name: 'Approval', status: 'APPROVED' },
     });
     const conversation = await getOrCreateConversation(user.id);
-    const approvalId = crypto.randomUUID();
+    const approvalId = 'approval:provider-tool-call_01JABCDEF';
     await db.chatMessage.create({
       data: {
         conversationId: conversation.id,

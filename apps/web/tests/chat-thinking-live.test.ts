@@ -26,6 +26,14 @@ describe('ThinkingBlock live expand policy', () => {
     expect(chatSource).toContain('disabled={inFlight}');
     expect(chatSource).toContain('onClick={() => !inFlight && setExpanded((v) => !v)}');
     expect(chatSource).toContain('{inFlight ? (');
-    expect(chatSource).toContain('inFlight ? elapsed : segmentsReasoningDuration(segments)');
+    expect(chatSource).toContain(
+      'inFlight ? elapsed : segmentsReasoningDuration(segments, startedAt)',
+    );
+  });
+
+  test('cronômetro parte do início conhecido do turno', () => {
+    expect(chatSource).toContain('startedAt: number');
+    expect(chatSource).toContain('useRef<number>(startedAt)');
+    expect(chatSource).not.toContain('live ? Date.now() : null');
   });
 });

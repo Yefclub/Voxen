@@ -43,4 +43,16 @@ describe('chat message anchor wiring (spec 092)', () => {
     expect(chatSource).toContain('{showScrollLatest && (');
     expect(chatSource).not.toContain('{!nearBottom && (');
   });
+
+  test('automatic follow is immediate and smooth scrolling is explicit', () => {
+    expect(chatSource).toContain("behavior: 'auto'");
+    expect(chatSource).not.toContain("behavior: streaming ? 'auto' : 'smooth'");
+    expect(chatSource).toContain('onClick={() => scrollToBottom(true)}');
+  });
+
+  test('rekeys optimistic messages from the server start event', () => {
+    expect(chatSource).toContain("type: 'start'");
+    expect(chatSource).toContain('event.assistantMessageId');
+    expect(chatSource).toContain('event.userMessageId');
+  });
 });

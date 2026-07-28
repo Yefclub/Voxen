@@ -9,6 +9,7 @@ import {
   getChatSnapshot,
   type ChatStreamEvent,
 } from '../lib/chat/runtime';
+import { ApprovalBody } from '../lib/chat/approval-input';
 import {
   cancelActiveChatTurn,
   ChatTurnBusyError,
@@ -161,6 +162,13 @@ chatRoutes.post('/', async (c) => {
       };
 
       armKeepalive();
+      emit({
+        type: 'start',
+        turnId: turn.id,
+        userMessageId: turn.userMessageId,
+        assistantMessageId: turn.assistantMessageId,
+        startedAt: turn.createdAt.toISOString(),
+      });
       emit({ type: 'status', label: 'Preparando resposta…' });
       void runChatTurn(turn.id, emit)
         .catch((error: unknown) => {
@@ -194,8 +202,6 @@ chatRoutes.post('/', async (c) => {
     },
   });
 });
-
-const ApprovalBody = z.object({ approvalId: z.string().uuid() });
 
 chatRoutes.post('/approve', async (c) => {
   const parsed = ApprovalBody.safeParse(await c.req.json().catch(() => null));
