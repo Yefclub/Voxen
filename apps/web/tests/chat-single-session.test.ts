@@ -7,6 +7,7 @@ import {
   getChatSnapshot,
   releaseChatStreamSlot,
 } from '../src/lib/chat/runtime';
+import { ApprovalBody } from '../src/lib/chat/approval-input';
 import { db } from '../src/lib/db';
 import {
   ChatTurnBusyError,
@@ -165,7 +166,7 @@ describeIfDb('chat de sessão única', () => {
       data: { email: 'chat-test-approval@voxen.local', name: 'Approval', status: 'APPROVED' },
     });
     const conversation = await getOrCreateConversation(user.id);
-    const approvalId = crypto.randomUUID();
+    const approvalId = 'approval:provider-tool-call_01JABCDEF';
     await db.chatMessage.create({
       data: {
         conversationId: conversation.id,
@@ -210,6 +211,7 @@ describeIfDb('chat de sessão única', () => {
         id: approvalId,
         userId: user.id,
         conversationId: conversation.id,
+        providerApprovalId: approvalId,
         action: 'create_note',
         payload: { title: 'Nota aprovada', content: 'Conteúdo seguro' },
         expiresAt: null,
@@ -234,6 +236,69 @@ describeIfDb('chat de sessão única', () => {
     await expect(approveChatAction(user.id, approvalId)).rejects.toThrow();
   });
 
+  it('isola o mesmo approvalId opaco entre usuários e preserva seus bytes', async () => {
+    const [firstUser, secondUser] = await Promise.all([
+      db.user.create({
+        data: {
+          email: 'chat-test-approval-collision-a@voxen.local',
+          name: 'Collision A',
+          status: 'APPROVED',
+        },
+      }),
+      db.user.create({
+        data: {
+          email: 'chat-test-approval-collision-b@voxen.local',
+          name: 'Collision B',
+          status: 'APPROVED',
+        },
+      }),
+    ]);
+    const [firstConversation, secondConversation] = await Promise.all([
+      getOrCreateConversation(firstUser.id),
+      getOrCreateConversation(secondUser.id),
+    ]);
+    const providerApprovalId = ' shared-provider-approval ';
+    const parsed = ApprovalBody.parse({ approvalId: providerApprovalId });
+    await Promise.all([
+      db.chatApproval.create({
+        data: {
+          userId: firstUser.id,
+          conversationId: firstConversation.id,
+          providerApprovalId,
+          action: 'create_note',
+          payload: { title: 'Workspace A', content: 'Conteúdo A' },
+        },
+      }),
+      db.chatApproval.create({
+        data: {
+          userId: secondUser.id,
+          conversationId: secondConversation.id,
+          providerApprovalId,
+          action: 'create_note',
+          payload: { title: 'Workspace B', content: 'Conteúdo B' },
+        },
+      }),
+    ]);
+
+    const [firstResult, secondResult] = await Promise.all([
+      approveChatAction(firstUser.id, parsed.approvalId),
+      approveChatAction(secondUser.id, parsed.approvalId),
+    ]);
+
+    expect(
+      await db.note.findUnique({
+        where: { id: firstResult.noteId! },
+        select: { userId: true, title: true },
+      }),
+    ).toEqual({ userId: firstUser.id, title: 'Workspace A' });
+    expect(
+      await db.note.findUnique({
+        where: { id: secondResult.noteId! },
+        select: { userId: true, title: true },
+      }),
+    ).toEqual({ userId: secondUser.id, title: 'Workspace B' });
+  });
+
   it('aceita aprovação pendente mesmo com expiresAt no passado (sem TTL)', async () => {
     const user = await db.user.create({
       data: { email: 'chat-test-approval-ttl@voxen.local', name: 'TTL', status: 'APPROVED' },
@@ -245,6 +310,7 @@ describeIfDb('chat de sessão única', () => {
         id: approvalId,
         userId: user.id,
         conversationId: conversation.id,
+        providerApprovalId: approvalId,
         action: 'create_note',
         payload: { title: 'Nota antiga', content: 'ainda válida' },
         expiresAt: new Date(Date.now() - 60_000),
@@ -285,6 +351,7 @@ describeIfDb('chat de sessão única', () => {
         id: approvalId,
         userId: user.id,
         conversationId: conversation.id,
+        providerApprovalId: approvalId,
         action: 'create_note',
         payload: { title: 'Nota antiga', content: 'ainda pendente' },
         expiresAt: null,
@@ -340,7 +407,11 @@ describeIfDb('chat de sessão única', () => {
     const result = await approveChatAction(user.id, approvalId);
     expect(result.noteId).toBeTruthy();
     expect(await db.note.count({ where: { id: result.noteId, userId: user.id } })).toBe(1);
-    expect(await db.chatApproval.count({ where: { id: approvalId, status: 'APPROVED' } })).toBe(1);
+    expect(
+      await db.chatApproval.count({
+        where: { providerApprovalId: approvalId, userId: user.id, status: 'APPROVED' },
+      }),
+    ).toBe(1);
   });
 
   it('snapshot descarta card fantasma de aprovação já utilizada', async () => {
@@ -375,6 +446,7 @@ describeIfDb('chat de sessão única', () => {
         id: approvalId,
         userId: user.id,
         conversationId: conversation.id,
+        providerApprovalId: approvalId,
         action: 'create_note',
         payload: { title: 'Já criada', content: 'x' },
         status: 'APPROVED',
@@ -408,6 +480,7 @@ describeIfDb('chat de sessão única', () => {
         id: crypto.randomUUID(),
         userId: user.id,
         conversationId: conversation.id,
+        providerApprovalId: crypto.randomUUID(),
         action: 'create_note',
         payload: { title: 'Pendente', content: 'x' },
         expiresAt: null,

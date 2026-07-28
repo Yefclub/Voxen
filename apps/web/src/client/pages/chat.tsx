@@ -63,6 +63,7 @@ import {
 } from '../lib/chat-scroll';
 import type { ChatHandoffState } from '../lib/chat-handoff';
 import { mergeChatMessagePages } from '../lib/chat-pagination';
+import { claimPendingId, reconcileChatStart, sameActiveTurn } from '../lib/chat-reconciliation';
 import {
   getSoundsEnabled,
   setChatEmpty,
@@ -94,7 +95,15 @@ type Snapshot = {
   nextCursor: string | null;
   activeTurn: ActiveTurn | null;
 };
+
 type StreamEvent =
+  | {
+      type: 'start';
+      turnId: string;
+      userMessageId: string;
+      assistantMessageId: string;
+      startedAt: string;
+    }
   | { type: 'text'; delta: string }
   | { type: 'reasoning'; delta: string }
   | { type: 'tool'; tool: ToolEvent }
@@ -236,9 +245,11 @@ function ToolRow({ tool }: { tool: ToolEvent }) {
 function ThinkingBlock({
   segments,
   live,
+  startedAt,
 }: {
   segments: MessageSegment[];
   live: boolean;
+  startedAt: number;
 }): React.ReactElement {
   const { t } = useI18n();
   const running = segmentsRunning(segments);
@@ -247,34 +258,30 @@ function ThinkingBlock({
   // Timeline aberta enquanto o turno está em voo; recolhe só ao terminar
   // (usuário reabre no header).
   const [expanded, setExpanded] = useState(true);
-  // Cronômetro de parede (honesto): conta do 1º evento até terminar. Só há
-  // timing em turnos ao vivo; blocos recarregados não exibem duração.
-  const startedAtRef = useRef<number | null>(live ? Date.now() : null);
-  const [elapsed, setElapsed] = useState(0);
+  // Cronômetro de parede: inclui a preparação anterior ao primeiro delta e
+  // continua derivável após a mensagem persistida substituir a otimista.
+  const startedAtRef = useRef<number>(startedAt);
+  const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - startedAt));
   const [frozen, setFrozen] = useState<number | null>(null);
 
   useEffect(() => {
     if (!inFlight) {
       setExpanded(false);
-      if (startedAtRef.current != null && frozen == null) {
+      if (frozen == null) {
         setFrozen(Date.now() - startedAtRef.current);
       }
       return;
     }
     setExpanded(true);
-    if (startedAtRef.current == null) startedAtRef.current = Date.now();
     const id = window.setInterval(() => {
-      if (startedAtRef.current != null) setElapsed(Date.now() - startedAtRef.current);
+      setElapsed(Date.now() - startedAtRef.current);
     }, 200);
     return () => window.clearInterval(id);
   }, [inFlight, frozen]);
 
-  // `frozen`/`startedAtRef` são estado local — não sobrevivem quando `send()`
-  // troca a mensagem pelo snapshot do servidor (a `key` muda pro id real do
-  // banco e o React remonta este componente com `live=false`, zerando o
-  // cronômetro). Nesse caso, cai pro fallback: a duração derivada dos
-  // próprios timestamps dos segments de raciocínio (preservados pelo swap).
-  const duration = frozen ?? (inFlight ? elapsed : segmentsReasoningDuration(segments));
+  // Em mensagens recarregadas, a duração continua derivável dos timestamps
+  // persistidos e do início canônico da mensagem/turno.
+  const duration = frozen ?? (inFlight ? elapsed : segmentsReasoningDuration(segments, startedAt));
 
   return (
     <section className="mb-2.5 flex flex-col gap-1">
@@ -383,9 +390,11 @@ function MessageCopyButton({
 
 function HitlConfirmBar({
   pending,
+  approving,
   onApprove,
 }: {
   pending: PendingHitl[];
+  approving: ReadonlySet<string>;
   onApprove: (id: string) => void;
 }): React.ReactElement | null {
   const { t } = useI18n();
@@ -410,9 +419,15 @@ function HitlConfirmBar({
           <button
             type="button"
             onClick={() => onApprove(item.approvalId)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90"
+            disabled={approving.has(item.approvalId)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
           >
-            <Check className="h-3.5 w-3.5" /> {t('chat.confirm')}
+            {approving.has(item.approvalId) ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}{' '}
+            {t('chat.confirm')}
           </button>
         </div>
       ))}
@@ -628,6 +643,8 @@ export function ChatPage(): React.ReactElement {
   const [showScrollLatest, setShowScrollLatest] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [approvingHitl, setApprovingHitl] = useState<ReadonlySet<string>>(new Set());
+  const approvingHitlRef = useRef(new Set<string>());
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentWrapRef = useRef<HTMLDivElement>(null);
   const spacerNodeRef = useRef<HTMLDivElement>(null);
@@ -805,17 +822,18 @@ export function ChatPage(): React.ReactElement {
   const isEmpty = !loading && visibleMessages.length === 0;
 
   function applySnapshot(snapshot: Snapshot, replace = false): void {
-    setMessages((current) =>
-      replace
-        ? snapshot.messages
-        : mergeChatMessagePages(
-            current.filter((message) => !message.id.startsWith('local-')),
-            snapshot.messages,
-          ),
-    );
+    setMessages((current) => {
+      if (replace) return snapshot.messages;
+      return mergeChatMessagePages(
+        current.filter((message) => !message.id.startsWith('local-')),
+        snapshot.messages,
+      );
+    });
     setHasOlder(snapshot.hasOlder);
     setNextCursor(snapshot.nextCursor);
-    setActiveTurn(snapshot.activeTurn);
+    setActiveTurn((current) =>
+      sameActiveTurn(current, snapshot.activeTurn) ? current : snapshot.activeTurn,
+    );
   }
 
   const refresh = async (): Promise<void> => {
@@ -967,9 +985,9 @@ export function ChatPage(): React.ReactElement {
     markProgrammaticScroll();
     element.scrollTo({
       top: element.scrollHeight,
-      behavior: streaming ? 'auto' : 'smooth',
+      behavior: 'auto',
     });
-  }, [messages, nearBottom, streaming]);
+  }, [messages, nearBottom]);
 
   // Shrink spacer as the assistant reply grows during an anchored turn.
   // Re-attach when the scroller mounts (loading/empty → conversation view).
@@ -1036,6 +1054,8 @@ export function ChatPage(): React.ReactElement {
   }
 
   async function approve(id: string): Promise<void> {
+    if (!claimPendingId(approvingHitlRef.current, id)) return;
+    setApprovingHitl(new Set(approvingHitlRef.current));
     try {
       const result = await apiPost<{ message: string }>('/api/chat/approve', { approvalId: id });
       toast.success(result.message);
@@ -1045,6 +1065,8 @@ export function ChatPage(): React.ReactElement {
     } finally {
       // Always reload: success clears the card; stale/already-used heals ghosts.
       await refresh().catch(() => undefined);
+      approvingHitlRef.current.delete(id);
+      setApprovingHitl(new Set(approvingHitlRef.current));
     }
   }
 
@@ -1066,6 +1088,7 @@ export function ChatPage(): React.ReactElement {
   async function send(override?: string): Promise<void> {
     const content = (override ?? input).trim();
     if (!content || streaming) return;
+    const localStartedAt = new Date().toISOString();
     const localUser: ChatMessage = {
       id: `local-user-${crypto.randomUUID()}`,
       role: 'USER',
@@ -1073,7 +1096,7 @@ export function ChatPage(): React.ReactElement {
       content,
       tools: null,
       compactedAt: null,
-      createdAt: new Date().toISOString(),
+      createdAt: localStartedAt,
     };
     const localAssistant: ChatMessage = {
       id: `local-assistant-${crypto.randomUUID()}`,
@@ -1082,8 +1105,10 @@ export function ChatPage(): React.ReactElement {
       content: '',
       tools: [],
       compactedAt: null,
-      createdAt: new Date().toISOString(),
+      createdAt: localStartedAt,
     };
+    let liveUserMessageId = localUser.id;
+    let liveAssistantMessageId = localAssistant.id;
     streamingAssistantId.current = localAssistant.id;
     liveSegmentsRef.current = null;
     pendingAnchorIdRef.current = localUser.id;
@@ -1113,12 +1138,23 @@ export function ChatPage(): React.ReactElement {
       const decoder = new TextDecoder();
       let buffer = '';
       const apply = (event: StreamEvent): void => {
-        if (event.type === 'text') {
+        if (event.type === 'start') {
+          const previousUserMessageId = liveUserMessageId;
+          const previousAssistantMessageId = liveAssistantMessageId;
+          liveUserMessageId = event.userMessageId;
+          liveAssistantMessageId = event.assistantMessageId;
+          streamingAssistantId.current = event.assistantMessageId;
+          if (pendingAnchorIdRef.current === previousUserMessageId)
+            pendingAnchorIdRef.current = event.userMessageId;
+          setMessages((current) =>
+            reconcileChatStart(current, previousUserMessageId, previousAssistantMessageId, event),
+          );
+        } else if (event.type === 'text') {
           // Texto final: libera reengage se o conteúdo preencher o viewport.
           allowAnchorReengageRef.current = true;
           setMessages((current) =>
             current.map((message) => {
-              if (message.id !== localAssistant.id) return message;
+              if (message.id !== liveAssistantMessageId) return message;
               // Texto final encerra o raciocínio em aberto (se houver) — a
               // partir daqui esse segmento não recebe mais deltas.
               const segments = closeTrailingReasoning(message.segments ?? [], Date.now());
@@ -1129,7 +1165,7 @@ export function ChatPage(): React.ReactElement {
         } else if (event.type === 'reasoning') {
           setMessages((current) =>
             current.map((message) => {
-              if (message.id !== localAssistant.id) return message;
+              if (message.id !== liveAssistantMessageId) return message;
               const segments = applySegmentEvent(message.segments ?? [], event, Date.now());
               liveSegmentsRef.current = segments;
               return { ...message, segments };
@@ -1140,7 +1176,7 @@ export function ChatPage(): React.ReactElement {
         } else if (event.type === 'tool') {
           setMessages((current) =>
             current.map((message) => {
-              if (message.id !== localAssistant.id) return message;
+              if (message.id !== liveAssistantMessageId) return message;
               const segments = applySegmentEvent(message.segments ?? [], event, Date.now());
               liveSegmentsRef.current = segments;
               return { ...message, segments };
@@ -1335,7 +1371,11 @@ export function ChatPage(): React.ReactElement {
                   return (
                     <article key={message.id} className="group mb-6 flex flex-col">
                       {segments.length > 0 && (
-                        <ThinkingBlock segments={segments} live={isStreamingAssistant} />
+                        <ThinkingBlock
+                          segments={segments}
+                          live={isStreamingAssistant}
+                          startedAt={Date.parse(message.createdAt)}
+                        />
                       )}
                       {message.content && (
                         <>
@@ -1378,7 +1418,11 @@ export function ChatPage(): React.ReactElement {
               {status && !streaming && (
                 <p className="mb-2 text-xs text-[var(--color-accent-amber)]">{status}</p>
               )}
-              <HitlConfirmBar pending={pendingHitl} onApprove={(id) => void approve(id)} />
+              <HitlConfirmBar
+                pending={pendingHitl}
+                approving={approvingHitl}
+                onApprove={(id) => void approve(id)}
+              />
               <Composer
                 input={input}
                 setInput={setInput}

@@ -105,6 +105,13 @@ export type StoredMessageSegment =
   | { type: 'tool-group'; id: string; tools: StoredToolEvent[] };
 
 export type ChatStreamEvent =
+  | {
+      type: 'start';
+      turnId: string;
+      userMessageId: string;
+      assistantMessageId: string;
+      startedAt: string;
+    }
   | { type: 'status'; label: string }
   | { type: 'text'; delta: string }
   | { type: 'reasoning'; delta: string }
@@ -891,15 +898,15 @@ async function findAssistantMessagesWithApproval(
   conversationId: string,
   approvalId: string,
 ): Promise<Array<{ id: string; tools: Prisma.JsonValue; segments: Prisma.JsonValue }>> {
-  const approvalNeedle = `%${approvalId}%`;
+  const approvalNeedle = JSON.stringify(approvalId);
   return tx.$queryRaw`
     SELECT id, tools, segments
     FROM "ChatMessage"
     WHERE "conversationId" = ${conversationId}
       AND role = 'ASSISTANT'
       AND (
-        COALESCE(tools::text, '') LIKE ${approvalNeedle}
-        OR COALESCE(segments::text, '') LIKE ${approvalNeedle}
+        strpos(COALESCE(tools::text, ''), ${approvalNeedle}) > 0
+        OR strpos(COALESCE(segments::text, ''), ${approvalNeedle}) > 0
       )
     ORDER BY "createdAt" DESC, id DESC
   `;
@@ -1050,10 +1057,10 @@ async function reconcileStaleHitl(userId: string, conversationId: string): Promi
   if (approvalIds.size === 0) return;
 
   const existing = await db.chatApproval.findMany({
-    where: { userId, id: { in: [...approvalIds] } },
-    select: { id: true, status: true },
+    where: { userId, providerApprovalId: { in: [...approvalIds] } },
+    select: { providerApprovalId: true, status: true },
   });
-  const byId = new Map(existing.map((row) => [row.id, row.status]));
+  const byId = new Map(existing.map((row) => [row.providerApprovalId, row.status]));
 
   await db.$transaction(async (tx) => {
     for (const approvalId of approvalIds) {
@@ -1075,11 +1082,11 @@ async function reconcileStaleHitl(userId: string, conversationId: string): Promi
         continue;
       }
       await tx.chatApproval.upsert({
-        where: { id: approvalId },
+        where: { userId_providerApprovalId: { userId, providerApprovalId: approvalId } },
         create: {
-          id: approvalId,
           userId,
           conversationId,
+          providerApprovalId: approvalId,
           action: payload.action,
           payload: {
             ...payload,
@@ -1111,13 +1118,13 @@ async function ensurePendingApproval(
   approvalId: string,
 ): Promise<{ id: string; action: string; payload: unknown; conversationId: string }> {
   const pending = await tx.chatApproval.findFirst({
-    where: { id: approvalId, userId, status: 'PENDING' },
+    where: { providerApprovalId: approvalId, userId, status: 'PENDING' },
     select: { id: true, action: true, payload: true, conversationId: true },
   });
   if (pending) return pending;
 
   const existing = await tx.chatApproval.findFirst({
-    where: { id: approvalId, userId },
+    where: { providerApprovalId: approvalId, userId },
     select: { id: true, status: true, conversationId: true },
   });
   if (existing?.status === 'APPROVED' || existing?.status === 'REJECTED') {
@@ -1139,11 +1146,11 @@ async function ensurePendingApproval(
   }
 
   return tx.chatApproval.upsert({
-    where: { id: approvalId },
+    where: { userId_providerApprovalId: { userId, providerApprovalId: approvalId } },
     create: {
-      id: approvalId,
       userId,
       conversationId: conversation.id,
+      providerApprovalId: approvalId,
       action: recovered.action,
       payload: {
         ...recovered,
@@ -1229,6 +1236,7 @@ export async function approveChatAction(
 async function maybeCompact(
   conversationId: string,
   modelConfig: { apiKey: string; model: string },
+  emitStatus?: (label: string) => void,
 ): Promise<{ before: number; after: number } | null> {
   const ownerId = crypto.randomUUID();
   const acquired = await db.$executeRaw`
@@ -1258,6 +1266,7 @@ async function maybeCompact(
       return null;
     const compacted = active.slice(0, -KEEP_RECENT);
     if (compacted.length === 0) return null;
+    emitStatus?.('Organizando a memória da conversa…');
     const provider = createOpenRouter({ apiKey: modelConfig.apiKey });
     const { text, usage } = await generateText({
       model: provider(modelConfig.model),
@@ -1346,7 +1355,9 @@ export async function streamAssistantReply(options: {
     emit({ type: 'done', messageId: assistant.id });
     return assistant.id;
   }
-  const compaction = await maybeCompact(conversationId, modelConfig).catch(() => {
+  const compaction = await maybeCompact(conversationId, modelConfig, (label) =>
+    emit({ type: 'status', label }),
+  ).catch(() => {
     emit({
       type: 'error',
       message: 'A memória não pôde ser atualizada; a resposta usará o contexto recente.',
@@ -1355,31 +1366,33 @@ export async function streamAssistantReply(options: {
   });
   if (compaction) emit({ type: 'compaction', ...compaction });
 
-  const active = (await db.chatMessage.findMany({
-    where: {
-      conversationId,
-      compactedAt: null,
-      ...(assistantMessageId ? { id: { not: assistantMessageId } } : {}),
-    },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    select: {
-      id: true,
-      role: true,
-      kind: true,
-      content: true,
-      tools: true,
-      segments: true,
-      createdAt: true,
-    },
-  })) as ActiveMessage[];
+  emit({ type: 'status', label: 'Analisando sua solicitação…' });
+  const [active, relevant, timezone] = await Promise.all([
+    db.chatMessage.findMany({
+      where: {
+        conversationId,
+        compactedAt: null,
+        ...(assistantMessageId ? { id: { not: assistantMessageId } } : {}),
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        role: true,
+        kind: true,
+        content: true,
+        tools: true,
+        segments: true,
+        createdAt: true,
+      },
+    }) as Promise<ActiveMessage[]>,
+    preloadRelevantContent(userId, content, 5).catch(() => []),
+    getAppTimezone().catch(() => 'America/Sao_Paulo'),
+  ]);
   const provider = createOpenRouter({ apiKey: modelConfig.apiKey });
   let answer = '';
   const tools: StoredToolEvent[] = [];
   const segments: StoredMessageSegment[] = [];
-  emit({ type: 'status', label: 'Buscando na sua biblioteca…' });
-  const relevant = await preloadRelevantContent(userId, content, 5).catch(() => []);
   const suggestions = buildLibrarySuggestionsInstructions(relevant);
-  const timezone = await getAppTimezone().catch(() => 'America/Sao_Paulo');
   const clock = buildAgentClockInstructions(buildInstanceClock(new Date(), timezone));
   const result = streamText({
     model: provider(modelConfig.model),
@@ -1466,11 +1479,11 @@ export async function streamAssistantReply(options: {
           output,
         };
         await db.chatApproval.upsert({
-          where: { id: approvalId },
+          where: { userId_providerApprovalId: { userId, providerApprovalId: approvalId } },
           create: {
-            id: approvalId,
             userId,
             conversationId,
+            providerApprovalId: approvalId,
             action,
             payload: {
               ...inputRecord,

@@ -58,9 +58,10 @@ describe('healStaleRunningInSegments', () => {
 });
 
 describe('chat runtime wiring for tool failures', () => {
-  test('uses library status copy and heals running tools before persist', () => {
-    expect(runtimeSource).toContain("label: 'Buscando na sua biblioteca…'");
-    expect(runtimeSource).not.toContain('Consultando seu acervo');
+  test('uses honest preparation status and heals running tools before persist', () => {
+    expect(runtimeSource).toContain("label: 'Analisando sua solicitação…'");
+    expect(runtimeSource).toContain("'Organizando a memória da conversa…'");
+    expect(runtimeSource).not.toContain('Buscando na sua biblioteca');
     expect(runtimeSource).toContain('healStaleRunningTools(tools)');
     expect(runtimeSource).toContain('isToolErrorOutput(output)');
   });

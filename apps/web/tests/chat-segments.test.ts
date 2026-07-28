@@ -220,6 +220,13 @@ describe('segmentsReasoningDuration', () => {
     expect(segmentsReasoningDuration(segments)).toBe(2100 - 1000);
   });
 
+  it('inclui o processamento anterior ao primeiro delta quando o início do turno é conhecido', () => {
+    const segments: MessageSegment[] = [
+      { type: 'reasoning', id: 'r0', text: 'a', startedAt: 1000, endedAt: 1800 },
+    ];
+    expect(segmentsReasoningDuration(segments, 250)).toBe(1800 - 250);
+  });
+
   it('sem segmento de raciocínio (turno só de ferramentas) retorna null', () => {
     const segments: MessageSegment[] = [
       { type: 'tool-group', id: 'g0', tools: [{ id: 't1', name: 'search', state: 'completed' }] },
@@ -258,6 +265,6 @@ describe('segmentsReasoningDuration', () => {
 
     // estado local do componente NÃO existe mais após o remount (live=false,
     // frozen=null) — só os segments reanexados na mensagem restam.
-    expect(segmentsReasoningDuration(segments)).toBe(2_500 - 1_000);
+    expect(segmentsReasoningDuration(segments, 500)).toBe(2_500 - 500);
   });
 });

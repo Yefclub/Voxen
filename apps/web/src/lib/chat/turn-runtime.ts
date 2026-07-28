@@ -58,6 +58,7 @@ export async function createChatTurn(userId: string, content: string) {
         userMessageId: true,
         assistantMessageId: true,
         status: true,
+        createdAt: true,
       },
     });
   });

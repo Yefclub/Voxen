@@ -189,7 +189,10 @@ export function segmentsRunning(segments: readonly MessageSegment[]): boolean {
  * duração, como já era antes desta spec) ou se algum ainda está aberto (sem
  * `endedAt` — não deveria ocorrer quando o turno já terminou).
  */
-export function segmentsReasoningDuration(segments: readonly MessageSegment[]): number | null {
+export function segmentsReasoningDuration(
+  segments: readonly MessageSegment[],
+  turnStartedAt?: number,
+): number | null {
   let start: number | null = null;
   let end: number | null = null;
   for (const segment of segments) {
@@ -198,5 +201,10 @@ export function segmentsReasoningDuration(segments: readonly MessageSegment[]): 
     start = start == null ? segment.startedAt : Math.min(start, segment.startedAt);
     end = end == null ? segment.endedAt : Math.max(end, segment.endedAt);
   }
-  return start != null && end != null ? end - start : null;
+  if (start == null || end == null) return null;
+  const effectiveStart =
+    turnStartedAt != null && Number.isFinite(turnStartedAt)
+      ? Math.min(turnStartedAt, start)
+      : start;
+  return end - effectiveStart;
 }

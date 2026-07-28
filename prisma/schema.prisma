@@ -527,12 +527,13 @@ enum ChatApprovalStatus {
 }
 
 model ChatApproval {
-  id             String             @id
-  userId         String
-  conversationId String
-  action         String
-  payload        Json
-  status         ChatApprovalStatus @default(PENDING)
+  id                 String             @id @default(cuid())
+  userId             String
+  conversationId     String
+  providerApprovalId String
+  action             String
+  payload            Json
+  status             ChatApprovalStatus @default(PENDING)
   /// Null = no wall-clock TTL (spec 090). Legacy rows may still have a timestamp.
   expiresAt      DateTime?
   createdAt      DateTime           @default(now())
@@ -542,6 +543,7 @@ model ChatApproval {
 
   @@index([userId, status, expiresAt])
   @@index([conversationId, createdAt])
+  @@unique([userId, providerApprovalId])
 }
 
 model ChatCompactionLease {
