@@ -50,8 +50,8 @@ export function NovidadesPage(): React.ReactElement {
 
   return (
     <AnimatedPage>
-      <div className="mx-auto max-w-2xl space-y-6 px-4 py-6 sm:px-6 sm:py-10">
-        <div className="space-y-3">
+      <div className="mx-auto max-w-5xl space-y-7 px-4 py-6 sm:px-6 sm:py-10 lg:px-10">
+        <div className="rounded-2xl border border-[var(--color-app-border)] bg-gradient-to-br from-violet-500/[0.08] via-transparent to-emerald-500/[0.06] px-5 py-6 sm:px-8 sm:py-8 space-y-3">
           <Link
             to="/"
             className="inline-flex items-center gap-1.5 text-xs text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]"
@@ -63,7 +63,7 @@ export function NovidadesPage(): React.ReactElement {
             <Sparkles className="h-3 w-3 text-violet-400" />
             {t('novidades.eyebrow')}
           </div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight">
+          <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
             {t('novidades.title')}
           </h1>
           <p className="text-sm text-[var(--color-app-muted)]">{t('novidades.description')}</p>
@@ -95,11 +95,11 @@ export function NovidadesPage(): React.ReactElement {
         )}
 
         {!loading && releases.length > 0 && (
-          <ol className="space-y-4">
+          <ol className="grid gap-4 lg:grid-cols-2">
             {releases.map((entry, idx) => (
               <li
                 key={`${entry.version}-${entry.channel}-${entry.pr ?? idx}-${entry.title ?? ''}`}
-                className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/30 px-4 py-4 sm:px-5"
+                className="flex min-h-44 flex-col rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/45 px-4 py-4 sm:px-5"
               >
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <span className="font-mono text-xs text-[var(--color-app-subtle)]">
@@ -178,7 +178,7 @@ export function NovidadesPage(): React.ReactElement {
                     href={entry.prUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-3 inline-block text-[11px] text-violet-400/90 hover:underline"
+                    className="mt-auto pt-4 inline-block text-[11px] text-violet-400/90 hover:underline"
                   >
                     PR #{entry.pr}
                   </a>

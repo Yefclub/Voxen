@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as aredis
@@ -53,10 +52,24 @@ async def publish_job_event(
     transcript_id: str | None = None,
     error_msg: str | None = None,
 ) -> None:
+    # Redis é efêmero: persiste primeiro para que quem entrar depois ou
+    # reconectar receba um snapshot operacional verdadeiro.
+    from . import db
+
+    event_id, created_at = await db.record_job_progress(
+        user_id=user_id,
+        job_id=job_id,
+        stage=stage,
+        percent=percent,
+        chunk_index=chunk_index,
+        transcript_id=transcript_id,
+        error_msg=error_msg,
+    )
     payload: dict[str, Any] = {
+        "id": event_id,
         "jobId": job_id,
         "stage": stage,
-        "ts": datetime.now(UTC).isoformat(),
+        "ts": created_at.isoformat(),
     }
     if percent is not None:
         payload["percent"] = percent

@@ -869,10 +869,14 @@ jobsRoutes.get('/', async (c) => {
       take: limit,
       select: {
         id: true,
+        type: true,
         status: true,
         sourceUrl: true,
         errorMsg: true,
         transcriptId: true,
+        progressStage: true,
+        progressPercent: true,
+        progressedAt: true,
         queuedAt: true,
         startedAt: true,
         finishedAt: true,
@@ -891,10 +895,14 @@ jobsRoutes.get('/', async (c) => {
   return c.json({
     jobs: jobs.map((job) => ({
       id: job.id,
+      type: job.type,
       status: job.status,
       sourceUrl: job.sourceUrl,
       errorMsg: job.errorMsg,
       transcriptId: job.transcriptId,
+      progressStage: job.progressStage,
+      progressPercent: job.progressPercent,
+      progressedAt: job.progressedAt,
       queuedAt: job.queuedAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
@@ -917,10 +925,14 @@ jobsRoutes.get('/:id', async (c) => {
     where: { id, userId },
     select: {
       id: true,
+      type: true,
       status: true,
       sourceUrl: true,
       errorMsg: true,
       transcriptId: true,
+      progressStage: true,
+      progressPercent: true,
+      progressedAt: true,
       queuedAt: true,
       startedAt: true,
       finishedAt: true,
@@ -931,6 +943,19 @@ jobsRoutes.get('/:id', async (c) => {
           summaryMd: true,
           source: true,
           thumbnailUrl: true,
+        },
+      },
+      progressEvents: {
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 120,
+        select: {
+          id: true,
+          stage: true,
+          percent: true,
+          chunkIndex: true,
+          transcriptId: true,
+          errorMsg: true,
+          createdAt: true,
         },
       },
     },
@@ -944,10 +969,14 @@ jobsRoutes.get('/:id', async (c) => {
   return c.json({
     job: {
       id: job.id,
+      type: job.type,
       status: job.status,
       sourceUrl: job.sourceUrl,
       errorMsg: job.errorMsg,
       transcriptId: job.transcriptId,
+      progressStage: job.progressStage,
+      progressPercent: job.progressPercent,
+      progressedAt: job.progressedAt,
       queuedAt: job.queuedAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
@@ -955,6 +984,16 @@ jobsRoutes.get('/:id', async (c) => {
       summary,
       transcriptSource: job.transcript?.source ?? null,
       thumbnailUrl: job.transcript?.thumbnailUrl ?? null,
+      events: [...job.progressEvents].reverse().map((event) => ({
+        id: event.id,
+        jobId: job.id,
+        stage: event.stage,
+        percent: event.percent,
+        chunkIndex: event.chunkIndex,
+        transcriptId: event.transcriptId,
+        errorMsg: event.errorMsg,
+        ts: event.createdAt.toISOString(),
+      })),
     },
   });
 });
@@ -1102,7 +1141,7 @@ jobsRoutes.get('/:id/events', async (c) => {
   const id = c.req.param('id');
   const job = await db.job.findFirst({
     where: { id, userId },
-    select: { id: true, status: true },
+    select: { id: true },
   });
   if (!job) {
     return c.json({ error: 'Job não encontrado.' }, 404);
@@ -1119,26 +1158,15 @@ jobsRoutes.get('/:id/events', async (c) => {
       void stream.close();
     });
 
-    // Evento inicial pra confirmar conexão (facilita debug e UI)
-    stream.writeSSE({
-      event: 'connected',
-      data: JSON.stringify({ jobId: job.id }),
-      retry: SSE_RETRY_MS,
-    });
-
-    // Job já em estado terminal: manda 1 evento e fecha
-    if (job.status === 'DONE' || job.status === 'FAILED' || job.status === 'CANCELLED') {
-      stream.writeSSE({
-        event: 'snapshot',
-        data: JSON.stringify({ jobId: job.id, stage: job.status.toLowerCase() }),
-      });
-      await stream.close();
-      return;
-    }
-
     await sub.subscribe(jobChannel(userId, id));
+    const pending: string[] = [];
+    let snapshotSent = false;
     sub.on('message', (_chan, raw) => {
       if (stream.isClosed()) return;
+      if (!snapshotSent) {
+        pending.push(raw);
+        return;
+      }
       let evt: JobEvent;
       try {
         evt = JSON.parse(raw) as JobEvent;
@@ -1150,6 +1178,91 @@ jobsRoutes.get('/:id/events', async (c) => {
         void stream.close();
       }
     });
+
+    // Assina antes da leitura e mantém eventos em buffer até o snapshot ser
+    // enviado. Assim, uma publicação entre os dois passos não se perde.
+    const snapshot = await db.job.findFirst({
+      where: { id, userId },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        progressStage: true,
+        progressPercent: true,
+        progressedAt: true,
+        transcriptId: true,
+        errorMsg: true,
+        progressEvents: {
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 120,
+          select: {
+            id: true,
+            stage: true,
+            percent: true,
+            chunkIndex: true,
+            transcriptId: true,
+            errorMsg: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+    if (!snapshot) {
+      await stream.close();
+      return;
+    }
+    stream.writeSSE({
+      event: 'connected',
+      data: JSON.stringify({ jobId: snapshot.id }),
+      retry: SSE_RETRY_MS,
+    });
+    stream.writeSSE({
+      event: 'snapshot',
+      data: JSON.stringify({
+        jobId: snapshot.id,
+        type: snapshot.type,
+        stage: snapshot.progressStage ?? snapshot.status.toLowerCase(),
+        percent: snapshot.progressPercent ?? (snapshot.status === 'DONE' ? 100 : 0),
+        transcriptId: snapshot.transcriptId,
+        errorMsg: snapshot.errorMsg,
+        ts: (snapshot.progressedAt ?? new Date()).toISOString(),
+        events: [...snapshot.progressEvents].reverse().map((event) => ({
+          id: event.id,
+          jobId: snapshot.id,
+          stage: event.stage,
+          percent: event.percent ?? undefined,
+          chunkIndex: event.chunkIndex ?? undefined,
+          transcriptId: event.transcriptId ?? undefined,
+          errorMsg: event.errorMsg ?? undefined,
+          ts: event.createdAt.toISOString(),
+        })),
+      }),
+    });
+    snapshotSent = true;
+    for (const raw of pending) {
+      if (stream.isClosed()) break;
+      let evt: JobEvent;
+      try {
+        evt = JSON.parse(raw) as JobEvent;
+      } catch {
+        continue;
+      }
+      stream.writeSSE({ event: 'progress', data: raw });
+      if (isTerminalStage(evt.stage)) {
+        await stream.close();
+        return;
+      }
+    }
+
+    // Job já em estado terminal: o snapshot é suficiente.
+    if (
+      snapshot.status === 'DONE' ||
+      snapshot.status === 'FAILED' ||
+      snapshot.status === 'CANCELLED'
+    ) {
+      await stream.close();
+      return;
+    }
 
     // Heartbeat curto para Traefik/HTTP2 e proxies que fecham SSE ocioso cedo.
     stream.writeSSE({ event: 'ping', data: String(Date.now()) });

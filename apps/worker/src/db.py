@@ -139,6 +139,72 @@ async def claim_job(job_id: str) -> dict[str, Any] | None:
             return dict(row)
 
 
+async def record_job_progress(
+    *,
+    user_id: str,
+    job_id: str,
+    stage: str,
+    percent: int | None = None,
+    chunk_index: int | None = None,
+    transcript_id: str | None = None,
+    error_msg: str | None = None,
+) -> tuple[str, datetime]:
+    """Persiste o estado operacional antes de publicá-lo no Redis.
+
+    O snapshot da UI precisa sobreviver a uma reconexão SSE; por isso o Redis
+    continua sendo transporte em tempo real, mas não é a única fonte de verdade.
+    """
+    event_id = generate_cuid()
+    created_at = _utcnow_naive()
+    async with connection() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                INSERT INTO "JobProgressEvent" (
+                    id, "jobId", "userId", stage, percent, "chunkIndex",
+                    "transcriptId", "errorMsg", "createdAt"
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                """,
+                event_id,
+                job_id,
+                user_id,
+                stage,
+                percent,
+                chunk_index,
+                transcript_id,
+                error_msg,
+                created_at,
+            )
+            await conn.execute(
+                """
+                DELETE FROM "JobProgressEvent"
+                WHERE id IN (
+                    SELECT id
+                    FROM "JobProgressEvent"
+                    WHERE "jobId" = $1
+                    ORDER BY "createdAt" DESC, id DESC
+                    OFFSET 120
+                )
+                """,
+                job_id,
+            )
+            await conn.execute(
+                """
+                UPDATE "Job"
+                SET "progressStage" = $3,
+                    "progressPercent" = $4,
+                    "progressedAt" = $5
+                WHERE id = $1 AND "userId" = $2
+                """,
+                job_id,
+                user_id,
+                stage,
+                percent,
+                created_at,
+            )
+    return event_id, created_at.replace(tzinfo=UTC)
+
+
 async def list_queued_job_ids(limit: int = 50) -> list[str]:
     """Para reconciliação no boot do worker (caso Redis pub/sub tenha perdido notify)."""
     async with connection() as conn:

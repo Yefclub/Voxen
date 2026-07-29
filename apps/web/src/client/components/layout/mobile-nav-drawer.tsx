@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import { X } from 'lucide-react';
 import type { MeUser } from '../../lib/types';
 import { useI18n } from '../../lib/i18n';
@@ -30,6 +30,7 @@ export function MobileNavDrawer({
   const { t } = useI18n();
   const location = useLocation();
   const panelRef = useRef<HTMLElement>(null);
+  const reduceMotion = useReducedMotion();
 
   // Navegou (NavLink/botões internos mudam a rota) → fecha o drawer.
   const pathRef = useRef(location.pathname);
@@ -54,17 +55,6 @@ export function MobileNavDrawer({
     if (open) panelRef.current?.focus();
   }, [open]);
 
-  // Trava o scroll do body enquanto aberto — sem isso, em telas longas o
-  // conteúdo de fundo rola por trás do backdrop (scroll-bleed no touch).
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
-
   return (
     <AnimatePresence>
       {open && (
@@ -73,9 +63,9 @@ export function MobileNavDrawer({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: reduceMotion ? 0 : 0.16 }}
           onClick={onClose}
-          className="md:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]"
+          className="md:hidden fixed inset-0 z-50 bg-black/65"
           aria-hidden
         />
       )}
@@ -90,8 +80,8 @@ export function MobileNavDrawer({
           initial={{ x: '-100%' }}
           animate={{ x: 0 }}
           exit={{ x: '-100%' }}
-          transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-          className="md:hidden fixed inset-0 z-50 flex w-full flex-col border-r border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/98 backdrop-blur-xl overflow-hidden focus:outline-none"
+          transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          className="md:hidden fixed inset-0 z-50 flex w-full flex-col overflow-hidden border-r border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] focus:outline-none will-change-transform"
           style={{
             paddingTop: 'env(safe-area-inset-top)',
             paddingBottom: 'env(safe-area-inset-bottom)',
@@ -129,7 +119,7 @@ export function MobileNavDrawer({
               defensivo: garante que o motion nunca tente animar a pill entre o
               drawer e uma futura sidebar montada simultaneamente. */}
           <LayoutGroup id="mobile-nav">
-            <SidebarModeBody user={user} />
+            <SidebarModeBody user={user} hideHome />
           </LayoutGroup>
           <SidebarChangelogButton />
           <SidebarSignOut />

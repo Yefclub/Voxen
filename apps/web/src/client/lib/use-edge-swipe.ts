@@ -20,6 +20,10 @@ export interface EdgeSwipeThresholds {
    * horizontal.
    */
   maxAngleRatio: number;
+  /** Fração inicial da viewport que permite o gesto central de abertura. */
+  centralStartRatio: number;
+  /** Fração final da viewport que permite o gesto central de abertura. */
+  centralEndRatio: number;
 }
 
 // Calibragem alinhada a padrões mobile 2025: zona de borda estreita (~24px) pra
@@ -31,6 +35,8 @@ export const DEFAULT_THRESHOLDS: EdgeSwipeThresholds = {
   edgeZone: 24,
   minDistance: 60,
   maxAngleRatio: 0.6,
+  centralStartRatio: 0.2,
+  centralEndRatio: 0.8,
 };
 
 /**
@@ -45,6 +51,25 @@ export function isOpenSwipe(s: SwipeSample, t: EdgeSwipeThresholds = DEFAULT_THR
 }
 
 /**
+ * Gesto complementar ao da borda: começa na região central da viewport e vai
+ * para a direita. Mantê-lo puro permite testar o limiar sem DOM e evita estado
+ * React durante o movimento.
+ */
+export function isCentralOpenSwipe(
+  s: SwipeSample,
+  viewportWidth: number,
+  t: EdgeSwipeThresholds = DEFAULT_THRESHOLDS,
+): boolean {
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return false;
+  const minX = viewportWidth * t.centralStartRatio;
+  const maxX = viewportWidth * t.centralEndRatio;
+  if (s.startX < minX || s.startX > maxX) return false;
+  if (s.dx < t.minDistance) return false;
+  if (Math.abs(s.dy) > Math.abs(s.dx) * t.maxAngleRatio) return false;
+  return true;
+}
+
+/**
  * Decide se uma amostra conta como swipe de fechamento (direita → esquerda).
  */
 export function isCloseSwipe(s: SwipeSample, t: EdgeSwipeThresholds = DEFAULT_THRESHOLDS): boolean {
@@ -53,12 +78,21 @@ export function isCloseSwipe(s: SwipeSample, t: EdgeSwipeThresholds = DEFAULT_TH
   return true;
 }
 
+function startsOnInteractiveElement(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest(
+      'a,button,input,textarea,select,summary,[contenteditable="true"],[role="button"],[data-drawer-gesture-ignore]',
+    ),
+  );
+}
+
 /**
  * Detecta swipe de borda pra abrir/fechar o drawer mobile via handlers de
  * touch em `window`. Usa refs durante o gesto — nenhum re-render por
  * touchmove, então é leve. Só ativa quando `enabled` é true.
  *
- * - `onOpen`: swipe da borda esquerda → direita (quando fechado).
+ * - `onOpen`: swipe da borda esquerda OU do centro → direita (quando fechado).
  * - `onClose`: swipe direita → esquerda (quando aberto).
  */
 export function useEdgeSwipe({
@@ -97,9 +131,21 @@ export function useEdgeSwipe({
       const touch = e.touches[0]!;
       startX = touch.clientX;
       startY = touch.clientY;
-      // Só rastreia se: drawer aberto (pra fechar) OU toque na borda esquerda
-      // (pra abrir). Evita custo em toques no meio da tela.
-      tracking = isOpenRef.current || startX <= thresholds.edgeZone;
+      // Não compete com links, campos ou controles. O listener é passivo e só
+      // decide no fim: scroll vertical e pinch-zoom continuam do navegador.
+      if (startsOnInteractiveElement(e.target)) {
+        tracking = false;
+        return;
+      }
+      // Rastreia fechamento, borda e a faixa central. Não atualiza React a
+      // cada touchmove — a abertura só ocorre após gesto horizontal confirmado.
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+      const centralMin = viewportWidth * thresholds.centralStartRatio;
+      const centralMax = viewportWidth * thresholds.centralEndRatio;
+      tracking =
+        isOpenRef.current ||
+        startX <= thresholds.edgeZone ||
+        (startX >= centralMin && startX <= centralMax);
     };
 
     const onTouchEnd = (e: TouchEvent): void => {
@@ -114,7 +160,10 @@ export function useEdgeSwipe({
       };
       if (isOpenRef.current) {
         if (isCloseSwipe(sample, thresholds)) onCloseRef.current();
-      } else if (isOpenSwipe(sample, thresholds)) {
+      } else if (
+        isOpenSwipe(sample, thresholds) ||
+        isCentralOpenSwipe(sample, window.visualViewport?.width ?? window.innerWidth, thresholds)
+      ) {
         onOpenRef.current();
       }
     };

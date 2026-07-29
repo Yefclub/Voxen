@@ -447,14 +447,35 @@ model Job {
   sourceUrl    String
   transcriptId String?     @unique
   errorMsg     String?
+  progressStage String?
+  progressPercent Int?
+  progressedAt DateTime?
   queuedAt     DateTime    @default(now())
   startedAt    DateTime?
   finishedAt   DateTime?
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcript   Transcript? @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
+  progressEvents JobProgressEvent[]
 
   @@index([userId, queuedAt(sort: Desc)])
+  @@index([userId, progressedAt(sort: Desc)])
   @@index([status])
+}
+
+model JobProgressEvent {
+  id           String   @id @default(cuid())
+  jobId        String
+  userId       String
+  stage        String
+  percent      Int?
+  chunkIndex   Int?
+  transcriptId String?
+  errorMsg     String?
+  createdAt    DateTime @default(now())
+  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
+  @@index([userId, createdAt])
 }
 
 // ============================================================================

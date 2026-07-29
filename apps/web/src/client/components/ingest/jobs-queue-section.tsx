@@ -232,7 +232,7 @@ function JobRow({
         variant={variant}
         className="hidden shrink-0 min-w-28 justify-center text-center sm:inline-flex"
       >
-        {isActive ? stageLabel(stage, t) : label}
+        {isActive ? stageLabel(stage, t, job.type) : label}
       </Badge>
       <div className="flex-1 min-w-0 space-y-1.5">
         <p className="text-sm text-[var(--color-app-fg)] truncate font-medium tracking-tight font-display">
@@ -257,7 +257,7 @@ function JobRow({
         ) : (
           <div className="flex min-w-0 items-center gap-2">
             <Badge variant={variant} className="shrink-0 sm:hidden">
-              {isActive ? stageLabel(stage, t) : label}
+              {isActive ? stageLabel(stage, t, job.type) : label}
             </Badge>
             <p className="text-xs text-[var(--color-app-muted)] truncate">
               {job.finishedAt

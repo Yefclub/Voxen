@@ -25,6 +25,12 @@ import { researchWeb } from '../web-research';
 import { buildAgentClockInstructions, buildInstanceClock } from '../app-timezone';
 import { parseTemporalBounds } from './temporal-bounds';
 import {
+  buildUrlIntentInstructions,
+  classifyUrlIntent,
+  isSharedUrl,
+  type UrlIntent,
+} from './url-intent';
+import {
   healStaleRunningInSegments,
   healStaleRunningTools,
   isToolErrorOutput,
@@ -69,11 +75,10 @@ const AGENT_INSTRUCTIONS = [
   'web_search; para posts, threads e tendências no X, use search_x. Nunca alegue genericamente',
   'que não possui internet: se uma ferramenta não estiver configurada, informe qual modelo falta.',
   '',
-  'Se o usuário compartilhar uma URL (vídeo do YouTube/Instagram/TikTok/X ou página web) que',
-  'não aparecer em search_transcripts, ela ainda não está no acervo: use',
-  'request_transcription(url). A ferramenta aguarda a ingestão e devolve resumo, tags e conteúdos',
-  'relacionados. Responda somente depois de receber esse brief. Leia a transcrição completa apenas',
-  'se o resumo não bastar para a pergunta.',
+  'Para uma URL compartilhada, siga a política específica do turno. Com intenção explícita de',
+  'transcrever, resumir, analisar, salvar ou organizar o conteúdo, use request_transcription(url)',
+  'para a própria URL — nunca substitua o conteúdo por web_search ou search_x. Sem uma ação',
+  'explícita, pergunte o que o usuário quer fazer com o link antes de agir.',
   '',
   'Quando propor criar uma nota (propose_create_note), a interface pedirá confirmação ao usuário',
   'e o turno será pausado. Não tente criar a nota de outro modo nem repita a ferramenta no mesmo',
@@ -392,7 +397,11 @@ const temporalListInputSchema = z.object({
 
 export function buildTools(
   userId: string,
-  options: { abortSignal?: AbortSignal; emitStatus?: (label: string) => void } = {},
+  options: {
+    abortSignal?: AbortSignal;
+    emitStatus?: (label: string) => void;
+    urlIntent?: UrlIntent;
+  } = {},
 ) {
   return {
     list_transcripts: tool({
@@ -503,16 +512,24 @@ export function buildTools(
         'Pesquisa a web atual usando o modelo configurado e devolve síntese com citações URL. ' +
         'Use para notícias, documentação, fatos recentes e fontes fora da biblioteca.',
       inputSchema: z.object({ query: z.string().min(1).max(1_000) }),
-      execute: async ({ query }, execution) =>
-        researchWeb(userId, query, 'web', execution.abortSignal ?? options.abortSignal),
+      execute: async ({ query }, execution) => {
+        if (options.urlIntent?.kind !== undefined && options.urlIntent.kind !== 'none') {
+          return { error: 'Uma URL compartilhada neste turno precisa seguir a política de URL.' };
+        }
+        return researchWeb(userId, query, 'web', execution.abortSignal ?? options.abortSignal);
+      },
     }),
     search_x: tool({
       description:
         'Pesquisa publicações e threads do X usando o Modelo de análise do X (Grok) configurado. ' +
         'Use quando o usuário pedir conteúdo, tendências ou opiniões publicadas no X.',
       inputSchema: z.object({ query: z.string().min(1).max(1_000) }),
-      execute: async ({ query }, execution) =>
-        researchWeb(userId, query, 'x', execution.abortSignal ?? options.abortSignal),
+      execute: async ({ query }, execution) => {
+        if (options.urlIntent?.kind !== undefined && options.urlIntent.kind !== 'none') {
+          return { error: 'Uma URL compartilhada neste turno precisa seguir a política de URL.' };
+        }
+        return researchWeb(userId, query, 'x', execution.abortSignal ?? options.abortSignal);
+      },
     }),
     outline_transcript: tool({
       description:
@@ -706,6 +723,18 @@ export function buildTools(
         url: z.string().min(1).max(2048),
       }),
       execute: async ({ url }, execution) => {
+        if (options.urlIntent?.kind === 'ambiguous') {
+          return {
+            outcome: 'clarification-required' as const,
+            error: 'O usuário enviou uma URL sem informar o que deseja fazer com ela.',
+          };
+        }
+        if (options.urlIntent?.kind === 'explicit-ingest' && !isSharedUrl(options.urlIntent, url)) {
+          return {
+            outcome: 'error' as const,
+            error: 'A URL solicitada não corresponde à URL compartilhada neste turno.',
+          };
+        }
         const toolSignal = execution.abortSignal ?? options.abortSignal;
         try {
           const result = await createAutoJobForUser(userId, url);
@@ -1394,9 +1423,10 @@ export async function streamAssistantReply(options: {
   const segments: StoredMessageSegment[] = [];
   const suggestions = buildLibrarySuggestionsInstructions(relevant);
   const clock = buildAgentClockInstructions(buildInstanceClock(new Date(), timezone));
+  const urlIntent = classifyUrlIntent(content);
   const result = streamText({
     model: provider(modelConfig.model),
-    instructions: AGENT_INSTRUCTIONS + clock + suggestions,
+    instructions: AGENT_INSTRUCTIONS + clock + suggestions + buildUrlIntentInstructions(urlIntent),
     // AI SDK 7 rejects role:system inside `messages` unless opted in. Our
     // SYSTEM rows (compaction summaries, HITL responses) are server-authored
     // only — never from the client — so allowing them preserves trusted history.
@@ -1405,6 +1435,16 @@ export async function streamAssistantReply(options: {
     tools: buildTools(userId, {
       abortSignal,
       emitStatus: (label) => emit({ type: 'status', label }),
+      urlIntent,
+    }),
+    // A intenção explícita de processar o link não depende da obediência ao
+    // prompt: só o primeiro passo precisa chamar a ingestão. Depois do brief,
+    // os passos seguintes voltam a `auto` para que o modelo possa responder.
+    prepareStep: ({ stepNumber }) => ({
+      toolChoice:
+        urlIntent.kind === 'explicit-ingest' && stepNumber === 0
+          ? { type: 'tool', toolName: 'request_transcription' }
+          : 'auto',
     }),
     // Structural HITL pause (spec 090 / AI SDK toolApproval): do not execute
     // propose_create_note; emit tool-approval-request and end the turn.
