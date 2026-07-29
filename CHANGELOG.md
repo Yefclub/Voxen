@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.0-dev.1785340742 — 2026-07-29 · Dev
+
+### ✨ Chat mobile e ingestão de links mais confiáveis
+
+- Melhora a abertura do menu no mobile, a biblioteca de notas e as telas de atualizações.
+- Mostra o andamento real de transcrições e análises, inclusive após reconectar a página.
+- Trata links enviados no chat de acordo com a intenção: processa quando solicitado e pede esclarecimento quando necessário.
+
 ## v0.13.0-dev.1785219429 — 2026-07-28 · Dev
 
 ### 🐛 Chat mais estável, rápido e confiável
