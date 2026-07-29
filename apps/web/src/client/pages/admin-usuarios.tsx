@@ -15,6 +15,7 @@ import { formatRelative } from '../lib/format';
 import { PageShell } from '../components/ui/page-shell';
 import { useI18n, type TranslateFn } from '../lib/i18n';
 import { TimezoneSelect } from '../components/timezone-select';
+import { DataSurface } from '../components/ui/data-surface';
 
 interface InstanceResponse {
   allowSignups: boolean;
@@ -225,7 +226,7 @@ export function AdminUsuariosPage(): React.ReactElement {
           )}
 
           {!loading && pending.length > 0 && (
-            <Card>
+            <DataSurface>
               <ul className="divide-y divide-[var(--color-app-border)]">
                 {pending.map((u) => (
                   <li
@@ -270,7 +271,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                   </li>
                 ))}
               </ul>
-            </Card>
+            </DataSurface>
           )}
         </section>
 
@@ -288,7 +289,7 @@ export function AdminUsuariosPage(): React.ReactElement {
           )}
 
           {!loading && others.length > 0 && (
-            <Card>
+            <DataSurface>
               <ul className="divide-y divide-[var(--color-app-border)]">
                 {others.map((u) => (
                   <li
@@ -323,7 +324,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                   </li>
                 ))}
               </ul>
-            </Card>
+            </DataSurface>
           )}
         </section>
       </div>

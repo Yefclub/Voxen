@@ -116,10 +116,3 @@ export function PageHeader({
     </header>
   );
 }
-
-export function PageSection({
-  className,
-  ...props
-}: HTMLAttributes<HTMLElement>): React.ReactElement {
-  return <section data-page-reveal className={cn('min-w-0 space-y-3', className)} {...props} />;
-}

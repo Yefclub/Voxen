@@ -83,6 +83,7 @@ export function SidebarModeBody({
   hideHome?: boolean;
 }): React.ReactElement {
   const location = useLocation();
+  const reduceMotion = useReducedMotion();
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN').filter(
     (n) => !hideHome || n.to !== '/',
   );
@@ -92,9 +93,9 @@ export function SidebarModeBody({
   return (
     <motion.div
       key={`${mode}-mode`}
-      initial={{ opacity: 0 }}
+      initial={reduceMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
       className="flex-1 flex flex-col min-h-0"
     >
       {mode === 'notas' ? (
@@ -110,6 +111,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const location = useLocation();
   const { collapsed, setCollapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
+  const reduceMotion = useReducedMotion();
 
   // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
   // seu corpo modo-aware (que monta os hooks pesados de notas) NÃO
@@ -136,10 +138,12 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
       <AnimatePresence>
         {!collapsed && (
           <motion.aside
-            initial={{ x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
+            initial={reduceMotion ? false : { x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+            exit={reduceMotion ? { opacity: 0 } : { x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
+            transition={
+              reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }
+            }
             className="hidden md:flex fixed top-4 bottom-4 left-4 z-40 flex-col rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl overflow-hidden"
             style={{ width: SIDEBAR_WIDTH }}
           >
@@ -311,6 +315,7 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
 
 function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): React.ReactElement {
   const { t } = useI18n();
+  const reduceMotion = useReducedMotion();
   return (
     <nav className="flex-1 p-3 overflow-y-auto">
       <ul className="space-y-0.5">
@@ -322,9 +327,11 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
             <li key={to} className="relative">
               {isActive && (
                 <motion.div
-                  layoutId="sidebar-pill"
+                  layoutId={reduceMotion ? undefined : 'sidebar-pill'}
                   className="absolute inset-0 rounded-lg bg-[var(--color-app-surface-hover)] border border-[var(--color-app-border-strong)]"
-                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  transition={
+                    reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 30 }
+                  }
                 />
               )}
               <NavLink
@@ -346,9 +353,13 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
                 <span className="truncate">{t(labelKey)}</span>
                 {isActive && (
                   <motion.span
-                    layoutId="sidebar-active-dot"
+                    layoutId={reduceMotion ? undefined : 'sidebar-active-dot'}
                     className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    transition={
+                      reduceMotion
+                        ? { duration: 0 }
+                        : { type: 'spring', stiffness: 380, damping: 30 }
+                    }
                   />
                 )}
               </NavLink>
@@ -373,6 +384,7 @@ function NotasModeBody({
 }): React.ReactElement {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const reduceMotion = useReducedMotion();
   const { create } = useNotes();
   const [creating, setCreating] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -446,10 +458,10 @@ function NotasModeBody({
         <AnimatePresence initial={false}>
           {menuOpen && (
             <motion.ul
-              initial={{ height: 0, opacity: 0 }}
+              initial={reduceMotion ? false : { height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2 }}
               className="overflow-hidden px-3 pb-3 space-y-0.5"
             >
               {items
@@ -476,6 +488,7 @@ function NotasModeBody({
 export function SidebarSpacer(): React.ReactElement | null {
   const { collapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
+  const reduceMotion = useReducedMotion();
   // No mobile não há sidebar montada — sem spacer (evita reservar largura).
   if (!isDesktop) return null;
   const width = collapsed ? RAIL_WIDTH + 16 : SIDEBAR_WIDTH + 32;
@@ -484,7 +497,7 @@ export function SidebarSpacer(): React.ReactElement | null {
       className="hidden md:block shrink-0"
       animate={{ width }}
       initial={false}
-      transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+      transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }}
       aria-hidden
     />
   );
