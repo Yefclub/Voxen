@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785351539",
+    "channel": "dev",
+    "type": "feat",
+    "title": "OpenRouter pronta para uso com uma única chave",
+    "body": "O onboarding agora pede somente a chave da OpenRouter e configura\nautomaticamente os modelos recomendados para conversa, transcrição, imagens,\ndocumentos, pesquisa e conteúdo do X. O administrador continua podendo trocar\ncada modelo depois na página de Configuração.\n\nPDFs passam a usar o parser Mistral OCR pela OpenRouter. A geração automática de\ntags também ficou mais confiável: respostas estruturadas evitam tags vazias e\nconteúdos incompletos entram numa reconciliação em segundo plano, com tentativas\nlimitadas e diagnóstico preservado.",
+    "pr": 470,
+    "author": "Kalyel",
+    "date": "2026-07-29T15:58:46-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/470"
+  },
+  {
     "version": "0.13.0-dev.1785340742",
     "channel": "dev",
     "type": "feat",
