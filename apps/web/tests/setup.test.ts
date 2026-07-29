@@ -132,6 +132,75 @@ describeIfDb('setup flow', () => {
     expect(status.complete).toBe(true);
   });
 
+  it('onboarding com somente a key persiste automaticamente os modelos recomendados', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    installFetchMock(async (input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      if (url.endsWith('/api/v1/key')) {
+        return new Response('{}', { status: 200 });
+      }
+      if (url.includes('output_modalities=transcription')) {
+        return Response.json({ data: [{ id: 'x-ai/grok-stt-1.0', name: 'Grok STT' }] });
+      }
+      return Response.json({
+        data: [
+          {
+            id: 'x-ai/grok-4.5',
+            name: 'Grok 4.5',
+            architecture: {
+              input_modalities: ['text', 'image', 'file'],
+              output_modalities: ['text'],
+            },
+          },
+        ],
+      });
+    });
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/setup', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ openrouter_api_key: VALID_KEY }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    await expect(getSetting('default_chat_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_transcription_model')).resolves.toBe('x-ai/grok-stt-1.0');
+    await expect(getSetting('default_web_search_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_vision_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_document_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_x_analysis_model')).resolves.toBe('x-ai/grok-4.5');
+  });
+
+  it('onboarding não persiste configuração parcial quando um modelo padrão não existe', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    installFetchMock(async (input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      if (url.endsWith('/api/v1/key')) {
+        return new Response('{}', { status: 200 });
+      }
+      return Response.json({ data: [] });
+    });
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/setup', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ openrouter_api_key: VALID_KEY }),
+      }),
+    );
+
+    expect(res.status).toBe(422);
+    expect(await db.setting.count({ where: { scope: 'GLOBAL' } })).toBe(0);
+  });
+
   it('admin pode persistir idioma da plataforma', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
@@ -201,7 +270,7 @@ describeIfDb('setup flow', () => {
       new Request('http://localhost/api/setup', { headers: { cookie } }),
     );
     const clearedStatus = (await clearedStatusRes.json()) as { xAnalysisModel: string | null };
-    expect(clearedStatus.xAnalysisModel).toBeNull();
+    expect(clearedStatus.xAnalysisModel).toBe('x-ai/grok-4.5');
   });
 
   it('admin com key inválida → 400 PT-BR e nada persiste', async () => {

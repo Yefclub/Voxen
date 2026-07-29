@@ -24,6 +24,7 @@ import { AnimatedPage } from '../components/motion/animated-page';
 import { ModelPicker } from '../components/model-picker';
 import { LOCALES, useI18n, type Locale } from '../lib/i18n';
 import { detectBrowserTimezone, TimezoneSelect } from '../components/timezone-select';
+import { DEFAULT_TEXT_MODEL, DEFAULT_TRANSCRIPTION_MODEL } from '../../lib/model-defaults';
 
 interface ModelsResponse {
   chat: OrModel[];
@@ -105,8 +106,14 @@ export function SetupPage(): React.ReactElement {
         if (!s.chatModel) {
           setChatModel(preferredChatModel(data.chat)?.id ?? data.chat[0]?.id ?? '');
         }
+        if (!s.webSearchModel) {
+          setWebSearchModel(preferredChatModel(data.web)?.id ?? data.web[0]?.id ?? '');
+        }
+        if (!s.visionModel) {
+          setVisionModel(preferredChatModel(data.vision)?.id ?? data.vision[0]?.id ?? '');
+        }
         if (!s.documentModel) {
-          setDocumentModel(data.document[0]?.id ?? '');
+          setDocumentModel(preferredChatModel(data.document)?.id ?? data.document[0]?.id ?? '');
         }
         if (!s.xAnalysisModel) {
           setXAnalysisModel(preferredXModel(data.xAnalysis)?.id ?? data.xAnalysis[0]?.id ?? '');
@@ -152,7 +159,15 @@ export function SetupPage(): React.ReactElement {
         setTranscriptionModel(preferredTranscriptionModel(data.transcription)?.id ?? '');
       }
       if (!chatModel) setChatModel(preferredChatModel(data.chat)?.id ?? data.chat[0]?.id ?? '');
-      if (!documentModel) setDocumentModel(data.document[0]?.id ?? '');
+      if (!webSearchModel) {
+        setWebSearchModel(preferredChatModel(data.web)?.id ?? data.web[0]?.id ?? '');
+      }
+      if (!visionModel) {
+        setVisionModel(preferredChatModel(data.vision)?.id ?? data.vision[0]?.id ?? '');
+      }
+      if (!documentModel) {
+        setDocumentModel(preferredChatModel(data.document)?.id ?? data.document[0]?.id ?? '');
+      }
       if (!xAnalysisModel) {
         setXAnalysisModel(preferredXModel(data.xAnalysis)?.id ?? data.xAnalysis[0]?.id ?? '');
       }
@@ -176,7 +191,15 @@ export function SetupPage(): React.ReactElement {
         setTranscriptionModel(preferredTranscriptionModel(data.transcription)?.id ?? '');
       }
       if (!chatModel) setChatModel(preferredChatModel(data.chat)?.id ?? data.chat[0]?.id ?? '');
-      if (!documentModel) setDocumentModel(data.document[0]?.id ?? '');
+      if (!webSearchModel) {
+        setWebSearchModel(preferredChatModel(data.web)?.id ?? data.web[0]?.id ?? '');
+      }
+      if (!visionModel) {
+        setVisionModel(preferredChatModel(data.vision)?.id ?? data.vision[0]?.id ?? '');
+      }
+      if (!documentModel) {
+        setDocumentModel(preferredChatModel(data.document)?.id ?? data.document[0]?.id ?? '');
+      }
       if (!xAnalysisModel) {
         setXAnalysisModel(preferredXModel(data.xAnalysis)?.id ?? data.xAnalysis[0]?.id ?? '');
       }
@@ -631,8 +654,7 @@ export function SetupPage(): React.ReactElement {
 
 function preferredXModel(models: OrModel[]): OrModel | undefined {
   return (
-    models.find((m) => m.id === 'x-ai/grok-4-fast:free') ??
-    models.find((m) => m.id.toLowerCase().includes('grok-4-fast')) ??
+    models.find((m) => m.id === DEFAULT_TEXT_MODEL) ??
     models.find((m) => m.id.toLowerCase().includes('grok-4')) ??
     models.find((m) => m.id.toLowerCase().includes('grok'))
   );
@@ -640,21 +662,14 @@ function preferredXModel(models: OrModel[]): OrModel | undefined {
 
 function preferredTranscriptionModel(models: OrModel[]): OrModel | undefined {
   return (
-    models.find((m) => m.id.toLowerCase().includes('whisper-large-v3-turbo')) ??
+    models.find((m) => m.id === DEFAULT_TRANSCRIPTION_MODEL) ??
     models.find((m) => m.id.toLowerCase().includes('whisper')) ??
     models[0]
   );
 }
 
 function preferredChatModel(models: OrModel[]): OrModel | undefined {
-  return (
-    models.find((m) => m.id === 'google/gemini-3.1-flash-lite') ??
-    models.find(
-      (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
-    ) ??
-    models.find((m) => m.id.toLowerCase().includes('sonnet')) ??
-    models[0]
-  );
+  return models.find((m) => m.id === DEFAULT_TEXT_MODEL) ?? models[0];
 }
 
 function PageHeader({

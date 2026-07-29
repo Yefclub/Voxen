@@ -1013,19 +1013,35 @@ async def _maybe_store_embedding(
 async def _maybe_generate_tags(
     *,
     user_id: str,
-    job_id: str,
+    job_id: str | None,
     transcript_id: str,
     log: Any,  # noqa: ANN401
+    already_claimed: bool = False,
 ) -> None:
     """Gera e persiste tags se o conteúdo ainda não tiver nenhuma (auto-ingest)."""
+    if not already_claimed:
+        try:
+            await db.start_tag_enrichment(transcript_id)
+        except Exception as e:  # noqa: BLE001
+            log.warning(
+                "tags-status-start-failed",
+                transcript_id=transcript_id,
+                error=str(e)[:240],
+            )
     try:
         row = await db.get_transcript_title_summary_folder(transcript_id)
         if not row:
+            await _finish_tag_enrichment_safely(
+                transcript_id=transcript_id, status="SKIPPED", error=None, log=log
+            )
             return
         title, content, folder_id = row
         clean = content.strip()
         if len(clean) < 40 and len(title.strip()) < 3:
             log.info("tags-skipped-short", transcript_id=transcript_id)
+            await _finish_tag_enrichment_safely(
+                transcript_id=transcript_id, status="SKIPPED", error=None, log=log
+            )
             return
         # Só auto-preenche quando ainda não há tags (lote/manual re-gera na UI).
         existing_on_tx = await db.list_transcript_tag_names(transcript_id)
@@ -1035,11 +1051,20 @@ async def _maybe_generate_tags(
                 transcript_id=transcript_id,
                 count=len(existing_on_tx),
             )
+            await _finish_tag_enrichment_safely(
+                transcript_id=transcript_id, status="COMPLETE", error=None, log=log
+            )
             return
         api_key = await voxen_settings.get_openrouter_api_key()
         model = await voxen_settings.get_default_chat_model()
         if not api_key or not model:
             log.warning("tags-skipped-missing-config", transcript_id=transcript_id)
+            await _finish_tag_enrichment_safely(
+                transcript_id=transcript_id,
+                status="RETRY",
+                error="Configuração OpenRouter ausente.",
+                log=log,
+            )
             return
         existing_tags = await db.list_tag_names(user_id)
         language = await voxen_settings.get_app_language()
@@ -1066,6 +1091,12 @@ async def _maybe_generate_tags(
         )
         if not result.tags:
             log.info("tags-empty", transcript_id=transcript_id)
+            await _finish_tag_enrichment_safely(
+                transcript_id=transcript_id,
+                status="RETRY",
+                error="O modelo não retornou tags válidas.",
+                log=log,
+            )
             return
         applied = await db.apply_tags_to_transcript(
             user_id=user_id,
@@ -1079,10 +1110,40 @@ async def _maybe_generate_tags(
             tags=applied,
             count=len(applied),
         )
+        await _finish_tag_enrichment_safely(
+            transcript_id=transcript_id,
+            status="COMPLETE" if applied else "RETRY",
+            error=None if applied else "Nenhuma tag pôde ser persistida.",
+            log=log,
+        )
     except Exception as e:  # noqa: BLE001 — tags são enriquecimento best-effort
+        await _finish_tag_enrichment_safely(
+            transcript_id=transcript_id,
+            status="RETRY",
+            error=str(e),
+            log=log,
+        )
         log.warning(
             "tags-generation-failed",
             transcript_id=transcript_id,
+            error=str(e)[:240],
+        )
+
+
+async def _finish_tag_enrichment_safely(
+    *,
+    transcript_id: str,
+    status: str,
+    error: str | None,
+    log: Any,  # noqa: ANN401
+) -> None:
+    try:
+        await db.finish_tag_enrichment(transcript_id, status=status, error=error)
+    except Exception as e:  # noqa: BLE001
+        log.warning(
+            "tags-status-finish-failed",
+            transcript_id=transcript_id,
+            status=status,
             error=str(e)[:240],
         )
 

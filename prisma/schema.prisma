@@ -195,6 +195,14 @@ enum ContentStatus {
   TRASH
 }
 
+enum EnrichmentStatus {
+  PENDING
+  RUNNING
+  COMPLETE
+  RETRY
+  SKIPPED
+}
+
 model Transcript {
   id                  String              @id @default(cuid())
   userId              String              // == workspace_id
@@ -223,6 +231,11 @@ model Transcript {
   plainText           String              @db.Text
   // Resumo gerado pela IA em markdown (pode ser null se ainda não gerado)
   summaryMd           String?             @db.Text
+  taggingStatus       EnrichmentStatus    @default(PENDING)
+  taggingAttempts     Int                 @default(0)
+  taggingStartedAt    DateTime?
+  taggingNextAttemptAt DateTime?
+  taggingError        String?
   // Frontmatter como JSONB pra filtros estruturados
   frontmatter         Json
   // tsvector gerenciado por trigger SQL (ver migration). Não declarável em Prisma; usar Unsupported.
@@ -246,6 +259,7 @@ model Transcript {
   @@index([userId, folderId])
   @@index([userId, source])
   @@index([userId, language])
+  @@index([taggingStatus, taggingNextAttemptAt])
   // Índice GIN no tsvector criado via SQL na migration
 }
 

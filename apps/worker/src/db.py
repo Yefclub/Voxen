@@ -1104,6 +1104,107 @@ async def list_transcript_tag_names(transcript_id: str) -> list[str]:
     return [str(row["name"]) for row in rows if row["name"]]
 
 
+async def start_tag_enrichment(transcript_id: str) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE "Transcript"
+            SET "taggingStatus" = 'RUNNING'::"EnrichmentStatus",
+                "taggingAttempts" = "taggingAttempts" + 1,
+                "taggingStartedAt" = NOW(),
+                "taggingError" = NULL
+            WHERE id = $1
+            """,
+            transcript_id,
+        )
+
+
+async def claim_pending_tag_enrichments(limit: int = 10) -> list[dict[str, Any]]:
+    """Reserva conteúdos sem tags para retry/backfill sem duplicar processamento."""
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            WITH candidates AS (
+                SELECT t.id
+                FROM "Transcript" t
+                WHERE t.status = 'ACTIVE'::"ContentStatus"
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM "TranscriptTag" tt
+                    WHERE tt."transcriptId" = t.id
+                  )
+                  AND (
+                    t."taggingStatus" IN (
+                      'PENDING'::"EnrichmentStatus",
+                      'RETRY'::"EnrichmentStatus"
+                    )
+                    OR (
+                      t."taggingStatus" = 'RUNNING'::"EnrichmentStatus"
+                      AND t."taggingStartedAt" < NOW() - INTERVAL '15 minutes'
+                    )
+                  )
+                  AND (
+                    t."taggingNextAttemptAt" IS NULL
+                    OR t."taggingNextAttemptAt" <= NOW()
+                  )
+                ORDER BY t."createdAt" ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT $1
+            )
+            UPDATE "Transcript" t
+            SET "taggingStatus" = 'RUNNING'::"EnrichmentStatus",
+                "taggingAttempts" = t."taggingAttempts" + 1,
+                "taggingStartedAt" = NOW(),
+                "taggingError" = NULL
+            FROM candidates
+            WHERE t.id = candidates.id
+            RETURNING
+              t.id,
+              t."userId",
+              (
+                SELECT j.id
+                FROM "Job" j
+                WHERE j."transcriptId" = t.id
+                LIMIT 1
+              ) AS "jobId"
+            """,
+            limit,
+        )
+    return [dict(row) for row in rows]
+
+
+async def finish_tag_enrichment(
+    transcript_id: str,
+    *,
+    status: str,
+    error: str | None = None,
+) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE "Transcript"
+            SET "taggingStatus" = CASE
+                  WHEN $2::text = 'RETRY' AND "taggingAttempts" >= 6
+                  THEN 'SKIPPED'::"EnrichmentStatus"
+                  ELSE $2::"EnrichmentStatus"
+                END,
+                "taggingStartedAt" = NULL,
+                "taggingNextAttemptAt" = CASE
+                  WHEN $2::text = 'RETRY' AND "taggingAttempts" < 6
+                  THEN NOW() + (
+                    LEAST(3600, 60 * POWER(2, LEAST("taggingAttempts", 6))) * INTERVAL '1 second'
+                  )
+                  ELSE NULL
+                END,
+                "taggingError" = $3
+            WHERE id = $1
+            """,
+            transcript_id,
+            status,
+            (error or "")[:500] or None,
+        )
+
+
 async def get_transcript_title_summary_folder(
     transcript_id: str,
 ) -> tuple[str, str, str | None] | None:
