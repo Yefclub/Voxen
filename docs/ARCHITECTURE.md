@@ -159,9 +159,12 @@ worker --socks5h://127.0.0.1:1080--> chisel server (voxen-app)
 2. User acessa /cadastro, preenche nome+email+senha
 3. Backend: count(users) == 0 → marca admin=true, status=approved
 4. Login → redireciona pra /setup (obrigatório enquanto Settings.GLOBAL.openrouter_api_key == null)
-5. Admin cola OR API key, escolhe modelos default → salva cifrado em Settings
+5. Admin cola apenas a OR API key; o backend valida o catálogo disponível para essa chave e salva, na mesma transação, a chave cifrada e os modelos recomendados
 6. Sistema pronto pra receber outros cadastros (pending)
 ```
+
+Depois do onboarding, o admin ainda pode ajustar individualmente os modelos em
+`/admin/configuracao`. O fluxo inicial permanece propositalmente simples.
 
 Spec completa: `.specs/000-setup-inicial.md`.
 

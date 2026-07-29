@@ -561,6 +561,7 @@ async def reindex_missing_transcript_brain_nodes(limit: int = 50) -> int:
               ON n."userId" = t."userId"
              AND n.key = CONCAT('TRANSCRIPT:', t.id)
             WHERE n.id IS NULL
+               OR n."updatedAt" < t."updatedAt"
                OR (
                     t.status = 'ACTIVE'::"ContentStatus"
                 AND COALESCE(n.metadata->>'topicIndexVersion', '') <> $1
@@ -1089,22 +1090,157 @@ async def list_tag_names(user_id: str) -> list[str]:
     return [str(row["name"]) for row in rows if row["name"]]
 
 
-async def list_transcript_tag_names(transcript_id: str) -> list[str]:
+async def list_transcript_tag_names(user_id: str, transcript_id: str) -> list[str]:
     async with connection() as conn:
         rows = await conn.fetch(
             """
             SELECT t.name
             FROM "TranscriptTag" tt
             JOIN "Tag" t ON t.id = tt."tagId"
-            WHERE tt."transcriptId" = $1
+            JOIN "Transcript" tr ON tr.id = tt."transcriptId"
+            WHERE tr."userId" = $1
+              AND t."userId" = $1
+              AND tt."transcriptId" = $2
             ORDER BY tt."createdAt" ASC
             """,
+            user_id,
             transcript_id,
         )
     return [str(row["name"]) for row in rows if row["name"]]
 
 
+async def start_tag_enrichment(user_id: str, transcript_id: str) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE "Transcript"
+            SET "taggingStatus" = 'RUNNING'::"EnrichmentStatus",
+                "taggingAttempts" = "taggingAttempts" + 1,
+                "taggingStartedAt" = NOW(),
+                "taggingError" = NULL
+            WHERE "userId" = $1
+              AND id = $2
+              AND "taggingAttempts" < 6
+            """,
+            user_id,
+            transcript_id,
+        )
+
+
+async def claim_pending_tag_enrichments(limit: int = 10) -> list[dict[str, Any]]:
+    """Reserva conteúdos sem tags para retry/backfill sem duplicar processamento."""
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            WITH exhausted AS (
+                UPDATE "Transcript"
+                SET "taggingStatus" = 'SKIPPED'::"EnrichmentStatus",
+                    "taggingStartedAt" = NULL,
+                    "taggingNextAttemptAt" = NULL,
+                    "taggingError" = COALESCE(
+                      "taggingError",
+                      'Limite de 6 tentativas de tags atingido.'
+                    )
+                WHERE "taggingAttempts" >= 6
+                  AND (
+                    "taggingStatus" IN (
+                      'PENDING'::"EnrichmentStatus",
+                      'RETRY'::"EnrichmentStatus"
+                    )
+                    OR (
+                      "taggingStatus" = 'RUNNING'::"EnrichmentStatus"
+                      AND "taggingStartedAt" < NOW() - INTERVAL '15 minutes'
+                    )
+                  )
+                RETURNING id
+            ),
+            candidates AS (
+                SELECT t.id
+                FROM "Transcript" t
+                WHERE t.status = 'ACTIVE'::"ContentStatus"
+                  AND t."taggingAttempts" < 6
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM "TranscriptTag" tt
+                    WHERE tt."transcriptId" = t.id
+                  )
+                  AND (
+                    t."taggingStatus" IN (
+                      'PENDING'::"EnrichmentStatus",
+                      'RETRY'::"EnrichmentStatus"
+                    )
+                    OR (
+                      t."taggingStatus" = 'RUNNING'::"EnrichmentStatus"
+                      AND t."taggingStartedAt" < NOW() - INTERVAL '15 minutes'
+                    )
+                  )
+                  AND (
+                    t."taggingNextAttemptAt" IS NULL
+                    OR t."taggingNextAttemptAt" <= NOW()
+                  )
+                ORDER BY t."createdAt" ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT $1
+            )
+            UPDATE "Transcript" t
+            SET "taggingStatus" = 'RUNNING'::"EnrichmentStatus",
+                "taggingAttempts" = t."taggingAttempts" + 1,
+                "taggingStartedAt" = NOW(),
+                "taggingError" = NULL
+            FROM candidates
+            WHERE t.id = candidates.id
+            RETURNING
+              t.id,
+              t."userId",
+              (
+                SELECT j.id
+                FROM "Job" j
+                WHERE j."transcriptId" = t.id
+                LIMIT 1
+              ) AS "jobId"
+            """,
+            limit,
+        )
+    return [dict(row) for row in rows]
+
+
+async def finish_tag_enrichment(
+    user_id: str,
+    transcript_id: str,
+    *,
+    status: str,
+    error: str | None = None,
+) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE "Transcript"
+            SET "taggingStatus" = CASE
+                  WHEN $3::text = 'RETRY' AND "taggingAttempts" >= 6
+                  THEN 'SKIPPED'::"EnrichmentStatus"
+                  ELSE $3::"EnrichmentStatus"
+                END,
+                "taggingStartedAt" = NULL,
+                "taggingNextAttemptAt" = CASE
+                  WHEN $3::text = 'RETRY' AND "taggingAttempts" < 6
+                  THEN NOW() + (
+                    LEAST(3600, 60 * POWER(2, LEAST("taggingAttempts", 6))) * INTERVAL '1 second'
+                  )
+                  ELSE NULL
+                END,
+                "taggingError" = $4
+            WHERE "userId" = $1
+              AND id = $2
+            """,
+            user_id,
+            transcript_id,
+            status,
+            (error or "")[:500] or None,
+        )
+
+
 async def get_transcript_title_summary_folder(
+    user_id: str,
     transcript_id: str,
 ) -> tuple[str, str, str | None] | None:
     """title, content (summaryMd or plainText), folderId — para auto-tags."""
@@ -1113,8 +1249,9 @@ async def get_transcript_title_summary_folder(
             """
             SELECT title, "plainText", "summaryMd", "folderId"
             FROM "Transcript"
-            WHERE id = $1
+            WHERE "userId" = $1 AND id = $2
             """,
+            user_id,
             transcript_id,
         )
     if not row:
@@ -1144,6 +1281,20 @@ async def apply_tags_to_transcript(
     first_folder_id: str | None = None
 
     async with connection() as conn:
+        owns_transcript = await conn.fetchval(
+            """
+            SELECT EXISTS (
+              SELECT 1
+              FROM "Transcript"
+              WHERE "userId" = $1 AND id = $2
+            )
+            """,
+            user_id,
+            transcript_id,
+        )
+        if not owns_transcript:
+            return []
+
         for raw_name in tag_names:
             name = " ".join((raw_name or "").split()).strip()[:120]
             if not name:
@@ -1170,10 +1321,11 @@ async def apply_tags_to_transcript(
                     await conn.execute(
                         """
                         UPDATE "Tag" SET "folderId" = $2, "updatedAt" = NOW()
-                        WHERE id = $1
+                        WHERE id = $1 AND "userId" = $3
                         """,
                         tag_id,
                         folder_id,
+                        user_id,
                     )
                 else:
                     folder_id = str(folder_id)
@@ -1212,15 +1364,26 @@ async def apply_tags_to_transcript(
                     tag_name = str(raced["name"])
                     folder_id = str(raced["folderId"] or folder_id)
 
-            await conn.execute(
+            linked = await conn.fetchval(
                 """
                 INSERT INTO "TranscriptTag" ("transcriptId", "tagId", "createdAt")
-                VALUES ($1, $2, NOW())
-                ON CONFLICT ("transcriptId", "tagId") DO NOTHING
+                SELECT tr.id, tag.id, NOW()
+                FROM "Transcript" tr
+                JOIN "Tag" tag
+                  ON tag.id = $3
+                 AND tag."userId" = $1
+                WHERE tr.id = $2
+                  AND tr."userId" = $1
+                ON CONFLICT ("transcriptId", "tagId") DO UPDATE
+                  SET "createdAt" = "TranscriptTag"."createdAt"
+                RETURNING 1
                 """,
+                user_id,
                 transcript_id,
                 tag_id,
             )
+            if not linked:
+                continue
             applied.append(tag_name)
             if first_folder_id is None:
                 first_folder_id = folder_id

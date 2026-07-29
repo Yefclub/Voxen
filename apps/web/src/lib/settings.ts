@@ -113,16 +113,30 @@ export async function getDefaultXAnalysisModel(): Promise<string | null> {
 }
 
 export async function setSetting(key: GlobalSettingKey, value: string): Promise<void> {
-  const valueEnc = encrypt(value, getMasterKey());
+  await setSettings({ [key]: value });
+}
+
+export async function setSettings(
+  values: Partial<Record<GlobalSettingKey, string>>,
+): Promise<void> {
+  const entries = Object.entries(values).filter(
+    (entry): entry is [GlobalSettingKey, string] => typeof entry[1] === 'string',
+  );
+  if (entries.length === 0) return;
+  const masterKey = getMasterKey();
   await db.$transaction(async (tx) => {
-    const existing = await tx.setting.findFirst({
-      where: { scope: 'GLOBAL', userId: null, key },
-      select: { id: true },
-    });
-    if (existing) {
-      await tx.setting.update({ where: { id: existing.id }, data: { valueEnc } });
-    } else {
-      await tx.setting.create({ data: { scope: 'GLOBAL', userId: null, key, valueEnc } });
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
+    for (const [key, value] of entries) {
+      const valueEnc = encrypt(value, masterKey);
+      const existing = await tx.setting.findFirst({
+        where: { scope: 'GLOBAL', userId: null, key },
+        select: { id: true },
+      });
+      if (existing) {
+        await tx.setting.update({ where: { id: existing.id }, data: { valueEnc } });
+      } else {
+        await tx.setting.create({ data: { scope: 'GLOBAL', userId: null, key, valueEnc } });
+      }
     }
   });
 }

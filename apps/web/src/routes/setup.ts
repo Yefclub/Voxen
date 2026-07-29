@@ -19,8 +19,6 @@ import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
 import {
-  deleteDefaultXAnalysisModel,
-  deleteSetting,
   getAppLanguage,
   getAppTimezone,
   getDefaultXAnalysisModel,
@@ -28,10 +26,17 @@ import {
   isSetupComplete,
   setDefaultXAnalysisModel,
   setSetting,
+  setSettings,
 } from '../lib/settings';
+import {
+  DEFAULT_OPENROUTER_MODELS,
+  DEFAULT_TEXT_MODEL,
+  DEFAULT_TRANSCRIPTION_MODEL,
+} from '../lib/model-defaults';
 import {
   validateApiKey,
   listModels,
+  listUserModels,
   listVisionModels,
   listDocumentModels,
   listXAnalysisModels,
@@ -172,14 +177,13 @@ const SaveBody = z.object({
   app_timezone: z.string().min(1).max(64).optional(),
   // opcional pra permitir trocar só os modelos sem reenviar a key
   openrouter_api_key: z.string().min(20).optional(),
-  default_chat_model: z.string().min(1),
-  default_transcription_model: z.string().min(1),
-  // Opcional: modelo dedicado a pesquisa web. Fallback é `default_chat_model`
-  // com a server tool `openrouter:web_search`. String vazia = limpar setting.
+  default_chat_model: z.string().min(1).optional(),
+  default_transcription_model: z.string().min(1).optional(),
+  // Opcional: modelo dedicado a pesquisa web. String vazia restaura o padrão.
   default_web_search_model: z.string().optional(),
-  // Opcional: modelo multimodal pra entender imagens (vision). Vazio = limpar.
+  // Opcional: modelo multimodal pra entender imagens. Vazio restaura o padrão.
   default_vision_model: z.string().optional(),
-  // Opcional: modelo que aceita PDF/arquivo nativamente para documentos.
+  // Opcional: modelo que aceita PDF/arquivo nativamente. Vazio restaura o padrão.
   default_document_model: z.string().optional(),
   // Opcional: modelo Grok/xAI para analisar posts/threads do X via busca nativa.
   default_x_analysis_model: z.string().optional(),
@@ -201,6 +205,14 @@ setupRoutes.post('/', async (c) => {
     app_language,
     app_timezone,
   } = parsed.data;
+  const isAutomaticSetup =
+    openrouter_api_key !== undefined &&
+    default_chat_model === undefined &&
+    default_transcription_model === undefined;
+
+  if ((default_chat_model === undefined) !== (default_transcription_model === undefined)) {
+    return c.json({ error: 'Informe os modelos de texto e transcrição juntos.' }, 400);
+  }
 
   if (app_timezone !== undefined && !isValidIanaTimezone(app_timezone)) {
     return c.json({ error: 'Timezone IANA inválido.' }, 400);
@@ -219,7 +231,51 @@ setupRoutes.post('/', async (c) => {
     if (valid === null) {
       return c.json({ error: 'Falha ao contatar a OpenRouter. Tente novamente.' }, 502);
     }
-    await setSetting('openrouter_api_key', openrouter_api_key);
+    if (isAutomaticSetup) {
+      let availableModels: Awaited<ReturnType<typeof listUserModels>>;
+      try {
+        availableModels = await listUserModels(openrouter_api_key);
+      } catch (err) {
+        if (err instanceof OpenrouterError) {
+          return c.json({ error: 'Falha ao validar os modelos padrão na OpenRouter.' }, 502);
+        }
+        throw err;
+      }
+      const textDefault = availableModels.find((model) => model.id === DEFAULT_TEXT_MODEL);
+      const transcriptionDefault = availableModels.find(
+        (model) => model.id === DEFAULT_TRANSCRIPTION_MODEL,
+      );
+      const textInputs = textDefault?.architecture?.input_modalities ?? [];
+      const textOutputs = textDefault?.architecture?.output_modalities ?? [];
+      const transcriptionOutputs = transcriptionDefault?.architecture?.output_modalities ?? [];
+      const textCapabilitiesValid =
+        textInputs.includes('text') &&
+        textInputs.includes('image') &&
+        textInputs.includes('file') &&
+        textOutputs.includes('text');
+      const transcriptionCapabilitiesValid = transcriptionOutputs.includes('transcription');
+      if (
+        !textDefault ||
+        !transcriptionDefault ||
+        !textCapabilitiesValid ||
+        !transcriptionCapabilitiesValid
+      ) {
+        return c.json(
+          {
+            error:
+              'Os modelos padrão da Voxen não estão disponíveis para esta chave. Tente novamente ou configure-os na área administrativa.',
+          },
+          422,
+        );
+      }
+      await setSettings({
+        openrouter_api_key,
+        ...DEFAULT_OPENROUTER_MODELS,
+        ...(app_language !== undefined ? { app_language } : {}),
+        ...(app_timezone !== undefined ? { app_timezone: normalizeAppTimezone(app_timezone) } : {}),
+      });
+      return c.json({ complete: true, automaticModels: DEFAULT_OPENROUTER_MODELS });
+    }
   } else {
     // Sem key no payload — precisa existir uma cifrada de antes
     const existing = await getSetting('openrouter_api_key');
@@ -231,34 +287,39 @@ setupRoutes.post('/', async (c) => {
     }
   }
 
-  await setSetting('default_chat_model', default_chat_model);
-  await setSetting('default_transcription_model', default_transcription_model);
-  // Modelos opcionais: string vazia/undefined = limpar (volta pro fallback);
-  // qualquer outra = persiste.
+  if (!default_chat_model || !default_transcription_model) {
+    return c.json({ error: 'Informe os modelos de texto e transcrição.' }, 400);
+  }
+  await setSettings({
+    ...(openrouter_api_key ? { openrouter_api_key } : {}),
+    default_chat_model,
+    default_transcription_model,
+  });
+  // Modelos opcionais: string vazia restaura o padrão; undefined preserva o atual.
   if (default_web_search_model !== undefined) {
     if (default_web_search_model.trim() === '') {
-      await deleteSetting('default_web_search_model');
+      await setSetting('default_web_search_model', DEFAULT_TEXT_MODEL);
     } else {
       await setSetting('default_web_search_model', default_web_search_model);
     }
   }
   if (default_vision_model !== undefined) {
     if (default_vision_model.trim() === '') {
-      await deleteSetting('default_vision_model');
+      await setSetting('default_vision_model', DEFAULT_TEXT_MODEL);
     } else {
       await setSetting('default_vision_model', default_vision_model);
     }
   }
   if (default_document_model !== undefined) {
     if (default_document_model.trim() === '') {
-      await deleteSetting('default_document_model');
+      await setSetting('default_document_model', DEFAULT_TEXT_MODEL);
     } else {
       await setSetting('default_document_model', default_document_model);
     }
   }
   if (default_x_analysis_model !== undefined) {
     if (default_x_analysis_model.trim() === '') {
-      await deleteDefaultXAnalysisModel();
+      await setDefaultXAnalysisModel(DEFAULT_TEXT_MODEL);
     } else {
       await setDefaultXAnalysisModel(default_x_analysis_model);
     }

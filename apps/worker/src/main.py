@@ -20,7 +20,7 @@ import structlog
 
 from . import automation, db, events, ytdl
 from .cancellation import cancel_subscriber
-from .pipeline import process_job
+from .pipeline import _maybe_generate_tags, process_job
 
 log = structlog.get_logger(__name__)
 
@@ -74,9 +74,28 @@ async def _reconciliation_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> N
         except Exception:  # noqa: BLE001
             log.exception("brain-reconciliation-failed")
         try:
+            pending_tags = await _reconcile_tags_once()
+            if pending_tags:
+                log.info("tag-reconciliation-processed", count=pending_tags)
+        except Exception:  # noqa: BLE001
+            log.exception("tag-reconciliation-failed")
+        try:
             await asyncio.wait_for(stop.wait(), timeout=RECONCILIATION_INTERVAL_SEC)
         except TimeoutError:
             continue
+
+
+async def _reconcile_tags_once(limit: int = 10) -> int:
+    pending_tags = await db.claim_pending_tag_enrichments(limit=limit)
+    for item in pending_tags:
+        await _maybe_generate_tags(
+            user_id=item["userId"],
+            job_id=item.get("jobId"),
+            transcript_id=item["id"],
+            log=log,
+            already_claimed=True,
+        )
+    return len(pending_tags)
 
 
 async def _process_automation_run(sem: asyncio.Semaphore, run_id: str) -> None:

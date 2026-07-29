@@ -251,7 +251,7 @@ async def analyze_pdf_native(
     model: str,
     client: httpx.AsyncClient | None = None,
 ) -> DocumentAnalysisResult:
-    """Analisa PDF enviado nativamente à OpenRouter usando engine `native`."""
+    """Analisa PDF pela OpenRouter usando o parser especializado Mistral OCR."""
     data_url = "data:application/pdf;base64," + base64.b64encode(pdf_path.read_bytes()).decode(
         "ascii"
     )
@@ -277,7 +277,7 @@ async def analyze_pdf_native(
         plugins=[
             {
                 "id": "file-parser",
-                "pdf": {"engine": "native"},
+                "pdf": {"engine": "mistral-ocr"},
             }
         ],
     )

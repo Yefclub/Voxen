@@ -9,6 +9,7 @@ import httpx
 from src.openrouter import (
     _resolve_folder_decision,
     _resolve_title_decision,
+    analyze_pdf_native,
     analyze_x_url,
     classify_content_folder,
     generate_content_title,
@@ -71,6 +72,22 @@ async def test_analyze_x_url_uses_native_x_search_with_media_understanding() -> 
         "enable_image_understanding": True,
         "enable_video_understanding": True,
     }
+
+
+async def test_analyze_pdf_uses_mistral_ocr_parser(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "documento.pdf"
+    pdf_path.write_bytes(b"%PDF-1.7 fake")
+    client = CaptureClient()
+
+    await analyze_pdf_native(
+        pdf_path=pdf_path,
+        api_key="sk-test",
+        model="x-ai/grok-4.5",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert client.payload is not None
+    assert client.payload["plugins"] == [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}]
 
 
 async def test_generate_content_title_uses_short_title_payload() -> None:

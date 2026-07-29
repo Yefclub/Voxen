@@ -1115,9 +1115,9 @@ const ptBRMessages = {
   'onboarding.connection.eyebrow': '03 · Conexão',
   'onboarding.connection.title': 'Conecte com a OpenRouter',
   'onboarding.connection.sub':
-    'Uma chave dá acesso aos modelos de transcrição (Whisper) e ao agente que conversa com sua biblioteca.',
+    'Informe a chave e a Vox configura automaticamente texto, transcrição, imagens e documentos. Você pode trocar os modelos depois em Configuração.',
   'onboarding.keyCta': 'Não tem chave? Gerar agora',
-  'onboarding.validateContinue': 'Validar e continuar',
+  'onboarding.validateContinue': 'Configurar e continuar',
   'onboarding.models.eyebrow': '04 · Modelos',
   'onboarding.models.title': 'Escolha os modelos padrão',
   'onboarding.models.sub':
@@ -1199,16 +1199,16 @@ const ptBRMessages = {
   'setup.models.chat': 'Modelo de chat',
   'setup.models.web': 'Modelo de pesquisa web (opcional)',
   'setup.models.webHint':
-    'Tool web_search usa este modelo com openrouter:web_search. Vazio = usa o de chat.',
+    'A ferramenta web_search usa este modelo com openrouter:web_search. Vazio restaura o padrão recomendado.',
   'setup.models.vision': 'Modelo de visão (opcional)',
   'setup.models.visionHint':
-    'Pra entender imagens enviadas no chat. Vazio = uploads ficam desabilitados.',
+    'Para entender imagens enviadas no chat. Vazio restaura o padrão recomendado.',
   'setup.models.documents': 'Modelo de documentos/PDF (opcional)',
   'setup.models.documentsHint':
-    'Filtrado por modelos OpenRouter com entrada nativa de arquivo/PDF. Vazio = upload de documentos fica desabilitado.',
+    'Filtrado por modelos OpenRouter com entrada nativa de arquivo/PDF. Vazio restaura o padrão recomendado.',
   'setup.models.x': 'Modelo de análise do X (Grok)',
   'setup.models.xHint':
-    'Posts do X usam Grok/xAI com busca nativa no X. Vazio = tenta análise pela extração de mídia quando houver mídia pública.',
+    'Posts do X usam Grok/xAI com busca nativa no X. Vazio restaura o padrão recomendado.',
   'setup.save': 'Salvar configurações',
   'setup.error.load': 'Erro ao carregar configuração.',
   'setup.error.key': 'Erro ao validar chave.',
@@ -2306,9 +2306,9 @@ const enMessages: Record<I18nKey, string> = {
   'onboarding.connection.eyebrow': '03 · Connection',
   'onboarding.connection.title': 'Connect OpenRouter',
   'onboarding.connection.sub':
-    'One key gives access to transcription models (Whisper) and the agent that chats with your library.',
+    'Enter the key and Vox automatically configures text, transcription, images, and documents. You can change models later in Settings.',
   'onboarding.keyCta': 'No key yet? Generate one now',
-  'onboarding.validateContinue': 'Validate and continue',
+  'onboarding.validateContinue': 'Configure and continue',
   'onboarding.models.eyebrow': '04 · Models',
   'onboarding.models.title': 'Choose default models',
   'onboarding.models.sub':
@@ -2387,16 +2387,16 @@ const enMessages: Record<I18nKey, string> = {
   'setup.models.chat': 'Chat model',
   'setup.models.web': 'Web search model (optional)',
   'setup.models.webHint':
-    'The web_search tool uses this model with openrouter:web_search. Empty = use the chat model.',
+    'The web_search tool uses this model with openrouter:web_search. Empty restores the recommended default.',
   'setup.models.vision': 'Vision model (optional)',
   'setup.models.visionHint':
-    'For understanding images sent in chat. Empty = uploads stay disabled.',
+    'For understanding images sent in chat. Empty restores the recommended default.',
   'setup.models.documents': 'Document/PDF model (optional)',
   'setup.models.documentsHint':
-    'Filtered by OpenRouter models with native file/PDF input. Empty = document uploads stay disabled.',
+    'Filtered by OpenRouter models with native file/PDF input. Empty restores the recommended default.',
   'setup.models.x': 'X analysis model (Grok)',
   'setup.models.xHint':
-    'X posts use Grok/xAI with native X search. Empty = tries media extraction analysis when public media is available.',
+    'X posts use Grok/xAI with native X search. Empty restores the recommended default.',
   'setup.save': 'Save settings',
   'setup.error.load': 'Error loading configuration.',
   'setup.error.key': 'Error validating key.',

@@ -83,6 +83,28 @@ export async function listModels(
 }
 
 /**
+ * Lista somente modelos roteáveis para a chave, já considerando preferências
+ * de provedores, privacidade e guardrails da conta.
+ */
+export async function listUserModels(key: string, fetcher: Fetcher = fetch): Promise<OrModel[]> {
+  let res: Response;
+  try {
+    res = await fetcher(`${OR_BASE_URL}/models/user`, {
+      headers: { authorization: `Bearer ${key}` },
+    });
+  } catch (err) {
+    throw new OpenrouterError(
+      `Falha ao contatar OpenRouter: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (!res.ok) {
+    throw new OpenrouterError(`OpenRouter retornou status ${res.status}`, res.status);
+  }
+  const body = (await res.json()) as { data?: OrModel[] };
+  return Array.isArray(body.data) ? body.data : [];
+}
+
+/**
  * Lista modelos multimodais (aceitam imagem como entrada). Usado na análise
  * de imagens enviadas como mídia. Filtra `input_modalities=image,text` direto
  * na OR.

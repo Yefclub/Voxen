@@ -660,35 +660,16 @@ async def _run_document_pipeline(
         _check_cancel(job_id)
         await events.publish_job_event(user_id, job_id, "analyzing_document", percent=30)
         result: Any
-        parser = "openrouter-native-pdf"
         if document_ingest.is_pdf(doc_path):
-
-            async def _do_native_pdf() -> Any:
-                return await analyze_pdf_native(pdf_path=doc_path, api_key=api_key, model=model)
-
-            try:
-                result = await _retry_transient_or(_do_native_pdf, tries=2)
-            except RuntimeError as e:
-                log.warning("document-native-pdf-fallback-markitdown", error=str(e)[:240])
-                await events.publish_job_event(user_id, job_id, "converting_document", percent=25)
-                try:
-                    extracted = await document_ingest.convert_to_markdown(doc_path)
-                except RuntimeError as e:
-                    raise PermanentError(
-                        "Não foi possível extrair texto deste PDF. "
-                        "Tente um PDF com texto selecionável ou envie outro formato."
-                    ) from e
-                parser = "markitdown"
-
-                async def _do_text_pdf() -> Any:
-                    return await analyze_document_text(
-                        markdown=extracted.markdown,
-                        filename=ref.filename,
-                        api_key=api_key,
-                        model=model,
-                    )
-
-                result = await _retry_transient_or(_do_text_pdf, tries=3)
+            result, parser = await _analyze_pdf_with_fallback(
+                pdf_path=doc_path,
+                filename=ref.filename,
+                api_key=api_key,
+                model=model,
+                user_id=user_id,
+                job_id=job_id,
+                log=log,
+            )
         else:
             await events.publish_job_event(user_id, job_id, "converting_document", percent=20)
             try:
@@ -773,6 +754,43 @@ async def _run_document_pipeline(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
     log.info("document-job-done", transcript_id=new_transcript_id)
+
+
+async def _analyze_pdf_with_fallback(
+    *,
+    pdf_path: Path,
+    filename: str,
+    api_key: str,
+    model: str,
+    user_id: str,
+    job_id: str,
+    log: Any,  # noqa: ANN401
+) -> tuple[Any, str]:
+    async def _do_mistral_pdf() -> Any:
+        return await analyze_pdf_native(pdf_path=pdf_path, api_key=api_key, model=model)
+
+    try:
+        return await _retry_transient_or(_do_mistral_pdf, tries=2), "openrouter-mistral-ocr"
+    except (OpenrouterTransientError, RuntimeError) as exc:
+        log.warning("document-mistral-pdf-fallback-markitdown", error=str(exc)[:240])
+        await events.publish_job_event(user_id, job_id, "converting_document", percent=25)
+        try:
+            extracted = await document_ingest.convert_to_markdown(pdf_path)
+        except RuntimeError as conversion_error:
+            raise PermanentError(
+                "Não foi possível extrair texto deste PDF. "
+                "Tente um PDF com texto selecionável ou envie outro formato."
+            ) from conversion_error
+
+        async def _do_text_pdf() -> Any:
+            return await analyze_document_text(
+                markdown=extracted.markdown,
+                filename=filename,
+                api_key=api_key,
+                model=model,
+            )
+
+        return await _retry_transient_or(_do_text_pdf, tries=3), "markitdown"
 
 
 async def _run_x_analysis_pipeline(
@@ -911,7 +929,7 @@ async def _maybe_grounded_brain_extract(
     try:
         from . import brain_extract
 
-        row = await db.get_transcript_title_summary_folder(transcript_id)
+        row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
         if not row:
             return
         title, content, _folder = row
@@ -979,7 +997,7 @@ async def _maybe_store_embedding(
             return
         from . import embeddings
 
-        row = await db.get_transcript_title_summary_folder(transcript_id)
+        row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
         if not row:
             return
         title, content, _folder = row
@@ -1013,33 +1031,59 @@ async def _maybe_store_embedding(
 async def _maybe_generate_tags(
     *,
     user_id: str,
-    job_id: str,
+    job_id: str | None,
     transcript_id: str,
     log: Any,  # noqa: ANN401
+    already_claimed: bool = False,
 ) -> None:
     """Gera e persiste tags se o conteúdo ainda não tiver nenhuma (auto-ingest)."""
+    if not already_claimed:
+        try:
+            await db.start_tag_enrichment(user_id, transcript_id)
+        except Exception as e:  # noqa: BLE001
+            log.warning(
+                "tags-status-start-failed",
+                transcript_id=transcript_id,
+                error=str(e)[:240],
+            )
     try:
-        row = await db.get_transcript_title_summary_folder(transcript_id)
+        row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
         if not row:
+            await _finish_tag_enrichment_safely(
+                user_id=user_id, transcript_id=transcript_id, status="SKIPPED", error=None, log=log
+            )
             return
         title, content, folder_id = row
         clean = content.strip()
         if len(clean) < 40 and len(title.strip()) < 3:
             log.info("tags-skipped-short", transcript_id=transcript_id)
+            await _finish_tag_enrichment_safely(
+                user_id=user_id, transcript_id=transcript_id, status="SKIPPED", error=None, log=log
+            )
             return
         # Só auto-preenche quando ainda não há tags (lote/manual re-gera na UI).
-        existing_on_tx = await db.list_transcript_tag_names(transcript_id)
+        existing_on_tx = await db.list_transcript_tag_names(user_id, transcript_id)
         if existing_on_tx:
             log.info(
                 "tags-skipped-already-present",
                 transcript_id=transcript_id,
                 count=len(existing_on_tx),
             )
+            await _finish_tag_enrichment_safely(
+                user_id=user_id, transcript_id=transcript_id, status="COMPLETE", error=None, log=log
+            )
             return
         api_key = await voxen_settings.get_openrouter_api_key()
         model = await voxen_settings.get_default_chat_model()
         if not api_key or not model:
             log.warning("tags-skipped-missing-config", transcript_id=transcript_id)
+            await _finish_tag_enrichment_safely(
+                user_id=user_id,
+                transcript_id=transcript_id,
+                status="RETRY",
+                error="Configuração OpenRouter ausente.",
+                log=log,
+            )
             return
         existing_tags = await db.list_tag_names(user_id)
         language = await voxen_settings.get_app_language()
@@ -1066,6 +1110,13 @@ async def _maybe_generate_tags(
         )
         if not result.tags:
             log.info("tags-empty", transcript_id=transcript_id)
+            await _finish_tag_enrichment_safely(
+                user_id=user_id,
+                transcript_id=transcript_id,
+                status="RETRY",
+                error="O modelo não retornou tags válidas.",
+                log=log,
+            )
             return
         applied = await db.apply_tags_to_transcript(
             user_id=user_id,
@@ -1079,10 +1130,43 @@ async def _maybe_generate_tags(
             tags=applied,
             count=len(applied),
         )
+        await _finish_tag_enrichment_safely(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            status="COMPLETE" if applied else "RETRY",
+            error=None if applied else "Nenhuma tag pôde ser persistida.",
+            log=log,
+        )
     except Exception as e:  # noqa: BLE001 — tags são enriquecimento best-effort
+        await _finish_tag_enrichment_safely(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            status="RETRY",
+            error=str(e),
+            log=log,
+        )
         log.warning(
             "tags-generation-failed",
             transcript_id=transcript_id,
+            error=str(e)[:240],
+        )
+
+
+async def _finish_tag_enrichment_safely(
+    *,
+    user_id: str,
+    transcript_id: str,
+    status: str,
+    error: str | None,
+    log: Any,  # noqa: ANN401
+) -> None:
+    try:
+        await db.finish_tag_enrichment(user_id, transcript_id, status=status, error=error)
+    except Exception as e:  # noqa: BLE001
+        log.warning(
+            "tags-status-finish-failed",
+            transcript_id=transcript_id,
+            status=status,
             error=str(e)[:240],
         )
 
