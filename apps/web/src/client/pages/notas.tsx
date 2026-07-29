@@ -8,7 +8,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Eye, EyeOff, FileText, FolderPlus, Library, Loader2, Plus, Save } from '@/components/ui/icons';
+import {
+  Eye,
+  EyeOff,
+  FileText,
+  FolderPlus,
+  Library,
+  Loader2,
+  Plus,
+  Save,
+} from '@/components/ui/icons';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';

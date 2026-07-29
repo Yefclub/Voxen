@@ -1,4 +1,12 @@
-import { CheckCircle2, Download, Link2, Puzzle, RefreshCw, Sparkles, Zap } from '@/components/ui/icons';
+import {
+  CheckCircle2,
+  Download,
+  Link2,
+  Puzzle,
+  RefreshCw,
+  Sparkles,
+  Zap,
+} from '@/components/ui/icons';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { Button } from '../components/ui/button';
 import { useI18n } from '../lib/i18n';

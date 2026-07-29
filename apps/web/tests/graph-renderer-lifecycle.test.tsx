@@ -42,8 +42,7 @@ const MotionElementMock = forwardRef(function MotionElementMock(
   return React.createElement('motion-element-mock', { ...props, ref }, children);
 });
 
-const StaticIconMock = (props: Record<string, unknown>) =>
-  React.createElement('icon-mock', props);
+const StaticIconMock = (props: Record<string, unknown>) => React.createElement('icon-mock', props);
 
 mock.module('motion/react', () => ({
   motion: { div: MotionElementMock, svg: MotionElementMock },
