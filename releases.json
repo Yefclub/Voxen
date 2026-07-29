@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785340742",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Chat mobile e ingestão de links mais confiáveis",
+    "body": "- Melhora a abertura do menu no mobile, a biblioteca de notas e as telas de atualizações.\n- Mostra o andamento real de transcrições e análises, inclusive após reconectar a página.\n- Trata links enviados no chat de acordo com a intenção: processa quando solicitado e pede esclarecimento quando necessário.",
+    "pr": 467,
+    "author": "Kalyel",
+    "date": "2026-07-29T12:58:48-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/467"
+  },
+  {
     "version": "0.13.0-dev.1785219429",
     "channel": "dev",
     "type": "fix",
