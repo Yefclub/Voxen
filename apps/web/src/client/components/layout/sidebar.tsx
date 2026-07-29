@@ -451,7 +451,11 @@ function NotasModeBody({
           className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors"
         >
           <ChevronDown
-            className={cn('h-3 w-3 transition-transform', menuOpen ? '' : 'rotate-180')}
+            className={cn(
+              'h-3 w-3',
+              !reduceMotion && 'transition-transform',
+              menuOpen ? '' : 'rotate-180',
+            )}
           />
           {t('shell.menu')}
         </button>

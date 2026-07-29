@@ -42,7 +42,7 @@ deve adotar esses princípios sem copiar marca ou assets do Linear.
 
 - When um usuário sem tema válido abrir a aplicação, the system shall aplicar o
   tema `linear` sem flash do tema legado.
-- When um ícone interativo receber hover ou foco, the system shall poder animar
+- When um ícone interativo receber hover, the system shall poder animar
   sem alterar layout ou área de toque.
 - When o sistema detectar preferência por movimento reduzido, the system shall
   desabilitar animações decorativas de ícones e transições GSAP.

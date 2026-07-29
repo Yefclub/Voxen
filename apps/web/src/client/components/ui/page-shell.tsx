@@ -3,17 +3,16 @@ import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 import { useReducedMotion } from 'motion/react';
 import { cn } from '../../lib/utils';
+import {
+  PAGE_SHELL_WIDTHS,
+  safelyRunAnimation,
+  shouldAnimateDecoration,
+} from '../../lib/interface-foundation';
 
 gsap.registerPlugin(useGSAP);
 
-const WIDTHS = {
-  reading: 'max-w-4xl',
-  workspace: 'max-w-7xl',
-  wide: 'max-w-[1600px]',
-} as const;
-
 interface PageShellProps extends HTMLAttributes<HTMLDivElement> {
-  width?: keyof typeof WIDTHS;
+  width?: keyof typeof PAGE_SHELL_WIDTHS;
   animate?: boolean;
 }
 
@@ -33,7 +32,7 @@ export function PageShell({
 
   useGSAP(
     () => {
-      if (!animate || reduceMotion) return;
+      if (!shouldAnimateDecoration(reduceMotion, animate)) return;
       const directChildren = root.current ? Array.from(root.current.children) : [];
       const contentRoot =
         directChildren.length === 1 && directChildren[0]?.hasAttribute('data-page-content')
@@ -42,18 +41,20 @@ export function PageShell({
       const targets = contentRoot ? Array.from(contentRoot.children) : directChildren;
       if (!targets?.length) return;
 
-      gsap.fromTo(
-        targets,
-        { autoAlpha: 0, y: 10 },
-        {
-          autoAlpha: 1,
-          y: 0,
-          duration: 0.38,
-          stagger: 0.055,
-          ease: 'power3.out',
-          clearProps: 'opacity,transform,visibility',
-        },
-      );
+      safelyRunAnimation(() => {
+        gsap.fromTo(
+          targets,
+          { autoAlpha: 0, y: 10 },
+          {
+            autoAlpha: 1,
+            y: 0,
+            duration: 0.38,
+            stagger: 0.055,
+            ease: 'power3.out',
+            clearProps: 'opacity,transform,visibility',
+          },
+        );
+      });
     },
     { scope: root, dependencies: [animate, reduceMotion], revertOnUpdate: true },
   );
@@ -63,7 +64,7 @@ export function PageShell({
       ref={root}
       className={cn(
         'mx-auto w-full space-y-6 px-4 py-5 sm:space-y-8 sm:px-7 sm:py-9 xl:px-10',
-        WIDTHS[width],
+        PAGE_SHELL_WIDTHS[width],
         className,
       )}
       {...props}

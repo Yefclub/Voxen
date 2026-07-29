@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import {
+  ANIMATED_ICON_FALLBACKS,
+  ANIMATED_ICON_FRAME_CLASS,
+  PAGE_SHELL_WIDTHS,
+  safelyRunAnimation,
+  shouldAnimateDecoration,
+} from '../src/client/lib/interface-foundation';
 
 const WEB_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -43,8 +50,14 @@ describe('fundação visual Linear', () => {
     expect(packageJson.dependencies?.['lucide-react']).toBeUndefined();
     expect(icons).toContain("from '@animateicons/react/lucide'");
     expect(icons).toContain('const reduceMotion = useReducedMotion()');
-    expect(icons).toContain('isAnimated: isAnimated ?? !reduceMotion');
-    expect(icons).toContain('[&_svg]:h-full [&_svg]:w-full');
+    expect(icons).toContain('shouldAnimateDecoration(reduceMotion, isAnimated)');
+    expect(shouldAnimateDecoration(false)).toBe(true);
+    expect(shouldAnimateDecoration(true)).toBe(false);
+    expect(shouldAnimateDecoration(false, false)).toBe(false);
+    expect(ANIMATED_ICON_FRAME_CLASS).toContain('[&_svg]:h-full [&_svg]:w-full');
+    expect(ANIMATED_ICON_FRAME_CLASS).not.toContain('pointer-events');
+    expect(ANIMATED_ICON_FALLBACKS.BrainCircuit).toBe('Brain');
+    expect(Object.keys(ANIMATED_ICON_FALLBACKS).length).toBeGreaterThan(10);
   });
 
   test('desliga timelines e springs decorativos quando movimento reduzido está ativo', () => {
@@ -52,7 +65,7 @@ describe('fundação visual Linear', () => {
     const sidebar = read('src/client/components/layout/sidebar.tsx');
     const drawer = read('src/client/components/layout/mobile-nav-drawer.tsx');
 
-    expect(pageShell).toContain('if (!animate || reduceMotion) return');
+    expect(pageShell).toContain('shouldAnimateDecoration(reduceMotion, animate)');
     expect(sidebar.match(/useReducedMotion\(\)/g)?.length).toBeGreaterThanOrEqual(5);
     expect(sidebar).toContain("reduceMotion ? { duration: 0 } : { type: 'spring'");
     expect(sidebar).toContain("layoutId={reduceMotion ? undefined : 'sidebar-pill'}");
@@ -71,19 +84,33 @@ describe('fundação visual Linear', () => {
   });
 
   test('adota os primitives de página e dados nas telas administrativas', () => {
-    const pageShell = read('src/client/components/ui/page-shell.tsx');
     const dataSurface = read('src/client/components/ui/data-surface.tsx');
     const integrations = read('src/client/pages/admin-integracoes.tsx');
     const users = read('src/client/pages/admin-usuarios.tsx');
     const costs = read('src/client/pages/admin-custos.tsx');
 
-    expect(pageShell).toContain("wide: 'max-w-[1600px]'");
-    expect(pageShell).toContain("reading: 'max-w-4xl'");
+    expect(PAGE_SHELL_WIDTHS.wide).toBe('max-w-[1600px]');
+    expect(PAGE_SHELL_WIDTHS.reading).toBe('max-w-4xl');
+    expect(Object.values(PAGE_SHELL_WIDTHS).every((value) => value.startsWith('max-w-'))).toBe(
+      true,
+    );
     expect(dataSurface).toContain('export const DataSurface');
     expect(integrations).toContain('<PageHeader');
     expect(integrations).toContain('<PageShell width="workspace">');
     expect(users).toContain('<DataSurface>');
     expect(users).toContain('<PageShell width="wide">');
     expect(costs).toContain('<PageShell width="wide">');
+  });
+
+  test('mantém os controles utilizáveis quando a timeline não pode iniciar', () => {
+    const controlVisible = true;
+
+    expect(
+      safelyRunAnimation(() => {
+        throw new Error('GSAP indisponível');
+      }),
+    ).toBe(false);
+
+    expect(controlVisible).toBe(true);
   });
 });

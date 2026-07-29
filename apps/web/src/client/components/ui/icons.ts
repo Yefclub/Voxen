@@ -1,6 +1,8 @@
 import { createElement, type ComponentType, type HTMLAttributes } from 'react';
 import { useReducedMotion } from 'motion/react';
 import { cn } from '../../lib/utils';
+import { ANIMATED_ICON_FRAME_CLASS, shouldAnimateDecoration } from '../../lib/interface-foundation';
+export { ANIMATED_ICON_FALLBACKS } from '../../lib/interface-foundation';
 import {
   AArrowUpIcon,
   BlocksIcon,
@@ -103,8 +105,8 @@ function accessibleIcon(icon: ComponentType<AnimatedIconProps>): AnimatedIcon {
     const reduceMotion = useReducedMotion();
     return createElement(icon, {
       ...props,
-      className: cn('shrink-0 [&_svg]:h-full [&_svg]:w-full', className),
-      isAnimated: isAnimated ?? !reduceMotion,
+      className: cn(ANIMATED_ICON_FRAME_CLASS, className),
+      isAnimated: shouldAnimateDecoration(reduceMotion, isAnimated),
     });
   }
 
@@ -113,7 +115,7 @@ function accessibleIcon(icon: ComponentType<AnimatedIconProps>): AnimatedIcon {
 }
 
 // Quando o catálogo ainda não oferece um desenho exato, usamos o equivalente
-// animado semanticamente mais próximo e mantemos a decisão neste arquivo.
+// animado semanticamente mais próximo, documentado por ANIMATED_ICON_FALLBACKS.
 export const Box = accessibleIcon(BoxIcon);
 export const Calendar = accessibleIcon(CalendarIcon);
 export const Check = accessibleIcon(CheckIcon);
