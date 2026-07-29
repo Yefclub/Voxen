@@ -22,7 +22,7 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   Workflow,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import type { MeUser } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
@@ -62,7 +62,7 @@ export const NAV: NavItem[] = [
   { to: '/setup', labelKey: 'shell.nav.settings', Icon: SettingsIcon, adminOnly: true },
 ];
 
-const SIDEBAR_WIDTH = 264;
+const SIDEBAR_WIDTH = 288;
 const RAIL_WIDTH = 60;
 
 /**

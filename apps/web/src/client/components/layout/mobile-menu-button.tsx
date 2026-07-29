@@ -1,4 +1,4 @@
-import { PanelLeftOpen } from 'lucide-react';
+import { PanelLeftOpen } from '@/components/ui/icons';
 import { useI18n } from '../../lib/i18n';
 
 /**

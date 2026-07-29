@@ -11,7 +11,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import { toast } from 'sonner';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { Markdown } from '../components/ui/markdown';

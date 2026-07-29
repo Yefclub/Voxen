@@ -42,9 +42,33 @@ const MotionElementMock = forwardRef(function MotionElementMock(
   return React.createElement('motion-element-mock', { ...props, ref }, children);
 });
 
+const StaticIconMock = (props: Record<string, unknown>) =>
+  React.createElement('icon-mock', props);
+
 mock.module('motion/react', () => ({
   motion: { div: MotionElementMock, svg: MotionElementMock },
   useReducedMotion: () => true,
+}));
+
+mock.module('@/components/ui/icons', () => ({
+  AlertTriangle: StaticIconMock,
+  ArrowLeft: StaticIconMock,
+  Box: StaticIconMock,
+  BrainCircuit: StaticIconMock,
+  ChevronRight: StaticIconMock,
+  ExternalLink: StaticIconMock,
+  Focus: StaticIconMock,
+  Layers3: StaticIconMock,
+  Loader2: StaticIconMock,
+  Network: StaticIconMock,
+  PanelLeft: StaticIconMock,
+  RefreshCw: StaticIconMock,
+  RotateCw: StaticIconMock,
+  Search: StaticIconMock,
+  Square: StaticIconMock,
+  X: StaticIconMock,
+  ZoomIn: StaticIconMock,
+  ZoomOut: StaticIconMock,
 }));
 
 mock.module('reagraph', () => ({

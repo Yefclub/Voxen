@@ -23,8 +23,8 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        background_color: '#212121',
-        theme_color: '#212121',
+        background_color: '#111113',
+        theme_color: '#111113',
         categories: ['productivity', 'education', 'utilities'],
         icons: [
           {

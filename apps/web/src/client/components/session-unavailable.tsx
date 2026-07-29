@@ -1,4 +1,4 @@
-import { RefreshCw, WifiOff } from 'lucide-react';
+import { RefreshCw, WifiOff } from '@/components/ui/icons';
 import { useEffect, useState } from 'react';
 import { Button } from './ui/button';
 import { useI18n } from '../lib/i18n';

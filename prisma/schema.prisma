@@ -52,8 +52,8 @@ model User {
   // Voxen-specific
   status          UserStatus @default(PENDING)
   role            UserRole   @default(USER)
-  // UI theme: zinc (default gray) | emerald (green-tint dark) | light
-  theme           String     @default("zinc")
+  // UI theme: linear (default) | zinc | emerald | light
+  theme           String     @default("linear")
   monthlyBudgetUsd Decimal?  @db.Decimal(10, 4) // null = sem limite
   approvedAt      DateTime?
   approvedBy      String?

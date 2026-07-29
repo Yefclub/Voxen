@@ -16,7 +16,7 @@
 // deixamos o tema zinc ser governado pelos seletores descendentes do wrapper.
 import { memo, useEffect, useRef, useState } from 'react';
 import { Streamdown, type Components, type ExtraProps } from 'streamdown';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy } from '@/components/ui/icons';
 import { cn } from '../../lib/utils';
 import { useI18n } from '../../lib/i18n';
 
@@ -141,7 +141,7 @@ const components: Components = {
   // Wrapper com scroll-x: sob `overflow-x: clip` global, tabela larga seria
   // cortada no mobile em vez de rolar.
   table: (p) => (
-    <div className="my-3 overflow-x-auto">
+    <div className="my-4 overflow-x-auto rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]">
       <table>{kids(p)}</table>
     </div>
   ),
@@ -174,9 +174,13 @@ export const Markdown = memo(function Markdown({
         '[&_h2]:font-display [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:mt-4',
         '[&_h3]:font-display [&_h3]:text-base [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:mt-3',
         '[&_hr]:border-[var(--color-app-border)] [&_hr]:my-4',
-        '[&_table]:w-full [&_table]:text-[13px] [&_table]:border-collapse',
-        '[&_th]:text-left [&_th]:font-semibold [&_th]:text-[var(--color-app-subtle)] [&_th]:border-b [&_th]:border-[var(--color-app-border-strong)] [&_th]:px-2 [&_th]:py-1.5',
-        '[&_td]:border-b [&_td]:border-[var(--color-app-border)] [&_td]:px-2 [&_td]:py-1.5',
+        '[&_table]:w-full [&_table]:min-w-[520px] [&_table]:text-[13px] [&_table]:border-collapse',
+        '[&_thead]:bg-[var(--color-app-bg-elevated)]',
+        '[&_tbody_tr:nth-child(even)]:bg-[var(--color-app-bg-elevated)]/35',
+        '[&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-[var(--color-app-surface-hover)]/70',
+        '[&_th]:whitespace-nowrap [&_th]:text-left [&_th]:text-[11px] [&_th]:uppercase [&_th]:tracking-[0.1em] [&_th]:font-medium [&_th]:text-[var(--color-app-muted)] [&_th]:border-b [&_th]:border-[var(--color-app-border-strong)] [&_th]:px-3.5 [&_th]:py-2.5',
+        '[&_td]:align-top [&_td]:border-b [&_td]:border-[var(--color-app-border)] [&_td]:px-3.5 [&_td]:py-2.5 [&_td]:text-[var(--color-app-subtle)]',
+        '[&_tbody_tr:last-child_td]:border-b-0',
         className,
       )}
     >

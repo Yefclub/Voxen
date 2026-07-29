@@ -7,7 +7,7 @@ import {
   Notebook,
   ShieldCheck,
   User as UserIcon,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
 import {

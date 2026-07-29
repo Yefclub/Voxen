@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Globe, Link2, PlayCircle, Plus, Upload, X } from 'lucide-react';
+import { Globe, Link2, PlayCircle, Plus, Upload, X } from '@/components/ui/icons';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';

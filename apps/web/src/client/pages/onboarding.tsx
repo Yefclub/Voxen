@@ -12,8 +12,8 @@ import {
   Users,
   Lock,
   Languages,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+} from '@/components/ui/icons';
+import type { LucideIcon } from '@/components/ui/icons';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
@@ -164,7 +164,7 @@ function OnboardingContent({
           <div className="relative inline-block">
             <div className="absolute inset-0 rounded-full bg-emerald-500/40 blur-2xl" />
             <div className="relative flex h-16 w-16 mx-auto items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 border border-emerald-400/50">
-              <CheckCircle2 className="h-7 w-7 text-emerald-950" strokeWidth={2.5} />
+              <CheckCircle2 className="h-7 w-7 text-emerald-950" />
             </div>
           </div>
           <h2 className="font-display text-3xl font-semibold tracking-[-0.03em] mt-8">

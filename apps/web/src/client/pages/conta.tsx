@@ -9,7 +9,7 @@ import {
   Smartphone,
   Upload,
   User as UserIcon,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import { QRCodeSVG } from 'qrcode.react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';

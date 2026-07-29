@@ -229,9 +229,12 @@ app.get('/api/me', async (c) => {
     },
   });
   const theme =
-    user?.theme === 'emerald' || user?.theme === 'light' || user?.theme === 'zinc'
+    user?.theme === 'linear' ||
+    user?.theme === 'emerald' ||
+    user?.theme === 'light' ||
+    user?.theme === 'zinc'
       ? user.theme
-      : 'zinc';
+      : 'linear';
   return c.json({
     user: user ? { ...user, theme } : null,
     setupComplete,

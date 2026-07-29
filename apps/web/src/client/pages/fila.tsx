@@ -1,4 +1,4 @@
-import { ListOrdered } from 'lucide-react';
+import { ListOrdered } from '@/components/ui/icons';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { JobsQueueSection } from '../components/ingest/jobs-queue-section';
 import { useI18n } from '../lib/i18n';

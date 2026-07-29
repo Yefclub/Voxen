@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Globe2, Lock, ShieldCheck, Users as UsersIcon, X } from 'lucide-react';
+import { Check, Globe2, Lock, ShieldCheck, Users as UsersIcon, X } from '@/components/ui/icons';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -12,7 +12,7 @@ import { ApiError, apiGet, apiPost, api } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import type { AdminUser } from '../lib/types';
 import { formatRelative } from '../lib/format';
-import { AnimatedPage } from '../components/motion/animated-page';
+import { PageShell } from '../components/ui/page-shell';
 import { useI18n, type TranslateFn } from '../lib/i18n';
 import { TimezoneSelect } from '../components/timezone-select';
 
@@ -120,8 +120,8 @@ export function AdminUsuariosPage(): React.ReactElement {
   const others = users.filter((u) => u.status !== 'PENDING');
 
   return (
-    <AnimatedPage>
-      <div className="mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-8 sm:py-12">
+    <PageShell width="wide">
+      <div data-page-content className="space-y-6 sm:space-y-10">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
@@ -327,7 +327,7 @@ export function AdminUsuariosPage(): React.ReactElement {
           )}
         </section>
       </div>
-    </AnimatedPage>
+    </PageShell>
   );
 }
 

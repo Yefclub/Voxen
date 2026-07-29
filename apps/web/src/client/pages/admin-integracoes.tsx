@@ -17,7 +17,7 @@ import {
   RotateCw,
   Sparkles,
   Trash2,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -25,7 +25,7 @@ import { Label } from '../components/ui/label';
 import { Spinner } from '../components/ui/spinner';
 import { Switch } from '../components/ui/switch';
 import { api, ApiError, apiGet, apiPost } from '../lib/api';
-import { AnimatedPage } from '../components/motion/animated-page';
+import { PageShell } from '../components/ui/page-shell';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { useI18n } from '../lib/i18n';
 
@@ -84,8 +84,8 @@ export function AdminIntegracoesPage(): React.ReactElement {
   const { t } = useI18n();
 
   return (
-    <AnimatedPage>
-      <div className="mx-auto max-w-3xl space-y-8 px-4 py-8 sm:space-y-10 sm:px-8 sm:py-12">
+    <PageShell width="workspace">
+      <div data-page-content className="space-y-8 sm:space-y-10">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <Sparkles className="h-3.5 w-3.5 text-violet-400" />
@@ -102,7 +102,7 @@ export function AdminIntegracoesPage(): React.ReactElement {
         <McpSection />
         <ProxyAgentSection />
       </div>
-    </AnimatedPage>
+    </PageShell>
   );
 }
 
