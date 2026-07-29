@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   ALL_GRAPH_NODE_TYPES,
   buildGraphCommunities,
@@ -174,8 +176,20 @@ describe('graph palettes', () => {
 
     expect(dark.label).not.toBe(light.label);
     expect(dark.selected).not.toBe(light.selected);
+    expect(dark.label).not.toBe(dark.canvas);
+    expect(dark.selected).not.toBe(dark.canvas);
+    expect(dark.labelStroke).toContain('0.94');
     expect(dark.nodes.transcript).not.toBe(light.nodes.transcript);
     expect(emerald.canvas).not.toBe(light.canvas);
     expect(light.canvas).toBe('#f7f7f8');
+  });
+});
+
+describe('graph refresh resilience', () => {
+  test('preserves the existing canvas when a refresh fails', () => {
+    const page = readFileSync(join(import.meta.dir, '../src/client/pages/grafo.tsx'), 'utf8');
+    expect(page).toContain('error && !loading && !data');
+    expect(page).toContain('error && !loading && data');
+    expect(page).toContain('role="alert"');
   });
 });

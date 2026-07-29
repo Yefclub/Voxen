@@ -88,7 +88,7 @@ function OnboardingContent({
     setLoading(true);
     try {
       await apiPost('/api/setup', {
-        openrouter_api_key: apiKey,
+        openrouter_api_key: apiKey.trim(),
         app_language: appLanguage,
         app_timezone: appTimezone,
       });

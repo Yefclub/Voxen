@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -26,7 +26,11 @@ import { AnimatedPage } from '../components/motion/animated-page';
 import { ApiError, apiPost } from '../lib/api';
 import { useI18n } from '../lib/i18n';
 import {
+  formatJobElapsed,
   isJobProgressSnapshot,
+  jobElapsedMs,
+  jobProgressEventKey,
+  jobProgressEventDurationMs,
   mergeJobProgressEvents,
   type JobProgressSnapshot,
 } from '../lib/job-progress';
@@ -34,29 +38,11 @@ import {
 type ProgressEvent = JobProgressEvent;
 type ProgressPayload = ProgressEvent | JobProgressSnapshot;
 
-const STAGE_ORDER = [
-  'queued',
-  'running',
-  'downloading',
-  'preparing_upload',
-  'analyzing_image',
-  'analyzing_x',
-  'converting_document',
-  'analyzing_document',
-  'extracting_audio',
-  'choosing_method',
-  'transcribing',
-  'uploading',
-  'indexing',
-  'summarizing',
-  'tagging',
-  'done',
-];
-
 export function JobDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { locale, t } = useI18n();
+  const reduceMotion = useReducedMotion();
   const { data, refresh } = useFetch<{ job: JobSummary }>(id ? `/api/jobs/${id}` : null);
   const [events, setEvents] = useState<ProgressEvent[]>([]);
   const [percent, setPercent] = useState<number>(0);
@@ -64,7 +50,7 @@ export function JobDetalhePage(): React.ReactElement {
   const [retryError, setRetryError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
-  const openedTranscriptRef = useRef<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   async function onCancel(): Promise<void> {
     if (!id) return;
@@ -112,10 +98,6 @@ export function JobDetalhePage(): React.ReactElement {
       }
       setEvents((prev) => mergeJobProgressEvents(prev, [evt]));
       if (typeof evt.percent === 'number') setPercent(evt.percent);
-      if (evt.stage === 'done' && evt.transcriptId) {
-        openedTranscriptRef.current = evt.transcriptId;
-        setTimeout(() => navigate(`/transcricoes/${evt.transcriptId}`, { replace: true }), 700);
-      }
       if (evt.stage === 'done' || evt.stage === 'failed' || evt.stage === 'cancelled') {
         setTimeout(() => refresh(), 600);
       }
@@ -143,15 +125,11 @@ export function JobDetalhePage(): React.ReactElement {
   }, [data?.job]);
 
   useEffect(() => {
-    const transcriptId = data?.job.transcriptId;
-    if (data?.job.status !== 'DONE' || !transcriptId) return;
-    if (openedTranscriptRef.current === transcriptId) return;
-    openedTranscriptRef.current = transcriptId;
-    const timeoutId = window.setTimeout(() => {
-      navigate(`/transcricoes/${transcriptId}`, { replace: true });
-    }, 700);
-    return () => window.clearTimeout(timeoutId);
-  }, [data?.job.status, data?.job.transcriptId, navigate]);
+    if (!isActive) return;
+    setNow(Date.now());
+    const intervalId = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(intervalId);
+  }, [isActive]);
 
   if (!data?.job) {
     return (
@@ -165,13 +143,13 @@ export function JobDetalhePage(): React.ReactElement {
   const { variant, label } = jobStatusBadge(job.status, t);
   const currentStage =
     events[events.length - 1]?.stage ?? job.progressStage ?? job.status.toLowerCase();
-  const currentStageIdx = STAGE_ORDER.indexOf(currentStage);
   const externalSource = isExternalSourceUrl(job.sourceUrl);
   const uploadedSource = isUploadSourceUrl(job.sourceUrl);
+  const elapsed = formatJobElapsed(jobElapsedMs(job.queuedAt, job.finishedAt, now));
 
   return (
     <AnimatedPage>
-      <div className="mx-auto max-w-3xl space-y-5 px-4 py-5 sm:space-y-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 sm:space-y-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
         <Button variant="ghost" size="sm" asChild className="-ml-2 hidden sm:inline-flex">
           <Link to="/">
             <ArrowLeft className="h-3.5 w-3.5" />
@@ -233,7 +211,9 @@ export function JobDetalhePage(): React.ReactElement {
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="absolute inset-0 rounded-full bg-violet-400 animate-ping opacity-60" />
+                      <span
+                        className={`absolute inset-0 rounded-full bg-violet-400 opacity-60${reduceMotion ? '' : ' animate-ping'}`}
+                      />
                       <span className="relative rounded-full bg-violet-400 h-full w-full" />
                     </span>
                     <span className="text-sm font-medium text-[var(--color-app-fg)] truncate">
@@ -248,25 +228,35 @@ export function JobDetalhePage(): React.ReactElement {
 
                 <div className="relative h-2 w-full overflow-hidden rounded-full bg-[var(--color-app-bg-elevated)] border border-[var(--color-app-border)]">
                   <motion.div
-                    initial={{ width: '0%' }}
+                    initial={reduceMotion ? false : { width: '0%' }}
                     animate={{ width: `${Math.max(2, percent)}%` }}
-                    transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                    transition={{
+                      duration: reduceMotion ? 0 : 0.5,
+                      ease: [0.16, 1, 0.3, 1],
+                    }}
                     className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-emerald-400 to-violet-400"
                   />
                 </div>
 
                 <div className="flex items-center justify-between gap-3">
-                  {connected ? (
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-400/80 flex items-center gap-2">
-                      <span className="h-1 w-1 rounded-full bg-emerald-400 animate-pulse" />
-                      {t('jobDetail.realtime')}
+                  <div className="min-w-0 space-y-1">
+                    {connected ? (
+                      <p className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-emerald-400/80">
+                        <span
+                          className={`h-1 w-1 rounded-full bg-emerald-400${reduceMotion ? '' : ' animate-pulse'}`}
+                        />
+                        {t('jobDetail.realtime')}
+                      </p>
+                    ) : (
+                      <p className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-amber-300/80">
+                        <span className="h-1 w-1 rounded-full bg-amber-300" />
+                        {closed ? t('jobDetail.reconnecting') : t('jobDetail.connecting')}
+                      </p>
+                    )}
+                    <p className="text-[11px] tabular-nums text-[var(--color-app-muted)]">
+                      {t('jobDetail.elapsed', { duration: elapsed })}
                     </p>
-                  ) : (
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-amber-300/80 flex items-center gap-2">
-                      <span className="h-1 w-1 rounded-full bg-amber-300" />
-                      {closed ? t('jobDetail.reconnecting') : t('jobDetail.connecting')}
-                    </p>
-                  )}
+                  </div>
                   <Button
                     variant="destructive"
                     size="sm"
@@ -293,8 +283,9 @@ export function JobDetalhePage(): React.ReactElement {
             {/* Estado de sucesso */}
             {job.status === 'DONE' && job.transcriptId && (
               <motion.div
-                initial={{ opacity: 0, y: 6 }}
+                initial={reduceMotion ? false : { opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: reduceMotion ? 0 : 0.2 }}
                 className="relative rounded-xl bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/30 p-5"
               >
                 <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -324,8 +315,9 @@ export function JobDetalhePage(): React.ReactElement {
             {/* Estado de erro */}
             {job.status === 'FAILED' && (
               <motion.div
-                initial={{ opacity: 0, y: 6 }}
+                initial={reduceMotion ? false : { opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: reduceMotion ? 0 : 0.2 }}
                 className="space-y-3"
               >
                 <Alert variant="destructive">
@@ -367,15 +359,19 @@ export function JobDetalhePage(): React.ReactElement {
                 <ol className="relative border-l border-[var(--color-app-border)] pl-5 space-y-2.5">
                   <AnimatePresence initial={false}>
                     {events.map((e, i) => {
-                      const stageIdx = STAGE_ORDER.indexOf(e.stage);
                       const isCurrent = i === events.length - 1 && isActive;
-                      const isDone = stageIdx >= 0 && stageIdx < currentStageIdx;
+                      const isDone =
+                        i < events.length - 1 ||
+                        (job.status === 'DONE' && e.stage !== 'failed' && e.stage !== 'cancelled');
+                      const eventDuration = formatJobElapsed(
+                        jobProgressEventDurationMs(events, i, job.finishedAt, now),
+                      );
                       return (
                         <motion.li
-                          key={`${e.stage}-${i}`}
-                          initial={{ opacity: 0, x: -8 }}
+                          key={jobProgressEventKey(e)}
+                          initial={reduceMotion ? false : { opacity: 0, x: -8 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ duration: 0.3 }}
+                          transition={{ duration: reduceMotion ? 0 : 0.3 }}
                           className="relative text-sm"
                         >
                           <span
@@ -400,6 +396,8 @@ export function JobDetalhePage(): React.ReactElement {
                           )}
                           <time className="ml-2 text-[11px] tabular-nums text-[var(--color-app-muted)]">
                             {formatDateTime(new Date(e.ts), locale)}
+                            {' · '}
+                            {eventDuration}
                           </time>
                         </motion.li>
                       );

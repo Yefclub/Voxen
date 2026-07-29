@@ -1,8 +1,8 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  House,
   ListVideo,
   LogOut,
+  MessageCircle,
   Network,
   Notebook,
   ShieldCheck,
@@ -30,11 +30,11 @@ import { isBottomNavTab } from '../../lib/mobile-nav';
 interface MobileNavItem {
   to: string;
   labelKey: I18nKey;
-  Icon: typeof House;
+  Icon: typeof MessageCircle;
 }
 
 const ITEMS: MobileNavItem[] = [
-  { to: '/', labelKey: 'shell.nav.home', Icon: House },
+  { to: '/', labelKey: 'shell.nav.chat', Icon: MessageCircle },
   { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },

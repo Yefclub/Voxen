@@ -37,9 +37,31 @@ def user_channel(user_id: str) -> str:
     return f"user:{user_id}:jobs"
 
 
+def graph_invalidation_channel(user_id: str) -> str:
+    return f"voxen:graph:v4:events:{user_id}"
+
+
 JOBS_NEW_CHANNEL = "jobs:new"
 JOBS_CANCEL_CHANNEL = "jobs:cancel"
 AUTOMATION_RUN_CHANNEL = "automations:run"
+
+
+async def publish_graph_invalidation(user_id: str) -> None:
+    """Avisa a UI que o snapshot materializado mudou; Redis é best-effort."""
+    try:
+        client = await get_redis()
+        keys = [
+            key async for key in client.scan_iter(match=f"voxen:graph:v4:{user_id}:*", count=100)
+        ]
+        if keys:
+            await client.delete(*keys)
+        await client.publish(
+            graph_invalidation_channel(user_id),
+            json.dumps({"type": "invalidated"}),
+        )
+    except Exception:
+        # A persistência do Brain é autoritativa e não pode falhar por causa do canal efêmero.
+        return
 
 
 async def publish_job_event(

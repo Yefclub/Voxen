@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
+import { parseReleaseFeedQuery, selectReleaseFeedPage } from '../shared/release-feed';
 
 type Vars = { userId: string };
 
@@ -70,12 +71,12 @@ async function loadReleases(): Promise<ReleaseEntry[]> {
 }
 
 releasesRoutes.get('/', async (c) => {
-  const channel = (c.req.query('channel') ?? 'all').toLowerCase();
-  const limitRaw = Number.parseInt(c.req.query('limit') ?? '50', 10);
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
-  let entries = await loadReleases();
-  if (channel === 'dev' || channel === 'prod') {
-    entries = entries.filter((e) => e.channel === channel);
-  }
-  return c.json({ releases: entries.slice(0, limit) });
+  const query = parseReleaseFeedQuery({
+    channel: c.req.query('channel'),
+    type: c.req.query('type'),
+    query: c.req.query('q'),
+    limit: c.req.query('limit'),
+    offset: c.req.query('offset'),
+  });
+  return c.json(selectReleaseFeedPage(await loadReleases(), query));
 });
