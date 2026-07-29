@@ -11,6 +11,8 @@ export interface ReleaseFeedQuery {
   channel: 'all' | 'dev' | 'prod';
   type: string | null;
   query: string;
+  version: string | null;
+  invalidVersion: boolean;
   limit: number;
   offset: number;
 }
@@ -42,6 +44,7 @@ export function parseReleaseFeedQuery(input: {
   channel?: string;
   type?: string;
   query?: string;
+  version?: string;
   limit?: string;
   offset?: string;
 }): ReleaseFeedQuery {
@@ -50,10 +53,15 @@ export function parseReleaseFeedQuery(input: {
   const rawType = input.type?.trim().toLowerCase() ?? '';
   const type = RELEASE_TYPES.has(rawType) ? rawType : null;
   const query = input.query?.trim().slice(0, 120) ?? '';
+  const versionRequested = input.version !== undefined;
+  const rawVersion = input.version?.trim().replace(/^v/iu, '').slice(0, 80) ?? '';
+  const version = rawVersion && /^[0-9A-Za-z._+-]+$/u.test(rawVersion) ? rawVersion : null;
   return {
     channel,
     type,
     query,
+    version,
+    invalidVersion: versionRequested && version === null,
     limit: boundedInteger(input.limit, DEFAULT_RELEASE_PAGE_SIZE, 1, MAX_RELEASE_PAGE_SIZE),
     offset: boundedInteger(input.offset, 0, 0, Number.MAX_SAFE_INTEGER),
   };
@@ -63,8 +71,18 @@ export function selectReleaseFeedPage<T extends ReleaseFeedEntry>(
   entries: readonly T[],
   query: ReleaseFeedQuery,
 ): ReleaseFeedPage<T> {
+  if (query.invalidVersion) {
+    return {
+      releases: [],
+      total: 0,
+      limit: query.limit,
+      offset: query.offset,
+      hasMore: false,
+    };
+  }
   const needle = query.query.toLocaleLowerCase();
   const filtered = entries.filter((entry) => {
+    if (query.version && entry.version.replace(/^v/iu, '') !== query.version) return false;
     if (query.channel !== 'all' && entry.channel.toLowerCase() !== query.channel) return false;
     if (query.type && entry.type?.toLowerCase() !== query.type) return false;
     if (!needle) return true;

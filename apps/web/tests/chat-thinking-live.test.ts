@@ -3,6 +3,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const chatSource = readFileSync(join(import.meta.dir, '../src/client/pages/chat.tsx'), 'utf8');
+const runtimeSource = readFileSync(join(import.meta.dir, '../src/lib/chat/runtime.ts'), 'utf8');
+const routeSource = readFileSync(join(import.meta.dir, '../src/routes/chat.ts'), 'utf8');
+const turnRuntimeSource = readFileSync(
+  join(import.meta.dir, '../src/lib/chat/turn-runtime.ts'),
+  'utf8',
+);
 
 /**
  * Source contract for ThinkingBlock expand policy (spec 078 follow-up).
@@ -35,5 +41,28 @@ describe('ThinkingBlock live expand policy', () => {
     expect(chatSource).toContain('startedAt: number');
     expect(chatSource).toContain('useRef<number>(startedAt)');
     expect(chatSource).not.toContain('live ? Date.now() : null');
+  });
+
+  test('prepara contexto concorrente e mede tempo até o primeiro evento do modelo', () => {
+    expect(routeSource).toContain("code: 'preparing-response'");
+    expect(routeSource.indexOf("code: 'preparing-response'")).toBeLessThan(
+      routeSource.indexOf('runChatTurn(turn.id, emit'),
+    );
+    expect(runtimeSource).not.toContain("label: 'Preparando sua resposta…'");
+    expect(runtimeSource).toContain('const relevantPromise = preloadRelevantContent');
+    expect(runtimeSource.indexOf('const relevantPromise')).toBeLessThan(
+      runtimeSource.indexOf('const compaction = await maybeCompact'),
+    );
+    expect(runtimeSource).toContain("code: 'connecting-model'");
+    expect(chatSource).toContain('chatStatusI18nKey(event.code)');
+    expect(runtimeSource).toContain("event: 'chat-provider-request-start'");
+    expect(runtimeSource).toContain("event: 'chat-turn-latency'");
+    expect(runtimeSource).toContain('isProviderObservedEvent(type)');
+    expect(turnRuntimeSource).toContain('requestStartedAt: timing?.requestStartedAt');
+    expect(runtimeSource).toContain('requestToClaimMs');
+    expect(runtimeSource).toContain('claimAndLoadMs');
+    expect(runtimeSource).toContain('totalToProviderStartMs');
+    expect(runtimeSource).toContain('providerFirstEventMs');
+    expect(runtimeSource).toContain('totalToFirstEventMs');
   });
 });

@@ -67,7 +67,9 @@ export async function createChatTurn(userId: string, content: string) {
 export async function runChatTurn(
   turnId: string,
   emit: (event: ChatStreamEvent) => void = () => undefined,
+  timing?: { requestStartedAt?: number },
 ): Promise<boolean> {
+  const claimStartedAt = Date.now();
   const ownerId = crypto.randomUUID();
   let acquired = false;
   try {
@@ -116,6 +118,7 @@ export async function runChatTurn(
         userMessageId: true,
         assistantMessageId: true,
         status: true,
+        createdAt: true,
       },
     });
     if (
@@ -143,6 +146,7 @@ export async function runChatTurn(
       }),
     ]);
 
+    const runtimeStartedAt = Date.now();
     await streamAssistantReply({
       userId: turn.userId,
       conversationId: turn.conversationId,
@@ -151,6 +155,10 @@ export async function runChatTurn(
       assistantMessageId: turn.assistantMessageId,
       abortSignal: controller.signal,
       emit,
+      requestStartedAt: timing?.requestStartedAt ?? turn.createdAt.getTime(),
+      claimStartedAt,
+      runtimeStartedAt,
+      turnCreatedAt: turn.createdAt,
     });
 
     const latest = await db.chatTurn.findUnique({

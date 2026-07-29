@@ -1,5 +1,11 @@
 import { describe, test, expect } from 'bun:test';
-import { resolveServerBuild, shouldNotify } from './version-monitor-core';
+import {
+  createVersionSnooze,
+  parseVersionSnooze,
+  resolveServerBuild,
+  shouldNotify,
+  UPDATE_SNOOZE_MS,
+} from './version-monitor-core';
 
 describe('resolveServerBuild', () => {
   test('prioriza gitSha quando presente', () => {
@@ -19,35 +25,114 @@ describe('resolveServerBuild', () => {
 
 describe('shouldNotify', () => {
   test('false quando serverBuild == loadedBuild (mesmo build)', () => {
-    expect(shouldNotify({ serverBuild: 'abc', loadedBuild: 'abc', lastHandledBuild: null })).toBe(
-      false,
-    );
-  });
-
-  test('false quando serverBuild já foi tratado (dispensado/acionado)', () => {
-    expect(shouldNotify({ serverBuild: 'new', loadedBuild: 'old', lastHandledBuild: 'new' })).toBe(
-      false,
-    );
-  });
-
-  test('true quando serverBuild é novo e nunca tratado', () => {
-    expect(shouldNotify({ serverBuild: 'new', loadedBuild: 'old', lastHandledBuild: null })).toBe(
-      true,
-    );
-  });
-
-  test('true quando aparece build diferente do último tratado', () => {
     expect(
-      shouldNotify({ serverBuild: 'newer', loadedBuild: 'old', lastHandledBuild: 'new' }),
+      shouldNotify({
+        serverBuild: 'abc',
+        loadedBuild: 'abc',
+        snoozedBuild: null,
+        snoozedUntil: null,
+        now: 1_000,
+      }),
+    ).toBe(false);
+  });
+
+  test('false enquanto o mesmo build estiver adiado', () => {
+    expect(
+      shouldNotify({
+        serverBuild: 'new',
+        loadedBuild: 'old',
+        snoozedBuild: 'new',
+        snoozedUntil: 2_000,
+        now: 1_000,
+      }),
+    ).toBe(false);
+  });
+
+  test('true quando o adiamento expira e o bundle continua antigo', () => {
+    expect(
+      shouldNotify({
+        serverBuild: 'new',
+        loadedBuild: 'old',
+        snoozedBuild: 'new',
+        snoozedUntil: 999,
+        now: 1_000,
+      }),
+    ).toBe(true);
+  });
+
+  test('true quando aparece build diferente do adiado', () => {
+    expect(
+      shouldNotify({
+        serverBuild: 'newer',
+        loadedBuild: 'old',
+        snoozedBuild: 'new',
+        snoozedUntil: 2_000,
+        now: 1_000,
+      }),
     ).toBe(true);
   });
 
   test('false para serverBuild nulo/vazio', () => {
-    expect(shouldNotify({ serverBuild: null, loadedBuild: 'old', lastHandledBuild: null })).toBe(
-      false,
-    );
-    expect(shouldNotify({ serverBuild: '', loadedBuild: 'old', lastHandledBuild: null })).toBe(
-      false,
-    );
+    expect(
+      shouldNotify({
+        serverBuild: null,
+        loadedBuild: 'old',
+        snoozedBuild: null,
+        snoozedUntil: null,
+        now: 1_000,
+      }),
+    ).toBe(false);
+    expect(
+      shouldNotify({
+        serverBuild: '',
+        loadedBuild: 'old',
+        snoozedBuild: null,
+        snoozedUntil: null,
+        now: 1_000,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('adiamento persistido', () => {
+  test('dura exatamente 30 minutos e volta a notificar depois do prazo', () => {
+    const snooze = createVersionSnooze('new', 1_000);
+    expect(snooze).toEqual({ build: 'new', until: 1_000 + UPDATE_SNOOZE_MS });
+    expect(
+      shouldNotify({
+        serverBuild: 'new',
+        loadedBuild: 'old',
+        snoozedBuild: snooze.build,
+        snoozedUntil: snooze.until,
+        now: snooze.until - 1,
+      }),
+    ).toBe(false);
+    expect(
+      shouldNotify({
+        serverBuild: 'new',
+        loadedBuild: 'old',
+        snoozedBuild: snooze.build,
+        snoozedUntil: snooze.until,
+        now: snooze.until,
+      }),
+    ).toBe(true);
+  });
+
+  test('aceita somente JSON persistido completo e finito', () => {
+    expect(parseVersionSnooze('{"build":"new","until":1234}')).toEqual({
+      build: 'new',
+      until: 1234,
+    });
+    for (const raw of [
+      null,
+      '',
+      'not-json',
+      '{}',
+      '{"build":"","until":1234}',
+      '{"build":"new","until":"later"}',
+      '{"build":"new","until":1e999}',
+    ]) {
+      expect(parseVersionSnooze(raw), String(raw)).toBeNull();
+    }
   });
 });

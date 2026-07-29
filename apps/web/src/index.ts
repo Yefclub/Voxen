@@ -332,6 +332,7 @@ const distExists = existsSync(distDir);
 // baseline buscado da rede não cobre esse caso, porque viria sempre do
 // servidor novo. Sanitizamos pra chars seguros de atributo HTML por defesa.
 const VOXEN_BUILD_ID = (VOXEN_GIT_SHA || VOXEN_VERSION).replace(/[^A-Za-z0-9._+-]/g, '');
+const VOXEN_VERSION_ID = VOXEN_VERSION.replace(/[^A-Za-z0-9._+-]/g, '');
 
 // Cache em memória do HTML transformado por path: o dist é imutável durante a
 // vida do processo, então lemos/injetamos uma única vez por arquivo em vez de
@@ -342,7 +343,10 @@ async function serveHtmlWithBuildMeta(target: string, headers: Headers): Promise
   let html = htmlBuildMetaCache.get(target);
   if (html === undefined) {
     const raw = await Bun.file(target).text();
-    html = raw.replace('<head>', `<head><meta name="voxen-build" content="${VOXEN_BUILD_ID}">`);
+    html = raw.replace(
+      '<head>',
+      `<head><meta name="voxen-build" content="${VOXEN_BUILD_ID}"><meta name="voxen-version" content="${VOXEN_VERSION_ID}">`,
+    );
     htmlBuildMetaCache.set(target, html);
   }
   headers.set('Content-Type', 'text/html; charset=utf-8');

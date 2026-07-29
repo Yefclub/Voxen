@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { motion } from 'motion/react';
 import {
   ArrowLeft,
   Archive,
@@ -31,7 +30,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
 import { apiPost, ApiError } from '../lib/api';
 import { formatDateTime, formatDuration, formatUsd } from '../lib/format';
-import { AnimatedPage } from '../components/motion/animated-page';
+import { PageShell } from '../components/ui/page-shell';
 import { TranscriptViewer } from '../components/ui/transcript-viewer';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
@@ -362,15 +361,15 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
   if (!loading && error) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-10">
+      <PageShell width="wide">
         <FetchError message={error} onRetry={refresh} />
-      </div>
+      </PageShell>
     );
   }
 
   if (loading || !data) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-10">
+      <PageShell width="wide">
         <Skeleton className="h-7 w-32 mb-8" />
         <Skeleton className="h-12 w-3/4 mb-3" />
         <Skeleton className="h-5 w-1/3 mb-10" />
@@ -382,7 +381,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           </div>
           <Skeleton className="h-64 rounded-2xl" />
         </div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -396,8 +395,8 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const previewSrc = resolveTranscriptPreviewSrc(t.id, t.thumbnailUrl);
 
   return (
-    <AnimatedPage>
-      <div className="relative mx-auto max-w-5xl overflow-x-clip px-4 pb-28 pt-5 sm:px-6 sm:pb-32 sm:pt-8 lg:px-8 lg:pt-10">
+    <>
+      <PageShell width="wide" className="relative overflow-x-clip pb-28 sm:pb-32">
         <Button variant="ghost" size="sm" asChild className="mb-6 -ml-2 hidden sm:inline-flex">
           <Link to="/transcricoes">
             <ArrowLeft className="h-3.5 w-3.5" />
@@ -405,12 +404,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           </Link>
         </Button>
 
-        <motion.header
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="mb-6 space-y-4 sm:mb-8"
-        >
+        <header className="mb-6 space-y-4 sm:mb-8">
           <div className="flex items-center gap-2 flex-wrap">
             {/* Source primário — clarifica origem do conteúdo */}
             <Badge variant={t.source === 'WEB' ? 'muted' : 'success'} className="text-[10px]">
@@ -496,16 +490,11 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               {translate('library.chatBarHint')}
             </p>
           )}
-        </motion.header>
+        </header>
 
         <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-8">
           {/* Coluna principal: resumo + transcrição */}
-          <motion.article
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, delay: 0.1 }}
-            className="min-w-0 space-y-7 sm:space-y-8"
-          >
+          <article className="min-w-0 space-y-7 sm:space-y-8">
             <SummaryBlock
               summary={t.summaryMd}
               generating={generating}
@@ -530,15 +519,10 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             ) : (
               <TranscriptViewer markdown={data.markdown} />
             )}
-          </motion.article>
+          </article>
 
           {/* Sidebar: metadata + thumbnail */}
-          <motion.aside
-            initial={{ opacity: 0, x: 8 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.45, delay: 0.18 }}
-            className="flex flex-col gap-4 self-start lg:sticky lg:top-24"
-          >
+          <aside className="flex flex-col gap-4 self-start lg:sticky lg:top-24">
             <Card className="order-2 overflow-hidden p-0 lg:order-none" elevated>
               {t.originalObjectKey && t.originalMimeType ? (
                 <UploadMediaViewer
@@ -719,9 +703,9 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 </a>
               </Button>
             )}
-          </motion.aside>
+          </aside>
         </div>
-      </div>
+      </PageShell>
 
       {canUseContextualActions && (
         <TranscriptChatDock
@@ -754,7 +738,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         onConfirm={() => hardDelete()}
         loading={deleting}
       />
-    </AnimatedPage>
+    </>
   );
 }
 

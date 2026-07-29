@@ -13,6 +13,7 @@ import { useFetch } from '../lib/hooks';
 import { useI18n } from '../lib/i18n';
 import type { VersionResponse } from '../lib/types';
 import { resolveVersionEnvironment } from '../lib/version-env';
+import { releaseTypeI18nKey } from '../../shared/release-type';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { DataSurface } from '../components/ui/data-surface';
@@ -51,18 +52,12 @@ type ReleasesResponse = {
 const PAGE_SIZE = 12;
 const RELEASE_TYPES = ['feat', 'fix', 'perf', 'ui', 'infra', 'security', 'chore'] as const;
 
-const TYPE_LABEL: Record<string, string> = {
-  feat: 'feat',
-  fix: 'fix',
-  perf: 'perf',
-  ui: 'ui',
-  infra: 'infra',
-  security: 'security',
-  chore: 'chore',
-};
-
 export function NovidadesPage(): React.ReactElement {
   const { locale, t } = useI18n();
+  const typeLabel = (releaseType: string): string => {
+    const key = releaseTypeI18nKey(releaseType);
+    return key ? t(key) : releaseType;
+  };
   const [searchParams, setSearchParams] = useSearchParams();
   const page = positivePage(searchParams.get('page'));
   const channel = normalizeChannel(searchParams.get('channel'));
@@ -174,9 +169,7 @@ export function NovidadesPage(): React.ReactElement {
             onChange={(value) => setFilter('type', value)}
             options={[
               ['all', t('novidades.filter.all')],
-              ...RELEASE_TYPES.map(
-                (releaseType) => [releaseType, TYPE_LABEL[releaseType] ?? releaseType] as const,
-              ),
+              ...RELEASE_TYPES.map((releaseType) => [releaseType, typeLabel(releaseType)] as const),
             ]}
           />
           <div className="flex min-h-11 items-center gap-2 lg:justify-end">
@@ -245,6 +238,7 @@ export function NovidadesPage(): React.ReactElement {
                   key={`${entry.version}-${entry.channel}-${entry.pr ?? index}-${entry.title ?? ''}`}
                   entry={entry}
                   locale={locale}
+                  typeLabel={typeLabel}
                   promotedLabel={t('novidades.promoted', {
                     count: entry.promoted?.length ?? 0,
                   })}
@@ -318,12 +312,14 @@ function ReleaseSelect({
 function ReleaseItem({
   entry,
   locale,
+  typeLabel,
   promotedLabel,
   prodLabel,
   devLabel,
 }: {
   entry: ReleaseEntry;
   locale: string;
+  typeLabel: (releaseType: string) => string;
   promotedLabel: string;
   prodLabel: string;
   devLabel: string;
@@ -339,7 +335,7 @@ function ReleaseItem({
           </Badge>
           {entry.type && (
             <Badge variant="outline" className="text-[10px] uppercase">
-              {TYPE_LABEL[entry.type] ?? entry.type}
+              {typeLabel(entry.type)}
             </Badge>
           )}
           {entry.date && (

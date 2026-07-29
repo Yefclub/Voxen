@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowRight,
   CheckCircle2,
@@ -8,7 +7,6 @@ import {
   KeyRound,
   Languages,
   RotateCw,
-  Sparkles,
 } from '@/components/ui/icons';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -20,7 +18,7 @@ import { Badge } from '../components/ui/badge';
 import { ApiError, apiGet, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import type { OrModel } from '../lib/types';
-import { AnimatedPage } from '../components/motion/animated-page';
+import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { ModelPicker } from '../components/model-picker';
 import { LOCALES, useI18n, type Locale } from '../lib/i18n';
 import { detectBrowserTimezone, TimezoneSelect } from '../components/timezone-select';
@@ -250,45 +248,27 @@ export function SetupPage(): React.ReactElement {
 
   if (step === 'loading') {
     return (
-      <div className="flex justify-center px-4 py-16 sm:px-8 sm:py-24">
+      <PageShell width="workspace" className="flex min-h-64 items-center justify-center">
         <Spinner size={22} className="text-[var(--color-app-muted)]" />
-      </div>
+      </PageShell>
     );
   }
 
   if (step === 'done') {
     return (
-      <AnimatedPage>
-        <div className="mx-auto flex max-w-3xl flex-col items-center px-4 py-12 text-center sm:px-6 sm:py-20">
-          <motion.div
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 250, damping: 18 }}
-            className="relative"
-          >
-            <div className="absolute inset-0 rounded-full bg-emerald-500/40 blur-2xl" />
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 border border-emerald-400/50">
-              <CheckCircle2 className="h-7 w-7 text-emerald-950" />
-            </div>
-          </motion.div>
-          <motion.h2
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="font-display text-3xl font-semibold mt-8"
-          >
-            {t('setup.doneTitle')}
-          </motion.h2>
-          <motion.p
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.22 }}
-            className="text-[15px] text-[var(--color-app-muted)] mt-3"
-          >
-            {t('setup.doneSubtitle')}
-          </motion.p>
+      <PageShell
+        width="workspace"
+        className="flex min-h-[60dvh] flex-col items-center justify-center text-center"
+      >
+        <div className="relative">
+          <div className="absolute inset-0 rounded-full bg-emerald-500/40 blur-2xl" />
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 border border-emerald-400/50">
+            <CheckCircle2 className="h-7 w-7 text-emerald-950" />
+          </div>
         </div>
-      </AnimatedPage>
+        <h2 className="font-display text-3xl font-semibold mt-8">{t('setup.doneTitle')}</h2>
+        <p className="text-[15px] text-[var(--color-app-muted)] mt-3">{t('setup.doneSubtitle')}</p>
+      </PageShell>
     );
   }
 
@@ -296,359 +276,335 @@ export function SetupPage(): React.ReactElement {
 
   // Wizard de primeira configuração ou formulário direto de edição da instância.
   return (
-    <AnimatedPage>
-      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-12">
-        <PageHeader
-          badge={editingConfigured ? t('setup.badge.edit') : t('setup.badge.initial')}
-          title={
-            editingConfigured ? (
-              t('setup.title.edit')
-            ) : (
-              <>
-                {t('setup.title.initialPrefix')}
-                <span className="text-emerald-accent">OpenRouter</span>
-                {t('setup.title.initialSuffix')}
-              </>
-            )
-          }
-          sub={editingConfigured ? t('setup.subtitle.edit') : t('setup.subtitle.initial')}
-        />
+    <PageShell width="workspace">
+      <PageHeader
+        eyebrow={editingConfigured ? t('setup.badge.edit') : t('setup.badge.initial')}
+        title={
+          editingConfigured ? (
+            t('setup.title.edit')
+          ) : (
+            <>
+              {t('setup.title.initialPrefix')}
+              <span className="text-emerald-accent">OpenRouter</span>
+              {t('setup.title.initialSuffix')}
+            </>
+          )
+        }
+        description={editingConfigured ? t('setup.subtitle.edit') : t('setup.subtitle.initial')}
+      />
 
-        {/* Stepper */}
-        {!editingConfigured && (
-          <div className="mb-8 flex items-center gap-3">
-            <StepDot
-              index={1}
-              active={step === 'key'}
-              done={step !== 'key'}
-              label={t('setup.step.key')}
+      {/* Stepper */}
+      {!editingConfigured && (
+        <div className="mb-8 flex items-center gap-3">
+          <StepDot
+            index={1}
+            active={step === 'key'}
+            done={step !== 'key'}
+            label={t('setup.step.key')}
+          />
+          <div className="flex-1 h-px relative">
+            <div className="absolute inset-0 bg-[var(--color-app-border)]" />
+            <div
+              className="absolute inset-0 origin-left bg-gradient-to-r from-emerald-400 to-violet-400 transition-transform duration-300 motion-reduce:transition-none"
+              style={{ transform: `scaleX(${step === 'key' ? 0 : 1})` }}
             />
-            <div className="flex-1 h-px relative">
-              <div className="absolute inset-0 bg-[var(--color-app-border)]" />
-              <motion.div
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: step === 'key' ? 0 : 1 }}
-                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                className="absolute inset-0 origin-left bg-gradient-to-r from-emerald-400 to-violet-400"
-              />
-            </div>
-            <StepDot
-              index={2}
-              active={step === 'modelos'}
-              done={false}
-              label={t('setup.step.models')}
-            />
+          </div>
+          <StepDot
+            index={2}
+            active={step === 'modelos'}
+            done={false}
+            label={t('setup.step.models')}
+          />
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-6">
+          <Alert variant="destructive">
+            <AlertTitle>{t('setup.validationTitle')}</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      {saved && (
+        <div className="mb-6">
+          <Alert variant="success">
+            <CheckCircle2 className="mt-0.5 h-4 w-4" />
+            <AlertDescription>{t('setup.saved')}</AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      <>
+        {step === 'key' && (
+          <div>
+            <Card elevated>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2.5 font-display">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                    <KeyRound className="h-3.5 w-3.5 text-emerald-400" />
+                  </span>
+                  {t('setup.openrouter.apiKey')}
+                </CardTitle>
+                <CardDescription>
+                  {t('setup.openrouter.description.new')}{' '}
+                  <a
+                    href="https://openrouter.ai/keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[var(--color-app-fg)] underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
+                  >
+                    OpenRouter
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={validateAndListModels} className="space-y-5">
+                  <div className="space-y-2">
+                    <Label htmlFor="key">{t('setup.openrouter.apiKey')}</Label>
+                    <Input
+                      id="key"
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="sk-or-v1-..."
+                      autoComplete="off"
+                      spellCheck={false}
+                      required
+                      minLength={20}
+                      className="font-mono h-11 text-[15px]"
+                    />
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="lg"
+                      disabled={loading}
+                      className="w-full h-11"
+                    >
+                      {loading ? <Spinner /> : t('onboarding.validateContinue')}
+                      {!loading && <ArrowRight className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
           </div>
         )}
 
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <Alert variant="destructive">
-              <AlertTitle>{t('setup.validationTitle')}</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          </motion.div>
-        )}
-
-        {saved && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <Alert variant="success">
-              <CheckCircle2 className="mt-0.5 h-4 w-4" />
-              <AlertDescription>{t('setup.saved')}</AlertDescription>
-            </Alert>
-          </motion.div>
-        )}
-
-        <AnimatePresence mode="wait">
-          {step === 'key' && (
-            <motion.div
-              key="key"
-              initial={{ opacity: 0, x: -12 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 12 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            >
+        {step === 'modelos' && models && (
+          <div>
+            <form onSubmit={saveSetup} className="space-y-5">
               <Card elevated>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2.5 font-display">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                      <KeyRound className="h-3.5 w-3.5 text-emerald-400" />
-                    </span>
-                    {t('setup.openrouter.apiKey')}
+                  <CardTitle className="flex items-center gap-2 font-display">
+                    <Languages className="h-4 w-4 text-emerald-400" />
+                    {t('setup.language.title')}
                   </CardTitle>
-                  <CardDescription>
-                    {t('setup.openrouter.description.new')}{' '}
-                    <a
-                      href="https://openrouter.ai/keys"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-[var(--color-app-fg)] underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
-                    >
-                      OpenRouter
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </CardDescription>
+                  <CardDescription>{t('setup.language.description')}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={validateAndListModels} className="space-y-5">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {(Object.keys(LOCALES) as Locale[]).map((language) => (
+                      <button
+                        key={language}
+                        type="button"
+                        onClick={() => {
+                          setSaved(false);
+                          setAppLanguage(language);
+                          setLocale(language);
+                        }}
+                        className={[
+                          'rounded-xl border px-4 py-3 text-left transition-colors',
+                          appLanguage === language
+                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+                            : 'border-[var(--color-app-border)] bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
+                        ].join(' ')}
+                      >
+                        <span className="block text-sm font-semibold">
+                          {LOCALES[language].nativeName}
+                        </span>
+                        <span className="mt-1 block text-[11px] uppercase tracking-wider text-[var(--color-app-muted)]">
+                          {LOCALES[language].shortName}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-5">
+                    <TimezoneSelect
+                      id="setup-timezone"
+                      value={appTimezone}
+                      onChange={(next) => {
+                        setSaved(false);
+                        setAppTimezone(next);
+                      }}
+                      label={t('setup.timezone.title')}
+                      hint={t('setup.timezone.description')}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card elevated>
+                <CardHeader>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <CardTitle className="flex items-center gap-2 font-display">
+                        <KeyRound className="h-4 w-4 text-emerald-400" />
+                        {t('setup.openrouter.title')}
+                      </CardTitle>
+                      <CardDescription>
+                        {status?.complete
+                          ? t('setup.openrouter.description.active')
+                          : t('setup.openrouter.description.new')}
+                      </CardDescription>
+                    </div>
+                    {status?.hasApiKey && (
+                      <Badge variant="success">{t('setup.openrouter.active')}</Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {status?.hasApiKey && (
+                    <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2 text-sm text-emerald-200">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <span>{t('setup.openrouter.stored')}</span>
+                      <span className="ml-auto font-mono text-[11px] tracking-widest text-emerald-300/80">
+                        ••••••••••••
+                      </span>
+                    </div>
+                  )}
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
                     <div className="space-y-2">
-                      <Label htmlFor="key">{t('setup.openrouter.apiKey')}</Label>
+                      <Label htmlFor="configured-key">
+                        {status?.complete
+                          ? t('setup.openrouter.newKey')
+                          : t('setup.openrouter.apiKey')}
+                      </Label>
                       <Input
-                        id="key"
+                        id="configured-key"
                         type="password"
                         value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="sk-or-v1-..."
+                        onChange={(e) => {
+                          setSaved(false);
+                          setApiKey(e.target.value);
+                        }}
+                        placeholder={t('setup.openrouter.newKeyPlaceholder')}
                         autoComplete="off"
                         spellCheck={false}
-                        required
-                        minLength={20}
                         className="font-mono h-11 text-[15px]"
                       />
                     </div>
-                    <div className="flex justify-between items-center">
-                      <Button
-                        type="submit"
-                        variant="primary"
-                        size="lg"
-                        disabled={loading}
-                        className="w-full h-11"
-                      >
-                        {loading ? <Spinner /> : t('onboarding.validateContinue')}
-                        {!loading && <ArrowRight className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-
-          {step === 'modelos' && models && (
-            <motion.div
-              key="modelos"
-              initial={{ opacity: 0, x: 12 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -12 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <form onSubmit={saveSetup} className="space-y-5">
-                <Card elevated>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-display">
-                      <Languages className="h-4 w-4 text-emerald-400" />
-                      {t('setup.language.title')}
-                    </CardTitle>
-                    <CardDescription>{t('setup.language.description')}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {(Object.keys(LOCALES) as Locale[]).map((language) => (
-                        <button
-                          key={language}
-                          type="button"
-                          onClick={() => {
-                            setSaved(false);
-                            setAppLanguage(language);
-                            setLocale(language);
-                          }}
-                          className={[
-                            'rounded-xl border px-4 py-3 text-left transition-colors',
-                            appLanguage === language
-                              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
-                              : 'border-[var(--color-app-border)] bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
-                          ].join(' ')}
-                        >
-                          <span className="block text-sm font-semibold">
-                            {LOCALES[language].nativeName}
-                          </span>
-                          <span className="mt-1 block text-[11px] uppercase tracking-wider text-[var(--color-app-muted)]">
-                            {LOCALES[language].shortName}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-5">
-                      <TimezoneSelect
-                        id="setup-timezone"
-                        value={appTimezone}
-                        onChange={(next) => {
-                          setSaved(false);
-                          setAppTimezone(next);
-                        }}
-                        label={t('setup.timezone.title')}
-                        hint={t('setup.timezone.description')}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card elevated>
-                  <CardHeader>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <CardTitle className="flex items-center gap-2 font-display">
-                          <KeyRound className="h-4 w-4 text-emerald-400" />
-                          {t('setup.openrouter.title')}
-                        </CardTitle>
-                        <CardDescription>
-                          {status?.complete
-                            ? t('setup.openrouter.description.active')
-                            : t('setup.openrouter.description.new')}
-                        </CardDescription>
-                      </div>
-                      {status?.hasApiKey && (
-                        <Badge variant="success">{t('setup.openrouter.active')}</Badge>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {status?.hasApiKey && (
-                      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2 text-sm text-emerald-200">
-                        <CheckCircle2 className="h-4 w-4 shrink-0" />
-                        <span>{t('setup.openrouter.stored')}</span>
-                        <span className="ml-auto font-mono text-[11px] tracking-widest text-emerald-300/80">
-                          ••••••••••••
-                        </span>
-                      </div>
-                    )}
-                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                      <div className="space-y-2">
-                        <Label htmlFor="configured-key">
-                          {status?.complete
-                            ? t('setup.openrouter.newKey')
-                            : t('setup.openrouter.apiKey')}
-                        </Label>
-                        <Input
-                          id="configured-key"
-                          type="password"
-                          value={apiKey}
-                          onChange={(e) => {
-                            setSaved(false);
-                            setApiKey(e.target.value);
-                          }}
-                          placeholder={t('setup.openrouter.newKeyPlaceholder')}
-                          autoComplete="off"
-                          spellCheck={false}
-                          className="font-mono h-11 text-[15px]"
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="lg"
-                        onClick={() => void refreshModelCatalog()}
-                        disabled={loading}
-                      >
-                        {loading ? <Spinner /> : <RotateCw className="h-4 w-4" />}
-                        {t('setup.openrouter.refreshModels')}
-                      </Button>
-                    </div>
-                    <p className="text-xs leading-relaxed text-[var(--color-app-muted)]">
-                      {status?.complete
-                        ? t('setup.openrouter.refreshHint.active')
-                        : t('setup.openrouter.refreshHint.new')}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card elevated>
-                  <CardHeader>
-                    <CardTitle className="font-display">{t('setup.models.title')}</CardTitle>
-                    <CardDescription>{t('setup.models.description')}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <ModelPicker
-                      label={t('setup.models.transcription')}
-                      value={transcriptionModel}
-                      onChange={setTranscriptionModel}
-                      options={models.transcription}
-                      count={models.transcription.length}
-                    />
-                    <ModelPicker
-                      label={t('setup.models.chat')}
-                      value={chatModel}
-                      onChange={setChatModel}
-                      options={models.chat}
-                      count={models.chat.length}
-                    />
-                    <ModelPicker
-                      label={t('setup.models.web')}
-                      value={webSearchModel}
-                      onChange={setWebSearchModel}
-                      options={models.web}
-                      count={models.web.length}
-                      optional
-                      hint={t('setup.models.webHint')}
-                    />
-                    <ModelPicker
-                      label={t('setup.models.vision')}
-                      value={visionModel}
-                      onChange={setVisionModel}
-                      options={models.vision}
-                      count={models.vision.length}
-                      optional
-                      hint={t('setup.models.visionHint')}
-                    />
-                    <ModelPicker
-                      label={t('setup.models.documents')}
-                      value={documentModel}
-                      onChange={setDocumentModel}
-                      options={models.document}
-                      count={models.document.length}
-                      optional
-                      hint={t('setup.models.documentsHint')}
-                    />
-                    <ModelPicker
-                      label={t('setup.models.x')}
-                      value={xAnalysisModel}
-                      onChange={setXAnalysisModel}
-                      options={models.xAnalysis}
-                      count={models.xAnalysis.length}
-                      optional
-                      hint={t('setup.models.xHint')}
-                    />
-                  </CardContent>
-                </Card>
-
-                <div className="flex justify-end gap-3 pt-2">
-                  {!editingConfigured && (
                     <Button
                       type="button"
-                      variant="ghost"
-                      onClick={() => {
-                        setStep('key');
-                        setError(null);
-                      }}
+                      variant="outline"
+                      size="lg"
+                      onClick={() => void refreshModelCatalog()}
+                      disabled={loading}
                     >
-                      {t('common.back')}
+                      {loading ? <Spinner /> : <RotateCw className="h-4 w-4" />}
+                      {t('setup.openrouter.refreshModels')}
                     </Button>
-                  )}
-                  <Button type="submit" variant="primary" size="lg" disabled={loading}>
-                    {loading ? (
-                      <Spinner />
-                    ) : editingConfigured ? (
-                      t('setup.save')
-                    ) : (
-                      t('common.saveContinue')
-                    )}
-                    {!loading && <ArrowRight className="h-4 w-4" />}
+                  </div>
+                  <p className="text-xs leading-relaxed text-[var(--color-app-muted)]">
+                    {status?.complete
+                      ? t('setup.openrouter.refreshHint.active')
+                      : t('setup.openrouter.refreshHint.new')}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card elevated>
+                <CardHeader>
+                  <CardTitle className="font-display">{t('setup.models.title')}</CardTitle>
+                  <CardDescription>{t('setup.models.description')}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <ModelPicker
+                    label={t('setup.models.transcription')}
+                    value={transcriptionModel}
+                    onChange={setTranscriptionModel}
+                    options={models.transcription}
+                    count={models.transcription.length}
+                  />
+                  <ModelPicker
+                    label={t('setup.models.chat')}
+                    value={chatModel}
+                    onChange={setChatModel}
+                    options={models.chat}
+                    count={models.chat.length}
+                  />
+                  <ModelPicker
+                    label={t('setup.models.web')}
+                    value={webSearchModel}
+                    onChange={setWebSearchModel}
+                    options={models.web}
+                    count={models.web.length}
+                    optional
+                    hint={t('setup.models.webHint')}
+                  />
+                  <ModelPicker
+                    label={t('setup.models.vision')}
+                    value={visionModel}
+                    onChange={setVisionModel}
+                    options={models.vision}
+                    count={models.vision.length}
+                    optional
+                    hint={t('setup.models.visionHint')}
+                  />
+                  <ModelPicker
+                    label={t('setup.models.documents')}
+                    value={documentModel}
+                    onChange={setDocumentModel}
+                    options={models.document}
+                    count={models.document.length}
+                    optional
+                    hint={t('setup.models.documentsHint')}
+                  />
+                  <ModelPicker
+                    label={t('setup.models.x')}
+                    value={xAnalysisModel}
+                    onChange={setXAnalysisModel}
+                    options={models.xAnalysis}
+                    count={models.xAnalysis.length}
+                    optional
+                    hint={t('setup.models.xHint')}
+                  />
+                </CardContent>
+              </Card>
+
+              <div className="flex justify-end gap-3 pt-2">
+                {!editingConfigured && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setStep('key');
+                      setError(null);
+                    }}
+                  >
+                    {t('common.back')}
                   </Button>
-                </div>
-              </form>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </AnimatedPage>
+                )}
+                <Button type="submit" variant="primary" size="lg" disabled={loading}>
+                  {loading ? (
+                    <Spinner />
+                  ) : editingConfigured ? (
+                    t('setup.save')
+                  ) : (
+                    t('common.saveContinue')
+                  )}
+                  {!loading && <ArrowRight className="h-4 w-4" />}
+                </Button>
+              </div>
+            </form>
+          </div>
+        )}
+      </>
+    </PageShell>
   );
 }
 
@@ -672,27 +628,6 @@ function preferredChatModel(models: OrModel[]): OrModel | undefined {
   return models.find((m) => m.id === DEFAULT_TEXT_MODEL) ?? models[0];
 }
 
-function PageHeader({
-  badge,
-  title,
-  sub,
-}: {
-  badge: string;
-  title: React.ReactNode;
-  sub: string;
-}): React.ReactElement {
-  return (
-    <header className="mb-7 space-y-3">
-      <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-violet-400 font-medium">
-        <Sparkles className="h-3.5 w-3.5" />
-        {badge}
-      </div>
-      <h1 className="font-display text-3xl font-semibold text-[var(--color-app-fg)]">{title}</h1>
-      <p className="max-w-2xl text-sm text-[var(--color-app-muted)] leading-relaxed">{sub}</p>
-    </header>
-  );
-}
-
 function StepDot({
   index,
   active,
@@ -706,8 +641,7 @@ function StepDot({
 }): React.ReactElement {
   return (
     <div className="flex items-center gap-2.5">
-      <motion.div
-        animate={{ scale: active ? 1.05 : 1 }}
+      <div
         className={[
           'h-7 w-7 rounded-full border flex items-center justify-center text-[11px] font-bold transition-all duration-300',
           done
@@ -718,7 +652,7 @@ function StepDot({
         ].join(' ')}
       >
         {done ? '✓' : index}
-      </motion.div>
+      </div>
       <span
         className={
           active || done

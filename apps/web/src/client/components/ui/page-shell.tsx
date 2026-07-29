@@ -71,7 +71,7 @@ export function PageShell({
     <div
       ref={root}
       className={cn(
-        'mx-auto w-full space-y-6 px-4 py-5 sm:space-y-8 sm:px-7 sm:py-9 xl:px-10',
+        'mx-auto min-h-full w-full space-y-6 px-4 py-5 sm:space-y-8 sm:px-7 sm:py-9 xl:px-10',
         PAGE_SHELL_WIDTHS[width],
         className,
       )}

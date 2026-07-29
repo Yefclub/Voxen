@@ -28,7 +28,7 @@ import { NotesTree } from '../components/notes/notes-tree';
 import { Spinner } from '../components/ui/spinner';
 import { useFetch } from '../lib/hooks';
 import { useNotes } from '../lib/use-notes';
-import { AnimatedPage } from '../components/motion/animated-page';
+import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { useI18n } from '../lib/i18n';
 
 interface NoteFull {
@@ -52,34 +52,30 @@ export function NotasPage(): React.ReactElement {
   const { notes, loading: notesLoading, refresh, create } = useNotes();
 
   return (
-    <AnimatedPage>
-      <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 sm:space-y-8 sm:px-8 sm:py-10">
-        <header className="space-y-3">
-          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
+    <PageShell width="workspace">
+      <PageHeader
+        eyebrow={
+          <>
             <Library className="h-3.5 w-3.5 text-violet-400" />
             {t('notes.manualBase')}
-          </div>
-          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
-            {t('notes.title')}
-          </h1>
-          <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            {t('notes.description')}
-          </p>
-        </header>
+          </>
+        }
+        title={t('notes.title')}
+        description={t('notes.description')}
+      />
 
-        {id ? (
-          <NoteEditor
-            key={id}
-            noteId={id}
-            previewMode={previewMode}
-            onTogglePreview={() => setPreviewMode((v) => !v)}
-            onSaved={() => void refresh()}
-          />
-        ) : (
-          <NotesLibrary notesCount={notes.length} loading={notesLoading} onCreate={create} />
-        )}
-      </div>
-    </AnimatedPage>
+      {id ? (
+        <NoteEditor
+          key={id}
+          noteId={id}
+          previewMode={previewMode}
+          onTogglePreview={() => setPreviewMode((v) => !v)}
+          onSaved={() => void refresh()}
+        />
+      ) : (
+        <NotesLibrary notesCount={notes.length} loading={notesLoading} onCreate={create} />
+      )}
+    </PageShell>
   );
 }
 
