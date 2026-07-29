@@ -49,7 +49,7 @@ const WEAK_METHODS = [
 ];
 
 export function parseGraphView(raw: string | undefined | null): GraphSliceView {
-  return raw === 'full' ? 'full' : 'map';
+  return raw === 'map' ? 'map' : 'full';
 }
 
 export function parseGraphHops(raw: string | undefined | null): number {

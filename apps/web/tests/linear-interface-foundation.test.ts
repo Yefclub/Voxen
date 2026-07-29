@@ -76,7 +76,7 @@ describe('fundação visual Linear', () => {
     expect(sidebar.match(/useReducedMotion\(\)/g)?.length).toBeGreaterThanOrEqual(5);
     expect(sidebar).toContain("reduceMotion ? { duration: 0 } : { type: 'spring'");
     expect(sidebar).toContain("layoutId={reduceMotion ? undefined : 'sidebar-pill'}");
-    expect(drawer).toContain('transition={{ duration: reduceMotion ? 0 : 0.16 }}');
+    expect(drawer).toContain('duration: reduceMotion ? 0 : 0.22');
   });
 
   test('mantém painel, spacer e drawer mobile coerentes e sem árvore fora de tela', () => {
@@ -86,7 +86,9 @@ describe('fundação visual Linear', () => {
     expect(sidebar).toContain('const SIDEBAR_WIDTH = 288');
     expect(sidebar).toContain('style={{ width: SIDEBAR_WIDTH }}');
     expect(sidebar).toContain('SIDEBAR_WIDTH + 32');
-    expect(drawer.match(/\{open && \(/g)?.length).toBe(2);
+    expect(drawer).toContain('fica preparada fora da tela');
+    expect(drawer).toContain("open ? 'pointer-events-auto' : 'pointer-events-none'");
+    expect(drawer).toContain('inert={open ? undefined : true}');
     expect(drawer).toContain('<SidebarModeBody user={user} hideHome />');
   });
 

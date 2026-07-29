@@ -78,13 +78,76 @@ export function isCloseSwipe(s: SwipeSample, t: EdgeSwipeThresholds = DEFAULT_TH
   return true;
 }
 
+export function mobileDrawerWidth(viewportWidth: number): number {
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return 352;
+  return Math.min(viewportWidth * 0.88, 352);
+}
+
+export function drawerGestureProgress(
+  sample: SwipeSample,
+  viewportWidth: number,
+  isOpen: boolean,
+  thresholds: EdgeSwipeThresholds = DEFAULT_THRESHOLDS,
+): number {
+  if (Math.abs(sample.dx) < 6) return isOpen ? 1 : 0;
+  if (Math.abs(sample.dy) > Math.abs(sample.dx) * thresholds.maxAngleRatio) {
+    return isOpen ? 1 : 0;
+  }
+  const width = mobileDrawerWidth(viewportWidth);
+  const progress = isOpen ? 1 + sample.dx / width : sample.dx / width;
+  return Math.min(1, Math.max(0, progress));
+}
+
+export const DRAWER_GESTURE_IGNORE_SELECTOR = [
+  'a',
+  'button',
+  'input',
+  'label',
+  'textarea',
+  'select',
+  'summary',
+  'audio[controls]',
+  'video[controls]',
+  '[contenteditable]',
+  '[draggable="true"]',
+  '[tabindex]:not([tabindex="-1"])',
+  '[aria-haspopup]',
+  '[role="button"]',
+  '[role="checkbox"]',
+  '[role="combobox"]',
+  '[role="grid"]',
+  '[role="gridcell"]',
+  '[role="link"]',
+  '[role="listbox"]',
+  '[role="menu"]',
+  '[role="menuitem"]',
+  '[role="menuitemcheckbox"]',
+  '[role="menuitemradio"]',
+  '[role="option"]',
+  '[role="radio"]',
+  '[role="radiogroup"]',
+  '[role="scrollbar"]',
+  '[role="searchbox"]',
+  '[role="slider"]',
+  '[role="spinbutton"]',
+  '[role="switch"]',
+  '[role="tab"]',
+  '[role="tablist"]',
+  '[role="textbox"]',
+  '[role="tree"]',
+  '[role="treegrid"]',
+  '[role="treeitem"]',
+  '[data-drawer-gesture-ignore]',
+].join(',');
+
+export function matchesDrawerGestureIgnore(
+  element: { closest: (selector: string) => unknown } | null,
+): boolean {
+  return Boolean(element?.closest(DRAWER_GESTURE_IGNORE_SELECTOR));
+}
+
 function startsOnInteractiveElement(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  return Boolean(
-    target.closest(
-      'a,button,input,textarea,select,summary,[contenteditable="true"],[role="button"],[data-drawer-gesture-ignore]',
-    ),
-  );
+  return target instanceof Element && matchesDrawerGestureIgnore(target);
 }
 
 /**
@@ -100,21 +163,25 @@ export function useEdgeSwipe({
   isOpen,
   onOpen,
   onClose,
+  onProgress,
   thresholds = DEFAULT_THRESHOLDS,
 }: {
   enabled: boolean;
   isOpen: boolean;
   onOpen: () => void;
   onClose: () => void;
+  onProgress?: (progress: number) => void;
   thresholds?: EdgeSwipeThresholds;
 }): void {
   // Callbacks/estado em refs pra não re-anexar listeners a cada render.
   const onOpenRef = useRef(onOpen);
   const onCloseRef = useRef(onClose);
   const isOpenRef = useRef(isOpen);
+  const onProgressRef = useRef(onProgress);
   onOpenRef.current = onOpen;
   onCloseRef.current = onClose;
   isOpenRef.current = isOpen;
+  onProgressRef.current = onProgress;
 
   useEffect(() => {
     if (!enabled) return;
@@ -148,6 +215,25 @@ export function useEdgeSwipe({
         (startX >= centralMin && startX <= centralMax);
     };
 
+    const onTouchMove = (e: TouchEvent): void => {
+      if (!tracking || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+      onProgressRef.current?.(
+        drawerGestureProgress(
+          {
+            dx: touch.clientX - startX,
+            dy: touch.clientY - startY,
+            startX,
+          },
+          viewportWidth,
+          isOpenRef.current,
+          thresholds,
+        ),
+      );
+    };
+
     const onTouchEnd = (e: TouchEvent): void => {
       if (!tracking) return;
       tracking = false;
@@ -160,19 +246,32 @@ export function useEdgeSwipe({
       };
       if (isOpenRef.current) {
         if (isCloseSwipe(sample, thresholds)) onCloseRef.current();
+        else onProgressRef.current?.(1);
       } else if (
         isOpenSwipe(sample, thresholds) ||
         isCentralOpenSwipe(sample, window.visualViewport?.width ?? window.innerWidth, thresholds)
       ) {
         onOpenRef.current();
+      } else {
+        onProgressRef.current?.(0);
       }
     };
 
+    const onTouchCancel = (): void => {
+      if (!tracking) return;
+      tracking = false;
+      onProgressRef.current?.(isOpenRef.current ? 1 : 0);
+    };
+
     window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
     window.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', onTouchCancel, { passive: true });
     return () => {
       window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchCancel);
     };
   }, [enabled, thresholds]);
 }

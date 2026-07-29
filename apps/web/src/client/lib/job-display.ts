@@ -22,9 +22,8 @@ export function jobStatusBadge(
 }
 
 export function stageLabel(stage: string, t?: TranslateFn, jobType?: JobType): string {
-  if (stage === 'downloading' && jobType === 'SCRAPE_WEB') {
-    return t?.('job.stage.readingWeb') ?? 'Lendo página';
-  }
+  const contextual = contextualStageLabel(stage, jobType, t);
+  if (contextual) return contextual;
   const map: Record<string, string> = {
     queued: t?.('job.stage.queued') ?? 'Na fila',
     running: t?.('job.stage.running') ?? 'Iniciando',
@@ -45,7 +44,56 @@ export function stageLabel(stage: string, t?: TranslateFn, jobType?: JobType): s
     failed: t?.('job.stage.failed') ?? 'Falhou',
     cancelled: t?.('job.stage.cancelled') ?? 'Cancelado',
   };
-  return map[stage] ?? stage;
+  return map[stage] ?? humanizeStage(stage);
+}
+
+function contextualStageLabel(
+  stage: string,
+  jobType: JobType | undefined,
+  t?: TranslateFn,
+): string | null {
+  if (!jobType) return null;
+  if (stage === 'indexing') {
+    return t?.('job.stage.indexingBrain') ?? 'Conectando ao Brain';
+  }
+  if (stage === 'uploading') {
+    return t?.('job.stage.savingContent') ?? 'Salvando conteúdo';
+  }
+  if (jobType === 'SCRAPE_WEB' && stage === 'downloading') {
+    return t?.('job.stage.readingWeb') ?? 'Lendo página';
+  }
+  if (jobType === 'DOWNLOAD_AND_TRANSCRIBE') {
+    if (stage === 'downloading') {
+      return t?.('job.stage.capturingMedia') ?? 'Capturando mídia';
+    }
+    if (stage === 'choosing_method') {
+      return t?.('job.stage.preparingTranscript') ?? 'Preparando transcrição';
+    }
+  }
+  if (jobType === 'UPLOAD_AND_ANALYZE_DOCUMENT') {
+    if (stage === 'preparing_upload') {
+      return t?.('job.stage.preparingDocument') ?? 'Preparando documento';
+    }
+    if (stage === 'converting_document') {
+      return t?.('job.stage.documentToMarkdown') ?? 'Convertendo para Markdown';
+    }
+    if (stage === 'analyzing_document') {
+      return t?.('job.stage.readingDocument') ?? 'Lendo conteúdo do documento';
+    }
+  }
+  if (jobType === 'UPLOAD_AND_ANALYZE_IMAGE' && stage === 'preparing_upload') {
+    return t?.('job.stage.preparingImage') ?? 'Preparando imagem';
+  }
+  if (jobType === 'ANALYZE_X' && stage === 'converting_document') {
+    return t?.('job.stage.readingX') ?? 'Lendo publicação do X';
+  }
+  return null;
+}
+
+function humanizeStage(stage: string): string {
+  const normalized = stage.trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  if (!normalized) return 'Processando conteúdo';
+  return normalized.charAt(0).toLocaleUpperCase() + normalized.slice(1);
 }
 
 export function jobTypeLabel(type: JobType | undefined, t?: TranslateFn): string {

@@ -69,6 +69,7 @@ async def run(*, job_id: str, user_id: str, source_url: str, log: Any) -> None: 
         transcript_id=new_transcript_id,
         log=log,
     )
+    await events.publish_graph_invalidation(user_id)
     await _maybe_store_embedding(
         user_id=user_id,
         transcript_id=new_transcript_id,

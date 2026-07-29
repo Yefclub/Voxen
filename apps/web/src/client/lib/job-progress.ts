@@ -41,3 +41,38 @@ export function mergeJobProgressEvents(
   if (!changed) return previous as JobProgressEvent[];
   return [...byKey.values()].sort((a, b) => a.ts.localeCompare(b.ts));
 }
+
+export function jobElapsedMs(
+  queuedAt: string | Date,
+  finishedAt: string | Date | null | undefined,
+  now: number = Date.now(),
+): number {
+  const start = new Date(queuedAt).getTime();
+  const end = finishedAt ? new Date(finishedAt).getTime() : now;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  return Math.max(0, end - start);
+}
+
+export function formatJobElapsed(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+export function jobProgressEventDurationMs(
+  events: readonly Pick<JobProgressEvent, 'ts'>[],
+  index: number,
+  finishedAt: string | Date | null | undefined,
+  now: number = Date.now(),
+): number {
+  const start = new Date(events[index]?.ts ?? '').getTime();
+  const next = events[index + 1]?.ts;
+  const end = next ? new Date(next).getTime() : finishedAt ? new Date(finishedAt).getTime() : now;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  return Math.max(0, end - start);
+}

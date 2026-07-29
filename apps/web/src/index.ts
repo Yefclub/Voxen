@@ -439,6 +439,22 @@ if (process.env.NODE_ENV === 'production') {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`[chat] runtime de continuidade indisponível: ${message}`);
     });
+
+  void import('./routes/graph')
+    .then(({ reconcileGraphUsers }) => {
+      const reconcile = (): void => {
+        void reconcileGraphUsers().catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(`[graph] reconciliação automática falhou: ${message}`);
+        });
+      };
+      reconcile();
+      setInterval(reconcile, 60_000);
+    })
+    .catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[graph] rotina automática indisponível: ${message}`);
+    });
 }
 
 // Proxy de WebSocket do túnel: antes de cair no Hono, tentamos fazer upgrade do
@@ -456,7 +472,7 @@ function isLongLivedStreamRequest(req: Request): boolean {
   if (req.method === 'GET') {
     const path = new URL(req.url).pathname;
     // Jobs SSE: heartbeat a cada 10s, mas idle do Bun ainda pode matar a conexão.
-    return /\/api\/jobs\/[^/]+\/events$/.test(path);
+    return /\/api\/jobs\/[^/]+\/events$/.test(path) || path.endsWith('/api/graph/events');
   }
   return false;
 }

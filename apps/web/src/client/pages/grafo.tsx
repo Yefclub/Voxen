@@ -192,8 +192,7 @@ function latestGraphIndexStatus(
 
 export function GrafoPage(): React.ReactElement {
   const [graphRequest, setGraphRequest] = useState({ tick: 0, force: false });
-  /** map = recorte rápido (default); full = snapshot amplo (spec 103). */
-  const [graphView, setGraphView] = useState<'map' | 'full'>('map');
+  /** O produto sempre abre o snapshot amplo; map permanece só no contrato legado da API. */
   const [reprocessOpen, setReprocessOpen] = useState(false);
   const [search, setSearch] = useState('');
   const deferredSearch = useDebouncedValue(search, 140);
@@ -209,13 +208,13 @@ export function GrafoPage(): React.ReactElement {
   const { theme } = useTheme();
   const graphPath = useMemo(() => {
     const params = new URLSearchParams();
-    params.set('view', graphView);
+    params.set('view', 'full');
     if (graphRequest.tick > 0) {
       params.set(graphRequest.force ? 'force' : 'refresh', '1');
       params.set('t', String(graphRequest.tick));
     }
     return `/api/graph?${params.toString()}`;
-  }, [graphRequest.force, graphRequest.tick, graphView]);
+  }, [graphRequest.force, graphRequest.tick]);
   const { data, loading, error } = useFetch<GraphResp>(graphPath);
   const {
     data: polledIndexStatus,
@@ -226,6 +225,15 @@ export function GrafoPage(): React.ReactElement {
   const indexing = indexStatus?.state === 'running' || (!indexStatus && data?.indexing === true);
   const indexFailed = indexStatus?.state === 'error';
   const previousIndexState = useRef<GraphIndexStatus['state'] | null>(null);
+
+  useEffect(() => {
+    const events = new EventSource('/api/graph/events');
+    events.addEventListener('invalidated', () => {
+      setGraphRequest({ tick: Date.now(), force: false });
+      refreshIndexStatus();
+    });
+    return () => events.close();
+  }, [refreshIndexStatus]);
 
   const filtered = useMemo(
     () => (data ? filterGraphData(data, deferredSearch, activeTypes) : null),
@@ -399,19 +407,6 @@ export function GrafoPage(): React.ReactElement {
               <Button
                 variant="outline"
                 size="default"
-                onClick={() => {
-                  setGraphView((current) => (current === 'map' ? 'full' : 'map'));
-                  setGraphRequest({ tick: Date.now(), force: false });
-                }}
-                title={t(graphView === 'map' ? 'graph.switchToFull' : 'graph.switchToMap')}
-              >
-                <span className="text-xs font-medium">
-                  {graphView === 'map' ? t('graph.viewMap') : t('graph.viewFull')}
-                </span>
-              </Button>
-              <Button
-                variant="outline"
-                size="default"
                 onClick={() => setMode((current) => (current === '2d' ? '3d' : '2d'))}
                 title={t(mode === '2d' ? 'graph.switchTo3d' : 'graph.switchTo2d')}
               >
@@ -493,7 +488,6 @@ export function GrafoPage(): React.ReactElement {
                     nodes: filtered.totalNodes,
                     edges: filtered.totalEdges,
                   })}
-                  {data?.view === 'map' ? ` · ${t('graph.viewMap')}` : ''}
                 </div>
                 {data?.truncated ? (
                   <div className="rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2.5 py-1 text-[10px] text-[var(--color-app-muted)] shadow-sm backdrop-blur-md">
@@ -517,12 +511,27 @@ export function GrafoPage(): React.ReactElement {
                 {t('graph.refreshing')}
               </div>
             )}
-            {error && !loading && (
+            {error && !loading && !data && (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--color-app-bg)]/80 px-4 backdrop-blur-sm">
                 <FetchError
                   message={error}
                   onRetry={() => setGraphRequest({ tick: Date.now(), force: false })}
                 />
+              </div>
+            )}
+            {error && !loading && data && (
+              <div
+                role="alert"
+                className="absolute right-3 top-12 z-20 flex max-w-xs items-center gap-3 rounded-xl border border-rose-400/25 bg-[var(--color-app-bg-elevated)]/95 p-3 text-xs shadow-lg backdrop-blur-md"
+              >
+                <span className="min-w-0 flex-1 text-[var(--color-app-muted)]">{error}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setGraphRequest({ tick: Date.now(), force: false })}
+                >
+                  {t('graph.refresh')}
+                </Button>
               </div>
             )}
             {!loading && data && data.nodes.length === 0 && !indexing && !indexFailed && (

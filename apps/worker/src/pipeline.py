@@ -912,6 +912,7 @@ async def _generate_summary_with_progress(
         transcript_id=transcript_id,
         log=log,
     )
+    await events.publish_graph_invalidation(user_id)
     await _maybe_store_embedding(
         user_id=user_id,
         transcript_id=transcript_id,

@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom';
+import { useMotionValue } from 'motion/react';
 import { Sidebar, SidebarSpacer } from './sidebar';
 import { MobileNavDrawer } from './mobile-nav-drawer';
 import { MobileBottomNav } from './mobile-bottom-nav';
@@ -32,6 +33,7 @@ export function AppLayout(): React.ReactElement {
   // Estado do drawer vive aqui pra ligar o edge-swipe e o botão de abrir menu
   // (rota de chat, onde a bottom-nav some) ao overlay.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const mobileNavProgress = useMotionValue(0);
   const isDesktop = useIsDesktop();
   // Swipe da borda esquerda → direita abre o drawer; swipe de volta fecha. Só
   // ativo no mobile (no desktop a navegação é a sidebar). Hooks sempre rodam
@@ -41,6 +43,7 @@ export function AppLayout(): React.ReactElement {
     isOpen: mobileNavOpen,
     onOpen: () => setMobileNavOpen(true),
     onClose: () => setMobileNavOpen(false),
+    onProgress: (progress) => mobileNavProgress.set(progress),
   });
   // Watcher global de jobs do user logado (toast em qualquer página)
   useJobsWatcher(!!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone), (path) =>
@@ -135,10 +138,14 @@ export function AppLayout(): React.ReactElement {
         <MobileNavDrawer
           user={data.user}
           open={mobileNavOpen}
+          progress={mobileNavProgress}
           onClose={() => setMobileNavOpen(false)}
         />
         <SidebarSpacer />
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <div
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+          inert={mobileNavOpen ? true : undefined}
+        >
           <Topbar user={data.user} />
           {showBack && <MobileBackButton />}
           {showMobileNavButton && <MobileMenuButton onOpen={() => setMobileNavOpen(true)} />}
