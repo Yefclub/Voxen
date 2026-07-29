@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785359396",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Superfícies mais claras, fluidas e prontas para uso",
+    "body": "A navegação mobile deixa de repetir “Início” e passa a abrir um menu lateral\nparcial que acompanha o gesto da borda ou do centro da tela, com foco contido,\nfechamento acessível e respeito a movimento reduzido.\n\nAs telas de processamento agora descrevem a etapa real de vídeos, páginas,\ndocumentos, imagens e conteúdo do X, preservam o histórico recebido em tempo\nreal e mostram a duração de cada fase sem redirecionar antes da conclusão.\n\nO Brain passa a ser reconciliado mesmo sem visitas ao Grafo. Novos conteúdos\ninvalidam o snapshot e atualizam a página aberta em tempo real; o Grafo inicia\nsempre na visualização completa e mantém os títulos legíveis no tema escuro.\n\nNovidades ganhou fluxo contínuo, busca, filtros e paginação. O aviso de nova\nversão ficou maior, explica a mudança de versão e oferece acesso direto ao\nhistórico completo. O onboarding continua simples, enquanto a configuração\navançada dos modelos permanece disponível para administradores.",
+    "pr": 474,
+    "author": "Kalyel",
+    "date": "2026-07-29T18:09:40-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/474"
+  },
+  {
     "version": "0.13.0-dev.1785355315",
     "channel": "dev",
     "type": "feat",
