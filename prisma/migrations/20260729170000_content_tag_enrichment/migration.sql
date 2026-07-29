@@ -1,3 +1,5 @@
+BEGIN;
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -39,6 +41,8 @@ WHERE t."taggingStatus" = 'PENDING'::"EnrichmentStatus"
 CREATE INDEX IF NOT EXISTS "Transcript_taggingStatus_taggingNextAttemptAt_idx"
   ON "Transcript"("taggingStatus", "taggingNextAttemptAt");
 
+SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'));
+
 -- PostgreSQL considera NULLs distintos em constraints compostas. Como os
 -- settings globais usam userId NULL, preservamos o registro mais recente e
 -- garantimos uma única linha por chave com um índice parcial.
@@ -62,3 +66,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Setting_global_key_unique"
   ON "Setting"(key)
   WHERE scope = 'GLOBAL'::"SettingScope"
     AND "userId" IS NULL;
+
+COMMIT;

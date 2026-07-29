@@ -61,13 +61,13 @@ async def test_start_increments_attempt_and_clears_previous_error(
     conn = _FakeConnection()
     _install_connection(monkeypatch, conn)
 
-    await db.start_tag_enrichment("transcript-1")
+    await db.start_tag_enrichment("user-1", "transcript-1")
 
     query, args = conn.execute_calls[0]
     assert '"taggingAttempts" = "taggingAttempts" + 1' in query
     assert '"taggingStatus" = \'RUNNING\'::"EnrichmentStatus"' in query
     assert '"taggingError" = NULL' in query
-    assert args == ("transcript-1",)
+    assert args == ("user-1", "transcript-1")
 
 
 async def test_retry_query_schedules_backoff_and_skips_after_six_attempts(
@@ -77,6 +77,7 @@ async def test_retry_query_schedules_backoff_and_skips_after_six_attempts(
     _install_connection(monkeypatch, conn)
 
     await db.finish_tag_enrichment(
+        "user-1",
         "transcript-1",
         status="RETRY",
         error="modelo não retornou tags",
@@ -87,4 +88,4 @@ async def test_retry_query_schedules_backoff_and_skips_after_six_attempts(
     assert "THEN 'SKIPPED'::\"EnrichmentStatus\"" in query
     assert '"taggingAttempts" < 6' in query
     assert "LEAST(3600, 60 * POWER(2" in query
-    assert args == ("transcript-1", "RETRY", "modelo não retornou tags")
+    assert args == ("user-1", "transcript-1", "RETRY", "modelo não retornou tags")

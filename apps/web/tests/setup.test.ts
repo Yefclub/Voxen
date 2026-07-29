@@ -220,6 +220,17 @@ describeIfDb('setup flow', () => {
     });
     expect(rows).toHaveLength(1);
     await expect(getSetting('default_chat_model')).resolves.toMatch(/^modelo-[ab]$/);
+
+    await expect(
+      db.setting.create({
+        data: {
+          scope: 'GLOBAL',
+          userId: null,
+          key: 'default_chat_model',
+          valueEnc: encrypt('bypass-do-lock', getMasterKey()),
+        },
+      }),
+    ).rejects.toThrow();
   });
 
   it('admin pode persistir idioma da plataforma', async () => {

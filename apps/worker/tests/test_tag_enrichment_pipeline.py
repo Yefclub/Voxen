@@ -64,7 +64,12 @@ async def test_existing_tags_complete_without_calling_model(
     )
 
     generate.assert_not_awaited()
-    finish.assert_awaited_once_with("transcript-1", status="COMPLETE", error=None)
+    finish.assert_awaited_once_with(
+        "user-1",
+        "transcript-1",
+        status="COMPLETE",
+        error=None,
+    )
 
 
 async def test_empty_model_tags_transition_to_retry_without_persisting(
@@ -100,6 +105,7 @@ async def test_empty_model_tags_transition_to_retry_without_persisting(
 
     apply_tags.assert_not_awaited()
     finish.assert_awaited_once_with(
+        "user-1",
         "transcript-1",
         status="RETRY",
         error="O modelo não retornou tags válidas.",

@@ -929,7 +929,7 @@ async def _maybe_grounded_brain_extract(
     try:
         from . import brain_extract
 
-        row = await db.get_transcript_title_summary_folder(transcript_id)
+        row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
         if not row:
             return
         title, content, _folder = row
@@ -997,7 +997,7 @@ async def _maybe_store_embedding(
             return
         from . import embeddings
 
-        row = await db.get_transcript_title_summary_folder(transcript_id)
+        row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
         if not row:
             return
         title, content, _folder = row
@@ -1039,7 +1039,7 @@ async def _maybe_generate_tags(
     """Gera e persiste tags se o conteúdo ainda não tiver nenhuma (auto-ingest)."""
     if not already_claimed:
         try:
-            await db.start_tag_enrichment(transcript_id)
+            await db.start_tag_enrichment(user_id, transcript_id)
         except Exception as e:  # noqa: BLE001
             log.warning(
                 "tags-status-start-failed",
@@ -1047,10 +1047,10 @@ async def _maybe_generate_tags(
                 error=str(e)[:240],
             )
     try:
-        row = await db.get_transcript_title_summary_folder(transcript_id)
+        row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
         if not row:
             await _finish_tag_enrichment_safely(
-                transcript_id=transcript_id, status="SKIPPED", error=None, log=log
+                user_id=user_id, transcript_id=transcript_id, status="SKIPPED", error=None, log=log
             )
             return
         title, content, folder_id = row
@@ -1058,11 +1058,11 @@ async def _maybe_generate_tags(
         if len(clean) < 40 and len(title.strip()) < 3:
             log.info("tags-skipped-short", transcript_id=transcript_id)
             await _finish_tag_enrichment_safely(
-                transcript_id=transcript_id, status="SKIPPED", error=None, log=log
+                user_id=user_id, transcript_id=transcript_id, status="SKIPPED", error=None, log=log
             )
             return
         # Só auto-preenche quando ainda não há tags (lote/manual re-gera na UI).
-        existing_on_tx = await db.list_transcript_tag_names(transcript_id)
+        existing_on_tx = await db.list_transcript_tag_names(user_id, transcript_id)
         if existing_on_tx:
             log.info(
                 "tags-skipped-already-present",
@@ -1070,7 +1070,7 @@ async def _maybe_generate_tags(
                 count=len(existing_on_tx),
             )
             await _finish_tag_enrichment_safely(
-                transcript_id=transcript_id, status="COMPLETE", error=None, log=log
+                user_id=user_id, transcript_id=transcript_id, status="COMPLETE", error=None, log=log
             )
             return
         api_key = await voxen_settings.get_openrouter_api_key()
@@ -1078,6 +1078,7 @@ async def _maybe_generate_tags(
         if not api_key or not model:
             log.warning("tags-skipped-missing-config", transcript_id=transcript_id)
             await _finish_tag_enrichment_safely(
+                user_id=user_id,
                 transcript_id=transcript_id,
                 status="RETRY",
                 error="Configuração OpenRouter ausente.",
@@ -1110,6 +1111,7 @@ async def _maybe_generate_tags(
         if not result.tags:
             log.info("tags-empty", transcript_id=transcript_id)
             await _finish_tag_enrichment_safely(
+                user_id=user_id,
                 transcript_id=transcript_id,
                 status="RETRY",
                 error="O modelo não retornou tags válidas.",
@@ -1129,6 +1131,7 @@ async def _maybe_generate_tags(
             count=len(applied),
         )
         await _finish_tag_enrichment_safely(
+            user_id=user_id,
             transcript_id=transcript_id,
             status="COMPLETE" if applied else "RETRY",
             error=None if applied else "Nenhuma tag pôde ser persistida.",
@@ -1136,6 +1139,7 @@ async def _maybe_generate_tags(
         )
     except Exception as e:  # noqa: BLE001 — tags são enriquecimento best-effort
         await _finish_tag_enrichment_safely(
+            user_id=user_id,
             transcript_id=transcript_id,
             status="RETRY",
             error=str(e),
@@ -1150,13 +1154,14 @@ async def _maybe_generate_tags(
 
 async def _finish_tag_enrichment_safely(
     *,
+    user_id: str,
     transcript_id: str,
     status: str,
     error: str | None,
     log: Any,  # noqa: ANN401
 ) -> None:
     try:
-        await db.finish_tag_enrichment(transcript_id, status=status, error=error)
+        await db.finish_tag_enrichment(user_id, transcript_id, status=status, error=error)
     except Exception as e:  # noqa: BLE001
         log.warning(
             "tags-status-finish-failed",
