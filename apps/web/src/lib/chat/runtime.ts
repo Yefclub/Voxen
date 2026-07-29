@@ -23,7 +23,9 @@ import {
 import { getAppTimezone, getSetting } from '../settings';
 import { researchWeb } from '../web-research';
 import { buildAgentClockInstructions, buildInstanceClock } from '../app-timezone';
+import type { ChatStatusCode } from '../../shared/chat-status';
 import { parseTemporalBounds } from './temporal-bounds';
+import { isProviderObservedEvent } from './stream-timing';
 import {
   buildUrlIntentInstructions,
   classifyUrlIntent,
@@ -39,6 +41,14 @@ import {
 const KEEP_RECENT = 6;
 const DEFAULT_CONTEXT_LIMIT = 32_000;
 const COMPACTION_RATIO = 0.7;
+
+function logChatTiming(payload: Record<string, unknown>): void {
+  try {
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+  } catch {
+    // Diagnóstico é best-effort e nunca pode interromper uma resposta.
+  }
+}
 
 // Fluxo de recuperação progressiva (ADR-004, harness sem embeddings). Instrui o
 // agente a recuperar contexto de forma incremental — buscar, ver estrutura, ler
@@ -117,7 +127,7 @@ export type ChatStreamEvent =
       assistantMessageId: string;
       startedAt: string;
     }
-  | { type: 'status'; label: string }
+  | { type: 'status'; label: string; code?: ChatStatusCode }
   | { type: 'text'; delta: string }
   | { type: 'reasoning'; delta: string }
   | { type: 'tool'; tool: StoredToolEvent }
@@ -1358,8 +1368,16 @@ export async function streamAssistantReply(options: {
   emit: (event: ChatStreamEvent) => void;
   userMessageId?: string;
   assistantMessageId?: string;
+  requestStartedAt?: number;
+  claimStartedAt?: number;
+  runtimeStartedAt?: number;
+  turnCreatedAt?: Date;
 }): Promise<string> {
   const { userId, conversationId, content, abortSignal, emit, assistantMessageId } = options;
+  const runtimeStartedAt = options.runtimeStartedAt ?? Date.now();
+  const requestStartedAt =
+    options.requestStartedAt ?? options.turnCreatedAt?.getTime() ?? runtimeStartedAt;
+  const claimStartedAt = options.claimStartedAt ?? runtimeStartedAt;
   if (!options.userMessageId) {
     await db.chatMessage.create({ data: { conversationId, role: 'USER', content } });
     await db.conversation.update({
@@ -1384,6 +1402,11 @@ export async function streamAssistantReply(options: {
     emit({ type: 'done', messageId: assistant.id });
     return assistant.id;
   }
+  // Estas leituras são independentes da compactação. Iniciá-las agora tira
+  // trabalho do caminho crítico sem consultar mensagens antes de a memória
+  // decidir quais linhas continuam ativas.
+  const relevantPromise = preloadRelevantContent(userId, content, 5).catch(() => []);
+  const timezonePromise = getAppTimezone().catch(() => 'America/Sao_Paulo');
   const compaction = await maybeCompact(conversationId, modelConfig, (label) =>
     emit({ type: 'status', label }),
   ).catch(() => {
@@ -1414,8 +1437,8 @@ export async function streamAssistantReply(options: {
         createdAt: true,
       },
     }) as Promise<ActiveMessage[]>,
-    preloadRelevantContent(userId, content, 5).catch(() => []),
-    getAppTimezone().catch(() => 'America/Sao_Paulo'),
+    relevantPromise,
+    timezonePromise,
   ]);
   const provider = createOpenRouter({ apiKey: modelConfig.apiKey });
   let answer = '';
@@ -1424,6 +1447,21 @@ export async function streamAssistantReply(options: {
   const suggestions = buildLibrarySuggestionsInstructions(relevant);
   const clock = buildAgentClockInstructions(buildInstanceClock(new Date(), timezone));
   const urlIntent = classifyUrlIntent(content);
+  const providerStartedAt = Date.now();
+  emit({
+    type: 'status',
+    code: 'connecting-model',
+    label: 'Conectando ao modelo…',
+  });
+  logChatTiming({
+    event: 'chat-provider-request-start',
+    messageId: assistantMessageId ?? null,
+    model: modelConfig.model,
+    requestToClaimMs: Math.max(0, claimStartedAt - requestStartedAt),
+    claimAndLoadMs: Math.max(0, runtimeStartedAt - claimStartedAt),
+    preparationMs: providerStartedAt - runtimeStartedAt,
+    totalToProviderStartMs: providerStartedAt - requestStartedAt,
+  });
   const result = streamText({
     model: provider(modelConfig.model),
     instructions: AGENT_INSTRUCTIONS + clock + suggestions + buildUrlIntentInstructions(urlIntent),
@@ -1469,9 +1507,24 @@ export async function streamAssistantReply(options: {
   });
 
   try {
+    let firstProviderEventLogged = false;
     for await (const rawPart of result.fullStream) {
       const part = rawPart as unknown as Record<string, unknown>;
       const type = part.type;
+      if (!firstProviderEventLogged && isProviderObservedEvent(type)) {
+        firstProviderEventLogged = true;
+        const firstEventAt = Date.now();
+        logChatTiming({
+          event: 'chat-turn-latency',
+          messageId: assistantMessageId ?? null,
+          model: modelConfig.model,
+          requestToClaimMs: Math.max(0, claimStartedAt - requestStartedAt),
+          claimAndLoadMs: Math.max(0, runtimeStartedAt - claimStartedAt),
+          preparationMs: providerStartedAt - runtimeStartedAt,
+          providerFirstEventMs: firstEventAt - providerStartedAt,
+          totalToFirstEventMs: firstEventAt - requestStartedAt,
+        });
+      }
       const reasoningDelta = extractReasoningDelta(part);
       if (reasoningDelta) {
         appendReasoning(segments, reasoningDelta);

@@ -33,9 +33,11 @@ def test_cookiefile_opts_writes_600_file_with_content() -> None:
         captured_path = patch["cookiefile"]
         p = Path(captured_path)
         assert p.exists()
-        # Permissão exatamente 0600 (sem grupo/outros).
-        mode = stat.S_IMODE(os.stat(p).st_mode)
-        assert mode == 0o600
+        # Windows não representa ACLs no campo POSIX st_mode; a garantia 0600
+        # é verificável somente no runtime Linux usado em produção/CI.
+        if os.name != "nt":
+            mode = stat.S_IMODE(os.stat(p).st_mode)
+            assert mode == 0o600
         assert p.read_text(encoding="utf-8") == NETSCAPE
     # Lifecycle fechado: arquivo removido ao sair do contexto.
     assert captured_path is not None

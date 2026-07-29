@@ -57,7 +57,9 @@ describe('build identity meta', () => {
     expect(res.headers.get('cache-control')).toContain('no-store');
     expect(res.headers.get('content-type')).toContain('text/html');
     const html = await res.text();
-    expect(html).toMatch(/<head><meta name="voxen-build" content="[^"]+">/);
+    expect(html).toMatch(
+      /<head><meta name="voxen-build" content="[^"]+"><meta name="voxen-version" content="[^"]+">/,
+    );
   });
 
   it.skipIf(!distIndexExists)('injeta o mesmo meta no fallback SPA', async () => {
@@ -65,5 +67,6 @@ describe('build identity meta', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toMatch(/<meta name="voxen-build" content="[^"]+">/);
+    expect(html).toMatch(/<meta name="voxen-version" content="[^"]+">/);
   });
 });

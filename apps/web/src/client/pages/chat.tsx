@@ -70,6 +70,7 @@ import {
   setChatStreaming,
   useChatShell,
 } from '../lib/chat-shell-state';
+import { chatStatusI18nKey, type ChatStatusCode } from '../../shared/chat-status';
 
 type ChatMessage = {
   id: string;
@@ -107,7 +108,7 @@ type StreamEvent =
   | { type: 'text'; delta: string }
   | { type: 'reasoning'; delta: string }
   | { type: 'tool'; tool: ToolEvent }
-  | { type: 'status'; label: string }
+  | { type: 'status'; label: string; code?: ChatStatusCode }
   | { type: 'compaction'; before: number; after: number }
   | { type: 'usage'; inputTokens: number; outputTokens: number }
   | { type: 'error'; message: string }
@@ -1172,7 +1173,8 @@ export function ChatPage(): React.ReactElement {
             }),
           );
         } else if (event.type === 'status') {
-          setStatus(event.label);
+          const statusKey = chatStatusI18nKey(event.code);
+          setStatus(statusKey ? t(statusKey) : event.label);
         } else if (event.type === 'tool') {
           setMessages((current) =>
             current.map((message) => {

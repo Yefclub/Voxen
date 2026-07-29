@@ -23,6 +23,8 @@ describe('feed de novidades', () => {
       channel: 'all',
       type: 'fix',
       query: 'menu',
+      version: null,
+      invalidVersion: false,
       limit: 50,
       offset: 0,
     });
@@ -44,10 +46,52 @@ describe('feed de novidades', () => {
     expect(page.releases.map((release) => release.version)).toEqual(['1.2.1-dev.3']);
   });
 
+  test('seleciona exatamente a versão e o canal pedidos pelo modal', () => {
+    const page = selectReleaseFeedPage(
+      releases,
+      parseReleaseFeedQuery({ version: 'v1.2.1-dev.3', channel: 'dev', limit: '1' }),
+    );
+    expect(page.releases).toEqual([releases[1]!]);
+    expect(page.total).toBe(1);
+
+    const wrongChannel = selectReleaseFeedPage(
+      releases,
+      parseReleaseFeedQuery({ version: '1.2.1-dev.3', channel: 'prod', limit: '1' }),
+    );
+    expect(wrongChannel.releases).toEqual([]);
+    expect(wrongChannel.total).toBe(0);
+  });
+
+  test('versão inválida solicitada nunca cai para a release mais recente', () => {
+    const page = selectReleaseFeedPage(
+      releases,
+      parseReleaseFeedQuery({ version: '../latest', limit: '1' }),
+    );
+    expect(page.releases).toEqual([]);
+    expect(page.total).toBe(0);
+  });
+
   test('mantém o feed anterior, mas sinaliza falha de um novo filtro', () => {
     const page = readFileSync(join(import.meta.dir, '../src/client/pages/novidades.tsx'), 'utf8');
     expect(page).toContain('error && feed');
     expect(page).toContain("t('novidades.refreshError')");
     expect(page).toContain('onClick={refresh}');
+  });
+
+  test('modal mantém cabeçalho e rodapé fora da região rolável', () => {
+    const modal = readFileSync(
+      join(import.meta.dir, '../src/client/components/update-modal.tsx'),
+      'utf8',
+    );
+    expect(modal).toContain('data-update-scroll-region');
+    expect(modal).toContain('h-[min(92dvh,52rem)]');
+    expect(modal).toContain('flex h-full min-h-0 flex-col');
+    expect(modal).toContain('min-h-0 flex-1 overflow-y-auto');
+    expect(modal).toContain('shrink-0');
+    expect(modal).toContain('release.promoted');
+    expect(modal).toContain("handleIntent('open-changelog')");
+    expect(modal).toContain("handleIntent('defer')");
+    expect(modal).toContain("handleIntent('apply')");
+    expect(modal.match(/onClick=\{\(\) => setRetry/gu)).toHaveLength(2);
   });
 });

@@ -97,6 +97,7 @@ function encodeSse(event: ChatStreamEvent): Uint8Array {
 }
 
 chatRoutes.post('/', async (c) => {
+  const requestStartedAt = Date.now();
   const parsed = SendBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: 'Mensagem inválida.' }, 400);
   const userId = c.get('userId');
@@ -169,8 +170,12 @@ chatRoutes.post('/', async (c) => {
         assistantMessageId: turn.assistantMessageId,
         startedAt: turn.createdAt.toISOString(),
       });
-      emit({ type: 'status', label: 'Preparando resposta…' });
-      void runChatTurn(turn.id, emit)
+      emit({
+        type: 'status',
+        code: 'preparing-response',
+        label: 'Preparando resposta…',
+      });
+      void runChatTurn(turn.id, emit, { requestStartedAt })
         .catch((error: unknown) => {
           emit({
             type: 'error',

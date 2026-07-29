@@ -537,6 +537,12 @@
     }
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .anim-in {
+      animation: none !important;
+    }
+  }
+
   /* Pulse violet (status "ao vivo") */
   .pulse-dot {
     position: relative;

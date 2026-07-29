@@ -75,6 +75,7 @@ releasesRoutes.get('/', async (c) => {
     channel: c.req.query('channel'),
     type: c.req.query('type'),
     query: c.req.query('q'),
+    version: c.req.query('version'),
     limit: c.req.query('limit'),
     offset: c.req.query('offset'),
   });

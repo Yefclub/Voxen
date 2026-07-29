@@ -49,7 +49,11 @@ mock.module('motion/react', () => ({
   useReducedMotion: () => true,
 }));
 
+// Bun mantém mock.module no processo inteiro da suíte. Preserve todos os
+// exports reais para não quebrar testes carregados depois deste arquivo.
+const actualIcons = await import('../src/client/components/ui/icons');
 mock.module('@/components/ui/icons', () => ({
+  ...actualIcons,
   AlertTriangle: StaticIconMock,
   ArrowLeft: StaticIconMock,
   Box: StaticIconMock,
