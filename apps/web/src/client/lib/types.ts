@@ -36,13 +36,25 @@ export interface VersionResponse {
 }
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';
+export type JobType =
+  | 'DOWNLOAD_AND_TRANSCRIBE'
+  | 'SCRAPE_WEB'
+  | 'UPLOAD_AND_TRANSCRIBE'
+  | 'UPLOAD_AND_ANALYZE_IMAGE'
+  | 'UPLOAD_AND_ANALYZE_DOCUMENT'
+  | 'ANALYZE_X';
 
 export interface JobSummary {
   id: string;
+  type?: JobType;
   status: JobStatus;
   sourceUrl: string;
   errorMsg: string | null;
   transcriptId: string | null;
+  progressStage?: string | null;
+  progressPercent?: number | null;
+  progressedAt?: string | null;
+  events?: JobProgressEvent[];
   queuedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -51,6 +63,17 @@ export interface JobSummary {
   thumbnailUrl?: string | null;
   transcriptSource?: string | null;
   durationSec?: number | null;
+}
+
+export interface JobProgressEvent {
+  id: string;
+  jobId: string;
+  stage: string;
+  percent?: number | null;
+  chunkIndex?: number | null;
+  transcriptId?: string | null;
+  errorMsg?: string | null;
+  ts: string;
 }
 
 export interface AdminUser {

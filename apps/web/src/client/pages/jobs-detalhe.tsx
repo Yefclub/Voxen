@@ -18,23 +18,21 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Spinner } from '../components/ui/spinner';
 import { useFetch, useSse } from '../lib/hooks';
-import type { JobSummary } from '../lib/types';
+import type { JobProgressEvent, JobSummary, JobType } from '../lib/types';
 import { formatDateTime } from '../lib/format';
-import { jobStatusBadge, stageLabel } from '../lib/job-display';
+import { jobStatusBadge, jobTypeLabel, stageLabel } from '../lib/job-display';
 import { displayJobSource, isExternalSourceUrl, isUploadSourceUrl } from '../lib/source-detect';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { ApiError, apiPost } from '../lib/api';
 import { useI18n } from '../lib/i18n';
+import {
+  isJobProgressSnapshot,
+  mergeJobProgressEvents,
+  type JobProgressSnapshot,
+} from '../lib/job-progress';
 
-interface ProgressEvent {
-  jobId: string;
-  stage: string;
-  percent?: number;
-  chunkIndex?: number;
-  transcriptId?: string;
-  errorMsg?: string;
-  ts: string;
-}
+type ProgressEvent = JobProgressEvent;
+type ProgressPayload = ProgressEvent | JobProgressSnapshot;
 
 const STAGE_ORDER = [
   'queued',
@@ -104,16 +102,21 @@ export function JobDetalhePage(): React.ReactElement {
 
   const isActive = data?.job && (data.job.status === 'QUEUED' || data.job.status === 'RUNNING');
 
-  const { connected, closed } = useSse<ProgressEvent>(
+  const { connected, closed } = useSse<ProgressPayload>(
     isActive && id ? `/api/jobs/${id}/events` : null,
     (evt) => {
-      setEvents((prev) => [...prev, evt]);
+      if (isJobProgressSnapshot(evt)) {
+        setEvents((prev) => mergeJobProgressEvents(prev, evt.events));
+        if (typeof evt.percent === 'number') setPercent(evt.percent);
+        return;
+      }
+      setEvents((prev) => mergeJobProgressEvents(prev, [evt]));
       if (typeof evt.percent === 'number') setPercent(evt.percent);
       if (evt.stage === 'done' && evt.transcriptId) {
         openedTranscriptRef.current = evt.transcriptId;
         setTimeout(() => navigate(`/transcricoes/${evt.transcriptId}`, { replace: true }), 700);
       }
-      if (evt.stage === 'done' || evt.stage === 'failed') {
+      if (evt.stage === 'done' || evt.stage === 'failed' || evt.stage === 'cancelled') {
         setTimeout(() => refresh(), 600);
       }
     },
@@ -124,12 +127,20 @@ export function JobDetalhePage(): React.ReactElement {
   }, [closed, isActive, refresh]);
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || connected) return;
     const intervalId = window.setInterval(() => {
       refresh();
     }, 6_000);
     return () => window.clearInterval(intervalId);
-  }, [isActive, refresh]);
+  }, [connected, isActive, refresh]);
+
+  useEffect(() => {
+    if (!data?.job) return;
+    if (data.job.events) {
+      setEvents((prev) => mergeJobProgressEvents(prev, data.job.events ?? []));
+    }
+    if (typeof data.job.progressPercent === 'number') setPercent(data.job.progressPercent);
+  }, [data?.job]);
 
   useEffect(() => {
     const transcriptId = data?.job.transcriptId;
@@ -152,7 +163,8 @@ export function JobDetalhePage(): React.ReactElement {
 
   const job = data.job;
   const { variant, label } = jobStatusBadge(job.status, t);
-  const currentStage = events[events.length - 1]?.stage ?? 'queued';
+  const currentStage =
+    events[events.length - 1]?.stage ?? job.progressStage ?? job.status.toLowerCase();
   const currentStageIdx = STAGE_ORDER.indexOf(currentStage);
   const externalSource = isExternalSourceUrl(job.sourceUrl);
   const uploadedSource = isUploadSourceUrl(job.sourceUrl);
@@ -183,9 +195,14 @@ export function JobDetalhePage(): React.ReactElement {
           <div className="relative border-b border-[var(--color-app-border)] px-4 pb-4 pt-5 sm:px-6 sm:pb-5 sm:pt-6">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="space-y-2 min-w-0 flex-1">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
-                  {t('jobDetail.eyebrow')} · {job.id.slice(0, 12)}
-                </p>
+                <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
+                  <span>
+                    {t('jobDetail.eyebrow')} · {job.id.slice(0, 12)}
+                  </span>
+                  <span className="rounded-full border border-[var(--color-app-border)] px-2 py-0.5 normal-case tracking-normal">
+                    {jobTypeLabel(job.type as JobType | undefined, t)}
+                  </span>
+                </div>
                 <h2 className="font-mono text-[15px] font-medium tracking-tight text-[var(--color-app-fg)] truncate">
                   {displayJobSource(job.sourceUrl)}
                 </h2>
@@ -220,7 +237,7 @@ export function JobDetalhePage(): React.ReactElement {
                       <span className="relative rounded-full bg-violet-400 h-full w-full" />
                     </span>
                     <span className="text-sm font-medium text-[var(--color-app-fg)] truncate">
-                      {stageLabel(currentStage, t)}
+                      {stageLabel(currentStage, t, job.type)}
                     </span>
                   </div>
                   <span className="text-2xl font-display font-semibold tabular-nums text-[var(--color-app-fg)]">
@@ -245,7 +262,10 @@ export function JobDetalhePage(): React.ReactElement {
                       {t('jobDetail.realtime')}
                     </p>
                   ) : (
-                    <span />
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-amber-300/80 flex items-center gap-2">
+                      <span className="h-1 w-1 rounded-full bg-amber-300" />
+                      {closed ? t('jobDetail.reconnecting') : t('jobDetail.connecting')}
+                    </p>
                   )}
                   <Button
                     variant="destructive"
@@ -371,13 +391,16 @@ export function JobDetalhePage(): React.ReactElement {
                             ].join(' ')}
                           />
                           <span className="text-[var(--color-app-subtle)]">
-                            {stageLabel(e.stage, t)}
+                            {stageLabel(e.stage, t, job.type)}
                           </span>
                           {typeof e.chunkIndex === 'number' && (
                             <span className="ml-2 text-xs text-[var(--color-app-muted)] tabular-nums">
                               {t('jobDetail.block', { index: e.chunkIndex + 1 })}
                             </span>
                           )}
+                          <time className="ml-2 text-[11px] tabular-nums text-[var(--color-app-muted)]">
+                            {formatDateTime(new Date(e.ts), locale)}
+                          </time>
                         </motion.li>
                       );
                     })}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
@@ -92,9 +93,9 @@ export function UpdateModal({
         if (!open && !applying) dismiss();
       }}
     >
-      <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
+      <DialogContent className="max-h-[min(90dvh,48rem)] max-w-2xl gap-0 overflow-hidden p-0 sm:w-[min(100vw-3rem,42rem)]">
         {/* Cabeçalho com destaque */}
-        <div className="flex items-start gap-4 border-b border-[var(--color-app-border)] bg-gradient-to-b from-emerald-500/[0.07] to-transparent p-6">
+        <div className="flex items-start gap-4 border-b border-[var(--color-app-border)] bg-gradient-to-b from-emerald-500/[0.1] to-transparent p-5 sm:p-7">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/30">
             <Sparkles className="h-5 w-5" />
           </span>
@@ -122,20 +123,29 @@ export function UpdateModal({
         </div>
 
         {/* O que mudou */}
-        <div className="max-h-[44dvh] overflow-y-auto overflow-x-hidden px-6 py-5">
-          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-app-muted)]">
-            {t('shell.updateWhatsNew')}
-          </h3>
+        <div className="min-h-40 flex-1 overflow-y-auto overflow-x-hidden px-5 py-5 sm:px-7 sm:py-6">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-app-muted)]">
+              {t('shell.updateWhatsNew')}
+            </h3>
+            <Link
+              to="/novidades"
+              onClick={dismiss}
+              className="shrink-0 text-xs font-medium text-violet-300 hover:text-violet-200 hover:underline"
+            >
+              {t('shell.versionOpenChangelog')}
+            </Link>
+          </div>
           {loading ? (
             <div className="flex justify-center py-6">
               <Spinner size={20} />
             </div>
           ) : notes && notes.length > 0 ? (
-            <ul className="space-y-3.5">
+            <ul className="grid gap-3 sm:grid-cols-2">
               {notes.map((note, idx) => (
                 <li
                   key={`${note.version}-${idx}`}
-                  className="border-l-2 border-[var(--color-app-border)] pl-3"
+                  className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/45 p-3"
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     {note.type && (
@@ -165,7 +175,7 @@ export function UpdateModal({
         </div>
 
         {/* Ações */}
-        <div className="flex justify-end gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-6 py-4">
+        <div className="flex flex-col-reverse gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-5 py-4 sm:flex-row sm:justify-end sm:px-7">
           <Button variant="ghost" size="sm" onClick={dismiss} disabled={applying}>
             {t('shell.updateLater')}
           </Button>

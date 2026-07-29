@@ -1,4 +1,4 @@
-import type { JobStatus } from './types';
+import type { JobStatus, JobType } from './types';
 import type { TranslateFn } from './i18n';
 
 type BadgeVariant = 'default' | 'outline' | 'success' | 'warning' | 'danger' | 'muted';
@@ -21,7 +21,10 @@ export function jobStatusBadge(
   }
 }
 
-export function stageLabel(stage: string, t?: TranslateFn): string {
+export function stageLabel(stage: string, t?: TranslateFn, jobType?: JobType): string {
+  if (stage === 'downloading' && jobType === 'SCRAPE_WEB') {
+    return t?.('job.stage.readingWeb') ?? 'Lendo página';
+  }
   const map: Record<string, string> = {
     queued: t?.('job.stage.queued') ?? 'Na fila',
     running: t?.('job.stage.running') ?? 'Iniciando',
@@ -43,4 +46,16 @@ export function stageLabel(stage: string, t?: TranslateFn): string {
     cancelled: t?.('job.stage.cancelled') ?? 'Cancelado',
   };
   return map[stage] ?? stage;
+}
+
+export function jobTypeLabel(type: JobType | undefined, t?: TranslateFn): string {
+  const map: Record<JobType, string> = {
+    DOWNLOAD_AND_TRANSCRIBE: t?.('job.type.video') ?? 'Vídeo',
+    SCRAPE_WEB: t?.('job.type.web') ?? 'Página web',
+    UPLOAD_AND_TRANSCRIBE: t?.('job.type.upload') ?? 'Arquivo de mídia',
+    UPLOAD_AND_ANALYZE_IMAGE: t?.('job.type.image') ?? 'Imagem',
+    UPLOAD_AND_ANALYZE_DOCUMENT: t?.('job.type.document') ?? 'Documento',
+    ANALYZE_X: t?.('job.type.x') ?? 'Publicação no X',
+  };
+  return type ? map[type] : (t?.('job.type.content') ?? 'Conteúdo');
 }

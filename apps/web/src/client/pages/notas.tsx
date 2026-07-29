@@ -6,15 +6,16 @@
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Eye, EyeOff, FileText, Library, Loader2, Save } from 'lucide-react';
+import { Eye, EyeOff, FileText, FolderPlus, Library, Loader2, Plus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { FetchError } from '../components/ui/fetch-error';
 import { Markdown } from '../components/ui/markdown';
 import { MarkdownEditor } from '../components/notes/markdown-editor';
+import { NotesTree } from '../components/notes/notes-tree';
 import { Spinner } from '../components/ui/spinner';
 import { useFetch } from '../lib/hooks';
 import { useNotes } from '../lib/use-notes';
@@ -39,7 +40,7 @@ export function NotasPage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const { t } = useI18n();
   const [previewMode, setPreviewMode] = useState(false);
-  const { notes, refresh } = useNotes();
+  const { notes, loading: notesLoading, refresh, create } = useNotes();
 
   return (
     <AnimatedPage>
@@ -66,24 +67,83 @@ export function NotasPage(): React.ReactElement {
             onSaved={() => void refresh()}
           />
         ) : (
-          <Card elevated>
-            <CardContent className="py-20 text-center space-y-4 max-w-md mx-auto">
-              <div className="mx-auto h-14 w-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
-                <FileText className="h-6 w-6 text-violet-400" />
-              </div>
-              <div className="space-y-1.5">
-                <p className="font-display text-xl font-semibold tracking-tight">
-                  {notes.length === 0 ? t('notes.emptyTitle') : t('notes.selectTitle')}
-                </p>
-                <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
-                  {notes.length === 0 ? t('notes.emptyDescription') : t('notes.selectDescription')}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <NotesLibrary notesCount={notes.length} loading={notesLoading} onCreate={create} />
         )}
       </div>
     </AnimatedPage>
+  );
+}
+
+function NotesLibrary({
+  notesCount,
+  loading,
+  onCreate,
+}: {
+  notesCount: number;
+  loading: boolean;
+  onCreate: (kind: 'NOTE' | 'FOLDER', parentId?: string | null) => Promise<{ id: string } | null>;
+}): React.ReactElement {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const [creating, setCreating] = useState<'NOTE' | 'FOLDER' | null>(null);
+
+  async function createItem(kind: 'NOTE' | 'FOLDER'): Promise<void> {
+    if (creating) return;
+    setCreating(kind);
+    try {
+      const item = await onCreate(kind);
+      if (item && kind === 'NOTE') navigate(`/notas/${item.id}`);
+    } finally {
+      setCreating(null);
+    }
+  }
+
+  return (
+    <Card elevated className="overflow-hidden">
+      <CardContent className="p-0">
+        <div className="flex flex-col gap-4 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)]/35 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="min-w-0">
+            <p className="font-display text-lg font-semibold tracking-tight">
+              {t('notes.libraryTitle')}
+            </p>
+            <p className="mt-1 text-sm text-[var(--color-app-muted)]">
+              {notesCount === 0 ? t('notes.emptyDescription') : t('notes.libraryDescription')}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={creating !== null}
+              onClick={() => void createItem('FOLDER')}
+            >
+              <FolderPlus className="h-3.5 w-3.5" />
+              {creating === 'FOLDER' ? t('common.loading') : t('notes.createFolder')}
+            </Button>
+            <Button size="sm" disabled={creating !== null} onClick={() => void createItem('NOTE')}>
+              <Plus className="h-3.5 w-3.5" />
+              {creating === 'NOTE' ? t('common.loading') : t('notes.createNote')}
+            </Button>
+          </div>
+        </div>
+        <div className="min-h-72 p-3 sm:p-5">
+          {loading ? (
+            <div className="flex min-h-64 items-center justify-center">
+              <Spinner size={20} />
+            </div>
+          ) : notesCount === 0 ? (
+            <div className="flex min-h-64 max-w-md flex-col items-center justify-center gap-3 text-center mx-auto">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--color-app-border-strong)] bg-violet-500/10">
+                <FileText className="h-5 w-5 text-violet-400" />
+              </div>
+              <p className="text-sm text-[var(--color-app-muted)]">{t('notes.useButtonAbove')}</p>
+            </div>
+          ) : (
+            <NotesTree variant="card" />
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
