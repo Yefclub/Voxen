@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785366299",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Atualizações e páginas com comportamento consistente",
+    "body": "O aviso de nova versão agora mostra somente as notas da versão correta, mantém\ncabeçalho e ações visíveis e permite rolar todo o conteúdo central por mouse,\ntrackpad, toque ou teclado. Carregamento, indisponibilidade e falha possuem\nestados próprios, e adiar não é mais confundido com aplicar a atualização.\n\nAs páginas de conteúdo passaram a compartilhar larguras, margens e ritmo\nvertical adequados a cada tipo de trabalho, aproveitando melhor a tela e\nevitando mudanças bruscas de tamanho durante a navegação.\n\nO chat também informa o início do preparo imediatamente, executa etapas\nindependentes em paralelo e registra separadamente o tempo interno e a espera\npelo primeiro evento do modelo.",
+    "pr": 476,
+    "author": "Kalyel",
+    "date": "2026-07-29T20:04:48-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/476"
+  },
+  {
     "version": "0.13.0-dev.1785359396",
     "channel": "dev",
     "type": "feat",
