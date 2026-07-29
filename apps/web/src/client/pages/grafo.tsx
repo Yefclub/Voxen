@@ -32,7 +32,7 @@ import {
   X,
   ZoomIn,
   ZoomOut,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import { AnimatedPage } from '../components/motion/animated-page';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';

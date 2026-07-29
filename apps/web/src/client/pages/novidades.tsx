@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Sparkles } from 'lucide-react';
+import { ArrowLeft, Sparkles } from '@/components/ui/icons';
 import { useFetch } from '../lib/hooks';
 import { useI18n } from '../lib/i18n';
 import type { VersionResponse } from '../lib/types';

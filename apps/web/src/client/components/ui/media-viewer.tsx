@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
-import { Maximize2, Music2 } from 'lucide-react';
+import { Maximize2, Music2 } from '@/components/ui/icons';
 import { Dialog, DialogContent, DialogTitle } from './dialog';
 import { useI18n } from '../../lib/i18n';
 import { uploadMediaKind } from '../../lib/media-kind';

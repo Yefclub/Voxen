@@ -18,7 +18,7 @@ import {
   Video,
   Wrench,
   X,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import { toast } from 'sonner';
 import { play } from 'cuelume';
 import { Markdown } from '../components/ui/markdown';

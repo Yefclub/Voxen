@@ -264,13 +264,13 @@ export function resolveGraphPalette(theme: AppTheme): GraphPalette {
       edges: LIGHT_EDGE_COLORS,
     };
   }
-  const canvas = theme === 'emerald' ? '#19211f' : '#212121';
+  const canvas = theme === 'linear' ? '#111113' : theme === 'emerald' ? '#19211f' : '#212121';
   return {
     canvas,
     // Texto claro + contorno escuro opaco — títulos legíveis sobre nós coloridos.
     label: '#fafafa',
     selected: '#ffffff',
-    labelStroke: canvas === '#19211f' ? 'rgba(15, 23, 20, 0.92)' : 'rgba(9, 9, 11, 0.92)',
+    labelStroke: canvas === '#19211f' ? 'rgba(15, 23, 20, 0.92)' : 'rgba(9, 9, 11, 0.94)',
     dimNode: 'rgba(82, 82, 91, 0.42)',
     dimEdge: 'rgba(82, 82, 91, 0.14)',
     neutralEdge: 'rgba(148, 163, 184, 0.34)',
@@ -391,7 +391,7 @@ export function buildSigmaGraphModel(
   data: GraphResp,
   translate?: TranslateFn,
   layoutOptions: GraphLayoutOptions = {},
-  palette: GraphPalette = resolveGraphPalette('zinc'),
+  palette: GraphPalette = resolveGraphPalette('linear'),
 ): SigmaGraphModel {
   const communities = buildGraphCommunities(data);
   const layout = buildGraphLayout(data, layoutOptions, communities);

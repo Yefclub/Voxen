@@ -10,7 +10,7 @@ import {
   User as UserIcon,
   Volume2,
   VolumeX,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import { play } from 'cuelume';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
@@ -43,7 +43,11 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-const THEME_LABEL_KEY: Record<AppTheme, 'theme.zinc' | 'theme.emerald' | 'theme.light'> = {
+const THEME_LABEL_KEY: Record<
+  AppTheme,
+  'theme.linear' | 'theme.zinc' | 'theme.emerald' | 'theme.light'
+> = {
+  linear: 'theme.linear',
   zinc: 'theme.zinc',
   emerald: 'theme.emerald',
   light: 'theme.light',

@@ -1,4 +1,4 @@
-import { Download, Share, SquarePlus } from 'lucide-react';
+import { Download, Share, SquarePlus } from '@/components/ui/icons';
 import { useEffect, useState } from 'react';
 import { useI18n } from '../lib/i18n';
 import { Button } from './ui/button';

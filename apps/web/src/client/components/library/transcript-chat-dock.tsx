@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { ArrowUp, ChevronUp, MessageSquare } from 'lucide-react';
+import { ArrowUp, ChevronUp, MessageSquare } from '@/components/ui/icons';
 import type { TranslateFn } from '../../lib/i18n';
 import { cn } from '../../lib/utils';
 

@@ -154,6 +154,7 @@ const ptBRMessages = {
   'shell.signOut': 'Sair',
 
   'theme.label': 'Tema',
+  'theme.linear': 'Linear',
   'theme.zinc': 'Cinza',
   'theme.emerald': 'Esmeralda',
   'theme.light': 'Claro',
@@ -1352,6 +1353,7 @@ const enMessages: Record<I18nKey, string> = {
   'shell.signOut': 'Sign out',
 
   'theme.label': 'Theme',
+  'theme.linear': 'Linear',
   'theme.zinc': 'Zinc',
   'theme.emerald': 'Emerald',
   'theme.light': 'Light',

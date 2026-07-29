@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw, Sparkles } from 'lucide-react';
+import { RefreshCw, Sparkles } from '@/components/ui/icons';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Spinner } from './ui/spinner';

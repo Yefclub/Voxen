@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { DollarSign, LineChart, ShieldCheck } from 'lucide-react';
+import { DollarSign, LineChart, ShieldCheck } from '@/components/ui/icons';
 import { motion } from 'motion/react';
 import { Card, CardContent } from '../components/ui/card';
 import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
 import { formatUsd } from '../lib/format';
-import { AnimatedPage, StaggerContainer, StaggerItem } from '../components/motion/animated-page';
+import { StaggerContainer, StaggerItem } from '../components/motion/animated-page';
+import { PageShell } from '../components/ui/page-shell';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 
 interface CostResponse {
@@ -36,8 +37,8 @@ export function AdminCustosPage(): React.ReactElement {
   const { locale, t } = useI18n();
 
   return (
-    <AnimatedPage>
-      <div className="mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-8 sm:py-12">
+    <PageShell width="wide">
+      <div data-page-content className="space-y-6 sm:space-y-10">
         <header className="space-y-3">
           <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
@@ -248,7 +249,7 @@ export function AdminCustosPage(): React.ReactElement {
           </>
         )}
       </div>
-    </AnimatedPage>
+    </PageShell>
   );
 }
 

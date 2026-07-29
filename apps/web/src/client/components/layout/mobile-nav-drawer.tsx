@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
-import { X } from 'lucide-react';
+import { X } from '@/components/ui/icons';
 import type { MeUser } from '../../lib/types';
 import { useI18n } from '../../lib/i18n';
 import { SidebarModeBody, SidebarSignOut, SidebarChangelogButton } from './sidebar';

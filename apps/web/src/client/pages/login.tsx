@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, Eye, EyeOff, Lock } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Lock } from '@/components/ui/icons';
 import { motion } from 'motion/react';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Spinner } from '../components/ui/spinner';

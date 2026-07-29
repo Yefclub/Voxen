@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactElement } from 'react';
-import { Check, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Check, ChevronDown, Search, SlidersHorizontal, X } from '@/components/ui/icons';
 import type { OrModel } from '../lib/types';
 import { cn } from '../lib/utils';
 import { useI18n } from '../lib/i18n';

@@ -7,7 +7,7 @@
 
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, FileText, Folder, Trash2 } from 'lucide-react';
+import { ChevronRight, FileText, Folder, Trash2 } from '@/components/ui/icons';
 import { cn } from '../../lib/utils';
 import { useNotes, type NoteListItem } from '../../lib/use-notes';
 import { useI18n } from '../../lib/i18n';

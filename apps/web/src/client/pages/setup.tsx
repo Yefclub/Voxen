@@ -9,7 +9,7 @@ import {
   Languages,
   RotateCw,
   Sparkles,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -268,7 +268,7 @@ export function SetupPage(): React.ReactElement {
           >
             <div className="absolute inset-0 rounded-full bg-emerald-500/40 blur-2xl" />
             <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 border border-emerald-400/50">
-              <CheckCircle2 className="h-7 w-7 text-emerald-950" strokeWidth={2.5} />
+              <CheckCircle2 className="h-7 w-7 text-emerald-950" />
             </div>
           </motion.div>
           <motion.h2

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Globe, PlayCircle, RefreshCw } from 'lucide-react';
+import { ArrowRight, Globe, PlayCircle, RefreshCw } from '@/components/ui/icons';
 import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
