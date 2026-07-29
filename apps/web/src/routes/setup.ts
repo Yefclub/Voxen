@@ -36,6 +36,7 @@ import {
 import {
   validateApiKey,
   listModels,
+  listUserModels,
   listVisionModels,
   listDocumentModels,
   listXAnalysisModels,
@@ -231,33 +232,34 @@ setupRoutes.post('/', async (c) => {
       return c.json({ error: 'Falha ao contatar a OpenRouter. Tente novamente.' }, 502);
     }
     if (isAutomaticSetup) {
-      let catalogs: [
-        Awaited<ReturnType<typeof listModels>>,
-        Awaited<ReturnType<typeof listModels>>,
-        Awaited<ReturnType<typeof listVisionModels>>,
-        Awaited<ReturnType<typeof listDocumentModels>>,
-      ];
+      let availableModels: Awaited<ReturnType<typeof listUserModels>>;
       try {
-        catalogs = await Promise.all([
-          listModels(openrouter_api_key, 'text'),
-          listModels(openrouter_api_key, 'transcription'),
-          listVisionModels(openrouter_api_key),
-          listDocumentModels(openrouter_api_key),
-        ]);
+        availableModels = await listUserModels(openrouter_api_key);
       } catch (err) {
         if (err instanceof OpenrouterError) {
           return c.json({ error: 'Falha ao validar os modelos padrão na OpenRouter.' }, 502);
         }
         throw err;
       }
-      const [textModels, transcriptionModels, visionModels, documentModels] = catalogs;
-      const hasTextDefault = textModels.some((model) => model.id === DEFAULT_TEXT_MODEL);
-      const hasTranscriptionDefault = transcriptionModels.some(
+      const textDefault = availableModels.find((model) => model.id === DEFAULT_TEXT_MODEL);
+      const transcriptionDefault = availableModels.find(
         (model) => model.id === DEFAULT_TRANSCRIPTION_MODEL,
       );
-      const hasVisionDefault = visionModels.some((model) => model.id === DEFAULT_TEXT_MODEL);
-      const hasDocumentDefault = documentModels.some((model) => model.id === DEFAULT_TEXT_MODEL);
-      if (!hasTextDefault || !hasTranscriptionDefault || !hasVisionDefault || !hasDocumentDefault) {
+      const textInputs = textDefault?.architecture?.input_modalities ?? [];
+      const textOutputs = textDefault?.architecture?.output_modalities ?? [];
+      const transcriptionOutputs = transcriptionDefault?.architecture?.output_modalities ?? [];
+      const textCapabilitiesValid =
+        textInputs.includes('text') &&
+        textInputs.includes('image') &&
+        textInputs.includes('file') &&
+        textOutputs.includes('text');
+      const transcriptionCapabilitiesValid = transcriptionOutputs.includes('transcription');
+      if (
+        !textDefault ||
+        !transcriptionDefault ||
+        !textCapabilitiesValid ||
+        !transcriptionCapabilitiesValid
+      ) {
         return c.json(
           {
             error:

@@ -561,6 +561,7 @@ async def reindex_missing_transcript_brain_nodes(limit: int = 50) -> int:
               ON n."userId" = t."userId"
              AND n.key = CONCAT('TRANSCRIPT:', t.id)
             WHERE n.id IS NULL
+               OR n."updatedAt" < t."updatedAt"
                OR (
                     t.status = 'ACTIVE'::"ContentStatus"
                 AND COALESCE(n.metadata->>'topicIndexVersion', '') <> $1

@@ -47,8 +47,9 @@ conteúdo permanentemente incompleto nem exigir que o usuário visite `/grafo`.
 ### Event-driven
 
 - When o administrador validar a chave da OpenRouter no onboarding, the system
-  shall persistir atomicamente a chave e todos os modelos padrão sem pedir
-  seleção de modelos.
+  shall validar o catálogo disponível especificamente para essa chave e
+  persistir atomicamente a chave e todos os modelos padrão sem pedir seleção de
+  modelos.
 - When um conteúdo elegível concluir a ingestão, the system shall tentar gerar
   tags estruturadas com raciocínio desabilitado e orçamento suficiente para a
   resposta.
@@ -81,6 +82,8 @@ conteúdo permanentemente incompleto nem exigir que o usuário visite `/grafo`.
   chave nem qualquer modelo padrão.
 - If um modelo padrão obrigatório não estiver disponível para a chave, then the
   system shall rejeitar a conclusão do onboarding com orientação clara.
+- If duas gravações globais ocorrerem concorrentemente, then the system shall
+  serializá-las sem criar mais de uma linha para a mesma chave.
 - If a geração automática de tags falhar, then the system shall não falhar nem
   reverter a ingestão concluída.
 - If a geração automática de tags falhar seis vezes, then the system shall

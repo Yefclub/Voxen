@@ -13,7 +13,7 @@ import app from '../src/index';
 import { encrypt } from '../src/lib/crypto';
 import { db } from '../src/lib/db';
 import { getMasterKey } from '../src/lib/master-key';
-import { getSetting, setSetting } from '../src/lib/settings';
+import { getSetting, setSetting, setSettings } from '../src/lib/settings';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -142,21 +142,29 @@ describeIfDb('setup flow', () => {
       if (url.endsWith('/api/v1/key')) {
         return new Response('{}', { status: 200 });
       }
-      if (url.includes('output_modalities=transcription')) {
-        return Response.json({ data: [{ id: 'x-ai/grok-stt-1.0', name: 'Grok STT' }] });
-      }
-      return Response.json({
-        data: [
-          {
-            id: 'x-ai/grok-4.5',
-            name: 'Grok 4.5',
-            architecture: {
-              input_modalities: ['text', 'image', 'file'],
-              output_modalities: ['text'],
+      if (url.endsWith('/api/v1/models/user')) {
+        return Response.json({
+          data: [
+            {
+              id: 'x-ai/grok-4.5',
+              name: 'Grok 4.5',
+              architecture: {
+                input_modalities: ['text', 'image', 'file'],
+                output_modalities: ['text'],
+              },
             },
-          },
-        ],
-      });
+            {
+              id: 'x-ai/grok-stt-1.0',
+              name: 'Grok STT',
+              architecture: {
+                input_modalities: ['audio'],
+                output_modalities: ['transcription'],
+              },
+            },
+          ],
+        });
+      }
+      return Response.json({ data: [] });
     });
 
     const res = await app.fetch(
@@ -199,6 +207,19 @@ describeIfDb('setup flow', () => {
 
     expect(res.status).toBe(422);
     expect(await db.setting.count({ where: { scope: 'GLOBAL' } })).toBe(0);
+  });
+
+  it('serializa gravações concorrentes sem duplicar uma chave global', async () => {
+    await Promise.all([
+      setSettings({ default_chat_model: 'modelo-a' }),
+      setSettings({ default_chat_model: 'modelo-b' }),
+    ]);
+
+    const rows = await db.setting.findMany({
+      where: { scope: 'GLOBAL', userId: null, key: 'default_chat_model' },
+    });
+    expect(rows).toHaveLength(1);
+    await expect(getSetting('default_chat_model')).resolves.toMatch(/^modelo-[ab]$/);
   });
 
   it('admin pode persistir idioma da plataforma', async () => {

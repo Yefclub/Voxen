@@ -276,6 +276,34 @@ async def _async_value(value: Any) -> Any:
     return value
 
 
+class _ReconciliationConnection:
+    def __init__(self) -> None:
+        self.query = ""
+        self.args: tuple[object, ...] = ()
+
+    async def fetch(self, query: str, *args: object) -> list[dict[str, str]]:
+        self.query = query
+        self.args = args
+        return []
+
+
+async def test_reconciliation_detects_transcript_updates_after_index(
+    monkeypatch: Any,
+) -> None:
+    conn = _ReconciliationConnection()
+
+    @asynccontextmanager
+    async def reconciliation_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", reconciliation_connection)
+
+    assert await db.reindex_missing_transcript_brain_nodes(limit=7) == 0
+    assert 'n."updatedAt" < t."updatedAt"' in conn.query
+    assert "COALESCE(n.metadata->>'topicIndexVersion', '') <> $1" in conn.query
+    assert conn.args == (str(db.BRAIN_TOPIC_INDEX_VERSION), 7)
+
+
 class _EmbeddingConnection:
     def __init__(self, result: str = "UPDATE 1") -> None:
         self.execute_calls: list[tuple[str, tuple[object, ...]]] = []

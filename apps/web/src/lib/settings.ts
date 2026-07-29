@@ -125,6 +125,7 @@ export async function setSettings(
   if (entries.length === 0) return;
   const masterKey = getMasterKey();
   await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
     for (const [key, value] of entries) {
       const valueEnc = encrypt(value, masterKey);
       const existing = await tx.setting.findFirst({

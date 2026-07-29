@@ -660,35 +660,16 @@ async def _run_document_pipeline(
         _check_cancel(job_id)
         await events.publish_job_event(user_id, job_id, "analyzing_document", percent=30)
         result: Any
-        parser = "openrouter-native-pdf"
         if document_ingest.is_pdf(doc_path):
-
-            async def _do_native_pdf() -> Any:
-                return await analyze_pdf_native(pdf_path=doc_path, api_key=api_key, model=model)
-
-            try:
-                result = await _retry_transient_or(_do_native_pdf, tries=2)
-            except RuntimeError as e:
-                log.warning("document-native-pdf-fallback-markitdown", error=str(e)[:240])
-                await events.publish_job_event(user_id, job_id, "converting_document", percent=25)
-                try:
-                    extracted = await document_ingest.convert_to_markdown(doc_path)
-                except RuntimeError as e:
-                    raise PermanentError(
-                        "Não foi possível extrair texto deste PDF. "
-                        "Tente um PDF com texto selecionável ou envie outro formato."
-                    ) from e
-                parser = "markitdown"
-
-                async def _do_text_pdf() -> Any:
-                    return await analyze_document_text(
-                        markdown=extracted.markdown,
-                        filename=ref.filename,
-                        api_key=api_key,
-                        model=model,
-                    )
-
-                result = await _retry_transient_or(_do_text_pdf, tries=3)
+            result, parser = await _analyze_pdf_with_fallback(
+                pdf_path=doc_path,
+                filename=ref.filename,
+                api_key=api_key,
+                model=model,
+                user_id=user_id,
+                job_id=job_id,
+                log=log,
+            )
         else:
             await events.publish_job_event(user_id, job_id, "converting_document", percent=20)
             try:
@@ -773,6 +754,43 @@ async def _run_document_pipeline(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
     log.info("document-job-done", transcript_id=new_transcript_id)
+
+
+async def _analyze_pdf_with_fallback(
+    *,
+    pdf_path: Path,
+    filename: str,
+    api_key: str,
+    model: str,
+    user_id: str,
+    job_id: str,
+    log: Any,  # noqa: ANN401
+) -> tuple[Any, str]:
+    async def _do_mistral_pdf() -> Any:
+        return await analyze_pdf_native(pdf_path=pdf_path, api_key=api_key, model=model)
+
+    try:
+        return await _retry_transient_or(_do_mistral_pdf, tries=2), "openrouter-mistral-ocr"
+    except (OpenrouterTransientError, RuntimeError) as exc:
+        log.warning("document-mistral-pdf-fallback-markitdown", error=str(exc)[:240])
+        await events.publish_job_event(user_id, job_id, "converting_document", percent=25)
+        try:
+            extracted = await document_ingest.convert_to_markdown(pdf_path)
+        except RuntimeError as conversion_error:
+            raise PermanentError(
+                "Não foi possível extrair texto deste PDF. "
+                "Tente um PDF com texto selecionável ou envie outro formato."
+            ) from conversion_error
+
+        async def _do_text_pdf() -> Any:
+            return await analyze_document_text(
+                markdown=extracted.markdown,
+                filename=filename,
+                api_key=api_key,
+                model=model,
+            )
+
+        return await _retry_transient_or(_do_text_pdf, tries=3), "markitdown"
 
 
 async def _run_x_analysis_pipeline(
