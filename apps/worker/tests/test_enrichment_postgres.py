@@ -262,6 +262,17 @@ async def test_tag_operations_enforce_workspace_ownership(
         )
         == 0
     )
+    assert (
+        await postgres.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM "Tag"
+            WHERE "userId" = 'user-1'
+              AND slug = 'nao-deve-existir'
+            """
+        )
+        == 0
+    )
 
     applied = await db.apply_tags_to_transcript(
         user_id="user-1",

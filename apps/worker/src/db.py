@@ -1321,10 +1321,11 @@ async def apply_tags_to_transcript(
                     await conn.execute(
                         """
                         UPDATE "Tag" SET "folderId" = $2, "updatedAt" = NOW()
-                        WHERE id = $1
+                        WHERE id = $1 AND "userId" = $3
                         """,
                         tag_id,
                         folder_id,
+                        user_id,
                     )
                 else:
                     folder_id = str(folder_id)
