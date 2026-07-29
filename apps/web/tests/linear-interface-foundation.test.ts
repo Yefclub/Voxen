@@ -5,6 +5,7 @@ import {
   ANIMATED_ICON_FALLBACKS,
   ANIMATED_ICON_FRAME_CLASS,
   PAGE_SHELL_WIDTHS,
+  resetAnimationStyles,
   safelyRunAnimation,
   shouldAnimateDecoration,
 } from '../src/client/lib/interface-foundation';
@@ -57,7 +58,13 @@ describe('fundação visual Linear', () => {
     expect(ANIMATED_ICON_FRAME_CLASS).toContain('[&_svg]:h-full [&_svg]:w-full');
     expect(ANIMATED_ICON_FRAME_CLASS).not.toContain('pointer-events');
     expect(ANIMATED_ICON_FALLBACKS.BrainCircuit).toBe('Brain');
-    expect(Object.keys(ANIMATED_ICON_FALLBACKS).length).toBeGreaterThan(10);
+    const aliasSection = icons.slice(icons.indexOf('export const AlertCircle'));
+    const aliases = Object.fromEntries(
+      [...aliasSection.matchAll(/export const (\w+) = accessibleIcon\((\w+)Icon\);/g)].map(
+        ([, alias, component]) => [alias, component],
+      ),
+    );
+    expect(aliases).toEqual(ANIMATED_ICON_FALLBACKS);
   });
 
   test('desliga timelines e springs decorativos quando movimento reduzido está ativo', () => {
@@ -103,14 +110,26 @@ describe('fundação visual Linear', () => {
   });
 
   test('mantém os controles utilizáveis quando a timeline não pode iniciar', () => {
-    const controlVisible = true;
+    const removed: string[] = [];
+    const targets = [
+      {
+        style: {
+          removeProperty(property: string): string {
+            removed.push(property);
+            return '';
+          },
+        },
+      },
+    ];
 
     expect(
-      safelyRunAnimation(() => {
-        throw new Error('GSAP indisponível');
-      }),
+      safelyRunAnimation(
+        () => {
+          throw new Error('GSAP indisponível');
+        },
+        () => resetAnimationStyles(targets),
+      ),
     ).toBe(false);
-
-    expect(controlVisible).toBe(true);
+    expect(removed).toEqual(['opacity', 'visibility', 'transform']);
   });
 });

@@ -5,6 +5,7 @@ import { useReducedMotion } from 'motion/react';
 import { cn } from '../../lib/utils';
 import {
   PAGE_SHELL_WIDTHS,
+  resetAnimationStyles,
   safelyRunAnimation,
   shouldAnimateDecoration,
 } from '../../lib/interface-foundation';
@@ -33,28 +34,35 @@ export function PageShell({
   useGSAP(
     () => {
       if (!shouldAnimateDecoration(reduceMotion, animate)) return;
-      const directChildren = root.current ? Array.from(root.current.children) : [];
+      const directChildren = root.current
+        ? Array.from(root.current.children as HTMLCollectionOf<HTMLElement>)
+        : [];
       const contentRoot =
         directChildren.length === 1 && directChildren[0]?.hasAttribute('data-page-content')
           ? directChildren[0]
           : null;
-      const targets = contentRoot ? Array.from(contentRoot.children) : directChildren;
+      const targets = contentRoot
+        ? Array.from(contentRoot.children as HTMLCollectionOf<HTMLElement>)
+        : directChildren;
       if (!targets?.length) return;
 
-      safelyRunAnimation(() => {
-        gsap.fromTo(
-          targets,
-          { autoAlpha: 0, y: 10 },
-          {
-            autoAlpha: 1,
-            y: 0,
-            duration: 0.38,
-            stagger: 0.055,
-            ease: 'power3.out',
-            clearProps: 'opacity,transform,visibility',
-          },
-        );
-      });
+      safelyRunAnimation(
+        () => {
+          gsap.fromTo(
+            targets,
+            { autoAlpha: 0, y: 10 },
+            {
+              autoAlpha: 1,
+              y: 0,
+              duration: 0.38,
+              stagger: 0.055,
+              ease: 'power3.out',
+              clearProps: 'opacity,transform,visibility',
+            },
+          );
+        },
+        () => resetAnimationStyles(targets),
+      );
     },
     { scope: root, dependencies: [animate, reduceMotion], revertOnUpdate: true },
   );
