@@ -29,6 +29,11 @@ describe('dev version formatting', () => {
     );
   });
 
+  it('preserva a prerelease canônica do package.json', () => {
+    expect(formatDevVersionFromDeploy('0.13.0-dev.1785366299', '1785372519', 'abc123')).toBe(null);
+    expect(formatDevVersionFromDeploy('0.13.0-rc.1', '1785372519', 'abc123')).toBe(null);
+  });
+
   it('não gera versão dev sem sha ou timestamp válido', () => {
     expect(formatDevVersionFromDeploy('0.9.3', '1780337076')).toBe(null);
     expect(formatDevVersionFromDeploy('0.9.3', 'not-a-number', 'abc123')).toBe(null);

@@ -42,9 +42,10 @@ app.get('/health', (c) => c.json({ ok: true, service: 'web' }));
 // Versão da build — fonte canônica em ordem de prioridade:
 //   1. env VOXEN_VERSION (release.yml injeta da tag git; Makefile injeta
 //      via `git describe --tags --always --dirty` no dev local)
-//   2. Easypanel source deploy: package next-patch + DEPLOY_TIMESTAMP
-//      (`X.Y.Z-dev.<unix_epoch_seconds>`) quando há GIT_SHA
-//   3. package.json (fallback se build foi feito sem injeção)
+//   2. package.json quando já contém uma prerelease (o version-dev é canônico)
+//   3. Easypanel source deploy de uma versão estável: package next-patch +
+//      DEPLOY_TIMESTAMP (`X.Y.Z-dev.<unix_epoch_seconds>`) quando há GIT_SHA
+//   4. package.json (fallback se build foi feito sem injeção)
 // Tag git é a verdade no Voxen — package.json fica como fallback estável.
 async function loadAppVersion(): Promise<string> {
   if (process.env.VOXEN_VERSION) return process.env.VOXEN_VERSION;
@@ -81,6 +82,10 @@ export function formatDevVersionFromDeploy(
   deployTimestamp?: string,
   gitSha?: string,
 ): string | null {
+  // Uma versão produzida pelo workflow version-dev precisa coincidir
+  // literalmente com releases.json. Reescrevê-la no startup criaria uma
+  // versão sintética sem notas correspondentes.
+  if (packageVersion.includes('-')) return null;
   const stamp = deployTimestampToUnixSeconds(deployTimestamp);
   if (!stamp || !gitSha) return null;
   const base = packageVersion.split('-', 1)[0] ?? packageVersion;

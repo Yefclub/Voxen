@@ -7,7 +7,7 @@ import {
   type StoredVersionSnooze,
   type VersionPayload,
 } from './version-monitor-core';
-import { applyVersionUpdate } from './version-apply';
+import { applyVersionUpdate, prepareVersionUpdate } from './version-apply';
 
 export interface VersionUpdate {
   fromVersion: string | null;
@@ -75,6 +75,13 @@ async function applyUpdate(): Promise<void> {
   });
 }
 
+async function prepareUpdate(): Promise<void> {
+  const serviceWorker = 'serviceWorker' in navigator ? navigator.serviceWorker : null;
+  await prepareVersionUpdate({
+    getRegistration: async () => (await serviceWorker?.getRegistration()) ?? null,
+  });
+}
+
 /**
  * Monitor de versão (padrão Orbital): reconsulta /api/version a cada 60s +
  * nos eventos focus/online/visibilitychange e expõe a transição de versão
@@ -98,6 +105,8 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
   const [update, setUpdate] = useState<VersionUpdate | null>(null);
   // Evita re-emitir o mesmo build a cada poll enquanto o modal está aberto.
   const shownBuildRef = useRef<string | null>(null);
+  // Evita disparar registration.update() repetidamente para o mesmo deploy.
+  const preparedBuildRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -156,6 +165,10 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
       }
       if (shownBuildRef.current === serverBuild) return;
       shownBuildRef.current = serverBuild;
+      if (preparedBuildRef.current !== serverBuild) {
+        preparedBuildRef.current = serverBuild;
+        void prepareUpdate();
+      }
       setUpdate({
         fromVersion: loadedVersion,
         toVersion: payload.version ?? null,

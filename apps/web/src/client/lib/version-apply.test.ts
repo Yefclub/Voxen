@@ -1,5 +1,10 @@
 import { describe, expect, mock, test } from 'bun:test';
-import { applyVersionUpdate, UPDATE_FALLBACK_MS, type VersionUpdateRuntime } from './version-apply';
+import {
+  applyVersionUpdate,
+  prepareVersionUpdate,
+  UPDATE_FALLBACK_MS,
+  type VersionUpdateRuntime,
+} from './version-apply';
 
 function runtimeHarness(registration: VersionUpdateRuntime['getRegistration']): {
   runtime: VersionUpdateRuntime;
@@ -38,6 +43,20 @@ function runtimeHarness(registration: VersionUpdateRuntime['getRegistration']): 
 }
 
 describe('aplicação da atualização', () => {
+  test('prepara o service worker sem recarregar e tolera ausência ou falha', async () => {
+    const update = mock(async () => undefined);
+
+    await prepareVersionUpdate({ getRegistration: async () => ({ update }) });
+    await prepareVersionUpdate({ getRegistration: async () => null });
+    await prepareVersionUpdate({
+      getRegistration: async () => {
+        throw new Error('service worker unavailable');
+      },
+    });
+
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
   test('limpa o adiamento, atualiza o service worker e recarrega ao trocar controller', async () => {
     const update = mock(async () => undefined);
     const harness = runtimeHarness(async () => ({ update }));

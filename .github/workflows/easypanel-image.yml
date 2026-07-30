@@ -4,7 +4,7 @@ name: Easypanel Image
 on:
   workflow_dispatch:
   push:
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
 permissions:
   contents: read
@@ -41,20 +41,27 @@ jobs:
 
           case "$GITHUB_REF" in
             refs/heads/dev)
-              last_stable=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -Em1 '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
-              if [ -n "$last_stable" ]; then
-                base_version="${last_stable#v}"
+              package_version="$(node -p "require('./package.json').version")"
+              if printf '%s' "$package_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$'; then
+                # O workflow version-dev já criou a identidade que também
+                # existe em releases.json; preserve-a literalmente.
+                version="$package_version"
               else
-                base_version="$(node -p "require('./package.json').version.split('-')[0]")"
+                last_stable=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -Em1 '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+                if [ -n "$last_stable" ]; then
+                  base_version="${last_stable#v}"
+                else
+                  base_version="${package_version%%-*}"
+                fi
+                next_version="$(BASE_VER="$base_version" node -e "
+                  const v = process.env.BASE_VER.split('.').map(Number);
+                  if (v.length !== 3 || v.some(Number.isNaN)) throw new Error('Invalid base version: ' + process.env.BASE_VER);
+                  v[2] += 1;
+                  console.log(v.join('.'));
+                ")"
+                stamp="$(date -u +%s)"
+                version="${next_version}-dev.${stamp}"
               fi
-              next_version="$(BASE_VER="$base_version" node -e "
-                const v = process.env.BASE_VER.split('.').map(Number);
-                if (v.length !== 3 || v.some(Number.isNaN)) throw new Error('Invalid base version: ' + process.env.BASE_VER);
-                v[2] += 1;
-                console.log(v.join('.'));
-              ")"
-              stamp="$(date -u +%s)"
-              version="${next_version}-dev.${stamp}"
               docker_version="$version"
               printf '%s\n' "${IMAGE_NAME}:dev" >> "$tags_file"
               printf '%s\n' "${IMAGE_NAME}:dev-${docker_version}" >> "$tags_file"
