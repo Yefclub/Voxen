@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   LayoutGroup,
   animate,
   motion,
   useReducedMotion,
+  useMotionValueEvent,
   useTransform,
   type MotionValue,
 } from 'motion/react';
@@ -37,23 +38,38 @@ export function MobileNavDrawer({
   open,
   progress,
   onClose,
+  onPresenceChange,
 }: {
   user: MeUser;
   open: boolean;
   progress: MotionValue<number>;
   onClose: () => void;
+  onPresenceChange: (present: boolean) => void;
 }): React.ReactElement {
   const { t } = useI18n();
   const location = useLocation();
   const panelRef = useRef<HTMLElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(false);
+  const presentRef = useRef(progress.get() > 0.001);
+  const [present, setPresent] = useState(presentRef.current);
   const reduceMotion = useReducedMotion();
   const panelX = useTransform(progress, (value) => `${(value - 1) * 100}%`);
   const backdropOpacity = useTransform(progress, [0, 1], [0, 0.68]);
   const panelOpacity = useTransform(progress, drawerPanelOpacity);
   const panelShadow = useTransform(progress, drawerPanelShadow);
   const panelVisibility = useTransform(progress, drawerPanelVisibility);
+
+  // Semântica e hit-testing acompanham a presença visual real do painel. Isso
+  // evita anunciar um diálogo ainda fora da tela e evita liberar a página por
+  // baixo enquanto a animação de fechamento continua visível.
+  useMotionValueEvent(progress, 'change', (value) => {
+    const next = Number.isFinite(value) && value > 0.001;
+    if (next === presentRef.current) return;
+    presentRef.current = next;
+    setPresent(next);
+    onPresenceChange(next);
+  });
 
   useEffect(() => {
     const controls = animate(progress, open ? 1 : 0, {
@@ -71,20 +87,20 @@ export function MobileNavDrawer({
   }, [location.pathname, onClose]);
 
   useEffect(() => {
-    if (open && !wasOpenRef.current) {
+    if (present && !wasOpenRef.current) {
       previousFocusRef.current =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
       requestAnimationFrame(() => panelRef.current?.focus());
     }
-    if (!open && wasOpenRef.current) {
+    if (!present && wasOpenRef.current) {
       previousFocusRef.current?.focus();
       previousFocusRef.current = null;
     }
-    wasOpenRef.current = open;
-  }, [open]);
+    wasOpenRef.current = present;
+  }, [present]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!present) return;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -117,14 +133,14 @@ export function MobileNavDrawer({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose, open]);
+  }, [onClose, present]);
 
   return (
     <>
       <motion.div
         className={[
           'fixed inset-0 z-50 bg-black md:hidden',
-          open ? 'pointer-events-auto' : 'pointer-events-none',
+          present ? 'pointer-events-auto' : 'pointer-events-none',
         ].join(' ')}
         style={{ opacity: backdropOpacity }}
         onClick={onClose}
@@ -133,16 +149,16 @@ export function MobileNavDrawer({
       <motion.aside
         ref={panelRef}
         tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
+        role={present ? 'dialog' : undefined}
+        aria-modal={present ? 'true' : undefined}
         aria-label={t('shell.menu')}
-        aria-hidden={!open}
-        inert={open ? undefined : true}
+        aria-hidden={!present}
+        inert={present ? undefined : true}
         className={[
           'fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-[22rem] flex-col overflow-hidden',
           'border-r border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]',
           'focus:outline-none will-change-transform md:hidden',
-          open ? 'pointer-events-auto' : 'pointer-events-none',
+          present ? 'pointer-events-auto' : 'pointer-events-none',
         ].join(' ')}
         style={{
           x: panelX,

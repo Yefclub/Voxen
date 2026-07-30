@@ -10,6 +10,7 @@ import {
 let graphCanvasMounts = 0;
 let graphCanvasUnmounts = 0;
 let graphCanvasRenders = 0;
+let exposeGraphCanvasRef = true;
 const centerGraphMock = mock(() => undefined);
 const fitNodesInViewMock = mock(() => undefined);
 const zoomInMock = mock(() => undefined);
@@ -17,15 +18,19 @@ const zoomOutMock = mock(() => undefined);
 
 const GraphCanvasMock = forwardRef(function GraphCanvasMock(props: Record<string, unknown>, ref) {
   graphCanvasRenders += 1;
-  useImperativeHandle(ref, () => ({
-    centerGraph: centerGraphMock,
-    fitNodesInView: fitNodesInViewMock,
-    zoomIn: zoomInMock,
-    zoomOut: zoomOutMock,
-    getGraph: mock(() => null),
-    getControls: mock(() => null),
-    exportCanvas: mock(() => ''),
-  }));
+  useImperativeHandle(ref, () =>
+    exposeGraphCanvasRef
+      ? {
+          centerGraph: centerGraphMock,
+          fitNodesInView: fitNodesInViewMock,
+          zoomIn: zoomInMock,
+          zoomOut: zoomOutMock,
+          getGraph: mock(() => null),
+          getControls: mock(() => null),
+          exportCanvas: mock(() => ''),
+        }
+      : null,
+  );
   useEffect(() => {
     graphCanvasMounts += 1;
     return () => {
@@ -145,6 +150,7 @@ beforeEach(() => {
   graphCanvasMounts = 0;
   graphCanvasUnmounts = 0;
   graphCanvasRenders = 0;
+  exposeGraphCanvasRef = true;
   centerGraphMock.mockClear();
   fitNodesInViewMock.mockClear();
   zoomInMock.mockClear();
@@ -258,6 +264,53 @@ describe('BrainGraph3DCanvas lifecycle', () => {
     });
     expect(onFallback).toHaveBeenCalledTimes(1);
 
+    await act(async () => renderer.unmount());
+  });
+
+  test('keeps initialization budget armed until GraphCanvas publishes its ref', async () => {
+    exposeGraphCanvasRef = false;
+    const onFallback = mock(() => undefined);
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        React.createElement(BrainGraph3DCanvas, {
+          ...renderGraph().props,
+          onFallback,
+          initializationTimeoutMs: 1,
+        }),
+        { createNodeMock: () => containerMock },
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Bun.sleep(5);
+    });
+
+    expect(graphCanvasMounts).toBe(1);
+    expect(onFallback).toHaveBeenCalledTimes(1);
+    await act(async () => renderer.unmount());
+  });
+
+  test('cancels initialization budget only after GraphCanvas is ready', async () => {
+    const onFallback = mock(() => undefined);
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        React.createElement(BrainGraph3DCanvas, {
+          ...renderGraph().props,
+          onFallback,
+          initializationTimeoutMs: 1,
+        }),
+        { createNodeMock: () => containerMock },
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Bun.sleep(5);
+    });
+
+    expect(graphCanvasMounts).toBe(1);
+    expect(onFallback).not.toHaveBeenCalled();
     await act(async () => renderer.unmount());
   });
 

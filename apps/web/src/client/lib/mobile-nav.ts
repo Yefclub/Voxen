@@ -11,11 +11,26 @@
 export const BOTTOM_NAV_TABS = ['/', '/transcricoes', '/notas', '/grafo'] as const;
 
 /**
- * `true` quando o pathname é exatamente uma aba do bottom-nav. Match exato:
- * `/jobs/:id`, `/transcricoes/:id` etc. são sub-páginas, não a aba raiz.
+ * `true` quando o pathname é exatamente uma aba do bottom-nav ou um alias
+ * canônico dela. `/chat` compartilha a semântica da home `/`; detalhes como
+ * `/jobs/:id` e `/transcricoes/:id` continuam sendo sub-páginas.
  */
 export function isBottomNavTab(pathname: string): boolean {
-  return (BOTTOM_NAV_TABS as readonly string[]).includes(pathname);
+  return isChatRoute(pathname) || (BOTTOM_NAV_TABS as readonly string[]).includes(pathname);
+}
+
+/**
+ * O drawer só existe abaixo de `md`. Ao cruzar o breakpoint com gesto ou
+ * animação em andamento, todo estado precisa ser zerado para o desktop não
+ * permanecer bloqueado por `inert`.
+ */
+export function shouldResetMobileDrawerForDesktop(
+  isDesktop: boolean,
+  open: boolean,
+  present: boolean,
+  progress: number,
+): boolean {
+  return isDesktop && (open || present || progress > 0.001);
 }
 
 /**

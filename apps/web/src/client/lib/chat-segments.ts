@@ -198,6 +198,14 @@ export function segmentsReasoningDuration(
   for (const segment of segments) {
     if (segment.type !== 'reasoning') continue;
     if (segment.endedAt == null) return null;
+    if (
+      !Number.isFinite(segment.startedAt) ||
+      !Number.isFinite(segment.endedAt) ||
+      segment.startedAt < 0 ||
+      segment.endedAt < segment.startedAt
+    ) {
+      return null;
+    }
     start = start == null ? segment.startedAt : Math.min(start, segment.startedAt);
     end = end == null ? segment.endedAt : Math.max(end, segment.endedAt);
   }
@@ -206,5 +214,28 @@ export function segmentsReasoningDuration(
     turnStartedAt != null && Number.isFinite(turnStartedAt)
       ? Math.min(turnStartedAt, start)
       : start;
-  return end - effectiveStart;
+  const duration = end - effectiveStart;
+  return Number.isFinite(duration) && duration >= 0 ? duration : null;
+}
+
+export interface ThinkingTiming {
+  inFlight: boolean;
+  duration: number | null;
+}
+
+/**
+ * Somente o stream atual pode iniciar o cronômetro de parede. Um snapshot
+ * histórico com evento incompleto depende dos timestamps canônicos e omite a
+ * duração, em vez de continuar envelhecendo depois de reload ou remount.
+ */
+export function resolveThinkingTiming(
+  segments: readonly MessageSegment[],
+  live: boolean,
+  turnStartedAt: number,
+  liveElapsed: number,
+): ThinkingTiming {
+  return {
+    inFlight: live,
+    duration: live ? Math.max(0, liveElapsed) : segmentsReasoningDuration(segments, turnStartedAt),
+  };
 }

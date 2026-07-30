@@ -150,7 +150,7 @@ export function JobDetalhePage(): React.ReactElement {
   return (
     <PageShell width="workspace">
       <Button variant="ghost" size="sm" asChild className="-ml-2 hidden sm:inline-flex">
-        <Link to="/">
+        <Link to="/fila">
           <ArrowLeft className="h-3.5 w-3.5" />
           {t('jobDetail.backToQueue')}
         </Link>
@@ -180,9 +180,9 @@ export function JobDetalhePage(): React.ReactElement {
                   {jobTypeLabel(job.type as JobType | undefined, t)}
                 </span>
               </div>
-              <h2 className="font-mono text-[15px] font-medium tracking-tight text-[var(--color-app-fg)] truncate">
+              <h1 className="truncate font-mono text-[15px] font-medium tracking-tight text-[var(--color-app-fg)]">
                 {displayJobSource(job.sourceUrl)}
-              </h2>
+              </h1>
             </div>
             <Badge variant={variant} className="text-xs">
               {label}

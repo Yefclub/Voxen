@@ -31,9 +31,9 @@ describe('carregamento progressivo de rotas', () => {
   test('mantém o shell autenticado e o fallback de rota acessível durante o carregamento', () => {
     const source = readClientSource('components/layout/app-layout.tsx');
 
-    expect(source).toContain('import { Suspense, useCallback, useEffect, useRef, useState }');
+    expect(source).toContain('import { Suspense, useCallback, useLayoutEffect, useRef, useState }');
     expect(source).toContain('<Suspense fallback={<RouteLoading />}>');
-    expect(source).toContain('<Spinner size={20}');
+    expect(source).toContain('data-route-loading');
     expect(source).toContain('Carregando tela');
   });
 

@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { useMotionValue } from 'motion/react';
 import { Sidebar, SidebarSpacer } from './sidebar';
@@ -17,6 +17,7 @@ import {
   hasOwnMobileChrome,
   isChatRoute,
   hidesBottomNav,
+  shouldResetMobileDrawerForDesktop,
 } from '../../lib/mobile-nav';
 import { MobileBackButton } from './mobile-back-button';
 import { MobileMenuButton } from './mobile-menu-button';
@@ -33,6 +34,7 @@ export function AppLayout(): React.ReactElement {
   // Estado do drawer vive aqui pra ligar o edge-swipe e o botão de abrir menu
   // (rota de chat, onde a bottom-nav some) ao overlay.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [mobileNavPresent, setMobileNavPresent] = useState(false);
   const mobileNavProgress = useMotionValue(0);
   const isDesktop = useIsDesktop();
   const navigateFromNotification = useCallback((path: string) => navigate(path), [navigate]);
@@ -53,12 +55,29 @@ export function AppLayout(): React.ReactElement {
   );
   // Aviso de versão nova do backend — modal centralizado com o que mudou.
   const versionMonitor = useVersionMonitor(!!data?.user);
+  const sectionKey = getSectionKey(location.pathname);
 
-  // O scroll vive no <main> (shell de altura fixa). Resetar ao topo a cada troca
-  // de rota pra não herdar a posição da página anterior.
-  useEffect(() => {
+  // O scroll vive no <main>. Trocas dentro da mesma seção preservam a posição
+  // (notas/detalhes); seções novas voltam ao topo antes da pintura, sem salto.
+  useLayoutEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
-  }, [location.pathname]);
+  }, [sectionKey]);
+
+  useLayoutEffect(() => {
+    if (
+      !shouldResetMobileDrawerForDesktop(
+        isDesktop,
+        mobileNavOpen,
+        mobileNavPresent,
+        mobileNavProgress.get(),
+      )
+    ) {
+      return;
+    }
+    setMobileNavOpen(false);
+    setMobileNavPresent(false);
+    mobileNavProgress.set(0);
+  }, [isDesktop, mobileNavOpen, mobileNavPresent, mobileNavProgress]);
 
   if (loading) {
     return (
@@ -142,11 +161,12 @@ export function AppLayout(): React.ReactElement {
           open={mobileNavOpen}
           progress={mobileNavProgress}
           onClose={() => setMobileNavOpen(false)}
+          onPresenceChange={setMobileNavPresent}
         />
         <SidebarSpacer />
         <div
           className="relative flex min-h-0 min-w-0 flex-1 flex-col"
-          inert={mobileNavOpen ? true : undefined}
+          inert={mobileNavPresent ? true : undefined}
         >
           <Topbar user={data.user} />
           {showBack && <MobileBackButton />}
@@ -167,6 +187,7 @@ export function AppLayout(): React.ReactElement {
  * preservam estado e scroll).
  */
 function getSectionKey(pathname: string): string {
+  if (isChatRoute(pathname)) return 'chat';
   const segments = pathname.split('/').filter(Boolean);
   const root = segments[0] ?? 'dashboard';
   // /admin/usuarios, /admin/custos e /admin/integracoes são seções distintas.
@@ -195,8 +216,19 @@ function AnimatedOutlet(): React.ReactElement {
 
 function RouteLoading(): React.ReactElement {
   return (
-    <div className="flex h-full min-h-48 items-center justify-center p-6">
-      <Spinner size={20} className="text-[var(--color-app-muted)]" />
+    <div
+      data-route-loading
+      aria-busy="true"
+      className="mx-auto min-h-full w-full max-w-[1600px] px-4 py-5 sm:px-7 sm:py-9 xl:px-10"
+    >
+      <div className="h-0.5 w-full overflow-hidden rounded-full bg-[var(--color-app-surface)]">
+        <div className="h-full w-2/5 animate-pulse rounded-full bg-[var(--color-accent-violet)]" />
+      </div>
+      <div className="mt-8 space-y-4" aria-hidden>
+        <div className="h-8 w-52 animate-pulse rounded-lg bg-[var(--color-app-surface)]" />
+        <div className="h-4 max-w-xl animate-pulse rounded bg-[var(--color-app-surface)]/75" />
+        <div className="mt-8 h-40 animate-pulse rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/45" />
+      </div>
       <span className="sr-only">Carregando tela</span>
     </div>
   );

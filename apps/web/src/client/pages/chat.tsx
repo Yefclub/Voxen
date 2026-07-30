@@ -43,9 +43,8 @@ import {
 import {
   applySegmentEvent,
   closeTrailingReasoning,
+  resolveThinkingTiming,
   segmentsFromPersistedTools,
-  segmentsReasoningDuration,
-  segmentsRunning,
   type MessageSegment,
   type ToolEvent,
 } from '../lib/chat-segments';
@@ -238,9 +237,8 @@ function ToolRow({ tool }: { tool: ToolEvent }) {
 // ---------------------------------------------------------------------------
 // Bloco de pensamento — raciocínio e ferramentas num único container
 // cronológico (spec 078): "Pensando" (shimmer) enquanto o turno está ao vivo
-// (`live`) OU algum segmento ainda roda — e "Pensou por Xs" só ao terminar o
-// turno. Gaps entre tools (running=false por milissegundos) NÃO colapsam o
-// bloco; isso evitava o flicker compacta/reabre no harness multi-step.
+// (`live`) — e "Pensou por Xs" só ao terminar o turno. Segmentos persistidos
+// abertos não reativam um turno encerrado nem iniciam cronômetro após reload.
 // HITL fica acima do composer (spec 090), não neste bloco.
 // ---------------------------------------------------------------------------
 function ThinkingBlock({
@@ -253,24 +251,19 @@ function ThinkingBlock({
   startedAt: number;
 }): React.ReactElement {
   const { t } = useI18n();
-  const running = segmentsRunning(segments);
-  // Turno em voo: stream ainda aberto OU algum step de fato em andamento.
-  const inFlight = live || running;
   // Timeline aberta enquanto o turno está em voo; recolhe só ao terminar
   // (usuário reabre no header).
   const [expanded, setExpanded] = useState(true);
-  // Cronômetro de parede: inclui a preparação anterior ao primeiro delta e
-  // continua derivável após a mensagem persistida substituir a otimista.
+  // Cronômetro de parede apenas durante o turno ao vivo. Mensagens concluídas
+  // usam exclusivamente timestamps persistidos, portanto nunca "envelhecem"
+  // ao remontar ou ao voltar para a conversa.
   const startedAtRef = useRef<number>(startedAt);
   const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - startedAt));
-  const [frozen, setFrozen] = useState<number | null>(null);
+  const { inFlight, duration } = resolveThinkingTiming(segments, live, startedAt, elapsed);
 
   useEffect(() => {
     if (!inFlight) {
       setExpanded(false);
-      if (frozen == null) {
-        setFrozen(Date.now() - startedAtRef.current);
-      }
       return;
     }
     setExpanded(true);
@@ -278,14 +271,10 @@ function ThinkingBlock({
       setElapsed(Date.now() - startedAtRef.current);
     }, 200);
     return () => window.clearInterval(id);
-  }, [inFlight, frozen]);
-
-  // Em mensagens recarregadas, a duração continua derivável dos timestamps
-  // persistidos e do início canônico da mensagem/turno.
-  const duration = frozen ?? (inFlight ? elapsed : segmentsReasoningDuration(segments, startedAt));
+  }, [inFlight]);
 
   return (
-    <section className="mb-2.5 flex flex-col gap-1">
+    <section className="mb-2.5 flex max-w-3xl flex-col gap-1">
       <button
         type="button"
         onClick={() => !inFlight && setExpanded((v) => !v)}
@@ -323,7 +312,9 @@ function ThinkingBlock({
                     : 'text-[var(--color-app-muted)]',
                 )}
               >
-                {segment.text}
+                {segment.endedAt == null
+                  ? t('chat.reasoningInProgress')
+                  : t('chat.reasoningCompleted')}
               </p>
             ) : (
               <div key={segment.id} className="flex flex-col">
@@ -1339,7 +1330,7 @@ export function ChatPage(): React.ReactElement {
             aria-label={t('chat.historyLabel')}
             className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-5 pt-12 md:py-5"
           >
-            <div className="mx-auto flex w-full max-w-3xl flex-col">
+            <div className="mx-auto flex w-full max-w-5xl flex-col">
               <div ref={contentWrapRef} className="flex flex-col">
                 {hasOlder && (
                   <button
@@ -1382,7 +1373,9 @@ export function ChatPage(): React.ReactElement {
                       {message.content && (
                         <>
                           <div className="text-[15px] leading-relaxed text-[var(--color-app-fg)]">
-                            <Markdown>{message.content}</Markdown>
+                            <Markdown className="chat-response-markdown [&_p]:max-w-3xl [&_ul]:max-w-3xl [&_ol]:max-w-3xl [&_blockquote]:max-w-3xl">
+                              {message.content}
+                            </Markdown>
                           </div>
                           {!isStreamingAssistant && (
                             <MessageCopyButton text={message.content} align="start" />

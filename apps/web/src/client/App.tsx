@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
-import { flushSync } from 'react-dom';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { Toaster } from './components/ui/sonner';
 import { Spinner } from './components/ui/spinner';
 import { AppLayout } from './components/layout/app-layout';
@@ -110,16 +109,6 @@ function FullscreenRouteLoading(): React.ReactElement {
   );
 }
 
-type ViewTransitionHandle = {
-  finished: Promise<void>;
-  ready: Promise<void>;
-  skipTransition: () => void;
-};
-
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (callback: () => void) => ViewTransitionHandle;
-};
-
 /** Redirect that preserves search/hash (legacy `/dashboard`, share-target query params). */
 function RedirectPreserveSearch({ to }: { to: string }): React.ReactElement {
   const location = useLocation();
@@ -135,25 +124,8 @@ function JobsIndexRedirect(): React.ReactElement {
 }
 
 function AppRoutes(): React.ReactElement {
-  const location = useLocation();
-  const [displayLocation, setDisplayLocation] = useState(location);
-
-  useEffect(() => {
-    if (location.key === displayLocation.key) return;
-    const doc = document as ViewTransitionDocument;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!doc.startViewTransition || reduceMotion) {
-      setDisplayLocation(location);
-      return;
-    }
-    const transition = doc.startViewTransition(() => {
-      flushSync(() => setDisplayLocation(location));
-    });
-    transition.finished.catch(() => undefined);
-  }, [displayLocation.key, location]);
-
   return (
-    <Routes location={displayLocation}>
+    <Routes>
       {/* Auth (sem login) */}
       <Route
         element={

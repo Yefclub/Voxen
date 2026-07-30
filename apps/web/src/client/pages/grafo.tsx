@@ -43,6 +43,7 @@ import {
   buildGraphInsights,
   buildGraphLayout,
   buildSigmaGraphModel,
+  graphDescriptionText,
   edgePath,
   filterGraphData,
   nodePath,
@@ -63,7 +64,9 @@ import {
 import { resolveGraphPollingAction } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
+  GRAPH_3D_INIT_TIMEOUT_MS,
   resolveGraphRenderProfile,
+  scheduleGraph3DInitializationFallback,
   type GraphMode,
 } from '../lib/graph-renderer';
 import { useFetch } from '../lib/hooks';
@@ -143,14 +146,14 @@ function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
     node: {
       ...baseTheme.node,
       fill: palette.nodes.content,
-      activeFill: palette.selected,
+      activeFill: palette.activeNode,
       opacity: 1,
       selectedOpacity: 1,
       inactiveOpacity: 0.18,
       label: {
         color: palette.label,
         stroke: palette.labelStroke,
-        activeColor: palette.selected,
+        activeColor: palette.activeLabel,
         // Halo semi-opaco no tom do canvas — título legível sobre nós coloridos.
         backgroundColor: palette.canvas,
         backgroundOpacity: 0.88,
@@ -169,7 +172,11 @@ function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
       opacity: 0.42,
       selectedOpacity: 1,
       inactiveOpacity: 0.05,
-      label: { color: palette.label, activeColor: palette.selected, stroke: palette.labelStroke },
+      label: {
+        color: palette.label,
+        activeColor: palette.activeLabel,
+        stroke: palette.labelStroke,
+      },
     },
     arrow: {
       fill: toOpaqueGraphColor(palette.neutralEdge),
@@ -407,6 +414,8 @@ export function GrafoPage(): React.ReactElement {
               <Button
                 variant="outline"
                 size="default"
+                onPointerEnter={() => void loadReagraph()}
+                onFocus={() => void loadReagraph()}
                 onClick={() => setMode((current) => (current === '2d' ? '3d' : '2d'))}
                 title={t(mode === '2d' ? 'graph.switchTo3d' : 'graph.switchTo2d')}
               >
@@ -901,7 +910,7 @@ function GraphNodeInspector({
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {node.description && (
           <p className="mb-4 text-xs leading-relaxed text-[var(--color-app-subtle)]">
-            {node.description}
+            {graphDescriptionText(node.description)}
           </p>
         )}
         <div className="mb-4 grid grid-cols-2 gap-2">
@@ -1050,6 +1059,7 @@ export function BrainGraph3DCanvas({
   onSelect,
   onOpen,
   onFallback,
+  initializationTimeoutMs = GRAPH_3D_INIT_TIMEOUT_MS,
 }: {
   model: SigmaGraphModel | null;
   selectedId: string | null;
@@ -1059,9 +1069,11 @@ export function BrainGraph3DCanvas({
   onSelect: (id: string | null) => void;
   onOpen: (node: GraphNode) => void;
   onFallback: () => void;
+  initializationTimeoutMs?: number;
 }): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<GraphCanvasRef | null>(null);
+  const cancelInitializationBudgetRef = useRef<(() => void) | null>(null);
   const primaryNodeIdsRef = useRef<string[]>([]);
   const renderedNodeIdsRef = useRef<Set<string>>(new Set());
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -1084,6 +1096,12 @@ export function BrainGraph3DCanvas({
   );
   primaryNodeIdsRef.current = model?.primaryNodeIds ?? [];
   renderedNodeIdsRef.current = new Set(model?.reagraphNodes.map((node) => node.id) ?? []);
+  const handleGraphRef = useCallback((instance: GraphCanvasRef | null) => {
+    graphRef.current = instance;
+    if (!instance) return;
+    cancelInitializationBudgetRef.current?.();
+    cancelInitializationBudgetRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!supportsWebGL()) {
@@ -1091,17 +1109,25 @@ export function BrainGraph3DCanvas({
       return;
     }
     let cancelled = false;
+    const cancelInitializationBudget = scheduleGraph3DInitializationFallback(() => {
+      if (!cancelled) onFallback();
+    }, initializationTimeoutMs);
+    cancelInitializationBudgetRef.current = cancelInitializationBudget;
     void loadReagraph()
       .then((module) => {
         if (!cancelled) setReagraph(module);
       })
       .catch(() => {
+        cancelInitializationBudget();
+        cancelInitializationBudgetRef.current = null;
         if (!cancelled) onFallback();
       });
     return () => {
       cancelled = true;
+      cancelInitializationBudget();
+      cancelInitializationBudgetRef.current = null;
     };
-  }, [onFallback]);
+  }, [initializationTimeoutMs, onFallback]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1189,7 +1215,7 @@ export function BrainGraph3DCanvas({
       {GraphCanvas && graphTheme && (
         <GraphRendererBoundary onFailure={onFallback}>
           <GraphCanvas
-            ref={graphRef}
+            ref={handleGraphRef}
             nodes={model?.reagraphNodes ?? EMPTY_REAGRAPH_NODES}
             edges={model?.reagraphEdges ?? EMPTY_REAGRAPH_EDGES}
             theme={graphTheme}
@@ -1410,7 +1436,7 @@ function BrainGraph2DCanvas({
         };
       return {
         ...nodeData,
-        color: isActive ? palette.selected : nodeData.color,
+        color: isActive ? palette.activeNode : nodeData.color,
         size: nodeData.size * (isActive ? 1.45 : 1.12),
         zIndex: isActive ? 4 : 3,
       };

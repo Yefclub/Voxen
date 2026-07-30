@@ -16,31 +16,40 @@ const turnRuntimeSource = readFileSync(
  */
 describe('ThinkingBlock live expand policy', () => {
   test('treats live turn as in-flight even when no segment is running', () => {
-    expect(chatSource).toContain('const inFlight = live || running');
+    expect(chatSource).toContain(
+      'const { inFlight, duration } = resolveThinkingTiming(segments, live, startedAt, elapsed)',
+    );
+    expect(chatSource).not.toContain('const inFlight = live || running');
   });
 
   test('auto-expand / auto-collapse keys off inFlight, not bare running', () => {
     expect(chatSource).toContain('if (!inFlight)');
     expect(chatSource).toContain('setExpanded(false)');
     expect(chatSource).toContain('setExpanded(true)');
-    expect(chatSource).toContain('}, [inFlight, frozen]');
+    expect(chatSource).toContain('}, [inFlight]');
     // Must not re-introduce the flicker: effect deps on running alone.
-    expect(chatSource).not.toContain('}, [running, frozen]');
+    expect(chatSource).not.toContain('}, [running]');
   });
 
   test('header shimmer and click disable use inFlight', () => {
     expect(chatSource).toContain('disabled={inFlight}');
     expect(chatSource).toContain('onClick={() => !inFlight && setExpanded((v) => !v)}');
     expect(chatSource).toContain('{inFlight ? (');
-    expect(chatSource).toContain(
-      'inFlight ? elapsed : segmentsReasoningDuration(segments, startedAt)',
-    );
+    expect(chatSource).toContain('resolveThinkingTiming(segments, live, startedAt, elapsed)');
   });
 
-  test('cronômetro parte do início conhecido do turno', () => {
+  test('cronômetro parte do início conhecido do turno e nunca recalcula histórico com Date.now', () => {
     expect(chatSource).toContain('startedAt: number');
     expect(chatSource).toContain('useRef<number>(startedAt)');
     expect(chatSource).not.toContain('live ? Date.now() : null');
+    expect(chatSource).not.toContain('setFrozen(Date.now()');
+    expect(chatSource).not.toContain('const [frozen');
+  });
+
+  test('timeline apresenta estado operacional sem expor chain-of-thought bruto', () => {
+    expect(chatSource).not.toContain('{segment.text}');
+    expect(chatSource).toContain("t('chat.reasoningInProgress')");
+    expect(chatSource).toContain("t('chat.reasoningCompleted')");
   });
 
   test('prepara contexto concorrente e mede tempo até o primeiro evento do modelo', () => {
