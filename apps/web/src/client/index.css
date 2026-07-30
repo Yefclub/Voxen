@@ -568,6 +568,18 @@
   }
 }
 
+/* O chat mantém prosa e composer na mesma coluna. Apenas tabelas podem usar a
+   largura operacional extra no desktop, sem alargar raciocínio ou mensagens. */
+@media (min-width: 80rem) {
+  .chat-response-markdown [data-horizontal-scroll='true'] {
+    position: relative;
+    left: 50%;
+    width: min(64rem, calc(100vw - 24rem));
+    max-width: none;
+    transform: translateX(-50%);
+  }
+}
+
 /* ============================================================================
    Prose para a transcrição (.md viewer)
    ============================================================================ */

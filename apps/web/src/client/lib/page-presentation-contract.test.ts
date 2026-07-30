@@ -31,6 +31,7 @@ describe('page presentation contracts', () => {
     );
 
     expect(scrollRegion).not.toContain('focus-visible:ring');
+    expect(scrollRegion).toContain('focus-visible:shadow');
   });
 
   test('uses the wide operational shell for the extension page', () => {
