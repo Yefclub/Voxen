@@ -17,6 +17,7 @@ import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { rateLimit } from '../lib/rate-limit';
+import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
 import { deleteS3Object, s3Bucket, s3Client } from '../lib/s3';
 import { isSetupComplete } from '../lib/settings';
 import { generateTagsForContent, slugifyTag } from '../lib/tags-generate';
@@ -521,7 +522,10 @@ transcriptsRoutes.get('/:id', async (c) => {
       );
       return (await res.Body?.transformToString('utf-8')) ?? '';
     } catch (err) {
-      console.error('[transcripts] erro ao baixar .md:', err);
+      console.error(
+        '[transcripts] erro ao baixar .md',
+        safeErrorDiagnostic('TRANSCRIPT_MARKDOWN_READ_FAILED', err),
+      );
       return `# ${transcript.title}\n\n${transcript.plainText}`;
     }
   })();
@@ -576,7 +580,10 @@ transcriptsRoutes.get('/:id/original', async (c) => {
     if (httpStatus === 416) {
       return c.json({ error: 'Range solicitado inválido.' }, 416);
     }
-    console.error('[transcripts] erro ao baixar original:', err);
+    console.error(
+      '[transcripts] erro ao baixar original',
+      safeErrorDiagnostic('TRANSCRIPT_ORIGINAL_READ_FAILED', err),
+    );
     return c.json({ error: 'Falha ao baixar arquivo original.' }, 502);
   }
 });
@@ -651,7 +658,10 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
         },
       });
     } catch (err) {
-      console.error('[transcripts] erro ao baixar preview:', err);
+      console.error(
+        '[transcripts] erro ao baixar preview',
+        safeErrorDiagnostic('TRANSCRIPT_PREVIEW_READ_FAILED', err),
+      );
     }
   }
   return new Response(renderPreviewSvg(transcript.title, transcript.source), {
@@ -870,9 +880,10 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
       existingTags,
     });
   } catch (err) {
-    console.error('[transcripts] falha ao gerar tags', {
-      error_type: err instanceof Error ? err.name : 'UnknownError',
-    });
+    console.error(
+      '[transcripts] falha ao gerar tags',
+      safeErrorDiagnostic('TRANSCRIPT_TAG_GENERATION_FAILED', err),
+    );
     return c.json({ error: 'Falha ao gerar tags. Tente novamente.' }, 502);
   }
 
@@ -966,7 +977,10 @@ transcriptsRoutes.delete('/:id', async (c) => {
         .map((key) => deleteS3Object(key)),
     );
   } catch (err) {
-    console.error('[transcripts] erro ao apagar objetos no S3:', err);
+    console.error(
+      '[transcripts] erro ao apagar objetos no S3',
+      safeErrorDiagnostic('TRANSCRIPT_OBJECT_DELETE_FAILED', err),
+    );
     return c.json({ error: 'Falha ao apagar arquivos no armazenamento S3.' }, 502);
   }
 
@@ -1030,7 +1044,10 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
     if (err instanceof TranscriptSummaryError) {
       return c.json({ error: err.message }, err.status as 400);
     }
-    console.error('[transcripts] summary failed:', err);
+    console.error(
+      '[transcripts] summary failed',
+      safeErrorDiagnostic('TRANSCRIPT_SUMMARY_FAILED', err),
+    );
     return c.json({ error: 'Falha ao gerar resumo.' }, 502);
   }
 });
@@ -1270,8 +1287,8 @@ async function tryMirrorRemoteThumbnail(opts: {
     return { key, mime };
   } catch (err) {
     console.warn(
-      '[transcripts] mirror thumbnail failed:',
-      err instanceof Error ? err.message : err,
+      '[transcripts] mirror thumbnail failed',
+      safeErrorDiagnostic('TRANSCRIPT_THUMBNAIL_MIRROR_FAILED', err),
     );
     return null;
   }

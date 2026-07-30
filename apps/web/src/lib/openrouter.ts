@@ -92,7 +92,12 @@ export async function listUserModels(
   if (!res.ok) {
     throw new OpenrouterError(`OpenRouter retornou status ${res.status}`);
   }
-  const body = (await res.json()) as { data?: OrModel[] };
+  let body: { data?: OrModel[] };
+  try {
+    body = (await res.json()) as { data?: OrModel[] };
+  } catch (err) {
+    throw openrouterNetworkError(err);
+  }
   return Array.isArray(body.data) ? body.data : [];
 }
 

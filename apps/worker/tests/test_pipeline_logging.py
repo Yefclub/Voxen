@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src import pipeline
+from src import pipeline, safe_diagnostics
 
 
 class _BoundLogger:
@@ -83,65 +83,113 @@ async def test_job_log_context_contains_only_sanitized_source_metadata(
     assert "super-secret" not in repr(root_logger.context)
 
 
-async def test_job_failure_log_redacts_urls_from_external_errors(
+async def test_unexpected_job_failure_never_publishes_filename_or_exception_content(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source_url = "https://www.youtube.com/watch?v=abc&token=super-secret"
+    source_url = "upload://upload-id/Cliente-Acme-Fusao-Secreta.pdf"
+    private_path = "/srv/voxen/private/Cliente-Acme-Fusao-Secreta.pdf"
     root_logger = _install_job_dependencies(monkeypatch, source_url=source_url)
     monkeypatch.setattr(
         pipeline,
         "_run_pipeline",
-        AsyncMock(side_effect=pipeline.PermanentError(f"Falha ao baixar {source_url}")),
+        AsyncMock(side_effect=PermissionError(13, "Permission denied", private_path)),
     )
 
     await pipeline.process_job("job-1")
 
-    warning = next(
-        entry for entry in root_logger.bound.entries if entry[1] == "job-failed-permanent"
+    failure = next(
+        entry for entry in root_logger.bound.entries if entry[1] == "job-failed-unexpected"
     )
-    assert warning[2]["error"] == "Falha ao baixar [url-redacted]"
-    assert source_url not in repr(root_logger.bound.entries)
-    assert "super-secret" not in repr(root_logger.bound.entries)
+    assert failure[2] == {
+        "error_code": "UNEXPECTED_JOB_FAILURE",
+        "error_type": "PermissionError",
+    }
     pipeline.db.mark_job_failed.assert_awaited_once_with(
         "job-1",
-        "Falha ao baixar [url-redacted]",
+        pipeline.GENERIC_JOB_FAILURE_MESSAGE,
     )
     pipeline.events.publish_job_event.assert_any_await(
         "user-1",
         "job-1",
         "failed",
-        error_msg="Falha ao baixar [url-redacted]",
+        error_msg=pipeline.GENERIC_JOB_FAILURE_MESSAGE,
     )
-    assert "super-secret" not in repr(pipeline.events.publish_job_event.await_args_list)
+    diagnostics = repr(
+        (
+            root_logger.bound.entries,
+            pipeline.db.mark_job_failed.await_args_list,
+            pipeline.events.publish_job_event.await_args_list,
+        )
+    )
+    assert "Cliente-Acme-Fusao-Secreta.pdf" not in diagnostics
+    assert private_path not in diagnostics
 
 
-def test_safe_error_redacts_urls_proxy_credentials_bearer_and_api_keys() -> None:
+def test_error_diagnostic_is_allowlisted_instead_of_redacting_a_denylist() -> None:
     error = RuntimeError(
-        "Falha em https://user:web-pass@example.com/path?token=query-secret#fragment-secret "
-        "via socks5h://proxy-user:proxy-pass@127.0.0.1:1080; "
-        "Authorization: Bearer bearer-secret; api_key=api-secret; "
-        "api-key='quoted-secret'; headers Authorization: 'Bearer header-secret'; "
-        "key solta sk-or-v1-openrouter-secret e sk-liveapikey123"
+        "Cliente-Acme-Fusao-Secreta.pdf "
+        "socks5h://proxy-user:proxy-pass@127.0.0.1:1080 "
+        "Bearer bearer-secret sk-or-v1-openrouter-secret"
     )
 
-    safe = pipeline._safe_error_for_log(error, max_length=1_000)
+    diagnostic = safe_diagnostics.error_diagnostic(error, "UPLOAD_PREVIEW_FAILED")
 
-    assert safe.count("[url-redacted]") == 2
-    assert "Falha em" in safe
-    for secret in (
-        "web-pass",
-        "query-secret",
-        "fragment-secret",
-        "proxy-user",
-        "proxy-pass",
-        "bearer-secret",
-        "api-secret",
-        "quoted-secret",
-        "header-secret",
-        "openrouter-secret",
-        "liveapikey123",
-    ):
-        assert secret not in safe
+    assert diagnostic == {
+        "error_code": "UPLOAD_PREVIEW_FAILED",
+        "error_type": "RuntimeError",
+    }
+    serialized = repr(diagnostic)
+    assert "Cliente-Acme" not in serialized
+    assert "proxy-user" not in serialized
+    assert "bearer-secret" not in serialized
+    assert "openrouter-secret" not in serialized
+
+
+def test_error_diagnostic_normalizes_values_outside_the_contract() -> None:
+    private_error_type = type("ClienteAcmeFusaoSecretaPdf", (Exception,), {})
+
+    diagnostic = safe_diagnostics.error_diagnostic(
+        private_error_type("conteúdo sigiloso"),
+        "código inválido",
+    )
+
+    assert diagnostic == {
+        "error_code": "UNEXPECTED_FAILURE",
+        "error_type": "Exception",
+    }
+    assert "ClienteAcme" not in repr(diagnostic)
+    assert "conteúdo sigiloso" not in repr(diagnostic)
+
+
+async def test_arbitrary_permanent_error_is_not_public_without_explicit_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    private_content = "Contrato sigiloso Cliente-Acme"
+    root_logger = _install_job_dependencies(
+        monkeypatch,
+        source_url="https://www.youtube.com/watch?v=abc",
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_pipeline",
+        AsyncMock(side_effect=pipeline.PermanentError(private_content)),
+    )
+
+    await pipeline.process_job("job-1")
+
+    pipeline.db.mark_job_failed.assert_awaited_once_with(
+        "job-1",
+        pipeline.GENERIC_JOB_FAILURE_MESSAGE,
+    )
+    warning = next(
+        entry for entry in root_logger.bound.entries if entry[1] == "job-failed-permanent"
+    )
+    assert warning[2] == {
+        "error_code": "PERMANENT_FAILURE",
+        "error_type": "PermanentError",
+    }
+    assert private_content not in repr(root_logger.bound.entries)
+    assert private_content not in repr(pipeline.events.publish_job_event.await_args_list)
 
 
 async def test_folder_metrics_and_logs_do_not_include_personal_labels(

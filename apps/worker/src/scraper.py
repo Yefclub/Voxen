@@ -26,6 +26,8 @@ import structlog
 import trafilatura
 from trafilatura.metadata import Document
 
+from .safe_diagnostics import error_diagnostic
+
 log = structlog.get_logger(__name__)
 
 USER_AGENT = "VoxenBot/1.0 (+https://github.com/Yefclub/Voxen)"
@@ -381,8 +383,11 @@ async def _check_robots(url: str) -> None:
             raise RobotsBlockedError("robots.txt do site proíbe scraping.")
     except (RobotsBlockedError, FetchBlockedError):
         raise
-    except Exception:  # noqa: BLE001 — robots é best-effort
-        log.debug("robots-check-failed-silently", url=url)
+    except Exception as exc:  # noqa: BLE001 — robots é best-effort
+        log.debug(
+            "robots-check-failed-silently",
+            **error_diagnostic(exc, "ROBOTS_CHECK_FAILED"),
+        )
         return
 
 

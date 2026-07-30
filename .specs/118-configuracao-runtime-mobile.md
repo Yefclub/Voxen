@@ -69,11 +69,20 @@ configuráveis ou novos formatos de ingestão.
 - The system shall registrar eventos operacionais com tipo de conteúdo, etapa,
   duração, resultado e identificadores seguros, sem registrar chave, payload
   integral, conteúdo extraído, nomes de arquivo, pasta ou tag, nem credenciais.
+- The system shall limitar diagnósticos de falha a códigos internos, tipos
+  normalizados, estados, contagens, durações e identificadores opacos
+  explicitamente permitidos.
+- The system shall publicar em `Job.errorMsg` e eventos SSE somente mensagens
+  internas mapeadas, nunca texto de exceção, path, filename, URL ou conteúdo
+  recebido de serviços externos.
 
 ### Event-driven (resposta a evento)
 
 - When o administrador salvar uma chave da OpenRouter, the system shall validar
   a chave e os recursos canônicos antes de persistir a configuração completa.
+- When a OpenRouter responder os headers, the system shall manter a leitura e o
+  parsing do corpo dentro do mesmo prazo total usado para validar chave e
+  catálogo.
 - When uma chave válida substituir a configuração existente, the system shall
   atualizar chave e padrões como uma única operação consistente.
 - When um PDF for recebido, the system shall encaminhá-lo ao fluxo remoto de
@@ -141,6 +150,9 @@ configuráveis ou novos formatos de ingestão.
 - If a validação da OpenRouter não responder em até quinze segundos, then the
   system shall encerrar a tentativa com mensagem acionável e preservar a
   configuração anterior.
+- If uma exceção inesperada incluir conteúdo, filename, path, URL ou
+  credenciais, then the system shall registrar somente seu código e tipo
+  normalizados e publicar uma mensagem interna fixa no job e no SSE.
 - If duas alterações da configuração ocorrerem concorrentemente, then the system
   shall serializá-las sem duplicar registros nem combinar chave e padrões de
   versões diferentes.
@@ -203,6 +215,8 @@ configuráveis ou novos formatos de ingestão.
       da Fila e conflitos de gesto mobile.
 - [x] Logs e métricas permitem correlacionar job, etapa, duração e resultado sem
       expor segredo ou conteúdo do usuário.
+- [x] Falhas inesperadas e permanentes usam diagnósticos allowlisted; mensagens
+      de Job/SSE são internas e não serializam exceções, paths ou filenames.
 - [ ] Lint, formatação, typecheck, testes TypeScript/Python, build e verificações
       de segurança bloqueantes passam no CI; auditorias informativas permanecem
       registradas separadamente.

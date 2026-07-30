@@ -15,6 +15,7 @@ class _FakeLogger:
     def __init__(self) -> None:
         self.events: list[tuple[str, str]] = []
         self.warning_details: list[tuple[str, dict[str, object]]] = []
+        self.error_details: list[tuple[str, dict[str, object]]] = []
 
     def info(self, event: str, **_kw: object) -> None:
         self.events.append(("info", event))
@@ -23,8 +24,9 @@ class _FakeLogger:
         self.events.append(("warning", event))
         self.warning_details.append((event, kw))
 
-    def exception(self, event: str, **_kw: object) -> None:
-        self.events.append(("exception", event))
+    def error(self, event: str, **kw: object) -> None:
+        self.events.append(("error", event))
+        self.error_details.append((event, kw))
 
 
 def _patch_db_fetch(monkeypatch: pytest.MonkeyPatch, row: dict[str, object] | None) -> MagicMock:
@@ -210,6 +212,43 @@ async def test_warns_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "proxy-pass" not in logged
 
 
+async def test_network_error_log_does_not_include_proxy_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
+    _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem"})
+    _patch_model_config(monkeypatch, api_key="sk-test", model="openai/gpt-4o-mini")
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_summary_timeout_sec",
+        AsyncMock(return_value=120.0),
+    )
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
+
+    async def fake_post(self: httpx.AsyncClient, *args: object, **kw: object) -> object:
+        raise httpx.ProxyError("socks5h://proxy-user:proxy-pass@127.0.0.1:1080")
+
+    with patch.object(httpx.AsyncClient, "post", fake_post):
+        log = _FakeLogger()
+        await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
+
+    assert log.warning_details == [
+        (
+            "summary-network-error",
+            {
+                "error_code": "SUMMARY_UPSTREAM_UNAVAILABLE",
+                "error_type": "ProxyError",
+            },
+        )
+    ]
+    assert "proxy-user" not in repr(log.warning_details)
+    assert "proxy-pass" not in repr(log.warning_details)
+
+
 async def test_exception_is_logged_but_not_raised(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
 
@@ -221,7 +260,18 @@ async def test_exception_is_logged_but_not_raised(monkeypatch: pytest.MonkeyPatc
     log = _FakeLogger()
     # Não levanta — best-effort
     await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
-    assert ("exception", "summary-failed") in log.events
+    assert ("error", "summary-failed") in log.events
+    assert log.error_details == [
+        (
+            "summary-failed",
+            {
+                "transcript_id": "t1",
+                "error_code": "SUMMARY_FAILED",
+                "error_type": "RuntimeError",
+            },
+        )
+    ]
+    assert "DB exploded" not in repr(log.error_details)
 
 
 def test_build_summarize_prompt_no_tldr_pt_and_en() -> None:

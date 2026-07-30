@@ -127,13 +127,18 @@ async def test_robots_blocked_raises_permanent(
     monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
     monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
 
-    with pytest.raises(PermanentError, match="robots"):
+    with pytest.raises(PermanentError) as exc_info:
         await scrape_pipeline.run(
             job_id="job1",
             user_id="user1",
             source_url="https://blocked.example.com/",
             log=_FakeLogger(),
         )
+    assert exc_info.value.code == "SCRAPE_ROBOTS_BLOCKED"
+    assert (
+        exc_info.value.public_message == "O site não permite a leitura automatizada deste conteúdo."
+    )
+    assert "robots blocked" not in exc_info.value.public_message
 
 
 async def test_fetch_blocked_raises_permanent(
@@ -148,13 +153,16 @@ async def test_fetch_blocked_raises_permanent(
     monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
     monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
 
-    with pytest.raises(PermanentError, match="403"):
+    with pytest.raises(PermanentError) as exc_info:
         await scrape_pipeline.run(
             job_id="job1",
             user_id="user1",
             source_url="https://example.com/",
             log=_FakeLogger(),
         )
+    assert exc_info.value.code == "SCRAPE_ACCESS_BLOCKED"
+    assert exc_info.value.public_message == "Não foi possível acessar esta página com segurança."
+    assert "HTTP 403" not in exc_info.value.public_message
 
 
 async def test_empty_content_raises_permanent(
@@ -169,13 +177,18 @@ async def test_empty_content_raises_permanent(
     monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
     monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
 
-    with pytest.raises(PermanentError, match="vazio"):
+    with pytest.raises(PermanentError) as exc_info:
         await scrape_pipeline.run(
             job_id="job1",
             user_id="user1",
             source_url="https://paywall.example.com/",
             log=_FakeLogger(),
         )
+    assert exc_info.value.code == "SCRAPE_CONTENT_EMPTY"
+    assert (
+        exc_info.value.public_message == "A página não ofereceu conteúdo suficiente para análise."
+    )
+    assert "vazio" not in exc_info.value.public_message
 
 
 async def test_cancel_before_start(monkeypatch: pytest.MonkeyPatch) -> None:

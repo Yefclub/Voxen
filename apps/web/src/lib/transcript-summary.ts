@@ -131,8 +131,20 @@ export async function generateAndPersistTranscriptSummary(input: {
         : AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new TranscriptSummaryError(`Falha ao contatar OpenRouter: ${msg}`, 502);
+    const name =
+      typeof err === 'object' && err !== null && 'name' in err
+        ? String((err as { name?: unknown }).name)
+        : '';
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      throw new TranscriptSummaryError(
+        'A OpenRouter não respondeu no prazo. Tente novamente.',
+        502,
+      );
+    }
+    throw new TranscriptSummaryError(
+      'Não foi possível contatar a OpenRouter. Tente novamente.',
+      502,
+    );
   }
 
   if (res.status === 401 || res.status === 403) {

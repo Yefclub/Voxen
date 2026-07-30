@@ -16,6 +16,7 @@ import structlog
 
 from . import db, events
 from .automation_schedule import compute_next_run
+from .safe_diagnostics import error_diagnostic
 
 log = structlog.get_logger(__name__)
 
@@ -72,11 +73,12 @@ async def scheduler_tick() -> int:
                         timezone=a["timezone"],
                         from_dt=datetime.now(UTC),
                     )
-                except Exception:  # noqa: BLE001
-                    log.exception(
+                except Exception as exc:  # noqa: BLE001
+                    log.error(
                         "compute-next-run-failed",
                         automation_id=a["id"],
                         timezone=a["timezone"],
+                        **error_diagnostic(exc, "AUTOMATION_SCHEDULE_FAILED"),
                     )
                     schedule_error = True
                 if schedule_error:
@@ -108,8 +110,12 @@ async def scheduler_tick() -> int:
                 try:
                     client = await events.get_redis()
                     await client.publish(events.AUTOMATION_RUN_CHANNEL, run_id)
-                except Exception:  # noqa: BLE001
-                    log.exception("automation-run-publish-failed", run_id=run_id)
+                except Exception as exc:  # noqa: BLE001
+                    log.error(
+                        "automation-run-publish-failed",
+                        run_id=run_id,
+                        **error_diagnostic(exc, "AUTOMATION_RUN_PUBLISH_FAILED"),
+                    )
     if created_count:
         log.info("automations-scheduled", count=created_count)
     return created_count
@@ -201,4 +207,8 @@ async def _mark_failed(run_id: str, error_msg: str) -> None:
             run_id,
             error_msg[:1000],
         )
-    log.warning("automation-run-failed", run_id=run_id, error=error_msg[:200])
+    log.warning(
+        "automation-run-failed",
+        run_id=run_id,
+        error_code="AUTOMATION_AGENT_UNAVAILABLE",
+    )

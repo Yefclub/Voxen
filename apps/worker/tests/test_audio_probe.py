@@ -238,7 +238,7 @@ async def test_pipeline_converts_validation_error_and_skips_api(
     monkeypatch.setattr(pipeline, "validate_audio_for_transcription", _fail_validation)
 
     log = AsyncMock()
-    with pytest.raises(pipeline.PermanentError, match="duração zero"):
+    with pytest.raises(pipeline.PermanentError) as exc_info:
         await pipeline._transcribe_via_api(
             audio_path=tmp_path / "audio.opus",
             user_id="u1",
@@ -247,5 +247,11 @@ async def test_pipeline_converts_validation_error_and_skips_api(
             tmpdir=tmp_path,
             log=log,
         )
+    assert exc_info.value.code == "AUDIO_VALIDATION_FAILED"
+    assert (
+        exc_info.value.public_message
+        == "O áudio enviado não passou pela validação para transcrição."
+    )
+    assert "duração zero" not in exc_info.value.public_message
     assert split_called is False
     assert api_called is False

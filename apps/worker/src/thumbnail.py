@@ -15,6 +15,7 @@ import httpx
 import structlog
 
 from . import storage
+from .safe_diagnostics import error_diagnostic
 
 log = structlog.get_logger()
 
@@ -138,7 +139,10 @@ async def mirror_remote_thumbnail(
                     return None
             ext, mime = _ext_and_mime(resp.headers.get("content-type"), remote_url)
     except Exception as exc:  # noqa: BLE001
-        log.warning("thumbnail-fetch-failed", error=str(exc)[:200])
+        log.warning(
+            "thumbnail-fetch-failed",
+            **error_diagnostic(exc, "THUMBNAIL_FETCH_FAILED"),
+        )
         return None
 
     key = thumbnail_key(user_id, transcript_id, ext)
@@ -149,7 +153,10 @@ async def mirror_remote_thumbnail(
             fh.write(body)
         await storage.put_file(key=key, path=tmp, content_type=mime)
     except Exception as exc:  # noqa: BLE001
-        log.warning("thumbnail-upload-failed", error=str(exc)[:200])
+        log.warning(
+            "thumbnail-upload-failed",
+            **error_diagnostic(exc, "THUMBNAIL_UPLOAD_FAILED"),
+        )
         return None
     finally:
         if tmp is not None:

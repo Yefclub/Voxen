@@ -32,6 +32,7 @@ from typing import Any
 import structlog
 
 from . import db, storage, ytdl
+from .safe_diagnostics import error_diagnostic
 from .transcript_md import Segment, TranscriptDoc, render_markdown, render_plain_text
 
 log = structlog.get_logger(__name__)
@@ -106,17 +107,21 @@ async def repair(dry_run: bool) -> None:
         dirty = looks_rolling(row["plainText"])
         if not dirty:
             clean += 1
-            log.info("repair-skip-clean", transcript_id=tid, title=row["title"][:60])
+            log.info("repair-skip-clean", transcript_id=tid)
             continue
         try:
             fresh = await _fresh_segments(row["url"])
         except Exception as e:  # noqa: BLE001
             skipped += 1
-            log.warning("repair-fetch-failed", transcript_id=tid, error=str(e)[:200])
+            log.warning(
+                "repair-fetch-failed",
+                transcript_id=tid,
+                **error_diagnostic(e, "REPAIR_FETCH_FAILED"),
+            )
             continue
         if fresh is None:
             skipped += 1
-            log.warning("repair-no-subtitles", transcript_id=tid, url=row["url"])
+            log.warning("repair-no-subtitles", transcript_id=tid)
             continue
         segments, language = fresh
         doc = TranscriptDoc(
@@ -145,7 +150,6 @@ async def repair(dry_run: bool) -> None:
             log.info(
                 "repair-dry-run",
                 transcript_id=tid,
-                title=row["title"][:60],
                 chars_before=before,
                 chars_after=after,
             )
@@ -161,7 +165,6 @@ async def repair(dry_run: bool) -> None:
         log.info(
             "repair-done",
             transcript_id=tid,
-            title=row["title"][:60],
             chars_before=before,
             chars_after=after,
         )

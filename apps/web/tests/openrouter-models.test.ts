@@ -58,6 +58,32 @@ describe('OpenRouter user model catalog', () => {
     expect(requestSignals[1]).toBe(requestSignals[0]);
   });
 
+  it('normalizes a shared-deadline timeout while consuming the catalog body', async () => {
+    const fetcher = (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/key')) return new Response('{}', { status: 200 });
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(
+              new DOMException(
+                'Cliente-Acme-Fusao-Secreta.pdf Bearer sk-or-private',
+                'TimeoutError',
+              ),
+            );
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as typeof fetch;
+
+    const error = await inspectOpenRouterAccount('sk-or-test', fetcher, 5).catch((err) => err);
+
+    expect(error).toBeInstanceOf(OpenrouterError);
+    expect((error as Error).message).toContain('15 segundos');
+    expect((error as Error).message).not.toContain('Cliente-Acme');
+    expect((error as Error).message).not.toContain('sk-or-private');
+  });
+
   it('accepts the canonical STT model when the account catalog omits input modalities', () => {
     expect(
       hasCanonicalOpenRouterModels([

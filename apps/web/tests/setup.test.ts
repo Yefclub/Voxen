@@ -406,6 +406,74 @@ describeIfDb('setup flow', () => {
     await expect(getSetting('app_timezone')).resolves.toBe('America/Sao_Paulo');
   });
 
+  it('falha ao consumir o catálogo preserva toda a configuração anterior', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    const previousKeys = [
+      'openrouter_api_key',
+      'default_chat_model',
+      'default_transcription_model',
+      'default_web_search_model',
+      'default_vision_model',
+      'default_document_model',
+      'default_x_analysis_model',
+      'app_language',
+      'app_timezone',
+    ] as const;
+    const previous = {
+      openrouter_api_key: REPLACEMENT_KEY,
+      default_chat_model: 'custom/chat',
+      default_transcription_model: 'custom/stt',
+      default_web_search_model: 'custom/web',
+      default_vision_model: 'custom/vision',
+      default_document_model: 'custom/document',
+      default_x_analysis_model: 'custom/x',
+      app_language: 'pt-BR',
+      app_timezone: 'America/Sao_Paulo',
+    } as const;
+    await setSettings(previous);
+    installFetchMock(async (input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      if (url.endsWith('/api/v1/key')) {
+        return new Response('{}', { status: 200 });
+      }
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(
+              new DOMException(
+                'Cliente-Acme-Fusao-Secreta.pdf Bearer sk-or-private',
+                'TimeoutError',
+              ),
+            );
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/setup', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          openrouter_api_key: VALID_KEY,
+          app_language: 'en',
+          app_timezone: 'UTC',
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/OpenRouter|tente novamente/i);
+    expect(body.error).not.toContain('Cliente-Acme');
+    expect(body.error).not.toContain('sk-or-private');
+    await expect(getSettings(previousKeys)).resolves.toEqual(previous);
+  });
+
   it('user comum em /api/setup → 403', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     await signUp('user@voxen.local', 'senha-super-segura-456', 'User');

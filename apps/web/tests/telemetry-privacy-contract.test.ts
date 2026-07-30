@@ -59,13 +59,17 @@ describe('privacidade da telemetria de enriquecimento', () => {
       expect(source).not.toMatch(/await (?:res|response)\.text\(\)/);
     }
 
+    const summarySource = read('src/lib/transcript-summary.ts');
+    expect(summarySource).not.toContain('err.message');
+    expect(summarySource).not.toContain('String(err)');
+
     const transcriptRoute = read('src/routes/transcripts.ts');
     const failureWindow = metadataWindow(
       transcriptRoute,
-      "console.error('[transcripts] falha ao gerar tags'",
+      "'[transcripts] falha ao gerar tags'",
       320,
     );
-    expect(failureWindow).toContain('error_type');
+    expect(failureWindow).toContain("safeErrorDiagnostic('TRANSCRIPT_TAG_GENERATION_FAILED', err)");
     expect(failureWindow).not.toContain('err.message');
   });
 });

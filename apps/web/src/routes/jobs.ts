@@ -33,6 +33,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { deleteS3Object, presignClient, presignEnabled, s3Bucket, s3Client } from '../lib/s3';
 import { rateLimit } from '../lib/rate-limit';
 import { createSubscriber } from '../lib/redis';
+import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
 import {
   isTerminalStage,
   jobChannel,
@@ -280,7 +281,7 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
       throw err;
     }
     await notifyNewJob(job.id).catch((err) => {
-      console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+      console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
     });
     await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
     return {
@@ -334,7 +335,7 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
     throw err;
   }
   await notifyNewJob(webJob.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
   });
   await publishJobEvent(userId, { jobId: webJob.id, stage: 'queued' }).catch(() => undefined);
   return {
@@ -377,7 +378,7 @@ async function enqueueUploadJob(
   });
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -433,7 +434,7 @@ export async function createUploadJobForUser(
       contentType,
     });
   } catch (err) {
-    console.error('[jobs] upload to S3 failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] upload to S3 failed', safeErrorDiagnostic('UPLOAD_STORE_FAILED', err));
     return {
       outcome: 'error',
       status: 502,
@@ -542,7 +543,7 @@ jobsRoutes.post('/', async (c) => {
   }
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -682,8 +683,11 @@ jobsRoutes.post('/upload/presign', async (c) => {
       { expiresIn: PRESIGN_EXPIRES_SEC },
     );
   } catch (err) {
-    // Não logar a URL (contém assinatura) — só a key.
-    console.error(`[jobs] presign failed (key=${key}):`, err instanceof Error ? err.message : err);
+    console.error('[jobs] presign failed', {
+      upload_id: uploadId,
+      content_kind: kind,
+      ...safeErrorDiagnostic('UPLOAD_PRESIGN_FAILED', err),
+    });
     return c.json({ error: 'Falha ao gerar URL de upload.' }, 502);
   }
 
@@ -748,10 +752,11 @@ jobsRoutes.post('/upload/confirm', async (c) => {
     if (name === 'NotFound' || name === 'NoSuchKey') {
       return c.json({ error: 'Upload não encontrado. Reenvie o arquivo.' }, 400);
     }
-    console.error(
-      `[jobs] confirm HeadObject failed (key=${key}):`,
-      err instanceof Error ? err.message : err,
-    );
+    console.error('[jobs] confirm HeadObject failed', {
+      upload_id: parsed.data.uploadId,
+      content_kind: kind,
+      ...safeErrorDiagnostic('UPLOAD_HEAD_FAILED', err),
+    });
     return c.json({ error: 'Falha ao validar upload no armazenamento S3.' }, 502);
   }
 
@@ -831,7 +836,7 @@ jobsRoutes.post('/scrape', async (c) => {
   }
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -1062,7 +1067,7 @@ jobsRoutes.post('/:id/retry', async (c) => {
   }
 
   await notifyNewJob(newJob.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
   });
   await publishJobEvent(userId, { jobId: newJob.id, stage: 'queued' }).catch(() => undefined);
 
