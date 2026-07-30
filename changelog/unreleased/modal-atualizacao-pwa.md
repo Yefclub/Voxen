@@ -1,6 +1,6 @@
 ---
-type: fix
-title: Atualizações deixam de prender a interface antiga
+tipo: fix
+titulo: Atualizações deixam de prender a interface antiga
 ---
 
 O aviso de nova versão passa a usar a versão exata do pacote e prepara a
