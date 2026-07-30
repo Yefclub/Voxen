@@ -34,6 +34,11 @@ TAG_BAD_MARKERS = (
     "here is",
     "the tags",
     "as tags",
+    "tags total",
+    "json array only",
+    "return json only",
+    "no duplicates",
+    "no sentences",
     "o conteúdo",
     "este conteúdo",
 )
@@ -59,6 +64,7 @@ TAG_STOP_LABELS = {
     "n/a",
     "na",
     "null",
+    "i see",
 }
 
 

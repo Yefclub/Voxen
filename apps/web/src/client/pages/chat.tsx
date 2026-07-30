@@ -259,18 +259,15 @@ function ThinkingBlock({
   // Timeline aberta enquanto o turno está em voo; recolhe só ao terminar
   // (usuário reabre no header).
   const [expanded, setExpanded] = useState(true);
-  // Cronômetro de parede: inclui a preparação anterior ao primeiro delta e
-  // continua derivável após a mensagem persistida substituir a otimista.
+  // Cronômetro de parede apenas durante o turno ao vivo. Mensagens concluídas
+  // usam exclusivamente timestamps persistidos, portanto nunca "envelhecem"
+  // ao remontar ou ao voltar para a conversa.
   const startedAtRef = useRef<number>(startedAt);
   const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - startedAt));
-  const [frozen, setFrozen] = useState<number | null>(null);
 
   useEffect(() => {
     if (!inFlight) {
       setExpanded(false);
-      if (frozen == null) {
-        setFrozen(Date.now() - startedAtRef.current);
-      }
       return;
     }
     setExpanded(true);
@@ -278,14 +275,14 @@ function ThinkingBlock({
       setElapsed(Date.now() - startedAtRef.current);
     }, 200);
     return () => window.clearInterval(id);
-  }, [inFlight, frozen]);
+  }, [inFlight]);
 
   // Em mensagens recarregadas, a duração continua derivável dos timestamps
   // persistidos e do início canônico da mensagem/turno.
-  const duration = frozen ?? (inFlight ? elapsed : segmentsReasoningDuration(segments, startedAt));
+  const duration = inFlight ? elapsed : segmentsReasoningDuration(segments, startedAt);
 
   return (
-    <section className="mb-2.5 flex flex-col gap-1">
+    <section className="mb-2.5 flex max-w-3xl flex-col gap-1">
       <button
         type="button"
         onClick={() => !inFlight && setExpanded((v) => !v)}
@@ -323,7 +320,9 @@ function ThinkingBlock({
                     : 'text-[var(--color-app-muted)]',
                 )}
               >
-                {segment.text}
+                {segment.endedAt == null
+                  ? t('chat.reasoningInProgress')
+                  : t('chat.reasoningCompleted')}
               </p>
             ) : (
               <div key={segment.id} className="flex flex-col">
@@ -1339,7 +1338,7 @@ export function ChatPage(): React.ReactElement {
             aria-label={t('chat.historyLabel')}
             className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-5 pt-12 md:py-5"
           >
-            <div className="mx-auto flex w-full max-w-3xl flex-col">
+            <div className="mx-auto flex w-full max-w-5xl flex-col">
               <div ref={contentWrapRef} className="flex flex-col">
                 {hasOlder && (
                   <button
@@ -1382,7 +1381,9 @@ export function ChatPage(): React.ReactElement {
                       {message.content && (
                         <>
                           <div className="text-[15px] leading-relaxed text-[var(--color-app-fg)]">
-                            <Markdown>{message.content}</Markdown>
+                            <Markdown className="chat-response-markdown [&_p]:max-w-3xl [&_ul]:max-w-3xl [&_ol]:max-w-3xl [&_blockquote]:max-w-3xl">
+                              {message.content}
+                            </Markdown>
                           </div>
                           {!isStreamingAssistant && (
                             <MessageCopyButton text={message.content} align="start" />

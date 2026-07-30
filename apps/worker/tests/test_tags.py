@@ -64,6 +64,10 @@ def test_resolve_drops_noise() -> None:
     assert resolve_tags_decision('["a really long tag with too many words here","OK Tag"]', []) == [
         "OK Tag"
     ]
+    assert resolve_tags_decision(
+        '["tags total","JSON array only","no duplicates","I see","Segurança Web"]',
+        [],
+    ) == ["Segurança Web"]
 
 
 def test_resolve_empty() -> None:

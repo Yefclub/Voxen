@@ -139,7 +139,7 @@ export function UpdateModal({
         if (!open) handleIntent('dismiss');
       }}
     >
-      <DialogContent className="h-[min(92dvh,52rem)] max-h-[min(92dvh,52rem)] max-w-3xl gap-0 overflow-hidden p-0 sm:w-[min(100vw-3rem,48rem)]">
+      <DialogContent className="h-[min(calc(100dvh-1rem),56rem)] max-h-[min(calc(100dvh-1rem),56rem)] w-[calc(100vw-1rem)] max-w-5xl gap-0 overflow-hidden p-0 sm:w-[min(100vw-3rem,64rem)]">
         <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
           <header className="flex min-h-0 items-start gap-4 border-b border-[var(--color-app-border)] bg-gradient-to-br from-emerald-500/[0.12] via-transparent to-violet-500/[0.08] p-5 sm:p-7">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/30">

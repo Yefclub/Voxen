@@ -16,11 +16,13 @@ describe('navegação mobile', () => {
     const drawer = read('src/client/components/layout/mobile-nav-drawer.tsx');
     const layout = read('src/client/components/layout/app-layout.tsx');
     expect(drawer).toContain('w-[88vw] max-w-[22rem]');
-    expect(drawer).toContain('role="dialog"');
-    expect(drawer).toContain('inert={open ? undefined : true}');
+    expect(drawer).toContain("role={present ? 'dialog' : undefined}");
+    expect(drawer).toContain('inert={present ? undefined : true}');
+    expect(drawer).toContain("useMotionValueEvent(progress, 'change'");
     expect(drawer).toContain("event.key === 'Escape'");
     expect(layout).toContain('onProgress: (progress) => mobileNavProgress.set(progress)');
-    expect(layout).toContain('inert={mobileNavOpen ? true : undefined}');
+    expect(layout).toContain('onPresenceChange={setMobileNavPresent}');
+    expect(layout).toContain('inert={mobileNavPresent ? true : undefined}');
   });
 
   test('regiões horizontais reservam o gesto e o drawer fechado não mantém sombra', () => {

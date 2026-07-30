@@ -43,6 +43,7 @@ import {
   buildGraphInsights,
   buildGraphLayout,
   buildSigmaGraphModel,
+  graphDescriptionText,
   edgePath,
   filterGraphData,
   nodePath,
@@ -143,14 +144,14 @@ function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
     node: {
       ...baseTheme.node,
       fill: palette.nodes.content,
-      activeFill: palette.selected,
+      activeFill: palette.activeNode,
       opacity: 1,
       selectedOpacity: 1,
       inactiveOpacity: 0.18,
       label: {
         color: palette.label,
         stroke: palette.labelStroke,
-        activeColor: palette.selected,
+        activeColor: palette.activeLabel,
         // Halo semi-opaco no tom do canvas — título legível sobre nós coloridos.
         backgroundColor: palette.canvas,
         backgroundOpacity: 0.88,
@@ -169,7 +170,11 @@ function buildVoxenTheme(baseTheme: Theme, palette: GraphPalette): Theme {
       opacity: 0.42,
       selectedOpacity: 1,
       inactiveOpacity: 0.05,
-      label: { color: palette.label, activeColor: palette.selected, stroke: palette.labelStroke },
+      label: {
+        color: palette.label,
+        activeColor: palette.activeLabel,
+        stroke: palette.labelStroke,
+      },
     },
     arrow: {
       fill: toOpaqueGraphColor(palette.neutralEdge),
@@ -407,6 +412,8 @@ export function GrafoPage(): React.ReactElement {
               <Button
                 variant="outline"
                 size="default"
+                onPointerEnter={() => void loadReagraph()}
+                onFocus={() => void loadReagraph()}
                 onClick={() => setMode((current) => (current === '2d' ? '3d' : '2d'))}
                 title={t(mode === '2d' ? 'graph.switchTo3d' : 'graph.switchTo2d')}
               >
@@ -901,7 +908,7 @@ function GraphNodeInspector({
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {node.description && (
           <p className="mb-4 text-xs leading-relaxed text-[var(--color-app-subtle)]">
-            {node.description}
+            {graphDescriptionText(node.description)}
           </p>
         )}
         <div className="mb-4 grid grid-cols-2 gap-2">
@@ -1410,7 +1417,7 @@ function BrainGraph2DCanvas({
         };
       return {
         ...nodeData,
-        color: isActive ? palette.selected : nodeData.color,
+        color: isActive ? palette.activeNode : nodeData.color,
         size: nodeData.size * (isActive ? 1.45 : 1.12),
         zIndex: isActive ? 4 : 3,
       };

@@ -31,6 +31,11 @@ const TAG_BAD_MARKERS = [
   'here is',
   'the tags',
   'as tags',
+  'tags total',
+  'json array only',
+  'return json only',
+  'no duplicates',
+  'no sentences',
   'o conteúdo',
   'este conteúdo',
 ] as const;
@@ -57,6 +62,7 @@ const TAG_STOP_LABELS = new Set([
   'n/a',
   'na',
   'null',
+  'i see',
 ]);
 
 /**

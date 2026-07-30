@@ -269,7 +269,10 @@ function NoteEditor({
       transition={{ duration: 0.25 }}
     >
       <Card elevated className="overflow-hidden p-0 min-h-[calc(100dvh-280px)] flex flex-col">
-        <div className="flex items-center gap-3 px-4 py-3 sm:px-6 sm:py-4 border-b border-[var(--color-app-border)]">
+        <div
+          data-note-editor-toolbar
+          className="flex min-w-0 flex-col gap-3 border-b border-[var(--color-app-border)] px-4 py-3 sm:flex-row sm:items-center sm:px-6 sm:py-4"
+        >
           <input
             type="text"
             value={title}
@@ -279,41 +282,44 @@ function NoteEditor({
             }}
             onBlur={() => void save()}
             placeholder={t('notes.untitled')}
-            className="flex-1 bg-transparent text-xl font-display font-semibold tracking-tight text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none"
+            className="w-full min-w-0 flex-1 bg-transparent font-display text-xl font-semibold tracking-tight text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none"
           />
-          <span className="text-[11px] uppercase tracking-wider tabular-nums">
-            {saving ? (
-              <span className="inline-flex items-center gap-1.5 text-[var(--color-app-muted)]">
-                <Loader2 className="h-3 w-3 animate-spin" /> {t('common.saving')}
-              </span>
-            ) : dirty ? (
-              <span className="text-amber-300">{t('notes.pending')}</span>
-            ) : (
-              <span className="text-emerald-300">{t('common.saved')}</span>
-            )}
-          </span>
-          <Button size="sm" variant="ghost" onClick={onTogglePreview}>
-            {previewMode ? (
-              <>
-                <EyeOff className="h-3.5 w-3.5" />
-                {t('notes.edit')}
-              </>
-            ) : (
-              <>
-                <Eye className="h-3.5 w-3.5" />
-                {t('notes.preview')}
-              </>
-            )}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => void save()}
-            disabled={!dirty || saving}
-          >
-            <Save className="h-3.5 w-3.5" />
-            {t('common.save')}
-          </Button>
+          <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0">
+            <span className="mr-auto shrink-0 text-[11px] uppercase tracking-wider tabular-nums sm:mr-1">
+              {saving ? (
+                <span className="inline-flex items-center gap-1.5 text-[var(--color-app-muted)]">
+                  <Loader2 className="h-3 w-3 animate-spin" /> {t('common.saving')}
+                </span>
+              ) : dirty ? (
+                <span className="text-amber-300">{t('notes.pending')}</span>
+              ) : (
+                <span className="text-emerald-300">{t('common.saved')}</span>
+              )}
+            </span>
+            <Button className="shrink-0" size="sm" variant="ghost" onClick={onTogglePreview}>
+              {previewMode ? (
+                <>
+                  <EyeOff className="h-3.5 w-3.5" />
+                  {t('notes.edit')}
+                </>
+              ) : (
+                <>
+                  <Eye className="h-3.5 w-3.5" />
+                  {t('notes.preview')}
+                </>
+              )}
+            </Button>
+            <Button
+              className="shrink-0"
+              size="sm"
+              variant="outline"
+              onClick={() => void save()}
+              disabled={!dirty || saving}
+            >
+              <Save className="h-3.5 w-3.5" />
+              {t('common.save')}
+            </Button>
+          </div>
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">

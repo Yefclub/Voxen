@@ -21,7 +21,6 @@ describe('isBottomNavTab', () => {
     '/dashboard',
     '/jobs',
     '/fila',
-    '/chat',
     '/chat/abc',
     '/notas/abc',
     '/automacoes',
@@ -32,6 +31,10 @@ describe('isBottomNavTab', () => {
     '/admin/integracoes',
   ])('NÃO trata %s como aba de topo', (path) => {
     expect(isBottomNavTab(path)).toBe(false);
+  });
+
+  test('/chat herda a mesma semântica de topo da rota canônica /', () => {
+    expect(isBottomNavTab('/chat')).toBe(true);
   });
 });
 
@@ -157,7 +160,7 @@ describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobi
     expect(shouldShowBack(path)).toBe(true);
   });
 
-  test('/chat visitada diretamente (não é aba de topo): mostra voltar — motivo pelo qual o botão de abrir menu (AppLayout) exige !showBack', () => {
-    expect(shouldShowBack('/chat')).toBe(true);
+  test('/chat visitada diretamente é alias da home e abre o mesmo menu', () => {
+    expect(shouldShowBack('/chat')).toBe(false);
   });
 });

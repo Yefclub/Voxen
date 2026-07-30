@@ -84,7 +84,8 @@ describe('feed de novidades', () => {
       'utf8',
     );
     expect(modal).toContain('data-update-scroll-region');
-    expect(modal).toContain('h-[min(92dvh,52rem)]');
+    expect(modal).toContain('h-[min(calc(100dvh-1rem),56rem)]');
+    expect(modal).toContain('max-w-5xl');
     expect(modal).toContain('grid-rows-[auto_minmax(0,1fr)_auto]');
     expect(modal).toContain('min-h-0 overflow-y-scroll overflow-x-hidden');
     expect(modal).not.toContain('flex h-full min-h-0 flex-col');

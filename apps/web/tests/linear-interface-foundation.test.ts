@@ -87,8 +87,8 @@ describe('fundação visual Linear', () => {
     expect(sidebar).toContain('style={{ width: SIDEBAR_WIDTH }}');
     expect(sidebar).toContain('SIDEBAR_WIDTH + 32');
     expect(drawer).toContain('fica preparada fora da tela');
-    expect(drawer).toContain("open ? 'pointer-events-auto' : 'pointer-events-none'");
-    expect(drawer).toContain('inert={open ? undefined : true}');
+    expect(drawer).toContain("present ? 'pointer-events-auto' : 'pointer-events-none'");
+    expect(drawer).toContain('inert={present ? undefined : true}');
     expect(drawer).toContain('<SidebarModeBody user={user} hideHome />');
   });
 
@@ -99,7 +99,8 @@ describe('fundação visual Linear', () => {
     const costs = read('src/client/pages/admin-custos.tsx');
 
     expect(PAGE_SHELL_WIDTHS.wide).toBe('max-w-[1600px]');
-    expect(PAGE_SHELL_WIDTHS.reading).toBe('max-w-4xl');
+    expect(PAGE_SHELL_WIDTHS.workspace).toBe('max-w-[1600px]');
+    expect(PAGE_SHELL_WIDTHS.reading).toBe('max-w-6xl');
     expect(Object.values(PAGE_SHELL_WIDTHS).every((value) => value.startsWith('max-w-'))).toBe(
       true,
     );

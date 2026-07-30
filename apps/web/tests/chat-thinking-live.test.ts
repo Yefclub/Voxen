@@ -23,9 +23,9 @@ describe('ThinkingBlock live expand policy', () => {
     expect(chatSource).toContain('if (!inFlight)');
     expect(chatSource).toContain('setExpanded(false)');
     expect(chatSource).toContain('setExpanded(true)');
-    expect(chatSource).toContain('}, [inFlight, frozen]');
+    expect(chatSource).toContain('}, [inFlight]');
     // Must not re-introduce the flicker: effect deps on running alone.
-    expect(chatSource).not.toContain('}, [running, frozen]');
+    expect(chatSource).not.toContain('}, [running]');
   });
 
   test('header shimmer and click disable use inFlight', () => {
@@ -37,10 +37,18 @@ describe('ThinkingBlock live expand policy', () => {
     );
   });
 
-  test('cronômetro parte do início conhecido do turno', () => {
+  test('cronômetro parte do início conhecido do turno e nunca recalcula histórico com Date.now', () => {
     expect(chatSource).toContain('startedAt: number');
     expect(chatSource).toContain('useRef<number>(startedAt)');
     expect(chatSource).not.toContain('live ? Date.now() : null');
+    expect(chatSource).not.toContain('setFrozen(Date.now()');
+    expect(chatSource).not.toContain('const [frozen');
+  });
+
+  test('timeline apresenta estado operacional sem expor chain-of-thought bruto', () => {
+    expect(chatSource).not.toContain('{segment.text}');
+    expect(chatSource).toContain("t('chat.reasoningInProgress')");
+    expect(chatSource).toContain("t('chat.reasoningCompleted')");
   });
 
   test('prepara contexto concorrente e mede tempo até o primeiro evento do modelo', () => {

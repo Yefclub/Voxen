@@ -128,7 +128,7 @@ export function NovidadesPage(): React.ReactElement {
         title={t('novidades.title')}
         description={t('novidades.description')}
         actions={
-          <Button variant="ghost" size="sm" asChild>
+          <Button variant="ghost" size="sm" asChild className="hidden md:inline-flex">
             <Link to="/">
               <ArrowLeft className="h-3.5 w-3.5" />
               {t('novidades.back')}

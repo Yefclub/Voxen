@@ -1,6 +1,6 @@
 export const PAGE_SHELL_WIDTHS = {
-  reading: 'max-w-4xl',
-  workspace: 'max-w-7xl',
+  reading: 'max-w-6xl',
+  workspace: 'max-w-[1600px]',
   wide: 'max-w-[1600px]',
 } as const;
 

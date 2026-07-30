@@ -70,6 +70,12 @@ describe('resolveTagsDecision', () => {
     expect(
       resolveTagsDecision('["a really long tag with too many words here","OK Tag"]', []),
     ).toEqual(['OK Tag']);
+    expect(
+      resolveTagsDecision(
+        '["tags total","JSON array only","no duplicates","I see","Segurança Web"]',
+        [],
+      ),
+    ).toEqual(['Segurança Web']);
   });
 
   test('empty / noise yields empty list', () => {
