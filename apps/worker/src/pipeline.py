@@ -91,29 +91,6 @@ _TRANSIENT_EXC: tuple[type[BaseException], ...] = (
 )
 
 
-def _safe_source_host(source_url: str) -> str | None:
-    """Retorna apenas o host normalizado, sem credenciais, path ou query."""
-    try:
-        host = urlsplit(source_url).hostname
-        if not host:
-            return None
-        normalized = host.encode("idna").decode("ascii").lower().strip(".")
-    except (UnicodeError, ValueError):
-        return None
-    if not normalized or len(normalized) > 253:
-        return None
-    if any(
-        not label
-        or len(label) > 63
-        or label.startswith("-")
-        or label.endswith("-")
-        or not re.fullmatch(r"[a-z0-9-]+", label)
-        for label in normalized.split(".")
-    ):
-        return None
-    return normalized
-
-
 def _source_kind_for_log(source_url: str, job_type: str) -> str:
     detected = video_url.detect_source(source_url)
     if detected:
@@ -140,7 +117,6 @@ async def process_job(job_id: str) -> None:
         user_id=user_id,
         type=job_type,
         source_kind=_source_kind_for_log(source_url, job_type),
-        source_host=_safe_source_host(source_url),
     )
     log.info("job-claimed")
 
@@ -946,7 +922,6 @@ async def _run_x_analysis_pipeline(
         job_id=job_id,
         meta={
             "source": "x_analysis",
-            "source_host": _safe_source_host(source_url),
         },
     )
 

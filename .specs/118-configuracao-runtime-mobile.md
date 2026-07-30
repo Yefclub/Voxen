@@ -68,7 +68,8 @@ configuráveis ou novos formatos de ingestão.
   quando estiver totalmente fechada.
 - The system shall registrar eventos operacionais com tipo de conteúdo, etapa,
   duração, resultado e identificadores seguros, sem registrar chave, payload
-  integral, conteúdo extraído, nomes de arquivo, pasta ou tag, nem credenciais.
+  integral, conteúdo extraído, hostname, nomes de arquivo, pasta ou tag, nem
+  credenciais.
 - The system shall limitar diagnósticos de falha a códigos internos, tipos
   normalizados, estados, contagens, durações e identificadores opacos
   explicitamente permitidos.
@@ -153,6 +154,10 @@ configuráveis ou novos formatos de ingestão.
 - If uma exceção inesperada incluir conteúdo, filename, path, URL ou
   credenciais, then the system shall registrar somente seu código e tipo
   normalizados e publicar uma mensagem interna fixa no job e no SSE.
+- If uma falha escapar dos loops internos do worker, then the system shall
+  encerrar o processo com código não-zero depois de registrar somente um
+  diagnóstico allowlisted, sem imprimir traceback ou mensagem externa no
+  `stderr`.
 - If duas alterações da configuração ocorrerem concorrentemente, then the system
   shall serializá-las sem duplicar registros nem combinar chave e padrões de
   versões diferentes.
@@ -217,6 +222,8 @@ configuráveis ou novos formatos de ingestão.
       expor segredo ou conteúdo do usuário.
 - [x] Falhas inesperadas e permanentes usam diagnósticos allowlisted; mensagens
       de Job/SSE são internas e não serializam exceções, paths ou filenames.
+- [x] Logs de ingestão e thumbnail não incluem hostnames externos; o boundary
+      superior do worker encerra falhas sem traceback ou mensagem crua.
 - [ ] Lint, formatação, typecheck, testes TypeScript/Python, build e verificações
       de segurança bloqueantes passam no CI; auditorias informativas permanecem
       registradas separadamente.

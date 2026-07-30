@@ -64,7 +64,9 @@ def _install_job_dependencies(
 async def test_job_log_context_contains_only_sanitized_source_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source_url = "https://user:password@www.youtube.com/watch?v=abc&token=super-secret"
+    source_url = (
+        "https://user:password@cliente-acme-fusao-secreta.example/documento?token=super-secret"
+    )
     root_logger = _install_job_dependencies(monkeypatch, source_url=source_url)
     run = AsyncMock(return_value=None)
     monkeypatch.setattr(pipeline, "_run_pipeline", run)
@@ -75,10 +77,10 @@ async def test_job_log_context_contains_only_sanitized_source_metadata(
         "job_id": "job-1",
         "user_id": "user-1",
         "type": "DOWNLOAD_AND_TRANSCRIBE",
-        "source_kind": "YOUTUBE",
-        "source_host": "www.youtube.com",
+        "source_kind": "UNKNOWN",
     }
     assert source_url not in repr(root_logger.context)
+    assert "cliente-acme" not in repr(root_logger.context)
     assert "password" not in repr(root_logger.context)
     assert "super-secret" not in repr(root_logger.context)
 

@@ -211,7 +211,14 @@ async def amain() -> None:
 
 
 def main() -> NoReturn:
-    asyncio.run(amain())
+    try:
+        asyncio.run(amain())
+    except Exception as exc:  # noqa: BLE001 — boundary impede traceback externo no stderr
+        log.error(
+            "worker-runtime-failed",
+            **error_diagnostic(exc, "WORKER_RUNTIME_FAILED"),
+        )
+        raise SystemExit(1) from None
     raise SystemExit(0)
 
 
