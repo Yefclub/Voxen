@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785440574",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Cabeçalhos, chat e atualização novamente consistentes",
+    "body": "As páginas operacionais agora começam logo após o cabeçalho flutuante e usam um\npadrão único de título, descrição, identificação da área e ícone colorido\nanimado. A página da extensão também passa a aproveitar a mesma largura das\ndemais telas.\n\nO histórico do chat volta a acompanhar a largura do campo de mensagem, e o\nbotão de envio mostra um pictograma de envio claro. O modal de nova versão deixa\nde desenhar uma moldura roxa ao redor de todo o conteúdo quando recebe foco.",
+    "pr": 488,
+    "author": "Kalyel",
+    "date": "2026-07-30T16:42:40-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/488"
+  },
+  {
     "version": "0.13.0-dev.1785431966",
     "channel": "dev",
     "type": "fix",
