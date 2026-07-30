@@ -870,7 +870,9 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
       existingTags,
     });
   } catch (err) {
-    console.error('[transcripts] falha ao gerar tags:', err);
+    console.error('[transcripts] falha ao gerar tags', {
+      error_type: err instanceof Error ? err.name : 'UnknownError',
+    });
     return c.json({ error: 'Falha ao gerar tags. Tente novamente.' }, 502);
   }
 
@@ -882,7 +884,11 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
       tokensIn: result.tokensIn,
       tokensOut: result.tokensOut,
       costUsd: result.costUsd,
-      meta: { source: 'tag_generation', transcript_id: transcript.id, tags: result.tags },
+      meta: {
+        source: 'tag_generation',
+        transcript_id: transcript.id,
+        generated_count: result.tags.length,
+      },
     },
   });
 

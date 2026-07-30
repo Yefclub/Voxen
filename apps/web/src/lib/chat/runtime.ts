@@ -20,7 +20,7 @@ import {
   verifyClaimAgainstMd,
   type FtsResult,
 } from '../retrieval';
-import { getAppTimezone, getSetting } from '../settings';
+import { getAppTimezone, getSettings } from '../settings';
 import { researchWeb } from '../web-research';
 import { buildAgentClockInstructions, buildInstanceClock } from '../app-timezone';
 import type { ChatStatusCode } from '../../shared/chat-status';
@@ -309,12 +309,11 @@ function normalizeError(error: unknown): string {
 }
 
 async function getModelConfig(): Promise<{ apiKey: string; model: string }> {
-  const [apiKey, model] = await Promise.all([
-    getSetting('openrouter_api_key'),
-    getSetting('default_chat_model'),
-  ]);
+  const settings = await getSettings(['openrouter_api_key', 'default_chat_model'] as const);
+  const apiKey = settings.openrouter_api_key;
+  const model = settings.default_chat_model;
   if (!apiKey || !model) {
-    throw new Error('Configure a chave OpenRouter e o modelo de chat em Configurações.');
+    throw new Error('Conclua a configuração da OpenRouter em Configurações.');
   }
   return { apiKey, model };
 }

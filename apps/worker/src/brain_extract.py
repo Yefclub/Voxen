@@ -188,10 +188,15 @@ async def extract_grounded_concepts(
     try:
         res = await http.post(f"{OR_BASE_URL}/chat/completions", headers=headers, json=payload)
         if res.status_code in (401, 403):
-            raise openrouter.OpenrouterAuthError(res.text[:200])
+            raise openrouter.OpenrouterAuthError(
+                f"OpenRouter rejeitou a chave (HTTP {res.status_code})."
+            )
         if res.status_code >= 500:
-            raise openrouter.OpenrouterTransientError(res.text[:200])
-        res.raise_for_status()
+            raise openrouter.OpenrouterTransientError(f"OpenRouter {res.status_code}")
+        if not res.is_success:
+            raise RuntimeError(
+                f"OpenRouter retornou uma resposta inesperada (HTTP {res.status_code})."
+            )
         data: dict[str, Any] = res.json()
     finally:
         if owns_client:

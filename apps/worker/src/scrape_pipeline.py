@@ -224,10 +224,11 @@ async def _maybe_generate_title(
     if len(clean_content) < 40:
         return fallback_title
     try:
-        api_key = await voxen_settings.get_openrouter_api_key()
-        model = await voxen_settings.get_default_chat_model()
-        if not api_key or not model:
+        config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
+        if not config.api_key or not config.model:
             return fallback_title
+        api_key = config.api_key
+        model = config.model
         language = await voxen_settings.get_app_language()
         result = await generate_content_title(
             content=clean_content,

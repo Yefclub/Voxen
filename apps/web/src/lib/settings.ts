@@ -91,7 +91,7 @@ export async function getSettingByKey(key: string): Promise<string | null> {
   return decrypt(row.valueEnc, getMasterKey());
 }
 
-export async function getSettings<const Keys extends readonly GlobalSettingKey[]>(
+export async function getSettingsByKeys<const Keys extends readonly string[]>(
   keys: Keys,
 ): Promise<{ [Key in Keys[number]]: string | null }> {
   const uniqueKeys = [...new Set(keys)];
@@ -102,14 +102,20 @@ export async function getSettings<const Keys extends readonly GlobalSettingKey[]
   const values = Object.fromEntries(keys.map((key) => [key, null])) as {
     [Key in Keys[number]]: string | null;
   };
-  const mutableValues = values as Record<GlobalSettingKey, string | null>;
+  const mutableValues = values as Record<string, string | null>;
   const masterKey = rows.length > 0 ? getMasterKey() : null;
   for (const row of rows) {
-    if (masterKey && uniqueKeys.includes(row.key as GlobalSettingKey)) {
-      mutableValues[row.key as GlobalSettingKey] = decrypt(row.valueEnc, masterKey);
+    if (masterKey && uniqueKeys.includes(row.key)) {
+      mutableValues[row.key] = decrypt(row.valueEnc, masterKey);
     }
   }
   return values;
+}
+
+export async function getSettings<const Keys extends readonly GlobalSettingKey[]>(
+  keys: Keys,
+): Promise<{ [Key in Keys[number]]: string | null }> {
+  return getSettingsByKeys(keys);
 }
 
 export async function getAppLanguage(): Promise<AppLanguage> {
@@ -122,8 +128,9 @@ export async function getAppTimezone(): Promise<string> {
 }
 
 export async function getFirstSettingByKey(keys: readonly string[]): Promise<string | null> {
+  const values = await getSettingsByKeys(keys);
   for (const key of keys) {
-    const value = await getSettingByKey(key);
+    const value = values[key];
     if (value) return value;
   }
   return null;

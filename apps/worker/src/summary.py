@@ -83,11 +83,12 @@ async def maybe_generate(
             log.info("summary-skipped-empty-text")
             return
 
-        api_key = await voxen_settings.get_openrouter_api_key()
-        model = await voxen_settings.get_default_chat_model()
-        if not api_key or not model:
+        config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
+        if not config.api_key or not config.model:
             log.warning("summary-skipped-missing-config")
             return
+        api_key = config.api_key
+        model = config.model
 
         text = str(row["plainText"]).strip()
         if not text:
@@ -135,7 +136,6 @@ async def maybe_generate(
             log.warning(
                 "summary-upstream-non-200",
                 status=res.status_code,
-                body=res.text[:200],
             )
             return
 

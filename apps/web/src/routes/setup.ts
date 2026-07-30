@@ -12,7 +12,7 @@ import { auth } from '../lib/auth';
 import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
 import { db } from '../lib/db';
 import { DEFAULT_OPENROUTER_MODELS, hasCanonicalOpenRouterModels } from '../lib/model-defaults';
-import { listUserModels, OpenrouterError, validateApiKey } from '../lib/openrouter';
+import { inspectOpenRouterAccount, OpenrouterError } from '../lib/openrouter';
 import { getAppLanguage, getAppTimezone, getSetting, setSettings } from '../lib/settings';
 
 export const setupRoutes = new Hono();
@@ -90,27 +90,17 @@ setupRoutes.post('/', async (c) => {
     return c.json({ complete: true });
   }
 
-  const valid = await validateApiKey(openrouter_api_key).catch((err) => {
+  const inspection = await inspectOpenRouterAccount(openrouter_api_key).catch((err) => {
     if (err instanceof OpenrouterError) return null;
     throw err;
   });
-  if (valid === false) {
-    return c.json({ error: 'Chave da OpenRouter inválida — verifique e tente novamente.' }, 400);
-  }
-  if (valid === null) {
+  if (inspection === null) {
     return c.json({ error: 'Falha ao contatar a OpenRouter. Tente novamente.' }, 502);
   }
-
-  let availableModels: Awaited<ReturnType<typeof listUserModels>>;
-  try {
-    availableModels = await listUserModels(openrouter_api_key);
-  } catch (err) {
-    if (err instanceof OpenrouterError) {
-      return c.json({ error: 'Falha ao validar os modelos padrão na OpenRouter.' }, 502);
-    }
-    throw err;
+  if (!inspection.valid) {
+    return c.json({ error: 'Chave da OpenRouter inválida — verifique e tente novamente.' }, 400);
   }
-  if (!hasCanonicalOpenRouterModels(availableModels)) {
+  if (!hasCanonicalOpenRouterModels(inspection.models)) {
     return c.json(
       {
         error:

@@ -68,7 +68,7 @@ configuráveis ou novos formatos de ingestão.
   quando estiver totalmente fechada.
 - The system shall registrar eventos operacionais com tipo de conteúdo, etapa,
   duração, resultado e identificadores seguros, sem registrar chave, payload
-  integral, conteúdo extraído ou credenciais.
+  integral, conteúdo extraído, nomes de arquivo, pasta ou tag, nem credenciais.
 
 ### Event-driven (resposta a evento)
 
@@ -91,6 +91,9 @@ configuráveis ou novos formatos de ingestão.
   removê-lo e apresentar o próximo item da fila, se existir.
 - When a Fila receber snapshot, polling ou evento em tempo real, the system shall
   reconciliar somente os campos e itens efetivamente alterados.
+- When uma resposta de polling da Fila for anterior ao último evento em tempo
+  real aplicado, the system shall ignorar o progresso obsoleto e preservar o
+  estado mais recente.
 - When um gesto horizontal começar dentro de tabela, grade, região com rolagem
   horizontal ou controle interativo, the system shall reservar o gesto para o
   conteúdo e não iniciar a sidebar.
@@ -187,6 +190,8 @@ configuráveis ou novos formatos de ingestão.
 - [x] Snapshot, SSE e polling da Fila atualizam dados sem remount global,
       skeleton periódico, perda de foco, salto de rolagem ou reinício de
       animação.
+- [x] Respostas de polling anteriores ao último evento SSE não fazem o progresso
+      visual retroceder.
 - [x] Atualização sem mudança semântica na Fila preserva referências e não causa
       renderização visual observável.
 - [x] Gestos iniciados em tabelas, canvas, regiões horizontais, elementos

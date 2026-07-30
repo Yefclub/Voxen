@@ -37,18 +37,58 @@ interface ProgressEvent {
   ts: string;
 }
 
+export interface JobProgressState {
+  jobId: string;
+  stage: string;
+  percent: number;
+  progressedAt: number;
+}
+
+function progressTimestamp(value: string | null | undefined): number {
+  if (!value) return 0;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function progressPercent(value: number | null | undefined, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(100, Math.max(0, value))
+    : fallback;
+}
+
 export function jobProgressSnapshot(
-  job: Pick<JobSummary, 'status' | 'progressStage' | 'progressPercent'>,
-): { stage: string; percent: number } {
-  const progressPercent =
+  job: Pick<JobSummary, 'id' | 'status' | 'progressStage' | 'progressPercent' | 'progressedAt'>,
+): JobProgressState {
+  const percent =
     typeof job.progressPercent === 'number' && Number.isFinite(job.progressPercent)
       ? Math.min(100, Math.max(0, job.progressPercent))
       : 0;
 
   return {
+    jobId: job.id,
     stage: job.progressStage?.trim() || job.status.toLowerCase(),
-    percent: progressPercent,
+    percent,
+    progressedAt: progressTimestamp(job.progressedAt),
   };
+}
+
+export function reconcileJobProgress(
+  current: JobProgressState,
+  incoming: JobProgressState,
+): JobProgressState {
+  if (current.jobId !== incoming.jobId) return incoming;
+  if (incoming.progressedAt < current.progressedAt) return current;
+  if (incoming.progressedAt === current.progressedAt && incoming.percent < current.percent) {
+    return current;
+  }
+  if (
+    incoming.stage === current.stage &&
+    incoming.percent === current.percent &&
+    incoming.progressedAt === current.progressedAt
+  ) {
+    return current;
+  }
+  return incoming;
 }
 
 export function JobsQueueSection({
@@ -227,8 +267,7 @@ const JobRow = memo(function JobRow({
   onStreamStateChange: (jobId: string, closed: boolean) => void;
 }): React.ReactElement {
   const isActive = job.status === 'QUEUED' || job.status === 'RUNNING';
-  const [stage, setStage] = useState<string>(() => jobProgressSnapshot(job).stage);
-  const [percent, setPercent] = useState<number>(() => jobProgressSnapshot(job).percent);
+  const [progress, setProgress] = useState<JobProgressState>(() => jobProgressSnapshot(job));
   const onUpdateRef = useRef(onUpdate);
   const terminalRefreshRef = useRef<ReturnType<typeof createDeferredJobRefresh> | null>(null);
   terminalRefreshRef.current ??= createDeferredJobRefresh();
@@ -237,8 +276,14 @@ const JobRow = memo(function JobRow({
   const { closed } = useSse<ProgressEvent>(
     isActive ? `/api/jobs/${job.id}/events` : null,
     (evt) => {
-      setStage(evt.stage);
-      if (typeof evt.percent === 'number') setPercent(evt.percent);
+      setProgress((current) =>
+        reconcileJobProgress(current, {
+          jobId: job.id,
+          stage: evt.stage.trim() || current.stage,
+          percent: progressPercent(evt.percent, current.percent),
+          progressedAt: progressTimestamp(evt.ts) || Date.now(),
+        }),
+      );
       if (evt.stage === 'done' || evt.stage === 'failed' || evt.stage === 'cancelled') {
         terminalRefreshRef.current?.schedule(() => onUpdateRef.current());
       }
@@ -247,9 +292,8 @@ const JobRow = memo(function JobRow({
 
   useEffect(() => {
     const snapshot = jobProgressSnapshot(job);
-    setStage(snapshot.stage);
-    setPercent(snapshot.percent);
-  }, [job.id, job.progressPercent, job.progressStage, job.status]);
+    setProgress((current) => reconcileJobProgress(current, snapshot));
+  }, [job.id, job.progressedAt, job.progressPercent, job.progressStage, job.status]);
 
   useEffect(() => {
     onStreamStateChange(job.id, isActive && closed);
@@ -294,7 +338,7 @@ const JobRow = memo(function JobRow({
         variant={variant}
         className="hidden shrink-0 min-w-28 justify-center text-center sm:inline-flex"
       >
-        {isActive ? stageLabel(stage, t, job.type) : label}
+        {isActive ? stageLabel(progress.stage, t, job.type) : label}
       </Badge>
       <div className="flex-1 min-w-0 space-y-1.5">
         <p className="text-sm text-[var(--color-app-fg)] truncate font-medium tracking-tight font-display">
@@ -307,19 +351,19 @@ const JobRow = memo(function JobRow({
           <div className="flex items-center gap-2.5">
             <div className="h-1 flex-1 max-w-[280px] rounded-full bg-[var(--color-app-bg-elevated)] overflow-hidden">
               <motion.div
-                animate={{ width: `${Math.max(3, percent)}%` }}
+                animate={{ width: `${Math.max(3, progress.percent)}%` }}
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="h-full rounded-full bg-emerald-500"
               />
             </div>
             <span className="text-[10px] font-mono tabular-nums text-[var(--color-app-muted)]">
-              {percent}%
+              {progress.percent}%
             </span>
           </div>
         ) : (
           <div className="flex min-w-0 items-center gap-2">
             <Badge variant={variant} className="shrink-0 sm:hidden">
-              {isActive ? stageLabel(stage, t, job.type) : label}
+              {isActive ? stageLabel(progress.stage, t, job.type) : label}
             </Badge>
             <p className="text-xs text-[var(--color-app-muted)] truncate">
               {job.finishedAt

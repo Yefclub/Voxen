@@ -312,7 +312,7 @@ libraryRoutes.post('/reorganize', async (c) => {
           meta: {
             source: 'folder_classification_backfill',
             transcript_id: item.id,
-            folder_name: result.folderName,
+            classified: Boolean(result.folderName),
           },
         },
       });
@@ -540,7 +540,7 @@ libraryRoutes.post('/generate-tags', async (c) => {
           meta: {
             source: 'tag_generation_backfill',
             transcript_id: item.id,
-            tags: result.tags,
+            generated_count: result.tags.length,
           },
         },
       });

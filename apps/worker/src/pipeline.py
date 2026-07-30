@@ -68,7 +68,17 @@ _TRANSIENT_EXC: tuple[type[BaseException], ...] = (
     botocore.exceptions.ClientError,
 )
 
-_LOG_URL_RE = re.compile(r"(?:https?|upload)://[^\s\"'<>]+", re.IGNORECASE)
+_LOG_URL_RE = re.compile(
+    r"(?:https?|upload|socks5h?)://[^\s\"'<>]+",
+    re.IGNORECASE,
+)
+_LOG_BEARER_RE = re.compile(r"\bBearer\s+[^\s,;\"'<>]+", re.IGNORECASE)
+_LOG_API_KEY_RE = re.compile(
+    r"\b(api[\s_-]?key|authorization)\b(\s*[:=]\s*|\s+)"
+    r"(?:\"[^\"]*\"|'[^']*'|(?:Bearer\s+)?[^\s,;\"'<>]+)",
+    re.IGNORECASE,
+)
+_LOG_SECRET_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9][A-Za-z0-9_-]{5,}\b", re.IGNORECASE)
 
 
 def _safe_source_host(source_url: str) -> str | None:
@@ -106,8 +116,14 @@ def _source_kind_for_log(source_url: str, job_type: str) -> str:
 
 
 def _safe_error_for_log(exc: BaseException, *, max_length: int = 240) -> str:
-    """Remove URLs/segredos transportados em query strings de mensagens externas."""
+    """Remove URLs, credenciais e chaves de mensagens externas."""
     redacted = _LOG_URL_RE.sub("[url-redacted]", str(exc))
+    redacted = _LOG_BEARER_RE.sub("Bearer [redacted]", redacted)
+    redacted = _LOG_API_KEY_RE.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}[redacted]",
+        redacted,
+    )
+    redacted = _LOG_SECRET_KEY_RE.sub("[redacted]", redacted)
     return redacted[:max_length]
 
 
@@ -638,7 +654,7 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
             tokens_out=result.tokens_out,
             cost_usd=result.cost_usd,
             job_id=job_id,
-            meta={"source": "image_upload", "filename": ref.filename},
+            meta={"source": "image_upload"},
         )
 
         probe_info = ytdl.VideoProbe(
@@ -742,7 +758,7 @@ async def _run_document_pipeline(
             tokens_out=result.tokens_out,
             cost_usd=result.cost_usd,
             job_id=job_id,
-            meta={"source": "document_upload", "filename": ref.filename, "parser": parser},
+            meta={"source": "document_upload", "parser": parser},
         )
 
         probe_info = ytdl.VideoProbe(
@@ -1348,7 +1364,7 @@ async def _maybe_assign_folder(
             tokens_out=result.tokens_out,
             cost_usd=result.cost_usd,
             job_id=job_id,
-            meta={"source": "folder_classification", "folder_name": result.folder_name},
+            meta={"source": "folder_classification"},
         )
         if not result.folder_name:
             log.info("folder-classification-none", transcript_id=transcript_id)
@@ -1358,8 +1374,6 @@ async def _maybe_assign_folder(
         log.info(
             "folder-assigned",
             transcript_id=transcript_id,
-            folder_id=folder_id,
-            folder_name=result.folder_name,
         )
     except Exception as e:  # noqa: BLE001 — pasta é enriquecimento best-effort
         log.warning(

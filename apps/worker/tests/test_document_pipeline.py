@@ -192,7 +192,11 @@ async def test_non_pdf_pipeline_converts_with_markitdown_then_uses_openrouter(
     )
     analyze_pdf.assert_not_awaited()
     cost_call = pipeline.db.insert_cost_event.await_args.kwargs
-    assert cost_call["meta"]["parser"] == "markitdown"
+    assert cost_call["meta"] == {
+        "source": "document_upload",
+        "parser": "markitdown",
+    }
+    assert "manual.docx" not in repr(cost_call["meta"])
     persist_call = pipeline._persist.await_args.kwargs
     assert persist_call["method"] == "DOCUMENT"
     assert persist_call["source_override"] == "UPLOAD"
@@ -251,7 +255,8 @@ async def test_image_pipeline_uses_openrouter_vision(
     assert analyze_call["model"] == "x-ai/grok-4.5"
     assert "Analise esta imagem" in analyze_call["prompt"]
     cost_call = pipeline.db.insert_cost_event.await_args.kwargs
-    assert cost_call["meta"]["source"] == "image_upload"
+    assert cost_call["meta"] == {"source": "image_upload"}
+    assert "captura.png" not in repr(cost_call["meta"])
     persist_call = pipeline._persist.await_args.kwargs
     assert persist_call["method"] == "VISION"
     assert persist_call["source_override"] == "UPLOAD"

@@ -80,7 +80,11 @@ export async function getTranscriptBrief(
           tokensIn: generated.tokensIn,
           tokensOut: generated.tokensOut,
           costUsd: generated.costUsd,
-          meta: { source: 'agent_transcript_tags', transcript_id: transcript.id, tags },
+          meta: {
+            source: 'agent_transcript_tags',
+            transcript_id: transcript.id,
+            generated_count: tags.length,
+          },
         },
       });
     }

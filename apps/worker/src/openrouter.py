@@ -21,6 +21,11 @@ class OpenrouterTransientError(Exception):
     """5xx / timeout / network — retry vale a pena."""
 
 
+def _unexpected_response_error(status_code: int) -> RuntimeError:
+    """Cria erro acionável sem propagar o corpo não confiável do provedor."""
+    return RuntimeError(f"OpenRouter retornou uma resposta inesperada (HTTP {status_code}).")
+
+
 @dataclass(frozen=True)
 class TranscriptionResult:
     text: str
@@ -115,7 +120,7 @@ async def transcribe_audio(
         if 500 <= res.status_code < 600:
             raise OpenrouterTransientError(f"OpenRouter {res.status_code}")
         if not res.is_success:
-            raise RuntimeError(f"OpenRouter erro inesperado HTTP {res.status_code}: {res.text}")
+            raise _unexpected_response_error(res.status_code)
         body = res.json()
         text = body.get("text", "")
         # OpenRouter ecoa custo em headers `x-ratelimit-...` ou no corpo `usage`.
@@ -184,7 +189,7 @@ async def analyze_image(
         if 500 <= res.status_code < 600:
             raise OpenrouterTransientError(f"OpenRouter {res.status_code}")
         if not res.is_success:
-            raise RuntimeError(f"OpenRouter erro inesperado HTTP {res.status_code}: {res.text}")
+            raise _unexpected_response_error(res.status_code)
 
         body = res.json()
         choices = body.get("choices") or []
@@ -862,7 +867,7 @@ async def _chat_completion_document(
         if 500 <= res.status_code < 600:
             raise OpenrouterTransientError(f"OpenRouter {res.status_code}")
         if not res.is_success:
-            raise RuntimeError(f"OpenRouter erro inesperado HTTP {res.status_code}: {res.text}")
+            raise _unexpected_response_error(res.status_code)
 
         body = res.json()
         choices = body.get("choices") or []

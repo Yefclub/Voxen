@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { hasCanonicalOpenRouterModels } from '../src/lib/model-defaults';
-import { listUserModels, OpenrouterError, validateApiKey } from '../src/lib/openrouter';
+import {
+  inspectOpenRouterAccount,
+  listUserModels,
+  OpenrouterError,
+  validateApiKey,
+} from '../src/lib/openrouter';
 
 describe('OpenRouter user model catalog', () => {
   it('uses the key-filtered catalog endpoint', async () => {
@@ -35,6 +40,22 @@ describe('OpenRouter user model catalog', () => {
     expect(String((error as Error).message)).toContain('15 segundos');
     expect(String((error as Error).message)).not.toContain('sk-or-sensitive');
     expect(String((error as Error).message)).not.toContain('upstream detail');
+  });
+
+  it('shares one total deadline between key and catalog validation', async () => {
+    const requestSignals: Array<AbortSignal | null | undefined> = [];
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestSignals.push(init?.signal);
+      if (String(input).endsWith('/key')) return new Response('{}', { status: 200 });
+      return Response.json({ data: [{ id: 'x-ai/grok-4.5' }] });
+    }) as typeof fetch;
+
+    const inspection = await inspectOpenRouterAccount('sk-or-test', fetcher);
+
+    expect(inspection.valid).toBe(true);
+    expect(requestSignals).toHaveLength(2);
+    expect(requestSignals[0]).toBeInstanceOf(AbortSignal);
+    expect(requestSignals[1]).toBe(requestSignals[0]);
   });
 
   it('accepts the canonical STT model when the account catalog omits input modalities', () => {

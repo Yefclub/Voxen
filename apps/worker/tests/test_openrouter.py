@@ -5,10 +5,13 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 
 from src.openrouter import (
     _resolve_folder_decision,
     _resolve_title_decision,
+    analyze_document_text,
+    analyze_image,
     analyze_pdf_native,
     analyze_x_url,
     classify_content_folder,
@@ -316,3 +319,60 @@ async def test_transcribe_audio_uses_openrouter_json_base64_payload(tmp_path: Pa
         },
         "response_format": "json",
     }
+
+
+class ExternalErrorClient:
+    async def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+    ) -> httpx.Response:
+        return httpx.Response(
+            400,
+            text=(
+                "provider body with Bearer body-secret and "
+                "https://example.com/callback?token=query-secret"
+            ),
+        )
+
+
+@pytest.mark.parametrize("operation", ["audio", "image", "document"])
+async def test_openrouter_errors_do_not_propagate_external_response_bodies(
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    client = ExternalErrorClient()
+    media_path = tmp_path / ("image.png" if operation == "image" else "chunk.ogg")
+    media_path.write_bytes(b"fake-content")
+
+    with pytest.raises(RuntimeError) as raised:
+        if operation == "audio":
+            await transcribe_audio(
+                audio_path=media_path,
+                api_key="sk-test",
+                model="x-ai/grok-stt-1.0",
+                client=client,  # type: ignore[arg-type]
+            )
+        elif operation == "image":
+            await analyze_image(
+                image_path=media_path,
+                api_key="sk-test",
+                model="x-ai/grok-4.5",
+                prompt="Descreva.",
+                client=client,  # type: ignore[arg-type]
+            )
+        else:
+            await analyze_document_text(
+                markdown="Conteúdo do documento.",
+                filename="documento.txt",
+                api_key="sk-test",
+                model="x-ai/grok-4.5",
+                client=client,  # type: ignore[arg-type]
+            )
+
+    message = str(raised.value)
+    assert message == "OpenRouter retornou uma resposta inesperada (HTTP 400)."
+    assert "body-secret" not in message
+    assert "query-secret" not in message

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -111,3 +113,98 @@ async def test_job_failure_log_redacts_urls_from_external_errors(
         error_msg="Falha ao baixar [url-redacted]",
     )
     assert "super-secret" not in repr(pipeline.events.publish_job_event.await_args_list)
+
+
+def test_safe_error_redacts_urls_proxy_credentials_bearer_and_api_keys() -> None:
+    error = RuntimeError(
+        "Falha em https://user:web-pass@example.com/path?token=query-secret#fragment-secret "
+        "via socks5h://proxy-user:proxy-pass@127.0.0.1:1080; "
+        "Authorization: Bearer bearer-secret; api_key=api-secret; "
+        "api-key='quoted-secret'; headers Authorization: 'Bearer header-secret'; "
+        "key solta sk-or-v1-openrouter-secret e sk-liveapikey123"
+    )
+
+    safe = pipeline._safe_error_for_log(error, max_length=1_000)
+
+    assert safe.count("[url-redacted]") == 2
+    assert "Falha em" in safe
+    for secret in (
+        "web-pass",
+        "query-secret",
+        "fragment-secret",
+        "proxy-user",
+        "proxy-pass",
+        "bearer-secret",
+        "api-secret",
+        "quoted-secret",
+        "header-secret",
+        "openrouter-secret",
+        "liveapikey123",
+    ):
+        assert secret not in safe
+
+
+async def test_folder_metrics_and_logs_do_not_include_personal_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    personal_folder = "Cliente Reservado 2026"
+    personal_folder_id = "folder-personal-secret"
+    logger = _BoundLogger()
+    monkeypatch.setattr(
+        pipeline.voxen_settings,
+        "get_openrouter_model_config",
+        AsyncMock(
+            return_value=pipeline.voxen_settings.OpenRouterModelConfig(
+                api_key="sk-test",
+                model="openai/gpt-4.1-mini",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
+    monkeypatch.setattr(
+        pipeline.db,
+        "list_library_folder_names",
+        AsyncMock(return_value=[personal_folder]),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "classify_content_folder",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                folder_name=personal_folder,
+                cost_usd=Decimal("0.001"),
+                model="openai/gpt-4.1-mini",
+                tokens_in=12,
+                tokens_out=3,
+            )
+        ),
+    )
+    monkeypatch.setattr(pipeline.db, "insert_cost_event", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        pipeline.db,
+        "ensure_library_folder",
+        AsyncMock(return_value=personal_folder_id),
+    )
+    monkeypatch.setattr(pipeline.db, "set_transcript_folder", AsyncMock(return_value=None))
+
+    await pipeline._maybe_assign_folder(
+        user_id="user-1",
+        job_id="job-1",
+        transcript_id="transcript-1",
+        title="Documento interno",
+        content="Conteúdo pessoal suficiente para executar a classificação.",
+        fallback_model=None,
+        log=logger,
+    )
+
+    cost_meta = pipeline.db.insert_cost_event.await_args.kwargs["meta"]
+    assert cost_meta == {"source": "folder_classification"}
+    assigned_log = next(entry for entry in logger.entries if entry[1] == "folder-assigned")
+    assert assigned_log[2] == {"transcript_id": "transcript-1"}
+    telemetry = repr((cost_meta, logger.entries))
+    assert personal_folder not in telemetry
+    assert personal_folder_id not in telemetry

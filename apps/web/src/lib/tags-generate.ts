@@ -305,8 +305,7 @@ export async function generateTagsForContent(input: {
       : AbortSignal.timeout(60_000),
   });
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`OpenRouter ${res.status}${body ? `: ${body.slice(0, 160)}` : ''}`);
+    throw new Error(`OpenRouter retornou status ${res.status} ao gerar tags.`);
   }
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
