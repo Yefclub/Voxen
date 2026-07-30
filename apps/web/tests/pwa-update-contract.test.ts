@@ -33,31 +33,43 @@ describe('contrato de atualização do PWA', () => {
     );
 
     expect(workflow).toContain('package_version="$(node -p');
-    expect(workflow).toContain('node scripts/resolve-dev-image-version.mjs');
+    expect(workflow).toContain('resolve-dev-image-version.mjs version');
+    expect(workflow).toContain('resolve-dev-image-version.mjs docker-tag');
   });
 
   test.each([
-    ['0.13.0-dev.1785372519', '0.13.0-dev.1785372519'],
-    ['0.13.0-rc.1', '0.13.0-rc.1'],
-    ['0.13.0-beta.preview-2', '0.13.0-beta.preview-2'],
-    ['0.13.0-rc.1+image.7', '0.13.0-rc.1+image.7'],
-    ['0.13.0', '0.14.1-dev.1785372519'],
-  ])('resolve a identidade de imagem para %s', (packageVersion, expected) => {
-    const result = Bun.spawnSync({
-      cmd: [
-        process.execPath,
-        join(repositoryRoot, 'scripts/resolve-dev-image-version.mjs'),
-        packageVersion,
-        '0.14.0',
-        '1785372519',
-      ],
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    ['0.13.0-dev.1785372519', '0.13.0-dev.1785372519', '0.13.0-dev.1785372519'],
+    ['0.13.0-rc.1', '0.13.0-rc.1', '0.13.0-rc.1'],
+    ['0.13.0-beta.preview-2', '0.13.0-beta.preview-2', '0.13.0-beta.preview-2'],
+    ['0.13.0-rc.1+image.7', '0.13.0-rc.1+image.7', '0.13.0-rc.1_image.7'],
+    ['0.13.0', '0.14.1-dev.1785372519', '0.14.1-dev.1785372519'],
+  ])(
+    'resolve a identidade e a tag Docker para %s',
+    (packageVersion, expectedVersion, expectedDockerTag) => {
+      const runResolver = (outputKind: 'version' | 'docker-tag') =>
+        Bun.spawnSync({
+          cmd: [
+            process.execPath,
+            join(repositoryRoot, 'scripts/resolve-dev-image-version.mjs'),
+            outputKind,
+            packageVersion,
+            '0.14.0',
+            '1785372519',
+          ],
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout.toString()).toBe(expected);
-  });
+      const versionResult = runResolver('version');
+      const dockerTagResult = runResolver('docker-tag');
+
+      expect(versionResult.exitCode).toBe(0);
+      expect(versionResult.stdout.toString()).toBe(expectedVersion);
+      expect(dockerTagResult.exitCode).toBe(0);
+      expect(dockerTagResult.stdout.toString()).toBe(expectedDockerTag);
+      expect(dockerTagResult.stdout.toString()).toMatch(/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/);
+    },
+  );
 
   test.skipIf(!existsSync(join(webRoot, 'dist/sw.js.map')))(
     'service worker gerado usa NetworkFirst e exclui o app shell do precache',

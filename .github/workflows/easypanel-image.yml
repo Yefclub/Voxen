@@ -49,8 +49,8 @@ jobs:
                 base_version="${package_version%%-*}"
               fi
               stamp="$(date -u +%s)"
-              version="$(node scripts/resolve-dev-image-version.mjs "$package_version" "$base_version" "$stamp")"
-              docker_version="$version"
+              version="$(node scripts/resolve-dev-image-version.mjs version "$package_version" "$base_version" "$stamp")"
+              docker_version="$(node scripts/resolve-dev-image-version.mjs docker-tag "$package_version" "$base_version" "$stamp")"
               printf '%s\n' "${IMAGE_NAME}:dev" >> "$tags_file"
               printf '%s\n' "${IMAGE_NAME}:dev-${docker_version}" >> "$tags_file"
               printf '%s\n' "${IMAGE_NAME}:${docker_version}" >> "$tags_file"
