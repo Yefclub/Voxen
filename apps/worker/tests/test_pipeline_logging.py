@@ -258,3 +258,59 @@ async def test_folder_metrics_and_logs_do_not_include_personal_labels(
     telemetry = repr((cost_meta, logger.entries))
     assert personal_folder not in telemetry
     assert personal_folder_id not in telemetry
+
+
+async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_url = "https://x.com/cliente_acme/status/123456789?token=segredo"
+    logger = _BoundLogger()
+    monkeypatch.setattr(
+        pipeline.voxen_settings,
+        "get_openrouter_model_config",
+        AsyncMock(
+            return_value=pipeline.voxen_settings.OpenRouterModelConfig(
+                api_key="sk-test",
+                model="x-ai/grok-4.5",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "analyze_x_url",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                text="Conteúdo público analisado.",
+                cost_usd=Decimal("0.002"),
+                model="x-ai/grok-4.5",
+                tokens_in=20,
+                tokens_out=8,
+            )
+        ),
+    )
+    monkeypatch.setattr(pipeline, "is_cancelled", lambda _job_id: False)
+    monkeypatch.setattr(pipeline.events, "publish_job_event", AsyncMock(return_value=None))
+    monkeypatch.setattr(pipeline.db, "insert_cost_event", AsyncMock(return_value=None))
+    monkeypatch.setattr(pipeline, "_maybe_generate_title", AsyncMock(return_value=None))
+    monkeypatch.setattr(pipeline, "_persist", AsyncMock(return_value="transcript-1"))
+    monkeypatch.setattr(pipeline.db, "link_job_transcript", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        pipeline,
+        "_generate_summary_with_progress",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(pipeline.db, "mark_job_done", AsyncMock(return_value=None))
+
+    await pipeline._run_x_analysis_pipeline(
+        job_id="job-1",
+        user_id="user-1",
+        source_url=source_url,
+        log=logger,
+    )
+
+    cost_meta = pipeline.db.insert_cost_event.await_args.kwargs["meta"]
+    assert cost_meta == {"source": "x_analysis"}
+    telemetry = repr((cost_meta, logger.entries))
+    assert "x.com" not in telemetry
+    assert "cliente_acme" not in telemetry
+    assert "token=segredo" not in telemetry
