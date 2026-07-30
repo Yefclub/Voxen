@@ -242,6 +242,36 @@ describe('segmentsReasoningDuration', () => {
     expect(segmentsReasoningDuration(segments)).toBeNull();
   });
 
+  it('timestamps invertidos ou não finitos retornam null', () => {
+    expect(
+      segmentsReasoningDuration([
+        { type: 'reasoning', id: 'r0', text: 'x', startedAt: 3_000, endedAt: 2_000 },
+      ]),
+    ).toBeNull();
+    expect(
+      segmentsReasoningDuration([
+        {
+          type: 'reasoning',
+          id: 'r0',
+          text: 'x',
+          startedAt: Number.NaN,
+          endedAt: 2_000,
+        },
+      ]),
+    ).toBeNull();
+    expect(
+      segmentsReasoningDuration([
+        {
+          type: 'reasoning',
+          id: 'r0',
+          text: 'x',
+          startedAt: 1_000,
+          endedAt: Number.POSITIVE_INFINITY,
+        },
+      ]),
+    ).toBeNull();
+  });
+
   it('array vazio retorna null', () => {
     expect(segmentsReasoningDuration([])).toBeNull();
   });

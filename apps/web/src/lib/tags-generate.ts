@@ -15,7 +15,7 @@ export const MAX_TAGS = 5;
 // Frases/raciocínio que o modelo às vezes cospe no lugar de uma tag curta.
 // Match por substring (não só prefixo): "Looking at the content" não começa com
 // "the content", mas ainda é ruído de raciocínio.
-const TAG_BAD_MARKERS = [
+export const TAG_BAD_MARKERS = [
   'the content',
   'this content',
   'looking at',
@@ -41,7 +41,7 @@ const TAG_BAD_MARKERS = [
 ] as const;
 
 // Rótulos genéricos demais para virar tag útil.
-const TAG_STOP_LABELS = new Set([
+export const TAG_STOP_LABELS = new Set([
   'content',
   'conteúdo',
   'conteudo',

@@ -64,6 +64,7 @@ import {
 import { resolveGraphPollingAction } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
+  GRAPH_3D_INIT_TIMEOUT_MS,
   resolveGraphRenderProfile,
   scheduleGraph3DInitializationFallback,
   type GraphMode,
@@ -1058,6 +1059,7 @@ export function BrainGraph3DCanvas({
   onSelect,
   onOpen,
   onFallback,
+  initializationTimeoutMs = GRAPH_3D_INIT_TIMEOUT_MS,
 }: {
   model: SigmaGraphModel | null;
   selectedId: string | null;
@@ -1067,9 +1069,11 @@ export function BrainGraph3DCanvas({
   onSelect: (id: string | null) => void;
   onOpen: (node: GraphNode) => void;
   onFallback: () => void;
+  initializationTimeoutMs?: number;
 }): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<GraphCanvasRef | null>(null);
+  const cancelInitializationBudgetRef = useRef<(() => void) | null>(null);
   const primaryNodeIdsRef = useRef<string[]>([]);
   const renderedNodeIdsRef = useRef<Set<string>>(new Set());
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -1092,6 +1096,12 @@ export function BrainGraph3DCanvas({
   );
   primaryNodeIdsRef.current = model?.primaryNodeIds ?? [];
   renderedNodeIdsRef.current = new Set(model?.reagraphNodes.map((node) => node.id) ?? []);
+  const handleGraphRef = useCallback((instance: GraphCanvasRef | null) => {
+    graphRef.current = instance;
+    if (!instance) return;
+    cancelInitializationBudgetRef.current?.();
+    cancelInitializationBudgetRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!supportsWebGL()) {
@@ -1101,21 +1111,23 @@ export function BrainGraph3DCanvas({
     let cancelled = false;
     const cancelInitializationBudget = scheduleGraph3DInitializationFallback(() => {
       if (!cancelled) onFallback();
-    });
+    }, initializationTimeoutMs);
+    cancelInitializationBudgetRef.current = cancelInitializationBudget;
     void loadReagraph()
       .then((module) => {
-        cancelInitializationBudget();
         if (!cancelled) setReagraph(module);
       })
       .catch(() => {
         cancelInitializationBudget();
+        cancelInitializationBudgetRef.current = null;
         if (!cancelled) onFallback();
       });
     return () => {
       cancelled = true;
       cancelInitializationBudget();
+      cancelInitializationBudgetRef.current = null;
     };
-  }, [onFallback]);
+  }, [initializationTimeoutMs, onFallback]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1203,7 +1215,7 @@ export function BrainGraph3DCanvas({
       {GraphCanvas && graphTheme && (
         <GraphRendererBoundary onFailure={onFallback}>
           <GraphCanvas
-            ref={graphRef}
+            ref={handleGraphRef}
             nodes={model?.reagraphNodes ?? EMPTY_REAGRAPH_NODES}
             edges={model?.reagraphEdges ?? EMPTY_REAGRAPH_EDGES}
             theme={graphTheme}

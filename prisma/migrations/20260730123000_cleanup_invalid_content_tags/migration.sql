@@ -35,11 +35,18 @@ AS $$
     OR EXISTS (
       SELECT 1
       FROM unnest(ARRAY[
-        'looking at the content',
-        'the content is about',
+        'the content',
         'this content',
+        'looking at',
         'it''s about',
         'its about',
+        'it is about',
+        'the user',
+        'i want',
+        'i will',
+        'i need',
+        'let me',
+        'here are',
         'here is',
         'the tags',
         'as tags',
@@ -55,25 +62,39 @@ AS $$
     );
 $$;
 
--- TranscriptTag usa ON DELETE CASCADE, então as relações inválidas desaparecem
--- junto com a tag sem afetar o conteúdo ou tags válidas.
-DELETE FROM "Tag"
-WHERE voxen_invalid_content_tag(name);
+-- Rotina idempotente e opcionalmente escopada por workspace. O deploy chama
+-- sem escopo; testes e reconciliações futuras podem provar o efeito num único
+-- usuário sem tocar em dados concorrentes.
+CREATE OR REPLACE FUNCTION voxen_cleanup_invalid_content_tags(target_user_id TEXT DEFAULT NULL)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  -- TranscriptTag usa ON DELETE CASCADE, então somente as relações das tags
+  -- inválidas desaparecem; conteúdo e tags válidas permanecem.
+  DELETE FROM "Tag" AS tag
+  WHERE (target_user_id IS NULL OR tag."userId" = target_user_id)
+    AND voxen_invalid_content_tag(tag.name);
 
--- Conteúdos que ficaram sem nenhuma tag voltam à fila de enriquecimento. O
--- worker existente faz claim idempotente e gera novamente com o parser atual.
-UPDATE "Transcript" AS transcript
-SET
-  "taggingStatus" = 'PENDING'::"EnrichmentStatus",
-  "taggingAttempts" = 0,
-  "taggingStartedAt" = NULL,
-  "taggingNextAttemptAt" = NULL,
-  "taggingError" = NULL
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM "TranscriptTag" AS relation
-  WHERE relation."transcriptId" = transcript.id
-)
-AND coalesce(trim(transcript."plainText"), '') <> '';
+  -- Conteúdos que ficaram sem nenhuma tag voltam à fila. O worker existente
+  -- faz claim idempotente e gera novamente com o parser atual.
+  UPDATE "Transcript" AS transcript
+  SET
+    "taggingStatus" = 'PENDING'::"EnrichmentStatus",
+    "taggingAttempts" = 0,
+    "taggingStartedAt" = NULL,
+    "taggingNextAttemptAt" = NULL,
+    "taggingError" = NULL
+  WHERE (target_user_id IS NULL OR transcript."userId" = target_user_id)
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "TranscriptTag" AS relation
+      WHERE relation."transcriptId" = transcript.id
+    )
+    AND coalesce(trim(transcript."plainText"), '') <> '';
+END;
+$$;
+
+SELECT voxen_cleanup_invalid_content_tags(NULL::TEXT);
 
 COMMIT;
