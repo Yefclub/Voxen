@@ -3,6 +3,7 @@ import { registerSW } from 'virtual:pwa-register';
 import {
   createVersionSnooze,
   parseVersionSnooze,
+  resolveDisplayedFromVersion,
   resolveServerBuild,
   shouldNotify,
   type StoredVersionSnooze,
@@ -211,6 +212,7 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
         !shouldNotify({
           serverBuild,
           loadedBuild,
+          waitingServiceWorker,
           snoozedBuild: snooze?.build ?? null,
           snoozedUntil: snooze?.until ?? null,
         })
@@ -219,13 +221,14 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
       }
       if (shownBuildRef.current === serverBuild) return;
       shownBuildRef.current = serverBuild;
-      if (preparedBuildRef.current !== serverBuild) {
+      if (!waitingServiceWorker && preparedBuildRef.current !== serverBuild) {
         preparedBuildRef.current = serverBuild;
         void prepareUpdate();
       }
+      const toVersion = payload.version ?? null;
       setUpdate({
-        fromVersion: loadedVersion,
-        toVersion: payload.version ?? null,
+        fromVersion: resolveDisplayedFromVersion(loadedVersion, toVersion),
+        toVersion,
         serverBuild,
       });
     };
@@ -242,6 +245,7 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
     window.addEventListener('focus', onWake);
     window.addEventListener('online', onWake);
     document.addEventListener('visibilitychange', onWake);
+    waitingServiceWorkerListeners.add(onWake);
 
     return () => {
       stopped = true;
@@ -250,6 +254,7 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
       window.removeEventListener('focus', onWake);
       window.removeEventListener('online', onWake);
       document.removeEventListener('visibilitychange', onWake);
+      waitingServiceWorkerListeners.delete(onWake);
     };
   }, [enabled]);
 

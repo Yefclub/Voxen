@@ -16,7 +16,9 @@ cd Voxen
 make dev
 ```
 
-Open `http://localhost:3000`. The first account becomes the administrator and is sent to onboarding, where it selects the platform language, adds the OpenRouter API key, and chooses default models.
+Open `http://localhost:3000`. The first account becomes the administrator and
+is sent to onboarding, where it adds the OpenRouter API key; Voxen validates
+the account and applies the canonical models automatically.
 
 ## Documentation Map
 

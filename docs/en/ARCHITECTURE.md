@@ -71,7 +71,7 @@ Postgres stores durable relational data and full-text search vectors. Redis back
 1. The first account is created.
 2. The backend detects there are no users and approves it as admin.
 3. The admin enters onboarding.
-4. The admin chooses the platform language, adds the OpenRouter key, selects default models, and chooses whether signups are open.
+4. The admin adds the OpenRouter key; the backend validates the account and atomically applies the canonical model set.
 5. Settings are saved in global encrypted settings.
 
 ### New User Signup

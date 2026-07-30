@@ -2,6 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import {
   createVersionSnooze,
   parseVersionSnooze,
+  resolveDisplayedFromVersion,
   resolveServerBuild,
   shouldNotify,
   UPDATE_SNOOZE_MS,
@@ -48,6 +49,42 @@ describe('shouldNotify', () => {
     ).toBe(false);
   });
 
+  test('true com service worker esperando mesmo quando servidor e bundle têm o mesmo build', () => {
+    expect(
+      shouldNotify({
+        serverBuild: 'abc',
+        loadedBuild: 'abc',
+        waitingServiceWorker: true,
+        snoozedBuild: null,
+        snoozedUntil: null,
+        now: 1_000,
+      }),
+    ).toBe(true);
+  });
+
+  test('service worker esperando respeita o adiamento e volta a notificar após expirar', () => {
+    expect(
+      shouldNotify({
+        serverBuild: 'abc',
+        loadedBuild: 'abc',
+        waitingServiceWorker: true,
+        snoozedBuild: 'abc',
+        snoozedUntil: 2_000,
+        now: 1_000,
+      }),
+    ).toBe(false);
+    expect(
+      shouldNotify({
+        serverBuild: 'abc',
+        loadedBuild: 'abc',
+        waitingServiceWorker: true,
+        snoozedBuild: 'abc',
+        snoozedUntil: 2_000,
+        now: 2_000,
+      }),
+    ).toBe(true);
+  });
+
   test('true quando o adiamento expira e o bundle continua antigo', () => {
     expect(
       shouldNotify({
@@ -91,6 +128,20 @@ describe('shouldNotify', () => {
         now: 1_000,
       }),
     ).toBe(false);
+  });
+});
+
+describe('resolveDisplayedFromVersion', () => {
+  test('omite a origem quando as versões amigáveis são iguais', () => {
+    expect(resolveDisplayedFromVersion('0.13.0', '0.13.0')).toBeNull();
+  });
+
+  test('preserva a origem quando há uma transição real de versão', () => {
+    expect(resolveDisplayedFromVersion('0.13.0', '0.13.1')).toBe('0.13.0');
+  });
+
+  test('não inventa uma origem ausente', () => {
+    expect(resolveDisplayedFromVersion(null, '0.13.1')).toBeNull();
   });
 });
 

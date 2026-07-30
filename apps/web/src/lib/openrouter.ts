@@ -8,6 +8,7 @@
 type Fetcher = typeof globalThis.fetch;
 
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
+const OPENROUTER_SETUP_TIMEOUT_MS = 15_000;
 
 interface OrModel {
   id: string;
@@ -24,6 +25,25 @@ export class OpenrouterError extends Error {
   }
 }
 
+function openrouterRequestSignal(): AbortSignal {
+  return AbortSignal.timeout(OPENROUTER_SETUP_TIMEOUT_MS);
+}
+
+function openrouterNetworkError(err: unknown): OpenrouterError {
+  const name =
+    typeof err === 'object' && err !== null && 'name' in err
+      ? String((err as { name?: unknown }).name)
+      : '';
+  if (name === 'TimeoutError' || name === 'AbortError') {
+    return new OpenrouterError(
+      'A OpenRouter não respondeu em 15 segundos. Verifique a conexão e tente novamente.',
+    );
+  }
+  return new OpenrouterError(
+    'Não foi possível contatar a OpenRouter. Verifique a conexão e tente novamente.',
+  );
+}
+
 /**
  * Valida uma API key chamando GET /api/v1/key. Retorna true se a chave for
  * aceita (HTTP 200), false se for rejeitada (401/403). Joga `OpenrouterError`
@@ -37,11 +57,10 @@ export async function validateApiKey(key: string, fetcher: Fetcher = fetch): Pro
   try {
     res = await fetcher(`${OR_BASE_URL}/key`, {
       headers: { authorization: `Bearer ${key}` },
+      signal: openrouterRequestSignal(),
     });
   } catch (err) {
-    throw new OpenrouterError(
-      `Falha ao contatar OpenRouter: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw openrouterNetworkError(err);
   }
   if (res.status === 200) return true;
   if (res.status === 401 || res.status === 403) return false;
@@ -57,11 +76,10 @@ export async function listUserModels(key: string, fetcher: Fetcher = fetch): Pro
   try {
     res = await fetcher(`${OR_BASE_URL}/models/user`, {
       headers: { authorization: `Bearer ${key}` },
+      signal: openrouterRequestSignal(),
     });
   } catch (err) {
-    throw new OpenrouterError(
-      `Falha ao contatar OpenRouter: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw openrouterNetworkError(err);
   }
   if (!res.ok) {
     throw new OpenrouterError(`OpenRouter retornou status ${res.status}`);

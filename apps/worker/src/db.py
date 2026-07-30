@@ -244,6 +244,24 @@ async def get_setting_enc(key: str) -> str | None:
         return row["valueEnc"] if row else None
 
 
+async def get_settings_enc(keys: tuple[str, ...]) -> dict[str, str]:
+    """Lê um snapshot de Settings globais em uma única consulta."""
+    if not keys:
+        return {}
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT key, "valueEnc"
+            FROM "Setting"
+            WHERE scope = 'GLOBAL'
+              AND "userId" IS NULL
+              AND key = ANY($1::text[])
+            """,
+            list(dict.fromkeys(keys)),
+        )
+    return {str(row["key"]): str(row["valueEnc"]) for row in rows}
+
+
 async def write_transcript(
     *,
     user_id: str,
@@ -1109,9 +1127,10 @@ async def list_transcript_tag_names(user_id: str, transcript_id: str) -> list[st
     return [str(row["name"]) for row in rows if row["name"]]
 
 
-async def start_tag_enrichment(user_id: str, transcript_id: str) -> None:
+async def start_tag_enrichment(user_id: str, transcript_id: str) -> bool:
+    """Tenta reservar atomicamente o enriquecimento inline deste conteúdo."""
     async with connection() as conn:
-        await conn.execute(
+        row = await conn.fetchrow(
             """
             UPDATE "Transcript"
             SET "taggingStatus" = 'RUNNING'::"EnrichmentStatus",
@@ -1121,10 +1140,25 @@ async def start_tag_enrichment(user_id: str, transcript_id: str) -> None:
             WHERE "userId" = $1
               AND id = $2
               AND "taggingAttempts" < 6
+              AND "taggingStatus" IN (
+                'PENDING'::"EnrichmentStatus",
+                'RETRY'::"EnrichmentStatus"
+              )
+              AND (
+                "taggingNextAttemptAt" IS NULL
+                OR "taggingNextAttemptAt" <= NOW()
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM "TranscriptTag" tt
+                WHERE tt."transcriptId" = "Transcript".id
+              )
+            RETURNING id
             """,
             user_id,
             transcript_id,
         )
+    return row is not None
 
 
 async def claim_pending_tag_enrichments(limit: int = 10) -> list[dict[str, Any]]:

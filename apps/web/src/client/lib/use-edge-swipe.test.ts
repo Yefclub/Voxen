@@ -40,6 +40,7 @@ describe('gestos do drawer mobile', () => {
   test('ignora controles nativos, editores e controles ARIA', () => {
     for (const selector of [
       'input',
+      'canvas',
       'table',
       'td',
       '[contenteditable]',
@@ -69,6 +70,11 @@ describe('gestos do drawer mobile', () => {
     expect(
       matchesDrawerGestureIgnore({
         closest: (selector) => (selector.includes('[data-horizontal-scroll]') ? {} : null),
+      }),
+    ).toBe(true);
+    expect(
+      matchesDrawerGestureIgnore({
+        closest: (selector) => (selector.includes('canvas') ? {} : null),
       }),
     ).toBe(true);
     expect(matchesDrawerGestureIgnore({ closest: () => null })).toBe(false);

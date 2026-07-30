@@ -32,7 +32,9 @@ cd Voxen
 make dev
 ```
 
-Abre em `http://localhost:3000`. Primeiro cadastro vira admin e cai no onboarding (cola OpenRouter API key + escolhe modelos default). Pronto.
+Abre em `http://localhost:3000`. Primeiro cadastro vira admin e cai no
+onboarding: basta colar a chave da OpenRouter; a Voxen valida a conta e aplica
+automaticamente os modelos canônicos. Pronto.
 
 `make dev` cria/completa `.env` se necessário, sobe Postgres, Redis, MinIO, web e worker. MinIO fica em `http://localhost:9001`.
 

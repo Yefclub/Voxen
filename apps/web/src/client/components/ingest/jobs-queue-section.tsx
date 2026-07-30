@@ -37,6 +37,20 @@ interface ProgressEvent {
   ts: string;
 }
 
+export function jobProgressSnapshot(
+  job: Pick<JobSummary, 'status' | 'progressStage' | 'progressPercent'>,
+): { stage: string; percent: number } {
+  const progressPercent =
+    typeof job.progressPercent === 'number' && Number.isFinite(job.progressPercent)
+      ? Math.min(100, Math.max(0, job.progressPercent))
+      : 0;
+
+  return {
+    stage: job.progressStage?.trim() || job.status.toLowerCase(),
+    percent: progressPercent,
+  };
+}
+
 export function JobsQueueSection({
   titleId = 'queue-title',
   showHeading = true,
@@ -213,8 +227,8 @@ const JobRow = memo(function JobRow({
   onStreamStateChange: (jobId: string, closed: boolean) => void;
 }): React.ReactElement {
   const isActive = job.status === 'QUEUED' || job.status === 'RUNNING';
-  const [stage, setStage] = useState<string>(job.status === 'RUNNING' ? 'running' : 'queued');
-  const [percent, setPercent] = useState<number>(0);
+  const [stage, setStage] = useState<string>(() => jobProgressSnapshot(job).stage);
+  const [percent, setPercent] = useState<number>(() => jobProgressSnapshot(job).percent);
   const onUpdateRef = useRef(onUpdate);
   const terminalRefreshRef = useRef<ReturnType<typeof createDeferredJobRefresh> | null>(null);
   terminalRefreshRef.current ??= createDeferredJobRefresh();
@@ -232,9 +246,10 @@ const JobRow = memo(function JobRow({
   );
 
   useEffect(() => {
-    setStage(job.status === 'RUNNING' ? 'running' : 'queued');
-    setPercent(0);
-  }, [job.id, job.status]);
+    const snapshot = jobProgressSnapshot(job);
+    setStage(snapshot.stage);
+    setPercent(snapshot.percent);
+  }, [job.id, job.progressPercent, job.progressStage, job.status]);
 
   useEffect(() => {
     onStreamStateChange(job.id, isActive && closed);

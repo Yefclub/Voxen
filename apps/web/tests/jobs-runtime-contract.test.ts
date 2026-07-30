@@ -19,6 +19,8 @@ describe('estabilidade do runtime de jobs', () => {
     expect(source).toContain('closedJobStreams.size');
     expect(source).toContain('onStreamStateChange={reportStreamState}');
     expect(source).toContain('createDeferredJobRefresh()');
+    expect(source).toContain('jobProgressSnapshot(job)');
+    expect(source).toContain('[job.id, job.progressPercent, job.progressStage, job.status]');
     expect(source).toContain("document.visibilityState === 'hidden' || !navigator.onLine");
     expect(source).not.toContain('}, 6_000)');
   });

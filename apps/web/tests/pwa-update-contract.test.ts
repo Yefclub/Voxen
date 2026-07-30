@@ -41,13 +41,22 @@ describe('contrato de atualização do PWA', () => {
     expect(monitor).toContain('const preparedBuildRef = useRef<string | null>(null)');
     expect(monitor).toContain('preparedBuildRef.current !== serverBuild');
     expect(monitor).toContain('void prepareUpdate()');
+    expect(monitor).toContain('waitingServiceWorkerListeners.add(onWake)');
+    expect(monitor).toContain('waitingServiceWorkerListeners.delete(onWake)');
+    expect(monitor).toContain('waitingServiceWorker,');
   });
 
-  test('propaga a identidade canônica para o build do front nas duas imagens', () => {
+  test('propaga identidades canônica e nativa do Easypanel ao build do front', () => {
     for (const dockerfile of ['Dockerfile', 'apps/web/Dockerfile']) {
       const source = readFileSync(join(repositoryRoot, dockerfile), 'utf8');
       const frontBuild = source.slice(0, source.indexOf('RUN cd apps/web'));
-      for (const name of ['VOXEN_VERSION', 'VOXEN_GIT_SHA', 'VOXEN_BUILT_AT']) {
+      for (const name of [
+        'VOXEN_VERSION',
+        'VOXEN_GIT_SHA',
+        'VOXEN_BUILT_AT',
+        'GIT_SHA',
+        'DEPLOY_TIMESTAMP',
+      ]) {
         expect(frontBuild, `${dockerfile}: ${name}`).toContain(`ARG ${name}`);
         expect(frontBuild, `${dockerfile}: ${name}`).toContain(`${name}=`);
       }
@@ -62,6 +71,8 @@ describe('contrato de atualização do PWA', () => {
     expect(config).toContain("'voxen-build'");
     expect(config).toContain("'voxen-version'");
     expect(config).toContain("'voxen-built-at'");
+    expect(config).toContain('process.env.VOXEN_GIT_SHA?.trim() || process.env.GIT_SHA?.trim()');
+    expect(config).toContain('deployTimestampToIso(process.env.DEPLOY_TIMESTAMP)');
     expect(server).toContain('raw.includes(\'name="voxen-build"\')');
   });
 

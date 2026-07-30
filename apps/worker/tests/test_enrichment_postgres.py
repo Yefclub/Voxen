@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -225,7 +226,7 @@ async def test_tag_operations_enforce_workspace_ownership(
 
     assert await db.list_transcript_tag_names("user-1", "transcript-2") == []
     assert await db.get_transcript_title_summary_folder("user-1", "transcript-2") is None
-    await db.start_tag_enrichment("user-1", "transcript-2")
+    assert await db.start_tag_enrichment("user-1", "transcript-2") is False
     await db.finish_tag_enrichment(
         "user-1",
         "transcript-2",
@@ -282,6 +283,30 @@ async def test_tag_operations_enforce_workspace_ownership(
     )
     assert applied == ["Permitida"]
     assert await db.list_transcript_tag_names("user-1", "transcript-1") == ["Permitida"]
+
+
+async def test_inline_and_reconciler_share_one_atomic_tag_claim(
+    postgres: asyncpg.Connection,
+) -> None:
+    await _insert_user(postgres, "user-1")
+    await _insert_transcript(postgres, transcript_id="race", user_id="user-1")
+
+    inline_claimed, reconciler_claims = await asyncio.gather(
+        db.start_tag_enrichment("user-1", "race"),
+        db.claim_pending_tag_enrichments(limit=1),
+    )
+
+    reconciler_owns_row = any(str(row["id"]) == "race" for row in reconciler_claims)
+    assert int(inline_claimed) + int(reconciler_owns_row) == 1
+    state = await postgres.fetchrow(
+        """
+        SELECT "taggingStatus", "taggingAttempts"
+        FROM "Transcript"
+        WHERE id = 'race'
+        """
+    )
+    assert state["taggingStatus"] == "RUNNING"
+    assert state["taggingAttempts"] == 1
 
 
 async def test_changed_transcript_is_delivered_to_brain_reindexer(

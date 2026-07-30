@@ -7,9 +7,19 @@ import packageJson from './package.json';
 
 const API_TARGET = process.env.VITE_API_TARGET ?? 'http://localhost:3000';
 const BUILD_VERSION = process.env.VOXEN_VERSION?.trim() || packageJson.version;
-const BUILD_SHA = process.env.VOXEN_GIT_SHA?.trim() || '';
+const BUILD_SHA = process.env.VOXEN_GIT_SHA?.trim() || process.env.GIT_SHA?.trim() || '';
 const BUILD_ID = (BUILD_SHA || BUILD_VERSION).replace(/[^A-Za-z0-9._+-]/g, '');
-const BUILD_TIME = process.env.VOXEN_BUILT_AT?.trim() || '';
+const BUILD_TIME =
+  process.env.VOXEN_BUILT_AT?.trim() || deployTimestampToIso(process.env.DEPLOY_TIMESTAMP) || '';
+
+function deployTimestampToIso(value?: string): string | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const numeric = Number(value);
+  if (!Number.isSafeInteger(numeric) || numeric <= 0) return null;
+  const milliseconds = numeric > 9_999_999_999 ? numeric : numeric * 1000;
+  const date = new Date(milliseconds);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
 
 function buildMetadataPlugin(): Plugin {
   return {

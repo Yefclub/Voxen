@@ -204,12 +204,14 @@ async def test_pipeline_converts_validation_error_and_skips_api(
     from src import pipeline
 
     monkeypatch.setattr(
-        pipeline.voxen_settings, "get_openrouter_api_key", AsyncMock(return_value="sk-test")
-    )
-    monkeypatch.setattr(
         pipeline.voxen_settings,
-        "get_default_transcription_model",
-        AsyncMock(return_value="x-ai/grok-stt-1.0"),
+        "get_openrouter_model_config",
+        AsyncMock(
+            return_value=pipeline.voxen_settings.OpenRouterModelConfig(
+                api_key="sk-test",
+                model="x-ai/grok-stt-1.0",
+            )
+        ),
     )
 
     split_called = False

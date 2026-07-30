@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import tempfile
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import botocore.exceptions
 import structlog
@@ -66,6 +68,48 @@ _TRANSIENT_EXC: tuple[type[BaseException], ...] = (
     botocore.exceptions.ClientError,
 )
 
+_LOG_URL_RE = re.compile(r"(?:https?|upload)://[^\s\"'<>]+", re.IGNORECASE)
+
+
+def _safe_source_host(source_url: str) -> str | None:
+    """Retorna apenas o host normalizado, sem credenciais, path ou query."""
+    try:
+        host = urlsplit(source_url).hostname
+        if not host:
+            return None
+        normalized = host.encode("idna").decode("ascii").lower().strip(".")
+    except (UnicodeError, ValueError):
+        return None
+    if not normalized or len(normalized) > 253:
+        return None
+    if any(
+        not label
+        or len(label) > 63
+        or label.startswith("-")
+        or label.endswith("-")
+        or not re.fullmatch(r"[a-z0-9-]+", label)
+        for label in normalized.split(".")
+    ):
+        return None
+    return normalized
+
+
+def _source_kind_for_log(source_url: str, job_type: str) -> str:
+    detected = video_url.detect_source(source_url)
+    if detected:
+        return detected
+    if source_url.lower().startswith("upload://"):
+        return "UPLOAD"
+    if job_type == "SCRAPE_WEB":
+        return "WEB"
+    return "UNKNOWN"
+
+
+def _safe_error_for_log(exc: BaseException, *, max_length: int = 240) -> str:
+    """Remove URLs/segredos transportados em query strings de mensagens externas."""
+    redacted = _LOG_URL_RE.sub("[url-redacted]", str(exc))
+    return redacted[:max_length]
+
 
 async def process_job(job_id: str) -> None:
     """Executa o pipeline completo para `job_id`. Faz claim, processa, finaliza."""
@@ -77,7 +121,13 @@ async def process_job(job_id: str) -> None:
     user_id: str = claimed["userId"]
     source_url: str = claimed["sourceUrl"]
     job_type: str = claimed["type"]
-    log = logger.bind(job_id=job_id, user_id=user_id, url=source_url, type=job_type)
+    log = logger.bind(
+        job_id=job_id,
+        user_id=user_id,
+        type=job_type,
+        source_kind=_source_kind_for_log(source_url, job_type),
+        source_host=_safe_source_host(source_url),
+    )
     log.info("job-claimed")
 
     # Já cancelado antes mesmo de começar (DB já está CANCELLED via endpoint).
@@ -123,12 +173,18 @@ async def process_job(job_id: str) -> None:
             user_id, job_id, "cancelled", error_msg="Cancelado pelo usuário."
         )
     except PermanentError as e:
-        log.warning("job-failed-permanent", error=str(e))
-        await db.mark_job_failed(job_id, str(e))
-        await events.publish_job_event(user_id, job_id, "failed", error_msg=str(e))
+        safe_error = _safe_error_for_log(e, max_length=500)
+        log.warning("job-failed-permanent", error=safe_error[:240])
+        await db.mark_job_failed(job_id, safe_error)
+        await events.publish_job_event(user_id, job_id, "failed", error_msg=safe_error)
     except Exception as e:  # noqa: BLE001 — propaga genérico p/ FAILED
-        log.exception("job-failed-unexpected")
-        msg = f"Erro inesperado: {e}"
+        safe_error = _safe_error_for_log(e, max_length=500)
+        log.error(
+            "job-failed-unexpected",
+            error_type=type(e).__name__,
+            error=safe_error[:240],
+        )
+        msg = f"Erro inesperado: {safe_error}"
         await db.mark_job_failed(job_id, msg)
         await events.publish_job_event(user_id, job_id, "failed", error_msg=msg)
     finally:
@@ -266,7 +322,10 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
         except _TRANSIENT_EXC as e:
             # TikTok: retry forçando impersonate chrome quando rehydration falha.
             if _is_tiktok_rehydration_error(e) and video_url.detect_source(source_url) == "TIKTOK":
-                log.warning("tiktok-probe-retry-impersonate-chrome", error=str(e)[:200])
+                log.warning(
+                    "tiktok-probe-retry-impersonate-chrome",
+                    error=_safe_error_for_log(e, max_length=200),
+                )
                 probe_info = await _retry_transient(
                     lambda: ytdl.probe(source_url, force_impersonate="chrome"),
                     tries=2,
@@ -305,13 +364,13 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                     log.warning(
                         "subtitle-failed-fallback-api",
                         lang=lang,
-                        error=str(e)[:200],
+                        error=_safe_error_for_log(e, max_length=200),
                     )
                 except _TRANSIENT_EXC as e:
                     log.warning(
                         "subtitle-failed-fallback-api",
                         lang=lang,
-                        error=str(e)[:200],
+                        error=_safe_error_for_log(e, max_length=200),
                     )
 
             if subtitle_segments is not None and subtitle_lang is not None:
@@ -332,7 +391,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                     ) == "TIKTOK" and _is_tiktok_rehydration_error(e):
                         log.warning(
                             "tiktok-audio-retry-impersonate-chrome",
-                            error=str(e)[:200],
+                            error=_safe_error_for_log(e, max_length=200),
                         )
                         audio_path = await _retry_transient(
                             lambda: ytdl.download_audio_opus(
@@ -469,7 +528,10 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
                     tries=3,
                 )
             except Exception as e:  # noqa: BLE001 — preview é best-effort
-                log.warning("upload-preview-generation-failed", error=str(e)[:240])
+                log.warning(
+                    "upload-preview-generation-failed",
+                    error=_safe_error_for_log(e),
+                )
         await events.publish_job_event(user_id, job_id, "transcribing", percent=30)
         segments, model, cost_total = await _transcribe_via_api(
             audio_path=audio_path,
@@ -530,12 +592,13 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
     if ref is None:
         raise PermanentError("Upload inválido ou corrompido.")
 
-    api_key = await voxen_settings.get_openrouter_api_key()
-    if not api_key:
+    config = await voxen_settings.get_openrouter_model_config(("default_vision_model",))
+    if not config.api_key:
         raise PermanentError("Setup incompleto — chave da OpenRouter ausente.")
-    model = await voxen_settings.get_default_vision_model()
-    if not model:
+    if not config.model:
         raise PermanentError("Setup incompleto — modelo de visão padrão ausente.")
+    api_key = config.api_key
+    model = config.model
 
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "preparing_upload", percent=5)
@@ -640,12 +703,13 @@ async def _run_document_pipeline(
     if ref is None:
         raise PermanentError("Upload inválido ou corrompido.")
 
-    api_key = await voxen_settings.get_openrouter_api_key()
-    if not api_key:
+    config = await voxen_settings.get_openrouter_model_config(("default_document_model",))
+    if not config.api_key:
         raise PermanentError("Setup incompleto — chave da OpenRouter ausente.")
-    model = await voxen_settings.get_default_document_model()
-    if not model:
+    if not config.model:
         raise PermanentError("Setup incompleto — modelo de documentos padrão ausente.")
+    api_key = config.api_key
+    model = config.model
 
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "preparing_upload", percent=5)
@@ -658,38 +722,14 @@ async def _run_document_pipeline(
         await _retry_transient(lambda: storage.download_to_file(key=key, dest=doc_path), tries=3)
 
         _check_cancel(job_id)
-        await events.publish_job_event(user_id, job_id, "analyzing_document", percent=30)
-        result: Any
-        if document_ingest.is_pdf(doc_path):
-            result, parser = await _analyze_pdf_with_fallback(
-                pdf_path=doc_path,
-                filename=ref.filename,
-                api_key=api_key,
-                model=model,
-                user_id=user_id,
-                job_id=job_id,
-                log=log,
-            )
-        else:
-            await events.publish_job_event(user_id, job_id, "converting_document", percent=20)
-            try:
-                extracted = await document_ingest.convert_to_markdown(doc_path)
-            except RuntimeError as e:
-                raise PermanentError(
-                    "Não foi possível extrair texto deste documento. "
-                    "Confirme se o arquivo não está corrompido ou protegido."
-                ) from e
-            parser = "markitdown"
-
-            async def _do_text_doc() -> Any:
-                return await analyze_document_text(
-                    markdown=extracted.markdown,
-                    filename=ref.filename,
-                    api_key=api_key,
-                    model=model,
-                )
-
-            result = await _retry_transient_or(_do_text_doc, tries=3)
+        result, parser = await _analyze_document_file(
+            document_path=doc_path,
+            filename=ref.filename,
+            api_key=api_key,
+            model=model,
+            user_id=user_id,
+            job_id=job_id,
+        )
 
         if not result.text:
             raise PermanentError("Análise vazia — nenhum conteúdo foi extraído do documento.")
@@ -756,41 +796,48 @@ async def _run_document_pipeline(
     log.info("document-job-done", transcript_id=new_transcript_id)
 
 
-async def _analyze_pdf_with_fallback(
+async def _analyze_document_file(
     *,
-    pdf_path: Path,
+    document_path: Path,
     filename: str,
     api_key: str,
     model: str,
     user_id: str,
     job_id: str,
-    log: Any,  # noqa: ANN401
 ) -> tuple[Any, str]:
-    async def _do_mistral_pdf() -> Any:
-        return await analyze_pdf_native(pdf_path=pdf_path, api_key=api_key, model=model)
+    """Roteia PDF somente ao Mistral OCR e demais documentos via MarkItDown."""
+    if document_ingest.is_pdf(document_path):
+        await events.publish_job_event(user_id, job_id, "analyzing_document", percent=30)
 
-    try:
-        return await _retry_transient_or(_do_mistral_pdf, tries=2), "openrouter-mistral-ocr"
-    except (OpenrouterTransientError, RuntimeError) as exc:
-        log.warning("document-mistral-pdf-fallback-markitdown", error=str(exc)[:240])
-        await events.publish_job_event(user_id, job_id, "converting_document", percent=25)
-        try:
-            extracted = await document_ingest.convert_to_markdown(pdf_path)
-        except RuntimeError as conversion_error:
-            raise PermanentError(
-                "Não foi possível extrair texto deste PDF. "
-                "Tente um PDF com texto selecionável ou envie outro formato."
-            ) from conversion_error
-
-        async def _do_text_pdf() -> Any:
-            return await analyze_document_text(
-                markdown=extracted.markdown,
-                filename=filename,
+        async def _do_mistral_pdf() -> Any:
+            return await analyze_pdf_native(
+                pdf_path=document_path,
                 api_key=api_key,
                 model=model,
             )
 
-        return await _retry_transient_or(_do_text_pdf, tries=3), "markitdown"
+        return await _retry_transient_or(_do_mistral_pdf, tries=2), "openrouter-mistral-ocr"
+
+    await events.publish_job_event(user_id, job_id, "converting_document", percent=20)
+    try:
+        extracted = await document_ingest.convert_to_markdown(document_path)
+    except RuntimeError as exc:
+        raise PermanentError(
+            "Não foi possível extrair texto deste documento. "
+            "Confirme se o arquivo não está corrompido ou protegido."
+        ) from exc
+
+    await events.publish_job_event(user_id, job_id, "analyzing_document", percent=30)
+
+    async def _do_text_doc() -> Any:
+        return await analyze_document_text(
+            markdown=extracted.markdown,
+            filename=filename,
+            api_key=api_key,
+            model=model,
+        )
+
+    return await _retry_transient_or(_do_text_doc, tries=3), "markitdown"
 
 
 async def _run_x_analysis_pipeline(
@@ -803,12 +850,20 @@ async def _run_x_analysis_pipeline(
     if video_url.detect_source(source_url) != "X":
         raise PermanentError("Job de análise do X recebeu uma URL que não é do X.")
 
-    api_key = await voxen_settings.get_openrouter_api_key()
-    if not api_key:
+    config = await voxen_settings.get_openrouter_model_config(
+        (
+            "default_x_analysis_model",
+            "default_grok_model",
+            "default_x_model",
+            "x_analysis_model",
+        )
+    )
+    if not config.api_key:
         raise PermanentError("Setup incompleto — chave da OpenRouter ausente.")
-    model = await voxen_settings.get_default_x_analysis_model()
-    if not model:
+    if not config.model:
         raise PermanentError("Setup incompleto — modelo de análise do X ausente.")
+    api_key = config.api_key
+    model = config.model
 
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "analyzing_x", percent=30)
@@ -828,10 +883,13 @@ async def _run_x_analysis_pipeline(
         tokens_out=result.tokens_out,
         cost_usd=result.cost_usd,
         job_id=job_id,
-        meta={"source": "x_analysis", "url": source_url},
+        meta={
+            "source": "x_analysis",
+            "source_host": _safe_source_host(source_url),
+        },
     )
 
-    status_id = source_url.rstrip("/").split("/")[-1]
+    status_id = urlsplit(source_url).path.rstrip("/").split("/")[-1]
     probe_info = ytdl.VideoProbe(
         video_id=status_id,
         title=f"Post do X {status_id}",
@@ -936,11 +994,12 @@ async def _maybe_grounded_brain_extract(
         title, content, _folder = row
         if len((content or "").strip()) < 80:
             return
-        api_key = await voxen_settings.get_openrouter_api_key()
-        model = await voxen_settings.get_default_chat_model()
-        if not api_key or not model:
+        config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
+        if not config.api_key or not config.model:
             log.info("brain-extract-skipped-missing-config", transcript_id=transcript_id)
             return
+        api_key = config.api_key
+        model = config.model
         language = await voxen_settings.get_app_language()
         result = await brain_extract.extract_grounded_concepts(
             title=title,
@@ -983,7 +1042,11 @@ async def _maybe_grounded_brain_extract(
             edges=n,
         )
     except Exception as e:  # noqa: BLE001 — best-effort
-        log.warning("brain-extract-failed", transcript_id=transcript_id, error=str(e)[:200])
+        log.warning(
+            "brain-extract-failed",
+            transcript_id=transcript_id,
+            error=_safe_error_for_log(e, max_length=200),
+        )
 
 
 async def _maybe_store_embedding(
@@ -1002,10 +1065,11 @@ async def _maybe_store_embedding(
         if not row:
             return
         title, content, _folder = row
-        api_key = await voxen_settings.get_openrouter_api_key()
-        if not api_key:
+        config = await voxen_settings.get_openrouter_model_config(("embedding_model",))
+        if not config.api_key:
             return
-        model = await voxen_settings.get_embedding_model()
+        api_key = config.api_key
+        model = config.model or "openai/text-embedding-3-small"
         vector = await embeddings.embed_text(
             text=f"{title}\n\n{content}",
             api_key=api_key,
@@ -1026,7 +1090,11 @@ async def _maybe_store_embedding(
             model=model,
         )
     except Exception as e:  # noqa: BLE001
-        log.warning("embedding-failed", transcript_id=transcript_id, error=str(e)[:200])
+        log.warning(
+            "embedding-failed",
+            transcript_id=transcript_id,
+            error=_safe_error_for_log(e, max_length=200),
+        )
 
 
 async def _maybe_generate_tags(
@@ -1040,13 +1108,17 @@ async def _maybe_generate_tags(
     """Gera e persiste tags se o conteúdo ainda não tiver nenhuma (auto-ingest)."""
     if not already_claimed:
         try:
-            await db.start_tag_enrichment(user_id, transcript_id)
+            claimed = await db.start_tag_enrichment(user_id, transcript_id)
         except Exception as e:  # noqa: BLE001
             log.warning(
                 "tags-status-start-failed",
                 transcript_id=transcript_id,
-                error=str(e)[:240],
+                error=_safe_error_for_log(e),
             )
+            return
+        if not claimed:
+            log.info("tags-skipped-not-claimed", transcript_id=transcript_id)
+            return
     try:
         row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
         if not row:
@@ -1074,9 +1146,8 @@ async def _maybe_generate_tags(
                 user_id=user_id, transcript_id=transcript_id, status="COMPLETE", error=None, log=log
             )
             return
-        api_key = await voxen_settings.get_openrouter_api_key()
-        model = await voxen_settings.get_default_chat_model()
-        if not api_key or not model:
+        config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
+        if not config.api_key or not config.model:
             log.warning("tags-skipped-missing-config", transcript_id=transcript_id)
             await _finish_tag_enrichment_safely(
                 user_id=user_id,
@@ -1086,6 +1157,8 @@ async def _maybe_generate_tags(
                 log=log,
             )
             return
+        api_key = config.api_key
+        model = config.model
         existing_tags = await db.list_tag_names(user_id)
         language = await voxen_settings.get_app_language()
         result = await _retry_transient_or(
@@ -1107,7 +1180,7 @@ async def _maybe_generate_tags(
             tokens_out=result.tokens_out,
             cost_usd=result.cost_usd,
             job_id=job_id,
-            meta={"source": "tag_generation_auto", "tags": result.tags},
+            meta={"source": "tag_generation_auto", "tag_count": len(result.tags)},
         )
         if not result.tags:
             log.info("tags-empty", transcript_id=transcript_id)
@@ -1128,7 +1201,6 @@ async def _maybe_generate_tags(
         log.info(
             "tags-assigned",
             transcript_id=transcript_id,
-            tags=applied,
             count=len(applied),
         )
         await _finish_tag_enrichment_safely(
@@ -1143,13 +1215,13 @@ async def _maybe_generate_tags(
             user_id=user_id,
             transcript_id=transcript_id,
             status="RETRY",
-            error=str(e),
+            error=_safe_error_for_log(e, max_length=500),
             log=log,
         )
         log.warning(
             "tags-generation-failed",
             transcript_id=transcript_id,
-            error=str(e)[:240],
+            error=_safe_error_for_log(e),
         )
 
 
@@ -1168,7 +1240,7 @@ async def _finish_tag_enrichment_safely(
             "tags-status-finish-failed",
             transcript_id=transcript_id,
             status=status,
-            error=str(e)[:240],
+            error=_safe_error_for_log(e),
         )
 
 
@@ -1181,12 +1253,13 @@ async def _transcribe_via_api(
     tmpdir: Path,
     log: Any,  # noqa: ANN401
 ) -> tuple[tuple[Segment, ...], str, Decimal]:
-    api_key = await voxen_settings.get_openrouter_api_key()
-    if not api_key:
+    config = await voxen_settings.get_openrouter_model_config(("default_transcription_model",))
+    if not config.api_key:
         raise PermanentError("Setup incompleto — chave da OpenRouter ausente.")
-    model = await voxen_settings.get_default_transcription_model()
-    if not model:
+    if not config.model:
         raise PermanentError("Setup incompleto — modelo de transcrição padrão ausente.")
+    api_key = config.api_key
+    model = config.model
 
     # Fail fast: valida o áudio com ffprobe ANTES de fatiar e chamar a API (spec 046).
     # Barra arquivos vazios/corrompidos/sem faixa de áudio sem queimar tokens.
@@ -1249,11 +1322,11 @@ async def _maybe_assign_folder(
     if len(clean_content) < 40 and len(title.strip()) < 3:
         return
     try:
-        api_key = await voxen_settings.get_openrouter_api_key()
-        model = await voxen_settings.get_default_chat_model()
-        model = model or fallback_model
-        if not api_key or not model:
+        config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
+        model = config.model or fallback_model
+        if not config.api_key or not model:
             return
+        api_key = config.api_key
         existing = await db.list_library_folder_names(user_id)
         language = await voxen_settings.get_app_language()
         result = await _retry_transient_or(
@@ -1292,7 +1365,7 @@ async def _maybe_assign_folder(
         log.warning(
             "folder-classification-failed",
             transcript_id=transcript_id,
-            error=str(e)[:240],
+            error=_safe_error_for_log(e),
         )
 
 
@@ -1310,11 +1383,11 @@ async def _maybe_generate_title(
     if len(clean_content) < 40:
         return None
     try:
-        api_key = await voxen_settings.get_openrouter_api_key()
-        model = await voxen_settings.get_default_chat_model()
-        model = model or fallback_model
-        if not api_key or not model:
+        config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
+        model = config.model or fallback_model
+        if not config.api_key or not model:
             return None
+        api_key = config.api_key
         language = await voxen_settings.get_app_language()
         result = await _retry_transient_or(
             lambda: generate_content_title(
@@ -1339,7 +1412,11 @@ async def _maybe_generate_title(
         )
         return result.title
     except Exception as e:  # noqa: BLE001 — título é enriquecimento best-effort
-        log.warning("title-generation-failed", source_label=source_label, error=str(e)[:240])
+        log.warning(
+            "title-generation-failed",
+            source_label=source_label,
+            error=_safe_error_for_log(e),
+        )
         return None
 
 
@@ -1381,7 +1458,7 @@ async def _persist(
     # prefere falhar cedo a salvar Transcript com source errado.
     source = source_override or video_url.detect_source(source_url)
     if source is None:
-        raise PermanentError(f"URL não reconhecida pelo detect_source: {source_url}")
+        raise PermanentError("URL não reconhecida pelo detect_source.")
 
     # Espelha capa remota (TikTok/IG etc.) no S3; UI usa /preview estável.
     from . import thumbnail as thumb_mod

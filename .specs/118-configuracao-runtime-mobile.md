@@ -135,6 +135,9 @@ configuráveis ou novos formatos de ingestão.
 
 - If a chave da OpenRouter for inválida ou não oferecer um recurso canônico,
   then the system shall rejeitar a alteração sem persistir estado parcial.
+- If a validação da OpenRouter não responder em até quinze segundos, then the
+  system shall encerrar a tentativa com mensagem acionável e preservar a
+  configuração anterior.
 - If duas alterações da configuração ocorrerem concorrentemente, then the system
   shall serializá-las sem duplicar registros nem combinar chave e padrões de
   versões diferentes.
@@ -148,6 +151,9 @@ configuráveis ou novos formatos de ingestão.
   e o enriquecimento elegível para retry limitado.
 - If o service worker encontrar caches de versão diferente, then the system
   shall não misturar HTML, scripts ou estilos entre versões.
+- If um service worker novo estiver aguardando ativação após a migração de um
+  bundle antigo, then the system shall oferecer confirmação mesmo quando o
+  bundle e o servidor já reportarem a mesma versão amigável.
 - If múltiplos toasts chegarem simultaneamente, then the system shall enfileirar
   cada notificação uma única vez e não reiniciar o tempo do toast ativo.
 - If uma atualização da Fila não alterar dados semânticos, then the system shall
@@ -183,8 +189,8 @@ configuráveis ou novos formatos de ingestão.
       animação.
 - [x] Atualização sem mudança semântica na Fila preserva referências e não causa
       renderização visual observável.
-- [x] Gestos iniciados em tabelas, regiões horizontais, elementos editáveis,
-      focáveis ou controles ARIA não movimentam a sidebar.
+- [x] Gestos iniciados em tabelas, canvas, regiões horizontais, elementos
+      editáveis, focáveis ou controles ARIA não movimentam a sidebar.
 - [x] Fechamento, cancelamento e movimento reduzido deixam a sidebar sem sombra,
       backdrop ou transformação residual.
 - [x] Testes unitários e de integração cobrem configuração concorrente,

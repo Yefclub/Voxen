@@ -88,7 +88,7 @@ Worker assíncrono que consome jobs via Redis (ARQ). Responsabilidades:
   2. O extrator de mídia tenta legendas oficiais primeiro
   3. Se legenda OK → pula transcrição, gera `.md` direto
   4. Se não → baixa áudio, `ffmpeg` segmenta em chunks de ~5min com overlap
-  5. Pra cada chunk → OpenRouter `/audio/transcriptions` (modelo escolhido pelo admin)
+  5. Pra cada chunk → OpenRouter `/audio/transcriptions` (modelo canônico de transcrição)
   6. Concatena resultado com timestamps, gera `.md` com frontmatter
   7. Upload `.md` pro MinIO/S3
   8. Insere `transcripts` no Postgres (texto + frontmatter + `tsvector` via trigger)
@@ -163,8 +163,9 @@ worker --socks5h://127.0.0.1:1080--> chisel server (voxen-app)
 6. Sistema pronto pra receber outros cadastros (pending)
 ```
 
-Depois do onboarding, o admin ainda pode ajustar individualmente os modelos em
-`/admin/configuracao`. O fluxo inicial permanece propositalmente simples.
+Depois do onboarding, `/admin/configuracao` mantém a mesma superfície unificada:
+o admin atualiza somente a chave da OpenRouter e a Voxen reaplica o conjunto
+canônico de modelos como uma única configuração.
 
 Spec completa: `.specs/000-setup-inicial.md`.
 

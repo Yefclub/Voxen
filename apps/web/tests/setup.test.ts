@@ -13,7 +13,7 @@ import app from '../src/index';
 import { encrypt } from '../src/lib/crypto';
 import { db } from '../src/lib/db';
 import { getMasterKey } from '../src/lib/master-key';
-import { getSetting, setSetting, setSettings } from '../src/lib/settings';
+import { getSetting, getSettings, setSetting, setSettings } from '../src/lib/settings';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -243,17 +243,27 @@ describeIfDb('setup flow', () => {
       where: { scope: 'GLOBAL', userId: null, key: 'default_chat_model' },
     });
     expect(rows).toHaveLength(1);
-    const persisted = await Promise.all([
-      getSetting('openrouter_api_key'),
-      getSetting('default_chat_model'),
-      getSetting('app_language'),
-      getSetting('app_timezone'),
-    ]);
-    const possibleBundles: Array<Array<string | null>> = [
-      [VALID_KEY, 'modelo-a', 'en', 'UTC'],
-      [REPLACEMENT_KEY, 'modelo-b', 'pt-BR', 'America/Sao_Paulo'],
+    const persisted = await getSettings([
+      'openrouter_api_key',
+      'default_chat_model',
+      'app_language',
+      'app_timezone',
+    ] as const);
+    const possibleBundles: Array<Record<keyof typeof persisted, string | null>> = [
+      {
+        openrouter_api_key: VALID_KEY,
+        default_chat_model: 'modelo-a',
+        app_language: 'en',
+        app_timezone: 'UTC',
+      },
+      {
+        openrouter_api_key: REPLACEMENT_KEY,
+        default_chat_model: 'modelo-b',
+        app_language: 'pt-BR',
+        app_timezone: 'America/Sao_Paulo',
+      },
     ];
-    expect(possibleBundles).toContainEqual([...persisted]);
+    expect(possibleBundles).toContainEqual(persisted);
 
     const duplicateWrite = Promise.resolve(
       db.setting.create({

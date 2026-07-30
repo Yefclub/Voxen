@@ -6,7 +6,7 @@
 //   - pós-processamento determinístico: slug, dedup, cap
 // ============================================================================
 
-import { getAppLanguage, getSetting, type AppLanguage } from './settings';
+import { getAppLanguage, getSettings, type AppLanguage } from './settings';
 
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -279,8 +279,9 @@ export async function generateTagsForContent(input: {
   existingTags: string[];
   abortSignal?: AbortSignal;
 }): Promise<TagsGenerationResult> {
-  const apiKey = await getSetting('openrouter_api_key');
-  const model = await getSetting('default_chat_model');
+  const settings = await getSettings(['openrouter_api_key', 'default_chat_model'] as const);
+  const apiKey = settings.openrouter_api_key;
+  const model = settings.default_chat_model;
   if (!apiKey || !model) {
     throw new Error('Setup incompleto — OpenRouter/modelo ausentes.');
   }

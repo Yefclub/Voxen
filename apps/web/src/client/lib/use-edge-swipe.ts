@@ -126,6 +126,7 @@ export const DRAWER_GESTURE_IGNORE_SELECTOR = [
   'summary',
   'audio[controls]',
   'video[controls]',
+  'canvas',
   'table',
   'thead',
   'tbody',

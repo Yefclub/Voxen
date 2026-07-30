@@ -91,6 +91,27 @@ export async function getSettingByKey(key: string): Promise<string | null> {
   return decrypt(row.valueEnc, getMasterKey());
 }
 
+export async function getSettings<const Keys extends readonly GlobalSettingKey[]>(
+  keys: Keys,
+): Promise<{ [Key in Keys[number]]: string | null }> {
+  const uniqueKeys = [...new Set(keys)];
+  const rows = await db.setting.findMany({
+    where: { scope: 'GLOBAL', userId: null, key: { in: uniqueKeys } },
+    select: { key: true, valueEnc: true },
+  });
+  const values = Object.fromEntries(keys.map((key) => [key, null])) as {
+    [Key in Keys[number]]: string | null;
+  };
+  const mutableValues = values as Record<GlobalSettingKey, string | null>;
+  const masterKey = rows.length > 0 ? getMasterKey() : null;
+  for (const row of rows) {
+    if (masterKey && uniqueKeys.includes(row.key as GlobalSettingKey)) {
+      mutableValues[row.key as GlobalSettingKey] = decrypt(row.valueEnc, masterKey);
+    }
+  }
+  return values;
+}
+
 export async function getAppLanguage(): Promise<AppLanguage> {
   return normalizeAppLanguage(await getSetting('app_language'));
 }
