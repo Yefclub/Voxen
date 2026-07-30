@@ -175,7 +175,7 @@ export function UpdateModal({
             tabIndex={0}
             aria-label={t('shell.updateScrollLabel')}
             aria-busy={loadState === 'loading'}
-            className="min-h-0 overflow-y-scroll overflow-x-hidden overscroll-contain px-5 py-5 outline-none [scrollbar-gutter:stable] [touch-action:pan-y] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-violet)] sm:px-7 sm:py-6"
+            className="min-h-0 overflow-y-scroll overflow-x-hidden overscroll-contain px-5 py-5 outline-none [scrollbar-gutter:stable] [touch-action:pan-y] focus-visible:shadow-[inset_0_2px_0_var(--color-accent-primary)] sm:px-7 sm:py-6"
           >
             <div className="mb-4 flex items-center justify-between gap-3">
               <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-app-muted)]">

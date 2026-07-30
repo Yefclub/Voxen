@@ -19,20 +19,11 @@ export function ExtensaoPage(): React.ReactElement {
     typeof window !== 'undefined' ? window.location.origin : 'https://sua-instancia.exemplo';
 
   return (
-    <PageShell width="reading" className="relative">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-20 left-1/2 h-56 w-[min(100%,36rem)] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(52,211,153,0.18),transparent)] blur-2xl"
-      />
-
+    <PageShell width="wide">
       <PageHeader
-        className="relative"
-        eyebrow={
-          <>
-            <Puzzle className="h-3.5 w-3.5 text-emerald-300" />
-            {t('extension.eyebrow')}
-          </>
-        }
+        eyebrow={t('extension.eyebrow')}
+        icon={Puzzle}
+        iconClassName="text-emerald-300"
         title={t('extension.title')}
         description={t('extension.description')}
       />

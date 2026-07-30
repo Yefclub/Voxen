@@ -53,10 +53,14 @@ describe('regressões de interface confirmadas em produção', () => {
     );
   });
 
-  test('chat mantém prosa legível e libera largura adicional para dados estruturados', () => {
+  test('chat mantém histórico, prosa e composer na mesma coluna legível', () => {
     const chat = read('pages/chat.tsx');
-    expect(chat).toContain('max-w-5xl');
+    const styles = read('index.css');
+    expect(chat).not.toContain('max-w-5xl');
+    expect(chat.match(/max-w-3xl/gu)?.length ?? 0).toBeGreaterThanOrEqual(4);
     expect(chat).toContain('chat-response-markdown');
     expect(chat).toContain('[&_p]:max-w-3xl');
+    expect(styles).toContain(".chat-response-markdown [data-horizontal-scroll='true']");
+    expect(styles).toContain('width: min(64rem, calc(100vw - 24rem))');
   });
 });

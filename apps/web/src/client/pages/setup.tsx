@@ -132,6 +132,8 @@ export function SetupPage(): React.ReactElement {
     <PageShell width="workspace">
       <PageHeader
         eyebrow={editingConfigured ? t('setup.badge.edit') : t('setup.badge.initial')}
+        icon={KeyRound}
+        iconClassName="text-emerald-400"
         title={
           editingConfigured ? (
             t('setup.title.edit')

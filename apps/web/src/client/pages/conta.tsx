@@ -151,12 +151,9 @@ export function ContaPage(): React.ReactElement {
   return (
     <PageShell width="reading">
       <PageHeader
-        eyebrow={
-          <>
-            <UserIcon className="h-3.5 w-3.5 text-violet-400" />
-            {t('account.eyebrow')}
-          </>
-        }
+        eyebrow={t('account.eyebrow')}
+        icon={UserIcon}
+        iconClassName="text-violet-400"
         title={t('account.title')}
         description={t('account.description')}
       />

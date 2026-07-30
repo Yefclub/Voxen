@@ -67,6 +67,7 @@ import {
   SaveIcon,
   ScanIcon,
   SearchIcon,
+  SendIcon,
   SettingsIcon,
   ShareIcon,
   ShieldCheckIcon,
@@ -150,6 +151,7 @@ export const QrCode = accessibleIcon(QrCodeIcon);
 export const RefreshCw = accessibleIcon(RefreshCwIcon);
 export const Save = accessibleIcon(SaveIcon);
 export const Search = accessibleIcon(SearchIcon);
+export const Send = accessibleIcon(SendIcon);
 export const Settings = accessibleIcon(SettingsIcon);
 export const Share = accessibleIcon(ShareIcon);
 export const ShieldCheck = accessibleIcon(ShieldCheckIcon);

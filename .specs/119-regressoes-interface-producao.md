@@ -55,6 +55,13 @@ destrutivas ou ampliar o domínio funcional da Voxen.
   mobile sem competir com o drawer.
 - The system shall armazenar e exibir somente tags válidas, normalizadas e sem
   duplicatas.
+- The system shall manter histórico, estados operacionais e composer do chat na
+  mesma coluna de largura, sem redesenhar a experiência conversacional.
+- The system shall iniciar toda página com título e descrição por um eyebrow
+  textual acompanhado de ícone colorido e animado, respeitando movimento
+  reduzido.
+- The system shall alinhar o início do conteúdo ao espaço já reservado pelo
+  cabeçalho flutuante, sem adicionar uma segunda margem vertical.
 
 ### Event-driven (resposta a evento)
 
@@ -77,6 +84,10 @@ destrutivas ou ampliar o domínio funcional da Voxen.
   shell da página e apresentar feedback local sem apagar a superfície inteira.
 - When uma tag for recebida da IA, the system shall normalizar, validar,
   deduplicar e descartar metalinguagem antes de persistir.
+- When o modal de nova versão abrir, the system shall preservar foco acessível
+  sem desenhar uma moldura colorida ao redor de toda a região rolável.
+- When o composer estiver pronto para enviar, the system shall exibir um ícone
+  de envio inequívoco, sem letras ou glifos sem relação com a ação.
 
 ### State-driven (durante um estado)
 
@@ -144,6 +155,13 @@ destrutivas ou ampliar o domínio funcional da Voxen.
 - [ ] Tags inválidas conhecidas são descartadas, tags equivalentes são
       deduplicadas e conteúdos sem tags válidas permanecem reconciliáveis.
 - [ ] Fila permanece estável quando polling/SSE não alteram os dados.
+- [ ] Histórico e composer do chat usam a mesma largura máxima no desktop.
+- [ ] O botão de envio do chat usa o pictograma de envio, sem a letra “A”.
+- [ ] O modal de atualização não exibe moldura roxa na região rolável ao abrir.
+- [ ] `/extensao` usa o mesmo shell amplo das demais páginas operacionais.
+- [ ] Páginas com título e descrição exibem eyebrow e ícone colorido animado.
+- [ ] O conteúdo começa imediatamente após a reserva do topbar, sem padding
+      vertical duplicado.
 - [ ] Testes cobrem os contratos de hover, duração, navegação, drawer, toolbar,
       shells, jobs e tags.
 - [ ] Lint, formatação, typecheck, testes e build passam sem Docker nem

@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  ArrowUp,
   Check,
   ChevronDown,
   ChevronRight,
@@ -15,6 +14,7 @@ import {
   NotebookPen,
   Paperclip,
   Search,
+  Send,
   Video,
   Wrench,
   X,
@@ -607,7 +607,7 @@ function Composer({
               className="grid h-9 w-9 place-items-center rounded-full bg-[var(--color-accent-primary)] text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label={t('chat.send')}
             >
-              <ArrowUp className="h-4 w-4" />
+              <Send className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -1298,7 +1298,7 @@ export function ChatPage(): React.ReactElement {
             onSend={() => void send()}
             onStop={() => void stopStreaming()}
             autoFocus
-            className="w-full max-w-2xl"
+            className="w-full max-w-3xl"
           />
         </div>
       ) : (
@@ -1330,7 +1330,7 @@ export function ChatPage(): React.ReactElement {
             aria-label={t('chat.historyLabel')}
             className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-5 pt-12 md:py-5"
           >
-            <div className="mx-auto flex w-full max-w-5xl flex-col">
+            <div className="mx-auto flex w-full max-w-3xl flex-col">
               <div ref={contentWrapRef} className="flex flex-col">
                 {hasOlder && (
                   <button

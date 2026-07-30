@@ -219,7 +219,7 @@ function RouteLoading(): React.ReactElement {
     <div
       data-route-loading
       aria-busy="true"
-      className="mx-auto min-h-full w-full max-w-[1600px] px-4 py-5 sm:px-7 sm:py-9 xl:px-10"
+      className="mx-auto min-h-full w-full max-w-[1600px] px-4 pb-5 pt-0 sm:px-7 sm:pb-9 sm:pt-0 xl:px-10"
     >
       <div className="h-0.5 w-full overflow-hidden rounded-full bg-[var(--color-app-surface)]">
         <div className="h-full w-2/5 animate-pulse rounded-full bg-[var(--color-accent-violet)]" />

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { ArrowUp, ChevronUp, MessageSquare } from '@/components/ui/icons';
+import { ChevronUp, MessageSquare, Send } from '@/components/ui/icons';
 import type { TranslateFn } from '../../lib/i18n';
 import { cn } from '../../lib/utils';
 
@@ -151,7 +151,7 @@ export function TranscriptChatDock({
               className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--color-accent-primary)] text-white transition-[opacity,transform] hover:scale-[1.03] hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-app-bg-elevated)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100 motion-reduce:transition-none"
               aria-label={t('chat.send')}
             >
-              <ArrowUp className="h-4 w-4" />
+              <Send className="h-4 w-4" />
             </button>
           </div>
         </form>

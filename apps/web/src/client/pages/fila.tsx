@@ -9,12 +9,9 @@ export function FilaPage(): React.ReactElement {
   return (
     <PageShell width="wide">
       <PageHeader
-        eyebrow={
-          <>
-            <ListOrdered className="h-3 w-3 text-[var(--color-app-muted)]" />
-            {t('shell.nav.queue')}
-          </>
-        }
+        eyebrow={t('shell.nav.queue')}
+        icon={ListOrdered}
+        iconClassName="text-sky-400"
         title={<span id="fila-title">{t('jobs.queueTitle')}</span>}
       />
 
