@@ -66,7 +66,7 @@ $$;
 -- sem escopo; testes e reconciliações futuras podem provar o efeito num único
 -- usuário sem tocar em dados concorrentes.
 CREATE OR REPLACE FUNCTION voxen_cleanup_invalid_content_tags(target_user_id TEXT DEFAULT NULL)
-RETURNS VOID
+RETURNS BOOLEAN
 LANGUAGE plpgsql
 AS $$
 BEGIN
@@ -92,6 +92,8 @@ BEGIN
       WHERE relation."transcriptId" = transcript.id
     )
     AND coalesce(trim(transcript."plainText"), '') <> '';
+
+  RETURN TRUE;
 END;
 $$;
 

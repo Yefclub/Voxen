@@ -120,8 +120,16 @@ describeIfDb('predicado SQL de tags inválidas', () => {
       const validOnly = await createTranscript('valid-only', [valid.id]);
       const emptyText = await createTranscript('empty-text', [], '');
 
-      await db.$queryRawUnsafe('SELECT voxen_cleanup_invalid_content_tags($1::TEXT)', user.id);
-      await db.$queryRawUnsafe('SELECT voxen_cleanup_invalid_content_tags($1::TEXT)', user.id);
+      const firstRun = await db.$queryRawUnsafe<Array<{ cleaned: boolean }>>(
+        'SELECT voxen_cleanup_invalid_content_tags($1::TEXT) AS cleaned',
+        user.id,
+      );
+      const secondRun = await db.$queryRawUnsafe<Array<{ cleaned: boolean }>>(
+        'SELECT voxen_cleanup_invalid_content_tags($1::TEXT) AS cleaned',
+        user.id,
+      );
+      expect(firstRun[0]?.cleaned).toBe(true);
+      expect(secondRun[0]?.cleaned).toBe(true);
 
       const remainingTags = await db.tag.findMany({
         where: { userId: user.id },
