@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.13.0-dev.1785406211",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Configuração simples e interface estável no uso diário",
+    "body": "A configuração da OpenRouter passa a pedir somente a chave de API e aplica\nautomaticamente os modelos recomendados para conversa, análise e transcrição.\nO processamento continua especializado por formato: PDFs usam o parser Mistral,\noutros documentos usam MarkItDown e imagens, áudio e vídeo seguem pela\nOpenRouter.\n\nNotificações agora aparecem uma por vez durante cinco segundos. A Fila mantém\nos dados visíveis e reconcilia mudanças em segundo plano, sem trocar a lista por\nskeletons periódicos nem reiniciar itens que não mudaram.\n\nNo mobile, gestos horizontais em tabelas, conteúdos roláveis e no canvas do\nGrafo não abrem mais a sidebar, e o menu fechado não deixa sombra na lateral.\nA atualização da aplicação também passa a respeitar a versão exata do build,\ninclusive quando um service worker já está aguardando, e só ativa a nova versão\nquando a pessoa confirma.",
+    "pr": null,
+    "author": "Kalyel",
+    "date": "2026-07-30T07:09:49-03:00"
+  },
+  {
     "version": "0.13.0-dev.1785376533",
     "channel": "dev",
     "type": "fix",
