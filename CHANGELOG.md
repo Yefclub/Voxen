@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.0-dev.1785431966 — 2026-07-30 · Dev
+
+### 🐛 Rótulos legíveis ao explorar o Brain
+
+O hover dos nós do Grafo agora usa uma superfície compatível com o tema ativo,
+mantendo título e fundo com contraste adequado no modo escuro. Títulos muito
+longos também são limitados para não atravessarem toda a visualização.
+
 ## v0.13.0-dev.1785429740 — 2026-07-30 · Dev
 
 ### 🐛 Interface mais estável, legível e consistente

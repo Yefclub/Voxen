@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785431966",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Rótulos legíveis ao explorar o Brain",
+    "body": "O hover dos nós do Grafo agora usa uma superfície compatível com o tema ativo,\nmantendo título e fundo com contraste adequado no modo escuro. Títulos muito\nlongos também são limitados para não atravessarem toda a visualização.",
+    "pr": 486,
+    "author": "Kalyel",
+    "date": "2026-07-30T17:19:06Z",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/486"
+  },
+  {
     "version": "0.13.0-dev.1785429740",
     "channel": "dev",
     "type": "fix",
