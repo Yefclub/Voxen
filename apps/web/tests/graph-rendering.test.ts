@@ -7,9 +7,11 @@ import {
   buildGraphPositions3D,
   buildSigmaGraphModel,
   nodePath,
+  resolveGraphPalette,
   toOpaqueGraphColor,
 } from '../src/client/lib/graph-model';
 import {
+  createSigmaNodeHoverRenderer,
   DEFAULT_GRAPH_MODE,
   resolveGraphRenderProfile,
   scheduleGraph3DInitializationFallback,
@@ -311,6 +313,47 @@ describe('nodePath', () => {
 });
 
 describe('graph renderer lifecycle contracts', () => {
+  test('draws Sigma hover labels with the active theme surface and foreground', () => {
+    const fills: string[] = [];
+    let currentFillStyle = '';
+    const context = {
+      beginPath() {},
+      fill() {
+        fills.push(currentFillStyle);
+      },
+      get fillStyle() {
+        return currentFillStyle;
+      },
+      set fillStyle(value: string) {
+        currentFillStyle = value;
+      },
+      fillText() {
+        fills.push(currentFillStyle);
+      },
+      font: '',
+      lineWidth: 0,
+      measureText: (label: string) => ({ width: label.length * 7 }),
+      restore() {},
+      roundRect() {},
+      save() {},
+      shadowBlur: 0,
+      shadowColor: '',
+      stroke() {},
+      strokeStyle: '',
+      textBaseline: '',
+    } as unknown as CanvasRenderingContext2D;
+    const palette = resolveGraphPalette('linear');
+    const drawHover = createSigmaNodeHoverRenderer(palette);
+
+    drawHover(context, { x: 20, y: 20, size: 9, label: 'Nó legível', color: '#fff' }, {
+      labelFont: 'Inter',
+      labelSize: 12,
+      labelWeight: '600',
+    } as Parameters<typeof drawHover>[2]);
+
+    expect(fills).toEqual([palette.canvas, palette.label]);
+  });
+
   test('keeps the 3D renderer persistent across data and theme updates', () => {
     expect(GRAPH_PAGE_SOURCE).toContain('void loadReagraph()');
     expect(GRAPH_PAGE_SOURCE).not.toContain('setReagraph(null)');

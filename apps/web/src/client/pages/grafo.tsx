@@ -65,6 +65,7 @@ import { resolveGraphPollingAction } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
   GRAPH_3D_INIT_TIMEOUT_MS,
+  createSigmaNodeHoverRenderer,
   resolveGraphRenderProfile,
   scheduleGraph3DInitializationFallback,
   type GraphMode,
@@ -1551,6 +1552,7 @@ function sigmaRendererSettings(model: SigmaGraphModel, palette: GraphPalette) {
     hideEdgesOnMove: true,
     hideLabelsOnMove: true,
     itemSizesReference: 'screen' as const,
+    defaultDrawNodeHover: createSigmaNodeHoverRenderer(palette),
     labelColor: { color: palette.label },
     labelDensity: model.graph.order > 300 ? 0.1 : model.graph.order > 140 ? 0.2 : 0.36,
     labelFont: 'Inter, system-ui, sans-serif',
