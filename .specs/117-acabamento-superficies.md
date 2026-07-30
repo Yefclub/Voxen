@@ -205,7 +205,7 @@ sintética, sem entrada correspondente no changelog.
 
 ## Evidências de implementação
 
-- Web: 656 testes passaram, 134 integrações sem PostgreSQL foram puladas; lint,
+- Web: 661 testes passaram, 134 integrações sem PostgreSQL foram puladas; lint,
   typecheck e build Vite de produção passaram.
 - Worker: 245 testes passaram e 3 integrações sem PostgreSQL foram puladas;
   Ruff e mypy passaram.

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const webRoot = join(import.meta.dir, '..');
+const repositoryRoot = join(webRoot, '../..');
 
 describe('contrato de atualização do PWA', () => {
   test('navega pela rede antes do cache e não precacheia index.html', () => {
@@ -25,15 +26,37 @@ describe('contrato de atualização do PWA', () => {
     expect(monitor).toContain('void prepareUpdate()');
   });
 
-  test('imagem Easypanel preserva a versão canônica do changelog', () => {
+  test('imagem Easypanel usa o resolvedor de versão canônica', () => {
     const workflow = readFileSync(
-      join(webRoot, '../../.github/workflows/easypanel-image.yml'),
+      join(repositoryRoot, '.github/workflows/easypanel-image.yml'),
       'utf8',
     );
 
     expect(workflow).toContain('package_version="$(node -p');
-    expect(workflow).toContain("grep -Eq '^[0-9]+");
-    expect(workflow).toContain('version="$package_version"');
+    expect(workflow).toContain('node scripts/resolve-dev-image-version.mjs');
+  });
+
+  test.each([
+    ['0.13.0-dev.1785372519', '0.13.0-dev.1785372519'],
+    ['0.13.0-rc.1', '0.13.0-rc.1'],
+    ['0.13.0-beta.preview-2', '0.13.0-beta.preview-2'],
+    ['0.13.0-rc.1+image.7', '0.13.0-rc.1+image.7'],
+    ['0.13.0', '0.14.1-dev.1785372519'],
+  ])('resolve a identidade de imagem para %s', (packageVersion, expected) => {
+    const result = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        join(repositoryRoot, 'scripts/resolve-dev-image-version.mjs'),
+        packageVersion,
+        '0.14.0',
+        '1785372519',
+      ],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toBe(expected);
   });
 
   test.skipIf(!existsSync(join(webRoot, 'dist/sw.js.map')))(
