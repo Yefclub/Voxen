@@ -119,12 +119,9 @@ export function NovidadesPage(): React.ReactElement {
   return (
     <PageShell width="wide">
       <PageHeader
-        eyebrow={
-          <>
-            <Sparkles className="h-3.5 w-3.5 text-[var(--color-accent-violet)]" />
-            {t('novidades.eyebrow')}
-          </>
-        }
+        eyebrow={t('novidades.eyebrow')}
+        icon={Sparkles}
+        iconClassName="text-[var(--color-accent-violet)]"
         title={t('novidades.title')}
         description={t('novidades.description')}
         actions={

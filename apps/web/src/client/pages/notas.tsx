@@ -54,12 +54,9 @@ export function NotasPage(): React.ReactElement {
   return (
     <PageShell width="workspace">
       <PageHeader
-        eyebrow={
-          <>
-            <Library className="h-3.5 w-3.5 text-violet-400" />
-            {t('notes.manualBase')}
-          </>
-        }
+        eyebrow={t('notes.manualBase')}
+        icon={Library}
+        iconClassName="text-violet-400"
         title={t('notes.title')}
         description={t('notes.description')}
       />

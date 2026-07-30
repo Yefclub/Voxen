@@ -53,9 +53,10 @@ describe('regressões de interface confirmadas em produção', () => {
     );
   });
 
-  test('chat mantém prosa legível e libera largura adicional para dados estruturados', () => {
+  test('chat mantém histórico, prosa e composer na mesma coluna legível', () => {
     const chat = read('pages/chat.tsx');
-    expect(chat).toContain('max-w-5xl');
+    expect(chat).not.toContain('max-w-5xl');
+    expect(chat.match(/max-w-3xl/gu)?.length ?? 0).toBeGreaterThanOrEqual(4);
     expect(chat).toContain('chat-response-markdown');
     expect(chat).toContain('[&_p]:max-w-3xl');
   });

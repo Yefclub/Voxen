@@ -171,6 +171,9 @@ export function AutomacoesPage(): React.ReactElement {
   return (
     <PageShell width="wide">
       <PageHeader
+        eyebrow={t('shell.nav.automations')}
+        icon={Workflow}
+        iconClassName="text-amber-400"
         title={t('automations.title')}
         description={t('automations.description')}
         actions={

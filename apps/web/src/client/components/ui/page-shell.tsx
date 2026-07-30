@@ -9,6 +9,7 @@ import {
   safelyRunAnimation,
   shouldAnimateDecoration,
 } from '../../lib/interface-foundation';
+import type { AnimatedIcon } from './icons';
 
 gsap.registerPlugin(useGSAP);
 
@@ -71,7 +72,7 @@ export function PageShell({
     <div
       ref={root}
       className={cn(
-        'mx-auto min-h-full w-full space-y-6 px-4 py-5 sm:space-y-8 sm:px-7 sm:py-9 xl:px-10',
+        'mx-auto min-h-full w-full space-y-6 px-4 pb-5 pt-0 sm:space-y-8 sm:px-7 sm:pb-9 sm:pt-0 xl:px-10',
         PAGE_SHELL_WIDTHS[width],
         className,
       )}
@@ -83,7 +84,9 @@ export function PageShell({
 }
 
 interface PageHeaderProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
-  eyebrow?: ReactNode;
+  eyebrow: ReactNode;
+  icon: AnimatedIcon;
+  iconClassName?: string;
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
@@ -91,6 +94,8 @@ interface PageHeaderProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
 
 export function PageHeader({
   eyebrow,
+  icon: EyebrowIcon,
+  iconClassName,
   title,
   description,
   actions,
@@ -109,6 +114,11 @@ export function PageHeader({
       <div className="min-w-0 space-y-2.5">
         {eyebrow && (
           <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
+            <EyebrowIcon
+              isAnimated
+              aria-hidden
+              className={cn('h-3.5 w-3.5 text-[var(--color-accent-primary)]', iconClassName)}
+            />
             {eyebrow}
           </div>
         )}

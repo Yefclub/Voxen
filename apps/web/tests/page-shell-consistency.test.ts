@@ -11,7 +11,7 @@ const CANONICAL_CONTENT_PAGES: Record<string, 'reading' | 'workspace' | 'wide'> 
   'admin-usuarios.tsx': 'wide',
   'automacoes.tsx': 'wide',
   'conta.tsx': 'reading',
-  'extensao.tsx': 'reading',
+  'extensao.tsx': 'wide',
   'fila.tsx': 'wide',
   'jobs-detalhe.tsx': 'workspace',
   'notas.tsx': 'workspace',
@@ -87,6 +87,8 @@ describe('consistência dos shells de página', () => {
     for (const file of CANONICAL_HEADER_PAGES) {
       const source = readFileSync(join(PAGES_ROOT, file), 'utf8');
       expect(source, file).toContain('<PageHeader');
+      expect(source, file).toMatch(/<PageHeader[\s\S]*?\beyebrow=/u);
+      expect(source, file).toMatch(/<PageHeader[\s\S]*?\bicon=/u);
       expect(source, file).toMatch(
         /import \{[^}]*PageHeader[^}]*\} from '\.\.\/components\/ui\/page-shell'/u,
       );

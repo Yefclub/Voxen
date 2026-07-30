@@ -87,12 +87,9 @@ export function AdminIntegracoesPage(): React.ReactElement {
     <PageShell width="workspace">
       <div data-page-content className="space-y-8 sm:space-y-10">
         <PageHeader
-          eyebrow={
-            <>
-              <Sparkles className="h-3.5 w-3.5 text-violet-400" />
-              {t('shell.admin')}
-            </>
-          }
+          eyebrow={t('shell.admin')}
+          icon={Sparkles}
+          iconClassName="text-violet-400"
           title={t('admin.integrations.title')}
           description={t('admin.integrations.description')}
         />

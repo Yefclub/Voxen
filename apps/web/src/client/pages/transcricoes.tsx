@@ -458,12 +458,9 @@ export function TranscricoesPage(): React.ReactElement {
   return (
     <PageShell width="wide">
       <PageHeader
-        eyebrow={
-          <>
-            <Library className="h-3.5 w-3.5 text-violet-400" />
-            {t('library.eyebrow')}
-          </>
-        }
+        eyebrow={t('library.eyebrow')}
+        icon={Library}
+        iconClassName="text-violet-400"
         title={t('library.title')}
         description={t('library.description')}
         actions={

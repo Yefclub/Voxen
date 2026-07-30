@@ -124,12 +124,9 @@ export function AdminUsuariosPage(): React.ReactElement {
     <PageShell width="wide">
       <div data-page-content className="space-y-6 sm:space-y-10">
         <PageHeader
-          eyebrow={
-            <>
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-              {t('admin.eyebrow')}
-            </>
-          }
+          eyebrow={t('admin.eyebrow')}
+          icon={ShieldCheck}
+          iconClassName="text-emerald-400"
           title={t('admin.users.title')}
           description={t('admin.users.description')}
         />
