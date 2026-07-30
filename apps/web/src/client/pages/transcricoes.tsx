@@ -16,7 +16,7 @@ import {
   Type,
   X,
 } from '@/components/ui/icons';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';

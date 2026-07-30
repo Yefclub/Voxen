@@ -498,7 +498,7 @@ transcriptsRoutes.get('/:id', async (c) => {
   }
 
   // Soma custos relacionados (summary é registrado em CostEvent.meta com
-  // {transcript_id}; Whisper não vem com cost confiável do OR mas o Decimal
+  // {transcript_id}; STT remoto pode não vir com cost confiável da OR, mas o Decimal
   // do Transcript pode conter). totalCostUsd reflete o custo *real* do user.
   const summaryCosts = await db.$queryRaw<{ total: string | null }[]>`
     SELECT COALESCE(SUM("costUsd"), 0)::text AS total

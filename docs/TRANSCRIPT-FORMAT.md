@@ -27,7 +27,7 @@ duration_sec: 738                              # 12m18s — para WEB é sempre 0
 published_at: 2026-04-20T15:30:00Z             # se disponível
 thumbnail: https://i.ytimg.com/vi/abc123/maxresdefault.jpg  # OpenGraph image pra WEB
 language: pt                                   # ISO 639-1
-model: openai/whisper-large-v3-turbo           # null se source=web ou method=subtitles
+model: x-ai/grok-stt-1.0                       # null se source=web ou method=subtitles
 transcription_method: api | subtitles | scrape # api=OpenRouter audio; subtitles=legendas oficiais; scrape=Trafilatura HTML
 transcribed_at: 2026-05-15T20:42:11Z
 cost_usd: 0.0042                               # custo (0 para web/subtitles)
@@ -91,9 +91,9 @@ Use o `source` como **discriminador** antes de fazer parsing/dedup pelo `video_i
 ### Segmentação
 
 - Cada "linha" representa um chunk lógico (~10-30s de fala)
-- Quebra natural por silêncio (vinda do output do Whisper) ou tempo máximo (30s)
+- Quebra natural por silêncio (vinda do modelo remoto) ou tempo máximo (30s)
 - Texto da linha é o conteúdo falado nesse intervalo
-- Mantém pontuação retornada pelo modelo (Whisper grande já pontua bem em PT-BR)
+- Mantém pontuação retornada pelo modelo remoto (Grok STT pontua em PT-BR)
 
 ### Quando vem de legendas oficiais (`transcription_method=subtitles`)
 
@@ -108,7 +108,7 @@ Use o `source` como **discriminador** antes de fazer parsing/dedup pelo `video_i
 - ffmpeg segmenta em chunks (~5min com overlap 5s pra não cortar palavras)
 - Cada chunk vai pra OpenRouter `/audio/transcriptions` com `response_format=verbose_json` (retorna segments com timestamps)
 - Worker concatena segments, ajusta offsets por chunk, deduplica regiões de overlap
-- Frontmatter: `transcription_method: api`, `model: openai/whisper-large-v3-turbo` (ou o que o admin escolheu)
+- Frontmatter: `transcription_method: api`, `model: x-ai/grok-stt-1.0`
 - `cost_usd` somado dos chunks
 
 ## Renderização no front
@@ -171,7 +171,7 @@ duration_sec: 213
 published_at: 2009-10-25T06:57:33Z
 thumbnail: https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg
 language: en
-model: openai/whisper-large-v3-turbo
+model: x-ai/grok-stt-1.0
 transcription_method: api
 transcribed_at: 2026-05-15T20:42:11Z
 cost_usd: 0.0018

@@ -20,7 +20,7 @@ Plataforma web self-hosted de **biblioteca multimodal** com transcrição, anál
 - **DB**: Postgres 17 + Prisma + FTS (`tsvector` GIN, dicionário `portuguese`)
 - **Fila**: Redis + ARQ
 - **Storage**: MinIO/S3-compatible (`S3_*`)
-- **LLM/Transcrição**: OpenRouter (chat + Whisper unificados)
+- **LLM/Transcrição**: OpenRouter (Grok 4.5 + Grok STT unificados)
 
 ## Subir em 1 minuto (dev local)
 

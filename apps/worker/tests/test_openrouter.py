@@ -301,7 +301,7 @@ async def test_transcribe_audio_uses_openrouter_json_base64_payload(tmp_path: Pa
     result = await transcribe_audio(
         audio_path=audio_path,
         api_key="sk-test",
-        model="openai/whisper-large-v3",
+        model="x-ai/grok-stt-1.0",
         client=client,  # type: ignore[arg-type]
     )
 
@@ -309,7 +309,7 @@ async def test_transcribe_audio_uses_openrouter_json_base64_payload(tmp_path: Pa
     assert client.url is not None
     assert client.url.endswith("/audio/transcriptions")
     assert client.payload == {
-        "model": "openai/whisper-large-v3",
+        "model": "x-ai/grok-stt-1.0",
         "input_audio": {
             "data": base64.b64encode(b"fake-audio").decode("ascii"),
             "format": "ogg",

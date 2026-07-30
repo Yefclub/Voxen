@@ -18,7 +18,7 @@ import {
   Sparkles,
   Trash2,
 } from '@/components/ui/icons';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Label } from '../components/ui/label';
@@ -577,7 +577,11 @@ function ProxyAgentSection(): React.ReactElement {
             <p className="text-[11px] text-[var(--color-app-muted)] leading-relaxed">
               {t('admin.integrations.proxy.installHint')}
             </p>
-            <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed text-[var(--color-app-fg)] bg-[var(--color-app-bg-elevated)] rounded px-3 py-3 border border-[var(--color-app-border)]">
+            <pre
+              data-horizontal-scroll="true"
+              data-drawer-gesture-ignore
+              className="touch-pan-x touch-pan-y overflow-x-auto font-mono text-[11px] leading-relaxed text-[var(--color-app-fg)] bg-[var(--color-app-bg-elevated)] rounded px-3 py-3 border border-[var(--color-app-border)]"
+            >
               {snippet}
             </pre>
             <Button variant="outline" size="sm" onClick={() => void copySnippet()}>

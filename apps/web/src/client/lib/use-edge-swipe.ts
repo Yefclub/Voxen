@@ -98,6 +98,24 @@ export function drawerGestureProgress(
   return Math.min(1, Math.max(0, progress));
 }
 
+const OPEN_DRAWER_SHADOW = '0 25px 50px -12px rgb(0 0 0 / 0.5)';
+const CLOSED_DRAWER_EPSILON = 0.001;
+
+export function drawerPanelOpacity(progress: number): number {
+  if (!Number.isFinite(progress) || progress <= CLOSED_DRAWER_EPSILON) return 0;
+  return Math.min(1, progress / 0.04);
+}
+
+export function drawerPanelShadow(progress: number): string {
+  return Number.isFinite(progress) && progress > CLOSED_DRAWER_EPSILON
+    ? OPEN_DRAWER_SHADOW
+    : 'none';
+}
+
+export function drawerPanelVisibility(progress: number): 'visible' | 'hidden' {
+  return Number.isFinite(progress) && progress > CLOSED_DRAWER_EPSILON ? 'visible' : 'hidden';
+}
+
 export const DRAWER_GESTURE_IGNORE_SELECTOR = [
   'a',
   'button',
@@ -108,6 +126,13 @@ export const DRAWER_GESTURE_IGNORE_SELECTOR = [
   'summary',
   'audio[controls]',
   'video[controls]',
+  'table',
+  'thead',
+  'tbody',
+  'tfoot',
+  'tr',
+  'th',
+  'td',
   '[contenteditable]',
   '[draggable="true"]',
   '[tabindex]:not([tabindex="-1"])',
@@ -137,6 +162,12 @@ export const DRAWER_GESTURE_IGNORE_SELECTOR = [
   '[role="tree"]',
   '[role="treegrid"]',
   '[role="treeitem"]',
+  '[role="table"]',
+  '[role="row"]',
+  '[role="cell"]',
+  '[role="columnheader"]',
+  '[role="rowheader"]',
+  '[data-horizontal-scroll]',
   '[data-drawer-gesture-ignore]',
 ].join(',');
 

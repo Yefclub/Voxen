@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { pickFolderId, resolveTagsDecision, slugifyTag } from '../src/lib/tags-generate';
+import {
+  buildTagsRequestBody,
+  pickFolderId,
+  resolveTagsDecision,
+  slugifyTag,
+} from '../src/lib/tags-generate';
 
 describe('slugifyTag', () => {
   test('lowercases and strips accents', () => {
@@ -84,5 +89,43 @@ describe('pickFolderId (regra de folderId único, R-FOLDER)', () => {
 
   test('stays null when neither is set', () => {
     expect(pickFolderId(null, null)).toBeNull();
+  });
+});
+
+describe('buildTagsRequestBody', () => {
+  test('espelha o contrato estruturado e o orçamento do worker', () => {
+    const payload = buildTagsRequestBody('x-ai/grok-4.5', 'system prompt', 'user prompt');
+
+    expect(payload).toEqual({
+      model: 'x-ai/grok-4.5',
+      messages: [
+        { role: 'system', content: 'system prompt' },
+        { role: 'user', content: 'user prompt' },
+      ],
+      temperature: 0.2,
+      max_tokens: 256,
+      reasoning: { enabled: false },
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'content_tags',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              tags: {
+                type: 'array',
+                items: { type: 'string', minLength: 2, maxLength: 40 },
+                minItems: 1,
+                maxItems: 5,
+              },
+            },
+            required: ['tags'],
+            additionalProperties: false,
+          },
+        },
+      },
+      usage: { include: true },
+    });
   });
 });

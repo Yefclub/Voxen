@@ -12,6 +12,13 @@
 FROM node:22-alpine AS build-front
 WORKDIR /app
 
+ARG VOXEN_VERSION
+ARG VOXEN_GIT_SHA
+ARG VOXEN_BUILT_AT
+ENV VOXEN_VERSION=${VOXEN_VERSION:-}
+ENV VOXEN_GIT_SHA=${VOXEN_GIT_SHA:-}
+ENV VOXEN_BUILT_AT=${VOXEN_BUILT_AT:-}
+
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # Workspace skeleton + deps completas (com vite/tailwind/eslint pra buildar)

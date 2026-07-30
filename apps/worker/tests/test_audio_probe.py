@@ -209,7 +209,7 @@ async def test_pipeline_converts_validation_error_and_skips_api(
     monkeypatch.setattr(
         pipeline.voxen_settings,
         "get_default_transcription_model",
-        AsyncMock(return_value="whisper"),
+        AsyncMock(return_value="x-ai/grok-stt-1.0"),
     )
 
     split_called = False

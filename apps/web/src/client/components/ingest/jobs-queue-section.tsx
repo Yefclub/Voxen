@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Globe, PlayCircle, RefreshCw } from '@/components/ui/icons';
 import { motion } from 'motion/react';
@@ -21,6 +21,11 @@ import {
 import { StaggerContainer, StaggerItem } from '../motion/animated-page';
 import { useI18n, type Locale, type TranslateFn } from '../../lib/i18n';
 import { jobDestination } from './job-destination';
+import {
+  createDeferredJobRefresh,
+  reconcileClosedJobStreams,
+  reconcileJobSummaries,
+} from '../../lib/job-list-reconciliation';
 
 interface ProgressEvent {
   jobId: string;
@@ -56,19 +61,42 @@ export function JobsQueueSection({
     totalPages: number;
   }>(queueUrl);
   const { locale, t } = useI18n();
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const [closedJobStreams, setClosedJobStreams] = useState<ReadonlySet<string>>(() => new Set());
+  const reportStreamState = useCallback((jobId: string, closed: boolean): void => {
+    setClosedJobStreams((current) => reconcileClosedJobStreams(current, jobId, closed));
+  }, []);
 
-  const jobs = data?.jobs ?? [];
-  const queueTotal = data?.total ?? jobs.length;
-  const totalPages = data?.totalPages ?? 1;
-  const hasActiveJobs = jobs.some((job) => job.status === 'QUEUED' || job.status === 'RUNNING');
+  const currentData = data?.page === queuePage ? data : null;
+  const jobsCacheRef = useRef<{ page: number; jobs: JobSummary[] }>({ page: queuePage, jobs: [] });
+  const jobs = useMemo(() => {
+    if (!currentData)
+      return jobsCacheRef.current.page === queuePage ? jobsCacheRef.current.jobs : [];
+    const previous = jobsCacheRef.current.page === queuePage ? jobsCacheRef.current.jobs : [];
+    const reconciled = reconcileJobSummaries(previous, currentData.jobs);
+    jobsCacheRef.current = { page: queuePage, jobs: reconciled };
+    return reconciled;
+  }, [currentData, queuePage]);
+  const queueTotal = currentData?.total ?? jobs.length;
+  const totalPages = currentData?.totalPages ?? 1;
 
   useEffect(() => {
-    if (!hasActiveJobs) return;
-    const id = window.setInterval(() => {
-      refresh();
-    }, 6_000);
-    return () => window.clearInterval(id);
-  }, [hasActiveJobs, refresh]);
+    if (closedJobStreams.size === 0) return;
+
+    const reconcile = (): void => {
+      if (document.visibilityState === 'hidden' || !navigator.onLine) return;
+      refreshRef.current();
+    };
+    const interval = window.setInterval(reconcile, 10_000);
+    window.addEventListener('online', reconcile);
+    document.addEventListener('visibilitychange', reconcile);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('online', reconcile);
+      document.removeEventListener('visibilitychange', reconcile);
+    };
+  }, [closedJobStreams.size]);
 
   return (
     <section className="space-y-3" aria-labelledby={showHeading ? titleId : undefined}>
@@ -101,7 +129,7 @@ export function JobsQueueSection({
         </Button>
       </div>
 
-      {loading && (
+      {loading && !currentData && (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-16 w-full" />
@@ -109,13 +137,13 @@ export function JobsQueueSection({
         </div>
       )}
 
-      {!loading && queueError && (
+      {!loading && queueError && !currentData && (
         <Card>
           <FetchError message={queueError} onRetry={refresh} />
         </Card>
       )}
 
-      {!loading && !queueError && jobs.length === 0 && (
+      {!loading && !queueError && currentData && jobs.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center text-sm text-[var(--color-app-muted)]">
             {t('jobs.queueEmpty')}
@@ -123,12 +151,18 @@ export function JobsQueueSection({
         </Card>
       )}
 
-      {!loading && jobs.length > 0 && (
+      {currentData && jobs.length > 0 && (
         <>
           <StaggerContainer delay={0.05} className="space-y-1.5">
             {jobs.map((j) => (
               <StaggerItem key={j.id}>
-                <JobRow job={j} onUpdate={refresh} locale={locale} t={t} />
+                <JobRow
+                  job={j}
+                  onUpdate={refresh}
+                  locale={locale}
+                  t={t}
+                  onStreamStateChange={reportStreamState}
+                />
               </StaggerItem>
             ))}
           </StaggerContainer>
@@ -165,20 +199,26 @@ export function JobsQueueSection({
   );
 }
 
-function JobRow({
+const JobRow = memo(function JobRow({
   job,
   onUpdate,
   locale,
   t,
+  onStreamStateChange,
 }: {
   job: JobSummary;
   onUpdate: () => void;
   locale: Locale;
   t: TranslateFn;
+  onStreamStateChange: (jobId: string, closed: boolean) => void;
 }): React.ReactElement {
   const isActive = job.status === 'QUEUED' || job.status === 'RUNNING';
   const [stage, setStage] = useState<string>(job.status === 'RUNNING' ? 'running' : 'queued');
   const [percent, setPercent] = useState<number>(0);
+  const onUpdateRef = useRef(onUpdate);
+  const terminalRefreshRef = useRef<ReturnType<typeof createDeferredJobRefresh> | null>(null);
+  terminalRefreshRef.current ??= createDeferredJobRefresh();
+  onUpdateRef.current = onUpdate;
 
   const { closed } = useSse<ProgressEvent>(
     isActive ? `/api/jobs/${job.id}/events` : null,
@@ -186,7 +226,7 @@ function JobRow({
       setStage(evt.stage);
       if (typeof evt.percent === 'number') setPercent(evt.percent);
       if (evt.stage === 'done' || evt.stage === 'failed' || evt.stage === 'cancelled') {
-        setTimeout(onUpdate, 400);
+        terminalRefreshRef.current?.schedule(() => onUpdateRef.current());
       }
     },
   );
@@ -197,8 +237,15 @@ function JobRow({
   }, [job.id, job.status]);
 
   useEffect(() => {
-    if (closed && isActive) onUpdate();
-  }, [closed, isActive, onUpdate]);
+    onStreamStateChange(job.id, isActive && closed);
+  }, [closed, isActive, job.id, onStreamStateChange]);
+
+  useEffect(() => {
+    return () => {
+      onStreamStateChange(job.id, false);
+      terminalRefreshRef.current?.cancel();
+    };
+  }, [job.id, onStreamStateChange]);
 
   const { variant, label } = jobStatusBadge(job.status, t);
   const source = detectSourceFromUrl(job.sourceUrl);
@@ -276,7 +323,7 @@ function JobRow({
       </span>
     </Link>
   );
-}
+});
 
 function JobPreview({
   previewSrc,

@@ -1,4 +1,5 @@
 export const UPDATE_FALLBACK_MS = 3500;
+export const UPDATE_READY_TIMEOUT_MS = 2500;
 
 export interface VersionUpdateRegistration {
   update: () => unknown;
@@ -9,12 +10,34 @@ export interface VersionUpdateRuntime {
   reload: () => void;
   scheduleFallback: (callback: () => void, delayMs: number) => unknown;
   cancelFallback: (handle: unknown) => void;
-  getRegistration: () => Promise<VersionUpdateRegistration | null>;
-  onControllerChange: (listener: () => void) => void;
+  requestActivation: () => Promise<void>;
+  onControllerChange: (listener: () => void) => () => void;
 }
 
 export interface VersionUpdatePreparationRuntime {
   getRegistration: () => Promise<VersionUpdateRegistration | null>;
+}
+
+export interface PromptedUpdateRuntime {
+  isWaiting: () => boolean;
+  checkForUpdate: () => Promise<void>;
+  waitUntilWaiting: (timeoutMs: number) => Promise<boolean>;
+  activate: () => Promise<void>;
+}
+
+/**
+ * Evita perder o clique quando o navegador ainda está instalando o worker.
+ * Depois de uma janela limitada, ainda tentamos ativar e deixamos o reload de
+ * fallback buscar o HTML `no-store`.
+ */
+export async function activatePromptedVersionUpdate(runtime: PromptedUpdateRuntime): Promise<void> {
+  if (!runtime.isWaiting()) {
+    await runtime.checkForUpdate();
+    if (!runtime.isWaiting()) {
+      await runtime.waitUntilWaiting(UPDATE_READY_TIMEOUT_MS);
+    }
+  }
+  await runtime.activate();
 }
 
 /**
@@ -39,27 +62,32 @@ export async function prepareVersionUpdate(
 export async function applyVersionUpdate(runtime: VersionUpdateRuntime): Promise<void> {
   runtime.clearSnooze();
   let reloaded = false;
+  let fallback: unknown | null = null;
   const reloadOnce = (): void => {
     if (reloaded) return;
     reloaded = true;
     runtime.reload();
   };
-  const fallback = runtime.scheduleFallback(reloadOnce, UPDATE_FALLBACK_MS);
+  let unsubscribe = (): void => undefined;
+  unsubscribe = runtime.onControllerChange(() => {
+    if (fallback !== null) runtime.cancelFallback(fallback);
+    unsubscribe();
+    reloadOnce();
+  });
 
   try {
-    const registration = await runtime.getRegistration();
-    if (registration) {
-      runtime.onControllerChange(() => {
-        runtime.cancelFallback(fallback);
-        reloadOnce();
-      });
-      await registration.update();
-      return;
-    }
+    // `registerSW` em modo prompt envia SKIP_WAITING somente nesta chamada.
+    await runtime.requestActivation();
   } catch {
-    // Sem service worker ou falha de atualização: recarrega pelo caminho comum.
+    // Sem service worker ou falha de ativação: recarrega pelo caminho comum.
+    unsubscribe();
+    reloadOnce();
+    return;
   }
 
-  runtime.cancelFallback(fallback);
-  reloadOnce();
+  if (reloaded) return;
+  fallback = runtime.scheduleFallback(() => {
+    unsubscribe();
+    reloadOnce();
+  }, UPDATE_FALLBACK_MS);
 }

@@ -28,7 +28,7 @@ duration_sec: 738
 published_at: 2026-04-20T15:30:00Z
 thumbnail: https://i.ytimg.com/vi/abc123/maxresdefault.jpg
 language: en
-model: openai/whisper-large-v3-turbo
+model: x-ai/grok-stt-1.0
 transcription_method: api | subtitles | scrape
 transcribed_at: 2026-05-15T20:42:11Z
 cost_usd: 0.0042

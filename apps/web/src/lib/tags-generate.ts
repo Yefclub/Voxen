@@ -197,7 +197,7 @@ function buildTagsPrompt(
 Existing tags (reuse these when they fit):
 ${tagsBlock}
 
-Return JSON only, e.g.: ["Anime","Review","Studio Ghibli"]
+Return JSON only, e.g.: {"tags":["Anime","Review","Studio Ghibli"]}
 Prefer 2-4 relevant tags. No duplicates. No sentences.
 
 Content excerpt:
@@ -215,7 +215,7 @@ ${excerpt}`,
 Tags existentes (reutilize quando couber):
 ${tagsBlock}
 
-Responda só JSON, ex.: ["Anime","Review","Estúdio Ghibli"]
+Responda só JSON, ex.: {"tags":["Anime","Review","Estúdio Ghibli"]}
 Prefira 2-4 tags relevantes. Sem duplicatas. Sem frases.
 
 Trecho do conteúdo:
@@ -229,6 +229,44 @@ export interface TagsGenerationResult {
   tokensIn: number;
   tokensOut: number;
   costUsd: string;
+}
+
+export function buildTagsRequestBody(
+  model: string,
+  system: string,
+  user: string,
+): Record<string, unknown> {
+  return {
+    model,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    temperature: 0.2,
+    max_tokens: 256,
+    reasoning: { enabled: false },
+    response_format: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'content_tags',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: {
+            tags: {
+              type: 'array',
+              items: { type: 'string', minLength: 2, maxLength: 40 },
+              minItems: 1,
+              maxItems: MAX_TAGS,
+            },
+          },
+          required: ['tags'],
+          additionalProperties: false,
+        },
+      },
+    },
+    usage: { include: true },
+  };
 }
 
 /**
@@ -260,17 +298,7 @@ export async function generateTagsForContent(input: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      temperature: 0.2,
-      max_tokens: 96,
-      reasoning: { enabled: false },
-      usage: { include: true },
-    }),
+    body: JSON.stringify(buildTagsRequestBody(model, system, user)),
     signal: input.abortSignal
       ? AbortSignal.any([input.abortSignal, AbortSignal.timeout(60_000)])
       : AbortSignal.timeout(60_000),

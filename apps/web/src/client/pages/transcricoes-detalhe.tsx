@@ -21,7 +21,7 @@ import {
   Trash2,
   Wand2,
 } from '@/components/ui/icons';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';

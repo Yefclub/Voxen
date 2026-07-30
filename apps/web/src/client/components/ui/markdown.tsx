@@ -77,7 +77,11 @@ function CodeBlock({
           )}
         </button>
       </div>
-      <pre className="overflow-x-auto px-4 py-3 text-[13px] leading-relaxed font-mono text-[var(--color-app-subtle)]">
+      <pre
+        data-horizontal-scroll="true"
+        data-drawer-gesture-ignore
+        className="touch-pan-x touch-pan-y overflow-x-auto px-4 py-3 text-[13px] leading-relaxed font-mono text-[var(--color-app-subtle)]"
+      >
         <code>{raw}</code>
       </pre>
     </div>
@@ -141,7 +145,11 @@ const components: Components = {
   // Wrapper com scroll-x: sob `overflow-x: clip` global, tabela larga seria
   // cortada no mobile em vez de rolar.
   table: (p) => (
-    <div className="my-4 overflow-x-auto rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]">
+    <div
+      data-horizontal-scroll="true"
+      data-drawer-gesture-ignore
+      className="my-4 touch-pan-x touch-pan-y overflow-x-auto rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]"
+    >
       <table>{kids(p)}</table>
     </div>
   ),

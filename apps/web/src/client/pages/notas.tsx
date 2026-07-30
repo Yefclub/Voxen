@@ -18,7 +18,7 @@ import {
   Plus,
   Save,
 } from '@/components/ui/icons';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { FetchError } from '../components/ui/fetch-error';

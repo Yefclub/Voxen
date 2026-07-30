@@ -82,7 +82,7 @@ async def transcribe_audio(
     model: str,
     client: httpx.AsyncClient | None = None,
 ) -> TranscriptionResult:
-    """Envia áudio pra OpenRouter `/audio/transcriptions` (compatível Whisper).
+    """Envia áudio para a API remota `/audio/transcriptions` da OpenRouter.
 
     Joga `OpenrouterAuthError` em 401/403 (permanente), `OpenrouterTransientError`
     em 5xx/timeout/rede (retry vale a pena), outros erros viram `RuntimeError`.

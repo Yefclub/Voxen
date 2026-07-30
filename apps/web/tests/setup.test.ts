@@ -52,6 +52,7 @@ function extractCookie(res: Response): string {
 }
 
 const VALID_KEY = 'sk-or-v1-' + 'x'.repeat(40);
+const REPLACEMENT_KEY = 'sk-or-v1-' + 'y'.repeat(40);
 
 type FetchMock = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -65,6 +66,37 @@ function installFetchMock(impl: FetchMock): void {
     }
     return originalFetch(input, init);
   }) as typeof globalThis.fetch;
+}
+
+function installValidOpenRouterMock(): void {
+  installFetchMock(async (input) => {
+    const url = typeof input === 'string' ? input : (input as Request).url;
+    if (url.endsWith('/api/v1/key')) {
+      return new Response('{}', { status: 200 });
+    }
+    if (url.endsWith('/api/v1/models/user')) {
+      return Response.json({
+        data: [
+          {
+            id: 'x-ai/grok-4.5',
+            name: 'Grok 4.5',
+            architecture: {
+              input_modalities: ['text', 'image', 'file'],
+              output_modalities: ['text'],
+            },
+          },
+          {
+            id: 'x-ai/grok-stt-1.0',
+            name: 'Grok STT',
+            architecture: {
+              output_modalities: ['transcription'],
+            },
+          },
+        ],
+      });
+    }
+    return Response.json({ data: [] });
+  });
 }
 
 describeIfDb('setup flow', () => {
@@ -89,23 +121,13 @@ describeIfDb('setup flow', () => {
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
 
-    installFetchMock(async (input) => {
-      const url = typeof input === 'string' ? input : (input as Request).url;
-      if (url.endsWith('/api/v1/key')) {
-        return new Response('{}', { status: 200 });
-      }
-      return new Response('{"data":[]}', { status: 200 });
-    });
+    installValidOpenRouterMock();
 
     const res = await app.fetch(
       new Request('http://localhost/api/setup', {
         method: 'POST',
         headers: { cookie, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          openrouter_api_key: VALID_KEY,
-          default_chat_model: 'openrouter/auto',
-          default_transcription_model: 'openai/whisper-1',
-        }),
+        body: JSON.stringify({ openrouter_api_key: VALID_KEY }),
       }),
     );
     expect(res.status).toBe(200);
@@ -117,7 +139,7 @@ describeIfDb('setup flow', () => {
       where: { scope: 'GLOBAL', userId: null },
       select: { key: true, valueEnc: true },
     });
-    expect(stored).toHaveLength(3);
+    expect(stored).toHaveLength(7);
     for (const s of stored) {
       expect(s.valueEnc.length).toBeGreaterThan(0);
       expect(s.valueEnc.split('.')).toHaveLength(3);
@@ -137,35 +159,7 @@ describeIfDb('setup flow', () => {
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
 
-    installFetchMock(async (input) => {
-      const url = typeof input === 'string' ? input : (input as Request).url;
-      if (url.endsWith('/api/v1/key')) {
-        return new Response('{}', { status: 200 });
-      }
-      if (url.endsWith('/api/v1/models/user')) {
-        return Response.json({
-          data: [
-            {
-              id: 'x-ai/grok-4.5',
-              name: 'Grok 4.5',
-              architecture: {
-                input_modalities: ['text', 'image', 'file'],
-                output_modalities: ['text'],
-              },
-            },
-            {
-              id: 'x-ai/grok-stt-1.0',
-              name: 'Grok STT',
-              architecture: {
-                input_modalities: ['audio'],
-                output_modalities: ['transcription'],
-              },
-            },
-          ],
-        });
-      }
-      return Response.json({ data: [] });
-    });
+    installValidOpenRouterMock();
 
     const res = await app.fetch(
       new Request('http://localhost/api/setup', {
@@ -182,6 +176,26 @@ describeIfDb('setup flow', () => {
     await expect(getSetting('default_vision_model')).resolves.toBe('x-ai/grok-4.5');
     await expect(getSetting('default_document_model')).resolves.toBe('x-ai/grok-4.5');
     await expect(getSetting('default_x_analysis_model')).resolves.toBe('x-ai/grok-4.5');
+  });
+
+  it('rejeita overrides manuais de modelo no contrato unificado', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/setup', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          openrouter_api_key: VALID_KEY,
+          default_chat_model: 'custom/chat',
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await db.setting.count({ where: { scope: 'GLOBAL' } })).toBe(0);
   });
 
   it('onboarding não persiste configuração parcial quando um modelo padrão não existe', async () => {
@@ -211,15 +225,35 @@ describeIfDb('setup flow', () => {
 
   it('serializa gravações concorrentes sem duplicar uma chave global', async () => {
     await Promise.all([
-      setSettings({ default_chat_model: 'modelo-a' }),
-      setSettings({ default_chat_model: 'modelo-b' }),
+      setSettings({
+        openrouter_api_key: VALID_KEY,
+        default_chat_model: 'modelo-a',
+        app_language: 'en',
+        app_timezone: 'UTC',
+      }),
+      setSettings({
+        openrouter_api_key: REPLACEMENT_KEY,
+        default_chat_model: 'modelo-b',
+        app_language: 'pt-BR',
+        app_timezone: 'America/Sao_Paulo',
+      }),
     ]);
 
     const rows = await db.setting.findMany({
       where: { scope: 'GLOBAL', userId: null, key: 'default_chat_model' },
     });
     expect(rows).toHaveLength(1);
-    await expect(getSetting('default_chat_model')).resolves.toMatch(/^modelo-[ab]$/);
+    const persisted = await Promise.all([
+      getSetting('openrouter_api_key'),
+      getSetting('default_chat_model'),
+      getSetting('app_language'),
+      getSetting('app_timezone'),
+    ]);
+    const possibleBundles: Array<Array<string | null>> = [
+      [VALID_KEY, 'modelo-a', 'en', 'UTC'],
+      [REPLACEMENT_KEY, 'modelo-b', 'pt-BR', 'America/Sao_Paulo'],
+    ];
+    expect(possibleBundles).toContainEqual([...persisted]);
 
     const duplicateWrite = Promise.resolve(
       db.setting.create({
@@ -234,12 +268,15 @@ describeIfDb('setup flow', () => {
     await expect(duplicateWrite).rejects.toThrow();
   });
 
-  it('admin pode persistir idioma da plataforma', async () => {
+  it('admin pode atualizar idioma e fuso sem reenviar a chave', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
 
-    installFetchMock(async () => new Response('{}', { status: 200 }));
+    await setSetting('openrouter_api_key', VALID_KEY);
+    installFetchMock(async () => {
+      throw new Error('preferências não devem chamar a OpenRouter');
+    });
 
     const res = await app.fetch(
       new Request('http://localhost/api/setup', {
@@ -247,70 +284,95 @@ describeIfDb('setup flow', () => {
         headers: { cookie, 'content-type': 'application/json' },
         body: JSON.stringify({
           app_language: 'en',
-          openrouter_api_key: VALID_KEY,
-          default_chat_model: 'openrouter/auto',
-          default_transcription_model: 'openai/whisper-1',
+          app_timezone: 'UTC',
         }),
       }),
     );
     expect(res.status).toBe(200);
     await expect(getSetting('app_language')).resolves.toBe('en');
+    await expect(getSetting('app_timezone')).resolves.toBe('UTC');
 
     const statusRes = await app.fetch(
       new Request('http://localhost/api/setup', { headers: { cookie } }),
     );
-    const status = (await statusRes.json()) as { language: string };
-    expect(status.language).toBe('en');
+    const status = (await statusRes.json()) as { language: string; timezone: string };
+    expect(status).toMatchObject({ language: 'en', timezone: 'UTC' });
   });
 
-  it('status reconhece aliases legados do modelo de análise do X', async () => {
+  it('não persiste preferências antes da primeira chave válida', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
 
-    await setSetting('openrouter_api_key', VALID_KEY);
-    await setSetting('default_chat_model', 'openrouter/auto');
-    await setSetting('default_transcription_model', 'openai/whisper-1');
-    await db.setting.create({
-      data: {
-        scope: 'GLOBAL',
-        key: 'default_grok_model',
-        valueEnc: encrypt('x-ai/grok-4-fast', getMasterKey()),
-      },
-    });
-
-    const statusRes = await app.fetch(
-      new Request('http://localhost/api/setup', { headers: { cookie } }),
-    );
-    const status = (await statusRes.json()) as { xAnalysisModel: string | null };
-
-    expect(status.xAnalysisModel).toBe('x-ai/grok-4-fast');
-
-    const clearRes = await app.fetch(
+    const res = await app.fetch(
       new Request('http://localhost/api/setup', {
         method: 'POST',
         headers: { cookie, 'content-type': 'application/json' },
         body: JSON.stringify({
-          default_chat_model: 'openrouter/auto',
-          default_transcription_model: 'openai/whisper-1',
-          default_x_analysis_model: '',
+          app_language: 'en',
+          app_timezone: 'UTC',
         }),
       }),
     );
-    expect(clearRes.status).toBe(200);
 
-    const clearedStatusRes = await app.fetch(
-      new Request('http://localhost/api/setup', { headers: { cookie } }),
-    );
-    const clearedStatus = (await clearedStatusRes.json()) as { xAnalysisModel: string | null };
-    expect(clearedStatus.xAnalysisModel).toBe('x-ai/grok-4.5');
+    expect(res.status).toBe(400);
+    await expect(getSetting('app_language')).resolves.toBeNull();
+    await expect(getSetting('app_timezone')).resolves.toBeNull();
+    await expect(getSetting('openrouter_api_key')).resolves.toBeNull();
   });
 
-  it('admin com key inválida → 400 PT-BR e nada persiste', async () => {
+  it('trocar a chave restaura atomicamente todos os modelos canônicos', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
 
+    await setSettings({
+      openrouter_api_key: VALID_KEY,
+      default_chat_model: 'custom/chat',
+      default_transcription_model: 'custom/stt',
+      default_web_search_model: 'custom/web',
+      default_vision_model: 'custom/vision',
+      default_document_model: 'custom/document',
+      default_x_analysis_model: 'custom/x',
+      app_language: 'pt-BR',
+      app_timezone: 'America/Sao_Paulo',
+    });
+    installValidOpenRouterMock();
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/setup', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          openrouter_api_key: REPLACEMENT_KEY,
+          app_language: 'en',
+          app_timezone: 'UTC',
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    await expect(getSetting('openrouter_api_key')).resolves.toBe(REPLACEMENT_KEY);
+    await expect(getSetting('default_chat_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_transcription_model')).resolves.toBe('x-ai/grok-stt-1.0');
+    await expect(getSetting('default_web_search_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_vision_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_document_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_x_analysis_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('app_language')).resolves.toBe('en');
+    await expect(getSetting('app_timezone')).resolves.toBe('UTC');
+  });
+
+  it('key inválida preserva chave, modelos, idioma e fuso anteriores', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    await setSettings({
+      openrouter_api_key: REPLACEMENT_KEY,
+      default_chat_model: 'custom/chat',
+      app_language: 'pt-BR',
+      app_timezone: 'America/Sao_Paulo',
+    });
     installFetchMock(async () => new Response('{}', { status: 401 }));
 
     const res = await app.fetch(
@@ -319,8 +381,8 @@ describeIfDb('setup flow', () => {
         headers: { cookie, 'content-type': 'application/json' },
         body: JSON.stringify({
           openrouter_api_key: VALID_KEY,
-          default_chat_model: 'openrouter/auto',
-          default_transcription_model: 'openai/whisper-1',
+          app_language: 'en',
+          app_timezone: 'UTC',
         }),
       }),
     );
@@ -328,8 +390,10 @@ describeIfDb('setup flow', () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/Chave da OpenRouter inválida/i);
 
-    const stored = await db.setting.findMany({ where: { scope: 'GLOBAL' } });
-    expect(stored).toHaveLength(0);
+    await expect(getSetting('openrouter_api_key')).resolves.toBe(REPLACEMENT_KEY);
+    await expect(getSetting('default_chat_model')).resolves.toBe('custom/chat');
+    await expect(getSetting('app_language')).resolves.toBe('pt-BR');
+    await expect(getSetting('app_timezone')).resolves.toBe('America/Sao_Paulo');
   });
 
   it('user comum em /api/setup → 403', async () => {
@@ -370,16 +434,12 @@ describeIfDb('setup flow', () => {
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
 
-    installFetchMock(async () => new Response('{}', { status: 200 }));
+    installValidOpenRouterMock();
     await app.fetch(
       new Request('http://localhost/api/setup', {
         method: 'POST',
         headers: { cookie, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          openrouter_api_key: VALID_KEY,
-          default_chat_model: 'openrouter/auto',
-          default_transcription_model: 'openai/whisper-1',
-        }),
+        body: JSON.stringify({ openrouter_api_key: VALID_KEY }),
       }),
     );
 

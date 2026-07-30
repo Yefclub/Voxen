@@ -298,7 +298,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                     subtitle_lang = lang
                 except PermanentError as e:
                     # Rate-limit (429) era promovido a PermanentError e abortava
-                    # o job sem cair no Whisper. Outros PermanentError (antibot,
+                    # o job sem acionar a transcrição remota. Outros PermanentError (antibot,
                     # geo, etc.) continuam fatais.
                     if not _is_rate_limit_error(e):
                         raise
@@ -1555,7 +1555,7 @@ async def _retry_transient[T](
     Erros "amigáveis" determinísticos (antibot, geo, 403) viram PermanentError
     na hora. Rate-limit (429) **retenta** com backoff maior e só vira
     PermanentError após esgotar as tentativas — para o path de legendas ainda
-    poder fazer fallback pro Whisper.
+    poder fazer fallback para a transcrição remota.
     """
     last_exc: BaseException | None = None
     for attempt in range(tries):

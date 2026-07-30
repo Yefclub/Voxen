@@ -9,6 +9,13 @@
 FROM node:22-alpine AS web-front-builder
 WORKDIR /app
 
+ARG VOXEN_VERSION
+ARG VOXEN_GIT_SHA
+ARG VOXEN_BUILT_AT
+ENV VOXEN_VERSION=${VOXEN_VERSION:-}
+ENV VOXEN_GIT_SHA=${VOXEN_GIT_SHA:-}
+ENV VOXEN_BUILT_AT=${VOXEN_BUILT_AT:-}
+
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
@@ -93,7 +100,13 @@ RUN set -eux; \
 FROM python:3.13-slim AS runtime
 WORKDIR /app
 
+ARG VOXEN_VERSION
+ARG VOXEN_GIT_SHA
+ARG VOXEN_BUILT_AT
 ENV NODE_ENV=production \
+    VOXEN_VERSION=${VOXEN_VERSION:-} \
+    VOXEN_GIT_SHA=${VOXEN_GIT_SHA:-} \
+    VOXEN_BUILT_AT=${VOXEN_BUILT_AT:-} \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=3000 \
