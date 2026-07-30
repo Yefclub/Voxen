@@ -2,9 +2,10 @@
 
 ## Status
 
-Em validação no CI. A implementação e as suítes locais foram concluídas em
-2026-07-30; os testes com PostgreSQL/Redis ficam a cargo do CI porque esta
-entrega não inicia Docker nem Playwright.
+Implementada e validada em 2026-07-30. As suítes locais e os 18 checks
+bloqueantes do CI passaram; os testes com PostgreSQL/Redis e o build/smoke das
+imagens foram executados pelo CI porque esta entrega não inicia Docker nem
+Playwright localmente.
 
 ## Contexto
 
@@ -226,7 +227,7 @@ configuráveis ou novos formatos de ingestão.
       superior do worker encerra falhas sem traceback ou mensagem crua.
 - [x] Telemetria de proxy do yt-dlp informa somente categoria fechada; a
       supervisão assíncrona aguarda falhas de cleanup antes de sair.
-- [ ] Lint, formatação, typecheck, testes TypeScript/Python, build e verificações
+- [x] Lint, formatação, typecheck, testes TypeScript/Python, build e verificações
       de segurança bloqueantes passam no CI; auditorias informativas permanecem
       registradas separadamente.
 
