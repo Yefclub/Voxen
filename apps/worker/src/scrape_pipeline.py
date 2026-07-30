@@ -15,6 +15,7 @@ from .pipeline import (  # noqa: PLC2701
     _maybe_assign_folder,
     _maybe_generate_tags,
 )
+from .safe_diagnostics import error_diagnostic
 
 log = structlog.get_logger(__name__)
 
@@ -27,11 +28,20 @@ async def run(*, job_id: str, user_id: str, source_url: str, log: Any) -> None: 
     try:
         result = await _scrape_with_retry(source_url)
     except scraper.RobotsBlockedError as e:
-        raise PermanentError(str(e)) from e
+        raise PermanentError.public(
+            "SCRAPE_ROBOTS_BLOCKED",
+            "O site não permite a leitura automatizada deste conteúdo.",
+        ) from e
     except scraper.FetchBlockedError as e:
-        raise PermanentError(str(e)) from e
+        raise PermanentError.public(
+            "SCRAPE_ACCESS_BLOCKED",
+            "Não foi possível acessar esta página com segurança.",
+        ) from e
     except scraper.EmptyContentError as e:
-        raise PermanentError(str(e)) from e
+        raise PermanentError.public(
+            "SCRAPE_CONTENT_EMPTY",
+            "A página não ofereceu conteúdo suficiente para análise.",
+        ) from e
 
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "uploading", percent=70)
@@ -224,10 +234,11 @@ async def _maybe_generate_title(
     if len(clean_content) < 40:
         return fallback_title
     try:
-        api_key = await voxen_settings.get_openrouter_api_key()
-        model = await voxen_settings.get_default_chat_model()
-        if not api_key or not model:
+        config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
+        if not config.api_key or not config.model:
             return fallback_title
+        api_key = config.api_key
+        model = config.model
         language = await voxen_settings.get_app_language()
         result = await generate_content_title(
             content=clean_content,
@@ -249,7 +260,10 @@ async def _maybe_generate_title(
         )
         return result.title or fallback_title
     except Exception as e:  # noqa: BLE001 — título é enriquecimento best-effort
-        log.warning("web-title-generation-failed", error=str(e)[:240])
+        log.warning(
+            "web-title-generation-failed",
+            **error_diagnostic(e, "WEB_TITLE_GENERATION_FAILED"),
+        )
         return fallback_title
 
 

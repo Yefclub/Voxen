@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { registerSW } from 'virtual:pwa-register';
 import {
   createVersionSnooze,
   parseVersionSnooze,
+  resolveDisplayedFromVersion,
   resolveServerBuild,
   shouldNotify,
   type StoredVersionSnooze,
   type VersionPayload,
 } from './version-monitor-core';
-import { applyVersionUpdate, prepareVersionUpdate } from './version-apply';
+import {
+  activatePromptedVersionUpdate,
+  applyVersionUpdate,
+  prepareVersionUpdate,
+} from './version-apply';
 
 export interface VersionUpdate {
   fromVersion: string | null;
@@ -25,6 +31,44 @@ const VERSION_POLL_MS = 60_000;
 const SNOOZE_KEY = 'voxen.versionMonitor.snooze';
 
 let inMemorySnooze: StoredVersionSnooze | null = null;
+let registeredServiceWorker: ServiceWorkerRegistration | null = null;
+let waitingServiceWorker = false;
+const controllerChangeListeners = new Set<() => void>();
+const waitingServiceWorkerListeners = new Set<() => void>();
+
+// O modo prompt baixa o worker novo, mas só `updateServiceWorker(true)` envia
+// SKIP_WAITING. `onNeedReload` mantém o reload sob controle do fluxo testável.
+const updateServiceWorker = registerSW({
+  immediate: true,
+  onNeedRefresh: () => {
+    waitingServiceWorker = true;
+    for (const listener of waitingServiceWorkerListeners) listener();
+  },
+  onRegisteredSW: (_scriptUrl, registration) => {
+    registeredServiceWorker = registration ?? null;
+  },
+  onNeedReload: () => {
+    waitingServiceWorker = false;
+    for (const listener of controllerChangeListeners) listener();
+  },
+});
+
+function waitUntilServiceWorkerWaiting(timeoutMs: number): Promise<boolean> {
+  if (waitingServiceWorker) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ready: boolean): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      waitingServiceWorkerListeners.delete(onWaiting);
+      resolve(ready);
+    };
+    const onWaiting = (): void => finish(true);
+    const timeout = window.setTimeout(() => finish(false), timeoutMs);
+    waitingServiceWorkerListeners.add(onWaiting);
+  });
+}
 
 function readSnooze(): StoredVersionSnooze | null {
   try {
@@ -62,15 +106,26 @@ function clearSnooze(): void {
  * novo HTML realmente carregar: se a aba continuar antiga, o aviso volta.
  */
 async function applyUpdate(): Promise<void> {
-  const serviceWorker = 'serviceWorker' in navigator ? navigator.serviceWorker : null;
   await applyVersionUpdate({
     clearSnooze,
     reload: () => window.location.reload(),
     scheduleFallback: (callback, delayMs) => window.setTimeout(callback, delayMs),
     cancelFallback: (handle) => window.clearTimeout(handle as number),
-    getRegistration: async () => (await serviceWorker?.getRegistration()) ?? null,
+    requestActivation: async () => {
+      await activatePromptedVersionUpdate({
+        isWaiting: () => waitingServiceWorker,
+        checkForUpdate: async () => {
+          await registeredServiceWorker?.update();
+        },
+        waitUntilWaiting: waitUntilServiceWorkerWaiting,
+        activate: async () => {
+          await updateServiceWorker(true);
+        },
+      });
+    },
     onControllerChange: (listener) => {
-      serviceWorker?.addEventListener('controllerchange', listener, { once: true });
+      controllerChangeListeners.add(listener);
+      return () => controllerChangeListeners.delete(listener);
     },
   });
 }
@@ -78,7 +133,8 @@ async function applyUpdate(): Promise<void> {
 async function prepareUpdate(): Promise<void> {
   const serviceWorker = 'serviceWorker' in navigator ? navigator.serviceWorker : null;
   await prepareVersionUpdate({
-    getRegistration: async () => (await serviceWorker?.getRegistration()) ?? null,
+    getRegistration: async () =>
+      registeredServiceWorker ?? (await serviceWorker?.getRegistration()) ?? null,
   });
 }
 
@@ -94,10 +150,9 @@ async function prepareUpdate(): Promise<void> {
  *    continuar antigo, a comparação de builds permanece verdadeira.
  *
  * Baseline de identidade do bundle carregado:
- * 1. Meta `voxen-build` injetado pelo servidor no HTML servido. Essencial no
- *    PWA: o SW serve index.html precacheado (antigo), então um baseline buscado
- *    da rede viria sempre do servidor novo e o app instalado nunca se perceberia
- *    velho. Com o meta, mismatch contra /api/version = bundle de outro build.
+ * 1. Meta `voxen-build` gravado pelo Vite no HTML durante o build. O HTML usa
+ *    NetworkFirst e `no-store` no servidor, mas uma aba aberta continua com o
+ *    JavaScript anterior; o meta mantém a identidade daquele bundle imutável.
  * 2. Fallback (dev Vite, builds antigos sem o meta): baseline da primeira
  *    resposta de /api/version.
  */
@@ -157,6 +212,7 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
         !shouldNotify({
           serverBuild,
           loadedBuild,
+          waitingServiceWorker,
           snoozedBuild: snooze?.build ?? null,
           snoozedUntil: snooze?.until ?? null,
         })
@@ -165,13 +221,14 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
       }
       if (shownBuildRef.current === serverBuild) return;
       shownBuildRef.current = serverBuild;
-      if (preparedBuildRef.current !== serverBuild) {
+      if (!waitingServiceWorker && preparedBuildRef.current !== serverBuild) {
         preparedBuildRef.current = serverBuild;
         void prepareUpdate();
       }
+      const toVersion = payload.version ?? null;
       setUpdate({
-        fromVersion: loadedVersion,
-        toVersion: payload.version ?? null,
+        fromVersion: resolveDisplayedFromVersion(loadedVersion, toVersion),
+        toVersion,
         serverBuild,
       });
     };
@@ -188,6 +245,7 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
     window.addEventListener('focus', onWake);
     window.addEventListener('online', onWake);
     document.addEventListener('visibilitychange', onWake);
+    waitingServiceWorkerListeners.add(onWake);
 
     return () => {
       stopped = true;
@@ -196,6 +254,7 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
       window.removeEventListener('focus', onWake);
       window.removeEventListener('online', onWake);
       document.removeEventListener('visibilitychange', onWake);
+      waitingServiceWorkerListeners.delete(onWake);
     };
   }, [enabled]);
 

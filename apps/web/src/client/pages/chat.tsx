@@ -19,7 +19,7 @@ import {
   Wrench,
   X,
 } from '@/components/ui/icons';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { play } from 'cuelume';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';

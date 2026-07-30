@@ -54,18 +54,17 @@ async def validate_audio_for_transcription(path: Path) -> None:
     inesperada, registra um warning e retorna sem erro — a transcrição segue.
     """
     if not path.exists():
-        logger.warning("audio-validation-failed", reason="missing", path=str(path))
+        logger.warning("audio-validation-failed", reason="missing")
         raise AudioValidationError("Arquivo de áudio não encontrado para transcrição.")
 
     size_bytes = path.stat().st_size
     if size_bytes <= 0:
-        logger.warning("audio-validation-failed", reason="empty", path=str(path))
+        logger.warning("audio-validation-failed", reason="empty")
         raise AudioValidationError("Arquivo de áudio vazio — nada para transcrever.")
     if size_bytes > MAX_AUDIO_BYTES:
         logger.warning(
             "audio-validation-failed",
             reason="too_large",
-            path=str(path),
             size_bytes=size_bytes,
         )
         raise AudioValidationError(
@@ -75,11 +74,11 @@ async def validate_audio_for_transcription(path: Path) -> None:
     info = await _run_ffprobe(path)
     if info is None:
         # ffprobe ausente ou saída inesperada → degrada graceful (não bloqueia).
-        logger.warning("audio-validation-skipped", path=str(path), size_bytes=size_bytes)
+        logger.warning("audio-validation-skipped", size_bytes=size_bytes)
         return
 
     if not _has_audio_stream(info):
-        logger.warning("audio-validation-failed", reason="no_audio_stream", path=str(path))
+        logger.warning("audio-validation-failed", reason="no_audio_stream")
         raise AudioValidationError(
             "O arquivo não contém faixa de áudio reproduzível para transcrição."
         )
@@ -89,7 +88,6 @@ async def validate_audio_for_transcription(path: Path) -> None:
         logger.warning(
             "audio-validation-failed",
             reason="invalid_duration",
-            path=str(path),
             duration=duration,
         )
         raise AudioValidationError(
@@ -99,14 +97,12 @@ async def validate_audio_for_transcription(path: Path) -> None:
         logger.warning(
             "audio-validation-failed",
             reason="too_long",
-            path=str(path),
             duration=duration,
         )
         raise AudioValidationError("Áudio excede a duração máxima de 4 horas.")
 
     logger.info(
         "audio-validated",
-        path=str(path),
         size_bytes=size_bytes,
         duration_sec=int(duration),
     )
@@ -133,7 +129,7 @@ async def _run_ffprobe(path: Path) -> dict[str, Any] | None:
             stderr=asyncio.subprocess.PIPE,
         )
     except FileNotFoundError:
-        logger.warning("ffprobe-not-found", path=str(path))
+        logger.warning("ffprobe-not-found")
         return None
 
     try:
@@ -141,26 +137,24 @@ async def _run_ffprobe(path: Path) -> dict[str, Any] | None:
     except TimeoutError:
         proc.kill()
         await proc.wait()
-        logger.warning("ffprobe-timeout", path=str(path), timeout_sec=FFPROBE_TIMEOUT_SEC)
+        logger.warning("ffprobe-timeout", timeout_sec=FFPROBE_TIMEOUT_SEC)
         return None
     if proc.returncode != 0:
-        msg = stderr.decode("utf-8", errors="replace").strip() or "ffprobe falhou"
         logger.warning(
             "ffprobe-nonzero-exit",
-            path=str(path),
             returncode=proc.returncode,
-            error=msg,
+            stderr_bytes=len(stderr),
         )
         return None
 
     try:
         parsed = json.loads(stdout.decode("utf-8", errors="replace"))
     except (ValueError, UnicodeDecodeError):
-        logger.warning("ffprobe-invalid-json", path=str(path))
+        logger.warning("ffprobe-invalid-json")
         return None
 
     if not isinstance(parsed, dict):
-        logger.warning("ffprobe-unexpected-output", path=str(path))
+        logger.warning("ffprobe-unexpected-output")
         return None
     return parsed
 

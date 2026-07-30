@@ -527,7 +527,8 @@ const ptBRMessages = {
   'chat.compactionFailed': 'Não consegui compactar a memória.',
   'chat.compactionFailedDescription':
     'Sua próxima resposta pode falhar por exceder o limite do modelo.',
-  'chat.visionDisabled': 'Visão não está habilitada — admin precisa configurar um modelo de visão.',
+  'chat.visionDisabled':
+    'Visão não está habilitada — admin precisa concluir a configuração da OpenRouter.',
   'chat.unsupportedFormat': 'Formato não suportado.',
   'chat.acceptedImages': 'Aceito: PNG, JPEG, WEBP, GIF.',
   'chat.imageTooLarge': 'Imagem muito grande.',
@@ -535,7 +536,7 @@ const ptBRMessages = {
   'chat.readFileError': 'Falha ao ler arquivo.',
   'chat.documentsDisabled': 'Documentos não estão habilitados.',
   'chat.documentsDisabledDescription':
-    'Admin precisa configurar um modelo de documentos em /setup.',
+    'Admin precisa concluir a configuração unificada da OpenRouter em /setup.',
   'chat.documentTooLarge': 'Documento muito grande.',
   'chat.documentLimit': 'Limite: 50 MB.',
   'chat.documentSendError': 'Falha ao enviar documento.',
@@ -631,9 +632,11 @@ const ptBRMessages = {
   'prompt.voiceEmpty': 'Não consegui entender o áudio. Tente de novo.',
   'prompt.voiceNetworkError': 'Erro de rede ao enviar áudio.',
   'prompt.visionMissing': 'Visão não configurada.',
-  'prompt.visionMissingDescription': 'Admin precisa escolher um modelo de visão em /setup.',
+  'prompt.visionMissingDescription':
+    'Admin precisa concluir a configuração unificada da OpenRouter em /setup.',
   'prompt.documentsMissing': 'Documentos não configurados.',
-  'prompt.documentsMissingDescription': 'Admin precisa escolher um modelo de documentos em /setup.',
+  'prompt.documentsMissingDescription':
+    'Admin precisa concluir a configuração unificada da OpenRouter em /setup.',
   'prompt.imageLimit': 'Limite de 5MB.',
   'prompt.readImageError': 'Falha ao ler imagem.',
   'prompt.mentionLibrary': 'Biblioteca',
@@ -650,10 +653,10 @@ const ptBRMessages = {
   'prompt.transcribing': 'Transcrevendo…',
   'prompt.uploadDocument': 'Enviar documento',
   'prompt.uploadDocumentTitle': 'Enviar documento para análise',
-  'prompt.documentModelMissing': 'Modelo de documentos não configurado',
+  'prompt.documentModelMissing': 'Configuração da OpenRouter incompleta',
   'prompt.attachImage': 'Anexar imagem',
   'prompt.attachImageTitle': 'Anexar imagem (PNG/JPEG/WebP/GIF, máx 5MB)',
-  'prompt.visionModelMissing': 'Modelo de visão não configurado',
+  'prompt.visionModelMissing': 'Configuração da OpenRouter incompleta',
   'prompt.stopRecording': 'Parar gravação',
   'prompt.recordVoice': 'Gravar voz',
   'prompt.send': 'Enviar',
@@ -694,15 +697,6 @@ const ptBRMessages = {
   'markdown.code': 'código',
   'transcript.title': 'Transcrição',
   'transcript.copyAll': 'Copiar tudo',
-
-  'modelPicker.available': '{count} disponíveis',
-  'modelPicker.clear': 'Não configurar',
-  'modelPicker.clearHint': 'Recurso fica desabilitado ou usa fallback.',
-  'modelPicker.empty': 'Nenhum modelo encontrado.',
-  'modelPicker.filter': 'Filtrar por nome, provedor ou ID',
-  'modelPicker.notConfigured': 'Não configurado',
-  'modelPicker.select': 'Selecione um modelo',
-  'modelPicker.total': '{count} modelos disponíveis',
 
   'admin.eyebrow': 'Administração',
   'admin.costs.title': 'Custos',
@@ -1183,11 +1177,9 @@ const ptBRMessages = {
   'setup.title.initialSuffix': '',
   'setup.title.edit': 'Configurações da instância',
   'setup.subtitle.initial':
-    'Uma chave da OpenRouter dá acesso a Whisper para transcrição e a vários modelos de chat. É a única dependência externa do Voxen.',
+    'Uma chave da OpenRouter habilita chat, transcrição, imagens e documentos com os padrões seguros da Voxen.',
   'setup.subtitle.edit':
-    'Edite chave, modelos padrão, operação e extração de mídia sem sair da página.',
-  'setup.step.key': 'Chave',
-  'setup.step.models': 'Modelos',
+    'Atualize idioma e fuso ou substitua a chave da OpenRouter; novos modelos são aplicados automaticamente.',
   'setup.validationTitle': 'Não consegui validar',
   'setup.saved': 'Configurações salvas.',
   'setup.doneTitle': 'Salvo.',
@@ -1202,38 +1194,16 @@ const ptBRMessages = {
   'setup.openrouter.description.active':
     'A chave salva permanece cifrada. Cole uma nova apenas quando quiser substituir a atual.',
   'setup.openrouter.description.new':
-    'A chave validada será salva junto com os modelos escolhidos.',
+    'A chave será validada antes de qualquer alteração na configuração.',
   'setup.openrouter.active': 'Chave ativa',
   'setup.openrouter.stored': 'Chave armazenada e pronta para uso.',
   'setup.openrouter.newKey': 'Nova OpenRouter API key (opcional)',
   'setup.openrouter.newKeyPlaceholder': 'sk-or-v1-... (opcional)',
   'setup.openrouter.apiKey': 'OpenRouter API key',
-  'setup.openrouter.refreshModels': 'Atualizar modelos',
-  'setup.openrouter.refreshHint.active':
-    'Atualizar modelos valida a chave digitada; se o campo estiver vazio, usa a chave já salva na instância.',
-  'setup.openrouter.refreshHint.new':
-    'Atualizar modelos revalida a chave digitada antes de carregar o catálogo.',
-  'setup.models.title': 'Modelos padrão',
-  'setup.models.description':
-    'Escolha os modelos que a instância usa para chat, transcrição, visão, documentos, pesquisa web e análise do X.',
-  'setup.models.transcription': 'Modelo de transcrição',
-  'setup.models.chat': 'Modelo de chat',
-  'setup.models.web': 'Modelo de pesquisa web (opcional)',
-  'setup.models.webHint':
-    'A ferramenta web_search usa este modelo com openrouter:web_search. Vazio restaura o padrão recomendado.',
-  'setup.models.vision': 'Modelo de visão (opcional)',
-  'setup.models.visionHint':
-    'Para entender imagens enviadas no chat. Vazio restaura o padrão recomendado.',
-  'setup.models.documents': 'Modelo de documentos/PDF (opcional)',
-  'setup.models.documentsHint':
-    'Filtrado por modelos OpenRouter com entrada nativa de arquivo/PDF. Vazio restaura o padrão recomendado.',
-  'setup.models.x': 'Modelo de análise do X (Grok)',
-  'setup.models.xHint':
-    'Posts do X usam Grok/xAI com busca nativa no X. Vazio restaura o padrão recomendado.',
+  'setup.openrouter.defaults':
+    'Ao salvar, a Voxen usa Grok 4.5 para texto e imagens e Grok STT para transcrição. PDFs passam pelo Mistral OCR e os demais documentos pelo MarkItDown antes da análise.',
   'setup.save': 'Salvar configurações',
   'setup.error.load': 'Erro ao carregar configuração.',
-  'setup.error.key': 'Erro ao validar chave.',
-  'setup.error.models': 'Erro ao listar modelos.',
   'setup.error.save': 'Erro ao salvar.',
 } as const;
 
@@ -1743,14 +1713,16 @@ const enMessages: Record<I18nKey, string> = {
   'chat.compactionFailed': 'Could not compact memory.',
   'chat.compactionFailedDescription':
     'Your next response may fail because it exceeds the model limit.',
-  'chat.visionDisabled': 'Vision is not enabled. An admin needs to configure a vision model.',
+  'chat.visionDisabled':
+    'Vision is not enabled. An admin needs to complete the OpenRouter configuration.',
   'chat.unsupportedFormat': 'Unsupported format.',
   'chat.acceptedImages': 'Accepted: PNG, JPEG, WEBP, GIF.',
   'chat.imageTooLarge': 'Image too large.',
   'chat.imageLimit': 'Limit: 5 MB.',
   'chat.readFileError': 'Failed to read file.',
   'chat.documentsDisabled': 'Documents are not enabled.',
-  'chat.documentsDisabledDescription': 'An admin needs to configure a document model in /setup.',
+  'chat.documentsDisabledDescription':
+    'An admin needs to complete the unified OpenRouter configuration in /setup.',
   'chat.documentTooLarge': 'Document too large.',
   'chat.documentLimit': 'Limit: 50 MB.',
   'chat.documentSendError': 'Failed to upload document.',
@@ -1846,9 +1818,11 @@ const enMessages: Record<I18nKey, string> = {
   'prompt.voiceEmpty': 'I could not understand the audio. Try again.',
   'prompt.voiceNetworkError': 'Network error while sending audio.',
   'prompt.visionMissing': 'Vision not configured.',
-  'prompt.visionMissingDescription': 'An admin needs to choose a vision model in /setup.',
+  'prompt.visionMissingDescription':
+    'An admin needs to complete the unified OpenRouter configuration in /setup.',
   'prompt.documentsMissing': 'Documents not configured.',
-  'prompt.documentsMissingDescription': 'An admin needs to choose a document model in /setup.',
+  'prompt.documentsMissingDescription':
+    'An admin needs to complete the unified OpenRouter configuration in /setup.',
   'prompt.imageLimit': '5MB limit.',
   'prompt.readImageError': 'Failed to read image.',
   'prompt.mentionLibrary': 'Library',
@@ -1865,10 +1839,10 @@ const enMessages: Record<I18nKey, string> = {
   'prompt.transcribing': 'Transcribing…',
   'prompt.uploadDocument': 'Upload document',
   'prompt.uploadDocumentTitle': 'Upload document for analysis',
-  'prompt.documentModelMissing': 'Document model not configured',
+  'prompt.documentModelMissing': 'OpenRouter configuration incomplete',
   'prompt.attachImage': 'Attach image',
   'prompt.attachImageTitle': 'Attach image (PNG/JPEG/WebP/GIF, max 5MB)',
-  'prompt.visionModelMissing': 'Vision model not configured',
+  'prompt.visionModelMissing': 'OpenRouter configuration incomplete',
   'prompt.stopRecording': 'Stop recording',
   'prompt.recordVoice': 'Record voice',
   'prompt.send': 'Send',
@@ -1910,15 +1884,6 @@ const enMessages: Record<I18nKey, string> = {
   'markdown.code': 'code',
   'transcript.title': 'Transcript',
   'transcript.copyAll': 'Copy all',
-
-  'modelPicker.available': '{count} available',
-  'modelPicker.clear': 'Do not configure',
-  'modelPicker.clearHint': 'The feature stays disabled or uses its fallback.',
-  'modelPicker.empty': 'No models found.',
-  'modelPicker.filter': 'Filter by name, provider, or ID',
-  'modelPicker.notConfigured': 'Not configured',
-  'modelPicker.select': 'Select a model',
-  'modelPicker.total': '{count} models available',
 
   'admin.eyebrow': 'Administration',
   'admin.costs.title': 'Costs',
@@ -2394,10 +2359,9 @@ const enMessages: Record<I18nKey, string> = {
   'setup.title.initialSuffix': '',
   'setup.title.edit': 'Instance settings',
   'setup.subtitle.initial':
-    'An OpenRouter key gives access to Whisper for transcription and several chat models. It is Voxen’s only external dependency.',
-  'setup.subtitle.edit': 'Edit the key, default models, operation settings, and media extraction.',
-  'setup.step.key': 'Key',
-  'setup.step.models': 'Models',
+    'An OpenRouter key enables chat, transcription, images, and documents with Voxen’s safe defaults.',
+  'setup.subtitle.edit':
+    'Update language and timezone or replace the OpenRouter key; new defaults are applied automatically.',
   'setup.validationTitle': 'Could not validate',
   'setup.saved': 'Settings saved.',
   'setup.doneTitle': 'Saved.',
@@ -2411,38 +2375,17 @@ const enMessages: Record<I18nKey, string> = {
   'setup.openrouter.title': 'OpenRouter',
   'setup.openrouter.description.active':
     'The saved key remains encrypted. Paste a new one only when you want to replace it.',
-  'setup.openrouter.description.new': 'The validated key will be saved with the selected models.',
+  'setup.openrouter.description.new':
+    'The key will be validated before any configuration is changed.',
   'setup.openrouter.active': 'Active key',
   'setup.openrouter.stored': 'Key stored and ready to use.',
   'setup.openrouter.newKey': 'New OpenRouter API key (optional)',
   'setup.openrouter.newKeyPlaceholder': 'sk-or-v1-... (optional)',
   'setup.openrouter.apiKey': 'OpenRouter API key',
-  'setup.openrouter.refreshModels': 'Refresh models',
-  'setup.openrouter.refreshHint.active':
-    'Refreshing models validates the typed key; if the field is empty, it uses the saved instance key.',
-  'setup.openrouter.refreshHint.new':
-    'Refreshing models revalidates the typed key before loading the catalog.',
-  'setup.models.title': 'Default models',
-  'setup.models.description':
-    'Choose the models this instance uses for chat, transcription, vision, documents, web search, and X analysis.',
-  'setup.models.transcription': 'Transcription model',
-  'setup.models.chat': 'Chat model',
-  'setup.models.web': 'Web search model (optional)',
-  'setup.models.webHint':
-    'The web_search tool uses this model with openrouter:web_search. Empty restores the recommended default.',
-  'setup.models.vision': 'Vision model (optional)',
-  'setup.models.visionHint':
-    'For understanding images sent in chat. Empty restores the recommended default.',
-  'setup.models.documents': 'Document/PDF model (optional)',
-  'setup.models.documentsHint':
-    'Filtered by OpenRouter models with native file/PDF input. Empty restores the recommended default.',
-  'setup.models.x': 'X analysis model (Grok)',
-  'setup.models.xHint':
-    'X posts use Grok/xAI with native X search. Empty restores the recommended default.',
+  'setup.openrouter.defaults':
+    'When saved, Voxen uses Grok 4.5 for text and images and Grok STT for transcription. PDFs go through Mistral OCR and other documents through MarkItDown before analysis.',
   'setup.save': 'Save settings',
   'setup.error.load': 'Error loading configuration.',
-  'setup.error.key': 'Error validating key.',
-  'setup.error.models': 'Error listing models.',
   'setup.error.save': 'Error saving.',
 };
 

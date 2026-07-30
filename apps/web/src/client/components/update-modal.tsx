@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { AlertTriangle, ExternalLink, RefreshCw, RotateCw, Sparkles } from '@/components/ui/icons';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
@@ -14,6 +14,7 @@ import {
   resolveReleaseCopy,
   resolveReleaseView,
   resolveUpdateModalEffect,
+  shouldPresentUpdateModal,
   type ReleaseLoadState,
   type UpdateModalIntent,
 } from '../lib/update-modal-core';
@@ -52,6 +53,7 @@ export function UpdateModal({
   const { t } = useI18n();
   const { update, apply, snooze } = monitor;
   const { streaming } = useChatShell();
+  const location = useLocation();
   const [release, setRelease] = useState<ReleaseNote | null>(null);
   const [loadState, setLoadState] = useState<ReleaseLoadState>('loading');
   const [retry, setRetry] = useState(0);
@@ -105,6 +107,15 @@ export function UpdateModal({
     return () => controller.abort();
   }, [releaseUrl, retry, update]);
 
+  if (
+    !shouldPresentUpdateModal({
+      hasUpdate: update !== null,
+      streaming,
+      pathname: location.pathname,
+    })
+  ) {
+    return null;
+  }
   if (!update) return null;
 
   const handleIntent = (intent: UpdateModalIntent): boolean => {
@@ -113,7 +124,7 @@ export function UpdateModal({
     if (effect === 'apply') {
       setApplying(true);
       apply();
-    } else {
+    } else if (effect === 'snooze') {
       snooze();
     }
     return true;

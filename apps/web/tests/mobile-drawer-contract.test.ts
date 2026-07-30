@@ -22,4 +22,20 @@ describe('navegação mobile', () => {
     expect(layout).toContain('onProgress: (progress) => mobileNavProgress.set(progress)');
     expect(layout).toContain('inert={mobileNavOpen ? true : undefined}');
   });
+
+  test('regiões horizontais reservam o gesto e o drawer fechado não mantém sombra', () => {
+    const markdown = read('src/client/components/ui/markdown.tsx');
+    const gesture = read('src/client/lib/use-edge-swipe.ts');
+    const drawer = read('src/client/components/layout/mobile-nav-drawer.tsx');
+    const graph = read('src/client/pages/grafo.tsx');
+
+    expect(markdown).toContain('data-horizontal-scroll="true"');
+    expect(markdown).toContain('data-drawer-gesture-ignore');
+    expect(gesture).toContain("'[data-horizontal-scroll]'");
+    expect(gesture).toContain("'canvas'");
+    expect(graph).toMatch(/<section\s+data-drawer-gesture-ignore\s+className="graph-canvas-grid/);
+    expect(drawer).not.toContain('shadow-2xl');
+    expect(drawer).toContain('boxShadow: panelShadow');
+    expect(drawer).toContain('visibility: panelVisibility');
+  });
 });

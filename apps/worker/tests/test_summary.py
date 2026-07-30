@@ -14,15 +14,19 @@ from src import summary
 class _FakeLogger:
     def __init__(self) -> None:
         self.events: list[tuple[str, str]] = []
+        self.warning_details: list[tuple[str, dict[str, object]]] = []
+        self.error_details: list[tuple[str, dict[str, object]]] = []
 
     def info(self, event: str, **_kw: object) -> None:
         self.events.append(("info", event))
 
-    def warning(self, event: str, **_kw: object) -> None:
+    def warning(self, event: str, **kw: object) -> None:
         self.events.append(("warning", event))
+        self.warning_details.append((event, kw))
 
-    def exception(self, event: str, **_kw: object) -> None:
-        self.events.append(("exception", event))
+    def error(self, event: str, **kw: object) -> None:
+        self.events.append(("error", event))
+        self.error_details.append((event, kw))
 
 
 def _patch_db_fetch(monkeypatch: pytest.MonkeyPatch, row: dict[str, object] | None) -> MagicMock:
@@ -34,6 +38,24 @@ def _patch_db_fetch(monkeypatch: pytest.MonkeyPatch, row: dict[str, object] | No
     fake_ctx.__aexit__ = AsyncMock(return_value=False)
     monkeypatch.setattr(summary.db, "connection", lambda: fake_ctx)
     return fake_conn
+
+
+def _patch_model_config(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    api_key: str | None,
+    model: str | None,
+) -> None:
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_openrouter_model_config",
+        AsyncMock(
+            return_value=summary.voxen_settings.OpenRouterModelConfig(
+                api_key=api_key,
+                model=model,
+            )
+        ),
+    )
 
 
 async def test_skip_when_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -64,16 +86,7 @@ async def test_skip_when_plain_text_empty(monkeypatch: pytest.MonkeyPatch) -> No
 async def test_skip_when_missing_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
     _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem ipsum"})
-    monkeypatch.setattr(
-        summary.voxen_settings,
-        "get_openrouter_api_key",
-        AsyncMock(return_value=None),
-    )
-    monkeypatch.setattr(
-        summary.voxen_settings,
-        "get_default_chat_model",
-        AsyncMock(return_value="openai/gpt-4o-mini"),
-    )
+    _patch_model_config(monkeypatch, api_key=None, model="openai/gpt-4o-mini")
 
     log = _FakeLogger()
     await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
@@ -83,16 +96,7 @@ async def test_skip_when_missing_config(monkeypatch: pytest.MonkeyPatch) -> None
 async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
     fake_conn = _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem ipsum"})
-    monkeypatch.setattr(
-        summary.voxen_settings,
-        "get_openrouter_api_key",
-        AsyncMock(return_value="sk-test"),
-    )
-    monkeypatch.setattr(
-        summary.voxen_settings,
-        "get_default_chat_model",
-        AsyncMock(return_value="openai/gpt-4o-mini"),
-    )
+    _patch_model_config(monkeypatch, api_key="sk-test", model="openai/gpt-4o-mini")
     monkeypatch.setattr(
         summary.voxen_settings,
         "get_summary_timeout_sec",
@@ -145,16 +149,7 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
 async def test_logs_empty_when_200_without_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
     _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem"})
-    monkeypatch.setattr(
-        summary.voxen_settings,
-        "get_openrouter_api_key",
-        AsyncMock(return_value="sk-test"),
-    )
-    monkeypatch.setattr(
-        summary.voxen_settings,
-        "get_default_chat_model",
-        AsyncMock(return_value="openai/gpt-4o-mini"),
-    )
+    _patch_model_config(monkeypatch, api_key="sk-test", model="openai/gpt-4o-mini")
     monkeypatch.setattr(
         summary.voxen_settings,
         "get_summary_timeout_sec",
@@ -184,16 +179,7 @@ async def test_logs_empty_when_200_without_summary(monkeypatch: pytest.MonkeyPat
 async def test_warns_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
     _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem"})
-    monkeypatch.setattr(
-        summary.voxen_settings,
-        "get_openrouter_api_key",
-        AsyncMock(return_value="sk-test"),
-    )
-    monkeypatch.setattr(
-        summary.voxen_settings,
-        "get_default_chat_model",
-        AsyncMock(return_value="openai/gpt-4o-mini"),
-    )
+    _patch_model_config(monkeypatch, api_key="sk-test", model="openai/gpt-4o-mini")
     monkeypatch.setattr(
         summary.voxen_settings,
         "get_summary_timeout_sec",
@@ -207,7 +193,9 @@ async def test_warns_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
 
     fake_response = MagicMock()
     fake_response.status_code = 502
-    fake_response.text = "Bad Gateway"
+    fake_response.text = (
+        "Bearer body-secret sk-or-v1-upstream-secret socks5h://proxy-user:proxy-pass@127.0.0.1:1080"
+    )
 
     async def fake_post(self: httpx.AsyncClient, *args: object, **kw: object) -> object:
         return fake_response
@@ -216,6 +204,49 @@ async def test_warns_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
         log = _FakeLogger()
         await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
     assert ("warning", "summary-upstream-non-200") in log.events
+    assert ("summary-upstream-non-200", {"status": 502}) in log.warning_details
+    logged = repr(log.warning_details)
+    assert "body-secret" not in logged
+    assert "upstream-secret" not in logged
+    assert "proxy-user" not in logged
+    assert "proxy-pass" not in logged
+
+
+async def test_network_error_log_does_not_include_proxy_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
+    _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem"})
+    _patch_model_config(monkeypatch, api_key="sk-test", model="openai/gpt-4o-mini")
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_summary_timeout_sec",
+        AsyncMock(return_value=120.0),
+    )
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
+
+    async def fake_post(self: httpx.AsyncClient, *args: object, **kw: object) -> object:
+        raise httpx.ProxyError("socks5h://proxy-user:proxy-pass@127.0.0.1:1080")
+
+    with patch.object(httpx.AsyncClient, "post", fake_post):
+        log = _FakeLogger()
+        await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
+
+    assert log.warning_details == [
+        (
+            "summary-network-error",
+            {
+                "error_code": "SUMMARY_UPSTREAM_UNAVAILABLE",
+                "error_type": "ProxyError",
+            },
+        )
+    ]
+    assert "proxy-user" not in repr(log.warning_details)
+    assert "proxy-pass" not in repr(log.warning_details)
 
 
 async def test_exception_is_logged_but_not_raised(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -229,7 +260,18 @@ async def test_exception_is_logged_but_not_raised(monkeypatch: pytest.MonkeyPatc
     log = _FakeLogger()
     # Não levanta — best-effort
     await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
-    assert ("exception", "summary-failed") in log.events
+    assert ("error", "summary-failed") in log.events
+    assert log.error_details == [
+        (
+            "summary-failed",
+            {
+                "transcript_id": "t1",
+                "error_code": "SUMMARY_FAILED",
+                "error_type": "RuntimeError",
+            },
+        )
+    ]
+    assert "DB exploded" not in repr(log.error_details)
 
 
 def test_build_summarize_prompt_no_tldr_pt_and_en() -> None:

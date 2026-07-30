@@ -12,7 +12,7 @@ import {
   AlertCircle,
   Loader2,
 } from '@/components/ui/icons';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { Markdown } from '../components/ui/markdown';
 import { Button } from '../components/ui/button';

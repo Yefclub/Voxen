@@ -44,11 +44,26 @@ export function resolveServerBuild(payload: VersionPayload): string | null {
   return payload.gitSha || payload.version || null;
 }
 
+/**
+ * Evita exibir transições redundantes como `v1.2.3 → v1.2.3` quando a
+ * identidade técnica mudou (ou há um service worker esperando), mas a versão
+ * amigável continuou igual.
+ */
+export function resolveDisplayedFromVersion(
+  loadedVersion: string | null,
+  serverVersion: string | null,
+): string | null {
+  if (!loadedVersion || loadedVersion === serverVersion) return null;
+  return loadedVersion;
+}
+
 export interface ShouldNotifyArgs {
   /** Build servido agora (gitSha || version). */
   serverBuild: string | null;
   /** Build do bundle carregado nesta aba (meta voxen-build, ou baseline em dev). */
   loadedBuild: string | null;
+  /** Há um service worker novo baixado, mas ainda não ativado. */
+  waitingServiceWorker?: boolean;
   /** Build temporariamente adiado. */
   snoozedBuild: string | null;
   /** Instante em epoch ms até o qual o adiamento vale. */
@@ -62,18 +77,18 @@ export interface ShouldNotifyArgs {
  *
  * Verdadeiro SÓ quando o build servido:
  *  - existe,
- *  - difere do build carregado nesta aba, E
- *  - não está dentro de um adiamento temporário ainda válido.
+ *  - não está dentro de um adiamento temporário ainda válido, E
+ *  - difere do build carregado nesta aba OU há um service worker esperando.
  */
 export function shouldNotify({
   serverBuild,
   loadedBuild,
+  waitingServiceWorker = false,
   snoozedBuild,
   snoozedUntil,
   now = Date.now(),
 }: ShouldNotifyArgs): boolean {
   if (!serverBuild) return false;
-  if (serverBuild === loadedBuild) return false;
   if (serverBuild === snoozedBuild && snoozedUntil !== null && snoozedUntil > now) return false;
-  return true;
+  return waitingServiceWorker || serverBuild !== loadedBuild;
 }

@@ -16,6 +16,7 @@ import httpx
 
 from . import db, openrouter, voxen_settings
 from .cancellation import is_cancelled
+from .safe_diagnostics import error_diagnostic
 
 OR_BASE_URL = openrouter.OR_BASE_URL
 
@@ -83,11 +84,12 @@ async def maybe_generate(
             log.info("summary-skipped-empty-text")
             return
 
-        api_key = await voxen_settings.get_openrouter_api_key()
-        model = await voxen_settings.get_default_chat_model()
-        if not api_key or not model:
+        config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
+        if not config.api_key or not config.model:
             log.warning("summary-skipped-missing-config")
             return
+        api_key = config.api_key
+        model = config.model
 
         text = str(row["plainText"]).strip()
         if not text:
@@ -124,8 +126,11 @@ async def maybe_generate(
                     headers={"Authorization": f"Bearer {api_key}"},
                     json=payload,
                 )
-            except (httpx.TimeoutException, httpx.NetworkError) as e:
-                log.warning("summary-network-error", error=str(e)[:200])
+            except httpx.TransportError as e:
+                log.warning(
+                    "summary-network-error",
+                    **error_diagnostic(e, "SUMMARY_UPSTREAM_UNAVAILABLE"),
+                )
                 return
 
         if res.status_code in (401, 403):
@@ -135,7 +140,6 @@ async def maybe_generate(
             log.warning(
                 "summary-upstream-non-200",
                 status=res.status_code,
-                body=res.text[:200],
             )
             return
 
@@ -165,8 +169,12 @@ async def maybe_generate(
                     summary,
                     user_id,
                 )
-        except Exception:  # noqa: BLE001
-            log.exception("summary-persist-failed", transcript_id=transcript_id)
+        except Exception as e:  # noqa: BLE001
+            log.error(
+                "summary-persist-failed",
+                transcript_id=transcript_id,
+                **error_diagnostic(e, "SUMMARY_PERSIST_FAILED"),
+            )
             return
 
         try:
@@ -184,9 +192,17 @@ async def maybe_generate(
                     "language": language,
                 },
             )
-        except Exception:  # noqa: BLE001
-            log.exception("summary-cost-event-failed", transcript_id=transcript_id)
+        except Exception as e:  # noqa: BLE001
+            log.error(
+                "summary-cost-event-failed",
+                transcript_id=transcript_id,
+                **error_diagnostic(e, "SUMMARY_COST_EVENT_FAILED"),
+            )
 
         log.info("summary-done", transcript_id=transcript_id, language=language)
-    except Exception:  # noqa: BLE001 — resumo é melhoria, não bloqueia
-        log.exception("summary-failed", transcript_id=transcript_id)
+    except Exception as e:  # noqa: BLE001 — resumo é melhoria, não bloqueia
+        log.error(
+            "summary-failed",
+            transcript_id=transcript_id,
+            **error_diagnostic(e, "SUMMARY_FAILED"),
+        )

@@ -1,5 +1,5 @@
 export type UpdateModalIntent = 'apply' | 'defer' | 'dismiss' | 'open-changelog';
-export type UpdateModalEffect = 'apply' | 'snooze' | 'none';
+export type UpdateModalEffect = 'apply' | 'snooze' | 'navigate' | 'none';
 export type ReleaseLoadState = 'loading' | 'ready' | 'error';
 export type ReleaseView = 'loading' | 'release' | 'empty' | 'error';
 
@@ -31,8 +31,21 @@ export function resolveUpdateModalEffect(
   state: { applying: boolean; streaming: boolean },
 ): UpdateModalEffect {
   if (state.applying) return 'none';
+  if (intent === 'open-changelog') return 'navigate';
   if (intent === 'apply') return state.streaming ? 'none' : 'apply';
   return 'snooze';
+}
+
+export function shouldPresentUpdateModal({
+  hasUpdate,
+  streaming,
+  pathname,
+}: {
+  hasUpdate: boolean;
+  streaming: boolean;
+  pathname: string;
+}): boolean {
+  return hasUpdate && !streaming && pathname !== '/novidades';
 }
 
 export function resolveReleaseView(loadState: ReleaseLoadState, hasRelease: boolean): ReleaseView {

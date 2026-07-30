@@ -11,7 +11,7 @@ import {
   User as UserIcon,
 } from '@/components/ui/icons';
 import { QRCodeSVG } from 'qrcode.react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';

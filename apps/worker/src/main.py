@@ -21,6 +21,7 @@ import structlog
 from . import automation, db, events, ytdl
 from .cancellation import cancel_subscriber
 from .pipeline import _maybe_generate_tags, process_job
+from .safe_diagnostics import error_diagnostic
 
 log = structlog.get_logger(__name__)
 
@@ -34,8 +35,12 @@ async def _process_with_sem(sem: asyncio.Semaphore, job_id: str) -> None:
     async with sem:
         try:
             await process_job(job_id)
-        except Exception:  # noqa: BLE001
-            log.exception("process_job-crashed", job_id=job_id)
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "process_job-crashed",
+                job_id=job_id,
+                **error_diagnostic(exc, "PROCESS_JOB_CRASHED"),
+            )
 
 
 async def _subscriber_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> None:
@@ -65,20 +70,29 @@ async def _reconciliation_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> N
             ids = await db.list_queued_job_ids(limit=10)
             for job_id in ids:
                 asyncio.create_task(_process_with_sem(sem, job_id))
-        except Exception:  # noqa: BLE001
-            log.exception("reconciliation-failed")
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "reconciliation-failed",
+                **error_diagnostic(exc, "JOB_RECONCILIATION_FAILED"),
+            )
         try:
             indexed = await db.reindex_missing_transcript_brain_nodes(limit=50)
             if indexed:
                 log.info("brain-reconciliation-indexed", count=indexed)
-        except Exception:  # noqa: BLE001
-            log.exception("brain-reconciliation-failed")
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "brain-reconciliation-failed",
+                **error_diagnostic(exc, "BRAIN_RECONCILIATION_FAILED"),
+            )
         try:
             pending_tags = await _reconcile_tags_once()
             if pending_tags:
                 log.info("tag-reconciliation-processed", count=pending_tags)
-        except Exception:  # noqa: BLE001
-            log.exception("tag-reconciliation-failed")
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "tag-reconciliation-failed",
+                **error_diagnostic(exc, "TAG_RECONCILIATION_FAILED"),
+            )
         try:
             await asyncio.wait_for(stop.wait(), timeout=RECONCILIATION_INTERVAL_SEC)
         except TimeoutError:
@@ -102,8 +116,12 @@ async def _process_automation_run(sem: asyncio.Semaphore, run_id: str) -> None:
     async with sem:
         try:
             await automation.process_run(run_id)
-        except Exception:  # noqa: BLE001
-            log.exception("process-automation-run-crashed", run_id=run_id)
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "process-automation-run-crashed",
+                run_id=run_id,
+                **error_diagnostic(exc, "AUTOMATION_RUN_CRASHED"),
+            )
 
 
 async def _automation_subscriber_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> None:
@@ -136,18 +154,27 @@ async def _automation_scheduler_loop(sem: asyncio.Semaphore, stop: asyncio.Event
     while not stop.is_set():
         try:
             await automation.scheduler_tick()
-        except Exception:  # noqa: BLE001
-            log.exception("automation-scheduler-failed")
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "automation-scheduler-failed",
+                **error_diagnostic(exc, "AUTOMATION_SCHEDULER_FAILED"),
+            )
         try:
             pending = await automation.list_pending_run_ids(limit=10)
             for run_id in pending:
                 asyncio.create_task(_process_automation_run(sem, run_id))
-        except Exception:  # noqa: BLE001
-            log.exception("automation-reconciliation-failed")
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "automation-reconciliation-failed",
+                **error_diagnostic(exc, "AUTOMATION_RECONCILIATION_FAILED"),
+            )
         try:
             await automation.reap_stale_running_runs()
-        except Exception:  # noqa: BLE001
-            log.exception("automation-stale-reaper-failed")
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "automation-stale-reaper-failed",
+                **error_diagnostic(exc, "AUTOMATION_STALE_REAPER_FAILED"),
+            )
         try:
             await asyncio.wait_for(stop.wait(), timeout=AUTOMATION_SCHEDULER_INTERVAL_SEC)
         except TimeoutError:
@@ -161,7 +188,11 @@ async def amain() -> None:
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, stop.set)
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except (NotImplementedError, RuntimeError):
+            # Windows e loops embutidos podem não expor signal handlers.
+            pass
 
     log.info(
         "worker-starting",
@@ -170,13 +201,15 @@ async def amain() -> None:
         **ytdl.runtime_versions(),
     )
     try:
-        await asyncio.gather(
-            _subscriber_loop(sem, stop),
-            _reconciliation_loop(sem, stop),
-            cancel_subscriber(stop),
-            _automation_subscriber_loop(automation_sem, stop),
-            _automation_scheduler_loop(automation_sem, stop),
-        )
+        # TaskGroup cancela e AGUARDA todos os siblings antes de propagar uma
+        # falha. Assim, exceções em finally/cleanup entram no ExceptionGroup e
+        # nunca viram "unhandled exception during asyncio.run() shutdown".
+        async with asyncio.TaskGroup() as supervisor:
+            supervisor.create_task(_subscriber_loop(sem, stop))
+            supervisor.create_task(_reconciliation_loop(sem, stop))
+            supervisor.create_task(cancel_subscriber(stop))
+            supervisor.create_task(_automation_subscriber_loop(automation_sem, stop))
+            supervisor.create_task(_automation_scheduler_loop(automation_sem, stop))
     finally:
         await db.close_pool()
         await events.close_redis()
@@ -184,7 +217,14 @@ async def amain() -> None:
 
 
 def main() -> NoReturn:
-    asyncio.run(amain())
+    try:
+        asyncio.run(amain())
+    except Exception as exc:  # noqa: BLE001 — boundary impede traceback externo no stderr
+        log.error(
+            "worker-runtime-failed",
+            **error_diagnostic(exc, "WORKER_RUNTIME_FAILED"),
+        )
+        raise SystemExit(1) from None
     raise SystemExit(0)
 
 

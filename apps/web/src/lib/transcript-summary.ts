@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { db } from './db';
-import { getAppLanguage, getSetting, type AppLanguage } from './settings';
+import { getAppLanguage, getSettings, type AppLanguage } from './settings';
 
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -70,11 +70,16 @@ export async function generateAndPersistTranscriptSummary(input: {
   plainText: string;
   abortSignal?: AbortSignal;
 }): Promise<string> {
-  const apiKey = await getSetting('openrouter_api_key');
+  const settings = await getSettings([
+    'openrouter_api_key',
+    'default_chat_model',
+    'summary_timeout_sec',
+  ] as const);
+  const apiKey = settings.openrouter_api_key;
   if (!apiKey) {
     throw new TranscriptSummaryError('Setup incompleto — chave OpenRouter ausente.', 412);
   }
-  const model = await getSetting('default_chat_model');
+  const model = settings.default_chat_model;
   if (!model) {
     throw new TranscriptSummaryError('Setup incompleto — modelo de chat ausente.', 412);
   }
@@ -87,7 +92,7 @@ export async function generateAndPersistTranscriptSummary(input: {
     text = text.slice(0, 60_000) + '\n\n[…transcrição truncada para resumo…]';
   }
 
-  const timeoutSecRaw = await getSetting('summary_timeout_sec');
+  const timeoutSecRaw = settings.summary_timeout_sec;
   let timeoutMs = 120_000;
   if (timeoutSecRaw) {
     const parsed = Number(timeoutSecRaw);
@@ -126,17 +131,28 @@ export async function generateAndPersistTranscriptSummary(input: {
         : AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new TranscriptSummaryError(`Falha ao contatar OpenRouter: ${msg}`, 502);
+    const name =
+      typeof err === 'object' && err !== null && 'name' in err
+        ? String((err as { name?: unknown }).name)
+        : '';
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      throw new TranscriptSummaryError(
+        'A OpenRouter não respondeu no prazo. Tente novamente.',
+        502,
+      );
+    }
+    throw new TranscriptSummaryError(
+      'Não foi possível contatar a OpenRouter. Tente novamente.',
+      502,
+    );
   }
 
   if (res.status === 401 || res.status === 403) {
     throw new TranscriptSummaryError('Chave OpenRouter rejeitada.', 412);
   }
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
     throw new TranscriptSummaryError(
-      `OpenRouter ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`,
+      `OpenRouter retornou status ${res.status} ao gerar o resumo.`,
       502,
     );
   }

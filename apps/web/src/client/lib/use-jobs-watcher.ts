@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { toast } from 'sonner';
+import { useEffect, useRef } from 'react';
+import { toast } from './toast';
 import { useI18n, type TranslateFn } from './i18n';
 
 interface JobEvent {
@@ -31,16 +31,22 @@ const JOBS_WATCHER_POLL_MS = 10_000;
  */
 export function useJobsWatcher(enabled: boolean, onNavigate: (path: string) => void): void {
   const { t } = useI18n();
+  const onNavigateRef = useRef(onNavigate);
+  const translateRef = useRef(t);
+  onNavigateRef.current = onNavigate;
+  translateRef.current = t;
 
   useEffect(() => {
     if (!enabled) return;
     const seen = new Set<string>();
     let initialized = false;
     let stopped = false;
+    let polling = false;
     const controller = new AbortController();
 
     const poll = async () => {
-      if (stopped) return;
+      if (stopped || polling) return;
+      polling = true;
       let payload: JobsResponse;
       try {
         const res = await fetch('/api/jobs', {
@@ -52,8 +58,11 @@ export function useJobsWatcher(enabled: boolean, onNavigate: (path: string) => v
         payload = (await res.json()) as JobsResponse;
       } catch {
         return;
+      } finally {
+        polling = false;
       }
 
+      if (stopped) return;
       for (const job of payload.jobs) {
         const stage = terminalStage(job.status);
         if (!stage) continue;
@@ -72,8 +81,8 @@ export function useJobsWatcher(enabled: boolean, onNavigate: (path: string) => v
             errorMsg: job.errorMsg ?? undefined,
             ts: new Date().toISOString(),
           },
-          t,
-          onNavigate,
+          translateRef.current,
+          onNavigateRef.current,
         );
       }
       initialized = true;
@@ -89,7 +98,7 @@ export function useJobsWatcher(enabled: boolean, onNavigate: (path: string) => v
       controller.abort();
       clearInterval(interval);
     };
-  }, [enabled, onNavigate, t]);
+  }, [enabled]);
 }
 
 function terminalStage(status: string): JobEvent['stage'] | null {

@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { useMotionValue } from 'motion/react';
 import { Sidebar, SidebarSpacer } from './sidebar';
@@ -35,6 +35,7 @@ export function AppLayout(): React.ReactElement {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const mobileNavProgress = useMotionValue(0);
   const isDesktop = useIsDesktop();
+  const navigateFromNotification = useCallback((path: string) => navigate(path), [navigate]);
   // Swipe da borda esquerda → direita abre o drawer; swipe de volta fecha. Só
   // ativo no mobile (no desktop a navegação é a sidebar). Hooks sempre rodam
   // (regras de hooks) — `enabled` controla o anexo dos listeners.
@@ -46,8 +47,9 @@ export function AppLayout(): React.ReactElement {
     onProgress: (progress) => mobileNavProgress.set(progress),
   });
   // Watcher global de jobs do user logado (toast em qualquer página)
-  useJobsWatcher(!!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone), (path) =>
-    navigate(path),
+  useJobsWatcher(
+    !!(data?.user && data.user.status === 'APPROVED' && data.onboardingDone),
+    navigateFromNotification,
   );
   // Aviso de versão nova do backend — modal centralizado com o que mudou.
   const versionMonitor = useVersionMonitor(!!data?.user);

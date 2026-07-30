@@ -468,7 +468,10 @@ export function GrafoPage(): React.ReactElement {
             </aside>
           )}
 
-          <section className="graph-canvas-grid relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] shadow-inner">
+          <section
+            data-drawer-gesture-ignore
+            className="graph-canvas-grid relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] shadow-inner"
+          >
             <BrainGraphCanvas
               model={model}
               selectedId={selectedId}

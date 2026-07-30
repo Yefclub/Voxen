@@ -67,7 +67,7 @@ async function completeSetup(): Promise<void> {
   // Bypassa o validateApiKey gravando direto no DB cifrado.
   await setSetting('openrouter_api_key', 'sk-or-v1-' + 'x'.repeat(40));
   await setSetting('default_chat_model', 'openrouter/auto');
-  await setSetting('default_transcription_model', 'openai/whisper-1');
+  await setSetting('default_transcription_model', 'x-ai/grok-stt-1.0');
 }
 
 const VALID_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';

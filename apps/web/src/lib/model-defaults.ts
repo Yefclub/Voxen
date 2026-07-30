@@ -9,3 +9,31 @@ export const DEFAULT_OPENROUTER_MODELS = {
   default_document_model: DEFAULT_TEXT_MODEL,
   default_x_analysis_model: DEFAULT_TEXT_MODEL,
 } as const;
+
+type OpenRouterModelCapabilities = {
+  id: string;
+  architecture?: {
+    input_modalities?: string[];
+    output_modalities?: string[];
+  };
+};
+
+export function hasCanonicalOpenRouterModels(
+  models: readonly OpenRouterModelCapabilities[],
+): boolean {
+  const textDefault = models.find((model) => model.id === DEFAULT_TEXT_MODEL);
+  const transcriptionDefault = models.find((model) => model.id === DEFAULT_TRANSCRIPTION_MODEL);
+  const textInputs = textDefault?.architecture?.input_modalities ?? [];
+  const textOutputs = textDefault?.architecture?.output_modalities ?? [];
+  const transcriptionOutputs = transcriptionDefault?.architecture?.output_modalities ?? [];
+
+  return (
+    Boolean(textDefault) &&
+    textInputs.includes('text') &&
+    textInputs.includes('image') &&
+    textInputs.includes('file') &&
+    textOutputs.includes('text') &&
+    Boolean(transcriptionDefault) &&
+    transcriptionOutputs.includes('transcription')
+  );
+}

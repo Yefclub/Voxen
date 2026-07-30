@@ -2,6 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import {
   DEFAULT_THRESHOLDS,
   DRAWER_GESTURE_IGNORE_SELECTOR,
+  drawerPanelOpacity,
+  drawerPanelShadow,
+  drawerPanelVisibility,
   drawerGestureProgress,
   isCentralOpenSwipe,
   isCloseSwipe,
@@ -37,6 +40,9 @@ describe('gestos do drawer mobile', () => {
   test('ignora controles nativos, editores e controles ARIA', () => {
     for (const selector of [
       'input',
+      'canvas',
+      'table',
+      'td',
       '[contenteditable]',
       '[tabindex]:not([tabindex="-1"])',
       '[aria-haspopup]',
@@ -50,6 +56,9 @@ describe('gestos do drawer mobile', () => {
       '[role="menuitemradio"]',
       '[role="slider"]',
       '[role="textbox"]',
+      '[role="table"]',
+      '[role="cell"]',
+      '[data-horizontal-scroll]',
     ]) {
       expect(DRAWER_GESTURE_IGNORE_SELECTOR).toContain(selector);
     }
@@ -58,7 +67,30 @@ describe('gestos do drawer mobile', () => {
         closest: (selector) => (selector.includes('[contenteditable]') ? {} : null),
       }),
     ).toBe(true);
+    expect(
+      matchesDrawerGestureIgnore({
+        closest: (selector) => (selector.includes('[data-horizontal-scroll]') ? {} : null),
+      }),
+    ).toBe(true);
+    expect(
+      matchesDrawerGestureIgnore({
+        closest: (selector) => (selector.includes('canvas') ? {} : null),
+      }),
+    ).toBe(true);
     expect(matchesDrawerGestureIgnore({ closest: () => null })).toBe(false);
     expect(matchesDrawerGestureIgnore(null)).toBe(false);
+  });
+
+  test('zera completamente a camada visual do drawer quando o progresso fecha', () => {
+    expect(drawerPanelOpacity(0)).toBe(0);
+    expect(drawerPanelShadow(0)).toBe('none');
+    expect(drawerPanelVisibility(0)).toBe('hidden');
+    expect(drawerPanelOpacity(0.0005)).toBe(0);
+    expect(drawerPanelShadow(0.0005)).toBe('none');
+    expect(drawerPanelVisibility(0.0005)).toBe('hidden');
+
+    expect(drawerPanelOpacity(0.5)).toBe(1);
+    expect(drawerPanelShadow(0.5)).not.toBe('none');
+    expect(drawerPanelVisibility(0.5)).toBe('visible');
   });
 });

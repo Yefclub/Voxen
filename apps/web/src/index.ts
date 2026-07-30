@@ -329,13 +329,9 @@ import { join } from 'node:path';
 const distDir = join(import.meta.dir, '..', 'dist');
 const distExists = existsSync(distDir);
 
-// Identidade do build injetada no HTML na hora de servir. Por quê: o PWA
-// precacheia index.html/assets — um app instalado pode estar rodando um bundle
-// ANTIGO servido pelo service worker enquanto o servidor já tem build novo.
-// O monitor de versão (use-version-monitor) compara este meta (identidade do
-// bundle carregado) contra /api/version a cada poll e detecta o descompasso —
-// baseline buscado da rede não cobre esse caso, porque viria sempre do
-// servidor novo. Sanitizamos pra chars seguros de atributo HTML por defesa.
+// Fallback de identidade para builds antigos ou sem Vite. Builds atuais gravam
+// estes metas durante a compilação; assim uma variável alterada apenas no
+// runtime não pode fazer JavaScript antigo se declarar como build novo.
 const VOXEN_BUILD_ID = (VOXEN_GIT_SHA || VOXEN_VERSION).replace(/[^A-Za-z0-9._+-]/g, '');
 const VOXEN_VERSION_ID = VOXEN_VERSION.replace(/[^A-Za-z0-9._+-]/g, '');
 
@@ -348,10 +344,13 @@ async function serveHtmlWithBuildMeta(target: string, headers: Headers): Promise
   let html = htmlBuildMetaCache.get(target);
   if (html === undefined) {
     const raw = await Bun.file(target).text();
-    html = raw.replace(
-      '<head>',
-      `<head><meta name="voxen-build" content="${VOXEN_BUILD_ID}"><meta name="voxen-version" content="${VOXEN_VERSION_ID}">`,
-    );
+    html =
+      raw.includes('name="voxen-build"') && raw.includes('name="voxen-version"')
+        ? raw
+        : raw.replace(
+            '<head>',
+            `<head><meta name="voxen-build" content="${VOXEN_BUILD_ID}"><meta name="voxen-version" content="${VOXEN_VERSION_ID}">`,
+          );
     htmlBuildMetaCache.set(target, html);
   }
   headers.set('Content-Type', 'text/html; charset=utf-8');

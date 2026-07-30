@@ -8,7 +8,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from './toast';
 import { ApiError, apiPost } from './api';
 import { useI18n } from './i18n';
 

@@ -1,12 +1,14 @@
 import { describe, expect, mock, test } from 'bun:test';
 import {
+  activatePromptedVersionUpdate,
   applyVersionUpdate,
   prepareVersionUpdate,
   UPDATE_FALLBACK_MS,
+  UPDATE_READY_TIMEOUT_MS,
   type VersionUpdateRuntime,
 } from './version-apply';
 
-function runtimeHarness(registration: VersionUpdateRuntime['getRegistration']): {
+function runtimeHarness(requestActivation: VersionUpdateRuntime['requestActivation']): {
   runtime: VersionUpdateRuntime;
   clearSnooze: ReturnType<typeof mock>;
   reload: ReturnType<typeof mock>;
@@ -34,9 +36,12 @@ function runtimeHarness(registration: VersionUpdateRuntime['getRegistration']): 
         return 'timer';
       },
       cancelFallback,
-      getRegistration: registration,
+      requestActivation,
       onControllerChange: (listener) => {
         controllerChange = listener;
+        return () => {
+          controllerChange = null;
+        };
       },
     },
   };
@@ -57,13 +62,62 @@ describe('aplicação da atualização', () => {
     expect(update).toHaveBeenCalledTimes(1);
   });
 
+  test('aguarda o worker ficar waiting antes de ativar após clique precoce', async () => {
+    let signalWaiting = (): void => undefined;
+    let waiting = false;
+    const order: string[] = [];
+    const activation = activatePromptedVersionUpdate({
+      isWaiting: () => waiting,
+      checkForUpdate: async () => {
+        order.push('check');
+      },
+      waitUntilWaiting: async (timeoutMs) => {
+        expect(timeoutMs).toBe(UPDATE_READY_TIMEOUT_MS);
+        order.push('wait');
+        await new Promise<void>((resolve) => {
+          signalWaiting = () => {
+            waiting = true;
+            resolve();
+          };
+        });
+        return true;
+      },
+      activate: async () => {
+        order.push('activate');
+      },
+    });
+
+    await Promise.resolve();
+    expect(order).toEqual(['check', 'wait']);
+    signalWaiting();
+    await activation;
+    expect(order).toEqual(['check', 'wait', 'activate']);
+  });
+
+  test('ativa imediatamente quando o worker já está waiting', async () => {
+    const checkForUpdate = mock(async () => undefined);
+    const waitUntilWaiting = mock(async () => true);
+    const activate = mock(async () => undefined);
+
+    await activatePromptedVersionUpdate({
+      isWaiting: () => true,
+      checkForUpdate,
+      waitUntilWaiting,
+      activate,
+    });
+
+    expect(checkForUpdate).not.toHaveBeenCalled();
+    expect(waitUntilWaiting).not.toHaveBeenCalled();
+    expect(activate).toHaveBeenCalledTimes(1);
+  });
+
   test('limpa o adiamento, atualiza o service worker e recarrega ao trocar controller', async () => {
-    const update = mock(async () => undefined);
-    const harness = runtimeHarness(async () => ({ update }));
+    const requestActivation = mock(async () => undefined);
+    const harness = runtimeHarness(requestActivation);
 
     await applyVersionUpdate(harness.runtime);
     expect(harness.clearSnooze).toHaveBeenCalledTimes(1);
-    expect(update).toHaveBeenCalledTimes(1);
+    expect(requestActivation).toHaveBeenCalledTimes(1);
     expect(harness.reload).not.toHaveBeenCalled();
 
     harness.signalControllerChange();
@@ -73,7 +127,7 @@ describe('aplicação da atualização', () => {
   });
 
   test('fallback recarrega uma única vez se o controller novo não assumir', async () => {
-    const harness = runtimeHarness(async () => ({ update: async () => undefined }));
+    const harness = runtimeHarness(async () => undefined);
     await applyVersionUpdate(harness.runtime);
 
     harness.runFallback();
@@ -81,17 +135,12 @@ describe('aplicação da atualização', () => {
     expect(harness.reload).toHaveBeenCalledTimes(1);
   });
 
-  test('sem registro ou com falha recarrega imediatamente pelo caminho comum', async () => {
-    for (const registration of [
-      async () => null,
-      async () => {
-        throw new Error('service worker unavailable');
-      },
-    ]) {
-      const harness = runtimeHarness(registration);
-      await applyVersionUpdate(harness.runtime);
-      expect(harness.cancelFallback).toHaveBeenCalledWith('timer');
-      expect(harness.reload).toHaveBeenCalledTimes(1);
-    }
+  test('falha ao ativar recarrega imediatamente pelo caminho comum', async () => {
+    const harness = runtimeHarness(async () => {
+      throw new Error('service worker unavailable');
+    });
+    await applyVersionUpdate(harness.runtime);
+    expect(harness.cancelFallback).not.toHaveBeenCalled();
+    expect(harness.reload).toHaveBeenCalledTimes(1);
   });
 });

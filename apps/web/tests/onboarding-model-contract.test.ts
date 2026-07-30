@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 const read = (path: string): string => readFileSync(join(import.meta.dir, '..', path), 'utf8');
 
-describe('contrato entre onboarding e configuração avançada', () => {
+describe('contrato unificado de configuração OpenRouter', () => {
   test('onboarding solicita a chave sem introduzir uma etapa de escolha de modelos', () => {
     const onboarding = read('src/client/pages/onboarding.tsx');
     expect(onboarding).toContain(
@@ -16,10 +16,12 @@ describe('contrato entre onboarding e configuração avançada', () => {
     expect(onboarding).not.toContain("setStep('modelos')");
   });
 
-  test('configuração mantém os seletores avançados depois do onboarding', () => {
+  test('configuração administrativa solicita somente a chave e não lista modelos', () => {
     const setup = read('src/client/pages/setup.tsx');
-    expect(setup).toContain("import { ModelPicker } from '../components/model-picker'");
-    expect(setup.match(/<ModelPicker/g)?.length).toBeGreaterThanOrEqual(6);
-    expect(setup).toContain("type Step = 'loading' | 'key' | 'modelos' | 'done'");
+    expect(setup).not.toContain('ModelPicker');
+    expect(setup).not.toContain('/api/setup/models');
+    expect(setup).not.toContain('default_chat_model');
+    expect(setup).not.toContain('default_transcription_model');
+    expect(setup).toContain('body.openrouter_api_key = apiKey.trim()');
   });
 });

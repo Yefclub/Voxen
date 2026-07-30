@@ -11,6 +11,11 @@ import {
 import { X } from '@/components/ui/icons';
 import type { MeUser } from '../../lib/types';
 import { useI18n } from '../../lib/i18n';
+import {
+  drawerPanelOpacity,
+  drawerPanelShadow,
+  drawerPanelVisibility,
+} from '../../lib/use-edge-swipe';
 import { SidebarModeBody, SidebarSignOut, SidebarChangelogButton } from './sidebar';
 
 const FOCUSABLE_SELECTOR = [
@@ -46,6 +51,9 @@ export function MobileNavDrawer({
   const reduceMotion = useReducedMotion();
   const panelX = useTransform(progress, (value) => `${(value - 1) * 100}%`);
   const backdropOpacity = useTransform(progress, [0, 1], [0, 0.68]);
+  const panelOpacity = useTransform(progress, drawerPanelOpacity);
+  const panelShadow = useTransform(progress, drawerPanelShadow);
+  const panelVisibility = useTransform(progress, drawerPanelVisibility);
 
   useEffect(() => {
     const controls = animate(progress, open ? 1 : 0, {
@@ -132,12 +140,15 @@ export function MobileNavDrawer({
         inert={open ? undefined : true}
         className={[
           'fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-[22rem] flex-col overflow-hidden',
-          'border-r border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] shadow-2xl',
+          'border-r border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]',
           'focus:outline-none will-change-transform md:hidden',
           open ? 'pointer-events-auto' : 'pointer-events-none',
         ].join(' ')}
         style={{
           x: panelX,
+          opacity: panelOpacity,
+          boxShadow: panelShadow,
+          visibility: panelVisibility,
           paddingTop: 'env(safe-area-inset-top)',
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}

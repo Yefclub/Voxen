@@ -15,6 +15,7 @@ import httpx
 import structlog
 
 from . import storage
+from .safe_diagnostics import error_diagnostic
 
 log = structlog.get_logger()
 
@@ -97,7 +98,7 @@ async def mirror_remote_thumbnail(
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return None
     if not _host_allowed(parsed.hostname):
-        log.info("thumbnail-host-skipped", host=parsed.hostname)
+        log.info("thumbnail-host-skipped", reason="host_not_allowed")
         return None
 
     headers = {
@@ -118,7 +119,6 @@ async def mirror_remote_thumbnail(
                 log.warning(
                     "thumbnail-fetch-http",
                     status=resp.status_code,
-                    host=parsed.hostname,
                 )
                 return None
             body = resp.content
@@ -134,11 +134,14 @@ async def mirror_remote_thumbnail(
             ):
                 # aceita webp RIFF....WEBP
                 if not (len(body) > 12 and body[8:12] == b"WEBP"):
-                    log.warning("thumbnail-fetch-not-image", host=parsed.hostname)
+                    log.warning("thumbnail-fetch-not-image")
                     return None
             ext, mime = _ext_and_mime(resp.headers.get("content-type"), remote_url)
     except Exception as exc:  # noqa: BLE001
-        log.warning("thumbnail-fetch-failed", error=str(exc)[:200])
+        log.warning(
+            "thumbnail-fetch-failed",
+            **error_diagnostic(exc, "THUMBNAIL_FETCH_FAILED"),
+        )
         return None
 
     key = thumbnail_key(user_id, transcript_id, ext)
@@ -149,7 +152,10 @@ async def mirror_remote_thumbnail(
             fh.write(body)
         await storage.put_file(key=key, path=tmp, content_type=mime)
     except Exception as exc:  # noqa: BLE001
-        log.warning("thumbnail-upload-failed", error=str(exc)[:200])
+        log.warning(
+            "thumbnail-upload-failed",
+            **error_diagnostic(exc, "THUMBNAIL_UPLOAD_FAILED"),
+        )
         return None
     finally:
         if tmp is not None:
