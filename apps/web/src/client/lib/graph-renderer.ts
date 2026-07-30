@@ -14,6 +14,32 @@ export interface GraphRenderProfile {
 
 /** 2D (Sigma) por padrão — 3D só sob demanda (spec 103). */
 export const DEFAULT_GRAPH_MODE: GraphMode = '2d';
+export const GRAPH_3D_INIT_TIMEOUT_MS = 8_000;
+
+/**
+ * Arma o orçamento de inicialização do renderer 3D. O cancelamento é
+ * idempotente e impede callback tardio depois de sucesso ou unmount.
+ */
+export function scheduleGraph3DInitializationFallback(
+  onTimeout: () => void,
+  timeoutMs: number = GRAPH_3D_INIT_TIMEOUT_MS,
+): () => void {
+  let active = true;
+  const timeoutId = globalThis.setTimeout(
+    () => {
+      if (!active) return;
+      active = false;
+      onTimeout();
+    },
+    Math.max(0, timeoutMs),
+  );
+  return () => {
+    if (!active) return;
+    active = false;
+    globalThis.clearTimeout(timeoutId);
+  };
+}
+
 export function resolveGraphRenderProfile(
   nodeCount: number,
   edgeCount: number,

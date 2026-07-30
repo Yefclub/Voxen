@@ -9,7 +9,11 @@ import {
   nodePath,
   toOpaqueGraphColor,
 } from '../src/client/lib/graph-model';
-import { DEFAULT_GRAPH_MODE, resolveGraphRenderProfile } from '../src/client/lib/graph-renderer';
+import {
+  DEFAULT_GRAPH_MODE,
+  resolveGraphRenderProfile,
+  scheduleGraph3DInitializationFallback,
+} from '../src/client/lib/graph-renderer';
 
 const SVG_SAFE_COLOR = /^(#[0-9a-f]{6}|rgba?\([^)]+\))$/i;
 const GRAPH_PAGE_SOURCE = readFileSync(
@@ -252,6 +256,28 @@ describe('graph rendering helpers', () => {
     expect(dense.labelType).toBe('none');
     expect(dense.edgeInterpolation).toBe('linear');
     expect(dense.draggable).toBe(false);
+  });
+
+  test('returns to 2D when 3D initialization exceeds its budget', async () => {
+    let fallbacks = 0;
+    scheduleGraph3DInitializationFallback(() => {
+      fallbacks += 1;
+    }, 1);
+
+    await Bun.sleep(5);
+    expect(fallbacks).toBe(1);
+  });
+
+  test('cancels the 3D fallback after successful initialization or unmount', async () => {
+    let fallbacks = 0;
+    const cancel = scheduleGraph3DInitializationFallback(() => {
+      fallbacks += 1;
+    }, 1);
+    cancel();
+    cancel();
+
+    await Bun.sleep(5);
+    expect(fallbacks).toBe(0);
   });
 });
 

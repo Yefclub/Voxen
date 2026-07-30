@@ -1,42 +1,64 @@
 BEGIN;
 
--- Remove rótulos que vieram de instruções/raciocínio do modelo em builds
--- anteriores. TranscriptTag usa ON DELETE CASCADE, então as relações inválidas
--- desaparecem junto com a tag sem afetar o conteúdo.
+-- Mantém a limpeza histórica alinhada ao parser do web/worker. A função fica
+-- disponível para auditoria e testes de contrato após o deploy.
+CREATE OR REPLACE FUNCTION voxen_invalid_content_tag(value TEXT)
+RETURNS BOOLEAN
+LANGUAGE SQL
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+  SELECT
+    lower(trim(value)) = ANY (ARRAY[
+      'content',
+      'conteúdo',
+      'conteudo',
+      'misc',
+      'other',
+      'others',
+      'outros',
+      'geral',
+      'general',
+      'various',
+      'stuff',
+      'video',
+      'vídeo',
+      'tag',
+      'tags',
+      'none',
+      'nenhuma',
+      'n/a',
+      'na',
+      'null',
+      'i see'
+    ])
+    OR EXISTS (
+      SELECT 1
+      FROM unnest(ARRAY[
+        'looking at the content',
+        'the content is about',
+        'this content',
+        'it''s about',
+        'its about',
+        'here is',
+        'the tags',
+        'as tags',
+        'tags total',
+        'json array only',
+        'return json only',
+        'no duplicates',
+        'no sentences',
+        'o conteúdo',
+        'este conteúdo'
+      ]) AS marker
+      WHERE position(marker IN lower(trim(value))) > 0
+    );
+$$;
+
+-- TranscriptTag usa ON DELETE CASCADE, então as relações inválidas desaparecem
+-- junto com a tag sem afetar o conteúdo ou tags válidas.
 DELETE FROM "Tag"
-WHERE lower(trim(name)) IN (
-  'content',
-  'conteúdo',
-  'conteudo',
-  'misc',
-  'other',
-  'others',
-  'outros',
-  'geral',
-  'general',
-  'various',
-  'stuff',
-  'video',
-  'vídeo',
-  'tag',
-  'tags',
-  'none',
-  'nenhuma',
-  'n/a',
-  'na',
-  'null',
-  'i see',
-  'tags total',
-  'json array only',
-  'return json only',
-  'no duplicates',
-  'no sentences'
-)
-OR lower(name) LIKE '%looking at the content%'
-OR lower(name) LIKE '%the content is about%'
-OR lower(name) LIKE '%this content%'
-OR lower(name) LIKE '%the tags%'
-OR lower(name) LIKE '%as tags%';
+WHERE voxen_invalid_content_tag(name);
 
 -- Conteúdos que ficaram sem nenhuma tag voltam à fila de enriquecimento. O
 -- worker existente faz claim idempotente e gera novamente com o parser atual.

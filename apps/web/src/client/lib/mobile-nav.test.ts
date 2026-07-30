@@ -6,6 +6,7 @@ import {
   hasOwnMobileChrome,
   isChatRoute,
   hidesBottomNav,
+  shouldResetMobileDrawerForDesktop,
 } from './mobile-nav';
 
 describe('isBottomNavTab', () => {
@@ -162,5 +163,18 @@ describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobi
 
   test('/chat visitada diretamente é alias da home e abre o mesmo menu', () => {
     expect(shouldShowBack('/chat')).toBe(false);
+  });
+});
+
+describe('reset do drawer ao entrar no desktop', () => {
+  test('zera qualquer estado mobile visual ou semântico ao cruzar md', () => {
+    expect(shouldResetMobileDrawerForDesktop(true, true, false, 0)).toBe(true);
+    expect(shouldResetMobileDrawerForDesktop(true, false, true, 0)).toBe(true);
+    expect(shouldResetMobileDrawerForDesktop(true, false, false, 0.4)).toBe(true);
+  });
+
+  test('não interfere no gesto mobile nem no desktop já limpo', () => {
+    expect(shouldResetMobileDrawerForDesktop(false, true, true, 1)).toBe(false);
+    expect(shouldResetMobileDrawerForDesktop(true, false, false, 0)).toBe(false);
   });
 });

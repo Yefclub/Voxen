@@ -43,9 +43,8 @@ import {
 import {
   applySegmentEvent,
   closeTrailingReasoning,
+  resolveThinkingTiming,
   segmentsFromPersistedTools,
-  segmentsReasoningDuration,
-  segmentsRunning,
   type MessageSegment,
   type ToolEvent,
 } from '../lib/chat-segments';
@@ -238,9 +237,8 @@ function ToolRow({ tool }: { tool: ToolEvent }) {
 // ---------------------------------------------------------------------------
 // Bloco de pensamento — raciocínio e ferramentas num único container
 // cronológico (spec 078): "Pensando" (shimmer) enquanto o turno está ao vivo
-// (`live`) OU algum segmento ainda roda — e "Pensou por Xs" só ao terminar o
-// turno. Gaps entre tools (running=false por milissegundos) NÃO colapsam o
-// bloco; isso evitava o flicker compacta/reabre no harness multi-step.
+// (`live`) — e "Pensou por Xs" só ao terminar o turno. Segmentos persistidos
+// abertos não reativam um turno encerrado nem iniciam cronômetro após reload.
 // HITL fica acima do composer (spec 090), não neste bloco.
 // ---------------------------------------------------------------------------
 function ThinkingBlock({
@@ -253,9 +251,6 @@ function ThinkingBlock({
   startedAt: number;
 }): React.ReactElement {
   const { t } = useI18n();
-  const running = segmentsRunning(segments);
-  // Turno em voo: stream ainda aberto OU algum step de fato em andamento.
-  const inFlight = live || running;
   // Timeline aberta enquanto o turno está em voo; recolhe só ao terminar
   // (usuário reabre no header).
   const [expanded, setExpanded] = useState(true);
@@ -264,6 +259,7 @@ function ThinkingBlock({
   // ao remontar ou ao voltar para a conversa.
   const startedAtRef = useRef<number>(startedAt);
   const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - startedAt));
+  const { inFlight, duration } = resolveThinkingTiming(segments, live, startedAt, elapsed);
 
   useEffect(() => {
     if (!inFlight) {
@@ -276,10 +272,6 @@ function ThinkingBlock({
     }, 200);
     return () => window.clearInterval(id);
   }, [inFlight]);
-
-  // Em mensagens recarregadas, a duração continua derivável dos timestamps
-  // persistidos e do início canônico da mensagem/turno.
-  const duration = inFlight ? elapsed : segmentsReasoningDuration(segments, startedAt);
 
   return (
     <section className="mb-2.5 flex max-w-3xl flex-col gap-1">

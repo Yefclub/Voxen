@@ -65,6 +65,7 @@ import { resolveGraphPollingAction } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
   resolveGraphRenderProfile,
+  scheduleGraph3DInitializationFallback,
   type GraphMode,
 } from '../lib/graph-renderer';
 import { useFetch } from '../lib/hooks';
@@ -1098,15 +1099,21 @@ export function BrainGraph3DCanvas({
       return;
     }
     let cancelled = false;
+    const cancelInitializationBudget = scheduleGraph3DInitializationFallback(() => {
+      if (!cancelled) onFallback();
+    });
     void loadReagraph()
       .then((module) => {
+        cancelInitializationBudget();
         if (!cancelled) setReagraph(module);
       })
       .catch(() => {
+        cancelInitializationBudget();
         if (!cancelled) onFallback();
       });
     return () => {
       cancelled = true;
+      cancelInitializationBudget();
     };
   }, [onFallback]);
 

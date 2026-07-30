@@ -20,6 +20,20 @@ export function isBottomNavTab(pathname: string): boolean {
 }
 
 /**
+ * O drawer só existe abaixo de `md`. Ao cruzar o breakpoint com gesto ou
+ * animação em andamento, todo estado precisa ser zerado para o desktop não
+ * permanecer bloqueado por `inert`.
+ */
+export function shouldResetMobileDrawerForDesktop(
+  isDesktop: boolean,
+  open: boolean,
+  present: boolean,
+  progress: number,
+): boolean {
+  return isDesktop && (open || present || progress > 0.001);
+}
+
+/**
  * `true` quando a rota deve exibir o botão de voltar no mobile — qualquer rota
  * que não seja uma aba de topo do bottom-nav.
  */

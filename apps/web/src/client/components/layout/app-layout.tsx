@@ -17,6 +17,7 @@ import {
   hasOwnMobileChrome,
   isChatRoute,
   hidesBottomNav,
+  shouldResetMobileDrawerForDesktop,
 } from '../../lib/mobile-nav';
 import { MobileBackButton } from './mobile-back-button';
 import { MobileMenuButton } from './mobile-menu-button';
@@ -61,6 +62,22 @@ export function AppLayout(): React.ReactElement {
   useLayoutEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
   }, [sectionKey]);
+
+  useLayoutEffect(() => {
+    if (
+      !shouldResetMobileDrawerForDesktop(
+        isDesktop,
+        mobileNavOpen,
+        mobileNavPresent,
+        mobileNavProgress.get(),
+      )
+    ) {
+      return;
+    }
+    setMobileNavOpen(false);
+    setMobileNavPresent(false);
+    mobileNavProgress.set(0);
+  }, [isDesktop, mobileNavOpen, mobileNavPresent, mobileNavProgress]);
 
   if (loading) {
     return (

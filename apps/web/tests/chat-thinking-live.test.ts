@@ -16,7 +16,10 @@ const turnRuntimeSource = readFileSync(
  */
 describe('ThinkingBlock live expand policy', () => {
   test('treats live turn as in-flight even when no segment is running', () => {
-    expect(chatSource).toContain('const inFlight = live || running');
+    expect(chatSource).toContain(
+      'const { inFlight, duration } = resolveThinkingTiming(segments, live, startedAt, elapsed)',
+    );
+    expect(chatSource).not.toContain('const inFlight = live || running');
   });
 
   test('auto-expand / auto-collapse keys off inFlight, not bare running', () => {
@@ -32,9 +35,7 @@ describe('ThinkingBlock live expand policy', () => {
     expect(chatSource).toContain('disabled={inFlight}');
     expect(chatSource).toContain('onClick={() => !inFlight && setExpanded((v) => !v)}');
     expect(chatSource).toContain('{inFlight ? (');
-    expect(chatSource).toContain(
-      'inFlight ? elapsed : segmentsReasoningDuration(segments, startedAt)',
-    );
+    expect(chatSource).toContain('resolveThinkingTiming(segments, live, startedAt, elapsed)');
   });
 
   test('cronômetro parte do início conhecido do turno e nunca recalcula histórico com Date.now', () => {

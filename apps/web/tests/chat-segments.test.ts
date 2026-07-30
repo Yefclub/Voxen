@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   applySegmentEvent,
   closeTrailingReasoning,
+  resolveThinkingTiming,
   segmentsFromPersistedTools,
   segmentsReasoningDuration,
   segmentsRunning,
@@ -266,5 +267,25 @@ describe('segmentsReasoningDuration', () => {
     // estado local do componente NÃO existe mais após o remount (live=false,
     // frozen=null) — só os segments reanexados na mensagem restam.
     expect(segmentsReasoningDuration(segments, 500)).toBe(2_500 - 500);
+  });
+});
+
+describe('resolveThinkingTiming', () => {
+  it('não reativa cronômetro para reasoning histórico aberto', () => {
+    const segments: MessageSegment[] = [
+      { type: 'reasoning', id: 'r0', text: 'interrompido', startedAt: 1_000 },
+    ];
+
+    expect(resolveThinkingTiming(segments, false, 500, 99_000)).toEqual({
+      inFlight: false,
+      duration: null,
+    });
+  });
+
+  it('usa elapsed somente enquanto o stream atual está vivo', () => {
+    expect(resolveThinkingTiming([], true, 500, 1_250)).toEqual({
+      inFlight: true,
+      duration: 1_250,
+    });
   });
 });

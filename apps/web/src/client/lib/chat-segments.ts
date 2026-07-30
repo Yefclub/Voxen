@@ -208,3 +208,25 @@ export function segmentsReasoningDuration(
       : start;
   return end - effectiveStart;
 }
+
+export interface ThinkingTiming {
+  inFlight: boolean;
+  duration: number | null;
+}
+
+/**
+ * Somente o stream atual pode iniciar o cronômetro de parede. Um snapshot
+ * histórico com evento incompleto depende dos timestamps canônicos e omite a
+ * duração, em vez de continuar envelhecendo depois de reload ou remount.
+ */
+export function resolveThinkingTiming(
+  segments: readonly MessageSegment[],
+  live: boolean,
+  turnStartedAt: number,
+  liveElapsed: number,
+): ThinkingTiming {
+  return {
+    inFlight: live,
+    duration: live ? Math.max(0, liveElapsed) : segmentsReasoningDuration(segments, turnStartedAt),
+  };
+}

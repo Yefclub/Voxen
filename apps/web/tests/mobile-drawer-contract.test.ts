@@ -23,6 +23,8 @@ describe('navegação mobile', () => {
     expect(layout).toContain('onProgress: (progress) => mobileNavProgress.set(progress)');
     expect(layout).toContain('onPresenceChange={setMobileNavPresent}');
     expect(layout).toContain('inert={mobileNavPresent ? true : undefined}');
+    expect(layout).toContain('shouldResetMobileDrawerForDesktop(');
+    expect(layout).toContain('mobileNavProgress.set(0)');
   });
 
   test('regiões horizontais reservam o gesto e o drawer fechado não mantém sombra', () => {
