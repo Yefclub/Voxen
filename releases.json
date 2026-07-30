@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785429740",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Interface mais estável, legível e consistente",
+    "body": "A navegação entre telas deixa de exibir conteúdo da rota anterior ou saltar o\nscroll durante a troca. O carregamento preserva o shell da aplicação, e as\npáginas operacionais passam a aproveitar melhor a largura disponível sem\nalongar excessivamente textos de leitura.\n\nNo mobile, o menu lateral mantém animação, foco, sombra e bloqueio da página\nsincronizados até o fim do gesto. O editor de notas reorganiza título, status e\nações para manter Preview e Salvar acessíveis em telas estreitas; `/` e `/chat`\ntambém passam a compartilhar o mesmo comportamento de navegação.\n\nO Grafo ganha contraste confiável ao passar o mouse ou selecionar nós, resumo\nsem marcadores Markdown crus e preparação antecipada do modo 3D. No chat, a\ntimeline mostra estados operacionais seguros, preserva durações concluídas e\noferece mais espaço para tabelas e outros dados estruturados.\n\nO aviso de nova versão ganhou uma área maior e rolável com cabeçalho e ações\nsempre visíveis. Detalhes da fila e a página de novidades receberam correções\nde hierarquia e navegação.\n\nPor fim, instruções e comentários indevidos deixam de virar tags. Rótulos\nhistóricos conhecidos são saneados no deploy e conteúdos que ficarem sem tags\nvoltam automaticamente ao processamento idempotente.",
+    "pr": 484,
+    "author": "Kalyel",
+    "date": "2026-07-30T13:41:58-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/484"
+  },
+  {
     "version": "0.13.0-dev.1785406211",
     "channel": "dev",
     "type": "fix",
