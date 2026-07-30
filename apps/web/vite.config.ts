@@ -126,9 +126,30 @@ export default defineConfig({
         },
       },
       workbox: {
-        navigateFallback: '/index.html',
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        navigateFallbackDenylist: [/^\/api\//, /^\/mcp\//, /^\/share-target$/],
+        // O HTML contém a identidade do build servido. Se index.html entrar no
+        // precache, um cliente pode continuar executando o modal/bundle antigo
+        // justamente quando precisa aplicar uma atualização.
+        navigateFallback: null,
+        navigationPreload: true,
+        globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ request, url }) =>
+              request.mode === 'navigate' &&
+              !url.pathname.startsWith('/api/') &&
+              !url.pathname.startsWith('/mcp/') &&
+              url.pathname !== '/share-target',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'voxen-navigation-v1',
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 24,
+                maxAgeSeconds: 7 * 24 * 60 * 60,
+              },
+            },
+          },
+        ],
       },
     }),
   ],

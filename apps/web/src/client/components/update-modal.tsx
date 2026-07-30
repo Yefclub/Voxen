@@ -129,8 +129,8 @@ export function UpdateModal({
       }}
     >
       <DialogContent className="h-[min(92dvh,52rem)] max-h-[min(92dvh,52rem)] max-w-3xl gap-0 overflow-hidden p-0 sm:w-[min(100vw-3rem,48rem)]">
-        <div className="flex h-full min-h-0 flex-col overflow-hidden">
-          <header className="flex shrink-0 items-start gap-4 border-b border-[var(--color-app-border)] bg-gradient-to-br from-emerald-500/[0.12] via-transparent to-violet-500/[0.08] p-5 sm:p-7">
+        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
+          <header className="flex min-h-0 items-start gap-4 border-b border-[var(--color-app-border)] bg-gradient-to-br from-emerald-500/[0.12] via-transparent to-violet-500/[0.08] p-5 sm:p-7">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/30">
               <Sparkles className="h-5 w-5" />
             </span>
@@ -164,7 +164,7 @@ export function UpdateModal({
             tabIndex={0}
             aria-label={t('shell.updateScrollLabel')}
             aria-busy={loadState === 'loading'}
-            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-5 py-5 outline-none [scrollbar-gutter:stable] [touch-action:pan-y] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-violet)] sm:px-7 sm:py-6"
+            className="min-h-0 overflow-y-scroll overflow-x-hidden overscroll-contain px-5 py-5 outline-none [scrollbar-gutter:stable] [touch-action:pan-y] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-violet)] sm:px-7 sm:py-6"
           >
             <div className="mb-4 flex items-center justify-between gap-3">
               <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-app-muted)]">
@@ -229,7 +229,7 @@ export function UpdateModal({
             )}
           </div>
 
-          <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+          <footer className="flex min-h-0 flex-col-reverse gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
             <p className="text-[11px] text-[var(--color-app-muted)]">
               {t('shell.updateSnoozeHint')}
             </p>

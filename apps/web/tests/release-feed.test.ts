@@ -85,9 +85,10 @@ describe('feed de novidades', () => {
     );
     expect(modal).toContain('data-update-scroll-region');
     expect(modal).toContain('h-[min(92dvh,52rem)]');
-    expect(modal).toContain('flex h-full min-h-0 flex-col');
-    expect(modal).toContain('min-h-0 flex-1 overflow-y-auto');
-    expect(modal).toContain('shrink-0');
+    expect(modal).toContain('grid-rows-[auto_minmax(0,1fr)_auto]');
+    expect(modal).toContain('min-h-0 overflow-y-scroll overflow-x-hidden');
+    expect(modal).not.toContain('flex h-full min-h-0 flex-col');
+    expect(modal.indexOf('data-update-scroll-region')).toBeLessThan(modal.indexOf('<footer'));
     expect(modal).toContain('release.promoted');
     expect(modal).toContain("handleIntent('open-changelog')");
     expect(modal).toContain("handleIntent('defer')");

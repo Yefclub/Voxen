@@ -13,6 +13,25 @@ export interface VersionUpdateRuntime {
   onControllerChange: (listener: () => void) => void;
 }
 
+export interface VersionUpdatePreparationRuntime {
+  getRegistration: () => Promise<VersionUpdateRegistration | null>;
+}
+
+/**
+ * Pede ao navegador para procurar o service worker novo assim que o mismatch
+ * de build é conhecido. Não troca a página nem espera o usuário: apenas deixa
+ * a atualização pronta para a ação explícita do modal.
+ */
+export async function prepareVersionUpdate(
+  runtime: VersionUpdatePreparationRuntime,
+): Promise<void> {
+  try {
+    await (await runtime.getRegistration())?.update();
+  } catch {
+    // Best effort: o monitor continuará oferecendo recarregar/adiar.
+  }
+}
+
 /**
  * Executa a atualização sem assumir DOM global. O adaptador do hook fornece
  * service worker, relógio e reload; os testes exercitam as bordas sem browser.

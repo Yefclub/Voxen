@@ -12,6 +12,14 @@ não mantém uma área de rolagem funcional. As ações de adiar, abrir o histó
 e aplicar a atualização ainda compartilham um estado permanente incompatível
 com o texto apresentado ao usuário.
 
+Em 2026-07-29, uma validação após deploy mostrou que o problema podia sobreviver
+mesmo com o componente corrigido no servidor: o service worker continuava
+servindo o `index.html` precacheado e, portanto, o JavaScript antigo do modal.
+Esse bundle antigo ainda buscava as quatro releases mais recentes, criava
+rolagens aninhadas e deixava o rodapé fora da viewport. Ao mesmo tempo, o
+backend transformava uma versão de pacote já marcada como dev em outra versão
+sintética, sem entrada correspondente no changelog.
+
 ## Glossário
 
 - **Build carregado**: identidade e versão do bundle que está executando na aba.
@@ -54,11 +62,21 @@ com o texto apresentado ao usuário.
   apresentá-la como provedor ou modelo separado no onboarding.
 - The system shall registrar tempos das etapas anteriores ao primeiro evento do
   modelo para permitir distinguir latência interna de latência do provedor.
+- The system shall tratar uma versão prerelease presente no `package.json` como
+  identidade canônica, sem gerar outra versão dev durante source deploy ou
+  empacotamento da imagem Easypanel.
+- The system shall buscar navegações HTML online antes de recorrer ao cache e
+  não deverá servir `index.html` diretamente do precache.
+- The system shall manter uma única região rolável no modal, delimitada por
+  linhas explícitas de cabeçalho, conteúdo e ações.
 
 ### Event-driven (resposta a evento)
 
 - When o servidor informar um build diferente do carregado, the system shall
   abrir o modal com a versão anterior, a nova versão e a release alvo.
+- When o servidor informar um build diferente do carregado, the system shall
+  também solicitar em segundo plano a atualização do service worker, sem
+  atrasar a abertura do modal nem recarregar a página automaticamente.
 - When o usuário rolar o conteúdo do modal, the system shall permitir movimento
   vertical por mouse, trackpad, toque e teclado sem mover o documento ao fundo.
 - When o usuário escolher adiar, the system shall ocultar o modal por 30 minutos
@@ -83,6 +101,9 @@ com o texto apresentado ao usuário.
 - While a release possuir conteúdo maior que a altura disponível, the system
   shall limitar o modal a 92 por cento da viewport dinâmica e rolar apenas a
   região central.
+- While a aplicação estiver online, the system shall obter o documento HTML da
+  rede e atualizar o fallback de navegação; o cache só poderá responder quando
+  a rede estiver indisponível.
 - While uma resposta estiver em streaming, the system shall impedir a aplicação
   da atualização e explicar o motivo sem impedir adiar ou abrir Novidades.
 - While uma página estiver em viewport desktop ampla, the system shall usar o
@@ -110,6 +131,8 @@ com o texto apresentado ao usuário.
 - If o build disponível continuar diferente depois de uma tentativa de
   atualização, then the system shall voltar a avisar após o adiamento e não
   tratá-lo como aplicado.
+- If o package version já contiver um sufixo prerelease, then the system shall
+  preservá-lo literalmente no endpoint de versão.
 - If uma rota de conteúdo comum introduzir largura ou padding externo próprio,
   then the system shall falhar no teste de consistência de shells.
 - If uma animação de página falhar, then the system shall limpar estilos
@@ -148,6 +171,14 @@ com o texto apresentado ao usuário.
       de rolagem e inventário de shells.
 - [x] Lint, formatação, typecheck, testes e build passam sem Docker nem
       Playwright local.
+- [x] O build gerado não inclui `index.html` no precache e registra navegação
+      `NetworkFirst` com preload.
+- [x] O modal usa exatamente três linhas de layout
+      (`auto minmax(0,1fr) auto`), sem um segundo contêiner rolável.
+- [x] Uma versão `X.Y.Z-dev.<timestamp>` do pacote permanece idêntica no
+      `/api/version`, permitindo localizar sua release exata.
+- [x] A detecção de mismatch inicia uma única atualização best-effort do
+      service worker por build, mantendo o modal imediatamente disponível.
 
 ## Fora de Escopo
 
@@ -168,10 +199,13 @@ com o texto apresentado ao usuário.
 
 > 2026-07-29: criada após auditoria do modal e das larguras divergentes por
 > solicitação explícita de concluir todas as melhorias e correções.
+>
+> 2026-07-29: reaberta após evidência visual de que o app shell precacheado
+> mantinha o modal antigo ativo mesmo depois do deploy da correção.
 
 ## Evidências de implementação
 
-- Web: 650 testes passaram, 134 integrações sem PostgreSQL foram puladas; lint,
+- Web: 661 testes passaram, 134 integrações sem PostgreSQL foram puladas; lint,
   typecheck e build Vite de produção passaram.
 - Worker: 245 testes passaram e 3 integrações sem PostgreSQL foram puladas;
   Ruff e mypy passaram.
