@@ -224,6 +224,8 @@ configuráveis ou novos formatos de ingestão.
       de Job/SSE são internas e não serializam exceções, paths ou filenames.
 - [x] Logs de ingestão e thumbnail não incluem hostnames externos; o boundary
       superior do worker encerra falhas sem traceback ou mensagem crua.
+- [x] Telemetria de proxy do yt-dlp informa somente categoria fechada; a
+      supervisão assíncrona aguarda falhas de cleanup antes de sair.
 - [ ] Lint, formatação, typecheck, testes TypeScript/Python, build e verificações
       de segurança bloqueantes passam no CI; auditorias informativas permanecem
       registradas separadamente.

@@ -188,7 +188,11 @@ async def amain() -> None:
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, stop.set)
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except (NotImplementedError, RuntimeError):
+            # Windows e loops embutidos podem não expor signal handlers.
+            pass
 
     log.info(
         "worker-starting",
@@ -197,13 +201,15 @@ async def amain() -> None:
         **ytdl.runtime_versions(),
     )
     try:
-        await asyncio.gather(
-            _subscriber_loop(sem, stop),
-            _reconciliation_loop(sem, stop),
-            cancel_subscriber(stop),
-            _automation_subscriber_loop(automation_sem, stop),
-            _automation_scheduler_loop(automation_sem, stop),
-        )
+        # TaskGroup cancela e AGUARDA todos os siblings antes de propagar uma
+        # falha. Assim, exceções em finally/cleanup entram no ExceptionGroup e
+        # nunca viram "unhandled exception during asyncio.run() shutdown".
+        async with asyncio.TaskGroup() as supervisor:
+            supervisor.create_task(_subscriber_loop(sem, stop))
+            supervisor.create_task(_reconciliation_loop(sem, stop))
+            supervisor.create_task(cancel_subscriber(stop))
+            supervisor.create_task(_automation_subscriber_loop(automation_sem, stop))
+            supervisor.create_task(_automation_scheduler_loop(automation_sem, stop))
     finally:
         await db.close_pool()
         await events.close_redis()
