@@ -337,8 +337,10 @@ export function ContentIngestCard(): React.ReactElement {
                     )}
                   </div>
                   <div className="flex flex-col gap-2.5 sm:flex-row">
-                    <div className="relative flex-1">
-                      <Link2 className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-app-muted)] pointer-events-none" />
+                    {/* Ação principal da tela: campo com destaque (superfície
+                        elevada, borda forte e foco no acento) e placeholder curto. */}
+                    <div className="relative flex-1" data-ingest-url-field>
+                      <Link2 className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-accent-primary)] pointer-events-none" />
                       <Input
                         id="url"
                         type="url"
@@ -348,7 +350,7 @@ export function ContentIngestCard(): React.ReactElement {
                         placeholder={t('home.urlPlaceholder')}
                         autoComplete="off"
                         required
-                        className="pl-10 font-mono h-12 text-[15px]"
+                        className="h-12 border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] pl-10 font-mono text-[15px] placeholder:font-sans placeholder:text-[var(--color-app-subtle)] hover:border-[var(--color-accent-primary)]/50 focus:border-[var(--color-accent-primary)] focus:ring-4 focus:ring-[var(--color-accent-primary-soft)]"
                       />
                     </div>
                     <Button

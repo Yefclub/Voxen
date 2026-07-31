@@ -355,7 +355,11 @@ export function JobDetalhePage(): React.ReactElement {
               <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
                 {t('jobDetail.history')}
               </p>
-              <ol className="relative border-l border-[var(--color-app-border)] pl-5 space-y-2.5">
+              {/* Trilho e marcadores partem da MESMA origem (borda esquerda do
+                  <li>): o trilho ocupa 0→1px e o marcador de 8px é deslocado
+                  3.5px à esquerda, centralizando os dois em 0.5px. O padding
+                  fica no <li>, não no <ol>, senão as origens divergem. */}
+              <ol className="relative space-y-2.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-[var(--color-app-border)] before:content-['']">
                 <AnimatePresence initial={false}>
                   {events.map((e, i) => {
                     const isCurrent = i === events.length - 1 && isActive;
@@ -371,11 +375,11 @@ export function JobDetalhePage(): React.ReactElement {
                         initial={reduceMotion ? false : { opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ duration: reduceMotion ? 0 : 0.3 }}
-                        className="relative text-sm"
+                        className="relative pl-5 text-sm"
                       >
                         <span
                           className={[
-                            'absolute -left-[1.46rem] top-1.5 h-2 w-2 rounded-full ring-4 ring-[var(--color-app-surface)]',
+                            'absolute left-0 top-1.5 h-2 w-2 -translate-x-[3.5px] rounded-full ring-4 ring-[var(--color-app-surface)]',
                             isCurrent
                               ? 'bg-violet-400'
                               : isDone || e.stage === 'done'
