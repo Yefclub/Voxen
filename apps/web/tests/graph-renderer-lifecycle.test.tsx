@@ -49,13 +49,17 @@ const MotionElementMock = forwardRef(function MotionElementMock(
 
 const StaticIconMock = (props: Record<string, unknown>) => React.createElement('icon-mock', props);
 
+// Bun mantém mock.module no processo inteiro da suíte. Preserve todos os
+// exports reais para não quebrar testes carregados depois deste arquivo — só
+// os componentes de elemento viram mock. Sobrescrever `useReducedMotion` aqui
+// desligava a animação de TODO teste carregado depois (foi o que quebrou
+// `icon-cue-lifecycle` e `icons`); os elementos mockados já ignoram animação.
+const actualMotion = await import('motion/react');
 mock.module('motion/react', () => ({
+  ...actualMotion,
   motion: { div: MotionElementMock, svg: MotionElementMock },
-  useReducedMotion: () => true,
 }));
 
-// Bun mantém mock.module no processo inteiro da suíte. Preserve todos os
-// exports reais para não quebrar testes carregados depois deste arquivo.
 const actualIcons = await import('../src/client/components/ui/icons');
 mock.module('@/components/ui/icons', () => ({
   ...actualIcons,

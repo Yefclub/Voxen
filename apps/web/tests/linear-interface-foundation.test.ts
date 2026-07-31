@@ -89,7 +89,7 @@ describe('fundação visual Linear', () => {
     expect(drawer).toContain('fica preparada fora da tela');
     expect(drawer).toContain("present ? 'pointer-events-auto' : 'pointer-events-none'");
     expect(drawer).toContain('inert={present ? undefined : true}');
-    expect(drawer).toContain('<SidebarModeBody user={user} hideHome />');
+    expect(drawer).toContain('<SidebarModeBody user={user} hideHome');
   });
 
   test('adota os primitives de página e dados nas telas administrativas', () => {

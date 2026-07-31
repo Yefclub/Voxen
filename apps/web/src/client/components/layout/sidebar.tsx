@@ -29,6 +29,13 @@ import { useSidebarCollapsed } from '../../lib/sidebar-state';
 import { useIsDesktop } from '../../lib/use-media-query';
 import { useNotes } from '../../lib/use-notes';
 import { useI18n, type I18nKey } from '../../lib/i18n';
+import {
+  ICON_CUE_DURATION,
+  ICON_CUE_PANEL_DELAY_MS,
+  useIconCueGroup,
+  useIconCueSignal,
+  useIconCueTrigger,
+} from '../../lib/icon-cue';
 import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import { NotesTree } from '../notes/notes-tree';
@@ -77,10 +84,13 @@ const RAIL_WIDTH = 60;
 export function SidebarModeBody({
   user,
   hideHome = false,
+  cueSignal = 0,
 }: {
   user: MeUser;
   /** Oculta o item "Início" (desktop: `/` já É o chat, então é redundante). */
   hideHome?: boolean;
+  /** Sinal de deixa dos ícones da nav — ver `NavBody`. */
+  cueSignal?: number;
 }): React.ReactElement {
   const location = useLocation();
   const reduceMotion = useReducedMotion();
@@ -101,7 +111,7 @@ export function SidebarModeBody({
       {mode === 'notas' ? (
         <NotasModeBody items={items} pathname={location.pathname} />
       ) : (
-        <NavBody items={items} pathname={location.pathname} />
+        <NavBody items={items} pathname={location.pathname} cueSignal={cueSignal} />
       )}
     </motion.div>
   );
@@ -112,6 +122,14 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const { collapsed, setCollapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
   const reduceMotion = useReducedMotion();
+
+  // A deixa dos ícones da nav é um contador, não um booleano de montagem: só
+  // uma MUDANÇA de sinal dispara. Assim o primeiro carregamento não pontua
+  // (aí quem pontua é o cabeçalho da página), a troca de estado pontua uma
+  // única vez, e o painel que está saindo de cena — que o `AnimatePresence`
+  // rerenderiza com as props congeladas da última vez em que esteve presente —
+  // nunca recebe sinal novo, então não varre ícones enquanto desaparece.
+  const cueSignal = useIconCueTrigger(collapsed);
 
   // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
   // seu corpo modo-aware (que monta os hooks pesados de notas) NÃO
@@ -130,6 +148,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
           <SidebarRail
             user={user}
             pathname={location.pathname}
+            cueSignal={cueSignal}
             onExpand={() => setCollapsed(false)}
           />
         )}
@@ -148,7 +167,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             style={{ width: SIDEBAR_WIDTH }}
           >
             <SidebarHeader onCollapse={() => setCollapsed(true)} />
-            <SidebarModeBody user={user} hideHome />
+            <SidebarModeBody user={user} hideHome cueSignal={cueSignal} />
             <SidebarChangelogButton />
             <SidebarSignOut />
           </motion.aside>
@@ -167,17 +186,22 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
 function SidebarRail({
   user,
   pathname,
+  cueSignal,
   onExpand,
 }: {
   user: MeUser;
   pathname: string;
+  cueSignal: number;
   onExpand: () => void;
 }): React.ReactElement {
   const { t } = useI18n();
   const reduceMotion = useReducedMotion();
+  const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN').filter(
     (n) => n.to !== '/',
   );
+
+  useIconCueSignal(playCue, cueSignal, ICON_CUE_PANEL_DELAY_MS);
 
   return (
     <motion.nav
@@ -222,7 +246,11 @@ function SidebarRail({
                   )}
                   aria-label={t(labelKey)}
                 >
-                  <Icon className="h-[18px] w-[18px]" />
+                  <Icon
+                    ref={registerIcon(to)}
+                    duration={ICON_CUE_DURATION}
+                    className="h-[18px] w-[18px]"
+                  />
                 </NavLink>
               </TooltipTrigger>
               <TooltipContent side="right">{t(labelKey)}</TooltipContent>
@@ -313,9 +341,22 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
 // Modo normal — nav items
 // ---------------------------------------------------------------------------
 
-function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): React.ReactElement {
+function NavBody({
+  items,
+  pathname,
+  cueSignal = 0,
+}: {
+  items: NavItem[];
+  pathname: string;
+  /** Cada mudança de valor roda a deixa dos ícones — ver `useIconCueSignal`. */
+  cueSignal?: number;
+}): React.ReactElement {
   const { t } = useI18n();
   const reduceMotion = useReducedMotion();
+  const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
+
+  useIconCueSignal(playCue, cueSignal, ICON_CUE_PANEL_DELAY_MS);
+
   return (
     <nav className="flex-1 p-3 overflow-y-auto">
       <ul className="space-y-0.5">
@@ -345,6 +386,8 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
                 )}
               >
                 <Icon
+                  ref={registerIcon(to)}
+                  duration={ICON_CUE_DURATION}
                   className={cn(
                     'h-[18px] w-[18px] transition-colors shrink-0',
                     isActive ? 'text-emerald-400' : 'text-[var(--color-app-muted)]',
