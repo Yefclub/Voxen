@@ -464,9 +464,15 @@ describeIfDb('search_transcripts (com DB)', () => {
     // serializar, o AI SDK rejeita o histórico multi-step com
     // AI_TypeValidationError sempre que o agente usa esta tool — ver
     // ChatMessage/runtime.ts. Este teste prova o shape correto na borda.
+    //
+    // Termos precisam bater EXATAMENTE com tokens do plainText semeado
+    // acima — websearch_to_tsquery trata múltiplos termos como AND
+    // implícito, então um termo ausente (ex.: a sigla "IA", que não
+    // aparece — só "inteligência artificial" por extenso) zera o
+    // resultado inteiro.
     const tools = buildTools(userId);
     const result = (await runTool(tools.search_transcripts, {
-      query: 'preferências criação agentes IA',
+      query: 'preferências criação agentes',
     })) as { results: Array<{ id: string; createdAt: unknown }> };
     expect(result.results.length).toBeGreaterThan(0);
     const [first] = result.results;
