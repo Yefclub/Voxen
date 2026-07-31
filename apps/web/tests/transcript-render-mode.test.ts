@@ -111,7 +111,10 @@ describe('transcriptRenderMode', () => {
       ['X', 'X_SEARCH'],
       ['UPLOAD', 'VISION'],
       ['UPLOAD', 'DOCUMENT'],
-      ['WEB', 'SCRAPE'],
+      // UPLOAD/SCRAPE, não WEB/SCRAPE: o short-circuit de `source === 'WEB'`
+      // resolve antes do set ser consultado, então a tupla com WEB não
+      // exercitaria PROSE_METHODS (achado do review).
+      ['UPLOAD', 'SCRAPE'],
     ] as const) {
       expect(
         transcriptRenderMode({
