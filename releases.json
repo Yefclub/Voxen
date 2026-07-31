@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785522932",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Extensão de browser redesenhada com a identidade visual do Voxen",
+    "body": "O popup e a página de opções da extensão de browser agora usam os mesmos\ntokens de cor e a mesma tipografia do Voxen web (Bricolage Grotesque + Inter,\ntemas padrão/zinc/emerald/light) — antes a extensão tinha uma paleta\nverde/indigo própria, sempre escura, desconectada do resto do produto.\n\n- **Tema segue a instância conectada**: se você já tem um tema escolhido no\n  Voxen (`Conta → Aparência`), a extensão aplica o mesmo tema assim que\n  detecta a instância — tanto no popup quanto na página de opções. Sem\n  instância conectada ainda, ela segue o esquema claro/escuro do sistema\n  operacional.\n- **Uma única tela de conexão**: a página de opções (`chrome-extension://.../options.html`)\n  passa a ser a única superfície onde a extensão se conecta a uma instância\n  Voxen. O popup não reimplementa mais esse formulário — quando ainda não há\n  instância conectada, ele mostra um estado vazio com um botão que abre as\n  opções, eliminando a duplicação de fluxo entre popup e opções.\n- **Progresso mostra a etapa real**: enquanto um job está processando, o\n  popup exibe a etapa atual (baixando, transcrevendo, gerando resumo…) em vez\n  de um \"Processando…\" genérico, sempre que o status do job traz essa\n  informação.\n- Todos os estados existentes (detecção de instância, envio de aba,\n  progresso, resultado com resumo, ações pós-envio) continuam disponíveis —\n  nenhuma capacidade foi removida, só reorganizada.",
+    "pr": 494,
+    "author": "Kalyel",
+    "date": "2026-07-31T15:35:06-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/494"
+  },
+  {
     "version": "0.13.0-dev.1785520081",
     "channel": "dev",
     "type": "fix",
