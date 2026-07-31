@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
@@ -29,6 +29,7 @@ import { useSidebarCollapsed } from '../../lib/sidebar-state';
 import { useIsDesktop } from '../../lib/use-media-query';
 import { useNotes } from '../../lib/use-notes';
 import { useI18n, type I18nKey } from '../../lib/i18n';
+import { ICON_CUE_DURATION, ICON_CUE_PANEL_DELAY_MS, useIconCueGroup } from '../../lib/icon-cue';
 import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import { NotesTree } from '../notes/notes-tree';
@@ -77,10 +78,13 @@ const RAIL_WIDTH = 60;
 export function SidebarModeBody({
   user,
   hideHome = false,
+  cueOnMount = false,
 }: {
   user: MeUser;
   /** Oculta o item "Início" (desktop: `/` já É o chat, então é redundante). */
   hideHome?: boolean;
+  /** Roda a deixa de animação dos ícones da nav ao montar (ver `Sidebar`). */
+  cueOnMount?: boolean;
 }): React.ReactElement {
   const location = useLocation();
   const reduceMotion = useReducedMotion();
@@ -101,7 +105,7 @@ export function SidebarModeBody({
       {mode === 'notas' ? (
         <NotasModeBody items={items} pathname={location.pathname} />
       ) : (
-        <NavBody items={items} pathname={location.pathname} />
+        <NavBody items={items} pathname={location.pathname} cueOnMount={cueOnMount} />
       )}
     </motion.div>
   );
@@ -112,6 +116,16 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const { collapsed, setCollapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
   const reduceMotion = useReducedMotion();
+
+  // Rail e painel remontam a cada troca de estado, então "montou" sozinho não
+  // distingue abrir/fechar de carregar a página. Comparando com o valor
+  // anterior, a deixa dos ícones só roda quando o usuário de fato abriu ou
+  // fechou — no primeiro carregamento quem pontua é o cabeçalho da página.
+  const previousCollapsed = useRef(collapsed);
+  const cueOnMount = previousCollapsed.current !== collapsed;
+  useEffect(() => {
+    previousCollapsed.current = collapsed;
+  }, [collapsed]);
 
   // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
   // seu corpo modo-aware (que monta os hooks pesados de notas) NÃO
@@ -130,6 +144,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
           <SidebarRail
             user={user}
             pathname={location.pathname}
+            cueOnMount={cueOnMount}
             onExpand={() => setCollapsed(false)}
           />
         )}
@@ -148,7 +163,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             style={{ width: SIDEBAR_WIDTH }}
           >
             <SidebarHeader onCollapse={() => setCollapsed(true)} />
-            <SidebarModeBody user={user} hideHome />
+            <SidebarModeBody user={user} hideHome cueOnMount={cueOnMount} />
             <SidebarChangelogButton />
             <SidebarSignOut />
           </motion.aside>
@@ -167,17 +182,24 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
 function SidebarRail({
   user,
   pathname,
+  cueOnMount,
   onExpand,
 }: {
   user: MeUser;
   pathname: string;
+  cueOnMount: boolean;
   onExpand: () => void;
 }): React.ReactElement {
   const { t } = useI18n();
   const reduceMotion = useReducedMotion();
+  const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN').filter(
     (n) => n.to !== '/',
   );
+
+  useEffect(() => {
+    if (cueOnMount) playCue(ICON_CUE_PANEL_DELAY_MS);
+  }, [cueOnMount, playCue]);
 
   return (
     <motion.nav
@@ -222,7 +244,11 @@ function SidebarRail({
                   )}
                   aria-label={t(labelKey)}
                 >
-                  <Icon className="h-[18px] w-[18px]" />
+                  <Icon
+                    ref={registerIcon(to)}
+                    duration={ICON_CUE_DURATION}
+                    className="h-[18px] w-[18px]"
+                  />
                 </NavLink>
               </TooltipTrigger>
               <TooltipContent side="right">{t(labelKey)}</TooltipContent>
@@ -313,9 +339,23 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
 // Modo normal — nav items
 // ---------------------------------------------------------------------------
 
-function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): React.ReactElement {
+function NavBody({
+  items,
+  pathname,
+  cueOnMount = false,
+}: {
+  items: NavItem[];
+  pathname: string;
+  cueOnMount?: boolean;
+}): React.ReactElement {
   const { t } = useI18n();
   const reduceMotion = useReducedMotion();
+  const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
+
+  useEffect(() => {
+    if (cueOnMount) playCue(ICON_CUE_PANEL_DELAY_MS);
+  }, [cueOnMount, playCue]);
+
   return (
     <nav className="flex-1 p-3 overflow-y-auto">
       <ul className="space-y-0.5">
@@ -345,6 +385,8 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
                 )}
               >
                 <Icon
+                  ref={registerIcon(to)}
+                  duration={ICON_CUE_DURATION}
                   className={cn(
                     'h-[18px] w-[18px] transition-colors shrink-0',
                     isActive ? 'text-emerald-400' : 'text-[var(--color-app-muted)]',

@@ -1,7 +1,17 @@
-import { createElement, type ComponentType, type HTMLAttributes } from 'react';
+import {
+  createElement,
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  type ComponentType,
+  type HTMLAttributes,
+  type MouseEvent,
+  type RefAttributes,
+} from 'react';
 import { useReducedMotion } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { ANIMATED_ICON_FRAME_CLASS, shouldAnimateDecoration } from '../../lib/interface-foundation';
+import type { IconCueHandle } from '../../lib/icon-cue';
 export { ANIMATED_ICON_FALLBACKS } from '../../lib/interface-foundation';
 import {
   AArrowUpIcon,
@@ -97,21 +107,57 @@ export interface AnimatedIconProps extends HTMLAttributes<HTMLDivElement> {
   color?: string;
 }
 
-export type AnimatedIcon = ComponentType<AnimatedIconProps>;
+/**
+ * Ícone da aplicação. Aceita `ref` para expor o handle de animação, usado pelas
+ * deixas coordenadas de `lib/icon-cue`.
+ */
+export type AnimatedIcon = ComponentType<AnimatedIconProps & RefAttributes<IconCueHandle>>;
 /** Compatibilidade temporária para tipos de configuração já nomeados no app. */
 export type LucideIcon = AnimatedIcon;
 
-function accessibleIcon(icon: ComponentType<AnimatedIconProps>): AnimatedIcon {
-  function AccessibleAnimatedIcon({ isAnimated, className, ...props }: AnimatedIconProps) {
-    const reduceMotion = useReducedMotion();
-    return createElement(icon, {
-      ...props,
-      className: cn(ANIMATED_ICON_FRAME_CLASS, className),
-      isAnimated: shouldAnimateDecoration(reduceMotion, isAnimated),
-    });
-  }
+function accessibleIcon(icon: AnimatedIcon): AnimatedIcon {
+  const AccessibleAnimatedIcon = forwardRef<IconCueHandle, AnimatedIconProps>(
+    function AccessibleAnimatedIcon(
+      { isAnimated, className, onMouseEnter, onMouseLeave, ...props },
+      ref,
+    ) {
+      const reduceMotion = useReducedMotion();
+      const inner = useRef<IconCueHandle>(null);
+      const animated = shouldAnimateDecoration(reduceMotion, isAnimated);
 
-  AccessibleAnimatedIcon.displayName = `AccessibleAnimatedIcon(${icon.displayName ?? icon.name})`;
+      useImperativeHandle(
+        ref,
+        () => ({
+          startAnimation: () => {
+            if (animated) inner.current?.startAnimation();
+          },
+          stopAnimation: () => inner.current?.stopAnimation(),
+        }),
+        [animated],
+      );
+
+      return createElement(icon, {
+        ...props,
+        ref: inner,
+        className: cn(ANIMATED_ICON_FRAME_CLASS, className),
+        isAnimated: animated,
+        // Com uma ref anexada o pacote deixa de animar o hover sozinho e passa
+        // a delegar para estes handlers — reproduzimos o comportamento nativo
+        // para que anexar a ref não custe a animação de hover.
+        onMouseEnter: (event: MouseEvent<HTMLDivElement>) => {
+          onMouseEnter?.(event);
+          if (animated) inner.current?.startAnimation();
+        },
+        onMouseLeave: (event: MouseEvent<HTMLDivElement>) => {
+          onMouseLeave?.(event);
+          inner.current?.stopAnimation();
+        },
+      });
+    },
+  );
+
+  const source = icon as { displayName?: string; name?: string };
+  AccessibleAnimatedIcon.displayName = `AccessibleAnimatedIcon(${source.displayName ?? source.name})`;
   return AccessibleAnimatedIcon;
 }
 

@@ -180,7 +180,9 @@ const ptBRMessages = {
   'shell.signOut': 'Sair',
 
   'theme.label': 'Tema',
-  'theme.linear': 'Linear',
+  // Identificador técnico segue `linear` (persistido por usuário e espelhado
+  // pela extensão); só o rótulo exibido virou "Voxen".
+  'theme.linear': 'Voxen',
   'theme.zinc': 'Cinza',
   'theme.emerald': 'Esmeralda',
   'theme.light': 'Claro',
@@ -1399,7 +1401,7 @@ const enMessages: Record<I18nKey, string> = {
   'shell.signOut': 'Sign out',
 
   'theme.label': 'Theme',
-  'theme.linear': 'Linear',
+  'theme.linear': 'Voxen',
   'theme.zinc': 'Zinc',
   'theme.emerald': 'Emerald',
   'theme.light': 'Light',

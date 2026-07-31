@@ -1,4 +1,4 @@
-import { useRef, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useRef, type HTMLAttributes, type ReactNode } from 'react';
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 import { useReducedMotion } from 'motion/react';
@@ -9,6 +9,7 @@ import {
   safelyRunAnimation,
   shouldAnimateDecoration,
 } from '../../lib/interface-foundation';
+import { ICON_CUE_DURATION, ICON_CUE_PAGE_DELAY_MS, useIconCueGroup } from '../../lib/icon-cue';
 import type { AnimatedIcon } from './icons';
 
 gsap.registerPlugin(useGSAP);
@@ -102,6 +103,16 @@ export function PageHeader({
   className,
   ...props
 }: PageHeaderProps): React.ReactElement {
+  const reduceMotion = useReducedMotion();
+  const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
+
+  // Ao abrir a página, o ícone que nomeia a página se desenha uma vez, logo
+  // depois do cabeçalho terminar de subir na timeline do PageShell. É a única
+  // deixa de ícone da página — animar todos a cada navegação vira ruído.
+  useEffect(() => {
+    playCue(ICON_CUE_PAGE_DELAY_MS);
+  }, [playCue]);
+
   return (
     <header
       data-page-reveal
@@ -115,7 +126,9 @@ export function PageHeader({
         {eyebrow && (
           <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
             <EyebrowIcon
+              ref={registerIcon('eyebrow')}
               isAnimated
+              duration={ICON_CUE_DURATION}
               aria-hidden
               className={cn('h-3.5 w-3.5 text-[var(--color-accent-primary)]', iconClassName)}
             />

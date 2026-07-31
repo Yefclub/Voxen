@@ -1,3 +1,13 @@
+/**
+ * Identificadores de tema — valor persistido por usuário, usado em `data-theme`
+ * e espelhado pela extensão (`apps/extension/theme-init.js`).
+ *
+ * `linear` é o tema padrão e o usuário o vê como **"Voxen"**: o rótulo exibido
+ * vive no i18n (`theme.linear`), separado do identificador. Renomear o
+ * identificador exigiria migrar o valor já gravado em cada conta e no
+ * `localStorage`, além de sincronizar a extensão — custo e risco sem ganho,
+ * já que o usuário só enxerga o rótulo. Ao mexer aqui, manter essa separação.
+ */
 export const APP_THEMES = ['linear', 'zinc', 'emerald', 'light'] as const;
 export type AppTheme = (typeof APP_THEMES)[number];
 
