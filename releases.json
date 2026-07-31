@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.13.0-dev.1785537512",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Conectar contas de TikTok, Instagram e YouTube pela extensão",
+    "body": "Vídeo que só baixa com login — TikTok, Instagram, YouTube com restrição de\nidade — agora tem um caminho de verdade: a extensão do Voxen conecta a conta.\n\nNas opções da extensão apareceu a seção **Contas de plataforma**, com um\nbotão \"Conectar\" para cada uma das três. Faça login no site normalmente, no\nmesmo perfil do browser, clique em Conectar e pronto: a extensão pede a\npermissão daquele site na hora, pega a sessão e envia cifrada para a sua\ninstância. Nada de exportar `cookies.txt` na mão nem instalar extensão de\nterceiro.\n\nA permissão é pedida por site, uma de cada vez, e só no momento do clique —\na extensão não ganha acesso a nenhum outro site. O valor da sessão nunca é\nexibido de volta, nem na extensão nem no Voxen.\n\nEm **Integrações** (admin) há um painel de estado mostrando quais plataformas\nestão conectadas, quando foram conectadas e quais podem já ter expirado —\nsessões passam a ser sinalizadas como \"possivelmente expiradas\" depois de 7\ndias, e basta reconectar pela extensão. O botão \"Desconectar\" apaga a sessão\nguardada a qualquer momento.\n\nConectar uma plataforma não mexe nas outras: cada uma é substituída\nisoladamente.",
+    "pr": 499,
+    "author": "Kalyel",
+    "date": "2026-07-31T19:31:34-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/499"
+  },
+  {
+    "version": "0.13.0-dev.1785537512",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Conteúdo em markdown renderizado, reprocessar direto da fila e campo de link em destaque",
+    "body": "Quatro correções no dia a dia de capturar e ler conteúdo.\n\n**Análises em markdown voltam a aparecer formatadas.** Posts do X analisados por\nIA (e qualquer conteúdo sem marcação de tempo) eram exibidos pelo leitor de\ntranscrição, que junta tudo num parágrafo só e mostra `##` e `**` crus. Agora a\npágina escolhe o modo de exibição pelo próprio conteúdo: com marcações de tempo,\nsegue a leitura por trechos clicáveis; sem elas, renderiza markdown com títulos,\nlistas, tabelas e negrito.\n\n**Reprocessar item da fila.** Itens que falharam ou foram cancelados agora têm um\nbotão de reprocessar na própria fila — não é mais preciso recolar o link. Se o\nconteúdo já estiver em processamento, já tiver sido indexado ou o servidor\nrecusar, o motivo aparece num aviso e o item continua como estava.\n\n**Campo de colar link com destaque.** O placeholder longo com exemplos de URL deu\nlugar a um \"Cole o link aqui\" direto, e o campo ganhou superfície elevada, borda\nmais forte e realce de foco — é a ação principal da tela de conteúdo.\n\n**Linha do tempo do job alinhada.** Os marcadores de cada etapa no histórico de um\njob agora ficam centrados na linha vertical que os conecta.",
+    "pr": 501,
+    "author": "Kalyel",
+    "date": "2026-07-31T19:19:35-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/501"
+  },
+  {
     "version": "0.13.0-dev.1785534442",
     "channel": "dev",
     "type": "fix",
