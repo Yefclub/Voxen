@@ -310,7 +310,11 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
         language = transcript_fetch.language
     else:
         try:
-            probe_info = await _retry_transient(lambda: ytdl.probe(source_url), tries=3)
+            probe_info = await _retry_transient(
+                lambda: ytdl.probe(source_url),
+                tries=3,
+                immediate_passthrough=_is_tiktok_rehydration_error,
+            )
         except _TRANSIENT_EXC as e:
             # TikTok: retry forçando impersonate chrome quando rehydration falha.
             if _is_tiktok_rehydration_error(e) and video_url.detect_source(source_url) == "TIKTOK":
@@ -378,7 +382,9 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                 log.info("path-api")
                 try:
                     audio_path = await _retry_transient(
-                        lambda: ytdl.download_audio_opus(source_url, tmpdir), tries=3
+                        lambda: ytdl.download_audio_opus(source_url, tmpdir),
+                        tries=3,
+                        immediate_passthrough=_is_tiktok_rehydration_error,
                     )
                 except _TRANSIENT_EXC as e:
                     if video_url.detect_source(
@@ -1667,7 +1673,11 @@ def _frontmatter_json(
 
 
 async def _retry_transient[T](
-    fn: Callable[[], Awaitable[T]], *, tries: int = 3, base_delay: float = 1.0
+    fn: Callable[[], Awaitable[T]],
+    *,
+    tries: int = 3,
+    base_delay: float = 1.0,
+    immediate_passthrough: Callable[[BaseException], bool] | None = None,
 ) -> T:
     """Retry exp backoff (1/2/4 s) para erros transientes externos.
 
@@ -1679,6 +1689,13 @@ async def _retry_transient[T](
     na hora. Rate-limit (429) **retenta** com backoff maior e só vira
     PermanentError após esgotar as tentativas — para o path de legendas ainda
     poder fazer fallback para a transcrição remota.
+
+    `immediate_passthrough`: quando dado e casa com a exceção, ela é
+    relançada CRUA (sem virar PermanentError, sem consumir tentativas) —
+    usado pelo caller que tem uma estratégia de retry própria para esse erro
+    específico (ex.: TikTok rehydration → retry com `force_impersonate`).
+    Sem isso, o curto-circuito acima intercepta o erro amigável na 1ª
+    tentativa e o retry externo nunca é alcançado.
     """
     last_exc: BaseException | None = None
     for attempt in range(tries):
@@ -1687,6 +1704,8 @@ async def _retry_transient[T](
         except PermanentError:
             raise
         except _TRANSIENT_EXC as e:
+            if immediate_passthrough is not None and immediate_passthrough(e):
+                raise
             friendly = _friendly_external_error(e)
             if friendly and not _is_rate_limit_error(e):
                 raise PermanentError.public("EXTERNAL_DOWNLOAD_BLOCKED", friendly) from e

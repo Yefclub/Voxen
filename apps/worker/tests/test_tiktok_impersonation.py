@@ -144,3 +144,38 @@ async def test_no_audio_short_circuits_without_retry() -> None:
     with pytest.raises(pipeline.PermanentError):
         await pipeline._retry_transient(fn, tries=3)
     assert calls == 1  # sem retries (curto-circuito)
+
+
+async def test_tiktok_rehydration_bypasses_friendly_shortcircuit_with_passthrough() -> None:
+    # Sem `immediate_passthrough`, o curto-circuito de erro amigável (acima)
+    # intercepta a rehydration na 1ª tentativa e vira PermanentError — o
+    # retry com `force_impersonate="chrome"` do `_run_pipeline` nunca é
+    # alcançado (a exceção não é mais `_TRANSIENT_EXC`, é `PermanentError`).
+    # Regressão real: essa mitigação ficou morta em produção até este fix.
+    calls = 0
+
+    async def fn() -> None:
+        nonlocal calls
+        calls += 1
+        raise yt_dlp.utils.DownloadError(
+            "ERROR: [TikTok] 123: Unable to extract universal data for rehydration"
+        )
+
+    with pytest.raises(yt_dlp.utils.DownloadError):
+        await pipeline._retry_transient(
+            fn, tries=3, immediate_passthrough=pipeline._is_tiktok_rehydration_error
+        )
+    assert calls == 1  # relançada crua na 1ª tentativa, sem consumir retries
+
+
+async def test_tiktok_rehydration_without_passthrough_still_shortcircuits() -> None:
+    # Sem o parâmetro (comportamento de todo outro chamador de
+    # `_retry_transient`), a conversão amigável continua idêntica a antes —
+    # este fix não muda nenhum outro call site.
+    async def fn() -> None:
+        raise yt_dlp.utils.DownloadError(
+            "ERROR: [TikTok] 123: Unable to extract universal data for rehydration"
+        )
+
+    with pytest.raises(pipeline.PermanentError):
+        await pipeline._retry_transient(fn, tries=3)
