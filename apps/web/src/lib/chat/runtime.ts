@@ -513,7 +513,14 @@ export function buildTools(
       }),
       execute: async ({ query, limit }) => {
         const results = await ftsSearchTranscripts(userId, query, limit ?? 8);
-        return { results };
+        // FtsResult.createdAt é Date (vem de $queryRaw) — o AI SDK exige
+        // valores JSON-safe no output de tool para o histórico multi-step,
+        // e rejeita Date com AI_TypeValidationError. As outras tools já
+        // convertem (list_transcripts, read_transcript, search_notes); esta
+        // ficou de fora e derrubava toda vez que o agente chamava a busca.
+        return {
+          results: results.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+        };
       },
     }),
     web_search: tool({
