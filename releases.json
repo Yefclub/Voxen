@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785520081",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Busca no acervo quebrava o turno inteiro do chat",
+    "body": "Corrigido bug que fazia o agente de chat falhar sempre que usava a ferramenta de busca no acervo (`search_transcripts`) — um campo de data era devolvido em formato incompatível com o que o modelo de IA espera, derrubando a resposta inteira com erro técnico. O mesmo problema foi corrigido no servidor MCP.",
+    "pr": 495,
+    "author": "Kalyel",
+    "date": "2026-07-31T14:47:47-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/495"
+  },
+  {
     "version": "0.13.0-dev.1785517091",
     "channel": "dev",
     "type": "fix",
