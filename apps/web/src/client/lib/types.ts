@@ -35,6 +35,34 @@ export interface VersionResponse {
   builtAt: string;
 }
 
+// Modelo do catálogo OpenRouter (spec 123 — seleção manual de modelos).
+export interface OrModel {
+  id: string;
+  name?: string;
+  context_length?: number;
+  architecture?: {
+    input_modalities?: string[];
+    output_modalities?: string[];
+  };
+  pricing?: Record<string, string>;
+}
+
+// As 6 finalidades de modelo existentes (spec 118 + spec 123).
+export type ModelPurpose =
+  | 'default_chat_model'
+  | 'default_transcription_model'
+  | 'default_web_search_model'
+  | 'default_vision_model'
+  | 'default_document_model'
+  | 'default_x_analysis_model';
+
+export interface ModelPurposeStatus {
+  purpose: ModelPurpose;
+  canonical: string;
+  override: string | null;
+  effective: string;
+}
+
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';
 export type JobType =
   | 'DOWNLOAD_AND_TRANSCRIBE'

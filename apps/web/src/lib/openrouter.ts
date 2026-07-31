@@ -10,12 +10,15 @@ type Fetcher = typeof globalThis.fetch;
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 const OPENROUTER_SETUP_TIMEOUT_MS = 15_000;
 
-interface OrModel {
+export interface OrModel {
   id: string;
+  name?: string;
+  context_length?: number;
   architecture?: {
     input_modalities?: string[];
     output_modalities?: string[];
   };
+  pricing?: Record<string, string>;
 }
 
 export class OpenrouterError extends Error {
