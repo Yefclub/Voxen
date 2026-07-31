@@ -38,6 +38,17 @@ describe('agenda das deixas de ícone', () => {
     expect(iconCueSchedule(-3)).toEqual([]);
   });
 
+  test('esvazia a fila de timers no lugar, sem trocar o array', () => {
+    // A limpeza do unmount captura o array uma vez. Se `playCue` reatribuísse
+    // `timers.current`, a limpeza seguraria um array velho e os timers vivos
+    // vazariam — disparando animação em ícone já desmontado ao alternar a
+    // sidebar no meio da deixa.
+    const iconCue = read('./icon-cue.ts');
+
+    expect(iconCue).toContain('timers.current.length = 0');
+    expect(iconCue).not.toContain('timers.current = []');
+  });
+
   test('mantém o gesto curto o bastante para ler como pontuação', () => {
     // Padrão do pacote é 1s — uma deixa mais longa que isso vira performance.
     expect(ICON_CUE_DURATION).toBeLessThan(1);

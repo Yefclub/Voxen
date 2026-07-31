@@ -61,6 +61,9 @@ export function useIconCueGroup(enabled: boolean): IconCueGroup {
   const setters = useRef(new Map<string, (handle: IconCueHandle | null) => void>());
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
+  // `pending` é sempre o mesmo array: `playCue` esvazia no lugar em vez de
+  // reatribuir, senão a limpeza do unmount seguraria um array velho e os
+  // timers vivos vazariam (acontece ao alternar a sidebar no meio da deixa).
   useEffect(() => {
     const pending = timers.current;
     return () => {
@@ -84,7 +87,7 @@ export function useIconCueGroup(enabled: boolean): IconCueGroup {
   const playCue = useCallback(
     (baseDelayMs = 0) => {
       for (const timer of timers.current) clearTimeout(timer);
-      timers.current = [];
+      timers.current.length = 0;
       if (!enabled) return;
 
       const registered = [...handles.current.values()];
