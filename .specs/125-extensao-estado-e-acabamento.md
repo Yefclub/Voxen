@@ -65,6 +65,19 @@ funcional:
   fora do ar), then the system shall indicar que o acompanhamento está
   indisponível no momento, sem descartar o rastreamento nem apresentar o
   job como concluído ou falho.
+- If o acompanhamento de um job está indisponível, then the system shall
+  manter o envio de novas páginas habilitado — não saber o estado do job não
+  é o mesmo que estar ocupado.
+- If um job rastreado passa do prazo máximo de acompanhamento sem atingir
+  estado terminal, then the system shall descartá-lo do rastreamento, para
+  que job irresolvível (instância trocada nas opções, job apagado no
+  servidor) não governe o popup indefinidamente.
+- If o popup reconhece o desfecho de um job enquanto uma rodada de
+  verificação do service worker está em voo, then the system shall descartar
+  o desfecho definitivamente — ele não pode ser regravado e reaparecer como
+  novidade na abertura seguinte.
+- If um envio é enfileirado enquanto uma rodada de verificação está em voo,
+  then the system shall preservá-lo no rastreamento.
 
 ## Critérios de Aceite
 
@@ -74,6 +87,9 @@ funcional:
       (sucesso ou erro), não o estado inicial.
 - [ ] Teste automatizado cobrindo a persistência/restauração do job em
       andamento (lógica pura, sem depender de browser real).
+- [ ] Teste automatizado provando que job rastreado irresolvível (antigo, ou
+      apontando para instância que não responde) não deixa o botão de envio
+      desabilitado.
 - [ ] Popup com cantos arredondados coerentes com o padrão visual do
       produto.
 - [ ] Página de opções cabe sem rolagem em altura típica, com separação

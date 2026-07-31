@@ -27,7 +27,6 @@
  *   transcriptId: string | null,
  *   errorMsg: string | null,
  *   finishedAt: number,
- *   seen?: boolean,
  * }} JobOutcome
  */
 
@@ -36,6 +35,17 @@ export const LAST_OUTCOME_KEY = 'lastJobOutcome';
 
 /** Depois disso o resultado deixa de ser "recente" e não reaparece no popup. */
 export const OUTCOME_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Teto de vida de um job rastreado. Sem isso o rastreamento é eterno: o worker
+ * só despeja a entrada em estado terminal ou em 401, e qualquer outro erro
+ * (job apagado no servidor, instância trocada nas opções e o `baseUrl` velho
+ * nunca mais responder) deixa um zumbi para sempre no `chrome.storage.local`.
+ * O prazo é folgado de propósito — transcrição de vídeo longo leva tempo, e
+ * perder o rastreio de um job vivo é pior do que carregar um morto por
+ * algumas horas.
+ */
+export const TRACKED_JOB_TTL_MS = 6 * 60 * 60 * 1000;
 
 /**
  * Classifica o status cru da API. Qualquer coisa que não seja terminal conta
@@ -74,6 +84,53 @@ export function pickActiveJob(trackedJobs) {
   return entries.reduce((newest, job) =>
     (Number(job.startedAt) || 0) > (Number(newest.startedAt) || 0) ? job : newest,
   );
+}
+
+/**
+ * Um job rastreado há tempo demais é tratado como perdido. Entrada sem
+ * `startedAt` utilizável também conta como expirada: só `trackJob` escreve o
+ * mapa e ele sempre grava o carimbo, então o que chega aqui sem ele é resto
+ * corrompido — mantê-lo é exatamente o zumbi que o TTL existe para matar.
+ * @param {unknown} job
+ * @param {number} now
+ * @returns {boolean}
+ */
+function isExpiredJob(job, now) {
+  const startedAt = Number(/** @type {TrackedJob} */ (job || {}).startedAt);
+  if (!Number.isFinite(startedAt) || startedAt <= 0) return true;
+  return now - startedAt > TRACKED_JOB_TTL_MS;
+}
+
+/**
+ * Cópia do mapa de rastreamento sem os jobs que estouraram o TTL.
+ * @param {Record<string, TrackedJob> | undefined | null} trackedJobs
+ * @param {number} now
+ * @returns {Record<string, TrackedJob>}
+ */
+export function pruneExpiredJobs(trackedJobs, now) {
+  /** @type {Record<string, TrackedJob>} */
+  const next = {};
+  for (const [id, job] of Object.entries(trackedJobs || {})) {
+    if (!isExpiredJob(job, now)) next[id] = job;
+  }
+  return next;
+}
+
+/**
+ * O popup mostra um desfecho só. Quando mais de um job termina na mesma
+ * rodada de poll, o escolhido é o do job iniciado mais recentemente — mesmo
+ * critério de `pickActiveJob`, para que a escolha não dependa da ordem de
+ * iteração do mapa. Os demais não somem para o usuário: cada um gera a sua
+ * própria notificação.
+ * @param {Array<{ startedAt?: number, outcome: JobOutcome }>} candidates
+ * @returns {JobOutcome | null}
+ */
+export function pickLatestOutcome(candidates) {
+  const list = (candidates || []).filter((c) => c && c.outcome);
+  if (list.length === 0) return null;
+  return list.reduce((newest, c) =>
+    (Number(c.startedAt) || 0) > (Number(newest.startedAt) || 0) ? c : newest,
+  ).outcome;
 }
 
 /**
@@ -123,7 +180,6 @@ export function buildJobOutcome({ job, tracked, now }) {
 function isFreshOutcome(outcome, now) {
   if (!outcome || typeof outcome !== 'object') return false;
   const candidate = /** @type {JobOutcome} */ (outcome);
-  if (candidate.seen === true) return false;
   if (candidate.outcome !== 'succeeded' && candidate.outcome !== 'failed') return false;
   if (typeof candidate.jobId !== 'string' || !candidate.jobId) return false;
   if (typeof candidate.finishedAt !== 'number') return false;
@@ -145,7 +201,9 @@ export function selectPopupState(input) {
   const { trackedJobs, lastOutcome, now } = input || {};
   const at = typeof now === 'number' ? now : Date.now();
 
-  const active = pickActiveJob(trackedJobs);
+  // Jobs vencidos não restauram nada: um rastreamento que nunca resolve não
+  // pode continuar governando a tela de um popup aberto meses depois.
+  const active = pickActiveJob(pruneExpiredJobs(trackedJobs, at));
   if (active) return { kind: 'tracking', job: active };
 
   if (isFreshOutcome(lastOutcome, at)) {
@@ -153,4 +211,35 @@ export function selectPopupState(input) {
   }
 
   return { kind: 'idle' };
+}
+
+/**
+ * Estado do botão de envio do popup, por fase.
+ *
+ * A regra que importa: **só uma fase que comprovadamente ocupa o envio pode
+ * desabilitar o botão**. Estado desconhecido (`unavailable` — instância fora
+ * do ar, job irresolvível) não é ocupação: o usuário continua podendo
+ * enfileirar outra página. Amarrar o botão a um acompanhamento que pode nunca
+ * resolver deixa a extensão inutilizável sem caminho de recuperação.
+ * @param {{
+ *   phase: 'idle' | 'sending' | 'tracking' | 'unavailable' | 'succeeded' | 'failed',
+ *   sendable: boolean,
+ * }} input
+ * @returns {{ disabled: boolean, label: string }}
+ */
+export function submitButtonState({ phase, sendable }) {
+  const canSend = sendable === true;
+  switch (phase) {
+    case 'sending':
+      return { disabled: true, label: 'Enviando…' };
+    case 'tracking':
+      return { disabled: true, label: 'Salvo — processando' };
+    case 'unavailable':
+    case 'succeeded':
+      return { disabled: !canSend, label: 'Salvar outro' };
+    case 'failed':
+      return { disabled: !canSend, label: 'Tentar de novo' };
+    default:
+      return { disabled: !canSend, label: 'Salvar no Voxen' };
+  }
 }

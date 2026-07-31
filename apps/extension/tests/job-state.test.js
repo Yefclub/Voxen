@@ -1,10 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import {
   OUTCOME_TTL_MS,
+  TRACKED_JOB_TTL_MS,
   buildJobOutcome,
   classifyJobStatus,
   pickActiveJob,
+  pickLatestOutcome,
+  pruneExpiredJobs,
   selectPopupState,
+  submitButtonState,
   withoutJob,
 } from '../lib/job-state.js';
 
@@ -184,15 +188,6 @@ describe('selectPopupState', () => {
     expect(state).toEqual({ kind: 'idle' });
   });
 
-  test('resultado já visto não reaparece', () => {
-    const state = selectPopupState({
-      trackedJobs: {},
-      lastOutcome: { ...outcome, seen: true },
-      now: 1500,
-    });
-    expect(state).toEqual({ kind: 'idle' });
-  });
-
   test('job novo em andamento tem prioridade sobre resultado anterior', () => {
     const state = selectPopupState({
       trackedJobs: { j1: job },
@@ -209,5 +204,173 @@ describe('selectPopupState', () => {
     expect(selectPopupState({ trackedJobs: {}, lastOutcome: 'nope', now: 10 })).toEqual({
       kind: 'idle',
     });
+  });
+});
+
+describe('pruneExpiredJobs', () => {
+  const base = { jobId: 'a', baseUrl: 'https://v.example' };
+
+  test('mantém job dentro do TTL', () => {
+    const now = 100_000_000;
+    const tracked = { a: { ...base, startedAt: now - TRACKED_JOB_TTL_MS + 1 } };
+    expect(Object.keys(pruneExpiredJobs(tracked, now))).toEqual(['a']);
+  });
+
+  test('descarta job que estourou o TTL', () => {
+    const now = 100_000_000;
+    const tracked = { a: { ...base, startedAt: now - TRACKED_JOB_TTL_MS - 1 } };
+    expect(pruneExpiredJobs(tracked, now)).toEqual({});
+  });
+
+  test('entrada sem startedAt utilizável é descartada', () => {
+    const now = 100_000_000;
+    expect(pruneExpiredJobs({ a: { ...base } }, now)).toEqual({});
+    expect(pruneExpiredJobs({ a: { ...base, startedAt: 0 } }, now)).toEqual({});
+    expect(pruneExpiredJobs({ a: { ...base, startedAt: 'ontem' } }, now)).toEqual({});
+    expect(pruneExpiredJobs({ a: { ...base, startedAt: Number.NaN } }, now)).toEqual({});
+  });
+
+  test('não muta o mapa original e tolera ausência', () => {
+    const now = 100_000_000;
+    const tracked = { a: { ...base, startedAt: 1 }, b: { ...base, jobId: 'b', startedAt: now } };
+    const next = pruneExpiredJobs(tracked, now);
+    expect(Object.keys(next)).toEqual(['b']);
+    expect(Object.keys(tracked)).toEqual(['a', 'b']);
+    expect(pruneExpiredJobs(undefined, now)).toEqual({});
+    expect(pruneExpiredJobs(null, now)).toEqual({});
+  });
+});
+
+/**
+ * Regressão do bloqueador: um job rastreado que nunca resolve (instância
+ * trocada nas opções, job apagado no servidor, host que não volta) não pode
+ * governar o popup para sempre nem prender o botão de envio. As duas metades
+ * da defesa: o rastreamento vence (TTL) e "não sei o estado" não desabilita o
+ * envio.
+ */
+describe('job irresolvível não trava o envio', () => {
+  const trintaDias = 30 * 24 * 60 * 60 * 1000;
+  const now = 1_000_000_000;
+  const velho = {
+    jobId: 'velho',
+    baseUrl: 'https://instancia-antiga.example',
+    pageTitle: 'Página de um mês atrás',
+    startedAt: now - trintaDias,
+  };
+
+  test('job de 30 dias não restaura acompanhamento — popup abre no estado inicial', () => {
+    expect(selectPopupState({ trackedJobs: { velho }, lastOutcome: null, now })).toEqual({
+      kind: 'idle',
+    });
+  });
+
+  test('estado inicial deixa o envio liberado numa aba enviável', () => {
+    const view = selectPopupState({ trackedJobs: { velho }, lastOutcome: null, now });
+    expect(submitButtonState({ phase: view.kind, sendable: true }).disabled).toBe(false);
+  });
+
+  test('acompanhamento indisponível libera o envio em vez de prendê-lo', () => {
+    expect(submitButtonState({ phase: 'unavailable', sendable: true })).toEqual({
+      disabled: false,
+      label: 'Salvar outro',
+    });
+  });
+
+  test('job recente ainda é restaurado — o TTL não engole falha transitória', () => {
+    const recente = { ...velho, startedAt: now - 60_000 };
+    const view = selectPopupState({ trackedJobs: { recente }, lastOutcome: null, now });
+    expect(view.kind).toBe('tracking');
+    expect(view.job.jobId).toBe('velho');
+  });
+});
+
+describe('submitButtonState', () => {
+  test('estado inicial segue a aba', () => {
+    expect(submitButtonState({ phase: 'idle', sendable: true })).toEqual({
+      disabled: false,
+      label: 'Salvar no Voxen',
+    });
+    expect(submitButtonState({ phase: 'idle', sendable: false })).toEqual({
+      disabled: true,
+      label: 'Salvar no Voxen',
+    });
+  });
+
+  test('envio em curso e job confirmado em andamento ocupam o botão', () => {
+    expect(submitButtonState({ phase: 'sending', sendable: true }).disabled).toBe(true);
+    expect(submitButtonState({ phase: 'tracking', sendable: true }).disabled).toBe(true);
+  });
+
+  test('desfechos liberam o botão com o rótulo certo', () => {
+    expect(submitButtonState({ phase: 'succeeded', sendable: true })).toEqual({
+      disabled: false,
+      label: 'Salvar outro',
+    });
+    expect(submitButtonState({ phase: 'failed', sendable: true })).toEqual({
+      disabled: false,
+      label: 'Tentar de novo',
+    });
+  });
+
+  test('aba não enviável desabilita em toda fase que não ocupa o botão', () => {
+    for (const phase of ['idle', 'unavailable', 'succeeded', 'failed']) {
+      expect(submitButtonState({ phase, sendable: false }).disabled).toBe(true);
+    }
+  });
+
+  test('só sending e tracking podem prender uma aba enviável', () => {
+    const fases = ['idle', 'sending', 'tracking', 'unavailable', 'succeeded', 'failed', 'ruído'];
+    const presas = fases.filter((phase) => submitButtonState({ phase, sendable: true }).disabled);
+    expect(presas).toEqual(['sending', 'tracking']);
+  });
+
+  test('fase desconhecida cai no estado inicial em vez de travar', () => {
+    expect(submitButtonState({ phase: undefined, sendable: true })).toEqual({
+      disabled: false,
+      label: 'Salvar no Voxen',
+    });
+    expect(submitButtonState({ phase: 'tracking', sendable: 'talvez' }).disabled).toBe(true);
+    expect(submitButtonState({ phase: 'idle', sendable: 'talvez' }).disabled).toBe(true);
+  });
+});
+
+describe('pickLatestOutcome', () => {
+  const mk = (jobId) => ({
+    jobId,
+    outcome: 'succeeded',
+    baseUrl: 'https://v.example',
+    title: jobId,
+    summary: null,
+    transcriptId: null,
+    errorMsg: null,
+    finishedAt: 500,
+  });
+
+  test('sem candidatos retorna null', () => {
+    expect(pickLatestOutcome([])).toBeNull();
+    expect(pickLatestOutcome(undefined)).toBeNull();
+  });
+
+  test('escolhe o desfecho do job iniciado mais recentemente', () => {
+    const chosen = pickLatestOutcome([
+      { startedAt: 100, outcome: mk('a') },
+      { startedAt: 300, outcome: mk('b') },
+      { startedAt: 200, outcome: mk('c') },
+    ]);
+    expect(chosen?.jobId).toBe('b');
+  });
+
+  test('a escolha não depende da ordem da lista', () => {
+    const candidatos = [
+      { startedAt: 300, outcome: mk('b') },
+      { startedAt: 100, outcome: mk('a') },
+    ];
+    expect(pickLatestOutcome(candidatos)?.jobId).toBe('b');
+    expect(pickLatestOutcome([...candidatos].reverse())?.jobId).toBe('b');
+  });
+
+  test('ignora candidatos vazios e tolera startedAt ausente', () => {
+    const chosen = pickLatestOutcome([null, { startedAt: undefined, outcome: mk('a') }]);
+    expect(chosen?.jobId).toBe('a');
   });
 });

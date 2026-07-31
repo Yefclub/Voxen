@@ -15,6 +15,7 @@ import {
   buildJobOutcome,
   classifyJobStatus,
   selectPopupState,
+  submitButtonState,
 } from './lib/job-state.js';
 
 // theme-init.js roda como script clássico no <head> (CSP do MV3 bloqueia
@@ -64,6 +65,20 @@ let pollTicks = 0;
 function setStatus(kind, message, target = els.status) {
   target.className = `status ${kind}`;
   target.textContent = message;
+}
+
+/**
+ * Único ponto que mexe no botão de envio. A decisão em si é pura e vive em
+ * `lib/job-state.js` — aqui só se aplica o resultado ao DOM.
+ * @param {'idle' | 'sending' | 'tracking' | 'unavailable' | 'succeeded' | 'failed'} phase
+ */
+function setSubmitPhase(phase) {
+  const { disabled, label } = submitButtonState({
+    phase,
+    sendable: isSendableTabUrl(state?.tabUrl),
+  });
+  els.submit.disabled = disabled;
+  els.submitLabel.textContent = label;
 }
 
 function hideActions() {
@@ -151,9 +166,8 @@ async function load() {
     els.instanceLine.textContent = parsed.baseUrl;
   }
 
-  const sendable = isSendableTabUrl(tabUrl);
-  els.submit.disabled = !sendable;
-  if (!sendable) {
+  setSubmitPhase('idle');
+  if (!isSendableTabUrl(tabUrl)) {
     setStatus('warn', 'Abra uma página http(s). chrome:// e extensões não são suportados.');
   }
 
@@ -205,8 +219,7 @@ async function restorePersistedJob() {
       token: view.job.token || '',
       pageTitle: view.job.pageTitle || '',
     };
-    els.submit.disabled = true;
-    els.submitLabel.textContent = 'Salvo — processando';
+    setSubmitPhase('tracking');
     setStatus('ok', 'Envio em andamento. Avisamos quando ficar pronto.');
     showProgress(stageLabel('queued'));
     showJobAction(tracking.jobId, tracking.baseUrl);
@@ -221,8 +234,7 @@ async function onSubmit() {
   tracking = null;
   hideActions();
   els.resultCard.classList.add('hidden');
-  els.submit.disabled = true;
-  els.submitLabel.textContent = 'Enviando…';
+  setSubmitPhase('sending');
   setStatus('', '');
   showProgress('Enfileirando…');
 
@@ -230,8 +242,7 @@ async function onSubmit() {
   if (!permitted) {
     endProgress(false);
     setStatus('err', 'Permissão de acesso à instância negada. Autorize o host para continuar.');
-    els.submit.disabled = false;
-    els.submitLabel.textContent = 'Salvar no Voxen';
+    setSubmitPhase('idle');
     return;
   }
 
@@ -246,14 +257,13 @@ async function onSubmit() {
     setStatus('err', result.message);
     els.actions.classList.remove('hidden');
     if (result.code === 'unauthorized') els.openLogin.classList.remove('hidden');
-    els.submit.disabled = false;
-    els.submitLabel.textContent = 'Salvar no Voxen';
+    setSubmitPhase('idle');
     return;
   }
 
   const existing = result.status === 'existing' ? ' (já na fila)' : '';
   setStatus('ok', `Na fila${existing}. Acompanhe aqui — avisamos quando ficar pronto.`);
-  els.submitLabel.textContent = 'Salvo — processando';
+  setSubmitPhase('tracking');
   showProgress(stageLabel('queued'));
   showJobAction(result.jobId, state.baseUrl);
 
@@ -326,8 +336,7 @@ async function pollTick() {
     // ~4 min — o worker segue rastreando e notifica quando terminar.
     stopPoll();
     els.progressLabel.textContent = 'Ainda processando — avisaremos por notificação.';
-    els.submit.disabled = !isSendableTabUrl(state?.tabUrl);
-    els.submitLabel.textContent = 'Salvar outro';
+    setSubmitPhase('unavailable');
     return;
   }
   await refreshJobStatus();
@@ -337,6 +346,10 @@ async function pollTick() {
  * Uma consulta ao status do job em acompanhamento. Falha de consulta nunca
  * descarta o rastreamento nem apresenta o job como concluído/falho — só
  * sinaliza que o acompanhamento está indisponível.
+ *
+ * E "indisponível" libera o botão de envio: não saber em que pé está o job
+ * não é o mesmo que estar ocupado. Sem isso, uma instância fora do ar (ou um
+ * job que nunca resolve) deixava o usuário sem conseguir enfileirar nada.
  */
 async function refreshJobStatus() {
   if (!tracking) return;
@@ -347,6 +360,7 @@ async function refreshJobStatus() {
   });
 
   if (!r.ok) {
+    setSubmitPhase('unavailable');
     if (r.code === 'unauthorized') {
       els.progressLabel.textContent = 'Acompanhamento pausado — sessão expirada.';
       setStatus('warn', 'Entre na instância para voltar a acompanhar este envio.');
@@ -367,6 +381,10 @@ async function refreshJobStatus() {
  */
 function renderJobStatus(job) {
   if (classifyJobStatus(job.status) === 'pending') {
+    // Consulta voltou a funcionar: o job está mesmo em andamento, então o
+    // envio volta a ficar ocupado (pode ter sido liberado por uma falha
+    // anterior de acompanhamento).
+    setSubmitPhase('tracking');
     els.progressLabel.textContent = stageLabel(
       job.progressStage || String(job.status || '').toLowerCase(),
       job.type,
@@ -390,7 +408,6 @@ function renderOutcome(outcome) {
   const baseUrl = outcome.baseUrl || state?.baseUrl || '';
   showProgress('');
   showJobAction(outcome.jobId, baseUrl);
-  els.submit.disabled = !isSendableTabUrl(state?.tabUrl);
 
   if (outcome.outcome === 'succeeded') {
     endProgress(true);
@@ -404,13 +421,13 @@ function renderOutcome(outcome) {
       els.openTranscript.dataset.transcriptId = outcome.transcriptId;
       els.openTranscript.dataset.baseUrl = baseUrl;
     }
-    els.submitLabel.textContent = 'Salvar outro';
+    setSubmitPhase('succeeded');
     return;
   }
 
   endProgress(false);
   setStatus('err', outcome.errorMsg || 'O processamento falhou.');
-  els.submitLabel.textContent = 'Tentar de novo';
+  setSubmitPhase('failed');
 }
 
 void load();

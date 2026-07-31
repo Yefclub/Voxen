@@ -19,6 +19,8 @@ import {
   TRACKED_JOBS_KEY,
   buildJobOutcome,
   classifyJobStatus,
+  pickLatestOutcome,
+  pruneExpiredJobs,
   withoutJob,
 } from './lib/job-state.js';
 
@@ -29,6 +31,41 @@ const UPDATE_ALARM = 'voxen-update-check';
 // tema padrão (theme.css / apps/web) entra aqui como literal. Se a paleta do
 // design system mudar, atualizar junto.
 const BADGE_COLOR = '#8b7cf6';
+
+/**
+ * Fila que serializa os ciclos ler-alterar-gravar de `trackedJobs` /
+ * `lastJobOutcome`.
+ *
+ * Ser "o único que escreve" não basta: `trackJob`, `pollTrackedJobs` e
+ * `settleJob` são `async` e cedem o controle em cada `await`, então duas
+ * invocações dentro do mesmo worker se intercalam — uma lê o mapa, a outra
+ * grava, e a primeira regrava por cima o que tinha lido. Isso já ressuscitava
+ * o `lastJobOutcome` de um job que o popup acabara de reconhecer e já sumia
+ * com job recém-enfileirado durante um poll. A fila garante que cada ciclo
+ * rode inteiro antes do próximo começar.
+ *
+ * Só vale dentro de uma instância do service worker — e isso basta: o MV3
+ * mantém no máximo uma viva por vez, e se ela for encerrada no meio a escrita
+ * simplesmente não acontece (nada fica pela metade no storage).
+ *
+ * Regra ao usar: nenhuma seção crítica pode conter `fetch`. A rede fica fora
+ * do lock (ver `pollTrackedJobs`), senão o popup ficaria esperando a rodada
+ * inteira de consultas para conseguir reconhecer um resultado.
+ *
+ * @type {Promise<unknown>}
+ */
+let storageQueue = Promise.resolve();
+
+/**
+ * @template T
+ * @param {() => Promise<T>} critical
+ * @returns {Promise<T>}
+ */
+function withStorageLock(critical) {
+  const run = storageQueue.then(critical, critical);
+  storageQueue = run.catch(() => {});
+  return run;
+}
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
@@ -104,43 +141,43 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
  */
 async function trackJob(payload) {
   if (!payload?.jobId || !payload?.baseUrl) return;
-  const stored = await chrome.storage.local.get([TRACKED_JOBS_KEY]);
-  /** @type {Record<string, object>} */
-  const tracked = stored[TRACKED_JOBS_KEY] || {};
-  tracked[payload.jobId] = {
-    jobId: payload.jobId,
-    baseUrl: payload.baseUrl,
-    token: payload.token || '',
-    pageTitle: payload.pageTitle || '',
-    startedAt: Date.now(),
-  };
-  await chrome.storage.local.set({ [TRACKED_JOBS_KEY]: tracked });
+  const remaining = await withStorageLock(async () => {
+    const stored = await chrome.storage.local.get([TRACKED_JOBS_KEY]);
+    const tracked = pruneExpiredJobs(stored[TRACKED_JOBS_KEY], Date.now());
+    tracked[payload.jobId] = {
+      jobId: payload.jobId,
+      baseUrl: payload.baseUrl,
+      token: payload.token || '',
+      pageTitle: payload.pageTitle || '',
+      startedAt: Date.now(),
+    };
+    await chrome.storage.local.set({ [TRACKED_JOBS_KEY]: tracked });
+    return Object.keys(tracked).length;
+  });
   // Poll frequente enquanto houver jobs.
   chrome.alarms.create(TRACK_ALARM, { periodInMinutes: 0.05 }); // ~3s
   // Badge
-  await refreshBadge(Object.keys(tracked).length);
+  await refreshBadge(remaining);
 }
 
 async function pollTrackedJobs() {
   const stored = await chrome.storage.local.get([TRACKED_JOBS_KEY]);
-  /** @type {Record<string, { jobId: string, baseUrl: string, token?: string, pageTitle?: string }>} */
-  const tracked = stored[TRACKED_JOBS_KEY] || {};
-  const ids = Object.keys(tracked);
-  if (ids.length === 0) {
-    chrome.alarms.clear(TRACK_ALARM);
-    await refreshBadge(0);
-    return;
-  }
+  /** @type {Record<string, import('./lib/job-state.js').TrackedJob>} */
+  const snapshot = pruneExpiredJobs(stored[TRACKED_JOBS_KEY], Date.now());
 
+  /** Ids que esta rodada resolveu — terminaram ou perderam a sessão. */
+  const settledIds = [];
   /**
-   * Último resultado terminal desta rodada — o popup lê isso ao reabrir para
-   * mostrar o desfecho de um job que terminou com ele fechado.
-   * @type {import('./lib/job-state.js').JobOutcome | null}
+   * Desfechos terminais desta rodada. Só um vai para o storage (o popup
+   * mostra um), mas a escolha é feita depois e por critério explícito — cada
+   * job resolvido já gerou a sua notificação, então nada se perde de fato.
+   * @type {Array<{ startedAt?: number, outcome: import('./lib/job-state.js').JobOutcome }>}
    */
-  let lastOutcome = null;
+  const roundOutcomes = [];
 
-  for (const id of ids) {
-    const item = tracked[id];
+  // Fase de rede: fora do lock de storage, é a parte lenta.
+  for (const id of Object.keys(snapshot)) {
+    const item = snapshot[id];
     const result = await fetchJobStatus({
       baseUrl: item.baseUrl,
       jobId: item.jobId,
@@ -156,15 +193,19 @@ async function pollTrackedJobs() {
           'Faça login de novo para acompanhar o processamento.',
           loginUrl(item.baseUrl, '/fila'),
         );
-        delete tracked[id];
+        settledIds.push(id);
       }
+      // Demais erros (404, 5xx, rede) não descartam o rastreamento: a falha
+      // pode ser transitória. Quem impede o zumbi eterno é o TTL aplicado no
+      // `pruneExpiredJobs` acima.
       continue;
     }
 
     const kind = classifyJobStatus(result.job.status);
     if (kind === 'pending') continue;
 
-    lastOutcome = buildJobOutcome({ job: result.job, tracked: item, now: Date.now() });
+    const outcome = buildJobOutcome({ job: result.job, tracked: item, now: Date.now() });
+    if (outcome) roundOutcomes.push({ startedAt: item.startedAt, outcome });
 
     if (kind === 'succeeded') {
       const title = result.job.title || item.pageTitle || 'Conteúdo pronto';
@@ -178,7 +219,6 @@ async function pollTrackedJobs() {
         truncate(summary, 120),
         link,
       );
-      delete tracked[id];
     } else {
       await notifyOnce(
         `fail-${item.jobId}`,
@@ -186,15 +226,33 @@ async function pollTrackedJobs() {
         truncate(result.job.errorMsg || 'O job não concluiu.', 120),
         jobPageUrl(item.baseUrl, item.jobId),
       );
-      delete tracked[id];
     }
+    settledIds.push(id);
   }
 
-  await chrome.storage.local.set({
-    [TRACKED_JOBS_KEY]: tracked,
-    ...(lastOutcome ? { [LAST_OUTCOME_KEY]: lastOutcome } : {}),
+  // Fase de escrita: atômica em relação a `trackJob` e `settleJob`.
+  const remaining = await withStorageLock(async () => {
+    const fresh = await chrome.storage.local.get([TRACKED_JOBS_KEY]);
+    // Relê em vez de reaproveitar o snapshot: durante os `fetch` acima o popup
+    // pode ter enfileirado outro envio ou reconhecido um resultado. Partir do
+    // estado atual e remover só o que esta rodada resolveu preserva os dois.
+    const current = pruneExpiredJobs(fresh[TRACKED_JOBS_KEY], Date.now());
+    const next = { ...current };
+    for (const id of settledIds) delete next[id];
+
+    // Desfecho de job que o popup já reconheceu (saiu de `current`) não volta
+    // ao storage — reapareceria como novidade na próxima abertura.
+    const chosen = pickLatestOutcome(
+      roundOutcomes.filter((c) => Object.hasOwn(current, c.outcome.jobId)),
+    );
+
+    await chrome.storage.local.set({
+      [TRACKED_JOBS_KEY]: next,
+      ...(chosen ? { [LAST_OUTCOME_KEY]: chosen } : {}),
+    });
+    return Object.keys(next).length;
   });
-  const remaining = Object.keys(tracked).length;
+
   await refreshBadge(remaining);
   if (remaining === 0) {
     chrome.alarms.clear(TRACK_ALARM);
@@ -203,23 +261,26 @@ async function pollTrackedJobs() {
 
 /**
  * O popup já mostrou o desfecho deste job: para de rastrear e descarta o
- * resultado guardado (para não reaparecer na próxima abertura). Todas as
- * escritas de `trackedJobs`/`lastJobOutcome` ficam no service worker — assim
- * há um dono só do estado e nenhum read-modify-write concorrente.
+ * resultado guardado (para não reaparecer na próxima abertura). Roda sob
+ * `withStorageLock` porque concorre com a fase de escrita de
+ * `pollTrackedJobs` — sem isso a rodada em voo regravaria o resultado que
+ * acabou de ser reconhecido.
  * @param {string | undefined} jobId
  */
 async function settleJob(jobId) {
   if (!jobId) return;
-  const stored = await chrome.storage.local.get([TRACKED_JOBS_KEY, LAST_OUTCOME_KEY]);
-  const tracked = withoutJob(stored[TRACKED_JOBS_KEY], jobId);
-  /** @type {Record<string, unknown>} */
-  const patch = { [TRACKED_JOBS_KEY]: tracked };
-  if (stored[LAST_OUTCOME_KEY]?.jobId === jobId) {
-    patch[LAST_OUTCOME_KEY] = null;
-  }
-  await chrome.storage.local.set(patch);
+  const remaining = await withStorageLock(async () => {
+    const stored = await chrome.storage.local.get([TRACKED_JOBS_KEY, LAST_OUTCOME_KEY]);
+    const tracked = withoutJob(pruneExpiredJobs(stored[TRACKED_JOBS_KEY], Date.now()), jobId);
+    /** @type {Record<string, unknown>} */
+    const patch = { [TRACKED_JOBS_KEY]: tracked };
+    if (stored[LAST_OUTCOME_KEY]?.jobId === jobId) {
+      patch[LAST_OUTCOME_KEY] = null;
+    }
+    await chrome.storage.local.set(patch);
+    return Object.keys(tracked).length;
+  });
 
-  const remaining = Object.keys(tracked).length;
   await refreshBadge(remaining);
   if (remaining === 0) {
     chrome.alarms.clear(TRACK_ALARM);
