@@ -46,6 +46,7 @@ import {
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 import { cn } from '../lib/utils';
 import { buildTranscriptChatMessage, type ChatHandoffState } from '../lib/chat-handoff';
+import { stripMarkdownFrontmatter, transcriptRenderMode } from '../lib/transcript-render';
 import { TranscriptChatDock } from '../components/library/transcript-chat-dock';
 import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
 
@@ -392,6 +393,18 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   const canUseContextualActions = t.status !== 'TRASH';
   const contentMarkdown = stripMarkdownFrontmatter(data.markdown);
+  const renderMode = transcriptRenderMode({
+    source: t.source,
+    transcriptionMethod: t.transcriptionMethod,
+    markdown: data.markdown,
+  });
+  const contentHeading = isDocumentTranscript
+    ? translate('library.documentAnalysis')
+    : isVisualTranscript
+      ? translate('library.analysis')
+      : t.transcriptionMethod === 'X_SEARCH'
+        ? translate('library.postAnalysis')
+        : translate('library.content');
   const previewSrc = resolveTranscriptPreviewSrc(t.id, t.thumbnailUrl);
 
   return (
@@ -501,14 +514,10 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               onGenerate={() => void generateSummary(false)}
               t={translate}
             />
-            {t.source === 'WEB' || isVisualTranscript || isDocumentTranscript ? (
+            {renderMode === 'markdown' ? (
               <section className="space-y-3">
                 <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-subtle)] sm:text-lg">
-                  {isDocumentTranscript
-                    ? translate('library.documentAnalysis')
-                    : isVisualTranscript
-                      ? translate('library.analysis')
-                      : translate('library.content')}
+                  {contentHeading}
                 </h2>
                 <Card elevated className="border-[var(--color-app-border)]/80">
                   <CardContent className="px-5 py-5 sm:px-6">
@@ -981,11 +990,6 @@ function TagsControl({
       )}
     </div>
   );
-}
-
-function stripMarkdownFrontmatter(markdown: string): string {
-  const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdown);
-  return match ? markdown.slice(match[0].length).trimStart() : markdown;
 }
 
 function SummaryBlock({
