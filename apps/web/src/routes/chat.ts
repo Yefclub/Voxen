@@ -10,12 +10,8 @@ import {
   type ChatStreamEvent,
 } from '../lib/chat/runtime';
 import { ApprovalBody } from '../lib/chat/approval-input';
-import {
-  MAX_MESSAGE_ATTACHMENTS,
-  buildMessageAttachments,
-  type MessageAttachment,
-} from '../lib/chat/message-attachments';
-import { detectUploadKind, parseUploadSourceUrl } from '../lib/media-upload';
+import { MAX_MESSAGE_ATTACHMENTS } from '../lib/chat/message-attachments';
+import { resolveAttachments } from '../lib/chat/attachment-resolver';
 import {
   cancelActiveChatTurn,
   ChatTurnBusyError,
@@ -98,31 +94,6 @@ const SendBody = z.object({
   // tipo do anexo são resolvidos no servidor (spec 126).
   attachmentJobIds: z.array(z.string().min(1).max(64)).max(MAX_MESSAGE_ATTACHMENTS).optional(),
 });
-
-/**
- * Resolve os jobs de upload informados pelo cliente para anexos exibíveis.
- * Escopo por `userId` da sessão: um id de outro workspace simplesmente não é
- * encontrado e some do vínculo, em vez de vazar nome de arquivo alheio.
- */
-async function resolveAttachments(
-  userId: string,
-  jobIds: readonly string[] | undefined,
-): Promise<MessageAttachment[]> {
-  if (!jobIds?.length) return [];
-  const jobs = await db.job.findMany({
-    where: { id: { in: [...jobIds] }, userId },
-    select: { id: true, sourceUrl: true },
-  });
-  const resolved: MessageAttachment[] = [];
-  for (const job of jobs) {
-    const parsed = parseUploadSourceUrl(job.sourceUrl);
-    if (!parsed) continue;
-    const kind = detectUploadKind(parsed.filename, '');
-    if (!kind) continue;
-    resolved.push({ jobId: job.id, name: parsed.filename, kind });
-  }
-  return buildMessageAttachments(jobIds, resolved);
-}
 
 /** Comentário SSE a cada ~15s de ociosidade (spec 065 + Bun idleTimeout). */
 export const CHAT_SSE_KEEPALIVE_MS = 15_000;

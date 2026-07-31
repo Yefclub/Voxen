@@ -9,6 +9,7 @@ import {
   Copy,
   FileText,
   Globe,
+  Image as ImageIcon,
   Loader2,
   LoaderCircle,
   Music2,
@@ -44,6 +45,7 @@ import {
 import {
   applySegmentEvent,
   closeTrailingReasoning,
+  parseMessageSegments,
   resolveThinkingTiming,
   segmentsFromPersistedTools,
   segmentsToolCount,
@@ -104,6 +106,16 @@ type Snapshot = {
   nextCursor: string | null;
   activeTurn: ActiveTurn | null;
 };
+
+/**
+ * `segments` chega do snapshot apenas *tipado* como `MessageSegment[]` — a
+ * coluna é JSONB e o backend não valida a forma. Normaliza na fronteira para
+ * que nenhum render toque em campo cru (spec 126).
+ */
+function normalizeSnapshotMessage(message: ChatMessage): ChatMessage {
+  const segments = parseMessageSegments(message.segments);
+  return { ...message, segments: segments ?? undefined };
+}
 
 type StreamEvent =
   | {
@@ -420,7 +432,7 @@ function MessageCopyButton({
 
 const ATTACHMENT_ICON: Record<MessageAttachment['kind'], typeof FileText> = {
   document: FileText,
-  image: FileText,
+  image: ImageIcon,
   media: Music2,
 };
 
@@ -533,6 +545,18 @@ function readyAttachmentJobIds(attachments: readonly Attachment[]): string[] {
 
 /** Altura máxima do composer antes de rolar internamente (spec 126). */
 const COMPOSER_MAX_HEIGHT_PX = 200;
+/**
+ * ...mas nunca mais que esta fração da viewport. Num celular com o teclado
+ * aberto sobram ~300px de área útil: 200px fixos engoliriam quase tudo,
+ * deixando a conversa invisível enquanto se digita.
+ */
+const COMPOSER_MAX_HEIGHT_VH = 0.3;
+
+function composerMaxHeight(): number {
+  const viewport = window.visualViewport?.height ?? window.innerHeight;
+  if (!Number.isFinite(viewport) || viewport <= 0) return COMPOSER_MAX_HEIGHT_PX;
+  return Math.min(COMPOSER_MAX_HEIGHT_PX, viewport * COMPOSER_MAX_HEIGHT_VH);
+}
 
 function Composer({
   input,
@@ -564,12 +588,24 @@ function Composer({
   // Cresce com o conteúdo até o teto e só então rola internamente. Medir
   // exige zerar a altura antes de ler `scrollHeight`, senão o valor fica
   // preso na altura anterior e o composer nunca encolhe (mesmo padrão do
-  // dock de transcrição).
+  // dock de transcrição). O teclado virtual muda a viewport sem mudar o
+  // texto, então o resize também remede.
   useLayoutEffect(() => {
     const element = textareaRef.current;
     if (!element) return;
-    element.style.height = 'auto';
-    element.style.height = `${Math.min(element.scrollHeight, COMPOSER_MAX_HEIGHT_PX)}px`;
+    function measure(): void {
+      if (!element) return;
+      element.style.height = 'auto';
+      element.style.height = `${Math.min(element.scrollHeight, composerMaxHeight())}px`;
+    }
+    measure();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', measure);
+    window.addEventListener('resize', measure);
+    return () => {
+      viewport?.removeEventListener('resize', measure);
+      window.removeEventListener('resize', measure);
+    };
   }, [input]);
 
   return (
@@ -595,7 +631,9 @@ function Composer({
           rows={1}
           disabled={streaming}
           autoFocus={autoFocus}
-          style={{ maxHeight: `${COMPOSER_MAX_HEIGHT_PX}px` }}
+          style={{
+            maxHeight: `min(${COMPOSER_MAX_HEIGHT_PX}px, ${COMPOSER_MAX_HEIGHT_VH * 100}dvh)`,
+          }}
           className="min-h-9 w-full resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-sm text-[var(--color-app-fg)] outline-none placeholder:text-[var(--color-app-muted)] disabled:opacity-60"
         />
 
@@ -936,11 +974,14 @@ export function ChatPage(): React.ReactElement {
   }
 
   function applySnapshot(snapshot: Snapshot, replace = false): void {
+    // Funil único de mensagens vindas do servidor: normaliza aqui para que o
+    // render nunca receba `segments` cru do JSONB (ver parseMessageSegments).
+    const messages = snapshot.messages.map(normalizeSnapshotMessage);
     setMessages((current) => {
-      if (replace) return snapshot.messages;
+      if (replace) return messages;
       return mergeChatMessagePages(
         current.filter((message) => !message.id.startsWith('local-')),
-        snapshot.messages,
+        messages,
       );
     });
     setHasOlder(snapshot.hasOlder);
@@ -1243,10 +1284,17 @@ export function ChatPage(): React.ReactElement {
     scrollPhaseRef.current = 'free';
     setMessages((current) => [...current, localUser, localAssistant]);
     setInput('');
-    // Os anexos prontos pertencem à mensagem que acabou de sair. Uploads
-    // ainda em andamento seguem no composer e valem para a próxima mensagem;
-    // os que falharam saem (o erro já foi avisado por toast).
-    setAttachments((current) => current.filter((item) => item.status === 'uploading'));
+    // Chips que saem do composer QUANDO o servidor aceitar a mensagem: os
+    // prontos (foram vinculados) e os que falharam (erro já avisado por
+    // toast). Uploads em andamento seguem no composer e valem para a próxima
+    // mensagem. Limpar aqui, antes do POST, perdia os anexos em 409 (turno
+    // ocupado), 429 (rate limit) ou queda de rede — a mensagem não era criada
+    // e não há como re-vincular um job existente, restando subir o arquivo de
+    // novo. Guardamos os ids em vez de filtrar por status depois, para não
+    // levar junto um anexo que o usuário adicionou durante a requisição.
+    const consumedAttachmentIds = new Set(
+      attachments.filter((item) => item.status !== 'uploading').map((item) => item.id),
+    );
     setNearBottom(false);
     setShowScrollLatest(false);
     setStreaming(true);
@@ -1266,6 +1314,8 @@ export function ChatPage(): React.ReactElement {
         signal: controller.signal,
       });
       if (!response.ok || !response.body) throw new Error(t('chat.streamStartError'));
+      // Mensagem aceita: só agora os chips consumidos saem do composer.
+      setAttachments((current) => current.filter((item) => !consumedAttachmentIds.has(item.id)));
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';

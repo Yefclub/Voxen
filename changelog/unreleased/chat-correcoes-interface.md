@@ -23,9 +23,17 @@ continua indo pro acervo, mas agora também fica vinculado à mensagem em que
 foi enviado: os anexos aparecem logo abaixo da sua bolha no histórico e
 continuam lá depois de recarregar a página. São até 5 anexos por mensagem.
 
+Se o envio falhar — turno ocupado, limite de mensagens ou queda de conexão —
+os anexos continuam no composer, prontos pra tentar de novo. Antes eles sumiam
+e era preciso subir o arquivo outra vez.
+
 **O composer cresce com o texto.** Escrever mensagens longas ficou confortável:
 a caixa expande conforme você digita até uma altura máxima e só então passa a
-rolar internamente.
+rolar internamente. No celular esse teto acompanha a tela, então o teclado
+aberto não engole a conversa.
 
 **Ícone de enviar alinhado ao resto do app.** O avião de papel deu lugar ao
-chevron, a mesma família de ícones usada em toda a interface.
+chevron, a mesma família de ícones usada em toda a interface. O chat do detalhe
+de transcrição mantém o avião de propósito: ali o chevron já significa
+expandir/recolher. Anexos de imagem também passam a mostrar ícone de imagem em
+vez de ícone de documento.

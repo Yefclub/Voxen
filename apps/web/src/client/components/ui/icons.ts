@@ -36,6 +36,7 @@ import {
   GitBranchIcon,
   GlobeIcon,
   HouseIcon,
+  ImageIcon,
   InfoIcon,
   KeyRoundIcon,
   LayersIcon,
@@ -136,6 +137,7 @@ export const Folder = accessibleIcon(FolderIcon);
 export const FolderOpen = accessibleIcon(FolderOpenIcon);
 export const Globe = accessibleIcon(GlobeIcon);
 export const House = accessibleIcon(HouseIcon);
+export const Image = accessibleIcon(ImageIcon);
 export const KeyRound = accessibleIcon(KeyRoundIcon);
 export const LoaderCircle = accessibleIcon(LoaderCircleIcon);
 export const Lock = accessibleIcon(LockIcon);

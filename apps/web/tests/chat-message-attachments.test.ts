@@ -7,6 +7,13 @@ import {
   parseMessageAttachments,
   type MessageAttachment,
 } from '../src/lib/chat/message-attachments';
+import {
+  resolveAttachments,
+  type AttachmentJobFinder,
+  type AttachmentJobQuery,
+} from '../src/lib/chat/attachment-resolver';
+import { CHAT_UPLOAD_ACCEPT, attachmentKind } from '../src/client/lib/chat-tools';
+import { detectUploadKind } from '../src/lib/media-upload';
 
 const doc: MessageAttachment = { jobId: 'job-1', name: 'contrato.pdf', kind: 'document' };
 
@@ -80,6 +87,124 @@ describe('buildMessageAttachments', () => {
 });
 
 // ============================================================================
+// Fronteira de workspace — teste de COMPORTAMENTO (spec 126)
+// ----------------------------------------------------------------------------
+// Isolamento por `userId` é regra inegociável (CLAUDE.md § Isolamento de
+// Workspaces) e a spec 126 vende essa propriedade explicitamente, então ela
+// precisa de teste que execute o código, não de `toContain` no texto-fonte:
+// um grep aceita qualquer reescrita que preserve a string (num comentário,
+// por exemplo) enquanto a query viva perde o filtro.
+//
+// O finder falso emula o Postgres: filtra pelo `where` que RECEBEU. Se o
+// escopo sumir da query, o job do outro workspace passa a ser devolvido e
+// vira anexo — e o teste falha pelo retorno, não só pela asserção do `where`.
+// ============================================================================
+
+const JOBS = [
+  {
+    id: 'job-a',
+    userId: 'user-a',
+    sourceUrl: `upload://${'a'.repeat(8)}-0000-4000-8000-000000000001/foto.png`,
+  },
+  {
+    id: 'job-b',
+    userId: 'user-b',
+    sourceUrl: `upload://${'b'.repeat(8)}-0000-4000-8000-000000000002/segredo.pdf`,
+  },
+];
+
+function fakeJobFinder(): { find: AttachmentJobFinder; queries: AttachmentJobQuery[] } {
+  const queries: AttachmentJobQuery[] = [];
+  const find: AttachmentJobFinder = async (query) => {
+    queries.push(query);
+    // `Partial` porque o teste precisa observar também a query MUTADA (sem
+    // escopo), que é justamente o cenário que ele existe para reprovar.
+    const where = query.where as Partial<AttachmentJobQuery['where']>;
+    return JOBS.filter(
+      (job) =>
+        (where.id?.in.includes(job.id) ?? false) &&
+        (where.userId === undefined || job.userId === where.userId),
+    ).map((job) => ({ id: job.id, sourceUrl: job.sourceUrl }));
+  };
+  return { find, queries };
+}
+
+describe('resolveAttachments — escopo de workspace', () => {
+  test('resolve o anexo do próprio usuário', async () => {
+    const { find } = fakeJobFinder();
+    expect(await resolveAttachments('user-a', ['job-a'], find)).toEqual([
+      { jobId: 'job-a', name: 'foto.png', kind: 'image' },
+    ]);
+  });
+
+  test('job de outro workspace não vira anexo e a query carrega o userId', async () => {
+    const { find, queries } = fakeJobFinder();
+
+    const resolved = await resolveAttachments('user-a', ['job-b'], find);
+
+    expect(resolved).toEqual([]);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.where.userId).toBe('user-a');
+  });
+
+  test('numa lista mista, só o job do próprio usuário sobrevive', async () => {
+    const { find } = fakeJobFinder();
+    expect(await resolveAttachments('user-a', ['job-b', 'job-a'], find)).toEqual([
+      { jobId: 'job-a', name: 'foto.png', kind: 'image' },
+    ]);
+  });
+
+  test('não consulta o banco quando não há id pedido', async () => {
+    const { find, queries } = fakeJobFinder();
+    expect(await resolveAttachments('user-a', undefined, find)).toEqual([]);
+    expect(await resolveAttachments('user-a', [], find)).toEqual([]);
+    expect(queries).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// Cliente e servidor precisam concordar sobre o `kind` (spec 126)
+// ----------------------------------------------------------------------------
+// `attachmentKind` (cliente, chip otimista) e `detectUploadKind` (servidor,
+// forma canônica do snapshot) são DUAS tabelas de extensão. Se divergirem, o
+// chip troca de ícone sozinho quando o snapshot chega. Enquanto forem
+// duplicadas, este teste é o que segura o par.
+// ============================================================================
+
+describe('attachmentKind (cliente) × detectUploadKind (servidor)', () => {
+  const extensions = CHAT_UPLOAD_ACCEPT.split(',')
+    .filter((item) => item.startsWith('.'))
+    .map((item) => item.slice(1));
+
+  test('o catálogo do input não está vazio', () => {
+    expect(extensions.length).toBeGreaterThan(20);
+  });
+
+  test('concordam em toda extensão aceita pelo input', () => {
+    const divergent = extensions.filter(
+      (ext) => attachmentKind(`arquivo.${ext}`, '') !== detectUploadKind(`arquivo.${ext}`, ''),
+    );
+    expect(divergent).toEqual([]);
+  });
+
+  test('concordam nos MIME types e nos casos não suportados', () => {
+    const cases: Array<[string, string]> = [
+      ['foto', 'image/png'],
+      ['audio', 'audio/mpeg'],
+      ['video', 'video/mp4'],
+      ['doc', 'application/pdf'],
+      ['planilha', 'text/csv; charset=utf-8'],
+      ['binario.exe', ''],
+      ['sem-extensao', ''],
+      ['arquivo.zip', 'application/zip'],
+    ];
+    for (const [name, type] of cases) {
+      expect([name, attachmentKind(name, type)]).toEqual([name, detectUploadKind(name, type)]);
+    }
+  });
+});
+
+// ============================================================================
 // Contrato de origem — o vínculo precisa nascer no servidor e sobreviver ao
 // reload (spec 126). Sem isso, os helpers puros acima não valem nada.
 // ============================================================================
@@ -98,9 +223,6 @@ describe('vínculo do anexo com a mensagem', () => {
   test('o cliente só envia ids de job — nome e tipo vêm do servidor', () => {
     expect(chat).toContain('attachmentJobIds');
     expect(route).toContain('attachmentJobIds: z.array(');
-    // O escopo por userId é o que impede um id de outro workspace virar anexo.
-    expect(route).toContain('where: { id: { in: [...jobIds] }, userId }');
-    expect(route).toContain('parseUploadSourceUrl(job.sourceUrl)');
   });
 
   test('o anexo é persistido na mensagem do usuário', () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   applySegmentEvent,
   closeTrailingReasoning,
+  parseMessageSegments,
   resolveThinkingTiming,
   segmentsFromPersistedTools,
   segmentsReasoningDuration,
@@ -366,5 +367,99 @@ describe('segmentsToolCount', () => {
   it('zero quando o turno só teve raciocínio', () => {
     expect(segmentsToolCount([{ type: 'reasoning', id: 'r0', text: 'x', startedAt: 1 }])).toBe(0);
     expect(segmentsToolCount([])).toBe(0);
+  });
+});
+
+// ============================================================================
+// Normalização do JSONB (spec 126)
+// ----------------------------------------------------------------------------
+// `segments` chega do snapshot só *tipado*; a coluna é JSONB sem schema. Desde
+// que o render passou a chamar `segment.text.trim()`, um registro sem `text`
+// lança TypeError e o ErrorBoundary global derruba a página inteira.
+// ============================================================================
+
+describe('parseMessageSegments', () => {
+  it('null quando o valor não é uma lista — chamador cai no fallback de tools', () => {
+    expect(parseMessageSegments(null)).toBeNull();
+    expect(parseMessageSegments(undefined)).toBeNull();
+    expect(parseMessageSegments('[]')).toBeNull();
+    expect(parseMessageSegments({ type: 'reasoning' })).toBeNull();
+  });
+
+  it('raciocínio sem `text` vira string vazia em vez de derrubar o render', () => {
+    const parsed = parseMessageSegments([{ type: 'reasoning', id: 'r0', startedAt: 10 }]);
+
+    expect(parsed).toEqual([{ type: 'reasoning', id: 'r0', text: '', startedAt: 10 }]);
+    // O contrato que interessa: o render chama .trim() sem explodir.
+    expect(() => parsed?.map((s) => (s.type === 'reasoning' ? s.text.trim() : ''))).not.toThrow();
+  });
+
+  it('preserva raciocínio íntegro, com e sem `endedAt`', () => {
+    expect(
+      parseMessageSegments([
+        { type: 'reasoning', id: 'r0', text: 'oi', startedAt: 10, endedAt: 20 },
+        { type: 'reasoning', id: 'r1', text: 'em curso', startedAt: 30 },
+      ]),
+    ).toEqual([
+      { type: 'reasoning', id: 'r0', text: 'oi', startedAt: 10, endedAt: 20 },
+      { type: 'reasoning', id: 'r1', text: 'em curso', startedAt: 30 },
+    ]);
+  });
+
+  it('descarta segmentos sem id, de tipo desconhecido ou não-objetos', () => {
+    expect(
+      parseMessageSegments([
+        { type: 'reasoning', text: 'sem id', startedAt: 1 },
+        { type: 'coisa-nova', id: 'x', text: 'y', startedAt: 1 },
+        null,
+        'texto',
+      ]),
+    ).toEqual([]);
+  });
+
+  it('descarta raciocínio com `startedAt` inválido (evita duração absurda)', () => {
+    expect(
+      parseMessageSegments([
+        { type: 'reasoning', id: 'r0', text: 'x', startedAt: 'ontem' },
+        { type: 'reasoning', id: 'r1', text: 'x', startedAt: Number.NaN },
+        { type: 'reasoning', id: 'r2', text: 'x', startedAt: -5 },
+        { type: 'reasoning', id: 'r3', text: 'x' },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('filtra ferramentas malformadas dentro do tool-group', () => {
+    expect(
+      parseMessageSegments([
+        {
+          type: 'tool-group',
+          id: 'g0',
+          tools: [tool('t1', 'completed'), { id: 't2', state: 'completed' }, { id: 't3' }],
+        },
+      ]),
+    ).toEqual([{ type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed')] }]);
+  });
+
+  it('descarta tool-group sem ferramenta válida ou com `tools` não-lista', () => {
+    expect(
+      parseMessageSegments([
+        { type: 'tool-group', id: 'g0', tools: [{ id: 'sem-nome', state: 'completed' }] },
+        { type: 'tool-group', id: 'g1', tools: 'nada' },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('normaliza uma timeline mista preservando a ordem', () => {
+    expect(
+      parseMessageSegments([
+        { type: 'reasoning', id: 'r0', text: 'pensando', startedAt: 1, endedAt: 2 },
+        { type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed')] },
+        { type: 'reasoning', id: 'r1', startedAt: 3 },
+      ]),
+    ).toEqual([
+      { type: 'reasoning', id: 'r0', text: 'pensando', startedAt: 1, endedAt: 2 },
+      { type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed')] },
+      { type: 'reasoning', id: 'r1', text: '', startedAt: 3 },
+    ]);
   });
 });

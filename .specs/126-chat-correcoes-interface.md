@@ -107,14 +107,63 @@ spec.
 
 ## Riscos / Decisões pendentes
 
-- Exibir o raciocínio conflita com o requisito da spec 119 ("apresentar no
-  chat somente resumos operacionais sanitizados, nunca prompts, cadeia de
-  raciocínio ou instruções internas do modelo"). Esta spec é posterior e
-  explícita; o critério aqui é: raciocínio **do modelo** é exibível dentro
-  do bloco recolhível, prompts e instruções internas continuam fora.
+- Exibir o raciocínio conflita com **duas** cláusulas vigentes, ambas
+  anotadas como superseded neste ponto específico:
+  - spec 119 § Ubiquitous ("apresentar no chat somente resumos operacionais
+    sanitizados, nunca prompts, cadeia de raciocínio ou instruções internas
+    do modelo") e o critério de aceite correspondente ("não renderiza
+    raciocínio bruto persistido"), além da premissa em Riscos ("cadeia de
+    raciocínio não é um artefato de produto");
+  - spec 071 § Ubiquitous ("apresentar respostas Markdown, fontes e eventos
+    de ferramentas sem expor segredos, **cadeia de raciocínio bruta** ou JSON
+    técnico não seguro").
+
+  Esta spec é posterior e explícita; o critério aqui é: raciocínio **do
+  modelo** é exibível dentro do bloco recolhível, prompts, instruções
+  internas, segredos e JSON técnico não seguro continuam fora. Os requisitos
+  originais NÃO foram removidos das specs 119 e 071 — foram marcados, para que
+  a próxima passada nessa superfície não os reverta por engano.
 - O anexo vira `{jobId, name, kind}` em `ChatMessage.attachments`. O cliente
   envia apenas ids de job; nome e tipo são resolvidos no servidor com escopo
   `userId`, para que um id de outro workspace não vire anexo nem vaze nome
   de arquivo alheio.
-- O dock de chat do detalhe de transcrição continua usando o avião de papel;
-  fica coerente numa passada futura sobre aquela superfície.
+- **Divergência deliberada do ícone de enviar entre os dois composers.** O
+  composer principal (`pages/chat.tsx`) usa `ChevronUp`; o dock de chat do
+  detalhe de transcrição (`components/library/transcript-chat-dock.tsx`)
+  continua com o avião de papel. Não é omissão: o dock **já usa `ChevronUp`
+  no próprio cabeçalho** como affordance de expandir/recolher (com
+  `rotate-180`), então reaproveitar o mesmo glifo no botão de enviar
+  colocaria dois desenhos idênticos com significados diferentes a poucos
+  pixels um do outro. `page-presentation-contract.test.ts` passa a guardar os
+  dois lados, para que a divergência siga intencional em vez de acidental.
+
+  Trade-off registrado: `ChevronUp` é, no vocabulário geral de UI, affordance
+  de expandir/recolher, e sua animação de hover desenha um segundo chevron
+  fantasma subindo (efeito de rastro). O catálogo animado não oferece seta
+  simples — `ArrowUp` é apelido de `AArrowUpIcon` ("A↑"). Se o owner preferir
+  um glifo inequívoco de envio nos dois composers, o caminho é voltar ambos
+  para `Send`, o que contraria o requisito 5 como escrito e precisa da
+  decisão dele.
+- **Teto do composer é relativo à viewport**: `min(200px, 30dvh)`. 200px fixos
+  comiam quase toda a área útil de um celular com o teclado aberto (~300px).
+  A medição em JS usa `visualViewport` e remede no `resize`, porque o teclado
+  virtual muda a viewport sem mudar o texto.
+- **Fronteira de workspace com teste de comportamento.** A resolução dos
+  anexos vive em `lib/chat/attachment-resolver.ts` com a busca injetável, e
+  não mais inline na rota. Motivo: o escopo por `userId` estava coberto apenas
+  por um `toContain` no texto-fonte da rota — reescrever a query sem o filtro,
+  preservando a string num comentário, passava na suíte inteira. Agora o teste
+  executa a função com um finder que emula o Postgres e reprova tanto pelo
+  vazamento quanto pelo `where` sem escopo.
+- **`attachmentKind` (cliente) e `detectUploadKind` (servidor)** continuam
+  sendo duas tabelas de extensão. Enquanto forem duplicadas, um teste de
+  paridade sobre todo o catálogo de `CHAT_UPLOAD_ACCEPT` segura o par — se
+  divergirem, o chip trocaria de ícone sozinho ao chegar o snapshot.
+- **`segments` é JSONB sem schema** e o backend o entrega apenas *tipado*
+  (`as StoredMessageSegment[]`). Como o render passou a chamar
+  `segment.text.trim()`, um registro sem `text` lançaria `TypeError` sob o
+  ErrorBoundary global. `parseMessageSegments` normaliza no funil do snapshot,
+  mesmo cuidado que `tools` já recebia em `isValidToolEvent`.
+- **Os chips de anexo só saem do composer depois do `response.ok`.** Limpar
+  antes do POST perdia os anexos em 409 (turno ocupado), 429 (rate limit) ou
+  queda de rede, sem forma de re-vincular um job existente.
