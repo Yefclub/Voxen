@@ -134,6 +134,10 @@ describeIfDb('/api/admin/models', () => {
   afterAll(async () => {
     globalThis.fetch = originalFetch;
     await wipeDb();
+    // O bloco "guard próprio (router isolado)" no fim do arquivo roda DEPOIS
+    // deste afterAll e usa o mesmo `db`. Funciona porque o Prisma reconecta
+    // lazy — não remova esse disconnect assumindo que nada mais usa o client,
+    // nem reordene os blocos sem conferir isto.
     await db.$disconnect();
   });
 
@@ -335,26 +339,10 @@ describeIfDb('/api/admin/models', () => {
     const userSignin = await signIn('user@voxen.local', 'senha-super-segura-456');
     const userCookie = extractCookie(userSignin);
 
-    // Todos os verbos, não só o GET — a mutação é o que importa proteger.
-    const cases: Array<[string, RequestInit]> = [
-      ['http://localhost/api/admin/models', { headers: { cookie: userCookie } }],
-      [
-        'http://localhost/api/admin/models/default_vision_model',
-        {
-          method: 'PATCH',
-          headers: { cookie: userCookie, 'content-type': 'application/json' },
-          body: JSON.stringify({ modelId: 'openai/gpt-5-vision' }),
-        },
-      ],
-      [
-        'http://localhost/api/admin/models/default_vision_model',
-        { method: 'DELETE', headers: { cookie: userCookie } },
-      ],
-    ];
-    for (const [url, init] of cases) {
-      const res = await app.fetch(new Request(url, init));
-      expect(res.status).toBe(403);
-    }
+    const res = await app.fetch(
+      new Request('http://localhost/api/admin/models', { headers: { cookie: userCookie } }),
+    );
+    expect(res.status).toBe(403);
   });
 
   it('não-autenticado recebe 401', async () => {
@@ -393,9 +381,29 @@ describeIfDb('/api/admin/models — guard próprio (router isolado)', () => {
     );
     const userCookie = extractCookie(await signIn('user2@voxen.local', 'senha-super-segura-456'));
 
-    const res = await isolated.fetch(
-      new Request('http://localhost/api/admin/models', { headers: { cookie: userCookie } }),
-    );
-    expect(res.status).toBe(403);
+    // Todos os verbos, não só o GET: um guard restrito a GET (ex.:
+    // `on(['GET'], '*')` em vez de `use('*')`) deixaria PATCH/DELETE nus e
+    // passaria despercebido se só o GET fosse testado aqui — e testar os
+    // verbos contra o app inteiro não adianta, porque lá o guard do router
+    // pai responde por eles de qualquer jeito.
+    const cases: Array<[string, RequestInit]> = [
+      ['http://localhost/api/admin/models', { headers: { cookie: userCookie } }],
+      [
+        'http://localhost/api/admin/models/default_vision_model',
+        {
+          method: 'PATCH',
+          headers: { cookie: userCookie, 'content-type': 'application/json' },
+          body: JSON.stringify({ modelId: 'openai/gpt-5-vision' }),
+        },
+      ],
+      [
+        'http://localhost/api/admin/models/default_vision_model',
+        { method: 'DELETE', headers: { cookie: userCookie } },
+      ],
+    ];
+    for (const [url, init] of cases) {
+      const res = await isolated.fetch(new Request(url, init));
+      expect(res.status).toBe(403);
+    }
   });
 });
