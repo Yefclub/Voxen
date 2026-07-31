@@ -196,15 +196,37 @@ Motivo principal: **cliente adulterado**. A rota é a única barreira entre um
 POST arbitrário e a setting global — sem revalidação, `platform: 'tiktok'`
 gravaria cookie de qualquer domínio.
 
-> Correção (review da PR #499): uma versão anterior deste texto afirmava que
-> o `prepare_line` do yt-dlp levanta `LoadError` e derruba o arquivo inteiro
-> na primeira linha malformada. **Isso não procede no yt-dlp atual**
-> (2026.07.04, verificado no container do worker): ele pula a entrada
-> malformada com warning e carrega o resto. Quem aborta o arquivo todo é o
-> `MozillaCookieJar` da stdlib, que não é o parser usado pelo worker. Na
-> prática o efeito de uma linha ruim é falha **silenciosa** de autenticação
-> — o que reforça a validação, mas por outro motivo. Não reescreva esta
-> validação com base na premissa antiga.
+Além disso, a robustez do arquivo depende desta validação — mas de forma
+**assimétrica**, e essa assimetria já foi documentada errado duas vezes.
+Comportamento medido no container do worker (yt-dlp 2026.07.04, Python
+3.13.14, `ignore_discard=True` para isolar o confundidor de session-cookie):
+
+| linha ruim | `YoutubeDLCookieJar` (worker) | `MozillaCookieJar` (stdlib) |
+| --- | --- | --- |
+| campos ≠ 7 | pula a linha + warning | aborta tudo |
+| `expires` com sinal / notação-e | pula a linha + warning | carrega |
+| `expires` fracionário (`1.5`) | **aceita** | carrega |
+| flag fora de `TRUE`/`FALSE` | **ABORTA O ARQUIVO INTEIRO** | aborta tudo |
+
+Mecanismo (`yt_dlp/cookies.py`): o `except LoadError → warning → continue`
+cobre **somente** o que o `prepare_line` checa — contagem de campos e o
+regex `[0-9]+(?:\.[0-9]+)?` de `expires`. Todo o resto cai no
+`_really_load` **fora** do try, e ali o `LoadError` propaga.
+
+Consequência: **as checagens de flag são load-bearing** — sem elas, uma
+captura ruim derruba a autenticação de todas as plataformas. As de
+contagem/expiração evitam perda silenciosa daquela linha.
+
+> Histórico das premissas erradas (não repita nenhuma das duas):
+> 1. A versão original dizia que o `prepare_line` derruba o arquivo inteiro
+>    na primeira linha malformada. Falso — ele pula contagem de campos e
+>    expiração inválida.
+> 2. A primeira correção inverteu para "o yt-dlp nunca derruba o arquivo;
+>    quem aborta é o `MozillaCookieJar` da stdlib, que não é o parser do
+>    worker". Também falso, duas vezes: o yt-dlp **aborta sim** com flag
+>    inválida, e `YoutubeDLCookieJar` **é** subclasse de `MozillaCookieJar`
+>    (`YoutubeDLCookieJar._really_load is MozillaCookieJar._really_load`
+>    → `True`) — não são dois parsers, é o mesmo por herança.
 
 ### D4 — YouTube captura só `.youtube.com`
 

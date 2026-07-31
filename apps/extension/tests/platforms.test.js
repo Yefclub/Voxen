@@ -161,7 +161,7 @@ describe('toNetscape', () => {
     expect(out.split('\n')[1].split('\t')[2]).toBe('/');
   });
 
-  test('não emite prefixo #HttpOnly_ (parsers da stdlib descartariam a linha)', () => {
+  test('não emite prefixo #HttpOnly_ (flag sem efeito no uso do yt-dlp)', () => {
     const out = toNetscape([cookie({ httpOnly: true })]);
     expect(out).not.toContain('#HttpOnly_');
   });

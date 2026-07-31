@@ -7,8 +7,9 @@
  *   - 7 campos separados por TAB, nesta ordem:
  *     domain, includeSubdomains, path, secure, expires, name, value
  *   - flags em MAIÚSCULAS (`TRUE`/`FALSE`)
- *   - `expires` em segundos, só dígitos (fração ou sinal fazem o yt-dlp pular
- *     a entrada com warning — o cookie some silenciosamente)
+ *   - `expires` em segundos, só dígitos: sinal/notação-e fazem o yt-dlp pular
+ *     a entrada com warning (o cookie some em silêncio). Fração o yt-dlp
+ *     aceita, mas emitimos inteiro — é o que o Chrome dá e é mais estrito.
  *   - cookie de sessão → `0`
  *
  * O prefixo `#HttpOnly_` NÃO é emitido de propósito: a flag não tem efeito no
@@ -126,7 +127,7 @@ export function hasSessionCookie(cookies, platform) {
 /**
  * Campos que quebrariam o arquivo (TAB/CR/LF) invalidam o cookie inteiro —
  * cookie válido nunca contém esses caracteres, então descartar é seguro e
- * evita gerar um arquivo que o yt-dlp recusa por completo.
+ * evita emitir uma linha que o yt-dlp pularia em silêncio.
  * @param {unknown} value
  * @returns {value is string}
  */

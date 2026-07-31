@@ -19,11 +19,21 @@
 // arbitrário e a setting global: sem revalidar, `platform: 'tiktok'` gravaria
 // cookie de qualquer domínio.
 //
-// NÃO é porque o yt-dlp derruba o arquivo inteiro numa linha ruim — isso era
-// a premissa original e é FALSA no yt-dlp atual (2026.07.04): ele pula a
-// entrada malformada com warning e carrega o resto. Quem aborta tudo é o
-// MozillaCookieJar da stdlib, que não é o parser do worker. O efeito real de
-// uma linha ruim é falha SILENCIOSA de autenticação. Ver spec 121, D3.
+// Mas a robustez do arquivo TAMBÉM depende daqui, e de forma assimétrica —
+// medido no yt-dlp 2026.07.04 (`yt_dlp/cookies.py`). O `except LoadError ->
+// warning -> continue` cobre SÓ o que o `prepare_line` checa: contagem de
+// campos e o regex de `expires` (`[0-9]+(?:\.[0-9]+)?`). Todo o resto cai no
+// `_really_load` FORA do try, e ali o LoadError propaga:
+//
+//   campos != 7        -> pula a linha com warning, carrega o resto
+//   expires com sinal  -> pula a linha com warning, carrega o resto
+//   expires fracionário-> ACEITO (o regex permite ponto decimal)
+//   flag fora de TRUE/FALSE (ex.: `true`, `YES`) -> ABORTA O ARQUIVO INTEIRO
+//
+// Ou seja: as checagens de flag em `parseCapturedCookies` são load-bearing —
+// sem elas, uma captura ruim derruba a autenticação de TODAS as plataformas.
+// As de contagem/expiração só evitam perda silenciosa daquela linha.
+// Ver spec 121, D3, para o histórico das premissas erradas aqui.
 // ============================================================================
 
 export const NETSCAPE_HEADER = '# Netscape HTTP Cookie File';
