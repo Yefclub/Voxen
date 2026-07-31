@@ -6,6 +6,8 @@ import {
   segmentsFromPersistedTools,
   segmentsReasoningDuration,
   segmentsRunning,
+  segmentsToolCount,
+  thinkingInFlight,
   type MessageSegment,
   type ToolEvent,
 } from '../src/client/lib/chat-segments';
@@ -317,5 +319,52 @@ describe('resolveThinkingTiming', () => {
       inFlight: true,
       duration: 1_250,
     });
+  });
+});
+
+// ============================================================================
+// Compactação do bloco ao fim do turno (spec 126)
+// ============================================================================
+
+describe('thinkingInFlight', () => {
+  const running: MessageSegment[] = [
+    { type: 'tool-group', id: 'g0', tools: [tool('t1', 'running')] },
+  ];
+  const done: MessageSegment[] = [
+    { type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed')] },
+  ];
+
+  it('turno encerrado nunca está em voo', () => {
+    expect(thinkingInFlight(done, false, false)).toBe(false);
+    expect(thinkingInFlight(running, false, true)).toBe(false);
+  });
+
+  it('turno ao vivo sem resposta final segue em voo mesmo entre ferramentas', () => {
+    expect(thinkingInFlight(done, true, false)).toBe(true);
+    expect(thinkingInFlight([], true, false)).toBe(true);
+  });
+
+  it('quando a resposta final começa, o bloco deixa de estar em voo', () => {
+    expect(thinkingInFlight(done, true, true)).toBe(false);
+  });
+
+  it('resposta final seguida de nova ferramenta reabre o bloco', () => {
+    expect(thinkingInFlight(running, true, true)).toBe(true);
+  });
+});
+
+describe('segmentsToolCount', () => {
+  it('conta ferramentas de todos os grupos', () => {
+    const segments: MessageSegment[] = [
+      { type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed'), tool('t2', 'completed')] },
+      { type: 'reasoning', id: 'r0', text: 'x', startedAt: 1, endedAt: 2 },
+      { type: 'tool-group', id: 'g1', tools: [tool('t3', 'error')] },
+    ];
+    expect(segmentsToolCount(segments)).toBe(3);
+  });
+
+  it('zero quando o turno só teve raciocínio', () => {
+    expect(segmentsToolCount([{ type: 'reasoning', id: 'r0', text: 'x', startedAt: 1 }])).toBe(0);
+    expect(segmentsToolCount([])).toBe(0);
   });
 });

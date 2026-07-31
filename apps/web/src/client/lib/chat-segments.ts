@@ -218,6 +218,39 @@ export function segmentsReasoningDuration(
   return Number.isFinite(duration) && duration >= 0 ? duration : null;
 }
 
+/**
+ * Total de ferramentas chamadas no turno — insumo do resumo compacto exibido
+ * no cabeçalho quando o bloco está recolhido (spec 126).
+ */
+export function segmentsToolCount(segments: readonly MessageSegment[]): number {
+  let total = 0;
+  for (const segment of segments) {
+    if (segment.type === 'tool-group') total += segment.tools.length;
+  }
+  return total;
+}
+
+/**
+ * O bloco "Pensando" está em voo?
+ *
+ * Antes bastava `live` (stream aberto), o que mantinha a timeline inteira
+ * expandida enquanto a resposta final era digitada — empurrando o texto pra
+ * fora da tela justamente na hora de ler (spec 126). Agora, assim que o
+ * primeiro trecho da resposta final chega (`answering`), o bloco sai de voo e
+ * se compacta; se o harness voltar a chamar ferramenta depois disso, ele
+ * reabre. Gaps de milissegundos entre ferramentas continuam NÃO colapsando o
+ * bloco, porque antes da resposta final o turno é sempre considerado em voo.
+ */
+export function thinkingInFlight(
+  segments: readonly MessageSegment[],
+  live: boolean,
+  answering: boolean,
+): boolean {
+  if (!live) return false;
+  if (!answering) return true;
+  return segmentsRunning(segments);
+}
+
 export interface ThinkingTiming {
   inFlight: boolean;
   duration: number | null;

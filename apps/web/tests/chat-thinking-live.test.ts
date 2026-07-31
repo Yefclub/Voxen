@@ -16,10 +16,17 @@ const turnRuntimeSource = readFileSync(
  */
 describe('ThinkingBlock live expand policy', () => {
   test('treats live turn as in-flight even when no segment is running', () => {
-    expect(chatSource).toContain(
-      'const { inFlight, duration } = resolveThinkingTiming(segments, live, startedAt, elapsed)',
-    );
+    expect(chatSource).toContain('thinkingInFlight(segments, live, answering)');
+    expect(chatSource).toContain('const { inFlight, duration } = resolveThinkingTiming(');
     expect(chatSource).not.toContain('const inFlight = live || running');
+  });
+
+  // Spec 126: quando a resposta final começa, a timeline se compacta em vez de
+  // continuar aberta ocupando a tela até o stream fechar.
+  test('compacts as soon as the final answer starts and summarises the tools', () => {
+    expect(chatSource).toContain('answering={message.content.length > 0}');
+    expect(chatSource).toContain('const toolCount = segmentsToolCount(segments)');
+    expect(chatSource).toContain('thinkingSummaryLabel(duration, toolCount, t)');
   });
 
   test('auto-expand / auto-collapse keys off inFlight, not bare running', () => {
@@ -35,7 +42,7 @@ describe('ThinkingBlock live expand policy', () => {
     expect(chatSource).toContain('disabled={inFlight}');
     expect(chatSource).toContain('onClick={() => !inFlight && setExpanded((v) => !v)}');
     expect(chatSource).toContain('{inFlight ? (');
-    expect(chatSource).toContain('resolveThinkingTiming(segments, live, startedAt, elapsed)');
+    expect(chatSource).toContain('resolveThinkingTiming(');
   });
 
   test('cronômetro parte do início conhecido do turno e nunca recalcula histórico com Date.now', () => {
@@ -46,8 +53,12 @@ describe('ThinkingBlock live expand policy', () => {
     expect(chatSource).not.toContain('const [frozen');
   });
 
-  test('timeline apresenta estado operacional sem expor chain-of-thought bruto', () => {
-    expect(chatSource).not.toContain('{segment.text}');
+  // Spec 126 revisa a decisão da spec 119: o raciocínio emitido pelo provedor
+  // volta a ser exibido, dentro do bloco recolhível. O resumo operacional
+  // continua como fallback para provedores que só sinalizam a etapa, sem
+  // texto — assim nenhum turno mostra bloco vazio.
+  test('timeline mostra o raciocínio emitido e cai no resumo operacional quando não há texto', () => {
+    expect(chatSource).toContain('segment.text.trim().length > 0');
     expect(chatSource).toContain("t('chat.reasoningInProgress')");
     expect(chatSource).toContain("t('chat.reasoningCompleted')");
   });
