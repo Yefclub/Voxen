@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   isSendableTabUrl,
   looksLikeVoxenTab,
+  meUrl,
   normalizeBaseUrl,
   originPattern,
 } from '../lib/config.js';
@@ -34,5 +35,12 @@ describe('isSendableTabUrl / originPattern', () => {
   });
   test('pattern', () => {
     expect(originPattern('https://a.com')).toBe('https://a.com/*');
+  });
+});
+
+describe('meUrl', () => {
+  test('monta a URL de /api/me', () => {
+    expect(meUrl('https://a.com')).toBe('https://a.com/api/me');
+    expect(meUrl('https://a.com/')).toBe('https://a.com/api/me');
   });
 });
