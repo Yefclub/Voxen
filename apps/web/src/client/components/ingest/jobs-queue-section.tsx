@@ -1,8 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Globe, PlayCircle, RefreshCw } from '@/components/ui/icons';
+import { ArrowRight, Globe, PlayCircle, RefreshCw, RotateCw } from '@/components/ui/icons';
 import { motion } from 'motion/react';
+import { toast } from '@/lib/toast';
+import { ApiError, apiPost } from '../../lib/api';
+import { canRetryJob, jobRetryRefusalMessage, resolveJobRetryFeedback } from '../../lib/job-retry';
 import { Button } from '../ui/button';
+import { Spinner } from '../ui/spinner';
 import { Card, CardContent } from '../ui/card';
 import { FetchError } from '../ui/fetch-error';
 import { Badge } from '../ui/badge';
@@ -268,6 +272,7 @@ const JobRow = memo(function JobRow({
 }): React.ReactElement {
   const isActive = job.status === 'QUEUED' || job.status === 'RUNNING';
   const [progress, setProgress] = useState<JobProgressState>(() => jobProgressSnapshot(job));
+  const [reprocessing, setReprocessing] = useState(false);
   const onUpdateRef = useRef(onUpdate);
   const terminalRefreshRef = useRef<ReturnType<typeof createDeferredJobRefresh> | null>(null);
   terminalRefreshRef.current ??= createDeferredJobRefresh();
@@ -306,7 +311,38 @@ const JobRow = memo(function JobRow({
     };
   }, [job.id, onStreamStateChange]);
 
+  // Reprocessa um item que falhou/foi cancelado sem exigir que o usuário recole
+  // o link. Reaproveita `POST /api/jobs/:id/retry` (dono derivado da sessão,
+  // dedupe de job em andamento). Recusa só notifica — o item fica como estava.
+  async function onReprocess(): Promise<void> {
+    if (reprocessing) return;
+    setReprocessing(true);
+    try {
+      const res = await apiPost<{ jobId?: string | null }>(`/api/jobs/${job.id}/retry`);
+      const feedback = resolveJobRetryFeedback(
+        { ok: true, jobId: res?.jobId ?? null },
+        t('jobs.reprocessError'),
+      );
+      if (feedback.kind === 'queued') {
+        toast.success(t('jobs.reprocessQueued'));
+        onUpdateRef.current();
+        return;
+      }
+      toast.error(feedback.message);
+    } catch (err) {
+      toast.error(
+        jobRetryRefusalMessage(
+          err instanceof ApiError ? err.message : null,
+          t('jobs.reprocessError'),
+        ),
+      );
+    } finally {
+      setReprocessing(false);
+    }
+  }
+
   const { variant, label } = jobStatusBadge(job.status, t);
+  const canReprocess = canRetryJob(job.status);
   const source = detectSourceFromUrl(job.sourceUrl);
   const isUpload = isUploadSourceUrl(job.sourceUrl);
   const ytId = source === 'YOUTUBE' ? youtubeVideoId(job.sourceUrl) : null;
@@ -323,11 +359,15 @@ const JobRow = memo(function JobRow({
   const displayTitle = job.title?.trim() || displayJobSource(job.sourceUrl);
 
   return (
-    <Link
-      to={jobDestination(job)}
-      aria-label={`${job.transcriptId ? t('common.open') : t('jobs.details')}: ${displayTitle}`}
-      className="group flex flex-col gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40 sm:flex-row sm:items-center sm:gap-4"
-    >
+    // O link cobre a linha inteira como overlay (`absolute inset-0`) em vez de
+    // envolver o conteúdo: assim a ação de reprocessar é um <button> de verdade,
+    // e não um botão aninhado dentro de um <a> (HTML inválido + a11y quebrada).
+    <div className="group relative flex flex-col gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)] sm:flex-row sm:items-center sm:gap-4">
+      <Link
+        to={jobDestination(job)}
+        aria-label={`${job.transcriptId ? t('common.open') : t('jobs.details')}: ${displayTitle}`}
+        className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40"
+      />
       <JobPreview
         previewSrc={previewSrc}
         source={source}
@@ -376,11 +416,27 @@ const JobRow = memo(function JobRow({
           <p className="text-xs text-rose-300 mt-1 line-clamp-2 break-words">{job.errorMsg}</p>
         )}
       </div>
-      <span className="inline-flex w-full shrink-0 items-center justify-end gap-1 text-xs text-[var(--color-app-muted)] transition-colors group-hover:text-[var(--color-app-fg)] sm:w-auto">
-        {job.transcriptId ? t('common.open') : t('jobs.details')}
-        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-      </span>
-    </Link>
+      <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
+        {canReprocess && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            // z-10: fica acima do overlay do link, senão o clique vira navegação.
+            className="relative z-10 h-8 shrink-0 text-xs"
+            disabled={reprocessing}
+            onClick={() => void onReprocess()}
+          >
+            {reprocessing ? <Spinner size={14} /> : <RotateCw className="h-3.5 w-3.5" />}
+            {reprocessing ? t('jobs.reprocessing') : t('jobs.reprocess')}
+          </Button>
+        )}
+        <span className="inline-flex items-center gap-1 text-xs text-[var(--color-app-muted)] transition-colors group-hover:text-[var(--color-app-fg)]">
+          {job.transcriptId ? t('common.open') : t('jobs.details')}
+          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </div>
+    </div>
   );
 });
 
