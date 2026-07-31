@@ -275,6 +275,69 @@ input:focus-visible {
   line-height: 1.45;
 }
 
+/* Contas de plataforma (spec 121) */
+.platforms {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.platform {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-app-border);
+  background: var(--color-app-bg-elevated);
+  padding: 12px 14px;
+}
+
+.platform-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.platform-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-app-fg);
+}
+
+.platform-state {
+  font-size: 12px;
+  color: var(--color-app-muted);
+}
+
+.platform-state.ok {
+  color: var(--status-ok);
+}
+
+.platform-state.warn {
+  color: var(--status-warn);
+}
+
+.platform-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.platform .btn {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 :where(button, a, input):focus-visible {
   outline: 2px solid var(--theme-focus);
   outline-offset: 2px;

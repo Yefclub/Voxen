@@ -814,6 +814,21 @@ const ptBRMessages = {
   'admin.integrations.show': 'Ver',
   'admin.integrations.hide': 'Ocultar',
 
+  'admin.integrations.cookies.title': 'Contas de plataforma',
+  'admin.integrations.cookies.description':
+    'Sessões de TikTok, Instagram e YouTube usadas pelo extrator quando o conteúdo exige login. A sessão é capturada pela extensão do Voxen e guardada cifrada — o valor nunca é exibido de volta.',
+  'admin.integrations.cookies.connected': 'Conectado',
+  'admin.integrations.cookies.notConnected': 'Não conectado',
+  'admin.integrations.cookies.stale': 'Possivelmente expirado',
+  'admin.integrations.cookies.capturedAt': 'capturado em {date}',
+  'admin.integrations.cookies.disconnect': 'Desconectar',
+  'admin.integrations.cookies.disconnected': 'Conta desconectada.',
+  'admin.integrations.cookies.disconnectTitle': 'Desconectar {platform}?',
+  'admin.integrations.cookies.disconnectDescription':
+    'A sessão guardada é apagada. Conteúdo que exige login dessa plataforma volta a falhar até você conectar de novo pela extensão.',
+  'admin.integrations.cookies.captureHint':
+    'Para conectar ou renovar: abra as opções da extensão do Voxen, faça login na plataforma no mesmo perfil do browser e clique em Conectar. Sessões passam de "possivelmente expiradas" após 7 dias.',
+
   'admin.integrations.proxy.title': 'Agente de Proxy',
   'admin.integrations.proxy.description':
     'Roteie a extração de mídia por um agente residencial (IP de casa) quando o YouTube bloqueia downloads de datacenter. O token autentica o túnel e fica cifrado no banco.',
@@ -2030,6 +2045,21 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.revoke': 'Revoke',
   'admin.integrations.show': 'Show',
   'admin.integrations.hide': 'Hide',
+
+  'admin.integrations.cookies.title': 'Platform accounts',
+  'admin.integrations.cookies.description':
+    'TikTok, Instagram and YouTube sessions used by the extractor when the content requires a login. The session is captured by the Voxen extension and stored encrypted — the value is never shown back.',
+  'admin.integrations.cookies.connected': 'Connected',
+  'admin.integrations.cookies.notConnected': 'Not connected',
+  'admin.integrations.cookies.stale': 'Possibly expired',
+  'admin.integrations.cookies.capturedAt': 'captured on {date}',
+  'admin.integrations.cookies.disconnect': 'Disconnect',
+  'admin.integrations.cookies.disconnected': 'Account disconnected.',
+  'admin.integrations.cookies.disconnectTitle': 'Disconnect {platform}?',
+  'admin.integrations.cookies.disconnectDescription':
+    'The stored session is deleted. Login-gated content from this platform will fail again until you reconnect from the extension.',
+  'admin.integrations.cookies.captureHint':
+    'To connect or renew: open the Voxen extension options, sign in to the platform in the same browser profile and click Connect. Sessions are flagged as possibly expired after 7 days.',
 
   'admin.integrations.proxy.title': 'Proxy Agent',
   'admin.integrations.proxy.description':

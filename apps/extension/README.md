@@ -1,5 +1,23 @@
 # Extensão Voxen (Chromium MV3)
 
+## v0.4
+
+- **Contas de plataforma** (spec 121): em `options.html`, um botão "Conectar"
+  por plataforma (TikTok, Instagram, YouTube) captura a sessão daquele site e
+  a envia para a instância, que a guarda cifrada e a entrega ao yt-dlp. É o
+  que destrava conteúdo que só baixa com login.
+  - A seção só aparece quando a instância conectada responde que o usuário
+    logado é `ADMIN` — a rota de escrita é admin-only.
+  - Permissões **on-demand**: a permissão `cookies` e a host permission do
+    domínio (`https://*.tiktok.com/*` etc.) são pedidas no clique, uma
+    plataforma por vez. Nada de `<all_urls>`, nada concedido por padrão.
+    "Desconectar" devolve a host permission daquele site.
+  - O valor do cookie existe só como variável local entre o
+    `chrome.cookies.getAll` e o `PATCH` — nunca vai pra `chrome.storage`, pra
+    tela ou pro console.
+  - Sem cookie de sessão do site, a extensão avisa "nenhuma sessão
+    encontrada" e não envia nada.
+
 ## v0.3
 
 - Identidade visual herdada do Voxen web: mesmos tokens de cor (`--color-app-*`,

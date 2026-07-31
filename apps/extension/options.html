@@ -22,7 +22,7 @@
         <div class="logo-wrap">
           <img src="icons/icon-128.png" width="56" height="56" alt="" />
         </div>
-        <p class="eyebrow">Extensão · v0.3</p>
+        <p class="eyebrow">Extensão · v0.4</p>
         <h1>Conecte em segundos</h1>
         <p class="lead">
           Detectamos a aba do Voxen aberta, ou você cola a URL da instância. A sessão do browser
@@ -68,6 +68,22 @@
           </div>
         </form>
         <p id="status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <!-- Contas de plataforma (spec 121). Só aparece quando a instância
+           conectada responde que o usuário logado é ADMIN. -->
+      <section class="card" id="accounts" hidden>
+        <div>
+          <h2>Contas de plataforma</h2>
+          <p class="muted">
+            Conteúdo que exige login (TikTok, Instagram, YouTube restrito) só é extraído com a
+            sessão do seu browser. Faça login na plataforma normalmente e clique em Conectar — a
+            extensão pede a permissão daquele site na hora e envia a sessão cifrada para a sua
+            instância. O valor nunca é exibido de volta.
+          </p>
+        </div>
+        <ul class="platforms" id="platform-list"></ul>
+        <p id="accounts-status" class="status" role="status" aria-live="polite"></p>
       </section>
 
       <section class="card soft">

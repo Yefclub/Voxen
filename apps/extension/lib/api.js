@@ -2,7 +2,14 @@
  * Cliente HTTP da extensão → instância Voxen.
  */
 
-import { extensionVersionUrl, jobStatusUrl, jobsAutoUrl, meUrl } from './config.js';
+import {
+  extensionVersionUrl,
+  jobStatusUrl,
+  jobsAutoUrl,
+  meUrl,
+  platformCookieUrl,
+  platformCookiesUrl,
+} from './config.js';
 
 /**
  * @typedef {'ok' | 'unauthorized' | 'forbidden' | 'network' | 'cors' | 'invalid' | 'error'} SubmitCode
@@ -195,11 +202,11 @@ export async function fetchJobStatus(opts) {
 }
 
 /**
- * GET /api/me — só para descobrir o tema do usuário (sessão via cookie).
- * Falha silenciosa (retorna null) em qualquer erro: tema é cosmético, nunca
- * deve travar o popup/options.
+ * GET /api/me — tema do usuário (cosmético) + role (decide se a seção de
+ * contas de plataforma aparece). Falha silenciosa (retorna null) em qualquer
+ * erro: nunca deve travar o popup/options.
  * @param {string} baseUrl
- * @returns {Promise<{ theme: string } | null>}
+ * @returns {Promise<{ theme: string, role: string | null } | null>}
  */
 export async function fetchMe(baseUrl) {
   try {
@@ -213,10 +220,140 @@ export async function fetchMe(baseUrl) {
     const body = await res.json();
     const theme = body?.user?.theme;
     if (typeof theme !== 'string') return null;
-    return { theme };
+    const role = typeof body?.user?.role === 'string' ? body.user.role : null;
+    return { theme, role };
   } catch {
     return null;
   }
+}
+
+/**
+ * @typedef {{ platform: string, hasCookie: boolean, capturedAt: string | null, stale: boolean }} PlatformCookieStatus
+ */
+
+/**
+ * Traduz o status HTTP das rotas admin de cookie num código estável pra UI.
+ * @param {number} status
+ * @returns {{ code: string, message: string } | null}
+ */
+function adminHttpFailure(status) {
+  if (status === 401) {
+    return { code: 'unauthorized', message: 'Entre na instância Voxen e tente de novo.' };
+  }
+  if (status === 403) {
+    return { code: 'forbidden', message: 'Só administradores podem conectar contas.' };
+  }
+  return null;
+}
+
+/**
+ * GET /api/admin/integrations/cookies — estado por plataforma. A resposta
+ * nunca traz o valor dos cookies (só hasCookie/capturedAt/stale).
+ * @param {{ baseUrl: string, token?: string | null }} opts
+ */
+export async function fetchPlatformCookieStatus(opts) {
+  const { baseUrl, token } = opts;
+  let res;
+  try {
+    res = await fetch(platformCookiesUrl(baseUrl), {
+      method: 'GET',
+      headers: authHeaders(token),
+      credentials: 'include',
+      cache: 'no-store',
+    });
+  } catch (err) {
+    return { ok: false, code: 'network', message: networkError(err).message };
+  }
+
+  const failure = adminHttpFailure(res.status);
+  if (failure) return { ok: false, ...failure };
+  if (!res.ok) {
+    return { ok: false, code: 'error', message: `Falha ao consultar contas (HTTP ${res.status}).` };
+  }
+
+  let body = null;
+  try {
+    body = await res.json();
+  } catch {
+    return { ok: false, code: 'error', message: 'Resposta inválida da instância.' };
+  }
+  if (!Array.isArray(body?.platforms)) {
+    return { ok: false, code: 'error', message: 'Resposta inválida da instância.' };
+  }
+  return { ok: true, platforms: body.platforms };
+}
+
+/**
+ * PATCH /api/admin/integrations/cookies — envia a captura de uma plataforma.
+ *
+ * O payload é um cookie de sessão de conta real: nenhuma mensagem devolvida
+ * daqui pode carregar pedaço dele. Por isso o erro de rede vira texto fixo em
+ * vez de repassar `err.message` (que pode conter a URL/corpo da requisição).
+ * @param {{ baseUrl: string, platform: string, cookies: string, token?: string | null }} opts
+ */
+export async function sendPlatformCookies(opts) {
+  const { baseUrl, platform, cookies, token } = opts;
+  let res;
+  try {
+    res = await fetch(platformCookiesUrl(baseUrl), {
+      method: 'PATCH',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ platform, cookies }),
+    });
+  } catch {
+    return {
+      ok: false,
+      code: 'network',
+      message: 'Não foi possível contactar a instância. O que já estava salvo continua lá.',
+    };
+  }
+
+  const failure = adminHttpFailure(res.status);
+  if (failure) return { ok: false, ...failure };
+
+  let body = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+
+  if (res.ok && body && typeof body.platform === 'string') {
+    return { ok: true, status: /** @type {PlatformCookieStatus} */ (body) };
+  }
+
+  const serverMsg =
+    body && typeof body.error === 'string'
+      ? body.error
+      : `Falha ao salvar a conta (HTTP ${res.status}).`;
+  return { ok: false, code: 'error', message: serverMsg };
+}
+
+/**
+ * DELETE /api/admin/integrations/cookies/:platform — revoga a credencial
+ * guardada daquela plataforma.
+ * @param {{ baseUrl: string, platform: string, token?: string | null }} opts
+ */
+export async function deletePlatformCookies(opts) {
+  const { baseUrl, platform, token } = opts;
+  let res;
+  try {
+    res = await fetch(platformCookieUrl(baseUrl, platform), {
+      method: 'DELETE',
+      headers: authHeaders(token),
+      credentials: 'include',
+    });
+  } catch {
+    return { ok: false, code: 'network', message: 'Não foi possível contactar a instância.' };
+  }
+
+  const failure = adminHttpFailure(res.status);
+  if (failure) return { ok: false, ...failure };
+  if (!res.ok) {
+    return { ok: false, code: 'error', message: `Falha ao desconectar (HTTP ${res.status}).` };
+  }
+  return { ok: true };
 }
 
 /**
