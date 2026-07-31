@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785534442",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Extensão mantém o progresso do envio ao fechar e reabrir o popup",
+    "body": "Fechar o popup da extensão não perde mais o acompanhamento do envio. Antes, o\nprogresso vivia só na janelinha aberta: bastava clicar fora para o Chrome\ndescartar tudo e, ao reabrir, a extensão mostrava a tela inicial mesmo com a\ntranscrição rodando.\n\nAgora, ao reabrir o popup:\n\n- **Envio em andamento** volta com a barra de progresso e a etapa real\n  (baixando, transcrevendo, gerando resumo…), além do botão \"Ver na fila\".\n- **Envio que terminou com o popup fechado** aparece com o resultado — resumo e\n  botão para abrir o conteúdo, ou a mensagem de erro se falhou. O resultado é\n  mostrado uma vez; depois disso o popup volta ao normal.\n- **Instância fora do ar ou sem rede** avisa que o acompanhamento está\n  indisponível no momento, sem sumir com o envio nem fingir que terminou — e\n  sem travar o botão: não saber em que pé está o envio anterior não impede\n  mandar a próxima página. Isso vale também para instância que fica pendurada\n  em vez de recusar a conexão: agora toda requisição tem prazo, então um\n  backend travado atrás de um proxy de pé não deixa mais o botão preso em\n  \"Salvo — processando\".\n- **Acompanhamento que nunca resolve** (instância trocada nas opções, job\n  apagado no servidor) é descartado depois de algumas horas em vez de ficar\n  para sempre. O prazo conta a partir da última vez em que o servidor\n  confirmou o envio em andamento, e não do momento do envio: fila cheia com\n  vários vídeos longos à frente não faz mais o último da fila perder a\n  notificação por tempo de espera.\n\nTambém nesta entrega, acabamento da extensão: cantos mais arredondados no\npopup, página de conexão reorganizada em duas colunas (cabe sem rolagem, com o\nbloco \"Token Bearer\" separado das ações principais por um divisor) e ícones da\nbarra do Chrome regerados a partir da arte em alta resolução, agora centrados e\nmais nítidos em 16 px.",
+    "pr": 500,
+    "author": "Kalyel",
+    "date": "2026-07-31T18:47:03-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/500"
+  },
+  {
     "version": "0.13.0-dev.1785524483",
     "channel": "dev",
     "type": "feat",
