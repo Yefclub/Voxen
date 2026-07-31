@@ -16,6 +16,7 @@ import {
   Network,
   RotateCcw,
   RotateCw,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -101,9 +102,165 @@ export function AdminIntegracoesPage(): React.ReactElement {
 
         <ModelsSection />
         <McpSection />
+        <PlatformCookiesSection />
         <ProxyAgentSection />
       </div>
     </PageShell>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Contas de plataforma (spec 121)
+// ----------------------------------------------------------------------------
+// Só ESTADO: a captura em si acontece na extensão (é ela que tem acesso aos
+// cookies do browser). Esta seção existe pra o admin saber, do próprio Voxen,
+// quais plataformas têm sessão guardada e qual delas já pode ter expirado.
+// O valor do cookie nunca chega aqui — a rota devolve só o status.
+
+const PLATFORM_LABELS: Record<string, string> = {
+  tiktok: 'TikTok',
+  instagram: 'Instagram',
+  youtube: 'YouTube',
+};
+
+interface PlatformCookieStatus {
+  platform: string;
+  hasCookie: boolean;
+  capturedAt: string | null;
+  stale: boolean;
+}
+
+function PlatformCookiesSection(): React.ReactElement {
+  const { t, locale } = useI18n();
+  const [platforms, setPlatforms] = useState<PlatformCookieStatus[] | null>(null);
+  const [confirmPlatform, setConfirmPlatform] = useState<PlatformCookieStatus | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  async function refresh(): Promise<void> {
+    try {
+      const res = await apiGet<{ platforms: PlatformCookieStatus[] }>(
+        '/api/admin/integrations/cookies',
+      );
+      setPlatforms(res.platforms);
+    } catch {
+      setPlatforms([]);
+    }
+  }
+
+  async function disconnect(platform: string): Promise<void> {
+    setRemoving(platform);
+    try {
+      await apiDelete(`/api/admin/integrations/cookies/${platform}`);
+      toast.success(t('admin.integrations.cookies.disconnected'));
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
+    } finally {
+      setRemoving(null);
+    }
+  }
+
+  if (!platforms) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <Spinner />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.15 }}
+    >
+      <Card elevated>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 font-display">
+            <ShieldCheck className="h-4 w-4 text-amber-400" />
+            {t('admin.integrations.cookies.title')}
+          </CardTitle>
+          <CardDescription>{t('admin.integrations.cookies.description')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {platforms.map((p) => {
+            const captured = p.capturedAt ? new Date(p.capturedAt) : null;
+            const capturedLabel =
+              captured && !Number.isNaN(captured.getTime())
+                ? captured.toLocaleDateString(locale)
+                : null;
+            return (
+              <div
+                key={p.platform}
+                className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 px-4 py-3 flex items-center gap-3"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-[var(--color-app-fg)]">
+                    {PLATFORM_LABELS[p.platform] ?? p.platform}
+                  </p>
+                  <p
+                    className={cn(
+                      'text-[11px] mt-0.5',
+                      !p.hasCookie && 'text-[var(--color-app-muted)]',
+                      p.hasCookie && p.stale && 'text-amber-400',
+                      p.hasCookie && !p.stale && 'text-emerald-400',
+                    )}
+                  >
+                    {!p.hasCookie
+                      ? t('admin.integrations.cookies.notConnected')
+                      : p.stale
+                        ? t('admin.integrations.cookies.stale')
+                        : t('admin.integrations.cookies.connected')}
+                    {p.hasCookie && capturedLabel
+                      ? ` · ${t('admin.integrations.cookies.capturedAt', { date: capturedLabel })}`
+                      : ''}
+                  </p>
+                </div>
+                {p.hasCookie && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={removing === p.platform}
+                    onClick={() => setConfirmPlatform(p)}
+                  >
+                    {removing === p.platform ? <Spinner /> : <Trash2 className="h-3.5 w-3.5" />}
+                    {t('admin.integrations.cookies.disconnect')}
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+          <p className="text-[11px] text-[var(--color-app-muted)] leading-relaxed">
+            {t('admin.integrations.cookies.captureHint')}
+          </p>
+        </CardContent>
+      </Card>
+      <ConfirmDialog
+        open={confirmPlatform !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmPlatform(null);
+        }}
+        title={t('admin.integrations.cookies.disconnectTitle', {
+          platform: confirmPlatform
+            ? (PLATFORM_LABELS[confirmPlatform.platform] ?? confirmPlatform.platform)
+            : '',
+        })}
+        description={t('admin.integrations.cookies.disconnectDescription')}
+        confirmLabel={t('admin.integrations.cookies.disconnect')}
+        variant="destructive"
+        onConfirm={async () => {
+          const target = confirmPlatform;
+          setConfirmPlatform(null);
+          if (target) await disconnect(target.platform);
+        }}
+      />
+    </motion.div>
   );
 }
 

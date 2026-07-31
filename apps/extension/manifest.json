@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Voxen",
   "description": "Salve qualquer página na sua base Voxen self-hosted e receba o resumo quando estiver pronto.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "action": {
     "default_title": "Voxen — salvar aba",
     "default_popup": "popup.html",
@@ -26,6 +26,13 @@
     "type": "module"
   },
   "permissions": ["storage", "activeTab", "tabs", "notifications", "alarms"],
-  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "optional_permissions": ["cookies"],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "https://*.tiktok.com/*",
+    "https://*.instagram.com/*",
+    "https://*.youtube.com/*"
+  ],
   "host_permissions": []
 }

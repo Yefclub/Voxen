@@ -94,6 +94,22 @@ export function meUrl(baseUrl) {
 }
 
 /**
+ * Rota admin de cookies de plataforma (spec 121).
+ * @param {string} baseUrl
+ */
+export function platformCookiesUrl(baseUrl) {
+  return `${baseUrl.replace(/\/$/, '')}/api/admin/integrations/cookies`;
+}
+
+/**
+ * @param {string} baseUrl
+ * @param {string} platform
+ */
+export function platformCookieUrl(baseUrl, platform) {
+  return `${platformCookiesUrl(baseUrl)}/${encodeURIComponent(platform)}`;
+}
+
+/**
  * @param {string} baseUrl
  * @param {string} jobId
  */
@@ -151,4 +167,4 @@ export function looksLikeVoxenTab(tabUrl, tabTitle) {
 }
 
 /** Versão embutida no package (espelha manifest). */
-export const EXTENSION_VERSION = '0.3.0';
+export const EXTENSION_VERSION = '0.4.0';
