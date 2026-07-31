@@ -196,6 +196,14 @@ body {
   background: var(--color-app-border);
 }
 
+/* O <form> herda o ritmo do card em vez de depender das margens padrão dos
+   elementos (que não existem aqui — o espaçamento era acidental). */
+#form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .field {
   display: flex;
   flex-direction: column;
