@@ -20,7 +20,13 @@ describe('fetchMe', () => {
   test('retorna o tema quando a sessão está autenticada', async () => {
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ user: { theme: 'zinc' } }), { status: 200 });
-    expect(await fetchMe('https://voxen.example.com')).toEqual({ theme: 'zinc' });
+    expect(await fetchMe('https://voxen.example.com')).toEqual({ theme: 'zinc', role: null });
+  });
+
+  test('retorna a role quando a instância informa (decide se mostra contas)', async () => {
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ user: { theme: 'zinc', role: 'ADMIN' } }), { status: 200 });
+    expect(await fetchMe('https://voxen.example.com')).toEqual({ theme: 'zinc', role: 'ADMIN' });
   });
 
   test('retorna null quando não autenticado (sem tema pra herdar)', async () => {
