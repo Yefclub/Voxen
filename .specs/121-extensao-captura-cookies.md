@@ -192,9 +192,19 @@ da requisição. Linhas fora do domínio da plataforma são **rejeitadas** (422)
 não ignoradas — impede que um cliente adulterado enfie cookie de qualquer
 site na setting global usando a rota "do TikTok".
 
-Motivo de segurança/robustez: o parser do yt-dlp (`prepare_line`) levanta
-`LoadError` na primeira linha malformada e **derruba o arquivo inteiro** —
-uma captura ruim quebraria a extração de todas as plataformas, não só a sua.
+Motivo principal: **cliente adulterado**. A rota é a única barreira entre um
+POST arbitrário e a setting global — sem revalidação, `platform: 'tiktok'`
+gravaria cookie de qualquer domínio.
+
+> Correção (review da PR #499): uma versão anterior deste texto afirmava que
+> o `prepare_line` do yt-dlp levanta `LoadError` e derruba o arquivo inteiro
+> na primeira linha malformada. **Isso não procede no yt-dlp atual**
+> (2026.07.04, verificado no container do worker): ele pula a entrada
+> malformada com warning e carrega o resto. Quem aborta o arquivo todo é o
+> `MozillaCookieJar` da stdlib, que não é o parser usado pelo worker. Na
+> prática o efeito de uma linha ruim é falha **silenciosa** de autenticação
+> — o que reforça a validação, mas por outro motivo. Não reescreva esta
+> validação com base na premissa antiga.
 
 ### D4 — YouTube captura só `.youtube.com`
 
@@ -207,11 +217,18 @@ decisão explícita em outra spec.
 
 ### D5 — Prefixo `#HttpOnly_` não é emitido
 
-O yt-dlp aceita o prefixo, mas o `MozillaCookieJar` da stdlib (e vários
-outros parsers) trata a linha como comentário e **descarta** o cookie — que
-é justamente o cookie de sessão que interessa. Emitir a linha sem prefixo é
-compatível com os dois parsers; a flag `httpOnly` não tem efeito no uso que
-o yt-dlp faz do arquivo.
+A flag `httpOnly` não tem efeito no uso que o yt-dlp faz do arquivo, e a
+linha sem prefixo é aceita por todos os parsers envolvidos. Como não há
+ganho, não emitimos o prefixo — menos variação no formato, menos
+superfície de incompatibilidade.
+
+> Correção (review da PR #499): uma versão anterior deste texto justificava
+> a decisão dizendo que o `MozillaCookieJar` da stdlib trataria a linha
+> prefixada como comentário e descartaria o cookie. **Isso é falso** — a
+> stdlib do Python suporta `#HttpOnly_` explicitamente
+> (`http/cookiejar.py`, constante `HTTPONLY_PREFIX`), verificado nos dois
+> parsers. A decisão de não emitir segue válida pelo motivo acima; a
+> premissa original, não.
 
 ### D6 — `DELETE` de plataforma (adicionado ao escopo)
 

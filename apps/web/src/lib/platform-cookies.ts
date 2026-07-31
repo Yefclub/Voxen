@@ -15,16 +15,24 @@
 // O valor NUNCA sai daqui pra resposta HTTP nem pra log: as funções que
 // validam devolvem erro com número da linha, jamais o conteúdo dela.
 //
-// Rigor na validação é requisito de robustez, não zelo: o parser do yt-dlp
-// (`prepare_line`) levanta LoadError na PRIMEIRA linha malformada e descarta o
-// arquivo inteiro — uma captura ruim derrubaria a extração de todas as
-// plataformas, não só a dela.
+// Rigor na validação existe porque esta rota é a única barreira entre um POST
+// arbitrário e a setting global: sem revalidar, `platform: 'tiktok'` gravaria
+// cookie de qualquer domínio.
+//
+// NÃO é porque o yt-dlp derruba o arquivo inteiro numa linha ruim — isso era
+// a premissa original e é FALSA no yt-dlp atual (2026.07.04): ele pula a
+// entrada malformada com warning e carrega o resto. Quem aborta tudo é o
+// MozillaCookieJar da stdlib, que não é o parser do worker. O efeito real de
+// uma linha ruim é falha SILENCIOSA de autenticação. Ver spec 121, D3.
 // ============================================================================
 
 export const NETSCAPE_HEADER = '# Netscape HTTP Cookie File';
 
-/** Prefixo que o yt-dlp aceita pra marcar cookie httpOnly. Não emitimos (a
- *  stdlib do Python trata como comentário e descarta), mas sabemos ler. */
+/** Prefixo que marca cookie httpOnly. Sabemos ler, mas não emitimos: a flag
+ *  não tem efeito no uso que o yt-dlp faz do arquivo, então é variação de
+ *  formato sem ganho. (A stdlib do Python TAMBÉM suporta o prefixo —
+ *  `http/cookiejar.py`, `HTTPONLY_PREFIX`; a justificativa anterior, de que
+ *  ela descartaria a linha, era falsa. Ver spec 121, D5.) */
 const HTTPONLY_PREFIX = '#HttpOnly_';
 
 export const COOKIE_PLATFORMS = ['tiktok', 'instagram', 'youtube'] as const;
@@ -51,11 +59,21 @@ export function isCookiePlatform(value: unknown): value is CookiePlatform {
   return typeof value === 'string' && (COOKIE_PLATFORMS as readonly string[]).includes(value);
 }
 
+/** Charset de hostname. Sem isto, entradas como `..tiktok.com` ou
+ *  `evil.com\0.tiktok.com` passavam na checagem de sufixo e eram gravadas
+ *  verbatim (achado do review da PR #499). Não era explorável — o
+ *  host-matching do cookiejar nunca casa esses valores com host real —, mas
+ *  escreve lixo num arquivo do qual toda a extração depende. */
+const HOSTNAME_CHARSET = /^[a-z0-9.-]+$/;
+
 /** Igual ao domínio-base ou subdomínio dele. `eviltiktok.com` não casa. */
 export function cookieDomainMatches(cookieDomain: string, baseDomain: string): boolean {
   const raw = cookieDomain.trim().toLowerCase().replace(/^\./, '');
   const base = baseDomain.trim().toLowerCase();
   if (!raw || !base) return false;
+  // Rejeita charset inválido, label vazio (`..x`, `.x`, `x..y`) e borda solta.
+  if (!HOSTNAME_CHARSET.test(raw)) return false;
+  if (raw.startsWith('.') || raw.endsWith('.') || raw.includes('..')) return false;
   return raw === base || raw.endsWith(`.${base}`);
 }
 

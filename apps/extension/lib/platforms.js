@@ -7,13 +7,15 @@
  *   - 7 campos separados por TAB, nesta ordem:
  *     domain, includeSubdomains, path, secure, expires, name, value
  *   - flags em MAIÚSCULAS (`TRUE`/`FALSE`)
- *   - `expires` em segundos, só dígitos (o parser do yt-dlp rejeita o
- *     arquivo INTEIRO se achar fração ou sinal)
+ *   - `expires` em segundos, só dígitos (fração ou sinal fazem o yt-dlp pular
+ *     a entrada com warning — o cookie some silenciosamente)
  *   - cookie de sessão → `0`
  *
- * O prefixo `#HttpOnly_` NÃO é emitido de propósito: o yt-dlp o entende, mas
- * o `MozillaCookieJar` da stdlib trata a linha como comentário e descarta o
- * cookie — justamente o de sessão, que é o que interessa aqui.
+ * O prefixo `#HttpOnly_` NÃO é emitido de propósito: a flag não tem efeito no
+ * uso que o yt-dlp faz do arquivo, então é variação de formato sem ganho.
+ * (Ambos os parsers suportam o prefixo — inclusive o `MozillaCookieJar` da
+ * stdlib, via `HTTPONLY_PREFIX`. A justificativa anterior, de que a stdlib
+ * descartaria a linha, era falsa. Ver spec 121, D5.)
  */
 
 export const NETSCAPE_HEADER = '# Netscape HTTP Cookie File';
