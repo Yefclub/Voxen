@@ -10,6 +10,10 @@ body {
   color: var(--color-app-fg);
   background: var(--color-app-bg);
   font-family: var(--font-sans);
+  /* Centraliza na vertical quando sobra altura; `safe` mantém o conteúdo
+     alcançável (alinhado ao topo) em janelas baixas. */
+  display: grid;
+  align-content: safe center;
 }
 
 .bg {
@@ -23,42 +27,44 @@ body {
     radial-gradient(ellipse 70% 50% at 50% 50%, var(--theme-mesh-c, transparent), transparent 70%);
 }
 
+/* A página de opções abre em aba inteira: layout em duas colunas para caber
+   sem rolagem em janelas de altura típica (~700px úteis) — antes era uma
+   coluna de 560px que passava de 950px de altura. */
 .page {
   position: relative;
   z-index: 1;
-  max-width: 560px;
+  max-width: 940px;
   margin: 0 auto;
-  padding: 48px 20px 64px;
+  padding: 32px 24px 40px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
 }
 
 .hero {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto 1fr;
   align-items: center;
-  gap: 10px;
+  gap: 4px 16px;
 }
 
 .logo-wrap {
-  width: 72px;
-  height: 72px;
+  grid-row: span 2;
+  width: 60px;
+  height: 60px;
   border-radius: var(--radius-xl);
   display: grid;
   place-items: center;
   background: var(--color-app-surface);
   border: 1px solid var(--color-app-border);
-  margin-bottom: 6px;
 }
 
 .logo-wrap img {
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
 }
 
 .eyebrow {
-  margin: 0;
+  margin: 0 0 2px;
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -68,7 +74,7 @@ body {
 .hero h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 26px;
   letter-spacing: -0.04em;
   font-weight: 700;
   color: var(--color-app-fg);
@@ -76,10 +82,28 @@ body {
 
 .lead {
   margin: 0;
-  max-width: 42ch;
+  grid-column: 2;
+  max-width: 62ch;
   color: var(--color-app-subtle);
-  font-size: 14.5px;
+  font-size: 14px;
   line-height: 1.5;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  align-items: start;
+  gap: 18px;
+}
+
+@media (max-width: 820px) {
+  .hero {
+    grid-template-columns: auto 1fr;
+  }
+
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .card {
@@ -101,18 +125,49 @@ body {
   font-family: var(--font-display);
   font-size: 15px;
   font-weight: 650;
+  letter-spacing: -0.02em;
   color: var(--color-app-fg);
 }
 
-.card ol {
+/* Passos numerados: é uma sequência de verdade (a ordem importa), então o
+   número fica legível como dado — mono, no mesmo chip usado em código. */
+.steps {
   margin: 0;
-  padding-left: 1.2rem;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
   color: var(--color-app-subtle);
   font-size: 13.5px;
-  line-height: 1.55;
+  line-height: 1.5;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+}
+
+/* O marcador é absoluto de propósito: com `display: grid` no <li> cada
+   <strong>/<code> viraria um grid item e quebraria a linha do texto. */
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 32px;
+  min-height: 22px;
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--color-accent-primary-soft);
+  color: var(--color-accent-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .card code {
@@ -139,6 +194,14 @@ body {
   flex: 1;
   height: 1px;
   background: var(--color-app-border);
+}
+
+/* O <form> herda o ritmo do card em vez de depender das margens padrão dos
+   elementos (que não existem aqui — o espaçamento era acidental). */
+#form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .field {
@@ -181,22 +244,62 @@ input:focus-visible {
   font-family: var(--font-sans);
 }
 
+/* Bloco opcional: fecha o formulário abaixo das ações principais, separado
+   por um fio — antes era uma caixa tracejada colada nos controles vizinhos. */
 .advanced {
-  border-radius: var(--radius-md);
-  border: 1px dashed var(--color-app-border);
-  padding: 8px 12px;
+  margin-top: 2px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-app-border);
   color: var(--color-app-muted);
   font-size: 13px;
 }
 
 .advanced summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
   cursor: pointer;
   user-select: none;
+  list-style: none;
+  color: var(--color-app-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 0.15s ease;
+}
+
+.advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced summary::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.advanced summary:hover {
+  color: var(--color-app-subtle);
 }
 
 .advanced[open] summary {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   color: var(--color-app-subtle);
+}
+
+.advanced[open] summary::before {
+  transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .advanced summary::before {
+    transition: none;
+  }
 }
 
 .row {
@@ -208,7 +311,7 @@ input:focus-visible {
 .btn {
   appearance: none;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 12px 16px;
   font-family: var(--font-sans);
   font-size: 14px;
@@ -250,10 +353,33 @@ input:focus-visible {
 }
 
 .status {
-  min-height: 1.2em;
   margin: 0;
   font-size: 13px;
+  line-height: 1.45;
   color: var(--color-app-subtle);
+}
+
+/* Só vira "caixa" quando tem mensagem — sem reservar espaço vazio. */
+.status:not(:empty) {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-app-border);
+  background: var(--color-app-bg-elevated);
+}
+
+.status.ok:not(:empty) {
+  border-color: color-mix(in srgb, var(--status-ok) 30%, transparent);
+  background: var(--status-ok-soft);
+}
+
+.status.err:not(:empty) {
+  border-color: color-mix(in srgb, var(--status-err) 30%, transparent);
+  background: var(--status-err-soft);
+}
+
+.status.warn:not(:empty) {
+  border-color: color-mix(in srgb, var(--status-warn) 30%, transparent);
+  background: var(--status-warn-soft);
 }
 
 .status.ok {
@@ -338,8 +464,9 @@ input:focus-visible {
   cursor: not-allowed;
 }
 
-:where(button, a, input):focus-visible {
+/* Só o anel de foco — o raio de cada elemento é o dele (antes esta regra
+   sobrescrevia o border-radius de botões e inputs no foco). */
+:where(button, a, input, summary):focus-visible {
   outline: 2px solid var(--theme-focus);
   outline-offset: 2px;
-  border-radius: 4px;
 }

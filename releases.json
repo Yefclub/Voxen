@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785524483",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Escolha manual de modelo por finalidade nas integrações admin",
+    "body": "A configuração da OpenRouter continua exigindo só a chave no onboarding,\nmas agora o admin pode sobrescrever individualmente o modelo usado em cada\numa das 6 finalidades (chat, transcrição, busca na web, visão, documentos\ne análise do X) em **Integrações**.\n\nA nova seção mostra o modelo padrão e o override ativo de cada finalidade,\ncom um diálogo de busca sobre o catálogo da sua chave OpenRouter — a lista\njá vem filtrada pelos modelos compatíveis com aquela finalidade (ex.: só\nmodelos com suporte a imagem aparecem na finalidade de visão). Tentar\nescolher um modelo incompatível é bloqueado com uma mensagem explicando o\nmotivo, e um botão \"Voltar ao padrão\" remove o override a qualquer\nmomento. Trocar a chave da OpenRouter não apaga overrides já configurados.",
+    "pr": 493,
+    "author": "Kalyel",
+    "date": "2026-07-31T16:01:05-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/493"
+  },
+  {
     "version": "0.13.0-dev.1785522932",
     "channel": "dev",
     "type": "ui",
