@@ -149,7 +149,7 @@ export function accessibleIcon(icon: AnimatedIcon): AnimatedIcon {
       // ref anexada ele para de escutar o mouse e passa a delegar para os
       // handlers recebidos. Como o wrapper anexa `inner` em TODOS os ícones,
       // apagar (ou deixar de repassar) `onMouseEnter`/`onMouseLeave` mata a
-      // animação de hover dos 103 ícones do app de uma vez — em silêncio, sem
+      // animação de hover dos 102 ícones do app de uma vez — em silêncio, sem
       // erro de tipo e sem quebrar nenhuma tela.
       // `icons.test.ts` trava os dois lados: que os handlers existem e que
       // eles chamam `startAnimation`/`stopAnimation` no ícone interno —

@@ -132,7 +132,7 @@ anterior, `dispose` no meio do gesto, movimento reduzido — sem DOM e sem
 handle de animação que chega no ícone interno e, escrevendo um handle espião
 nessa ref, confere que os handlers de mouse do wrapper realmente chamam
 `startAnimation`/`stopAnimation` — esvaziar o corpo dos handlers quebra a
-suíte, que é a regressão de hover dos 103 ícones.
+suíte, que é a regressão de hover dos 102 ícones.
 
 `tests/icon-cue-lifecycle.test.tsx` cobre os dois requisitos event-driven com
 `react-test-renderer` (já usado por `graph-renderer-lifecycle` e
@@ -153,8 +153,8 @@ DOM assim):
 
 O gatilho da navegação virou o hook `useIconCueTrigger` justamente para isso:
 enquanto era um `useState` + `useEffect` copiado dentro de `Sidebar` e de
-`MobileNavDrawer`, não havia como testá-lo sem renderizar a sidebar inteira
-(radix-ui e `motion` não sobrevivem ao renderer de teste sem um DOM).
+`MobileNavDrawer`, testá-lo exigia montar a sidebar inteira — possível, mas
+caro (ver Limitações conhecidas).
 
 ## Limitações conhecidas
 
@@ -162,12 +162,25 @@ enquanto era um `useState` + `useEffect` copiado dentro de `Sidebar` e de
   `/transcricoes/a` para `/transcricoes/b` reaproveita o mesmo `PageHeader`
   montado, então o ícone do cabeçalho não se desenha de novo. Aceito: a deixa
   é pontuação de entrada de tela, e a tela não entrou.
-- **A ligação final da sidebar não é renderizada em teste.** O que os testes
-  travam é o mecanismo (`useIconCueTrigger` → `useIconCueSignal` →
-  `useIconCueGroup`) e o `PageHeader` real; montar `Sidebar` de verdade
-  esbarra no `@radix-ui/react-tooltip`, que entra em loop de atualização sem
-  DOM. Sobra uma linha por caller (`useIconCueTrigger(collapsed)` e
-  `useIconCueTrigger(open, isOpen)`) coberta só por revisão.
+- **A ligação final da sidebar não é renderizada em teste — por escolha, não
+  por impedimento.** O que os testes travam é o mecanismo
+  (`useIconCueTrigger` → `useIconCueSignal` → `useIconCueGroup`) e o
+  `PageHeader` real. Sobra uma linha por caller
+  (`useIconCueTrigger(collapsed)` e `useIconCueTrigger(open, isOpen)`)
+  coberta só por revisão.
+
+  Registrando o mecanismo real, porque uma versão anterior deste texto
+  culpava o `@radix-ui/react-tooltip` por entrar em loop de atualização sem
+  DOM — **isso é falso**: medido no re-review, a `Sidebar` monta sob
+  `react-test-renderer` com 12 `TooltipTrigger` e nenhum
+  `Maximum update depth exceeded`. O que de fato quebra é o
+  `@animateicons/react`, com `ReferenceError: HTMLElement is not defined`.
+  Contorna-se, mas o preço é ~140 linhas de DOM falso à mão **mais** um
+  `mock.module('@/components/ui/icons')` de processo inteiro — exatamente a
+  classe de mina que esta PR desarmou em `graph-renderer-lifecycle`, e que
+  aqui não dá para mitigar com `...actualIcons`, já que o objetivo é
+  substituir os ícones. Trocar uma mina desarmada por outra não paga: o
+  mecanismo já está travado por 8 mutações.
 - **O `@animateicons/react` desligar o hover sozinho é premissa verificada no
   browser, não em teste.** A suíte garante que o wrapper chama o handle nos
   handlers de mouse; que o pacote pare de escutar o mouse quando há `ref`

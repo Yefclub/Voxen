@@ -46,7 +46,7 @@ describe('wrapper de ícone animado', () => {
 
   test('reproduz o hover que a ref desliga', () => {
     // Com uma ref anexada o pacote para de animar o hover sozinho e passa a
-    // delegar. Sem estes handlers, os 103 ícones do app perdem o hover em
+    // delegar. Sem estes handlers, os 102 ícones do app perdem o hover em
     // silêncio — é a regressão que este teste existe para travar.
     const { props } = renderProbe();
 
@@ -56,7 +56,7 @@ describe('wrapper de ícone animado', () => {
 
   test('o hover reproduzido anima o ícone interno', () => {
     // Manter os handlers e esvaziá-los é a variante mais provável num
-    // refactor — e é exatamente a regressão dos 103 ícones. O `ref` devolvido
+    // refactor — e é exatamente a regressão dos 102 ícones. O `ref` devolvido
     // pela sonda é o `inner` do wrapper; em render de servidor o
     // `useImperativeHandle` da sonda não roda, então o handle é escrito à mão
     // para observar o que os handlers fazem com ele.
