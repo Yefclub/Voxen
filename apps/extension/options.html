@@ -20,74 +20,77 @@
     <main class="page">
       <header class="hero">
         <div class="logo-wrap">
-          <img src="icons/icon-128.png" width="56" height="56" alt="" />
+          <img src="icons/icon-128.png" width="44" height="44" alt="" />
         </div>
-        <p class="eyebrow">Extensão · v0.3</p>
-        <h1>Conecte em segundos</h1>
+        <div class="hero-text">
+          <p class="eyebrow">Extensão · v0.3</p>
+          <h1>Conectar instância</h1>
+        </div>
         <p class="lead">
-          Detectamos a aba do Voxen aberta, ou você cola a URL da instância. A sessão do browser
-          (login) é reutilizada — sem copiar tokens.
+          A extensão salva a página aberta na sua base. Aponte para a instância Voxen e ela
+          reutiliza o login do browser — sem copiar tokens.
         </p>
       </header>
 
-      <section class="card">
-        <button type="button" id="detect" class="btn primary block">
-          Detectar instância aberta no Chrome
-        </button>
-        <div class="divider"><span>ou cole a URL</span></div>
-        <form id="form">
-          <label class="field">
-            <span class="label">URL da instância</span>
-            <input
-              id="base-url"
-              name="baseUrl"
-              type="url"
-              inputmode="url"
-              placeholder="https://voxen.exemplo.com"
-              autocomplete="url"
-              required
-            />
-          </label>
-          <details class="advanced">
-            <summary>Avançado (token opcional)</summary>
+      <div class="grid">
+        <section class="card">
+          <h2>Instância</h2>
+          <button type="button" id="detect" class="btn primary block">
+            Detectar instância aberta
+          </button>
+          <div class="divider"><span>ou cole a URL</span></div>
+          <form id="form">
             <label class="field">
-              <span class="label">Token Bearer</span>
+              <span class="label">URL da instância</span>
               <input
-                id="api-token"
-                name="apiToken"
-                type="password"
-                autocomplete="off"
-                placeholder="Deixe vazio — use o login do browser"
+                id="base-url"
+                name="baseUrl"
+                type="url"
+                inputmode="url"
+                placeholder="https://voxen.exemplo.com"
+                autocomplete="url"
+                required
               />
-              <span class="hint">Reservado. O fluxo normal usa cookie de sessão.</span>
             </label>
-          </details>
-          <div class="row">
-            <button type="submit" class="btn primary" id="save">Salvar e conectar</button>
-            <button type="button" class="btn ghost" id="request-perm">Pedir permissão</button>
-          </div>
-        </form>
-        <p id="status" class="status" role="status" aria-live="polite"></p>
-      </section>
+            <div class="row">
+              <button type="submit" class="btn primary" id="save">Salvar e conectar</button>
+              <button type="button" class="btn ghost" id="request-perm">Pedir permissão</button>
+            </div>
+            <details class="advanced">
+              <summary>Token Bearer (opcional)</summary>
+              <label class="field">
+                <input
+                  id="api-token"
+                  name="apiToken"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="Deixe vazio — use o login do browser"
+                />
+                <span class="hint">Reservado. O fluxo normal usa o cookie de sessão.</span>
+              </label>
+            </details>
+          </form>
+          <p id="status" class="status" role="status" aria-live="polite"></p>
+        </section>
 
-      <section class="card soft">
-        <h2>Instalação rápida</h2>
-        <ol>
-          <li>Baixe o ZIP em <strong>/extensao</strong> na sua instância.</li>
-          <li>
-            Chrome → <code>chrome://extensions</code> → Modo do desenvolvedor →
-            <strong>Carregar sem compactação</strong> (ou arraste o ZIP descompactado).
-          </li>
-          <li>Volte aqui e clique em <strong>Detectar instância</strong>.</li>
-          <li>Faça login no Voxen no mesmo perfil do browser.</li>
-        </ol>
-        <p class="muted">
-          Esta é a única tela de conexão da extensão — no primeiro uso ela abre sozinha; depois, o
-          botão "Conectar instância" no popup leva direto aqui. Updates: a extensão consulta
-          periodicamente a instância e avisa quando houver nova versão (badge ↑). Recarregue a
-          pasta/ZIP atualizado nas extensões.
-        </p>
-      </section>
+        <section class="card soft">
+          <h2>Instalação rápida</h2>
+          <ol class="steps">
+            <li>Baixe o ZIP em <strong>/extensao</strong> na sua instância.</li>
+            <li>
+              Chrome → <code>chrome://extensions</code> → Modo do desenvolvedor →
+              <strong>Carregar sem compactação</strong>.
+            </li>
+            <li>Volte aqui e clique em <strong>Detectar instância aberta</strong>.</li>
+            <li>Faça login no Voxen no mesmo perfil do browser.</li>
+          </ol>
+          <p class="muted">
+            Esta é a única tela de conexão: no primeiro uso ela abre sozinha e o botão "Conectar
+            instância" do popup traz você de volta aqui. Quando a instância publicar uma versão
+            nova, o ícone mostra o badge ↑ — baixe o ZIP e recarregue a extensão.
+          </p>
+        </section>
+      </div>
     </main>
     <script type="module" src="options.js"></script>
   </body>
