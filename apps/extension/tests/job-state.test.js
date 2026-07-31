@@ -9,6 +9,7 @@ import {
   pruneExpiredJobs,
   selectPopupState,
   submitButtonState,
+  touchJobs,
   withoutJob,
 } from '../lib/job-state.js';
 
@@ -238,6 +239,66 @@ describe('pruneExpiredJobs', () => {
     expect(Object.keys(tracked)).toEqual(['a', 'b']);
     expect(pruneExpiredJobs(undefined, now)).toEqual({});
     expect(pruneExpiredJobs(null, now)).toEqual({});
+  });
+
+  test('o prazo conta do último sinal de vida, não do início absoluto', () => {
+    const now = 100_000_000;
+    // Cenário de backlog: enfileirado há muito mais que o TTL, mas o servidor
+    // confirmou há pouco que ele continua na fila.
+    const tracked = {
+      a: {
+        ...base,
+        startedAt: now - TRACKED_JOB_TTL_MS * 4,
+        lastSeenAt: now - 60_000,
+      },
+    };
+    expect(Object.keys(pruneExpiredJobs(tracked, now))).toEqual(['a']);
+  });
+
+  test('descarta job cujo último sinal de vida também estourou o prazo', () => {
+    const now = 100_000_000;
+    const tracked = {
+      a: {
+        ...base,
+        startedAt: now - TRACKED_JOB_TTL_MS * 4,
+        lastSeenAt: now - TRACKED_JOB_TTL_MS - 1,
+      },
+    };
+    expect(pruneExpiredJobs(tracked, now)).toEqual({});
+  });
+
+  test('lastSeenAt inutilizável cai de volta no startedAt', () => {
+    const now = 100_000_000;
+    const vivo = { ...base, startedAt: now - 1_000, lastSeenAt: 'ontem' };
+    const morto = { ...base, startedAt: now - TRACKED_JOB_TTL_MS - 1, lastSeenAt: 0 };
+    expect(Object.keys(pruneExpiredJobs({ a: vivo }, now))).toEqual(['a']);
+    expect(pruneExpiredJobs({ a: morto }, now)).toEqual({});
+  });
+});
+
+describe('touchJobs', () => {
+  const base = { jobId: 'a', baseUrl: 'https://v.example', startedAt: 10 };
+
+  test('renova o sinal de vida sem mexer no carimbo de início', () => {
+    const next = touchJobs({ a: { ...base } }, ['a'], 999);
+    expect(next.a.lastSeenAt).toBe(999);
+    expect(next.a.startedAt).toBe(10);
+  });
+
+  test('ignora id ausente — job já reconhecido não ressuscita', () => {
+    expect(touchJobs({ a: { ...base } }, ['b'], 999)).toEqual({ a: { ...base } });
+  });
+
+  test('ignora entrada corrompida e não muta o mapa original', () => {
+    const tracked = { a: { ...base }, lixo: null };
+    const next = touchJobs(tracked, ['a', 'lixo'], 999);
+    expect(next.lixo).toBeNull();
+    expect(tracked.a.lastSeenAt).toBeUndefined();
+  });
+
+  test('tolera mapa e lista ausentes', () => {
+    expect(touchJobs(null, ['a'], 1)).toEqual({});
+    expect(touchJobs({ a: { ...base } }, null, 1)).toEqual({ a: { ...base } });
   });
 });
 

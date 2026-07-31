@@ -18,9 +18,16 @@ Agora, ao reabrir o popup:
 - **Instância fora do ar ou sem rede** avisa que o acompanhamento está
   indisponível no momento, sem sumir com o envio nem fingir que terminou — e
   sem travar o botão: não saber em que pé está o envio anterior não impede
-  mandar a próxima página. Acompanhamento que nunca resolve (instância trocada
-  nas opções, job apagado no servidor) é descartado depois de algumas horas em
-  vez de ficar para sempre.
+  mandar a próxima página. Isso vale também para instância que fica pendurada
+  em vez de recusar a conexão: agora toda requisição tem prazo, então um
+  backend travado atrás de um proxy de pé não deixa mais o botão preso em
+  "Salvo — processando".
+- **Acompanhamento que nunca resolve** (instância trocada nas opções, job
+  apagado no servidor) é descartado depois de algumas horas em vez de ficar
+  para sempre. O prazo conta a partir da última vez em que o servidor
+  confirmou o envio em andamento, e não do momento do envio: fila cheia com
+  vários vídeos longos à frente não faz mais o último da fila perder a
+  notificação por tempo de espera.
 
 Também nesta entrega, acabamento da extensão: cantos mais arredondados no
 popup, página de conexão reorganizada em duas colunas (cabe sem rolagem, com o

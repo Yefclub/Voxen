@@ -68,10 +68,23 @@ funcional:
 - If o acompanhamento de um job está indisponível, then the system shall
   manter o envio de novas páginas habilitado — não saber o estado do job não
   é o mesmo que estar ocupado.
-- If um job rastreado passa do prazo máximo de acompanhamento sem atingir
-  estado terminal, then the system shall descartá-lo do rastreamento, para
-  que job irresolvível (instância trocada nas opções, job apagado no
-  servidor) não governe o popup indefinidamente.
+- If um job rastreado passa do prazo máximo **sem sinal de vida** — sem
+  nenhuma consulta em que o servidor o confirme em andamento —, then the
+  system shall descartá-lo do rastreamento, para que job irresolvível
+  (instância trocada nas opções, job apagado no servidor) não governe o popup
+  indefinidamente.
+- If o servidor confirma um job rastreado em andamento, then the system shall
+  renovar o sinal de vida desse job, de modo que o prazo meça estagnação e
+  não tempo de vida absoluto. Prazo absoluto descartaria job legítimo: numa
+  fila com backlog (dezenas de vídeos longos à frente), o último estoura o
+  prazo parado em `QUEUED` mesmo com o servidor reportando-o vivo a cada
+  consulta — e o usuário perde a notificação.
+- If uma requisição da extensão à instância não responde dentro do prazo,
+  then the system shall abortá-la e tratá-la como falha de acompanhamento
+  recuperável. Sem prazo, uma instância que **pendura** em vez de errar
+  (proxy de pé com o backend travado, rota com DROP no caminho) trava o botão
+  em "Salvo — processando" para sempre: a fase que libera o envio só roda
+  depois que a consulta volta.
 - If o popup reconhece o desfecho de um job enquanto uma rodada de
   verificação do service worker está em voo, then the system shall descartar
   o desfecho definitivamente — ele não pode ser regravado e reaparecer como
@@ -90,6 +103,20 @@ funcional:
 - [ ] Teste automatizado provando que job rastreado irresolvível (antigo, ou
       apontando para instância que não responde) não deixa o botão de envio
       desabilitado.
+- [ ] Testes automatizados dos dois requisitos de concorrência, exercitando o
+      `background.js` de verdade com a rede sob controle do teste (dublê de
+      `chrome`, `chrome.storage` com semântica de cópia como a real,
+      resolução do `fetch` no instante escolhido). Sem isso os requisitos
+      ficam sem gate: o modo de falha é corrida intermitente, invisível para
+      testes de função pura, e um refactor pode derrubar qualquer um dos três
+      mecanismos (lock, releitura pós-rede, filtro do desfecho já
+      reconhecido) em silêncio.
+- [ ] Teste automatizado provando que job confirmado em andamento pelo
+      servidor não é descartado pelo prazo, e que o descarte do zumbi
+      continua valendo.
+- [ ] Teste automatizado provando que as requisições da extensão têm prazo e
+      que estourá-lo vira falha recuperável (não desfecho, não perda de
+      rastreamento).
 - [ ] Popup com cantos arredondados coerentes com o padrão visual do
       produto.
 - [ ] Página de opções cabe sem rolagem em altura típica, com separação

@@ -16,6 +16,7 @@
  *   token?: string,
  *   pageTitle?: string,
  *   startedAt?: number,
+ *   lastSeenAt?: number,
  * }} TrackedJob
  *
  * @typedef {{
@@ -37,13 +38,19 @@ export const LAST_OUTCOME_KEY = 'lastJobOutcome';
 export const OUTCOME_TTL_MS = 30 * 60 * 1000;
 
 /**
- * Teto de vida de um job rastreado. Sem isso o rastreamento é eterno: o worker
- * só despeja a entrada em estado terminal ou em 401, e qualquer outro erro
- * (job apagado no servidor, instância trocada nas opções e o `baseUrl` velho
- * nunca mais responder) deixa um zumbi para sempre no `chrome.storage.local`.
- * O prazo é folgado de propósito — transcrição de vídeo longo leva tempo, e
- * perder o rastreio de um job vivo é pior do que carregar um morto por
- * algumas horas.
+ * Teto de **estagnação** de um job rastreado. Sem isso o rastreamento é
+ * eterno: o worker só despeja a entrada em estado terminal ou em 401, e
+ * qualquer outro erro (job apagado no servidor, instância trocada nas opções e
+ * o `baseUrl` velho nunca mais responder) deixa um zumbi para sempre no
+ * `chrome.storage.local`.
+ *
+ * O prazo conta a partir do **último sinal de vida** — o enfileiramento ou a
+ * última consulta em que o servidor confirmou o job em andamento —, não do
+ * início absoluto. Tempo de vida absoluto mataria job legítimo: numa fila com
+ * backlog (dezenas de vídeos longos à frente), o último da fila estoura o
+ * prazo parado em `QUEUED` mesmo com o servidor reportando-o vivo a cada
+ * consulta. Contando estagnação, o zumbi inalcançável morre igual e o job que
+ * o servidor confirma vivo nunca morre.
  */
 export const TRACKED_JOB_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -87,18 +94,32 @@ export function pickActiveJob(trackedJobs) {
 }
 
 /**
- * Um job rastreado há tempo demais é tratado como perdido. Entrada sem
- * `startedAt` utilizável também conta como expirada: só `trackJob` escreve o
- * mapa e ele sempre grava o carimbo, então o que chega aqui sem ele é resto
+ * Último instante em que se soube algo do job: `lastSeenAt` quando alguma
+ * consulta já confirmou o job em andamento, senão o carimbo do
+ * enfileiramento.
+ * @param {unknown} job
+ * @returns {number}
+ */
+function lastSignalAt(job) {
+  const source = /** @type {TrackedJob} */ (job || {});
+  const lastSeen = Number(source.lastSeenAt);
+  if (Number.isFinite(lastSeen) && lastSeen > 0) return lastSeen;
+  return Number(source.startedAt);
+}
+
+/**
+ * Um job sem sinal de vida há tempo demais é tratado como perdido. Entrada sem
+ * carimbo utilizável também conta como expirada: só `trackJob` escreve o mapa
+ * e ele sempre grava `startedAt`, então o que chega aqui sem ele é resto
  * corrompido — mantê-lo é exatamente o zumbi que o TTL existe para matar.
  * @param {unknown} job
  * @param {number} now
  * @returns {boolean}
  */
 function isExpiredJob(job, now) {
-  const startedAt = Number(/** @type {TrackedJob} */ (job || {}).startedAt);
-  if (!Number.isFinite(startedAt) || startedAt <= 0) return true;
-  return now - startedAt > TRACKED_JOB_TTL_MS;
+  const reference = lastSignalAt(job);
+  if (!Number.isFinite(reference) || reference <= 0) return true;
+  return now - reference > TRACKED_JOB_TTL_MS;
 }
 
 /**
@@ -131,6 +152,29 @@ export function pickLatestOutcome(candidates) {
   return list.reduce((newest, c) =>
     (Number(c.startedAt) || 0) > (Number(newest.startedAt) || 0) ? c : newest,
   ).outcome;
+}
+
+/**
+ * Cópia do mapa com o sinal de vida renovado nos jobs informados — o servidor
+ * acabou de confirmá-los em andamento, então o relógio de estagnação zera.
+ *
+ * Ids ausentes do mapa são ignorados de propósito: um job que o popup
+ * reconheceu (ou que já foi removido) durante a rodada não pode voltar por
+ * aqui.
+ * @param {Record<string, TrackedJob> | undefined | null} trackedJobs
+ * @param {Iterable<string>} jobIds
+ * @param {number} now
+ * @returns {Record<string, TrackedJob>}
+ */
+export function touchJobs(trackedJobs, jobIds, now) {
+  /** @type {Record<string, TrackedJob>} */
+  const next = { ...(trackedJobs || {}) };
+  for (const id of jobIds || []) {
+    const job = next[id];
+    if (!job || typeof job !== 'object') continue;
+    next[id] = { ...job, lastSeenAt: now };
+  }
+  return next;
 }
 
 /**
