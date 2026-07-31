@@ -383,7 +383,11 @@ function registerTranscriptTools(server: McpServer, userId: string): void {
       const query = args.query.trim();
       if (!query) return fail('Parâmetro query vazio.');
       const rows = await ftsSearchTranscripts(userId, query, bounded(args.limit, 8, 1, 25));
-      return ok({ results: rows });
+      // FtsResult.createdAt é Date (vem de $queryRaw) — serializa antes de
+      // devolver, mesmo padrão do tool de chat equivalente.
+      return ok({
+        results: rows.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+      });
     },
   );
 
