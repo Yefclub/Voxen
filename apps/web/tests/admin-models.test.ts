@@ -10,7 +10,9 @@
 // ============================================================================
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { Hono } from 'hono';
 import app from '../src/index';
+import { adminModelsRoutes } from '../src/routes/admin-models';
 import { db } from '../src/lib/db';
 import { getSetting, setSettings } from '../src/lib/settings';
 
@@ -333,14 +335,67 @@ describeIfDb('/api/admin/models', () => {
     const userSignin = await signIn('user@voxen.local', 'senha-super-segura-456');
     const userCookie = extractCookie(userSignin);
 
-    const res = await app.fetch(
-      new Request('http://localhost/api/admin/models', { headers: { cookie: userCookie } }),
-    );
-    expect(res.status).toBe(403);
+    // Todos os verbos, não só o GET — a mutação é o que importa proteger.
+    const cases: Array<[string, RequestInit]> = [
+      ['http://localhost/api/admin/models', { headers: { cookie: userCookie } }],
+      [
+        'http://localhost/api/admin/models/default_vision_model',
+        {
+          method: 'PATCH',
+          headers: { cookie: userCookie, 'content-type': 'application/json' },
+          body: JSON.stringify({ modelId: 'openai/gpt-5-vision' }),
+        },
+      ],
+      [
+        'http://localhost/api/admin/models/default_vision_model',
+        { method: 'DELETE', headers: { cookie: userCookie } },
+      ],
+    ];
+    for (const [url, init] of cases) {
+      const res = await app.fetch(new Request(url, init));
+      expect(res.status).toBe(403);
+    }
   });
 
   it('não-autenticado recebe 401', async () => {
     const res = await app.fetch(new Request('http://localhost/api/admin/models'));
     expect(res.status).toBe(401);
+  });
+});
+
+// O app monta `/api/admin` (adminRoutes) ANTES de `/api/admin/models`, e o
+// `use('*')` do router pai também dispara para os subcaminhos — então os
+// testes acima, feitos contra o app inteiro, seriam satisfeitos pelo guard do
+// pai mesmo se o guard deste router fosse removido. Montado isolado, só o
+// middleware de `adminModelsRoutes` responde: é isto que prova o guard novo.
+describeIfDb('/api/admin/models — guard próprio (router isolado)', () => {
+  const isolated = new Hono().route('/api/admin/models', adminModelsRoutes);
+
+  beforeEach(wipeDb);
+  afterAll(wipeDb);
+
+  it('não-autenticado recebe 401 sem depender do guard do router pai', async () => {
+    const res = await isolated.fetch(new Request('http://localhost/api/admin/models'));
+    expect(res.status).toBe(401);
+  });
+
+  it('não-ADMIN recebe 403 sem depender do guard do router pai', async () => {
+    await signUp('admin2@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('user2@voxen.local', 'senha-super-segura-456', 'User');
+    const adminCookie = extractCookie(await signIn('admin2@voxen.local', 'senha-super-segura-123'));
+    const pending = await db.user.findUnique({ where: { email: 'user2@voxen.local' } });
+    await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${pending!.id}/approve`, {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    const userCookie = extractCookie(await signIn('user2@voxen.local', 'senha-super-segura-456'));
+
+    const res = await isolated.fetch(
+      new Request('http://localhost/api/admin/models', { headers: { cookie: userCookie } }),
+    );
+    expect(res.status).toBe(403);
   });
 });
