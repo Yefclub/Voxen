@@ -90,6 +90,11 @@ jobs:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
+      # Testes da extensão MV3 (apps/extension/tests) — não dependem de DB nem
+      # de Prisma, então rodam antes e falham rápido.
+      - name: Test extension
+        run: bun run test:extension
+        working-directory: apps/web
       - name: Prisma generate
         run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
         working-directory: apps/web

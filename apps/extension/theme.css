@@ -1,0 +1,149 @@
+/* ============================================================================
+   Voxen — tokens de tema (extensão)
+   ----------------------------------------------------------------------------
+   Espelha 1:1 os tokens semânticos de apps/web/src/client/index.css (spec 073).
+   A extensão não pode importar CSS do app web (é empacotada standalone via
+   package.sh), então os valores são copiados aqui — qualquer alteração de
+   paleta no design system do Voxen deve ser replicada neste arquivo.
+
+   Uso: <html data-theme="linear|zinc|emerald|light"> — aplicado por theme-init.js
+   antes do primeiro paint (evita flash de tema errado).
+   ============================================================================ */
+
+:root {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Tema padrão até theme-init.js resolver (dark, igual ao "linear" do app). */
+:root,
+[data-theme='linear'] {
+  color-scheme: dark;
+  --color-app-bg: #111113;
+  --color-app-bg-elevated: #151517;
+  --color-app-surface: #1b1b1e;
+  --color-app-surface-hover: #222226;
+  --color-app-border: #29292d;
+  --color-app-border-strong: #38383e;
+  --color-app-fg: #f2f2f3;
+  --color-app-muted: #8a8a92;
+  --color-app-subtle: #b4b4bb;
+  --color-accent-primary: #8b7cf6;
+  --color-accent-primary-soft: rgba(139, 124, 246, 0.13);
+  --color-app-inverted: #f2f2f3;
+  --color-app-inverted-fg: #151517;
+  --color-app-inverted-hover: #ffffff;
+  --color-app-elevate: rgba(255, 255, 255, 0.035);
+  --color-accent-emerald: oklch(73% 0.14 159);
+  --theme-mesh-a: oklch(62% 0.15 288 / 0.055);
+  --theme-mesh-b: transparent;
+  --theme-mesh-c: transparent;
+  --theme-focus: oklch(69% 0.17 290 / 0.55);
+  /* Status — legíveis sobre fundo escuro (igual ao badge.tsx do app). */
+  --status-ok: oklch(73% 0.16 159);
+  --status-ok-soft: oklch(73% 0.16 159 / 0.14);
+  --status-warn: oklch(80% 0.16 78);
+  --status-warn-soft: oklch(80% 0.16 78 / 0.14);
+  --status-err: oklch(70% 0.2 18);
+  --status-err-soft: oklch(70% 0.2 18 / 0.14);
+}
+
+[data-theme='zinc'] {
+  color-scheme: dark;
+  --color-app-bg: #212121;
+  --color-app-bg-elevated: #2a2a2a;
+  --color-app-surface: #2f2f2f;
+  --color-app-surface-hover: #3a3a3a;
+  --color-app-border: #3a3a3a;
+  --color-app-border-strong: #4a4a4a;
+  --color-app-fg: #ececec;
+  --color-app-muted: #8e8e8e;
+  --color-app-subtle: #b4b4b4;
+  --color-accent-primary: #19c37d;
+  --color-accent-primary-soft: rgba(25, 195, 125, 0.1);
+  --color-app-inverted: #ececec;
+  --color-app-inverted-fg: #18181b;
+  --color-app-inverted-hover: #ffffff;
+  --color-app-elevate: rgba(255, 255, 255, 0.04);
+  --color-accent-emerald: oklch(73% 0.16 159);
+  --theme-mesh-a: transparent;
+  --theme-mesh-b: transparent;
+  --theme-mesh-c: oklch(28% 0.005 250 / 0.35);
+  --theme-focus: oklch(72% 0.18 290 / 0.55);
+  --status-ok: oklch(73% 0.16 159);
+  --status-ok-soft: oklch(73% 0.16 159 / 0.16);
+  --status-warn: oklch(80% 0.16 78);
+  --status-warn-soft: oklch(80% 0.16 78 / 0.16);
+  --status-err: oklch(70% 0.2 18);
+  --status-err-soft: oklch(70% 0.2 18 / 0.16);
+}
+
+[data-theme='emerald'] {
+  color-scheme: dark;
+  --color-app-bg: oklch(22% 0.01 165);
+  --color-app-bg-elevated: oklch(25% 0.01 165);
+  --color-app-surface: oklch(27.5% 0.011 165);
+  --color-app-surface-hover: oklch(31% 0.012 165);
+  --color-app-border: oklch(34% 0.011 165);
+  --color-app-border-strong: oklch(42% 0.013 165);
+  --color-app-fg: oklch(98.5% 0 0);
+  --color-app-muted: oklch(68% 0.008 250);
+  --color-app-subtle: oklch(78% 0.005 250);
+  --color-accent-primary: oklch(73% 0.16 159);
+  --color-accent-primary-soft: oklch(73% 0.16 159 / 0.18);
+  --color-app-inverted: oklch(98.5% 0 0);
+  --color-app-inverted-fg: oklch(22% 0.01 165);
+  --color-app-inverted-hover: #ffffff;
+  --color-app-elevate: rgba(255, 255, 255, 0.04);
+  --color-accent-emerald: oklch(73% 0.16 159);
+  --theme-mesh-a: oklch(72% 0.18 290 / 0.08);
+  --theme-mesh-b: oklch(73% 0.16 159 / 0.06);
+  --theme-mesh-c: oklch(28% 0.005 250 / 0.3);
+  --theme-focus: oklch(72% 0.18 290 / 0.6);
+  --status-ok: oklch(73% 0.16 159);
+  --status-ok-soft: oklch(73% 0.16 159 / 0.16);
+  --status-warn: oklch(80% 0.16 78);
+  --status-warn-soft: oklch(80% 0.16 78 / 0.16);
+  --status-err: oklch(70% 0.2 18);
+  --status-err-soft: oklch(70% 0.2 18 / 0.16);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --color-app-bg: #f7f7f8;
+  --color-app-bg-elevated: #ffffff;
+  --color-app-surface: #ffffff;
+  --color-app-surface-hover: #f0f0f2;
+  --color-app-border: #e5e5e8;
+  --color-app-border-strong: #d4d4d8;
+  --color-app-fg: #18181b;
+  --color-app-muted: #71717a;
+  --color-app-subtle: #52525b;
+  --color-accent-primary: #0f9f6e;
+  --color-accent-primary-soft: rgba(15, 159, 110, 0.12);
+  --color-app-inverted: #18181b;
+  --color-app-inverted-fg: #fafafa;
+  --color-app-inverted-hover: #27272a;
+  --color-app-elevate: rgba(0, 0, 0, 0.02);
+  --color-accent-emerald: oklch(55% 0.14 159);
+  --theme-mesh-a: oklch(72% 0.18 290 / 0.04);
+  --theme-mesh-b: oklch(73% 0.16 159 / 0.04);
+  --theme-mesh-c: transparent;
+  --theme-focus: oklch(52% 0.18 290 / 0.5);
+  /* Sobre fundo claro os tons "pastel" do badge.tsx (emerald-300/amber-300/
+     rose-300) não têm contraste suficiente — escurecidos para AA. */
+  --status-ok: oklch(50% 0.14 159);
+  --status-ok-soft: oklch(50% 0.14 159 / 0.12);
+  --status-warn: oklch(52% 0.15 78);
+  --status-warn-soft: oklch(52% 0.15 78 / 0.12);
+  --status-err: oklch(50% 0.18 18);
+  --status-err-soft: oklch(50% 0.18 18 / 0.12);
+}

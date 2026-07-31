@@ -4,6 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Voxen — Conectar</title>
+    <!-- Aplica o tema ANTES do primeiro paint — ver theme-init.js (script
+         clássico; inline é bloqueado pela CSP do MV3). -->
+    <script src="theme-init.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&display=swap"
+    />
     <link rel="stylesheet" href="options.css" />
   </head>
   <body>
@@ -11,13 +20,13 @@
     <main class="page">
       <header class="hero">
         <div class="logo-wrap">
-          <img src="icons/icon-128.png" width="64" height="64" alt="" />
+          <img src="icons/icon-128.png" width="56" height="56" alt="" />
         </div>
-        <p class="eyebrow">Extensão · v0.2</p>
+        <p class="eyebrow">Extensão · v0.3</p>
         <h1>Conecte em segundos</h1>
         <p class="lead">
-          Detectamos a aba do Voxen aberta, ou você cola a URL da instância.
-          A sessão do browser (login) é reutilizada — sem copiar tokens.
+          Detectamos a aba do Voxen aberta, ou você cola a URL da instância. A sessão do browser
+          (login) é reutilizada — sem copiar tokens.
         </p>
       </header>
 
@@ -73,8 +82,10 @@
           <li>Faça login no Voxen no mesmo perfil do browser.</li>
         </ol>
         <p class="muted">
-          Updates: a extensão consulta periodicamente a instância e avisa quando houver
-          nova versão (badge ↑). Recarregue a pasta/ZIP atualizado nas extensões.
+          Esta é a única tela de conexão da extensão — no primeiro uso ela abre sozinha; depois, o
+          botão "Conectar instância" no popup leva direto aqui. Updates: a extensão consulta
+          periodicamente a instância e avisa quando houver nova versão (badge ↑). Recarregue a
+          pasta/ZIP atualizado nas extensões.
         </p>
       </section>
     </main>

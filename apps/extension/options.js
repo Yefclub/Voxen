@@ -1,4 +1,10 @@
-import { looksLikeVoxenTab, normalizeBaseUrl, originPattern } from './lib/config.js';
+import { looksLikeVoxenTab, normalizeBaseUrl } from './lib/config.js';
+import { ensureHostPermission, hasHostPermission } from './lib/permissions.js';
+import { fetchMe } from './lib/api.js';
+
+// theme-init.js roda como script clássico no <head> (CSP do MV3 bloqueia
+// inline) e publica os helpers de tema em globalThis — ver comentário lá.
+const { applyTheme, cacheTheme } = globalThis.VoxenTheme;
 
 const baseInput = document.getElementById('base-url');
 const tokenInput = document.getElementById('api-token');
@@ -10,15 +16,6 @@ const detectBtn = document.getElementById('detect');
 function setStatus(kind, message) {
   statusEl.className = `status ${kind}`;
   statusEl.textContent = message;
-}
-
-async function requestHostPermission(baseUrl) {
-  const pattern = originPattern(baseUrl);
-  if (!pattern) return false;
-  if (!chrome.permissions) return true;
-  const already = await chrome.permissions.contains({ origins: [pattern] });
-  if (already) return true;
-  return chrome.permissions.request({ origins: [pattern] });
 }
 
 async function detectFromTabs() {
@@ -38,10 +35,34 @@ async function load() {
   const stored = await chrome.storage.sync.get(['baseUrl', 'apiToken']);
   if (typeof stored.baseUrl === 'string') baseInput.value = stored.baseUrl;
   if (typeof stored.apiToken === 'string') tokenInput.value = stored.apiToken;
+
+  // Perfil já conectado: aplica o tema da instância também ao abrir a página,
+  // não só depois de clicar em conectar.
+  const parsed = normalizeBaseUrl(stored.baseUrl ?? '');
+  if (parsed.ok) void syncThemeFromInstance(parsed.baseUrl);
+}
+
+/**
+ * Aplica (e cacheia) o tema da instância — cosmético, nunca bloqueia o fluxo
+ * de conexão em si. Sem host permission a chamada nem é tentada (o Chromium
+ * bloquearia o cookie de sessão e o /api/me voltaria 401).
+ * @param {string} baseUrl
+ */
+async function syncThemeFromInstance(baseUrl) {
+  try {
+    const permitted = await hasHostPermission(baseUrl);
+    if (!permitted) return;
+    const me = await fetchMe(baseUrl);
+    if (!me?.theme) return;
+    applyTheme(me.theme);
+    cacheTheme(me.theme);
+  } catch {
+    /* tema é cosmético */
+  }
 }
 
 async function connect(baseUrl) {
-  const permitted = await requestHostPermission(baseUrl);
+  const permitted = await ensureHostPermission(baseUrl);
   await chrome.storage.sync.set({
     baseUrl,
     apiToken: tokenInput.value.trim(),
@@ -55,6 +76,7 @@ async function connect(baseUrl) {
     return false;
   }
   setStatus('ok', `Conectado a ${baseUrl}. Pode fechar esta aba e usar o ícone da extensão.`);
+  void syncThemeFromInstance(baseUrl);
   return true;
 }
 
@@ -87,7 +109,7 @@ requestPermBtn.addEventListener('click', async () => {
     setStatus('err', parsed.error);
     return;
   }
-  const ok = await requestHostPermission(parsed.baseUrl);
+  const ok = await ensureHostPermission(parsed.baseUrl);
   setStatus(
     ok ? 'ok' : 'err',
     ok

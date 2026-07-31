@@ -1,4 +1,4 @@
-.PHONY: help ensure-env dev update build down restart logs ps test test-ts test-py lint lint-ts lint-py format format-ts format-py format-check format-check-ts format-check-py typecheck migrate seed shell-db shell-redis minio-init minio-cors master-key-show reset-password backup clean
+.PHONY: help ensure-env dev update build down restart logs ps test test-ts test-extension test-py lint lint-ts lint-py format format-ts format-py format-check format-check-ts format-check-py typecheck migrate seed shell-db shell-redis minio-init minio-cors master-key-show reset-password backup clean
 
 # ============================================================================
 # Voxen — one-command development
@@ -50,10 +50,13 @@ ps: ## Status dos serviços
 	docker compose ps
 
 # --- Testes ---
-test: test-ts test-py ## Roda todos os testes (TS + Python)
+test: test-ts test-extension test-py ## Roda todos os testes (TS + extensão + Python)
 
 test-ts: ## Testes do apps/web (Bun)
 	cd apps/web && bun test
+
+test-extension: ## Testes da extensão MV3 (Bun)
+	cd apps/web && bun run test:extension
 
 test-py: ## Testes do worker (pytest via uv)
 	cd apps/worker && uv run pytest
