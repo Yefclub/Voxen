@@ -115,6 +115,21 @@ telas de "conectar plataforma" que a spec 121 introduz.
   mostra um estado vazio (texto + botão "Conectar instância") que abre as
   opções via `chrome.runtime.openOptionsPage()`, sem reimplementar o
   formulário de detecção/URL/token.
+- **Tema pré-paint em `theme-init.js` (script clássico)**: a CSP padrão do MV3
+  (`script-src 'self'`) bloqueia `<script>` inline em páginas de extensão e
+  não aceita `'unsafe-inline'`, então o tema pré-paint mora num arquivo
+  próprio carregado no `<head>` — clássico, não `type="module"`, porque
+  módulo é adiado e pintaria um frame com o tema errado. Como script clássico
+  não pode usar `import`/`export`, ele publica os helpers em
+  `globalThis.VoxenTheme`; `popup.js`/`options.js` (módulos) e os testes
+  consomem daí. Não existe `lib/theme.js` paralelo — o que os testes
+  exercitam é exatamente o código que roda no browser.
+- **Escopo da PR de implementação**: a página web `/extensao`
+  (`apps/web/src/client/pages/extensao.tsx`) NÃO foi alterada — ela já é
+  React dentro do app e usa os componentes/tokens do design system
+  (`PageShell`, `Button`, `--color-app-*`). Restam alguns acentos
+  `emerald-*` hardcoded que não seguem o token de acento do tema; ajuste
+  ficou fora desta entrega (decisão do owner).
 - **Tema via `GET /api/me`**: a extensão usa o endpoint autenticado
   `/api/me` (cookie de sessão, já reaproveitado pelas outras chamadas via
   `credentials: 'include'`) para ler `user.theme`. Sem sessão válida ou sem

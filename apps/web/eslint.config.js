@@ -17,6 +17,9 @@ export default tseslint.config(
       'node_modules/',
       'coverage/',
       'prisma-generated/',
+      // Cópia gerada por apps/extension/package.sh (build artifact, gitignored).
+      // A fonte é apps/extension/ — lintar a cópia só duplica ruído.
+      'public/extension/unpacked/',
       '*.config.js',
       '*.config.ts',
     ],

@@ -4,26 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Voxen — Conectar</title>
-    <script>
-      // Aplica o tema ANTES do primeiro paint — ver mesma lógica em popup.html
-      // e apps/extension/lib/theme.js.
-      (function () {
-        try {
-          var valid = ['linear', 'zinc', 'emerald', 'light'];
-          var t = localStorage.getItem('voxen-ext-theme');
-          if (valid.indexOf(t) === -1) t = null;
-          if (!t) {
-            var prefersDark =
-              !window.matchMedia || window.matchMedia('(prefers-color-scheme: dark)').matches;
-            t = prefersDark ? 'linear' : 'light';
-          }
-          document.documentElement.dataset.theme = t;
-          document.documentElement.style.colorScheme = t === 'light' ? 'light' : 'dark';
-        } catch (e) {
-          document.documentElement.dataset.theme = 'linear';
-        }
-      })();
-    </script>
+    <!-- Aplica o tema ANTES do primeiro paint — ver theme-init.js (script
+         clássico; inline é bloqueado pela CSP do MV3). -->
+    <script src="theme-init.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

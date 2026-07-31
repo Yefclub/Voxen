@@ -1,9 +1,10 @@
 import { looksLikeVoxenTab, normalizeBaseUrl } from './lib/config.js';
-import { ensureHostPermission } from './lib/permissions.js';
+import { ensureHostPermission, hasHostPermission } from './lib/permissions.js';
 import { fetchMe } from './lib/api.js';
-import { applyTheme } from './lib/theme.js';
 
-const THEME_CACHE_KEY = 'voxen-ext-theme';
+// theme-init.js roda como script clássico no <head> (CSP do MV3 bloqueia
+// inline) e publica os helpers de tema em globalThis — ver comentário lá.
+const { applyTheme, cacheTheme } = globalThis.VoxenTheme;
 
 const baseInput = document.getElementById('base-url');
 const tokenInput = document.getElementById('api-token');
@@ -34,19 +35,27 @@ async function load() {
   const stored = await chrome.storage.sync.get(['baseUrl', 'apiToken']);
   if (typeof stored.baseUrl === 'string') baseInput.value = stored.baseUrl;
   if (typeof stored.apiToken === 'string') tokenInput.value = stored.apiToken;
+
+  // Perfil já conectado: aplica o tema da instância também ao abrir a página,
+  // não só depois de clicar em conectar.
+  const parsed = normalizeBaseUrl(stored.baseUrl ?? '');
+  if (parsed.ok) void syncThemeFromInstance(parsed.baseUrl);
 }
 
 /**
- * Aplica (e cacheia) o tema da instância assim que a conexão é confirmada —
- * cosmético, nunca bloqueia o fluxo de conexão em si.
+ * Aplica (e cacheia) o tema da instância — cosmético, nunca bloqueia o fluxo
+ * de conexão em si. Sem host permission a chamada nem é tentada (o Chromium
+ * bloquearia o cookie de sessão e o /api/me voltaria 401).
  * @param {string} baseUrl
  */
 async function syncThemeFromInstance(baseUrl) {
   try {
+    const permitted = await hasHostPermission(baseUrl);
+    if (!permitted) return;
     const me = await fetchMe(baseUrl);
     if (!me?.theme) return;
     applyTheme(me.theme);
-    localStorage.setItem(THEME_CACHE_KEY, me.theme);
+    cacheTheme(me.theme);
   } catch {
     /* tema é cosmético */
   }

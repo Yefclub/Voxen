@@ -6,7 +6,7 @@
    package.sh), então os valores são copiados aqui — qualquer alteração de
    paleta no design system do Voxen deve ser replicada neste arquivo.
 
-   Uso: <html data-theme="linear|zinc|emerald|light"> — aplicado por lib/theme.js
+   Uso: <html data-theme="linear|zinc|emerald|light"> — aplicado por theme-init.js
    antes do primeiro paint (evita flash de tema errado).
    ============================================================================ */
 
@@ -23,7 +23,7 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Tema padrão até lib/theme.js resolver (dark, igual ao "linear" do app). */
+/* Tema padrão até theme-init.js resolver (dark, igual ao "linear" do app). */
 :root,
 [data-theme='linear'] {
   color-scheme: dark;

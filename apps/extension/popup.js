@@ -8,10 +8,11 @@ import {
 } from './lib/config.js';
 import { fetchJobStatus, fetchMe, submitUrlToVoxen } from './lib/api.js';
 import { ensureHostPermission, hasHostPermission } from './lib/permissions.js';
-import { applyTheme } from './lib/theme.js';
 import { stageLabel } from './lib/job-stage.js';
 
-const THEME_CACHE_KEY = 'voxen-ext-theme';
+// theme-init.js roda como script clássico no <head> (CSP do MV3 bloqueia
+// inline) e publica os helpers de tema em globalThis — ver comentário lá.
+const { applyTheme, cacheTheme } = globalThis.VoxenTheme;
 
 const els = {
   setup: document.getElementById('setup-needed'),
@@ -81,7 +82,7 @@ async function syncThemeFromInstance(baseUrl) {
     const me = await fetchMe(baseUrl);
     if (!me?.theme) return;
     applyTheme(me.theme);
-    localStorage.setItem(THEME_CACHE_KEY, me.theme);
+    cacheTheme(me.theme);
   } catch {
     /* tema é cosmético — mantém o fallback já aplicado */
   }

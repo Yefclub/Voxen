@@ -4,28 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Voxen</title>
-    <script>
-      // Aplica o tema ANTES do primeiro paint (evita flash). Espelha a
-      // lógica de apps/extension/lib/theme.js — duplicada aqui porque
-      // scripts type="module" são adiados e pintariam com o tema errado
-      // por um frame. popup.js refina com o tema real assim que resolvido.
-      (function () {
-        try {
-          var valid = ['linear', 'zinc', 'emerald', 'light'];
-          var t = localStorage.getItem('voxen-ext-theme');
-          if (valid.indexOf(t) === -1) t = null;
-          if (!t) {
-            var prefersDark =
-              !window.matchMedia || window.matchMedia('(prefers-color-scheme: dark)').matches;
-            t = prefersDark ? 'linear' : 'light';
-          }
-          document.documentElement.dataset.theme = t;
-          document.documentElement.style.colorScheme = t === 'light' ? 'light' : 'dark';
-        } catch (e) {
-          document.documentElement.dataset.theme = 'linear';
-        }
-      })();
-    </script>
+    <!-- Aplica o tema ANTES do primeiro paint (evita flash). Script clássico
+         em arquivo próprio: a CSP do MV3 bloqueia inline e type="module"
+         seria adiado. popup.js refina com o tema real assim que resolvido. -->
+    <script src="theme-init.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

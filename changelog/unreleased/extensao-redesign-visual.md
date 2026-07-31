@@ -3,16 +3,16 @@ tipo: ui
 titulo: Extensão de browser redesenhada com a identidade visual do Voxen
 ---
 
-O popup, a página de opções e a página `/extensao` da extensão de browser
-agora usam os mesmos tokens de cor e tipografia do Voxen web (Bricolage
-Grotesque + Inter + JetBrains Mono, temas padrão/zinc/emerald/light) — antes
-a extensão tinha uma paleta verde/indigo própria, sempre escura, desconectada
-do resto do produto.
+O popup e a página de opções da extensão de browser agora usam os mesmos
+tokens de cor e a mesma tipografia do Voxen web (Bricolage Grotesque + Inter,
+temas padrão/zinc/emerald/light) — antes a extensão tinha uma paleta
+verde/indigo própria, sempre escura, desconectada do resto do produto.
 
 - **Tema segue a instância conectada**: se você já tem um tema escolhido no
   Voxen (`Conta → Aparência`), a extensão aplica o mesmo tema assim que
-  detecta a instância. Sem instância conectada ainda, ela segue o esquema
-  claro/escuro do sistema operacional.
+  detecta a instância — tanto no popup quanto na página de opções. Sem
+  instância conectada ainda, ela segue o esquema claro/escuro do sistema
+  operacional.
 - **Uma única tela de conexão**: a página de opções (`chrome-extension://.../options.html`)
   passa a ser a única superfície onde a extensão se conecta a uma instância
   Voxen. O popup não reimplementa mais esse formulário — quando ainda não há

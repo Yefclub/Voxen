@@ -18,6 +18,11 @@ import {
 const TRACK_ALARM = 'voxen-job-track';
 const UPDATE_ALARM = 'voxen-update-check';
 
+// `chrome.action` não aceita CSS var, então o token --color-accent-primary do
+// tema padrão (theme.css / apps/web) entra aqui como literal. Se a paleta do
+// design system mudar, atualizar junto.
+const BADGE_COLOR = '#8b7cf6';
+
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     const stored = await chrome.storage.sync.get(['baseUrl']);
@@ -207,7 +212,7 @@ async function checkForUpdate(fromUser) {
 
   if (newer) {
     chrome.action.setBadgeText({ text: '↑' });
-    chrome.action.setBadgeBackgroundColor({ color: '#10b981' });
+    chrome.action.setBadgeBackgroundColor({ color: BADGE_COLOR });
     if (fromUser || !(await alreadyNotifiedUpdate(remote.version))) {
       await notifyOnce(
         `upd-${remote.version}`,
@@ -262,13 +267,13 @@ async function notifyOnce(id, title, message, link) {
 async function refreshBadge(count) {
   if (count > 0) {
     chrome.action.setBadgeText({ text: String(Math.min(count, 9)) });
-    chrome.action.setBadgeBackgroundColor({ color: '#6366f1' });
+    chrome.action.setBadgeBackgroundColor({ color: BADGE_COLOR });
     return;
   }
   const s = await chrome.storage.local.get(['lastUpdateCheck']);
   if (s.lastUpdateCheck?.hasUpdate) {
     chrome.action.setBadgeText({ text: '↑' });
-    chrome.action.setBadgeBackgroundColor({ color: '#10b981' });
+    chrome.action.setBadgeBackgroundColor({ color: BADGE_COLOR });
     return;
   }
   chrome.action.setBadgeText({ text: '' });

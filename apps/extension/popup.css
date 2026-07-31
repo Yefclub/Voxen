@@ -117,7 +117,7 @@ body {
   padding: 9px 12px;
   border-radius: 999px;
   background: var(--status-ok-soft);
-  border: 1px solid var(--status-ok-soft);
+  border: 1px solid color-mix(in srgb, var(--status-ok) 30%, transparent);
   font-size: 12px;
   color: var(--status-ok);
 }
@@ -361,6 +361,9 @@ body {
   font-size: 12.5px;
   line-height: 1.4;
   white-space: pre-wrap;
+  /* URLs longas em mensagem de erro precisam quebrar — o shell tem
+     overflow-x: hidden e cortaria o texto. */
+  overflow-wrap: anywhere;
   color: var(--color-app-subtle);
 }
 
@@ -380,7 +383,7 @@ body {
   padding: 12px;
   border-radius: var(--radius-md);
   background: var(--status-ok-soft);
-  border: 1px solid var(--status-ok-soft);
+  border: 1px solid color-mix(in srgb, var(--status-ok) 30%, transparent);
   display: flex;
   flex-direction: column;
   gap: 6px;
