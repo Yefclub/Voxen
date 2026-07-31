@@ -14,6 +14,13 @@ import {
   fetchExtensionVersion,
   fetchJobStatus,
 } from './lib/api.js';
+import {
+  LAST_OUTCOME_KEY,
+  TRACKED_JOBS_KEY,
+  buildJobOutcome,
+  classifyJobStatus,
+  withoutJob,
+} from './lib/job-state.js';
 
 const TRACK_ALARM = 'voxen-job-track';
 const UPDATE_ALARM = 'voxen-update-check';
@@ -59,6 +66,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'job-settled') {
+    void settleJob(message.payload?.jobId).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
   if (message.type === 'check-update') {
     void checkForUpdate(true).then((r) => sendResponse(r));
     return true;
@@ -92,9 +104,9 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
  */
 async function trackJob(payload) {
   if (!payload?.jobId || !payload?.baseUrl) return;
-  const stored = await chrome.storage.local.get(['trackedJobs']);
+  const stored = await chrome.storage.local.get([TRACKED_JOBS_KEY]);
   /** @type {Record<string, object>} */
-  const tracked = stored.trackedJobs || {};
+  const tracked = stored[TRACKED_JOBS_KEY] || {};
   tracked[payload.jobId] = {
     jobId: payload.jobId,
     baseUrl: payload.baseUrl,
@@ -102,7 +114,7 @@ async function trackJob(payload) {
     pageTitle: payload.pageTitle || '',
     startedAt: Date.now(),
   };
-  await chrome.storage.local.set({ trackedJobs: tracked });
+  await chrome.storage.local.set({ [TRACKED_JOBS_KEY]: tracked });
   // Poll frequente enquanto houver jobs.
   chrome.alarms.create(TRACK_ALARM, { periodInMinutes: 0.05 }); // ~3s
   // Badge
@@ -110,15 +122,22 @@ async function trackJob(payload) {
 }
 
 async function pollTrackedJobs() {
-  const stored = await chrome.storage.local.get(['trackedJobs']);
+  const stored = await chrome.storage.local.get([TRACKED_JOBS_KEY]);
   /** @type {Record<string, { jobId: string, baseUrl: string, token?: string, pageTitle?: string }>} */
-  const tracked = stored.trackedJobs || {};
+  const tracked = stored[TRACKED_JOBS_KEY] || {};
   const ids = Object.keys(tracked);
   if (ids.length === 0) {
     chrome.alarms.clear(TRACK_ALARM);
     await refreshBadge(0);
     return;
   }
+
+  /**
+   * Último resultado terminal desta rodada — o popup lê isso ao reabrir para
+   * mostrar o desfecho de um job que terminou com ele fechado.
+   * @type {import('./lib/job-state.js').JobOutcome | null}
+   */
+  let lastOutcome = null;
 
   for (const id of ids) {
     const item = tracked[id];
@@ -142,8 +161,12 @@ async function pollTrackedJobs() {
       continue;
     }
 
-    const status = result.job.status;
-    if (status === 'SUCCEEDED' || status === 'DONE' || status === 'COMPLETED') {
+    const kind = classifyJobStatus(result.job.status);
+    if (kind === 'pending') continue;
+
+    lastOutcome = buildJobOutcome({ job: result.job, tracked: item, now: Date.now() });
+
+    if (kind === 'succeeded') {
       const title = result.job.title || item.pageTitle || 'Conteúdo pronto';
       const summary = result.job.summary || 'Abra no Voxen para ler o conteúdo completo.';
       const link = result.job.transcriptId
@@ -156,7 +179,7 @@ async function pollTrackedJobs() {
         link,
       );
       delete tracked[id];
-    } else if (status === 'FAILED' || status === 'CANCELLED') {
+    } else {
       await notifyOnce(
         `fail-${item.jobId}`,
         'Falha no processamento',
@@ -167,7 +190,35 @@ async function pollTrackedJobs() {
     }
   }
 
-  await chrome.storage.local.set({ trackedJobs: tracked });
+  await chrome.storage.local.set({
+    [TRACKED_JOBS_KEY]: tracked,
+    ...(lastOutcome ? { [LAST_OUTCOME_KEY]: lastOutcome } : {}),
+  });
+  const remaining = Object.keys(tracked).length;
+  await refreshBadge(remaining);
+  if (remaining === 0) {
+    chrome.alarms.clear(TRACK_ALARM);
+  }
+}
+
+/**
+ * O popup já mostrou o desfecho deste job: para de rastrear e descarta o
+ * resultado guardado (para não reaparecer na próxima abertura). Todas as
+ * escritas de `trackedJobs`/`lastJobOutcome` ficam no service worker — assim
+ * há um dono só do estado e nenhum read-modify-write concorrente.
+ * @param {string | undefined} jobId
+ */
+async function settleJob(jobId) {
+  if (!jobId) return;
+  const stored = await chrome.storage.local.get([TRACKED_JOBS_KEY, LAST_OUTCOME_KEY]);
+  const tracked = withoutJob(stored[TRACKED_JOBS_KEY], jobId);
+  /** @type {Record<string, unknown>} */
+  const patch = { [TRACKED_JOBS_KEY]: tracked };
+  if (stored[LAST_OUTCOME_KEY]?.jobId === jobId) {
+    patch[LAST_OUTCOME_KEY] = null;
+  }
+  await chrome.storage.local.set(patch);
+
   const remaining = Object.keys(tracked).length;
   await refreshBadge(remaining);
   if (remaining === 0) {
