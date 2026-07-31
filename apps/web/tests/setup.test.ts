@@ -331,7 +331,52 @@ describeIfDb('setup flow', () => {
     await expect(getSetting('openrouter_api_key')).resolves.toBeNull();
   });
 
-  it('trocar a chave restaura atomicamente todos os modelos canônicos', async () => {
+  it('trocar a chave mantém os modelos canônicos quando não havia override', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+
+    await setSettings({
+      openrouter_api_key: VALID_KEY,
+      default_chat_model: 'x-ai/grok-4.5',
+      default_transcription_model: 'x-ai/grok-stt-1.0',
+      default_web_search_model: 'x-ai/grok-4.5',
+      default_vision_model: 'x-ai/grok-4.5',
+      default_document_model: 'x-ai/grok-4.5',
+      default_x_analysis_model: 'x-ai/grok-4.5',
+      app_language: 'pt-BR',
+      app_timezone: 'America/Sao_Paulo',
+    });
+    installValidOpenRouterMock();
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/setup', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          openrouter_api_key: REPLACEMENT_KEY,
+          app_language: 'en',
+          app_timezone: 'UTC',
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    await expect(getSetting('openrouter_api_key')).resolves.toBe(REPLACEMENT_KEY);
+    await expect(getSetting('default_chat_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_transcription_model')).resolves.toBe('x-ai/grok-stt-1.0');
+    await expect(getSetting('default_web_search_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_vision_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_document_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_x_analysis_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('app_language')).resolves.toBe('en');
+    await expect(getSetting('app_timezone')).resolves.toBe('UTC');
+  });
+
+  // Spec 123, critério de aceite: "Trocar a chave da OpenRouter não apaga
+  // overrides existentes." — revalidar/trocar a chave NUNCA reseta
+  // silenciosamente uma finalidade sobrescrita manualmente pelo admin de
+  // volta ao canônico.
+  it('trocar a chave preserva overrides de modelo configurados manualmente', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
@@ -362,12 +407,12 @@ describeIfDb('setup flow', () => {
     );
     expect(res.status).toBe(200);
     await expect(getSetting('openrouter_api_key')).resolves.toBe(REPLACEMENT_KEY);
-    await expect(getSetting('default_chat_model')).resolves.toBe('x-ai/grok-4.5');
-    await expect(getSetting('default_transcription_model')).resolves.toBe('x-ai/grok-stt-1.0');
-    await expect(getSetting('default_web_search_model')).resolves.toBe('x-ai/grok-4.5');
-    await expect(getSetting('default_vision_model')).resolves.toBe('x-ai/grok-4.5');
-    await expect(getSetting('default_document_model')).resolves.toBe('x-ai/grok-4.5');
-    await expect(getSetting('default_x_analysis_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_chat_model')).resolves.toBe('custom/chat');
+    await expect(getSetting('default_transcription_model')).resolves.toBe('custom/stt');
+    await expect(getSetting('default_web_search_model')).resolves.toBe('custom/web');
+    await expect(getSetting('default_vision_model')).resolves.toBe('custom/vision');
+    await expect(getSetting('default_document_model')).resolves.toBe('custom/document');
+    await expect(getSetting('default_x_analysis_model')).resolves.toBe('custom/x');
     await expect(getSetting('app_language')).resolves.toBe('en');
     await expect(getSetting('app_timezone')).resolves.toBe('UTC');
   });

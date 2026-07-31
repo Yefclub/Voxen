@@ -11,9 +11,19 @@ import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
 import { db } from '../lib/db';
-import { DEFAULT_OPENROUTER_MODELS, hasCanonicalOpenRouterModels } from '../lib/model-defaults';
+import {
+  DEFAULT_OPENROUTER_MODELS,
+  hasCanonicalOpenRouterModels,
+  MODEL_PURPOSES,
+} from '../lib/model-defaults';
 import { inspectOpenRouterAccount, OpenrouterError } from '../lib/openrouter';
-import { getAppLanguage, getAppTimezone, getSetting, setSettings } from '../lib/settings';
+import {
+  getAppLanguage,
+  getAppTimezone,
+  getSetting,
+  getSettings,
+  setSettings,
+} from '../lib/settings';
 
 export const setupRoutes = new Hono();
 
@@ -110,9 +120,24 @@ setupRoutes.post('/', async (c) => {
     );
   }
 
+  // Só preenche as 6 finalidades que ainda não têm valor. Uma vez que o
+  // primeiro setup grava um valor (canônico ou override — spec 123), trocar
+  // a chave NUNCA sobrescreve o que já está lá: overrides do admin
+  // sobrevivem à revalidação/troca de chave (critério de aceite da spec
+  // 123). Isso não muda o onboarding em si (spec 118): no primeiro setup,
+  // nenhuma dessas chaves existe ainda, então todas são preenchidas com o
+  // canônico exatamente como antes.
+  const existingModels = await getSettings(MODEL_PURPOSES);
+  const missingModels = Object.fromEntries(
+    MODEL_PURPOSES.filter((key) => !existingModels[key]).map((key) => [
+      key,
+      DEFAULT_OPENROUTER_MODELS[key],
+    ]),
+  );
+
   await setSettings({
     openrouter_api_key,
-    ...DEFAULT_OPENROUTER_MODELS,
+    ...missingModels,
     ...preferences,
   });
 

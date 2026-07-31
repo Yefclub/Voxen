@@ -847,6 +847,34 @@ const ptBRMessages = {
   'admin.integrations.proxy.managedNote':
     'O proxy de extração é gerenciado automaticamente pelo agente.',
 
+  'admin.integrations.models.title': 'Modelos por finalidade',
+  'admin.integrations.models.description':
+    'A Voxen aplica um modelo padrão para cada finalidade. Sobrescreva individualmente quando quiser usar outro modelo do catálogo da sua chave OpenRouter.',
+  'admin.integrations.models.noApiKey':
+    'Configure a chave da OpenRouter acima para gerenciar os modelos.',
+  'admin.integrations.models.purpose.chat': 'Chat',
+  'admin.integrations.models.purpose.transcription': 'Transcrição',
+  'admin.integrations.models.purpose.webSearch': 'Busca na web',
+  'admin.integrations.models.purpose.vision': 'Visão (imagens)',
+  'admin.integrations.models.purpose.document': 'Documentos',
+  'admin.integrations.models.purpose.xAnalysis': 'Análise do X',
+  'admin.integrations.models.canonicalBadge': 'Padrão',
+  'admin.integrations.models.overrideBadge': 'Personalizado',
+  'admin.integrations.models.usingCanonical': 'Usando o modelo padrão da Voxen',
+  'admin.integrations.models.canonicalHint': 'Padrão: {model}',
+  'admin.integrations.models.change': 'Trocar modelo',
+  'admin.integrations.models.reset': 'Voltar ao padrão',
+  'admin.integrations.models.resetSuccess': 'Finalidade restaurada para o modelo padrão.',
+  'admin.integrations.models.changeSuccess': 'Modelo atualizado.',
+  'admin.integrations.models.loadError': 'Não foi possível carregar a configuração de modelos.',
+  'admin.integrations.models.catalogUnavailable':
+    'Catálogo da OpenRouter indisponível agora. Os overrides já salvos continuam ativos — tente novamente mais tarde.',
+
+  'modelPicker.loading': 'Carregando catálogo…',
+  'modelPicker.total': '{count} modelos',
+  'modelPicker.filter': 'Buscar por nome, id ou provedor…',
+  'modelPicker.empty': 'Nenhum modelo compatível encontrado.',
+
   'account.eyebrow': 'Conta',
   'account.title': 'Seu perfil',
   'account.description': 'Atualize seus dados e gerencie sua senha.',
@@ -2035,6 +2063,33 @@ const enMessages: Record<I18nKey, string> = {
     'Multiple agents detected — run only one. Only a single agent connection is allowed at a time.',
   'admin.integrations.proxy.managedNote':
     'The extraction proxy is managed automatically by the agent.',
+
+  'admin.integrations.models.title': 'Models per purpose',
+  'admin.integrations.models.description':
+    'Voxen applies a default model for each purpose. Override it individually when you want to use a different model from your OpenRouter key catalog.',
+  'admin.integrations.models.noApiKey': 'Configure the OpenRouter key above to manage models.',
+  'admin.integrations.models.purpose.chat': 'Chat',
+  'admin.integrations.models.purpose.transcription': 'Transcription',
+  'admin.integrations.models.purpose.webSearch': 'Web search',
+  'admin.integrations.models.purpose.vision': 'Vision (images)',
+  'admin.integrations.models.purpose.document': 'Documents',
+  'admin.integrations.models.purpose.xAnalysis': 'X analysis',
+  'admin.integrations.models.canonicalBadge': 'Default',
+  'admin.integrations.models.overrideBadge': 'Custom',
+  'admin.integrations.models.usingCanonical': "Using Voxen's default model",
+  'admin.integrations.models.canonicalHint': 'Default: {model}',
+  'admin.integrations.models.change': 'Change model',
+  'admin.integrations.models.reset': 'Reset to default',
+  'admin.integrations.models.resetSuccess': 'Purpose restored to the default model.',
+  'admin.integrations.models.changeSuccess': 'Model updated.',
+  'admin.integrations.models.loadError': 'Could not load the model configuration.',
+  'admin.integrations.models.catalogUnavailable':
+    'OpenRouter catalog unavailable right now. Saved overrides remain active — try again later.',
+
+  'modelPicker.loading': 'Loading catalog…',
+  'modelPicker.total': '{count} models',
+  'modelPicker.filter': 'Search by name, id or provider…',
+  'modelPicker.empty': 'No compatible model found.',
 
   'account.eyebrow': 'Account',
   'account.title': 'Your profile',

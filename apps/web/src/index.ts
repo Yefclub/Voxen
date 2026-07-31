@@ -14,6 +14,7 @@ import {
   isSetupComplete,
 } from './lib/settings';
 import { adminRoutes } from './routes/admin';
+import { adminModelsRoutes } from './routes/admin-models';
 import { jobsRoutes } from './routes/jobs';
 import { libraryRoutes } from './routes/library';
 import { setupRoutes } from './routes/setup';
@@ -253,6 +254,9 @@ app.route('/api/setup', setupRoutes);
 
 // Admin endpoints (protegidos por middleware no próprio router)
 app.route('/api/admin', adminRoutes);
+
+// Seleção manual de modelos por finalidade (spec 123, admin only)
+app.route('/api/admin/models', adminModelsRoutes);
 
 // Jobs endpoints (download + transcrição — spec 002)
 app.route('/api/jobs', jobsRoutes);
