@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.13.0-dev.1785517091 — 2026-07-31 · Dev
+
+### 🐛 Retry com impersonate=chrome do TikTok nunca era acionado
+
+Corrigido bug de controle de fluxo que fazia a mitigação de retry do TikTok (forçar impersonation de browser via `curl_cffi` quando o download falha com "unable to extract universal data for rehydration") nunca ser executada — o erro já virava falha permanente antes do retry ter chance de rodar. O TikTok está passando por uma instabilidade conhecida e ainda não corrigida no `yt-dlp` upstream; esse retry agora funciona de verdade e recupera parte dos downloads que antes falhavam de cara.
+
 ## v0.13.0-dev.1785440574 — 2026-07-30 · Dev
 
 ### 🐛 Cabeçalhos, chat e atualização novamente consistentes
