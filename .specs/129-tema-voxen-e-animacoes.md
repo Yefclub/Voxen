@@ -63,6 +63,10 @@ Dois ajustes de identidade e polimento, ambos transversais à interface:
 - Mudança de paleta ou criação de tema novo — é renomeação, não redesenho.
 - Animação de outros elementos além de ícones.
 - Renomear os demais temas (`zinc`, `emerald`, `light`).
+- Deixa no modo "notas" da sidebar (`NotasModeBody`). Abrir/fechar a navegação
+  em `/notas` não pontua nada: ali o painel é uma árvore de notas do usuário,
+  não a lista fixa de destinos, e varrer ícones de uma árvore que muda de
+  tamanho é ruído, não pontuação.
 
 ## Decisões tomadas na implementação
 
@@ -95,7 +99,9 @@ Dois ajustes de identidade e polimento, ambos transversais à interface:
 - **O gatilho da navegação é um contador, não "animar ao montar".** A sidebar
   desktop remonta rail e painel a cada toggle, mas o drawer mobile fica
   montado o tempo todo (o gesto de swipe precisa da árvore pronta fora da
-  tela). `useIconCueSignal` roda a deixa quando o número **muda**, o que cobre
+  tela). `useIconCueTrigger` produz o contador (a partir de `collapsed` no
+  desktop e de `open` no mobile) e `useIconCueSignal` roda a deixa quando o
+  número **muda**, o que cobre
   os dois casos, não pontua no primeiro carregamento e não pontua no painel
   que o `AnimatePresence` mantém em cena enquanto sai (ele rerenderiza o
   elemento com as props congeladas da última vez em que esteve presente).
@@ -122,9 +128,33 @@ anterior, `dispose` no meio do gesto, movimento reduzido — sem DOM e sem
 `setTimeout` remendado.
 
 `components/ui/icons.test.ts` renderiza o wrapper de ícone com
-`react-dom/server` e um ícone sonda no lugar do ícone do pacote, para conferir
-o que chega no ícone interno (handle de animação e os handlers de mouse que
-reproduzem o hover).
+`react-dom/server` e um ícone sonda no lugar do ícone do pacote. Confere o
+handle de animação que chega no ícone interno e, escrevendo um handle espião
+nessa ref, confere que os handlers de mouse do wrapper realmente chamam
+`startAnimation`/`stopAnimation` — esvaziar o corpo dos handlers quebra a
+suíte, que é a regressão de hover dos 103 ícones.
+
+`tests/icon-cue-lifecycle.test.tsx` cobre os dois requisitos event-driven com
+`react-test-renderer` (já usado por `graph-renderer-lifecycle` e
+`transcript-chat-dock` — o repositório testa ciclo de vida de componente sem
+DOM assim):
+
+- **Abrir página**: monta o `PageHeader` real com um ícone sonda e verifica que
+  o ícone se desenha depois da montagem, não no frame dela.
+- **Abrir/fechar navegação**: `useIconCueTrigger` + `useIconCueSignal` reais nas
+  duas topologias — a do desktop, em que o painel remonta na troca de estado, e
+  a do drawer mobile, em que o corpo nunca desmonta e só a abertura pontua. O
+  teste do desktop é o que impede derivar o sinal durante o render: o valor
+  novo chegaria já na montagem, o hook não veria mudança e a deixa morreria em
+  silêncio.
+- **Unmount**: com o agendador injetado em `useIconCueGroup`, o teste afirma
+  que a fila fica vazia depois do unmount — remover o `useEffect` de limpeza
+  deixa timers pendentes e quebra a suíte.
+
+O gatilho da navegação virou o hook `useIconCueTrigger` justamente para isso:
+enquanto era um `useState` + `useEffect` copiado dentro de `Sidebar` e de
+`MobileNavDrawer`, não havia como testá-lo sem renderizar a sidebar inteira
+(radix-ui e `motion` não sobrevivem ao renderer de teste sem um DOM).
 
 ## Limitações conhecidas
 
@@ -132,18 +162,16 @@ reproduzem o hover).
   `/transcricoes/a` para `/transcricoes/b` reaproveita o mesmo `PageHeader`
   montado, então o ícone do cabeçalho não se desenha de novo. Aceito: a deixa
   é pontuação de entrada de tela, e a tela não entrou.
-- **O vazamento de timer no unmount do grupo não tem teste.** O
-  `useEffect` de limpeza depende de ciclo de vida do React, e o repositório
-  não tem renderer nem DOM em teste (sem happy-dom, sem testing-library) —
-  apagar esse efeito não quebra a suíte. O que a suíte trava é a consequência:
-  o handle é resolvido no disparo, não no agendamento, então nenhum timer
-  sobrevivente consegue animar um ícone que já saiu da árvore.
-- **A reprodução do hover em `icons.ts` não tem teste de comportamento.**
-  Anexar uma `ref` faz o `@animateicons/react` parar de animar o hover
-  sozinho; o wrapper repassa `onMouseEnter`/`onMouseLeave` para compensar. O
-  teste trava a presença e a composição dos handlers, mas confirmar que o
-  hover de fato anima exige DOM real. O ponto está marcado com um comentário
-  explícito no código.
+- **A ligação final da sidebar não é renderizada em teste.** O que os testes
+  travam é o mecanismo (`useIconCueTrigger` → `useIconCueSignal` →
+  `useIconCueGroup`) e o `PageHeader` real; montar `Sidebar` de verdade
+  esbarra no `@radix-ui/react-tooltip`, que entra em loop de atualização sem
+  DOM. Sobra uma linha por caller (`useIconCueTrigger(collapsed)` e
+  `useIconCueTrigger(open, isOpen)`) coberta só por revisão.
+- **O `@animateicons/react` desligar o hover sozinho é premissa verificada no
+  browser, não em teste.** A suíte garante que o wrapper chama o handle nos
+  handlers de mouse; que o pacote pare de escutar o mouse quando há `ref`
+  anexada foi confirmado no browser e está registrado em comentário no código.
 - **A extensão espelha os identificadores de tema à mão.** Não há teste
   cruzando `apps/web` com `apps/extension`: ler fonte de outro workspace
   quebra a cada reformatação da extensão. O contrato está documentado em

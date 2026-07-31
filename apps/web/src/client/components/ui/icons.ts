@@ -151,8 +151,9 @@ export function accessibleIcon(icon: AnimatedIcon): AnimatedIcon {
       // apagar (ou deixar de repassar) `onMouseEnter`/`onMouseLeave` mata a
       // animação de hover dos 103 ícones do app de uma vez — em silêncio, sem
       // erro de tipo e sem quebrar nenhuma tela.
-      // `icons.test.ts` trava a presença dos handlers; que eles de fato
-      // disparem a animação depende de DOM real e não é coberto por teste.
+      // `icons.test.ts` trava os dois lados: que os handlers existem e que
+      // eles chamam `startAnimation`/`stopAnimation` no ícone interno —
+      // esvaziar o corpo dos handlers quebra a suíte.
       const handleMouseEnter = useCallback(
         (event: MouseEvent<HTMLDivElement>) => {
           onMouseEnter?.(event);

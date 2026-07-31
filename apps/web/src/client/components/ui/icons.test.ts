@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { createElement, forwardRef, useImperativeHandle, type MouseEvent, type Ref } from 'react';
+import {
+  createElement,
+  forwardRef,
+  useImperativeHandle,
+  type MouseEvent,
+  type Ref,
+  type RefObject,
+} from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { accessibleIcon, type AnimatedIconProps } from './icons';
 import { shouldAnimateDecoration } from '../../lib/interface-foundation';
@@ -45,6 +52,25 @@ describe('wrapper de ícone animado', () => {
 
     expect(typeof props.onMouseEnter).toBe('function');
     expect(typeof props.onMouseLeave).toBe('function');
+  });
+
+  test('o hover reproduzido anima o ícone interno', () => {
+    // Manter os handlers e esvaziá-los é a variante mais provável num
+    // refactor — e é exatamente a regressão dos 103 ícones. O `ref` devolvido
+    // pela sonda é o `inner` do wrapper; em render de servidor o
+    // `useImperativeHandle` da sonda não roda, então o handle é escrito à mão
+    // para observar o que os handlers fazem com ele.
+    const calls: string[] = [];
+    const { props, ref } = renderProbe();
+    (ref as RefObject<IconCueHandle | null>).current = {
+      startAnimation: () => calls.push('start'),
+      stopAnimation: () => calls.push('stop'),
+    };
+
+    props.onMouseEnter?.(mouseEvent);
+    props.onMouseLeave?.(mouseEvent);
+
+    expect(calls).toEqual(['start', 'stop']);
   });
 
   test('compõe com os handlers de mouse de quem usa o ícone', () => {

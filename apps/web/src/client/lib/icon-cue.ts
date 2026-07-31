@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * Handle imperativo exposto por todo ícone de `components/ui/icons`.
@@ -160,8 +160,13 @@ export function createIconCueController(
   };
 
   const play = (enabled: boolean, baseDelayMs = 0): void => {
-    queue.clearAll();
-    if (!enabled) return;
+    // Movimento reduzido não agenda nada — e ainda derruba a deixa em curso.
+    // Fora desse caso quem limpa é o próprio `schedule`, na primeira linha:
+    // limpar duas vezes só mascara regressão em quem só olha uma das chamadas.
+    if (!enabled) {
+      queue.clearAll();
+      return;
+    }
 
     const keys = [...handles.keys()];
     const steps = iconCueSchedule(keys.length, baseDelayMs);
@@ -183,10 +188,16 @@ export function createIconCueController(
 /**
  * Casca React do controlador acima: mantém uma instância por componente e
  * cancela a deixa pendente no unmount.
+ *
+ * `scheduler` existe para teste — é o que permite verificar, com relógio
+ * falso, que o unmount não deixa timer pendente. Em produção ninguém passa.
  */
-export function useIconCueGroup(enabled: boolean): IconCueGroup {
+export function useIconCueGroup(
+  enabled: boolean,
+  scheduler: CueScheduler = timeoutScheduler,
+): IconCueGroup {
   const ref = useRef<IconCueController | null>(null);
-  ref.current ??= createIconCueController();
+  ref.current ??= createIconCueController(scheduler);
   const controller = ref.current;
 
   useEffect(() => controller.dispose, [controller]);
@@ -221,4 +232,35 @@ export function useIconCueSignal(
     last.current = signal;
     playCue(baseDelayMs);
   }, [baseDelayMs, playCue, signal]);
+}
+
+/**
+ * Produz o sinal que `useIconCueSignal` consome: um contador que avança a cada
+ * MUDANÇA de `state`, nunca na montagem. É a ponta de disparo da navegação —
+ * a sidebar desktop passa `collapsed`, o drawer mobile passa `open`.
+ *
+ * O incremento acontece **em um efeito**, e isso não é detalhe: ao alternar o
+ * colapso, o painel (ou o rail) monta no mesmo commit em que `state` mudou e
+ * captura em `useIconCueSignal` o sinal AINDA ANTIGO; o incremento cai no
+ * commit seguinte, e é essa segunda passada que dispara a deixa. Derivar o
+ * sinal durante o render — `const signal = collapsed ? 1 : 0`, por exemplo —
+ * entrega o valor novo já na montagem, o hook não enxerga mudança nenhuma e a
+ * deixa do desktop morre em silêncio: sem erro de tipo, sem tela quebrada.
+ *
+ * `punctuates` filtra quais estados pontuam — o corpo do drawer mobile nunca
+ * desmonta e só quer pontuar ao abrir, porque varrer ícones de um painel que
+ * está saindo de cena é desperdício. Precisa ser estável entre renders.
+ */
+export function useIconCueTrigger<T>(state: T, punctuates?: (state: T) => boolean): number {
+  const [signal, setSignal] = useState(0);
+  const previous = useRef(state);
+
+  useEffect(() => {
+    if (Object.is(previous.current, state)) return;
+    previous.current = state;
+    if (punctuates && !punctuates(state)) return;
+    setSignal((current) => current + 1);
+  }, [punctuates, state]);
+
+  return signal;
 }

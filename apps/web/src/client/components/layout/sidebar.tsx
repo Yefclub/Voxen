@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
@@ -34,6 +34,7 @@ import {
   ICON_CUE_PANEL_DELAY_MS,
   useIconCueGroup,
   useIconCueSignal,
+  useIconCueTrigger,
 } from '../../lib/icon-cue';
 import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
@@ -128,13 +129,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   // única vez, e o painel que está saindo de cena — que o `AnimatePresence`
   // rerenderiza com as props congeladas da última vez em que esteve presente —
   // nunca recebe sinal novo, então não varre ícones enquanto desaparece.
-  const [cueSignal, setCueSignal] = useState(0);
-  const previousCollapsed = useRef(collapsed);
-  useEffect(() => {
-    if (previousCollapsed.current === collapsed) return;
-    previousCollapsed.current = collapsed;
-    setCueSignal((signal) => signal + 1);
-  }, [collapsed]);
+  const cueSignal = useIconCueTrigger(collapsed);
 
   // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
   // seu corpo modo-aware (que monta os hooks pesados de notas) NÃO
