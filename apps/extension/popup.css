@@ -56,7 +56,7 @@ body {
 .logo-wrap {
   width: 38px;
   height: 38px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   display: grid;
   place-items: center;
   background: var(--color-app-surface);
@@ -90,7 +90,7 @@ body {
 .icon-btn {
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-app-border);
   background: var(--color-app-surface);
   color: var(--color-app-subtle);
@@ -138,7 +138,7 @@ body {
 }
 
 .panel {
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   border: 1px solid var(--color-app-border);
   background: var(--color-app-surface);
   padding: 14px;
@@ -157,7 +157,7 @@ body {
 .empty-art {
   width: 42px;
   height: 42px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   display: grid;
   place-items: center;
   background: var(--color-accent-primary-soft);
@@ -186,7 +186,7 @@ body {
   gap: 12px;
   align-items: flex-start;
   padding: 12px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-app-bg-elevated);
   border: 1px solid var(--color-app-border);
 }
@@ -194,7 +194,7 @@ body {
 .tab-favicon {
   width: 34px;
   height: 34px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   display: grid;
   place-items: center;
   background: var(--color-app-surface-hover);
@@ -234,7 +234,7 @@ body {
 .btn {
   appearance: none;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 11px 14px;
   font-family: var(--font-sans);
   font-size: 13.5px;
@@ -381,7 +381,7 @@ body {
 
 .result {
   padding: 12px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--status-ok-soft);
   border: 1px solid color-mix(in srgb, var(--status-ok) 30%, transparent);
   display: flex;
@@ -439,8 +439,9 @@ body {
   color: var(--color-app-fg);
 }
 
+/* Só o anel de foco — o raio de cada elemento é o dele (antes esta regra
+   sobrescrevia o border-radius dos botões no foco). */
 :where(button, a, input):focus-visible {
   outline: 2px solid var(--theme-focus);
   outline-offset: 2px;
-  border-radius: 4px;
 }

@@ -23,6 +23,36 @@ import { extensionVersionUrl, jobStatusUrl, jobsAutoUrl, meUrl } from './config.
  */
 
 /**
+ * Teto de espera de qualquer requisição da extensão.
+ *
+ * `fetch` sem `signal` não tem prazo: uma instância que **pendura** (proxy de
+ * pé com o backend travado, rota com DROP no caminho) nunca resolve nem
+ * rejeita. O popup fica preso em "Salvo — processando", porque a fase que
+ * libera o botão só roda depois que a consulta volta, e a rodada do service
+ * worker também nunca termina. Errar é recuperável; pendurar não é.
+ */
+const REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * O enfileiramento tem prazo maior: abortar depois que o servidor já aceitou o
+ * job mostraria erro para um envio que na verdade entrou na fila.
+ */
+const SUBMIT_TIMEOUT_MS = 30_000;
+
+/**
+ * `AbortSignal.timeout` existe desde o Chrome 103; o fallback `undefined`
+ * mantém o comportamento antigo (sem prazo) em runtime que não o tenha, em vez
+ * de derrubar a requisição inteira.
+ * @param {number} ms
+ * @returns {AbortSignal | undefined}
+ */
+function timeoutSignal(ms) {
+  return typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(ms)
+    : undefined;
+}
+
+/**
  * @param {string} baseUrl
  * @param {string | null | undefined} token
  * @returns {Record<string, string>}
@@ -41,6 +71,16 @@ function authHeaders(token) {
  * @returns {SubmitResult}
  */
 function networkError(err) {
+  // O abort por prazo chega como DOMException 'TimeoutError' com mensagem em
+  // inglês do runtime — traduzir aqui evita vazá-la para a UI.
+  const name = /** @type {{ name?: unknown }} */ (err || {}).name;
+  if (name === 'TimeoutError' || name === 'AbortError') {
+    return {
+      ok: false,
+      code: 'network',
+      message: 'A instância não respondeu a tempo. Confira se ela está no ar e tente de novo.',
+    };
+  }
   const msg = err instanceof Error ? err.message : String(err);
   if (/Failed to fetch|NetworkError|CORS|Load failed/i.test(msg)) {
     return {
@@ -73,6 +113,7 @@ export async function submitUrlToVoxen(opts) {
       headers,
       credentials: 'include',
       body: JSON.stringify({ url: pageUrl }),
+      signal: timeoutSignal(SUBMIT_TIMEOUT_MS),
     });
   } catch (err) {
     return networkError(err);
@@ -153,6 +194,7 @@ export async function fetchJobStatus(opts) {
       method: 'GET',
       headers: authHeaders(token),
       credentials: 'include',
+      signal: timeoutSignal(REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
     return { ok: false, code: 'network', message: networkError(err).message };
@@ -208,6 +250,7 @@ export async function fetchMe(baseUrl) {
       headers: { Accept: 'application/json' },
       credentials: 'include',
       cache: 'no-store',
+      signal: timeoutSignal(REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     const body = await res.json();
@@ -230,6 +273,7 @@ export async function fetchExtensionVersion(baseUrl) {
       headers: { Accept: 'application/json' },
       credentials: 'omit',
       cache: 'no-store',
+      signal: timeoutSignal(REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     const body = await res.json();
