@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785539796",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Tema padrão agora se chama Voxen, e os ícones ganham vida ao navegar",
+    "body": "O tema escuro padrão da aplicação passa a aparecer como **Voxen** no seletor de\ntema (menu do avatar, no canto superior direito). Antes ele se chamava \"Linear\",\nnome herdado da referência visual que inspirou a paleta — nada a ver com o\nproduto. Só o nome mudou: as cores são exatamente as mesmas, o tema continua\nsendo o padrão de quem nunca escolheu outro, e quem já tinha algum tema salvo\ncontinua exatamente com o que escolheu.\n\nOs ícones também deixaram de ser estáticos em dois momentos:\n\n- **Ao abrir uma página**, o ícone que identifica a página se desenha uma vez,\n  junto com o conteúdo entrando.\n- **Ao abrir ou fechar a sidebar** — e ao abrir o menu no celular —, os ícones\n  de navegação se desenham em cascata, acompanhando o painel.\n\nA animação é curta e deliberadamente contida — só esses dois momentos, para\npontuar a navegação sem virar ruído. Quem usa o sistema com \"reduzir movimento\"\nativado não vê nenhuma dessas animações.",
+    "pr": 502,
+    "author": "Kalyel",
+    "date": "2026-07-31T20:16:24-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/502"
+  },
+  {
     "version": "0.13.0-dev.1785537512",
     "channel": "dev",
     "type": "feat",
