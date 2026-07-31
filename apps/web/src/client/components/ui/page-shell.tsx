@@ -106,9 +106,11 @@ export function PageHeader({
   const reduceMotion = useReducedMotion();
   const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
 
-  // Ao abrir a página, o ícone que nomeia a página se desenha uma vez, logo
-  // depois do cabeçalho terminar de subir na timeline do PageShell. É a única
-  // deixa de ícone da página — animar todos a cada navegação vira ruído.
+  // Ao abrir a página, o ícone que nomeia a página se desenha uma vez. A deixa
+  // começa 120ms depois da montagem, ou seja, com o cabeçalho ainda subindo na
+  // timeline do PageShell (0.38s) — os dois gestos se sobrepõem de propósito,
+  // em elementos e propriedades diferentes, sem salto de layout. É a única
+  // deixa de ícone da página: animar todos a cada navegação vira ruído.
   useEffect(() => {
     playCue(ICON_CUE_PAGE_DELAY_MS);
   }, [playCue]);

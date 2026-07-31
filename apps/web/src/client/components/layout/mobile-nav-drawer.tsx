@@ -71,6 +71,17 @@ export function MobileNavDrawer({
     onPresenceChange(next);
   });
 
+  // Mesma deixa de ícones da sidebar desktop, pelo mesmo motivo: abrir a
+  // navegação pontua os ícones. Aqui vem de um contador porque o corpo do
+  // drawer nunca desmonta — fica pronto fora da tela para o gesto de swipe —,
+  // então não existe "montou" para pendurar a deixa. Só a abertura pontua:
+  // fechando, o painel está saindo de cena e varrer ícones seria desperdício.
+  const [navCueSignal, setNavCueSignal] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    setNavCueSignal((signal) => signal + 1);
+  }, [open]);
+
   useEffect(() => {
     const controls = animate(progress, open ? 1 : 0, {
       duration: reduceMotion ? 0 : 0.22,
@@ -197,7 +208,7 @@ export function MobileNavDrawer({
           </button>
         </div>
         <LayoutGroup id="mobile-nav">
-          <SidebarModeBody user={user} hideHome />
+          <SidebarModeBody user={user} hideHome cueSignal={navCueSignal} />
         </LayoutGroup>
         <SidebarChangelogButton />
         <SidebarSignOut />

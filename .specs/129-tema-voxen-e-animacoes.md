@@ -75,17 +75,32 @@ Dois ajustes de identidade e polimento, ambos transversais à interface:
 
 - **As deixas de animação de ícone são duas, e só duas.** O gesto foi
   calibrado em `lib/icon-cue.ts` (duração 0.55s contra o padrão 1s do
-  pacote, stagger de 45ms, atraso inicial para o container assentar):
+  pacote, stagger de 45ms, atraso inicial curto):
   - **Abrir página** → anima apenas o ícone do `PageHeader`, o que nomeia a
-    página, 120ms depois do início da timeline do `PageShell`. Um ícone por
-    página; animar a tela inteira a cada rota vira ruído.
-  - **Abrir/fechar sidebar** → varre em cascata os ícones de navegação do
-    painel (expandido) ou do rail (colapsado), 160ms após o spring do
-    painel. Dispara só na troca de estado, não no primeiro carregamento —
-    aí quem pontua é o cabeçalho da página.
+    página, 120ms após a montagem. Um ícone por página; animar a tela
+    inteira a cada rota vira ruído.
+  - **Abrir/fechar navegação** → varre em cascata os ícones de navegação do
+    painel (expandido) ou do rail (colapsado) no desktop, e do drawer ao
+    abrir no mobile, 160ms após o início da transição do painel. Dispara só
+    na troca de estado, não no primeiro carregamento — aí quem pontua é o
+    cabeçalho da página.
 
-  Tudo o mais (botões, tabelas, cards) continua estático. As deixas entram
-  depois das transições existentes em vez de concorrer com elas.
+  As deixas **se sobrepõem de propósito** às transições de container: 120ms e
+  160ms são menores que a subida do `PageShell` (0.38s) e que o spring da
+  sidebar, então o ícone começa a se desenhar com o container ainda em
+  movimento. São elementos e propriedades diferentes (o container move `y` e
+  `opacity`; o ícone desenha o próprio traço), sem concorrência nem salto de
+  layout. Tudo o mais (botões, tabelas, cards) continua estático.
+
+- **O gatilho da navegação é um contador, não "animar ao montar".** A sidebar
+  desktop remonta rail e painel a cada toggle, mas o drawer mobile fica
+  montado o tempo todo (o gesto de swipe precisa da árvore pronta fora da
+  tela). `useIconCueSignal` roda a deixa quando o número **muda**, o que cobre
+  os dois casos, não pontua no primeiro carregamento e não pontua no painel
+  que o `AnimatePresence` mantém em cena enquanto sai (ele rerenderiza o
+  elemento com as props congeladas da última vez em que esteve presente).
+  No mobile só a abertura pontua: fechando, varrer ícones de um painel que
+  está saindo seria desperdício.
 
 - **Ícones passaram a expor `ref`** com o handle `startAnimation` /
   `stopAnimation` do `@animateicons/react`. Anexar uma ref faz o pacote
@@ -96,3 +111,40 @@ Dois ajustes de identidade e polimento, ambos transversais à interface:
 - **`prefers-reduced-motion`** é barrado em três camadas: o grupo de deixas
   não agenda timers, o wrapper de ícone não chama `startAnimation`, e o
   próprio pacote ignora o comando.
+
+## Como isto é testado
+
+`lib/icon-cue.ts` separa a fila de timers (`createCueQueue`) e o registro de
+ícones (`createIconCueController`) do hook React, que virou casca fina. A fila
+recebe o agendador por injeção, então `icon-cue.test.ts` roda um relógio falso
+e verifica comportamento de verdade — cascata, stagger, cancelamento da deixa
+anterior, `dispose` no meio do gesto, movimento reduzido — sem DOM e sem
+`setTimeout` remendado.
+
+`components/ui/icons.test.ts` renderiza o wrapper de ícone com
+`react-dom/server` e um ícone sonda no lugar do ícone do pacote, para conferir
+o que chega no ícone interno (handle de animação e os handlers de mouse que
+reproduzem o hover).
+
+## Limitações conhecidas
+
+- **Rota com parâmetro não redispara a deixa da página.** Navegar de
+  `/transcricoes/a` para `/transcricoes/b` reaproveita o mesmo `PageHeader`
+  montado, então o ícone do cabeçalho não se desenha de novo. Aceito: a deixa
+  é pontuação de entrada de tela, e a tela não entrou.
+- **O vazamento de timer no unmount do grupo não tem teste.** O
+  `useEffect` de limpeza depende de ciclo de vida do React, e o repositório
+  não tem renderer nem DOM em teste (sem happy-dom, sem testing-library) —
+  apagar esse efeito não quebra a suíte. O que a suíte trava é a consequência:
+  o handle é resolvido no disparo, não no agendamento, então nenhum timer
+  sobrevivente consegue animar um ícone que já saiu da árvore.
+- **A reprodução do hover em `icons.ts` não tem teste de comportamento.**
+  Anexar uma `ref` faz o `@animateicons/react` parar de animar o hover
+  sozinho; o wrapper repassa `onMouseEnter`/`onMouseLeave` para compensar. O
+  teste trava a presença e a composição dos handlers, mas confirmar que o
+  hover de fato anima exige DOM real. O ponto está marcado com um comentário
+  explícito no código.
+- **A extensão espelha os identificadores de tema à mão.** Não há teste
+  cruzando `apps/web` com `apps/extension`: ler fonte de outro workspace
+  quebra a cada reformatação da extensão. O contrato está documentado em
+  `lib/theme.ts` — mudou identificador aqui, atualiza a extensão junto.

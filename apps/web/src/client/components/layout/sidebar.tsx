@@ -29,7 +29,12 @@ import { useSidebarCollapsed } from '../../lib/sidebar-state';
 import { useIsDesktop } from '../../lib/use-media-query';
 import { useNotes } from '../../lib/use-notes';
 import { useI18n, type I18nKey } from '../../lib/i18n';
-import { ICON_CUE_DURATION, ICON_CUE_PANEL_DELAY_MS, useIconCueGroup } from '../../lib/icon-cue';
+import {
+  ICON_CUE_DURATION,
+  ICON_CUE_PANEL_DELAY_MS,
+  useIconCueGroup,
+  useIconCueSignal,
+} from '../../lib/icon-cue';
 import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import { NotesTree } from '../notes/notes-tree';
@@ -78,13 +83,13 @@ const RAIL_WIDTH = 60;
 export function SidebarModeBody({
   user,
   hideHome = false,
-  cueOnMount = false,
+  cueSignal = 0,
 }: {
   user: MeUser;
   /** Oculta o item "Início" (desktop: `/` já É o chat, então é redundante). */
   hideHome?: boolean;
-  /** Roda a deixa de animação dos ícones da nav ao montar (ver `Sidebar`). */
-  cueOnMount?: boolean;
+  /** Sinal de deixa dos ícones da nav — ver `NavBody`. */
+  cueSignal?: number;
 }): React.ReactElement {
   const location = useLocation();
   const reduceMotion = useReducedMotion();
@@ -105,7 +110,7 @@ export function SidebarModeBody({
       {mode === 'notas' ? (
         <NotasModeBody items={items} pathname={location.pathname} />
       ) : (
-        <NavBody items={items} pathname={location.pathname} cueOnMount={cueOnMount} />
+        <NavBody items={items} pathname={location.pathname} cueSignal={cueSignal} />
       )}
     </motion.div>
   );
@@ -117,14 +122,18 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const isDesktop = useIsDesktop();
   const reduceMotion = useReducedMotion();
 
-  // Rail e painel remontam a cada troca de estado, então "montou" sozinho não
-  // distingue abrir/fechar de carregar a página. Comparando com o valor
-  // anterior, a deixa dos ícones só roda quando o usuário de fato abriu ou
-  // fechou — no primeiro carregamento quem pontua é o cabeçalho da página.
+  // A deixa dos ícones da nav é um contador, não um booleano de montagem: só
+  // uma MUDANÇA de sinal dispara. Assim o primeiro carregamento não pontua
+  // (aí quem pontua é o cabeçalho da página), a troca de estado pontua uma
+  // única vez, e o painel que está saindo de cena — que o `AnimatePresence`
+  // rerenderiza com as props congeladas da última vez em que esteve presente —
+  // nunca recebe sinal novo, então não varre ícones enquanto desaparece.
+  const [cueSignal, setCueSignal] = useState(0);
   const previousCollapsed = useRef(collapsed);
-  const cueOnMount = previousCollapsed.current !== collapsed;
   useEffect(() => {
+    if (previousCollapsed.current === collapsed) return;
     previousCollapsed.current = collapsed;
+    setCueSignal((signal) => signal + 1);
   }, [collapsed]);
 
   // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
@@ -144,7 +153,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
           <SidebarRail
             user={user}
             pathname={location.pathname}
-            cueOnMount={cueOnMount}
+            cueSignal={cueSignal}
             onExpand={() => setCollapsed(false)}
           />
         )}
@@ -163,7 +172,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             style={{ width: SIDEBAR_WIDTH }}
           >
             <SidebarHeader onCollapse={() => setCollapsed(true)} />
-            <SidebarModeBody user={user} hideHome cueOnMount={cueOnMount} />
+            <SidebarModeBody user={user} hideHome cueSignal={cueSignal} />
             <SidebarChangelogButton />
             <SidebarSignOut />
           </motion.aside>
@@ -182,12 +191,12 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
 function SidebarRail({
   user,
   pathname,
-  cueOnMount,
+  cueSignal,
   onExpand,
 }: {
   user: MeUser;
   pathname: string;
-  cueOnMount: boolean;
+  cueSignal: number;
   onExpand: () => void;
 }): React.ReactElement {
   const { t } = useI18n();
@@ -197,9 +206,7 @@ function SidebarRail({
     (n) => n.to !== '/',
   );
 
-  useEffect(() => {
-    if (cueOnMount) playCue(ICON_CUE_PANEL_DELAY_MS);
-  }, [cueOnMount, playCue]);
+  useIconCueSignal(playCue, cueSignal, ICON_CUE_PANEL_DELAY_MS);
 
   return (
     <motion.nav
@@ -342,19 +349,18 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
 function NavBody({
   items,
   pathname,
-  cueOnMount = false,
+  cueSignal = 0,
 }: {
   items: NavItem[];
   pathname: string;
-  cueOnMount?: boolean;
+  /** Cada mudança de valor roda a deixa dos ícones — ver `useIconCueSignal`. */
+  cueSignal?: number;
 }): React.ReactElement {
   const { t } = useI18n();
   const reduceMotion = useReducedMotion();
   const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
 
-  useEffect(() => {
-    if (cueOnMount) playCue(ICON_CUE_PANEL_DELAY_MS);
-  }, [cueOnMount, playCue]);
+  useIconCueSignal(playCue, cueSignal, ICON_CUE_PANEL_DELAY_MS);
 
   return (
     <nav className="flex-1 p-3 overflow-y-auto">

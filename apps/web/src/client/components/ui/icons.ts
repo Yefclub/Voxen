@@ -1,6 +1,7 @@
 import {
   createElement,
   forwardRef,
+  useCallback,
   useImperativeHandle,
   useRef,
   type ComponentType,
@@ -115,7 +116,14 @@ export type AnimatedIcon = ComponentType<AnimatedIconProps & RefAttributes<IconC
 /** Compatibilidade temporária para tipos de configuração já nomeados no app. */
 export type LucideIcon = AnimatedIcon;
 
-function accessibleIcon(icon: AnimatedIcon): AnimatedIcon {
+/**
+ * Envolve um ícone do pacote para expor o handle de animação por `ref` sem
+ * perder nada do comportamento padrão.
+ *
+ * Exportado para teste: `icons.test.ts` renderiza este wrapper com um ícone
+ * sonda para conferir o que chega no ícone interno.
+ */
+export function accessibleIcon(icon: AnimatedIcon): AnimatedIcon {
   const AccessibleAnimatedIcon = forwardRef<IconCueHandle, AnimatedIconProps>(
     function AccessibleAnimatedIcon(
       { isAnimated, className, onMouseEnter, onMouseLeave, ...props },
@@ -136,22 +144,37 @@ function accessibleIcon(icon: AnimatedIcon): AnimatedIcon {
         [animated],
       );
 
+      // ⚠️ NÃO REMOVA estes dois handlers. O `@animateicons/react` anima o
+      // hover sozinho SOMENTE enquanto ninguém anexa uma `ref` ao ícone: com
+      // ref anexada ele para de escutar o mouse e passa a delegar para os
+      // handlers recebidos. Como o wrapper anexa `inner` em TODOS os ícones,
+      // apagar (ou deixar de repassar) `onMouseEnter`/`onMouseLeave` mata a
+      // animação de hover dos 103 ícones do app de uma vez — em silêncio, sem
+      // erro de tipo e sem quebrar nenhuma tela.
+      // `icons.test.ts` trava a presença dos handlers; que eles de fato
+      // disparem a animação depende de DOM real e não é coberto por teste.
+      const handleMouseEnter = useCallback(
+        (event: MouseEvent<HTMLDivElement>) => {
+          onMouseEnter?.(event);
+          if (animated) inner.current?.startAnimation();
+        },
+        [animated, onMouseEnter],
+      );
+      const handleMouseLeave = useCallback(
+        (event: MouseEvent<HTMLDivElement>) => {
+          onMouseLeave?.(event);
+          inner.current?.stopAnimation();
+        },
+        [onMouseLeave],
+      );
+
       return createElement(icon, {
         ...props,
         ref: inner,
         className: cn(ANIMATED_ICON_FRAME_CLASS, className),
         isAnimated: animated,
-        // Com uma ref anexada o pacote deixa de animar o hover sozinho e passa
-        // a delegar para estes handlers — reproduzimos o comportamento nativo
-        // para que anexar a ref não custe a animação de hover.
-        onMouseEnter: (event: MouseEvent<HTMLDivElement>) => {
-          onMouseEnter?.(event);
-          if (animated) inner.current?.startAnimation();
-        },
-        onMouseLeave: (event: MouseEvent<HTMLDivElement>) => {
-          onMouseLeave?.(event);
-          inner.current?.stopAnimation();
-        },
+        onMouseEnter: handleMouseEnter,
+        onMouseLeave: handleMouseLeave,
       });
     },
   );

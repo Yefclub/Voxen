@@ -17,16 +17,26 @@ export interface IconCueHandle {
  * por spring. As deixas de ícone se encaixam nessa mesma linha em vez de
  * disputar com ela: duração menor que o padrão do pacote (1s) para o gesto ler
  * como pontuação e não como performance, stagger um pouco mais apertado porque
- * os alvos são menores, e um atraso inicial que deixa o container assentar
- * antes de o ícone se desenhar.
+ * os alvos são menores, e um atraso inicial curto para o ícone não largar junto
+ * com o container.
  */
 export const ICON_CUE_DURATION = 0.55;
 export const ICON_CUE_STAGGER_MS = 45;
 /** Tempo em estado animado antes de voltar ao repouso — cobre o desenho todo. */
 export const ICON_CUE_HOLD_MS = 900;
-/** Deixa o cabeçalho terminar de subir antes de pontuar com o ícone. */
+/**
+ * Atraso da deixa da página. Curto de propósito: o ícone entra com o cabeçalho
+ * ainda subindo (a timeline do `PageShell` leva 0.38s), sobrepondo os dois
+ * gestos. São elementos e propriedades diferentes — o cabeçalho move `y` e
+ * `opacity` do bloco, o ícone desenha o próprio traço — então não há
+ * concorrência nem salto de layout, só um gesto começando dentro do outro.
+ */
 export const ICON_CUE_PAGE_DELAY_MS = 120;
-/** Deixa o painel da sidebar assentar antes de varrer os ícones. */
+/**
+ * Atraso da deixa da sidebar. Também sobreposto: o painel entra por spring e a
+ * varredura dos ícones começa enquanto ele ainda desliza, o suficiente para o
+ * primeiro ícone não nascer no mesmo frame do container.
+ */
 export const ICON_CUE_PANEL_DELAY_MS = 160;
 
 export interface IconCueStep {
@@ -42,6 +52,66 @@ export function iconCueSchedule(count: number, baseDelayMs = 0): IconCueStep[] {
   });
 }
 
+/**
+ * Agenda `run` para daqui a `delayMs` e devolve o cancelador.
+ *
+ * A fila recebe o agendador por parâmetro em vez de chamar `setTimeout` direto:
+ * é o que permite testar agendamento, cancelamento e vazamento com um relógio
+ * falso, sem DOM e sem depender de timers reais.
+ */
+export type CueScheduler = (run: () => void, delayMs: number) => () => void;
+
+export const timeoutScheduler: CueScheduler = (run, delayMs) => {
+  const id = setTimeout(run, delayMs);
+  return () => clearTimeout(id);
+};
+
+/** Uma tarefa da deixa: o que rodar e quando. */
+export interface CueTask {
+  at: number;
+  run: () => void;
+}
+
+export interface CueQueue {
+  /** Agenda as tarefas, cancelando qualquer deixa ainda pendente. */
+  schedule: (tasks: readonly CueTask[]) => void;
+  /** Cancela tudo o que ainda não disparou. */
+  clearAll: () => void;
+  /** Quantas tarefas seguem pendentes (diagnóstico e testes). */
+  size: () => number;
+}
+
+/**
+ * Fila de tarefas com prazo, com uma única deixa viva por vez.
+ *
+ * Os canceladores vivem em um `Map` interno criado uma vez pela fábrica, então
+ * `clearAll` sempre enxerga a fila atual — não existe a classe de bug em que
+ * uma referência antiga ao array segura timers já substituídos.
+ */
+export function createCueQueue(scheduler: CueScheduler = timeoutScheduler): CueQueue {
+  const cancels = new Map<number, () => void>();
+  let nextId = 0;
+
+  const clearAll = (): void => {
+    for (const cancel of cancels.values()) cancel();
+    cancels.clear();
+  };
+
+  const schedule = (tasks: readonly CueTask[]): void => {
+    clearAll();
+    for (const task of tasks) {
+      const id = nextId++;
+      const cancel = scheduler(() => {
+        cancels.delete(id);
+        task.run();
+      }, task.at);
+      cancels.set(id, cancel);
+    }
+  };
+
+  return { schedule, clearAll, size: () => cancels.size };
+}
+
 export interface IconCueGroup {
   /** Ref estável por chave — registra o ícone no grupo, na ordem de montagem. */
   registerIcon: (key: string) => (handle: IconCueHandle | null) => void;
@@ -49,58 +119,106 @@ export interface IconCueGroup {
   playCue: (baseDelayMs?: number) => void;
 }
 
+export interface IconCueController {
+  registerIcon: (key: string) => (handle: IconCueHandle | null) => void;
+  /** Roda a cascata. `enabled` espelha `prefers-reduced-motion`. */
+  play: (enabled: boolean, baseDelayMs?: number) => void;
+  /** Cancela a deixa pendente — o grupo saiu da árvore. */
+  dispose: () => void;
+}
+
 /**
- * Coordena a animação de um punhado de ícones como um gesto único.
+ * Núcleo das deixas de ícone, sem React: registro dos handles + fila.
  *
- * `enabled` deve refletir `prefers-reduced-motion`: com movimento reduzido a
- * deixa vira no-op (o wrapper de ícone e o próprio pacote também barram, mas
- * aqui evitamos até agendar os timers).
+ * Duas garantias que o React não dá de graça e que os testes travam:
+ *
+ * 1. `registerIcon(key)` devolve **sempre o mesmo setter** para a mesma chave.
+ *    Uma ref-callback nova a cada render faz o React desanexar e reanexar o
+ *    ref a cada ciclo, e o handle some no meio da deixa.
+ * 2. O handle é resolvido **na hora do disparo**, não no agendamento. Um ícone
+ *    que desmontou entre agendar e disparar (trocar de página, alternar a
+ *    sidebar no meio da cascata) simplesmente não é animado — nenhum timer
+ *    sobrevivente consegue tocar um ícone que já saiu.
  */
-export function useIconCueGroup(enabled: boolean): IconCueGroup {
-  const handles = useRef(new Map<string, IconCueHandle>());
-  const setters = useRef(new Map<string, (handle: IconCueHandle | null) => void>());
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+export function createIconCueController(
+  scheduler: CueScheduler = timeoutScheduler,
+): IconCueController {
+  const handles = new Map<string, IconCueHandle>();
+  const setters = new Map<string, (handle: IconCueHandle | null) => void>();
+  const queue = createCueQueue(scheduler);
 
-  // `pending` é sempre o mesmo array: `playCue` esvazia no lugar em vez de
-  // reatribuir, senão a limpeza do unmount seguraria um array velho e os
-  // timers vivos vazariam (acontece ao alternar a sidebar no meio da deixa).
-  useEffect(() => {
-    const pending = timers.current;
-    return () => {
-      for (const timer of pending) clearTimeout(timer);
-      pending.length = 0;
-    };
-  }, []);
-
-  const registerIcon = useCallback((key: string) => {
-    const cached = setters.current.get(key);
+  const registerIcon = (key: string): ((handle: IconCueHandle | null) => void) => {
+    const cached = setters.get(key);
     if (cached) return cached;
 
     const setter = (handle: IconCueHandle | null): void => {
-      if (handle) handles.current.set(key, handle);
-      else handles.current.delete(key);
+      if (handle) handles.set(key, handle);
+      else handles.delete(key);
     };
-    setters.current.set(key, setter);
+    setters.set(key, setter);
     return setter;
-  }, []);
+  };
+
+  const play = (enabled: boolean, baseDelayMs = 0): void => {
+    queue.clearAll();
+    if (!enabled) return;
+
+    const keys = [...handles.keys()];
+    const steps = iconCueSchedule(keys.length, baseDelayMs);
+    queue.schedule(
+      keys.flatMap((key, index) => {
+        const step = steps[index];
+        if (!step) return [];
+        return [
+          { at: step.startAt, run: () => handles.get(key)?.startAnimation() },
+          { at: step.stopAt, run: () => handles.get(key)?.stopAnimation() },
+        ];
+      }),
+    );
+  };
+
+  return { registerIcon, play, dispose: queue.clearAll };
+}
+
+/**
+ * Casca React do controlador acima: mantém uma instância por componente e
+ * cancela a deixa pendente no unmount.
+ */
+export function useIconCueGroup(enabled: boolean): IconCueGroup {
+  const ref = useRef<IconCueController | null>(null);
+  ref.current ??= createIconCueController();
+  const controller = ref.current;
+
+  useEffect(() => controller.dispose, [controller]);
 
   const playCue = useCallback(
-    (baseDelayMs = 0) => {
-      for (const timer of timers.current) clearTimeout(timer);
-      timers.current.length = 0;
-      if (!enabled) return;
-
-      const registered = [...handles.current.values()];
-      const schedule = iconCueSchedule(registered.length, baseDelayMs);
-      registered.forEach((handle, index) => {
-        const step = schedule[index];
-        if (!step) return;
-        timers.current.push(setTimeout(() => handle.startAnimation(), step.startAt));
-        timers.current.push(setTimeout(() => handle.stopAnimation(), step.stopAt));
-      });
-    },
-    [enabled],
+    (baseDelayMs = 0) => controller.play(enabled, baseDelayMs),
+    [controller, enabled],
   );
 
-  return { registerIcon, playCue };
+  return { registerIcon: controller.registerIcon, playCue };
+}
+
+/**
+ * Roda a deixa toda vez que `signal` MUDA — nunca na montagem.
+ *
+ * É o gatilho da sidebar e do drawer mobile, que precisam pontuar em abrir e
+ * fechar. Um booleano "anima ao montar" não serviria para os dois: a sidebar
+ * desktop remonta rail e painel a cada toggle, enquanto o drawer mobile fica
+ * montado o tempo todo (o gesto de swipe precisa dele pronto) e só desliza.
+ * Um contador cobre os dois casos e, por só reagir a mudança, não pontua no
+ * primeiro carregamento nem em painel que está saindo de cena.
+ */
+export function useIconCueSignal(
+  playCue: (baseDelayMs?: number) => void,
+  signal: number,
+  baseDelayMs: number,
+): void {
+  const last = useRef(signal);
+
+  useEffect(() => {
+    if (signal === last.current) return;
+    last.current = signal;
+    playCue(baseDelayMs);
+  }, [baseDelayMs, playCue, signal]);
 }

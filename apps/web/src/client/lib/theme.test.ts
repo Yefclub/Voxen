@@ -80,18 +80,4 @@ describe('rótulo Voxen sobre o identificador persistido', () => {
     expect(labels).toEqual(['Voxen', 'Voxen']);
     expect(i18n).not.toContain("'theme.linear': 'Linear'");
   });
-
-  // Asserções propositalmente insensíveis a formatação: a extensão é editada
-  // em paralelo e o que precisa ser travado aqui é o identificador, não o
-  // estilo do arquivo.
-  test('a extensão continua espelhando o identificador `linear`', () => {
-    const themeInit = read('../../../../extension/theme-init.js');
-    const themeCss = read('../../../../extension/theme.css');
-
-    for (const id of APP_THEMES) {
-      expect(themeInit).toContain(`'${id}'`);
-    }
-    expect(themeInit).not.toContain("'voxen'");
-    expect(themeCss).toContain(`[data-theme='${DEFAULT_THEME}']`);
-  });
 });

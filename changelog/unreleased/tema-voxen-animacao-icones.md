@@ -13,9 +13,9 @@ continua exatamente com o que escolheu.
 Os ícones também deixaram de ser estáticos em dois momentos:
 
 - **Ao abrir uma página**, o ícone que identifica a página se desenha uma vez,
-  logo depois do conteúdo terminar de entrar.
-- **Ao abrir ou fechar a sidebar**, os ícones de navegação se desenham em
-  cascata, acompanhando o painel.
+  junto com o conteúdo entrando.
+- **Ao abrir ou fechar a sidebar** — e ao abrir o menu no celular —, os ícones
+  de navegação se desenham em cascata, acompanhando o painel.
 
 A animação é curta e deliberadamente contida — só esses dois momentos, para
 pontuar a navegação sem virar ruído. Quem usa o sistema com "reduzir movimento"
