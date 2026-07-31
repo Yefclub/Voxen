@@ -85,6 +85,15 @@ export function extensionVersionUrl(baseUrl) {
 }
 
 /**
+ * GET /api/me — usada só para descobrir o tema do usuário logado (cookie de
+ * sessão do browser). Nunca envia/expõe token Bearer aqui.
+ * @param {string} baseUrl
+ */
+export function meUrl(baseUrl) {
+  return `${baseUrl.replace(/\/$/, '')}/api/me`;
+}
+
+/**
  * @param {string} baseUrl
  * @param {string} jobId
  */
@@ -142,4 +151,4 @@ export function looksLikeVoxenTab(tabUrl, tabTitle) {
 }
 
 /** Versão embutida no package (espelha manifest). */
-export const EXTENSION_VERSION = '0.2.0';
+export const EXTENSION_VERSION = '0.3.0';

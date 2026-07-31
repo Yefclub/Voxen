@@ -1,4 +1,9 @@
-import { looksLikeVoxenTab, normalizeBaseUrl, originPattern } from './lib/config.js';
+import { looksLikeVoxenTab, normalizeBaseUrl } from './lib/config.js';
+import { ensureHostPermission } from './lib/permissions.js';
+import { fetchMe } from './lib/api.js';
+import { applyTheme } from './lib/theme.js';
+
+const THEME_CACHE_KEY = 'voxen-ext-theme';
 
 const baseInput = document.getElementById('base-url');
 const tokenInput = document.getElementById('api-token');
@@ -10,15 +15,6 @@ const detectBtn = document.getElementById('detect');
 function setStatus(kind, message) {
   statusEl.className = `status ${kind}`;
   statusEl.textContent = message;
-}
-
-async function requestHostPermission(baseUrl) {
-  const pattern = originPattern(baseUrl);
-  if (!pattern) return false;
-  if (!chrome.permissions) return true;
-  const already = await chrome.permissions.contains({ origins: [pattern] });
-  if (already) return true;
-  return chrome.permissions.request({ origins: [pattern] });
 }
 
 async function detectFromTabs() {
@@ -40,8 +36,24 @@ async function load() {
   if (typeof stored.apiToken === 'string') tokenInput.value = stored.apiToken;
 }
 
+/**
+ * Aplica (e cacheia) o tema da instância assim que a conexão é confirmada —
+ * cosmético, nunca bloqueia o fluxo de conexão em si.
+ * @param {string} baseUrl
+ */
+async function syncThemeFromInstance(baseUrl) {
+  try {
+    const me = await fetchMe(baseUrl);
+    if (!me?.theme) return;
+    applyTheme(me.theme);
+    localStorage.setItem(THEME_CACHE_KEY, me.theme);
+  } catch {
+    /* tema é cosmético */
+  }
+}
+
 async function connect(baseUrl) {
-  const permitted = await requestHostPermission(baseUrl);
+  const permitted = await ensureHostPermission(baseUrl);
   await chrome.storage.sync.set({
     baseUrl,
     apiToken: tokenInput.value.trim(),
@@ -55,6 +67,7 @@ async function connect(baseUrl) {
     return false;
   }
   setStatus('ok', `Conectado a ${baseUrl}. Pode fechar esta aba e usar o ícone da extensão.`);
+  void syncThemeFromInstance(baseUrl);
   return true;
 }
 
@@ -87,7 +100,7 @@ requestPermBtn.addEventListener('click', async () => {
     setStatus('err', parsed.error);
     return;
   }
-  const ok = await requestHostPermission(parsed.baseUrl);
+  const ok = await ensureHostPermission(parsed.baseUrl);
   setStatus(
     ok ? 'ok' : 'err',
     ok

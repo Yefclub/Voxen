@@ -3,12 +3,15 @@ import {
   isSendableTabUrl,
   jobPageUrl,
   loginUrl,
-  looksLikeVoxenTab,
   normalizeBaseUrl,
-  originPattern,
   transcriptPageUrl,
 } from './lib/config.js';
-import { fetchJobStatus, submitUrlToVoxen } from './lib/api.js';
+import { fetchJobStatus, fetchMe, submitUrlToVoxen } from './lib/api.js';
+import { ensureHostPermission, hasHostPermission } from './lib/permissions.js';
+import { applyTheme } from './lib/theme.js';
+import { stageLabel } from './lib/job-stage.js';
+
+const THEME_CACHE_KEY = 'voxen-ext-theme';
 
 const els = {
   setup: document.getElementById('setup-needed'),
@@ -19,14 +22,12 @@ const els = {
   submit: document.getElementById('submit'),
   submitLabel: document.getElementById('submit-label'),
   status: document.getElementById('status'),
-  setupStatus: document.getElementById('setup-status'),
   actions: document.getElementById('actions'),
   openLogin: document.getElementById('open-login'),
   openJob: document.getElementById('open-job'),
   openTranscript: document.getElementById('open-transcript'),
   openOptions: document.getElementById('open-options'),
   goOptions: document.getElementById('go-options'),
-  detect: document.getElementById('detect-instance'),
   progress: document.getElementById('progress'),
   progressFill: document.getElementById('progress-fill'),
   progressLabel: document.getElementById('progress-label'),
@@ -68,34 +69,22 @@ function endProgress(ok) {
   els.progressLabel.textContent = ok ? 'Concluído' : 'Falhou';
 }
 
-async function ensureHostPermission(baseUrl) {
-  const pattern = originPattern(baseUrl);
-  if (!pattern || !chrome.permissions) return true;
-  const already = await chrome.permissions.contains({ origins: [pattern] });
-  if (already) return true;
-  return chrome.permissions.request({ origins: [pattern] });
-}
-
-async function detectInstanceFromTabs() {
-  const tabs = await chrome.tabs.query({});
-  for (const tab of tabs) {
-    if (looksLikeVoxenTab(tab.url, tab.title)) {
-      try {
-        const origin = new URL(tab.url).origin;
-        const parsed = normalizeBaseUrl(origin);
-        if (parsed.ok) return parsed.baseUrl;
-      } catch {
-        /* skip */
-      }
-    }
+/**
+ * Busca o tema da instância conectada (se houver sessão) e aplica. Nunca
+ * bloqueia o resto da UI — é cosmético, falha em silêncio.
+ * @param {string} baseUrl
+ */
+async function syncThemeFromInstance(baseUrl) {
+  try {
+    const permitted = await hasHostPermission(baseUrl);
+    if (!permitted) return;
+    const me = await fetchMe(baseUrl);
+    if (!me?.theme) return;
+    applyTheme(me.theme);
+    localStorage.setItem(THEME_CACHE_KEY, me.theme);
+  } catch {
+    /* tema é cosmético — mantém o fallback já aplicado */
   }
-  return null;
-}
-
-async function saveBaseUrl(baseUrl) {
-  const permitted = await ensureHostPermission(baseUrl);
-  await chrome.storage.sync.set({ baseUrl });
-  return permitted;
 }
 
 async function load() {
@@ -122,31 +111,10 @@ async function load() {
 
   if (!parsed.ok) {
     els.setup.classList.remove('hidden');
-    els.detect.addEventListener('click', async () => {
-      setStatus('', 'Procurando aba do Voxen…', els.setupStatus);
-      const found = await detectInstanceFromTabs();
-      if (!found) {
-        setStatus(
-          'warn',
-          'Nenhuma aba do Voxen encontrada. Abra a instância e tente de novo, ou configure manualmente.',
-          els.setupStatus,
-        );
-        return;
-      }
-      const ok = await saveBaseUrl(found);
-      if (!ok) {
-        setStatus(
-          'err',
-          `Detectei ${found}, mas a permissão de host foi negada.`,
-          els.setupStatus,
-        );
-        return;
-      }
-      setStatus('ok', `Conectado a ${found}. Reabrindo…`, els.setupStatus);
-      setTimeout(() => location.reload(), 450);
-    });
     return;
   }
+
+  void syncThemeFromInstance(parsed.baseUrl);
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const tabUrl = tab?.url ?? '';
@@ -203,10 +171,7 @@ async function onSubmit() {
   const permitted = await ensureHostPermission(state.baseUrl);
   if (!permitted) {
     endProgress(false);
-    setStatus(
-      'err',
-      'Permissão de acesso à instância negada. Autorize o host para continuar.',
-    );
+    setStatus('err', 'Permissão de acesso à instância negada. Autorize o host para continuar.');
     els.submit.disabled = false;
     els.submitLabel.textContent = 'Salvar no Voxen';
     return;
@@ -234,7 +199,7 @@ async function onSubmit() {
   els.openJob.classList.remove('hidden');
   els.openJob.dataset.jobId = result.jobId;
   els.submitLabel.textContent = 'Salvo — processando';
-  showProgress('Processando no Voxen…');
+  showProgress(stageLabel('queued'));
 
   // Background tracking (notificações mesmo com popup fechado)
   chrome.runtime.sendMessage({
@@ -277,8 +242,10 @@ function startPopupPoll(jobId) {
     if (!r.ok) return;
     const st = r.job.status;
     if (st === 'RUNNING' || st === 'QUEUED') {
-      els.progressLabel.textContent =
-        st === 'RUNNING' ? 'Transcrevendo / extraindo…' : 'Na fila…';
+      els.progressLabel.textContent = stageLabel(
+        r.job.progressStage || st.toLowerCase(),
+        r.job.type,
+      );
       return;
     }
     clearInterval(pollTimer);

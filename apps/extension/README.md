@@ -1,9 +1,20 @@
 # Extensão Voxen (Chromium MV3)
 
-## v0.2
+## v0.3
 
-- UI redesenhada (popup + options)
-- Detectar instância aberta no browser
+- Identidade visual herdada do Voxen web: mesmos tokens de cor (`--color-app-*`,
+  `--color-accent-*`) e tipografia (Bricolage Grotesque + Inter + JetBrains
+  Mono) de `apps/web/src/client/index.css` — nada de paleta própria.
+- Tema segue a instância conectada (`GET /api/me`, campo `theme`) quando há
+  sessão; sem instância conectada, segue o esquema claro/escuro do SO.
+- **Superfície única de conexão**: `options.html` é a única tela onde a
+  extensão se conecta a uma instância Voxen (detectar aba aberta / colar
+  URL / token opcional). O popup não reimplementa esse formulário — quando
+  não há instância conectada, mostra um estado vazio com um botão que abre
+  as opções. Isso evita duas implementações divergentes do mesmo fluxo
+  (era o caso até a v0.2).
+- Progresso do job mostra a etapa real (baixando, transcrevendo, resumindo…)
+  quando disponível via `progressStage` do status do job.
 - Acompanhar job em background + notificação com resumo
 - Checagem de update via `/extension/version.json`
 - Badge enquanto processa / quando há update
@@ -12,7 +23,8 @@
 
 1. Baixe o ZIP em `/extensao` (ou rode `./package.sh`)
 2. `chrome://extensions` → Modo do desenvolvedor → Carregar sem compactação
-3. Opções → **Detectar instância** (com o Voxen aberto) ou cole a URL
+3. Clique no ícone da extensão → **Conectar instância** (abre as opções) →
+   **Detectar instância** (com o Voxen aberto) ou cole a URL
 4. Login no Voxen no mesmo perfil
 
 ## Empacotar

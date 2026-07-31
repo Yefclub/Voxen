@@ -2,11 +2,7 @@
  * Cliente HTTP da extensão → instância Voxen.
  */
 
-import {
-  extensionVersionUrl,
-  jobStatusUrl,
-  jobsAutoUrl,
-} from './config.js';
+import { extensionVersionUrl, jobStatusUrl, jobsAutoUrl, meUrl } from './config.js';
 
 /**
  * @typedef {'ok' | 'unauthorized' | 'forbidden' | 'network' | 'cors' | 'invalid' | 'error'} SubmitCode
@@ -185,14 +181,42 @@ export async function fetchJobStatus(opts) {
     ok: true,
     job: {
       id: job.id,
+      type: typeof job.type === 'string' ? job.type : null,
       status: String(job.status || ''),
       sourceUrl: typeof job.sourceUrl === 'string' ? job.sourceUrl : null,
       errorMsg: typeof job.errorMsg === 'string' ? job.errorMsg : null,
       transcriptId: typeof job.transcriptId === 'string' ? job.transcriptId : null,
       title: typeof job.title === 'string' ? job.title : null,
       summary: typeof job.summary === 'string' ? job.summary : null,
+      progressStage: typeof job.progressStage === 'string' ? job.progressStage : null,
+      progressPercent: typeof job.progressPercent === 'number' ? job.progressPercent : null,
     },
   };
+}
+
+/**
+ * GET /api/me — só para descobrir o tema do usuário (sessão via cookie).
+ * Falha silenciosa (retorna null) em qualquer erro: tema é cosmético, nunca
+ * deve travar o popup/options.
+ * @param {string} baseUrl
+ * @returns {Promise<{ theme: string } | null>}
+ */
+export async function fetchMe(baseUrl) {
+  try {
+    const res = await fetch(meUrl(baseUrl), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    const theme = body?.user?.theme;
+    if (typeof theme !== 'string') return null;
+    return { theme };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -227,8 +251,12 @@ export async function fetchExtensionVersion(baseUrl) {
  * @param {string} b
  */
 export function compareSemver(a, b) {
-  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
+  const pa = String(a)
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
+  const pb = String(b)
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
   for (let i = 0; i < 3; i++) {
     const d = (pa[i] || 0) - (pb[i] || 0);
     if (d !== 0) return d;
