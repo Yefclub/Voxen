@@ -89,6 +89,40 @@ describe('transcriptRenderMode', () => {
     }
   });
 
+  test('método de prosa vence mesmo quando o corpo tem linha com timestamp', () => {
+    // Achado por mutação no review da PR #501: sem este caso, remover
+    // X_SEARCH/VISION/DOCUMENT de PROSE_METHODS deixava a suíte inteira
+    // verde — os testes acima usam prosa SEM timestamp, então caem no
+    // fallback por conteúdo e passariam mesmo sem o set existir.
+    //
+    // O set é load-bearing justamente aqui: uma análise de visão/documento/X
+    // pode conter uma linha começando com [00:12] (screenshot de player,
+    // log, grade de horários) sem ser transcrição por segmentos.
+    const proseComTimestamp = [
+      '## Análise',
+      '',
+      '[00:12] aparece no player do vídeo mostrado no print',
+      '',
+      'Resto da análise em prosa.',
+    ].join('\n');
+    expect(hasTimestampedSegments(withFrontmatter(proseComTimestamp))).toBe(true);
+
+    for (const [source, method] of [
+      ['X', 'X_SEARCH'],
+      ['UPLOAD', 'VISION'],
+      ['UPLOAD', 'DOCUMENT'],
+      ['WEB', 'SCRAPE'],
+    ] as const) {
+      expect(
+        transcriptRenderMode({
+          source,
+          transcriptionMethod: method,
+          markdown: withFrontmatter(proseComTimestamp),
+        }),
+      ).toBe('markdown');
+    }
+  });
+
   test('conteúdo sem timestamp nunca cai na leitura por segmentos', () => {
     // Fallback do backend quando o .md do S3 não pode ser lido: `# título` + plainText.
     expect(
