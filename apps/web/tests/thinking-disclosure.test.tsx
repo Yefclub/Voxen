@@ -9,7 +9,7 @@ import {
 import {
   applySegmentEvent,
   closeTrailingReasoning,
-  thinkingInFlight,
+  segmentsRunning,
   type MessageSegment,
 } from '../src/client/lib/chat-segments';
 
@@ -111,6 +111,17 @@ function turnFrames(turn: AgenticTurn): TurnFrame[] {
   return [turn.start, ...turn.middle, turn.ended];
 }
 
+/**
+ * O gatilho que a spec 130 aposentou (`thinkingInFlight`, removido junto com
+ * ela), reproduzido aqui só para provar que a sequência acima é a patológica.
+ * Fora do teste ele não existe mais — é exatamente esse o conserto.
+ */
+function retiredTrigger(frame: TurnFrame): boolean {
+  if (!frame.live) return false;
+  if (!frame.answering) return true;
+  return segmentsRunning(frame.segments);
+}
+
 type Probe = { toggle: () => void };
 
 /**
@@ -166,13 +177,20 @@ async function step(
 describe('bloco de raciocínio durante um turno agêntico', () => {
   test('o gatilho antigo realmente oscila dentro do turno', () => {
     // Guarda do próprio teste: se um dia a sequência deixar de ser patológica,
-    // os testes abaixo passariam sem provar nada. `thinkingInFlight` é o
-    // gatilho que a spec 130 aposentou; enquanto ele alternar nesta sequência,
-    // o cenário continua sendo o que o owner relatou.
-    const trigger = turnFrames(agenticTurn()).map((frame) =>
-      thinkingInFlight(frame.segments, frame.live, frame.answering),
-    );
-    expect(trigger).toEqual([true, false, true, false, false]);
+    // os testes abaixo passariam sem provar nada. Enquanto o gatilho aposentado
+    // alternar nesta sequência, o cenário continua sendo o que o owner relatou
+    // — e `live`, que a substitui, é constante ao longo do turno.
+    const frames = turnFrames(agenticTurn());
+    expect(frames.map(retiredTrigger)).toEqual([true, false, true, false, false]);
+    expect(frames.map((frame) => frame.live)).toEqual([true, true, true, true, false]);
+  });
+
+  test('o atraso do recolhimento é perceptível sem ser espera', () => {
+    // As demais asserções de tempo são relativas à própria constante, então
+    // passariam com `0` (recolhimento no mesmo frame, o salto que a spec veio
+    // remover) ou com um minuto. Este é o único ponto que prende a magnitude.
+    expect(THINKING_AUTO_CLOSE_DELAY_MS).toBeGreaterThanOrEqual(300);
+    expect(THINKING_AUTO_CLOSE_DELAY_MS).toBeLessThanOrEqual(2_000);
   });
 
   test('abre uma vez e recolhe uma vez, mesmo com ferramenta no meio da resposta', async () => {
@@ -241,7 +259,11 @@ describe('bloco de raciocínio durante um turno agêntico', () => {
     await act(async () => renderer.unmount());
   });
 
-  test('o turno seguinte devolve o controle à automação', async () => {
+  test('queda e volta do stream não atropelam quem já clicou', async () => {
+    // Uma instância = um turno (a `<article>` é chaveada pelo id da mensagem),
+    // então `live` voltando a ser verdadeiro é SEMPRE o mesmo turno se
+    // recuperando — nunca um turno novo. Tratar isso como recomeço devolveria
+    // o bloco à automação no meio do caminho.
     const clock = fakeClock();
     const log: boolean[] = [];
     const probe: Probe = { toggle: () => {} };
@@ -249,16 +271,41 @@ describe('bloco de raciocínio durante um turno agêntico', () => {
 
     const renderer = await mount(turn.start, clock.schedule, log, probe);
     await act(async () => probe.toggle());
+    expect(log).toEqual([true, false]);
+
+    // Queda longa o bastante para o recolhimento automático vencer, e volta.
+    await step(renderer, turn.ended, clock.schedule, log, probe);
+    act(() => clock.advance(10 * THINKING_AUTO_CLOSE_DELAY_MS));
+    await step(renderer, turn.start, clock.schedule, log, probe);
+    expect(log).toEqual([true, false]);
+
+    // Encerrando de vez, continua sem a automação encostar no bloco.
     await step(renderer, turn.ended, clock.schedule, log, probe);
     act(() => clock.advance(10 * THINKING_AUTO_CLOSE_DELAY_MS));
     expect(log).toEqual([true, false]);
+    expect(clock.pending()).toBe(0);
 
-    // Turno novo no mesmo componente: abre de novo e volta a recolher sozinho.
+    await act(async () => renderer.unmount());
+  });
+
+  test('sem clique do usuário, a volta do stream reabre o bloco', async () => {
+    // Mesmo caminho, sem o clique: aí a automação continua no comando, e é ela
+    // que reabre — inclusive no turno restaurado depois de recarregar a página,
+    // que monta com o stream ainda fechado.
+    const clock = fakeClock();
+    const log: boolean[] = [];
+    const probe: Probe = { toggle: () => {} };
+    const turn = agenticTurn();
+
+    const renderer = await mount(turn.ended, clock.schedule, log, probe);
+    expect(log).toEqual([false]);
+
     await step(renderer, turn.start, clock.schedule, log, probe);
-    expect(log).toEqual([true, false, true]);
+    expect(log).toEqual([false, true]);
+
     await step(renderer, turn.ended, clock.schedule, log, probe);
     act(() => clock.advance(THINKING_AUTO_CLOSE_DELAY_MS));
-    expect(log).toEqual([true, false, true, false]);
+    expect(log).toEqual([false, true, false]);
 
     await act(async () => renderer.unmount());
   });

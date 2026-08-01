@@ -16,12 +16,14 @@
 //      (`THINKING_AUTO_CLOSE_DELAY_MS`) — recolher no mesmo frame em que a
 //      resposta aparece é mais um salto de layout;
 //   3. se o usuário acionou o cabeçalho, a automação larga o controle
-//      (`manual`) e só o retoma no turno seguinte.
+//      (`manual`) pelo resto daquele turno.
 //
 // O ponto 3 vale inclusive para o recolhimento do fim do turno: fechar por
 // baixo de quem abriu o bloco para ler é exatamente o salto que esta spec veio
 // remover. É a regra específica ("parar de controlá-lo automaticamente")
-// prevalecendo sobre a geral ("recolher ao fim do turno").
+// prevalecendo sobre a geral ("recolher ao fim do turno"). E "aquele turno" é
+// o tempo de vida do componente: a `<article>` da mensagem é chaveada pelo id,
+// então turno novo já nasce com estado limpo.
 //
 // A máquina é pura e o agendador é injetável, então a sequência real de um
 // turno agêntico é exercitável em teste sem DOM e sem timer de verdade.
@@ -66,10 +68,13 @@ export function thinkingDisclosureReducer(
 ): ThinkingDisclosureState {
   switch (event.type) {
     case 'turn-started':
-      // O turno novo devolve o controle à automação: o override manual vale só
-      // para o turno em que o clique aconteceu — o "até o fim daquele turno"
-      // da spec.
-      return { expanded: true, manual: false };
+      // Uma instância = um turno: o bloco vive dentro da `<article>` chaveada
+      // pelo id da mensagem, e turno novo é mensagem nova, logo componente
+      // novo (com `manual` zerado pela montagem). Então um `live` que volta a
+      // ser verdadeiro AQUI é o mesmo turno se recuperando de uma queda de
+      // stream — e reabrir o bloco nesse caso atropelaria quem já clicou.
+      if (state.manual) return state;
+      return { ...state, expanded: true };
     case 'auto-close':
       return { ...state, expanded: false };
     case 'toggled':

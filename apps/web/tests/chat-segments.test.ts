@@ -3,12 +3,11 @@ import {
   applySegmentEvent,
   closeTrailingReasoning,
   parseMessageSegments,
-  resolveThinkingTiming,
   segmentsFromPersistedTools,
   segmentsReasoningDuration,
   segmentsRunning,
   segmentsToolCount,
-  thinkingInFlight,
+  thinkingDuration,
   type MessageSegment,
   type ToolEvent,
 } from '../src/client/lib/chat-segments';
@@ -303,54 +302,31 @@ describe('segmentsReasoningDuration', () => {
   });
 });
 
-describe('resolveThinkingTiming', () => {
-  it('não reativa cronômetro para reasoning histórico aberto', () => {
+describe('thinkingDuration', () => {
+  it('não mostra duração enquanto o turno está ao vivo — lá o cabeçalho é o shimmer', () => {
+    const segments: MessageSegment[] = [
+      { type: 'reasoning', id: 'r0', text: 'pensando', startedAt: 1_000, endedAt: 3_000 },
+    ];
+
+    expect(thinkingDuration(segments, true, 500)).toBeNull();
+  });
+
+  it('turno encerrado usa só os timestamps persistidos', () => {
+    const segments: MessageSegment[] = [
+      { type: 'reasoning', id: 'r0', text: 'pensando', startedAt: 1_000, endedAt: 3_000 },
+    ];
+
+    expect(thinkingDuration(segments, false, 500)).toBe(3_000 - 500);
+  });
+
+  it('reasoning histórico aberto não vira duração inventada', () => {
+    // Sem `endedAt` não há janela confiável: melhor cabeçalho sem número do
+    // que "Pensou por 57 anos" numa mensagem recarregada.
     const segments: MessageSegment[] = [
       { type: 'reasoning', id: 'r0', text: 'interrompido', startedAt: 1_000 },
     ];
 
-    expect(resolveThinkingTiming(segments, false, 500, 99_000)).toEqual({
-      inFlight: false,
-      duration: null,
-    });
-  });
-
-  it('usa elapsed somente enquanto o stream atual está vivo', () => {
-    expect(resolveThinkingTiming([], true, 500, 1_250)).toEqual({
-      inFlight: true,
-      duration: 1_250,
-    });
-  });
-});
-
-// ============================================================================
-// Compactação do bloco ao fim do turno (spec 126)
-// ============================================================================
-
-describe('thinkingInFlight', () => {
-  const running: MessageSegment[] = [
-    { type: 'tool-group', id: 'g0', tools: [tool('t1', 'running')] },
-  ];
-  const done: MessageSegment[] = [
-    { type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed')] },
-  ];
-
-  it('turno encerrado nunca está em voo', () => {
-    expect(thinkingInFlight(done, false, false)).toBe(false);
-    expect(thinkingInFlight(running, false, true)).toBe(false);
-  });
-
-  it('turno ao vivo sem resposta final segue em voo mesmo entre ferramentas', () => {
-    expect(thinkingInFlight(done, true, false)).toBe(true);
-    expect(thinkingInFlight([], true, false)).toBe(true);
-  });
-
-  it('quando a resposta final começa, o bloco deixa de estar em voo', () => {
-    expect(thinkingInFlight(done, true, true)).toBe(false);
-  });
-
-  it('resposta final seguida de nova ferramenta reabre o bloco', () => {
-    expect(thinkingInFlight(running, true, true)).toBe(true);
+    expect(thinkingDuration(segments, false, 500)).toBeNull();
   });
 });
 

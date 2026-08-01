@@ -29,6 +29,14 @@ O `Reasoning` do `vercel/ai-elements` resolve o mesmo problema com três
 garantias que não temos: atraso antes de fechar, fechar **uma vez só** por
 turno, e parar de dirigir o estado se o usuário clicou.
 
+O mesmo gatilho errado também dirige o **rótulo** do cabeçalho, que alterna
+entre o shimmer "Pensando" e o resumo "Pensou por Xs · N ferramentas" a cada
+ferramenta — trocando texto e largura no meio da resposta. É metade da queixa
+do owner (ele fala do "Pensando", não do bloco) e contraria a regra explícita
+da `.specs/078` § "Gaps entre tools … NÃO devem colapsar o bloco nem trocar o
+cabeçalho para 'Pensou por Xs'". Bloco e cabeçalho passam a ser dirigidos pelo
+mesmo `live`.
+
 ### 2. Animação do ícone não dispara pelo botão que o contém
 
 Palavras do owner: *"Eles estão executando a animação somente quando o mouse
@@ -97,7 +105,8 @@ corrigida junto, senão o código passa a contradizer a spec versionada.
 ## Critérios de Aceite
 
 - [x] Turno agêntico com várias ferramentas: o bloco de raciocínio não
-      alterna entre aberto e fechado durante o turno.
+      alterna entre aberto e fechado durante o turno — nem o rótulo do
+      cabeçalho alterna entre "Pensando" e o resumo.
 - [x] Clicar no bloco durante o turno impede que ele volte a se mover
       sozinho até o turno acabar.
 - [ ] Passar o ponteiro sobre um botão anima o ícone dentro dele; passar
@@ -123,6 +132,25 @@ corrigida junto, senão o código passa a contradizer a spec versionada.
   quebrar tela. `icons.test.ts` trava os dois lados e 8 mutações já foram
   provadas contra ele. Estender o disparo ao controle não pode custar o
   disparo pelo ícone.
+- **O item 1 revoga a decisão nº 2 da spec 126** ("sair de voo quando a
+  resposta final começa"), anotada lá no mesmo commit. Voltar o gatilho para
+  `live` traz de volta a timeline aberta durante a digitação da resposta — o
+  incômodo que a 126 queria remover. É uma troca consciente: um bloco que
+  ocupa espaço de forma previsível incomoda menos que um que pula a cada
+  ferramenta, e o usuário pode recolhê-lo com um clique a qualquer momento
+  (coisa que antes o `disabled` impedia durante o turno). A alternativa
+  considerada — recolher **uma vez só, de forma irreversível**, quando a
+  resposta começa — atenderia as duas specs, mas contraria o requisito
+  event-driven desta ("recolher quando o turno termina") e some com o
+  raciocínio antes de o turno acabar. Fica registrada caso o owner prefira.
+
+- **A duração de parede saiu junto (item 1).** O `setInterval` de 200 ms
+  alimentava um `elapsed` que nunca chegava à tela: durante o voo o cabeçalho
+  é só o shimmer, e no fim do turno a duração vem dos timestamps persistidos.
+  Com bloco e rótulo dirigidos por `live`, o intervalo passaria a rodar o turno
+  inteiro sem nada a mostrar, então `thinkingInFlight`/`resolveThinkingTiming`
+  deram lugar a `thinkingDuration(segments, live, startedAt)`.
+
 - **O controle manual vence o recolhimento do fim do turno (item 1).** Os dois
   requisitos event-driven se cruzam quando o usuário deixa o bloco aberto de
   propósito: "recolher ao fim do turno" mandaria fechar, "parar de controlar
@@ -136,6 +164,7 @@ corrigida junto, senão o código passa a contradizer a spec versionada.
   indicador semi-visível em repouso e opaco no hover; ele não respondeu.
   Segue-se o pedido literal (some junto com as ações) até indicação
   contrária.
-- O `setInterval` de 200ms em `chat.tsx:335` roda o turno inteiro para
-  atualizar `elapsed`, que durante o voo não é exibido — só o shimmer
-  aparece. Oportunidade adjacente, não obrigação desta spec.
+- ~~O `setInterval` de 200ms em `chat.tsx:335`…~~ **Resolvido junto do item 1**
+  (ver decisão "A duração de parede saiu junto", acima): deixou de ser
+  oportunidade e virou consequência, porque com o gatilho estável o intervalo
+  rodaria o turno inteiro sem nada a exibir.

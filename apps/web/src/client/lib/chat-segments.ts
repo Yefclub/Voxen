@@ -290,44 +290,21 @@ export function segmentsToolCount(segments: readonly MessageSegment[]): number {
 }
 
 /**
- * O bloco "Pensando" está em voo?
+ * Duração exibida no cabeçalho do bloco "Pensando".
  *
- * Antes bastava `live` (stream aberto), o que mantinha a timeline inteira
- * expandida enquanto a resposta final era digitada — empurrando o texto pra
- * fora da tela justamente na hora de ler (spec 126). Agora, assim que o
- * primeiro trecho da resposta final chega (`answering`), o bloco sai de voo e
- * se compacta; se o harness voltar a chamar ferramenta depois disso, ele
- * reabre. Gaps de milissegundos entre ferramentas continuam NÃO colapsando o
- * bloco, porque antes da resposta final o turno é sempre considerado em voo.
+ * Só o turno encerrado tem duração para mostrar: durante o voo o cabeçalho é o
+ * shimmer "Pensando", sem número. E turno encerrado usa exclusivamente os
+ * timestamps persistidos, então uma mensagem antiga nunca "envelhece" ao
+ * remontar ou ao voltar para a conversa.
+ *
+ * Até a spec 130 isso passava por um cronômetro de parede local alimentado por
+ * um `setInterval` de 200 ms; o valor nunca chegava à tela (durante o voo o
+ * cabeçalho não mostra duração), então o intervalo só gerava re-render.
  */
-export function thinkingInFlight(
-  segments: readonly MessageSegment[],
-  live: boolean,
-  answering: boolean,
-): boolean {
-  if (!live) return false;
-  if (!answering) return true;
-  return segmentsRunning(segments);
-}
-
-export interface ThinkingTiming {
-  inFlight: boolean;
-  duration: number | null;
-}
-
-/**
- * Somente o stream atual pode iniciar o cronômetro de parede. Um snapshot
- * histórico com evento incompleto depende dos timestamps canônicos e omite a
- * duração, em vez de continuar envelhecendo depois de reload ou remount.
- */
-export function resolveThinkingTiming(
+export function thinkingDuration(
   segments: readonly MessageSegment[],
   live: boolean,
   turnStartedAt: number,
-  liveElapsed: number,
-): ThinkingTiming {
-  return {
-    inFlight: live,
-    duration: live ? Math.max(0, liveElapsed) : segmentsReasoningDuration(segments, turnStartedAt),
-  };
+): number | null {
+  return live ? null : segmentsReasoningDuration(segments, turnStartedAt);
 }

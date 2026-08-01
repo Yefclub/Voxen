@@ -46,10 +46,9 @@ import {
   applySegmentEvent,
   closeTrailingReasoning,
   parseMessageSegments,
-  resolveThinkingTiming,
   segmentsFromPersistedTools,
   segmentsToolCount,
-  thinkingInFlight,
+  thinkingDuration,
   type MessageSegment,
   type ToolEvent,
 } from '../lib/chat-segments';
@@ -301,40 +300,22 @@ function thinkingSummaryLabel(duration: number | null, toolCount: number, t: Tra
 function ThinkingBlock({
   segments,
   live,
-  answering,
   startedAt,
 }: {
   segments: MessageSegment[];
+  /** O stream deste turno ainda está aberto. */
   live: boolean;
-  /** A resposta final já começou a chegar neste turno. */
-  answering: boolean;
   startedAt: number;
 }): React.ReactElement {
   const { t } = useI18n();
-  // Abertura dirigida por `live` (spec 130): o turno abre o bloco uma vez e o
-  // recolhe uma vez, com atraso, quando o stream fecha. Amarrar isso a
-  // `inFlight` fazia o bloco piscar a cada ida-e-volta de ferramenta.
+  // Spec 130: bloco E cabeçalho dirigidos por `live`, o único sinal do turno
+  // que não oscila. O gatilho anterior (`thinkingInFlight`) alternava a cada
+  // ida-e-volta de ferramenta — abrindo/fechando a timeline e trocando o
+  // rótulo entre "Pensando" e "Pensou por Xs" no meio da resposta, contra a
+  // própria regra da spec 078.
   const { expanded, toggle } = useThinkingDisclosure(live);
-  // Cronômetro de parede apenas durante o turno ao vivo. Mensagens concluídas
-  // usam exclusivamente timestamps persistidos, portanto nunca "envelhecem"
-  // ao remontar ou ao voltar para a conversa.
-  const startedAtRef = useRef<number>(startedAt);
-  const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - startedAt));
-  const { inFlight, duration } = resolveThinkingTiming(
-    segments,
-    thinkingInFlight(segments, live, answering),
-    startedAt,
-    elapsed,
-  );
+  const duration = thinkingDuration(segments, live, startedAt);
   const toolCount = segmentsToolCount(segments);
-
-  useEffect(() => {
-    if (!inFlight) return;
-    const id = window.setInterval(() => {
-      setElapsed(Date.now() - startedAtRef.current);
-    }, 200);
-    return () => window.clearInterval(id);
-  }, [inFlight]);
 
   return (
     <section className="mb-2.5 flex max-w-3xl flex-col gap-1">
@@ -354,7 +335,7 @@ function ThinkingBlock({
             expanded && 'rotate-90',
           )}
         />
-        {inFlight ? (
+        {live ? (
           <span className="text-shimmer text-[12.5px] font-medium">{t('chat.thinking')}</span>
         ) : (
           <span className="text-[12.5px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]">
@@ -1716,7 +1697,6 @@ export function ChatPage(): React.ReactElement {
                         <ThinkingBlock
                           segments={segments}
                           live={isStreamingAssistant}
-                          answering={message.content.length > 0}
                           startedAt={Date.parse(message.createdAt)}
                         />
                       )}
