@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785572765",
+    "channel": "dev",
+    "type": "fix",
+    "title": "O bloco \"Pensando\" para de abrir e fechar sozinho durante a resposta",
+    "body": "Em turnos em que a Vox alterna entre escrever e consultar ferramentas, o bloco\n**Pensando** abria e fechava a cada consulta, e o título trocava entre\n\"Pensando\" e \"Pensou por 12s · 3 ferramentas\" no mesmo ritmo — empurrando a\nconversa para cima e para baixo enquanto você tentava ler.\n\nAgora o bloco abre uma vez quando o turno começa e recolhe uma vez, um instante\ndepois que a resposta termina; o título fica no shimmer \"Pensando\" durante todo\no turno e só vira o resumo no fim. E o bloco passou a ser clicável também\ndurante a resposta: se você abrir ou fechar na mão, ele fica exatamente como\nvocê deixou — nada mais mexe nele sozinho, nem quando a conexão cai e volta.\n\nJunto disso, o contador de versões `‹ 2/3 ›` das suas mensagens agora aparece e\nsome com o ponteiro, igual aos botões de copiar e editar da mesma linha, em vez\nde ficar sempre na tela. Navegando pelo teclado, o contador continua acessível e\nreaparece assim que uma das setas recebe o foco.",
+    "pr": 519,
+    "author": "Kalyel",
+    "date": "2026-08-01T05:25:49-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/519"
+  },
+  {
     "version": "0.13.0-dev.1785569810",
     "channel": "dev",
     "type": "infra",
