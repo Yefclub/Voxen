@@ -109,9 +109,9 @@ corrigida junto, senão o código passa a contradizer a spec versionada.
       cabeçalho alterna entre "Pensando" e o resumo.
 - [x] Clicar no bloco durante o turno impede que ele volte a se mover
       sozinho até o turno acabar.
-- [ ] Passar o ponteiro sobre um botão anima o ícone dentro dele; passar
+- [x] Passar o ponteiro sobre um botão anima o ícone dentro dele; passar
       sobre o ícone continua animando.
-- [ ] Sidebar colapsada oferece novidades e sair, com rótulo acessível.
+- [x] Sidebar colapsada oferece novidades e sair, com rótulo acessível.
 - [x] Indicador de versão aparece e some junto das outras ações da mensagem.
 - [x] `.specs/127` corrigida no ponto que a decisão do owner revoga.
 - [x] Testes cobrindo a lógica de abertura/fechamento do bloco de raciocínio
@@ -160,6 +160,32 @@ corrigida junto, senão o código passa a contradizer a spec versionada.
   daquele turno". Implementado em
   `apps/web/src/client/lib/thinking-disclosure.ts`.
 
+- **Item 2 resolvido por delegação, não por prop em cada botão.** O app tem
+  79 `<button>` cru, 85 `<Button>` e uma pilha de `NavLink`/`Link`/itens de
+  menu Radix. Amarrar a deixa ao componente `Button` deixaria de fora
+  justamente a sidebar, que usa `NavLink` — e amarrar em cada chamada seria
+  uma mudança de centenas de pontos que envelhece no primeiro botão novo que
+  alguém escrever. O ícone se marca com `data-icon-cue` e um par único de
+  ouvintes `pointerover`/`pointerout` no documento acha o controle subindo o
+  DOM (`createHoverScope`, em `lib/icon-cue.ts`). Uma trava por ícone
+  (`createHoverCueLatch`) conta as duas fontes — glifo e controle — para o
+  ponteiro atravessar de uma para a outra sem reiniciar nem derrubar a
+  animação.
+- **A deixa por controle alcança glifo de metadado, e isso é aceito.** A linha
+  da biblioteca (`transcricoes.tsx:1133`) é um `<Link>` inteiro com seis ícones
+  de 10px dentro — origem, pasta e até quatro tags — que são informação, não
+  afordância. Passar o mouse na linha anima os seis de uma vez. Conferido em
+  browser: a 10px o gesto fica no limiar da percepção, e nenhum critério da
+  spec distingue "ícone do controle" de "ícone dentro do controle" sem inventar
+  heurística (limite de quantidade, tamanho mínimo) dentro do arquivo mais
+  perigoso do app. Fica como está, e a saída é barata se incomodar:
+  `isAnimated={false}` no glifo decorativo o tira das DUAS áreas sensíveis, sem
+  tocar na delegação.
+- **Toque não recebe a deixa.** O browser emite a sequência de compatibilidade
+  do mouse no tap e só emite a saída no toque seguinte em outro elemento — o
+  ícone ficaria parado na pose animada até lá. Com o alvo passando do glifo de
+  18px para o controle inteiro, praticamente todo toque cairia nisso, então a
+  delegação ignora `pointerType === 'touch'`. Caneta continua valendo.
 - **Meio-termo não respondido no item 4.** Foi oferecida ao owner a opção de
   indicador semi-visível em repouso e opaco no hover; ele não respondeu.
   Segue-se o pedido literal (some junto com as ações) até indicação

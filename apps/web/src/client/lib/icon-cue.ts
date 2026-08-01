@@ -264,3 +264,272 @@ export function useIconCueTrigger<T>(state: T, punctuates?: (state: T) => boolea
 
   return signal;
 }
+
+// ---------------------------------------------------------------------------
+// Deixa de hover — o ícone E o controle que o contém
+// ---------------------------------------------------------------------------
+
+/**
+ * Quem está pedindo a deixa de hover de um ícone.
+ *
+ * `icon` é o hover no glifo, que o próprio wrapper de `components/ui/icons`
+ * reproduz. `control` é o hover no botão/link que contém o glifo, que chega
+ * pela delegação abaixo. As duas áreas são sensíveis ao mesmo tempo, e é por
+ * isso que existe uma trava em vez de dois pares soltos de start/stop.
+ */
+export type HoverCueSource = 'icon' | 'control';
+
+/**
+ * Trava de hover de um ícone: conta quantas fontes ainda enxergam o ponteiro
+ * dentro e só toca o handle nas bordas.
+ *
+ * Sem ela o glifo dentro de um botão pisca: entrar no botão anima, entrar no
+ * glifo reinicia a animação no meio, e sair do glifo — ainda dentro do botão —
+ * derruba a animação com o ponteiro parado sobre o alvo de clique.
+ */
+export interface HoverCueLatch {
+  enter: (source: HoverCueSource) => void;
+  leave: (source: HoverCueSource) => void;
+  /** Fontes que ainda enxergam o ponteiro dentro — diagnóstico e testes. */
+  active: () => number;
+}
+
+export function createHoverCueLatch(handle: IconCueHandle): HoverCueLatch {
+  const inside = new Set<HoverCueSource>();
+
+  return {
+    enter: (source) => {
+      const wasIdle = inside.size === 0;
+      inside.add(source);
+      if (wasIdle) handle.startAnimation();
+    },
+    leave: (source) => {
+      // `delete` devolve false para fonte que nunca entrou: um `leave` órfão
+      // (ordem invertida de eventos, controle desmontando) não pode derrubar a
+      // animação que a outra fonte ainda sustenta.
+      if (!inside.delete(source)) return;
+      if (inside.size === 0) handle.stopAnimation();
+    },
+    active: () => inside.size,
+  };
+}
+
+/** Marca, no DOM, um ícone que aceita deixa de hover vinda do controle. */
+export const ICON_CUE_ATTRIBUTE = 'data-icon-cue';
+
+/**
+ * Controles cujo hover anima os ícones que eles contêm.
+ *
+ * Cobre o alvo de clique de verdade — `<button>`, `<a>` (é o que `NavLink` e
+ * `Link` renderizam), `<summary>` — e os papéis ARIA que o Radix usa nos
+ * componentes em que o elemento não é um botão nativo.
+ */
+export const ICON_CUE_CONTROL_SELECTOR = [
+  'button',
+  'a',
+  'summary',
+  '[role="button"]',
+  '[role="link"]',
+  '[role="menuitem"]',
+  '[role="menuitemcheckbox"]',
+  '[role="menuitemradio"]',
+  '[role="option"]',
+  '[role="tab"]',
+].join(',');
+
+/**
+ * Superfície mínima de DOM que a delegação usa. Existe para o teste poder
+ * falsificar uma árvore sem `happy-dom`: `bun test` roda sem DOM neste repo.
+ * `Element` satisfaz esta interface estruturalmente.
+ */
+export interface CueElement {
+  closest: (selector: string) => CueElement | null;
+  querySelectorAll: (selector: string) => Iterable<CueElement>;
+  getAttribute: (name: string) => string | null;
+}
+
+export interface HoverScope {
+  /** Registra a trava de um ícone e devolve o cancelamento. */
+  register: (id: string, latch: HoverCueLatch) => () => void;
+  /** Move o ponteiro para `target` — o elemento sob o mouse, ou nada. */
+  pointTo: (target: CueElement | null) => void;
+  /** Controle sob o ponteiro — diagnóstico e testes. */
+  current: () => CueElement | null;
+}
+
+/**
+ * Delegação de hover: um ponteiro, um controle por vez, N ícones dentro dele.
+ *
+ * Por que delegação e não uma prop em cada botão: o app tem 79 `<button>` cru,
+ * 85 `<Button>` e uma pilha de `NavLink`/`Link`/itens de menu Radix. Amarrar a
+ * deixa a um componente de botão deixaria de fora justamente a sidebar (que usa
+ * `NavLink`), e amarrar em cada chamada seria uma mudança de centenas de
+ * pontos que envelhece no primeiro botão novo que alguém escrever. Aqui o
+ * ícone se anuncia por atributo e o escopo acha o controle subindo o DOM, então
+ * qualquer controle passa a valer sem tocar em nada.
+ *
+ * Hover aninhado não dispara duas vezes: `closest` para no controle MAIS
+ * PRÓXIMO, então um ícone dentro de um botão dentro de um card responde só ao
+ * botão, e o `pointTo` só age quando o controle MUDA.
+ */
+export function createHoverScope(): HoverScope {
+  const latches = new Map<string, HoverCueLatch>();
+  let control: CueElement | null = null;
+  // As travas que RECEBERAM `enter` no controle atual, guardadas por referência.
+  // Não dá para redescobri-las no leave varrendo o DOM de novo: entre o enter e
+  // o leave o ícone pode ter saído da subárvore do controle, ou a trava daquele
+  // `data-icon-cue` pode ter sido substituída — nos dois casos a varredura
+  // devolveria outra coisa e a trava que animou nunca receberia o `leave`,
+  // deixando o ícone parado na pose animada.
+  let entered: HoverCueLatch[] = [];
+
+  const latchesIn = (root: CueElement): HoverCueLatch[] => {
+    const found: HoverCueLatch[] = [];
+    for (const node of root.querySelectorAll(`[${ICON_CUE_ATTRIBUTE}]`)) {
+      const latch = latches.get(node.getAttribute(ICON_CUE_ATTRIBUTE) ?? '');
+      if (latch) found.push(latch);
+    }
+    return found;
+  };
+
+  const pointTo = (target: CueElement | null): void => {
+    const next = target?.closest(ICON_CUE_CONTROL_SELECTOR) ?? null;
+    if (next === control) return;
+
+    // Trocar de controle solta só o que o controle NOVO não contém. Controles
+    // aninhados (botão dentro de card clicável) compartilham o mesmo ícone:
+    // soltar tudo e reanimar em seguida faria o ícone piscar ao mover do botão
+    // para a borda do card, com o ponteiro nunca tendo saído de cima dele.
+    //
+    // O que este diff NÃO resolve, para quem escrever o primeiro card clicável
+    // com ação dentro: `latchesIn` varre a subárvore inteira, sem descontar o
+    // que pertence a um controle interno. Entrar no botão de dentro solta os
+    // ícones IRMÃOS do card e os reanima ao sair — o ponteiro nunca deixou o
+    // card, então o CSS considera os dois hoverados e a deixa não. Hoje não há
+    // instância disso no app; corrigir na frente exige o conjunto de ícones do
+    // controle descontar os dos controles internos.
+    const entering = next ? latchesIn(next) : [];
+    const keep = new Set(entering);
+    for (const latch of entered) if (!keep.has(latch)) latch.leave('control');
+    control = next;
+    entered = entering;
+    for (const latch of entering) latch.enter('control');
+  };
+
+  const register = (id: string, latch: HoverCueLatch): (() => void) => {
+    latches.set(id, latch);
+    return () => {
+      // Só remove o registro se ainda for o mesmo: em StrictMode o efeito roda
+      // duas vezes e a limpeza do primeiro ciclo chega depois do registro do
+      // segundo, com a MESMA chave. Apagar às cegas deixaria o ícone fora da
+      // delegação para sempre.
+      if (latches.get(id) === latch) latches.delete(id);
+      // Trava desregistrada não fica pendurada esperando um `leave` que não tem
+      // mais ícone do outro lado.
+      entered = entered.filter((item) => item !== latch);
+    };
+  };
+
+  return { register, pointTo, current: () => control };
+}
+
+/** Escopo único do app — um ponteiro, um escopo. */
+const appHoverScope = createHoverScope();
+
+/**
+ * O escopo em que todo ícone montado se registra.
+ *
+ * Exposto para teste: é o que permite montar o wrapper de ícone de verdade e
+ * conferir que ele entrou na delegação, em vez de inspecionar a fonte.
+ */
+export function iconHoverScope(): HoverScope {
+  return appHoverScope;
+}
+
+/** O que a delegação lê de um evento de ponteiro. `PointerEvent` satisfaz. */
+export interface DelegatedPointerEvent {
+  target: unknown;
+  relatedTarget: unknown;
+  pointerType?: string;
+}
+
+/** Assina um tipo de evento de ponteiro. Em produção, `document`. */
+export type PointerSubscribe = (
+  type: 'pointerover' | 'pointerout',
+  handler: (event: DelegatedPointerEvent) => void,
+) => void;
+
+/**
+ * Aceita como origem da deixa só o que sabe subir o DOM.
+ *
+ * Duck-typing e não `instanceof Element` de propósito: é a mesma checagem em
+ * produção e em teste (`bun test` roda sem DOM, então não existe `Element` para
+ * comparar), o que mantém o guard sob cobertura em vez de virar linha morta.
+ */
+function asCueElement(target: unknown): CueElement | null {
+  const candidate = target as CueElement | null | undefined;
+  return candidate && typeof candidate.closest === 'function' ? candidate : null;
+}
+
+/**
+ * Liga um escopo de hover a uma fonte de eventos de ponteiro.
+ *
+ * `pointerover`/`pointerout` (que borbulham) em vez de `mouseenter`/`mouseleave`
+ * (que não): é o que permite um único par de ouvintes cobrir a árvore inteira,
+ * inclusive o que é renderizado em portal (diálogo, dropdown, tooltip).
+ *
+ * Ponteiro de toque é ignorado. O browser emite a sequência de compatibilidade
+ * no tap e só emite a saída no toque SEGUINTE em outro elemento: sem este
+ * filtro, tocar numa aba da bottom-nav deixaria o ícone parado na pose animada
+ * até o próximo toque em outro controle. Caneta continua valendo — ela tem
+ * hover de verdade.
+ */
+export function bindHoverDelegation(scope: HoverScope, subscribe: PointerSubscribe): void {
+  const hovers = (event: DelegatedPointerEvent): boolean => event.pointerType !== 'touch';
+
+  subscribe('pointerover', (event) => {
+    if (!hovers(event)) return;
+    scope.pointTo(asCueElement(event.target));
+  });
+
+  // Ponteiro saindo da janela não gera `pointerover` em lugar nenhum; sem isto
+  // o último controle hoverado ficaria animado até o mouse voltar.
+  subscribe('pointerout', (event) => {
+    if (!hovers(event)) return;
+    if (!event.relatedTarget) scope.pointTo(null);
+  });
+}
+
+/**
+ * Envolve `bindHoverDelegation` para ligar uma vez só, por mais vezes que seja
+ * chamado — todo ícone que monta chama, e são 102 no app.
+ */
+export function createPointerBinder(scope: HoverScope, subscribe: PointerSubscribe): () => void {
+  let bound = false;
+  return () => {
+    if (bound) return;
+    bound = true;
+    bindHoverDelegation(scope, subscribe);
+  };
+}
+
+const documentSubscribe: PointerSubscribe = (type, handler) => {
+  // Sem DOM (render de servidor, `bun test`) não há o que assinar.
+  if (typeof document === 'undefined') return;
+  // Captura para pegar o evento mesmo se alguém interromper a propagação;
+  // passivo porque a delegação nunca cancela. Ninguém remove os ouvintes — são
+  // um par só, vivo enquanto a aba viver, e o custo é um `closest` por
+  // transição de elemento, não por pixel percorrido.
+  document.addEventListener(type, handler, { capture: true, passive: true });
+};
+
+const bindAppPointerDelegation = createPointerBinder(appHoverScope, documentSubscribe);
+
+/**
+ * Coloca um ícone na delegação de hover do app e devolve o cancelamento.
+ * Chamado pelo wrapper de `components/ui/icons` — não use direto.
+ */
+export function registerIconHoverCue(id: string, latch: HoverCueLatch): () => void {
+  bindAppPointerDelegation();
+  return appHoverScope.register(id, latch);
+}
