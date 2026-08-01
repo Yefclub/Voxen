@@ -450,42 +450,40 @@ describe('planLinearization', () => {
     expect(planLinearization(branchedTree())).toEqual([]);
   });
 
-  test('versionar em conversa antiga só acha o antecessor DEPOIS do encadeamento', () => {
-    // Regressão: a rota lia `target.parentId` antes do encadeamento preguiçoso.
-    // Em conversa do acervo antigo todo antecessor é nulo, então a versão
-    // nascia como segunda raiz e o histórico anterior a ela sumia da trilha.
+  test('o replano após aplicação PARCIAL converge para a mesma árvore', () => {
+    // Regressão: três dos quatro chamadores aplicam o plano fora de transação,
+    // um UPDATE por mensagem. Interrompido no meio (deploy, restart), o
+    // replano precisa terminar o serviço, não montar outra árvore. Encadeando
+    // entre os "sem antecessor", o nó já corrigido saía do cálculo, o seguinte
+    // pulava por cima dele, e a mensagem pulada virava ramo morto — sumia da
+    // UI e do prompt em silêncio, para sempre.
     const nodes = legacyTree();
-    const editada = nodes.find((item) => item.id === 'l3');
-    expect(editada?.parentId).toBeNull(); // leitura precoce: antecessor errado
+    const completo = planLinearization(nodes);
 
-    const linear = applyLinearization(nodes, planLinearization(nodes));
-    const antecessor = linear.find((item) => item.id === 'l3')?.parentId;
-    expect(antecessor).toBe('l2'); // leitura pós-encadeamento: irmã de verdade
+    // Aplica só o primeiro passo e "cai".
+    const parcial = applyLinearization(nodes, completo.slice(0, 1));
+    expect(parcial.map((item) => item.parentId)).toEqual([null, 'l1', null, null]);
 
-    // Com o antecessor certo, a versão nova preserva l1 e l2 na trilha.
-    clock = 50_000;
-    const comVersao = [
-      ...linear,
-      { ...node('v1', 'USER' as const, antecessor ?? null) },
-      { ...node('va', 'ASSISTANT' as const, 'v1') },
-    ];
-    expect(resolveActiveTrail(comVersao, 'va', LINEARIZED).map((item) => item.id)).toEqual([
+    const replano = planLinearization(parcial);
+    const final = applyLinearization(parcial, replano);
+
+    expect(final.map((item) => `${item.id}<-${String(item.parentId)}`)).toEqual([
+      'l1<-null',
+      'l2<-l1',
+      'l3<-l2',
+      'l4<-l3',
+    ]);
+    // Nenhuma mensagem vira ramo morto: a trilha continua completa.
+    expect(resolveActiveTrail(final, null, LINEARIZED).map((item) => item.id)).toEqual([
       'l1',
       'l2',
-      'v1',
-      'va',
+      'l3',
+      'l4',
     ]);
-    expect(
-      buildVersionGroups(
-        comVersao,
-        resolveActiveTrail(comVersao, 'va', LINEARIZED),
-        LINEARIZED,
-      ).get('v1'),
-    ).toEqual({
-      index: 2,
-      total: 2,
-      ids: ['l3', 'v1'],
-    });
+    // E o resultado é o mesmo de aplicar o plano completo de uma vez.
+    expect(applyLinearization(nodes, completo).map((item) => item.parentId)).toEqual(
+      final.map((item) => item.parentId),
+    );
   });
 });
 

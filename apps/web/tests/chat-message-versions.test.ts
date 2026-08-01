@@ -21,6 +21,7 @@ import {
   findOwnedMessage,
   MessageVersionError,
   resolveAppendParent,
+  resolveTurnParent,
   resolveVersionTarget,
   type LinearizeDeps,
   type OwnedMessageFinder,
@@ -28,6 +29,7 @@ import {
   type OwnedMessageRow,
 } from '../src/lib/chat/message-versions';
 import type { TrailNodeFinder, TrailNodeRow } from '../src/lib/chat/conversation-trail';
+import { applyLinearization, planLinearization } from '../src/lib/chat/message-trail';
 
 interface StoredMessage extends OwnedMessageRow {
   userId: string;
@@ -297,6 +299,41 @@ describe('ensureConversationLinearized', () => {
 
     expect(linearize.parents).toEqual([]);
     expect(linearize.marked).toBe(0);
+  });
+});
+
+describe('resolveTurnParent', () => {
+  const LEGACY = [
+    trailNode('l1', null, 'USER', 1_000),
+    trailNode('l2', null, 'ASSISTANT', 2_000),
+    trailNode('l3', null, 'USER', 3_000),
+    trailNode('l4', null, 'ASSISTANT', 4_000),
+  ];
+
+  test('versionar usa a lista JÁ encadeada, não a que veio do banco', () => {
+    // Regressão do achado 2: com a lista crua de uma conversa antiga, todo
+    // antecessor é nulo e a versão nasceria como segunda raiz, jogando fora
+    // o histórico anterior a ela.
+    const cru = resolveTurnParent(LEGACY, LEGACY, { messageId: 'l3' });
+    expect(cru).toEqual({ ok: true, parentId: null });
+
+    const encadeado = applyLinearization(LEGACY, planLinearization(LEGACY));
+    expect(resolveTurnParent(encadeado, encadeado, { messageId: 'l3' })).toEqual({
+      ok: true,
+      parentId: 'l2',
+    });
+  });
+
+  test('turno normal anexa no fim da trilha, ignorando a lista de nós', () => {
+    const trail = [LEGACY[0], LEGACY[1]].filter((item) => item !== undefined);
+    expect(resolveTurnParent(LEGACY, trail, undefined)).toEqual({ ok: true, parentId: 'l2' });
+    expect(resolveTurnParent(LEGACY, [], undefined)).toEqual({ ok: true, parentId: null });
+  });
+
+  test('mensagem de fora da conversa não vira ponto de ramificação', () => {
+    expect(resolveTurnParent(LEGACY, LEGACY, { messageId: 'de-outra-conversa' })).toEqual({
+      ok: false,
+    });
   });
 });
 

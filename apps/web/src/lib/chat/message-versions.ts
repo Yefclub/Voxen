@@ -160,6 +160,33 @@ export function resolveAppendParent(trail: readonly TrailNodeRow[]): string | nu
   return trail[trail.length - 1]?.id ?? null;
 }
 
+/** `ok: false` = a mensagem a versionar não está nesta conversa. */
+export type TurnParent = { ok: true; parentId: string | null } | { ok: false };
+
+/**
+ * Antecessor da mensagem que o turno vai criar.
+ *
+ * Turno normal anexa ao fim da trilha ativa. Versionamento pendura no MESMO
+ * antecessor da mensagem editada, para nascer irmã dela.
+ *
+ * `linearNodes` tem que ser a lista JÁ encadeada, não a que veio do banco: em
+ * conversa do acervo antigo o antecessor só passa a existir depois do
+ * encadeamento, e lê-lo antes devolve nulo — a versão nasceria como segunda
+ * raiz e o histórico anterior a ela sumiria da trilha. Esta função existe
+ * separada exatamente para que essa regra seja exercitada por teste em vez de
+ * reconstruída dentro dele.
+ */
+export function resolveTurnParent(
+  linearNodes: readonly TrailNodeRow[],
+  trail: readonly TrailNodeRow[],
+  branchFrom: { messageId: string } | undefined,
+): TurnParent {
+  if (!branchFrom) return { ok: true, parentId: resolveAppendParent(trail) };
+  const edited = linearNodes.find((item) => item.id === branchFrom.messageId);
+  if (!edited) return { ok: false };
+  return { ok: true, parentId: edited.parentId };
+}
+
 /**
  * Encadeia mensagens sem antecessor de uma conversa do acervo antigo antes de
  * qualquer escrita estrutural (novo turno, nova versão, compactação).

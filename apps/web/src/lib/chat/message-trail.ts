@@ -211,24 +211,42 @@ export function buildVersionGroups<T extends RoleTrailNode>(
 
 /**
  * Encadeamento a aplicar numa conversa do acervo antigo: cada mensagem sem
- * antecessor passa a apontar para a anterior em ordem de criação, e a mais
- * antiga vira a raiz.
+ * antecessor passa a apontar para a IMEDIATAMENTE anterior em ordem de
+ * criação — considerando todas as mensagens, não só as sem antecessor — e a
+ * mais antiga de todas vira a raiz.
  *
- * Isso NÃO é migração de deploy — é preguiçoso, por conversa, e roda só quando
- * a conversa recebe uma escrita estrutural (novo turno, nova versão,
- * compactação). Conversa que ninguém abre continua legível pela regra de
- * prefixo linear em `resolveActiveTrail`, sem nunca ser tocada.
+ * Isso NÃO é migração de deploy: é preguiçoso, por conversa, e roda só quando
+ * a conversa recebe uma escrita estrutural (novo turno, nova versão, troca de
+ * trilha, compactação). Conversa que ninguém abre continua legível pela regra
+ * de prefixo linear em `resolveActiveTrail`, sem nunca ser tocada.
+ *
+ * Por que o predecessor é o imediato entre TODOS os nós, e não o "sem
+ * antecessor anterior": três dos quatro chamadores aplicam o plano fora de
+ * transação, um UPDATE por mensagem. Interrompido no meio (deploy, restart), o
+ * replano tem que convergir para a MESMA árvore. Encadeando pelo predecessor
+ * imediato, um nó já corrigido continua sendo o alvo do próximo — replanejar
+ * sobre o estado parcial devolve exatamente o que faltava. Encadeando entre os
+ * "sem antecessor", o nó já corrigido some do cálculo, o seguinte pula por
+ * cima dele, e a mensagem pulada vira ramo morto: some da UI e do prompt em
+ * silêncio, para sempre.
+ *
+ * Pré-condição: a conversa ainda NÃO está marcada como encadeada. Numa árvore
+ * de verdade, uma segunda mensagem sem antecessor é uma versão legítima da
+ * raiz e não pode ser encadeada — por isso `ensureConversationLinearized`
+ * retorna cedo quando a marca existe.
  */
 export function planLinearization(
   nodes: readonly TrailNode[],
 ): Array<{ id: string; parentId: string }> {
-  const rootless = sortedByCreation(nodes.filter((node) => node.parentId === null));
-  if (rootless.length <= 1) return [];
+  const ordered = sortedByCreation(nodes);
   const plan: Array<{ id: string; parentId: string }> = [];
-  for (let index = 1; index < rootless.length; index += 1) {
-    const node = rootless[index];
-    const previous = rootless[index - 1];
-    if (node && previous) plan.push({ id: node.id, parentId: previous.id });
+  // Começa em 1: a mensagem mais antiga da conversa é a raiz e fica sem
+  // antecessor.
+  for (let index = 1; index < ordered.length; index += 1) {
+    const node = ordered[index];
+    const previous = ordered[index - 1];
+    if (!node || !previous || node.parentId !== null) continue;
+    plan.push({ id: node.id, parentId: previous.id });
   }
   return plan;
 }

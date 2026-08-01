@@ -6,11 +6,7 @@ import {
   type TrailNodeRow,
 } from './conversation-trail';
 import type { MessageAttachment } from './message-attachments';
-import {
-  ensureConversationLinearized,
-  linearizeWith,
-  resolveAppendParent,
-} from './message-versions';
+import { ensureConversationLinearized, linearizeWith, resolveTurnParent } from './message-versions';
 import { getOrCreateConversation, streamAssistantReply, type ChatStreamEvent } from './runtime';
 import {
   acquireChatTurnLease,
@@ -91,16 +87,11 @@ export async function createChatTurn(
       linearizeWith(conversation.id, tx),
     );
 
-    let parentId: string | null;
-    if (options.branchFrom) {
-      // Antecessor lido DEPOIS do encadeamento e dentro desta transação: é o
-      // que faz a versão nascer irmã de verdade, mesmo em conversa antiga.
-      const edited = linearNodes.find((item) => item.id === options.branchFrom?.messageId);
-      if (!edited) throw new ChatTurnVersionTargetError();
-      parentId = edited.parentId;
-    } else {
-      parentId = resolveAppendParent(trail);
-    }
+    // Antecessor resolvido DEPOIS do encadeamento e dentro desta transação: é
+    // o que faz a versão nascer irmã de verdade, mesmo em conversa antiga.
+    const resolved = resolveTurnParent(linearNodes, trail, options.branchFrom);
+    if (!resolved.ok) throw new ChatTurnVersionTargetError();
+    const parentId = resolved.parentId;
 
     const userMessage = await tx.chatMessage.create({
       data: {
