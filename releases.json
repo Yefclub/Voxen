@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785569810",
+    "channel": "dev",
+    "type": "infra",
+    "title": "CI mais rápido e extensão sob o mesmo padrão de formatação",
+    "body": "O cache de build passou a ser separado por imagem também na publicação de\nrelease e na varredura de segurança. Antes as duas imagens dividiam o mesmo\nespaço de cache: na publicação uma sobrescrevia a da outra, e a varredura lia\nde um espaço que ninguém preenchia. Nos dois casos cada execução recomeçava\nquase do zero.\n\nOs arquivos da extensão do navegador passaram a seguir o mesmo padrão de\nformatação do resto do projeto, agora com verificação automática. Nada muda\nno que a extensão faz — é organização de código.",
+    "pr": 517,
+    "author": "Kalyel",
+    "date": "2026-08-01T04:36:38-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/517"
+  },
+  {
     "version": "0.13.0-dev.1785565397",
     "channel": "dev",
     "type": "feat",
