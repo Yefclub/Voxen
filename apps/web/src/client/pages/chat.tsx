@@ -71,6 +71,13 @@ import {
 } from '../lib/chat-scroll';
 import type { ChatHandoffState } from '../lib/chat-handoff';
 import { mergeChatMessagePages } from '../lib/chat-pagination';
+import {
+  planBranchRollback,
+  planSend,
+  truncateTrailFrom,
+  type MessageVersions,
+} from '../lib/chat-versions';
+import { MessageEditForm, UserMessageActions } from '../components/chat/message-versioning';
 import { claimPendingId, reconcileChatStart, sameActiveTurn } from '../lib/chat-reconciliation';
 import {
   getSoundsEnabled,
@@ -92,7 +99,18 @@ type ChatMessage = {
   segments?: MessageSegment[];
   /** Anexos vinculados à mensagem do usuário (spec 126). */
   attachments?: MessageAttachment[];
+  /**
+   * Posição entre as versões irmãs — só vem preenchido em ponto de
+   * ramificação, e só em mensagem do usuário (spec 127).
+   */
+  versions?: MessageVersions | null;
 };
+/**
+ * Alvo de um reenvio versionado (spec 127): a mensagem editada e os anexos que
+ * a versão nova herda dela.
+ */
+type BranchTarget = { messageId: string; attachments: MessageAttachment[] };
+
 type ActiveTurn = {
   id: string;
   status: 'PENDING' | 'RUNNING';
@@ -386,9 +404,16 @@ function ThinkingBlock({
 function MessageCopyButton({
   text,
   align = 'start',
+  /**
+   * `row` = já está dentro da linha de ações da mensagem do usuário, que cuida
+   * do espaçamento e do alinhamento (spec 127). `standalone` é o copiar
+   * sozinho embaixo da resposta do assistente.
+   */
+  layout = 'standalone',
 }: {
   text: string;
   align?: 'start' | 'end';
+  layout?: 'standalone' | 'row';
 }): React.ReactElement | null {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -417,9 +442,10 @@ function MessageCopyButton({
       type="button"
       onClick={() => void copy()}
       className={cn(
-        'mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--color-app-muted)] transition-opacity hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
+        'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--color-app-muted)] transition-opacity hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
         'opacity-70 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100',
-        align === 'end' ? 'self-end' : 'self-start',
+        layout === 'standalone' && 'mt-1.5',
+        layout === 'standalone' && (align === 'end' ? 'self-end' : 'self-start'),
       )}
       aria-label={t('chat.copyMessage')}
       title={t('chat.copyMessage')}
@@ -562,6 +588,7 @@ function Composer({
   input,
   setInput,
   streaming,
+  busy = false,
   onSend,
   onStop,
   attachments,
@@ -573,6 +600,12 @@ function Composer({
   input: string;
   setInput: (value: string) => void;
   streaming: boolean;
+  /**
+   * Ocupado sem ter turno para interromper — hoje só a troca de trilha
+   * (spec 127). Trava o envio como `streaming`, mas NÃO troca o botão por
+   * "parar": não há nada a parar, e oferecer o botão mentiria.
+   */
+  busy?: boolean;
   onSend: () => void;
   onStop: () => void;
   attachments: Attachment[];
@@ -629,7 +662,7 @@ function Composer({
           }}
           placeholder={t('prompt.placeholder')}
           rows={1}
-          disabled={streaming}
+          disabled={streaming || busy}
           autoFocus={autoFocus}
           style={{
             maxHeight: `min(${COMPOSER_MAX_HEIGHT_PX}px, ${COMPOSER_MAX_HEIGHT_VH * 100}dvh)`,
@@ -688,7 +721,7 @@ function Composer({
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            disabled={streaming}
+            disabled={streaming || busy}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] disabled:opacity-50"
             aria-label={t('chat.attach')}
             title={t('chat.attach')}
@@ -708,7 +741,7 @@ function Composer({
           ) : (
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={!input.trim() || busy}
               className="grid h-9 w-9 place-items-center rounded-full bg-[var(--color-accent-primary)] text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label={t('chat.send')}
             >
@@ -741,6 +774,11 @@ export function ChatPage(): React.ReactElement {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [approvingHitl, setApprovingHitl] = useState<ReadonlySet<string>>(new Set());
+  // Versionamento (spec 127): qual mensagem está aberta para edição e se uma
+  // troca de trilha está em voo. Só o id vive aqui — o rascunho pertence ao
+  // formulário, que nasce com o texto atual da mensagem.
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [switchingVersion, setSwitchingVersion] = useState(false);
   // Anexos vivem na página (não no Composer) porque `send()` precisa deles
   // para vincular os jobs à mensagem enviada (spec 126).
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -1225,6 +1263,29 @@ export function ChatPage(): React.ReactElement {
     }
   }
 
+  /**
+   * Troca a trilha exibida para a que passa por esta versão (spec 127). Não
+   * gera resposta: o servidor só reposiciona o ponteiro de folha ativa, e o
+   * snapshot seguinte traz a trilha inteira.
+   *
+   * `replace`, não mesclagem: a trilha nova e a antiga compartilham só o
+   * prefixo até o ponto de ramificação, e mesclar deixaria o ramo abandonado
+   * na tela junto com o escolhido.
+   */
+  async function switchVersion(messageId: string): Promise<void> {
+    if (streaming || switchingVersion) return;
+    setEditingMessageId(null);
+    setSwitchingVersion(true);
+    try {
+      await apiPost(`/api/chat/messages/${encodeURIComponent(messageId)}/activate`);
+      applySnapshot(await apiGet<Snapshot>('/api/chat'), true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('chat.versionSwitchError'));
+    } finally {
+      setSwitchingVersion(false);
+    }
+  }
+
   async function clearHistory(): Promise<void> {
     setClearing(true);
     try {
@@ -1240,20 +1301,61 @@ export function ChatPage(): React.ReactElement {
     }
   }
 
-  async function send(override?: string): Promise<void> {
+  async function send(override?: string, branch?: BranchTarget): Promise<void> {
     const content = (override ?? input).trim();
-    if (!content || streaming) return;
-    const attachmentJobIds = readyAttachmentJobIds(attachments);
+    // `switchingVersion` no guarda: a troca de trilha grava a folha ativa e só
+    // depois relê o snapshot. Um envio que entre nessa janela cria o turno
+    // entre as duas operações, e o `replace` da troca apaga as bolhas otimistas
+    // dele — `reconcileChatStart` só renomeia o que já está na lista, então a
+    // pergunta e a resposta ficariam invisíveis até o turno acabar.
+    if (!content || streaming || switchingVersion) return;
     // Espelho otimista dos anexos: o servidor devolve a forma canônica no
     // snapshot, mas a bolha já nasce com o vínculo visível.
-    const localAttachments: MessageAttachment[] = attachments
-      .filter((item) => item.status === 'done' && item.jobId)
-      .slice(0, MAX_MESSAGE_ATTACHMENTS)
-      .map((item) => ({
-        jobId: item.jobId as string,
-        name: item.name,
-        kind: attachmentKind(item.name, '') ?? 'document',
-      }));
+    //
+    // Reenvio de versão não mexe no composer: a versão carrega os anexos da
+    // mensagem editada (os mesmos jobs, re-vinculados pelo servidor com escopo
+    // de workspace), não os arquivos que o usuário deixou preparados embaixo
+    // para a próxima mensagem. Sem isso, editar uma pergunta perderia em
+    // silêncio o PDF que a acompanhava.
+    const localAttachments: MessageAttachment[] = branch
+      ? branch.attachments
+      : attachments
+          .filter((item) => item.status === 'done' && item.jobId)
+          .slice(0, MAX_MESSAGE_ATTACHMENTS)
+          .map((item) => ({
+            jobId: item.jobId as string,
+            name: item.name,
+            kind: attachmentKind(item.name, '') ?? 'document',
+          }));
+    const plan = planSend({ branch, composerJobIds: readyAttachmentJobIds(attachments) });
+    const attachmentJobIds = plan.attachmentJobIds;
+    // Lista exibida ANTES do corte, para desfazê-lo se o turno não nascer. O
+    // snapshot não serve de rollback: ele devolve só os últimos 60 da trilha
+    // (`getChatSnapshot`), então numa conversa longa a mesclagem com o prefixo
+    // cortado deixaria um buraco no meio da conversa.
+    const trailBeforeBranch = branch ? messages : null;
+    /**
+     * O servidor aceitou o reenvio — a partir daqui a versão EXISTE no banco e
+     * o corte não pode mais ser desfeito. A rota cria o turno antes de abrir o
+     * stream, então o 2xx é o sinal exato; esperar o evento `start` deixaria
+     * uma janela em que a versão já existe e um rollback empilharia as duas
+     * versões da mesma pergunta na tela.
+     */
+    let versionCreated = false;
+    /**
+     * Desfaz o corte quando NENHUM snapshot pôde ser lido (offline de verdade).
+     * Sem isso a tela fica com o prefixo cortado mais duas bolhas otimistas
+     * órfãs, e nada se auto-cura: `persistedActiveTurn` é nulo, o poll de
+     * recuperação não liga, e o histórico só volta num reload.
+     *
+     * A decisão de restaurar (ou não, quando o turno já nasceu) mora em
+     * `planBranchRollback`, testável sem montar a página inteira.
+     */
+    function restoreBranchTrail(): void {
+      setMessages(
+        (current) => planBranchRollback({ trailBeforeBranch, current, versionCreated }) ?? current,
+      );
+    }
     const localStartedAt = new Date().toISOString();
     const localUser: ChatMessage = {
       id: `local-user-${crypto.randomUUID()}`,
@@ -1282,8 +1384,15 @@ export function ChatPage(): React.ReactElement {
     // Bloqueia reengage até chegar texto final (tools/raciocínio não desancoram).
     allowAnchorReengageRef.current = false;
     scrollPhaseRef.current = 'free';
-    setMessages((current) => [...current, localUser, localAssistant]);
-    setInput('');
+    // Reenvio de versão recorta a trilha no ponto de ramificação: a mensagem
+    // editada e tudo que veio depois dela saem da tela, porque a versão nova
+    // nasce IRMÃ dela e o snapshot seguinte não as traz de volta.
+    setMessages((current) => [
+      ...(branch ? truncateTrailFrom(current, branch.messageId) : current),
+      localUser,
+      localAssistant,
+    ]);
+    if (plan.clearsComposer) setInput('');
     // Chips que saem do composer QUANDO o servidor aceitar a mensagem: os
     // prontos (foram vinculados) e os que falharam (erro já avisado por
     // toast). Uploads em andamento seguem no composer e valem para a próxima
@@ -1292,8 +1401,10 @@ export function ChatPage(): React.ReactElement {
     // e não há como re-vincular um job existente, restando subir o arquivo de
     // novo. Guardamos os ids em vez de filtrar por status depois, para não
     // levar junto um anexo que o usuário adicionou durante a requisição.
-    const consumedAttachmentIds = new Set(
-      attachments.filter((item) => item.status !== 'uploading').map((item) => item.id),
+    const consumedAttachmentIds = new Set<string>(
+      plan.clearsComposer
+        ? attachments.filter((item) => item.status !== 'uploading').map((item) => item.id)
+        : [],
     );
     setNearBottom(false);
     setShowScrollLatest(false);
@@ -1304,7 +1415,7 @@ export function ChatPage(): React.ReactElement {
     let persistedActiveTurn: ActiveTurn | null = null;
 
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetch(plan.endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
@@ -1313,6 +1424,10 @@ export function ChatPage(): React.ReactElement {
         ),
         signal: controller.signal,
       });
+      // Antes da checagem de corpo, de propósito: um 2xx sem `body` ainda
+      // significa turno criado, e marcar depois deixaria o rollback achar que
+      // a versão não existe.
+      versionCreated = response.ok;
       if (!response.ok || !response.body) throw new Error(t('chat.streamStartError'));
       // Mensagem aceita: só agora os chips consumidos saem do composer.
       setAttachments((current) => current.filter((item) => !consumedAttachmentIds.has(item.id)));
@@ -1406,11 +1521,18 @@ export function ChatPage(): React.ReactElement {
     } catch (error) {
       // Desconexão de transporte (Bun idle / proxy / rede) ≠ falha do turno.
       // Tenta recuperar o estado canônico antes de alarmar o usuário.
+      //
+      // Num reenvio, o snapshot de recuperação entra como `replace`, nunca
+      // mesclado. Aqui não dá para saber se a versão chegou a ser criada: se
+      // foi, mesclar traria a mensagem editada de volta ao lado da versão nova;
+      // se não foi, mesclar com o prefixo cortado abre um buraco, porque o
+      // snapshot é só uma janela da trilha. Substituir acerta nos dois casos —
+      // a janela é sempre contígua e `hasOlder`/`nextCursor` vêm com ela.
       if (!controller.signal.aborted) {
         try {
           const snapshot = await apiGet<Snapshot>('/api/chat');
           persistedActiveTurn = snapshot.activeTurn;
-          applySnapshot(snapshot);
+          applySnapshot(snapshot, Boolean(branch));
           if (snapshot.activeTurn) {
             // Turno ainda roda no servidor — sem toast de erro; UI mostra recovering.
           } else if (isTransientStreamDisconnect(error)) {
@@ -1419,6 +1541,7 @@ export function ChatPage(): React.ReactElement {
             toast.error(error instanceof Error ? error.message : t('chat.streamError'));
           }
         } catch {
+          restoreBranchTrail();
           if (isTransientStreamDisconnect(error)) {
             toast.error(t('chat.streamDisconnected'));
           } else {
@@ -1429,9 +1552,10 @@ export function ChatPage(): React.ReactElement {
         try {
           const snapshot = await apiGet<Snapshot>('/api/chat');
           persistedActiveTurn = snapshot.activeTurn;
-          applySnapshot(snapshot);
+          applySnapshot(snapshot, Boolean(branch));
         } catch {
           // Offline: o turno continua durável e será restaurado no próximo acesso.
+          restoreBranchTrail();
         }
       }
     } finally {
@@ -1540,17 +1664,48 @@ export function ChatPage(): React.ReactElement {
                   const isStreamingAssistant =
                     streaming && message.id === streamingAssistantId.current;
                   if (message.role === 'USER') {
+                    // Bolha ainda otimista não tem id no banco: versionar iria
+                    // para um 404. Some assim que o evento `start` reconcilia.
+                    const unpersisted = message.id.startsWith('local-');
                     return (
                       <article
                         key={message.id}
                         data-message-id={message.id}
                         className="group mb-5 flex flex-col items-end"
                       >
-                        <div className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-[var(--color-accent-primary-soft)] px-4 py-2.5 text-[14.5px] leading-relaxed text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-primary)]/15">
-                          {message.content}
-                        </div>
-                        <MessageAttachments attachments={message.attachments} />
-                        <MessageCopyButton text={message.content} align="end" />
+                        {editingMessageId === message.id ? (
+                          <MessageEditForm
+                            initialText={message.content}
+                            disabled={streaming || switchingVersion}
+                            onCancel={() => setEditingMessageId(null)}
+                            onSubmit={(content) => {
+                              setEditingMessageId(null);
+                              void send(content, {
+                                messageId: message.id,
+                                attachments: message.attachments ?? [],
+                              });
+                            }}
+                            t={t}
+                          />
+                        ) : (
+                          <>
+                            <div className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-[var(--color-accent-primary-soft)] px-4 py-2.5 text-[14.5px] leading-relaxed text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-primary)]/15">
+                              {message.content}
+                            </div>
+                            <MessageAttachments attachments={message.attachments} />
+                            <div className="mt-1.5 flex items-center gap-0.5 self-end">
+                              <UserMessageActions
+                                versions={message.versions}
+                                streaming={streaming}
+                                pending={switchingVersion || unpersisted}
+                                onEdit={() => setEditingMessageId(message.id)}
+                                onNavigate={(id) => void switchVersion(id)}
+                                t={t}
+                              />
+                              <MessageCopyButton text={message.content} align="end" layout="row" />
+                            </div>
+                          </>
+                        )}
                       </article>
                     );
                   }
@@ -1617,6 +1772,7 @@ export function ChatPage(): React.ReactElement {
                 input={input}
                 setInput={setInput}
                 streaming={streaming}
+                busy={switchingVersion}
                 onSend={() => void send()}
                 onStop={() => void stopStreaming()}
                 attachments={attachments}

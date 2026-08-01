@@ -111,11 +111,11 @@ Parte 1:
 
 Parte 2:
 
-- [ ] Botão de versionar ao lado do copiar, apenas em mensagens do usuário.
-- [ ] Editar abre a mensagem com o texto atual carregado.
-- [ ] Indicador `‹ n/N ›` visível em ponto de ramificação, navegando entre
+- [x] Botão de versionar ao lado do copiar, apenas em mensagens do usuário.
+- [x] Editar abre a mensagem com o texto atual carregado.
+- [x] Indicador `‹ n/N ›` visível em ponto de ramificação, navegando entre
       versões.
-- [ ] Versionamento e troca de trilha bloqueados na UI enquanto uma resposta
+- [x] Versionamento e troca de trilha bloqueados na UI enquanto uma resposta
       está sendo gerada (o servidor já recusa com 409).
 
 ## Fora de Escopo
@@ -187,6 +187,57 @@ Parte 2:
   as duas operações um turno poderia reivindicar a conversa e acabar montando
   o prompt do ramo errado.
 
+### Parte 2 (UI)
+
+- **Indicador sempre visível, ações no hover.** A linha de ações da mensagem do
+  usuário já revela copiar só no hover, e o botão de editar entra nessa mesma
+  regra. O `‹ n/N ›` não: ele é *estado* ("você está lendo a 2ª de 3
+  respostas"), e estado que some quando o ponteiro sai da mensagem esconde do
+  usuário justamente o fato de ele estar numa trilha antiga.
+
+- **Reenviar recorta a trilha na hora.** A versão nova nasce IRMÃ da mensagem
+  editada, então a mensagem editada e tudo depois dela não pertencem à trilha
+  nova — e o snapshot seguinte não as traz de volta, porque a mesclagem de
+  páginas preserva o que já está no cliente. Sem o corte otimista, as duas
+  versões da mesma pergunta ficam empilhadas na tela.
+
+- **Trocar de trilha substitui o snapshot em vez de mesclar.** Duas trilhas só
+  compartilham o prefixo até o ponto de ramificação; mesclar deixaria o ramo
+  abandonado na tela junto com o escolhido.
+
+- **A versão herda os anexos da mensagem editada**, e o reenvio não consome os
+  arquivos preparados no composer. O servidor re-vincula os mesmos jobs com
+  escopo de workspace, então editar uma pergunta não perde em silêncio o PDF
+  que a acompanhava nem anexa por engano o arquivo da próxima mensagem.
+
+- **Bloqueio na UI duplica o 409 do servidor de propósito.** Oferecer o botão
+  para depois falhar é pior do que não oferecer, e o guarda vive no handler
+  (não só no atributo `disabled`) para que disparo programático também pare.
+  Mesma regra cobre mensagem ainda não persistida (bolha otimista `local-*`),
+  que versionada iria para um 404.
+
+- **O rascunho da edição vive no formulário**, inicializado com o texto atual
+  da mensagem. A página guarda só o id em edição — não há rascunho para
+  sincronizar com id, e o critério "abre com o texto atual carregado" fica
+  exercitável por teste de render.
+
+- **O corte otimista só é desfeito enquanto a versão não existe**, e o sinal é
+  a ACEITAÇÃO do POST, não o evento `start` do stream. A rota cria o turno
+  antes de abrir o stream, então um 2xx já significa versão gravada e trilha
+  ativa trocada; entre o 2xx e o primeiro frame há uma janela em que usar
+  `start` restauraria indevidamente. Com a versão criada, desfazer é pior que
+  não desfazer: as bolhas otimistas deixam de ser descartáveis assim que
+  `reconcileChatStart` troca os ids `local-*` pelos reais, e a união com a
+  lista pré-corte empilharia as duas versões da mesma pergunta na tela.
+  Prefixo + versão nova é incompleto, mas correto — o reload traz o resto.
+
+- **Recuperação de falha no reenvio substitui o snapshot em vez de mesclar.**
+  Ali não dá para saber se a versão foi criada: se foi, mesclar traz a
+  mensagem editada de volta ao lado da versão nova; se não foi, mesclar com o
+  prefixo cortado abre um buraco, porque o snapshot é uma janela de 60
+  mensagens da trilha e não a trilha inteira. Substituir acerta nos dois
+  casos, ao custo de re-paginar o histórico já carregado.
+
 ## Riscos aceitos
 
 - **Snapshot lê os nós da conversa inteira** (projeção leve: id, antecessor,
@@ -195,6 +246,17 @@ Parte 2:
   saber qual é a trilha. Ainda é menos tráfego que a compactação já fazia (ela
   lia conteúdo completo sem limite). Se virar problema, o caminho é uma CTE
   recursiva de `activeLeafId` para cima.
+- **A cola de `ChatPage` não tem teste automatizado.** O que decide sozinho
+  (navegação entre versões, corte da trilha, rollback do corte, endpoint,
+  herança de anexos, consumo do composer) foi extraído para
+  `client/lib/chat-versions.ts` e é coberto por teste comportamental; os
+  controles vivem em `components/chat/message-versioning.tsx` e são cobertos
+  por render. Sobra o fio que liga os dois dentro de `chat.tsx` — o guarda de
+  `send` durante a troca de trilha e o `busy` do composer — verificado por
+  inspeção e por simulação contra as funções reais, não por teste. Fechar isso
+  exige um harness de `ChatPage` (sessão, roteador, i18n, `fetch`), que não
+  existe no repo e é entrega própria.
+
 - **A folha ativa não tem chave estrangeira.** `Conversation.activeLeafId`
   apontando para `ChatMessage` fecharia um ciclo de relação no Prisma. Em
   troca: ponteiro pendurado cai na última mensagem, e `clearConversation` zera
