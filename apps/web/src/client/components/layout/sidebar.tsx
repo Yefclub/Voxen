@@ -35,6 +35,7 @@ import {
   useIconCueGroup,
   useIconCueSignal,
   useIconCueTrigger,
+  type IconCueHandle,
 } from '../../lib/icon-cue';
 import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
@@ -71,6 +72,27 @@ export const NAV: NavItem[] = [
 
 const SIDEBAR_WIDTH = 288;
 const RAIL_WIDTH = 60;
+
+/**
+ * Alvo de clique do rail: quadrado de 36px, ícone de 18px centralizado. Todo
+ * item do rail usa esta base — o que muda entre eles é só a cor do hover.
+ */
+const RAIL_ITEM_CLASS = 'flex h-9 w-9 items-center justify-center rounded-lg transition-colors';
+const RAIL_ITEM_IDLE_CLASS =
+  'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]';
+/**
+ * Sair é a única ação do rail que não é navegação, e a única com consequência.
+ * Constante compartilhada com a sidebar aberta para as duas larguras não
+ * discordarem sobre o que o botão significa.
+ *
+ * A cor vem de `--color-app-danger` e não de um tom fixo do Tailwind: o app
+ * troca de tema por variável CSS, sem variante `dark:`, e nenhum vermelho único
+ * passa em AA nos dois extremos. O `rose-200` que estava aqui sumia no tema
+ * claro — rosa claro sobre `rose-500/10` —, deixando ilegível justamente no
+ * hover o único aviso de que a ação desconecta.
+ */
+const SIGN_OUT_HOVER_CLASS = 'hover:bg-rose-500/10 hover:text-[var(--color-app-danger)]';
+const RAIL_ICON_CLASS = 'h-[18px] w-[18px]';
 
 /**
  * Corpo modo-aware da sidebar: nav (default) | notas (em /notas). Reutilizado
@@ -239,17 +261,17 @@ function SidebarRail({
                 <NavLink
                   to={to}
                   className={cn(
-                    'flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
+                    RAIL_ITEM_CLASS,
                     isActive
                       ? 'bg-[var(--color-app-surface-hover)] text-emerald-400'
-                      : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
+                      : RAIL_ITEM_IDLE_CLASS,
                   )}
                   aria-label={t(labelKey)}
                 >
                   <Icon
                     ref={registerIcon(to)}
                     duration={ICON_CUE_DURATION}
-                    className="h-[18px] w-[18px]"
+                    className={RAIL_ICON_CLASS}
                   />
                 </NavLink>
               </TooltipTrigger>
@@ -257,13 +279,55 @@ function SidebarRail({
             </Tooltip>
           );
         })}
+
+        {/*
+          Conta e novidades fecham o rail, empurradas para o rodapé pelo
+          `mt-auto` — mesma ordem e mesmo lugar da sidebar aberta, para trocar
+          de largura não mudar onde a ação mora. O separador repete o do topo,
+          então o rail lê como [expandir | navegação | conta] nas duas pontas.
+        */}
+        <div className="mt-auto flex w-full flex-col items-center gap-1">
+          <div className="my-1 h-px w-6 bg-[var(--color-app-border)]" />
+          <SidebarChangelogButton variant="rail" iconRef={registerIcon('changelog')} />
+          <SidebarSignOut variant="rail" iconRef={registerIcon('sign-out')} />
+        </div>
       </TooltipProvider>
     </motion.nav>
   );
 }
 
-export function SidebarChangelogButton(): React.ReactElement {
+/** Como o item de conta se apresenta: rótulo ao lado do ícone, ou só o ícone. */
+type SidebarItemVariant = 'full' | 'rail';
+
+interface SidebarItemProps {
+  variant?: SidebarItemVariant;
+  /** Entra na cascata de ícones do rail — ver `useIconCueGroup`. */
+  iconRef?: React.Ref<IconCueHandle>;
+}
+
+export function SidebarChangelogButton({
+  variant = 'full',
+  iconRef,
+}: SidebarItemProps = {}): React.ReactElement {
   const { t } = useI18n();
+  const label = t('shell.nav.changelog');
+
+  if (variant === 'rail') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link
+            to="/novidades"
+            aria-label={label}
+            className={cn(RAIL_ITEM_CLASS, RAIL_ITEM_IDLE_CLASS)}
+          >
+            <Sparkles ref={iconRef} duration={ICON_CUE_DURATION} className={RAIL_ICON_CLASS} />
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    );
+  }
 
   return (
     <div className="shrink-0 px-3 py-1.5">
@@ -273,16 +337,20 @@ export function SidebarChangelogButton(): React.ReactElement {
         className="flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
       >
         <Sparkles className="h-4 w-4 shrink-0" />
-        <span className="truncate">{t('shell.nav.changelog')}</span>
+        <span className="truncate">{label}</span>
       </Link>
     </div>
   );
 }
 
-export function SidebarSignOut(): React.ReactElement {
+export function SidebarSignOut({
+  variant = 'full',
+  iconRef,
+}: SidebarItemProps = {}): React.ReactElement {
   const { t } = useI18n();
   const { refresh } = useMe();
   const navigate = useNavigate();
+  const label = t('shell.signOut');
 
   async function signOut(): Promise<void> {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
@@ -290,15 +358,36 @@ export function SidebarSignOut(): React.ReactElement {
     navigate('/entrar');
   }
 
+  if (variant === 'rail') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            aria-label={label}
+            className={cn(RAIL_ITEM_CLASS, 'text-[var(--color-app-muted)]', SIGN_OUT_HOVER_CLASS)}
+          >
+            <LogOut ref={iconRef} duration={ICON_CUE_DURATION} className={RAIL_ICON_CLASS} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
   return (
     <div className="shrink-0 border-t border-[var(--color-app-border)] p-3">
       <button
         type="button"
         onClick={() => void signOut()}
-        className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-[var(--color-app-muted)] transition-colors hover:bg-rose-500/10 hover:text-rose-200"
+        className={cn(
+          'flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-[var(--color-app-muted)] transition-colors',
+          SIGN_OUT_HOVER_CLASS,
+        )}
       >
         <LogOut className="h-4 w-4 shrink-0" />
-        <span className="truncate">{t('shell.signOut')}</span>
+        <span className="truncate">{label}</span>
       </button>
     </div>
   );

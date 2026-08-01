@@ -31,6 +31,13 @@
   --color-accent-violet-soft: oklch(72% 0.18 290 / 0.2);
   --color-accent-amber: oklch(80% 0.16 78);
   --color-accent-rose: oklch(70% 0.2 18);
+  /*
+   * Cor de ação destrutiva em repouso sobre a superfície do tema — usada no
+   * hover do "Sair". Precisa de um valor por tema: um vermelho que passa em
+   * AA no fundo escuro não passa no claro e vice-versa, e o app não tem
+   * variante `dark:` para escolher em tempo de classe.
+   */
+  --color-app-danger: oklch(70% 0.18 18);
   --color-accent-primary: #8b7cf6;
   --color-accent-primary-soft: rgba(139, 124, 246, 0.13);
 
@@ -157,6 +164,7 @@
   --color-accent-emerald-soft: oklch(55% 0.14 159 / 0.14);
   --color-accent-violet: oklch(52% 0.18 290);
   --color-accent-violet-soft: oklch(52% 0.18 290 / 0.14);
+  --color-app-danger: oklch(50% 0.2 18);
   --theme-html-bg: #f7f7f8;
   --theme-mesh-a: oklch(72% 0.18 290 / 0.04);
   --theme-mesh-b: oklch(73% 0.16 159 / 0.04);
