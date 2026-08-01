@@ -29,6 +29,7 @@ import {
   loadActiveHistory,
   loadConversationTrail,
   orderByTrail,
+  type TrailNodeRow,
 } from './conversation-trail';
 import { ensureConversationLinearized, resolveAppendParent } from './message-versions';
 import { parseMessageAttachments } from './message-attachments';
@@ -1304,13 +1305,32 @@ export async function approveChatAction(
       });
       break;
     }
-    await tx.chatMessage.create({
+    // A confirmação vira mensagem NA trilha ativa (spec 127). Criada sem
+    // antecessor, ela ficaria fora de toda caminhada — invisível para o
+    // modelo — e ainda faria a conversa parecer não encadeada, apagando os
+    // indicadores de versão de todos os pontos de ramificação.
+    const conversation = await tx.conversation.findUnique({
+      where: { id: approval.conversationId },
+      select: { activeLeafId: true },
+    });
+    const { trail } = await loadConversationTrail(
+      approval.conversationId,
+      conversation?.activeLeafId,
+      (query) => tx.chatMessage.findMany(query) as unknown as Promise<TrailNodeRow[]>,
+    );
+    const hitlMessage = await tx.chatMessage.create({
       data: {
         conversationId: approval.conversationId,
         role: 'SYSTEM',
         kind: 'HITL_RESPONSE',
         content: `Nota “${note.title}” criada após confirmação do usuário.`,
+        parentId: resolveAppendParent(trail),
       },
+      select: { id: true },
+    });
+    await tx.conversation.update({
+      where: { id: approval.conversationId },
+      data: { activeLeafId: hitlMessage.id },
     });
     return { message: `Nota “${note.title}” criada.`, noteId: note.id };
   });

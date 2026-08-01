@@ -173,6 +173,25 @@ describe('resolveActiveTrail', () => {
     ]);
   });
 
+  test('mensagem criada sem antecessor cai FORA da trilha — invariante de escrita', () => {
+    // Toda escrita de mensagem tem que pendurar no fim da trilha ativa. Este
+    // teste fixa a consequência de esquecer: numa conversa já encadeada, o nó
+    // órfão desaparece do histórico — o modelo nunca o vê — e a conversa passa
+    // a parecer não encadeada, o que derruba o indicador de versão da RAIZ
+    // (as ramificações mais abaixo, que têm antecessor real, sobrevivem).
+    const nodes = [...branchedTree(), node('orfa', 'SYSTEM', null)];
+    const trail = resolveActiveTrail(nodes, 'a2b');
+
+    expect(trail.map((item) => item.id)).not.toContain('orfa');
+    expect(isLinearized(nodes)).toBe(false);
+
+    // Pendurada corretamente na folha, entra na trilha e nada mais quebra.
+    const attached = [...branchedTree(), node('ligada', 'SYSTEM', 'a2b')];
+    const attachedTrail = resolveActiveTrail(attached, 'ligada');
+    expect(attachedTrail.map((item) => item.id)).toEqual(['u1', 'a1', 'u2b', 'a2b', 'ligada']);
+    expect(buildVersionGroups(attached, attachedTrail).get('u2b')?.total).toBe(2);
+  });
+
   test('conversa vazia devolve trilha vazia', () => {
     expect(resolveActiveTrail([], null)).toEqual([]);
     expect(resolveActiveTrail([], 'qualquer')).toEqual([]);
