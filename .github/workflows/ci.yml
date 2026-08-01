@@ -35,6 +35,13 @@ jobs:
       - name: Format check
         run: bun run format:check
         working-directory: apps/web
+      # A extensão é irmã de apps/web, não filha: o eslint/prettier rodando
+      # com cwd em apps/web nunca a alcançou, e ela ficou sem nenhum gate de
+      # estilo desde que existe. `test:extension` era o único check sobre
+      # esses arquivos.
+      - name: Format check (apps/extension)
+        run: pnpm exec prettier --check ../extension
+        working-directory: apps/web
 
   typecheck-ts:
     name: Typecheck TS (apps/web)

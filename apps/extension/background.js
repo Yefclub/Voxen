@@ -9,11 +9,7 @@ import {
   normalizeBaseUrl,
   transcriptPageUrl,
 } from './lib/config.js';
-import {
-  compareSemver,
-  fetchExtensionVersion,
-  fetchJobStatus,
-} from './lib/api.js';
+import { compareSemver, fetchExtensionVersion, fetchJobStatus } from './lib/api.js';
 import {
   LAST_OUTCOME_KEY,
   TRACKED_JOBS_KEY,
