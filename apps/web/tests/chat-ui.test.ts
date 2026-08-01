@@ -5,7 +5,6 @@ import {
   hasToolLabel,
   pendingHitlFromTools,
   prettifyToolName,
-  toolBlockState,
   toolFamily,
 } from '../src/client/lib/chat-tools';
 
@@ -81,31 +80,6 @@ describe('pendingHitlFromTools', () => {
     expect(
       pendingHitlFromTools([{ name: 'propose_create_note', state: 'completed', output: {} }]),
     ).toEqual([]);
-  });
-});
-
-describe('toolBlockState', () => {
-  it('running enquanto houver ferramenta rodando', () => {
-    expect(
-      toolBlockState([
-        { name: 'a', state: 'completed' },
-        { name: 'b', state: 'running' },
-      ]),
-    ).toBe('running');
-  });
-  it('approval-required não conta como running (HITL fora do Pensando)', () => {
-    expect(toolBlockState([{ name: 'a', state: 'approval-required' }])).toBe('done');
-  });
-  it('error se alguma falhou e nenhuma roda', () => {
-    expect(
-      toolBlockState([
-        { name: 'a', state: 'completed' },
-        { name: 'b', state: 'error' },
-      ]),
-    ).toBe('error');
-  });
-  it('done quando todas concluíram sem erro', () => {
-    expect(toolBlockState([{ name: 'a', state: 'completed' }])).toBe('done');
   });
 });
 

@@ -9,7 +9,6 @@ import {
 import {
   applySegmentEvent,
   closeTrailingReasoning,
-  segmentsRunning,
   type MessageSegment,
 } from '../src/client/lib/chat-segments';
 
@@ -112,14 +111,23 @@ function turnFrames(turn: AgenticTurn): TurnFrame[] {
 }
 
 /**
- * O gatilho que a spec 130 aposentou (`thinkingInFlight`, removido junto com
- * ela), reproduzido aqui só para provar que a sequência acima é a patológica.
- * Fora do teste ele não existe mais — é exatamente esse o conserto.
+ * O gatilho que a spec 130 aposentou (`thinkingInFlight` + os `segmentsRunning`
+ * / `toolBlockState` que ele consumia, todos removidos junto), reproduzido
+ * INTEIRO aqui só para provar que a sequência acima é a patológica. É de
+ * propósito que o teste não importe nada disso da produção: a produção não tem
+ * mais — é exatamente esse o conserto — e um helper que sobrevivesse lá só para
+ * este teste seria código morto com respiração assistida.
  */
 function retiredTrigger(frame: TurnFrame): boolean {
   if (!frame.live) return false;
   if (!frame.answering) return true;
-  return segmentsRunning(frame.segments);
+  return frame.segments.some((segment) =>
+    segment.type === 'reasoning'
+      ? segment.endedAt == null
+      : // Aprovação pendente não contava como `running`: o HITL vive acima do
+        // composer, fora do bloco "Pensando" (spec 090).
+        segment.tools.some((tool) => tool.state === 'running'),
+  );
 }
 
 type Probe = { toggle: () => void };

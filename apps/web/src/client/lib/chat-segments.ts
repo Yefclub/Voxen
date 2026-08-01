@@ -10,7 +10,7 @@
 // empilhado (se o tipo mudou). Puro e testável (sem DOM/React).
 // ============================================================================
 
-import { toolBlockState, type ToolState } from './chat-tools';
+import { type ToolState } from './chat-tools';
 
 const VALID_TOOL_STATES: readonly ToolState[] = [
   'running',
@@ -222,27 +222,13 @@ export function parseMessageSegments(value: unknown): MessageSegment[] | null {
 }
 
 /**
- * `true` se algo ainda está em andamento: um raciocínio sem `endedAt`, ou
- * qualquer tool-group com ferramenta `running`. Aprovação pendente (HITL) não
- * conta — o card fica acima do composer (spec 090).
- */
-export function segmentsRunning(segments: readonly MessageSegment[]): boolean {
-  return segments.some((segment) =>
-    segment.type === 'reasoning'
-      ? segment.endedAt == null
-      : toolBlockState(segment.tools) === 'running',
-  );
-}
-
-/**
  * Duração (ms) do turno derivada dos timestamps dos PRÓPRIOS segments de
- * raciocínio: do `startedAt` do primeiro ao `endedAt` do último. Serve de
- * fallback pro cronômetro local do `ThinkingBlock` (`startedAtRef`/`frozen`),
- * que é estado de componente e por isso NÃO sobrevive quando `send()` troca
- * as mensagens pelo snapshot do servidor ao fim do turno — o React remonta o
- * componente (a mensagem ganha o id real do banco, mudando a `key`), zerando
- * esse estado local. Esta função deriva a duração a partir dos timestamps
- * persistidos, sem depender de estado local.
+ * raciocínio: do `startedAt` do primeiro ao `endedAt` do último.
+ *
+ * Desde a spec 130 é a ÚNICA fonte da duração exibida — antes era o fallback
+ * de um cronômetro de parede local, que morreu junto com o `setInterval` que o
+ * alimentava. Ler dos timestamps persistidos é o que faz o número sobreviver a
+ * remount e a reload sem depender de estado de componente.
  *
  * `null` se não há segmento de raciocínio (turno só de ferramentas — sem
  * duração, como já era antes desta spec) ou se algum ainda está aberto (sem

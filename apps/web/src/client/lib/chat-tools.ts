@@ -74,22 +74,6 @@ export function hasToolLabel(name: string): boolean {
   return KNOWN_TOOL_NAMES.includes(name);
 }
 
-/**
- * Estado agregado do toolblock (spec 090):
- * - `running` só enquanto a ferramenta está de fato em execução;
- * - aprovação pendente NÃO conta como running (HITL vive fora do “Pensando”);
- * - senão `error` se alguma falhou;
- * - senão `done`.
- */
-export function toolBlockState(tools: readonly ToolLike[]): 'running' | 'error' | 'done' {
-  let hasError = false;
-  for (const tool of tools) {
-    if (tool.state === 'running') return 'running';
-    if (tool.state === 'error') hasError = true;
-  }
-  return hasError ? 'error' : 'done';
-}
-
 export {
   healStaleRunningTools,
   isToolErrorOutput,

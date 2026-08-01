@@ -5,7 +5,6 @@ import {
   parseMessageSegments,
   segmentsFromPersistedTools,
   segmentsReasoningDuration,
-  segmentsRunning,
   segmentsToolCount,
   thinkingDuration,
   type MessageSegment,
@@ -170,39 +169,6 @@ describe('segmentsFromPersistedTools (mensagem histórica)', () => {
       { approvalId: 'x', state: 'approved', noteId: 'n1' },
     ] as unknown as ToolEvent[];
     expect(segmentsFromPersistedTools(malformed)).toEqual([]);
-  });
-});
-
-describe('segmentsRunning', () => {
-  it('true se há raciocínio aberto', () => {
-    const segments: MessageSegment[] = [
-      { type: 'reasoning', id: 'r0', text: 'x', startedAt: 1000 },
-    ];
-    expect(segmentsRunning(segments)).toBe(true);
-  });
-
-  it('true se algum tool-group tem ferramenta running', () => {
-    expect(
-      segmentsRunning([{ type: 'tool-group', id: 'g0', tools: [tool('t1', 'running')] }]),
-    ).toBe(true);
-  });
-
-  it('false se só há approval-required (HITL não mantém Pensando)', () => {
-    expect(
-      segmentsRunning([{ type: 'tool-group', id: 'g0', tools: [tool('t1', 'approval-required')] }]),
-    ).toBe(false);
-  });
-
-  it('false quando tudo terminou (reasoning fechado + tools completos/erro)', () => {
-    const segments: MessageSegment[] = [
-      { type: 'reasoning', id: 'r0', text: 'x', startedAt: 1000, endedAt: 1200 },
-      { type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed'), tool('t2', 'error')] },
-    ];
-    expect(segmentsRunning(segments)).toBe(false);
-  });
-
-  it('array vazio não está rodando', () => {
-    expect(segmentsRunning([])).toBe(false);
   });
 });
 

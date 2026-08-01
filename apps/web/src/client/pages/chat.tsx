@@ -291,10 +291,14 @@ function thinkingSummaryLabel(duration: number | null, toolCount: number, t: Tra
 
 // ---------------------------------------------------------------------------
 // Bloco de pensamento — raciocínio e ferramentas num único container
-// cronológico (spec 078): "Pensando" (shimmer) enquanto o turno está em voo e
-// resumo compacto ("Pensou por Xs · N ferramentas") assim que a resposta final
-// começa (spec 126). Segmentos persistidos abertos não reativam um turno
-// encerrado nem iniciam cronômetro após reload.
+// cronológico (spec 078). Tudo aqui é dirigido por `live`, e só por ele
+// (spec 130): shimmer "Pensando" com a timeline aberta enquanto o stream do
+// turno está aberto, resumo compacto ("Pensou por Xs · N ferramentas") com a
+// timeline recolhida depois. Um sinal que mudasse no meio do turno — como o
+// `thinkingInFlight` que a 126 introduziu e a 130 aposentou — faria bloco e
+// rótulo pularem a cada ida-e-volta de ferramenta.
+// A duração vem sempre dos timestamps persistidos, então mensagem recarregada
+// não "envelhece" nem reativa cronômetro nenhum.
 // HITL fica acima do composer (spec 090), não neste bloco.
 // ---------------------------------------------------------------------------
 function ThinkingBlock({
