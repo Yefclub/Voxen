@@ -46,13 +46,13 @@ import {
   applySegmentEvent,
   closeTrailingReasoning,
   parseMessageSegments,
-  resolveThinkingTiming,
   segmentsFromPersistedTools,
   segmentsToolCount,
-  thinkingInFlight,
+  thinkingDuration,
   type MessageSegment,
   type ToolEvent,
 } from '../lib/chat-segments';
+import { useThinkingDisclosure } from '../lib/thinking-disclosure';
 import {
   MAX_MESSAGE_ATTACHMENTS,
   type MessageAttachment,
@@ -291,75 +291,60 @@ function thinkingSummaryLabel(duration: number | null, toolCount: number, t: Tra
 
 // ---------------------------------------------------------------------------
 // Bloco de pensamento — raciocínio e ferramentas num único container
-// cronológico (spec 078): "Pensando" (shimmer) enquanto o turno está em voo e
-// resumo compacto ("Pensou por Xs · N ferramentas") assim que a resposta final
-// começa (spec 126). Segmentos persistidos abertos não reativam um turno
-// encerrado nem iniciam cronômetro após reload.
+// cronológico (spec 078). Tudo aqui é dirigido por `live`, e só por ele
+// (spec 130): shimmer "Pensando" com a timeline aberta enquanto o stream do
+// turno está aberto, resumo compacto ("Pensou por Xs · N ferramentas") com a
+// timeline recolhida depois. Um sinal que mudasse no meio do turno — como o
+// `thinkingInFlight` que a 126 introduziu e a 130 aposentou — faria bloco e
+// rótulo pularem a cada ida-e-volta de ferramenta.
+// A duração vem sempre dos timestamps persistidos, então mensagem recarregada
+// não "envelhece" nem reativa cronômetro nenhum.
 // HITL fica acima do composer (spec 090), não neste bloco.
 // ---------------------------------------------------------------------------
 function ThinkingBlock({
   segments,
   live,
-  answering,
   startedAt,
 }: {
   segments: MessageSegment[];
+  /** O stream deste turno ainda está aberto. */
   live: boolean;
-  /** A resposta final já começou a chegar neste turno. */
-  answering: boolean;
   startedAt: number;
 }): React.ReactElement {
   const { t } = useI18n();
-  // Timeline aberta enquanto o turno está em voo; recolhe só ao terminar
-  // (usuário reabre no header).
-  const [expanded, setExpanded] = useState(true);
-  // Cronômetro de parede apenas durante o turno ao vivo. Mensagens concluídas
-  // usam exclusivamente timestamps persistidos, portanto nunca "envelhecem"
-  // ao remontar ou ao voltar para a conversa.
-  const startedAtRef = useRef<number>(startedAt);
-  const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - startedAt));
-  const { inFlight, duration } = resolveThinkingTiming(
-    segments,
-    thinkingInFlight(segments, live, answering),
-    startedAt,
-    elapsed,
-  );
+  // Spec 130: bloco E cabeçalho dirigidos por `live`, o único sinal do turno
+  // que não oscila. O gatilho anterior (`thinkingInFlight`) alternava a cada
+  // ida-e-volta de ferramenta — abrindo/fechando a timeline e trocando o
+  // rótulo entre "Pensando" e "Pensou por Xs" no meio da resposta, contra a
+  // própria regra da spec 078.
+  const { expanded, toggle } = useThinkingDisclosure(live);
+  const duration = thinkingDuration(segments, live, startedAt);
   const toolCount = segmentsToolCount(segments);
-
-  useEffect(() => {
-    if (!inFlight) {
-      setExpanded(false);
-      return;
-    }
-    setExpanded(true);
-    const id = window.setInterval(() => {
-      setElapsed(Date.now() - startedAtRef.current);
-    }, 200);
-    return () => window.clearInterval(id);
-  }, [inFlight]);
 
   return (
     <section className="mb-2.5 flex max-w-3xl flex-col gap-1">
+      {/*
+        Clicável também durante o turno: a spec 130 exige que o usuário possa
+        assumir o controle no meio do voo, e `disabled` tirava isso dele.
+      */}
       <button
         type="button"
-        onClick={() => !inFlight && setExpanded((v) => !v)}
-        disabled={inFlight}
+        onClick={toggle}
+        aria-expanded={expanded}
         className="flex items-center gap-1.5 self-start rounded-md px-1 py-0.5 text-left"
       >
-        {inFlight ? (
+        <ChevronRight
+          className={cn(
+            'h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform',
+            expanded && 'rotate-90',
+          )}
+        />
+        {live ? (
           <span className="text-shimmer text-[12.5px] font-medium">{t('chat.thinking')}</span>
         ) : (
-          <>
-            <ChevronRight
-              className={cn(
-                'h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform',
-                expanded && 'rotate-90',
-              )}
-            />
-            <span className="text-[12.5px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]">
-              {thinkingSummaryLabel(duration, toolCount, t)}
-            </span>
-          </>
+          <span className="text-[12.5px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]">
+            {thinkingSummaryLabel(duration, toolCount, t)}
+          </span>
         )}
       </button>
       <Collapsible open={expanded}>
@@ -1716,7 +1701,6 @@ export function ChatPage(): React.ReactElement {
                         <ThinkingBlock
                           segments={segments}
                           live={isStreamingAssistant}
-                          answering={message.content.length > 0}
                           startedAt={Date.parse(message.createdAt)}
                         />
                       )}

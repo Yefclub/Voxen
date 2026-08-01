@@ -91,9 +91,21 @@ spec.
    fica dentro do bloco recolhível, não é prompt nem instrução interna. O
    resumo operacional permanece como fallback quando o segmento não tem
    texto.
-2. **Compactação.** O bloco já colapsava, mas só quando o stream fechava
-   (`inFlight = live`), então ficava aberto durante toda a digitação da
-   resposta final. Passa a sair de voo quando a resposta final começa.
+2. ~~**Compactação.**~~ **REVOGADA pela spec 130, item 1.** A decisão era: o
+   bloco só colapsava quando o stream fechava (`inFlight = live`), ficando
+   aberto durante toda a digitação da resposta final, então passaria a sair de
+   voo assim que a resposta começasse.
+
+   O efeito colateral só apareceu em uso real: como o harness volta a chamar
+   ferramenta DEPOIS de começar a responder, "sair de voo quando a resposta
+   começa" virou um ciclo abre/fecha por ida-e-volta de ferramenta — a
+   "interface pulando" que o owner relatou, e que também trocava o cabeçalho
+   entre "Pensando" e "Pensou por Xs" contra a regra explícita da spec 078.
+   Desde a 130 o gatilho é `live` de novo, e o bloco volta a ficar aberto
+   durante a resposta; em troca ele se move no máximo duas vezes por turno.
+   O requisito EARS da 126 ("quando o turno termina, apresentar em forma
+   compacta") continua atendido — o que caiu foi o diagnóstico de que a
+   compactação devia começar antes do fim do turno.
 3. **Anexo.** O composer nunca enviou nada junto da mensagem: `startUpload`
    chamava `uploadMedia` (job de ingestão) e o POST `/api/chat` levava
    apenas `{ content }`. Não havia campo em `ChatMessage` — daí a coluna

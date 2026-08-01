@@ -4,11 +4,10 @@
 // Duas peças, o padrão convergente de ChatGPT/Claude/Orbital:
 //
 //   `UserMessageActions` — o `‹ n/N ›` e o botão de editar, na mesma linha do
-//   copiar. O indicador fica SEMPRE visível e as ações só aparecem no hover: o
-//   contador é estado ("você está lendo a 2ª de 3 respostas"), e estado que
-//   some quando o ponteiro sai da mensagem esconde do usuário o fato de ele
-//   estar numa trilha antiga. Copiar e editar são ações, e ação escondida até
-//   o hover é o padrão que a linha já usa.
+//   copiar. Os três se revelam juntos no hover da mensagem (spec 130, item 4).
+//   A 127 tinha deixado o `‹ n/N ›` sempre visível por ser *estado* e não ação;
+//   o owner pediu o contrário — a linha em repouso fica limpa e tudo o que
+//   pertence à mensagem aparece de uma vez.
 //
 //   `MessageEditForm` — o composer aparecendo no lugar da bolha, com o texto
 //   atual carregado. Mesma linguagem visual do composer de baixo porque faz o
@@ -71,7 +70,17 @@ function MessageVersionNav({
     <div
       role="group"
       aria-label={t('chat.versionOf', { index: versions.index, total: versions.total })}
-      className="inline-flex items-center gap-0.5 text-[11px] text-[var(--color-app-muted)]"
+      className={cn(
+        'inline-flex items-center gap-0.5 text-[11px] text-[var(--color-app-muted)] transition-opacity',
+        // Spec 130 item 4: o owner pediu o indicador revelado junto das demais
+        // ações, revogando a decisão da 127 de mantê-lo sempre visível.
+        // `ACTION_REVEAL` esconde por opacidade, não por `display`, então as
+        // setas continuam na ordem de tabulação — e o
+        // `md:group-focus-within:opacity-100` do grupo (a `<article>` da
+        // mensagem) as traz de volta assim que uma delas recebe o foco, sem
+        // deixar o teclado navegar para um controle invisível.
+        ACTION_REVEAL,
+      )}
     >
       <button
         type="button"
