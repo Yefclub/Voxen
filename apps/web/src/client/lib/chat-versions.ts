@@ -53,6 +53,45 @@ export function versionNeighborId(
   return versions.ids[versions.index - 1 + direction] ?? null;
 }
 
+/** Para onde o envio vai e o que ele consome do composer. */
+export interface SendPlan {
+  endpoint: string;
+  attachmentJobIds: string[];
+  /** `false` num reenvio de versão: o composer não é dele. */
+  clearsComposer: boolean;
+}
+
+/**
+ * Decide as três coisas que mudam entre um envio normal e um reenvio de versão.
+ *
+ * Vive aqui, e não inline na página, porque as três erram em silêncio: a URL
+ * errada manda a versão para o endpoint de mensagem nova (perde a ramificação),
+ * herdar os anexos errados troca o arquivo da pergunta pelo que estava
+ * preparado no composer, e limpar o composer num reenvio apaga um rascunho que
+ * o usuário não mandou. Nenhuma das três quebra render — só teste pega.
+ */
+export function planSend(params: {
+  branch?: { messageId: string; attachments: readonly { jobId: string }[] };
+  composerJobIds: readonly string[];
+}): SendPlan {
+  const { branch, composerJobIds } = params;
+  if (!branch) {
+    return {
+      endpoint: '/api/chat',
+      attachmentJobIds: [...composerJobIds],
+      clearsComposer: true,
+    };
+  }
+  return {
+    // `encodeURIComponent` não é cerimônia: o id entra num segmento de caminho.
+    endpoint: `/api/chat/messages/${encodeURIComponent(branch.messageId)}/versions`,
+    // A versão herda os anexos da mensagem editada — o servidor re-vincula os
+    // mesmos jobs com escopo de workspace, sem novo upload.
+    attachmentJobIds: branch.attachments.map((item) => item.jobId),
+    clearsComposer: false,
+  };
+}
+
 /**
  * Recorta a trilha exibida no ponto de ramificação: remove a mensagem editada
  * e tudo que veio depois dela, deixando espaço para a versão nova e a resposta

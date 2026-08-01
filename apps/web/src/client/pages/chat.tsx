@@ -71,7 +71,7 @@ import {
 } from '../lib/chat-scroll';
 import type { ChatHandoffState } from '../lib/chat-handoff';
 import { mergeChatMessagePages } from '../lib/chat-pagination';
-import { truncateTrailFrom, type MessageVersions } from '../lib/chat-versions';
+import { planSend, truncateTrailFrom, type MessageVersions } from '../lib/chat-versions';
 import { MessageEditForm, UserMessageActions } from '../components/chat/message-versioning';
 import { claimPendingId, reconcileChatStart, sameActiveTurn } from '../lib/chat-reconciliation';
 import {
@@ -583,6 +583,7 @@ function Composer({
   input,
   setInput,
   streaming,
+  busy = false,
   onSend,
   onStop,
   attachments,
@@ -594,6 +595,12 @@ function Composer({
   input: string;
   setInput: (value: string) => void;
   streaming: boolean;
+  /**
+   * Ocupado sem ter turno para interromper — hoje só a troca de trilha
+   * (spec 127). Trava o envio como `streaming`, mas NÃO troca o botão por
+   * "parar": não há nada a parar, e oferecer o botão mentiria.
+   */
+  busy?: boolean;
   onSend: () => void;
   onStop: () => void;
   attachments: Attachment[];
@@ -650,7 +657,7 @@ function Composer({
           }}
           placeholder={t('prompt.placeholder')}
           rows={1}
-          disabled={streaming}
+          disabled={streaming || busy}
           autoFocus={autoFocus}
           style={{
             maxHeight: `min(${COMPOSER_MAX_HEIGHT_PX}px, ${COMPOSER_MAX_HEIGHT_VH * 100}dvh)`,
@@ -709,7 +716,7 @@ function Composer({
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            disabled={streaming}
+            disabled={streaming || busy}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] disabled:opacity-50"
             aria-label={t('chat.attach')}
             title={t('chat.attach')}
@@ -729,7 +736,7 @@ function Composer({
           ) : (
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={!input.trim() || busy}
               className="grid h-9 w-9 place-items-center rounded-full bg-[var(--color-accent-primary)] text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label={t('chat.send')}
             >
@@ -1291,7 +1298,12 @@ export function ChatPage(): React.ReactElement {
 
   async function send(override?: string, branch?: BranchTarget): Promise<void> {
     const content = (override ?? input).trim();
-    if (!content || streaming) return;
+    // `switchingVersion` no guarda: a troca de trilha grava a folha ativa e só
+    // depois relê o snapshot. Um envio que entre nessa janela cria o turno
+    // entre as duas operações, e o `replace` da troca apaga as bolhas otimistas
+    // dele — `reconcileChatStart` só renomeia o que já está na lista, então a
+    // pergunta e a resposta ficariam invisíveis até o turno acabar.
+    if (!content || streaming || switchingVersion) return;
     // Espelho otimista dos anexos: o servidor devolve a forma canônica no
     // snapshot, mas a bolha já nasce com o vínculo visível.
     //
@@ -1310,9 +1322,29 @@ export function ChatPage(): React.ReactElement {
             name: item.name,
             kind: attachmentKind(item.name, '') ?? 'document',
           }));
-    const attachmentJobIds = branch
-      ? branch.attachments.map((item) => item.jobId)
-      : readyAttachmentJobIds(attachments);
+    const plan = planSend({ branch, composerJobIds: readyAttachmentJobIds(attachments) });
+    const attachmentJobIds = plan.attachmentJobIds;
+    // Lista exibida ANTES do corte, para desfazê-lo se o turno não nascer. O
+    // snapshot não serve de rollback: ele devolve só os últimos 60 da trilha
+    // (`getChatSnapshot`), então numa conversa longa a mesclagem com o prefixo
+    // cortado deixaria um buraco no meio da conversa.
+    const trailBeforeBranch = branch ? messages : null;
+    /**
+     * Desfaz o corte quando NENHUM snapshot pôde ser lido (offline de verdade).
+     * Sem isso a tela fica com o prefixo cortado mais duas bolhas otimistas
+     * órfãs, e nada se auto-cura: `persistedActiveTurn` é nulo, o poll de
+     * recuperação não liga, e o histórico só volta num reload.
+     */
+    function restoreBranchTrail(): void {
+      if (!trailBeforeBranch) return;
+      setMessages((current) =>
+        mergeChatMessagePages(
+          trailBeforeBranch,
+          // O que estiver mais fresco na tela vence; as bolhas otimistas saem.
+          current.filter((message) => !message.id.startsWith('local-')),
+        ),
+      );
+    }
     const localStartedAt = new Date().toISOString();
     const localUser: ChatMessage = {
       id: `local-user-${crypto.randomUUID()}`,
@@ -1349,7 +1381,7 @@ export function ChatPage(): React.ReactElement {
       localUser,
       localAssistant,
     ]);
-    if (!branch) setInput('');
+    if (plan.clearsComposer) setInput('');
     // Chips que saem do composer QUANDO o servidor aceitar a mensagem: os
     // prontos (foram vinculados) e os que falharam (erro já avisado por
     // toast). Uploads em andamento seguem no composer e valem para a próxima
@@ -1359,9 +1391,9 @@ export function ChatPage(): React.ReactElement {
     // novo. Guardamos os ids em vez de filtrar por status depois, para não
     // levar junto um anexo que o usuário adicionou durante a requisição.
     const consumedAttachmentIds = new Set<string>(
-      branch
-        ? []
-        : attachments.filter((item) => item.status !== 'uploading').map((item) => item.id),
+      plan.clearsComposer
+        ? attachments.filter((item) => item.status !== 'uploading').map((item) => item.id)
+        : [],
     );
     setNearBottom(false);
     setShowScrollLatest(false);
@@ -1372,20 +1404,15 @@ export function ChatPage(): React.ReactElement {
     let persistedActiveTurn: ActiveTurn | null = null;
 
     try {
-      const response = await fetch(
-        branch
-          ? `/api/chat/messages/${encodeURIComponent(branch.messageId)}/versions`
-          : '/api/chat',
-        {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(
-            attachmentJobIds.length > 0 ? { content, attachmentJobIds } : { content },
-          ),
-          signal: controller.signal,
-        },
-      );
+      const response = await fetch(plan.endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(
+          attachmentJobIds.length > 0 ? { content, attachmentJobIds } : { content },
+        ),
+        signal: controller.signal,
+      });
       if (!response.ok || !response.body) throw new Error(t('chat.streamStartError'));
       // Mensagem aceita: só agora os chips consumidos saem do composer.
       setAttachments((current) => current.filter((item) => !consumedAttachmentIds.has(item.id)));
@@ -1479,11 +1506,18 @@ export function ChatPage(): React.ReactElement {
     } catch (error) {
       // Desconexão de transporte (Bun idle / proxy / rede) ≠ falha do turno.
       // Tenta recuperar o estado canônico antes de alarmar o usuário.
+      //
+      // Num reenvio, o snapshot de recuperação entra como `replace`, nunca
+      // mesclado. Aqui não dá para saber se a versão chegou a ser criada: se
+      // foi, mesclar traria a mensagem editada de volta ao lado da versão nova;
+      // se não foi, mesclar com o prefixo cortado abre um buraco, porque o
+      // snapshot é só uma janela da trilha. Substituir acerta nos dois casos —
+      // a janela é sempre contígua e `hasOlder`/`nextCursor` vêm com ela.
       if (!controller.signal.aborted) {
         try {
           const snapshot = await apiGet<Snapshot>('/api/chat');
           persistedActiveTurn = snapshot.activeTurn;
-          applySnapshot(snapshot);
+          applySnapshot(snapshot, Boolean(branch));
           if (snapshot.activeTurn) {
             // Turno ainda roda no servidor — sem toast de erro; UI mostra recovering.
           } else if (isTransientStreamDisconnect(error)) {
@@ -1492,6 +1526,7 @@ export function ChatPage(): React.ReactElement {
             toast.error(error instanceof Error ? error.message : t('chat.streamError'));
           }
         } catch {
+          restoreBranchTrail();
           if (isTransientStreamDisconnect(error)) {
             toast.error(t('chat.streamDisconnected'));
           } else {
@@ -1502,9 +1537,10 @@ export function ChatPage(): React.ReactElement {
         try {
           const snapshot = await apiGet<Snapshot>('/api/chat');
           persistedActiveTurn = snapshot.activeTurn;
-          applySnapshot(snapshot);
+          applySnapshot(snapshot, Boolean(branch));
         } catch {
           // Offline: o turno continua durável e será restaurado no próximo acesso.
+          restoreBranchTrail();
         }
       }
     } finally {
@@ -1721,6 +1757,7 @@ export function ChatPage(): React.ReactElement {
                 input={input}
                 setInput={setInput}
                 streaming={streaming}
+                busy={switchingVersion}
                 onSend={() => void send()}
                 onStop={() => void stopStreaming()}
                 attachments={attachments}
