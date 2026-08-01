@@ -83,8 +83,12 @@ jobs:
           file: Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Mesmo escopo que o `ci.yml` usa para esta imagem. Antes os dois
+          # liam o escopo padrão (`buildkit`); com o CI passando a gravar em
+          # `easypanel`, ficar no padrão deixaria este build de release subir
+          # sempre frio.
+          cache-from: type=gha,scope=easypanel
+          cache-to: type=gha,mode=max,scope=easypanel
           build-args: |
             VOXEN_VERSION=${{ steps.meta.outputs.version }}
             VOXEN_GIT_SHA=${{ steps.meta.outputs.sha }}
