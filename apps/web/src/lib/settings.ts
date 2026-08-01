@@ -44,6 +44,11 @@ export type GlobalSettingKey =
   // Secret cifrado — espelha yt_dlp_proxy_urls. NUNCA retornado em texto por
   // endpoint nem logado; worker materializa em arquivo temp 600. Ver spec 063.
   | 'yt_dlp_cookies'
+  // Metadado (NÃO-secret) das capturas de cookie feitas pela extensão:
+  // JSON {"<plataforma>": {"capturedAt": "<ISO>"}}. Fica separado do valor
+  // porque o formato de `yt_dlp_cookies` é contrato com o yt-dlp — envelope
+  // ali quebraria o worker e qualquer cookies.txt colado à mão. Ver spec 121.
+  | 'platform_cookies_meta'
   | 'allow_signups'
   | 'onboarding_done'
   // Opcional: timeout (segundos) da chamada de resumo via OpenRouter.

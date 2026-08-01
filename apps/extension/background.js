@@ -14,6 +14,16 @@ import {
   fetchExtensionVersion,
   fetchJobStatus,
 } from './lib/api.js';
+import {
+  LAST_OUTCOME_KEY,
+  TRACKED_JOBS_KEY,
+  buildJobOutcome,
+  classifyJobStatus,
+  pickLatestOutcome,
+  pruneExpiredJobs,
+  touchJobs,
+  withoutJob,
+} from './lib/job-state.js';
 
 const TRACK_ALARM = 'voxen-job-track';
 const UPDATE_ALARM = 'voxen-update-check';
@@ -22,6 +32,41 @@ const UPDATE_ALARM = 'voxen-update-check';
 // tema padrão (theme.css / apps/web) entra aqui como literal. Se a paleta do
 // design system mudar, atualizar junto.
 const BADGE_COLOR = '#8b7cf6';
+
+/**
+ * Fila que serializa os ciclos ler-alterar-gravar do `chrome.storage.local`
+ * (`trackedJobs`, `lastJobOutcome`, `notificationLinks`).
+ *
+ * Ser "o único que escreve" não basta: `trackJob`, `pollTrackedJobs` e
+ * `settleJob` são `async` e cedem o controle em cada `await`, então duas
+ * invocações dentro do mesmo worker se intercalam — uma lê o mapa, a outra
+ * grava, e a primeira regrava por cima o que tinha lido. Isso já ressuscitava
+ * o `lastJobOutcome` de um job que o popup acabara de reconhecer e já sumia
+ * com job recém-enfileirado durante um poll. A fila garante que cada ciclo
+ * rode inteiro antes do próximo começar.
+ *
+ * Só vale dentro de uma instância do service worker — e isso basta: o MV3
+ * mantém no máximo uma viva por vez, e se ela for encerrada no meio a escrita
+ * simplesmente não acontece (nada fica pela metade no storage).
+ *
+ * Regra ao usar: nenhuma seção crítica pode conter `fetch`. A rede fica fora
+ * do lock (ver `pollTrackedJobs`), senão o popup ficaria esperando a rodada
+ * inteira de consultas para conseguir reconhecer um resultado.
+ *
+ * @type {Promise<unknown>}
+ */
+let storageQueue = Promise.resolve();
+
+/**
+ * @template T
+ * @param {() => Promise<T>} critical
+ * @returns {Promise<T>}
+ */
+function withStorageLock(critical) {
+  const run = storageQueue.then(critical, critical);
+  storageQueue = run.catch(() => {});
+  return run;
+}
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
@@ -59,6 +104,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'job-settled') {
+    void settleJob(message.payload?.jobId).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
   if (message.type === 'check-update') {
     void checkForUpdate(true).then((r) => sendResponse(r));
     return true;
@@ -77,14 +127,19 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 chrome.notifications.onClicked.addListener(async (notificationId) => {
-  const data = await chrome.storage.local.get(['notificationLinks']);
-  const links = data.notificationLinks || {};
-  const url = links[notificationId];
-  if (url) {
-    chrome.tabs.create({ url });
+  // Sob o lock: `notifyOnce` também faz ler-alterar-gravar em
+  // `notificationLinks`, e duas notificações concorrentes perderiam um link —
+  // o clique viraria clique morto.
+  const url = await withStorageLock(async () => {
+    const data = await chrome.storage.local.get(['notificationLinks']);
+    const links = data.notificationLinks || {};
+    const found = links[notificationId];
+    if (!found) return null;
     delete links[notificationId];
     await chrome.storage.local.set({ notificationLinks: links });
-  }
+    return found;
+  });
+  if (url) chrome.tabs.create({ url });
 });
 
 /**
@@ -92,36 +147,53 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
  */
 async function trackJob(payload) {
   if (!payload?.jobId || !payload?.baseUrl) return;
-  const stored = await chrome.storage.local.get(['trackedJobs']);
-  /** @type {Record<string, object>} */
-  const tracked = stored.trackedJobs || {};
-  tracked[payload.jobId] = {
-    jobId: payload.jobId,
-    baseUrl: payload.baseUrl,
-    token: payload.token || '',
-    pageTitle: payload.pageTitle || '',
-    startedAt: Date.now(),
-  };
-  await chrome.storage.local.set({ trackedJobs: tracked });
-  // Poll frequente enquanto houver jobs.
-  chrome.alarms.create(TRACK_ALARM, { periodInMinutes: 0.05 }); // ~3s
+  const remaining = await withStorageLock(async () => {
+    const stored = await chrome.storage.local.get([TRACKED_JOBS_KEY]);
+    const tracked = pruneExpiredJobs(stored[TRACKED_JOBS_KEY], Date.now());
+    tracked[payload.jobId] = {
+      jobId: payload.jobId,
+      baseUrl: payload.baseUrl,
+      token: payload.token || '',
+      pageTitle: payload.pageTitle || '',
+      startedAt: Date.now(),
+    };
+    await chrome.storage.local.set({ [TRACKED_JOBS_KEY]: tracked });
+    return Object.keys(tracked).length;
+  });
+  // Poll de fundo enquanto houver jobs. O Chrome impõe piso de 30s ao período
+  // de alarmes, então este valor só declara "o mínimo que der" — na prática a
+  // rodada é a cada 30s, e é o poll do popup aberto (2s) que dá a
+  // responsividade em primeiro plano.
+  chrome.alarms.create(TRACK_ALARM, { periodInMinutes: 0.05 });
   // Badge
-  await refreshBadge(Object.keys(tracked).length);
+  await refreshBadge(remaining);
 }
 
 async function pollTrackedJobs() {
-  const stored = await chrome.storage.local.get(['trackedJobs']);
-  /** @type {Record<string, { jobId: string, baseUrl: string, token?: string, pageTitle?: string }>} */
-  const tracked = stored.trackedJobs || {};
-  const ids = Object.keys(tracked);
-  if (ids.length === 0) {
-    chrome.alarms.clear(TRACK_ALARM);
-    await refreshBadge(0);
-    return;
-  }
+  const stored = await chrome.storage.local.get([TRACKED_JOBS_KEY]);
+  /** @type {Record<string, import('./lib/job-state.js').TrackedJob>} */
+  const snapshot = pruneExpiredJobs(stored[TRACKED_JOBS_KEY], Date.now());
 
-  for (const id of ids) {
-    const item = tracked[id];
+  /** Ids que esta rodada resolveu — terminaram ou perderam a sessão. */
+  const settledIds = [];
+  /**
+   * Ids que o servidor confirmou em andamento nesta rodada. Renovam o sinal de
+   * vida (ver `TRACKED_JOB_TTL_MS`): job que o servidor reporta vivo não pode
+   * ser descartado por tempo de fila.
+   * @type {string[]}
+   */
+  const aliveIds = [];
+  /**
+   * Desfechos terminais desta rodada. Só um vai para o storage (o popup
+   * mostra um), mas a escolha é feita depois e por critério explícito — cada
+   * job resolvido já gerou a sua notificação, então nada se perde de fato.
+   * @type {Array<{ startedAt?: number, outcome: import('./lib/job-state.js').JobOutcome }>}
+   */
+  const roundOutcomes = [];
+
+  // Fase de rede: fora do lock de storage, é a parte lenta.
+  for (const id of Object.keys(snapshot)) {
+    const item = snapshot[id];
     const result = await fetchJobStatus({
       baseUrl: item.baseUrl,
       jobId: item.jobId,
@@ -137,13 +209,24 @@ async function pollTrackedJobs() {
           'Faça login de novo para acompanhar o processamento.',
           loginUrl(item.baseUrl, '/fila'),
         );
-        delete tracked[id];
+        settledIds.push(id);
       }
+      // Demais erros (404, 5xx, rede) não descartam o rastreamento: a falha
+      // pode ser transitória. Quem impede o zumbi eterno é o TTL aplicado no
+      // `pruneExpiredJobs` acima.
       continue;
     }
 
-    const status = result.job.status;
-    if (status === 'SUCCEEDED' || status === 'DONE' || status === 'COMPLETED') {
+    const kind = classifyJobStatus(result.job.status);
+    if (kind === 'pending') {
+      aliveIds.push(id);
+      continue;
+    }
+
+    const outcome = buildJobOutcome({ job: result.job, tracked: item, now: Date.now() });
+    if (outcome) roundOutcomes.push({ startedAt: item.startedAt, outcome });
+
+    if (kind === 'succeeded') {
       const title = result.job.title || item.pageTitle || 'Conteúdo pronto';
       const summary = result.job.summary || 'Abra no Voxen para ler o conteúdo completo.';
       const link = result.job.transcriptId
@@ -155,20 +238,73 @@ async function pollTrackedJobs() {
         truncate(summary, 120),
         link,
       );
-      delete tracked[id];
-    } else if (status === 'FAILED' || status === 'CANCELLED') {
+    } else {
       await notifyOnce(
         `fail-${item.jobId}`,
         'Falha no processamento',
         truncate(result.job.errorMsg || 'O job não concluiu.', 120),
         jobPageUrl(item.baseUrl, item.jobId),
       );
-      delete tracked[id];
     }
+    settledIds.push(id);
   }
 
-  await chrome.storage.local.set({ trackedJobs: tracked });
-  const remaining = Object.keys(tracked).length;
+  // Fase de escrita: atômica em relação a `trackJob` e `settleJob`.
+  const remaining = await withStorageLock(async () => {
+    const at = Date.now();
+    const fresh = await chrome.storage.local.get([TRACKED_JOBS_KEY]);
+    // Relê em vez de reaproveitar o snapshot: durante os `fetch` acima o popup
+    // pode ter enfileirado outro envio ou reconhecido um resultado. Partir do
+    // estado atual e remover só o que esta rodada resolveu preserva os dois.
+    //
+    // Renovar o sinal de vida vem ANTES da poda: um job que o servidor acabou
+    // de confirmar em andamento não pode ser despejado pelo TTL desta mesma
+    // rodada só porque a fase de rede demorou.
+    const current = pruneExpiredJobs(touchJobs(fresh[TRACKED_JOBS_KEY], aliveIds, at), at);
+    const next = { ...current };
+    for (const id of settledIds) delete next[id];
+
+    // Desfecho de job que o popup já reconheceu (saiu de `current`) não volta
+    // ao storage — reapareceria como novidade na próxima abertura.
+    const chosen = pickLatestOutcome(
+      roundOutcomes.filter((c) => Object.hasOwn(current, c.outcome.jobId)),
+    );
+
+    await chrome.storage.local.set({
+      [TRACKED_JOBS_KEY]: next,
+      ...(chosen ? { [LAST_OUTCOME_KEY]: chosen } : {}),
+    });
+    return Object.keys(next).length;
+  });
+
+  await refreshBadge(remaining);
+  if (remaining === 0) {
+    chrome.alarms.clear(TRACK_ALARM);
+  }
+}
+
+/**
+ * O popup já mostrou o desfecho deste job: para de rastrear e descarta o
+ * resultado guardado (para não reaparecer na próxima abertura). Roda sob
+ * `withStorageLock` porque concorre com a fase de escrita de
+ * `pollTrackedJobs` — sem isso a rodada em voo regravaria o resultado que
+ * acabou de ser reconhecido.
+ * @param {string | undefined} jobId
+ */
+async function settleJob(jobId) {
+  if (!jobId) return;
+  const remaining = await withStorageLock(async () => {
+    const stored = await chrome.storage.local.get([TRACKED_JOBS_KEY, LAST_OUTCOME_KEY]);
+    const tracked = withoutJob(pruneExpiredJobs(stored[TRACKED_JOBS_KEY], Date.now()), jobId);
+    /** @type {Record<string, unknown>} */
+    const patch = { [TRACKED_JOBS_KEY]: tracked };
+    if (stored[LAST_OUTCOME_KEY]?.jobId === jobId) {
+      patch[LAST_OUTCOME_KEY] = null;
+    }
+    await chrome.storage.local.set(patch);
+    return Object.keys(tracked).length;
+  });
+
   await refreshBadge(remaining);
   if (remaining === 0) {
     chrome.alarms.clear(TRACK_ALARM);
@@ -247,10 +383,16 @@ async function alreadyNotifiedUpdate(version) {
  */
 async function notifyOnce(id, title, message, link) {
   if (link) {
-    const data = await chrome.storage.local.get(['notificationLinks']);
-    const links = data.notificationLinks || {};
-    links[id] = link;
-    await chrome.storage.local.set({ notificationLinks: links });
+    // Ler-alterar-gravar sob o lock: duas notificações concorrentes (uma
+    // rodada de poll e um `checkForUpdate`, por exemplo) sem ele perdem um dos
+    // links e a notificação vira clique morto. Nunca chamada de dentro de uma
+    // seção crítica — a fase de rede do poll não segura o lock.
+    await withStorageLock(async () => {
+      const data = await chrome.storage.local.get(['notificationLinks']);
+      const links = data.notificationLinks || {};
+      links[id] = link;
+      await chrome.storage.local.set({ notificationLinks: links });
+    });
   }
   chrome.notifications.create(id, {
     type: 'basic',

@@ -15,6 +15,7 @@ import {
 } from './lib/settings';
 import { adminRoutes } from './routes/admin';
 import { adminModelsRoutes } from './routes/admin-models';
+import { adminIntegrationCookieRoutes } from './routes/admin-integrations-cookies';
 import { jobsRoutes } from './routes/jobs';
 import { libraryRoutes } from './routes/library';
 import { setupRoutes } from './routes/setup';
@@ -257,6 +258,9 @@ app.route('/api/admin', adminRoutes);
 
 // Seleção manual de modelos por finalidade (spec 123, admin only)
 app.route('/api/admin/models', adminModelsRoutes);
+
+// Cookies de plataforma capturados pela extensão (spec 121, admin only)
+app.route('/api/admin/integrations/cookies', adminIntegrationCookieRoutes);
 
 // Jobs endpoints (download + transcrição — spec 002)
 app.route('/api/jobs', jobsRoutes);

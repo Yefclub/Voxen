@@ -1,5 +1,49 @@
 [
   {
+    "version": "0.13.0-dev.1785539796",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Tema padrão agora se chama Voxen, e os ícones ganham vida ao navegar",
+    "body": "O tema escuro padrão da aplicação passa a aparecer como **Voxen** no seletor de\ntema (menu do avatar, no canto superior direito). Antes ele se chamava \"Linear\",\nnome herdado da referência visual que inspirou a paleta — nada a ver com o\nproduto. Só o nome mudou: as cores são exatamente as mesmas, o tema continua\nsendo o padrão de quem nunca escolheu outro, e quem já tinha algum tema salvo\ncontinua exatamente com o que escolheu.\n\nOs ícones também deixaram de ser estáticos em dois momentos:\n\n- **Ao abrir uma página**, o ícone que identifica a página se desenha uma vez,\n  junto com o conteúdo entrando.\n- **Ao abrir ou fechar a sidebar** — e ao abrir o menu no celular —, os ícones\n  de navegação se desenham em cascata, acompanhando o painel.\n\nA animação é curta e deliberadamente contida — só esses dois momentos, para\npontuar a navegação sem virar ruído. Quem usa o sistema com \"reduzir movimento\"\nativado não vê nenhuma dessas animações.",
+    "pr": 502,
+    "author": "Kalyel",
+    "date": "2026-07-31T20:16:24-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/502"
+  },
+  {
+    "version": "0.13.0-dev.1785537512",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Conectar contas de TikTok, Instagram e YouTube pela extensão",
+    "body": "Vídeo que só baixa com login — TikTok, Instagram, YouTube com restrição de\nidade — agora tem um caminho de verdade: a extensão do Voxen conecta a conta.\n\nNas opções da extensão apareceu a seção **Contas de plataforma**, com um\nbotão \"Conectar\" para cada uma das três. Faça login no site normalmente, no\nmesmo perfil do browser, clique em Conectar e pronto: a extensão pede a\npermissão daquele site na hora, pega a sessão e envia cifrada para a sua\ninstância. Nada de exportar `cookies.txt` na mão nem instalar extensão de\nterceiro.\n\nA permissão é pedida por site, uma de cada vez, e só no momento do clique —\na extensão não ganha acesso a nenhum outro site. O valor da sessão nunca é\nexibido de volta, nem na extensão nem no Voxen.\n\nEm **Integrações** (admin) há um painel de estado mostrando quais plataformas\nestão conectadas, quando foram conectadas e quais podem já ter expirado —\nsessões passam a ser sinalizadas como \"possivelmente expiradas\" depois de 7\ndias, e basta reconectar pela extensão. O botão \"Desconectar\" apaga a sessão\nguardada a qualquer momento.\n\nConectar uma plataforma não mexe nas outras: cada uma é substituída\nisoladamente.",
+    "pr": 499,
+    "author": "Kalyel",
+    "date": "2026-07-31T19:31:34-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/499"
+  },
+  {
+    "version": "0.13.0-dev.1785537512",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Conteúdo em markdown renderizado, reprocessar direto da fila e campo de link em destaque",
+    "body": "Quatro correções no dia a dia de capturar e ler conteúdo.\n\n**Análises em markdown voltam a aparecer formatadas.** Posts do X analisados por\nIA (e qualquer conteúdo sem marcação de tempo) eram exibidos pelo leitor de\ntranscrição, que junta tudo num parágrafo só e mostra `##` e `**` crus. Agora a\npágina escolhe o modo de exibição pelo próprio conteúdo: com marcações de tempo,\nsegue a leitura por trechos clicáveis; sem elas, renderiza markdown com títulos,\nlistas, tabelas e negrito.\n\n**Reprocessar item da fila.** Itens que falharam ou foram cancelados agora têm um\nbotão de reprocessar na própria fila — não é mais preciso recolar o link. Se o\nconteúdo já estiver em processamento, já tiver sido indexado ou o servidor\nrecusar, o motivo aparece num aviso e o item continua como estava.\n\n**Campo de colar link com destaque.** O placeholder longo com exemplos de URL deu\nlugar a um \"Cole o link aqui\" direto, e o campo ganhou superfície elevada, borda\nmais forte e realce de foco — é a ação principal da tela de conteúdo.\n\n**Linha do tempo do job alinhada.** Os marcadores de cada etapa no histórico de um\njob agora ficam centrados na linha vertical que os conecta.",
+    "pr": 501,
+    "author": "Kalyel",
+    "date": "2026-07-31T19:19:35-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/501"
+  },
+  {
+    "version": "0.13.0-dev.1785534442",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Extensão mantém o progresso do envio ao fechar e reabrir o popup",
+    "body": "Fechar o popup da extensão não perde mais o acompanhamento do envio. Antes, o\nprogresso vivia só na janelinha aberta: bastava clicar fora para o Chrome\ndescartar tudo e, ao reabrir, a extensão mostrava a tela inicial mesmo com a\ntranscrição rodando.\n\nAgora, ao reabrir o popup:\n\n- **Envio em andamento** volta com a barra de progresso e a etapa real\n  (baixando, transcrevendo, gerando resumo…), além do botão \"Ver na fila\".\n- **Envio que terminou com o popup fechado** aparece com o resultado — resumo e\n  botão para abrir o conteúdo, ou a mensagem de erro se falhou. O resultado é\n  mostrado uma vez; depois disso o popup volta ao normal.\n- **Instância fora do ar ou sem rede** avisa que o acompanhamento está\n  indisponível no momento, sem sumir com o envio nem fingir que terminou — e\n  sem travar o botão: não saber em que pé está o envio anterior não impede\n  mandar a próxima página. Isso vale também para instância que fica pendurada\n  em vez de recusar a conexão: agora toda requisição tem prazo, então um\n  backend travado atrás de um proxy de pé não deixa mais o botão preso em\n  \"Salvo — processando\".\n- **Acompanhamento que nunca resolve** (instância trocada nas opções, job\n  apagado no servidor) é descartado depois de algumas horas em vez de ficar\n  para sempre. O prazo conta a partir da última vez em que o servidor\n  confirmou o envio em andamento, e não do momento do envio: fila cheia com\n  vários vídeos longos à frente não faz mais o último da fila perder a\n  notificação por tempo de espera.\n\nTambém nesta entrega, acabamento da extensão: cantos mais arredondados no\npopup, página de conexão reorganizada em duas colunas (cabe sem rolagem, com o\nbloco \"Token Bearer\" separado das ações principais por um divisor) e ícones da\nbarra do Chrome regerados a partir da arte em alta resolução, agora centrados e\nmais nítidos em 16 px.",
+    "pr": 500,
+    "author": "Kalyel",
+    "date": "2026-07-31T18:47:03-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/500"
+  },
+  {
     "version": "0.13.0-dev.1785524483",
     "channel": "dev",
     "type": "feat",

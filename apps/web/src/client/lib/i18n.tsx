@@ -180,7 +180,9 @@ const ptBRMessages = {
   'shell.signOut': 'Sair',
 
   'theme.label': 'Tema',
-  'theme.linear': 'Linear',
+  // Identificador técnico segue `linear` (persistido por usuário e espelhado
+  // pela extensão); só o rótulo exibido virou "Voxen".
+  'theme.linear': 'Voxen',
   'theme.zinc': 'Cinza',
   'theme.emerald': 'Esmeralda',
   'theme.light': 'Claro',
@@ -247,7 +249,7 @@ const ptBRMessages = {
   'job.toast.view': 'Ver',
 
   'home.greeting': 'Olá, {name}.',
-  'home.urlPlaceholder': 'https://youtu.be/... · x.com/.../status/... · exemplo.com/artigo',
+  'home.urlPlaceholder': 'Cole o link aqui',
   'home.dropTitle': 'Solte o arquivo para indexar',
   'home.dropHint': 'Áudio, vídeo, imagem ou documento — o upload começa na hora.',
   'jobs.eyebrow': 'Indexar conteúdo',
@@ -303,6 +305,10 @@ const ptBRMessages = {
   'jobs.finished': 'Finalizado {time}',
   'jobs.queued': 'Enfileirado {time}',
   'jobs.details': 'Detalhes',
+  'jobs.reprocess': 'Reprocessar',
+  'jobs.reprocessing': 'Reprocessando…',
+  'jobs.reprocessQueued': 'Conteúdo reenviado para a fila.',
+  'jobs.reprocessError': 'Não foi possível reprocessar este conteúdo.',
   'jobs.detect.youtube': 'Vídeo do YouTube',
   'jobs.detect.instagram': 'Reel do Instagram',
   'jobs.detect.tiktok': 'TikTok',
@@ -358,6 +364,7 @@ const ptBRMessages = {
   'library.method.aiTranscript': 'Transcrição via IA',
   'library.documentAnalysis': 'Análise do documento',
   'library.analysis': 'Análise',
+  'library.postAnalysis': 'Análise do post',
   'library.content': 'Conteúdo',
   'library.duration': 'Duração',
   'library.site': 'Site',
@@ -817,6 +824,21 @@ const ptBRMessages = {
   'admin.integrations.revoke': 'Revogar',
   'admin.integrations.show': 'Ver',
   'admin.integrations.hide': 'Ocultar',
+
+  'admin.integrations.cookies.title': 'Contas de plataforma',
+  'admin.integrations.cookies.description':
+    'Sessões de TikTok, Instagram e YouTube usadas pelo extrator quando o conteúdo exige login. A sessão é capturada pela extensão do Voxen e guardada cifrada — o valor nunca é exibido de volta.',
+  'admin.integrations.cookies.connected': 'Conectado',
+  'admin.integrations.cookies.notConnected': 'Não conectado',
+  'admin.integrations.cookies.stale': 'Possivelmente expirado',
+  'admin.integrations.cookies.capturedAt': 'capturado em {date}',
+  'admin.integrations.cookies.disconnect': 'Desconectar',
+  'admin.integrations.cookies.disconnected': 'Conta desconectada.',
+  'admin.integrations.cookies.disconnectTitle': 'Desconectar {platform}?',
+  'admin.integrations.cookies.disconnectDescription':
+    'A sessão guardada é apagada. Conteúdo que exige login dessa plataforma volta a falhar até você conectar de novo pela extensão.',
+  'admin.integrations.cookies.captureHint':
+    'Para conectar ou renovar: abra as opções da extensão do Voxen, faça login na plataforma no mesmo perfil do browser e clique em Conectar. Sessões passam de "possivelmente expiradas" após 7 dias.',
 
   'admin.integrations.proxy.title': 'Agente de Proxy',
   'admin.integrations.proxy.description':
@@ -1403,7 +1425,7 @@ const enMessages: Record<I18nKey, string> = {
   'shell.signOut': 'Sign out',
 
   'theme.label': 'Theme',
-  'theme.linear': 'Linear',
+  'theme.linear': 'Voxen',
   'theme.zinc': 'Zinc',
   'theme.emerald': 'Emerald',
   'theme.light': 'Light',
@@ -1470,7 +1492,7 @@ const enMessages: Record<I18nKey, string> = {
   'job.toast.view': 'View',
 
   'home.greeting': 'Hello, {name}.',
-  'home.urlPlaceholder': 'https://youtu.be/... · x.com/.../status/... · example.com/article',
+  'home.urlPlaceholder': 'Paste the link here',
   'home.dropTitle': 'Drop the file to index',
   'home.dropHint': 'Audio, video, image, or document — upload starts immediately.',
   'jobs.eyebrow': 'Index content',
@@ -1525,6 +1547,10 @@ const enMessages: Record<I18nKey, string> = {
   'jobs.finished': 'Finished {time}',
   'jobs.queued': 'Queued {time}',
   'jobs.details': 'Details',
+  'jobs.reprocess': 'Reprocess',
+  'jobs.reprocessing': 'Reprocessing…',
+  'jobs.reprocessQueued': 'Content sent back to the queue.',
+  'jobs.reprocessError': 'Could not reprocess this content.',
   'jobs.detect.youtube': 'YouTube video',
   'jobs.detect.instagram': 'Instagram Reel',
   'jobs.detect.tiktok': 'TikTok',
@@ -1580,6 +1606,7 @@ const enMessages: Record<I18nKey, string> = {
   'library.method.aiTranscript': 'AI transcription',
   'library.documentAnalysis': 'Document analysis',
   'library.analysis': 'Analysis',
+  'library.postAnalysis': 'Post analysis',
   'library.content': 'Content',
   'library.duration': 'Duration',
   'library.site': 'Site',
@@ -2038,6 +2065,21 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.revoke': 'Revoke',
   'admin.integrations.show': 'Show',
   'admin.integrations.hide': 'Hide',
+
+  'admin.integrations.cookies.title': 'Platform accounts',
+  'admin.integrations.cookies.description':
+    'TikTok, Instagram and YouTube sessions used by the extractor when the content requires a login. The session is captured by the Voxen extension and stored encrypted — the value is never shown back.',
+  'admin.integrations.cookies.connected': 'Connected',
+  'admin.integrations.cookies.notConnected': 'Not connected',
+  'admin.integrations.cookies.stale': 'Possibly expired',
+  'admin.integrations.cookies.capturedAt': 'captured on {date}',
+  'admin.integrations.cookies.disconnect': 'Disconnect',
+  'admin.integrations.cookies.disconnected': 'Account disconnected.',
+  'admin.integrations.cookies.disconnectTitle': 'Disconnect {platform}?',
+  'admin.integrations.cookies.disconnectDescription':
+    'The stored session is deleted. Login-gated content from this platform will fail again until you reconnect from the extension.',
+  'admin.integrations.cookies.captureHint':
+    'To connect or renew: open the Voxen extension options, sign in to the platform in the same browser profile and click Connect. Sessions are flagged as possibly expired after 7 days.',
 
   'admin.integrations.proxy.title': 'Proxy Agent',
   'admin.integrations.proxy.description':

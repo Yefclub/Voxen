@@ -1,5 +1,115 @@
 # Changelog
 
+## v0.13.0-dev.1785539796 — 2026-07-31 · Dev
+
+### 🎨 Tema padrão agora se chama Voxen, e os ícones ganham vida ao navegar
+
+O tema escuro padrão da aplicação passa a aparecer como **Voxen** no seletor de
+tema (menu do avatar, no canto superior direito). Antes ele se chamava "Linear",
+nome herdado da referência visual que inspirou a paleta — nada a ver com o
+produto. Só o nome mudou: as cores são exatamente as mesmas, o tema continua
+sendo o padrão de quem nunca escolheu outro, e quem já tinha algum tema salvo
+continua exatamente com o que escolheu.
+
+Os ícones também deixaram de ser estáticos em dois momentos:
+
+- **Ao abrir uma página**, o ícone que identifica a página se desenha uma vez,
+  junto com o conteúdo entrando.
+- **Ao abrir ou fechar a sidebar** — e ao abrir o menu no celular —, os ícones
+  de navegação se desenham em cascata, acompanhando o painel.
+
+A animação é curta e deliberadamente contida — só esses dois momentos, para
+pontuar a navegação sem virar ruído. Quem usa o sistema com "reduzir movimento"
+ativado não vê nenhuma dessas animações.
+
+## v0.13.0-dev.1785537512 — 2026-07-31 · Dev
+
+### ✨ Conectar contas de TikTok, Instagram e YouTube pela extensão
+
+Vídeo que só baixa com login — TikTok, Instagram, YouTube com restrição de
+idade — agora tem um caminho de verdade: a extensão do Voxen conecta a conta.
+
+Nas opções da extensão apareceu a seção **Contas de plataforma**, com um
+botão "Conectar" para cada uma das três. Faça login no site normalmente, no
+mesmo perfil do browser, clique em Conectar e pronto: a extensão pede a
+permissão daquele site na hora, pega a sessão e envia cifrada para a sua
+instância. Nada de exportar `cookies.txt` na mão nem instalar extensão de
+terceiro.
+
+A permissão é pedida por site, uma de cada vez, e só no momento do clique —
+a extensão não ganha acesso a nenhum outro site. O valor da sessão nunca é
+exibido de volta, nem na extensão nem no Voxen.
+
+Em **Integrações** (admin) há um painel de estado mostrando quais plataformas
+estão conectadas, quando foram conectadas e quais podem já ter expirado —
+sessões passam a ser sinalizadas como "possivelmente expiradas" depois de 7
+dias, e basta reconectar pela extensão. O botão "Desconectar" apaga a sessão
+guardada a qualquer momento.
+
+Conectar uma plataforma não mexe nas outras: cada uma é substituída
+isoladamente.
+
+## v0.13.0-dev.1785537512 — 2026-07-31 · Dev
+
+### 🐛 Conteúdo em markdown renderizado, reprocessar direto da fila e campo de link em destaque
+
+Quatro correções no dia a dia de capturar e ler conteúdo.
+
+**Análises em markdown voltam a aparecer formatadas.** Posts do X analisados por
+IA (e qualquer conteúdo sem marcação de tempo) eram exibidos pelo leitor de
+transcrição, que junta tudo num parágrafo só e mostra `##` e `**` crus. Agora a
+página escolhe o modo de exibição pelo próprio conteúdo: com marcações de tempo,
+segue a leitura por trechos clicáveis; sem elas, renderiza markdown com títulos,
+listas, tabelas e negrito.
+
+**Reprocessar item da fila.** Itens que falharam ou foram cancelados agora têm um
+botão de reprocessar na própria fila — não é mais preciso recolar o link. Se o
+conteúdo já estiver em processamento, já tiver sido indexado ou o servidor
+recusar, o motivo aparece num aviso e o item continua como estava.
+
+**Campo de colar link com destaque.** O placeholder longo com exemplos de URL deu
+lugar a um "Cole o link aqui" direto, e o campo ganhou superfície elevada, borda
+mais forte e realce de foco — é a ação principal da tela de conteúdo.
+
+**Linha do tempo do job alinhada.** Os marcadores de cada etapa no histórico de um
+job agora ficam centrados na linha vertical que os conecta.
+
+## v0.13.0-dev.1785534442 — 2026-07-31 · Dev
+
+### 🐛 Extensão mantém o progresso do envio ao fechar e reabrir o popup
+
+Fechar o popup da extensão não perde mais o acompanhamento do envio. Antes, o
+progresso vivia só na janelinha aberta: bastava clicar fora para o Chrome
+descartar tudo e, ao reabrir, a extensão mostrava a tela inicial mesmo com a
+transcrição rodando.
+
+Agora, ao reabrir o popup:
+
+- **Envio em andamento** volta com a barra de progresso e a etapa real
+  (baixando, transcrevendo, gerando resumo…), além do botão "Ver na fila".
+- **Envio que terminou com o popup fechado** aparece com o resultado — resumo e
+  botão para abrir o conteúdo, ou a mensagem de erro se falhou. O resultado é
+  mostrado uma vez; depois disso o popup volta ao normal.
+- **Instância fora do ar ou sem rede** avisa que o acompanhamento está
+  indisponível no momento, sem sumir com o envio nem fingir que terminou — e
+  sem travar o botão: não saber em que pé está o envio anterior não impede
+  mandar a próxima página. Isso vale também para instância que fica pendurada
+  em vez de recusar a conexão: agora toda requisição tem prazo, então um
+  backend travado atrás de um proxy de pé não deixa mais o botão preso em
+  "Salvo — processando".
+- **Acompanhamento que nunca resolve** (instância trocada nas opções, job
+  apagado no servidor) é descartado depois de algumas horas em vez de ficar
+  para sempre. O prazo conta a partir da última vez em que o servidor
+  confirmou o envio em andamento, e não do momento do envio: fila cheia com
+  vários vídeos longos à frente não faz mais o último da fila perder a
+  notificação por tempo de espera.
+
+Também nesta entrega, acabamento da extensão: cantos mais arredondados no
+popup, página de conexão reorganizada em duas colunas (cabe sem rolagem, com o
+bloco "Token Bearer" separado das ações principais por um divisor) e ícones da
+barra do Chrome regerados a partir da arte em alta resolução, agora centrados e
+mais nítidos em 16 px.
+
 ## v0.13.0-dev.1785524483 — 2026-07-31 · Dev
 
 ### ✨ Escolha manual de modelo por finalidade nas integrações admin

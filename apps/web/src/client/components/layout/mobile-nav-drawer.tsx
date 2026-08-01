@@ -17,7 +17,11 @@ import {
   drawerPanelShadow,
   drawerPanelVisibility,
 } from '../../lib/use-edge-swipe';
+import { useIconCueTrigger } from '../../lib/icon-cue';
 import { SidebarModeBody, SidebarSignOut, SidebarChangelogButton } from './sidebar';
+
+/** Só a abertura pontua os ícones — constante para manter a identidade estável. */
+const isOpen = (open: boolean): boolean => open;
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -70,6 +74,13 @@ export function MobileNavDrawer({
     setPresent(next);
     onPresenceChange(next);
   });
+
+  // Mesma deixa de ícones da sidebar desktop, pelo mesmo motivo: abrir a
+  // navegação pontua os ícones. Aqui vem de um contador porque o corpo do
+  // drawer nunca desmonta — fica pronto fora da tela para o gesto de swipe —,
+  // então não existe "montou" para pendurar a deixa. Só a abertura pontua:
+  // fechando, o painel está saindo de cena e varrer ícones seria desperdício.
+  const navCueSignal = useIconCueTrigger(open, isOpen);
 
   useEffect(() => {
     const controls = animate(progress, open ? 1 : 0, {
@@ -197,7 +208,7 @@ export function MobileNavDrawer({
           </button>
         </div>
         <LayoutGroup id="mobile-nav">
-          <SidebarModeBody user={user} hideHome />
+          <SidebarModeBody user={user} hideHome cueSignal={navCueSignal} />
         </LayoutGroup>
         <SidebarChangelogButton />
         <SidebarSignOut />

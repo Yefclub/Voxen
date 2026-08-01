@@ -1,7 +1,18 @@
-import { createElement, type ComponentType, type HTMLAttributes } from 'react';
+import {
+  createElement,
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useRef,
+  type ComponentType,
+  type HTMLAttributes,
+  type MouseEvent,
+  type RefAttributes,
+} from 'react';
 import { useReducedMotion } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { ANIMATED_ICON_FRAME_CLASS, shouldAnimateDecoration } from '../../lib/interface-foundation';
+import type { IconCueHandle } from '../../lib/icon-cue';
 export { ANIMATED_ICON_FALLBACKS } from '../../lib/interface-foundation';
 import {
   AArrowUpIcon,
@@ -98,21 +109,80 @@ export interface AnimatedIconProps extends HTMLAttributes<HTMLDivElement> {
   color?: string;
 }
 
-export type AnimatedIcon = ComponentType<AnimatedIconProps>;
+/**
+ * Ícone da aplicação. Aceita `ref` para expor o handle de animação, usado pelas
+ * deixas coordenadas de `lib/icon-cue`.
+ */
+export type AnimatedIcon = ComponentType<AnimatedIconProps & RefAttributes<IconCueHandle>>;
 /** Compatibilidade temporária para tipos de configuração já nomeados no app. */
 export type LucideIcon = AnimatedIcon;
 
-function accessibleIcon(icon: ComponentType<AnimatedIconProps>): AnimatedIcon {
-  function AccessibleAnimatedIcon({ isAnimated, className, ...props }: AnimatedIconProps) {
-    const reduceMotion = useReducedMotion();
-    return createElement(icon, {
-      ...props,
-      className: cn(ANIMATED_ICON_FRAME_CLASS, className),
-      isAnimated: shouldAnimateDecoration(reduceMotion, isAnimated),
-    });
-  }
+/**
+ * Envolve um ícone do pacote para expor o handle de animação por `ref` sem
+ * perder nada do comportamento padrão.
+ *
+ * Exportado para teste: `icons.test.ts` renderiza este wrapper com um ícone
+ * sonda para conferir o que chega no ícone interno.
+ */
+export function accessibleIcon(icon: AnimatedIcon): AnimatedIcon {
+  const AccessibleAnimatedIcon = forwardRef<IconCueHandle, AnimatedIconProps>(
+    function AccessibleAnimatedIcon(
+      { isAnimated, className, onMouseEnter, onMouseLeave, ...props },
+      ref,
+    ) {
+      const reduceMotion = useReducedMotion();
+      const inner = useRef<IconCueHandle>(null);
+      const animated = shouldAnimateDecoration(reduceMotion, isAnimated);
 
-  AccessibleAnimatedIcon.displayName = `AccessibleAnimatedIcon(${icon.displayName ?? icon.name})`;
+      useImperativeHandle(
+        ref,
+        () => ({
+          startAnimation: () => {
+            if (animated) inner.current?.startAnimation();
+          },
+          stopAnimation: () => inner.current?.stopAnimation(),
+        }),
+        [animated],
+      );
+
+      // ⚠️ NÃO REMOVA estes dois handlers. O `@animateicons/react` anima o
+      // hover sozinho SOMENTE enquanto ninguém anexa uma `ref` ao ícone: com
+      // ref anexada ele para de escutar o mouse e passa a delegar para os
+      // handlers recebidos. Como o wrapper anexa `inner` em TODOS os ícones,
+      // apagar (ou deixar de repassar) `onMouseEnter`/`onMouseLeave` mata a
+      // animação de hover dos 102 ícones do app de uma vez — em silêncio, sem
+      // erro de tipo e sem quebrar nenhuma tela.
+      // `icons.test.ts` trava os dois lados: que os handlers existem e que
+      // eles chamam `startAnimation`/`stopAnimation` no ícone interno —
+      // esvaziar o corpo dos handlers quebra a suíte.
+      const handleMouseEnter = useCallback(
+        (event: MouseEvent<HTMLDivElement>) => {
+          onMouseEnter?.(event);
+          if (animated) inner.current?.startAnimation();
+        },
+        [animated, onMouseEnter],
+      );
+      const handleMouseLeave = useCallback(
+        (event: MouseEvent<HTMLDivElement>) => {
+          onMouseLeave?.(event);
+          inner.current?.stopAnimation();
+        },
+        [onMouseLeave],
+      );
+
+      return createElement(icon, {
+        ...props,
+        ref: inner,
+        className: cn(ANIMATED_ICON_FRAME_CLASS, className),
+        isAnimated: animated,
+        onMouseEnter: handleMouseEnter,
+        onMouseLeave: handleMouseLeave,
+      });
+    },
+  );
+
+  const source = icon as { displayName?: string; name?: string };
+  AccessibleAnimatedIcon.displayName = `AccessibleAnimatedIcon(${source.displayName ?? source.name})`;
   return AccessibleAnimatedIcon;
 }
 
