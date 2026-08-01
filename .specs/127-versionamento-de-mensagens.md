@@ -163,16 +163,29 @@ Parte 2:
   Conversa antiga aparece inteira e sem indicador de versão.
 
 - **Encadeamento preguiçoso, não backfill de deploy.** Na primeira escrita
-  estrutural de uma conversa (novo turno, nova versão, compactação), as
-  mensagens sem antecessor são encadeadas em ordem de criação. É idempotente,
-  por conversa, e vira no-op depois. A migration continua puramente aditiva; a
-  conversa que ninguém abre nunca é tocada.
+  estrutural de uma conversa (novo turno, nova versão, troca de trilha,
+  compactação), as mensagens sem antecessor são encadeadas em ordem de criação
+  e a conversa é marcada com `messagesLinearized`. É idempotente, por conversa,
+  e vira no-op depois. A migration continua puramente aditiva; a conversa que
+  ninguém abre nunca é tocada.
 
-- **Indicador de versão só quando dá para ter certeza.** Enquanto a conversa
-  tiver mais de uma mensagem sem antecessor (acervo antigo não encadeado), as
-  mensagens sem antecessor não formam grupo de versão — seriam a conversa
-  inteira num grupo só. É o lado seguro do trade-off: no máximo um indicador
-  deixa de aparecer, nunca aparece um indicador falso.
+- **A marca `messagesLinearized` é explícita, não inferida.** A tentação era
+  deduzir "isto já é uma árvore" contando quantas mensagens estão sem
+  antecessor. Não funciona: versionar a PRIMEIRA mensagem cria uma segunda
+  raiz legítima, e a inferência leria isso como acervo antigo — prependendo a
+  versão abandonada no histórico enviado ao modelo (duas perguntas do usuário
+  seguidas). Com a marca, "sem antecessor" só é ambíguo em conversa não
+  encadeada, e a raiz pode ter versões como qualquer outro ponto.
+
+- **Antecessor da versão é resolvido dentro da transação do turno**, depois do
+  encadeamento — não lido na rota. Em conversa do acervo antigo o antecessor só
+  passa a existir depois de encadear; lê-lo antes devolve nulo e faz a versão
+  nascer como segunda raiz, jogando fora o histórico anterior a ela.
+
+- **O bloqueio durante a geração é a própria escrita.** Trocar de trilha usa um
+  update condicional (`thinking: false`) em vez de ler e depois gravar: entre
+  as duas operações um turno poderia reivindicar a conversa e acabar montando
+  o prompt do ramo errado.
 
 ## Riscos aceitos
 

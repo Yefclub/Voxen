@@ -54,19 +54,20 @@ function sortedByCreation<T extends TrailNode>(nodes: readonly T[]): T[] {
 }
 
 /**
- * Conversa "linearizada" = no máximo uma mensagem sem antecessor (a raiz).
- * Conversa do acervo antigo tem várias, e nesse caso as mensagens sem
- * antecessor NÃO podem ser tratadas como versões umas das outras — seriam
- * a conversa inteira num único grupo, e todo turno antigo ganharia um
- * indicador de versão falso.
+ * Estado do encadeamento da conversa, vindo de `Conversation.messagesLinearized`.
+ *
+ * `false` = acervo anterior à feature, com todas as mensagens sem antecessor:
+ * a leitura precisa da regra de prefixo linear e não pode agrupar versões na
+ * raiz. `true` = árvore de verdade, onde "sem antecessor" significa raiz e
+ * NADA mais.
+ *
+ * Tem que ser explícito, não inferido de "quantas mensagens estão sem
+ * antecessor": versionar a primeira mensagem cria uma segunda raiz legítima, e
+ * a inferência leria isso como acervo antigo — prependendo a versão abandonada
+ * no histórico enviado ao modelo, que é o risco nº 1 da spec.
  */
-export function isLinearized(nodes: readonly TrailNode[]): boolean {
-  let rootless = 0;
-  for (const node of nodes) {
-    if (node.parentId === null) rootless += 1;
-    if (rootless > 1) return false;
-  }
-  return true;
+export interface TrailOptions {
+  linearized?: boolean;
 }
 
 /**
@@ -79,6 +80,7 @@ export function isLinearized(nodes: readonly TrailNode[]): boolean {
 export function resolveActiveTrail<T extends TrailNode>(
   nodes: readonly T[],
   activeLeafId: string | null | undefined,
+  options: TrailOptions = {},
 ): T[] {
   if (nodes.length === 0) return [];
   const byId = new Map<string, T>();
@@ -99,6 +101,9 @@ export function resolveActiveTrail<T extends TrailNode>(
 
   const root = chain.at(-1);
   chain.reverse();
+  // Conversa já encadeada: a caminhada é a trilha inteira. Nada é prependido,
+  // senão versionar a raiz traria a versão abandonada de volta.
+  if (options.linearized) return chain;
   // Antecessor pendurado (dado inconsistente) não habilita o prefixo linear:
   // prepender mensagens soltas ali inventaria histórico.
   if (!root || root.parentId !== null) return chain;
@@ -107,6 +112,23 @@ export function resolveActiveTrail<T extends TrailNode>(
     nodes.filter((node) => node.parentId === null && compareByCreation(node, root) < 0),
   );
   return [...legacyPrefix, ...chain];
+}
+
+/**
+ * Aplica em memória o encadeamento que acabou de ser gravado, para que a
+ * mesma transação siga trabalhando com a árvore já corrigida em vez de
+ * reconsultar o banco.
+ */
+export function applyLinearization<T extends TrailNode>(
+  nodes: readonly T[],
+  plan: readonly { id: string; parentId: string }[],
+): T[] {
+  if (plan.length === 0) return [...nodes];
+  const parentById = new Map(plan.map((step) => [step.id, step.parentId]));
+  return nodes.map((node) => {
+    const parentId = parentById.get(node.id);
+    return parentId === undefined ? node : { ...node, parentId };
+  });
 }
 
 /**
@@ -151,16 +173,18 @@ export function resolveDeepestLeaf<T extends TrailNode>(
 export function buildVersionGroups<T extends RoleTrailNode>(
   nodes: readonly T[],
   trail: readonly T[],
+  options: TrailOptions = {},
 ): Map<string, VersionGroup> {
   const groups = new Map<string, VersionGroup>();
   if (trail.length === 0) return groups;
-  const linearized = isLinearized(nodes);
+  const linearized = options.linearized === true;
 
   const siblingsByParent = new Map<string, T[]>();
   for (const node of nodes) {
     if (node.role !== 'USER') continue;
-    // Sem antecessor em conversa não linearizada não há grupo: são mensagens
-    // do acervo antigo, sequenciais, não versões.
+    // Sem antecessor em conversa não encadeada não há grupo: são mensagens do
+    // acervo antigo, sequenciais, não versões. Já encadeada, "sem antecessor"
+    // significa raiz — e a raiz pode ter versões como qualquer outro ponto.
     if (node.parentId === null && !linearized) continue;
     const key = node.parentId ?? ROOT_GROUP_KEY;
     const bucket = siblingsByParent.get(key);

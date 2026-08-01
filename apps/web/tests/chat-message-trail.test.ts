@@ -23,8 +23,8 @@ import {
   type TrailNodeRow,
 } from '../src/lib/chat/conversation-trail';
 import {
+  applyLinearization,
   buildVersionGroups,
-  isLinearized,
   planLinearization,
   resolveActiveTrail,
   resolveDeepestLeaf,
@@ -68,6 +68,20 @@ function branchedTree(): TrailNodeRow[] {
     node('a2b', 'ASSISTANT', 'u2b'),
   ];
 }
+
+/** Conversa encadeada em que o usuário versionou a PRIMEIRA mensagem. */
+function rootVersionedTree(): TrailNodeRow[] {
+  clock = 0;
+  return [
+    node('r1', 'USER', null),
+    node('ra', 'ASSISTANT', 'r1'),
+    // Versão da raiz: irmã de `r1`, portanto também sem antecessor.
+    node('r2', 'USER', null),
+    node('rb', 'ASSISTANT', 'r2'),
+  ];
+}
+
+const LINEARIZED = { linearized: true } as const;
 
 /** Conversa do acervo anterior à feature: ninguém tem antecessor registrado. */
 function legacyTree(): TrailNodeRow[] {
@@ -175,21 +189,44 @@ describe('resolveActiveTrail', () => {
 
   test('mensagem criada sem antecessor cai FORA da trilha — invariante de escrita', () => {
     // Toda escrita de mensagem tem que pendurar no fim da trilha ativa. Este
-    // teste fixa a consequência de esquecer: numa conversa já encadeada, o nó
-    // órfão desaparece do histórico — o modelo nunca o vê — e a conversa passa
-    // a parecer não encadeada, o que derruba o indicador de versão da RAIZ
-    // (as ramificações mais abaixo, que têm antecessor real, sobrevivem).
+    // teste fixa a consequência de esquecer: numa conversa encadeada, o nó
+    // órfão desaparece do histórico e o modelo nunca mais o vê. Foi assim que
+    // a mensagem de confirmação do HITL sumia da conversa.
     const nodes = [...branchedTree(), node('orfa', 'SYSTEM', null)];
-    const trail = resolveActiveTrail(nodes, 'a2b');
+    const trail = resolveActiveTrail(nodes, 'a2b', LINEARIZED);
 
     expect(trail.map((item) => item.id)).not.toContain('orfa');
-    expect(isLinearized(nodes)).toBe(false);
 
     // Pendurada corretamente na folha, entra na trilha e nada mais quebra.
     const attached = [...branchedTree(), node('ligada', 'SYSTEM', 'a2b')];
-    const attachedTrail = resolveActiveTrail(attached, 'ligada');
+    const attachedTrail = resolveActiveTrail(attached, 'ligada', LINEARIZED);
     expect(attachedTrail.map((item) => item.id)).toEqual(['u1', 'a1', 'u2b', 'a2b', 'ligada']);
-    expect(buildVersionGroups(attached, attachedTrail).get('u2b')?.total).toBe(2);
+    expect(buildVersionGroups(attached, attachedTrail, LINEARIZED).get('u2b')?.total).toBe(2);
+  });
+
+  test('versionar a mensagem RAIZ não traz a versão abandonada de volta', () => {
+    // Regressão: a regra de prefixo linear prependia toda mensagem sem
+    // antecessor mais antiga que a raiz da caminhada. Numa conversa encadeada
+    // em que o usuário versionou a primeira mensagem, isso reinjetava a
+    // pergunta substituída no prompt — duas mensagens USER seguidas — que é
+    // exatamente o vazamento silencioso que a spec 127 trata como risco nº 1.
+    const nodes = rootVersionedTree();
+
+    expect(resolveActiveTrail(nodes, 'rb', LINEARIZED).map((item) => item.id)).toEqual([
+      'r2',
+      'rb',
+    ]);
+    expect(resolveActiveTrail(nodes, 'ra', LINEARIZED).map((item) => item.id)).toEqual([
+      'r1',
+      'ra',
+    ]);
+  });
+
+  test('sem a marca de encadeamento a mesma árvore ainda usa o prefixo linear', () => {
+    // Conversa antiga de verdade: nada é versão de nada, e a leitura precisa
+    // costurar as mensagens soltas numa trilha só.
+    const nodes = rootVersionedTree();
+    expect(resolveActiveTrail(nodes, 'rb').map((item) => item.id)).toEqual(['r1', 'r2', 'rb']);
   });
 
   test('conversa vazia devolve trilha vazia', () => {
@@ -226,7 +263,12 @@ describe('loadActiveHistory — histórico enviado ao modelo', () => {
     const { find: findNodes } = fakeNodeFinder(nodes);
     const { find: findRows, queries } = fakeHistoryFinder(nodes);
 
-    const history = await loadActiveHistory(CONVERSATION, 'a2b', {}, { findNodes, findRows });
+    const history = await loadActiveHistory(
+      CONVERSATION,
+      { activeLeafId: 'a2b', linearized: true },
+      {},
+      { findNodes, findRows },
+    );
 
     expect(history.map((row) => row.id)).toEqual(['u1', 'a1', 'u2b', 'a2b']);
     expect(history.map((row) => row.id)).not.toContain('u2a');
@@ -240,7 +282,12 @@ describe('loadActiveHistory — histórico enviado ao modelo', () => {
     const { find: findNodes } = fakeNodeFinder(nodes);
     const { find: findRows } = fakeHistoryFinder(nodes);
 
-    const history = await loadActiveHistory(CONVERSATION, 'a2a', {}, { findNodes, findRows });
+    const history = await loadActiveHistory(
+      CONVERSATION,
+      { activeLeafId: 'a2a', linearized: true },
+      {},
+      { findNodes, findRows },
+    );
 
     expect(history.map((row) => row.id)).toEqual(['u1', 'a1', 'u2a', 'a2a']);
     expect(history.map((row) => row.id)).not.toContain('u2b');
@@ -253,7 +300,7 @@ describe('loadActiveHistory — histórico enviado ao modelo', () => {
 
     const history = await loadActiveHistory(
       CONVERSATION,
-      'a2b',
+      { activeLeafId: 'a2b', linearized: true },
       { excludeId: 'a2b' },
       { findNodes, findRows },
     );
@@ -272,7 +319,12 @@ describe('loadActiveHistory — histórico enviado ao modelo', () => {
     const { find: findNodes } = fakeNodeFinder(nodes);
     const { find: findRows } = fakeHistoryFinder(nodes);
 
-    const history = await loadActiveHistory(CONVERSATION, 'u2', {}, { findNodes, findRows });
+    const history = await loadActiveHistory(
+      CONVERSATION,
+      { activeLeafId: 'u2', linearized: true },
+      {},
+      { findNodes, findRows },
+    );
 
     expect(history.map((row) => row.id)).toEqual(['s1', 'u2']);
   });
@@ -282,7 +334,12 @@ describe('loadActiveHistory — histórico enviado ao modelo', () => {
     const { find: findNodes } = fakeNodeFinder(nodes);
     const { find: findRows } = fakeHistoryFinder(nodes);
 
-    const history = await loadActiveHistory(CONVERSATION, 'a2b', {}, { findNodes, findRows });
+    const history = await loadActiveHistory(
+      CONVERSATION,
+      { activeLeafId: 'a2b', linearized: true },
+      {},
+      { findNodes, findRows },
+    );
 
     // `fakeHistoryFinder` devolve invertido de propósito.
     expect(history.map((row) => row.id)).toEqual(['u1', 'a1', 'u2b', 'a2b']);
@@ -292,7 +349,9 @@ describe('loadActiveHistory — histórico enviado ao modelo', () => {
     const { find: findNodes } = fakeNodeFinder([]);
     const { find: findRows, queries } = fakeHistoryFinder([]);
 
-    expect(await loadActiveHistory(CONVERSATION, null, {}, { findNodes, findRows })).toEqual([]);
+    expect(
+      await loadActiveHistory(CONVERSATION, { activeLeafId: null }, {}, { findNodes, findRows }),
+    ).toEqual([]);
     expect(queries).toHaveLength(0);
   });
 });
@@ -300,13 +359,13 @@ describe('loadActiveHistory — histórico enviado ao modelo', () => {
 describe('loadConversationTrail', () => {
   test('a consulta de nós carrega o escopo da conversa', async () => {
     const { find, queries } = fakeNodeFinder(branchedTree());
-    await loadConversationTrail(CONVERSATION, 'a2b', find);
+    await loadConversationTrail(CONVERSATION, { activeLeafId: 'a2b' }, find);
     expect(queries[0]?.where.conversationId).toBe(CONVERSATION);
   });
 
   test('conversa de outro escopo devolve trilha vazia', async () => {
     const { find } = fakeNodeFinder(branchedTree(), 'outra-conversa');
-    const { trail } = await loadConversationTrail(CONVERSATION, 'a2b', find);
+    const { trail } = await loadConversationTrail(CONVERSATION, { activeLeafId: 'a2b' }, find);
     expect(trail).toEqual([]);
   });
 });
@@ -334,18 +393,22 @@ describe('buildVersionGroups', () => {
     expect(groups.size).toBe(0);
   });
 
-  test('a raiz também pode ter versões depois do encadeamento', () => {
-    clock = 0;
-    const nodes = [
-      node('r1', 'USER', null),
-      node('ra', 'ASSISTANT', 'r1'),
-      node('r2', 'USER', null),
-      node('rb', 'ASSISTANT', 'r2'),
-    ];
-    // Duas mensagens sem antecessor: sem saber se é acervo antigo ou raiz
-    // versionada, o indicador NÃO aparece — é o lado seguro do trade-off.
-    expect(isLinearized(nodes)).toBe(false);
-    expect(buildVersionGroups(nodes, resolveActiveTrail(nodes, 'rb')).size).toBe(0);
+  test('a raiz TEM indicador de versão em conversa encadeada', () => {
+    const nodes = rootVersionedTree();
+    const trail = resolveActiveTrail(nodes, 'rb', LINEARIZED);
+    expect(buildVersionGroups(nodes, trail, LINEARIZED).get('r2')).toEqual({
+      index: 2,
+      total: 2,
+      ids: ['r1', 'r2'],
+    });
+  });
+
+  test('a mesma árvore SEM a marca de encadeamento não inventa indicador', () => {
+    // Acervo antigo tem várias mensagens sem antecessor e nenhuma delas é
+    // versão de outra. Sem a marca, agrupar seria indicador falso.
+    const nodes = rootVersionedTree();
+    const trail = resolveActiveTrail(nodes, 'rb');
+    expect(buildVersionGroups(nodes, trail).size).toBe(0);
   });
 });
 
@@ -374,20 +437,55 @@ describe('planLinearization', () => {
       { id: 'l4', parentId: 'l3' },
     ]);
 
-    const applied = nodes.map((item) => {
-      const step = plan.find((entry) => entry.id === item.id);
-      return step ? { ...item, parentId: step.parentId } : item;
-    });
+    const applied = applyLinearization(nodes, plan);
     expect(planLinearization(applied)).toEqual([]);
-    expect(isLinearized(applied)).toBe(true);
-    // A sequência da trilha não muda com o encadeamento.
-    expect(resolveActiveTrail(applied, null).map((item) => item.id)).toEqual(
+    // A sequência da trilha é a mesma antes e depois do encadeamento — é o que
+    // permite encadear no meio de uma transação sem recarregar do banco.
+    expect(resolveActiveTrail(applied, null, LINEARIZED).map((item) => item.id)).toEqual(
       resolveActiveTrail(nodes, null).map((item) => item.id),
     );
   });
 
   test('conversa já encadeada não gera plano', () => {
     expect(planLinearization(branchedTree())).toEqual([]);
+  });
+
+  test('versionar em conversa antiga só acha o antecessor DEPOIS do encadeamento', () => {
+    // Regressão: a rota lia `target.parentId` antes do encadeamento preguiçoso.
+    // Em conversa do acervo antigo todo antecessor é nulo, então a versão
+    // nascia como segunda raiz e o histórico anterior a ela sumia da trilha.
+    const nodes = legacyTree();
+    const editada = nodes.find((item) => item.id === 'l3');
+    expect(editada?.parentId).toBeNull(); // leitura precoce: antecessor errado
+
+    const linear = applyLinearization(nodes, planLinearization(nodes));
+    const antecessor = linear.find((item) => item.id === 'l3')?.parentId;
+    expect(antecessor).toBe('l2'); // leitura pós-encadeamento: irmã de verdade
+
+    // Com o antecessor certo, a versão nova preserva l1 e l2 na trilha.
+    clock = 50_000;
+    const comVersao = [
+      ...linear,
+      { ...node('v1', 'USER' as const, antecessor ?? null) },
+      { ...node('va', 'ASSISTANT' as const, 'v1') },
+    ];
+    expect(resolveActiveTrail(comVersao, 'va', LINEARIZED).map((item) => item.id)).toEqual([
+      'l1',
+      'l2',
+      'v1',
+      'va',
+    ]);
+    expect(
+      buildVersionGroups(
+        comVersao,
+        resolveActiveTrail(comVersao, 'va', LINEARIZED),
+        LINEARIZED,
+      ).get('v1'),
+    ).toEqual({
+      index: 2,
+      total: 2,
+      ids: ['l3', 'v1'],
+    });
   });
 });
 

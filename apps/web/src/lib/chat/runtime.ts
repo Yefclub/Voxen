@@ -31,7 +31,11 @@ import {
   orderByTrail,
   type TrailNodeRow,
 } from './conversation-trail';
-import { ensureConversationLinearized, resolveAppendParent } from './message-versions';
+import {
+  ensureConversationLinearized,
+  linearizeWith,
+  resolveAppendParent,
+} from './message-versions';
 import { parseMessageAttachments } from './message-attachments';
 import { parseTemporalBounds } from './temporal-bounds';
 import { isProviderObservedEvent } from './stream-timing';
@@ -163,6 +167,7 @@ export async function getOrCreateConversation(userId: string) {
     updatedAt: true,
     // Folha da trilha ativa (spec 127): toda leitura de histórico parte daqui.
     activeLeafId: true,
+    messagesLinearized: true,
   } as const;
   try {
     return await db.conversation.upsert({
@@ -189,10 +194,10 @@ export async function getChatSnapshot(
   // A trilha é resolvida ANTES de qualquer outra leitura: numa árvore,
   // `createdAt` não define mais a sequência, então a paginação passa a
   // recortar a caminhada, não a ordem cronológica do banco (spec 127).
-  const { trail, versionGroups } = await loadConversationTrail(
-    conversation.id,
-    conversation.activeLeafId,
-  );
+  const { trail, versionGroups } = await loadConversationTrail(conversation.id, {
+    activeLeafId: conversation.activeLeafId,
+    linearized: conversation.messagesLinearized,
+  });
   const visibleIds = activeTrailIds(trail, { onlyNormalKind: true });
   await reconcileStaleHitl(userId, conversation.id, visibleIds);
 
@@ -1311,11 +1316,14 @@ export async function approveChatAction(
     // indicadores de versão de todos os pontos de ramificação.
     const conversation = await tx.conversation.findUnique({
       where: { id: approval.conversationId },
-      select: { activeLeafId: true },
+      select: { activeLeafId: true, messagesLinearized: true },
     });
     const { trail } = await loadConversationTrail(
       approval.conversationId,
-      conversation?.activeLeafId,
+      {
+        activeLeafId: conversation?.activeLeafId,
+        linearized: conversation?.messagesLinearized,
+      },
       (query) => tx.chatMessage.findMany(query) as unknown as Promise<TrailNodeRow[]>,
     );
     const hitlMessage = await tx.chatMessage.create({
@@ -1356,17 +1364,24 @@ async function maybeCompact(
   try {
     const conversation = await db.conversation.findUnique({
       where: { id: conversationId },
-      select: { userId: true, activeLeafId: true },
+      select: { userId: true, activeLeafId: true, messagesLinearized: true },
     });
     if (!conversation) return null;
     // Compactação percorre SOMENTE a trilha ativa (spec 127). Sem isso a
     // memória resumiria mensagens de ramos abandonados para dentro do
     // contexto do modelo — o vazamento que a spec trata como risco nº 1.
-    const { nodes, trail } = await loadConversationTrail(conversationId, conversation.activeLeafId);
+    const { nodes, trail } = await loadConversationTrail(conversationId, {
+      activeLeafId: conversation.activeLeafId,
+      linearized: conversation.messagesLinearized,
+    });
     // O resumo é inserido como nó ENTRE o último compactado e seus filhos.
     // Numa conversa do acervo antigo (toda sem antecessor) não haveria onde
     // pendurar, então o encadeamento preguiçoso roda antes.
-    await ensureConversationLinearized(conversationId, nodes);
+    await ensureConversationLinearized(
+      nodes,
+      conversation.messagesLinearized,
+      linearizeWith(conversationId, db),
+    );
     const activeIds = activeTrailIds(trail);
     const active = orderByTrail(
       (await db.chatMessage.findMany({
@@ -1467,9 +1482,13 @@ async function createTrailedAssistant(
     data: { conversationId, role: 'ASSISTANT', parentId, ...data },
     select: { id: true },
   });
-  await db.conversation
-    .update({ where: { id: conversationId }, data: { activeLeafId: assistant.id } })
-    .catch(() => undefined);
+  // Sem engolir a falha: se o ponteiro não avançar, a folha ativa fica na
+  // mensagem do usuário e esta resposta some do histórico da próxima chamada
+  // — exatamente a inconsistência silenciosa que a spec 127 existe pra evitar.
+  await db.conversation.update({
+    where: { id: conversationId },
+    data: { activeLeafId: assistant.id },
+  });
   return assistant;
 }
 
@@ -1497,13 +1516,17 @@ export async function streamAssistantReply(options: {
   if (!options.userMessageId) {
     const conversation = await db.conversation.findUnique({
       where: { id: conversationId },
-      select: { activeLeafId: true },
+      select: { activeLeafId: true, messagesLinearized: true },
     });
-    const { nodes, trail } = await loadConversationTrail(
-      conversationId,
-      conversation?.activeLeafId,
+    const { nodes, trail } = await loadConversationTrail(conversationId, {
+      activeLeafId: conversation?.activeLeafId,
+      linearized: conversation?.messagesLinearized,
+    });
+    await ensureConversationLinearized(
+      nodes,
+      conversation?.messagesLinearized ?? false,
+      linearizeWith(conversationId, db),
     );
-    await ensureConversationLinearized(conversationId, nodes);
     const userMessage = await db.chatMessage.create({
       data: { conversationId, role: 'USER', content, parentId: resolveAppendParent(trail) },
       select: { id: true },
@@ -1548,14 +1571,19 @@ export async function streamAssistantReply(options: {
   emit({ type: 'status', label: 'Analisando sua solicitação…' });
   const conversationRow = await db.conversation.findUnique({
     where: { id: conversationId },
-    select: { activeLeafId: true },
+    select: { activeLeafId: true, messagesLinearized: true },
   });
   const [active, relevant, timezone] = await Promise.all([
     // Único caminho pelo qual o prompt é montado (spec 127): a trilha ativa,
     // na ordem da caminhada, sem compactadas e sem a resposta em construção.
-    loadActiveHistory(conversationId, conversationRow?.activeLeafId, {
-      excludeId: assistantMessageId,
-    }) as Promise<ActiveMessage[]>,
+    loadActiveHistory(
+      conversationId,
+      {
+        activeLeafId: conversationRow?.activeLeafId,
+        linearized: conversationRow?.messagesLinearized,
+      },
+      { excludeId: assistantMessageId },
+    ) as Promise<ActiveMessage[]>,
     relevantPromise,
     timezonePromise,
   ]);

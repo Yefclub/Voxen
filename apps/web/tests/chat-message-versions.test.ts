@@ -22,6 +22,7 @@ import {
   MessageVersionError,
   resolveAppendParent,
   resolveVersionTarget,
+  type LinearizeDeps,
   type OwnedMessageFinder,
   type OwnedMessageQuery,
   type OwnedMessageRow,
@@ -126,6 +127,29 @@ function trailNode(
   return { id, parentId, role, kind: 'NORMAL', compactedAt: null, createdAt: new Date(at) };
 }
 
+function recorder(): {
+  deps: LinearizeDeps;
+  parents: Array<{ id: string; parentId: string }>;
+  marked: number;
+} {
+  const parents: Array<{ id: string; parentId: string }> = [];
+  let marked = 0;
+  return {
+    parents,
+    get marked() {
+      return marked;
+    },
+    deps: {
+      updateParent: async (id, parentId) => {
+        parents.push({ id, parentId });
+      },
+      markLinearized: async () => {
+        marked += 1;
+      },
+    },
+  };
+}
+
 describe('activateMessageVersion', () => {
   const NODES = [
     trailNode('raiz-a', null, 'ASSISTANT', 1_000),
@@ -133,90 +157,146 @@ describe('activateMessageVersion', () => {
     trailNode('resposta-a', 'msg-a', 'ASSISTANT', 3_000),
   ];
 
+  /** Conversa do acervo antigo: nenhuma mensagem tem antecessor registrado. */
+  const LEGACY_NODES = [
+    trailNode('l1', null, 'USER', 1_000),
+    trailNode('l2', null, 'ASSISTANT', 2_000),
+    trailNode('l3', null, 'USER', 3_000),
+    trailNode('l4', null, 'ASSISTANT', 4_000),
+  ];
+
   test('ativar versão de outro workspace não escreve nada', async () => {
     const { find } = fakeMessageFinder();
-    const writes: Array<{ conversationId: string; activeLeafId: string }> = [];
+    const claims: Array<{ conversationId: string; activeLeafId: string }> = [];
 
     await expect(
       activateMessageVersion('user-a', 'msg-b', {
         findMessage: find,
         findNodes: fakeNodeFinder(NODES),
-        isThinking: async () => false,
-        setActiveLeaf: async (conversationId, activeLeafId) => {
-          writes.push({ conversationId, activeLeafId });
+        readState: async () => ({ messagesLinearized: true }),
+        linearize: recorder().deps,
+        claimActiveLeaf: async (conversationId, activeLeafId) => {
+          claims.push({ conversationId, activeLeafId });
+          return true;
         },
       }),
     ).rejects.toThrow('Mensagem não encontrada.');
 
-    expect(writes).toEqual([]);
+    expect(claims).toEqual([]);
   });
 
   test('ativar a própria versão move o ponteiro para a folha daquela trilha', async () => {
     const { find } = fakeMessageFinder();
-    const writes: Array<{ conversationId: string; activeLeafId: string }> = [];
+    const claims: Array<{ conversationId: string; activeLeafId: string }> = [];
 
     const result = await activateMessageVersion('user-a', 'msg-a', {
       findMessage: find,
       findNodes: fakeNodeFinder(NODES),
-      isThinking: async () => false,
-      setActiveLeaf: async (conversationId, activeLeafId) => {
-        writes.push({ conversationId, activeLeafId });
+      readState: async () => ({ messagesLinearized: true }),
+      linearize: recorder().deps,
+      claimActiveLeaf: async (conversationId, activeLeafId) => {
+        claims.push({ conversationId, activeLeafId });
+        return true;
       },
     });
 
     expect(result).toEqual({ conversationId: 'conv-a', activeLeafId: 'resposta-a' });
-    expect(writes).toEqual([{ conversationId: 'conv-a', activeLeafId: 'resposta-a' }]);
+    expect(claims).toEqual([{ conversationId: 'conv-a', activeLeafId: 'resposta-a' }]);
+  });
+
+  test('em conversa antiga, ativar encadeia antes e não trunca a trilha', async () => {
+    // Regressão: sem encadear, `resolveDeepestLeaf` não achava filho nenhum,
+    // a folha resolvida virava a própria mensagem, e a conversa perdia de
+    // forma PERSISTIDA tudo que veio depois dela.
+    const { find } = fakeMessageFinder();
+    const linearize = recorder();
+    const claims: string[] = [];
+
+    const result = await activateMessageVersion('user-a', 'msg-a', {
+      findMessage: find,
+      findNodes: async (query) =>
+        query.where.conversationId === 'conv-a'
+          ? [...LEGACY_NODES, trailNode('msg-a', null, 'USER', 5_000)]
+          : [],
+      readState: async () => ({ messagesLinearized: false }),
+      linearize: linearize.deps,
+      claimActiveLeaf: async (_conversationId, activeLeafId) => {
+        claims.push(activeLeafId);
+        return true;
+      },
+    });
+
+    expect(linearize.parents).toEqual([
+      { id: 'l2', parentId: 'l1' },
+      { id: 'l3', parentId: 'l2' },
+      { id: 'l4', parentId: 'l3' },
+      { id: 'msg-a', parentId: 'l4' },
+    ]);
+    expect(linearize.marked).toBe(1);
+    // `msg-a` é a última da cadeia encadeada, então é ela mesma a folha.
+    expect(result.activeLeafId).toBe('msg-a');
+    expect(claims).toEqual(['msg-a']);
   });
 
   test('trocar de trilha é bloqueado enquanto uma resposta está sendo gerada', async () => {
+    // O bloqueio é a PRÓPRIA escrita condicional: ler `thinking` e gravar em
+    // duas idas ao banco deixaria um turno reivindicar no intervalo e montar
+    // o prompt do ramo errado.
     const { find } = fakeMessageFinder();
-    const writes: string[] = [];
 
     const failure = await activateMessageVersion('user-a', 'msg-a', {
       findMessage: find,
       findNodes: fakeNodeFinder(NODES),
-      isThinking: async () => true,
-      setActiveLeaf: async (_conversationId, activeLeafId) => {
-        writes.push(activeLeafId);
-      },
+      readState: async () => ({ messagesLinearized: true }),
+      linearize: recorder().deps,
+      claimActiveLeaf: async () => false,
     }).catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(MessageVersionError);
     expect((failure as MessageVersionError).status).toBe(409);
-    expect(writes).toEqual([]);
   });
 });
 
 describe('ensureConversationLinearized', () => {
-  test('encadeia o acervo antigo e devolve a quantidade de passos', async () => {
+  test('encadeia o acervo antigo, marca a conversa e devolve os nós corrigidos', async () => {
     const nodes = [
       trailNode('l1', null, 'USER', 1_000),
       trailNode('l2', null, 'ASSISTANT', 2_000),
       trailNode('l3', null, 'USER', 3_000),
     ];
-    const applied: Array<{ id: string; parentId: string }> = [];
+    const linearize = recorder();
 
-    const steps = await ensureConversationLinearized('conv-a', nodes, async (id, parentId) => {
-      applied.push({ id, parentId });
-    });
+    const result = await ensureConversationLinearized(nodes, false, linearize.deps);
 
-    expect(steps).toBe(2);
-    expect(applied).toEqual([
+    expect(linearize.parents).toEqual([
       { id: 'l2', parentId: 'l1' },
       { id: 'l3', parentId: 'l2' },
     ]);
+    expect(linearize.marked).toBe(1);
+    // Os nós voltam já corrigidos: a mesma transação segue sem reconsultar.
+    expect(result.map((item) => item.parentId)).toEqual([null, 'l1', 'l2']);
   });
 
-  test('conversa já encadeada não escreve', async () => {
+  test('conversa nova é marcada mesmo sem nada a encadear', async () => {
+    // Sem a marca, a leitura continuaria aplicando a regra de acervo antigo e
+    // a raiz nunca poderia ter indicador de versão.
     const nodes = [trailNode('r1', null, 'USER', 1_000), trailNode('r2', 'r1', 'ASSISTANT', 2_000)];
-    let writes = 0;
+    const linearize = recorder();
 
-    expect(
-      await ensureConversationLinearized('conv-a', nodes, async () => {
-        writes += 1;
-      }),
-    ).toBe(0);
-    expect(writes).toBe(0);
+    await ensureConversationLinearized(nodes, false, linearize.deps);
+
+    expect(linearize.parents).toEqual([]);
+    expect(linearize.marked).toBe(1);
+  });
+
+  test('conversa já marcada não escreve nada', async () => {
+    const nodes = [trailNode('r1', null, 'USER', 1_000), trailNode('r2', 'r1', 'ASSISTANT', 2_000)];
+    const linearize = recorder();
+
+    await ensureConversationLinearized(nodes, true, linearize.deps);
+
+    expect(linearize.parents).toEqual([]);
+    expect(linearize.marked).toBe(0);
   });
 });
 

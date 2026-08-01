@@ -20,6 +20,7 @@ import {
 import {
   cancelActiveChatTurn,
   ChatTurnBusyError,
+  ChatTurnVersionTargetError,
   createChatTurn,
   recoverOrphanedUserTurn,
   runChatTurn,
@@ -234,6 +235,11 @@ chatRoutes.post('/', async (c) => {
   return streamTurnResponse(turn, requestStartedAt);
 });
 
+/** O erro já carrega o status certo — 400 de papel inválido não vira 404. */
+function versionErrorStatus(error: MessageVersionError): 400 | 404 | 409 {
+  return error.status === 400 ? 400 : error.status === 409 ? 409 : 404;
+}
+
 /**
  * Reenvia uma mensagem do usuário como VERSÃO nova (spec 127).
  *
@@ -263,18 +269,23 @@ chatRoutes.post('/messages/:id/versions', async (c) => {
     // `userId` da SESSÃO: mensagem de outra conversa não é encontrada aqui.
     target = await resolveVersionTarget(userId, c.req.param('id'));
   } catch (error) {
-    if (error instanceof MessageVersionError) return c.json({ error: error.message }, 404);
+    if (error instanceof MessageVersionError) {
+      return c.json({ error: error.message }, versionErrorStatus(error));
+    }
     throw error;
   }
 
   const attachments = await resolveAttachments(userId, parsed.data.attachmentJobIds);
   let turn: Awaited<ReturnType<typeof createChatTurn>>;
   try {
+    // Passa o ID, não o antecessor: em conversa do acervo antigo o antecessor
+    // só existe depois do encadeamento, que roda dentro da transação do turno.
     turn = await createChatTurn(userId, parsed.data.content, attachments, {
-      branchFrom: { parentId: target.parentId },
+      branchFrom: { messageId: target.id },
     });
   } catch (error) {
     if (error instanceof ChatTurnBusyError) return c.json({ error: error.message }, 409);
+    if (error instanceof ChatTurnVersionTargetError) return c.json({ error: error.message }, 404);
     throw error;
   }
   return streamTurnResponse(turn, requestStartedAt);
@@ -287,7 +298,7 @@ chatRoutes.post('/messages/:id/activate', async (c) => {
     return c.json({ activeLeafId: result.activeLeafId });
   } catch (error) {
     if (error instanceof MessageVersionError) {
-      return c.json({ error: error.message }, error.status === 409 ? 409 : 404);
+      return c.json({ error: error.message }, versionErrorStatus(error));
     }
     throw error;
   }

@@ -22,7 +22,7 @@ import {
   type TrailNodeFinder,
   type TrailNodeRow,
 } from './conversation-trail';
-import { planLinearization, resolveDeepestLeaf } from './message-trail';
+import { applyLinearization, planLinearization, resolveDeepestLeaf } from './message-trail';
 
 /** Erro de versionamento com o status HTTP que a rota deve devolver. */
 export class MessageVersionError extends Error {
@@ -85,24 +85,18 @@ export async function resolveVersionTarget(
   return message;
 }
 
-/**
- * Folha que a conversa passa a apontar ao ativar uma versão: o descendente
- * mais profundo dela, escolhendo em cada bifurcação o ramo mais recente.
- * Navegar entre versões NUNCA gera resposta nova — só reposiciona a trilha.
- */
-export async function resolveActivationLeaf(
-  target: OwnedMessageRow,
-  findNodes?: TrailNodeFinder,
-): Promise<string> {
-  const { nodes } = await loadConversationTrail(target.conversationId, null, findNodes);
-  return resolveDeepestLeaf(nodes, target.id) ?? target.id;
-}
-
 export interface ActivateVersionDeps {
   findMessage?: OwnedMessageFinder;
   findNodes?: TrailNodeFinder;
-  isThinking?: (conversationId: string) => Promise<boolean>;
-  setActiveLeaf?: (conversationId: string, activeLeafId: string) => Promise<unknown>;
+  readState?: (conversationId: string) => Promise<{ messagesLinearized: boolean } | null>;
+  linearize?: LinearizeDeps;
+  /**
+   * Grava a folha ativa SOMENTE se a conversa não estiver gerando resposta, e
+   * devolve se gravou. Leitura e escrita têm que ser a mesma operação: um
+   * turno que reivindique `thinking` entre as duas teria a trilha trocada por
+   * baixo e montaria o prompt do ramo errado.
+   */
+  claimActiveLeaf?: (conversationId: string, activeLeafId: string) => Promise<boolean>;
 }
 
 /**
@@ -115,27 +109,46 @@ export async function activateMessageVersion(
   deps: ActivateVersionDeps = {},
 ): Promise<{ conversationId: string; activeLeafId: string }> {
   const target = await resolveVersionTarget(userId, messageId, deps.findMessage);
-  const thinking = await (deps.isThinking ?? isConversationThinking)(target.conversationId);
-  // Enquanto uma resposta está sendo gerada, trocar de trilha deixaria o turno
-  // em andamento gravando num ramo que o usuário não está mais vendo.
-  if (thinking) {
-    throw new MessageVersionError('Aguarde a resposta atual terminar.', 409);
-  }
-  const activeLeafId = await resolveActivationLeaf(target, deps.findNodes);
-  await (deps.setActiveLeaf ?? setConversationActiveLeaf)(target.conversationId, activeLeafId);
-  return { conversationId: target.conversationId, activeLeafId };
+  const conversationId = target.conversationId;
+  const state = await (deps.readState ?? readConversationState)(conversationId);
+  if (!state) throw new MessageVersionError('Mensagem não encontrada.', 404);
+
+  // Ativar é escrita estrutural: sem encadear antes, numa conversa do acervo
+  // antigo `resolveDeepestLeaf` não acha filho nenhum, a folha resolvida vira
+  // a própria mensagem, e a trilha perde de forma PERSISTIDA tudo que veio
+  // depois dela.
+  const { nodes } = await loadConversationTrail(
+    conversationId,
+    { activeLeafId: null, linearized: state.messagesLinearized },
+    deps.findNodes,
+  );
+  const linearNodes = await ensureConversationLinearized(
+    nodes,
+    state.messagesLinearized,
+    deps.linearize ?? linearizeWith(conversationId, db),
+  );
+
+  const activeLeafId = resolveDeepestLeaf(linearNodes, target.id) ?? target.id;
+  const claimed = await (deps.claimActiveLeaf ?? claimActiveLeafInDb)(conversationId, activeLeafId);
+  if (!claimed) throw new MessageVersionError('Aguarde a resposta atual terminar.', 409);
+  return { conversationId, activeLeafId };
 }
 
-async function isConversationThinking(conversationId: string): Promise<boolean> {
-  const conversation = await db.conversation.findUnique({
+async function readConversationState(
+  conversationId: string,
+): Promise<{ messagesLinearized: boolean } | null> {
+  return db.conversation.findUnique({
     where: { id: conversationId },
-    select: { thinking: true },
+    select: { messagesLinearized: true },
   });
-  return conversation?.thinking ?? false;
 }
 
-function setConversationActiveLeaf(conversationId: string, activeLeafId: string): Promise<unknown> {
-  return db.conversation.update({ where: { id: conversationId }, data: { activeLeafId } });
+async function claimActiveLeafInDb(conversationId: string, activeLeafId: string): Promise<boolean> {
+  const claimed = await db.conversation.updateMany({
+    where: { id: conversationId, thinking: false },
+    data: { activeLeafId },
+  });
+  return claimed.count === 1;
 }
 
 /**
@@ -155,16 +168,49 @@ export function resolveAppendParent(trail: readonly TrailNodeRow[]): string | nu
  * máximo uma vez por conversa e vira no-op depois. Conversa que ninguém abre
  * nunca é tocada e continua legível pela regra de prefixo linear da trilha.
  */
-export async function ensureConversationLinearized(
-  conversationId: string,
-  nodes: readonly TrailNodeRow[],
-  updateParent: (id: string, parentId: string) => Promise<unknown> = (id, parentId) =>
-    db.chatMessage.updateMany({
-      where: { id, conversationId, parentId: null },
-      data: { parentId },
-    }),
-): Promise<number> {
+export interface LinearizeDeps {
+  updateParent: (id: string, parentId: string) => Promise<unknown>;
+  markLinearized: () => Promise<unknown>;
+}
+
+/** Cliente Prisma (ou transação) reduzido ao que o encadeamento escreve. */
+export interface LinearizeClient {
+  chatMessage: {
+    updateMany(args: {
+      where: { id: string; conversationId: string; parentId: null };
+      data: { parentId: string };
+    }): Promise<unknown>;
+  };
+  conversation: {
+    update(args: { where: { id: string }; data: { messagesLinearized: true } }): Promise<unknown>;
+  };
+}
+
+export function linearizeWith(conversationId: string, client: LinearizeClient): LinearizeDeps {
+  return {
+    updateParent: (id, parentId) =>
+      client.chatMessage.updateMany({
+        where: { id, conversationId, parentId: null },
+        data: { parentId },
+      }),
+    markLinearized: () =>
+      client.conversation.update({
+        where: { id: conversationId },
+        data: { messagesLinearized: true },
+      }),
+  };
+}
+
+export async function ensureConversationLinearized<T extends TrailNodeRow>(
+  nodes: readonly T[],
+  alreadyLinearized: boolean,
+  deps: LinearizeDeps,
+): Promise<T[]> {
+  if (alreadyLinearized) return [...nodes];
   const plan = planLinearization(nodes);
-  for (const step of plan) await updateParent(step.id, step.parentId);
-  return plan.length;
+  for (const step of plan) await deps.updateParent(step.id, step.parentId);
+  // A marca é gravada mesmo com plano vazio: conversa nova já nasce árvore, e
+  // sem a marca a leitura continuaria aplicando a regra de acervo antigo.
+  await deps.markLinearized();
+  return applyLinearization(nodes, plan);
 }

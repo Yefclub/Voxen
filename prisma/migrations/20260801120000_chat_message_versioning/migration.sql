@@ -10,6 +10,11 @@ ALTER TABLE "ChatMessage" ADD COLUMN IF NOT EXISTS "parentId" TEXT;
 
 ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS "activeLeafId" TEXT;
 
+-- `false` em todo o acervo: conversa existente só é marcada quando recebe a
+-- primeira escrita estrutural e tem as mensagens encadeadas de fato.
+ALTER TABLE "Conversation"
+  ADD COLUMN IF NOT EXISTS "messagesLinearized" BOOLEAN NOT NULL DEFAULT false;
+
 CREATE INDEX IF NOT EXISTS "ChatMessage_conversationId_parentId_idx"
   ON "ChatMessage"("conversationId", "parentId");
 

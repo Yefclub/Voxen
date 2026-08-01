@@ -6,7 +6,11 @@ import {
   type TrailNodeRow,
 } from './conversation-trail';
 import type { MessageAttachment } from './message-attachments';
-import { ensureConversationLinearized, resolveAppendParent } from './message-versions';
+import {
+  ensureConversationLinearized,
+  linearizeWith,
+  resolveAppendParent,
+} from './message-versions';
 import { getOrCreateConversation, streamAssistantReply, type ChatStreamEvent } from './runtime';
 import {
   acquireChatTurnLease,
@@ -29,15 +33,25 @@ export class ChatTurnCoordinationError extends Error {
   }
 }
 
+/** A mensagem a versionar sumiu entre a checagem da rota e a transação. */
+export class ChatTurnVersionTargetError extends Error {
+  constructor() {
+    super('Mensagem não encontrada.');
+  }
+}
+
 export interface CreateChatTurnOptions {
   /**
-   * Antecessor explícito da mensagem do usuário (spec 127). Presente só no
-   * versionamento: a nova versão nasce IRMÃ da mensagem editada, ou seja,
-   * pendurada no mesmo antecessor dela — inclusive quando esse antecessor é
-   * nulo, porque a mensagem editada era a raiz da conversa. Ausente = fluxo
-   * normal, que anexa ao fim da trilha ativa.
+   * Mensagem sendo versionada (spec 127). A nova versão nasce IRMÃ dela, ou
+   * seja, pendurada no mesmo antecessor. Ausente = fluxo normal, que anexa ao
+   * fim da trilha ativa.
+   *
+   * Guarda o ID, não o antecessor já resolvido: numa conversa do acervo antigo
+   * o antecessor só existe DEPOIS do encadeamento preguiçoso, que roda dentro
+   * da transação abaixo. Ler `parentId` antes disso devolveria `null` e faria
+   * a versão nascer como segunda raiz, jogando fora o histórico anterior.
    */
-  branchFrom?: { parentId: string | null };
+  branchFrom?: { messageId: string };
 }
 
 export async function createChatTurn(
@@ -61,20 +75,32 @@ export async function createChatTurn(
     // criando um ramo que o usuário não pediu.
     const claimedConversation = await tx.conversation.findUniqueOrThrow({
       where: { id: conversation.id },
-      select: { activeLeafId: true },
+      select: { activeLeafId: true, messagesLinearized: true },
     });
     const { nodes, trail } = await loadConversationTrail(
       conversation.id,
-      claimedConversation.activeLeafId,
+      {
+        activeLeafId: claimedConversation.activeLeafId,
+        linearized: claimedConversation.messagesLinearized,
+      },
       (query) => tx.chatMessage.findMany(query) as unknown as Promise<TrailNodeRow[]>,
     );
-    await ensureConversationLinearized(conversation.id, nodes, (id, parentId) =>
-      tx.chatMessage.updateMany({
-        where: { id, conversationId: conversation.id, parentId: null },
-        data: { parentId },
-      }),
+    const linearNodes = await ensureConversationLinearized(
+      nodes,
+      claimedConversation.messagesLinearized,
+      linearizeWith(conversation.id, tx),
     );
-    const parentId = options.branchFrom ? options.branchFrom.parentId : resolveAppendParent(trail);
+
+    let parentId: string | null;
+    if (options.branchFrom) {
+      // Antecessor lido DEPOIS do encadeamento e dentro desta transação: é o
+      // que faz a versão nascer irmã de verdade, mesmo em conversa antiga.
+      const edited = linearNodes.find((item) => item.id === options.branchFrom?.messageId);
+      if (!edited) throw new ChatTurnVersionTargetError();
+      parentId = edited.parentId;
+    } else {
+      parentId = resolveAppendParent(trail);
+    }
 
     const userMessage = await tx.chatMessage.create({
       data: {
@@ -323,7 +349,10 @@ export async function recoverOrphanedUserTurn(userId: string): Promise<string | 
   // "Última mensagem" é a folha da TRILHA ATIVA (spec 127), não a última por
   // `createdAt`: numa árvore a mensagem mais recente pode estar num ramo
   // abandonado, e recuperar o turno dela responderia à pergunta errada.
-  const { trail } = await loadConversationTrail(conversation.id, conversation.activeLeafId);
+  const { trail } = await loadConversationTrail(conversation.id, {
+    activeLeafId: conversation.activeLeafId,
+    linearized: conversation.messagesLinearized,
+  });
   const latest = activeTrailMessages(trail, { onlyNormalKind: true }).at(-1) ?? null;
   if (!latest || latest.role !== 'USER') {
     if (conversation && active === null) {

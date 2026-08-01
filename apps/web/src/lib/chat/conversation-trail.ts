@@ -64,9 +64,16 @@ export interface ConversationTrail {
   versionGroups: Map<string, VersionGroup>;
 }
 
+/** Estado da conversa que a resolução da trilha precisa. */
+export interface ConversationTrailState {
+  activeLeafId: string | null | undefined;
+  /** `Conversation.messagesLinearized`. Omitido = trata como acervo antigo. */
+  linearized?: boolean;
+}
+
 export async function loadConversationTrail(
   conversationId: string,
-  activeLeafId: string | null | undefined,
+  state: ConversationTrailState,
   findNodes: TrailNodeFinder = findTrailNodes,
 ): Promise<ConversationTrail> {
   const nodes = await findNodes({
@@ -81,8 +88,9 @@ export async function loadConversationTrail(
       createdAt: true,
     },
   });
-  const trail = resolveActiveTrail(nodes, activeLeafId);
-  return { nodes, trail, versionGroups: buildVersionGroups(nodes, trail) };
+  const options = { linearized: state.linearized };
+  const trail = resolveActiveTrail(nodes, state.activeLeafId, options);
+  return { nodes, trail, versionGroups: buildVersionGroups(nodes, trail, options) };
 }
 
 export interface ActiveTrailFilter {
@@ -158,11 +166,11 @@ const findHistoryRows: HistoryFinder = (query) =>
  */
 export async function loadActiveHistory(
   conversationId: string,
-  activeLeafId: string | null | undefined,
+  state: ConversationTrailState,
   options: { excludeId?: string | null } = {},
   deps: { findNodes?: TrailNodeFinder; findRows?: HistoryFinder } = {},
 ): Promise<HistoryRow[]> {
-  const { trail } = await loadConversationTrail(conversationId, activeLeafId, deps.findNodes);
+  const { trail } = await loadConversationTrail(conversationId, state, deps.findNodes);
   const orderedIds = activeTrailIds(trail, { excludeId: options.excludeId });
   if (orderedIds.length === 0) return [];
   const rows = await (deps.findRows ?? findHistoryRows)({
