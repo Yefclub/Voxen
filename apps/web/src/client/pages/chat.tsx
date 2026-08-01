@@ -53,6 +53,7 @@ import {
   type MessageSegment,
   type ToolEvent,
 } from '../lib/chat-segments';
+import { useThinkingDisclosure } from '../lib/thinking-disclosure';
 import {
   MAX_MESSAGE_ATTACHMENTS,
   type MessageAttachment,
@@ -310,9 +311,10 @@ function ThinkingBlock({
   startedAt: number;
 }): React.ReactElement {
   const { t } = useI18n();
-  // Timeline aberta enquanto o turno está em voo; recolhe só ao terminar
-  // (usuário reabre no header).
-  const [expanded, setExpanded] = useState(true);
+  // Abertura dirigida por `live` (spec 130): o turno abre o bloco uma vez e o
+  // recolhe uma vez, com atraso, quando o stream fecha. Amarrar isso a
+  // `inFlight` fazia o bloco piscar a cada ida-e-volta de ferramenta.
+  const { expanded, toggle } = useThinkingDisclosure(live);
   // Cronômetro de parede apenas durante o turno ao vivo. Mensagens concluídas
   // usam exclusivamente timestamps persistidos, portanto nunca "envelhecem"
   // ao remontar ou ao voltar para a conversa.
@@ -327,11 +329,7 @@ function ThinkingBlock({
   const toolCount = segmentsToolCount(segments);
 
   useEffect(() => {
-    if (!inFlight) {
-      setExpanded(false);
-      return;
-    }
-    setExpanded(true);
+    if (!inFlight) return;
     const id = window.setInterval(() => {
       setElapsed(Date.now() - startedAtRef.current);
     }, 200);
@@ -340,26 +338,28 @@ function ThinkingBlock({
 
   return (
     <section className="mb-2.5 flex max-w-3xl flex-col gap-1">
+      {/*
+        Clicável também durante o turno: a spec 130 exige que o usuário possa
+        assumir o controle no meio do voo, e `disabled` tirava isso dele.
+      */}
       <button
         type="button"
-        onClick={() => !inFlight && setExpanded((v) => !v)}
-        disabled={inFlight}
+        onClick={toggle}
+        aria-expanded={expanded}
         className="flex items-center gap-1.5 self-start rounded-md px-1 py-0.5 text-left"
       >
+        <ChevronRight
+          className={cn(
+            'h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform',
+            expanded && 'rotate-90',
+          )}
+        />
         {inFlight ? (
           <span className="text-shimmer text-[12.5px] font-medium">{t('chat.thinking')}</span>
         ) : (
-          <>
-            <ChevronRight
-              className={cn(
-                'h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform',
-                expanded && 'rotate-90',
-              )}
-            />
-            <span className="text-[12.5px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]">
-              {thinkingSummaryLabel(duration, toolCount, t)}
-            </span>
-          </>
+          <span className="text-[12.5px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]">
+            {thinkingSummaryLabel(duration, toolCount, t)}
+          </span>
         )}
       </button>
       <Collapsible open={expanded}>

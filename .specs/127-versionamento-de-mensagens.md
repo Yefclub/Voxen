@@ -113,8 +113,9 @@ Parte 2:
 
 - [x] Botão de versionar ao lado do copiar, apenas em mensagens do usuário.
 - [x] Editar abre a mensagem com o texto atual carregado.
-- [x] Indicador `‹ n/N ›` visível em ponto de ramificação, navegando entre
-      versões.
+- [x] Indicador `‹ n/N ›` presente em ponto de ramificação, navegando entre
+      versões. (Desde a spec 130 ele se revela no hover da mensagem, junto das
+      demais ações, em vez de ficar sempre visível.)
 - [x] Versionamento e troca de trilha bloqueados na UI enquanto uma resposta
       está sendo gerada (o servidor já recusa com 409).
 
@@ -189,11 +190,20 @@ Parte 2:
 
 ### Parte 2 (UI)
 
-- **Indicador sempre visível, ações no hover.** A linha de ações da mensagem do
-  usuário já revela copiar só no hover, e o botão de editar entra nessa mesma
-  regra. O `‹ n/N ›` não: ele é *estado* ("você está lendo a 2ª de 3
-  respostas"), e estado que some quando o ponteiro sai da mensagem esconde do
-  usuário justamente o fato de ele estar numa trilha antiga.
+- ~~**Indicador sempre visível, ações no hover.**~~ **REVOGADA pela spec 130,
+  item 4.** A decisão original era: a linha de ações da mensagem do usuário já
+  revela copiar só no hover e o botão de editar entra nessa mesma regra, mas o
+  `‹ n/N ›` não, porque ele é *estado* ("você está lendo a 2ª de 3 respostas") e
+  estado que some quando o ponteiro sai da mensagem esconderia do usuário
+  justamente o fato de ele estar numa trilha antiga.
+
+  Em uso real o owner pediu o contrário — *"o 2/2 de versionamento não está
+  ficando invisível como os outros botões ao passar o mouse sobre a mensagem"*
+  —, priorizando a linha limpa em repouso e a paridade visual entre tudo o que
+  pertence à mensagem. A decisão é dele. Desde a 130 o indicador usa o mesmo
+  `ACTION_REVEAL` do copiar e do editar; a revelação continua sendo por
+  opacidade, então as setas seguem na ordem de tabulação e voltam a aparecer no
+  `focus-within` do grupo.
 
 - **Reenviar recorta a trilha na hora.** A versão nova nasce IRMÃ da mensagem
   editada, então a mensagem editada e tudo depois dela não pertencem à trilha

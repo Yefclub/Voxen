@@ -176,6 +176,43 @@ describe('UserMessageActions', () => {
     });
     expect(props.onEdit).toHaveBeenCalledTimes(1);
   });
+
+  test('o indicador se revela e some junto do botão de editar', async () => {
+    // Spec 130 item 4, revogando a decisão da 127 de indicador sempre visível.
+    // A comparação é com o botão de editar da MESMA linha: o pedido do owner é
+    // paridade, não um conjunto de classes específico.
+    const renderer = await render(React.createElement(UserMessageActions, actionsProps()));
+    const nav = renderer.root.findByProps({ role: 'group' }).props as { className: string };
+    const edit = renderer.root
+      .findAllByType('button')
+      .map((node) => node.props as { 'aria-label'?: string; className: string })
+      .find((props) => props['aria-label'] === 'chat.editMessage');
+
+    const reveal = (className: string): string[] =>
+      className
+        .split(/\s+/)
+        .filter((token) => /opacity/.test(token))
+        .sort();
+
+    expect(reveal(nav.className)).toEqual(reveal(edit?.className ?? ''));
+    expect(reveal(nav.className).length).toBeGreaterThan(0);
+  });
+
+  test('a revelação é por opacidade, para o indicador seguir alcançável pelo teclado', async () => {
+    // `hidden`/`display:none` tirariam as setas da ordem de tabulação e o
+    // `md:group-focus-within:` da mensagem nunca as traria de volta — botão que
+    // some ao receber foco é armadilha de teclado.
+    const renderer = await render(React.createElement(UserMessageActions, actionsProps()));
+    const nav = renderer.root.findByProps({ role: 'group' }).props as {
+      className: string;
+      hidden?: boolean;
+    };
+    expect(nav.hidden).toBeUndefined();
+    expect(nav.className).not.toMatch(/(^|\s|:)(hidden|invisible)(\s|$)/);
+    expect(nav.className).toContain('group-focus-within:opacity-100');
+    expect(buttonByLabel(renderer, 'chat.versionPrevious').disabled).toBe(false);
+    expect(buttonByLabel(renderer, 'chat.versionNext').disabled).toBe(false);
+  });
 });
 
 function formProps(overrides: { initialText?: string; disabled?: boolean } = {}) {
