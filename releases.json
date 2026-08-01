@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785546542",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Chat mostra o raciocínio, compacta as ferramentas e guarda os anexos da mensagem",
+    "body": "Cinco acertos no chat, todos visíveis no uso do dia a dia.\n\n**Raciocínio aparece de novo.** O texto de raciocínio que o modelo emite volta\na ser exibido na linha do tempo do turno, dentro do bloco \"Pensando\" (basta\nexpandir). Quando o modelo não emite raciocínio — ou só sinaliza a etapa sem\ntexto — o bloco continua mostrando o resumo operacional de sempre, sem espaço\nvazio nem indicador travado.\n\n**Ferramentas compactam assim que a resposta começa.** Antes o bloco de\nferramentas ficava aberto ocupando a tela até o fim do stream, empurrando a\nresposta pra baixo justamente na hora de ler. Agora, no instante em que o\nprimeiro trecho da resposta final chega, o bloco se recolhe num resumo curto\n(\"Pensou por 4,2s · 3 ferramentas\") — e um clique reabre o detalhe. Se o agente\nvoltar a usar ferramentas depois disso, o bloco reabre sozinho.\n\n**Documento anexado fica preso à mensagem.** O arquivo enviado pelo composer\ncontinua indo pro acervo, mas agora também fica vinculado à mensagem em que\nfoi enviado: os anexos aparecem logo abaixo da sua bolha no histórico e\ncontinuam lá depois de recarregar a página. São até 5 anexos por mensagem.\n\nSe o envio falhar — turno ocupado, limite de mensagens ou queda de conexão —\nos anexos continuam no composer, prontos pra tentar de novo. Antes eles sumiam\ne era preciso subir o arquivo outra vez.\n\n**O composer cresce com o texto.** Escrever mensagens longas ficou confortável:\na caixa expande conforme você digita até uma altura máxima e só então passa a\nrolar internamente. No celular esse teto acompanha a tela, então o teclado\naberto não engole a conversa.\n\n**Ícone de enviar alinhado ao resto do app.** O avião de papel deu lugar ao\nchevron, a mesma família de ícones usada em toda a interface. O chat do detalhe\nde transcrição mantém o avião de propósito: ali o chevron já significa\nexpandir/recolher. Anexos de imagem também passam a mostrar ícone de imagem em\nvez de ícone de documento.",
+    "pr": 503,
+    "author": "Kalyel",
+    "date": "2026-07-31T22:08:49-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/503"
+  },
+  {
     "version": "0.13.0-dev.1785539796",
     "channel": "dev",
     "type": "ui",
