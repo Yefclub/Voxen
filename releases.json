@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785565397",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Editar uma pergunta do chat e navegar entre as versões dela",
+    "body": "Agora dá para reescrever uma pergunta que você já enviou e recebê-la de volta\ncom uma resposta nova, sem perder a anterior. É a metade de cima do\nversionamento de mensagens: a parte que aparece na tela.\n\n**Como usar.** Passe o mouse por cima de uma mensagem sua e, ao lado do\n\"Copiar\", aparece \"Editar\". A bolha vira uma caixa de texto já preenchida com o\nque você escreveu, e o botão \"Reenviar\" manda a versão nova. Enter reenvia,\nShift+Enter quebra a linha e Esc fecha sem mandar nada.\n\n**Reenviar não apaga nada.** A pergunta anterior e a resposta que ela recebeu\ncontinuam guardadas. No ponto onde existe mais de uma versão aparece um\ncontador `‹ 2/3 ›` junto da mensagem, e as setas alternam entre elas — a\nconversa inteira daquele ponto para a frente acompanha a versão escolhida.\nTrocar de versão não gasta uma resposta nova: só mostra a que já existia.\n\n**Reenviar o mesmo texto é válido.** Se você só quer outra tentativa da Vox,\nmande a mesma pergunta de novo — vira uma versão como qualquer outra.\n\n**Os anexos vêm junto.** Editar uma pergunta que tinha arquivo anexado mantém o\narquivo na versão nova, sem precisar subir de novo.\n\n**Enquanto a Vox responde, os controles ficam travados.** Editar e trocar de\nversão só voltam quando a resposta em andamento termina.\n\n**Conversa sem versão nenhuma continua igual.** O contador só aparece onde\nexiste mais de uma versão, então quem nunca editou uma pergunta não vê nada de\nnovo além do botão \"Editar\".",
+    "pr": 513,
+    "author": "Kalyel",
+    "date": "2026-08-01T03:22:55-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/513"
+  },
+  {
     "version": "0.13.0-dev.1785560565",
     "channel": "dev",
     "type": "feat",
