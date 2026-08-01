@@ -111,11 +111,11 @@ Parte 1:
 
 Parte 2:
 
-- [ ] Botão de versionar ao lado do copiar, apenas em mensagens do usuário.
-- [ ] Editar abre a mensagem com o texto atual carregado.
-- [ ] Indicador `‹ n/N ›` visível em ponto de ramificação, navegando entre
+- [x] Botão de versionar ao lado do copiar, apenas em mensagens do usuário.
+- [x] Editar abre a mensagem com o texto atual carregado.
+- [x] Indicador `‹ n/N ›` visível em ponto de ramificação, navegando entre
       versões.
-- [ ] Versionamento e troca de trilha bloqueados na UI enquanto uma resposta
+- [x] Versionamento e troca de trilha bloqueados na UI enquanto uma resposta
       está sendo gerada (o servidor já recusa com 409).
 
 ## Fora de Escopo
@@ -186,6 +186,40 @@ Parte 2:
   update condicional (`thinking: false`) em vez de ler e depois gravar: entre
   as duas operações um turno poderia reivindicar a conversa e acabar montando
   o prompt do ramo errado.
+
+### Parte 2 (UI)
+
+- **Indicador sempre visível, ações no hover.** A linha de ações da mensagem do
+  usuário já revela copiar só no hover, e o botão de editar entra nessa mesma
+  regra. O `‹ n/N ›` não: ele é *estado* ("você está lendo a 2ª de 3
+  respostas"), e estado que some quando o ponteiro sai da mensagem esconde do
+  usuário justamente o fato de ele estar numa trilha antiga.
+
+- **Reenviar recorta a trilha na hora.** A versão nova nasce IRMÃ da mensagem
+  editada, então a mensagem editada e tudo depois dela não pertencem à trilha
+  nova — e o snapshot seguinte não as traz de volta, porque a mesclagem de
+  páginas preserva o que já está no cliente. Sem o corte otimista, as duas
+  versões da mesma pergunta ficam empilhadas na tela.
+
+- **Trocar de trilha substitui o snapshot em vez de mesclar.** Duas trilhas só
+  compartilham o prefixo até o ponto de ramificação; mesclar deixaria o ramo
+  abandonado na tela junto com o escolhido.
+
+- **A versão herda os anexos da mensagem editada**, e o reenvio não consome os
+  arquivos preparados no composer. O servidor re-vincula os mesmos jobs com
+  escopo de workspace, então editar uma pergunta não perde em silêncio o PDF
+  que a acompanhava nem anexa por engano o arquivo da próxima mensagem.
+
+- **Bloqueio na UI duplica o 409 do servidor de propósito.** Oferecer o botão
+  para depois falhar é pior do que não oferecer, e o guarda vive no handler
+  (não só no atributo `disabled`) para que disparo programático também pare.
+  Mesma regra cobre mensagem ainda não persistida (bolha otimista `local-*`),
+  que versionada iria para um 404.
+
+- **O rascunho da edição vive no formulário**, inicializado com o texto atual
+  da mensagem. A página guarda só o id em edição — não há rascunho para
+  sincronizar com id, e o critério "abre com o texto atual carregado" fica
+  exercitável por teste de render.
 
 ## Riscos aceitos
 
