@@ -1,6 +1,12 @@
 import type { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
+import {
+  activeTrailMessages,
+  loadConversationTrail,
+  type TrailNodeRow,
+} from './conversation-trail';
 import type { MessageAttachment } from './message-attachments';
+import { ensureConversationLinearized, linearizeWith, resolveTurnParent } from './message-versions';
 import { getOrCreateConversation, streamAssistantReply, type ChatStreamEvent } from './runtime';
 import {
   acquireChatTurnLease,
@@ -23,10 +29,32 @@ export class ChatTurnCoordinationError extends Error {
   }
 }
 
+/** A mensagem a versionar sumiu entre a checagem da rota e a transação. */
+export class ChatTurnVersionTargetError extends Error {
+  constructor() {
+    super('Mensagem não encontrada.');
+  }
+}
+
+export interface CreateChatTurnOptions {
+  /**
+   * Mensagem sendo versionada (spec 127). A nova versão nasce IRMÃ dela, ou
+   * seja, pendurada no mesmo antecessor. Ausente = fluxo normal, que anexa ao
+   * fim da trilha ativa.
+   *
+   * Guarda o ID, não o antecessor já resolvido: numa conversa do acervo antigo
+   * o antecessor só existe DEPOIS do encadeamento preguiçoso, que roda dentro
+   * da transação abaixo. Ler `parentId` antes disso devolveria `null` e faria
+   * a versão nascer como segunda raiz, jogando fora o histórico anterior.
+   */
+  branchFrom?: { messageId: string };
+}
+
 export async function createChatTurn(
   userId: string,
   content: string,
   attachments: readonly MessageAttachment[] = [],
+  options: CreateChatTurnOptions = {},
 ) {
   const conversation = await getOrCreateConversation(userId);
   return db.$transaction(async (tx) => {
@@ -36,11 +64,41 @@ export async function createChatTurn(
     });
     if (claimed.count !== 1) throw new ChatTurnBusyError();
 
+    // Posição na árvore resolvida DENTRO da transação que já segurou o
+    // `thinking`, e com o ponteiro RELIDO aqui: o valor lido junto da conversa,
+    // antes da reivindicação, pode ter envelhecido se outro turno completou
+    // nesse intervalo — e usá-lo penduraria a mensagem numa folha antiga,
+    // criando um ramo que o usuário não pediu.
+    const claimedConversation = await tx.conversation.findUniqueOrThrow({
+      where: { id: conversation.id },
+      select: { activeLeafId: true, messagesLinearized: true },
+    });
+    const { nodes, trail } = await loadConversationTrail(
+      conversation.id,
+      {
+        activeLeafId: claimedConversation.activeLeafId,
+        linearized: claimedConversation.messagesLinearized,
+      },
+      (query) => tx.chatMessage.findMany(query) as unknown as Promise<TrailNodeRow[]>,
+    );
+    const linearNodes = await ensureConversationLinearized(
+      nodes,
+      claimedConversation.messagesLinearized,
+      linearizeWith(conversation.id, tx),
+    );
+
+    // Antecessor resolvido DEPOIS do encadeamento e dentro desta transação: é
+    // o que faz a versão nascer irmã de verdade, mesmo em conversa antiga.
+    const resolved = resolveTurnParent(linearNodes, trail, options.branchFrom);
+    if (!resolved.ok) throw new ChatTurnVersionTargetError();
+    const parentId = resolved.parentId;
+
     const userMessage = await tx.chatMessage.create({
       data: {
         conversationId: conversation.id,
         role: 'USER',
         content,
+        parentId,
         // Vínculo do anexo com a mensagem (spec 126): já normalizado e com
         // dono verificado pelo chamador; persistir aqui é o que faz o anexo
         // sobreviver ao reload.
@@ -57,8 +115,15 @@ export async function createChatTurn(
         content: '',
         tools: [],
         segments: [],
+        parentId: userMessage.id,
       },
       select: { id: true },
+    });
+    // A trilha ativa passa a terminar na resposta deste turno — inclusive
+    // quando o turno nasceu de uma versão nova.
+    await tx.conversation.update({
+      where: { id: conversation.id },
+      data: { activeLeafId: assistantMessage.id },
     });
     return tx.chatTurn.create({
       data: {
@@ -272,11 +337,14 @@ export async function recoverOrphanedUserTurn(userId: string): Promise<string | 
   });
   if (active) return active.id;
 
-  const latest = await db.chatMessage.findFirst({
-    where: { conversationId: conversation.id, compactedAt: null, kind: 'NORMAL' },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    select: { id: true, role: true },
+  // "Última mensagem" é a folha da TRILHA ATIVA (spec 127), não a última por
+  // `createdAt`: numa árvore a mensagem mais recente pode estar num ramo
+  // abandonado, e recuperar o turno dela responderia à pergunta errada.
+  const { trail } = await loadConversationTrail(conversation.id, {
+    activeLeafId: conversation.activeLeafId,
+    linearized: conversation.messagesLinearized,
   });
+  const latest = activeTrailMessages(trail, { onlyNormalKind: true }).at(-1) ?? null;
   if (!latest || latest.role !== 'USER') {
     if (conversation && active === null) {
       await db.conversation.updateMany({
@@ -305,6 +373,7 @@ export async function recoverOrphanedUserTurn(userId: string): Promise<string | 
           content: '',
           tools: [],
           segments: [],
+          parentId: latest.id,
         },
         select: { id: true },
       });
@@ -317,7 +386,10 @@ export async function recoverOrphanedUserTurn(userId: string): Promise<string | 
         },
         select: { id: true },
       });
-      await tx.conversation.update({ where: { id: conversation.id }, data: { thinking: true } });
+      await tx.conversation.update({
+        where: { id: conversation.id },
+        data: { thinking: true, activeLeafId: assistant.id },
+      });
       return turn.id;
     });
   } catch (error) {
