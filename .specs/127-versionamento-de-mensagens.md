@@ -1,0 +1,188 @@
+# 127 — Versionamento de mensagens do chat
+
+## Contexto
+
+Hoje o chat do Voxen é uma lista linear: `ChatMessage` ordenada por
+`createdAt`, filtrada por `compactedAt: null`, dentro de uma
+`Conversation`. Não há como refazer uma pergunta sem perder o que veio
+depois — o usuário reescreve a mensagem no composer e o turno anterior fica
+no histórico como ruído, ou ele abre outra conversa e perde o contexto
+construído até ali.
+
+O pedido do owner: ao lado do botão de copiar da **mensagem do usuário**,
+um botão que permite editar e reenviar aquela mensagem criando uma **nova
+trilha** a partir daquele ponto, com as trilhas anteriores preservadas e
+navegáveis. É o comportamento que ChatGPT, Claude e Orbital já oferecem.
+
+Isso muda a forma da conversa de **lista** para **árvore**: cada mensagem
+passa a ter um antecessor, e a conversa passa a ter uma trilha ativa. Todo
+lugar que hoje lê "as mensagens desta conversa" precisa passar a ler "as
+mensagens da trilha ativa desta conversa" — incluindo o histórico enviado
+ao modelo, a compactação de memória e o snapshot que restaura a UI.
+
+## Glossário
+
+- **Versão**: cada texto alternativo de uma mesma mensagem do usuário,
+  criado ao editar e reenviar a partir de um mesmo ponto da conversa.
+- **Trilha**: o caminho de mensagens da raiz da conversa até uma folha,
+  passando por uma versão escolhida em cada ponto de ramificação.
+- **Trilha ativa**: a trilha atualmente exibida e usada como histórico nas
+  chamadas ao modelo.
+- **Ponto de ramificação**: mensagem do usuário que tem mais de uma versão.
+
+## Requisitos
+
+### Ubiquitous
+
+- The system shall preservar todas as versões de uma mensagem e as
+  respostas geradas a partir de cada uma — versionar nunca apaga conteúdo.
+- The system shall usar somente as mensagens da trilha ativa como histórico
+  enviado ao modelo.
+- The system shall manter o isolamento por usuário em toda operação de
+  versionamento: versão só pode ser criada, lida ou ativada pelo dono da
+  conversa, com o identificador do usuário derivado da sessão.
+
+### Event-driven
+
+- When o usuário aciona o versionamento em uma mensagem sua, the system
+  shall abrir a mensagem para edição com o texto atual carregado.
+- When o usuário confirma o reenvio de uma mensagem editada, the system
+  shall criar uma nova versão daquela mensagem, torná-la a trilha ativa e
+  gerar a resposta do assistente nessa nova trilha.
+- When uma mensagem do usuário tem mais de uma versão, the system shall
+  exibir um indicador de navegação entre versões junto dela.
+- When o usuário navega para outra versão, the system shall exibir a trilha
+  correspondente àquela versão a partir daquele ponto, sem gerar nova
+  resposta.
+- When o usuário envia uma mensagem nova estando em uma trilha, the system
+  shall anexá-la ao fim da trilha ativa.
+
+### State-driven
+
+- While uma resposta está sendo gerada, the system shall impedir o
+  versionamento e a troca de trilha naquela conversa.
+
+### Unwanted behavior
+
+- If o usuário confirma o reenvio sem alterar o texto, then the system
+  shall ainda assim criar uma versão nova — reenviar o mesmo texto é um uso
+  legítimo (tentar outra resposta do modelo).
+- If a geração da resposta da nova versão falhar, then the system shall
+  manter a versão criada e a trilha ativa nela, com o erro visível e a
+  possibilidade de tentar de novo — sem reverter em silêncio para a trilha
+  anterior.
+- If a conversa tem mensagens anteriores ao versionamento (sem antecessor
+  registrado), then the system shall tratá-las como uma trilha única e
+  contínua, sem exigir migração de dados nem exibir indicador de versão.
+
+## Entrega em duas partes
+
+A feature foi fatiada porque a parte de risco — reescrever TODAS as leituras
+de histórico — precisa ser revisável sozinha. Misturada com a UI, ela vira
+ruído no diff, e é justamente ela que, errada, vaza contexto em silêncio.
+
+- **Parte 1 (esta)** — modelo de dados, resolução da trilha, todas as leituras
+  corrigidas, endpoints de criar versão e trocar de trilha, testes. Sem UI: os
+  endpoints existem mas nenhuma tela os chama ainda, e o comportamento visível
+  do chat é idêntico ao de antes.
+- **Parte 2** — botão ao lado do copiar, edição embutida, indicador `‹ n/N ›`
+  e navegação entre versões em `apps/web/src/client/pages/chat.tsx`.
+
+## Critérios de Aceite
+
+Parte 1:
+
+- [x] O histórico enviado ao modelo contém apenas a trilha ativa —
+      verificado por teste, não por inspeção visual.
+- [x] Conversas criadas antes desta feature continuam funcionando sem
+      migração de dados e sem indicador de versão.
+- [x] Compactação de memória continua correta em conversa ramificada.
+- [x] Isolamento por usuário coberto por teste comportamental: versão de
+      outra conversa/usuário não pode ser lida nem ativada.
+- [x] Migration idempotente, aditiva e sincronizada com o schema.
+- [x] Reenviar cria versão nova, gera resposta e a trilha nova passa a ser a
+      ativa (endpoint `POST /api/chat/messages/:id/versions`).
+- [x] Trocar de trilha não gera resposta nova
+      (endpoint `POST /api/chat/messages/:id/activate`).
+- [x] Recarregar mantém a trilha ativa: o ponteiro vive na conversa, não no
+      cliente.
+- [x] O snapshot expõe posição e total das versões só em ponto de
+      ramificação, para a Parte 2 renderizar.
+
+Parte 2:
+
+- [ ] Botão de versionar ao lado do copiar, apenas em mensagens do usuário.
+- [ ] Editar abre a mensagem com o texto atual carregado.
+- [ ] Indicador `‹ n/N ›` visível em ponto de ramificação, navegando entre
+      versões.
+- [ ] Versionamento e troca de trilha bloqueados na UI enquanto uma resposta
+      está sendo gerada (o servidor já recusa com 409).
+
+## Fora de Escopo
+
+- Editar mensagem do **assistente**.
+- Regenerar resposta sem editar a pergunta (botão "tentar de novo" na
+  mensagem do assistente) — feature vizinha, entrega separada.
+- Visualização em árvore/diagrama das trilhas; a navegação é linear
+  (‹ n/N ›) dentro de cada ponto de ramificação.
+- Comparar versões lado a lado.
+- Versionamento nas notas ou em qualquer superfície fora do chat.
+
+## Decisões
+
+- **Modelo de dados: `ChatMessage.parentId` + `Conversation.activeLeafId`.**
+  A trilha é a caminhada da folha ativa até a raiz, invertida. Alternativas
+  descartadas: uma `Conversation` por ramo esbarra em `userId @unique` (o
+  sistema inteiro assume uma conversa por workspace); uma tabela de versões
+  em separado duplicaria a linha do tempo e deixaria duas fontes de verdade
+  sobre "o que veio antes".
+
+- **Resolução centralizada, com todas as leituras passando por ela.** A
+  ordem mora em `message-trail.ts` (puro) e `conversation-trail.ts` (fala com
+  o banco). As leituras reescritas: snapshot da UI, cursor de paginação,
+  histórico enviado ao modelo, compactação, reconciliação de HITL e a
+  recuperação de turno órfão — esta última não estava no levantamento
+  inicial e usava "última mensagem por `createdAt`", que numa árvore pode
+  estar num ramo abandonado.
+
+- **Ordem das operações na leitura.** A caminhada roda sobre TODAS as
+  mensagens, inclusive as compactadas, e só depois filtra por `compactedAt`.
+  Filtrar antes quebra a corrente de antecessores no ponto compactado e a
+  trilha termina cedo, escondendo o histórico recente.
+
+- **Compactação percorre só a trilha ativa**, e o resumo entra COMO NÓ da
+  trilha: nasce filho da última mensagem compactada, e todos os outros filhos
+  dela são reparentados para o resumo. Assim a caminhada passa naturalmente
+  pelo resumo, os compactados continuam como ancestrais filtrados, e versões
+  que eram irmãs continuam irmãs (reparentar só a trilha ativa apagaria o
+  indicador de versão daquele ponto).
+
+- **Compatibilidade sem migração de dados.** Mensagem sem antecessor é lida
+  como prefixo linear contínuo: se a caminhada termina numa raiz sem
+  antecessor, tudo que também não tem antecessor e é mais antigo entra antes.
+  Conversa antiga aparece inteira e sem indicador de versão.
+
+- **Encadeamento preguiçoso, não backfill de deploy.** Na primeira escrita
+  estrutural de uma conversa (novo turno, nova versão, compactação), as
+  mensagens sem antecessor são encadeadas em ordem de criação. É idempotente,
+  por conversa, e vira no-op depois. A migration continua puramente aditiva; a
+  conversa que ninguém abre nunca é tocada.
+
+- **Indicador de versão só quando dá para ter certeza.** Enquanto a conversa
+  tiver mais de uma mensagem sem antecessor (acervo antigo não encadeado), as
+  mensagens sem antecessor não formam grupo de versão — seriam a conversa
+  inteira num grupo só. É o lado seguro do trade-off: no máximo um indicador
+  deixa de aparecer, nunca aparece um indicador falso.
+
+## Riscos aceitos
+
+- **Snapshot lê os nós da conversa inteira** (projeção leve: id, antecessor,
+  papel, tipo, datas) para poder recortar a caminhada, no lugar do cursor por
+  `createdAt` de antes. Numa árvore não há como paginar por data sem antes
+  saber qual é a trilha. Ainda é menos tráfego que a compactação já fazia (ela
+  lia conteúdo completo sem limite). Se virar problema, o caminho é uma CTE
+  recursiva de `activeLeafId` para cima.
+- **A folha ativa não tem chave estrangeira.** `Conversation.activeLeafId`
+  apontando para `ChatMessage` fecharia um ciclo de relação no Prisma. Em
+  troca: ponteiro pendurado cai na última mensagem, e `clearConversation` zera
+  o ponteiro na mesma transação que apaga as mensagens.

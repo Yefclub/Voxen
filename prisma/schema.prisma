@@ -541,6 +541,16 @@ model Conversation {
   // Quantas vezes a conversa já foi compactada. Útil pra debug + UI exibir
   // "compactada N vezes" quando relevante.
   compactionCount Int           @default(0)
+  // Folha da trilha ativa (spec 127). A conversa é uma ÁRVORE: versionar uma
+  // mensagem cria um ramo irmão, e este ponteiro diz qual ramo está em uso.
+  // Null = conversa nunca ramificada; a trilha é a linha do tempo inteira.
+  //
+  // Sem chave estrangeira de propósito: Conversation -> ChatMessage ->
+  // Conversation fecharia um ciclo de relação no Prisma só para garantir algo
+  // que a leitura já trata — ponteiro pendurado cai na última mensagem
+  // (`resolveActiveTrail`), e `clearConversation` zera o ponteiro na mesma
+  // transação que apaga as mensagens.
+  activeLeafId    String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -664,11 +674,23 @@ model ChatMessage {
   // Fica no DB pra histórico (user pode expandir e ver), mas NÃO é enviada
   // mais no contexto da próxima chamada ao modelo.
   compactedAt    DateTime?
+  // Antecessor na árvore da conversa (spec 127). A trilha exibida e enviada ao
+  // modelo é a caminhada da folha ativa até a raiz — numa árvore, `createdAt`
+  // deixa de definir a sequência, porque uma versão criada depois pode estar
+  // acima na trilha.
+  //
+  // Null significa raiz OU mensagem anterior ao versionamento. O acervo antigo
+  // fica todo nulo e continua legível como trilha linear contínua, sem
+  // migração de dados obrigatória.
+  parentId       String?
   createdAt      DateTime        @default(now())
   conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  parent         ChatMessage?    @relation("ChatMessageBranch", fields: [parentId], references: [id], onDelete: SetNull)
+  children       ChatMessage[]   @relation("ChatMessageBranch")
 
   @@index([conversationId, createdAt])
   @@index([conversationId, compactedAt])
+  @@index([conversationId, parentId])
 }
 
 // ============================================================================

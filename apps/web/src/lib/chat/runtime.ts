@@ -24,6 +24,13 @@ import { getAppTimezone, getSettings } from '../settings';
 import { researchWeb } from '../web-research';
 import { buildAgentClockInstructions, buildInstanceClock } from '../app-timezone';
 import type { ChatStatusCode } from '../../shared/chat-status';
+import {
+  activeTrailIds,
+  loadActiveHistory,
+  loadConversationTrail,
+  orderByTrail,
+} from './conversation-trail';
+import { ensureConversationLinearized, resolveAppendParent } from './message-versions';
 import { parseMessageAttachments } from './message-attachments';
 import { parseTemporalBounds } from './temporal-bounds';
 import { isProviderObservedEvent } from './stream-timing';
@@ -148,7 +155,14 @@ type ActiveMessage = {
 };
 
 export async function getOrCreateConversation(userId: string) {
-  const select = { id: true, userId: true, compactionCount: true, updatedAt: true } as const;
+  const select = {
+    id: true,
+    userId: true,
+    compactionCount: true,
+    updatedAt: true,
+    // Folha da trilha ativa (spec 127): toda leitura de histórico parte daqui.
+    activeLeafId: true,
+  } as const;
   try {
     return await db.conversation.upsert({
       where: { userId },
@@ -170,25 +184,28 @@ export async function getChatSnapshot(
   options: { before?: string; limit?: number } = {},
 ) {
   const conversation = await getOrCreateConversation(userId);
-  await reconcileStaleHitl(userId, conversation.id);
   const limit = Math.min(100, Math.max(1, options.limit ?? 60));
+  // A trilha é resolvida ANTES de qualquer outra leitura: numa árvore,
+  // `createdAt` não define mais a sequência, então a paginação passa a
+  // recortar a caminhada, não a ordem cronológica do banco (spec 127).
+  const { trail, versionGroups } = await loadConversationTrail(
+    conversation.id,
+    conversation.activeLeafId,
+  );
+  const visibleIds = activeTrailIds(trail, { onlyNormalKind: true });
+  await reconcileStaleHitl(userId, conversation.id, visibleIds);
+
+  let end = visibleIds.length;
   if (options.before) {
-    const cursor = await db.chatMessage.findFirst({
-      where: {
-        id: options.before,
-        conversationId: conversation.id,
-        compactedAt: null,
-        kind: 'NORMAL',
-      },
-      select: { id: true },
-    });
-    if (!cursor) throw new Error('Cursor de histórico inválido.');
+    const cursorIndex = visibleIds.indexOf(options.before);
+    if (cursorIndex < 0) throw new Error('Cursor de histórico inválido.');
+    end = cursorIndex;
   }
-  const newestFirst = await db.chatMessage.findMany({
-    where: { conversationId: conversation.id, compactedAt: null, kind: 'NORMAL' },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    ...(options.before ? { cursor: { id: options.before }, skip: 1 } : {}),
-    take: limit + 1,
+  const start = Math.max(0, end - limit);
+  const pageIds = visibleIds.slice(start, end);
+  const hasOlder = start > 0;
+  const rows = await db.chatMessage.findMany({
+    where: { id: { in: pageIds }, conversationId: conversation.id },
     select: {
       id: true,
       role: true,
@@ -198,16 +215,18 @@ export async function getChatSnapshot(
       segments: true,
       attachments: true,
       compactedAt: true,
+      parentId: true,
       createdAt: true,
     },
   });
-  const hasOlder = newestFirst.length > limit;
-  const messages = newestFirst
-    .slice(0, limit)
-    .reverse()
+  const messages = orderByTrail(rows, pageIds).map((message) => ({
+    ...message,
     // A coluna `attachments` é JSONB sem schema: normaliza antes de sair da
     // camada de dados para que o render nunca receba forma inesperada.
-    .map((message) => ({ ...message, attachments: parseMessageAttachments(message.attachments) }));
+    attachments: parseMessageAttachments(message.attachments),
+    // Só ponto de ramificação carrega indicador; conversa antiga fica limpa.
+    versions: versionGroups.get(message.id) ?? null,
+  }));
   // Persisted `running` tools are always stale once a turn is saved — heal so
   // reloads don't leave the Thinking block stuck on "Pensando…".
   const healedMessages = await Promise.all(
@@ -270,7 +289,12 @@ export async function clearConversation(userId: string): Promise<void> {
     db.chatApproval.deleteMany({ where: { conversationId: conversation.id, userId } }),
     db.chatTurn.deleteMany({ where: { conversationId: conversation.id, userId } }),
     db.chatMessage.deleteMany({ where: { conversationId: conversation.id } }),
-    db.conversation.update({ where: { id: conversation.id }, data: { thinking: false } }),
+    // O ponteiro de folha ativa (spec 127) tem que cair junto: apontar para
+    // mensagem apagada deixaria a próxima leitura resolvendo trilha vazia.
+    db.conversation.update({
+      where: { id: conversation.id },
+      data: { thinking: false, activeLeafId: null },
+    }),
   ]);
 }
 
@@ -1091,14 +1115,24 @@ async function clearApprovalGhostInConversation(
  * message still shows approval-required. Revive recoverable create_note
  * payloads; dismiss ghosts that were already decided.
  */
-async function reconcileStaleHitl(userId: string, conversationId: string): Promise<void> {
+async function reconcileStaleHitl(
+  userId: string,
+  conversationId: string,
+  // Ids visíveis da TRILHA ATIVA (spec 127). Só o que a UI renderiza precisa
+  // de reconciliação; card de aprovação de trilha abandonada não está na tela.
+  trailIds: readonly string[],
+): Promise<void> {
+  if (trailIds.length === 0) return;
   const messages = await db.chatMessage.findMany({
-    where: { conversationId, role: 'ASSISTANT', compactedAt: null, kind: 'NORMAL' },
+    where: {
+      conversationId,
+      role: 'ASSISTANT',
+      // O snapshot não pode voltar a varrer uma conversa canônica inteira. HITL
+      // não expira; 200 respostas ativas cobrem a recuperação sem reintroduzir
+      // o custo não limitado que travava a abertura do chat.
+      id: { in: trailIds.slice(-200) },
+    },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    // O snapshot não pode voltar a varrer uma conversa canônica inteira. HITL
-    // não expira; 200 respostas ativas cobrem a recuperação sem reintroduzir
-    // o custo não limitado que travava a abertura do chat.
-    take: 200,
     select: { id: true, tools: true, segments: true },
   });
   const approvalIds = new Set<string>();
@@ -1300,19 +1334,35 @@ async function maybeCompact(
   `;
   if (acquired !== 1) return null;
   try {
-    const active = (await db.chatMessage.findMany({
-      where: { conversationId, compactedAt: null },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: {
-        id: true,
-        role: true,
-        kind: true,
-        content: true,
-        tools: true,
-        segments: true,
-        createdAt: true,
-      },
-    })) as ActiveMessage[];
+    const conversation = await db.conversation.findUnique({
+      where: { id: conversationId },
+      select: { userId: true, activeLeafId: true },
+    });
+    if (!conversation) return null;
+    // Compactação percorre SOMENTE a trilha ativa (spec 127). Sem isso a
+    // memória resumiria mensagens de ramos abandonados para dentro do
+    // contexto do modelo — o vazamento que a spec trata como risco nº 1.
+    const { nodes, trail } = await loadConversationTrail(conversationId, conversation.activeLeafId);
+    // O resumo é inserido como nó ENTRE o último compactado e seus filhos.
+    // Numa conversa do acervo antigo (toda sem antecessor) não haveria onde
+    // pendurar, então o encadeamento preguiçoso roda antes.
+    await ensureConversationLinearized(conversationId, nodes);
+    const activeIds = activeTrailIds(trail);
+    const active = orderByTrail(
+      (await db.chatMessage.findMany({
+        where: { id: { in: activeIds }, conversationId },
+        select: {
+          id: true,
+          role: true,
+          kind: true,
+          content: true,
+          tools: true,
+          segments: true,
+          createdAt: true,
+        },
+      })) as ActiveMessage[],
+      activeIds,
+    );
     const before = estimateTokens(active);
     if (before < DEFAULT_CONTEXT_LIMIT * COMPACTION_RATIO || active.length <= KEEP_RECENT)
       return null;
@@ -1330,31 +1380,41 @@ async function maybeCompact(
     });
     if (!text.trim()) return null;
     const now = new Date();
-    await db.$transaction([
-      db.chatMessage.create({
+    const lastCompactedId = compacted[compacted.length - 1]?.id ?? null;
+    await db.$transaction(async (tx) => {
+      const summary = await tx.chatMessage.create({
         data: {
           conversationId,
           role: 'SYSTEM',
           kind: 'COMPACTION_SUMMARY',
           content: text.trim(),
+          // O resumo entra NA trilha, como filho do último compactado. Se
+          // ficasse sem antecessor, a caminhada nunca passaria por ele e o
+          // modelo perderia a memória inteira da conversa compactada.
+          parentId: lastCompactedId,
         },
-      }),
-      db.chatMessage.updateMany({
+        select: { id: true },
+      });
+      if (lastCompactedId) {
+        // Reparenta TODOS os filhos do último compactado (a continuação da
+        // trilha ativa e as versões irmãs) para o resumo. Mover só a trilha
+        // ativa separaria versões que eram irmãs e apagaria o indicador.
+        await tx.chatMessage.updateMany({
+          where: { conversationId, parentId: lastCompactedId, id: { not: summary.id } },
+          data: { parentId: summary.id },
+        });
+      }
+      await tx.chatMessage.updateMany({
         where: { id: { in: compacted.map((message) => message.id) } },
         data: { compactedAt: now },
-      }),
-      db.conversation.update({
+      });
+      await tx.conversation.update({
         where: { id: conversationId },
         data: { compactionCount: { increment: 1 } },
-      }),
-      db.costEvent.create({
+      });
+      await tx.costEvent.create({
         data: {
-          userId: (
-            await db.conversation.findUniqueOrThrow({
-              where: { id: conversationId },
-              select: { userId: true },
-            })
-          ).userId,
+          userId: conversation.userId,
           kind: 'CHAT',
           model: modelConfig.model,
           tokensIn: usage.inputTokens ?? 0,
@@ -1362,8 +1422,8 @@ async function maybeCompact(
           costUsd: 0,
           meta: { source: 'compaction' },
         },
-      }),
-    ]);
+      });
+    });
     return {
       before,
       after: estimateTokens(active.slice(-KEEP_RECENT)) + Math.ceil(text.length / 4),
@@ -1371,6 +1431,26 @@ async function maybeCompact(
   } finally {
     await db.chatCompactionLease.deleteMany({ where: { conversationId, ownerId } });
   }
+}
+
+/**
+ * Cria a resposta do assistente já pendurada na trilha e move o ponteiro de
+ * folha ativa. Só o caminho sem turno pré-criado passa por aqui — o caminho
+ * normal recebe a linha do assistente já posicionada por `createChatTurn`.
+ */
+async function createTrailedAssistant(
+  conversationId: string,
+  parentId: string | null,
+  data: { content: string; tools?: Prisma.InputJsonValue; segments?: Prisma.InputJsonValue },
+): Promise<{ id: string }> {
+  const assistant = await db.chatMessage.create({
+    data: { conversationId, role: 'ASSISTANT', parentId, ...data },
+    select: { id: true },
+  });
+  await db.conversation
+    .update({ where: { id: conversationId }, data: { activeLeafId: assistant.id } })
+    .catch(() => undefined);
+  return assistant;
 }
 
 export async function streamAssistantReply(options: {
@@ -1391,11 +1471,27 @@ export async function streamAssistantReply(options: {
   const requestStartedAt =
     options.requestStartedAt ?? options.turnCreatedAt?.getTime() ?? runtimeStartedAt;
   const claimStartedAt = options.claimStartedAt ?? runtimeStartedAt;
+  // Caminho sem turno pré-criado: a mensagem entra no FIM da trilha ativa, não
+  // no fim cronológico da conversa — numa árvore os dois podem divergir.
+  let pendingParentId: string | null = null;
   if (!options.userMessageId) {
-    await db.chatMessage.create({ data: { conversationId, role: 'USER', content } });
+    const conversation = await db.conversation.findUnique({
+      where: { id: conversationId },
+      select: { activeLeafId: true },
+    });
+    const { nodes, trail } = await loadConversationTrail(
+      conversationId,
+      conversation?.activeLeafId,
+    );
+    await ensureConversationLinearized(conversationId, nodes);
+    const userMessage = await db.chatMessage.create({
+      data: { conversationId, role: 'USER', content, parentId: resolveAppendParent(trail) },
+      select: { id: true },
+    });
+    pendingParentId = userMessage.id;
     await db.conversation.update({
       where: { id: conversationId },
-      data: { updatedAt: new Date() },
+      data: { updatedAt: new Date(), activeLeafId: userMessage.id },
     });
   }
   let modelConfig: { apiKey: string; model: string };
@@ -1408,9 +1504,7 @@ export async function streamAssistantReply(options: {
           where: { id: assistantMessageId },
           data: { content: message, tools: [], segments: [] },
         })
-      : await db.chatMessage.create({
-          data: { conversationId, role: 'ASSISTANT', content: message },
-        });
+      : await createTrailedAssistant(conversationId, pendingParentId, { content: message });
     emit({ type: 'error', message });
     emit({ type: 'done', messageId: assistant.id });
     return assistant.id;
@@ -1432,23 +1526,15 @@ export async function streamAssistantReply(options: {
   if (compaction) emit({ type: 'compaction', ...compaction });
 
   emit({ type: 'status', label: 'Analisando sua solicitação…' });
+  const conversationRow = await db.conversation.findUnique({
+    where: { id: conversationId },
+    select: { activeLeafId: true },
+  });
   const [active, relevant, timezone] = await Promise.all([
-    db.chatMessage.findMany({
-      where: {
-        conversationId,
-        compactedAt: null,
-        ...(assistantMessageId ? { id: { not: assistantMessageId } } : {}),
-      },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: {
-        id: true,
-        role: true,
-        kind: true,
-        content: true,
-        tools: true,
-        segments: true,
-        createdAt: true,
-      },
+    // Único caminho pelo qual o prompt é montado (spec 127): a trilha ativa,
+    // na ordem da caminhada, sem compactadas e sem a resposta em construção.
+    loadActiveHistory(conversationId, conversationRow?.activeLeafId, {
+      excludeId: assistantMessageId,
     }) as Promise<ActiveMessage[]>,
     relevantPromise,
     timezonePromise,
@@ -1709,9 +1795,7 @@ export async function streamAssistantReply(options: {
   };
   const assistant = assistantMessageId
     ? await db.chatMessage.update({ where: { id: assistantMessageId }, data: assistantData })
-    : await db.chatMessage.create({
-        data: { conversationId, role: 'ASSISTANT', ...assistantData },
-      });
+    : await createTrailedAssistant(conversationId, pendingParentId, assistantData);
   await db.costEvent.create({
     data: {
       userId,
