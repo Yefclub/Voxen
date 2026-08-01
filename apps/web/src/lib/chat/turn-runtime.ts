@@ -55,10 +55,17 @@ export async function createChatTurn(
     if (claimed.count !== 1) throw new ChatTurnBusyError();
 
     // Posição na árvore resolvida DENTRO da transação que já segurou o
-    // `thinking`: dois turnos concorrentes não podem enxergar a mesma folha.
+    // `thinking`, e com o ponteiro RELIDO aqui: o valor lido junto da conversa,
+    // antes da reivindicação, pode ter envelhecido se outro turno completou
+    // nesse intervalo — e usá-lo penduraria a mensagem numa folha antiga,
+    // criando um ramo que o usuário não pediu.
+    const claimedConversation = await tx.conversation.findUniqueOrThrow({
+      where: { id: conversation.id },
+      select: { activeLeafId: true },
+    });
     const { nodes, trail } = await loadConversationTrail(
       conversation.id,
-      conversation.activeLeafId,
+      claimedConversation.activeLeafId,
       (query) => tx.chatMessage.findMany(query) as unknown as Promise<TrailNodeRow[]>,
     );
     await ensureConversationLinearized(conversation.id, nodes, (id, parentId) =>
