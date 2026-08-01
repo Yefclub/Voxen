@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785574769",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Os ícones animam ao passar o mouse no botão, e a barra estreita ganhou novidades e sair",
+    "body": "Dois acabamentos de interface que apareceram no uso do dia a dia.\n\n**O ícone agora anima pelo botão inteiro.** Antes, a animação de um ícone só\nacontecia se o ponteiro passasse exatamente por cima do desenho — encostar no\nbotão que o contém não fazia nada, e em botão com texto ao lado (\"Buscar na\nbiblioteca\") o desenho quase nunca era tocado. Agora qualquer parte do botão,\nlink ou item de menu acende o ícone que ele contém, e passar direto no desenho\ncontinua funcionando como antes. Atravessar do botão para o desenho não\nreinicia nem interrompe a animação no meio: é um gesto só, do momento em que o\nponteiro entra ao momento em que sai.\n\nVale para o app inteiro — sidebar, barra do topo, cards da biblioteca, menus,\ndiálogos —, sem exceção por tipo de botão. **No celular nada muda**: toque não\né o mesmo que passar o mouse, e um toque não deixa mais o ícone parado no meio\ndo desenho.\n\n**A barra estreita ficou completa.** Com a navegação recolhida, \"Novidades\" e\n\"Sair\" simplesmente não existiam: para se desconectar era preciso abrir a\nsidebar antes. Os dois agora fecham a barra estreita, no mesmo rodapé e na\nmesma ordem da sidebar aberta, cada um com o nome aparecendo ao lado quando o\nponteiro para em cima. O \"Sair\" continua com o destaque avermelhado que avisa\nque a ação desconecta — e esse aviso, que no tema claro ficava quase invisível,\nvoltou a ser legível nos quatro temas.\n\n**Quem usa o sistema com movimento reduzido não vê animação nenhuma**, nem pelo\nbotão nem pelo ícone: a preferência do sistema continua desligando tudo.",
+    "pr": 521,
+    "author": "Kalyel",
+    "date": "2026-08-01T05:59:10-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/521"
+  },
+  {
     "version": "0.13.0-dev.1785572765",
     "channel": "dev",
     "type": "fix",
