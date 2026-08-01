@@ -1424,8 +1424,11 @@ export function ChatPage(): React.ReactElement {
         ),
         signal: controller.signal,
       });
+      // Antes da checagem de corpo, de propósito: um 2xx sem `body` ainda
+      // significa turno criado, e marcar depois deixaria o rollback achar que
+      // a versão não existe.
+      versionCreated = response.ok;
       if (!response.ok || !response.body) throw new Error(t('chat.streamStartError'));
-      versionCreated = true;
       // Mensagem aceita: só agora os chips consumidos saem do composer.
       setAttachments((current) => current.filter((item) => !consumedAttachmentIds.has(item.id)));
       const reader = response.body.getReader();
