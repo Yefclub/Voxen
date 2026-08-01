@@ -221,6 +221,23 @@ Parte 2:
   sincronizar com id, e o critério "abre com o texto atual carregado" fica
   exercitável por teste de render.
 
+- **O corte otimista só é desfeito enquanto a versão não existe**, e o sinal é
+  a ACEITAÇÃO do POST, não o evento `start` do stream. A rota cria o turno
+  antes de abrir o stream, então um 2xx já significa versão gravada e trilha
+  ativa trocada; entre o 2xx e o primeiro frame há uma janela em que usar
+  `start` restauraria indevidamente. Com a versão criada, desfazer é pior que
+  não desfazer: as bolhas otimistas deixam de ser descartáveis assim que
+  `reconcileChatStart` troca os ids `local-*` pelos reais, e a união com a
+  lista pré-corte empilharia as duas versões da mesma pergunta na tela.
+  Prefixo + versão nova é incompleto, mas correto — o reload traz o resto.
+
+- **Recuperação de falha no reenvio substitui o snapshot em vez de mesclar.**
+  Ali não dá para saber se a versão foi criada: se foi, mesclar traz a
+  mensagem editada de volta ao lado da versão nova; se não foi, mesclar com o
+  prefixo cortado abre um buraco, porque o snapshot é uma janela de 60
+  mensagens da trilha e não a trilha inteira. Substituir acerta nos dois
+  casos, ao custo de re-paginar o histórico já carregado.
+
 ## Riscos aceitos
 
 - **Snapshot lê os nós da conversa inteira** (projeção leve: id, antecessor,
@@ -229,6 +246,17 @@ Parte 2:
   saber qual é a trilha. Ainda é menos tráfego que a compactação já fazia (ela
   lia conteúdo completo sem limite). Se virar problema, o caminho é uma CTE
   recursiva de `activeLeafId` para cima.
+- **A cola de `ChatPage` não tem teste automatizado.** O que decide sozinho
+  (navegação entre versões, corte da trilha, rollback do corte, endpoint,
+  herança de anexos, consumo do composer) foi extraído para
+  `client/lib/chat-versions.ts` e é coberto por teste comportamental; os
+  controles vivem em `components/chat/message-versioning.tsx` e são cobertos
+  por render. Sobra o fio que liga os dois dentro de `chat.tsx` — o guarda de
+  `send` durante a troca de trilha e o `busy` do composer — verificado por
+  inspeção e por simulação contra as funções reais, não por teste. Fechar isso
+  exige um harness de `ChatPage` (sessão, roteador, i18n, `fetch`), que não
+  existe no repo e é entrega própria.
+
 - **A folha ativa não tem chave estrangeira.** `Conversation.activeLeafId`
   apontando para `ChatMessage` fecharia um ciclo de relação no Prisma. Em
   troca: ponteiro pendurado cai na última mensagem, e `clearConversation` zera

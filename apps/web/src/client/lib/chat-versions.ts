@@ -14,6 +14,8 @@
 // disso quebra render, então só teste comportamental pega.
 // ============================================================================
 
+import { mergeChatMessagePages } from './chat-pagination';
+
 /**
  * Posição da mensagem entre suas versões irmãs, como o snapshot entrega
  * (`buildVersionGroups` em `lib/chat/message-trail.ts`). Chega `null` em
@@ -51,6 +53,48 @@ export function versionNeighborId(
 ): string | null {
   if (!hasMessageVersions(versions)) return null;
   return versions.ids[versions.index - 1 + direction] ?? null;
+}
+
+/**
+ * Lista a exibir ao desfazer o corte otimista, ou `null` para NÃO desfazer.
+ *
+ * O rollback existe para o caso em que o reenvio não produziu nada e a tela
+ * ficaria com o prefixo cortado mais duas bolhas órfãs. Ele é correto só
+ * enquanto a versão nova não existe.
+ *
+ * `versionCreated` é o que separa os dois mundos, e o sinal certo para ele é a
+ * ACEITAÇÃO do POST, não o evento `start`: a rota cria o turno antes de abrir
+ * o stream (`createChatTurn` e só então `streamTurnResponse`), então uma
+ * resposta 2xx já significa que a versão existe e que a trilha ativa mudou.
+ * Entre o 2xx e o primeiro frame existe uma janela em que a versão está no
+ * banco e `start` ainda não chegou; usar `start` como sinal restauraria ali.
+ *
+ * Com a versão criada, restaurar é pior que não restaurar. As bolhas otimistas
+ * deixam de ser descartáveis assim que `reconcileChatStart` troca os ids
+ * `local-*` pelos reais, e a união com a lista pré-corte devolveria a mensagem
+ * editada e todo o rabo dela AO LADO da versão nova — as duas versões da mesma
+ * pergunta empilhadas, exatamente o que o corte existe para evitar. Prefixo +
+ * versão nova é incompleto, mas correto; um reload traz o resto.
+ *
+ * O cenário não é exótico: reenvio aceito e a rede caindo durante a geração
+ * derruba o stream E o snapshot de recuperação pelo mesmo motivo — que é
+ * justamente quando o rollback é chamado. Um 502 do proxy no GET de
+ * recuperação basta, com o turno vivo do outro lado.
+ */
+export function planBranchRollback<T extends { id: string; createdAt: string }>(params: {
+  trailBeforeBranch: readonly T[] | null;
+  current: readonly T[];
+  /** O servidor aceitou o reenvio, ou seja: a versão já existe no banco. */
+  versionCreated: boolean;
+}): T[] | null {
+  const { trailBeforeBranch, current, versionCreated } = params;
+  if (!trailBeforeBranch) return null;
+  if (versionCreated) return null;
+  return mergeChatMessagePages(
+    trailBeforeBranch,
+    // O que estiver mais fresco na tela vence; as bolhas otimistas saem.
+    current.filter((message) => !message.id.startsWith('local-')),
+  );
 }
 
 /** Para onde o envio vai e o que ele consome do composer. */

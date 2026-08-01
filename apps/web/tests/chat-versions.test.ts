@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
+import { reconcileChatStart } from '../src/client/lib/chat-reconciliation';
 import {
   hasMessageVersions,
+  planBranchRollback,
   planSend,
   truncateTrailFrom,
   versionNeighborId,
@@ -42,6 +44,72 @@ describe('versionNeighborId', () => {
     // `null` como "seta desabilitada" e um `undefined` vazado passaria batido
     // pelo `!previousId` do componente mas não por uma comparação estrita.
     expect(versionNeighborId({ index: 2, total: 5, ids: ['v1', 'v2'] }, 1)).toBeNull();
+  });
+});
+
+describe('planBranchRollback', () => {
+  // Conversa real: pergunta, resposta, pergunta, resposta, pergunta, resposta.
+  const at = (n: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, n)).toISOString();
+  const trailBeforeBranch = [
+    { id: 'm1', createdAt: at(1) },
+    { id: 'a1', createdAt: at(2) },
+    { id: 'm2', createdAt: at(3) },
+    { id: 'a2', createdAt: at(4) },
+    { id: 'm3', createdAt: at(5) },
+    { id: 'a3', createdAt: at(6) },
+  ];
+  // O usuário edita `m2`: corte + bolhas otimistas.
+  const afterCut = [
+    ...truncateTrailFrom(trailBeforeBranch, 'm2'),
+    { id: 'local-user-x', createdAt: at(7) },
+    { id: 'local-assistant-x', createdAt: at(7) },
+  ];
+  // Depois do evento `start`, as bolhas viram os ids REAIS da versão nova.
+  const afterStart = reconcileChatStart(afterCut, 'local-user-x', 'local-assistant-x', {
+    userMessageId: "m2'",
+    assistantMessageId: "a2'",
+    startedAt: at(7),
+  });
+
+  it('versão não criada (POST recusado): devolve a trilha pré-corte inteira', () => {
+    expect(
+      planBranchRollback({ trailBeforeBranch, current: afterCut, versionCreated: false })?.map(
+        (message) => message.id,
+      ),
+    ).toEqual(['m1', 'a1', 'm2', 'a2', 'm3', 'a3']);
+  });
+
+  it('versão criada e stream já iniciado: NÃO restaura', () => {
+    // Restaurar aqui devolveria `m1 a1 m2 a2 m3 a3 a2' m2'` — as duas versões
+    // da mesma pergunta empilhadas, que é o que o corte existe para evitar.
+    // Prefixo + versão nova é incompleto, mas correto; o reload traz o resto.
+    expect(
+      planBranchRollback({ trailBeforeBranch, current: afterStart, versionCreated: true }),
+    ).toBeNull();
+  });
+
+  it('versão criada mas `start` ainda não chegou: NÃO restaura', () => {
+    // A janela entre o 2xx e o primeiro frame. A rota cria o turno ANTES de
+    // abrir o stream, então a versão já existe mesmo com as bolhas ainda
+    // `local-*`. Usar o evento `start` como sinal restauraria justamente aqui.
+    expect(
+      planBranchRollback({ trailBeforeBranch, current: afterCut, versionCreated: true }),
+    ).toBeNull();
+  });
+
+  it('envio normal (sem ramificação) nunca restaura nada', () => {
+    expect(
+      planBranchRollback({ trailBeforeBranch: null, current: afterCut, versionCreated: false }),
+    ).toBeNull();
+  });
+
+  it('as bolhas otimistas não sobrevivem ao rollback', () => {
+    const restored = planBranchRollback({
+      trailBeforeBranch,
+      current: afterCut,
+      versionCreated: false,
+    });
+    expect(restored?.some((message) => message.id.startsWith('local-'))).toBe(false);
   });
 });
 

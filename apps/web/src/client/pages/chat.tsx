@@ -71,7 +71,12 @@ import {
 } from '../lib/chat-scroll';
 import type { ChatHandoffState } from '../lib/chat-handoff';
 import { mergeChatMessagePages } from '../lib/chat-pagination';
-import { planSend, truncateTrailFrom, type MessageVersions } from '../lib/chat-versions';
+import {
+  planBranchRollback,
+  planSend,
+  truncateTrailFrom,
+  type MessageVersions,
+} from '../lib/chat-versions';
 import { MessageEditForm, UserMessageActions } from '../components/chat/message-versioning';
 import { claimPendingId, reconcileChatStart, sameActiveTurn } from '../lib/chat-reconciliation';
 import {
@@ -1330,19 +1335,25 @@ export function ChatPage(): React.ReactElement {
     // cortado deixaria um buraco no meio da conversa.
     const trailBeforeBranch = branch ? messages : null;
     /**
+     * O servidor aceitou o reenvio — a partir daqui a versão EXISTE no banco e
+     * o corte não pode mais ser desfeito. A rota cria o turno antes de abrir o
+     * stream, então o 2xx é o sinal exato; esperar o evento `start` deixaria
+     * uma janela em que a versão já existe e um rollback empilharia as duas
+     * versões da mesma pergunta na tela.
+     */
+    let versionCreated = false;
+    /**
      * Desfaz o corte quando NENHUM snapshot pôde ser lido (offline de verdade).
      * Sem isso a tela fica com o prefixo cortado mais duas bolhas otimistas
      * órfãs, e nada se auto-cura: `persistedActiveTurn` é nulo, o poll de
      * recuperação não liga, e o histórico só volta num reload.
+     *
+     * A decisão de restaurar (ou não, quando o turno já nasceu) mora em
+     * `planBranchRollback`, testável sem montar a página inteira.
      */
     function restoreBranchTrail(): void {
-      if (!trailBeforeBranch) return;
-      setMessages((current) =>
-        mergeChatMessagePages(
-          trailBeforeBranch,
-          // O que estiver mais fresco na tela vence; as bolhas otimistas saem.
-          current.filter((message) => !message.id.startsWith('local-')),
-        ),
+      setMessages(
+        (current) => planBranchRollback({ trailBeforeBranch, current, versionCreated }) ?? current,
       );
     }
     const localStartedAt = new Date().toISOString();
@@ -1414,6 +1425,7 @@ export function ChatPage(): React.ReactElement {
         signal: controller.signal,
       });
       if (!response.ok || !response.body) throw new Error(t('chat.streamStartError'));
+      versionCreated = true;
       // Mensagem aceita: só agora os chips consumidos saem do composer.
       setAttachments((current) => current.filter((item) => !consumedAttachmentIds.has(item.id)));
       const reader = response.body.getReader();
