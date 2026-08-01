@@ -161,8 +161,20 @@ jobs:
       - run: uv run pytest
         working-directory: apps/worker
 
-  docker-build:
-    name: Docker build (apps + Easypanel)
+  # ==========================================================================
+  # As três imagens são construídas em PARALELO. Antes eram três passos
+  # sequenciais num job só, e o job custava o tempo somado: web 3m57s +
+  # worker 3m01s + Easypanel 2m47s = 10m40s, o caminho crítico do CI inteiro
+  # (o segundo job mais lento leva 2m10s). Como `version-dev` abre PR e espera
+  # estes mesmos checks para mergear o bump, todo commit de versão pagava os
+  # dez minutos.
+  #
+  # `scope` distinto por imagem é obrigatório, não cosmético: o cache
+  # `type=gha` usa um escopo único por padrão, então três builds concorrentes
+  # com `mode=max` sobrescreveriam o cache um do outro a cada run.
+  # ==========================================================================
+  docker-build-web:
+    name: Docker build (web)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -173,16 +185,30 @@ jobs:
           context: .
           file: apps/web/Dockerfile
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  docker-build-worker:
+    name: Docker build (worker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
       - name: Build worker
         uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/worker/Dockerfile
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+
+  docker-build-easypanel:
+    name: Docker build (Easypanel App)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
       - name: Build Easypanel App image
         uses: docker/build-push-action@v7
         with:
@@ -191,8 +217,8 @@ jobs:
           push: false
           load: true
           tags: voxen-easypanel:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=easypanel
+          cache-to: type=gha,mode=max,scope=easypanel
       - name: Smoke test Easypanel App image
         run: |
           set -eux
@@ -258,6 +284,41 @@ jobs:
 
           docker logs voxen-easypanel
           exit 1
+
+  # ==========================================================================
+  # Agregador. Existe por causa do NOME: `Docker build (apps + Easypanel)` é
+  # um required status check da proteção de `dev`/`main` E está escrito por
+  # extenso no laço de espera do `version-dev.yml`. Dividir os builds sem
+  # manter este nome faria toda PR travar esperando um contexto que nunca mais
+  # reportaria.
+  #
+  # `if: always()` + asserção explícita dos resultados é o que torna isto
+  # seguro. Sem `always()`, uma build que falha deixa este job como `skipped`,
+  # e a proteção de branch trata `skipped` como aprovado — daria verde falso
+  # exatamente no caso em que o build quebrou.
+  # ==========================================================================
+  docker-build:
+    name: Docker build (apps + Easypanel)
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [docker-build-web, docker-build-worker, docker-build-easypanel]
+    steps:
+      - name: Assert image builds succeeded
+        env:
+          WEB: ${{ needs.docker-build-web.result }}
+          WORKER: ${{ needs.docker-build-worker.result }}
+          EASYPANEL: ${{ needs.docker-build-easypanel.result }}
+        run: |
+          set -eu
+          echo "web=$WEB worker=$WORKER easypanel=$EASYPANEL"
+          failed=0
+          for pair in "web:$WEB" "worker:$WORKER" "easypanel:$EASYPANEL"; do
+            if [ "${pair#*:}" != "success" ]; then
+              echo "::error::Build da imagem ${pair%%:*} não passou (${pair#*:})."
+              failed=1
+            fi
+          done
+          exit "$failed"
 
   compose-validate:
     name: docker-compose validate
