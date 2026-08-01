@@ -163,6 +163,65 @@ export function segmentsFromPersistedTools(
 }
 
 /**
+ * Normaliza os `segments` vindos do snapshot.
+ *
+ * `ChatMessage.segments` é uma coluna JSONB sem schema, e o backend faz
+ * `as StoredMessageSegment[]` sem validar (`runtime.ts`) — o que chega ao
+ * render é dado cru do Postgres, só *tipado* como `MessageSegment[]`. Até a
+ * spec 119 isso era inofensivo (`{segment.text}` com `undefined` não
+ * renderiza nada); desde a spec 126 o render chama `segment.text.trim()`, que
+ * LANÇA `TypeError` — e o ErrorBoundary é global (`main.tsx`), então UMA
+ * mensagem malformada apaga o app inteiro. Mesmo cuidado que `tools` já
+ * recebe em `isValidToolEvent`, criado depois do incidente com
+ * `HITL_RESPONSE` sem `name`.
+ *
+ * Retorna `null` quando o valor não é sequer uma lista: aí o chamador cai no
+ * fallback histórico (`segmentsFromPersistedTools`), em vez de exibir um
+ * turno vazio.
+ */
+export function parseMessageSegments(value: unknown): MessageSegment[] | null {
+  if (!Array.isArray(value)) return null;
+  const normalized: MessageSegment[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const candidate = raw as Record<string, unknown>;
+    const id = typeof candidate.id === 'string' && candidate.id.length > 0 ? candidate.id : null;
+    if (!id) continue;
+
+    if (candidate.type === 'reasoning') {
+      // `startedAt` inválido alimentaria `segmentsReasoningDuration` com uma
+      // janela absurda ("Pensou por 57 anos"), então o segmento é descartado.
+      if (typeof candidate.startedAt !== 'number' || !Number.isFinite(candidate.startedAt))
+        continue;
+      if (candidate.startedAt < 0) continue;
+      const endedAt =
+        typeof candidate.endedAt === 'number' && Number.isFinite(candidate.endedAt)
+          ? candidate.endedAt
+          : undefined;
+      // Texto ausente não descarta o segmento: sem texto o render já cai no
+      // resumo operacional ("Raciocinando…"), preservando a cronologia.
+      const text = typeof candidate.text === 'string' ? candidate.text : '';
+      const segment: ReasoningSegment = {
+        type: 'reasoning',
+        id,
+        text,
+        startedAt: candidate.startedAt,
+      };
+      normalized.push(endedAt == null ? segment : { ...segment, endedAt });
+      continue;
+    }
+
+    if (candidate.type === 'tool-group') {
+      if (!Array.isArray(candidate.tools)) continue;
+      const tools = candidate.tools.filter(isValidToolEvent);
+      if (tools.length === 0) continue;
+      normalized.push({ type: 'tool-group', id, tools });
+    }
+  }
+  return normalized;
+}
+
+/**
  * `true` se algo ainda está em andamento: um raciocínio sem `endedAt`, ou
  * qualquer tool-group com ferramenta `running`. Aprovação pendente (HITL) não
  * conta — o card fica acima do composer (spec 090).
@@ -216,6 +275,39 @@ export function segmentsReasoningDuration(
       : start;
   const duration = end - effectiveStart;
   return Number.isFinite(duration) && duration >= 0 ? duration : null;
+}
+
+/**
+ * Total de ferramentas chamadas no turno — insumo do resumo compacto exibido
+ * no cabeçalho quando o bloco está recolhido (spec 126).
+ */
+export function segmentsToolCount(segments: readonly MessageSegment[]): number {
+  let total = 0;
+  for (const segment of segments) {
+    if (segment.type === 'tool-group') total += segment.tools.length;
+  }
+  return total;
+}
+
+/**
+ * O bloco "Pensando" está em voo?
+ *
+ * Antes bastava `live` (stream aberto), o que mantinha a timeline inteira
+ * expandida enquanto a resposta final era digitada — empurrando o texto pra
+ * fora da tela justamente na hora de ler (spec 126). Agora, assim que o
+ * primeiro trecho da resposta final chega (`answering`), o bloco sai de voo e
+ * se compacta; se o harness voltar a chamar ferramenta depois disso, ele
+ * reabre. Gaps de milissegundos entre ferramentas continuam NÃO colapsando o
+ * bloco, porque antes da resposta final o turno é sempre considerado em voo.
+ */
+export function thinkingInFlight(
+  segments: readonly MessageSegment[],
+  live: boolean,
+  answering: boolean,
+): boolean {
+  if (!live) return false;
+  if (!answering) return true;
+  return segmentsRunning(segments);
 }
 
 export interface ThinkingTiming {

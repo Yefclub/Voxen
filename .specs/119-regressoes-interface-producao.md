@@ -42,6 +42,11 @@ destrutivas ou ampliar o domínio funcional da Voxen.
   viewports a partir de 320 pixels CSS.
 - The system shall apresentar no chat somente resumos operacionais sanitizados,
   nunca prompts, cadeia de raciocínio ou instruções internas do modelo.
+  > **Superseded em parte pela spec 126.** O raciocínio EMITIDO PELO MODELO
+  > voltou a ser renderizado, dentro do bloco recolhível. O restante do
+  > requisito segue vigente: prompts e instruções internas continuam fora da
+  > interface, e o resumo operacional permanece como fallback quando o
+  > segmento não tem texto.
 - The system shall preservar a duração concluída de uma resposta entre
   navegações, reloads e reconciliações.
 - The system shall tratar `/` e `/chat` como aliases equivalentes em navegação,
@@ -144,6 +149,9 @@ destrutivas ou ampliar o domínio funcional da Voxen.
 - [ ] Mensagens concluídas não aumentam sua duração após remount ou reload.
 - [ ] Timeline do chat usa descrições sanitizadas e não renderiza raciocínio
       bruto persistido.
+      <!-- Superseded em parte pela spec 126: o raciocínio do modelo passou a
+           ser renderizado no bloco recolhível. Prompts e instruções internas
+           continuam fora. -->
 - [ ] Tabelas do chat podem usar largura ampla no desktop e scroll próprio no
       mobile.
 - [ ] Detalhe do job possui `h1` e “Voltar para fila” navega para `/fila`.
@@ -182,6 +190,9 @@ destrutivas ou ampliar o domínio funcional da Voxen.
 
 - A timeline do chat privilegia transparência operacional segura; cadeia de
   raciocínio não é um artefato de produto.
+  > **Revertido pela spec 126** para o raciocínio do modelo: ele É um artefato
+  > de produto, desde que fique dentro do bloco recolhível. A premissa segue
+  > valendo para prompts e instruções internas.
 - A largura ampla é aplicada ao shell da página. Formulários e prosa podem usar
   uma coluna interna menor sem recentralizar cabeçalhos equivalentes.
 - Tags históricas inválidas conhecidas são removidas pela migration de deploy;

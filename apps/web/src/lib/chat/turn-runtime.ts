@@ -1,4 +1,6 @@
+import type { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
+import type { MessageAttachment } from './message-attachments';
 import { getOrCreateConversation, streamAssistantReply, type ChatStreamEvent } from './runtime';
 import {
   acquireChatTurnLease,
@@ -21,7 +23,11 @@ export class ChatTurnCoordinationError extends Error {
   }
 }
 
-export async function createChatTurn(userId: string, content: string) {
+export async function createChatTurn(
+  userId: string,
+  content: string,
+  attachments: readonly MessageAttachment[] = [],
+) {
   const conversation = await getOrCreateConversation(userId);
   return db.$transaction(async (tx) => {
     const claimed = await tx.conversation.updateMany({
@@ -31,7 +37,17 @@ export async function createChatTurn(userId: string, content: string) {
     if (claimed.count !== 1) throw new ChatTurnBusyError();
 
     const userMessage = await tx.chatMessage.create({
-      data: { conversationId: conversation.id, role: 'USER', content },
+      data: {
+        conversationId: conversation.id,
+        role: 'USER',
+        content,
+        // Vínculo do anexo com a mensagem (spec 126): já normalizado e com
+        // dono verificado pelo chamador; persistir aqui é o que faz o anexo
+        // sobreviver ao reload.
+        ...(attachments.length > 0
+          ? { attachments: attachments as unknown as Prisma.InputJsonValue }
+          : {}),
+      },
       select: { id: true },
     });
     const assistantMessage = await tx.chatMessage.create({

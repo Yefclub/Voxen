@@ -24,6 +24,7 @@ import { getAppTimezone, getSettings } from '../settings';
 import { researchWeb } from '../web-research';
 import { buildAgentClockInstructions, buildInstanceClock } from '../app-timezone';
 import type { ChatStatusCode } from '../../shared/chat-status';
+import { parseMessageAttachments } from './message-attachments';
 import { parseTemporalBounds } from './temporal-bounds';
 import { isProviderObservedEvent } from './stream-timing';
 import {
@@ -195,12 +196,18 @@ export async function getChatSnapshot(
       content: true,
       tools: true,
       segments: true,
+      attachments: true,
       compactedAt: true,
       createdAt: true,
     },
   });
   const hasOlder = newestFirst.length > limit;
-  const messages = newestFirst.slice(0, limit).reverse();
+  const messages = newestFirst
+    .slice(0, limit)
+    .reverse()
+    // A coluna `attachments` é JSONB sem schema: normaliza antes de sair da
+    // camada de dados para que o render nunca receba forma inesperada.
+    .map((message) => ({ ...message, attachments: parseMessageAttachments(message.attachments) }));
   // Persisted `running` tools are always stale once a turn is saved — heal so
   // reloads don't leave the Thinking block stuck on "Pensando…".
   const healedMessages = await Promise.all(

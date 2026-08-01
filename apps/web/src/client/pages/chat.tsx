@@ -4,17 +4,19 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   CircleStop,
   Copy,
   FileText,
   Globe,
+  Image as ImageIcon,
   Loader2,
   LoaderCircle,
+  Music2,
   Network,
   NotebookPen,
   Paperclip,
   Search,
-  Send,
   Video,
   Wrench,
   X,
@@ -43,11 +45,18 @@ import {
 import {
   applySegmentEvent,
   closeTrailingReasoning,
+  parseMessageSegments,
   resolveThinkingTiming,
   segmentsFromPersistedTools,
+  segmentsToolCount,
+  thinkingInFlight,
   type MessageSegment,
   type ToolEvent,
 } from '../lib/chat-segments';
+import {
+  MAX_MESSAGE_ATTACHMENTS,
+  type MessageAttachment,
+} from '../../lib/chat/message-attachments';
 import {
   ANCHOR_MOUNT_RETRY_FRAMES,
   SCROLL_LATEST_SHOW_DISTANCE_PX,
@@ -81,6 +90,8 @@ type ChatMessage = {
   createdAt: string;
   /** Segmentos cronológicos persistidos; durante o stream são atualizados localmente. */
   segments?: MessageSegment[];
+  /** Anexos vinculados à mensagem do usuário (spec 126). */
+  attachments?: MessageAttachment[];
 };
 type ActiveTurn = {
   id: string;
@@ -95,6 +106,16 @@ type Snapshot = {
   nextCursor: string | null;
   activeTurn: ActiveTurn | null;
 };
+
+/**
+ * `segments` chega do snapshot apenas *tipado* como `MessageSegment[]` — a
+ * coluna é JSONB e o backend não valida a forma. Normaliza na fronteira para
+ * que nenhum render toque em campo cru (spec 126).
+ */
+function normalizeSnapshotMessage(message: ChatMessage): ChatMessage {
+  const segments = parseMessageSegments(message.segments);
+  return { ...message, segments: segments ?? undefined };
+}
 
 type StreamEvent =
   | {
@@ -234,20 +255,40 @@ function ToolRow({ tool }: { tool: ToolEvent }) {
   );
 }
 
+/**
+ * Rótulo compacto do bloco recolhido (spec 126): duração do raciocínio e/ou
+ * quantidade de ferramentas usadas. Sem nenhum dos dois, cai no rótulo neutro.
+ */
+function thinkingSummaryLabel(duration: number | null, toolCount: number, t: TranslateFn): string {
+  const parts: string[] = [];
+  if (duration != null)
+    parts.push(t('chat.thoughtFor', { duration: formatToolDuration(duration) }));
+  if (toolCount > 0) {
+    parts.push(
+      toolCount === 1 ? t('chat.toolsUsedOne') : t('chat.toolsUsedMany', { count: toolCount }),
+    );
+  }
+  return parts.length > 0 ? parts.join(' · ') : t('chat.reasoning');
+}
+
 // ---------------------------------------------------------------------------
 // Bloco de pensamento — raciocínio e ferramentas num único container
-// cronológico (spec 078): "Pensando" (shimmer) enquanto o turno está ao vivo
-// (`live`) — e "Pensou por Xs" só ao terminar o turno. Segmentos persistidos
-// abertos não reativam um turno encerrado nem iniciam cronômetro após reload.
+// cronológico (spec 078): "Pensando" (shimmer) enquanto o turno está em voo e
+// resumo compacto ("Pensou por Xs · N ferramentas") assim que a resposta final
+// começa (spec 126). Segmentos persistidos abertos não reativam um turno
+// encerrado nem iniciam cronômetro após reload.
 // HITL fica acima do composer (spec 090), não neste bloco.
 // ---------------------------------------------------------------------------
 function ThinkingBlock({
   segments,
   live,
+  answering,
   startedAt,
 }: {
   segments: MessageSegment[];
   live: boolean;
+  /** A resposta final já começou a chegar neste turno. */
+  answering: boolean;
   startedAt: number;
 }): React.ReactElement {
   const { t } = useI18n();
@@ -259,7 +300,13 @@ function ThinkingBlock({
   // ao remontar ou ao voltar para a conversa.
   const startedAtRef = useRef<number>(startedAt);
   const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - startedAt));
-  const { inFlight, duration } = resolveThinkingTiming(segments, live, startedAt, elapsed);
+  const { inFlight, duration } = resolveThinkingTiming(
+    segments,
+    thinkingInFlight(segments, live, answering),
+    startedAt,
+    elapsed,
+  );
+  const toolCount = segmentsToolCount(segments);
 
   useEffect(() => {
     if (!inFlight) {
@@ -292,9 +339,7 @@ function ThinkingBlock({
               )}
             />
             <span className="text-[12.5px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]">
-              {duration != null
-                ? t('chat.thoughtFor', { duration: formatToolDuration(duration) })
-                : t('chat.reasoning')}
+              {thinkingSummaryLabel(duration, toolCount, t)}
             </span>
           </>
         )}
@@ -303,6 +348,9 @@ function ThinkingBlock({
         <div className="ml-2 flex flex-col gap-2.5 border-l-2 border-[var(--color-app-border)] py-0.5 pl-3">
           {segments.map((segment) =>
             segment.type === 'reasoning' ? (
+              // Raciocínio emitido pelo provedor (spec 126). Vive dentro do
+              // bloco recolhível: quem quiser acompanhar, expande. Sem texto
+              // (provedor que só sinaliza a etapa), cai no resumo operacional.
               <p
                 key={segment.id}
                 className={cn(
@@ -312,9 +360,11 @@ function ThinkingBlock({
                     : 'text-[var(--color-app-muted)]',
                 )}
               >
-                {segment.endedAt == null
-                  ? t('chat.reasoningInProgress')
-                  : t('chat.reasoningCompleted')}
+                {segment.text.trim().length > 0
+                  ? segment.text
+                  : segment.endedAt == null
+                    ? t('chat.reasoningInProgress')
+                    : t('chat.reasoningCompleted')}
               </p>
             ) : (
               <div key={segment.id} className="flex flex-col">
@@ -380,6 +430,46 @@ function MessageCopyButton({
   );
 }
 
+const ATTACHMENT_ICON: Record<MessageAttachment['kind'], typeof FileText> = {
+  document: FileText,
+  image: ImageIcon,
+  media: Music2,
+};
+
+/**
+ * Anexos vinculados à mensagem do usuário (spec 126). Vêm do snapshot, então
+ * continuam visíveis depois de recarregar a página.
+ */
+function MessageAttachments({
+  attachments,
+}: {
+  attachments?: MessageAttachment[];
+}): React.ReactElement | null {
+  const { t } = useI18n();
+  if (!attachments?.length) return null;
+  return (
+    <ul
+      className="mt-1.5 flex max-w-[85%] flex-wrap justify-end gap-1.5"
+      aria-label={t('chat.attachmentsLabel')}
+    >
+      {attachments.map((attachment) => {
+        const Icon = ATTACHMENT_ICON[attachment.kind];
+        return (
+          <li
+            key={attachment.jobId}
+            className="flex items-center gap-1.5 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--color-app-subtle)]"
+          >
+            <Icon className="h-3 w-3 shrink-0 text-[var(--color-app-muted)]" />
+            <span className="max-w-[180px] truncate" title={attachment.name}>
+              {attachment.name}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function HitlConfirmBar({
   pending,
   approving,
@@ -428,7 +518,8 @@ function HitlConfirmBar({
 }
 
 // ---------------------------------------------------------------------------
-// Anexo do composer — upload independente para o acervo (ingestão via jobs)
+// Anexo do composer — o arquivo continua indo pro acervo (job de ingestão),
+// mas agora o job também é vinculado à mensagem enviada (spec 126).
 // ---------------------------------------------------------------------------
 type Attachment = {
   id: string;
@@ -436,8 +527,36 @@ type Attachment = {
   status: 'uploading' | 'done' | 'error';
   progress: number;
   error?: string;
+  /** Job de ingestão criado pelo upload — é o que vincula o anexo à mensagem. */
+  jobId?: string;
   controller: AbortController;
 };
+
+/** Ids de job dos anexos prontos, na ordem em que o usuário anexou. */
+function readyAttachmentJobIds(attachments: readonly Attachment[]): string[] {
+  const ids: string[] = [];
+  for (const item of attachments) {
+    if (item.status !== 'done' || !item.jobId) continue;
+    ids.push(item.jobId);
+    if (ids.length === MAX_MESSAGE_ATTACHMENTS) break;
+  }
+  return ids;
+}
+
+/** Altura máxima do composer antes de rolar internamente (spec 126). */
+const COMPOSER_MAX_HEIGHT_PX = 200;
+/**
+ * ...mas nunca mais que esta fração da viewport. Num celular com o teclado
+ * aberto sobram ~300px de área útil: 200px fixos engoliriam quase tudo,
+ * deixando a conversa invisível enquanto se digita.
+ */
+const COMPOSER_MAX_HEIGHT_VH = 0.3;
+
+function composerMaxHeight(): number {
+  const viewport = window.visualViewport?.height ?? window.innerHeight;
+  if (!Number.isFinite(viewport) || viewport <= 0) return COMPOSER_MAX_HEIGHT_PX;
+  return Math.min(COMPOSER_MAX_HEIGHT_PX, viewport * COMPOSER_MAX_HEIGHT_VH);
+}
 
 function Composer({
   input,
@@ -445,6 +564,9 @@ function Composer({
   streaming,
   onSend,
   onStop,
+  attachments,
+  onAttachFile,
+  onRemoveAttachment,
   autoFocus,
   className,
 }: {
@@ -453,59 +575,38 @@ function Composer({
   streaming: boolean;
   onSend: () => void;
   onStop: () => void;
+  attachments: Attachment[];
+  onAttachFile: (file: File) => void;
+  onRemoveAttachment: (id: string) => void;
   autoFocus?: boolean;
   className?: string;
 }): React.ReactElement {
   const { t } = useI18n();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  function patch(id: string, next: Partial<Attachment>): void {
-    setAttachments((current) => current.map((a) => (a.id === id ? { ...a, ...next } : a)));
-  }
-
-  async function startUpload(file: File): Promise<void> {
-    const kind = attachmentKind(file.name, file.type);
-    if (!kind) {
-      toast.error(t('chat.attachUnsupported'));
-      return;
+  // Cresce com o conteúdo até o teto e só então rola internamente. Medir
+  // exige zerar a altura antes de ler `scrollHeight`, senão o valor fica
+  // preso na altura anterior e o composer nunca encolhe (mesmo padrão do
+  // dock de transcrição). O teclado virtual muda a viewport sem mudar o
+  // texto, então o resize também remede.
+  useLayoutEffect(() => {
+    const element = textareaRef.current;
+    if (!element) return;
+    function measure(): void {
+      if (!element) return;
+      element.style.height = 'auto';
+      element.style.height = `${Math.min(element.scrollHeight, composerMaxHeight())}px`;
     }
-    const id = crypto.randomUUID();
-    const controller = new AbortController();
-    setAttachments((current) => [
-      ...current,
-      { id, name: file.name, status: 'uploading', progress: 0, controller },
-    ]);
-    try {
-      await uploadMedia(file, {
-        signal: controller.signal,
-        onProgress: (percent) => patch(id, { progress: percent }),
-      });
-      patch(id, { status: 'done', progress: 100 });
-      toast.success(t('chat.attachQueued', { name: file.name }));
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        setAttachments((current) => current.filter((a) => a.id !== id));
-        return;
-      }
-      const message =
-        err instanceof ApiError
-          ? err.status === 413
-            ? t('jobs.error.uploadTooLarge')
-            : err.message
-          : t('jobs.error.unexpected');
-      patch(id, { status: 'error', error: message });
-      toast.error(t('chat.attachError', { name: file.name }));
-    }
-  }
-
-  function removeAttachment(id: string): void {
-    setAttachments((current) => {
-      const target = current.find((a) => a.id === id);
-      if (target?.status === 'uploading') target.controller.abort();
-      return current.filter((a) => a.id !== id);
-    });
-  }
+    measure();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', measure);
+    window.addEventListener('resize', measure);
+    return () => {
+      viewport?.removeEventListener('resize', measure);
+      window.removeEventListener('resize', measure);
+    };
+  }, [input]);
 
   return (
     <form
@@ -517,6 +618,7 @@ function Composer({
     >
       <div className="flex flex-col gap-1.5 rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface)] p-2 shadow-lg shadow-black/10 transition-colors focus-within:border-[var(--color-accent-primary)]/50">
         <textarea
+          ref={textareaRef}
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
@@ -529,7 +631,10 @@ function Composer({
           rows={1}
           disabled={streaming}
           autoFocus={autoFocus}
-          className="max-h-40 min-h-9 w-full resize-none bg-transparent px-2 py-1.5 text-sm text-[var(--color-app-fg)] outline-none placeholder:text-[var(--color-app-muted)] disabled:opacity-60"
+          style={{
+            maxHeight: `min(${COMPOSER_MAX_HEIGHT_PX}px, ${COMPOSER_MAX_HEIGHT_VH * 100}dvh)`,
+          }}
+          className="min-h-9 w-full resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-sm text-[var(--color-app-fg)] outline-none placeholder:text-[var(--color-app-muted)] disabled:opacity-60"
         />
 
         {attachments.length > 0 && (
@@ -557,7 +662,7 @@ function Composer({
                 )}
                 <button
                   type="button"
-                  onClick={() => removeAttachment(a.id)}
+                  onClick={() => onRemoveAttachment(a.id)}
                   className="grid h-4 w-4 place-items-center rounded text-[var(--color-app-muted)] hover:text-[var(--color-accent-rose)]"
                   aria-label={t('common.close')}
                 >
@@ -576,7 +681,7 @@ function Composer({
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) void startUpload(file);
+              if (file) onAttachFile(file);
               if (fileRef.current) fileRef.current.value = '';
             }}
           />
@@ -607,7 +712,7 @@ function Composer({
               className="grid h-9 w-9 place-items-center rounded-full bg-[var(--color-accent-primary)] text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label={t('chat.send')}
             >
-              <Send className="h-4 w-4" />
+              <ChevronUp className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -636,6 +741,9 @@ export function ChatPage(): React.ReactElement {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [approvingHitl, setApprovingHitl] = useState<ReadonlySet<string>>(new Set());
+  // Anexos vivem na página (não no Composer) porque `send()` precisa deles
+  // para vincular os jobs à mensagem enviada (spec 126).
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const approvingHitlRef = useRef(new Set<string>());
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentWrapRef = useRef<HTMLDivElement>(null);
@@ -813,12 +921,67 @@ export function ChatPage(): React.ReactElement {
   }, [visibleMessages]);
   const isEmpty = !loading && visibleMessages.length === 0;
 
+  function patchAttachment(id: string, next: Partial<Attachment>): void {
+    setAttachments((current) => current.map((a) => (a.id === id ? { ...a, ...next } : a)));
+  }
+
+  async function startUpload(file: File): Promise<void> {
+    const kind = attachmentKind(file.name, file.type);
+    if (!kind) {
+      toast.error(t('chat.attachUnsupported'));
+      return;
+    }
+    if (attachments.length >= MAX_MESSAGE_ATTACHMENTS) {
+      toast.error(t('chat.attachTooMany', { max: MAX_MESSAGE_ATTACHMENTS }));
+      return;
+    }
+    const id = crypto.randomUUID();
+    const controller = new AbortController();
+    setAttachments((current) => [
+      ...current,
+      { id, name: file.name, status: 'uploading', progress: 0, controller },
+    ]);
+    try {
+      const uploaded = await uploadMedia(file, {
+        signal: controller.signal,
+        onProgress: (percent) => patchAttachment(id, { progress: percent }),
+      });
+      // O jobId é o que amarra este arquivo à próxima mensagem enviada.
+      patchAttachment(id, { status: 'done', progress: 100, jobId: uploaded.jobId });
+      toast.success(t('chat.attachQueued', { name: file.name }));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setAttachments((current) => current.filter((a) => a.id !== id));
+        return;
+      }
+      const message =
+        err instanceof ApiError
+          ? err.status === 413
+            ? t('jobs.error.uploadTooLarge')
+            : err.message
+          : t('jobs.error.unexpected');
+      patchAttachment(id, { status: 'error', error: message });
+      toast.error(t('chat.attachError', { name: file.name }));
+    }
+  }
+
+  function removeAttachment(id: string): void {
+    setAttachments((current) => {
+      const target = current.find((a) => a.id === id);
+      if (target?.status === 'uploading') target.controller.abort();
+      return current.filter((a) => a.id !== id);
+    });
+  }
+
   function applySnapshot(snapshot: Snapshot, replace = false): void {
+    // Funil único de mensagens vindas do servidor: normaliza aqui para que o
+    // render nunca receba `segments` cru do JSONB (ver parseMessageSegments).
+    const messages = snapshot.messages.map(normalizeSnapshotMessage);
     setMessages((current) => {
-      if (replace) return snapshot.messages;
+      if (replace) return messages;
       return mergeChatMessagePages(
         current.filter((message) => !message.id.startsWith('local-')),
-        snapshot.messages,
+        messages,
       );
     });
     setHasOlder(snapshot.hasOlder);
@@ -1080,6 +1243,17 @@ export function ChatPage(): React.ReactElement {
   async function send(override?: string): Promise<void> {
     const content = (override ?? input).trim();
     if (!content || streaming) return;
+    const attachmentJobIds = readyAttachmentJobIds(attachments);
+    // Espelho otimista dos anexos: o servidor devolve a forma canônica no
+    // snapshot, mas a bolha já nasce com o vínculo visível.
+    const localAttachments: MessageAttachment[] = attachments
+      .filter((item) => item.status === 'done' && item.jobId)
+      .slice(0, MAX_MESSAGE_ATTACHMENTS)
+      .map((item) => ({
+        jobId: item.jobId as string,
+        name: item.name,
+        kind: attachmentKind(item.name, '') ?? 'document',
+      }));
     const localStartedAt = new Date().toISOString();
     const localUser: ChatMessage = {
       id: `local-user-${crypto.randomUUID()}`,
@@ -1087,6 +1261,7 @@ export function ChatPage(): React.ReactElement {
       kind: 'NORMAL',
       content,
       tools: null,
+      attachments: localAttachments,
       compactedAt: null,
       createdAt: localStartedAt,
     };
@@ -1109,6 +1284,17 @@ export function ChatPage(): React.ReactElement {
     scrollPhaseRef.current = 'free';
     setMessages((current) => [...current, localUser, localAssistant]);
     setInput('');
+    // Chips que saem do composer QUANDO o servidor aceitar a mensagem: os
+    // prontos (foram vinculados) e os que falharam (erro já avisado por
+    // toast). Uploads em andamento seguem no composer e valem para a próxima
+    // mensagem. Limpar aqui, antes do POST, perdia os anexos em 409 (turno
+    // ocupado), 429 (rate limit) ou queda de rede — a mensagem não era criada
+    // e não há como re-vincular um job existente, restando subir o arquivo de
+    // novo. Guardamos os ids em vez de filtrar por status depois, para não
+    // levar junto um anexo que o usuário adicionou durante a requisição.
+    const consumedAttachmentIds = new Set(
+      attachments.filter((item) => item.status !== 'uploading').map((item) => item.id),
+    );
     setNearBottom(false);
     setShowScrollLatest(false);
     setStreaming(true);
@@ -1122,10 +1308,14 @@ export function ChatPage(): React.ReactElement {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(
+          attachmentJobIds.length > 0 ? { content, attachmentJobIds } : { content },
+        ),
         signal: controller.signal,
       });
       if (!response.ok || !response.body) throw new Error(t('chat.streamStartError'));
+      // Mensagem aceita: só agora os chips consumidos saem do composer.
+      setAttachments((current) => current.filter((item) => !consumedAttachmentIds.has(item.id)));
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -1297,6 +1487,9 @@ export function ChatPage(): React.ReactElement {
             streaming={streaming}
             onSend={() => void send()}
             onStop={() => void stopStreaming()}
+            attachments={attachments}
+            onAttachFile={(file) => void startUpload(file)}
+            onRemoveAttachment={removeAttachment}
             autoFocus
             className="w-full max-w-3xl"
           />
@@ -1356,6 +1549,7 @@ export function ChatPage(): React.ReactElement {
                         <div className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-[var(--color-accent-primary-soft)] px-4 py-2.5 text-[14.5px] leading-relaxed text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-primary)]/15">
                           {message.content}
                         </div>
+                        <MessageAttachments attachments={message.attachments} />
                         <MessageCopyButton text={message.content} align="end" />
                       </article>
                     );
@@ -1367,6 +1561,7 @@ export function ChatPage(): React.ReactElement {
                         <ThinkingBlock
                           segments={segments}
                           live={isStreamingAssistant}
+                          answering={message.content.length > 0}
                           startedAt={Date.parse(message.createdAt)}
                         />
                       )}
@@ -1424,6 +1619,9 @@ export function ChatPage(): React.ReactElement {
                 streaming={streaming}
                 onSend={() => void send()}
                 onStop={() => void stopStreaming()}
+                attachments={attachments}
+                onAttachFile={(file) => void startUpload(file)}
+                onRemoveAttachment={removeAttachment}
               />
             </div>
           </div>

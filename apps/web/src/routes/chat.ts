@@ -10,6 +10,8 @@ import {
   type ChatStreamEvent,
 } from '../lib/chat/runtime';
 import { ApprovalBody } from '../lib/chat/approval-input';
+import { MAX_MESSAGE_ATTACHMENTS } from '../lib/chat/message-attachments';
+import { resolveAttachments } from '../lib/chat/attachment-resolver';
 import {
   cancelActiveChatTurn,
   ChatTurnBusyError,
@@ -86,7 +88,12 @@ chatRoutes.post('/cancel', async (c) => {
   return c.json({ cancelled: await cancelActiveChatTurn(c.get('userId')) });
 });
 
-const SendBody = z.object({ content: z.string().trim().min(1).max(20_000) });
+const SendBody = z.object({
+  content: z.string().trim().min(1).max(20_000),
+  // O cliente só informa QUAIS jobs de upload acompanham a mensagem. Nome e
+  // tipo do anexo são resolvidos no servidor (spec 126).
+  attachmentJobIds: z.array(z.string().min(1).max(64)).max(MAX_MESSAGE_ATTACHMENTS).optional(),
+});
 
 /** Comentário SSE a cada ~15s de ociosidade (spec 065 + Bun idleTimeout). */
 export const CHAT_SSE_KEEPALIVE_MS = 15_000;
@@ -109,9 +116,10 @@ chatRoutes.post('/', async (c) => {
       { 'Retry-After': String(quota.resetIn) },
     );
   }
+  const attachments = await resolveAttachments(userId, parsed.data.attachmentJobIds);
   let turn: Awaited<ReturnType<typeof createChatTurn>>;
   try {
-    turn = await createChatTurn(userId, parsed.data.content);
+    turn = await createChatTurn(userId, parsed.data.content, attachments);
   } catch (error) {
     if (error instanceof ChatTurnBusyError) return c.json({ error: error.message }, 409);
     throw error;

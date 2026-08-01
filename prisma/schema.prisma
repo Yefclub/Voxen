@@ -655,6 +655,10 @@ model ChatMessage {
   // Linha do tempo visual do turno (raciocínio + grupos de tools). Nunca é
   // reenviada ao modelo; serve para restaurar a UI após reload.
   segments       Json?
+  // Anexos vinculados à mensagem do usuário (array de {jobId, name, kind}) —
+  // JSONB. Preenchido pelo servidor a partir de jobs de upload do PRÓPRIO
+  // usuário; nunca copiado cru do payload do cliente (spec 126).
+  attachments    Json?
   // Quando setado, esta mensagem foi "compactada" — significa que seu
   // conteúdo já foi substituído por uma COMPACTION_SUMMARY mais recente.
   // Fica no DB pra histórico (user pode expandir e ver), mas NÃO é enviada
