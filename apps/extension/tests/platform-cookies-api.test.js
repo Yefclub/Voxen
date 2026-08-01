@@ -9,7 +9,9 @@ afterEach(() => {
 
 describe('URLs da rota de cookies', () => {
   test('monta os endpoints admin', () => {
-    expect(platformCookiesUrl('https://a.com/')).toBe('https://a.com/api/admin/integrations/cookies');
+    expect(platformCookiesUrl('https://a.com/')).toBe(
+      'https://a.com/api/admin/integrations/cookies',
+    );
     expect(platformCookieUrl('https://a.com', 'tiktok')).toBe(
       'https://a.com/api/admin/integrations/cookies/tiktok',
     );
