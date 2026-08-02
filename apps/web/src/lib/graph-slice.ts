@@ -49,7 +49,7 @@ const WEAK_METHODS = [
 ];
 
 export function parseGraphView(raw: string | undefined | null): GraphSliceView {
-  return raw === 'map' ? 'map' : 'full';
+  return raw === 'full' ? 'full' : 'map';
 }
 
 export function parseGraphHops(raw: string | undefined | null): number {
@@ -188,12 +188,12 @@ export function selectGraphSlice<N extends SliceNode, E extends SliceEdge>(input
   const finalEdges = strongEdges.filter((e) => finalIds.has(e.from) && finalIds.has(e.to));
 
   const withClusters = injectClusterHubs(finalNodes, finalEdges);
-  // Cap final após hubs virtuais (clusters contam no budget do mapa).
-  const cappedNodes = withClusters.nodes.slice(0, MAP_NODE_LIMIT + 24);
+  // Hubs virtuais também contam no orçamento do mapa.
+  const cappedNodes = withClusters.nodes.slice(0, MAP_NODE_LIMIT);
   const cappedIds = new Set(cappedNodes.map((n) => n.id));
   const cappedEdges = withClusters.edges
     .filter((e) => cappedIds.has(e.from) && cappedIds.has(e.to))
-    .slice(0, MAP_EDGE_LIMIT + 48);
+    .slice(0, MAP_EDGE_LIMIT);
   return {
     nodes: cappedNodes,
     edges: cappedEdges,

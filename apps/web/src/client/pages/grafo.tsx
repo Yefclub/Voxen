@@ -200,7 +200,7 @@ function latestGraphIndexStatus(
 
 export function GrafoPage(): React.ReactElement {
   const [graphRequest, setGraphRequest] = useState({ tick: 0, force: false });
-  /** O produto sempre abre o snapshot amplo; map permanece só no contrato legado da API. */
+  const [view, setView] = useState<'map' | 'full'>('map');
   const [reprocessOpen, setReprocessOpen] = useState(false);
   const [search, setSearch] = useState('');
   const deferredSearch = useDebouncedValue(search, 140);
@@ -216,13 +216,13 @@ export function GrafoPage(): React.ReactElement {
   const { theme } = useTheme();
   const graphPath = useMemo(() => {
     const params = new URLSearchParams();
-    params.set('view', 'full');
+    params.set('view', view);
     if (graphRequest.tick > 0) {
       params.set(graphRequest.force ? 'force' : 'refresh', '1');
       params.set('t', String(graphRequest.tick));
     }
     return `/api/graph?${params.toString()}`;
-  }, [graphRequest.force, graphRequest.tick]);
+  }, [graphRequest.force, graphRequest.tick, view]);
   const { data, loading, error } = useFetch<GraphResp>(graphPath);
   const {
     data: polledIndexStatus,
@@ -289,12 +289,6 @@ export function GrafoPage(): React.ReactElement {
     const timer = window.setTimeout(refreshIndexStatus, 2_500);
     return () => window.clearTimeout(timer);
   }, [data?.indexing, indexStatus, refreshIndexStatus, statusError]);
-
-  useEffect(() => {
-    if (selectedId && filtered && !filtered.nodes.some((node) => node.id === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [filtered, selectedId]);
 
   const openNode = useCallback(
     (node: GraphNode) => {
@@ -412,6 +406,29 @@ export function GrafoPage(): React.ReactElement {
                 <PanelLeft className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">{t('graph.explore')}</span>
               </Button>
+              <div
+                className="flex rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] p-0.5"
+                role="group"
+                aria-label={t('graph.viewMode')}
+              >
+                {(['map', 'full'] as const).map((nextView) => (
+                  <button
+                    key={nextView}
+                    type="button"
+                    onClick={() => setView(nextView)}
+                    aria-pressed={view === nextView}
+                    title={nextView === 'full' ? t('graph.switchToFull') : t('graph.switchToMap')}
+                    className={cn(
+                      'rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
+                      view === nextView
+                        ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)] shadow-sm'
+                        : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]',
+                    )}
+                  >
+                    {t(nextView === 'map' ? 'graph.viewMap' : 'graph.viewFull')}
+                  </button>
+                ))}
+              </div>
               <Button
                 variant="outline"
                 size="default"
@@ -948,7 +965,26 @@ function GraphNodeInspector({
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-xs font-medium">{neighbor.label}</span>
                 <span className="block truncate text-[10px] text-[var(--color-app-muted)]">
-                  {translate(`graph.edge.${edge.kind}`)}
+                  {translate('graph.relationReason', {
+                    reason: translate(`graph.edge.${edge.kind}`),
+                  })}
+                </span>
+                <span className="mt-0.5 block truncate text-[10px] text-[var(--color-app-muted)]">
+                  {translate('graph.relationMethod', { method: edge.method })} ·{' '}
+                  {translate('graph.relationConfidence', {
+                    confidence: String(Math.round(Number(edge.confidence) * 100)),
+                  })}
+                </span>
+                <span className="block truncate text-[10px] text-[var(--color-app-muted)]">
+                  {translate('graph.relationEvidence', {
+                    evidence: translate(
+                      edge.evidence === 'EXTRACTED'
+                        ? 'graph.evidenceExtracted'
+                        : edge.evidence === 'INFERRED'
+                          ? 'graph.evidenceInferred'
+                          : 'graph.evidenceAmbiguous',
+                    ),
+                  })}
                 </span>
               </span>
               <ChevronRight className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
