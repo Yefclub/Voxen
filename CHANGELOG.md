@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.13.0-dev.1785692656 — 2026-08-02 · Dev
+
+### ✨ Fontes web agora podem ser atualizadas sem perder o histórico
+
+Páginas web da Base de conhecimento agora mostram quando foram coletadas e podem
+ser atualizadas manualmente. Se nada mudou, o Voxen só registra a nova consulta;
+se o conteúdo mudou, preserva a versão anterior, atualiza os índices e sinaliza
+citações antigas para que não pareçam evidência da versão atual.
+
 ## v0.13.0-dev.1785690745 — 2026-08-02 · Dev
 
 ### 🧹 Base de testes passa a medir qualidade de busca e citações
