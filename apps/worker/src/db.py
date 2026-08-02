@@ -24,6 +24,7 @@ log = structlog.get_logger(__name__)
 class GroundedCompilationLeaseLostError(RuntimeError):
     """Força rollback quando o lease expira durante a escrita de um segmento."""
 
+
 _pool: asyncpg.Pool | None = None
 
 TOPIC_LIMIT = 8
