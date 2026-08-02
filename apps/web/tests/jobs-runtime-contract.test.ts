@@ -52,6 +52,6 @@ describe('estabilidade do runtime de jobs', () => {
     const detail = read('pages/jobs-detalhe.tsx');
     expect(detail).toContain('shouldAutoOpenTranscript');
     expect(detail).toContain('sawActiveRef');
-    expect(detail).toContain("navigate(target, { replace: true })");
+    expect(detail).toContain('navigate(target, { replace: true })');
   });
 });

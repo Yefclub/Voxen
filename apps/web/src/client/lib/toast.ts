@@ -254,11 +254,15 @@ const queue = new ToastFifoQueue(emitToSonner, (id) => {
 });
 
 /** Liga a fila global ao Page Visibility (chamado uma vez no shell). */
-export function bindToastVisibility(doc: {
-  hidden: boolean;
-  addEventListener: (type: string, listener: () => void) => void;
-  removeEventListener: (type: string, listener: () => void) => void;
-} = typeof document !== 'undefined' ? document : { hidden: false, addEventListener() {}, removeEventListener() {} }): () => void {
+export function bindToastVisibility(
+  doc: {
+    hidden: boolean;
+    addEventListener: (type: string, listener: () => void) => void;
+    removeEventListener: (type: string, listener: () => void) => void;
+  } = typeof document !== 'undefined'
+    ? document
+    : { hidden: false, addEventListener() {}, removeEventListener() {} },
+): () => void {
   const sync = (): void => {
     queue.setDocumentHidden(Boolean(doc.hidden));
   };

@@ -202,9 +202,9 @@ describe('notification permission + show', () => {
     expect(await ensureNotificationPermission({ permission: 'denied' })).toBe('denied');
 
     const requestPermission = mock(async () => 'granted' as NotificationPermission);
-    expect(
-      await ensureNotificationPermission({ permission: 'default', requestPermission }),
-    ).toBe('granted');
+    expect(await ensureNotificationPermission({ permission: 'default', requestPermission })).toBe(
+      'granted',
+    );
     expect(requestPermission).toHaveBeenCalledTimes(1);
 
     expect(
@@ -228,8 +228,7 @@ describe('notification permission + show', () => {
         url: '/jobs/1',
       },
       {
-        getRegistration: async () =>
-          ({ showNotification }) as unknown as ServiceWorkerRegistration,
+        getRegistration: async () => ({ showNotification }) as unknown as ServiceWorkerRegistration,
         NotificationCtor: null,
       },
     );

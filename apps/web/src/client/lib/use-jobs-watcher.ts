@@ -123,11 +123,14 @@ async function notifyTerminalJob(
   t: TranslateFn,
   onNavigate: (path: string) => void,
 ): Promise<void> {
-  const documentHidden =
-    typeof document !== 'undefined' ? Boolean(document.hidden) : false;
+  const documentHidden = typeof document !== 'undefined' ? Boolean(document.hidden) : false;
 
   let permission = readNotificationPermission();
-  if (documentHidden && permission === 'default' && (evt.stage === 'done' || evt.stage === 'failed')) {
+  if (
+    documentHidden &&
+    permission === 'default' &&
+    (evt.stage === 'done' || evt.stage === 'failed')
+  ) {
     permission = await ensureNotificationPermission();
   }
 

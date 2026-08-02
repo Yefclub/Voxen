@@ -91,9 +91,7 @@ export interface ShouldAutoOpenTranscriptArgs {
  * Auto-open only the focused job detail page while the app is visible.
  * Avoids thrashing when many jobs complete elsewhere.
  */
-export function shouldAutoOpenTranscript(
-  args: ShouldAutoOpenTranscriptArgs,
-): string | null {
+export function shouldAutoOpenTranscript(args: ShouldAutoOpenTranscriptArgs): string | null {
   if (args.documentHidden) return null;
   if (args.stage !== 'done' && args.stage !== 'DONE') return null;
   const transcriptId = args.transcriptId?.trim();
