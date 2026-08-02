@@ -60,6 +60,7 @@ import {
   healStaleRunningTools,
   isToolErrorOutput,
 } from './tool-outcomes';
+import { citationsFromToolEvents } from './citations';
 
 const KEEP_RECENT = 6;
 const DEFAULT_CONTEXT_LIMIT = 32_000;
@@ -234,6 +235,7 @@ export async function getChatSnapshot(
       content: true,
       tools: true,
       segments: true,
+      citations: true,
       attachments: true,
       compactedAt: true,
       parentId: true,
@@ -1951,6 +1953,7 @@ export async function streamAssistantReply(options: {
     content: answer || (awaitingHitl ? '' : failureFallback),
     tools: tools as unknown as Prisma.InputJsonValue,
     segments: segments as unknown as Prisma.InputJsonValue,
+    citations: (await citationsFromToolEvents(userId, tools)) as unknown as Prisma.InputJsonValue,
   };
   const assistant = assistantMessageId
     ? await db.chatMessage.update({ where: { id: assistantMessageId }, data: assistantData })

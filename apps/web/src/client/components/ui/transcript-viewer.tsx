@@ -18,6 +18,7 @@ interface Segment {
 export function TranscriptViewer({ markdown }: { markdown: string }): React.ReactElement {
   const { t } = useI18n();
   const segments = useMemo(() => parseSegments(markdown), [markdown]);
+  const [anchor, setAnchor] = useState(() => window.location.hash);
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const plainText = useMemo(() => segments.map((s) => s.text).join(' '), [segments]);
@@ -27,6 +28,19 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
       if (copyTimer.current) clearTimeout(copyTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    const updateAnchor = () => setAnchor(window.location.hash);
+    window.addEventListener('hashchange', updateAnchor);
+    updateAnchor();
+    return () => window.removeEventListener('hashchange', updateAnchor);
+  }, []);
+
+  useEffect(() => {
+    const value = /^#t=(\d+)$/.exec(anchor)?.[1];
+    if (!value) return;
+    document.getElementById(`citation-t-${value}`)?.scrollIntoView({ block: 'center' });
+  }, [anchor]);
 
   async function copy(): Promise<void> {
     try {
@@ -64,7 +78,11 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
       <article className="prose-voxen">
         <p className="leading-[1.85] text-[15.5px] text-[var(--color-app-subtle)] text-pretty break-words">
           {segments.map((seg, i) => (
-            <SegmentSpan key={i} seg={seg} />
+            <SegmentSpan
+              key={i}
+              seg={seg}
+              highlighted={anchor === `#t=${Math.floor(seg.startSec)}`}
+            />
           ))}
         </p>
       </article>
@@ -72,9 +90,18 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
   );
 }
 
-function SegmentSpan({ seg }: { seg: Segment }): React.ReactElement {
+function SegmentSpan({
+  seg,
+  highlighted,
+}: {
+  seg: Segment;
+  highlighted: boolean;
+}): React.ReactElement {
   const content = (
-    <span className="rounded-sm transition-colors duration-150 hover:bg-violet-500/[0.14] hover:text-[var(--color-app-fg)] focus:outline-none focus-visible:bg-violet-500/[0.18] focus-visible:text-[var(--color-app-fg)]">
+    <span
+      id={`citation-t-${Math.floor(seg.startSec)}`}
+      className={`rounded-sm transition-colors duration-150 hover:bg-violet-500/[0.14] hover:text-[var(--color-app-fg)] focus:outline-none focus-visible:bg-violet-500/[0.18] focus-visible:text-[var(--color-app-fg)]${highlighted ? ' bg-emerald-500/20 text-[var(--color-app-fg)]' : ''}`}
+    >
       {seg.text}
     </span>
   );
