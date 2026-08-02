@@ -13,8 +13,11 @@ import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
 import { db } from '../lib/db';
 import {
   DEFAULT_OPENROUTER_MODELS,
-  hasCanonicalOpenRouterModels,
+  getModelCompatibilityFailures,
+  isModelCompatibleWithPurpose,
+  isModelPurpose,
   MODEL_PURPOSES,
+  type ModelPurpose,
 } from '../lib/model-defaults';
 import { inspectOpenRouterAccount, OpenrouterError } from '../lib/openrouter';
 import {
@@ -68,6 +71,7 @@ const SaveBody = z
     // mesmo POST para que a primeira configuração seja atômica.
     app_language: z.enum(['pt-BR', 'en']).optional(),
     app_timezone: z.string().trim().min(1).max(64).optional(),
+    model_replacements: z.record(z.string(), z.string().trim().min(1).max(200)).optional(),
     reason: z.string().trim().max(500).optional(),
   })
   .strict()
@@ -82,7 +86,8 @@ setupRoutes.post('/', async (c) => {
     return c.json({ error: 'Payload inválido.' }, 400);
   }
 
-  const { openrouter_api_key, app_language, app_timezone, reason } = parsed.data;
+  const { openrouter_api_key, app_language, app_timezone, model_replacements, reason } =
+    parsed.data;
   const metadata = { actorUserId: c.get('adminUserId'), reason };
   if (app_timezone !== undefined && !isValidIanaTimezone(app_timezone)) {
     return c.json({ error: 'Timezone IANA inválido.' }, 400);
@@ -93,6 +98,9 @@ setupRoutes.post('/', async (c) => {
     ...(app_timezone !== undefined ? { app_timezone: normalizeAppTimezone(app_timezone) } : {}),
   };
   if (openrouter_api_key === undefined) {
+    if (model_replacements !== undefined) {
+      return c.json({ error: 'Substituições de modelo exigem uma nova chave da OpenRouter.' }, 400);
+    }
     if (!(await getSetting('openrouter_api_key'))) {
       return c.json(
         { error: 'Informe uma chave da OpenRouter para concluir a configuração.' },
@@ -101,6 +109,13 @@ setupRoutes.post('/', async (c) => {
     }
     await setSettings(preferences, metadata);
     return c.json({ complete: true });
+  }
+
+  if (
+    model_replacements !== undefined &&
+    Object.keys(model_replacements).some((purpose) => !isModelPurpose(purpose))
+  ) {
+    return c.json({ error: 'Finalidade de modelo inválida.' }, 400);
   }
 
   const inspection = await inspectOpenRouterAccount(openrouter_api_key).catch((err) => {
@@ -113,35 +128,39 @@ setupRoutes.post('/', async (c) => {
   if (!inspection.valid) {
     return c.json({ error: 'Chave da OpenRouter inválida — verifique e tente novamente.' }, 400);
   }
-  if (!hasCanonicalOpenRouterModels(inspection.models)) {
+  // Uma finalidade ganha o canônico no primeiro setup e preserva o valor
+  // efetivo nas trocas seguintes. A chave candidata só pode ser persistida se
+  // os seis valores (ou substituições explícitas) estiverem no catálogo dela.
+  const existingModels = await getSettings(MODEL_PURPOSES);
+  const effectiveModels = Object.fromEntries(
+    MODEL_PURPOSES.map((purpose) => [
+      purpose,
+      model_replacements?.[purpose] ??
+        existingModels[purpose] ??
+        DEFAULT_OPENROUTER_MODELS[purpose],
+    ]),
+  ) as Record<ModelPurpose, string>;
+  const failures = getModelCompatibilityFailures(effectiveModels, inspection.models);
+  if (failures.length > 0) {
     return c.json(
       {
         error:
-          'Os modelos padrão da Voxen não estão disponíveis para esta chave. Verifique as permissões da conta e tente novamente.',
+          'Alguns modelos configurados não estão disponíveis ou não são compatíveis com a nova chave. Selecione substituições autorizadas antes de salvar.',
+        incompatible: failures.map((failure) => ({
+          ...failure,
+          compatibleModels: inspection.models
+            .filter((model) => isModelCompatibleWithPurpose(failure.purpose, model))
+            .map((model) => ({ id: model.id, name: model.name ?? model.id })),
+        })),
       },
       422,
     );
   }
 
-  // Só preenche as 6 finalidades que ainda não têm valor. Uma vez que o
-  // primeiro setup grava um valor (canônico ou override — spec 123), trocar
-  // a chave NUNCA sobrescreve o que já está lá: overrides do admin
-  // sobrevivem à revalidação/troca de chave (critério de aceite da spec
-  // 123). Isso não muda o onboarding em si (spec 118): no primeiro setup,
-  // nenhuma dessas chaves existe ainda, então todas são preenchidas com o
-  // canônico exatamente como antes.
-  const existingModels = await getSettings(MODEL_PURPOSES);
-  const missingModels = Object.fromEntries(
-    MODEL_PURPOSES.filter((key) => !existingModels[key]).map((key) => [
-      key,
-      DEFAULT_OPENROUTER_MODELS[key],
-    ]),
-  );
-
   await setSettings(
     {
       openrouter_api_key,
-      ...missingModels,
+      ...effectiveModels,
       ...preferences,
     },
     metadata,

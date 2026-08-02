@@ -19,6 +19,12 @@ type OpenRouterModelCapabilities = {
   };
 };
 
+export type ModelCompatibilityFailure = {
+  purpose: ModelPurpose;
+  modelId: string;
+  reason: 'unavailable' | 'incompatible';
+};
+
 export function hasCanonicalOpenRouterModels(
   models: readonly OpenRouterModelCapabilities[],
 ): boolean {
@@ -96,6 +102,30 @@ export function isModelCompatibleWithPurpose(
     default:
       return textOutput;
   }
+}
+
+/**
+ * Verifica o conjunto de modelos efetivos contra um catálogo já autorizado
+ * para uma chave. A disponibilidade é avaliada antes da modalidade para que a
+ * API consiga explicar ao administrador se o modelo sumiu ou é incompatível.
+ */
+export function getModelCompatibilityFailures(
+  effectiveModels: Record<ModelPurpose, string>,
+  models: readonly OpenRouterModelCapabilities[],
+): ModelCompatibilityFailure[] {
+  const failures: ModelCompatibilityFailure[] = [];
+  for (const purpose of MODEL_PURPOSES) {
+    const modelId = effectiveModels[purpose];
+    const model = models.find((candidate) => candidate.id === modelId);
+    if (!model) {
+      failures.push({ purpose, modelId, reason: 'unavailable' });
+      continue;
+    }
+    if (!isModelCompatibleWithPurpose(purpose, model)) {
+      failures.push({ purpose, modelId, reason: 'incompatible' });
+    }
+  }
+  return failures;
 }
 
 function isGrokModel(model: OpenRouterModelCapabilities): boolean {

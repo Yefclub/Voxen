@@ -8,6 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { ApiError, apiGet, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
@@ -23,6 +30,60 @@ interface SetupStatus {
 
 type Step = 'loading' | 'form' | 'done';
 
+type ModelPurpose =
+  | 'default_chat_model'
+  | 'default_transcription_model'
+  | 'default_web_search_model'
+  | 'default_vision_model'
+  | 'default_document_model'
+  | 'default_x_analysis_model';
+
+interface ModelOption {
+  id: string;
+  name: string;
+}
+
+interface IncompatibleModel {
+  purpose: ModelPurpose;
+  modelId: string;
+  reason: 'unavailable' | 'incompatible';
+  compatibleModels: ModelOption[];
+}
+
+const PURPOSE_LABEL_KEYS: Record<
+  ModelPurpose,
+  | 'admin.integrations.models.purpose.chat'
+  | 'admin.integrations.models.purpose.transcription'
+  | 'admin.integrations.models.purpose.webSearch'
+  | 'admin.integrations.models.purpose.vision'
+  | 'admin.integrations.models.purpose.document'
+  | 'admin.integrations.models.purpose.xAnalysis'
+> = {
+  default_chat_model: 'admin.integrations.models.purpose.chat',
+  default_transcription_model: 'admin.integrations.models.purpose.transcription',
+  default_web_search_model: 'admin.integrations.models.purpose.webSearch',
+  default_vision_model: 'admin.integrations.models.purpose.vision',
+  default_document_model: 'admin.integrations.models.purpose.document',
+  default_x_analysis_model: 'admin.integrations.models.purpose.xAnalysis',
+};
+
+function incompatibleModelsFrom(body: unknown): IncompatibleModel[] | null {
+  if (!body || typeof body !== 'object' || !('incompatible' in body)) return null;
+  const incompatible = (body as { incompatible?: unknown }).incompatible;
+  if (!Array.isArray(incompatible)) return null;
+  return incompatible.filter((item): item is IncompatibleModel =>
+    Boolean(
+      item &&
+      typeof item === 'object' &&
+      'purpose' in item &&
+      'modelId' in item &&
+      'reason' in item &&
+      'compatibleModels' in item &&
+      Array.isArray(item.compatibleModels),
+    ),
+  );
+}
+
 export function SetupPage(): React.ReactElement {
   const { locale, setLocale, t } = useI18n();
   const [step, setStep] = useState<Step>('loading');
@@ -30,6 +91,10 @@ export function SetupPage(): React.ReactElement {
   const [appLanguage, setAppLanguage] = useState<Locale>(locale);
   const [appTimezone, setAppTimezone] = useState(() => detectBrowserTimezone());
   const [apiKey, setApiKey] = useState('');
+  const [incompatibleModels, setIncompatibleModels] = useState<IncompatibleModel[]>([]);
+  const [modelReplacements, setModelReplacements] = useState<Partial<Record<ModelPurpose, string>>>(
+    {},
+  );
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -69,11 +134,12 @@ export function SetupPage(): React.ReactElement {
     const wasConfigured = Boolean(status?.complete);
 
     try {
-      const body: Record<string, string> = {
+      const body: Record<string, unknown> = {
         app_language: appLanguage,
         app_timezone: appTimezone,
       };
       if (apiKey.trim()) body.openrouter_api_key = apiKey.trim();
+      if (Object.keys(modelReplacements).length > 0) body.model_replacements = modelReplacements;
       const result = await apiPost<{ complete: boolean }>('/api/setup', body);
       setStatus({
         complete: result.complete,
@@ -83,6 +149,8 @@ export function SetupPage(): React.ReactElement {
       });
       await refresh();
       setApiKey('');
+      setIncompatibleModels([]);
+      setModelReplacements({});
       if (wasConfigured) {
         setSaved(true);
         return;
@@ -90,6 +158,19 @@ export function SetupPage(): React.ReactElement {
       setStep('done');
       setTimeout(() => navigate('/'), 1500);
     } catch (err) {
+      const incompatible = err instanceof ApiError ? incompatibleModelsFrom(err.body) : null;
+      if (incompatible) {
+        setIncompatibleModels(incompatible);
+        setModelReplacements(
+          (current) =>
+            Object.fromEntries(
+              incompatible.map((item) => [
+                item.purpose,
+                current[item.purpose] ?? item.compatibleModels[0]?.id ?? '',
+              ]),
+            ) as Partial<Record<ModelPurpose, string>>,
+        );
+      }
       setError(err instanceof ApiError ? err.message : t('setup.error.save'));
     } finally {
       setLoading(false);
@@ -127,6 +208,9 @@ export function SetupPage(): React.ReactElement {
   const keyIsInvalid =
     (!editingConfigured && trimmedKeyLength < 20) ||
     (trimmedKeyLength > 0 && trimmedKeyLength < 20);
+  const unresolvedModels = incompatibleModels.some(
+    (item) => !modelReplacements[item.purpose] || item.compatibleModels.length === 0,
+  );
 
   return (
     <PageShell width="workspace">
@@ -267,6 +351,8 @@ export function SetupPage(): React.ReactElement {
                 onChange={(event) => {
                   setSaved(false);
                   setApiKey(event.target.value);
+                  setIncompatibleModels([]);
+                  setModelReplacements({});
                 }}
                 placeholder={
                   editingConfigured ? t('setup.openrouter.newKeyPlaceholder') : 'sk-or-v1-...'
@@ -284,11 +370,59 @@ export function SetupPage(): React.ReactElement {
               {t('setup.openrouter.defaults')}
             </p>
 
+            {incompatibleModels.length > 0 && (
+              <div className="space-y-4 rounded-xl border border-amber-500/35 bg-amber-500/[0.06] p-4">
+                <div>
+                  <p className="text-sm font-medium text-amber-100">
+                    {t('setup.models.incompatibleTitle')}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-amber-200/80">
+                    {t('setup.models.incompatibleDescription')}
+                  </p>
+                </div>
+                {incompatibleModels.map((item) => (
+                  <div key={item.purpose} className="space-y-2">
+                    <Label htmlFor={`replacement-${item.purpose}`}>
+                      {t(PURPOSE_LABEL_KEYS[item.purpose])}
+                    </Label>
+                    <p className="text-xs text-[var(--color-app-muted)]">
+                      {t(
+                        item.reason === 'unavailable'
+                          ? 'setup.models.reason.unavailable'
+                          : 'setup.models.reason.incompatible',
+                        { model: item.modelId },
+                      )}
+                    </p>
+                    <Select
+                      value={modelReplacements[item.purpose] ?? ''}
+                      onValueChange={(modelId) =>
+                        setModelReplacements((current) => ({ ...current, [item.purpose]: modelId }))
+                      }
+                    >
+                      <SelectTrigger id={`replacement-${item.purpose}`}>
+                        <SelectValue placeholder={t('setup.models.selectPlaceholder')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {item.compatibleModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.name} ({model.id})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {item.compatibleModels.length === 0 && (
+                      <p className="text-xs text-amber-200">{t('setup.models.noCompatible')}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <Button
               type="submit"
               variant="primary"
               size="lg"
-              disabled={loading || keyIsInvalid}
+              disabled={loading || keyIsInvalid || unresolvedModels}
               className="h-11 w-full"
             >
               {loading ? (

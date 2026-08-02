@@ -1290,6 +1290,15 @@ const ptBRMessages = {
   'setup.openrouter.apiKey': 'OpenRouter API key',
   'setup.openrouter.defaults':
     'Ao salvar, a Voxen usa Grok 4.5 para texto e imagens e Grok STT para transcrição. PDFs passam pelo Mistral OCR e os demais documentos pelo MarkItDown antes da análise.',
+  'setup.models.incompatibleTitle': 'Modelos precisam de atenção',
+  'setup.models.incompatibleDescription':
+    'A nova chave não autoriza alguns modelos atuais. Escolha um modelo compatível para cada finalidade antes de salvar.',
+  'setup.models.reason.unavailable': '“{model}” não está disponível para a nova chave.',
+  'setup.models.reason.incompatible':
+    '“{model}” não atende às modalidades exigidas por esta finalidade.',
+  'setup.models.selectPlaceholder': 'Selecione um modelo compatível',
+  'setup.models.noCompatible':
+    'Não há modelo compatível disponível para esta finalidade com a nova chave.',
   'setup.save': 'Salvar configurações',
   'setup.error.load': 'Erro ao carregar configuração.',
   'setup.error.save': 'Erro ao salvar.',
@@ -2557,6 +2566,14 @@ const enMessages: Record<I18nKey, string> = {
   'setup.openrouter.apiKey': 'OpenRouter API key',
   'setup.openrouter.defaults':
     'When saved, Voxen uses Grok 4.5 for text and images and Grok STT for transcription. PDFs go through Mistral OCR and other documents through MarkItDown before analysis.',
+  'setup.models.incompatibleTitle': 'Models need attention',
+  'setup.models.incompatibleDescription':
+    'The new key does not authorize some current models. Choose a compatible model for every purpose before saving.',
+  'setup.models.reason.unavailable': '“{model}” is not available for the new key.',
+  'setup.models.reason.incompatible':
+    '“{model}” does not provide the modalities this purpose requires.',
+  'setup.models.selectPlaceholder': 'Select a compatible model',
+  'setup.models.noCompatible': 'There is no compatible model for this purpose with the new key.',
   'setup.save': 'Save settings',
   'setup.error.load': 'Error loading configuration.',
   'setup.error.save': 'Error saving.',
