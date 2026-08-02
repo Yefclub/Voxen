@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785658852",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Após confirmar uma ação, a Vox continua a conversa — e você pode sempre permitir",
+    "body": "Quando a Vox pede confirmação para criar uma nota e você confirma, ela volta a\nresponder e segue o plano — não para só com a mensagem de “nota criada”.\n\nNo card de confirmação há também **Sempre permitir**: a partir daí, criar nota\nnão pede confirmação de novo neste usuário. A preferência fica salva na sua\nconta.",
+    "pr": 525,
+    "author": "Kalyel",
+    "date": "2026-08-02T05:20:43-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/525"
+  },
+  {
     "version": "0.13.0-dev.1785656401",
     "channel": "dev",
     "type": "ui",

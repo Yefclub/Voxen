@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.13.0-dev.1785658852 — 2026-08-02 · Dev
+
+### ✨ Após confirmar uma ação, a Vox continua a conversa — e você pode sempre permitir
+
+Quando a Vox pede confirmação para criar uma nota e você confirma, ela volta a
+responder e segue o plano — não para só com a mensagem de “nota criada”.
+
+No card de confirmação há também **Sempre permitir**: a partir daí, criar nota
+não pede confirmação de novo neste usuário. A preferência fica salva na sua
+conta.
+
 ## v0.13.0-dev.1785656401 — 2026-08-02 · Dev
 
 ### 🎨 Atualização automática, notificações de job e toasts mais estáveis no PWA
