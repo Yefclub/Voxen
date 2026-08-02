@@ -65,6 +65,9 @@ const NotasPage = lazy(() =>
 const AutomacoesPage = lazy(() =>
   import('./pages/automacoes').then(({ AutomacoesPage }) => ({ default: AutomacoesPage })),
 );
+const ArtefatosPage = lazy(() =>
+  import('./pages/artefatos').then(({ ArtefatosPage }) => ({ default: ArtefatosPage })),
+);
 const GrafoPage = lazy(() =>
   import('./pages/grafo').then(({ GrafoPage }) => ({ default: GrafoPage })),
 );
@@ -187,6 +190,7 @@ function AppRoutes(): React.ReactElement {
         <Route path="/notas" element={<NotasPage />} />
         <Route path="/notas/:id" element={<NotasPage />} />
         <Route path="/automacoes" element={<AutomacoesPage />} />
+        <Route path="/artefatos" element={<ArtefatosPage />} />
         <Route path="/grafo" element={<GrafoPage />} />
         <Route path="/novidades" element={<NovidadesPage />} />
         <Route path="/extensao" element={<ExtensaoPage />} />
