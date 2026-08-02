@@ -13,6 +13,8 @@ export type ChatCitation = {
   href: string;
   kind: CitationKind;
   verified: boolean;
+  /** Posição entre as evidências suportadas na verificação final do turno. */
+  inlineOrdinal: number | null;
   /** A fonte foi atualizada após esta citação ser produzida. */
   stale?: boolean;
 };
@@ -40,6 +42,12 @@ export function parseChatCitations(value: unknown): ChatCitation[] | null {
       continue;
     const num = (key: 'fromLine' | 'toLine' | 'fromSec' | 'toSec') =>
       typeof item[key] === 'number' && Number.isFinite(item[key]) ? item[key] : null;
+    const inlineOrdinal =
+      typeof item.inlineOrdinal === 'number' &&
+      Number.isSafeInteger(item.inlineOrdinal) &&
+      item.inlineOrdinal > 0
+        ? item.inlineOrdinal
+        : null;
     result.push({
       sourceType: 'TRANSCRIPT',
       sourceId: item.sourceId,
@@ -53,6 +61,7 @@ export function parseChatCitations(value: unknown): ChatCitation[] | null {
       href: item.href,
       kind: item.kind,
       verified: item.verified === true,
+      inlineOrdinal,
       stale: item.stale === true,
     });
   }
