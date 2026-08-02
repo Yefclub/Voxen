@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785672400",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Matriz de regressão impede acesso cruzado entre usuários",
+    "body": "O CI agora valida o isolamento de conteúdos, jobs, chat, Brain, eventos,\narmazenamento e MCP entre usuários. Publicadores web e worker também recusam\nprogresso para jobs que não pertencem ao workspace informado.",
+    "pr": 548,
+    "author": "Kalyel",
+    "date": "2026-08-02T09:06:28-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/548"
+  },
+  {
     "version": "0.13.0-dev.1785670528",
     "channel": "dev",
     "type": "ui",
