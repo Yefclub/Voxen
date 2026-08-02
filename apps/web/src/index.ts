@@ -170,6 +170,8 @@ app.get('/api/instance', async (c) => {
 // UI consulta pra mostrar/esconder botões (ex: upload de imagem só aparece
 // se admin configurou modelo de visão).
 app.get('/api/capabilities', async (c) => {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) return c.json({ error: 'Não autenticado.' }, 401);
   return c.json(await getPublicActiveCapabilities());
 });
 

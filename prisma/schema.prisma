@@ -562,6 +562,20 @@ model CostEvent {
   @@index([kind])
 }
 
+// Diagnósticos administrativos de falha por capacidade. Não armazena prompt,
+// resposta, segredo ou conteúdo de workspace — só o resultado seguro do probe.
+model AiCapabilityCheck {
+  id           String   @id @default(cuid())
+  capability   String
+  model        String
+  success      Boolean
+  errorMessage String?
+  latencyMs    Int?
+  checkedAt    DateTime @default(now())
+
+  @@index([capability, success, checkedAt(sort: Desc)])
+}
+
 // ============================================================================
 // CHAT (conversas persistidas)
 // ============================================================================

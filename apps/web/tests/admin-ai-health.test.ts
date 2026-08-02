@@ -8,6 +8,7 @@ const KEY = 'sk-or-v1-' + 'x'.repeat(40);
 
 let originalFetch: typeof globalThis.fetch;
 let probeRequests = 0;
+let probeResponseStatus = 200;
 
 function installCatalogMock(): void {
   globalThis.fetch = ((input, init) => {
@@ -34,7 +35,10 @@ function installCatalogMock(): void {
         }),
       );
     }
-    if (init?.method === 'POST') probeRequests += 1;
+    if (init?.method === 'POST') {
+      probeRequests += 1;
+      return Promise.resolve(new Response('{}', { status: probeResponseStatus }));
+    }
     return Promise.resolve(new Response('{}', { status: 200 }));
   }) as typeof globalThis.fetch;
 }
@@ -77,7 +81,9 @@ describeIfDb('/api/admin/ai-health', () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
     probeRequests = 0;
+    probeResponseStatus = 200;
     await db.costEvent.deleteMany();
+    await db.aiCapabilityCheck.deleteMany();
     await db.configRevision.deleteMany();
     await db.setting.deleteMany();
     await db.session.deleteMany();
@@ -92,6 +98,7 @@ describeIfDb('/api/admin/ai-health', () => {
 
   afterAll(async () => {
     await db.costEvent.deleteMany();
+    await db.aiCapabilityCheck.deleteMany();
     await db.configRevision.deleteMany();
     await db.setting.deleteMany();
     await db.$disconnect();
@@ -158,7 +165,9 @@ describeIfDb('/api/admin/ai-health', () => {
     expect(body.capabilities.find((item) => item.id === 'embeddings')?.availability).toBe(
       'INACTIVE',
     );
-    const publicCapabilities = await app.fetch(new Request('http://localhost/api/capabilities'));
+    const publicCapabilities = await app.fetch(
+      new Request('http://localhost/api/capabilities', { headers: { cookie: admin.cookie } }),
+    );
     const publicBody = (await publicCapabilities.json()) as { active: string[] };
     expect(publicBody.active).toContain('vision');
     expect(publicBody.active).not.toContain('embeddings');
@@ -213,9 +222,42 @@ describeIfDb('/api/admin/ai-health', () => {
     });
   });
 
+  it('registra a última falha segura de uma verificação remota', async () => {
+    const admin = await createAdmin();
+    installCatalogMock();
+    probeResponseStatus = 503;
+
+    const testResponse = await app.fetch(
+      new Request('http://localhost/api/admin/ai-health/test', {
+        method: 'POST',
+        headers: { cookie: admin.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ capability: 'chat' }),
+      }),
+    );
+    expect(await testResponse.json()).toMatchObject({ capability: 'chat', ok: false });
+    await expect(
+      db.aiCapabilityCheck.findFirst({
+        where: { capability: 'chat', success: false },
+        select: { errorMessage: true },
+      }),
+    ).resolves.toMatchObject({ errorMessage: 'A verificação remota da capacidade falhou.' });
+
+    const healthResponse = await app.fetch(
+      new Request('http://localhost/api/admin/ai-health', { headers: { cookie: admin.cookie } }),
+    );
+    const health = (await healthResponse.json()) as {
+      capabilities: Array<{ id: string; lastFailure: { message: string } | null }>;
+    };
+    expect(health.capabilities.find((capability) => capability.id === 'chat')?.lastFailure).toEqual(
+      expect.objectContaining({ message: 'A verificação remota da capacidade falhou.' }),
+    );
+  });
+
   it('rejeita acesso não autenticado', async () => {
     const response = await app.fetch(new Request('http://localhost/api/admin/ai-health'));
     expect(response.status).toBe(401);
+    const capabilities = await app.fetch(new Request('http://localhost/api/capabilities'));
+    expect(capabilities.status).toBe(401);
   });
 
   it('não expõe saúde, modelos ou métricas para usuário comum', async () => {

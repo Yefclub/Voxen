@@ -263,14 +263,31 @@ async function buildHealth(includeOperationalData = true) {
           : settings[capability.setting];
       const state = availabilityFor(capability, modelId, embeddingsEnabled, catalog);
       const rows = metrics.filter((event) => eventMatchesCapability(event, capability, modelId));
-      const lastFailure =
-        !includeOperationalData || capability.jobTypes.length === 0
-          ? null
-          : await db.job.findFirst({
-              where: { type: { in: [...capability.jobTypes] }, errorMsg: { not: null } },
-              orderBy: { finishedAt: 'desc' },
-              select: { errorMsg: true, finishedAt: true },
-            });
+      const [jobFailure, checkFailure] = includeOperationalData
+        ? await Promise.all([
+            capability.jobTypes.length > 0
+              ? db.job.findFirst({
+                  where: { type: { in: [...capability.jobTypes] }, errorMsg: { not: null } },
+                  orderBy: { finishedAt: 'desc' },
+                  select: { errorMsg: true, finishedAt: true },
+                })
+              : null,
+            db.aiCapabilityCheck.findFirst({
+              where: { capability: capability.id, success: false },
+              orderBy: { checkedAt: 'desc' },
+              select: { errorMessage: true, checkedAt: true },
+            }),
+          ])
+        : [null, null];
+      const lastFailure = [
+        jobFailure ? { message: jobFailure.errorMsg, at: jobFailure.finishedAt } : null,
+        checkFailure ? { message: checkFailure.errorMessage, at: checkFailure.checkedAt } : null,
+      ].reduce<{ message: string | null; at: Date | null } | null>((latest, candidate) => {
+        if (!candidate) return latest;
+        return !latest || (candidate.at && (!latest.at || candidate.at > latest.at))
+          ? candidate
+          : latest;
+      }, null);
       return {
         id: capability.id,
         modelId,
@@ -299,10 +316,7 @@ async function buildHealth(includeOperationalData = true) {
               : null;
           })(),
         },
-        failureTelemetry: capability.jobTypes.length > 0,
-        lastFailure: lastFailure
-          ? { message: lastFailure.errorMsg, at: lastFailure.finishedAt }
-          : null,
+        lastFailure,
       };
     }),
   );
@@ -316,14 +330,36 @@ async function buildHealth(includeOperationalData = true) {
   };
 }
 
+const PUBLIC_CAPABILITIES_TTL_MS = 60_000;
+let publicCapabilitiesCache: {
+  expiresAt: number;
+  value: { active: OpenRouterProbePurpose[] };
+} | null = null;
+let publicCapabilitiesInFlight: Promise<{ active: OpenRouterProbePurpose[] }> | null = null;
+
 /** Projeção sem configuração ou métricas para telas de usuários comuns. */
 export async function getPublicActiveCapabilities(): Promise<{ active: OpenRouterProbePurpose[] }> {
-  const health = await buildHealth(false);
-  return {
-    active: health.capabilities
-      .filter((capability) => capability.availability === 'ACTIVE')
-      .map((capability) => capability.id),
-  };
+  if (publicCapabilitiesCache && publicCapabilitiesCache.expiresAt > Date.now()) {
+    return publicCapabilitiesCache.value;
+  }
+  if (publicCapabilitiesInFlight) return publicCapabilitiesInFlight;
+  publicCapabilitiesInFlight = buildHealth(false)
+    .then((health) => {
+      const value = {
+        active: health.capabilities
+          .filter((capability) => capability.availability === 'ACTIVE')
+          .map((capability) => capability.id),
+      };
+      publicCapabilitiesCache = {
+        value,
+        expiresAt: Date.now() + PUBLIC_CAPABILITIES_TTL_MS,
+      };
+      return value;
+    })
+    .finally(() => {
+      publicCapabilitiesInFlight = null;
+    });
+  return publicCapabilitiesInFlight;
 }
 
 adminAiHealthRoutes.get('/', async (c) => {
@@ -350,11 +386,21 @@ adminAiHealthRoutes.post('/test', async (c) => {
       checkedAt: new Date().toISOString(),
     });
   }
+  const startedAt = performance.now();
   try {
     const settings = await getSettings(['openrouter_api_key'] as const);
     if (!settings.openrouter_api_key) throw new OpenrouterError('Chave ausente.');
     await probeOpenRouterCapability(settings.openrouter_api_key, capability.modelId, capability.id);
   } catch (error) {
+    await db.aiCapabilityCheck.create({
+      data: {
+        capability: capability.id,
+        model: capability.modelId,
+        success: false,
+        errorMessage: 'A verificação remota da capacidade falhou.',
+        latencyMs: Math.round(performance.now() - startedAt),
+      },
+    });
     return c.json({
       capability: capability.id,
       ok: false,
