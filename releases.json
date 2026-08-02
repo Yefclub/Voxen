@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785684055",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Extração do Brain por seções com cobertura retomável",
+    "body": "A extração grounded do Brain agora cobre conteúdos longos por seções e timestamps, preserva linhas de evidência e retoma apenas os segmentos pendentes ou que falharam.",
+    "pr": 560,
+    "author": "Kalyel",
+    "date": "2026-08-02T12:20:43-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/560"
+  },
+  {
     "version": "0.13.0-dev.1785681907",
     "channel": "dev",
     "type": "feat",
