@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.0-dev.1785670528 — 2026-08-02 · Dev
+
+### 🎨 Brain abre no mapa rápido 2D
+
+O Brain agora abre no mapa 2D recortado e mantém o mapa completo como uma
+escolha explícita. Ao explorar conexões, o painel também informa a relação,
+método, confiança e origem da evidência.
+
 ## v0.13.0-dev.1785668893 — 2026-08-02 · Dev
 
 ### 🎨 Raciocínios longos acompanham a rolagem do chat
