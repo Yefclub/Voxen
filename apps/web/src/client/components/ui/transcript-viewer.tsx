@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, ExternalLink } from '@/components/ui/icons';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 import { useI18n } from '../../lib/i18n';
+import { resolveTranscriptCitationAnchor } from '../../lib/transcript-citation-anchor';
 
 /**
  * Texto contínuo da transcrição. Cada segmento é um <a> clicável (abre o vídeo
@@ -13,12 +14,17 @@ interface Segment {
   startSec: number;
   text: string;
   link: string | null;
+  line: number;
 }
 
 export function TranscriptViewer({ markdown }: { markdown: string }): React.ReactElement {
   const { t } = useI18n();
   const segments = useMemo(() => parseSegments(markdown), [markdown]);
   const [anchor, setAnchor] = useState(() => window.location.hash);
+  const citationAnchor = useMemo(
+    () => resolveTranscriptCitationAnchor(segments, anchor),
+    [anchor, segments],
+  );
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const plainText = useMemo(() => segments.map((s) => s.text).join(' '), [segments]);
@@ -37,10 +43,10 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
   }, []);
 
   useEffect(() => {
-    const value = /^#t=(\d+)$/.exec(anchor)?.[1];
-    if (!value) return;
-    document.getElementById(`citation-t-${value}`)?.scrollIntoView({ block: 'center' });
-  }, [anchor]);
+    if (citationAnchor !== null) {
+      document.getElementById(`citation-l-${citationAnchor}`)?.scrollIntoView({ block: 'center' });
+    }
+  }, [citationAnchor]);
 
   async function copy(): Promise<void> {
     try {
@@ -78,11 +84,7 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
       <article className="prose-voxen">
         <p className="leading-[1.85] text-[15.5px] text-[var(--color-app-subtle)] text-pretty break-words">
           {segments.map((seg, i) => (
-            <SegmentSpan
-              key={i}
-              seg={seg}
-              highlighted={anchor === `#t=${Math.floor(seg.startSec)}`}
-            />
+            <SegmentSpan key={i} seg={seg} highlighted={citationAnchor === seg.line} />
           ))}
         </p>
       </article>
@@ -99,7 +101,7 @@ function SegmentSpan({
 }): React.ReactElement {
   const content = (
     <span
-      id={`citation-t-${Math.floor(seg.startSec)}`}
+      id={`citation-l-${seg.line}`}
       className={`rounded-sm transition-colors duration-150 hover:bg-violet-500/[0.14] hover:text-[var(--color-app-fg)] focus:outline-none focus-visible:bg-violet-500/[0.18] focus-visible:text-[var(--color-app-fg)]${highlighted ? ' bg-emerald-500/20 text-[var(--color-app-fg)]' : ''}`}
     >
       {seg.text}
@@ -158,31 +160,42 @@ function formatTimestamp(seconds: number): string {
 }
 
 function parseSegments(markdown: string): Segment[] {
-  let body = markdown;
-  if (body.startsWith('---')) {
-    const end = body.indexOf('\n---', 3);
-    if (end !== -1) body = body.slice(end + 4).trimStart();
+  const lines = markdown.split('\n');
+  let start = 0;
+  if (lines[0]?.trim() === '---') {
+    const end = lines.findIndex((line, index) => index > 0 && line.trim() === '---');
+    if (end >= 0) start = end + 1;
   }
-  body = body.replace(/^!\[thumbnail\][^\n]*\n+/, '');
-  body = body.replace(/^#\s+[^\n]+\n+/, '');
-  body = body.replace(/^>\s+[^\n]+\n+/, '');
-  body = body.replace(/^##\s+(Transcrição|Transcript)\s*\n+/m, '');
-
-  const lines = body.split('\n').filter((l) => l.trim().length > 0);
+  while (start < lines.length) {
+    const line = lines[start]?.trim() ?? '';
+    if (
+      !line ||
+      /^!\[thumbnail\]/.test(line) ||
+      /^#\s+/.test(line) ||
+      /^>\s+/.test(line) ||
+      /^##\s+(Transcrição|Transcript)\s*$/i.test(line)
+    ) {
+      start++;
+      continue;
+    }
+    break;
+  }
   const segments: Segment[] = [];
   const lineRe = /^\[(\d{1,2}:\d{2}(?::\d{2})?)\](?:\((https?:\/\/[^)]+)\))?\s*(.*)$/;
 
-  for (const line of lines) {
+  for (let index = start; index < lines.length; index++) {
+    const line = lines[index] ?? '';
+    if (!line.trim()) continue;
     const m = line.match(lineRe);
     if (m) {
       const [, ts, link, text] = m;
       const startSec = parseTimestamp(ts ?? '0');
-      segments.push({ startSec, link: link ?? null, text: (text ?? '').trim() });
+      segments.push({ startSec, link: link ?? null, text: (text ?? '').trim(), line: index + 1 });
     } else if (segments.length > 0) {
       const last = segments[segments.length - 1];
       if (last) last.text += ' ' + line.trim();
     } else {
-      segments.push({ startSec: 0, link: null, text: line.trim() });
+      segments.push({ startSec: 0, link: null, text: line.trim(), line: index + 1 });
     }
   }
   return segments;

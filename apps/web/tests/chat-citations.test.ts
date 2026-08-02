@@ -78,6 +78,7 @@ describeIfDb('structured chat citations', () => {
         input: {
           claims: [
             { transcriptId, quote: 'Trecho verificável', fromLine: 7, toLine: 8, fromSec: 42 },
+            { transcriptId, quote: 'Quote sem suporte', fromLine: 9 },
             { transcriptId: otherTranscriptId, quote: 'Segredo alheio', fromLine: 1 },
           ],
         },
@@ -88,6 +89,12 @@ describeIfDb('structured chat citations', () => {
               supported: true,
               foundText: 'Trecho verificável',
               region: { from: 7, to: 8 },
+            },
+            {
+              transcriptId,
+              supported: false,
+              foundText: 'Outro trecho',
+              region: { from: 9, to: 9 },
             },
             {
               transcriptId: otherTranscriptId,
@@ -109,6 +116,7 @@ describeIfDb('structured chat citations', () => {
         fromLine: 7,
         toLine: 8,
       }),
+      expect.objectContaining({ quote: 'Quote sem suporte', verified: false, kind: 'NO_EVIDENCE' }),
     ]);
   });
 });

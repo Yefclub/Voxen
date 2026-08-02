@@ -56,11 +56,14 @@ export async function citationsFromToolEvents(
           .map(asRecord)
           .filter((result): result is Record<string, unknown> => result !== null)
       : [];
-    for (const result of results) {
+    // O contrato de `verify_citations` preserva a ordem: um resultado para
+    // cada claim. Parear por transcriptId confundiria quotes repetidas.
+    for (const [index, result] of results.entries()) {
       const transcriptId = typeof result.transcriptId === 'string' ? result.transcriptId : null;
       if (!transcriptId) continue;
-      const claim = claims.find((item) => item.transcriptId === transcriptId);
-      if (claim) candidates.push({ claim, result });
+      const claim = claims[index];
+      if (!claim || claim.transcriptId !== transcriptId) continue;
+      candidates.push({ claim, result });
     }
   }
   const ids = [...new Set(candidates.map(({ claim }) => claim.transcriptId))];
