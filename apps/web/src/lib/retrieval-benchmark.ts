@@ -9,8 +9,7 @@ export type BenchmarkCase = {
 export type BenchmarkObservation = {
   caseId: string;
   sources: string[];
-  quote?: string | null;
-  timestamp?: number | null;
+  citations?: Array<{ quote: string; timestamp: number | null }>;
   latencyMs: number;
   costUsd: number;
 };
@@ -33,7 +32,8 @@ export function evaluateRetrievalBenchmark(
   let foundSources = 0;
   let expectedCitations = 0;
   let coveredCitations = 0;
-  let preciseCitations = 0;
+  let validCitations = 0;
+  let returnedCitations = 0;
   let unsupported = 0;
   let latency = 0;
   let cost = 0;
@@ -41,8 +41,7 @@ export function evaluateRetrievalBenchmark(
     const result: BenchmarkObservation = byId.get(item.id) ?? {
       caseId: item.id,
       sources: [],
-      quote: null,
-      timestamp: null,
+      citations: [],
       latencyMs: 0,
       costUsd: 0,
     };
@@ -50,18 +49,24 @@ export function evaluateRetrievalBenchmark(
     foundSources += item.expectedSources.filter((source) => result.sources.includes(source)).length;
     if (item.expectedQuote) {
       expectedCitations += 1;
-      if (result.quote?.includes(item.expectedQuote)) {
+      const citations = result.citations ?? [];
+      returnedCitations += citations.length;
+      const valid = citations.filter(
+        (citation) =>
+          citation.quote.includes(item.expectedQuote ?? '') &&
+          (item.expectedTimestamp === null || citation.timestamp === item.expectedTimestamp),
+      );
+      validCitations += valid.length;
+      if (valid.length > 0) {
         coveredCitations += 1;
-        if (item.expectedTimestamp === null || result.timestamp === item.expectedTimestamp)
-          preciseCitations += 1;
       }
-    } else if (result.sources.length > 0 || result.quote) unsupported += 1;
+    } else if (result.sources.length > 0 || (result.citations?.length ?? 0) > 0) unsupported += 1;
     latency += result.latencyMs;
     cost += result.costUsd;
   }
   return {
     sourceRecall: expectedSources ? foundSources / expectedSources : 1,
-    citationPrecision: coveredCitations ? preciseCitations / coveredCitations : 1,
+    citationPrecision: returnedCitations ? validCitations / returnedCitations : 1,
     citationCoverage: expectedCitations ? coveredCitations / expectedCitations : 1,
     unsupportedRate: cases.length ? unsupported / cases.length : 0,
     averageLatencyMs: cases.length ? latency / cases.length : 0,
@@ -75,7 +80,9 @@ export function assertNoQualityRegression(
 ): void {
   if (
     candidate.sourceRecall < baseline.sourceRecall ||
-    candidate.citationCoverage < baseline.citationCoverage
+    candidate.citationCoverage < baseline.citationCoverage ||
+    candidate.citationPrecision < baseline.citationPrecision ||
+    candidate.unsupportedRate > baseline.unsupportedRate
   ) {
     throw new Error('Regressão de retrieval ou citação contra o baseline FTS.');
   }

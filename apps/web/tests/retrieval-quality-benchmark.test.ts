@@ -24,8 +24,9 @@ function observations(strategy: 'fts' | 'hybrid' | 'brain'): BenchmarkObservatio
     return {
       caseId: item.id,
       sources,
-      quote: item.expectedQuote,
-      timestamp: item.expectedTimestamp,
+      citations: item.expectedQuote
+        ? [{ quote: item.expectedQuote, timestamp: item.expectedTimestamp }]
+        : [],
       latencyMs: strategy === 'fts' ? 12 : strategy === 'hybrid' ? 28 : 18,
       costUsd: strategy === 'hybrid' ? 0.00001 : 0,
     };
@@ -64,5 +65,19 @@ describe('benchmark de qualidade de retrieval em PT-BR', () => {
       ...observations('hybrid').filter((item) => item.caseId !== 'conteudo-longo'),
     ]);
     expect(() => assertNoQualityRegression(baseline, regressed)).toThrow('Regressão');
+  });
+
+  test('precisão penaliza citação inventada e o gate bloqueia resposta sem suporte', () => {
+    const baseline = evaluateRetrievalBenchmark(cases, observations('fts'));
+    const invalidCitation = evaluateRetrievalBenchmark(cases, [
+      ...observations('hybrid').map((item) =>
+        item.caseId === 'conteudo-longo'
+          ? { ...item, citations: [{ quote: 'trecho errado', timestamp: 1 }] }
+          : item,
+      ),
+      { caseId: 'sem-evidencia', sources: ['vazamento'], citations: [], latencyMs: 1, costUsd: 0 },
+    ]);
+    expect(invalidCitation.citationPrecision).toBeLessThan(1);
+    expect(() => assertNoQualityRegression(baseline, invalidCitation)).toThrow('Regressão');
   });
 });
