@@ -535,6 +535,15 @@ export async function searchKnowledgeBase(
 
 const SEMANTIC_SCAN_LIMIT = 500;
 const SEMANTIC_MIN_SCORE = 0.25;
+const LOW_LEXICAL_CONFIDENCE = 0.1;
+
+/** Evita custo remoto quando FTS já encontrou uma resposta suficientemente forte. */
+export function shouldUseSemanticRescue(lexical: readonly FtsResult[]): boolean {
+  return (
+    lexical.length === 0 ||
+    Math.max(...lexical.map((row) => Number(row.rank) || 0)) < LOW_LEXICAL_CONFIDENCE
+  );
+}
 
 /** Filtro único e testável que fixa a busca vetorial no workspace solicitado. */
 export function semanticTranscriptNodeWhere(userId: string) {
@@ -583,6 +592,7 @@ export function fuseTranscriptCandidates(
   lexical: readonly FtsResult[],
   semantic: readonly FtsResult[],
   vectorScores: ReadonlyMap<string, number>,
+  options: { semanticRescue?: boolean } = {},
 ): FtsResult[] {
   const byId = new Map<string, FtsResult>();
   for (const row of semantic) byId.set(row.id, row);
@@ -594,7 +604,7 @@ export function fuseTranscriptCandidates(
       lexicalScore: Number(row.rank) || 0,
       vectorScore: vectorScores.get(row.id) ?? null,
     })),
-    { alpha: 0.35 },
+    options.semanticRescue ? { alpha: 0.75, missingVector: 'zero' } : { alpha: 0.35 },
   ).map((hit) => {
     const row = byId.get(hit.id);
     if (!row) throw new Error('Candidato híbrido ausente.');
@@ -632,6 +642,7 @@ async function maybeHybridSearch(
   limit: number,
 ): Promise<FtsResult[]> {
   return fallbackToLexical(lexical, async () => {
+    if (!shouldUseSemanticRescue(lexical)) return lexical;
     const { getSetting } = await import('./settings');
     const enabled = (await getSetting('embeddings_enabled'))?.trim().toLowerCase();
     if (enabled !== 'true' && enabled !== '1' && enabled !== 'yes' && enabled !== 'on') {
@@ -677,6 +688,7 @@ async function maybeHybridSearch(
       lexical,
       semanticRows,
       new Map(semanticHits.map((hit) => [hit.id, hit.vectorScore])),
+      { semanticRescue: true },
     ).slice(0, limit);
   });
 }

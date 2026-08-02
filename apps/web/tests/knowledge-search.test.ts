@@ -8,6 +8,7 @@ import {
   preloadRelevantContent,
   searchKnowledgeBase,
   semanticTranscriptNodeWhere,
+  shouldUseSemanticRescue,
   type KnowledgeSearchResult,
 } from '../src/lib/retrieval';
 
@@ -124,6 +125,19 @@ describe('mergeKnowledgeResults', () => {
     expect(semanticTranscriptNodeWhere('owner-a')).not.toEqual(
       semanticTranscriptNodeWhere('owner-b'),
     );
+  });
+
+  it('resgata candidato semântico acima de um hit FTS de baixa confiança', () => {
+    const lexical = [result('transcript', 'keyword-fraca', 0.01)];
+    const semantic = [result('transcript', 'conceito-equivalente', 0)];
+
+    expect(shouldUseSemanticRescue(lexical)).toBe(true);
+    expect(shouldUseSemanticRescue([result('transcript', 'fts-forte', 0.4)])).toBe(false);
+    expect(
+      fuseTranscriptCandidates(lexical, semantic, new Map([['conceito-equivalente', 0.99]]), {
+        semanticRescue: true,
+      }).map((item) => item.id),
+    ).toEqual(['conceito-equivalente', 'keyword-fraca']);
   });
 });
 

@@ -63,7 +63,7 @@ export function rankSemanticCandidates(
  */
 export function fuseHybridScores(
   hits: HybridHit[],
-  options: { alpha?: number } = {},
+  options: { alpha?: number; missingVector?: 'lexical' | 'zero' } = {},
 ): Array<HybridHit & { score: number }> {
   const alpha = Math.min(1, Math.max(0, options.alpha ?? 0.35));
   const maxLex = Math.max(...hits.map((h) => h.lexicalScore), 1e-9);
@@ -74,7 +74,11 @@ export function fuseHybridScores(
     .map((hit) => {
       const lex = hit.lexicalScore / maxLex;
       const vec =
-        hit.vectorScore == null ? lex : Math.max(0, hit.vectorScore) / Math.max(maxVec, 1e-9);
+        hit.vectorScore == null
+          ? options.missingVector === 'zero'
+            ? 0
+            : lex
+          : Math.max(0, hit.vectorScore) / Math.max(maxVec, 1e-9);
       const score = (1 - alpha) * lex + alpha * vec;
       return { ...hit, score };
     })
