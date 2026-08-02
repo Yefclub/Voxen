@@ -7,7 +7,6 @@ import {
   runFtsBenchmark,
   runHybridBenchmark,
   type BenchmarkCase,
-  type BenchmarkObservation,
 } from '../src/lib/retrieval-benchmark';
 
 const cases = corpus.cases as BenchmarkCase[];
