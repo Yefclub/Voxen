@@ -16,12 +16,12 @@ describe('contrato unificado de configuração OpenRouter', () => {
     expect(onboarding).not.toContain("setStep('modelos')");
   });
 
-  test('configuração administrativa solicita somente a chave e não lista modelos', () => {
+  test('configuração administrativa só oferece substituições depois de incompatibilidade da nova chave', () => {
     const setup = read('src/client/pages/setup.tsx');
     expect(setup).not.toContain('ModelPicker');
     expect(setup).not.toContain('/api/setup/models');
-    expect(setup).not.toContain('default_chat_model');
-    expect(setup).not.toContain('default_transcription_model');
+    expect(setup).toContain("err instanceof ApiError ? incompatibleModelsFrom(err.body) : null");
+    expect(setup).toContain('model_replacements');
     expect(setup).toContain('body.openrouter_api_key = apiKey.trim()');
   });
 });

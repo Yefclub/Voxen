@@ -13,6 +13,7 @@ import app from '../src/index';
 import { encrypt } from '../src/lib/crypto';
 import { db } from '../src/lib/db';
 import { getMasterKey } from '../src/lib/master-key';
+import type { OrModel } from '../src/lib/openrouter';
 import { getSetting, getSettings, setSetting, setSettings } from '../src/lib/settings';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
@@ -68,7 +69,25 @@ function installFetchMock(impl: FetchMock): void {
   }) as typeof globalThis.fetch;
 }
 
-function installValidOpenRouterMock(): void {
+const CANONICAL_MODELS: OrModel[] = [
+  {
+    id: 'x-ai/grok-4.5',
+    name: 'Grok 4.5',
+    architecture: {
+      input_modalities: ['text', 'image', 'file'],
+      output_modalities: ['text'],
+    },
+  },
+  {
+    id: 'x-ai/grok-stt-1.0',
+    name: 'Grok STT',
+    architecture: {
+      output_modalities: ['transcription'],
+    },
+  },
+];
+
+function installValidOpenRouterMock(models = CANONICAL_MODELS): void {
   installFetchMock(async (input) => {
     const url = typeof input === 'string' ? input : (input as Request).url;
     if (url.endsWith('/api/v1/key')) {
@@ -76,23 +95,7 @@ function installValidOpenRouterMock(): void {
     }
     if (url.endsWith('/api/v1/models/user')) {
       return Response.json({
-        data: [
-          {
-            id: 'x-ai/grok-4.5',
-            name: 'Grok 4.5',
-            architecture: {
-              input_modalities: ['text', 'image', 'file'],
-              output_modalities: ['text'],
-            },
-          },
-          {
-            id: 'x-ai/grok-stt-1.0',
-            name: 'Grok STT',
-            architecture: {
-              output_modalities: ['transcription'],
-            },
-          },
-        ],
+        data: models,
       });
     }
     return Response.json({ data: [] });
@@ -372,6 +375,156 @@ describeIfDb('setup flow', () => {
     await expect(getSetting('app_timezone')).resolves.toBe('UTC');
   });
 
+  it('recusa troca quando um override não está no catálogo da nova chave sem persistir nada', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const previous = {
+      openrouter_api_key: VALID_KEY,
+      default_chat_model: 'custom/indisponivel',
+      default_transcription_model: 'x-ai/grok-stt-1.0',
+      default_web_search_model: 'x-ai/grok-4.5',
+      default_vision_model: 'x-ai/grok-4.5',
+      default_document_model: 'x-ai/grok-4.5',
+      default_x_analysis_model: 'x-ai/grok-4.5',
+      app_language: 'pt-BR',
+      app_timezone: 'America/Sao_Paulo',
+    } as const;
+    await setSettings(previous);
+    installValidOpenRouterMock();
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/setup', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          openrouter_api_key: REPLACEMENT_KEY,
+          app_language: 'en',
+          app_timezone: 'UTC',
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as {
+      incompatible: Array<{
+        purpose: string;
+        modelId: string;
+        reason: string;
+        compatibleModels: Array<{ id: string; name: string }>;
+      }>;
+    };
+    expect(body.incompatible).toContainEqual({
+      purpose: 'default_chat_model',
+      modelId: 'custom/indisponivel',
+      reason: 'unavailable',
+      compatibleModels: [{ id: 'x-ai/grok-4.5', name: 'Grok 4.5' }],
+    });
+    await expect(
+      getSettings(Object.keys(previous) as Array<keyof typeof previous>),
+    ).resolves.toEqual(previous);
+  });
+
+  it('recusa modalidade incompatível e oferece substituições compatíveis', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    await setSettings({
+      openrouter_api_key: VALID_KEY,
+      default_chat_model: 'x-ai/grok-4.5',
+      default_transcription_model: 'x-ai/grok-stt-1.0',
+      default_web_search_model: 'x-ai/grok-4.5',
+      default_vision_model: 'custom/sem-imagem',
+      default_document_model: 'x-ai/grok-4.5',
+      default_x_analysis_model: 'x-ai/grok-4.5',
+    });
+    installValidOpenRouterMock([
+      ...CANONICAL_MODELS,
+      {
+        id: 'custom/sem-imagem',
+        architecture: { input_modalities: ['text'], output_modalities: ['text'] },
+      },
+      {
+        id: 'openai/vision-compativel',
+        name: 'Vision compatível',
+        architecture: { input_modalities: ['image'], output_modalities: ['text'] },
+      },
+    ]);
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/setup', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ openrouter_api_key: REPLACEMENT_KEY }),
+      }),
+    );
+
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as {
+      incompatible: Array<{
+        purpose: string;
+        modelId: string;
+        reason: string;
+        compatibleModels: Array<{ id: string; name: string }>;
+      }>;
+    };
+    expect(body.incompatible).toContainEqual({
+      purpose: 'default_vision_model',
+      modelId: 'custom/sem-imagem',
+      reason: 'incompatible',
+      compatibleModels: [
+        { id: 'x-ai/grok-4.5', name: 'Grok 4.5' },
+        { id: 'openai/vision-compativel', name: 'Vision compatível' },
+      ],
+    });
+    await expect(getSetting('openrouter_api_key')).resolves.toBe(VALID_KEY);
+    await expect(getSetting('default_vision_model')).resolves.toBe('custom/sem-imagem');
+  });
+
+  it('persiste nova chave e substituições compatíveis na mesma operação', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    await setSettings({
+      openrouter_api_key: VALID_KEY,
+      default_chat_model: 'custom/indisponivel',
+      default_transcription_model: 'x-ai/grok-stt-1.0',
+      default_web_search_model: 'x-ai/grok-4.5',
+      default_vision_model: 'x-ai/grok-4.5',
+      default_document_model: 'x-ai/grok-4.5',
+      default_x_analysis_model: 'x-ai/grok-4.5',
+      app_language: 'pt-BR',
+      app_timezone: 'America/Sao_Paulo',
+    });
+    installValidOpenRouterMock([
+      ...CANONICAL_MODELS,
+      {
+        id: 'openai/chat-compativel',
+        name: 'Chat compatível',
+        architecture: { output_modalities: ['text'] },
+      },
+    ]);
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/setup', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          openrouter_api_key: REPLACEMENT_KEY,
+          model_replacements: { default_chat_model: 'openai/chat-compativel' },
+          app_language: 'en',
+          app_timezone: 'UTC',
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    await expect(getSetting('openrouter_api_key')).resolves.toBe(REPLACEMENT_KEY);
+    await expect(getSetting('default_chat_model')).resolves.toBe('openai/chat-compativel');
+    await expect(getSetting('app_language')).resolves.toBe('en');
+    await expect(getSetting('app_timezone')).resolves.toBe('UTC');
+  });
+
   // Spec 123, critério de aceite: "Trocar a chave da OpenRouter não apaga
   // overrides existentes." — revalidar/trocar a chave NUNCA reseta
   // silenciosamente uma finalidade sobrescrita manualmente pelo admin de
@@ -392,7 +545,20 @@ describeIfDb('setup flow', () => {
       app_language: 'pt-BR',
       app_timezone: 'America/Sao_Paulo',
     });
-    installValidOpenRouterMock();
+    installValidOpenRouterMock([
+      { id: 'custom/chat', architecture: { output_modalities: ['text'] } },
+      { id: 'custom/stt', architecture: { output_modalities: ['transcription'] } },
+      { id: 'custom/web', architecture: { output_modalities: ['text'] } },
+      {
+        id: 'custom/vision',
+        architecture: { input_modalities: ['image'], output_modalities: ['text'] },
+      },
+      {
+        id: 'custom/document',
+        architecture: { input_modalities: ['file'], output_modalities: ['text'] },
+      },
+      { id: 'custom/x', name: 'Grok custom', architecture: { output_modalities: ['text'] } },
+    ]);
 
     const res = await app.fetch(
       new Request('http://localhost/api/setup', {

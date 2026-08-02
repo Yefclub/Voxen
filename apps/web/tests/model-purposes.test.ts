@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   canonicalModelForPurpose,
+  getModelCompatibilityFailures,
   isModelCompatibleWithPurpose,
   isModelPurpose,
   MODEL_PURPOSES,
@@ -111,5 +112,34 @@ describe('isModelCompatibleWithPurpose', () => {
     expect(isModelCompatibleWithPurpose('default_x_analysis_model', grokById)).toBe(true);
     expect(isModelCompatibleWithPurpose('default_x_analysis_model', grokByName)).toBe(true);
     expect(isModelCompatibleWithPurpose('default_x_analysis_model', textOnlyModel)).toBe(false);
+  });
+});
+
+describe('getModelCompatibilityFailures', () => {
+  it('identifica modelo ausente e modelo presente com modalidade incompatível', () => {
+    const failures = getModelCompatibilityFailures(
+      {
+        default_chat_model: textModel.id,
+        default_transcription_model: transcriptionModel.id,
+        default_web_search_model: textModel.id,
+        default_vision_model: textOnlyModel.id,
+        default_document_model: 'missing/document',
+        default_x_analysis_model: grokById.id,
+      },
+      [textModel, transcriptionModel, textOnlyModel, grokById],
+    );
+
+    expect(failures).toEqual([
+      {
+        purpose: 'default_vision_model',
+        modelId: textOnlyModel.id,
+        reason: 'incompatible',
+      },
+      {
+        purpose: 'default_document_model',
+        modelId: 'missing/document',
+        reason: 'unavailable',
+      },
+    ]);
   });
 });
