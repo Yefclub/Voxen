@@ -36,6 +36,22 @@ export function resolveUpdateModalEffect(
   return 'snooze';
 }
 
+/**
+ * Silent apply policy: when an update is known and the chat is not streaming,
+ * the shell applies without showing the modal. The modal is reserved only for
+ * cases where silent apply cannot run yet (streaming) — and even then we wait
+ * rather than block the user with a dialog; presentation stays off.
+ */
+export function shouldSilentApplyVersion({
+  hasUpdate,
+  streaming,
+}: {
+  hasUpdate: boolean;
+  streaming: boolean;
+}): boolean {
+  return hasUpdate && !streaming;
+}
+
 export function shouldPresentUpdateModal({
   hasUpdate,
   streaming,
@@ -45,7 +61,12 @@ export function shouldPresentUpdateModal({
   streaming: boolean;
   pathname: string;
 }): boolean {
-  return hasUpdate && !streaming && pathname !== '/novidades';
+  // Modal no longer gates updates: silent apply handles !streaming.
+  // Keep the helper so existing call sites and tests document the policy.
+  void hasUpdate;
+  void streaming;
+  void pathname;
+  return false;
 }
 
 export function resolveReleaseView(loadState: ReleaseLoadState, hasRelease: boolean): ReleaseView {

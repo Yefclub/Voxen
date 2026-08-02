@@ -30,6 +30,8 @@ describe('contrato de atualização do PWA', () => {
     expect(cleanup).toContain("const VOXEN_NAVIGATION_CACHE_PREFIX = 'voxen-navigation-'");
     expect(cleanup).toContain('cacheName.startsWith(VOXEN_NAVIGATION_CACHE_PREFIX)');
     expect(cleanup).toContain('caches.delete(cacheName)');
+    expect(cleanup).toContain("self.addEventListener('notificationclick'");
+    expect(cleanup).toContain('event.notification?.data?.url');
   });
 
   test('prepara uma única atualização por build detectado', () => {
@@ -44,6 +46,17 @@ describe('contrato de atualização do PWA', () => {
     expect(monitor).toContain('waitingServiceWorkerListeners.add(onWake)');
     expect(monitor).toContain('waitingServiceWorkerListeners.delete(onWake)');
     expect(monitor).toContain('waitingServiceWorker,');
+  });
+
+  test('aplica atualização em silêncio quando o chat não está streaming', () => {
+    const core = readFileSync(join(webRoot, 'src/client/lib/update-modal-core.ts'), 'utf8');
+    const modal = readFileSync(join(webRoot, 'src/client/components/update-modal.tsx'), 'utf8');
+
+    expect(core).toContain('export function shouldSilentApplyVersion');
+    expect(core).toContain('return hasUpdate && !streaming');
+    expect(modal).toContain('shouldSilentApplyVersion');
+    expect(modal).toContain('silentAppliedBuildRef');
+    expect(modal).toContain('apply()');
   });
 
   test('propaga identidades canônica e nativa do Easypanel ao build do front', () => {
