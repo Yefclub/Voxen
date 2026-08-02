@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785673503",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Histórico auditável da configuração da instância",
+    "body": "Administradores agora consultam revisões ordenadas da configuração global, com executor, data e diff legível. Chaves, tokens e cookies continuam redigidos no histórico. É possível restaurar valores permitidos em uma nova revisão, sem restaurar segredos, e novos jobs e turnos de chat passam a registrar a revisão de configuração vigente.",
+    "pr": 550,
+    "author": "Kalyel",
+    "date": "2026-08-02T09:24:45-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/550"
+  },
+  {
     "version": "0.13.0-dev.1785672400",
     "channel": "dev",
     "type": "chore",
