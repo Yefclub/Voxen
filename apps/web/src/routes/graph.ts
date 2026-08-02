@@ -7,7 +7,7 @@
 //
 // Spec: .specs/020-brain-knowledge-harness.md
 // Limite full: 500 nós / 1500 arestas (defensivo).
-// Map view (default): recorte rápido — ver graph-slice.ts / spec 103.
+// Full view (default): universo completo dentro dos caps defensivos — ver graph-slice.ts.
 // Cache: 60s em Redis (key voxen:graph:<userId>:<view>[:focus]) — refresh manual.
 // ============================================================================
 
@@ -216,7 +216,8 @@ graphRoutes.get('/', async (c) => {
     ? await ensureBrainCoverage(userId, true)
     : await currentGraphIndexStatus(userId);
 
-  // Busca o universo candidatado (cap full) e recorta no slice puro.
+  // Busca o universo completo permitido pelos caps defensivos; `map` só existe
+  // para URLs legadas e a UI sempre pede a visão completa.
   const rawNodes = await db.brainNode.findMany({
     where: { userId, status: 'ACTIVE' },
     orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],

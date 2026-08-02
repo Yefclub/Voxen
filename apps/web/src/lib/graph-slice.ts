@@ -1,5 +1,5 @@
 /**
- * Recorte do grafo para UI rápida (spec 103).
+ * Visões legadas e focadas do grafo (spec 103).
  * Funções puras — testáveis sem DB/Redis.
  */
 
@@ -49,7 +49,7 @@ const WEAK_METHODS = [
 ];
 
 export function parseGraphView(raw: string | undefined | null): GraphSliceView {
-  return raw === 'full' ? 'full' : 'map';
+  return raw === 'map' ? 'map' : 'full';
 }
 
 export function parseGraphHops(raw: string | undefined | null): number {
@@ -105,8 +105,8 @@ function isConceptType(type: string): boolean {
 
 /**
  * Seleciona o subgrafo para a UI.
- * - map: conteúdos/pastas + conceitos com grau≥2 + arestas fortes
- * - full: só aplica caps defensivos
+ * - full (padrão): só aplica caps defensivos
+ * - map (legado): conteúdos/pastas + conceitos com grau≥2 + arestas fortes
  * - focus: ego-network a N hops
  */
 export function selectGraphSlice<N extends SliceNode, E extends SliceEdge>(input: {

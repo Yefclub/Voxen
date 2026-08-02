@@ -200,7 +200,6 @@ function latestGraphIndexStatus(
 
 export function GrafoPage(): React.ReactElement {
   const [graphRequest, setGraphRequest] = useState({ tick: 0, force: false });
-  const [view, setView] = useState<'map' | 'full'>('map');
   const [reprocessOpen, setReprocessOpen] = useState(false);
   const [search, setSearch] = useState('');
   const deferredSearch = useDebouncedValue(search, 140);
@@ -216,13 +215,13 @@ export function GrafoPage(): React.ReactElement {
   const { theme } = useTheme();
   const graphPath = useMemo(() => {
     const params = new URLSearchParams();
-    params.set('view', view);
+    params.set('view', 'full');
     if (graphRequest.tick > 0) {
       params.set(graphRequest.force ? 'force' : 'refresh', '1');
       params.set('t', String(graphRequest.tick));
     }
     return `/api/graph?${params.toString()}`;
-  }, [graphRequest.force, graphRequest.tick, view]);
+  }, [graphRequest.force, graphRequest.tick]);
   const { data, loading, error } = useFetch<GraphResp>(graphPath);
   const {
     data: polledIndexStatus,
@@ -406,29 +405,6 @@ export function GrafoPage(): React.ReactElement {
                 <PanelLeft className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">{t('graph.explore')}</span>
               </Button>
-              <div
-                className="flex rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] p-0.5"
-                role="group"
-                aria-label={t('graph.viewMode')}
-              >
-                {(['map', 'full'] as const).map((nextView) => (
-                  <button
-                    key={nextView}
-                    type="button"
-                    onClick={() => setView(nextView)}
-                    aria-pressed={view === nextView}
-                    title={nextView === 'full' ? t('graph.switchToFull') : t('graph.switchToMap')}
-                    className={cn(
-                      'rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
-                      view === nextView
-                        ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)] shadow-sm'
-                        : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]',
-                    )}
-                  >
-                    {t(nextView === 'map' ? 'graph.viewMap' : 'graph.viewFull')}
-                  </button>
-                ))}
-              </div>
               <Button
                 variant="outline"
                 size="default"
@@ -519,11 +495,6 @@ export function GrafoPage(): React.ReactElement {
                     edges: filtered.totalEdges,
                   })}
                 </div>
-                {data?.truncated ? (
-                  <div className="rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2.5 py-1 text-[10px] text-[var(--color-app-muted)] shadow-sm backdrop-blur-md">
-                    {t('graph.truncatedHint')}
-                  </div>
-                ) : null}
               </div>
             )}
 

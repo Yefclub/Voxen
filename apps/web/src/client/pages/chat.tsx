@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Check,
@@ -25,8 +25,10 @@ import { toast } from '@/lib/toast';
 import { play } from 'cuelume';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../components/ui/sheet';
 import { ApiError, apiDelete, apiGet, apiPost } from '../lib/api';
 import { isTransientStreamDisconnect } from '../lib/chat-stream-errors';
+import { countCitationSources } from '../lib/chat-citation-summary';
 import { useMe } from '../lib/hooks';
 import { useI18n, type I18nKey, type TranslateFn } from '../lib/i18n';
 import { cn } from '../lib/utils';
@@ -155,45 +157,77 @@ function citationLocation(citation: ChatCitation, t: TranslateFn): string | null
 
 function CitationCards({ citations }: { citations: ChatCitation[] }): React.ReactElement | null {
   const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const descriptionId = useId();
   if (citations.length === 0) return null;
+  const sourceCount = countCitationSources(citations);
   return (
-    <aside className="mt-3 flex max-w-3xl flex-col gap-2" aria-label={t('chat.citations')}>
-      {citations.map((citation, index) => {
-        const location = citationLocation(citation, t);
-        const verified = citation.verified && citation.kind === 'EVIDENCE' && !citation.stale;
-        return (
-          <a
-            key={`${citation.sourceId}-${index}`}
-            href={citation.href}
-            className={cn(
-              'rounded-lg border px-3 py-2.5 transition-colors hover:bg-[var(--color-app-surface)]',
-              verified ? 'border-emerald-500/30' : 'border-amber-500/35',
-            )}
-          >
-            <div className="flex items-center gap-2 text-xs">
-              <FileText
-                className={cn('h-3.5 w-3.5', verified ? 'text-emerald-400' : 'text-amber-300')}
-              />
-              <span className="min-w-0 flex-1 truncate font-medium text-[var(--color-app-fg)]">
-                {citation.title}
-              </span>
-              <span className={verified ? 'text-emerald-400' : 'text-amber-300'}>
-                {citation.stale
-                  ? t('chat.citationStale')
-                  : verified
-                    ? t('chat.citationVerified')
-                    : t('chat.citationUnverified')}
-              </span>
-            </div>
-            {location && (
-              <p className="mt-1 text-[11px] text-[var(--color-app-muted)]">{location}</p>
-            )}
-            <blockquote className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-[var(--color-app-subtle)]">
-              “{citation.quote}”
-            </blockquote>
-          </a>
-        );
-      })}
+    <aside className="mt-3" aria-label={t('chat.citations')}>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-2 rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-1.5 text-xs font-medium text-[var(--color-app-fg)] transition-colors hover:bg-[var(--color-app-surface-hover)]"
+      >
+        <FileText className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
+        {t(sourceCount === 1 ? 'chat.sourcesOne' : 'chat.sourcesMany', { count: sourceCount })}
+      </button>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent aria-describedby={descriptionId}>
+          <header className="shrink-0 border-b border-[var(--color-app-border)] px-5 py-5 pr-12">
+            <SheetTitle className="font-display text-lg font-semibold">
+              {t('chat.sources')}
+            </SheetTitle>
+            <SheetDescription
+              id={descriptionId}
+              className="mt-1 text-sm text-[var(--color-app-muted)]"
+            >
+              {t('chat.sourcesDescription', { count: citations.length })}
+            </SheetDescription>
+          </header>
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+            {citations.map((citation, index) => {
+              const location = citationLocation(citation, t);
+              const verified = citation.verified && citation.kind === 'EVIDENCE' && !citation.stale;
+              return (
+                <a
+                  key={`${citation.sourceId}-${index}`}
+                  href={citation.href}
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    'block rounded-xl border p-3.5 transition-colors hover:bg-[var(--color-app-surface)]',
+                    verified ? 'border-emerald-500/30' : 'border-amber-500/35',
+                  )}
+                >
+                  <div className="flex items-center gap-2 text-xs">
+                    <FileText
+                      className={cn(
+                        'h-3.5 w-3.5',
+                        verified ? 'text-emerald-400' : 'text-amber-300',
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 truncate font-medium text-[var(--color-app-fg)]">
+                      {citation.title}
+                    </span>
+                    <span className={verified ? 'text-emerald-400' : 'text-amber-300'}>
+                      {citation.stale
+                        ? t('chat.citationStale')
+                        : verified
+                          ? t('chat.citationVerified')
+                          : t('chat.citationUnverified')}
+                    </span>
+                  </div>
+                  {location && (
+                    <p className="mt-2 text-[11px] text-[var(--color-app-muted)]">{location}</p>
+                  )}
+                  <blockquote className="mt-2 text-sm leading-relaxed text-[var(--color-app-subtle)]">
+                    “{citation.quote}”
+                  </blockquote>
+                </a>
+              );
+            })}
+          </div>
+        </SheetContent>
+      </Sheet>
     </aside>
   );
 }

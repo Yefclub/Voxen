@@ -42,16 +42,16 @@ describe('graph loading lifecycle contract', () => {
     );
   });
 
-  test('opens the sliced map first and retains selection while its node is outside a view', () => {
+  test('opens the complete graph by default and keeps selection independent of filtering', () => {
     const pageSource = readFileSync(
       new URL('../src/client/pages/grafo.tsx', import.meta.url),
       'utf8',
     );
 
-    expect(pageSource).toContain("useState<'map' | 'full'>('map')");
-    expect(pageSource).toContain("params.set('view', view)");
-    expect(pageSource).toContain('onClick={() => setView(nextView)}');
-    expect(pageSource).not.toContain("params.set('view', 'full')");
+    expect(pageSource).toContain("params.set('view', 'full')");
+    expect(pageSource).not.toContain("useState<'map' | 'full'>('map')");
+    expect(pageSource).not.toContain("params.set('view', view)");
+    expect(pageSource).not.toContain('onClick={() => setView(nextView)}');
     expect(pageSource).not.toContain('!filtered.nodes.some((node) => node.id === selectedId)');
   });
 

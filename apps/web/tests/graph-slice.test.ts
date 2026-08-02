@@ -30,11 +30,11 @@ function edge(
 }
 
 describe('graph-slice parsers', () => {
-  test('view defaults to map while preserving an explicit full request', () => {
-    expect(parseGraphView(undefined)).toBe('map');
+  test('view defaults to full while preserving the legacy map request', () => {
+    expect(parseGraphView(undefined)).toBe('full');
     expect(parseGraphView('full')).toBe('full');
     expect(parseGraphView('map')).toBe('map');
-    expect(parseGraphView('nope')).toBe('map');
+    expect(parseGraphView('nope')).toBe('full');
   });
 
   test('hops clamps 1..2', () => {
