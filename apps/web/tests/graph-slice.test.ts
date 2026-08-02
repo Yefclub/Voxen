@@ -30,11 +30,11 @@ function edge(
 }
 
 describe('graph-slice parsers', () => {
-  test('view defaults to full while preserving explicit legacy map requests', () => {
-    expect(parseGraphView(undefined)).toBe('full');
+  test('view defaults to map while preserving an explicit full request', () => {
+    expect(parseGraphView(undefined)).toBe('map');
     expect(parseGraphView('full')).toBe('full');
     expect(parseGraphView('map')).toBe('map');
-    expect(parseGraphView('nope')).toBe('full');
+    expect(parseGraphView('nope')).toBe('map');
   });
 
   test('hops clamps 1..2', () => {
@@ -106,9 +106,8 @@ describe('selectGraphSlice', () => {
       }),
     );
     const result = selectGraphSlice({ nodes, edges, view: 'map' });
-    // Budget + margem para hubs de cluster virtuais.
-    expect(result.nodes.length).toBeLessThanOrEqual(MAP_NODE_LIMIT + 24);
-    expect(result.edges.length).toBeLessThanOrEqual(MAP_EDGE_LIMIT + 48);
+    expect(result.nodes.length).toBeLessThanOrEqual(MAP_NODE_LIMIT);
+    expect(result.edges.length).toBeLessThanOrEqual(MAP_EDGE_LIMIT);
     expect(result.truncated).toBe(true);
   });
 
