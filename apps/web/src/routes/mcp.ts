@@ -23,6 +23,7 @@ import { deserializeMcpScopes, hashMcpToken, type McpScope } from '../lib/mcp-to
 import { createAutoJobForUser } from './jobs';
 import { getTranscriptBrief } from '../lib/agent-content';
 import { reindexNotesBrain } from '../lib/brain';
+import { searchBrainNodes } from '../lib/brain-search';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import {
   expandContextFromMd,
@@ -1046,20 +1047,21 @@ function registerBrainTools(server: McpServer, userId: string): void {
       const query = args.query.trim();
       if (!query) return fail('Parâmetro query vazio.');
       const limit = bounded(args.limit, 8, 1, 30);
-      const nodes = await db.brainNode.findMany({
-        where: {
-          userId,
-          ...(args.include_archived ? {} : { status: 'ACTIVE' as const }),
-          OR: [
-            { key: { contains: query, mode: 'insensitive' } },
-            { label: { contains: query, mode: 'insensitive' } },
-            { description: { contains: query, mode: 'insensitive' } },
-          ],
-        },
-        orderBy: { updatedAt: 'desc' },
-        take: limit,
-        select: BRAIN_NODE_SELECT,
-      });
+      const nodes = args.include_archived
+        ? await db.brainNode.findMany({
+            where: {
+              userId,
+              OR: [
+                { key: { contains: query, mode: 'insensitive' } },
+                { label: { contains: query, mode: 'insensitive' } },
+                { description: { contains: query, mode: 'insensitive' } },
+              ],
+            },
+            orderBy: { updatedAt: 'desc' },
+            take: limit,
+            select: BRAIN_NODE_SELECT,
+          })
+        : await searchBrainNodes(userId, query, limit);
       return ok({ results: nodes, query });
     },
   );

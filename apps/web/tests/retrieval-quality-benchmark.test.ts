@@ -8,6 +8,8 @@ import {
   runHybridBenchmark,
   type BenchmarkCase,
 } from '../src/lib/retrieval-benchmark';
+import { queryTranscriptFts } from '../src/lib/retrieval';
+import { searchBrainNodes } from '../src/lib/brain-search';
 
 const cases = corpus.cases as BenchmarkCase[];
 const documents = corpus.documents;
@@ -23,6 +25,31 @@ describe('benchmark de qualidade de retrieval em PT-BR', () => {
       'sem-evidencia',
     ]);
     expect(JSON.stringify(corpus)).not.toMatch(/sk-|password|secret/i);
+  });
+
+  test('adaptadores exercitam as consultas FTS e Brain de produção com repositório determinístico', async () => {
+    const ftsCalls: unknown[] = [];
+    const fts = await queryTranscriptFts('benchmark-user', 'código buzz', 8, {
+      $queryRaw: (async (query: unknown) => {
+        ftsCalls.push(query);
+        return [];
+      }) as never,
+    });
+    const brainCalls: unknown[] = [];
+    const brain = await searchBrainNodes('benchmark-user', 'buzz', 8, {
+      brainNode: {
+        findMany: (async (query: unknown) => {
+          brainCalls.push(query);
+          return [];
+        }) as never,
+      },
+    } as never);
+
+    expect(fts).toEqual([]);
+    expect(brain).toEqual([]);
+    expect(String(ftsCalls[0])).toContain('websearch_to_tsquery');
+    expect(JSON.stringify(brainCalls[0])).toContain('benchmark-user');
+    expect(JSON.stringify(brainCalls[0])).toContain('ACTIVE');
   });
 
   test('compara FTS, híbrido e Brain com métricas reproduzíveis', () => {
