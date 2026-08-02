@@ -46,7 +46,7 @@ type AiCapabilityDefinition = {
   jobTypes: readonly JobType[];
 };
 
-const CAPABILITIES = [
+const CAPABILITIES: readonly AiCapabilityDefinition[] = [
   {
     id: 'chat',
     setting: 'default_chat_model',
@@ -98,7 +98,7 @@ const CAPABILITIES = [
     costKinds: ['EMBED'],
     jobTypes: [],
   },
-] as const satisfies readonly AiCapabilityDefinition[];
+];
 
 type Availability = 'ACTIVE' | 'INACTIVE' | 'MISSING' | 'UNAVAILABLE';
 
