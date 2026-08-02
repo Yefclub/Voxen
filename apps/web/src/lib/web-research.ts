@@ -72,6 +72,7 @@ export async function researchWeb(
     );
   }
 
+  const requestStartedAt = performance.now();
   const response = await fetch(OPENROUTER_CHAT_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -114,7 +115,11 @@ export async function researchWeb(
       tokensIn: Number(data.usage?.prompt_tokens ?? 0) || 0,
       tokensOut: Number(data.usage?.completion_tokens ?? 0) || 0,
       costUsd: data.usage?.cost != null ? String(data.usage.cost) : '0',
-      meta: { source: `${scope}_search`, citationCount: citations.length },
+      meta: {
+        source: `${scope}_search`,
+        citationCount: citations.length,
+        latencyMs: Math.round(performance.now() - requestStartedAt),
+      },
     },
   });
   return { answer, citations, model: data.model ?? model };

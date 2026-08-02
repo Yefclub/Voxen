@@ -10,6 +10,15 @@ type Fetcher = typeof globalThis.fetch;
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 const OPENROUTER_SETUP_TIMEOUT_MS = 15_000;
 
+export type OpenRouterProbePurpose =
+  | 'chat'
+  | 'transcription'
+  | 'webSearch'
+  | 'vision'
+  | 'document'
+  | 'xAnalysis'
+  | 'embeddings';
+
 export interface OrModel {
   id: string;
   name?: string;
@@ -119,4 +128,94 @@ export async function inspectOpenRouterAccount(
   if (!valid) return { valid: false, models: [] };
   const models = await listUserModels(key, fetcher, signal);
   return { valid: true, models };
+}
+
+/**
+ * Executa uma chamada mínima no provedor para verificar uma capacidade sem
+ * criar conteúdo no Voxen. A cobrança eventual é a da própria OpenRouter;
+ * nenhum CostEvent, nota, transcrição ou job é persistido localmente.
+ */
+export async function probeOpenRouterCapability(
+  key: string,
+  model: string,
+  purpose: OpenRouterProbePurpose,
+  fetcher: Fetcher = fetch,
+): Promise<void> {
+  const isEmbedding = purpose === 'embeddings';
+  const isTranscription = purpose === 'transcription';
+  const url = isEmbedding
+    ? `${OR_BASE_URL}/embeddings`
+    : isTranscription
+      ? `${OR_BASE_URL}/audio/transcriptions`
+      : `${OR_BASE_URL}/chat/completions`;
+  let body: BodyInit;
+  const headers: Record<string, string> = { authorization: `Bearer ${key}` };
+
+  if (isEmbedding) {
+    headers['content-type'] = 'application/json';
+    body = JSON.stringify({ model, input: 'Voxen health check' });
+  } else if (isTranscription) {
+    const form = new FormData();
+    // WAV PCM válido e silencioso; é descartado após a requisição.
+    const wav = Uint8Array.from(
+      atob('UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='),
+      (byte) => byte.charCodeAt(0),
+    );
+    form.set('file', new Blob([wav], { type: 'audio/wav' }), 'health-check.wav');
+    form.set('model', model);
+    body = form;
+  } else {
+    headers['content-type'] = 'application/json';
+    const content =
+      purpose === 'vision'
+        ? [
+            { type: 'text', text: 'Responda somente OK.' },
+            {
+              type: 'image_url',
+              image_url: {
+                url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL2RwAAAABJRU5ErkJggg==',
+              },
+            },
+          ]
+        : purpose === 'document'
+          ? [
+              { type: 'text', text: 'Leia o arquivo e responda somente OK.' },
+              {
+                type: 'file',
+                file: {
+                  filename: 'health-check.txt',
+                  file_data: 'data:text/plain;base64,Vm94ZW4gaGVhbHRoIGNoZWNr',
+                },
+              },
+            ]
+          : 'Responda somente OK.';
+    body = JSON.stringify({
+      model,
+      messages: [{ role: 'user', content }],
+      max_tokens: 2,
+      ...(purpose === 'webSearch' || purpose === 'xAnalysis'
+        ? {
+            tools: [
+              {
+                type: 'openrouter:web_search',
+                parameters: { engine: 'auto', max_results: 1 },
+              },
+            ],
+          }
+        : {}),
+    });
+  }
+
+  let response: Response;
+  try {
+    response = await fetcher(url, {
+      method: 'POST',
+      headers,
+      body,
+      signal: AbortSignal.timeout(OPENROUTER_SETUP_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw openrouterNetworkError(error);
+  }
+  if (!response.ok) throw new OpenrouterError(`OpenRouter retornou status ${response.status}`);
 }

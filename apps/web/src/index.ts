@@ -7,16 +7,12 @@
 import { Hono } from 'hono';
 import { auth } from './lib/auth';
 import { db } from './lib/db';
-import {
-  getAppLanguage,
-  getDefaultXAnalysisModel,
-  getSetting,
-  isSetupComplete,
-} from './lib/settings';
+import { getAppLanguage, getSetting, isSetupComplete } from './lib/settings';
 import { adminRoutes } from './routes/admin';
 import { adminModelsRoutes } from './routes/admin-models';
 import { adminConfigRevisionRoutes } from './routes/admin-config-revisions';
 import { adminIntegrationCookieRoutes } from './routes/admin-integrations-cookies';
+import { adminAiHealthRoutes, getPublicActiveCapabilities } from './routes/admin-ai-health';
 import { jobsRoutes } from './routes/jobs';
 import { libraryRoutes } from './routes/library';
 import { setupRoutes } from './routes/setup';
@@ -174,21 +170,9 @@ app.get('/api/instance', async (c) => {
 // UI consulta pra mostrar/esconder botões (ex: upload de imagem só aparece
 // se admin configurou modelo de visão).
 app.get('/api/capabilities', async (c) => {
-  const [chatModel, visionModel, webSearchModel, documentModel, xAnalysisModel] = await Promise.all(
-    [
-      getSetting('default_chat_model').catch(() => null),
-      getSetting('default_vision_model').catch(() => null),
-      getSetting('default_web_search_model').catch(() => null),
-      getSetting('default_document_model').catch(() => null),
-      getDefaultXAnalysisModel().catch(() => null),
-    ],
-  );
-  return c.json({
-    vision: !!visionModel,
-    webSearch: !!(webSearchModel || chatModel),
-    document: !!documentModel,
-    xAnalysis: !!xAnalysisModel,
-  });
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) return c.json({ error: 'Não autenticado.' }, 401);
+  return c.json(await getPublicActiveCapabilities());
 });
 
 // Better Auth: aceita TODOS os métodos em /api/auth/*.
@@ -261,6 +245,8 @@ app.route('/api/admin', adminRoutes);
 app.route('/api/admin/models', adminModelsRoutes);
 
 app.route('/api/admin/config-revisions', adminConfigRevisionRoutes);
+
+app.route('/api/admin/ai-health', adminAiHealthRoutes);
 
 // Cookies de plataforma capturados pela extensão (spec 121, admin only)
 app.route('/api/admin/integrations/cookies', adminIntegrationCookieRoutes);
