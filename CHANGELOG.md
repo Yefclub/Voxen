@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.13.0-dev.1785687938 — 2026-08-02 · Dev
+
+### ✨ Busca encontra conteúdos por significado, não apenas por palavras-chave
+
+Quando embeddings estão habilitados, a busca de transcrições combina palavras-chave
+com a semelhança de significado dos conteúdos já compilados no Brain. Assim, uma
+pergunta pode encontrar uma fonte mesmo usando termos diferentes dos originais.
+
+Se o serviço de embeddings estiver indisponível, a busca continua funcionando com
+o resultado textual tradicional.
+
 ## v0.13.0-dev.1785685922 — 2026-08-02 · Dev
 
 ### ✨ Relações verificáveis entre conhecimentos do Brain
