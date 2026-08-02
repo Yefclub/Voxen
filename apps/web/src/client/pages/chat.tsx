@@ -160,7 +160,7 @@ function CitationCards({ citations }: { citations: ChatCitation[] }): React.Reac
     <aside className="mt-3 flex max-w-3xl flex-col gap-2" aria-label={t('chat.citations')}>
       {citations.map((citation, index) => {
         const location = citationLocation(citation, t);
-        const verified = citation.verified && citation.kind === 'EVIDENCE';
+        const verified = citation.verified && citation.kind === 'EVIDENCE' && !citation.stale;
         return (
           <a
             key={`${citation.sourceId}-${index}`}
@@ -178,7 +178,11 @@ function CitationCards({ citations }: { citations: ChatCitation[] }): React.Reac
                 {citation.title}
               </span>
               <span className={verified ? 'text-emerald-400' : 'text-amber-300'}>
-                {verified ? t('chat.citationVerified') : t('chat.citationUnverified')}
+                {citation.stale
+                  ? t('chat.citationStale')
+                  : verified
+                    ? t('chat.citationVerified')
+                    : t('chat.citationUnverified')}
               </span>
             </div>
             {location && (

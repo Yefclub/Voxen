@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src import scrape_pipeline, scraper
+from src import scrape_pipeline, scraper, thumbnail
 from src.cancellation import CancelledException
 from src.pipeline import PermanentError
 
@@ -113,6 +113,141 @@ async def test_happy_path_persists_and_publishes_events(
     scrape_pipeline.db.upsert_transcript_brain_node.assert_awaited_once()  # type: ignore[attr-defined]
     scrape_pipeline.db.reindex_transcript_brain_node.assert_awaited_once_with("user1", "ctest123")  # type: ignore[attr-defined]
     scrape_pipeline.db.mark_job_done.assert_awaited_once_with("job1")  # type: ignore[attr-defined]
+
+
+async def test_unchanged_refresh_skips_storage_and_all_derived_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mesmo checksum atualiza a coleta, mas não gera custo nem reindexa."""
+    result = _scrape_result()
+    checksum = scrape_pipeline._source_checksum(result.plain_text)
+    fake_conn = MagicMock()
+    fake_conn.fetchrow = AsyncMock(
+        return_value={
+            "source": "WEB",
+            "sourceChecksum": checksum,
+            "sourceVersion": 1,
+            "mdPath": "workspaces/user1/transcripts/t1/sources/v1.md",
+            "plainText": result.plain_text,
+            "sourceMetadata": {},
+        }
+    )
+    fake_conn.execute = AsyncMock(return_value=None)
+    fake_ctx = MagicMock()
+    fake_ctx.__aenter__ = AsyncMock(return_value=fake_conn)
+    fake_ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(scrape_pipeline.db, "connection", lambda: fake_ctx)
+    monkeypatch.setattr(scrape_pipeline.db, "generate_cuid", lambda: "version-row")
+    put_markdown = AsyncMock(return_value=None)
+    monkeypatch.setattr(scrape_pipeline.storage, "put_markdown", put_markdown)
+    title = AsyncMock(return_value="não deveria chamar")
+    monkeypatch.setattr(scrape_pipeline, "_maybe_generate_title", title)
+
+    persisted = await scrape_pipeline._persist(
+        user_id="user1",
+        job_id="job1",
+        source_url=result.url,
+        result=result,
+        refresh_transcript_id="t1",
+        log=_FakeLogger(),
+    )
+
+    assert persisted == scrape_pipeline.PersistResult("t1", changed=False)
+    put_markdown.assert_not_awaited()
+    title.assert_not_awaited()
+    assert fake_conn.execute.await_count == 2
+
+
+async def test_unchanged_refresh_run_skips_summary_tags_brain_and_embedding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        scrape_pipeline.scraper,
+        "fetch_and_extract",
+        AsyncMock(return_value=_scrape_result()),
+    )
+    monkeypatch.setattr(
+        scrape_pipeline,
+        "_persist",
+        AsyncMock(return_value=scrape_pipeline.PersistResult("t1", changed=False)),
+    )
+    monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
+    monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
+    monkeypatch.setattr(scrape_pipeline.db, "link_job_transcript", AsyncMock())
+    monkeypatch.setattr(scrape_pipeline.db, "mark_job_done", AsyncMock())
+    summary = AsyncMock()
+    monkeypatch.setattr(scrape_pipeline.summary, "maybe_generate", summary)
+    tags = AsyncMock()
+    monkeypatch.setattr(scrape_pipeline, "_maybe_generate_tags", tags)
+    reindex = AsyncMock()
+    monkeypatch.setattr(scrape_pipeline.db, "reindex_transcript_brain_node", reindex)
+
+    await scrape_pipeline.run(
+        job_id="job1",
+        user_id="user1",
+        source_url="https://example.com/post",
+        refresh_transcript_id="t1",
+        log=_FakeLogger(),
+    )
+
+    summary.assert_not_awaited()
+    tags.assert_not_awaited()
+    reindex.assert_not_awaited()
+    scrape_pipeline.db.link_job_transcript.assert_not_awaited()  # type: ignore[attr-defined]
+
+
+async def test_changed_refresh_versions_and_invalidates_only_affected_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mudança preserva o snapshot e limpa apenas derivados do transcript."""
+    result = _scrape_result()
+    first_conn = MagicMock()
+    first_conn.fetchrow = AsyncMock(
+        return_value={
+            "source": "WEB",
+            "sourceChecksum": "checksum-antigo",
+            "sourceVersion": 1,
+            "mdPath": "workspaces/user1/transcripts/t1/sources/v1.md",
+            "plainText": "Texto da versão anterior.",
+            "sourceMetadata": {"url": result.url},
+        }
+    )
+    second_conn = MagicMock()
+    second_conn.execute = AsyncMock(return_value=None)
+    contexts = []
+    for conn in (first_conn, second_conn):
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(return_value=conn)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        contexts.append(ctx)
+    monkeypatch.setattr(scrape_pipeline.db, "connection", lambda: contexts.pop(0))
+    monkeypatch.setattr(scrape_pipeline.db, "generate_cuid", lambda: "version-row")
+    monkeypatch.setattr(scrape_pipeline.storage, "put_markdown", AsyncMock())
+    monkeypatch.setattr(
+        scrape_pipeline, "_maybe_generate_title", AsyncMock(return_value=result.title)
+    )
+    monkeypatch.setattr(
+        thumbnail,
+        "resolve_thumbnail_for_persist",
+        AsyncMock(return_value=(None, None, None)),
+    )
+    monkeypatch.setattr(scrape_pipeline.db, "upsert_transcript_brain_node", AsyncMock())
+
+    persisted = await scrape_pipeline._persist(
+        user_id="user1",
+        job_id="job1",
+        source_url=result.url,
+        result=result,
+        refresh_transcript_id="t1",
+        log=_FakeLogger(),
+    )
+
+    assert persisted == scrape_pipeline.PersistResult("t1", changed=True)
+    statements = "\n".join(str(call.args[0]) for call in second_conn.execute.await_args_list)
+    assert 'INSERT INTO "SourceContentVersion"' in statements
+    assert '"sourceVersion" = $16' in statements
+    assert 'DELETE FROM "TranscriptTag"' in statements
+    assert 'UPDATE "ChatMessage"' in statements
 
 
 async def test_robots_blocked_raises_permanent(

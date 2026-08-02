@@ -124,7 +124,7 @@ async def claim_job(job_id: str) -> dict[str, Any] | None:
         async with conn.transaction():
             row = await conn.fetchrow(
                 """
-                SELECT id, "userId", "sourceUrl", status, type
+                SELECT id, "userId", "sourceUrl", status, type, "refreshTranscriptId"
                 FROM "Job"
                 WHERE id = $1 AND status = 'QUEUED'
                 FOR UPDATE SKIP LOCKED
@@ -1972,6 +1972,39 @@ async def mark_job_failed(job_id: str, error_msg: str) -> None:
             job_id,
             error_msg[:1000],
             _utcnow_naive(),
+        )
+
+
+async def mark_source_refresh_failed(user_id: str, transcript_id: str, error_msg: str) -> None:
+    """Falha de refresh não pode apagar a versão de fonte que já era utilizável."""
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE "Transcript"
+            SET "sourceRefreshStatus" = 'FAILED'::"SourceRefreshStatus",
+                "sourceRefreshError" = $3,
+                "updatedAt" = NOW()
+            WHERE id = $1 AND "userId" = $2
+            """,
+            transcript_id,
+            user_id,
+            error_msg[:1000],
+        )
+
+
+async def clear_source_refresh_check(user_id: str, transcript_id: str) -> None:
+    """Cancelamento encerra a consulta, mas preserva a última versão atual."""
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE "Transcript"
+            SET "sourceRefreshStatus" = 'CURRENT'::"SourceRefreshStatus",
+                "sourceRefreshError" = NULL,
+                "updatedAt" = NOW()
+            WHERE id = $1 AND "userId" = $2
+            """,
+            transcript_id,
+            user_id,
         )
 
 

@@ -16,6 +16,7 @@ import { auth } from '../lib/auth';
 import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
+import { notifyNewJob, publishJobEvent } from '../lib/job-events';
 import { rateLimit } from '../lib/rate-limit';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
 import { deleteS3Object, s3Bucket, s3Client } from '../lib/s3';
@@ -489,6 +490,12 @@ transcriptsRoutes.get('/:id', async (c) => {
       taggingNextAttemptAt: true,
       taggingError: true,
       frontmatter: true,
+      sourceChecksum: true,
+      sourceVersion: true,
+      sourceCollectedAt: true,
+      sourceMetadata: true,
+      sourceRefreshStatus: true,
+      sourceRefreshError: true,
       archivedAt: true,
       trashedAt: true,
       createdAt: true,
@@ -531,7 +538,93 @@ transcriptsRoutes.get('/:id', async (c) => {
   })();
 
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
-  return c.json({ transcript: { ...transcript, totalCostUsd, tags }, markdown });
+  const sourceVersions =
+    transcript.source === 'WEB'
+      ? await db.sourceContentVersion.findMany({
+          where: { userId, transcriptId: transcript.id },
+          orderBy: { version: 'desc' },
+          take: 12,
+          select: { version: true, checksum: true, collectedAt: true, metadata: true },
+        })
+      : [];
+  return c.json({ transcript: { ...transcript, totalCostUsd, tags, sourceVersions }, markdown });
+});
+
+// POST /api/transcripts/:id/refresh — consulta novamente uma fonte WEB sem
+// duplicar sua identidade. O worker compara checksum e só reprocessa se mudou.
+transcriptsRoutes.post('/:id/refresh', async (c) => {
+  const userId = c.get('userId');
+  const transcriptId = c.req.param('id');
+  if (!(await isSetupComplete())) {
+    return c.json(
+      { error: 'Setup incompleto. Aguarde o administrador concluir a configuração.' },
+      412,
+    );
+  }
+
+  const queued = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`voxen:source-refresh:${transcriptId}`}))`;
+    const transcript = await tx.transcript.findFirst({
+      where: { id: transcriptId, userId, source: 'WEB', status: { not: 'TRASH' } },
+      select: { id: true, url: true },
+    });
+    if (!transcript) return { kind: 'missing' as const };
+    const inflight = await tx.job.findFirst({
+      where: {
+        userId,
+        refreshTranscriptId: transcript.id,
+        status: { in: ['QUEUED', 'RUNNING'] },
+      },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+    if (inflight) return { kind: 'inflight' as const, job: inflight };
+
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
+    const revision = await tx.configRevision.findFirst({
+      orderBy: { number: 'desc' },
+      select: { id: true },
+    });
+    const job = await tx.job.create({
+      data: {
+        userId,
+        type: 'SCRAPE_WEB',
+        status: 'QUEUED',
+        sourceUrl: transcript.url,
+        refreshTranscriptId: transcript.id,
+        configRevisionId: revision?.id,
+      },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+    await tx.transcript.update({
+      where: { id: transcript.id },
+      data: { sourceRefreshStatus: 'CHECKING', sourceRefreshError: null },
+    });
+    return { kind: 'created' as const, job };
+  });
+
+  if (queued.kind === 'missing') return c.json({ error: 'Fonte web não encontrada.' }, 404);
+  if (queued.kind === 'inflight') {
+    return c.json(
+      {
+        error: 'Esta fonte já está sendo atualizada.',
+        jobId: queued.job.id,
+        status: queued.job.status,
+        sourceUrl: queued.job.sourceUrl,
+      },
+      409,
+    );
+  }
+  await notifyNewJob(queued.job.id).catch((err) => {
+    console.error(
+      '[transcripts] notify source refresh failed',
+      safeErrorDiagnostic('JOB_NOTIFY_FAILED', err),
+    );
+  });
+  await publishJobEvent(userId, { jobId: queued.job.id, stage: 'queued' }).catch(() => undefined);
+  return c.json(
+    { jobId: queued.job.id, status: queued.job.status, sourceUrl: queued.job.sourceUrl },
+    201,
+  );
 });
 
 transcriptsRoutes.get('/:id/original', async (c) => {

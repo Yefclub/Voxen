@@ -44,43 +44,44 @@ enum UserRole {
 }
 
 model User {
-  id               String           @id @default(cuid())
-  email            String           @unique
-  emailVerified    Boolean          @default(false)
-  name             String
-  image            String?
+  id                    String                 @id @default(cuid())
+  email                 String                 @unique
+  emailVerified         Boolean                @default(false)
+  name                  String
+  image                 String?
   // Voxen-specific
-  status           UserStatus       @default(PENDING)
-  role             UserRole         @default(USER)
+  status                UserStatus             @default(PENDING)
+  role                  UserRole               @default(USER)
   // UI theme: linear (default) | zinc | emerald | light
-  theme            String           @default("linear")
-  monthlyBudgetUsd Decimal?         @db.Decimal(10, 4) // null = sem limite
-  approvedAt       DateTime?
-  approvedBy       String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  theme                 String                 @default("linear")
+  monthlyBudgetUsd      Decimal?               @db.Decimal(10, 4) // null = sem limite
+  approvedAt            DateTime?
+  approvedBy            String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
   // Relations
-  sessions         Session[]
-  accounts         Account[]
-  transcripts      Transcript[]
-  jobs             Job[]
-  costEvents       CostEvent[]
-  conversations    Conversation[]
-  chatApprovals    ChatApproval[]
-  chatTurns        ChatTurn[]
-  chatStreamLease  ChatStreamLease?
-  notes            Note[]
-  libraryFolders   LibraryFolder[]
-  brainNodes       BrainNode[]
-  brainEdges       BrainEdge[]
-  brainSources     BrainSource[]
-  brainCompilations BrainCompilation[]
-  telegramLink     TelegramLink?
-  automations      Automation[]
-  automationRuns   AutomationRun[]
-  tags             Tag[]
-  mcpTokens        McpToken[]
-  configRevisions  ConfigRevision[] @relation("ConfigRevisionActor")
+  sessions              Session[]
+  accounts              Account[]
+  transcripts           Transcript[]
+  jobs                  Job[]
+  sourceContentVersions SourceContentVersion[]
+  costEvents            CostEvent[]
+  conversations         Conversation[]
+  chatApprovals         ChatApproval[]
+  chatTurns             ChatTurn[]
+  chatStreamLease       ChatStreamLease?
+  notes                 Note[]
+  libraryFolders        LibraryFolder[]
+  brainNodes            BrainNode[]
+  brainEdges            BrainEdge[]
+  brainSources          BrainSource[]
+  brainCompilations     BrainCompilation[]
+  telegramLink          TelegramLink?
+  automations           Automation[]
+  automationRuns        AutomationRun[]
+  tags                  Tag[]
+  mcpTokens             McpToken[]
+  configRevisions       ConfigRevision[]       @relation("ConfigRevisionActor")
 
   @@index([status])
   @@index([role])
@@ -173,18 +174,18 @@ model Setting {
 // Credencial individual do servidor MCP. O valor Bearer nunca é guardado: a
 // coluna tokenHash contém SHA-256 do segredo exibido apenas na criação.
 model McpToken {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String
-  tokenHash  String   @unique
+  tokenHash  String    @unique
   label      String
   // CSV canônico de READ,WRITE para evitar enum-array e manter a migration
   // compatível com instalações já existentes.
-  scopes     String   @default("READ")
-  createdAt  DateTime @default(now())
+  scopes     String    @default("READ")
+  createdAt  DateTime  @default(now())
   expiresAt  DateTime?
   lastUsedAt DateTime?
   revokedAt  DateTime?
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, revokedAt])
   @@index([expiresAt])
@@ -260,6 +261,14 @@ enum EnrichmentStatus {
   SKIPPED
 }
 
+// Estado da última consulta à fonte externa. CHECKING/FAILED não tornam a
+// versão já aceita inválida; deixam explícito que ela pode não ser a mais nova.
+enum SourceRefreshStatus {
+  CURRENT
+  CHECKING
+  FAILED
+}
+
 model Transcript {
   id                   String                   @id @default(cuid())
   userId               String // == workspace_id
@@ -298,6 +307,14 @@ model Transcript {
   // tsvector gerenciado por trigger SQL (ver migration). Não declarável em Prisma; usar Unsupported.
   searchVector         Unsupported("tsvector")?
   checksum             String? // sha256 do áudio original
+  // Proveniência versionada para fontes WEB. sourceVersion=0 identifica
+  // conteúdo legado ainda sem snapshot; a primeira atualização o preserva.
+  sourceChecksum       String?
+  sourceVersion        Int                      @default(0)
+  sourceCollectedAt    DateTime?
+  sourceMetadata       Json                     @default("{}")
+  sourceRefreshStatus  SourceRefreshStatus      @default(CURRENT)
+  sourceRefreshError   String?                  @db.Text
   formatVersion        Int                      @default(1)
   archivedAt           DateTime?
   trashedAt            DateTime?
@@ -308,6 +325,8 @@ model Transcript {
   folder               LibraryFolder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
   chunks               Chunk[]
   job                  Job?
+  sourceRefreshJobs    Job[]                    @relation("SourceRefreshJobs")
+  sourceVersions       SourceContentVersion[]
   conversations        Conversation[]
   tags                 TranscriptTag[]
   noteSources          NoteTranscriptSource[]
@@ -320,6 +339,28 @@ model Transcript {
   @@index([userId, source])
   @@index([userId, language])
   @@index([taggingStatus, taggingNextAttemptAt])
+  @@index([userId, sourceRefreshStatus])
+}
+
+// Snapshot imutável de cada versão aceita de uma fonte externa. mdPath aponta
+// para um objeto próprio quando há atualização, mantendo o conteúdo antigo
+// recuperável mesmo depois de o Transcript passar a apontar para a versão nova.
+model SourceContentVersion {
+  id           String     @id @default(cuid())
+  userId       String
+  transcriptId String
+  version      Int
+  checksum     String
+  mdPath       String
+  plainText    String     @db.Text
+  metadata     Json       @default("{}")
+  collectedAt  DateTime   @default(now())
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript   Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  @@unique([transcriptId, version])
+  @@unique([transcriptId, checksum])
+  @@index([userId, transcriptId, collectedAt(sort: Desc)])
 }
 
 // Pastas de biblioteca para organizar conteúdos transcritos/documentos/web.
@@ -564,29 +605,34 @@ enum JobStatus {
 }
 
 model Job {
-  id               String             @id @default(cuid())
-  userId           String
-  type             JobType
-  status           JobStatus          @default(QUEUED)
-  sourceUrl        String
-  transcriptId     String?            @unique
-  configRevisionId String?
-  errorMsg         String?
-  progressStage    String?
-  progressPercent  Int?
-  progressedAt     DateTime?
-  queuedAt         DateTime           @default(now())
-  startedAt        DateTime?
-  finishedAt       DateTime?
-  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcript       Transcript?        @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
-  configRevision   ConfigRevision?    @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
-  progressEvents   JobProgressEvent[]
+  id                  String             @id @default(cuid())
+  userId              String
+  type                JobType
+  status              JobStatus          @default(QUEUED)
+  sourceUrl           String
+  transcriptId        String?            @unique
+  // Quando preenchido, SCRAPE_WEB atualiza este conteúdo existente em vez de
+  // criar um novo Transcript. O resultado continua em transcriptId.
+  refreshTranscriptId String?
+  configRevisionId    String?
+  errorMsg            String?
+  progressStage       String?
+  progressPercent     Int?
+  progressedAt        DateTime?
+  queuedAt            DateTime           @default(now())
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript          Transcript?        @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
+  refreshTranscript   Transcript?        @relation("SourceRefreshJobs", fields: [refreshTranscriptId], references: [id], onDelete: SetNull)
+  configRevision      ConfigRevision?    @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
+  progressEvents      JobProgressEvent[]
 
   @@index([userId, queuedAt(sort: Desc)])
   @@index([userId, progressedAt(sort: Desc)])
   @@index([status])
   @@index([configRevisionId])
+  @@index([userId, refreshTranscriptId, status])
 }
 
 model JobProgressEvent {
