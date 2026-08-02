@@ -1,4 +1,5 @@
 import { fuseHybridScores, rankSemanticCandidates } from './hybrid-search';
+import type { FtsResult } from './retrieval';
 
 export type BenchmarkEvidence = { quote: string; timestamp: number | null };
 export type BenchmarkDocument = {
@@ -59,21 +60,23 @@ function fromSources(
   };
 }
 
-/** Baseline lexical determinístico: precisa de dois termos literais coincidentes. */
-export function runFtsBenchmark(
+export async function runFtsBenchmark(
   cases: readonly BenchmarkCase[],
   documents: readonly BenchmarkDocument[],
-) {
-  return cases.map((item) =>
-    fromSources(
-      item,
-      documents
-        .filter((document) => overlap(item.lexicalTerms, document.lexicalTerms) >= 2)
-        .map((document) => document.id),
-      documents,
-      12,
-      0,
-    ),
+  search: (item: BenchmarkCase) => Promise<readonly FtsResult[]>,
+): Promise<BenchmarkObservation[]> {
+  return Promise.all(
+    cases.map(async (item) => {
+      const started = performance.now();
+      const rows = await search(item);
+      return fromSources(
+        item,
+        rows.map((row) => row.id),
+        documents,
+        performance.now() - started,
+        0,
+      );
+    }),
   );
 }
 
@@ -109,20 +112,23 @@ export function runHybridBenchmark(
 }
 
 /** Brain determinístico: aliases e relações explícitas do fixture expandem FTS. */
-export function runBrainBenchmark(
+export async function runBrainBenchmark(
   cases: readonly BenchmarkCase[],
   documents: readonly BenchmarkDocument[],
-) {
-  return cases.map((item) =>
-    fromSources(
-      item,
-      documents
-        .filter((document) => overlap(item.brainTerms, document.brainTerms) > 0)
-        .map((document) => document.id),
-      documents,
-      18,
-      0,
-    ),
+  search: (item: BenchmarkCase) => Promise<readonly { sourceId: string | null }[]>,
+): Promise<BenchmarkObservation[]> {
+  return Promise.all(
+    cases.map(async (item) => {
+      const started = performance.now();
+      const nodes = await search(item);
+      return fromSources(
+        item,
+        nodes.flatMap((node) => (node.sourceId ? [node.sourceId] : [])),
+        documents,
+        performance.now() - started,
+        0,
+      );
+    }),
   );
 }
 
