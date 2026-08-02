@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.0-dev.1785672400 — 2026-08-02 · Dev
+
+### 🧹 Matriz de regressão impede acesso cruzado entre usuários
+
+O CI agora valida o isolamento de conteúdos, jobs, chat, Brain, eventos,
+armazenamento e MCP entre usuários. Publicadores web e worker também recusam
+progresso para jobs que não pertencem ao workspace informado.
+
 ## v0.13.0-dev.1785670528 — 2026-08-02 · Dev
 
 ### 🎨 Brain abre no mapa rápido 2D
