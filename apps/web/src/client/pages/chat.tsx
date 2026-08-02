@@ -78,6 +78,7 @@ import {
   type MessageVersions,
 } from '../lib/chat-versions';
 import { MessageEditForm, UserMessageActions } from '../components/chat/message-versioning';
+import { parseChatCitations, type ChatCitation } from '../../shared/chat-citations';
 import { claimPendingId, reconcileChatStart, sameActiveTurn } from '../lib/chat-reconciliation';
 import {
   getSoundsEnabled,
@@ -99,6 +100,8 @@ type ChatMessage = {
   segments?: MessageSegment[];
   /** Anexos vinculados à mensagem do usuário (spec 126). */
   attachments?: MessageAttachment[];
+  /** Evidências estruturadas; ausente em mensagens anteriores à spec 141. */
+  citations?: ChatCitation[];
   /**
    * Posição entre as versões irmãs — só vem preenchido em ponto de
    * ramificação, e só em mensagem do usuário (spec 127).
@@ -132,7 +135,63 @@ type Snapshot = {
  */
 function normalizeSnapshotMessage(message: ChatMessage): ChatMessage {
   const segments = parseMessageSegments(message.segments);
-  return { ...message, segments: segments ?? undefined };
+  const citations = parseChatCitations(message.citations);
+  return { ...message, segments: segments ?? undefined, citations: citations ?? undefined };
+}
+
+function citationLocation(citation: ChatCitation, t: TranslateFn): string | null {
+  if (citation.fromSec !== null) {
+    const minutes = Math.floor(citation.fromSec / 60);
+    const seconds = citation.fromSec % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  if (citation.fromLine !== null) {
+    return citation.toLine && citation.toLine !== citation.fromLine
+      ? t('chat.citationLines', { from: citation.fromLine, to: citation.toLine })
+      : t('chat.citationLine', { line: citation.fromLine });
+  }
+  return null;
+}
+
+function CitationCards({ citations }: { citations: ChatCitation[] }): React.ReactElement | null {
+  const { t } = useI18n();
+  if (citations.length === 0) return null;
+  return (
+    <aside className="mt-3 flex max-w-3xl flex-col gap-2" aria-label={t('chat.citations')}>
+      {citations.map((citation, index) => {
+        const location = citationLocation(citation, t);
+        const verified = citation.verified && citation.kind === 'EVIDENCE';
+        return (
+          <a
+            key={`${citation.sourceId}-${index}`}
+            href={citation.href}
+            className={cn(
+              'rounded-lg border px-3 py-2.5 transition-colors hover:bg-[var(--color-app-surface)]',
+              verified ? 'border-emerald-500/30' : 'border-amber-500/35',
+            )}
+          >
+            <div className="flex items-center gap-2 text-xs">
+              <FileText
+                className={cn('h-3.5 w-3.5', verified ? 'text-emerald-400' : 'text-amber-300')}
+              />
+              <span className="min-w-0 flex-1 truncate font-medium text-[var(--color-app-fg)]">
+                {citation.title}
+              </span>
+              <span className={verified ? 'text-emerald-400' : 'text-amber-300'}>
+                {verified ? t('chat.citationVerified') : t('chat.citationUnverified')}
+              </span>
+            </div>
+            {location && (
+              <p className="mt-1 text-[11px] text-[var(--color-app-muted)]">{location}</p>
+            )}
+            <blockquote className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-[var(--color-app-subtle)]">
+              “{citation.quote}”
+            </blockquote>
+          </a>
+        );
+      })}
+    </aside>
+  );
 }
 
 type StreamEvent =
@@ -1869,6 +1928,9 @@ export function ChatPage(): React.ReactElement {
                             <MessageCopyButton text={message.content} align="start" />
                           )}
                         </>
+                      )}
+                      {!isStreamingAssistant && (
+                        <CitationCards citations={message.citations ?? []} />
                       )}
                       {isStreamingAssistant && !message.content && segments.length === 0 && (
                         <span className="inline-flex items-center gap-1.5 text-sm text-[var(--color-app-muted)]">
