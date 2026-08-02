@@ -202,3 +202,31 @@ export async function isSetupComplete(): Promise<boolean> {
   });
   return row !== null;
 }
+
+// ---------------------------------------------------------------------------
+// Preferências por usuário (SettingScope.USER) — não-secrets de produto.
+// ---------------------------------------------------------------------------
+
+export async function getUserSetting(userId: string, key: string): Promise<string | null> {
+  const row = await db.setting.findFirst({
+    where: { scope: 'USER', userId, key },
+    select: { valueEnc: true },
+  });
+  if (!row) return null;
+  return decrypt(row.valueEnc, getMasterKey());
+}
+
+export async function setUserSetting(userId: string, key: string, value: string): Promise<void> {
+  const valueEnc = encrypt(value, getMasterKey());
+  await db.$transaction(async (tx) => {
+    const existing = await tx.setting.findFirst({
+      where: { scope: 'USER', userId, key },
+      select: { id: true },
+    });
+    if (existing) {
+      await tx.setting.update({ where: { id: existing.id }, data: { valueEnc } });
+    } else {
+      await tx.setting.create({ data: { scope: 'USER', userId, key, valueEnc } });
+    }
+  });
+}

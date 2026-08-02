@@ -38,6 +38,14 @@ import {
 } from './message-versions';
 import { parseMessageAttachments } from './message-attachments';
 import { parseTemporalBounds } from './temporal-bounds';
+import {
+  HITL_ACTION_CREATE_NOTE,
+  buildHitlResumePrompt,
+  resolveProposeCreateNoteApproval,
+  shouldInjectTurnContentAsUserMessage,
+  shouldResumeAfterApprove,
+} from './hitl-policy';
+import { grantAlwaysAllowAction, loadAlwaysAllowActions } from './hitl-preferences';
 import { isProviderObservedEvent } from './stream-timing';
 import {
   buildUrlIntentInstructions,
@@ -103,9 +111,11 @@ const AGENT_INSTRUCTIONS = [
   'para a própria URL — nunca substitua o conteúdo por web_search ou search_x. Sem uma ação',
   'explícita, pergunte o que o usuário quer fazer com o link antes de agir.',
   '',
-  'Quando propor criar uma nota (propose_create_note), a interface pedirá confirmação ao usuário',
-  'e o turno será pausado. Não tente criar a nota de outro modo nem repita a ferramenta no mesmo',
-  'turno. Se a ação não for aprovada, informe isso e não insista.',
+  'Quando propor criar uma nota (propose_create_note), a interface pode pedir confirmação e',
+  'pausar o turno. Se o usuário já liberou essa ação, a nota é criada sem pausa. Não tente',
+  'criar a nota por outro caminho nem repita a ferramenta no mesmo turno após a proposta.',
+  'Depois de uma confirmação (mensagem do sistema de nota criada), continue o plano sem',
+  're-propor a mesma nota.',
   '',
   'Comunicação com o usuário (OBRIGATÓRIO — a resposta final é produto, não log de API):',
   '- NUNCA mencione nomes de ferramentas, parâmetros, IDs internos (transcriptId, approvalId)',
@@ -919,19 +929,36 @@ export function buildTools(
     }),
     propose_create_note: tool({
       description:
-        'Propõe criar uma nota. A interface pede confirmação explícita; não escreve sozinha neste turno.',
+        'Propõe criar uma nota. Sem always-allow do usuário a interface pede confirmação; ' +
+        'com always-allow a nota é criada neste turno.',
       inputSchema: z.object({
         title: z.string().min(1).max(200),
         content: z.string().max(200_000),
       }),
-      // Primary write path is approveChatAction (UI confirm). This execute only
-      // runs if a future resume injects tool-approval-response into streamText;
-      // it must not create the note (avoids double-write with the UI path).
-      execute: async ({ title, content }) => ({
-        handledBy: 'ui_approve',
-        title,
-        contentLength: content.length,
-      }),
+      // Com toolApproval user-approval o execute NÃO roda (UI aprova via
+      // approveChatAction). Com always-allow (toolApproval approved) o execute
+      // cria a nota — único write path nesse fluxo, sem double-create.
+      execute: async ({ title, content }) => {
+        const always = await loadAlwaysAllowActions(userId);
+        if (!always.has(HITL_ACTION_CREATE_NOTE)) {
+          return {
+            handledBy: 'ui_approve',
+            title,
+            contentLength: content.length,
+          };
+        }
+        const note = await db.note.create({
+          data: { userId, kind: 'NOTE', title, content },
+        });
+        void reindexNotesBrain(userId).catch(() => undefined);
+        void invalidateGraphCache(userId).catch(() => undefined);
+        return {
+          ok: true,
+          noteId: note.id,
+          title: note.title,
+          handledBy: 'always_allow',
+        };
+      },
     }),
   };
 }
@@ -1267,10 +1294,23 @@ async function ensurePendingApproval(
   });
 }
 
+export type ApproveChatActionResult = {
+  message: string;
+  noteId?: string;
+  conversationId: string;
+  action: string;
+  title?: string;
+  hitlMessageId: string;
+  /** Conteúdo sintético do turno de resume (spec 132). */
+  resumePrompt: string;
+  shouldResume: boolean;
+};
+
 export async function approveChatAction(
   userId: string,
   approvalId: string,
-): Promise<{ message: string; noteId?: string }> {
+  options: { alwaysAllow?: boolean } = {},
+): Promise<ApproveChatActionResult> {
   const result = await db.$transaction(async (tx) => {
     const now = new Date();
     const approval = await ensurePendingApproval(tx, userId, approvalId);
@@ -1340,8 +1380,25 @@ export async function approveChatAction(
       where: { id: approval.conversationId },
       data: { activeLeafId: hitlMessage.id },
     });
-    return { message: `Nota “${note.title}” criada.`, noteId: note.id };
+    const resumePrompt = buildHitlResumePrompt({
+      action: approval.action,
+      title: note.title,
+      noteId: note.id,
+    });
+    return {
+      message: `Nota “${note.title}” criada.`,
+      noteId: note.id,
+      conversationId: approval.conversationId,
+      action: approval.action,
+      title: note.title,
+      hitlMessageId: hitlMessage.id,
+      resumePrompt,
+      shouldResume: shouldResumeAfterApprove({ approved: true, action: approval.action }),
+    };
   });
+  if (options.alwaysAllow) {
+    await grantAlwaysAllowAction(userId, result.action).catch(() => undefined);
+  }
   await reindexNotesBrain(userId).catch(() => undefined);
   await invalidateGraphCache(userId).catch(() => undefined);
   return result;
@@ -1594,6 +1651,10 @@ export async function streamAssistantReply(options: {
   const suggestions = buildLibrarySuggestionsInstructions(relevant);
   const clock = buildAgentClockInstructions(buildInstanceClock(new Date(), timezone));
   const urlIntent = classifyUrlIntent(content);
+  const alwaysAllow = await loadAlwaysAllowActions(userId).catch(
+    () => new Set() as Awaited<ReturnType<typeof loadAlwaysAllowActions>>,
+  );
+  const alwaysAllowCreateNote = alwaysAllow.has(HITL_ACTION_CREATE_NOTE);
   const providerStartedAt = Date.now();
   emit({
     type: 'status',
@@ -1609,6 +1670,17 @@ export async function streamAssistantReply(options: {
     preparationMs: providerStartedAt - runtimeStartedAt,
     totalToProviderStartMs: providerStartedAt - requestStartedAt,
   });
+  // Histórico da trilha. No resume HITL (spec 132) o `content` é um prompt
+  // sintético (não é uma bolha USER na trilha) — injeta como última mensagem
+  // user só no call do modelo, para o agente continuar o plano.
+  const historyMessages = toModelMessages(active);
+  const modelMessages: ModelMessage[] = shouldInjectTurnContentAsUserMessage({
+    content,
+    history: active,
+  })
+    ? [...historyMessages, { role: 'user', content }]
+    : historyMessages;
+
   const result = streamText({
     model: provider(modelConfig.model),
     instructions: AGENT_INSTRUCTIONS + clock + suggestions + buildUrlIntentInstructions(urlIntent),
@@ -1616,7 +1688,7 @@ export async function streamAssistantReply(options: {
     // SYSTEM rows (compaction summaries, HITL responses) are server-authored
     // only — never from the client — so allowing them preserves trusted history.
     allowSystemInMessages: true,
-    messages: toModelMessages(active),
+    messages: modelMessages,
     tools: buildTools(userId, {
       abortSignal,
       emitStatus: (label) => emit({ type: 'status', label }),
@@ -1631,10 +1703,9 @@ export async function streamAssistantReply(options: {
           ? { type: 'tool', toolName: 'request_transcription' }
           : 'auto',
     }),
-    // Structural HITL pause (spec 090 / AI SDK toolApproval): do not execute
-    // propose_create_note; emit tool-approval-request and end the turn.
+    // Spec 090 pause; spec 132 always-allow → approved (execute cria a nota).
     toolApproval: {
-      propose_create_note: 'user-approval',
+      propose_create_note: resolveProposeCreateNoteApproval(alwaysAllowCreateNote),
     },
     stopWhen: stepCountIs(12),
     abortSignal,

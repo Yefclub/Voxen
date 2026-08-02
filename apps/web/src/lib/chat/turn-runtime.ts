@@ -50,6 +50,109 @@ export interface CreateChatTurnOptions {
   branchFrom?: { messageId: string };
 }
 
+/**
+ * Turno de resume pós-HITL (spec 132): anexa um assistente vazio na folha
+ * HITL_RESPONSE e reutiliza essa mensagem como âncora do ChatTurn
+ * (userMessageId). O `content` sintético de resume vai em `resumeContent` e é
+ * lido por `runChatTurn` quando a âncora é HITL_RESPONSE.
+ */
+export async function createHitlResumeTurn(
+  userId: string,
+  args: { conversationId: string; hitlMessageId: string; resumeContent: string },
+) {
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.conversation.updateMany({
+      where: { id: args.conversationId, userId, thinking: false },
+      data: { thinking: true, updatedAt: new Date() },
+    });
+    if (claimed.count !== 1) throw new ChatTurnBusyError();
+
+    const hitl = await tx.chatMessage.findFirst({
+      where: {
+        id: args.hitlMessageId,
+        conversationId: args.conversationId,
+        kind: 'HITL_RESPONSE',
+      },
+      select: { id: true },
+    });
+    if (!hitl) throw new ChatTurnVersionTargetError();
+
+    // Guarda o prompt de resume no content da âncora HITL (já visível ao user
+    // como confirmação) — append de bloco interno só no runtime via kind check
+    // + meta em content seria ruidoso. Em vez disso: criamos um USER sintético
+    // oculto? Preferimos guardar resumeContent em ChatTurn não existe.
+    // Solução: criar ASSISTANT e turn com userMessageId = hitl; runChatTurn
+    // detecta kind HITL_RESPONSE e usa buildHitlResumePrompt a partir do
+    // content legível da âncora (já tem título). O resumeContent é repassado
+    // gravando temporariamente no content da âncora? Não sobrescrever.
+    //
+    // Persistimos o prompt em um campo JSON via mensagem SYSTEM irmã? Overkill.
+    // Usamos `resumeContent` gravado no `errorMsg`? No.
+    //
+    // Implementação: criar USER message com content=resumeContent e
+    // role USER, mas kind NORMAL, e o frontend filtra content que começa com
+    // o prefixo interno. Hmm.
+    //
+    // Melhor: criar a mensagem USER com content=resumeContent e parent=hitl;
+    // assistant com parent=user. A UI mostra o USER — ruim.
+    //
+    // Aceito: assistant parent=hitl; turn.userMessageId=hitl.id;
+    // runChatTurn usa content override se a mensagem âncora for HITL_RESPONSE,
+    // reconstruindo o prompt a partir do content da HITL (parse título).
+    const assistantMessage = await tx.chatMessage.create({
+      data: {
+        conversationId: args.conversationId,
+        role: 'ASSISTANT',
+        content: '',
+        tools: [],
+        segments: [],
+        parentId: hitl.id,
+      },
+      select: { id: true },
+    });
+    await tx.conversation.update({
+      where: { id: args.conversationId },
+      data: { activeLeafId: assistantMessage.id },
+    });
+    // Persist resume prompt on a dedicated SYSTEM sibling? Use tools null and
+    // store in conversation? Store as ChatMessage with kind HITL_RESPONSE
+    // content unchanged; pass resumeContent via in-memory map keyed by turnId.
+    const turn = await tx.chatTurn.create({
+      data: {
+        userId,
+        conversationId: args.conversationId,
+        userMessageId: hitl.id,
+        assistantMessageId: assistantMessage.id,
+      },
+      select: {
+        id: true,
+        userId: true,
+        conversationId: true,
+        userMessageId: true,
+        assistantMessageId: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+    resumePromptByTurnId.set(turn.id, args.resumeContent);
+    return turn;
+  });
+}
+
+/** Prompts de resume injetados no create (não cabem no schema do ChatTurn). */
+const resumePromptByTurnId = new Map<string, string>();
+
+export function takeResumePromptForTurn(turnId: string): string | null {
+  const value = resumePromptByTurnId.get(turnId) ?? null;
+  if (value !== null) resumePromptByTurnId.delete(turnId);
+  return value;
+}
+
+/** Test helper — seed a resume prompt without creating a DB turn. */
+export function setResumePromptForTurnForTests(turnId: string, prompt: string): void {
+  resumePromptByTurnId.set(turnId, prompt);
+}
+
 export async function createChatTurn(
   userId: string,
   content: string,
@@ -212,7 +315,7 @@ export async function runChatTurn(
     }
     const userMessage = await db.chatMessage.findUnique({
       where: { id: turn.userMessageId },
-      select: { content: true },
+      select: { content: true, kind: true },
     });
     if (!userMessage) throw new Error('A mensagem original do turno não foi encontrada.');
 
@@ -227,11 +330,21 @@ export async function runChatTurn(
       }),
     ]);
 
+    // Resume HITL (spec 132): âncora é HITL_RESPONSE; o prompt sintético foi
+    // registrado em createHitlResumeTurn. Fallback reconstrói a partir do texto
+    // da confirmação se o processo reiniciou (map em memória perdido).
+    let turnContent = userMessage.content;
+    if (userMessage.kind === 'HITL_RESPONSE') {
+      turnContent =
+        takeResumePromptForTurn(turn.id) ??
+        `O usuário confirmou a ação. ${userMessage.content} Continue o plano anterior de forma natural, sem re-propor a mesma ação.`;
+    }
+
     const runtimeStartedAt = Date.now();
     await streamAssistantReply({
       userId: turn.userId,
       conversationId: turn.conversationId,
-      content: userMessage.content,
+      content: turnContent,
       userMessageId: turn.userMessageId,
       assistantMessageId: turn.assistantMessageId,
       abortSignal: controller.signal,

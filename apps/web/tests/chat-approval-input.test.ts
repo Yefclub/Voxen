@@ -18,4 +18,14 @@ describe('chat approval input', () => {
     expect(ApprovalBody.safeParse({ approvalId: '   ' }).success).toBe(false);
     expect(ApprovalBody.safeParse({ approvalId: 'a'.repeat(201) }).success).toBe(false);
   });
+
+  test('aceita alwaysAllow opcional', () => {
+    const result = ApprovalBody.safeParse({
+      approvalId: 'approval:tool-call_01',
+      alwaysAllow: true,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.alwaysAllow).toBe(true);
+    expect(ApprovalBody.safeParse({ approvalId: 'approval:x' }).success).toBe(true);
+  });
 });
