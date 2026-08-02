@@ -170,7 +170,16 @@ describeIfDb('auth + admin approval flow', () => {
       }),
     );
     expect(revoke.status).toBe(200);
-    await setSetting('mcp_api_token', `legacy-owner:${rotated.token}`);
+    const legacyToken = 'legacy-only-mcp-token';
+    await setSetting('mcp_api_token', `legacy-owner:${legacyToken}`);
+    const legacyAuth = await app.fetch(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${legacyToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      }),
+    );
+    expect(legacyAuth.status).toBe(401);
     const revokeLegacy = await app.fetch(
       new Request('http://localhost/api/admin/mcp', { method: 'DELETE', headers: { cookie } }),
     );
