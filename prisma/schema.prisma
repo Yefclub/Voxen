@@ -78,6 +78,7 @@ model User {
   automations      Automation[]
   automationRuns   AutomationRun[]
   tags             Tag[]
+  mcpTokens        McpToken[]
   configRevisions  ConfigRevision[] @relation("ConfigRevisionActor")
 
   @@index([status])
@@ -166,6 +167,26 @@ model Setting {
 
   @@unique([scope, userId, key])
   @@index([scope, key])
+}
+
+// Credencial individual do servidor MCP. O valor Bearer nunca é guardado: a
+// coluna tokenHash contém SHA-256 do segredo exibido apenas na criação.
+model McpToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  label      String
+  // CSV canônico de READ,WRITE para evitar enum-array e manter a migration
+  // compatível com instalações já existentes.
+  scopes     String   @default("READ")
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
 }
 
 // Histórico imutável das mudanças atômicas da configuração global. Segredos

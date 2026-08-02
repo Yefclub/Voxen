@@ -66,6 +66,15 @@ interface McpAdminStatus {
   enabled: boolean;
   userId: string | null;
   tokenPreview: string | null;
+  allowUserTokens: boolean;
+  legacyTokenConfigured: boolean;
+  tokens: {
+    id: string;
+    label: string;
+    scopes: string[];
+    revokedAt: string | null;
+    user: { email: string; name: string };
+  }[];
 }
 
 interface McpPromptResponse {
@@ -935,8 +944,11 @@ function McpSection(): React.ReactElement {
   const { t } = useI18n();
   const [status, setStatus] = useState<McpAdminStatus | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
+  const [newTokenId, setNewTokenId] = useState<string | null>(null);
   const [rotating, setRotating] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
+  const [tokenToRevoke, setTokenToRevoke] = useState<string | null>(null);
+  const [updatingPolicy, setUpdatingPolicy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
   const [copyingPrompt, setCopyingPrompt] = useState(false);
@@ -950,15 +962,26 @@ function McpSection(): React.ReactElement {
       const s = await apiGet<McpAdminStatus>('/api/admin/mcp');
       setStatus(s);
     } catch {
-      setStatus({ enabled: false, userId: null, tokenPreview: null });
+      setStatus({
+        enabled: false,
+        userId: null,
+        tokenPreview: null,
+        allowUserTokens: false,
+        legacyTokenConfigured: false,
+        tokens: [],
+      });
     }
   }
 
   async function rotate(): Promise<void> {
     setRotating(true);
     try {
-      const r = await apiPost<{ token: string; userId: string }>('/api/admin/mcp/rotate', {});
+      const r = await apiPost<{ token: string; metadata: { id: string } }>(
+        '/api/admin/mcp/rotate',
+        {},
+      );
       setNewToken(r.token);
+      setNewTokenId(r.metadata.id);
       toast.success(t('admin.integrations.mcp.generated'));
       await refresh();
     } catch (err) {
@@ -968,18 +991,39 @@ function McpSection(): React.ReactElement {
     }
   }
 
-  async function revoke(): Promise<void> {
+  async function revoke(tokenId: string): Promise<void> {
     try {
-      const res = await fetch('/api/admin/mcp', {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error(t('common.error'));
+      await apiDelete(`/api/admin/mcp/tokens/${tokenId}`);
       toast.success(t('admin.integrations.mcp.revoked'));
-      setNewToken(null);
+      if (newTokenId === tokenId) {
+        setNewToken(null);
+        setNewTokenId(null);
+      }
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('common.error'));
+    }
+  }
+
+  async function toggleUserTokens(enabled: boolean): Promise<void> {
+    setUpdatingPolicy(true);
+    try {
+      await apiPatch('/api/admin/mcp', { allowUserTokens: enabled });
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
+    } finally {
+      setUpdatingPolicy(false);
+    }
+  }
+
+  async function revokeLegacy(): Promise<void> {
+    try {
+      await apiDelete('/api/admin/mcp');
+      toast.success(t('admin.integrations.mcp.legacyRevoked'));
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
     }
   }
 
@@ -995,11 +1039,14 @@ function McpSection(): React.ReactElement {
   }
 
   async function copyAgentPrompt(): Promise<void> {
-    if (!status?.enabled || copyingPrompt) return;
+    if (!newToken || copyingPrompt) return;
     setCopyingPrompt(true);
     try {
       const origin = window.location.origin;
-      const res = await apiPost<McpPromptResponse>('/api/admin/mcp/prompt', { appUrl: origin });
+      const res = await apiPost<McpPromptResponse>('/api/admin/mcp/prompt', {
+        appUrl: origin,
+        token: newToken,
+      });
       await writeClipboardText(res.prompt, t('admin.integrations.copyError'));
       setPromptCopied(true);
       toast.success(t('admin.integrations.mcp.promptCopied'));
@@ -1044,14 +1091,71 @@ function McpSection(): React.ReactElement {
                   {t('admin.integrations.mcp.enabled')}
                 </p>
                 <p className="text-[11px] text-[var(--color-app-muted)] font-mono">
-                  {t('admin.integrations.mcp.copyToken').toLowerCase()}:{' '}
-                  {status.tokenPreview ?? '••••'}
+                  {t('admin.integrations.mcp.activeCount', {
+                    count: status.tokens.filter((token) => !token.revokedAt).length,
+                  })}
                 </p>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmRevoke(true)}>
-                <Trash2 className="h-3.5 w-3.5" />
-                {t('admin.integrations.revoke')}
-              </Button>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-[var(--color-app-border)] px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-[var(--color-app-fg)]">
+                  {t('admin.integrations.mcp.userPolicy')}
+                </p>
+                <p className="text-xs text-[var(--color-app-muted)]">
+                  {t('admin.integrations.mcp.userPolicyHint')}
+                </p>
+              </div>
+              <Switch
+                checked={status.allowUserTokens}
+                onCheckedChange={(enabled) => void toggleUserTokens(enabled)}
+                disabled={updatingPolicy}
+                aria-label={t('admin.integrations.mcp.userPolicy')}
+              />
+            </div>
+            {status.legacyTokenConfigured && (
+              <div className="flex items-center justify-between gap-3 border-t border-[var(--color-app-border)] pt-3">
+                <p className="text-xs text-amber-300">
+                  {t('admin.integrations.mcp.legacyPending')}
+                </p>
+                <Button variant="outline" size="sm" onClick={() => void revokeLegacy()}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t('admin.integrations.mcp.revokeLegacy')}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {status.tokens.length > 0 && (
+            <div className="rounded-lg border border-[var(--color-app-border)] divide-y divide-[var(--color-app-border)]">
+              {status.tokens.map((token) => (
+                <div key={token.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-[var(--color-app-fg)]">{token.label}</p>
+                    <p className="truncate text-xs text-[var(--color-app-muted)]">
+                      {token.user.name || token.user.email} · {token.scopes.join(', ')}
+                    </p>
+                  </div>
+                  {token.revokedAt ? (
+                    <Badge variant="outline">{t('admin.integrations.mcp.revokedStatus')}</Badge>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setTokenToRevoke(token.id);
+                        setConfirmRevoke(true);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {t('admin.integrations.revoke')}
+                    </Button>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 
@@ -1107,7 +1211,7 @@ function McpSection(): React.ReactElement {
                 size="sm"
                 className="w-full sm:w-auto"
                 onClick={() => void copyAgentPrompt()}
-                disabled={!status.enabled || copyingPrompt}
+                disabled={!newToken || copyingPrompt}
                 aria-label={t('admin.integrations.mcp.copyAgentPrompt')}
               >
                 {copyingPrompt ? (
@@ -1139,7 +1243,7 @@ function McpSection(): React.ReactElement {
         description={t('admin.integrations.mcp.revokeDescription')}
         confirmLabel={t('admin.integrations.revoke')}
         variant="destructive"
-        onConfirm={revoke}
+        onConfirm={() => (tokenToRevoke ? revoke(tokenToRevoke) : Promise.resolve())}
       />
     </motion.div>
   );
