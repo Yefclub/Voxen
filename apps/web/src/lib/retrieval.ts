@@ -403,15 +403,16 @@ export function promptSearchQuery(prompt: string): string {
  * português): ts_headline (trecho destacado) + ts_rank (relevância). Retorna
  * trechos curtos, NUNCA o texto completo. Espelha voxen_search_transcripts.
  */
-export async function ftsSearchTranscripts(
+export async function queryTranscriptFts(
   userId: string,
   query: string,
   limit: number,
+  client: Pick<typeof db, '$queryRaw'> = db,
 ): Promise<FtsResult[]> {
   const q = query.trim();
   if (!q) return [];
   const take = clampInt(limit, 8, 1, 25);
-  const lexical = await db.$queryRaw<FtsResult[]>`
+  return client.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
       ts_headline('portuguese', concat_ws(E'\n\n', t.title, t."plainText"), websearch_to_tsquery('portuguese', ${q}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
@@ -433,6 +434,17 @@ export async function ftsSearchTranscripts(
     ORDER BY rank DESC, t."createdAt" DESC
     LIMIT ${take}
   `;
+}
+
+export async function ftsSearchTranscripts(
+  userId: string,
+  query: string,
+  limit: number,
+): Promise<FtsResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const take = clampInt(limit, 8, 1, 25);
+  const lexical = await queryTranscriptFts(userId, q, take);
   return maybeHybridSearch(userId, q, lexical, take);
 }
 
