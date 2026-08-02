@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.13.0-dev.1785684055 — 2026-08-02 · Dev
+
+### ✨ Extração do Brain por seções com cobertura retomável
+
+A extração grounded do Brain agora cobre conteúdos longos por seções e timestamps, preserva linhas de evidência e retoma apenas os segmentos pendentes ou que falharam.
+
 ## v0.13.0-dev.1785681907 — 2026-08-02 · Dev
 
 ### ✨ Citações verificáveis e clicáveis no chat
