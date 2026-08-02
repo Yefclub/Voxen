@@ -29,6 +29,7 @@ import { releasesRoutes } from './routes/releases';
 import { shareTargetRoutes } from './routes/share-target';
 import { chatRoutes } from './routes/chat';
 import { extensionMetaRoutes } from './routes/extension-meta';
+import { researchArtifactsRoutes } from './routes/research-artifacts';
 import { getRedisPublisher } from './lib/redis';
 import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
@@ -269,6 +270,7 @@ app.route('/api/admin/custos', costRoutes);
 
 // KB manual de notas (CRUD + FTS + tree)
 app.route('/api/notes', notesRoutes);
+app.route('/api/research-artifacts', researchArtifactsRoutes);
 // Organização compartilhada da biblioteca
 app.route('/api/library', libraryRoutes);
 // Automações (jobs periódicos com continuidade — spec 008)
