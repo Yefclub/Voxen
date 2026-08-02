@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785685922",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Relações verificáveis entre conhecimentos do Brain",
+    "body": "O Brain agora registra suporte, contradição e aliases de entidades com trechos literais, linhas e timestamps da fonte. Ao consultar uma contradição, as evidências dos dois lados ficam disponíveis para conferência.",
+    "pr": 562,
+    "author": "Kalyel",
+    "date": "2026-08-02T12:51:51-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/562"
+  },
+  {
     "version": "0.13.0-dev.1785684055",
     "channel": "dev",
     "type": "feat",
