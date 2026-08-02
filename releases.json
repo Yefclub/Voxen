@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785667820",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Notas atualizadas ao abrir e visualizadas em Preview",
+    "body": "A página de Notas agora atualiza sua lista ao abrir e quando você volta à aba,\nmostrando sem recarregar manualmente as notas criadas pelo chat, MCP ou\nautomações.\n\nAs notas também abrem em **Preview**, com título e conteúdo protegidos contra\nedição acidental. Use **Editar** para abrir os campos de alteração.",
+    "pr": 529,
+    "author": "Kalyel",
+    "date": "2026-08-02T07:50:08-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/529"
+  },
+  {
     "version": "0.13.0-dev.1785664499",
     "channel": "dev",
     "type": "feat",
