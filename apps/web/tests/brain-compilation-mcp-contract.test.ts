@@ -8,4 +8,5 @@ test('MCP expõe cobertura e localização da compilação grounded', () => {
   expect(source).toContain('completedSegments: true');
   expect(source).toContain('startLine: true');
   expect(source).toContain('endLine: true');
+  expect(source).toContain('conflicting_sources');
 });

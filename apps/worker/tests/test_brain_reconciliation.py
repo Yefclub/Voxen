@@ -306,6 +306,7 @@ async def test_grounded_segment_rolls_back_when_lease_is_lost(monkeypatch: Any) 
             compilation_id="compilation-1",
             segment={"key": "segment-1", "start_line": 1, "end_line": 2},
             items=[],
+            relations=[],
             lease=lease,
         )
 
