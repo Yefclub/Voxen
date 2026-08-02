@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785713547",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Fontes e citações integradas ao Chat",
+    "body": "Integra o painel de fontes ao layout do Chat e adiciona citações inline verificáveis às respostas.",
+    "pr": 574,
+    "author": "Kalyel",
+    "date": "2026-08-02T20:32:16-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/574"
+  },
+  {
     "version": "0.13.0-dev.1785706085",
     "channel": "dev",
     "type": "ui",
