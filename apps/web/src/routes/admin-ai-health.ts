@@ -8,7 +8,13 @@ import type { CostEvent, CostEventKind, JobType } from '../../prisma-generated/c
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isModelCompatibleWithPurpose, type ModelPurpose } from '../lib/model-defaults';
-import { listUserModels, OpenrouterError, type OrModel } from '../lib/openrouter';
+import {
+  listUserModels,
+  OpenrouterError,
+  probeOpenRouterCapability,
+  type OpenRouterProbePurpose,
+  type OrModel,
+} from '../lib/openrouter';
 import { getSettings } from '../lib/settings';
 
 type Vars = { adminUserId: string };
@@ -31,7 +37,7 @@ adminAiHealthRoutes.use('*', async (c, next) => {
 });
 
 type AiCapabilityDefinition = {
-  id: string;
+  id: OpenRouterProbePurpose;
   setting:
     | 'default_chat_model'
     | 'default_transcription_model'
@@ -124,6 +130,14 @@ function costEventSource(meta: CostEvent['meta']): string | null {
   return typeof source === 'string' ? source : null;
 }
 
+function costEventLatency(meta: CostEvent['meta']): number | null {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  const latencyMs = (meta as { latencyMs?: unknown }).latencyMs;
+  return typeof latencyMs === 'number' && Number.isFinite(latencyMs) && latencyMs >= 0
+    ? latencyMs
+    : null;
+}
+
 function eventMatchesCapability(
   event: Pick<CostEvent, 'model' | 'kind' | 'meta'>,
   capability: (typeof CAPABILITIES)[number],
@@ -175,7 +189,7 @@ function availabilityFor(
   return { availability: 'ACTIVE', reason: null, model };
 }
 
-async function buildHealth() {
+async function buildHealth(includeOperationalData = true) {
   const settings = await getSettings(HealthInputKeys);
   const apiKey = settings.openrouter_api_key;
   let catalog: OrModel[] | null = [];
@@ -203,22 +217,43 @@ async function buildHealth() {
         : settings[capability.setting];
     return modelId;
   }).filter((modelId): modelId is string => modelId !== null);
-  const metrics = await db.costEvent.findMany({
-    where: { model: { in: effectiveModels } },
-    select: {
-      model: true,
-      kind: true,
-      meta: true,
-      costUsd: true,
-      tokensIn: true,
-      tokensOut: true,
-      ts: true,
-    },
-  });
-  const currentRevision = await db.configRevision.findFirst({
-    orderBy: { number: 'desc' },
-    select: { id: true, number: true, createdAt: true },
-  });
+  const metrics = includeOperationalData
+    ? await db.costEvent.findMany({
+        where: { model: { in: effectiveModels } },
+        select: {
+          model: true,
+          kind: true,
+          meta: true,
+          costUsd: true,
+          tokensIn: true,
+          tokensOut: true,
+          ts: true,
+          jobId: true,
+        },
+      })
+    : [];
+  const jobIds = metrics.flatMap((event) => (event.jobId ? [event.jobId] : []));
+  const [currentRevision, jobs] = includeOperationalData
+    ? await Promise.all([
+        db.configRevision.findFirst({
+          orderBy: { number: 'desc' },
+          select: { id: true, number: true, createdAt: true },
+        }),
+        jobIds.length > 0
+          ? db.job.findMany({
+              where: { id: { in: jobIds }, startedAt: { not: null }, finishedAt: { not: null } },
+              select: { id: true, startedAt: true, finishedAt: true },
+            })
+          : [],
+      ])
+    : [null, [] as Array<{ id: string; startedAt: Date | null; finishedAt: Date | null }>];
+  const jobLatencyById = new Map(
+    jobs.flatMap((job) =>
+      job.startedAt && job.finishedAt
+        ? [[job.id, job.finishedAt.getTime() - job.startedAt.getTime()]]
+        : [],
+    ),
+  );
 
   const capabilities = await Promise.all(
     CAPABILITIES.map(async (capability) => {
@@ -229,7 +264,7 @@ async function buildHealth() {
       const state = availabilityFor(capability, modelId, embeddingsEnabled, catalog);
       const rows = metrics.filter((event) => eventMatchesCapability(event, capability, modelId));
       const lastFailure =
-        capability.jobTypes.length === 0
+        !includeOperationalData || capability.jobTypes.length === 0
           ? null
           : await db.job.findFirst({
               where: { type: { in: [...capability.jobTypes] }, errorMsg: { not: null } },
@@ -252,8 +287,19 @@ async function buildHealth() {
             const usedAt = row.ts;
             return !latest || (usedAt && usedAt > latest) ? usedAt : latest;
           }, null),
-          latencyMs: null,
+          latencyMs: (() => {
+            const latencies = rows.flatMap((row) => {
+              const measured = costEventLatency(row.meta);
+              if (measured !== null) return [measured];
+              const jobLatency = row.jobId ? jobLatencyById.get(row.jobId) : undefined;
+              return typeof jobLatency === 'number' && jobLatency >= 0 ? [jobLatency] : [];
+            });
+            return latencies.length > 0
+              ? Math.round(latencies.reduce((sum, latency) => sum + latency, 0) / latencies.length)
+              : null;
+          })(),
         },
+        failureTelemetry: capability.jobTypes.length > 0,
         lastFailure: lastFailure
           ? { message: lastFailure.errorMsg, at: lastFailure.finishedAt }
           : null,
@@ -270,6 +316,16 @@ async function buildHealth() {
   };
 }
 
+/** Projeção sem configuração ou métricas para telas de usuários comuns. */
+export async function getPublicActiveCapabilities(): Promise<{ active: OpenRouterProbePurpose[] }> {
+  const health = await buildHealth(false);
+  return {
+    active: health.capabilities
+      .filter((capability) => capability.availability === 'ACTIVE')
+      .map((capability) => capability.id),
+  };
+}
+
 adminAiHealthRoutes.get('/', async (c) => {
   const { catalog: _catalog, ...health } = await buildHealth();
   return c.json(health);
@@ -277,9 +333,8 @@ adminAiHealthRoutes.get('/', async (c) => {
 
 const CapabilityParams = z.object({ capability: z.string().trim().min(1).max(40) }).strict();
 
-// Verificação remota sem criar conteúdo: consulta somente o catálogo autorizado
-// e avalia a finalidade selecionada. Nenhuma nota, transcrição ou CostEvent é
-// escrita por este endpoint.
+// Verificação remota sem criar conteúdo no Voxen. Nenhuma nota, transcrição,
+// job ou CostEvent é escrita por este endpoint.
 adminAiHealthRoutes.post('/test', async (c) => {
   const parsed = CapabilityParams.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success || !capabilityById(parsed.data.capability)) {
@@ -287,6 +342,29 @@ adminAiHealthRoutes.post('/test', async (c) => {
   }
   const health = await buildHealth();
   const capability = health.capabilities.find((item) => item.id === parsed.data.capability)!;
+  if (capability.availability !== 'ACTIVE' || !capability.modelId) {
+    return c.json({
+      capability: capability.id,
+      ok: false,
+      reason: capability.reason,
+      checkedAt: new Date().toISOString(),
+    });
+  }
+  try {
+    const settings = await getSettings(['openrouter_api_key'] as const);
+    if (!settings.openrouter_api_key) throw new OpenrouterError('Chave ausente.');
+    await probeOpenRouterCapability(settings.openrouter_api_key, capability.modelId, capability.id);
+  } catch (error) {
+    return c.json({
+      capability: capability.id,
+      ok: false,
+      reason:
+        error instanceof OpenrouterError
+          ? 'A verificação remota falhou. Revise a chave, créditos e disponibilidade do provedor.'
+          : 'Não foi possível executar a verificação remota.',
+      checkedAt: new Date().toISOString(),
+    });
+  }
   return c.json({
     capability: capability.id,
     ok: capability.availability === 'ACTIVE',

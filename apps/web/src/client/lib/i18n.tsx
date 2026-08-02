@@ -816,6 +816,9 @@ const ptBRMessages = {
   'admin.integrations.aiHealth.cost': 'Custo',
   'admin.integrations.aiHealth.lastUsed': 'Último uso',
   'admin.integrations.aiHealth.latencyUnavailable': 'A latência histórica ainda não é persistida.',
+  'admin.integrations.aiHealth.latency': 'Latência média: {ms} ms',
+  'admin.integrations.aiHealth.failureTelemetryUnavailable':
+    'Ainda não há telemetria persistida de falhas para esta capacidade.',
   'admin.integrations.aiHealth.test': 'Verificar',
   'admin.integrations.aiHealth.testSuccess': 'Capacidade verificada sem criar conteúdo.',
   'admin.integrations.aiHealth.testFailure': 'A capacidade não está pronta para uso.',
@@ -2130,6 +2133,9 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.aiHealth.cost': 'Cost',
   'admin.integrations.aiHealth.lastUsed': 'Last use',
   'admin.integrations.aiHealth.latencyUnavailable': 'Historical latency is not persisted yet.',
+  'admin.integrations.aiHealth.latency': 'Average latency: {ms} ms',
+  'admin.integrations.aiHealth.failureTelemetryUnavailable':
+    'Failure telemetry is not persisted for this capability yet.',
   'admin.integrations.aiHealth.test': 'Check',
   'admin.integrations.aiHealth.testSuccess': 'Capability checked without creating content.',
   'admin.integrations.aiHealth.testFailure': 'The capability is not ready to use.',

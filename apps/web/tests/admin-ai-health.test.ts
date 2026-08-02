@@ -7,6 +7,7 @@ const describeIfDb = process.env.DATABASE_URL ? describe : describe.skip;
 const KEY = 'sk-or-v1-' + 'x'.repeat(40);
 
 let originalFetch: typeof globalThis.fetch;
+let probeRequests = 0;
 
 function installCatalogMock(): void {
   globalThis.fetch = ((input, init) => {
@@ -33,6 +34,7 @@ function installCatalogMock(): void {
         }),
       );
     }
+    if (init?.method === 'POST') probeRequests += 1;
     return Promise.resolve(new Response('{}', { status: 200 }));
   }) as typeof globalThis.fetch;
 }
@@ -74,6 +76,7 @@ async function createAdmin(): Promise<{ id: string; cookie: string }> {
 describeIfDb('/api/admin/ai-health', () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
+    probeRequests = 0;
     await db.costEvent.deleteMany();
     await db.configRevision.deleteMany();
     await db.setting.deleteMany();
@@ -97,6 +100,17 @@ describeIfDb('/api/admin/ai-health', () => {
   it('expõe sete capacidades e métricas agregadas sem vazar a chave', async () => {
     const admin = await createAdmin();
     installCatalogMock();
+    const startedAt = new Date('2026-01-01T00:00:00.000Z');
+    const visionJob = await db.job.create({
+      data: {
+        userId: admin.id,
+        type: 'UPLOAD_AND_ANALYZE_IMAGE',
+        sourceUrl: 'upload://health-check.png',
+        status: 'DONE',
+        startedAt,
+        finishedAt: new Date('2026-01-01T00:00:01.500Z'),
+      },
+    });
     await db.costEvent.create({
       data: {
         userId: admin.id,
@@ -115,6 +129,7 @@ describeIfDb('/api/admin/ai-health', () => {
         tokensIn: 4,
         tokensOut: 2,
         costUsd: '0.003',
+        jobId: visionJob.id,
         meta: { source: 'image_upload' },
       },
     });
@@ -127,7 +142,7 @@ describeIfDb('/api/admin/ai-health', () => {
       capabilities: Array<{
         id: string;
         availability: string;
-        metrics: { events: number; costUsd: number };
+        metrics: { events: number; costUsd: number; latencyMs: number | null };
       }>;
     };
     expect(JSON.stringify(body)).not.toContain(KEY);
@@ -138,11 +153,17 @@ describeIfDb('/api/admin/ai-health', () => {
     });
     expect(body.capabilities.find((item) => item.id === 'vision')).toMatchObject({
       availability: 'ACTIVE',
-      metrics: { events: 1, costUsd: 0.003 },
+      metrics: { events: 1, costUsd: 0.003, latencyMs: 1500 },
     });
     expect(body.capabilities.find((item) => item.id === 'embeddings')?.availability).toBe(
       'INACTIVE',
     );
+    const publicCapabilities = await app.fetch(new Request('http://localhost/api/capabilities'));
+    const publicBody = (await publicCapabilities.json()) as { active: string[] };
+    expect(publicBody.active).toContain('vision');
+    expect(publicBody.active).not.toContain('embeddings');
+    expect(JSON.stringify(publicBody)).not.toContain('grok-4.5');
+    expect(JSON.stringify(publicBody)).not.toContain(KEY);
   });
 
   it('verifica uma capacidade sem criar conteúdo, evento de custo ou revisão', async () => {
@@ -164,6 +185,7 @@ describeIfDb('/api/admin/ai-health', () => {
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ capability: 'vision', ok: true });
+    expect(probeRequests).toBe(1);
     await expect(
       Promise.all([
         db.note.count(),

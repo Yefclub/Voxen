@@ -128,6 +128,7 @@ type AiHealthCapability = {
     lastUsedAt: string | null;
     latencyMs: number | null;
   };
+  failureTelemetry: boolean;
   lastFailure: { message: string | null; at: string | null } | null;
 };
 
@@ -322,10 +323,19 @@ function AiHealthSection(): React.ReactElement {
                   />
                 </div>
                 <p className="mt-3 text-[11px] text-[var(--color-app-muted)]">
-                  {t('admin.integrations.aiHealth.latencyUnavailable')}
+                  {capability.metrics.latencyMs === null
+                    ? t('admin.integrations.aiHealth.latencyUnavailable')
+                    : t('admin.integrations.aiHealth.latency', {
+                        ms: capability.metrics.latencyMs,
+                      })}
                 </p>
                 {capability.lastFailure && (
                   <p className="mt-2 text-xs text-red-200/90">{capability.lastFailure.message}</p>
+                )}
+                {!capability.lastFailure && !capability.failureTelemetry && (
+                  <p className="mt-2 text-[11px] text-[var(--color-app-muted)]">
+                    {t('admin.integrations.aiHealth.failureTelemetryUnavailable')}
+                  </p>
                 )}
                 <div className="mt-3 flex gap-2">
                   <Button

@@ -16,7 +16,7 @@ que uma funcionalidade falhe para os usuários.
 ### Ubiquitous
 
 - The system shall apresentar ao administrador modelo efetivo, modalidade, disponibilidade, última utilização, última falha conhecida e métricas agregadas por finalidade.
-- The system shall calcular custo e latência agregados sem expor dados de conteúdo de outro usuário.
+- The system shall calcular custo e latência agregados a partir de eventos de custo e duração de jobs, sem expor dados de conteúdo de outro usuário.
 - The system shall associar a visão administrativa à revisão global corrente quando houver revisão.
 
 ### Event-driven
@@ -40,12 +40,12 @@ que uma funcionalidade falhe para os usuários.
 
 ## Critérios de Aceite
 
-- [ ] Admin vê as sete finalidades, modelo, modalidade, disponibilidade, métricas e revisão atual.
-- [ ] Usuário comum recebe apenas capacidades ativas.
-- [ ] Teste administrativo não cria conteúdo persistente.
-- [ ] Simulação aponta impactos de modelo incompatível antes de salvar.
-- [ ] Falhas operacionais são acionáveis sem expor segredos.
-- [ ] Testes cobrem autorização, disponibilidade, teste sem persistência, impacto e isolamento de métricas.
+- [x] Admin vê as sete finalidades, modelo, modalidade, disponibilidade, métricas e revisão atual.
+- [x] Usuário comum recebe apenas capacidades ativas.
+- [x] Teste administrativo não cria conteúdo persistente.
+- [x] Simulação aponta impactos de modelo incompatível antes de salvar.
+- [x] Falhas operacionais são acionáveis sem expor segredos.
+- [x] Testes cobrem autorização, disponibilidade, teste sem persistência, impacto e isolamento de métricas.
 
 ## Fora de Escopo
 
@@ -54,4 +54,4 @@ que uma funcionalidade falhe para os usuários.
 
 ## Riscos / Decisões pendentes
 
-- Nem todos os provedores retornam latência histórica; enquanto não houver telemetria persistida, a interface deve declarar a ausência em vez de inventar um valor.
+- Nem todos os fluxos persistem tempo de resposta diretamente; quando não houver evento cronometrado nem job concluído, a interface deve declarar a ausência em vez de inventar um valor.

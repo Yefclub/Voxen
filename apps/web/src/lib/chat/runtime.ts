@@ -1963,7 +1963,7 @@ export async function streamAssistantReply(options: {
       tokensIn: usage.inputTokens ?? 0,
       tokensOut: usage.outputTokens ?? 0,
       costUsd: 0,
-      meta: { toolCount: tools.length },
+      meta: { toolCount: tools.length, latencyMs: Math.max(0, Date.now() - providerStartedAt) },
     },
   });
   emit({
