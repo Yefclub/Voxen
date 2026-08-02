@@ -79,6 +79,14 @@ export async function publishJobEvent(
   pub: Redis = getRedisPublisher(),
 ): Promise<void> {
   const stored = await db.$transaction(async (tx) => {
+    // O worker recebe `userId` junto do job. Nunca confiamos nessa dupla sem
+    // reconfirmar a posse antes de persistir o evento: um job de outro
+    // workspace não pode ganhar histórico/progresso nem alcançar seus canais.
+    const job = await tx.job.findFirst({
+      where: { id: evt.jobId, userId },
+      select: { id: true },
+    });
+    if (!job) throw new Error('Job não pertence ao workspace informado.');
     const event = await tx.jobProgressEvent.create({
       data: {
         jobId: evt.jobId,
