@@ -17,6 +17,28 @@ describe('regressões de interface confirmadas em produção', () => {
     expect(notes).toContain('min-w-0');
   });
 
+  test('notas revalidam ao entrar ou retornar à aba e abrem em Preview', () => {
+    const notes = read('pages/notas.tsx');
+    const notesStore = read('lib/use-notes.ts');
+    expect(notes).toContain('void refresh();');
+    expect(notes).toContain("window.addEventListener('focus', revalidateWhenVisible)");
+    expect(notes).toContain("document.addEventListener('visibilitychange', revalidateWhenVisible)");
+    expect(notes).toContain('const [previewMode, setPreviewMode] = useState(true);');
+    expect(notes).toContain('key={id}');
+    expect(notes).toContain('<h2 className="min-w-0 flex-1 truncate');
+    expect(notesStore).toContain('createLatestOnlyRevalidator');
+    expect(notesStore).toContain('requestId === latestRequestId || applyWhenStale(next)');
+    expect(notesStore).toContain(
+      'if (next !== null && (requestId === latestRequestId || applyWhenStale(next)))',
+    );
+    expect(notesStore).toContain('accessRevoked: true');
+    expect(notesStore).toContain('(result) => result.accessRevoked');
+    expect(notesStore).toContain('if (isInitialLoad) setLoading(true);');
+    expect(notes).toContain('if (notesLoading || revalidationStarted.current) return;');
+    expect(notes).toContain('if (enteredWithInitialLoad.current) return;');
+    expect(notes).toContain('focusRefreshInFlight');
+  });
+
   test('detalhe de job volta para a fila e possui heading principal', () => {
     const jobs = read('pages/jobs-detalhe.tsx');
     expect(jobs).toContain('<Link to="/fila">');
