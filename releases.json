@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785680287",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Tokens MCP individuais e revogáveis",
+    "body": "O MCP agora usa tokens individuais por usuário, com escopos de leitura/escrita,\nexpiração, último uso e revogação. Administradores gerenciam metadados sem ver\nsegredos novamente e podem desativar a emissão de tokens por usuários.",
+    "pr": 556,
+    "author": "Kalyel",
+    "date": "2026-08-02T11:17:47-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/556"
+  },
+  {
     "version": "0.13.0-dev.1785678128",
     "channel": "dev",
     "type": "feat",
