@@ -92,3 +92,17 @@ export function buildHitlResumePrompt(args: {
 export function shouldResumeAfterApprove(args: { approved: boolean; action: string }): boolean {
   return args.approved && isHitlWriteAction(args.action);
 }
+
+/**
+ * Decide se o `content` do turno deve ser injetado como mensagem user extra no
+ * call do modelo (resume HITL: prompt sintético ausente da trilha USER).
+ */
+export function shouldInjectTurnContentAsUserMessage(args: {
+  content: string;
+  history: ReadonlyArray<{ role: string; content: string }>;
+}): boolean {
+  if (!args.content.trim()) return false;
+  return !args.history.some(
+    (message) => message.role === 'USER' && message.content === args.content,
+  );
+}

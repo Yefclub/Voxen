@@ -5,6 +5,7 @@ import {
   parseAlwaysAllowActions,
   resolveProposeCreateNoteApproval,
   serializeAlwaysAllowActions,
+  shouldInjectTurnContentAsUserMessage,
   shouldRequireHitlApproval,
   shouldResumeAfterApprove,
   withAlwaysAllowAction,
@@ -75,5 +76,28 @@ describe('resume após approve', () => {
     expect(prompt.toLowerCase()).toContain('confirm');
     expect(prompt).toContain('Continue o plano anterior');
     expect(prompt).not.toContain('n1');
+  });
+
+  test('injeta content sintético no call do modelo só quando não está na trilha USER', () => {
+    const resume = buildHitlResumePrompt({
+      action: HITL_ACTION_CREATE_NOTE,
+      title: 'X',
+    });
+    expect(
+      shouldInjectTurnContentAsUserMessage({
+        content: resume,
+        history: [
+          { role: 'USER', content: 'cria uma nota' },
+          { role: 'ASSISTANT', content: '' },
+          { role: 'SYSTEM', content: 'Nota “X” criada após confirmação do usuário.' },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      shouldInjectTurnContentAsUserMessage({
+        content: 'cria uma nota',
+        history: [{ role: 'USER', content: 'cria uma nota' }],
+      }),
+    ).toBe(false);
   });
 });

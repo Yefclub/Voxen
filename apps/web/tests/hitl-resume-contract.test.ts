@@ -24,6 +24,8 @@ describe('contrato HITL resume + always-allow (spec 132)', () => {
     expect(runtime).toContain("handledBy: 'always_allow'");
     expect(runtime).toContain('grantAlwaysAllowAction');
     expect(runtime).toContain('buildHitlResumePrompt');
+    expect(runtime).toContain('shouldInjectTurnContentAsUserMessage');
+    expect(runtime).toContain('modelMessages');
   });
 
   test('UI expõe Confirmar e Sempre permitir e consome stream do approve', () => {

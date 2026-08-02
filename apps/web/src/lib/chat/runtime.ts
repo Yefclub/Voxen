@@ -42,6 +42,7 @@ import {
   HITL_ACTION_CREATE_NOTE,
   buildHitlResumePrompt,
   resolveProposeCreateNoteApproval,
+  shouldInjectTurnContentAsUserMessage,
   shouldResumeAfterApprove,
 } from './hitl-policy';
 import { grantAlwaysAllowAction, loadAlwaysAllowActions } from './hitl-preferences';
@@ -1669,6 +1670,17 @@ export async function streamAssistantReply(options: {
     preparationMs: providerStartedAt - runtimeStartedAt,
     totalToProviderStartMs: providerStartedAt - requestStartedAt,
   });
+  // Histórico da trilha. No resume HITL (spec 132) o `content` é um prompt
+  // sintético (não é uma bolha USER na trilha) — injeta como última mensagem
+  // user só no call do modelo, para o agente continuar o plano.
+  const historyMessages = toModelMessages(active);
+  const modelMessages: ModelMessage[] = shouldInjectTurnContentAsUserMessage({
+    content,
+    history: active,
+  })
+    ? [...historyMessages, { role: 'user', content }]
+    : historyMessages;
+
   const result = streamText({
     model: provider(modelConfig.model),
     instructions: AGENT_INSTRUCTIONS + clock + suggestions + buildUrlIntentInstructions(urlIntent),
@@ -1676,7 +1688,7 @@ export async function streamAssistantReply(options: {
     // SYSTEM rows (compaction summaries, HITL responses) are server-authored
     // only — never from the client — so allowing them preserves trusted history.
     allowSystemInMessages: true,
-    messages: toModelMessages(active),
+    messages: modelMessages,
     tools: buildTools(userId, {
       abortSignal,
       emitStatus: (label) => emit({ type: 'status', label }),
