@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.13.0-dev.1785713547 — 2026-08-02 · Dev
+
+### 🎨 Fontes e citações integradas ao Chat
+
+Integra o painel de fontes ao layout do Chat e adiciona citações inline verificáveis às respostas.
+
 ## v0.13.0-dev.1785706085 — 2026-08-02 · Dev
 
 ### 🎨 Fontes do chat ficam mais fáceis de consultar e o Brain abre completo
