@@ -158,6 +158,21 @@ async def record_job_progress(
     created_at = _utcnow_naive()
     async with connection() as conn:
         async with conn.transaction():
+            # O payload do worker sempre carrega user_id e job_id. Validar a
+            # dupla dentro da mesma transação evita que erro de roteamento
+            # persista progresso de um job pertencente a outro workspace.
+            owner = await conn.fetchrow(
+                """
+                SELECT id
+                FROM "Job"
+                WHERE id = $1 AND "userId" = $2
+                FOR KEY SHARE
+                """,
+                job_id,
+                user_id,
+            )
+            if owner is None:
+                raise ValueError("job does not belong to the informed workspace")
             await conn.execute(
                 """
                 INSERT INTO "JobProgressEvent" (
