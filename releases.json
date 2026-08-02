@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785690745",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Base de testes passa a medir qualidade de busca e citações",
+    "body": "O Voxen agora mantém um corpus sintético para comparar busca textual, híbrida e\nBrain. Isso ajuda a evitar regressões de fontes e citações sem enviar dados ou\nperguntas reais a serviços externos durante os testes.",
+    "pr": 566,
+    "author": "Kalyel",
+    "date": "2026-08-02T14:12:09-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/566"
+  },
+  {
     "version": "0.13.0-dev.1785687938",
     "channel": "dev",
     "type": "feat",

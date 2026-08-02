@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.0-dev.1785690745 — 2026-08-02 · Dev
+
+### 🧹 Base de testes passa a medir qualidade de busca e citações
+
+O Voxen agora mantém um corpus sintético para comparar busca textual, híbrida e
+Brain. Isso ajuda a evitar regressões de fontes e citações sem enviar dados ou
+perguntas reais a serviços externos durante os testes.
+
 ## v0.13.0-dev.1785687938 — 2026-08-02 · Dev
 
 ### ✨ Busca encontra conteúdos por significado, não apenas por palavras-chave
