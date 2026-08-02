@@ -77,10 +77,14 @@ persistente e fixa perto do composer, e só então executar o efeito colateral.
 
 ## Fora de Escopo
 
-- Retomada automática do agente (segundo turno LLM) após a aprovação.
-- UI de rejeitar/editar parâmetros da proposta (apenas confirmar).
+- ~~Retomada automática do agente (segundo turno LLM) após a aprovação.~~
+  **Superseded por spec 132** — resume + always-allow.
+- UI de rejeitar/editar parâmetros da proposta (apenas confirmar; 132 adiciona
+  “sempre permitir”, não recusar).
 - Migração do chat para `useChat` / UIMessageStream.
 - Playwright e subida de Docker nesta entrega.
+
+> 2026-08-02: spec 132 implementa resume pós-approve e always-allow por ação.
 
 ## Riscos / Decisões pendentes
 

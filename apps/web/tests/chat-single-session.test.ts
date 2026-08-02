@@ -12,8 +12,16 @@ import { db } from '../src/lib/db';
 import {
   ChatTurnBusyError,
   createChatTurn,
+  createHitlResumeTurn,
   recoverOrphanedUserTurn,
+  takeResumePromptForTurn,
 } from '../src/lib/chat/turn-runtime';
+import { loadAlwaysAllowActions } from '../src/lib/chat/hitl-preferences';
+import {
+  HITL_ACTION_CREATE_NOTE,
+  resolveProposeCreateNoteApproval,
+  shouldRequireHitlApproval,
+} from '../src/lib/chat/hitl-policy';
 
 const describeIfDb = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -25,6 +33,15 @@ async function clean(): Promise<void> {
   await db.chatMessage.deleteMany();
   await db.conversation.deleteMany();
   await db.note.deleteMany({ where: { user: { email: { startsWith: 'chat-test-' } } } });
+  const testUsers = await db.user.findMany({
+    where: { email: { startsWith: 'chat-test-' } },
+    select: { id: true },
+  });
+  if (testUsers.length > 0) {
+    await db.setting.deleteMany({
+      where: { scope: 'USER', userId: { in: testUsers.map((u) => u.id) } },
+    });
+  }
   await db.user.deleteMany({ where: { email: { startsWith: 'chat-test-' } } });
 }
 
@@ -219,11 +236,15 @@ describeIfDb('chat de sessão única', () => {
     });
     const result = await approveChatAction(user.id, approvalId);
     expect(result.noteId).toBeTruthy();
+    expect(result.shouldResume).toBe(true);
+    expect(result.resumePrompt.length).toBeGreaterThan(10);
+    expect(result.hitlMessageId).toBeTruthy();
     expect(await db.note.count({ where: { id: result.noteId, userId: user.id } })).toBe(1);
     const hitlMessage = await db.chatMessage.findFirst({
       where: { conversationId: conversation.id, kind: 'HITL_RESPONSE' },
     });
     expect(hitlMessage?.tools).toBeNull();
+    expect(hitlMessage?.id).toBe(result.hitlMessageId);
     const assistant = await db.chatMessage.findFirst({
       where: { conversationId: conversation.id, role: 'ASSISTANT' },
     });
@@ -233,7 +254,82 @@ describeIfDb('chat de sessão única', () => {
     }>;
     expect(tools?.[0]?.state).toBe('completed');
     expect(tools?.[0]?.output?.approvalRequired).toBe(false);
+
+    // Resume turn (spec 132): one assistant after HITL; prompt stored for runChatTurn.
+    const resumeTurn = await createHitlResumeTurn(user.id, {
+      conversationId: conversation.id,
+      hitlMessageId: result.hitlMessageId,
+      resumeContent: result.resumePrompt,
+    });
+    expect(resumeTurn.userMessageId).toBe(result.hitlMessageId);
+    expect(takeResumePromptForTurn(resumeTurn.id)).toBe(result.resumePrompt);
+    expect(takeResumePromptForTurn(resumeTurn.id)).toBeNull();
+    const resumeAssistant = await db.chatMessage.findUnique({
+      where: { id: resumeTurn.assistantMessageId },
+    });
+    expect(resumeAssistant?.parentId).toBe(result.hitlMessageId);
+
     await expect(approveChatAction(user.id, approvalId)).rejects.toThrow();
+  });
+
+  it('always-allow grava preferência e desliga o pause de create_note', async () => {
+    const user = await db.user.create({
+      data: {
+        email: 'chat-test-always-allow@voxen.local',
+        name: 'Always Allow',
+        status: 'APPROVED',
+      },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const approvalId = 'approval:always-allow-01';
+    await db.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: '',
+        tools: [
+          {
+            id: 'tool-aa',
+            name: 'propose_create_note',
+            state: 'approval-required',
+            output: {
+              approvalRequired: true,
+              approvalId,
+              action: 'create_note',
+              title: 'Nota free',
+            },
+          },
+        ],
+      },
+    });
+    await db.chatApproval.create({
+      data: {
+        id: approvalId,
+        userId: user.id,
+        conversationId: conversation.id,
+        providerApprovalId: approvalId,
+        action: 'create_note',
+        payload: { title: 'Nota free', content: 'livre' },
+        expiresAt: null,
+      },
+    });
+
+    expect(
+      shouldRequireHitlApproval({ action: HITL_ACTION_CREATE_NOTE, alwaysAllowed: new Set() }),
+    ).toBe(true);
+    expect(resolveProposeCreateNoteApproval(false)).toBe('user-approval');
+
+    const result = await approveChatAction(user.id, approvalId, { alwaysAllow: true });
+    expect(result.noteId).toBeTruthy();
+    const allowed = await loadAlwaysAllowActions(user.id);
+    expect(allowed.has(HITL_ACTION_CREATE_NOTE)).toBe(true);
+    expect(
+      shouldRequireHitlApproval({
+        action: HITL_ACTION_CREATE_NOTE,
+        alwaysAllowed: allowed,
+      }),
+    ).toBe(false);
+    expect(resolveProposeCreateNoteApproval(true)).toBe('approved');
   });
 
   it('isola o mesmo approvalId opaco entre usuários e preserva seus bytes', async () => {

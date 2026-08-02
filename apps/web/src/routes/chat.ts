@@ -22,6 +22,7 @@ import {
   ChatTurnBusyError,
   ChatTurnVersionTargetError,
   createChatTurn,
+  createHitlResumeTurn,
   recoverOrphanedUserTurn,
   runChatTurn,
 } from '../lib/chat/turn-runtime';
@@ -305,10 +306,57 @@ chatRoutes.post('/messages/:id/activate', async (c) => {
 });
 
 chatRoutes.post('/approve', async (c) => {
+  const requestStartedAt = Date.now();
   const parsed = ApprovalBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: 'Confirmação inválida.' }, 400);
+  const userId = c.get('userId');
   try {
-    return c.json(await approveChatAction(c.get('userId'), parsed.data.approvalId));
+    const approved = await approveChatAction(userId, parsed.data.approvalId, {
+      alwaysAllow: parsed.data.alwaysAllow === true,
+    });
+    if (!approved.shouldResume) {
+      return c.json({
+        message: approved.message,
+        noteId: approved.noteId,
+        resume: false,
+      });
+    }
+    // Spec 132: after side effect, open an agent resume turn as SSE (same
+    // shape as POST /api/chat) so the model continues the plan.
+    let turn: Awaited<ReturnType<typeof createHitlResumeTurn>>;
+    try {
+      turn = await createHitlResumeTurn(userId, {
+        conversationId: approved.conversationId,
+        hitlMessageId: approved.hitlMessageId,
+        resumeContent: approved.resumePrompt,
+      });
+    } catch (error) {
+      if (error instanceof ChatTurnBusyError) {
+        // Note already created; client can refresh. Resume deferred.
+        return c.json({
+          message: approved.message,
+          noteId: approved.noteId,
+          resume: false,
+          resumeDeferred: true,
+        });
+      }
+      throw error;
+    }
+    // Prefer Accept: text/event-stream or ?stream=1; default SSE for resume.
+    const wantsJson =
+      c.req.header('accept')?.includes('application/json') &&
+      !c.req.header('accept')?.includes('text/event-stream');
+    if (wantsJson && c.req.query('stream') !== '1') {
+      return c.json({
+        message: approved.message,
+        noteId: approved.noteId,
+        resume: true,
+        turnId: turn.id,
+        userMessageId: turn.userMessageId,
+        assistantMessageId: turn.assistantMessageId,
+      });
+    }
+    return streamTurnResponse(turn, requestStartedAt);
   } catch (error) {
     return c.json(
       { error: error instanceof Error ? error.message : 'Não foi possível confirmar.' },

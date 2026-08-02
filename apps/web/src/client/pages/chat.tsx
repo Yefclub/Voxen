@@ -488,42 +488,55 @@ function HitlConfirmBar({
 }: {
   pending: PendingHitl[];
   approving: ReadonlySet<string>;
-  onApprove: (id: string) => void;
+  onApprove: (id: string, options?: { alwaysAllow?: boolean }) => void;
 }): React.ReactElement | null {
   const { t } = useI18n();
   if (pending.length === 0) return null;
   return (
     <div className="mb-2 flex flex-col gap-2" role="region" aria-label={t('chat.hitlRegion')}>
-      {pending.map((item) => (
-        <div
-          key={item.approvalId}
-          className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-accent-amber)]/30 bg-[var(--color-accent-amber)]/10 px-3 py-2.5"
-        >
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-[var(--color-app-fg)]">
-              {item.title
-                ? t('chat.hitlProposeNote', { title: item.title })
-                : t('chat.confirmationTitle')}
-            </p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
-              {t('chat.hitlConfirmHint')}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onApprove(item.approvalId)}
-            disabled={approving.has(item.approvalId)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
+      {pending.map((item) => {
+        const busy = approving.has(item.approvalId);
+        return (
+          <div
+            key={item.approvalId}
+            className="flex flex-col gap-2 rounded-xl border border-[var(--color-accent-amber)]/30 bg-[var(--color-accent-amber)]/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
           >
-            {approving.has(item.approvalId) ? (
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Check className="h-3.5 w-3.5" />
-            )}{' '}
-            {t('chat.confirm')}
-          </button>
-        </div>
-      ))}
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-[var(--color-app-fg)]">
+                {item.title
+                  ? t('chat.hitlProposeNote', { title: item.title })
+                  : t('chat.confirmationTitle')}
+              </p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
+                {t('chat.hitlConfirmHint')}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => onApprove(item.approvalId, { alwaysAllow: true })}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-accent-amber)]/40 bg-transparent px-2.5 py-1.5 text-xs font-medium text-[var(--color-app-fg)] hover:bg-[var(--color-accent-amber)]/15 disabled:cursor-wait disabled:opacity-60"
+              >
+                {t('chat.hitlAlwaysAllow')}
+              </button>
+              <button
+                type="button"
+                onClick={() => onApprove(item.approvalId)}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
+              >
+                {busy ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Check className="h-3.5 w-3.5" />
+                )}{' '}
+                {t('chat.confirm')}
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1231,20 +1244,153 @@ export function ChatPage(): React.ReactElement {
     prevScrollTopRef.current = scrollTop;
   }
 
-  async function approve(id: string): Promise<void> {
+  async function approve(id: string, options: { alwaysAllow?: boolean } = {}): Promise<void> {
+    if (streaming || switchingVersion) return;
     if (!claimPendingId(approvingHitlRef.current, id)) return;
     setApprovingHitl(new Set(approvingHitlRef.current));
+
+    // Resume SSE (spec 132): optimistic assistant bubble while the model continues.
+    const localStartedAt = new Date().toISOString();
+    const localAssistant: ChatMessage = {
+      id: `local-assistant-${crypto.randomUUID()}`,
+      role: 'ASSISTANT',
+      kind: 'NORMAL',
+      content: '',
+      tools: [],
+      compactedAt: null,
+      createdAt: localStartedAt,
+    };
+    let liveAssistantMessageId = localAssistant.id;
+    streamingAssistantId.current = localAssistant.id;
+    liveSegmentsRef.current = null;
+    setMessages((current) => [...current, localAssistant]);
+    setStreaming(true);
+    setStatus(t('chat.thinking'));
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let persistedActiveTurn: ActiveTurn | null = null;
+
     try {
-      const result = await apiPost<{ message: string }>('/api/chat/approve', { approvalId: id });
-      toast.success(result.message);
+      const response = await fetch('/api/chat/approve', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'text/event-stream',
+        },
+        body: JSON.stringify({
+          approvalId: id,
+          ...(options.alwaysAllow ? { alwaysAllow: true } : {}),
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? t('chat.approveError'));
+      }
+      const contentType = response.headers.get('content-type') ?? '';
+      // JSON path: approve without resume (busy) or legacy clients.
+      if (contentType.includes('application/json') || !response.body) {
+        const result = (await response.json()) as { message?: string };
+        if (result.message) toast.success(result.message);
+        if (getSoundsEnabled()) play('success');
+        await refresh().catch(() => undefined);
+        return;
+      }
       if (getSoundsEnabled()) play('success');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const apply = (event: StreamEvent): void => {
+        if (event.type === 'start') {
+          const previousAssistantMessageId = liveAssistantMessageId;
+          liveAssistantMessageId = event.assistantMessageId;
+          streamingAssistantId.current = event.assistantMessageId;
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === previousAssistantMessageId
+                ? { ...message, id: event.assistantMessageId }
+                : message,
+            ),
+          );
+        } else if (event.type === 'text') {
+          allowAnchorReengageRef.current = true;
+          setMessages((current) =>
+            current.map((message) => {
+              if (message.id !== liveAssistantMessageId) return message;
+              const segments = closeTrailingReasoning(message.segments ?? [], Date.now());
+              liveSegmentsRef.current = segments;
+              return { ...message, content: message.content + event.delta, segments };
+            }),
+          );
+        } else if (event.type === 'reasoning') {
+          setMessages((current) =>
+            current.map((message) => {
+              if (message.id !== liveAssistantMessageId) return message;
+              const segments = applySegmentEvent(message.segments ?? [], event, Date.now());
+              liveSegmentsRef.current = segments;
+              return { ...message, segments };
+            }),
+          );
+        } else if (event.type === 'status') {
+          const statusKey = chatStatusI18nKey(event.code);
+          setStatus(statusKey ? t(statusKey) : event.label);
+        } else if (event.type === 'tool') {
+          setMessages((current) =>
+            current.map((message) => {
+              if (message.id !== liveAssistantMessageId) return message;
+              const segments = applySegmentEvent(message.segments ?? [], event, Date.now());
+              liveSegmentsRef.current = segments;
+              return { ...message, segments };
+            }),
+          );
+        } else if (event.type === 'error') {
+          setStatus(event.message);
+        } else if (event.type === 'done' && getSoundsEnabled()) {
+          play('success');
+        }
+      };
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() ?? '';
+        for (const frame of frames) {
+          const dataLine = frame.split('\n').find((line) => line.startsWith('data: '));
+          if (!dataLine) continue;
+          try {
+            apply(JSON.parse(dataLine.slice(6)) as StreamEvent);
+          } catch {
+            /* ignore invalid frame */
+          }
+        }
+      }
+      if (liveSegmentsRef.current) {
+        liveSegmentsRef.current = closeTrailingReasoning(liveSegmentsRef.current, Date.now());
+      }
+      const snapshot = await apiGet<Snapshot>('/api/chat');
+      persistedActiveTurn = snapshot.activeTurn;
+      applySnapshot(snapshot);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('chat.approveError'));
-    } finally {
-      // Always reload: success clears the card; stale/already-used heals ghosts.
+      if (!controller.signal.aborted) {
+        toast.error(error instanceof Error ? error.message : t('chat.approveError'));
+      }
       await refresh().catch(() => undefined);
+    } finally {
+      abortRef.current = null;
+      liveSegmentsRef.current = null;
       approvingHitlRef.current.delete(id);
       setApprovingHitl(new Set(approvingHitlRef.current));
+      if (persistedActiveTurn) {
+        streamingAssistantId.current = persistedActiveTurn.assistantMessageId;
+        setStreaming(true);
+        setStatus(t('chat.recovering'));
+      } else {
+        streamingAssistantId.current = null;
+        setStreaming(false);
+        setStatus(null);
+      }
     }
   }
 
@@ -1750,7 +1896,7 @@ export function ChatPage(): React.ReactElement {
               <HitlConfirmBar
                 pending={pendingHitl}
                 approving={approvingHitl}
-                onApprove={(id) => void approve(id)}
+                onApprove={(id, options) => void approve(id, options)}
               />
               <Composer
                 input={input}
