@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785678128",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Saúde operacional da configuração de IA",
+    "body": "Administradores agora veem quais capacidades de IA estão ativas, o modelo efetivo, modalidades, uso e custo agregados, revisão de configuração e falhas recentes. A tela também permite verificar uma finalidade sem criar conteúdo e simular a compatibilidade de um modelo antes da troca.",
+    "pr": 554,
+    "author": "Kalyel",
+    "date": "2026-08-02T10:41:48-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/554"
+  },
+  {
     "version": "0.13.0-dev.1785674957",
     "channel": "dev",
     "type": "fix",

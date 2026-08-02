@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.13.0-dev.1785678128 — 2026-08-02 · Dev
+
+### ✨ Saúde operacional da configuração de IA
+
+Administradores agora veem quais capacidades de IA estão ativas, o modelo efetivo, modalidades, uso e custo agregados, revisão de configuração e falhas recentes. A tela também permite verificar uma finalidade sem criar conteúdo e simular a compatibilidade de um modelo antes da troca.
+
 ## v0.13.0-dev.1785674957 — 2026-08-02 · Dev
 
 ### 🐛 Validação dos modelos efetivos na troca de chave OpenRouter
