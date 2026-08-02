@@ -799,10 +799,10 @@ export function ChatPage(): React.ReactElement {
   const returningToEndRef = useRef(false);
   const userScrollIntentUntilRef = useRef(0);
   /**
-   * Gate do reengage da âncora (spec 092): durante o stream, só libera quando
-   * a resposta final já tem texto. Tools/raciocínio sozinhos não devem
-   * desancorar e voltar pro stick-to-bottom. Lido no ResizeObserver via ref
-   * (o observer é montado uma vez; closure stale).
+   * Gate do reengage da âncora (spec 135): o primeiro conteúdo transmitido,
+   * inclusive raciocínio ou ferramenta, pode consumir a reserva e ativar o
+   * follow. A geometria ainda mantém a âncora enquanto esse conteúdo couber.
+   * Lido no ResizeObserver via ref (o observer é montado uma vez; closure stale).
    */
   const allowAnchorReengageRef = useRef(true);
   const { clearSignal } = useChatShell();
@@ -1324,6 +1324,9 @@ export function ChatPage(): React.ReactElement {
             }),
           );
         } else if (event.type === 'reasoning') {
+          // Raciocínio longo também consome a área reservada pela âncora. O
+          // ResizeObserver só ativa o follow depois que a reserva se esgota.
+          allowAnchorReengageRef.current = true;
           setMessages((current) =>
             current.map((message) => {
               if (message.id !== liveAssistantMessageId) return message;
@@ -1336,6 +1339,7 @@ export function ChatPage(): React.ReactElement {
           const statusKey = chatStatusI18nKey(event.code);
           setStatus(statusKey ? t(statusKey) : event.label);
         } else if (event.type === 'tool') {
+          allowAnchorReengageRef.current = true;
           setMessages((current) =>
             current.map((message) => {
               if (message.id !== liveAssistantMessageId) return message;
@@ -1512,7 +1516,7 @@ export function ChatPage(): React.ReactElement {
     streamingAssistantId.current = localAssistant.id;
     liveSegmentsRef.current = null;
     pendingAnchorIdRef.current = localUser.id;
-    // Bloqueia reengage até chegar texto final (tools/raciocínio não desancoram).
+    // Aguarda o primeiro segmento transmitido antes de consumir a âncora.
     allowAnchorReengageRef.current = false;
     scrollPhaseRef.current = 'free';
     // Reenvio de versão recorta a trilha no ponto de ramificação: a mensagem
@@ -1591,6 +1595,9 @@ export function ChatPage(): React.ReactElement {
             }),
           );
         } else if (event.type === 'reasoning') {
+          // Raciocínio longo também consome a área reservada pela âncora. O
+          // ResizeObserver só ativa o follow depois que a reserva se esgota.
+          allowAnchorReengageRef.current = true;
           setMessages((current) =>
             current.map((message) => {
               if (message.id !== liveAssistantMessageId) return message;
@@ -1603,6 +1610,7 @@ export function ChatPage(): React.ReactElement {
           const statusKey = chatStatusI18nKey(event.code);
           setStatus(statusKey ? t(statusKey) : event.label);
         } else if (event.type === 'tool') {
+          allowAnchorReengageRef.current = true;
           setMessages((current) =>
             current.map((message) => {
               if (message.id !== liveAssistantMessageId) return message;
