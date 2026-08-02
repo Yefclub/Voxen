@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785695013",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Artefatos de pesquisa agora preservam evidências navegáveis",
+    "body": "Agora é possível criar briefing, FAQ, guia de estudo, linha do tempo e mapa\nmental a partir de fontes escolhidas. Cada resultado mantém a fonte e o trecho\nusado como evidência, respeita o espaço de trabalho de quem o criou e informa\nquando alguma fonte selecionada está indisponível.",
+    "pr": 570,
+    "author": "Kalyel",
+    "date": "2026-08-02T15:23:15-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/570"
+  },
+  {
     "version": "0.13.0-dev.1785692656",
     "channel": "dev",
     "type": "feat",
