@@ -147,22 +147,14 @@ export class ToastFifoQueue {
     if (this.#active) return;
     if (this.#documentHidden) return;
 
-    const now = this.now();
-    // Skip any remaining stale head items.
-    while (this.#pending.length > 0) {
-      const head = this.#pending[0]!;
-      if (isToastStale(head.enqueuedAt, now)) {
-        this.#pending.shift();
-        this.#knownIds.delete(head.id);
-        continue;
-      }
-      break;
-    }
-
+    // Do NOT drop pending by enqueuedAt here. While visible, each toast gets its
+    // own full duration starting at activatedAt; a second toast waiting behind
+    // the first is still fresh when it reaches the front. Stale-by-enqueue age
+    // only applies on visibility restore (reconcileVisibility).
     const next = this.#pending.shift();
     if (!next) return;
     this.#active = next;
-    next.activatedAt = now;
+    next.activatedAt = this.now();
 
     let completed = false;
     const complete = (): void => {

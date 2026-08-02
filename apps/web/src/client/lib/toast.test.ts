@@ -64,6 +64,24 @@ describe('fila FIFO de toasts', () => {
     expect(emissions[1]!.options.duration).toBe(TOAST_DURATION_MS);
   });
 
+  test('toast pendente ainda emite após o ativo completar mesmo se a fila esperou >5s', () => {
+    let now = 1_000;
+    const { queue, emissions } = harness({ now: () => now });
+
+    queue.enqueue('default', 'A');
+    queue.enqueue('success', 'B');
+    expect(emissions.map((e) => e.message)).toEqual(['A']);
+    expect(queue.pendingCount).toBe(1);
+
+    // A fica na tela os 5s canônicos; B esperou na fila o mesmo intervalo.
+    now = 1_000 + TOAST_DURATION_MS;
+    emissions[0]!.options.onAutoClose?.({ id: emissions[0]!.id } as never);
+
+    expect(emissions.map((e) => e.message)).toEqual(['A', 'B']);
+    expect(emissions[1]!.options.duration).toBe(TOAST_DURATION_MS);
+    expect(queue.pendingCount).toBe(0);
+  });
+
   test('dispensa manualmente e avança uma única vez sem encurtar o próximo toast', () => {
     const { queue, emissions } = harness();
     const onDismiss = mock(() => undefined);
