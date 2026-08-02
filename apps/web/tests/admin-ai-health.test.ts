@@ -235,12 +235,13 @@ describeIfDb('/api/admin/ai-health', () => {
       }),
     );
     expect(await testResponse.json()).toMatchObject({ capability: 'chat', ok: false });
-    await expect(
-      db.aiCapabilityCheck.findFirst({
-        where: { capability: 'chat', success: false },
-        select: { errorMessage: true },
-      }),
-    ).resolves.toMatchObject({ errorMessage: 'A verificação remota da capacidade falhou.' });
+    const checkFailure = await db.aiCapabilityCheck.findFirst({
+      where: { capability: 'chat', success: false },
+      select: { errorMessage: true },
+    });
+    expect(checkFailure).toMatchObject({
+      errorMessage: 'A verificação remota da capacidade falhou.',
+    });
 
     const healthResponse = await app.fetch(
       new Request('http://localhost/api/admin/ai-health', { headers: { cookie: admin.cookie } }),
