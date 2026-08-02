@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785692656",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Fontes web agora podem ser atualizadas sem perder o histórico",
+    "body": "Páginas web da Base de conhecimento agora mostram quando foram coletadas e podem\nser atualizadas manualmente. Se nada mudou, o Voxen só registra a nova consulta;\nse o conteúdo mudou, preserva a versão anterior, atualiza os índices e sinaliza\ncitações antigas para que não pareçam evidência da versão atual.",
+    "pr": 568,
+    "author": "Kalyel",
+    "date": "2026-08-02T14:43:59-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/568"
+  },
+  {
     "version": "0.13.0-dev.1785690745",
     "channel": "dev",
     "type": "chore",
