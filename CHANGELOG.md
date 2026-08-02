@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.13.0-dev.1785695013 — 2026-08-02 · Dev
+
+### ✨ Artefatos de pesquisa agora preservam evidências navegáveis
+
+Agora é possível criar briefing, FAQ, guia de estudo, linha do tempo e mapa
+mental a partir de fontes escolhidas. Cada resultado mantém a fonte e o trecho
+usado como evidência, respeita o espaço de trabalho de quem o criou e informa
+quando alguma fonte selecionada está indisponível.
+
 ## v0.13.0-dev.1785692656 — 2026-08-02 · Dev
 
 ### ✨ Fontes web agora podem ser atualizadas sem perder o histórico
