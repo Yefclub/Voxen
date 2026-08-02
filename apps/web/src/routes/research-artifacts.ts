@@ -53,9 +53,15 @@ researchArtifactsRoutes.post('/', async (c) => {
   if (!parsed.success)
     return c.json({ error: parsed.error.issues[0]?.message ?? 'Payload inválido.' }, 400);
   const userId = c.get('userId');
-  const sources = await resolveArtifactSources(userId, parsed.data);
-  if (!sources.length) return c.json({ error: 'Nenhuma fonte acessível foi selecionada.' }, 400);
-  const generated = await buildResearchArtifact(userId, parsed.data.type, sources);
+  const resolvedScope = await resolveArtifactSources(userId, parsed.data);
+  if (!resolvedScope.sources.length)
+    return c.json({ error: 'Nenhuma fonte acessível foi selecionada.' }, 400);
+  const generated = await buildResearchArtifact(
+    userId,
+    parsed.data.type,
+    resolvedScope.sources,
+    resolvedScope.unavailableSources,
+  );
   const revision = await db.configRevision.findFirst({
     orderBy: { number: 'desc' },
     select: { id: true },
@@ -68,7 +74,10 @@ researchArtifactsRoutes.post('/', async (c) => {
       content: generated.content,
       citations: generated.citations,
       unavailableSources: generated.unavailableSources,
-      scope: { ...parsed.data, resolvedTranscriptIds: sources.map((source) => source.id) },
+      scope: {
+        ...parsed.data,
+        resolvedTranscriptIds: resolvedScope.sources.map((source) => source.id),
+      },
       configRevisionId: revision?.id,
     },
     select: {

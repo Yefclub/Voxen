@@ -21,11 +21,15 @@ type ScopeInput = {
   query?: string;
 };
 type ArtifactSource = { id: string; title: string; url: string; publishedAt: Date | null };
+type ResolvedArtifactScope = {
+  sources: ArtifactSource[];
+  unavailableSources: UnavailableArtifactSource[];
+};
 
 export async function resolveArtifactSources(
   userId: string,
   scope: ScopeInput,
-): Promise<ArtifactSource[]> {
+): Promise<ResolvedArtifactScope> {
   const requested = [...new Set(scope.transcriptIds ?? [])].slice(0, 40);
   const where = {
     userId,
@@ -42,18 +46,28 @@ export async function resolveArtifactSources(
         }
       : {}),
   };
-  return db.transcript.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    take: 40,
-    select: { id: true, title: true, url: true, publishedAt: true },
-  });
+  const [sources, unavailableSources] = await Promise.all([
+    db.transcript.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 40,
+      select: { id: true, title: true, url: true, publishedAt: true },
+    }),
+    requested.length
+      ? db.transcript.findMany({
+          where: { userId, id: { in: requested }, status: { not: 'ACTIVE' } },
+          select: { id: true, title: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  return { sources, unavailableSources };
 }
 
 export async function buildResearchArtifact(
   userId: string,
   type: ArtifactType,
   sources: ArtifactSource[],
+  initiallyUnavailableSources: UnavailableArtifactSource[] = [],
 ): Promise<{
   title: string;
   content: string;
@@ -61,7 +75,7 @@ export async function buildResearchArtifact(
   unavailableSources: UnavailableArtifactSource[];
 }> {
   const evidence: ArtifactCitation[] = [];
-  const unavailableSources: UnavailableArtifactSource[] = [];
+  const unavailableSources: UnavailableArtifactSource[] = [...initiallyUnavailableSources];
   for (const source of [...sources].sort(
     (left, right) =>
       (left.publishedAt?.getTime() ?? Number.MAX_SAFE_INTEGER) -

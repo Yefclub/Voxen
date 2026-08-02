@@ -13,6 +13,7 @@ type Fixture = {
   ownerId: string;
   otherId: string;
   sourceId: string;
+  unavailableSourceId: string;
 };
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
@@ -67,20 +68,37 @@ describeIfDb('artefatos de pesquisa API', () => {
       where: { id: { in: [owner.id, other.id] } },
       data: { status: 'APPROVED' },
     });
-    const source = await db.transcript.create({
-      data: {
-        userId: owner.id,
-        source: 'WEB',
-        url: `https://example.com/artifacts-${suffix}`,
-        title: 'Fonte verificável',
-        durationSec: 0,
-        language: 'pt',
-        transcriptionMethod: 'SCRAPE',
-        mdPath: `workspaces/${owner.id}/transcripts/artifacts-${suffix}.md`,
-        plainText: 'Evidência preservada para validar as citações do artefato.',
-        frontmatter: {},
-      },
-    });
+    const [source, unavailableSource] = await Promise.all([
+      db.transcript.create({
+        data: {
+          userId: owner.id,
+          source: 'WEB',
+          url: `https://example.com/artifacts-${suffix}`,
+          title: 'Fonte verificável',
+          durationSec: 0,
+          language: 'pt',
+          transcriptionMethod: 'SCRAPE',
+          mdPath: `workspaces/${owner.id}/transcripts/artifacts-${suffix}.md`,
+          plainText: 'Evidência preservada para validar as citações do artefato.',
+          frontmatter: {},
+        },
+      }),
+      db.transcript.create({
+        data: {
+          userId: owner.id,
+          status: 'ARCHIVED',
+          source: 'WEB',
+          url: `https://example.com/artifacts-archived-${suffix}`,
+          title: 'Fonte arquivada',
+          durationSec: 0,
+          language: 'pt',
+          transcriptionMethod: 'SCRAPE',
+          mdPath: `workspaces/${owner.id}/transcripts/artifacts-archived-${suffix}.md`,
+          plainText: 'Este conteúdo não deve ser usado como evidência ativa.',
+          frontmatter: {},
+        },
+      }),
+    ]);
     const [ownerCookie, otherCookie] = await Promise.all([signIn(ownerEmail), signIn(otherEmail)]);
     fixture = {
       ownerCookie,
@@ -88,6 +106,7 @@ describeIfDb('artefatos de pesquisa API', () => {
       ownerId: owner.id,
       otherId: other.id,
       sourceId: source.id,
+      unavailableSourceId: unavailableSource.id,
     };
   });
 
@@ -101,12 +120,19 @@ describeIfDb('artefatos de pesquisa API', () => {
 
   it('gera apenas com fontes do usuário e preserva a citação navegável', async () => {
     const response = await request('/api/research-artifacts', {
-      ...withCookie(fixture.ownerCookie, { type: 'FAQ', transcriptIds: [fixture.sourceId] }),
+      ...withCookie(fixture.ownerCookie, {
+        type: 'FAQ',
+        transcriptIds: [fixture.sourceId, fixture.unavailableSourceId],
+      }),
       method: 'POST',
     });
     expect(response.status).toBe(201);
     const body = (await response.json()) as {
-      artifact: { id: string; citations: Array<{ sourceId: string; href: string; quote: string }> };
+      artifact: {
+        id: string;
+        citations: Array<{ sourceId: string; href: string; quote: string }>;
+        unavailableSources: Array<{ id: string; title: string }>;
+      };
     };
     expect(body.artifact.citations).toEqual([
       expect.objectContaining({
@@ -114,6 +140,9 @@ describeIfDb('artefatos de pesquisa API', () => {
         href: `/transcricoes/${fixture.sourceId}#l=1`,
         quote: expect.stringContaining('Evidência preservada'),
       }),
+    ]);
+    expect(body.artifact.unavailableSources).toEqual([
+      { id: fixture.unavailableSourceId, title: 'Fonte arquivada' },
     ]);
 
     const foreignRead = await request(
