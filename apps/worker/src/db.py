@@ -885,20 +885,31 @@ async def prepare_grounded_brain_compilation(
                 transcript_id,
             )
             if compilation and compilation["contentHash"] != content_hash:
-                # Arestas grounded saem junto com suas evidências via cascade;
-                # arestas manuais e de outros métodos não participam deste delete.
+                # Remove só a evidência desta fonte. Relações automáticas podem
+                # ter suporte em outras fontes e, nesse caso, permanecem.
+                await conn.execute(
+                    """
+                    DELETE FROM "BrainSource" source
+                    USING "BrainEdge" edge
+                    WHERE source."userId" = $1
+                      AND source."sourceId" = $2
+                      AND source."edgeId" = edge.id
+                      AND edge."userId" = $1
+                      AND edge.method LIKE 'llm-grounded%'
+                    """,
+                    user_id,
+                    transcript_id,
+                )
                 await conn.execute(
                     """
                     DELETE FROM "BrainEdge" edge
-                    USING "BrainNode" content
                     WHERE edge."userId" = $1
-                      AND edge.method = 'llm-grounded'
-                      AND content."userId" = $1
-                      AND content.key = $2
-                      AND edge."fromNodeId" = content.id
+                      AND edge.method LIKE 'llm-grounded%'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id
+                      )
                     """,
                     user_id,
-                    f"TRANSCRIPT:{transcript_id}",
                 )
                 await conn.execute(
                     'DELETE FROM "BrainCompilationSegment" WHERE "compilationId" = $1',
@@ -1131,7 +1142,7 @@ async def upsert_grounded_brain_items(
                   AND source."sourceId" = $2
                   AND source."segmentKey" = $3
                   AND source."edgeId" = edge.id
-                  AND edge.method = 'llm-grounded'
+                  AND edge.method LIKE 'llm-grounded%'
                 """,
                 user_id,
                 transcript_id,
@@ -1221,6 +1232,36 @@ async def upsert_grounded_brain_items(
                 ):
                     continue
                 _require_grounded_compilation_lease(lease)
+                if relation_kind == "CONTRADICTS":
+                    support_counts = await conn.fetchrow(
+                        """
+                        SELECT
+                            COUNT(DISTINCT source."sourceId") FILTER (
+                                WHERE edge."toNodeId" = $2
+                            ) AS subject_sources,
+                            COUNT(DISTINCT source."sourceId") FILTER (
+                                WHERE edge."toNodeId" = $3
+                            ) AS object_sources,
+                            COUNT(DISTINCT source."sourceId") AS total_sources
+                        FROM "BrainSource" source
+                        JOIN "BrainEdge" edge ON edge.id = source."edgeId"
+                        WHERE source."userId" = $1
+                          AND edge."userId" = $1
+                          AND edge.method = 'llm-grounded'
+                          AND edge.kind = 'SUPPORTS'::"BrainEdgeKind"
+                          AND edge."toNodeId" IN ($2, $3)
+                        """,
+                        user_id,
+                        subject[0],
+                        obj[0],
+                    )
+                    if (
+                        not support_counts
+                        or int(support_counts["subject_sources"] or 0) < 1
+                        or int(support_counts["object_sources"] or 0) < 1
+                        or int(support_counts["total_sources"] or 0) < 2
+                    ):
+                        continue
                 edge_row = await conn.fetchrow(
                     """
                     INSERT INTO "BrainEdge" (
@@ -1269,7 +1310,7 @@ async def upsert_grounded_brain_items(
                 """
                 DELETE FROM "BrainEdge" edge
                 WHERE edge."userId" = $1
-                  AND edge.method = 'llm-grounded'
+                  AND edge.method LIKE 'llm-grounded%'
                   AND NOT EXISTS (
                       SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id
                   )

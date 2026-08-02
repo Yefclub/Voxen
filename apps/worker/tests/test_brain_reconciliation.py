@@ -289,6 +289,166 @@ class _SegmentConnection:
         return "OK"
 
 
+class _CompilationResetConnection:
+    def __init__(self) -> None:
+        self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def transaction(self) -> _SegmentTransaction:
+        return _SegmentTransaction()
+
+    async def fetchrow(self, _query: str, *_args: object) -> dict[str, str]:
+        return {"id": "compilation-1", "contentHash": "before"}
+
+    async def fetch(self, _query: str, *_args: object) -> list[dict[str, str]]:
+        return []
+
+    async def execute(self, query: str, *args: object) -> str:
+        self.execute_calls.append((query, args))
+        return "OK"
+
+
+async def test_recompilation_removes_relation_evidence_without_touching_manual_edges(
+    monkeypatch: Any,
+) -> None:
+    conn = _CompilationResetConnection()
+
+    @asynccontextmanager
+    async def reset_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", reset_connection)
+
+    await db.prepare_grounded_brain_compilation(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        content_hash="after",
+        segments=[],
+    )
+
+    queries = "\n".join(query for query, _args in conn.execute_calls)
+    assert 'DELETE FROM "BrainSource" source' in queries
+    assert "edge.method LIKE 'llm-grounded%'" in queries
+    assert 'source."sourceId" = $2' in queries
+    assert "NOT EXISTS" in queries
+
+
+class _RelationConnection:
+    def __init__(self, support_counts: dict[str, int]) -> None:
+        self.support_counts = support_counts
+        self.fetchrow_calls: list[tuple[str, tuple[object, ...]]] = []
+        self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
+        self._edge_number = 0
+
+    def transaction(self) -> _SegmentTransaction:
+        return _SegmentTransaction()
+
+    async def fetchrow(self, query: str, *args: object) -> dict[str, object]:
+        self.fetchrow_calls.append((query, args))
+        if 'SELECT id FROM "BrainNode"' in query:
+            return {"id": "content-node"}
+        if 'COUNT(DISTINCT source."sourceId")' in query:
+            return self.support_counts
+        if 'INSERT INTO "BrainEdge"' in query:
+            self._edge_number += 1
+            return {"id": f"edge-{self._edge_number}"}
+        raise AssertionError(f"Unexpected fetchrow query: {query}")
+
+    async def execute(self, query: str, *args: object) -> str:
+        self.execute_calls.append((query, args))
+        return "OK"
+
+
+async def test_contradiction_requires_two_independent_grounded_sources(
+    monkeypatch: Any,
+) -> None:
+    conn = _RelationConnection({"subject_sources": 1, "object_sources": 0, "total_sources": 1})
+
+    @asynccontextmanager
+    async def relation_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    async def concept_node(_conn: object, **kwargs: object) -> str:
+        return f"node-{kwargs['key']}"
+
+    monkeypatch.setattr(db, "connection", relation_connection)
+    monkeypatch.setattr(db, "_upsert_grounded_concept_node", concept_node)
+
+    await db.upsert_grounded_brain_items(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        compilation_id="compilation-1",
+        segment={"key": "segment-1", "start_line": 1, "end_line": 2},
+        items=[
+            {"slug": "claim-a", "label": "A", "kind": "claim", "excerpt": "A é verde."},
+            {"slug": "claim-b", "label": "B", "kind": "claim", "excerpt": "B não é verde."},
+        ],
+        relations=[
+            {
+                "subject_slug": "claim-a",
+                "object_slug": "claim-b",
+                "kind": "CONTRADICTS",
+                "excerpt": "A é verde, mas B não é verde.",
+            }
+        ],
+        lease=_FakeLease(),
+    )
+
+    support_query, support_args = next(
+        (query, args)
+        for query, args in conn.fetchrow_calls
+        if 'COUNT(DISTINCT source."sourceId")' in query
+    )
+    assert 'source."userId" = $1' in support_query
+    assert support_args[0] == "user-1"
+    assert not any(
+        'INSERT INTO "BrainEdge"' in query and "'llm-grounded-relation'" in query
+        for query, _args in conn.fetchrow_calls
+    )
+
+
+async def test_contradiction_materializes_when_each_claim_has_distinct_source(
+    monkeypatch: Any,
+) -> None:
+    conn = _RelationConnection({"subject_sources": 1, "object_sources": 1, "total_sources": 2})
+
+    @asynccontextmanager
+    async def relation_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    async def concept_node(_conn: object, **kwargs: object) -> str:
+        return f"node-{kwargs['key']}"
+
+    monkeypatch.setattr(db, "connection", relation_connection)
+    monkeypatch.setattr(db, "_upsert_grounded_concept_node", concept_node)
+
+    await db.upsert_grounded_brain_items(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        compilation_id="compilation-1",
+        segment={"key": "segment-1", "start_line": 1, "end_line": 2},
+        items=[
+            {"slug": "claim-a", "label": "A", "kind": "claim", "excerpt": "A é verde."},
+            {"slug": "claim-b", "label": "B", "kind": "claim", "excerpt": "B não é verde."},
+        ],
+        relations=[
+            {
+                "subject_slug": "claim-a",
+                "object_slug": "claim-b",
+                "kind": "CONTRADICTS",
+                "excerpt": "A é verde, mas B não é verde.",
+            }
+        ],
+        lease=_FakeLease(),
+    )
+
+    assert any(
+        'INSERT INTO "BrainEdge"' in query
+        and "'llm-grounded-relation'" in query
+        and args[4] == "CONTRADICTS"
+        for query, args in conn.fetchrow_calls
+    )
+
+
 async def test_grounded_segment_rolls_back_when_lease_is_lost(monkeypatch: Any) -> None:
     lease = _FakeLease()
     conn = _SegmentConnection(lease)
