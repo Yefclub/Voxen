@@ -148,7 +148,7 @@ adminModelsRoutes.patch('/:purpose', async (c) => {
     return c.json({ error: `O modelo "${modelId}" não é compatível com esta finalidade.` }, 422);
   }
 
-  await setSetting(purposeParam, modelId);
+  await setSetting(purposeParam, modelId, { actorUserId: c.get('adminUserId') });
   const canonical = canonicalModelForPurpose(purposeParam);
   const override = modelId !== canonical ? modelId : null;
   return c.json({ purpose: purposeParam, canonical, override, effective: modelId });
@@ -162,6 +162,6 @@ adminModelsRoutes.delete('/:purpose', async (c) => {
     return c.json({ error: 'Finalidade de modelo desconhecida.' }, 400);
   }
   const canonical = canonicalModelForPurpose(purposeParam);
-  await setSetting(purposeParam, canonical);
+  await setSetting(purposeParam, canonical, { actorUserId: c.get('adminUserId') });
   return c.json({ purpose: purposeParam, canonical, override: null, effective: canonical });
 });

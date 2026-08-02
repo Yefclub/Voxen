@@ -906,6 +906,22 @@ const ptBRMessages = {
   'admin.integrations.models.catalogUnavailable':
     'Catálogo da OpenRouter indisponível agora. Os overrides já salvos continuam ativos — tente novamente mais tarde.',
 
+  'admin.integrations.revisions.title': 'Histórico da configuração',
+  'admin.integrations.revisions.description':
+    'Cada alteração global fica registrada com executor, data e diff. Segredos permanecem redigidos.',
+  'admin.integrations.revisions.empty': 'Nenhuma revisão registrada ainda.',
+  'admin.integrations.revisions.loadMore': 'Carregar revisões anteriores',
+  'admin.integrations.revisions.current': 'Atual',
+  'admin.integrations.revisions.system': 'Sistema',
+  'admin.integrations.revisions.secret': 'Segredo alterado',
+  'admin.integrations.revisions.rollback': 'Restaurar valores permitidos',
+  'admin.integrations.revisions.rollbackTitle': 'Restaurar esta revisão?',
+  'admin.integrations.revisions.rollbackDescription':
+    'Será criada uma nova revisão. Chaves, tokens e cookies não serão restaurados.',
+  'admin.integrations.revisions.rollbackSuccess': 'Configuração restaurada em uma nova revisão.',
+  'admin.integrations.revisions.rollbackPartial':
+    'Valores permitidos foram restaurados; segredos exigem nova configuração.',
+
   'modelPicker.loading': 'Carregando catálogo…',
   'modelPicker.total': '{count} modelos',
   'modelPicker.filter': 'Buscar por nome, id ou provedor…',
@@ -2161,6 +2177,22 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.models.loadError': 'Could not load the model configuration.',
   'admin.integrations.models.catalogUnavailable':
     'OpenRouter catalog unavailable right now. Saved overrides remain active — try again later.',
+
+  'admin.integrations.revisions.title': 'Configuration history',
+  'admin.integrations.revisions.description':
+    'Every global change records its executor, time and diff. Secrets remain redacted.',
+  'admin.integrations.revisions.empty': 'No revisions recorded yet.',
+  'admin.integrations.revisions.loadMore': 'Load older revisions',
+  'admin.integrations.revisions.current': 'Current',
+  'admin.integrations.revisions.system': 'System',
+  'admin.integrations.revisions.secret': 'Secret changed',
+  'admin.integrations.revisions.rollback': 'Restore allowed values',
+  'admin.integrations.revisions.rollbackTitle': 'Restore this revision?',
+  'admin.integrations.revisions.rollbackDescription':
+    'This creates a new revision. Keys, tokens and cookies will not be restored.',
+  'admin.integrations.revisions.rollbackSuccess': 'Configuration restored in a new revision.',
+  'admin.integrations.revisions.rollbackPartial':
+    'Allowed values were restored; secrets require explicit reconfiguration.',
 
   'modelPicker.loading': 'Loading catalog…',
   'modelPicker.total': '{count} models',

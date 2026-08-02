@@ -79,6 +79,24 @@ const X_ANALYSIS_SETTING_KEYS = [
 
 export type AppLanguage = 'pt-BR' | 'en';
 
+export type GlobalConfigChangeMetadata = {
+  actorUserId?: string;
+  reason?: string;
+};
+
+export type ConfigRevisionSummary = {
+  id: string;
+  number: number;
+  createdAt: Date;
+};
+
+/** A revisão registra a mudança, nunca o conteúdo de uma credencial. */
+export function isSecretGlobalSettingKey(key: string): boolean {
+  // A URL de proxy pode conter user:password@host e portanto não é segura
+  // para um diff administrativo, mesmo que não tenha "token" no nome.
+  return /(api[_-]?key|token|cookie|password|secret)|^yt_dlp_proxy_urls$/i.test(key);
+}
+
 export function normalizeAppLanguage(value: string | null | undefined): AppLanguage {
   return value === 'en' ? 'en' : 'pt-BR';
 }
@@ -145,41 +163,175 @@ export async function getDefaultXAnalysisModel(): Promise<string | null> {
   return getFirstSettingByKey(X_ANALYSIS_SETTING_KEYS);
 }
 
-export async function setSetting(key: GlobalSettingKey, value: string): Promise<void> {
-  await setSettings({ [key]: value });
+export async function setSetting(
+  key: GlobalSettingKey,
+  value: string,
+  metadata?: GlobalConfigChangeMetadata,
+): Promise<void> {
+  await setSettings({ [key]: value }, metadata);
 }
 
 export async function setSettings(
-  values: Partial<Record<GlobalSettingKey, string>>,
+  values: Partial<Record<GlobalSettingKey, string | null>>,
+  metadata?: GlobalConfigChangeMetadata,
 ): Promise<void> {
+  await applyGlobalSettings(values, metadata);
+}
+
+type GlobalSettingMutation = Record<string, string | null | undefined>;
+
+async function applyGlobalSettings(
+  values: GlobalSettingMutation,
+  metadata: GlobalConfigChangeMetadata = {},
+  auditOnlySecretKeys: readonly string[] = [],
+): Promise<ConfigRevisionSummary | null> {
   const entries = Object.entries(values).filter(
-    (entry): entry is [GlobalSettingKey, string] => typeof entry[1] === 'string',
+    (entry): entry is [string, string | null] => typeof entry[1] === 'string' || entry[1] === null,
   );
-  if (entries.length === 0) return;
+  if (entries.length === 0 && auditOnlySecretKeys.length === 0) return null;
   const masterKey = getMasterKey();
-  await db.$transaction(async (tx) => {
+  return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
-    for (const [key, value] of entries) {
-      const valueEnc = encrypt(value, masterKey);
-      const existing = await tx.setting.findFirst({
-        where: { scope: 'GLOBAL', userId: null, key },
-        select: { id: true },
-      });
-      if (existing) {
-        await tx.setting.update({ where: { id: existing.id }, data: { valueEnc } });
+    const existingRows =
+      entries.length === 0
+        ? []
+        : await tx.setting.findMany({
+            where: { scope: 'GLOBAL', userId: null, key: { in: entries.map(([key]) => key) } },
+            orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+            select: { id: true, key: true, valueEnc: true },
+          });
+    const existingByKey = new Map<string, typeof existingRows>();
+    for (const row of existingRows) {
+      const rows = existingByKey.get(row.key) ?? [];
+      rows.push(row);
+      existingByKey.set(row.key, rows);
+    }
+    const changes = entries.flatMap(([key, nextValue]) => {
+      const rows = existingByKey.get(key) ?? [];
+      const existing = rows[0];
+      const previousValue = existing ? decrypt(existing.valueEnc, masterKey) : null;
+      if (previousValue === nextValue) return [];
+      return [
+        {
+          key,
+          existing,
+          duplicateIds: rows.slice(1).map((row) => row.id),
+          previousValue,
+          nextValue,
+          isSecret: isSecretGlobalSettingKey(key),
+        },
+      ];
+    });
+    const auditChanges = [
+      ...changes,
+      ...auditOnlySecretKeys.map((key) => ({
+        key,
+        existing: undefined,
+        previousValue: null,
+        nextValue: null,
+        isSecret: true,
+      })),
+    ];
+    if (auditChanges.length === 0) return null;
+
+    for (const change of changes) {
+      if (change.nextValue === null) {
+        if (change.existing) {
+          await tx.setting.deleteMany({
+            where: { id: { in: [change.existing.id, ...change.duplicateIds] } },
+          });
+        }
+      } else if (change.existing) {
+        await tx.setting.update({
+          where: { id: change.existing.id },
+          data: { valueEnc: encrypt(change.nextValue, masterKey) },
+        });
+        if (change.duplicateIds.length > 0) {
+          await tx.setting.deleteMany({ where: { id: { in: change.duplicateIds } } });
+        }
       } else {
-        await tx.setting.create({ data: { scope: 'GLOBAL', userId: null, key, valueEnc } });
+        await tx.setting.create({
+          data: {
+            scope: 'GLOBAL',
+            userId: null,
+            key: change.key,
+            valueEnc: encrypt(change.nextValue, masterKey),
+          },
+        });
       }
     }
+
+    const previous = await tx.configRevision.findFirst({
+      orderBy: { number: 'desc' },
+      select: { number: true },
+    });
+    const revision = await tx.configRevision.create({
+      data: {
+        number: (previous?.number ?? 0) + 1,
+        ...(metadata.actorUserId ? { actorUserId: metadata.actorUserId } : {}),
+        ...(metadata.reason?.trim() ? { reason: metadata.reason.trim().slice(0, 500) } : {}),
+        changes: {
+          create: auditChanges.map((change) => ({
+            key: change.key,
+            isSecret: change.isSecret,
+            previousValue: change.isSecret ? null : change.previousValue,
+            nextValue: change.isSecret ? null : change.nextValue,
+          })),
+        },
+      },
+      select: { id: true, number: true, createdAt: true },
+    });
+    return revision;
   });
 }
 
-export async function deleteSetting(key: GlobalSettingKey): Promise<void> {
-  await deleteSettingByKey(key);
+export async function getCurrentConfigRevisionId(): Promise<string | null> {
+  const revision = await db.configRevision.findFirst({
+    orderBy: { number: 'desc' },
+    select: { id: true },
+  });
+  return revision?.id ?? null;
 }
 
-export async function deleteSettingByKey(key: string): Promise<void> {
-  await db.setting.deleteMany({ where: { scope: 'GLOBAL', userId: null, key } });
+export async function rollbackConfigRevision(
+  number: number,
+  metadata: GlobalConfigChangeMetadata,
+): Promise<{ revision: ConfigRevisionSummary | null; skippedSecretKeys: string[] }> {
+  const target = await db.configRevision.findUnique({
+    where: { number },
+    select: {
+      isBaseline: true,
+      changes: { select: { key: true, previousValue: true, isSecret: true } },
+    },
+  });
+  if (!target) throw new Error('Revisão não encontrada.');
+  if (target.isBaseline) throw new Error('A revisão-base não pode ser revertida.');
+  const skippedSecretKeys = target.changes
+    .filter((change) => change.isSecret)
+    .map((change) => change.key);
+  const values = Object.fromEntries(
+    target.changes
+      .filter((change) => !change.isSecret)
+      .map((change) => [change.key, change.previousValue]),
+  );
+  return {
+    revision: await applyGlobalSettings(values, metadata, skippedSecretKeys),
+    skippedSecretKeys,
+  };
+}
+
+export async function deleteSetting(
+  key: GlobalSettingKey,
+  metadata?: GlobalConfigChangeMetadata,
+): Promise<void> {
+  await deleteSettingByKey(key, metadata);
+}
+
+export async function deleteSettingByKey(
+  key: string,
+  metadata?: GlobalConfigChangeMetadata,
+): Promise<void> {
+  await applyGlobalSettings({ [key]: null }, metadata);
 }
 
 export async function setDefaultXAnalysisModel(value: string): Promise<void> {

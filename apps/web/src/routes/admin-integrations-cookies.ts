@@ -30,7 +30,7 @@ import {
   serializeCaptureMeta,
   type CookiePlatform,
 } from '../lib/platform-cookies';
-import { deleteSetting, getSettings, setSettings } from '../lib/settings';
+import { getSettings, setSettings } from '../lib/settings';
 
 type Vars = { adminUserId: string };
 
@@ -121,10 +121,13 @@ adminIntegrationCookieRoutes.patch('/', async (c) => {
   const capturedAt = new Date().toISOString();
   const meta = { ...state.meta, [platform]: { capturedAt } };
 
-  await setSettings({
-    yt_dlp_cookies: merged,
-    platform_cookies_meta: serializeCaptureMeta(meta),
-  });
+  await setSettings(
+    {
+      yt_dlp_cookies: merged,
+      platform_cookies_meta: serializeCaptureMeta(meta),
+    },
+    { actorUserId: c.get('adminUserId') },
+  );
 
   return c.json(buildStatus(merged, meta, platform));
 });
@@ -142,15 +145,13 @@ adminIntegrationCookieRoutes.delete('/:platform', async (c) => {
   const meta = { ...state.meta };
   delete meta[platform];
 
-  if (remaining) {
-    await setSettings({
-      yt_dlp_cookies: remaining,
+  await setSettings(
+    {
+      yt_dlp_cookies: remaining || null,
       platform_cookies_meta: serializeCaptureMeta(meta),
-    });
-  } else {
-    await deleteSetting('yt_dlp_cookies');
-    await setSettings({ platform_cookies_meta: serializeCaptureMeta(meta) });
-  }
+    },
+    { actorUserId: c.get('adminUserId') },
+  );
 
   return c.json(buildStatus(remaining, meta, platform));
 });

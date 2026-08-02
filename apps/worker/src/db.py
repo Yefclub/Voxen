@@ -127,14 +127,21 @@ async def claim_job(job_id: str) -> dict[str, Any] | None:
             )
             if not row:
                 return None
+            # A revisão precisa representar a configuração efetiva no início
+            # da execução, não apenas a configuração que existia ao enfileirar.
+            await conn.execute("SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))")
+            revision = await conn.fetchrow(
+                'SELECT id FROM "ConfigRevision" ORDER BY number DESC LIMIT 1'
+            )
             await conn.execute(
                 """
                 UPDATE "Job"
-                SET status = 'RUNNING', "startedAt" = $2
+                SET status = 'RUNNING', "startedAt" = $2, "configRevisionId" = $3
                 WHERE id = $1
                 """,
                 job_id,
                 _utcnow_naive(),
+                revision["id"] if revision else None,
             )
             return dict(row)
 

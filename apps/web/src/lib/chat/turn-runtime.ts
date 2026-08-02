@@ -61,6 +61,11 @@ export async function createHitlResumeTurn(
   args: { conversationId: string; hitlMessageId: string; resumeContent: string },
 ) {
   return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
+    const configRevision = await tx.configRevision.findFirst({
+      orderBy: { number: 'desc' },
+      select: { id: true },
+    });
     const claimed = await tx.conversation.updateMany({
       where: { id: args.conversationId, userId, thinking: false },
       data: { thinking: true, updatedAt: new Date() },
@@ -123,6 +128,7 @@ export async function createHitlResumeTurn(
         conversationId: args.conversationId,
         userMessageId: hitl.id,
         assistantMessageId: assistantMessage.id,
+        configRevisionId: configRevision?.id,
       },
       select: {
         id: true,
@@ -161,6 +167,11 @@ export async function createChatTurn(
 ) {
   const conversation = await getOrCreateConversation(userId);
   return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
+    const configRevision = await tx.configRevision.findFirst({
+      orderBy: { number: 'desc' },
+      select: { id: true },
+    });
     const claimed = await tx.conversation.updateMany({
       where: { id: conversation.id, userId, thinking: false },
       data: { thinking: true, updatedAt: new Date() },
@@ -234,6 +245,7 @@ export async function createChatTurn(
         conversationId: conversation.id,
         userMessageId: userMessage.id,
         assistantMessageId: assistantMessage.id,
+        configRevisionId: configRevision?.id,
       },
       select: {
         id: true,
@@ -319,16 +331,25 @@ export async function runChatTurn(
     });
     if (!userMessage) throw new Error('A mensagem original do turno não foi encontrada.');
 
-    await db.$transaction([
-      db.chatTurn.update({
-        where: { id: turn.id },
-        data: { status: 'RUNNING', errorMsg: null },
-      }),
-      db.conversation.update({
-        where: { id: turn.conversationId },
-        data: { thinking: true },
-      }),
-    ]);
+    await db.$transaction(async (tx) => {
+      // Captura a revisão no começo efetivo do runtime, imediatamente antes
+      // de o chat ler modelo e credenciais globais.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
+      const revision = await tx.configRevision.findFirst({
+        orderBy: { number: 'desc' },
+        select: { id: true },
+      });
+      await Promise.all([
+        tx.chatTurn.update({
+          where: { id: turn.id },
+          data: { status: 'RUNNING', errorMsg: null, configRevisionId: revision?.id },
+        }),
+        tx.conversation.update({
+          where: { id: turn.conversationId },
+          data: { thinking: true },
+        }),
+      ]);
+    });
 
     // Resume HITL (spec 132): âncora é HITL_RESPONSE; o prompt sintético foi
     // registrado em createHitlResumeTurn. Fallback reconstrói a partir do texto
@@ -470,6 +491,13 @@ export async function recoverOrphanedUserTurn(userId: string): Promise<string | 
 
   try {
     return await db.$transaction(async (tx) => {
+      // O turno recuperado é uma nova execução e deve capturar o mesmo corte
+      // lógico de configuração usado por turnos criados normalmente.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
+      const configRevision = await tx.configRevision.findFirst({
+        orderBy: { number: 'desc' },
+        select: { id: true },
+      });
       const existing = await tx.chatTurn.findFirst({
         where: {
           userId,
@@ -496,6 +524,7 @@ export async function recoverOrphanedUserTurn(userId: string): Promise<string | 
           conversationId: conversation.id,
           userMessageId: latest.id,
           assistantMessageId: assistant.id,
+          configRevisionId: configRevision?.id,
         },
         select: { id: true },
       });

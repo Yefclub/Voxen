@@ -44,40 +44,41 @@ enum UserRole {
 }
 
 model User {
-  id              String     @id @default(cuid())
-  email           String     @unique
-  emailVerified   Boolean    @default(false)
-  name            String
-  image           String?
+  id               String           @id @default(cuid())
+  email            String           @unique
+  emailVerified    Boolean          @default(false)
+  name             String
+  image            String?
   // Voxen-specific
-  status          UserStatus @default(PENDING)
-  role            UserRole   @default(USER)
+  status           UserStatus       @default(PENDING)
+  role             UserRole         @default(USER)
   // UI theme: linear (default) | zinc | emerald | light
-  theme           String     @default("linear")
-  monthlyBudgetUsd Decimal?  @db.Decimal(10, 4) // null = sem limite
-  approvedAt      DateTime?
-  approvedBy      String?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  theme            String           @default("linear")
+  monthlyBudgetUsd Decimal?         @db.Decimal(10, 4) // null = sem limite
+  approvedAt       DateTime?
+  approvedBy       String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
   // Relations
-  sessions        Session[]
-  accounts        Account[]
-  transcripts     Transcript[]
-  jobs            Job[]
-  costEvents      CostEvent[]
-  conversations   Conversation[]
-  chatApprovals   ChatApproval[]
-  chatTurns       ChatTurn[]
-  chatStreamLease ChatStreamLease?
-  notes           Note[]
-  libraryFolders  LibraryFolder[]
-  brainNodes      BrainNode[]
-  brainEdges      BrainEdge[]
-  brainSources    BrainSource[]
-  telegramLink    TelegramLink?
-  automations     Automation[]
-  automationRuns  AutomationRun[]
-  tags            Tag[]
+  sessions         Session[]
+  accounts         Account[]
+  transcripts      Transcript[]
+  jobs             Job[]
+  costEvents       CostEvent[]
+  conversations    Conversation[]
+  chatApprovals    ChatApproval[]
+  chatTurns        ChatTurn[]
+  chatStreamLease  ChatStreamLease?
+  notes            Note[]
+  libraryFolders   LibraryFolder[]
+  brainNodes       BrainNode[]
+  brainEdges       BrainEdge[]
+  brainSources     BrainSource[]
+  telegramLink     TelegramLink?
+  automations      Automation[]
+  automationRuns   AutomationRun[]
+  tags             Tag[]
+  configRevisions  ConfigRevision[] @relation("ConfigRevisionActor")
 
   @@index([status])
   @@index([role])
@@ -87,12 +88,12 @@ model User {
 // Setup feito via código de 6 dígitos gerado em /conta → user envia /start
 // <código> no bot → worker resolve e cria o link.
 model TelegramLink {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  chatId    BigInt   @unique
-  username  String?
-  linkedAt  DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       String   @id @default(cuid())
+  userId   String   @unique
+  chatId   BigInt   @unique
+  username String?
+  linkedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([chatId])
 }
@@ -155,7 +156,7 @@ enum SettingScope {
 model Setting {
   id        String       @id @default(cuid())
   scope     SettingScope
-  userId    String?      // null se scope=GLOBAL
+  userId    String? // null se scope=GLOBAL
   key       String
   // valueEnc é AES-256-GCM(plaintext, master_key) em base64
   // formato: <iv_base64>.<ciphertext_base64>.<tag_base64>
@@ -167,6 +168,40 @@ model Setting {
   @@index([scope, key])
 }
 
+// Histórico imutável das mudanças atômicas da configuração global. Segredos
+// nunca são copiados para ConfigRevisionChange; o flag isSecret permite
+// auditar a mudança sem reexpor credenciais.
+model ConfigRevision {
+  id          String                 @id @default(cuid())
+  number      Int                    @unique
+  // A baseline criada na migração descreve um estado já existente, não um
+  // estado restaurável. Ela fica no histórico, mas nunca pode ser rollback.
+  isBaseline  Boolean                @default(false)
+  actorUserId String?
+  reason      String?                @db.VarChar(500)
+  createdAt   DateTime               @default(now())
+  actor       User?                  @relation("ConfigRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  changes     ConfigRevisionChange[]
+  jobs        Job[]
+  chatTurns   ChatTurn[]
+
+  @@index([createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+}
+
+model ConfigRevisionChange {
+  id            String         @id @default(cuid())
+  revisionId    String
+  key           String
+  previousValue String?        @db.Text
+  nextValue     String?        @db.Text
+  isSecret      Boolean        @default(false)
+  revision      ConfigRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@unique([revisionId, key])
+  @@index([key])
+}
+
 // ============================================================================
 // TRANSCRIPTS (corpo no Garage; texto + frontmatter espelhado aqui)
 // ============================================================================
@@ -175,18 +210,18 @@ enum TranscriptSource {
   YOUTUBE
   INSTAGRAM
   TIKTOK
-  X             // x.com / twitter.com (yt-dlp suporta nativamente)
-  WEB           // página web (scraper Trafilatura)
-  UPLOAD        // arquivo de áudio/vídeo enviado pelo usuário
+  X // x.com / twitter.com (yt-dlp suporta nativamente)
+  WEB // página web (scraper Trafilatura)
+  UPLOAD // arquivo de áudio/vídeo enviado pelo usuário
 }
 
 enum TranscriptionMethod {
-  API           // OpenRouter audio transcription
-  SUBTITLES     // baixou legendas oficiais
-  SCRAPE        // extração de página web via Trafilatura
-  VISION        // análise de imagem via modelo multimodal
-  DOCUMENT      // análise de documento via MarkItDown/OpenRouter PDF
-  X_SEARCH      // análise de post/thread do X via Grok/OpenRouter search
+  API // OpenRouter audio transcription
+  SUBTITLES // baixou legendas oficiais
+  SCRAPE // extração de página web via Trafilatura
+  VISION // análise de imagem via modelo multimodal
+  DOCUMENT // análise de documento via MarkItDown/OpenRouter PDF
+  X_SEARCH // análise de post/thread do X via Grok/OpenRouter search
 }
 
 enum ContentStatus {
@@ -204,56 +239,57 @@ enum EnrichmentStatus {
 }
 
 model Transcript {
-  id                  String              @id @default(cuid())
-  userId              String              // == workspace_id
-  folderId            String?
-  status              ContentStatus       @default(ACTIVE)
-  source              TranscriptSource
-  url                 String
-  title               String
-  channel             String?
-  author              String?
-  durationSec         Int
-  publishedAt         DateTime?
-  thumbnailUrl        String?
-  originalObjectKey   String?
-  originalFilename    String?
-  originalMimeType    String?
-  previewObjectKey    String?
-  previewMimeType     String?
-  language            String              // ISO 639-1
-  transcriptionMethod TranscriptionMethod
-  model               String?             // null se SUBTITLES
-  costUsd             Decimal?            @db.Decimal(10, 4)
+  id                   String                   @id @default(cuid())
+  userId               String // == workspace_id
+  folderId             String?
+  status               ContentStatus            @default(ACTIVE)
+  source               TranscriptSource
+  url                  String
+  title                String
+  channel              String?
+  author               String?
+  durationSec          Int
+  publishedAt          DateTime?
+  thumbnailUrl         String?
+  originalObjectKey    String?
+  originalFilename     String?
+  originalMimeType     String?
+  previewObjectKey     String?
+  previewMimeType      String?
+  language             String // ISO 639-1
+  transcriptionMethod  TranscriptionMethod
+  model                String? // null se SUBTITLES
+  costUsd              Decimal?                 @db.Decimal(10, 4)
   // .md no Garage (key relative ao bucket)
-  mdPath              String
+  mdPath               String
   // Texto puro pra FTS (sem timestamps, sem frontmatter)
-  plainText           String              @db.Text
+  plainText            String                   @db.Text
   // Resumo gerado pela IA em markdown (pode ser null se ainda não gerado)
-  summaryMd           String?             @db.Text
-  taggingStatus       EnrichmentStatus    @default(PENDING)
-  taggingAttempts     Int                 @default(0)
-  taggingStartedAt    DateTime?
+  summaryMd            String?                  @db.Text
+  taggingStatus        EnrichmentStatus         @default(PENDING)
+  taggingAttempts      Int                      @default(0)
+  taggingStartedAt     DateTime?
   taggingNextAttemptAt DateTime?
-  taggingError        String?
+  taggingError         String?
   // Frontmatter como JSONB pra filtros estruturados
-  frontmatter         Json
+  frontmatter          Json
   // tsvector gerenciado por trigger SQL (ver migration). Não declarável em Prisma; usar Unsupported.
-  searchVector        Unsupported("tsvector")?
-  checksum            String?             // sha256 do áudio original
-  formatVersion       Int                 @default(1)
-  archivedAt          DateTime?
-  trashedAt           DateTime?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  searchVector         Unsupported("tsvector")?
+  checksum             String? // sha256 do áudio original
+  formatVersion        Int                      @default(1)
+  archivedAt           DateTime?
+  trashedAt            DateTime?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
   // Relations
-  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder              LibraryFolder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  chunks              Chunk[]
-  job                 Job?
-  conversations       Conversation[]
-  tags                TranscriptTag[]
-  noteSources         NoteTranscriptSource[]
+  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder               LibraryFolder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  chunks               Chunk[]
+  job                  Job?
+  conversations        Conversation[]
+  tags                 TranscriptTag[]
+  noteSources          NoteTranscriptSource[]
+  // Índice GIN no tsvector criado via SQL na migration
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, status, createdAt(sort: Desc)])
@@ -261,7 +297,6 @@ model Transcript {
   @@index([userId, source])
   @@index([userId, language])
   @@index([taggingStatus, taggingNextAttemptAt])
-  // Índice GIN no tsvector criado via SQL na migration
 }
 
 // Pastas de biblioteca para organizar conteúdos transcritos/documentos/web.
@@ -291,7 +326,7 @@ model Tag {
   id          String          @id @default(cuid())
   userId      String
   name        String
-  slug        String          // normalizado: minúsculas, sem acento, [a-z0-9-]
+  slug        String // normalizado: minúsculas, sem acento, [a-z0-9-]
   folderId    String?         @unique
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
@@ -455,26 +490,29 @@ enum JobStatus {
 }
 
 model Job {
-  id           String      @id @default(cuid())
-  userId       String
-  type         JobType
-  status       JobStatus   @default(QUEUED)
-  sourceUrl    String
-  transcriptId String?     @unique
-  errorMsg     String?
-  progressStage String?
-  progressPercent Int?
-  progressedAt DateTime?
-  queuedAt     DateTime    @default(now())
-  startedAt    DateTime?
-  finishedAt   DateTime?
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcript   Transcript? @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
-  progressEvents JobProgressEvent[]
+  id               String             @id @default(cuid())
+  userId           String
+  type             JobType
+  status           JobStatus          @default(QUEUED)
+  sourceUrl        String
+  transcriptId     String?            @unique
+  configRevisionId String?
+  errorMsg         String?
+  progressStage    String?
+  progressPercent  Int?
+  progressedAt     DateTime?
+  queuedAt         DateTime           @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript       Transcript?        @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
+  configRevision   ConfigRevision?    @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
+  progressEvents   JobProgressEvent[]
 
   @@index([userId, queuedAt(sort: Desc)])
   @@index([userId, progressedAt(sort: Desc)])
   @@index([status])
+  @@index([configRevisionId])
 }
 
 model JobProgressEvent {
@@ -503,21 +541,21 @@ enum CostEventKind {
   TRANSCRIBE
   DOCUMENT
   X_SEARCH
-  EMBED        // não usado no MVP (sem embeddings), mas reservado
+  EMBED // não usado no MVP (sem embeddings), mas reservado
 }
 
 model CostEvent {
-  id         String        @id @default(cuid())
-  userId     String
-  ts         DateTime      @default(now())
-  kind       CostEventKind
-  model      String
-  tokensIn   Int           @default(0)
-  tokensOut  Int           @default(0)
-  costUsd    Decimal       @db.Decimal(10, 6)
-  jobId      String?
-  meta       Json?
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String        @id @default(cuid())
+  userId    String
+  ts        DateTime      @default(now())
+  kind      CostEventKind
+  model     String
+  tokensIn  Int           @default(0)
+  tokensOut Int           @default(0)
+  costUsd   Decimal       @db.Decimal(10, 6)
+  jobId     String?
+  meta      Json?
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, ts(sort: Desc)])
   @@index([ts])
@@ -529,19 +567,19 @@ model CostEvent {
 // ============================================================================
 
 model Conversation {
-  id              String        @id @default(cuid())
+  id                 String               @id @default(cuid())
   // Uma linha do tempo canônica por workspace. Contextos de transcrição
   // entram como referências/mensagens, nunca como outra sessão.
-  userId          String        @unique
-  title           String        @default("Vox")
-  thinking        Boolean       @default(false)
+  userId             String               @unique
+  title              String               @default("Vox")
+  thinking           Boolean              @default(false)
   // Conversa contextual de uma transcrição (chat por transcrição). Null = chat
   // geral. SetNull no delete da transcrição: a conversa sobrevive como geral.
-  transcriptId    String?
-  archivedAt      DateTime?
+  transcriptId       String?
+  archivedAt         DateTime?
   // Quantas vezes a conversa já foi compactada. Útil pra debug + UI exibir
   // "compactada N vezes" quando relevante.
-  compactionCount Int           @default(0)
+  compactionCount    Int                  @default(0)
   // Folha da trilha ativa (spec 127). A conversa é uma ÁRVORE: versionar uma
   // mensagem cria um ramo irmão, e este ponteiro diz qual ramo está em uso.
   // Null = conversa nunca ramificada; a trilha é a linha do tempo inteira.
@@ -551,7 +589,7 @@ model Conversation {
   // que a leitura já trata — ponteiro pendurado cai na última mensagem
   // (`resolveActiveTrail`), e `clearConversation` zera o ponteiro na mesma
   // transação que apaga as mensagens.
-  activeLeafId    String?
+  activeLeafId       String?
   // A conversa já é uma árvore de verdade (spec 127): toda mensagem exceto a
   // raiz tem antecessor registrado. Marcada na primeira escrita estrutural.
   //
@@ -559,15 +597,15 @@ model Conversation {
   // antecessor": com inferência, versionar a PRIMEIRA mensagem cria uma
   // segunda raiz legítima e a leitura confundiria isso com dados legados —
   // prependendo a versão abandonada no histórico enviado ao modelo.
-  messagesLinearized Boolean    @default(false)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcript      Transcript?   @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
-  messages       ChatMessage[]
-  approvals      ChatApproval[]
-  turns           ChatTurn[]
-  compactionLease ChatCompactionLease?
+  messagesLinearized Boolean              @default(false)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript         Transcript?          @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
+  messages           ChatMessage[]
+  approvals          ChatApproval[]
+  turns              ChatTurn[]
+  compactionLease    ChatCompactionLease?
 
   @@index([updatedAt(sort: Desc)])
   @@index([transcriptId])
@@ -589,19 +627,19 @@ model ChatApproval {
   payload            Json
   status             ChatApprovalStatus @default(PENDING)
   /// Null = no wall-clock TTL (spec 090). Legacy rows may still have a timestamp.
-  expiresAt      DateTime?
-  createdAt      DateTime           @default(now())
-  decidedAt      DateTime?
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  conversation   Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  expiresAt          DateTime?
+  createdAt          DateTime           @default(now())
+  decidedAt          DateTime?
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation       Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, providerApprovalId])
   @@index([userId, status, expiresAt])
   @@index([conversationId, createdAt])
-  @@unique([userId, providerApprovalId])
 }
 
 model ChatCompactionLease {
-  conversationId String   @id
+  conversationId String       @id
   ownerId        String
   expiresAt      DateTime
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -627,22 +665,25 @@ enum ChatTurnStatus {
 }
 
 model ChatTurn {
-  id                 String         @id @default(cuid())
+  id                 String          @id @default(cuid())
   userId             String
   conversationId     String
-  userMessageId      String         @unique
-  assistantMessageId String         @unique
-  status             ChatTurnStatus @default(PENDING)
-  errorMsg           String?        @db.Text
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  userMessageId      String          @unique
+  assistantMessageId String          @unique
+  configRevisionId   String?
+  status             ChatTurnStatus  @default(PENDING)
+  errorMsg           String?         @db.Text
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
   finishedAt         DateTime?
-  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  conversation       Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation       Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  configRevision     ConfigRevision? @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
 
   @@index([userId, status, updatedAt])
   @@index([conversationId, createdAt(sort: Desc)])
   @@index([status, updatedAt])
+  @@index([configRevisionId])
 }
 
 enum ChatRole {
@@ -714,22 +755,22 @@ enum NoteKind {
 }
 
 model Note {
-  id           String                  @id @default(cuid())
-  userId       String
-  parentId     String?
-  sourceType   BrainSourceType?
-  sourceId     String?
-  kind         NoteKind                @default(NOTE)
-  title        String
+  id                String                   @id @default(cuid())
+  userId            String
+  parentId          String?
+  sourceType        BrainSourceType?
+  sourceId          String?
+  kind              NoteKind                 @default(NOTE)
+  title             String
   // Conteúdo markdown. FOLDER ignora este campo.
-  content      String                  @default("") @db.Text
+  content           String                   @default("") @db.Text
   // tsvector mantido por trigger SQL (sync com title+content).
-  searchVector Unsupported("tsvector")?
-  createdAt    DateTime                @default(now())
-  updatedAt    DateTime                @updatedAt
-  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent       Note?                   @relation("NoteTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children     Note[]                  @relation("NoteTree")
+  searchVector      Unsupported("tsvector")?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent            Note?                    @relation("NoteTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children          Note[]                   @relation("NoteTree")
   transcriptSources NoteTranscriptSource[]
 
   @@index([userId, parentId])
@@ -757,8 +798,8 @@ model NoteTranscriptSource {
 // ============================================================================
 
 enum AutomationType {
-  PERIODIC_SUMMARY  // resumo periódico (puxa transcrições/notas via tools)
-  WEB_RESEARCH      // pesquisa web sobre um tema e cria nota
+  PERIODIC_SUMMARY // resumo periódico (puxa transcrições/notas via tools)
+  WEB_RESEARCH // pesquisa web sobre um tema e cria nota
 }
 
 enum AutomationFrequency {
@@ -786,50 +827,50 @@ enum AutomationRunStatus {
 }
 
 model Automation {
-  id          String              @id @default(cuid())
-  userId      String
-  name        String
-  type        AutomationType
-  prompt      String              @db.Text
-  frequency   AutomationFrequency
-  hour        Int                 // 0-23 (no timezone do automation)
-  minute      Int                 // 0-59
-  dayOfWeek   Int?                // 0=segunda..6=domingo (só WEEKLY)
-  dayOfMonth  Int?                // 1-31 (só MONTHLY; clampa último dia do mês)
-  timezone    String              @default("America/Sao_Paulo")
-  delivery    AutomationDelivery  @default(IN_APP)
-  status      AutomationStatus    @default(ACTIVE)
-  lastRunAt   DateTime?
-  nextRunAt   DateTime?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id         String              @id @default(cuid())
+  userId     String
+  name       String
+  type       AutomationType
+  prompt     String              @db.Text
+  frequency  AutomationFrequency
+  hour       Int // 0-23 (no timezone do automation)
+  minute     Int // 0-59
+  dayOfWeek  Int? // 0=segunda..6=domingo (só WEEKLY)
+  dayOfMonth Int? // 1-31 (só MONTHLY; clampa último dia do mês)
+  timezone   String              @default("America/Sao_Paulo")
+  delivery   AutomationDelivery  @default(IN_APP)
+  status     AutomationStatus    @default(ACTIVE)
+  lastRunAt  DateTime?
+  nextRunAt  DateTime?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
 
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  runs        AutomationRun[]
+  user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs AutomationRun[]
 
   @@index([userId])
   @@index([status, nextRunAt])
 }
 
 model AutomationRun {
-  id            String              @id @default(cuid())
-  automationId  String
-  userId        String              // duplicado p/ scoping rápido em queries de tool
-  status        AutomationRunStatus @default(PENDING)
-  startedAt     DateTime?
-  finishedAt    DateTime?
-  outputMd      String?             @db.Text
-  errorMessage  String?             @db.Text
-  tokensIn      Int                 @default(0)
-  tokensOut     Int                 @default(0)
-  costUsd       Decimal             @default(0) @db.Decimal(12, 6)
-  noteId        String?             // se WEB_RESEARCH criou nota
-  telegramSent  Boolean             @default(false)
-  triggeredBy   String              @default("scheduler") // scheduler | manual
-  createdAt     DateTime            @default(now())
+  id           String              @id @default(cuid())
+  automationId String
+  userId       String // duplicado p/ scoping rápido em queries de tool
+  status       AutomationRunStatus @default(PENDING)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  outputMd     String?             @db.Text
+  errorMessage String?             @db.Text
+  tokensIn     Int                 @default(0)
+  tokensOut    Int                 @default(0)
+  costUsd      Decimal             @default(0) @db.Decimal(12, 6)
+  noteId       String? // se WEB_RESEARCH criou nota
+  telegramSent Boolean             @default(false)
+  triggeredBy  String              @default("scheduler") // scheduler | manual
+  createdAt    DateTime            @default(now())
 
-  automation    Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([automationId, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])

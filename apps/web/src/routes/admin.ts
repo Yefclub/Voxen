@@ -13,7 +13,7 @@ import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
-import { deleteSetting, getAppTimezone, getSetting, setSetting } from '../lib/settings';
+import { getAppTimezone, getSetting, setSetting, setSettings } from '../lib/settings';
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
 
 type AdminVariables = {
@@ -128,16 +128,18 @@ adminRoutes.patch('/instance', async (c) => {
       400,
     );
   }
+  const settings: Partial<Record<'app_timezone' | 'allow_signups', string>> = {};
   if (hasTimezone) {
     const tz = String(body.timezone).trim();
     if (!isValidIanaTimezone(tz)) {
       return c.json({ error: 'Timezone IANA inválido.' }, 400);
     }
-    await setSetting('app_timezone', normalizeAppTimezone(tz));
+    settings.app_timezone = normalizeAppTimezone(tz);
   }
   if (hasSignups) {
-    await setSetting('allow_signups', body.allowSignups ? 'true' : 'false');
+    settings.allow_signups = body.allowSignups ? 'true' : 'false';
   }
+  await setSettings(settings, { actorUserId: c.get('adminUserId') });
   const [allowSignupsRaw, timezone] = await Promise.all([
     getSetting('allow_signups').catch(() => null),
     getAppTimezone(),
@@ -171,7 +173,7 @@ adminRoutes.post('/mcp/rotate', async (c) => {
   const tokenBytes = new Uint8Array(32);
   crypto.getRandomValues(tokenBytes);
   const token = Array.from(tokenBytes, (b) => b.toString(16).padStart(2, '0')).join('');
-  await setSetting('mcp_api_token', `${adminUserId}:${token}`);
+  await setSetting('mcp_api_token', `${adminUserId}:${token}`, { actorUserId: adminUserId });
   return c.json({
     token,
     userId: adminUserId,
@@ -243,8 +245,7 @@ adminRoutes.post('/mcp/prompt', async (c) => {
 
 // DELETE /api/admin/mcp — revoga o token (apaga setting)
 adminRoutes.delete('/mcp', async (c) => {
-  const { deleteSetting } = await import('../lib/settings');
-  await deleteSetting('mcp_api_token');
+  await setSettings({ mcp_api_token: null }, { actorUserId: c.get('adminUserId') });
   return c.json({ ok: true });
 });
 
@@ -295,15 +296,18 @@ adminRoutes.patch('/proxy-agent', async (c) => {
       return c.json({ error: 'Gere o token do agente de proxy antes de ativar.' }, 409);
     }
   }
-  await setSetting('proxy_agent_enabled', body.enabled ? 'true' : 'false');
+  const settings: Partial<Record<'proxy_agent_enabled' | 'yt_dlp_proxy_urls', string | null>> = {
+    proxy_agent_enabled: body.enabled ? 'true' : 'false',
+  };
   const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
   if (body.enabled) {
     if (!currentProxy) {
-      await setSetting('yt_dlp_proxy_urls', LOCAL_TUNNEL_SOCKS_URL);
+      settings.yt_dlp_proxy_urls = LOCAL_TUNNEL_SOCKS_URL;
     }
   } else if (currentProxy === LOCAL_TUNNEL_SOCKS_URL) {
-    await deleteSetting('yt_dlp_proxy_urls');
+    settings.yt_dlp_proxy_urls = null;
   }
+  await setSettings(settings, { actorUserId: c.get('adminUserId') });
   return c.json({ enabled: body.enabled });
 });
 
@@ -315,16 +319,21 @@ adminRoutes.post('/proxy-agent/token', async (c) => {
   const tokenBytes = new Uint8Array(32);
   crypto.getRandomValues(tokenBytes);
   const token = toBase64Url(tokenBytes);
-  await setSetting('proxy_agent_token', token);
+  const settings: Partial<
+    Record<'proxy_agent_token' | 'proxy_agent_enabled' | 'yt_dlp_proxy_urls', string | null>
+  > = {
+    proxy_agent_token: token,
+    proxy_agent_enabled: 'true',
+  };
   // Gerar token = intenção de usar o proxy → liga o switch.
-  await setSetting('proxy_agent_enabled', 'true');
   // Aponta o worker pro SOCKS local do túnel (worker já é socks5-capable, spec
   // 058). Só seta se ainda não houver um proxy customizado configurado pelo
   // operador — não sobrescrevemos um http proxy intencional.
   const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
   if (!currentProxy) {
-    await setSetting('yt_dlp_proxy_urls', LOCAL_TUNNEL_SOCKS_URL);
+    settings.yt_dlp_proxy_urls = LOCAL_TUNNEL_SOCKS_URL;
   }
+  await setSettings(settings, { actorUserId: c.get('adminUserId') });
   // Sincroniza o authfile do chisel e recarrega o servidor (best-effort).
   const { syncChiselAuthfile } = await import('../lib/proxy-agent-tunnel');
   await syncChiselAuthfile();
@@ -337,15 +346,16 @@ adminRoutes.post('/proxy-agent/token', async (c) => {
 
 // DELETE /api/admin/proxy-agent/token — revoga (apaga setting).
 adminRoutes.delete('/proxy-agent/token', async (c) => {
-  const { deleteSetting } = await import('../lib/settings');
-  await deleteSetting('proxy_agent_token');
-  await deleteSetting('proxy_agent_enabled');
+  const settings: Partial<
+    Record<'proxy_agent_token' | 'proxy_agent_enabled' | 'yt_dlp_proxy_urls', string | null>
+  > = { proxy_agent_token: null, proxy_agent_enabled: null };
   // Limpa o proxy do worker SOMENTE se for exatamente o SOCKS local do túnel —
   // não apaga um proxy http custom que o operador tenha configurado.
   const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
   if (currentProxy === LOCAL_TUNNEL_SOCKS_URL) {
-    await deleteSetting('yt_dlp_proxy_urls');
+    settings.yt_dlp_proxy_urls = null;
   }
+  await setSettings(settings, { actorUserId: c.get('adminUserId') });
   // Limpa o authfile (passa a {} -> nega conexões) e recarrega (best-effort).
   const { syncChiselAuthfile } = await import('../lib/proxy-agent-tunnel');
   await syncChiselAuthfile();
