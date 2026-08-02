@@ -67,7 +67,7 @@ export interface ConversationTrail {
 /** Estado da conversa que a resolução da trilha precisa. */
 export interface ConversationTrailState {
   activeLeafId: string | null | undefined;
-  /** `Conversation.messagesLinearized`. Omitido = trata como acervo antigo. */
+  /** `Conversation.messagesLinearized`. Omitido = trata como dados legados. */
   linearized?: boolean;
 }
 

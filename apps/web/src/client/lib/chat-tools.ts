@@ -19,6 +19,7 @@ export type ToolFamily = 'search' | 'read' | 'notes' | 'brain' | 'web' | 'transc
 const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   // busca
   search_transcripts: 'search',
+  search_knowledge: 'search',
   search_notes: 'search',
   list_transcripts: 'search',
   list_notes: 'search',

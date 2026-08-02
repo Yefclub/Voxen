@@ -174,7 +174,7 @@ primeiro trecho da resposta final chega, o bloco se recolhe num resumo curto
 voltar a usar ferramentas depois disso, o bloco reabre sozinho.
 
 **Documento anexado fica preso à mensagem.** O arquivo enviado pelo composer
-continua indo pro acervo, mas agora também fica vinculado à mensagem em que
+continua indo para a Base de conhecimento, mas agora também fica vinculado à mensagem em que
 foi enviado: os anexos aparecem logo abaixo da sua bolha no histórico e
 continuam lá depois de recarregar a página. São até 5 anexos por mensagem.
 
@@ -349,9 +349,9 @@ verde/indigo própria, sempre escura, desconectada do resto do produto.
 
 ## v0.13.0-dev.1785520081 — 2026-07-31 · Dev
 
-### 🐛 Busca no acervo quebrava o turno inteiro do chat
+### 🐛 Busca na Base de conhecimento quebrava o turno inteiro do chat
 
-Corrigido bug que fazia o agente de chat falhar sempre que usava a ferramenta de busca no acervo (`search_transcripts`) — um campo de data era devolvido em formato incompatível com o que o modelo de IA espera, derrubando a resposta inteira com erro técnico. O mesmo problema foi corrigido no servidor MCP.
+Corrigido bug que fazia o agente de chat falhar sempre que usava a ferramenta de busca na Base de conhecimento (`search_transcripts`) — um campo de data era devolvido em formato incompatível com o que o modelo de IA espera, derrubando a resposta inteira com erro técnico. O mesmo problema foi corrigido no servidor MCP.
 
 ## v0.13.0-dev.1785517091 — 2026-07-31 · Dev
 
@@ -557,7 +557,7 @@ Isso mantém a organização por tags rápida mesmo quando a base de conheciment
 
 ### ✨ Biblioteca Viva organiza conteúdos por semana, Inbox, pastas e tags
 
-A Biblioteca agora separa os conteúdos por semana de captura e permite reduzir o acervo pela semana atual ou anterior. O Inbox destaca materiais que ainda não entraram em uma pasta, enquanto pastas e tags aparecem como filtros visíveis com contagem de conteúdos.
+A Biblioteca agora separa os conteúdos por semana de captura e permite reduzir a Base de conhecimento pela semana atual ou anterior. O Inbox destaca materiais que ainda não entraram em uma pasta, enquanto pastas e tags aparecem como filtros visíveis com contagem de conteúdos.
 
 As combinações de busca, período, pasta, tag e status permanecem na URL para que uma organização possa ser compartilhada ou retomada. A Vox também recebe a pasta, tags e data de captura nos resultados da Biblioteca, deixando suas sugestões e leituras de contexto mais situadas.
 
@@ -828,7 +828,7 @@ acompanhamento automático.
 
 ## v0.11.0-dev.1784071986 — 2026-07-14 · Dev
 
-### ✨ Agente lista acervo por data de ingestão (resuma minha semana)
+### ✨ Agente lista a Base de conhecimento por data de ingestão (resuma minha semana)
 
 Novas tools `list_transcripts` e `list_notes` com `since`/`until` em `createdAt`.
 Perguntas como “resuma minha semana” passam a listar o intake real da janela
@@ -930,7 +930,7 @@ deixam de ficar presos em uma versão antiga após novos deploys.
 
 ### 🐛 Agente in-app ganha ferramenta para enfileirar transcrição de links compartilhados
 
-O agente respondia que não tinha acesso à internet e não conseguia abrir links quando o usuário colava uma URL do YouTube, X ou qualquer página — apesar do Voxen ser justamente uma plataforma de ingestão de links. A causa era a falta de uma ferramenta de enfileiramento: o agente só enxergava tools de leitura sobre o que já estava transcrito no acervo. Agora ele também tem `request_transcription` (enfileira a URL nova, ou aponta direto a transcrição já existente) e `get_job_status` (acompanha o job até concluir), espelhando o par que o servidor MCP já usava para agentes externos.
+O agente respondia que não tinha acesso à internet e não conseguia abrir links quando o usuário colava uma URL do YouTube, X ou qualquer página — apesar do Voxen ser justamente uma plataforma de ingestão de links. A causa era a falta de uma ferramenta de enfileiramento: o agente só enxergava tools de leitura sobre o que já estava transcrito na Base de conhecimento. Agora ele também tem `request_transcription` (enfileira a URL nova, ou aponta direto a transcrição já existente) e `get_job_status` (acompanha o job até concluir), espelhando o par que o servidor MCP já usava para agentes externos.
 
 ## v0.11.0-dev.1783907036 — 2026-07-12 · Dev
 
@@ -1044,8 +1044,8 @@ O chat ganhou uma cara nova e profissional: bloco de ferramentas que mostra
 "Trabalhando" com contador enquanto roda e colapsa num resumo (nº de ações,
 famílias e duração) ao terminar, com cada ação abrindo o detalhe; raciocínio em
 tempo real com efeito "Pensando" que vira "Pensou por Xs" recolhível; e um novo
-composer com anexo de arquivos (imagem, áudio/vídeo e documentos entram direto no
-acervo), estado do envio em chip e envio por Enter. O chat abre já no fim da
+composer com anexo de arquivos (imagem, áudio/vídeo e documentos entram direto na
+Base de conhecimento), estado do envio em chip e envio por Enter. O chat abre já no fim da
 conversa e a barra de rolagem fica na borda da tela, com o conteúdo centralizado.
 
 No shell, os botões de som e de limpar conversa passaram para o cabeçalho, ao lado
@@ -1105,10 +1105,10 @@ o switch para voltar a rotear pelo agente.
 
 ## v0.11.0-dev.1783821598 — 2026-07-11 · Dev
 
-### ✨ Regenerar títulos de todo o acervo com IA
+### ✨ Regenerar títulos de toda a Base de conhecimento com IA
 
 Novo botão **Regenerar títulos** na biblioteca: reescreve com IA os títulos de
-todos os conteúdos, drenando o acervo em lotes. Útil depois das melhorias na
+todos os conteúdos, drenando a Base de conhecimento em lotes. Útil depois das melhorias na
 geração de título (sempre em português, sem vazar o "raciocínio" do modelo) —
 conteúdos antigos com título ruim são atualizados; os que já estão bons são
 mantidos. Consome créditos de IA (uma chamada por conteúdo).

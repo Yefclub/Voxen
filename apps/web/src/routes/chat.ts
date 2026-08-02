@@ -279,7 +279,7 @@ chatRoutes.post('/messages/:id/versions', async (c) => {
   const attachments = await resolveAttachments(userId, parsed.data.attachmentJobIds);
   let turn: Awaited<ReturnType<typeof createChatTurn>>;
   try {
-    // Passa o ID, não o antecessor: em conversa do acervo antigo o antecessor
+    // Passa o ID, não o antecessor: em conversa legada o antecessor
     // só existe depois do encadeamento, que roda dentro da transação do turno.
     turn = await createChatTurn(userId, parsed.data.content, attachments, {
       branchFrom: { messageId: target.id },

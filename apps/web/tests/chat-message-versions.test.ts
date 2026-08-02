@@ -159,7 +159,7 @@ describe('activateMessageVersion', () => {
     trailNode('resposta-a', 'msg-a', 'ASSISTANT', 3_000),
   ];
 
-  /** Conversa do acervo antigo: nenhuma mensagem tem antecessor registrado. */
+  /** Conversa legada: nenhuma mensagem tem antecessor registrado. */
   const LEGACY_NODES = [
     trailNode('l1', null, 'USER', 1_000),
     trailNode('l2', null, 'ASSISTANT', 2_000),
@@ -260,7 +260,7 @@ describe('activateMessageVersion', () => {
 });
 
 describe('ensureConversationLinearized', () => {
-  test('encadeia o acervo antigo, marca a conversa e devolve os nós corrigidos', async () => {
+  test('encadeia os dados legados, marca a conversa e devolve os nós corrigidos', async () => {
     const nodes = [
       trailNode('l1', null, 'USER', 1_000),
       trailNode('l2', null, 'ASSISTANT', 2_000),
@@ -280,7 +280,7 @@ describe('ensureConversationLinearized', () => {
   });
 
   test('conversa nova é marcada mesmo sem nada a encadear', async () => {
-    // Sem a marca, a leitura continuaria aplicando a regra de acervo antigo e
+    // Sem a marca, a leitura continuaria aplicando a regra de dados legados e
     // a raiz nunca poderia ter indicador de versão.
     const nodes = [trailNode('r1', null, 'USER', 1_000), trailNode('r2', 'r1', 'ASSISTANT', 2_000)];
     const linearize = recorder();

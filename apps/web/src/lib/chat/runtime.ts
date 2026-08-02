@@ -10,6 +10,7 @@ import { invalidateGraphCache } from '../graph-cache';
 import {
   expandContextFromMd,
   findRelated,
+  ftsSearchNotes,
   ftsSearchTranscripts,
   loadTranscriptMd,
   parseOutline,
@@ -17,8 +18,9 @@ import {
   readLinesFromMd,
   readSectionFromMd,
   readTimespanFromMd,
+  searchKnowledgeBase,
   verifyClaimAgainstMd,
-  type FtsResult,
+  type KnowledgeSearchResult,
 } from '../retrieval';
 import { getAppTimezone, getSettings } from '../settings';
 import { researchWeb } from '../web-research';
@@ -89,8 +91,9 @@ const AGENT_INSTRUCTIONS = [
   '   (start_of_local_day_utc, start_of_local_week_monday_utc, now_utc). Se a janela não for',
   '   clara, use os últimos 7 dias a partir de now_utc. Depois outline/read dos itens',
   '   relevantes e resuma com citações — NÃO diga que só busca por termo.',
-  '2. Para tópicos/termos/entidades, busque com search_transcripts, search_notes, brain_search',
-  '   — retornam trechos curtos + id.',
+  '2. Para tópicos/termos/entidades, busque primeiro com search_knowledge — ele consulta',
+  '   toda a Base de conhecimento (notas e transcrições) e retorna trechos curtos + fonte.',
+  '   Use search_transcripts, search_notes ou brain_search apenas para aprofundar uma fonte.',
   '3. Antes de abrir conteúdo, veja a ESTRUTURA com outline_transcript (seções, linhas, tempos).',
   '4. Leia só trechos específicos: read_lines (intervalo de linhas), read_section (seção),',
   '   read_timespan (intervalo de tempo). Não leia o documento inteiro por padrão.',
@@ -124,8 +127,10 @@ const AGENT_INSTRUCTIONS = [
   '- NÃO diga ao usuário para “pedir” ou “chamar” uma ferramenta. Você decide e usa sozinha.',
   '- Próximos passos em português natural de produto: “posso detalhar esse item”, “posso abrir',
   '  o trecho sobre X”, “posso montar uma nota com o resumo”. Nunca ensine o protocolo interno.',
-  '- Cite o acervo por título, tema, seção ou timestamp legível (hh:mm:ss) — não por IDs crus,',
+  '- Cite a Base de conhecimento por título, tema, seção ou timestamp legível (hh:mm:ss) — não por IDs crus,',
   '  a menos que o usuário peça explicitamente o identificador.',
+  '- Ao se apoiar em uma nota, use o href retornado para citá-la como link Markdown navegável',
+  '  (ex.: [Título da nota](/notas/id)). Só cite depois de ler ou confirmar o conteúdo.',
   '- Fale como assistente da base de conhecimento, não como operador de API ou engenheiro do',
   '  harness. Se faltar evidência, diga com clareza em linguagem humana.',
 ].join('\n');
@@ -414,11 +419,15 @@ function cleanUntrustedMetadata(value: string, max: number): string {
     .slice(0, max);
 }
 
-export function buildLibrarySuggestionsInstructions(items: readonly FtsResult[]): string {
+export function buildLibrarySuggestionsInstructions(
+  items: readonly KnowledgeSearchResult[],
+): string {
   if (items.length === 0) return '';
   const metadata = items.map((item) => ({
     id: cleanUntrustedMetadata(item.id, 100),
     title: cleanUntrustedMetadata(item.title, 180),
+    sourceType: item.sourceType,
+    href: cleanUntrustedMetadata(item.href, 240),
     tags: item.tags.slice(0, 8).map((tag) => cleanUntrustedMetadata(tag, 80)),
     folder: item.folder ? cleanUntrustedMetadata(item.folder, 120) : null,
     capturedAt: item.createdAt.toISOString(),
@@ -565,6 +574,22 @@ export function buildTools(
         // e rejeita Date com AI_TypeValidationError. As outras tools já
         // convertem (list_transcripts, read_transcript, search_notes); esta
         // ficou de fora e derrubava toda vez que o agente chamava a busca.
+        return {
+          results: results.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+        };
+      },
+    }),
+    search_knowledge: tool({
+      description:
+        'Busca na Base de conhecimento inteira (notas curadas e transcrições). Use como ' +
+        'primeiro passo para perguntas factuais ou temáticas. Retorna trechos curtos, tipo da ' +
+        'fonte e link de citação; notas só recebem prioridade quando sua relevância é comparável.',
+      inputSchema: z.object({
+        query: z.string().min(1).max(300),
+        limit: z.number().int().min(1).max(25).optional(),
+      }),
+      execute: async ({ query, limit }) => {
+        const results = await searchKnowledgeBase(userId, query, limit ?? 8);
         return {
           results: results.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
         };
@@ -779,7 +804,7 @@ export function buildTools(
     }),
     request_transcription: tool({
       description:
-        'Ingere uma URL que ainda não está no acervo e AGUARDA a conclusão. Retorna um brief ' +
+        'Ingere uma URL que ainda não está na Base de conhecimento e AGUARDA a conclusão. Retorna um brief ' +
         'rico com transcriptId, resumo, tags e conteúdos relacionados. Não responda ao usuário ' +
         'antes deste resultado; abra a transcrição completa apenas se o brief não bastar.',
       inputSchema: z.object({
@@ -864,39 +889,54 @@ export function buildTools(
       },
     }),
     search_notes: tool({
-      description: 'Busca notas do workspace atual.',
-      inputSchema: z.object({ query: z.string().min(1).max(300) }),
-      execute: async ({ query }) => {
-        const rows = await db.note.findMany({
-          where: {
-            userId,
-            kind: 'NOTE',
-            OR: [
-              { title: { contains: query, mode: 'insensitive' } },
-              { content: { contains: query, mode: 'insensitive' } },
-            ],
-          },
-          orderBy: { updatedAt: 'desc' },
-          take: 8,
-          select: { id: true, title: true, content: true, updatedAt: true },
-        });
-        return rows.map((row) => ({
-          id: row.id,
-          title: row.title,
-          excerpt: row.content.slice(0, 900),
-          updatedAt: row.updatedAt.toISOString(),
-        }));
+      description:
+        'Busca FTS somente nas notas da Base de conhecimento. Use depois de search_knowledge ' +
+        'quando precisar aprofundar ou restringir a pesquisa às notas curadas.',
+      inputSchema: z.object({
+        query: z.string().min(1).max(300),
+        limit: z.number().int().min(1).max(25).optional(),
+      }),
+      execute: async ({ query, limit }) => {
+        const results = await ftsSearchNotes(userId, query, limit ?? 8);
+        return {
+          results: results.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+        };
       },
     }),
     read_note: tool({
-      description: 'Lê uma nota específica do workspace atual.',
+      description:
+        'Lê uma nota específica do workspace atual. Use href como citação navegável na resposta.',
       inputSchema: z.object({ noteId: z.string().min(1) }),
       execute: async ({ noteId }) => {
         const note = await db.note.findFirst({
           where: { id: noteId, userId, kind: 'NOTE' },
-          select: { id: true, title: true, content: true },
+          select: {
+            id: true,
+            title: true,
+            content: true,
+            transcriptSources: {
+              orderBy: { createdAt: 'asc' },
+              select: {
+                transcriptId: true,
+                transcript: { select: { title: true, url: true } },
+              },
+            },
+          },
         });
-        return note ?? { error: 'Nota não encontrada.' };
+        return note
+          ? {
+              id: note.id,
+              title: note.title,
+              content: note.content,
+              href: `/notas/${note.id}`,
+              sources: note.transcriptSources.map((source) => ({
+                id: source.transcriptId,
+                title: source.transcript.title,
+                href: `/transcricoes/${source.transcriptId}`,
+                url: source.transcript.url,
+              })),
+            }
+          : { error: 'Nota não encontrada.' };
       },
     }),
     brain_search: tool({
@@ -1432,7 +1472,7 @@ async function maybeCompact(
       linearized: conversation.messagesLinearized,
     });
     // O resumo é inserido como nó ENTRE o último compactado e seus filhos.
-    // Numa conversa do acervo antigo (toda sem antecessor) não haveria onde
+    // Numa conversa legada (toda sem antecessor) não haveria onde
     // pendurar, então o encadeamento preguiçoso roda antes.
     await ensureConversationLinearized(
       nodes,

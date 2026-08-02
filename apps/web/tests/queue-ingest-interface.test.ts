@@ -58,7 +58,7 @@ describe('strings visíveis ao usuário (PT e EN)', () => {
 describe('escolha do modo de renderização da transcrição', () => {
   test('a página delega ao helper testado em vez de listar origens inline', () => {
     // Regressão da spec 128: a condição inline por lista de origens deixava
-    // posts do X (maior grupo do acervo) caírem no viewer de timestamp.
+    // posts do X (maior grupo da Base de conhecimento) caírem no viewer de timestamp.
     const page = read('pages/transcricoes-detalhe.tsx');
     expect(page).toContain('transcriptRenderMode');
     expect(page).not.toContain("t.source === 'WEB' || isVisualTranscript || isDocumentTranscript");

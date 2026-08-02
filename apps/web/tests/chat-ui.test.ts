@@ -11,6 +11,7 @@ import {
 describe('toolFamily', () => {
   it('mapeia buscas', () => {
     expect(toolFamily('search_transcripts')).toBe('search');
+    expect(toolFamily('search_knowledge')).toBe('search');
     expect(toolFamily('search_notes')).toBe('search');
   });
   it('mapeia leituras/recuperação progressiva', () => {
@@ -42,6 +43,7 @@ describe('prettifyToolName / hasToolLabel', () => {
   });
   it('hasToolLabel reconhece nomes conhecidos', () => {
     expect(hasToolLabel('search_transcripts')).toBe(true);
+    expect(hasToolLabel('search_knowledge')).toBe(true);
     expect(hasToolLabel('mystery_tool')).toBe(false);
   });
   it('hasToolLabel reconhece as tools de ingestão de URL', () => {

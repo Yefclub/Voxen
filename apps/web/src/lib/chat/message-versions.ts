@@ -113,7 +113,7 @@ export async function activateMessageVersion(
   const state = await (deps.readState ?? readConversationState)(conversationId);
   if (!state) throw new MessageVersionError('Mensagem não encontrada.', 404);
 
-  // Ativar é escrita estrutural: sem encadear antes, numa conversa do acervo
+  // Ativar é escrita estrutural: sem encadear antes, numa conversa legada
   // antigo `resolveDeepestLeaf` não acha filho nenhum, a folha resolvida vira
   // a própria mensagem, e a trilha perde de forma PERSISTIDA tudo que veio
   // depois dela.
@@ -170,7 +170,7 @@ export type TurnParent = { ok: true; parentId: string | null } | { ok: false };
  * antecessor da mensagem editada, para nascer irmã dela.
  *
  * `linearNodes` tem que ser a lista JÁ encadeada, não a que veio do banco: em
- * conversa do acervo antigo o antecessor só passa a existir depois do
+ * conversa legada o antecessor só passa a existir depois do
  * encadeamento, e lê-lo antes devolve nulo — a versão nasceria como segunda
  * raiz e o histórico anterior a ela sumiria da trilha. Esta função existe
  * separada exatamente para que essa regra seja exercitada por teste em vez de
@@ -188,7 +188,7 @@ export function resolveTurnParent(
 }
 
 /**
- * Encadeia mensagens sem antecessor de uma conversa do acervo antigo antes de
+ * Encadeia mensagens sem antecessor de uma conversa legada antes de
  * qualquer escrita estrutural (novo turno, nova versão, compactação).
  *
  * Não é migração de deploy: é preguiçoso, por conversa e idempotente — roda no
@@ -237,7 +237,7 @@ export async function ensureConversationLinearized<T extends TrailNodeRow>(
   const plan = planLinearization(nodes);
   for (const step of plan) await deps.updateParent(step.id, step.parentId);
   // A marca é gravada mesmo com plano vazio: conversa nova já nasce árvore, e
-  // sem a marca a leitura continuaria aplicando a regra de acervo antigo.
+  // sem a marca a leitura continuaria aplicando a regra de dados legados.
   await deps.markLinearized();
   return applyLinearization(nodes, plan);
 }

@@ -769,4 +769,80 @@ describeIfDb('library organization API', () => {
     const stored = await db.note.count({ where: { sourceType: 'TRANSCRIPT' } });
     expect(stored).toBe(0);
   });
+
+  it('persiste múltiplas fontes de transcrição para uma nota no próprio workspace', async () => {
+    await signUp('notes-sources@voxen.local', 'senha-super-segura-123', 'Fontes');
+    const signin = await signIn('notes-sources@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'notes-sources@voxen.local' } });
+    const first = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/primeira',
+        title: 'Fonte primeira',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/primeira.md`,
+        plainText: 'Conteúdo primeira',
+        frontmatter: {},
+      },
+    });
+    const second = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/segunda',
+        title: 'Fonte segunda',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/segunda.md`,
+        plainText: 'Conteúdo segunda',
+        frontmatter: {},
+      },
+    });
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/notes', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Nota com fontes',
+          content: 'Síntese curada.',
+          sourceTranscriptIds: [first.id, second.id],
+        }),
+      }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { note: { id: string; sourceId: string | null } };
+    expect(body.note.sourceId).toBe(first.id);
+    const sources = await db.noteTranscriptSource.findMany({
+      where: { noteId: body.note.id, userId: user.id },
+      orderBy: { transcriptId: 'asc' },
+      select: { transcriptId: true },
+    });
+    expect(sources.map((source) => source.transcriptId).sort()).toEqual(
+      [first.id, second.id].sort(),
+    );
+    const detail = await app.fetch(
+      new Request(`http://localhost/api/notes/${body.note.id}`, { headers: { cookie } }),
+    );
+    const detailBody = (await detail.json()) as {
+      note: { transcriptSources: { transcriptId: string }[] };
+    };
+    expect(detailBody.note.transcriptSources.map((source) => source.transcriptId).sort()).toEqual(
+      [first.id, second.id].sort(),
+    );
+
+    const invalid = await app.fetch(
+      new Request('http://localhost/api/notes', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ title: 'Fonte inválida', sourceTranscriptIds: ['   '] }),
+      }),
+    );
+    expect(invalid.status).toBe(400);
+  });
 });

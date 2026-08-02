@@ -42,7 +42,7 @@ export interface CreateChatTurnOptions {
    * seja, pendurada no mesmo antecessor. Ausente = fluxo normal, que anexa ao
    * fim da trilha ativa.
    *
-   * Guarda o ID, não o antecessor já resolvido: numa conversa do acervo antigo
+   * Guarda o ID, não o antecessor já resolvido: numa conversa legada
    * o antecessor só existe DEPOIS do encadeamento preguiçoso, que roda dentro
    * da transação abaixo. Ler `parentId` antes disso devolveria `null` e faria
    * a versão nascer como segunda raiz, jogando fora o histórico anterior.

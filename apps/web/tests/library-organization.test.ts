@@ -14,7 +14,7 @@ describe('libraryWeekBounds', () => {
     expect(result?.to).toBe(new Date(2026, 6, 27).toISOString());
   });
 
-  it('não adiciona limite temporal para todo o acervo', () => {
+  it('não adiciona limite temporal para toda a Base de conhecimento', () => {
     expect(libraryWeekBounds('all', new Date(2026, 6, 29))).toBeNull();
   });
 });
