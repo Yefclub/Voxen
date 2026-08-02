@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.0-dev.1785680287 — 2026-08-02 · Dev
+
+### ✨ Tokens MCP individuais e revogáveis
+
+O MCP agora usa tokens individuais por usuário, com escopos de leitura/escrita,
+expiração, último uso e revogação. Administradores gerenciam metadados sem ver
+segredos novamente e podem desativar a emissão de tokens por usuários.
+
 ## v0.13.0-dev.1785678128 — 2026-08-02 · Dev
 
 ### ✨ Saúde operacional da configuração de IA
