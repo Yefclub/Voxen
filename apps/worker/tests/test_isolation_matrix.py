@@ -1,4 +1,4 @@
-"""Matriz de isolamento dos contratos executados pelo worker (spec 133)."""
+"""Matriz de isolamento dos contratos executados pelo worker (spec 137)."""
 
 from __future__ import annotations
 

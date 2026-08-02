@@ -23,6 +23,7 @@ type Fixture = {
   transcriptBId: string;
   noteAId: string;
   noteBId: string;
+  noteFolderAId: string;
   folderAId: string;
   jobAId: string;
   messageAId: string;
@@ -76,7 +77,7 @@ async function expectSafeNotFound(response: Response): Promise<void> {
   expect(await response.text()).not.toContain(SECRET);
 }
 
-describeIfDb('matriz de isolamento entre usuários (spec 133)', () => {
+describeIfDb('matriz de isolamento entre usuários (spec 137)', () => {
   let fixture: Fixture;
   let previousAllowSignups: string | null = null;
   let previousMcpToken: string | null = null;
@@ -148,7 +149,10 @@ describeIfDb('matriz de isolamento entre usuários (spec 133)', () => {
         frontmatter: {},
       },
     });
-    const [noteA, noteB, jobA, conversationA] = await Promise.all([
+    const [noteFolderA, noteA, noteB, jobA, conversationA] = await Promise.all([
+      db.note.create({
+        data: { userId: ownerA.id, kind: 'FOLDER', title: `${SECRET} — pasta de notas` },
+      }),
       db.note.create({
         data: { userId: ownerA.id, kind: 'NOTE', title: `${SECRET} — nota`, content: SECRET },
       }),
@@ -196,6 +200,7 @@ describeIfDb('matriz de isolamento entre usuários (spec 133)', () => {
       transcriptBId: transcriptB.id,
       noteAId: noteA.id,
       noteBId: noteB.id,
+      noteFolderAId: noteFolderA.id,
       folderAId: folderA.id,
       jobAId: jobA.id,
       messageAId: messageA.id,
@@ -217,7 +222,7 @@ describeIfDb('matriz de isolamento entre usuários (spec 133)', () => {
   });
 
   it('não expõe nem altera transcrições, jobs, notas, pastas ou tags de outro workspace', async () => {
-    const { ownerBCookie, transcriptAId, noteAId, folderAId, jobAId } = fixture;
+    const { ownerBCookie, transcriptAId, noteAId, noteFolderAId, folderAId, jobAId } = fixture;
 
     const transcriptList = await call(
       '/api/transcripts?q=SEGREDO-MATRIZ',
@@ -243,6 +248,12 @@ describeIfDb('matriz de isolamento entre usuários (spec 133)', () => {
         method: 'PATCH',
       }),
     );
+    await expectSafeNotFound(
+      await call(`/api/transcripts/${transcriptAId}`, {
+        ...withCookie(ownerBCookie),
+        method: 'DELETE',
+      }),
+    );
 
     const noteList = await call('/api/notes', withCookie(ownerBCookie));
     expect(noteList.status).toBe(200);
@@ -254,8 +265,11 @@ describeIfDb('matriz de isolamento entre usuários (spec 133)', () => {
         method: 'PATCH',
       }),
     );
+    await expectSafeNotFound(
+      await call(`/api/notes/${noteAId}`, { ...withCookie(ownerBCookie), method: 'DELETE' }),
+    );
     const foreignParent = await call('/api/notes', {
-      ...withCookie(ownerBCookie, { title: 'Não deve nascer', parentId: folderAId }),
+      ...withCookie(ownerBCookie, { title: 'Não deve nascer', parentId: noteFolderAId }),
       method: 'POST',
     });
     expect(foreignParent.status).toBe(400);
@@ -268,6 +282,12 @@ describeIfDb('matriz de isolamento entre usuários (spec 133)', () => {
       await call(`/api/library/folders/${folderAId}`, {
         ...withCookie(ownerBCookie, { name: 'capturada' }),
         method: 'PATCH',
+      }),
+    );
+    await expectSafeNotFound(
+      await call(`/api/library/folders/${folderAId}`, {
+        ...withCookie(ownerBCookie),
+        method: 'DELETE',
       }),
     );
     const tags = await call('/api/library/tags?q=SEGREDO-MATRIZ', withCookie(ownerBCookie));
@@ -289,6 +309,13 @@ describeIfDb('matriz de isolamento entre usuários (spec 133)', () => {
     });
     expect(await db.note.findUniqueOrThrow({ where: { id: noteAId } })).toMatchObject({
       content: SECRET,
+    });
+    expect(await db.note.findUniqueOrThrow({ where: { id: noteFolderAId } })).toMatchObject({
+      kind: 'FOLDER',
+      userId: fixture.ownerAId,
+    });
+    expect(await db.libraryFolder.findUniqueOrThrow({ where: { id: folderAId } })).toMatchObject({
+      userId: fixture.ownerAId,
     });
     expect(await db.job.findUniqueOrThrow({ where: { id: jobAId } })).toMatchObject({
       status: 'QUEUED',
@@ -349,9 +376,21 @@ describeIfDb('matriz de isolamento entre usuários (spec 133)', () => {
     expect(readBody.result?.isError).toBe(true);
     expect(JSON.stringify(readBody)).not.toContain('Íntegra B');
 
-    const update = await mcpCall(mcpTokenA, {
+    const transcriptRead = await mcpCall(mcpTokenA, {
       jsonrpc: '2.0',
       id: 2,
+      method: 'tools/call',
+      params: { name: 'voxen_read_transcript', arguments: { transcript_id: transcriptBId } },
+    });
+    expect(transcriptRead.status).toBe(200);
+    const transcriptReadBody = (await transcriptRead.json()) as { result?: { isError?: boolean } };
+    expect(transcriptReadBody.result?.isError).toBe(true);
+    expect(JSON.stringify(transcriptReadBody)).not.toContain('Transcrição do dono B');
+    expect(JSON.stringify(transcriptReadBody)).not.toContain('Conteúdo do dono B.');
+
+    const update = await mcpCall(mcpTokenA, {
+      jsonrpc: '2.0',
+      id: 3,
       method: 'tools/call',
       params: {
         name: 'voxen_update_note',
@@ -365,7 +404,7 @@ describeIfDb('matriz de isolamento entre usuários (spec 133)', () => {
 
     const foreignSource = await mcpCall(mcpTokenA, {
       jsonrpc: '2.0',
-      id: 3,
+      id: 4,
       method: 'tools/call',
       params: {
         name: 'voxen_create_note',
