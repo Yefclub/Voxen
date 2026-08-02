@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any
@@ -145,6 +147,47 @@ async def _persist(
     refresh_transcript_id: str | None,
     log: Any,  # noqa: ANN401
 ) -> PersistResult:
+    if refresh_transcript_id:
+        # FOR UPDATE em autocommit não protege o tempo gasto com título,
+        # thumbnail e storage. O lock de sessão permanece no MESMO connection
+        # até a escrita final, então refreshes concorrentes reavaliam o checksum
+        # já atualizado e não duplicam versão/custo.
+        async with db.connection() as locked_conn:
+            lock_key = f"voxen:source-refresh:{refresh_transcript_id}"
+            await locked_conn.execute("SELECT pg_advisory_lock(hashtext($1))", lock_key)
+            try:
+                return await _persist_locked(
+                    user_id=user_id,
+                    job_id=job_id,
+                    source_url=source_url,
+                    result=result,
+                    refresh_transcript_id=refresh_transcript_id,
+                    log=log,
+                    locked_conn=locked_conn,
+                )
+            finally:
+                await locked_conn.execute("SELECT pg_advisory_unlock(hashtext($1))", lock_key)
+    return await _persist_locked(
+        user_id=user_id,
+        job_id=job_id,
+        source_url=source_url,
+        result=result,
+        refresh_transcript_id=None,
+        log=log,
+        locked_conn=None,
+    )
+
+
+async def _persist_locked(
+    *,
+    user_id: str,
+    job_id: str,
+    source_url: str,
+    result: scraper.ScrapeResult,
+    refresh_transcript_id: str | None,
+    log: Any,  # noqa: ANN401
+    locked_conn: Any | None,  # noqa: ANN401
+) -> PersistResult:
     """Persiste uma fonte nova ou atualiza sua versão somente se ela mudou."""
     import json
 
@@ -154,29 +197,28 @@ async def _persist(
     # A decisão de idempotência acontece antes de thumbnail, título ou upload:
     # uma consulta sem mudança não chama IA nem sobrescreve storage.
     if refresh_transcript_id:
-        async with db.connection() as conn:
-            current = await conn.fetchrow(
-                """
+        assert locked_conn is not None
+        current = await locked_conn.fetchrow(
+            """
                 SELECT id, "plainText", "mdPath", "sourceChecksum", "sourceVersion",
                        "sourceMetadata", source
                 FROM "Transcript"
                 WHERE id = $1 AND "userId" = $2
-                FOR UPDATE
-                """,
-                refresh_transcript_id,
-                user_id,
+            """,
+            refresh_transcript_id,
+            user_id,
+        )
+        if not current or current["source"] != "WEB":
+            raise PermanentError.public(
+                "SOURCE_REFRESH_MISSING",
+                "A fonte não está mais disponível para atualização.",
             )
-            if not current or current["source"] != "WEB":
-                raise PermanentError.public(
-                    "SOURCE_REFRESH_MISSING",
-                    "A fonte não está mais disponível para atualização.",
-                )
-            current_checksum = current["sourceChecksum"] or _source_checksum(current["plainText"])
-            current_version = int(current["sourceVersion"] or 0)
-            baseline_version = current_version or 1
-            if current_checksum == checksum:
-                await conn.execute(
-                    """
+        current_checksum = current["sourceChecksum"] or _source_checksum(current["plainText"])
+        current_version = int(current["sourceVersion"] or 0)
+        baseline_version = current_version or 1
+        if current_checksum == checksum:
+            await locked_conn.execute(
+                """
                     UPDATE "Transcript"
                     SET "sourceChecksum" = $3,
                         "sourceVersion" = $4,
@@ -186,41 +228,41 @@ async def _persist(
                         "sourceRefreshError" = NULL,
                         "updatedAt" = NOW()
                     WHERE id = $1 AND "userId" = $2
-                    """,
-                    refresh_transcript_id,
-                    user_id,
-                    checksum,
-                    baseline_version,
-                    json.dumps(metadata),
-                )
-                # Legados passam a ter o primeiro snapshot sem criar conteúdo novo.
-                await conn.execute(
-                    """
+                """,
+                refresh_transcript_id,
+                user_id,
+                checksum,
+                baseline_version,
+                json.dumps(metadata),
+            )
+            # Legados passam a ter o primeiro snapshot sem criar conteúdo novo.
+            await locked_conn.execute(
+                """
                     INSERT INTO "SourceContentVersion" (
                       id, "userId", "transcriptId", version, checksum,
                       "mdPath", "plainText", metadata
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
                     ON CONFLICT ("transcriptId", checksum) DO NOTHING
-                    """,
-                    db.generate_cuid(),
-                    user_id,
-                    refresh_transcript_id,
-                    baseline_version,
-                    checksum,
-                    current["mdPath"],
-                    current["plainText"],
-                    json.dumps(metadata),
-                )
-                return PersistResult(refresh_transcript_id, changed=False)
-            transcript_id = refresh_transcript_id
-            next_version = baseline_version + 1
-            old_snapshot = {
-                "version": baseline_version,
-                "checksum": current_checksum,
-                "md_path": current["mdPath"],
-                "plain_text": current["plainText"],
-                "metadata": _json_object(current["sourceMetadata"]),
-            }
+                """,
+                db.generate_cuid(),
+                user_id,
+                refresh_transcript_id,
+                baseline_version,
+                checksum,
+                current["mdPath"],
+                current["plainText"],
+                json.dumps(metadata),
+            )
+            return PersistResult(refresh_transcript_id, changed=False)
+        transcript_id = refresh_transcript_id
+        next_version = baseline_version + 1
+        old_snapshot = {
+            "version": baseline_version,
+            "checksum": current_checksum,
+            "md_path": current["mdPath"],
+            "plain_text": current["plainText"],
+            "metadata": _json_object(current["sourceMetadata"]),
+        }
     else:
         transcript_id = db.generate_cuid()
         next_version = 1
@@ -267,7 +309,7 @@ async def _persist(
             "mimeType": preview_mime_type,
         }
 
-    async with db.connection() as conn:
+    async with _persist_connection(locked_conn) as conn:
         if old_snapshot:
             # Snapshot da versão anterior antes de mover o ponteiro do Transcript.
             await conn.execute(
@@ -402,6 +444,15 @@ async def _persist(
             log=log,
         )
     return PersistResult(transcript_id, changed=True)
+
+
+@asynccontextmanager
+async def _persist_connection(existing_conn: Any | None) -> AsyncIterator[Any]:  # noqa: ANN401
+    if existing_conn is not None:
+        yield existing_conn
+        return
+    async with db.connection() as conn:
+        yield conn
 
 
 def _source_checksum(plain_text: str) -> str:

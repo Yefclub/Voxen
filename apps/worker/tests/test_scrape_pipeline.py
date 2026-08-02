@@ -155,7 +155,9 @@ async def test_unchanged_refresh_skips_storage_and_all_derived_work(
     assert persisted == scrape_pipeline.PersistResult("t1", changed=False)
     put_markdown.assert_not_awaited()
     title.assert_not_awaited()
-    assert fake_conn.execute.await_count == 2
+    assert fake_conn.execute.await_count == 4
+    assert "pg_advisory_lock" in fake_conn.execute.await_args_list[0].args[0]
+    assert "pg_advisory_unlock" in fake_conn.execute.await_args_list[-1].args[0]
 
 
 async def test_unchanged_refresh_run_skips_summary_tags_brain_and_embedding(
@@ -212,15 +214,11 @@ async def test_changed_refresh_versions_and_invalidates_only_affected_artifacts(
             "sourceMetadata": {"url": result.url},
         }
     )
-    second_conn = MagicMock()
-    second_conn.execute = AsyncMock(return_value=None)
-    contexts = []
-    for conn in (first_conn, second_conn):
-        ctx = MagicMock()
-        ctx.__aenter__ = AsyncMock(return_value=conn)
-        ctx.__aexit__ = AsyncMock(return_value=False)
-        contexts.append(ctx)
-    monkeypatch.setattr(scrape_pipeline.db, "connection", lambda: contexts.pop(0))
+    first_conn.execute = AsyncMock(return_value=None)
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=first_conn)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(scrape_pipeline.db, "connection", lambda: ctx)
     monkeypatch.setattr(scrape_pipeline.db, "generate_cuid", lambda: "version-row")
     monkeypatch.setattr(scrape_pipeline.storage, "put_markdown", AsyncMock())
     monkeypatch.setattr(
@@ -243,11 +241,13 @@ async def test_changed_refresh_versions_and_invalidates_only_affected_artifacts(
     )
 
     assert persisted == scrape_pipeline.PersistResult("t1", changed=True)
-    statements = "\n".join(str(call.args[0]) for call in second_conn.execute.await_args_list)
+    statements = "\n".join(str(call.args[0]) for call in first_conn.execute.await_args_list)
     assert 'INSERT INTO "SourceContentVersion"' in statements
     assert '"sourceVersion" = $16' in statements
     assert 'DELETE FROM "TranscriptTag"' in statements
     assert 'UPDATE "ChatMessage"' in statements
+    assert "pg_advisory_lock" in first_conn.execute.await_args_list[0].args[0]
+    assert "pg_advisory_unlock" in first_conn.execute.await_args_list[-1].args[0]
 
 
 async def test_robots_blocked_raises_permanent(
