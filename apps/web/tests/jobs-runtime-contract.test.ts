@@ -39,4 +39,19 @@ describe('estabilidade do runtime de jobs', () => {
     expect(layout).toContain('useJobsWatcher(');
     expect(layout).toContain('navigateFromNotification');
   });
+
+  test('watcher roteia feedback terminal: toast visível, notificação com documento hidden', () => {
+    const watcher = read('lib/use-jobs-watcher.ts');
+    expect(watcher).toContain('resolveTerminalJobFeedback');
+    expect(watcher).toContain('showSystemNotification');
+    expect(watcher).toContain('ensureNotificationPermission');
+    expect(watcher).toContain('documentHidden');
+  });
+
+  test('detalhe do job auto-abre a transcrição no DONE focado', () => {
+    const detail = read('pages/jobs-detalhe.tsx');
+    expect(detail).toContain('shouldAutoOpenTranscript');
+    expect(detail).toContain('sawActiveRef');
+    expect(detail).toContain("navigate(target, { replace: true })");
+  });
 });

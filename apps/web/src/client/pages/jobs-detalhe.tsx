@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
@@ -34,6 +34,7 @@ import {
   mergeJobProgressEvents,
   type JobProgressSnapshot,
 } from '../lib/job-progress';
+import { shouldAutoOpenTranscript } from '../lib/job-terminal-feedback';
 
 type ProgressEvent = JobProgressEvent;
 type ProgressPayload = ProgressEvent | JobProgressSnapshot;
@@ -41,6 +42,7 @@ type ProgressPayload = ProgressEvent | JobProgressSnapshot;
 export function JobDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { locale, t } = useI18n();
   const reduceMotion = useReducedMotion();
   const { data, refresh } = useFetch<{ job: JobSummary }>(id ? `/api/jobs/${id}` : null);
@@ -51,6 +53,9 @@ export function JobDetalhePage(): React.ReactElement {
   const [cancelling, setCancelling] = useState(false);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const autoOpenedRef = useRef<string | null>(null);
+  /** Only auto-open after we observed this job as active (avoid redirect on cold open of old DONE). */
+  const sawActiveRef = useRef(false);
 
   async function onCancel(): Promise<void> {
     if (!id) return;
@@ -99,6 +104,19 @@ export function JobDetalhePage(): React.ReactElement {
       setEvents((prev) => mergeJobProgressEvents(prev, [evt]));
       if (typeof evt.percent === 'number') setPercent(evt.percent);
       if (evt.stage === 'done' || evt.stage === 'failed' || evt.stage === 'cancelled') {
+        if (evt.stage === 'done' && id) {
+          const target = shouldAutoOpenTranscript({
+            stage: evt.stage,
+            transcriptId: evt.transcriptId,
+            documentHidden: typeof document !== 'undefined' ? document.hidden : false,
+            pathname: location.pathname,
+            jobId: id,
+          });
+          if (target && autoOpenedRef.current !== target) {
+            autoOpenedRef.current = target;
+            navigate(target, { replace: true });
+          }
+        }
         setTimeout(() => refresh(), 600);
       }
     },
@@ -130,6 +148,30 @@ export function JobDetalhePage(): React.ReactElement {
     const intervalId = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(intervalId);
   }, [isActive]);
+
+  useEffect(() => {
+    const status = data?.job?.status;
+    if (status === 'QUEUED' || status === 'RUNNING') {
+      sawActiveRef.current = true;
+    }
+  }, [data?.job?.status]);
+
+  // Auto-open transcript when this focused job finishes while the page is visible.
+  useEffect(() => {
+    const job = data?.job;
+    if (!job || !id || !sawActiveRef.current) return;
+    const target = shouldAutoOpenTranscript({
+      stage: job.status,
+      transcriptId: job.transcriptId,
+      documentHidden: typeof document !== 'undefined' ? document.hidden : false,
+      pathname: location.pathname,
+      jobId: id,
+    });
+    if (!target) return;
+    if (autoOpenedRef.current === target) return;
+    autoOpenedRef.current = target;
+    navigate(target, { replace: true });
+  }, [data?.job, id, location.pathname, navigate]);
 
   if (!data?.job) {
     return (

@@ -4,6 +4,7 @@ import {
   resolveReleaseView,
   resolveUpdateModalEffect,
   shouldPresentUpdateModal,
+  shouldSilentApplyVersion,
 } from './update-modal-core';
 
 describe('intenções do modal de atualização', () => {
@@ -30,10 +31,16 @@ describe('intenções do modal de atualização', () => {
   });
 });
 
-describe('apresentação do modal', () => {
-  test('não monta o diálogo durante streaming nem sobre a página de novidades', () => {
+describe('aplicação silenciosa e apresentação do modal', () => {
+  test('aplica sozinho quando há update e o chat não está streaming', () => {
+    expect(shouldSilentApplyVersion({ hasUpdate: true, streaming: false })).toBe(true);
+    expect(shouldSilentApplyVersion({ hasUpdate: true, streaming: true })).toBe(false);
+    expect(shouldSilentApplyVersion({ hasUpdate: false, streaming: false })).toBe(false);
+  });
+
+  test('modal não bloqueia o open — política silent-first', () => {
     expect(shouldPresentUpdateModal({ hasUpdate: true, streaming: false, pathname: '/' })).toBe(
-      true,
+      false,
     );
     expect(shouldPresentUpdateModal({ hasUpdate: true, streaming: true, pathname: '/' })).toBe(
       false,

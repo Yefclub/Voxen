@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { AlertTriangle, ExternalLink, RefreshCw, RotateCw, Sparkles } from '@/components/ui/icons';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
@@ -15,6 +15,7 @@ import {
   resolveReleaseView,
   resolveUpdateModalEffect,
   shouldPresentUpdateModal,
+  shouldSilentApplyVersion,
   type ReleaseLoadState,
   type UpdateModalIntent,
 } from '../lib/update-modal-core';
@@ -58,6 +59,7 @@ export function UpdateModal({
   const [loadState, setLoadState] = useState<ReleaseLoadState>('loading');
   const [retry, setRetry] = useState(0);
   const [applying, setApplying] = useState(false);
+  const silentAppliedBuildRef = useRef<string | null>(null);
 
   const releaseUrl = useMemo(() => {
     if (!update?.toVersion) return null;
@@ -68,6 +70,24 @@ export function UpdateModal({
     });
     return `/api/releases?${params.toString()}`;
   }, [update?.toVersion]);
+
+  // Silent apply: when an update is known and chat is not streaming, apply
+  // without the modal. Streaming keeps the update pending until it ends.
+  useEffect(() => {
+    if (
+      !shouldSilentApplyVersion({
+        hasUpdate: update !== null,
+        streaming,
+      })
+    ) {
+      return;
+    }
+    const buildKey = update?.serverBuild ?? update?.toVersion ?? 'pending';
+    if (silentAppliedBuildRef.current === buildKey) return;
+    silentAppliedBuildRef.current = buildKey;
+    setApplying(true);
+    apply();
+  }, [update, streaming, apply]);
 
   useEffect(() => {
     if (!update) {
