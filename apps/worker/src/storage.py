@@ -111,6 +111,11 @@ def transcript_key(user_id: str, transcript_id: str) -> str:
     return f"workspaces/{user_id}/transcripts/{transcript_id}.md"
 
 
+def source_version_key(user_id: str, transcript_id: str, version: int) -> str:
+    """Chave imutável de um snapshot de fonte externa."""
+    return f"workspaces/{user_id}/transcripts/{transcript_id}/sources/v{version}.md"
+
+
 def upload_key(user_id: str, upload_id: str, filename: str) -> str:
     return f"workspaces/{user_id}/uploads/{upload_id}/{filename}"
 

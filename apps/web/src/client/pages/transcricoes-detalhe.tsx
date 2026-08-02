@@ -16,6 +16,7 @@ import {
   MessageSquare,
   NotebookPen,
   RotateCcw,
+  RefreshCw,
   Sparkles,
   Tags,
   Trash2,
@@ -80,6 +81,18 @@ interface TranscriptDetail {
   plainText: string;
   summaryMd: string | null;
   frontmatter: unknown;
+  sourceChecksum: string | null;
+  sourceVersion: number;
+  sourceCollectedAt: string | null;
+  sourceMetadata: unknown;
+  sourceRefreshStatus: 'CURRENT' | 'CHECKING' | 'FAILED';
+  sourceRefreshError: string | null;
+  sourceVersions: Array<{
+    version: number;
+    checksum: string;
+    collectedAt: string;
+    metadata: unknown;
+  }>;
   archivedAt: string | null;
   trashedAt: string | null;
   createdAt: string;
@@ -140,6 +153,27 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
+  const [refreshingSource, setRefreshingSource] = useState(false);
+
+  useEffect(() => {
+    if (data?.transcript.sourceRefreshStatus !== 'CHECKING') return;
+    const timer = window.setInterval(() => void refresh(), 7_500);
+    return () => window.clearInterval(timer);
+  }, [data?.transcript.sourceRefreshStatus, refresh]);
+
+  async function refreshSource(): Promise<void> {
+    if (!id || refreshingSource) return;
+    setRefreshingSource(true);
+    try {
+      await apiPost(`/api/transcripts/${id}/refresh`, {});
+      toast.success(translate('library.sourceRefreshQueued'));
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : translate('library.sourceRefreshError'));
+    } finally {
+      setRefreshingSource(false);
+    }
+  }
 
   async function generateSummary(force: boolean): Promise<void> {
     if (!id) return;
@@ -593,6 +627,15 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                     Icon={Calendar}
                     label={translate('library.published')}
                     value={formatDateTime(published, locale)}
+                  />
+                )}
+                {t.source === 'WEB' && (
+                  <SourceFreshness
+                    transcript={t}
+                    locale={locale}
+                    translate={translate}
+                    refreshing={refreshingSource}
+                    onRefresh={() => void refreshSource()}
                   />
                 )}
                 {t.model && (
@@ -1126,6 +1169,72 @@ function SummaryBlock({
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+function SourceFreshness({
+  transcript,
+  locale,
+  translate,
+  refreshing,
+  onRefresh,
+}: {
+  transcript: Pick<
+    TranscriptDetail,
+    | 'sourceCollectedAt'
+    | 'sourceVersion'
+    | 'sourceRefreshStatus'
+    | 'sourceRefreshError'
+    | 'sourceVersions'
+  >;
+  locale: Locale;
+  translate: TranslateFn;
+  refreshing: boolean;
+  onRefresh: () => void;
+}): React.ReactElement {
+  const checking = transcript.sourceRefreshStatus === 'CHECKING';
+  const failed = transcript.sourceRefreshStatus === 'FAILED';
+  const status = checking
+    ? translate('library.sourceChecking')
+    : failed
+      ? translate('library.sourceRefreshFailed')
+      : translate('library.sourceCurrent');
+  const statusClass = checking ? 'text-amber-300' : failed ? 'text-red-300' : 'text-emerald-400';
+  return (
+    <div className="space-y-2 border-t border-[var(--color-app-border)] pt-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
+          <RefreshCw className={cn('h-3.5 w-3.5', checking && 'animate-spin')} />
+          {translate('library.sourceVersion', { version: transcript.sourceVersion || 1 })}
+        </div>
+        <span className={cn('text-[11px]', statusClass)}>{status}</span>
+      </div>
+      {transcript.sourceCollectedAt && (
+        <p className="text-[11px] text-[var(--color-app-muted)]">
+          {translate('library.sourceCollected')}:{' '}
+          {formatDateTime(new Date(transcript.sourceCollectedAt), locale)}
+        </p>
+      )}
+      {transcript.sourceVersions.length > 1 && (
+        <p className="text-[11px] text-[var(--color-app-muted)]">
+          {translate('library.sourceVersionHistory', { count: transcript.sourceVersions.length })}
+        </p>
+      )}
+      {failed && transcript.sourceRefreshError && (
+        <p className="text-[11px] leading-relaxed text-red-300">{transcript.sourceRefreshError}</p>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8 w-full text-[11px]"
+        disabled={checking || refreshing}
+        onClick={onRefresh}
+      >
+        <RefreshCw className={cn('h-3 w-3', (checking || refreshing) && 'animate-spin')} />
+        {translate('library.sourceRefresh')}
+      </Button>
+    </div>
   );
 }
 

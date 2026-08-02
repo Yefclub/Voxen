@@ -13,6 +13,8 @@ export type ChatCitation = {
   href: string;
   kind: CitationKind;
   verified: boolean;
+  /** A fonte foi atualizada após esta citação ser produzida. */
+  stale?: boolean;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -51,6 +53,7 @@ export function parseChatCitations(value: unknown): ChatCitation[] | null {
       href: item.href,
       kind: item.kind,
       verified: item.verified === true,
+      stale: item.stale === true,
     });
   }
   return result;

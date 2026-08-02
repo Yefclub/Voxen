@@ -114,6 +114,7 @@ async def process_job(job_id: str) -> None:
     user_id: str = claimed["userId"]
     source_url: str = claimed["sourceUrl"]
     job_type: str = claimed["type"]
+    refresh_transcript_id: str | None = claimed.get("refreshTranscriptId")
     log = logger.bind(
         job_id=job_id,
         user_id=user_id,
@@ -138,7 +139,11 @@ async def process_job(job_id: str) -> None:
             from . import scrape_pipeline
 
             await scrape_pipeline.run(
-                job_id=job_id, user_id=user_id, source_url=source_url, log=log
+                job_id=job_id,
+                user_id=user_id,
+                source_url=source_url,
+                refresh_transcript_id=refresh_transcript_id,
+                log=log,
             )
         elif job_type == "UPLOAD_AND_TRANSCRIBE":
             await _run_upload_pipeline(
@@ -164,14 +169,22 @@ async def process_job(job_id: str) -> None:
         await events.publish_job_event(
             user_id, job_id, "cancelled", error_msg="Cancelado pelo usuário."
         )
+        if refresh_transcript_id:
+            await db.clear_source_refresh_check(user_id, refresh_transcript_id)
     except PermanentError as e:
         log.warning("job-failed-permanent", **_error_diagnostic(e, e.code))
         await db.mark_job_failed(job_id, e.public_message)
+        if refresh_transcript_id:
+            await db.mark_source_refresh_failed(user_id, refresh_transcript_id, e.public_message)
         await events.publish_job_event(user_id, job_id, "failed", error_msg=e.public_message)
     except Exception as e:  # noqa: BLE001 — propaga genérico p/ FAILED
         diagnostic = _error_diagnostic(e, "UNEXPECTED_JOB_FAILURE")
         log.error("job-failed-unexpected", **diagnostic)
         await db.mark_job_failed(job_id, GENERIC_JOB_FAILURE_MESSAGE)
+        if refresh_transcript_id:
+            await db.mark_source_refresh_failed(
+                user_id, refresh_transcript_id, GENERIC_JOB_FAILURE_MESSAGE
+            )
         await events.publish_job_event(
             user_id,
             job_id,
