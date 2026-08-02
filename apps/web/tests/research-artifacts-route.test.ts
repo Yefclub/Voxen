@@ -100,10 +100,10 @@ describeIfDb('artefatos de pesquisa API', () => {
   });
 
   it('gera apenas com fontes do usuário e preserva a citação navegável', async () => {
-    const response = await request(
-      '/api/research-artifacts',
-      withCookie(fixture.ownerCookie, { type: 'FAQ', transcriptIds: [fixture.sourceId] }),
-    );
+    const response = await request('/api/research-artifacts', {
+      ...withCookie(fixture.ownerCookie, { type: 'FAQ', transcriptIds: [fixture.sourceId] }),
+      method: 'POST',
+    });
     expect(response.status).toBe(201);
     const body = (await response.json()) as {
       artifact: { id: string; citations: Array<{ sourceId: string; href: string; quote: string }> };
@@ -122,18 +122,18 @@ describeIfDb('artefatos de pesquisa API', () => {
     );
     expect(foreignRead.status).toBe(404);
 
-    const foreignCreate = await request(
-      '/api/research-artifacts',
-      withCookie(fixture.otherCookie, { type: 'BRIEFING', transcriptIds: [fixture.sourceId] }),
-    );
+    const foreignCreate = await request('/api/research-artifacts', {
+      ...withCookie(fixture.otherCookie, { type: 'BRIEFING', transcriptIds: [fixture.sourceId] }),
+      method: 'POST',
+    });
     expect(foreignCreate.status).toBe(400);
   });
 
   it('não aceita geração sem nenhum escopo de fontes', async () => {
-    const response = await request(
-      '/api/research-artifacts',
-      withCookie(fixture.ownerCookie, { type: 'BRIEFING' }),
-    );
+    const response = await request('/api/research-artifacts', {
+      ...withCookie(fixture.ownerCookie, { type: 'BRIEFING' }),
+      method: 'POST',
+    });
     expect(response.status).toBe(400);
   });
 });
