@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "sinonimo-repo",
+      "question": "onde fica o código do Buzz?",
+      "expectedSources": ["buzz-repo"],
+      "expectedQuote": "github.com/block/buzz",
+      "expectedTimestamp": 42
+    },
+    {
+      "id": "informal-link",
+      "question": "manda o link do buzz aí",
+      "expectedSources": ["buzz-repo"],
+      "expectedQuote": "github.com/block/buzz",
+      "expectedTimestamp": 42
+    },
+    {
+      "id": "conteudo-longo",
+      "question": "qual decisão sobre retenção?",
+      "expectedSources": ["politica-retencao"],
+      "expectedQuote": "retenção por 30 dias",
+      "expectedTimestamp": 1840
+    },
+    {
+      "id": "multiplas-fontes",
+      "question": "quais fontes confirmam o plano?",
+      "expectedSources": ["plano-a", "plano-b"],
+      "expectedQuote": "lançamento em junho",
+      "expectedTimestamp": 300
+    },
+    {
+      "id": "conflito",
+      "question": "o plano foi aprovado?",
+      "expectedSources": ["plano-a", "plano-b"],
+      "expectedQuote": "aprovação condicional",
+      "expectedTimestamp": 320
+    },
+    {
+      "id": "sem-evidencia",
+      "question": "qual a senha do servidor?",
+      "expectedSources": [],
+      "expectedQuote": null,
+      "expectedTimestamp": null
+    }
+  ]
+}
