@@ -20,7 +20,7 @@ describe('contrato unificado de configuração OpenRouter', () => {
     const setup = read('src/client/pages/setup.tsx');
     expect(setup).not.toContain('ModelPicker');
     expect(setup).not.toContain('/api/setup/models');
-    expect(setup).toContain("err instanceof ApiError ? incompatibleModelsFrom(err.body) : null");
+    expect(setup).toContain('err instanceof ApiError ? incompatibleModelsFrom(err.body) : null');
     expect(setup).toContain('model_replacements');
     expect(setup).toContain('body.openrouter_api_key = apiKey.trim()');
   });
