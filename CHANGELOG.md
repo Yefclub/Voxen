@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.13.0-dev.1785664499 — 2026-08-02 · Dev
+
+### ✨ Base de conhecimento unificada para chat e MCP
+
+O chat e as integrações MCP agora consultam notas e transcrições na mesma busca,
+priorizando notas curadas sem esconder fontes mais relevantes. As respostas podem
+citar notas com links navegáveis e cada nota pode registrar múltiplas transcrições
+de origem.
+
+Também adotamos **Base de conhecimento** em português e **Knowledge base** em
+inglês como a nomenclatura consistente de toda a aplicação.
+
 ## v0.13.0-dev.1785658852 — 2026-08-02 · Dev
 
 ### ✨ Após confirmar uma ação, a Vox continua a conversa — e você pode sempre permitir

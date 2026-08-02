@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785664499",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Base de conhecimento unificada para chat e MCP",
+    "body": "O chat e as integrações MCP agora consultam notas e transcrições na mesma busca,\npriorizando notas curadas sem esconder fontes mais relevantes. As respostas podem\ncitar notas com links navegáveis e cada nota pode registrar múltiplas transcrições\nde origem.\n\nTambém adotamos **Base de conhecimento** em português e **Knowledge base** em\ninglês como a nomenclatura consistente de toda a aplicação.",
+    "pr": 527,
+    "author": "Kalyel",
+    "date": "2026-08-02T06:54:44-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/527"
+  },
+  {
     "version": "0.13.0-dev.1785658852",
     "channel": "dev",
     "type": "feat",
