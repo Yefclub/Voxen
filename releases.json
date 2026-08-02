@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785668893",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Raciocínios longos acompanham a rolagem do chat",
+    "body": "Quando a IA estiver mostrando um raciocínio longo antes da resposta final, o\nchat agora acompanha o conteúdo novo automaticamente. Raciocínios curtos ainda\nmantêm a pergunta visível, e uma rolagem manual continua sob seu controle.",
+    "pr": 531,
+    "author": "Kalyel",
+    "date": "2026-08-02T11:08:01Z",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/531"
+  },
+  {
     "version": "0.13.0-dev.1785667820",
     "channel": "dev",
     "type": "ui",

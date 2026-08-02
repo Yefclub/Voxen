@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.0-dev.1785668893 — 2026-08-02 · Dev
+
+### 🎨 Raciocínios longos acompanham a rolagem do chat
+
+Quando a IA estiver mostrando um raciocínio longo antes da resposta final, o
+chat agora acompanha o conteúdo novo automaticamente. Raciocínios curtos ainda
+mantêm a pergunta visível, e uma rolagem manual continua sob seu controle.
+
 ## v0.13.0-dev.1785667820 — 2026-08-02 · Dev
 
 ### 🎨 Notas atualizadas ao abrir e visualizadas em Preview
