@@ -117,7 +117,7 @@ libraryRoutes.get('/folders', async (c) => {
 });
 
 // Tags com conteúdo ativo para os filtros da Biblioteca. O catálogo é paginado
-// no servidor para não transferir/renderizar todas as tags em acervos grandes.
+// no servidor para não transferir/renderizar todas as tags em bases de conhecimento grandes.
 libraryRoutes.get('/tags', async (c) => {
   const userId = c.get('userId');
   const limit = parseTagListLimit(c.req.query('limit'));
@@ -376,7 +376,7 @@ function titleSourceLabel(item: { source: string; channel: string | null; url: s
 }
 
 // POST /api/library/regenerate-titles — regenera o título editorial via IA em
-// lote, drenando o acervo por cursor (createdAt+id desc). Idempotente: re-rodar
+// lote, drenando a Base de conhecimento por cursor (createdAt+id desc). Idempotente: re-rodar
 // devolve KEEP para títulos já bons. CUSTA créditos (1 chamada LLM por item).
 libraryRoutes.post('/regenerate-titles', async (c) => {
   const userId = c.get('userId');

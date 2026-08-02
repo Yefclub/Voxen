@@ -173,7 +173,7 @@ export async function submitUrlToVoxen(opts) {
         ok: false,
         code: 'error',
         status: 409,
-        message: 'Este conteúdo já está no acervo.',
+        message: 'Este conteúdo já está na Base de conhecimento.',
       };
     }
   }

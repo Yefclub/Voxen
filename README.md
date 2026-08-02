@@ -9,7 +9,7 @@ Plataforma web self-hosted de **biblioteca multimodal** com transcrição, anál
 1. Cola um link ou envia um arquivo de áudio, vídeo, imagem ou documento
 2. Backend extrai conteúdo, faz chunking/transcrição quando necessário e usa OpenRouter para análise
 3. Salva como `.md` com metadados, timestamps quando existirem, link original e **resumo IA** em markdown
-4. Organiza em pastas (IA + manual) e expõe o acervo via **MCP** e grafo Brain
+4. Organiza em pastas (IA + manual) e expõe a Base de conhecimento via **MCP** e grafo Brain
 
 ## Stack
 

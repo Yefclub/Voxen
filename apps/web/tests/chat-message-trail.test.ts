@@ -83,7 +83,7 @@ function rootVersionedTree(): TrailNodeRow[] {
 
 const LINEARIZED = { linearized: true } as const;
 
-/** Conversa do acervo anterior à feature: ninguém tem antecessor registrado. */
+/** Conversa do histórico anterior à feature: ninguém tem antecessor registrado. */
 function legacyTree(): TrailNodeRow[] {
   clock = 0;
   return [
@@ -164,7 +164,7 @@ describe('resolveActiveTrail', () => {
     ]);
   });
 
-  test('mensagens novas depois do acervo antigo mantêm o prefixo linear', () => {
+  test('mensagens novas após o histórico legado mantêm o prefixo linear', () => {
     clock = 0;
     const nodes = [...legacyTree(), node('n1', 'USER', 'l4'), node('n2', 'ASSISTANT', 'n1')];
     expect(resolveActiveTrail(nodes, 'n2').map((item) => item.id)).toEqual([
@@ -387,7 +387,7 @@ describe('buildVersionGroups', () => {
     expect(groups.has('a2b')).toBe(false);
   });
 
-  test('conversa do acervo antigo não exibe indicador em lugar nenhum', () => {
+  test('conversa legada não exibe indicador em lugar nenhum', () => {
     const nodes = legacyTree();
     const groups = buildVersionGroups(nodes, resolveActiveTrail(nodes, null));
     expect(groups.size).toBe(0);
@@ -404,7 +404,7 @@ describe('buildVersionGroups', () => {
   });
 
   test('a mesma árvore SEM a marca de encadeamento não inventa indicador', () => {
-    // Acervo antigo tem várias mensagens sem antecessor e nenhuma delas é
+    // dados legados tem várias mensagens sem antecessor e nenhuma delas é
     // versão de outra. Sem a marca, agrupar seria indicador falso.
     const nodes = rootVersionedTree();
     const trail = resolveActiveTrail(nodes, 'rb');
@@ -428,7 +428,7 @@ describe('resolveDeepestLeaf', () => {
 });
 
 describe('planLinearization', () => {
-  test('encadeia o acervo antigo na ordem de criação e é idempotente', () => {
+  test('encadeia os dados legados na ordem de criação e é idempotente', () => {
     const nodes = legacyTree();
     const plan = planLinearization(nodes);
     expect(plan).toEqual([

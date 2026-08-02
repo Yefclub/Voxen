@@ -3,7 +3,7 @@
 // ============================================================================
 // Lógica compartilhada entre o agente in-app (lib/chat/runtime.ts) e o servidor
 // MCP (routes/mcp.ts). A ideia (ADR-004, harness/Karpathy) é dar ao agente
-// ferramentas determinísticas de leitura progressiva sobre o acervo em vez de
+// ferramentas determinísticas de leitura progressiva sobre a Base de conhecimento em vez de
 // RAG vetorial:
 //   buscar (FTS) -> ver estrutura (outline) -> ler trechos (linhas/seção/tempo)
 //   -> expandir contexto -> relacionar -> validar citações.
@@ -353,6 +353,13 @@ export type FtsResult = {
   createdAt: Date;
 };
 
+export type KnowledgeSearchResult = FtsResult & {
+  sourceType: 'transcript' | 'note';
+  href: string;
+};
+
+const CURATED_NOTE_BOOST = 0.15;
+
 const PROMPT_STOP_WORDS = new Set([
   'para',
   'com',
@@ -402,7 +409,7 @@ export async function ftsSearchTranscripts(
   const take = clampInt(limit, 8, 1, 25);
   const lexical = await db.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
-      ts_headline('portuguese', t."plainText", websearch_to_tsquery('portuguese', ${q}),
+      ts_headline('portuguese', concat_ws(E'\n\n', t.title, t."plainText"), websearch_to_tsquery('portuguese', ${q}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
       ts_rank(t."searchVector", websearch_to_tsquery('portuguese', ${q})) AS rank,
       LEFT(t."summaryMd", 800) AS summary,
@@ -423,6 +430,103 @@ export async function ftsSearchTranscripts(
     LIMIT ${take}
   `;
   return maybeHybridRerank(userId, q, lexical);
+}
+
+/** Busca FTS nas notas manuais do workspace com o mesmo parser usado nas transcrições. */
+export async function ftsSearchNotes(
+  userId: string,
+  query: string,
+  limit: number,
+): Promise<KnowledgeSearchResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const take = clampInt(limit, 8, 1, 25);
+  type NoteRow = {
+    id: string;
+    title: string;
+    snippet: string;
+    rank: number;
+    createdAt: Date;
+  };
+  const rows = await db.$queryRaw<NoteRow[]>`
+    SELECT n.id, n.title,
+      ts_headline('portuguese', concat_ws(E'\n\n', n.title, n.content), websearch_to_tsquery('portuguese', ${q}),
+        'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
+      ts_rank(n."searchVector", websearch_to_tsquery('portuguese', ${q})) AS rank,
+      n."createdAt"
+    FROM "Note" n
+    WHERE n."userId" = ${userId}
+      AND n.kind = 'NOTE'::"NoteKind"
+      AND n."searchVector" @@ websearch_to_tsquery('portuguese', ${q})
+    ORDER BY rank DESC, n."updatedAt" DESC
+    LIMIT ${take}
+  `;
+  return rows.map((row) => ({
+    ...row,
+    sourceType: 'note' as const,
+    href: `/notas/${row.id}`,
+    summary: null,
+    tags: [],
+    folder: null,
+  }));
+}
+
+/**
+ * Junta resultados da Base de conhecimento. Notas são curadoria humana e recebem
+ * um bônus pequeno, calculado sobre o melhor score da consulta, para vencer só
+ * resultados de transcrição comparáveis — nunca uma fonte muito mais precisa.
+ */
+export function mergeKnowledgeResults(
+  items: readonly KnowledgeSearchResult[],
+  limit = 8,
+): KnowledgeSearchResult[] {
+  const take = clampInt(limit, 8, 1, 25);
+  const bestRank = Math.max(0, ...items.map((item) => Number(item.rank) || 0));
+  return [...items]
+    .sort((a, b) => {
+      const aScore = a.rank + (a.sourceType === 'note' ? bestRank * CURATED_NOTE_BOOST : 0);
+      const bScore = b.rank + (b.sourceType === 'note' ? bestRank * CURATED_NOTE_BOOST : 0);
+      if (bScore !== aScore) return bScore - aScore;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    })
+    .slice(0, take);
+}
+
+/** Propaga o score híbrido para o contrato público na mesma escala do FTS. */
+export function applyHybridRanks(
+  lexical: readonly FtsResult[],
+  fused: readonly { id: string; score: number }[],
+): FtsResult[] {
+  const byId = new Map(lexical.map((item) => [item.id, item]));
+  const maxLexicalRank = Math.max(...lexical.map((item) => Number(item.rank) || 0), 1e-9);
+  return fused.flatMap((hit) => {
+    const item = byId.get(hit.id);
+    return item ? [{ ...item, rank: hit.score * maxLexicalRank }] : [];
+  });
+}
+
+/** Busca unificada da Base de conhecimento, escopada por workspace. */
+export async function searchKnowledgeBase(
+  userId: string,
+  query: string,
+  limit = 8,
+): Promise<KnowledgeSearchResult[]> {
+  const take = clampInt(limit, 8, 1, 25);
+  const [transcripts, notes] = await Promise.all([
+    ftsSearchTranscripts(userId, query, take),
+    ftsSearchNotes(userId, query, take),
+  ]);
+  return mergeKnowledgeResults(
+    [
+      ...transcripts.map((item) => ({
+        ...item,
+        sourceType: 'transcript' as const,
+        href: `/transcricoes/${item.id}`,
+      })),
+      ...notes,
+    ],
+    take,
+  );
 }
 
 async function maybeHybridRerank(
@@ -473,8 +577,10 @@ async function maybeHybridRerank(
       }),
       { alpha: 0.3 },
     );
-    const byId = new Map(lexical.map((item) => [item.id, item]));
-    return fused.map((hit) => byId.get(hit.id)).filter((item): item is FtsResult => Boolean(item));
+    // `rank` é o score público de relevância. Ao habilitar embeddings, propaga
+    // o score híbrido (na escala lexical da consulta) para que consumidores que
+    // combinem resultados — como searchKnowledgeBase — não desfaçam o reranking.
+    return applyHybridRanks(lexical, fused);
   } catch {
     return lexical;
   }
@@ -485,10 +591,10 @@ export async function preloadRelevantContent(
   userId: string,
   prompt: string,
   limit = 5,
-): Promise<FtsResult[]> {
+): Promise<KnowledgeSearchResult[]> {
   const query = promptSearchQuery(prompt);
   if (!query) return [];
-  return ftsSearchTranscripts(userId, query, limit);
+  return searchKnowledgeBase(userId, query, limit);
 }
 
 export type RelatedItem = {

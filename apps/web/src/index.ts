@@ -289,7 +289,7 @@ app.route('/mcp', mcpRoutes);
 app.route('/api/graph', graphRoutes);
 // Changelog / release notes (releases.json)
 app.route('/api/releases', releasesRoutes);
-// Conversa canônica por usuário, streaming e ferramentas do acervo.
+// Conversa canônica por usuário, streaming e ferramentas da Base de conhecimento.
 app.route('/api/chat', chatRoutes);
 // PWA Web Share Target (Android/Chrome instalado)
 app.route('/share-target', shareTargetRoutes);

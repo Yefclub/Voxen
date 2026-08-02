@@ -542,7 +542,7 @@ function HitlConfirmBar({
 }
 
 // ---------------------------------------------------------------------------
-// Anexo do composer — o arquivo continua indo pro acervo (job de ingestão),
+// Anexo do composer — o arquivo continua indo para a Base de conhecimento (job de ingestão),
 // mas agora o job também é vinculado à mensagem enviada (spec 126).
 // ---------------------------------------------------------------------------
 type Attachment = {

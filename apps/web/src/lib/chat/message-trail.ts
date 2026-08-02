@@ -12,7 +12,7 @@
 // contexto do modelo. Esse é o modo de falha mais caro e mais silencioso da
 // spec 127, então a ordem mora num lugar só, testável sem banco.
 //
-// Compatibilidade com o acervo anterior à feature: aquelas mensagens têm
+// Compatibilidade com os histórico anterior à feature: aquelas mensagens têm
 // `parentId` nulo. Se a caminhada terminar numa raiz sem antecessor, tudo que
 // também não tem antecessor e é mais antigo que ela forma o prefixo linear —
 // é a "trilha única e contínua" que a spec exige para conversas antigas.
@@ -56,14 +56,14 @@ function sortedByCreation<T extends TrailNode>(nodes: readonly T[]): T[] {
 /**
  * Estado do encadeamento da conversa, vindo de `Conversation.messagesLinearized`.
  *
- * `false` = acervo anterior à feature, com todas as mensagens sem antecessor:
+ * `false` = histórico anterior à feature, com todas as mensagens sem antecessor:
  * a leitura precisa da regra de prefixo linear e não pode agrupar versões na
  * raiz. `true` = árvore de verdade, onde "sem antecessor" significa raiz e
  * NADA mais.
  *
  * Tem que ser explícito, não inferido de "quantas mensagens estão sem
  * antecessor": versionar a primeira mensagem cria uma segunda raiz legítima, e
- * a inferência leria isso como acervo antigo — prependendo a versão abandonada
+ * a inferência leria isso como dados legados — prependendo a versão abandonada
  * no histórico enviado ao modelo, que é o risco nº 1 da spec.
  */
 export interface TrailOptions {
@@ -183,7 +183,7 @@ export function buildVersionGroups<T extends RoleTrailNode>(
   for (const node of nodes) {
     if (node.role !== 'USER') continue;
     // Sem antecessor em conversa não encadeada não há grupo: são mensagens do
-    // acervo antigo, sequenciais, não versões. Já encadeada, "sem antecessor"
+    // dados legados, sequenciais, não versões. Já encadeada, "sem antecessor"
     // significa raiz — e a raiz pode ter versões como qualquer outro ponto.
     if (node.parentId === null && !linearized) continue;
     const key = node.parentId ?? ROOT_GROUP_KEY;
@@ -210,7 +210,7 @@ export function buildVersionGroups<T extends RoleTrailNode>(
 }
 
 /**
- * Encadeamento a aplicar numa conversa do acervo antigo: cada mensagem sem
+ * Encadeamento a aplicar numa conversa legada: cada mensagem sem
  * antecessor passa a apontar para a IMEDIATAMENTE anterior em ordem de
  * criação — considerando todas as mensagens, não só as sem antecessor — e a
  * mais antiga de todas vira a raiz.

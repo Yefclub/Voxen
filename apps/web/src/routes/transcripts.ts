@@ -754,8 +754,10 @@ transcriptsRoutes.get('/:id/notes', async (c) => {
     where: {
       userId,
       kind: 'NOTE',
-      sourceType: 'TRANSCRIPT',
-      sourceId: id,
+      OR: [
+        { sourceType: 'TRANSCRIPT', sourceId: id },
+        { transcriptSources: { some: { transcriptId: id, userId } } },
+      ],
     },
     orderBy: { updatedAt: 'desc' },
     select: {
@@ -790,6 +792,7 @@ transcriptsRoutes.post('/:id/notes', async (c) => {
       content: parsed.data.content,
       sourceType: 'TRANSCRIPT',
       sourceId: id,
+      transcriptSources: { create: { transcriptId: id, userId } },
     },
     select: {
       id: true,

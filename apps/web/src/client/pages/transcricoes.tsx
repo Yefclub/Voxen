@@ -376,7 +376,7 @@ export function TranscricoesPage(): React.ReactElement {
     }
   }
 
-  // Regenera os títulos via IA drenando o acervo por cursor. Custa créditos
+  // Regenera os títulos via IA drenando a Base de conhecimento por cursor. Custa créditos
   // (1 chamada LLM por conteúdo); títulos já bons voltam KEEP e são mantidos.
   async function regenerateTitles(): Promise<void> {
     if (regeneratingTitles) return;

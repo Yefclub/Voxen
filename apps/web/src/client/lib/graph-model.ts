@@ -228,7 +228,7 @@ export function toOpaqueGraphColor(color: string): string {
 }
 
 /**
- * Descrição compacta para o inspetor do grafo. Resumos vêm do acervo e podem
+ * Descrição compacta para o inspetor do grafo. Resumos vêm da Base de conhecimento e podem
  * conter Markdown estrutural; o inspetor é uma superfície curta de metadata,
  * então apresenta o texto sem marcadores literais como `##` ou `**`.
  */

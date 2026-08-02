@@ -253,6 +253,7 @@ model Transcript {
   job                 Job?
   conversations       Conversation[]
   tags                TranscriptTag[]
+  noteSources         NoteTranscriptSource[]
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, status, createdAt(sort: Desc)])
@@ -556,7 +557,7 @@ model Conversation {
   //
   // Precisa ser explícito, não inferido de "quantas mensagens estão sem
   // antecessor": com inferência, versionar a PRIMEIRA mensagem cria uma
-  // segunda raiz legítima e a leitura confundiria isso com acervo antigo —
+  // segunda raiz legítima e a leitura confundiria isso com dados legados —
   // prependendo a versão abandonada no histórico enviado ao modelo.
   messagesLinearized Boolean    @default(false)
   createdAt       DateTime      @default(now())
@@ -687,7 +688,7 @@ model ChatMessage {
   // deixa de definir a sequência, porque uma versão criada depois pode estar
   // acima na trilha.
   //
-  // Null significa raiz OU mensagem anterior ao versionamento. O acervo antigo
+  // Null significa raiz OU mensagem anterior ao versionamento. Os dados legados
   // fica todo nulo e continua legível como trilha linear contínua, sem
   // migração de dados obrigatória.
   parentId       String?
@@ -729,10 +730,26 @@ model Note {
   user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent       Note?                   @relation("NoteTree", fields: [parentId], references: [id], onDelete: Cascade)
   children     Note[]                  @relation("NoteTree")
+  transcriptSources NoteTranscriptSource[]
 
   @@index([userId, parentId])
   @@index([userId, sourceType, sourceId])
   @@index([userId, updatedAt(sort: Desc)])
+}
+
+// Fontes explícitas de uma nota. A coluna Note.sourceType/sourceId permanece
+// como vínculo primário legado para compatibilidade; esta relação suporta uma
+// nota curada sustentada por múltiplas transcrições.
+model NoteTranscriptSource {
+  noteId       String
+  transcriptId String
+  userId       String
+  createdAt    DateTime   @default(now())
+  note         Note       @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  transcript   Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, transcriptId])
+  @@index([userId, transcriptId])
 }
 
 // ============================================================================
