@@ -139,8 +139,8 @@ export function reengageThresholdPx(clientHeight: number): number {
  * Gates extras (evitam saltar a âncora cedo demais no harness multi-tool):
  * - `spacerHeight > SPACER_EPSILON`: ainda há reserva artificial sob a âncora —
  *   o conteúdo ainda não consumiu o viewport reservado; não reengage.
- * - `allowReengage === false`: o turno ainda está só em raciocínio/tools sem
- *   texto final (ou o caller ainda não liberou) — manter a âncora.
+ * - `allowReengage === false`: o turno ainda não recebeu conteúdo transmitido
+ *   (ou o caller ainda não liberou) — manter a âncora.
  */
 export function shouldReengageFollow(params: {
   contentBottomViewport: number;
@@ -150,8 +150,8 @@ export function shouldReengageFollow(params: {
   /** Altura atual do espaçador de âncora; > epsilon bloqueia reengage. */
   spacerHeight?: number;
   /**
-   * Caller libera o reengage (ex.: já há texto final da resposta, ou o stream
-   * terminou). Default true para callers legados/testes só de geometria.
+   * Caller libera o reengage quando chega qualquer conteúdo transmitido ou o
+   * stream termina. Default true para callers legados/testes só de geometria.
    */
   allowReengage?: boolean;
 }): boolean {

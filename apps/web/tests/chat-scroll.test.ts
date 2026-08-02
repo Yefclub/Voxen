@@ -218,7 +218,7 @@ describe('shouldReengageFollow', () => {
     ).toBe(false);
   });
 
-  test('blocks reengage when allowReengage is false (tools/reasoning-only phase)', () => {
+  test('blocks reengage before qualquer segmento do stream liberar o follow', () => {
     expect(
       shouldReengageFollow({
         ...base,

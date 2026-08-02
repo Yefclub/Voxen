@@ -29,10 +29,15 @@ describe('chat message anchor wiring (spec 092)', () => {
     expect(chatSource).toContain('new ResizeObserver(() => handleContentGrowth())');
   });
 
-  test('gates reengage: spacer + allow only after final text (or turn end)', () => {
+  test('gates reengage by geometry after any streamed content, including reasoning', () => {
     expect(chatSource).toContain('allowAnchorReengageRef');
     expect(chatSource).toContain('allowAnchorReengageRef.current = false');
     expect(chatSource).toContain('allowAnchorReengageRef.current = true');
+    expect(chatSource).toContain("event.type === 'reasoning'");
+    expect(chatSource).toContain("event.type === 'tool'");
+    expect(chatSource).toContain(
+      'ResizeObserver só ativa o follow depois que a reserva se esgota.',
+    );
     expect(chatSource).toContain('spacerHeight: spacerHeightRef.current');
     expect(chatSource).toContain('allowReengage: allowAnchorReengageRef.current');
   });
