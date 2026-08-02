@@ -48,8 +48,45 @@ interface GetResp {
 export function NotasPage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const { t } = useI18n();
-  const [previewMode, setPreviewMode] = useState(false);
   const { notes, loading: notesLoading, refresh, create } = useNotes();
+  const revalidationStarted = useRef(false);
+  const focusRefreshInFlight = useRef(false);
+  const enteredWithInitialLoad = useRef(notesLoading);
+
+  useEffect(() => {
+    // A primeira carga já é iniciada por useNotes. Esperamos que ela termine
+    // antes de instalar a revalidação desta página, evitando duas requests
+    // concorrentes sem cache e o estado vazio intermediário.
+    if (notesLoading || revalidationStarted.current) return;
+    revalidationStarted.current = true;
+    // Sem cache, a própria carga inicial já trouxe a versão mais recente. Não
+    // fazemos uma segunda leitura sequencial ao terminar essa primeira entrada.
+    if (enteredWithInitialLoad.current) return;
+    // A lista pode ter mudado pelo chat, MCP ou uma automação enquanto esta
+    // tela estava desmontada. Revalida ao entrar sem depender de reload manual.
+    void refresh();
+  }, [notesLoading, refresh]);
+
+  useEffect(() => {
+    // Este efeito não compartilha a guarda da primeira revalidação: no
+    // StrictMode o React executa setup → cleanup → setup e precisa reinstalar
+    // os listeners depois da primeira limpeza.
+    const revalidateWhenVisible = (): void => {
+      if (document.visibilityState !== 'visible' || focusRefreshInFlight.current) return;
+      // Ao retornar à aba, navegadores disparam visibilitychange e focus na
+      // mesma interação. Uma única consulta basta para os dois eventos.
+      focusRefreshInFlight.current = true;
+      void refresh().finally(() => {
+        focusRefreshInFlight.current = false;
+      });
+    };
+    window.addEventListener('focus', revalidateWhenVisible);
+    document.addEventListener('visibilitychange', revalidateWhenVisible);
+    return () => {
+      window.removeEventListener('focus', revalidateWhenVisible);
+      document.removeEventListener('visibilitychange', revalidateWhenVisible);
+    };
+  }, [refresh]);
 
   return (
     <PageShell width="workspace">
@@ -62,13 +99,7 @@ export function NotasPage(): React.ReactElement {
       />
 
       {id ? (
-        <NoteEditor
-          key={id}
-          noteId={id}
-          previewMode={previewMode}
-          onTogglePreview={() => setPreviewMode((v) => !v)}
-          onSaved={() => void refresh()}
-        />
+        <NoteEditor key={id} noteId={id} onSaved={() => void refresh()} />
       ) : (
         <NotesLibrary notesCount={notes.length} loading={notesLoading} onCreate={create} />
       )}
@@ -151,13 +182,9 @@ function NotesLibrary({
 
 function NoteEditor({
   noteId,
-  previewMode,
-  onTogglePreview,
   onSaved,
 }: {
   noteId: string;
-  previewMode: boolean;
-  onTogglePreview: () => void;
   onSaved: () => void;
 }): React.ReactElement {
   const { data, loading, error, refresh } = useFetch<GetResp>(`/api/notes/${noteId}`);
@@ -166,6 +193,8 @@ function NoteEditor({
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // O componente recebe key=noteId: toda nota recém-aberta começa em Preview.
+  const [previewMode, setPreviewMode] = useState(true);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // AbortController do PATCH em voo: garante que dois saves concorrentes
   // (debounce + onBlur, ou save manual) não compitam — o anterior é abortado e
@@ -270,17 +299,23 @@ function NoteEditor({
           data-note-editor-toolbar
           className="flex min-w-0 flex-col gap-3 border-b border-[var(--color-app-border)] px-4 py-3 sm:flex-row sm:items-center sm:px-6 sm:py-4"
         >
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              setDirty(true);
-            }}
-            onBlur={() => void save()}
-            placeholder={t('notes.untitled')}
-            className="w-full min-w-0 flex-1 bg-transparent font-display text-xl font-semibold tracking-tight text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none"
-          />
+          {previewMode ? (
+            <h2 className="min-w-0 flex-1 truncate font-display text-xl font-semibold tracking-tight text-[var(--color-app-fg)]">
+              {title || t('notes.untitled')}
+            </h2>
+          ) : (
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setDirty(true);
+              }}
+              onBlur={() => void save()}
+              placeholder={t('notes.untitled')}
+              className="w-full min-w-0 flex-1 bg-transparent font-display text-xl font-semibold tracking-tight text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none"
+            />
+          )}
           <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0">
             <span className="mr-auto shrink-0 text-[11px] uppercase tracking-wider tabular-nums sm:mr-1">
               {saving ? (
@@ -293,7 +328,12 @@ function NoteEditor({
                 <span className="text-emerald-300">{t('common.saved')}</span>
               )}
             </span>
-            <Button className="shrink-0" size="sm" variant="ghost" onClick={onTogglePreview}>
+            <Button
+              className="shrink-0"
+              size="sm"
+              variant="ghost"
+              onClick={() => setPreviewMode((value) => !value)}
+            >
               {previewMode ? (
                 <>
                   <EyeOff className="h-3.5 w-3.5" />

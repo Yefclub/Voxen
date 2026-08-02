@@ -32,17 +32,75 @@ interface State {
 // Singleton store pra share state entre sidebar e página
 let cache: NoteListItem[] | null = null;
 const listeners = new Set<(n: NoteListItem[]) => void>();
+interface NotesLoadResult {
+  notes: NoteListItem[];
+  accessRevoked: boolean;
+}
 
 function setNotes(next: NoteListItem[]): void {
   cache = next;
   listeners.forEach((l) => l(next));
 }
 
-async function fetchNotes(): Promise<NoteListItem[]> {
-  const res = await fetch('/api/notes', { credentials: 'include' });
-  if (!res.ok) return [];
-  const data = (await res.json()) as { notes: NoteListItem[] };
-  return data.notes ?? [];
+async function fetchNotes(): Promise<NotesLoadResult | null> {
+  try {
+    const res = await fetch('/api/notes', { credentials: 'include' });
+    // Acesso revogado não é falha transitória: descarta a árvore privada que
+    // ainda exista no cliente. Demais erros preservam a navegação disponível.
+    if (!res.ok) {
+      return res.status === 401 || res.status === 403 ? { notes: [], accessRevoked: true } : null;
+    }
+    const data = (await res.json()) as { notes: NoteListItem[] };
+    return { notes: data.notes ?? [], accessRevoked: false };
+  } catch {
+    return null;
+  }
+}
+
+/** Cria uma revalidação onde só a resposta mais recente pode atualizar estado. */
+export function createLatestOnlyRevalidator<T>(
+  load: () => Promise<T | null>,
+  apply: (value: T) => void,
+  applyWhenStale: (value: T) => boolean = () => false,
+): () => Promise<boolean> {
+  let latestRequestId = 0;
+  return async (): Promise<boolean> => {
+    const requestId = ++latestRequestId;
+    const next = await load();
+    // Falha de rede preserva os itens disponíveis; só uma resposta válida troca
+    // a árvore compartilhada.
+    if (next !== null && (requestId === latestRequestId || applyWhenStale(next))) apply(next);
+    return requestId === latestRequestId;
+  };
+}
+
+const revalidateNotes = createLatestOnlyRevalidator(
+  fetchNotes,
+  (result) => setNotes(result.notes),
+  // Uma negação de acesso sempre vence: nunca mantemos notas privadas em cache
+  // só porque outra consulta foi iniciada depois.
+  (result) => result.accessRevoked,
+);
+
+/** Compartilha uma consulta em voo entre consumidores do mesmo store. */
+export function createSharedLoader<T>(load: () => Promise<T>): () => Promise<T> {
+  let inFlight: Promise<T> | null = null;
+  return (): Promise<T> => {
+    if (inFlight === null) {
+      inFlight = load().finally(() => {
+        inFlight = null;
+      });
+    }
+    return inFlight;
+  };
+}
+
+const loadInitialRequest = createSharedLoader(revalidateNotes);
+
+/** Compartilha a primeira consulta entre todos os consumidores, inclusive StrictMode. */
+function loadInitialNotes(): Promise<boolean> {
+  if (cache !== null) return Promise.resolve(true);
+  return loadInitialRequest();
 }
 
 export function useNotes(): State {
@@ -54,10 +112,7 @@ export function useNotes(): State {
     const sub = (n: NoteListItem[]): void => setLocal(n);
     listeners.add(sub);
     if (cache === null) {
-      void fetchNotes().then((n) => {
-        setNotes(n);
-        setLoading(false);
-      });
+      void loadInitialNotes().finally(() => setLoading(false));
     }
     return () => {
       listeners.delete(sub);
@@ -65,10 +120,12 @@ export function useNotes(): State {
   }, []);
 
   const refresh = useCallback(async (): Promise<void> => {
-    setLoading(true);
-    const n = await fetchNotes();
-    setNotes(n);
-    setLoading(false);
+    const isInitialLoad = cache === null;
+    // Revalidações posteriores são silenciosas: a árvore e seus controles
+    // continuam usáveis enquanto a resposta atual chega.
+    if (isInitialLoad) setLoading(true);
+    await (isInitialLoad ? loadInitialNotes() : revalidateNotes());
+    if (isInitialLoad) setLoading(false);
   }, []);
 
   const create = useCallback(
