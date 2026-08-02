@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785670528",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Brain abre no mapa rápido 2D",
+    "body": "O Brain agora abre no mapa 2D recortado e mantém o mapa completo como uma\nescolha explícita. Ao explorar conexões, o painel também informa a relação,\nmétodo, confiança e origem da evidência.",
+    "pr": 546,
+    "author": "Kalyel",
+    "date": "2026-08-02T08:35:17-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/546"
+  },
+  {
     "version": "0.13.0-dev.1785668893",
     "channel": "dev",
     "type": "ui",
