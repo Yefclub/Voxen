@@ -20,6 +20,10 @@ from .graph_index_lease import GraphIndexLease, acquire_graph_index_lease
 
 log = structlog.get_logger(__name__)
 
+
+class GroundedCompilationLeaseLostError(RuntimeError):
+    """Força rollback quando o lease expira durante a escrita de um segmento."""
+
 _pool: asyncpg.Pool | None = None
 
 TOPIC_LIMIT = 8
@@ -639,7 +643,7 @@ async def _remove_transcript_brain_refreshable_sources(
           AND bs."sourceId" = $2
           AND (
             bs."edgeId" IS NULL
-            OR be.method IN ('keyword', 'llm-grounded')
+            OR be.method = 'keyword'
           )
         """,
         user_id,
@@ -656,7 +660,7 @@ async def _remove_transcript_brain_refreshable_sources(
           AND bs."userId" = $1
           AND bs."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
           AND bs."sourceId" = $2
-          AND be.method IN ('keyword', 'llm-grounded')
+          AND be.method = 'keyword'
         """,
         user_id,
         transcript_id,
@@ -696,7 +700,7 @@ async def _remove_transcript_brain_refreshable_sources(
             DELETE FROM "BrainEdge"
             WHERE "userId" = $1
               AND id = ANY($2::text[])
-              AND method IN ('keyword', 'llm-grounded')
+              AND method = 'keyword'
             """,
             user_id,
             orphan_edge_ids,
@@ -1049,6 +1053,11 @@ def _grounded_evidence_key(
     return sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _require_grounded_compilation_lease(lease: GraphIndexLease) -> None:
+    if not lease.locally_owned():
+        raise GroundedCompilationLeaseLostError("lease de compilação do Brain perdido")
+
+
 async def upsert_grounded_brain_items(
     *,
     user_id: str,
@@ -1070,8 +1079,9 @@ async def upsert_grounded_brain_items(
                 user_id,
                 f"TRANSCRIPT:{transcript_id}",
             )
-            if not content or not lease.locally_owned():
+            if not content:
                 return 0
+            _require_grounded_compilation_lease(lease)
             content_node_id = str(content["id"])
             # Uma retomada substitui somente a evidência daquele segmento.
             await conn.execute(
@@ -1088,9 +1098,9 @@ async def upsert_grounded_brain_items(
                 transcript_id,
                 segment["key"],
             )
+            _require_grounded_compilation_lease(lease)
             for item in items:
-                if not lease.locally_owned():
-                    return created
+                _require_grounded_compilation_lease(lease)
                 kind = str(item.get("kind") or "entity")
                 label = str(item.get("label") or "").strip()
                 excerpt = str(item.get("excerpt") or "").strip()
@@ -1136,8 +1146,9 @@ async def upsert_grounded_brain_items(
                         }
                     ),
                 )
-                if not edge_row or not lease.locally_owned():
-                    return created
+                if not edge_row:
+                    continue
+                _require_grounded_compilation_lease(lease)
                 await conn.execute(
                     """
                     INSERT INTO "BrainSource" (
@@ -1164,6 +1175,8 @@ async def upsert_grounded_brain_items(
                     _truncate(excerpt, 600),
                 )
                 created += 1
+                _require_grounded_compilation_lease(lease)
+            _require_grounded_compilation_lease(lease)
             await conn.execute(
                 """
                 DELETE FROM "BrainEdge" edge
@@ -1177,6 +1190,7 @@ async def upsert_grounded_brain_items(
                 user_id,
                 content_node_id,
             )
+            _require_grounded_compilation_lease(lease)
             await conn.execute(
                 """
                 UPDATE "BrainCompilationSegment"
@@ -1188,7 +1202,9 @@ async def upsert_grounded_brain_items(
                 segment["key"],
                 created,
             )
+            _require_grounded_compilation_lease(lease)
             await _refresh_grounded_compilation(conn, compilation_id)
+            _require_grounded_compilation_lease(lease)
     return created
 
 
