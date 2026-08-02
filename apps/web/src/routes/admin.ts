@@ -205,6 +205,7 @@ adminRoutes.post('/mcp/rotate', async (c) => {
     scopes: ['READ', 'WRITE'],
     expiresAt: null,
   });
+  c.header('Cache-Control', 'no-store');
   return c.json(
     {
       ...created,
@@ -228,7 +229,9 @@ adminRoutes.post('/mcp/tokens', async (c) => {
   const owner = await db.user.findUnique({ where: { id: userId }, select: { status: true } });
   if (!owner || owner.status !== 'APPROVED')
     return c.json({ error: 'Usuário aprovado não encontrado.' }, 404);
-  return c.json(await createMcpToken({ userId, label, scopes, expiresAt }), 201);
+  const created = await createMcpToken({ userId, label, scopes, expiresAt });
+  c.header('Cache-Control', 'no-store');
+  return c.json(created, 201);
 });
 
 // DELETE /api/admin/mcp/tokens/:id — revogação preserva metadados auditáveis.

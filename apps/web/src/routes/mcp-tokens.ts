@@ -45,6 +45,7 @@ mcpTokenRoutes.post('/', async (c) => {
     return c.json({ error: 'A criação de tokens MCP por usuários está desabilitada.' }, 403);
   }
   const created = await createMcpToken({ userId: c.get('userId'), label, scopes, expiresAt });
+  c.header('Cache-Control', 'no-store');
   return c.json(created, 201);
 });
 

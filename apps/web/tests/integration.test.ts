@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import app from '../src/index';
 import { db } from '../src/lib/db';
+import { getSetting, setSetting } from '../src/lib/settings';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -157,6 +158,24 @@ describeIfDb('auth + admin approval flow', () => {
     expect(body.prompt).toContain('https://voxen.local/mcp');
     expect(body.prompt).toContain(rotated.token);
     expect(body.prompt).toContain('Voxen');
+    const metadata = await app.fetch(
+      new Request('http://localhost/api/admin/mcp', { headers: { cookie } }),
+    );
+    const adminMcp = (await metadata.json()) as { tokens: { id: string; token?: string }[] };
+    expect(adminMcp.tokens[0]).not.toHaveProperty('token');
+    const revoke = await app.fetch(
+      new Request(`http://localhost/api/admin/mcp/tokens/${adminMcp.tokens[0]!.id}`, {
+        method: 'DELETE',
+        headers: { cookie },
+      }),
+    );
+    expect(revoke.status).toBe(200);
+    await setSetting('mcp_api_token', `legacy-owner:${rotated.token}`);
+    const revokeLegacy = await app.fetch(
+      new Request('http://localhost/api/admin/mcp', { method: 'DELETE', headers: { cookie } }),
+    );
+    expect(revokeLegacy.status).toBe(200);
+    expect(await getSetting('mcp_api_token')).toBeNull();
   });
 
   it('emite token MCP por usuário, respeita escopo e permite revogação', async () => {
@@ -232,6 +251,22 @@ describeIfDb('auth + admin approval flow', () => {
       }),
     );
     expect(rejected.status).toBe(401);
+    const delegated = await app.fetch(
+      new Request('http://localhost/api/admin/mcp/tokens', {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ userId: pending!.id, label: 'Admin-managed', scopes: ['READ'] }),
+      }),
+    );
+    const delegatedBody = (await delegated.json()) as { metadata: { id: string } };
+    expect(delegated.status).toBe(201);
+    const adminRevoke = await app.fetch(
+      new Request(`http://localhost/api/admin/mcp/tokens/${delegatedBody.metadata.id}`, {
+        method: 'DELETE',
+        headers: { cookie: adminCookie },
+      }),
+    );
+    expect(adminRevoke.status).toBe(200);
   });
 
   it('admin gera token de proxy: persiste cifrado e GET não vaza', async () => {

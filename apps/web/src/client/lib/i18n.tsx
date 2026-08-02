@@ -865,6 +865,15 @@ const ptBRMessages = {
   'admin.integrations.mcp.revokeTitle': 'Revogar token MCP?',
   'admin.integrations.mcp.revokeDescription':
     'Clients MCP que usam este token vão perder acesso até admin gerar novo.',
+  'admin.integrations.mcp.activeCount': '{count} token(s) ativos na instância.',
+  'admin.integrations.mcp.userPolicy': 'Permitir tokens por usuário',
+  'admin.integrations.mcp.userPolicyHint':
+    'Usuários aprovados podem criar e revogar seus próprios tokens.',
+  'admin.integrations.mcp.legacyPending':
+    'A credencial MCP global legada ainda está armazenada e não é aceita.',
+  'admin.integrations.mcp.revokeLegacy': 'Revogar legado',
+  'admin.integrations.mcp.legacyRevoked': 'Credencial MCP legada revogada.',
+  'admin.integrations.mcp.revokedStatus': 'Revogado',
   'admin.integrations.revoke': 'Revogar',
   'admin.integrations.show': 'Ver',
   'admin.integrations.hide': 'Ocultar',
@@ -2180,6 +2189,14 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.mcp.revokeTitle': 'Revoke MCP token?',
   'admin.integrations.mcp.revokeDescription':
     'MCP clients using this token will lose access until an admin generates a new one.',
+  'admin.integrations.mcp.activeCount': '{count} active token(s) in this instance.',
+  'admin.integrations.mcp.userPolicy': 'Allow user tokens',
+  'admin.integrations.mcp.userPolicyHint': 'Approved users can create and revoke their own tokens.',
+  'admin.integrations.mcp.legacyPending':
+    'The legacy global MCP credential is still stored and is no longer accepted.',
+  'admin.integrations.mcp.revokeLegacy': 'Revoke legacy',
+  'admin.integrations.mcp.legacyRevoked': 'Legacy MCP credential revoked.',
+  'admin.integrations.mcp.revokedStatus': 'Revoked',
   'admin.integrations.revoke': 'Revoke',
   'admin.integrations.show': 'Show',
   'admin.integrations.hide': 'Hide',
