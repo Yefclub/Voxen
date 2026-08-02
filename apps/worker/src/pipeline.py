@@ -1062,7 +1062,9 @@ async def _maybe_grounded_brain_extract(
             }
             for segment in segments
         ]
-        content_hash = sha256(f"{title}\0{content}".encode()).hexdigest()
+        content_hash = sha256(
+            f"v{brain_extract.BRAIN_GROUNDED_EXTRACT_VERSION}\0{title}\0{content}".encode()
+        ).hexdigest()
         compilation_id, pending_rows = await db.prepare_grounded_brain_compilation(
             user_id=user_id,
             transcript_id=transcript_id,
@@ -1124,6 +1126,17 @@ async def _maybe_grounded_brain_extract(
                             }
                             for item in result.items
                         ]
+                        relations = [
+                            {
+                                "subject_slug": brain_extract.slugify_label(relation.subject),
+                                "predicate": relation.predicate,
+                                "object_slug": brain_extract.slugify_label(relation.object),
+                                "kind": relation.kind,
+                                "excerpt": relation.excerpt,
+                                "confidence": relation.confidence,
+                            }
+                            for relation in result.relations
+                        ]
                         total_items += len(payload)
                         total_edges += await db.upsert_grounded_brain_items(
                             user_id=user_id,
@@ -1131,6 +1144,7 @@ async def _maybe_grounded_brain_extract(
                             compilation_id=compilation_id,
                             segment=segment,
                             items=payload,
+                            relations=relations,
                             lease=lease,
                         )
                     except Exception as e:  # noqa: BLE001 — um segmento não invalida os demais

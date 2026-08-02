@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from types import SimpleNamespace
@@ -18,6 +19,7 @@ from src.brain_extract import (
     extract_grounded_concepts,
     is_grounded,
     parse_grounded_payload,
+    parse_grounded_relations,
     segment_content,
     slugify_label,
 )
@@ -67,6 +69,48 @@ def test_parse_keeps_only_grounded_items() -> None:
 
 def test_slugify() -> None:
     assert slugify_label("Estúdio Ghibli") == "estudio-ghibli"
+
+
+def test_parse_grounded_relations_requires_evidence_and_confident_alias() -> None:
+    source = "PostgreSQL também é chamado de Postgres. PostgreSQL suporta índices GIN."
+    raw = json.dumps(
+        {
+            "entities": [
+                {"label": "PostgreSQL", "excerpt": "PostgreSQL também é chamado de Postgres"},
+                {"label": "Postgres", "excerpt": "PostgreSQL também é chamado de Postgres"},
+            ],
+            "claims": [
+                {
+                    "label": "PostgreSQL suporta índices GIN",
+                    "excerpt": "PostgreSQL suporta índices GIN",
+                }
+            ],
+            "relations": [
+                {
+                    "subject": "PostgreSQL",
+                    "predicate": "same_as",
+                    "object": "Postgres",
+                    "kind": "SAME_AS",
+                    "excerpt": "PostgreSQL também é chamado de Postgres",
+                    "confidence": 0.93,
+                },
+                {
+                    "subject": "Postgres",
+                    "predicate": "contradicts",
+                    "object": "PostgreSQL suporta índices GIN",
+                    "kind": "CONTRADICTS",
+                    "excerpt": "evidência inventada",
+                    "confidence": 0.9,
+                },
+            ],
+        }
+    )
+    items = parse_grounded_payload(raw, source)
+    relations = parse_grounded_relations(raw, source, items)
+
+    assert [(relation.kind, relation.subject, relation.object) for relation in relations] == [
+        ("SAME_AS", "PostgreSQL", "Postgres")
+    ]
 
 
 def test_segment_content_covers_long_markdown_with_lines_and_timestamps() -> None:
@@ -155,7 +199,7 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
         if kwargs["content"] == "primeira seção":
             raise RuntimeError("provider indisponível")
         return GroundedExtractionResult(
-            items=[], cost_usd=Decimal("0"), model="model", tokens_in=10, tokens_out=2
+            items=[], relations=[], cost_usd=Decimal("0"), model="model", tokens_in=10, tokens_out=2
         )
 
     monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract)
@@ -174,7 +218,7 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
 
     async def extract_retry(**kwargs: Any) -> GroundedExtractionResult:
         return GroundedExtractionResult(
-            items=[], cost_usd=Decimal("0"), model="model", tokens_in=10, tokens_out=2
+            items=[], relations=[], cost_usd=Decimal("0"), model="model", tokens_in=10, tokens_out=2
         )
 
     monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract_retry)

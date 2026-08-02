@@ -22,6 +22,8 @@ OR_BASE_URL = openrouter.OR_BASE_URL
 MAX_ENTITIES = 8
 MAX_CLAIMS = 6
 MAX_TEXT = 6_000
+ALIAS_CONFIDENCE_MIN = 0.9
+BRAIN_GROUNDED_EXTRACT_VERSION = 2
 
 _HEADING_RE = re.compile(r"^#{1,6}\s+\S")
 _TIMESTAMP_RE = re.compile(r"^\s*\[(\d{1,2}):([0-5]?\d):([0-5]?\d)\]")
@@ -36,8 +38,19 @@ class GroundedItem:
 
 
 @dataclass(frozen=True)
+class GroundedRelation:
+    subject: str
+    predicate: str
+    object: str
+    kind: str
+    excerpt: str
+    confidence: float
+
+
+@dataclass(frozen=True)
 class GroundedExtractionResult:
     items: list[GroundedItem]
+    relations: list[GroundedRelation]
     cost_usd: Decimal
     model: str
     tokens_in: int
@@ -225,6 +238,93 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
     return out
 
 
+def parse_grounded_relations(
+    raw: str,
+    source_text: str,
+    items: list[GroundedItem],
+) -> list[GroundedRelation]:
+    """Aceita apenas relações entre itens extraídos e evidenciados no segmento."""
+    text = (raw or "").strip()
+    if not text or not items:
+        return []
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.I)
+    payload_src = fence.group(1) if fence else text
+    obj_match = re.search(r"\{[\s\S]*\}", payload_src)
+    if not obj_match:
+        return []
+    try:
+        parsed = json.loads(obj_match.group(0))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("relations"), list):
+        return []
+
+    known = {slugify_label(item.label): item for item in items}
+    out: list[GroundedRelation] = []
+    seen: set[tuple[str, str, str]] = set()
+    kind_map = {
+        "supports": "SUPPORTS",
+        "contradicts": "CONTRADICTS",
+        "same_as": "SAME_AS",
+        "related_to": "RELATED_TO",
+        "part_of": "PART_OF",
+    }
+    for relation in parsed["relations"][:12]:
+        if not isinstance(relation, dict):
+            continue
+        subject = relation.get("subject")
+        predicate = relation.get("predicate")
+        obj = relation.get("object")
+        excerpt = relation.get("excerpt") or relation.get("evidence")
+        if not all(isinstance(value, str) for value in (subject, predicate, obj, excerpt)):
+            continue
+        assert isinstance(subject, str)
+        assert isinstance(predicate, str)
+        assert isinstance(obj, str)
+        assert isinstance(excerpt, str)
+        subject_label = " ".join(subject.split()).strip()[:80]
+        object_label = " ".join(obj.split()).strip()[:80]
+        predicate_label = " ".join(predicate.split()).strip()[:80]
+        subject_item = known.get(slugify_label(subject_label))
+        object_item = known.get(slugify_label(object_label))
+        kind = kind_map.get(str(relation.get("kind") or predicate_label).strip().lower())
+        evidence = " ".join(excerpt.split()).strip()[:400]
+        if (
+            not subject_item
+            or not object_item
+            or not kind
+            or subject_item.label == object_item.label
+            or len(predicate_label) < 2
+            or not is_grounded(evidence, source_text)
+        ):
+            continue
+        confidence = relation.get("confidence", 0.7)
+        conf = 0.7
+        if isinstance(confidence, (int, float)):
+            conf = max(0.4, min(0.95, float(confidence)))
+        if kind == "SAME_AS" and (
+            subject_item.kind != "entity"
+            or object_item.kind != "entity"
+            or conf < ALIAS_CONFIDENCE_MIN
+        ):
+            continue
+        key = (slugify_label(subject_item.label), kind, slugify_label(object_item.label))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            GroundedRelation(
+                subject=subject_item.label,
+                predicate=predicate_label,
+                object=object_item.label,
+                kind=kind,
+                excerpt=evidence,
+                confidence=conf,
+            )
+        )
+    return out
+
+
 async def extract_grounded_concepts(
     *,
     title: str,
@@ -247,9 +347,14 @@ async def extract_grounded_concepts(
             '{"entities":[{"label":"...","excerpt":"verbatim quote from the text",'
             '"confidence":0.0-1.0}],'
             '"claims":[{"label":"short factual claim","excerpt":"verbatim quote",'
-            '"confidence":0.0-1.0}]}\n'
+            '"confidence":0.0-1.0}],'
+            '"relations":[{"subject":"exact extracted label","predicate":"...",'
+            '"object":"exact extracted label",'
+            '"kind":"SUPPORTS|CONTRADICTS|SAME_AS|RELATED_TO|PART_OF",'
+            '"excerpt":"verbatim quote","confidence":0.0-1.0}]}\n'
             "excerpt MUST be a contiguous substring of the content. Max 8 entities, 6 claims. "
-            "Prefer proper names, tools, products. No invented quotes."
+            "Relations must reference extracted labels. SAME_AS only for unambiguous aliases. "
+            "No invented quotes."
         )
         user = f"Title: {title.strip() or '(none)'}\n\nContent:\n{body}"
     else:
@@ -258,9 +363,14 @@ async def extract_grounded_concepts(
             '{"entities":[{"label":"...","excerpt":"trecho literal do texto",'
             '"confidence":0.0-1.0}],'
             '"claims":[{"label":"afirmação curta","excerpt":"trecho literal",'
-            '"confidence":0.0-1.0}]}\n'
+            '"confidence":0.0-1.0}],'
+            '"relations":[{"subject":"rótulo extraído exato","predicate":"...",'
+            '"object":"rótulo extraído exato",'
+            '"kind":"SUPPORTS|CONTRADICTS|SAME_AS|RELATED_TO|PART_OF",'
+            '"excerpt":"trecho literal","confidence":0.0-1.0}]}\n'
             "excerpt DEVE ser substring contígua do conteúdo. Máx. 8 entidades, 6 claims. "
-            "Prefira nomes próprios, ferramentas, produtos. Sem citações inventadas."
+            "Relações devem usar rótulos extraídos. SAME_AS só para aliases sem ambiguidade. "
+            "Sem citações inventadas."
         )
         user = f"Título: {title.strip() or '(sem título)'}\n\nConteúdo:\n{body}"
 
@@ -311,8 +421,10 @@ async def extract_grounded_concepts(
         cost = Decimal(tokens_in + tokens_out) * Decimal("0.000001")
 
     items = parse_grounded_payload(str(raw), source_for_ground)
+    relations = parse_grounded_relations(str(raw), source_for_ground, items)
     return GroundedExtractionResult(
         items=items,
+        relations=relations,
         cost_usd=cost,
         model=model,
         tokens_in=tokens_in,

@@ -885,20 +885,31 @@ async def prepare_grounded_brain_compilation(
                 transcript_id,
             )
             if compilation and compilation["contentHash"] != content_hash:
-                # Arestas grounded saem junto com suas evidências via cascade;
-                # arestas manuais e de outros métodos não participam deste delete.
+                # Remove só a evidência desta fonte. Relações automáticas podem
+                # ter suporte em outras fontes e, nesse caso, permanecem.
+                await conn.execute(
+                    """
+                    DELETE FROM "BrainSource" source
+                    USING "BrainEdge" edge
+                    WHERE source."userId" = $1
+                      AND source."sourceId" = $2
+                      AND source."edgeId" = edge.id
+                      AND edge."userId" = $1
+                      AND edge.method LIKE 'llm-grounded%'
+                    """,
+                    user_id,
+                    transcript_id,
+                )
                 await conn.execute(
                     """
                     DELETE FROM "BrainEdge" edge
-                    USING "BrainNode" content
                     WHERE edge."userId" = $1
-                      AND edge.method = 'llm-grounded'
-                      AND content."userId" = $1
-                      AND content.key = $2
-                      AND edge."fromNodeId" = content.id
+                      AND edge.method LIKE 'llm-grounded%'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id
+                      )
                     """,
                     user_id,
-                    f"TRANSCRIPT:{transcript_id}",
                 )
                 await conn.execute(
                     'DELETE FROM "BrainCompilationSegment" WHERE "compilationId" = $1',
@@ -1059,6 +1070,43 @@ def _require_grounded_compilation_lease(lease: GraphIndexLease) -> None:
         raise GroundedCompilationLeaseLostError("lease de compilação do Brain perdido")
 
 
+async def _upsert_grounded_evidence_source(
+    conn: asyncpg.Connection,
+    *,
+    user_id: str,
+    transcript_id: str,
+    edge_id: str,
+    segment: dict[str, Any],
+    evidence_key: str,
+    excerpt: str,
+) -> None:
+    await conn.execute(
+        """
+        INSERT INTO "BrainSource" (
+            id, "userId", "edgeId", "sourceType", "sourceId", "startLine", "endLine",
+            "startSec", "endSec", "segmentKey", "evidenceKey", excerpt, "createdAt"
+        ) VALUES (
+            $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, $6,
+            $7, $8, $9, $10, $11, NOW()
+        ) ON CONFLICT ("userId", "evidenceKey") DO UPDATE SET
+            "startLine" = EXCLUDED."startLine", "endLine" = EXCLUDED."endLine",
+            "startSec" = EXCLUDED."startSec", "endSec" = EXCLUDED."endSec",
+            excerpt = EXCLUDED.excerpt
+        """,
+        generate_cuid(),
+        user_id,
+        edge_id,
+        transcript_id,
+        segment["start_line"],
+        segment["end_line"],
+        segment.get("start_sec"),
+        segment.get("end_sec"),
+        segment["key"],
+        evidence_key,
+        _truncate(excerpt, 600),
+    )
+
+
 async def upsert_grounded_brain_items(
     *,
     user_id: str,
@@ -1066,6 +1114,7 @@ async def upsert_grounded_brain_items(
     compilation_id: str,
     segment: dict[str, Any],
     items: list[dict[str, Any]],
+    relations: list[dict[str, Any]],
     lease: GraphIndexLease,
 ) -> int:
     """Materializa um segmento atomicamente e marca sua cobertura concluída."""
@@ -1093,13 +1142,14 @@ async def upsert_grounded_brain_items(
                   AND source."sourceId" = $2
                   AND source."segmentKey" = $3
                   AND source."edgeId" = edge.id
-                  AND edge.method = 'llm-grounded'
+                  AND edge.method LIKE 'llm-grounded%'
                 """,
                 user_id,
                 transcript_id,
                 segment["key"],
             )
             _require_grounded_compilation_lease(lease)
+            concepts: dict[str, tuple[str, str]] = {}
             for item in items:
                 _require_grounded_compilation_lease(lease)
                 kind = str(item.get("kind") or "entity")
@@ -1118,14 +1168,16 @@ async def upsert_grounded_brain_items(
                     node_type=node_type,
                     label=label,
                 )
+                concepts[slug] = (concept_id, kind)
+                edge_kind = "SUPPORTS" if kind == "claim" else "MENTIONS"
                 edge_row = await conn.fetchrow(
                     """
                     INSERT INTO "BrainEdge" (
                         id, "userId", "fromNodeId", "toNodeId", kind, confidence,
                         method, status, metadata, "createdAt", "updatedAt"
                     ) VALUES (
-                        $1, $2, $3, $4, 'MENTIONS'::"BrainEdgeKind", $5,
-                        'llm-grounded', 'ACTIVE'::"ContentStatus", $6::jsonb, NOW(), NOW()
+                        $1, $2, $3, $4, $5::"BrainEdgeKind", $6,
+                        'llm-grounded', 'ACTIVE'::"ContentStatus", $7::jsonb, NOW(), NOW()
                     )
                     ON CONFLICT ("userId", "fromNodeId", "toNodeId", kind, method) DO UPDATE SET
                         confidence = EXCLUDED.confidence,
@@ -1138,6 +1190,7 @@ async def upsert_grounded_brain_items(
                     user_id,
                     content_node_id,
                     concept_id,
+                    edge_kind,
                     conf,
                     json.dumps(
                         {
@@ -1150,46 +1203,119 @@ async def upsert_grounded_brain_items(
                 if not edge_row:
                     continue
                 _require_grounded_compilation_lease(lease)
-                await conn.execute(
-                    """
-                    INSERT INTO "BrainSource" (
-                        id, "userId", "edgeId", "sourceType", "sourceId", "startLine", "endLine",
-                        "startSec", "endSec", "segmentKey", "evidenceKey", excerpt, "createdAt"
-                    ) VALUES (
-                        $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, $6,
-                        $7, $8, $9, $10, $11, NOW()
-                    ) ON CONFLICT ("userId", "evidenceKey") DO UPDATE SET
-                        "startLine" = EXCLUDED."startLine", "endLine" = EXCLUDED."endLine",
-                        "startSec" = EXCLUDED."startSec", "endSec" = EXCLUDED."endSec",
-                        excerpt = EXCLUDED.excerpt
-                    """,
-                    generate_cuid(),
-                    user_id,
-                    edge_row["id"],
-                    transcript_id,
-                    segment["start_line"],
-                    segment["end_line"],
-                    segment.get("start_sec"),
-                    segment.get("end_sec"),
-                    segment["key"],
-                    _grounded_evidence_key(transcript_id, segment["key"], slug, excerpt),
-                    _truncate(excerpt, 600),
+                await _upsert_grounded_evidence_source(
+                    conn,
+                    user_id=user_id,
+                    transcript_id=transcript_id,
+                    edge_id=edge_row["id"],
+                    segment=segment,
+                    evidence_key=_grounded_evidence_key(
+                        transcript_id, segment["key"], f"item:{slug}", excerpt
+                    ),
+                    excerpt=excerpt,
                 )
                 created += 1
                 _require_grounded_compilation_lease(lease)
+            for relation in relations:
+                subject_slug = str(relation.get("subject_slug") or "")
+                object_slug = str(relation.get("object_slug") or "")
+                subject = concepts.get(subject_slug)
+                obj = concepts.get(object_slug)
+                relation_kind = str(relation.get("kind") or "")
+                excerpt = str(relation.get("excerpt") or "").strip()
+                if (
+                    not subject
+                    or not obj
+                    or not excerpt
+                    or relation_kind
+                    not in {"SUPPORTS", "CONTRADICTS", "SAME_AS", "RELATED_TO", "PART_OF"}
+                ):
+                    continue
+                _require_grounded_compilation_lease(lease)
+                if relation_kind == "CONTRADICTS":
+                    support_counts = await conn.fetchrow(
+                        """
+                        SELECT
+                            COUNT(DISTINCT source."sourceId") FILTER (
+                                WHERE edge."toNodeId" = $2
+                            ) AS subject_sources,
+                            COUNT(DISTINCT source."sourceId") FILTER (
+                                WHERE edge."toNodeId" = $3
+                            ) AS object_sources,
+                            COUNT(DISTINCT source."sourceId") AS total_sources
+                        FROM "BrainSource" source
+                        JOIN "BrainEdge" edge ON edge.id = source."edgeId"
+                        WHERE source."userId" = $1
+                          AND edge."userId" = $1
+                          AND edge.method = 'llm-grounded'
+                          AND edge.kind = 'SUPPORTS'::"BrainEdgeKind"
+                          AND edge."toNodeId" IN ($2, $3)
+                        """,
+                        user_id,
+                        subject[0],
+                        obj[0],
+                    )
+                    if (
+                        not support_counts
+                        or int(support_counts["subject_sources"] or 0) < 1
+                        or int(support_counts["object_sources"] or 0) < 1
+                        or int(support_counts["total_sources"] or 0) < 2
+                    ):
+                        continue
+                edge_row = await conn.fetchrow(
+                    """
+                    INSERT INTO "BrainEdge" (
+                        id, "userId", "fromNodeId", "toNodeId", kind, confidence, method,
+                        status, metadata, "createdAt", "updatedAt"
+                    ) VALUES (
+                        $1, $2, $3, $4, $5::"BrainEdgeKind", $6, 'llm-grounded-relation',
+                        'ACTIVE'::"ContentStatus", $7::jsonb, NOW(), NOW()
+                    ) ON CONFLICT ("userId", "fromNodeId", "toNodeId", kind, method) DO UPDATE SET
+                        confidence = EXCLUDED.confidence, metadata = EXCLUDED.metadata,
+                        "updatedAt" = NOW()
+                    RETURNING id
+                    """,
+                    generate_cuid(),
+                    user_id,
+                    subject[0],
+                    obj[0],
+                    relation_kind,
+                    float(relation.get("confidence") or 0.7),
+                    json.dumps(
+                        {
+                            "predicate": str(relation.get("predicate") or ""),
+                            "extractor": "openrouter-grounded-relation",
+                        }
+                    ),
+                )
+                if edge_row:
+                    relation_evidence_key = _grounded_evidence_key(
+                        transcript_id,
+                        segment["key"],
+                        f"relation:{subject_slug}:{relation_kind}:{object_slug}",
+                        excerpt,
+                    )
+                    await _upsert_grounded_evidence_source(
+                        conn,
+                        user_id=user_id,
+                        transcript_id=transcript_id,
+                        edge_id=edge_row["id"],
+                        segment=segment,
+                        evidence_key=relation_evidence_key,
+                        excerpt=excerpt,
+                    )
+                    created += 1
             _require_grounded_compilation_lease(lease)
             await conn.execute(
                 """
                 DELETE FROM "BrainEdge" edge
                 WHERE edge."userId" = $1
-                  AND edge.method = 'llm-grounded'
-                  AND edge."fromNodeId" = $2
+                  AND edge.method LIKE 'llm-grounded%'
                   AND NOT EXISTS (
                       SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id
                   )
                 """,
                 user_id,
-                content_node_id,
             )
             _require_grounded_compilation_lease(lease)
             await conn.execute(

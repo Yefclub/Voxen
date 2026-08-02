@@ -1159,7 +1159,40 @@ function registerBrainTools(server: McpServer, userId: string): void {
           excerpt: true,
         },
       });
-      return ok({ sources });
+      const contradiction = await db.brainEdge.findFirst({
+        where: { userId, id: ref, kind: 'CONTRADICTS' },
+        select: { fromNodeId: true, toNodeId: true },
+      });
+      const conflictingSources = contradiction
+        ? (
+            await Promise.all(
+              [contradiction.fromNodeId, contradiction.toNodeId].map((claimNodeId) =>
+                db.brainSource.findMany({
+                  where: {
+                    userId,
+                    edge: {
+                      method: 'llm-grounded',
+                      kind: 'SUPPORTS',
+                      toNodeId: claimNodeId,
+                    },
+                  },
+                  orderBy: { createdAt: 'desc' },
+                  take: 10,
+                  select: {
+                    edgeId: true,
+                    sourceId: true,
+                    startLine: true,
+                    endLine: true,
+                    startSec: true,
+                    endSec: true,
+                    excerpt: true,
+                  },
+                }),
+              ),
+            )
+          ).flat()
+        : [];
+      return ok({ sources, conflicting_sources: conflictingSources });
     },
   );
 
