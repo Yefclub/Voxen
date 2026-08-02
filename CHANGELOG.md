@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.13.0-dev.1785667820 — 2026-08-02 · Dev
+
+### 🎨 Notas atualizadas ao abrir e visualizadas em Preview
+
+A página de Notas agora atualiza sua lista ao abrir e quando você volta à aba,
+mostrando sem recarregar manualmente as notas criadas pelo chat, MCP ou
+automações.
+
+As notas também abrem em **Preview**, com título e conteúdo protegidos contra
+edição acidental. Use **Editar** para abrir os campos de alteração.
+
 ## v0.13.0-dev.1785664499 — 2026-08-02 · Dev
 
 ### ✨ Base de conhecimento unificada para chat e MCP
