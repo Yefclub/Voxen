@@ -37,6 +37,47 @@ export class OpenrouterError extends Error {
   }
 }
 
+/** Gera um embedding de consulta sem expor a chave nem detalhes do provedor. */
+export async function createEmbedding(
+  key: string,
+  model: string,
+  input: string,
+  fetcher: Fetcher = fetch,
+): Promise<number[]> {
+  const clean = input.trim().replace(/\0/g, ' ').slice(0, 8_000);
+  if (!key.trim() || !model.trim() || clean.length < 2) return [];
+  let response: Response;
+  try {
+    response = await fetcher(`${OR_BASE_URL}/embeddings`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${key}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ model, input: clean }),
+      signal: openrouterRequestSignal(),
+    });
+  } catch (error) {
+    throw openrouterNetworkError(error);
+  }
+  if (!response.ok) throw new OpenrouterError(`OpenRouter retornou status ${response.status}`);
+  let body: { data?: Array<{ embedding?: unknown }> };
+  try {
+    body = (await response.json()) as { data?: Array<{ embedding?: unknown }> };
+  } catch {
+    throw new OpenrouterError('OpenRouter retornou um embedding inválido.');
+  }
+  const embedding = body.data?.[0]?.embedding;
+  if (!Array.isArray(embedding) || embedding.length < 8) {
+    throw new OpenrouterError('OpenRouter retornou um embedding inválido.');
+  }
+  const vector = embedding.map((value) => Number(value));
+  if (vector.some((value) => !Number.isFinite(value))) {
+    throw new OpenrouterError('OpenRouter retornou um embedding inválido.');
+  }
+  return vector;
+}
+
 function openrouterRequestSignal(signal?: AbortSignal): AbortSignal {
   return signal ?? AbortSignal.timeout(OPENROUTER_SETUP_TIMEOUT_MS);
 }

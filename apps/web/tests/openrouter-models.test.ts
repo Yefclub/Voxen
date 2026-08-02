@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { hasCanonicalOpenRouterModels } from '../src/lib/model-defaults';
 import {
+  createEmbedding,
   inspectOpenRouterAccount,
   listUserModels,
   OpenrouterError,
@@ -8,6 +9,31 @@ import {
 } from '../src/lib/openrouter';
 
 describe('OpenRouter user model catalog', () => {
+  it('gera o embedding da consulta usando o endpoint e modelo configurados', async () => {
+    let body = '';
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe('https://openrouter.ai/api/v1/embeddings');
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer sk-or-test');
+      body = String(init?.body);
+      return Response.json({ data: [{ embedding: [1, 0, 0, 0, 0, 0, 0, 0] }] });
+    }) as typeof fetch;
+
+    await expect(
+      createEmbedding('sk-or-test', 'openai/embed', 'repo oficial', fetcher),
+    ).resolves.toEqual([1, 0, 0, 0, 0, 0, 0, 0]);
+    expect(JSON.parse(body)).toEqual({ model: 'openai/embed', input: 'repo oficial' });
+  });
+
+  it('falha sem vazar a resposta inválida do provedor', async () => {
+    const fetcher = (async () =>
+      Response.json({ data: [{ embedding: ['segredo'] }] })) as unknown as typeof fetch;
+    const error = await createEmbedding('sk-or-test', 'openai/embed', 'consulta', fetcher).catch(
+      (reason) => reason,
+    );
+    expect(error).toBeInstanceOf(OpenrouterError);
+    expect(String((error as Error).message)).not.toContain('segredo');
+  });
+
   it('uses the key-filtered catalog endpoint', async () => {
     let requestedUrl = '';
     let authorization = '';

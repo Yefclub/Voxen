@@ -1,5 +1,5 @@
 // ============================================================================
-// retrieval.ts — Harness de recuperação progressiva (sem embeddings)
+// retrieval.ts — Harness de recuperação progressiva (FTS + semântica opt-in)
 // ============================================================================
 // Lógica compartilhada entre o agente in-app (lib/chat/runtime.ts) e o servidor
 // MCP (routes/mcp.ts). A ideia (ADR-004, harness/Karpathy) é dar ao agente
@@ -20,7 +20,9 @@
 // ============================================================================
 
 import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
+import { fuseHybridScores } from './hybrid-search';
 import { s3Bucket, s3Client } from './s3';
 
 // Caps de saída — nenhuma tool devolve o documento inteiro sem intenção explícita.
@@ -351,6 +353,8 @@ export type FtsResult = {
   tags: string[];
   folder: string | null;
   createdAt: Date;
+  /** Diagnóstico interno: origem do candidato antes da apresentação ao agente. */
+  retrievalSource?: 'lexical' | 'semantic' | 'hybrid';
 };
 
 export type KnowledgeSearchResult = FtsResult & {
@@ -429,7 +433,7 @@ export async function ftsSearchTranscripts(
     ORDER BY rank DESC, t."createdAt" DESC
     LIMIT ${take}
   `;
-  return maybeHybridRerank(userId, q, lexical);
+  return maybeHybridSearch(userId, q, lexical, take);
 }
 
 /** Busca FTS nas notas manuais do workspace com o mesmo parser usado nas transcrições. */
@@ -529,61 +533,164 @@ export async function searchKnowledgeBase(
   );
 }
 
-async function maybeHybridRerank(
+const SEMANTIC_SCAN_LIMIT = 500;
+const SEMANTIC_MIN_SCORE = 0.25;
+const LOW_LEXICAL_CONFIDENCE = 0.1;
+
+/** Evita custo remoto quando FTS já encontrou uma resposta suficientemente forte. */
+export function shouldUseSemanticRescue(lexical: readonly FtsResult[]): boolean {
+  return (
+    lexical.length === 0 ||
+    Math.max(...lexical.map((row) => Number(row.rank) || 0)) < LOW_LEXICAL_CONFIDENCE
+  );
+}
+
+/** Filtro único e testável que fixa a busca vetorial no workspace solicitado. */
+export function semanticTranscriptNodeWhere(userId: string) {
+  return {
+    userId,
+    status: 'ACTIVE' as const,
+    sourceType: 'TRANSCRIPT' as const,
+    sourceId: { not: null },
+  };
+}
+
+/**
+ * Carrega detalhes apenas para os IDs que o vetor resgatou fora do FTS. A
+ * cláusula userId é deliberadamente repetida: a busca semântica jamais aceita
+ * um id de outro workspace, mesmo que um metadata tenha sido corrompido.
+ */
+async function loadSemanticTranscriptRows(
+  userId: string,
+  ids: readonly string[],
+): Promise<FtsResult[]> {
+  if (ids.length === 0) return [];
+  const rows = await db.$queryRaw<FtsResult[]>`
+    SELECT t.id, t.title,
+      LEFT(COALESCE(NULLIF(t."summaryMd", ''), t."plainText"), 800) AS snippet,
+      0::float AS rank,
+      LEFT(t."summaryMd", 800) AS summary,
+      folder.name AS folder,
+      t."createdAt",
+      COALESCE((
+        SELECT array_agg(tag.name ORDER BY tag.name)
+        FROM "TranscriptTag" tt
+        JOIN "Tag" tag ON tag.id = tt."tagId" AND tag."userId" = t."userId"
+        WHERE tt."transcriptId" = t.id
+      ), ARRAY[]::text[]) AS tags
+    FROM "Transcript" t
+    LEFT JOIN "LibraryFolder" folder ON folder.id = t."folderId" AND folder."userId" = t."userId"
+    WHERE t."userId" = ${userId}
+      AND t.status = 'ACTIVE'::"ContentStatus"
+      AND t.id IN (${Prisma.join(ids)})
+  `;
+  return rows;
+}
+
+/** Junta candidatos semânticos e FTS sem esconder a origem usada no diagnóstico. */
+export function fuseTranscriptCandidates(
+  lexical: readonly FtsResult[],
+  semantic: readonly FtsResult[],
+  vectorScores: ReadonlyMap<string, number>,
+  options: { semanticRescue?: boolean } = {},
+): FtsResult[] {
+  const byId = new Map<string, FtsResult>();
+  for (const row of semantic) byId.set(row.id, row);
+  for (const row of lexical) byId.set(row.id, row);
+  const maxLexicalRank = Math.max(...lexical.map((row) => Number(row.rank) || 0), 1e-9);
+  return fuseHybridScores(
+    [...byId.values()].map((row) => ({
+      id: row.id,
+      lexicalScore: Number(row.rank) || 0,
+      vectorScore: vectorScores.get(row.id) ?? null,
+    })),
+    options.semanticRescue ? { alpha: 0.75, missingVector: 'zero' } : { alpha: 0.35 },
+  ).map((hit) => {
+    const row = byId.get(hit.id);
+    if (!row) throw new Error('Candidato híbrido ausente.');
+    const lexicalScore = Number(row.rank) || 0;
+    const vectorScore = vectorScores.get(row.id);
+    return {
+      ...row,
+      rank: hit.score * maxLexicalRank,
+      retrievalSource:
+        lexicalScore > 0 && vectorScore != null
+          ? 'hybrid'
+          : lexicalScore > 0
+            ? 'lexical'
+            : 'semantic',
+    };
+  });
+}
+
+/** Uma falha opcional do ramo semântico nunca interrompe a recuperação FTS. */
+export async function fallbackToLexical<T>(
+  lexical: T,
+  semanticSearch: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await semanticSearch();
+  } catch {
+    return lexical;
+  }
+}
+
+async function maybeHybridSearch(
   userId: string,
   query: string,
   lexical: FtsResult[],
+  limit: number,
 ): Promise<FtsResult[]> {
-  if (lexical.length < 2) return lexical;
-  try {
+  return fallbackToLexical(lexical, async () => {
+    if (!shouldUseSemanticRescue(lexical)) return lexical;
     const { getSetting } = await import('./settings');
     const enabled = (await getSetting('embeddings_enabled'))?.trim().toLowerCase();
     if (enabled !== 'true' && enabled !== '1' && enabled !== 'yes' && enabled !== 'on') {
       return lexical;
     }
-    const { cosineSimilarity, fuseHybridScores, readEmbeddingFromMetadata } =
-      await import('./hybrid-search');
+    const [apiKey, configuredModel] = await Promise.all([
+      getSetting('openrouter_api_key'),
+      getSetting('embedding_model'),
+    ]);
+    if (!apiKey) return lexical;
+
+    const [{ createEmbedding }, { rankSemanticCandidates, readEmbeddingFromMetadata }] =
+      await Promise.all([import('./openrouter'), import('./hybrid-search')]);
+    const queryVector = await createEmbedding(
+      apiKey,
+      configuredModel || 'openai/text-embedding-3-small',
+      query,
+    );
+    if (queryVector.length < 8) return lexical;
+
     const nodes = await db.brainNode.findMany({
-      where: {
-        userId,
-        status: 'ACTIVE',
-        sourceType: 'TRANSCRIPT',
-        sourceId: { in: lexical.map((item) => item.id) },
-      },
+      where: semanticTranscriptNodeWhere(userId),
+      orderBy: { updatedAt: 'desc' },
+      take: SEMANTIC_SCAN_LIMIT,
       select: { sourceId: true, metadata: true },
     });
-    const byTranscript = new Map(
-      nodes
-        .map((node) => [node.sourceId, readEmbeddingFromMetadata(node.metadata)] as const)
-        .filter((entry): entry is [string, number[]] => Boolean(entry[0] && entry[1])),
-    );
-    if (byTranscript.size === 0) return lexical;
-
-    // Query embedding: se não houver, cai no lexical puro (sem chamada de rede no path de chat
-    // a menos que o operador habilite embeddings e exista cache futuro).
-    // Aqui só reordena com vetores já persistidos + similaridade entre hits via centroide FTS.
-    // Similaridade ao query exigiria embed da query no request — fazemos com o top lexical
-    // como âncora (MMR-lite): score = lex + cos(top0, item).
-    const topVec = byTranscript.get(lexical[0]?.id ?? '');
-    if (!topVec) return lexical;
-    const fused = fuseHybridScores(
-      lexical.map((item) => {
-        const vec = byTranscript.get(item.id);
-        return {
-          id: item.id,
-          lexicalScore: Number(item.rank) || 0,
-          vectorScore: vec ? cosineSimilarity(topVec, vec) : null,
-        };
+    const semanticHits = rankSemanticCandidates(
+      queryVector,
+      nodes.flatMap((node) => {
+        const vector = readEmbeddingFromMetadata(node.metadata);
+        return node.sourceId && vector ? [{ id: node.sourceId, vector }] : [];
       }),
-      { alpha: 0.3 },
+      { limit, minScore: SEMANTIC_MIN_SCORE },
     );
-    // `rank` é o score público de relevância. Ao habilitar embeddings, propaga
-    // o score híbrido (na escala lexical da consulta) para que consumidores que
-    // combinem resultados — como searchKnowledgeBase — não desfaçam o reranking.
-    return applyHybridRanks(lexical, fused);
-  } catch {
-    return lexical;
-  }
+    if (semanticHits.length === 0) return lexical;
+
+    const lexicalIds = new Set(lexical.map((row) => row.id));
+    const semanticRows = await loadSemanticTranscriptRows(
+      userId,
+      semanticHits.map((hit) => hit.id).filter((id) => !lexicalIds.has(id)),
+    );
+    return fuseTranscriptCandidates(
+      lexical,
+      semanticRows,
+      new Map(semanticHits.map((hit) => [hit.id, hit.vectorScore])),
+      { semanticRescue: true },
+    ).slice(0, limit);
+  });
 }
 
 /** Pré-busca best-effort usada pelo harness antes do primeiro step do modelo. */

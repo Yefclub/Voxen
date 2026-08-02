@@ -9,6 +9,16 @@ export type HybridHit = {
   vectorScore: number | null;
 };
 
+export type SemanticCandidate = {
+  id: string;
+  vector: number[];
+};
+
+export type SemanticHit = {
+  id: string;
+  vectorScore: number;
+};
+
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length === 0 || a.length !== b.length) return 0;
   let dot = 0;
@@ -26,12 +36,34 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
+ * Busca vetorial em memória para o modo opt-in sem pgvector. A seleção de
+ * candidatos é limitada pelo chamador; vetores com dimensão incompatível ou
+ * score baixo não entram no resgate semântico.
+ */
+export function rankSemanticCandidates(
+  queryVector: number[],
+  candidates: readonly SemanticCandidate[],
+  options: { limit?: number; minScore?: number } = {},
+): SemanticHit[] {
+  const limit = Math.max(1, Math.min(Math.trunc(options.limit ?? 25), 100));
+  const minScore = Math.max(-1, Math.min(options.minScore ?? 0.25, 1));
+  return candidates
+    .map((candidate) => ({
+      id: candidate.id,
+      vectorScore: cosineSimilarity(queryVector, candidate.vector),
+    }))
+    .filter((candidate) => candidate.vectorScore >= minScore)
+    .sort((a, b) => b.vectorScore - a.vectorScore || a.id.localeCompare(b.id))
+    .slice(0, limit);
+}
+
+/**
  * score = (1 - alpha) * lexicalNorm + alpha * vectorNorm
  * alpha=0 → só FTS; alpha=1 → só vector.
  */
 export function fuseHybridScores(
   hits: HybridHit[],
-  options: { alpha?: number } = {},
+  options: { alpha?: number; missingVector?: 'lexical' | 'zero' } = {},
 ): Array<HybridHit & { score: number }> {
   const alpha = Math.min(1, Math.max(0, options.alpha ?? 0.35));
   const maxLex = Math.max(...hits.map((h) => h.lexicalScore), 1e-9);
@@ -42,7 +74,11 @@ export function fuseHybridScores(
     .map((hit) => {
       const lex = hit.lexicalScore / maxLex;
       const vec =
-        hit.vectorScore == null ? lex : Math.max(0, hit.vectorScore) / Math.max(maxVec, 1e-9);
+        hit.vectorScore == null
+          ? options.missingVector === 'zero'
+            ? 0
+            : lex
+          : Math.max(0, hit.vectorScore) / Math.max(maxVec, 1e-9);
       const score = (1 - alpha) * lex + alpha * vec;
       return { ...hit, score };
     })
