@@ -64,6 +64,34 @@ type SseConnection = {
   onClose(fn: () => void | Promise<void>): void;
 };
 
+type QueuedJobType =
+  | 'DOWNLOAD_AND_TRANSCRIBE'
+  | 'SCRAPE_WEB'
+  | 'UPLOAD_AND_TRANSCRIBE'
+  | 'UPLOAD_AND_ANALYZE_IMAGE'
+  | 'UPLOAD_AND_ANALYZE_DOCUMENT'
+  | 'ANALYZE_X';
+
+async function createQueuedJob(
+  userId: string,
+  type: QueuedJobType,
+  sourceUrl: string,
+): Promise<{ id: string; status: string; sourceUrl: string }> {
+  return db.$transaction(async (tx) => {
+    // Compartilha o lock da publicação de settings: a revisão lida e o job
+    // nascem no mesmo corte lógico da configuração global.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
+    const revision = await tx.configRevision.findFirst({
+      orderBy: { number: 'desc' },
+      select: { id: true },
+    });
+    return tx.job.create({
+      data: { userId, type, status: 'QUEUED', sourceUrl, configRevisionId: revision?.id },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+  });
+}
+
 const SSE_HEARTBEAT_MS = 10_000;
 const SSE_RETRY_MS = 5_000;
 
@@ -265,15 +293,7 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
     }
     let job: { id: string; status: string; sourceUrl: string };
     try {
-      job = await db.job.create({
-        data: {
-          userId,
-          type: jobType,
-          status: 'QUEUED',
-          sourceUrl: video.canonical,
-        },
-        select: { id: true, status: true, sourceUrl: true },
-      });
+      job = await createQueuedJob(userId, jobType, video.canonical);
     } catch (err) {
       if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
         return { outcome: 'inflight', error: 'Esta URL já está sendo processada.', kind };
@@ -324,10 +344,7 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
   }
   let webJob: { id: string; status: string; sourceUrl: string };
   try {
-    webJob = await db.job.create({
-      data: { userId, type: 'SCRAPE_WEB', status: 'QUEUED', sourceUrl: normalized },
-      select: { id: true, status: true, sourceUrl: true },
-    });
+    webJob = await createQueuedJob(userId, 'SCRAPE_WEB', normalized);
   } catch (err) {
     if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
       return { outcome: 'inflight', error: 'Esta URL já está sendo processada.', kind: 'web' };
@@ -367,15 +384,7 @@ async function enqueueUploadJob(
   kind: UploadKind,
 ): Promise<{ jobId: string; status: string; sourceUrl: string }> {
   const sourceUrl = uploadSourceUrl(uploadId, filename);
-  const job = await db.job.create({
-    data: {
-      userId,
-      type: jobTypeForKind(kind),
-      status: 'QUEUED',
-      sourceUrl,
-    },
-    select: { id: true, status: true, sourceUrl: true },
-  });
+  const job = await createQueuedJob(userId, jobTypeForKind(kind), sourceUrl);
 
   await notifyNewJob(job.id).catch((err) => {
     console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
@@ -524,15 +533,7 @@ jobsRoutes.post('/', async (c) => {
 
   let job: { id: string; status: string; sourceUrl: string };
   try {
-    job = await db.job.create({
-      data: {
-        userId,
-        type: jobType,
-        status: 'QUEUED',
-        sourceUrl: video.canonical,
-      },
-      select: { id: true, status: true, sourceUrl: true },
-    });
+    job = await createQueuedJob(userId, jobType, video.canonical);
   } catch (err) {
     // Partial unique index `Job_user_url_active_unique` cobre a race entre
     // 2 POSTs simultâneos da mesma URL: o primeiro cria, o segundo cai aqui.
@@ -819,15 +820,7 @@ jobsRoutes.post('/scrape', async (c) => {
 
   let job: { id: string; status: string; sourceUrl: string };
   try {
-    job = await db.job.create({
-      data: {
-        userId,
-        type: 'SCRAPE_WEB',
-        status: 'QUEUED',
-        sourceUrl: normalized,
-      },
-      select: { id: true, status: true, sourceUrl: true },
-    });
+    job = await createQueuedJob(userId, 'SCRAPE_WEB', normalized);
   } catch (err) {
     if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
       return c.json({ error: 'Esta URL já está sendo processada.' }, 409);
@@ -1035,15 +1028,7 @@ jobsRoutes.post('/:id/retry', async (c) => {
   // Cria novo job (partial unique index permite porque o original é FAILED)
   let newJob: { id: string; status: string; sourceUrl: string };
   try {
-    newJob = await db.job.create({
-      data: {
-        userId,
-        type: original.type,
-        status: 'QUEUED',
-        sourceUrl: original.sourceUrl,
-      },
-      select: { id: true, status: true, sourceUrl: true },
-    });
+    newJob = await createQueuedJob(userId, original.type, original.sourceUrl);
   } catch (err) {
     // Race: outro retry já criou um job ativo. Devolve o que existe.
     if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {

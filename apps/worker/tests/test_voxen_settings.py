@@ -78,3 +78,48 @@ async def test_bulk_settings_reader_uses_one_select_and_deduplicates_keys(
     query, args = conn.fetch_calls[0]
     assert "key = ANY($1::text[])" in query
     assert args == (["openrouter_api_key", "default_chat_model"],)
+
+
+class _ClaimConnection:
+    def __init__(self) -> None:
+        self.executed: list[tuple[str, tuple[object, ...]]] = []
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        yield
+
+    async def fetchrow(self, query: str, *args: object) -> dict[str, Any] | None:
+        if 'FROM "Job"' in query:
+            return {
+                "id": "job-1",
+                "userId": "user-1",
+                "sourceUrl": "https://example.test",
+                "type": "SCRAPE_WEB",
+            }
+        if 'FROM "ConfigRevision"' in query:
+            return {"id": "revision-at-start"}
+        return None
+
+    async def execute(self, query: str, *args: object) -> None:
+        self.executed.append((query, args))
+
+
+async def test_claim_job_captures_current_config_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _ClaimConnection()
+
+    @asynccontextmanager
+    async def fake_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", fake_connection)
+
+    claimed = await db.claim_job("job-1")
+
+    assert claimed is not None
+    assert any("pg_advisory_xact_lock" in query for query, _ in conn.executed)
+    update = next((args for query, args in conn.executed if 'UPDATE "Job"' in query), None)
+    assert update is not None
+    assert update[0] == "job-1"
+    assert update[2] == "revision-at-start"

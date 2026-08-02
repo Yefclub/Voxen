@@ -25,7 +25,7 @@ import {
   setSettings,
 } from '../lib/settings';
 
-export const setupRoutes = new Hono();
+export const setupRoutes = new Hono<{ Variables: { adminUserId: string } }>();
 
 setupRoutes.use('*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -42,6 +42,7 @@ setupRoutes.use('*', async (c, next) => {
   if (user.role !== 'ADMIN') {
     return c.json({ error: 'Acesso restrito a administradores.' }, 403);
   }
+  c.set('adminUserId', session.user.id);
   return next();
 });
 
@@ -67,6 +68,7 @@ const SaveBody = z
     // mesmo POST para que a primeira configuração seja atômica.
     app_language: z.enum(['pt-BR', 'en']).optional(),
     app_timezone: z.string().trim().min(1).max(64).optional(),
+    reason: z.string().trim().max(500).optional(),
   })
   .strict()
   .refine(
@@ -80,7 +82,8 @@ setupRoutes.post('/', async (c) => {
     return c.json({ error: 'Payload inválido.' }, 400);
   }
 
-  const { openrouter_api_key, app_language, app_timezone } = parsed.data;
+  const { openrouter_api_key, app_language, app_timezone, reason } = parsed.data;
+  const metadata = { actorUserId: c.get('adminUserId'), reason };
   if (app_timezone !== undefined && !isValidIanaTimezone(app_timezone)) {
     return c.json({ error: 'Timezone IANA inválido.' }, 400);
   }
@@ -96,7 +99,7 @@ setupRoutes.post('/', async (c) => {
         400,
       );
     }
-    await setSettings(preferences);
+    await setSettings(preferences, metadata);
     return c.json({ complete: true });
   }
 
@@ -135,11 +138,14 @@ setupRoutes.post('/', async (c) => {
     ]),
   );
 
-  await setSettings({
-    openrouter_api_key,
-    ...missingModels,
-    ...preferences,
-  });
+  await setSettings(
+    {
+      openrouter_api_key,
+      ...missingModels,
+      ...preferences,
+    },
+    metadata,
+  );
 
   return c.json({ complete: true });
 });
