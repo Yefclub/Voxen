@@ -97,9 +97,7 @@ describe('mergeKnowledgeResults', () => {
     );
 
     expect(fused.find((item) => item.id === 'hibrido')?.retrievalSource).toBe('hybrid');
-    expect(fused.find((item) => item.id === 'somente-semantico')?.retrievalSource).toBe(
-      'semantic',
-    );
+    expect(fused.find((item) => item.id === 'somente-semantico')?.retrievalSource).toBe('semantic');
     expect(
       fuseTranscriptCandidates(lexical, [], new Map()).find((item) => item.id === 'hibrido')
         ?.retrievalSource,
@@ -123,7 +121,9 @@ describe('mergeKnowledgeResults', () => {
       sourceType: 'TRANSCRIPT',
       sourceId: { not: null },
     });
-    expect(semanticTranscriptNodeWhere('owner-a')).not.toEqual(semanticTranscriptNodeWhere('owner-b'));
+    expect(semanticTranscriptNodeWhere('owner-a')).not.toEqual(
+      semanticTranscriptNodeWhere('owner-b'),
+    );
   });
 });
 

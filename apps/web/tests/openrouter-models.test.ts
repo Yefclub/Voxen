@@ -18,9 +18,9 @@ describe('OpenRouter user model catalog', () => {
       return Response.json({ data: [{ embedding: [1, 0, 0, 0, 0, 0, 0, 0] }] });
     }) as typeof fetch;
 
-    await expect(createEmbedding('sk-or-test', 'openai/embed', 'repo oficial', fetcher)).resolves.toEqual([
-      1, 0, 0, 0, 0, 0, 0, 0,
-    ]);
+    await expect(
+      createEmbedding('sk-or-test', 'openai/embed', 'repo oficial', fetcher),
+    ).resolves.toEqual([1, 0, 0, 0, 0, 0, 0, 0]);
     expect(JSON.parse(body)).toEqual({ model: 'openai/embed', input: 'repo oficial' });
   });
 

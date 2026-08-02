@@ -551,7 +551,10 @@ export function semanticTranscriptNodeWhere(userId: string) {
  * cláusula userId é deliberadamente repetida: a busca semântica jamais aceita
  * um id de outro workspace, mesmo que um metadata tenha sido corrompido.
  */
-async function loadSemanticTranscriptRows(userId: string, ids: readonly string[]): Promise<FtsResult[]> {
+async function loadSemanticTranscriptRows(
+  userId: string,
+  ids: readonly string[],
+): Promise<FtsResult[]> {
   if (ids.length === 0) return [];
   const rows = await db.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
