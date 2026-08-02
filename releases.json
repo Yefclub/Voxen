@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785656401",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Atualização automática, notificações de job e toasts mais estáveis no PWA",
+    "body": "No app instalado (PWA), a nova versão passa a ser aplicada sozinha ao abrir o app\nquando o chat não está respondendo — sem o modal de atualização a cada deploy.\n\nQuando uma transcrição termina ou falha com o app em segundo plano e as\nnotificações estão permitidas, o sistema mostra uma notificação com a identidade\nda Voxen (em vez de só um aviso interno ao voltar para a aba).\n\nToasts antigos não ficam “presos” nem reaparecem em fila depois de muito tempo\ncom a aba em background. Na tela de detalhe de um job em andamento, a\ntranscrição pronta abre automaticamente ao concluir.",
+    "pr": 523,
+    "author": "Kalyel",
+    "date": "2026-08-02T04:39:45-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/523"
+  },
+  {
     "version": "0.13.0-dev.1785574769",
     "channel": "dev",
     "type": "ui",
