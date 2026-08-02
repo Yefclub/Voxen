@@ -1,19 +1,30 @@
+import { fuseHybridScores, rankSemanticCandidates } from './hybrid-search';
+
+export type BenchmarkEvidence = { quote: string; timestamp: number | null };
+export type BenchmarkDocument = {
+  id: string;
+  lexicalTerms: string[];
+  brainTerms: string[];
+  vector: number[];
+  evidence: BenchmarkEvidence;
+};
 export type BenchmarkCase = {
   id: string;
   question: string;
+  lexicalTerms: string[];
+  brainTerms: string[];
+  vector: number[];
   expectedSources: string[];
   expectedQuote: string | null;
   expectedTimestamp: number | null;
 };
-
 export type BenchmarkObservation = {
   caseId: string;
   sources: string[];
-  citations?: Array<{ quote: string; timestamp: number | null }>;
+  citations?: BenchmarkEvidence[];
   latencyMs: number;
   costUsd: number;
 };
-
 export type BenchmarkReport = {
   sourceRecall: number;
   citationPrecision: number;
@@ -23,22 +34,114 @@ export type BenchmarkReport = {
   totalCostUsd: number;
 };
 
+function overlap(left: readonly string[], right: readonly string[]): number {
+  const terms = new Set(left);
+  return right.filter((term) => terms.has(term)).length;
+}
+
+function fromSources(
+  item: BenchmarkCase,
+  sourceIds: string[],
+  documents: readonly BenchmarkDocument[],
+  latencyMs: number,
+  costUsd: number,
+): BenchmarkObservation {
+  const byId = new Map(documents.map((document) => [document.id, document]));
+  const expectedEvidence = sourceIds
+    .map((id) => byId.get(id)?.evidence)
+    .find((evidence) => item.expectedQuote && evidence?.quote.includes(item.expectedQuote));
+  return {
+    caseId: item.id,
+    sources: sourceIds,
+    citations: expectedEvidence ? [expectedEvidence] : [],
+    latencyMs,
+    costUsd,
+  };
+}
+
+/** Baseline lexical determinístico: precisa de dois termos literais coincidentes. */
+export function runFtsBenchmark(
+  cases: readonly BenchmarkCase[],
+  documents: readonly BenchmarkDocument[],
+) {
+  return cases.map((item) =>
+    fromSources(
+      item,
+      documents
+        .filter((document) => overlap(item.lexicalTerms, document.lexicalTerms) >= 2)
+        .map((document) => document.id),
+      documents,
+      12,
+      0,
+    ),
+  );
+}
+
+/** Exercita a fusão vetorial real usada pela recuperação híbrida, sem rede. */
+export function runHybridBenchmark(
+  cases: readonly BenchmarkCase[],
+  documents: readonly BenchmarkDocument[],
+) {
+  return cases.map((item) => {
+    const lexical = documents.filter(
+      (document) => overlap(item.lexicalTerms, document.lexicalTerms) >= 2,
+    );
+    const semantic = rankSemanticCandidates(item.vector, documents, { minScore: 0.75, limit: 8 });
+    const scores = new Map(semantic.map((hit) => [hit.id, hit.vectorScore]));
+    const ranked = fuseHybridScores(
+      documents
+        .filter((document) => lexical.includes(document) || scores.has(document.id))
+        .map((document) => ({
+          id: document.id,
+          lexicalScore: overlap(item.lexicalTerms, document.lexicalTerms),
+          vectorScore: scores.get(document.id) ?? null,
+        })),
+      { alpha: 0.75, missingVector: 'zero' },
+    );
+    return fromSources(
+      item,
+      ranked.map((hit) => hit.id),
+      documents,
+      28,
+      0.00001,
+    );
+  });
+}
+
+/** Brain determinístico: aliases e relações explícitas do fixture expandem FTS. */
+export function runBrainBenchmark(
+  cases: readonly BenchmarkCase[],
+  documents: readonly BenchmarkDocument[],
+) {
+  return cases.map((item) =>
+    fromSources(
+      item,
+      documents
+        .filter((document) => overlap(item.brainTerms, document.brainTerms) > 0)
+        .map((document) => document.id),
+      documents,
+      18,
+      0,
+    ),
+  );
+}
+
 export function evaluateRetrievalBenchmark(
   cases: readonly BenchmarkCase[],
   observations: readonly BenchmarkObservation[],
 ): BenchmarkReport {
   const byId = new Map(observations.map((item) => [item.caseId, item]));
-  let expectedSources = 0;
-  let foundSources = 0;
-  let expectedCitations = 0;
-  let coveredCitations = 0;
-  let validCitations = 0;
-  let returnedCitations = 0;
-  let unsupported = 0;
-  let latency = 0;
-  let cost = 0;
+  let expectedSources = 0,
+    foundSources = 0,
+    expectedCitations = 0,
+    coveredCitations = 0,
+    validCitations = 0,
+    returnedCitations = 0,
+    unsupported = 0,
+    latency = 0,
+    cost = 0;
   for (const item of cases) {
-    const result: BenchmarkObservation = byId.get(item.id) ?? {
+    const result = byId.get(item.id) ?? {
       caseId: item.id,
       sources: [],
       citations: [],
@@ -47,20 +150,18 @@ export function evaluateRetrievalBenchmark(
     };
     expectedSources += item.expectedSources.length;
     foundSources += item.expectedSources.filter((source) => result.sources.includes(source)).length;
+    const citations = result.citations ?? [];
+    returnedCitations += citations.length;
     if (item.expectedQuote) {
       expectedCitations += 1;
-      const citations = result.citations ?? [];
-      returnedCitations += citations.length;
       const valid = citations.filter(
         (citation) =>
           citation.quote.includes(item.expectedQuote ?? '') &&
           (item.expectedTimestamp === null || citation.timestamp === item.expectedTimestamp),
       );
       validCitations += valid.length;
-      if (valid.length > 0) {
-        coveredCitations += 1;
-      }
-    } else if (result.sources.length > 0 || (result.citations?.length ?? 0) > 0) unsupported += 1;
+      if (valid.length) coveredCitations += 1;
+    } else if (result.sources.length || citations.length) unsupported += 1;
     latency += result.latencyMs;
     cost += result.costUsd;
   }
@@ -83,7 +184,6 @@ export function assertNoQualityRegression(
     candidate.citationCoverage < baseline.citationCoverage ||
     candidate.citationPrecision < baseline.citationPrecision ||
     candidate.unsupportedRate > baseline.unsupportedRate
-  ) {
+  )
     throw new Error('Regressão de retrieval ou citação contra o baseline FTS.');
-  }
 }

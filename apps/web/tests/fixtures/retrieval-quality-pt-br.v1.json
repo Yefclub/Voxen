@@ -1,9 +1,42 @@
 {
   "version": 1,
+  "documents": [
+    {
+      "id": "buzz-repo",
+      "lexicalTerms": ["repositorio", "github", "buzz"],
+      "brainTerms": ["buzz", "codigo", "link"],
+      "vector": [1, 0, 0],
+      "evidence": { "quote": "github.com/block/buzz", "timestamp": 42 }
+    },
+    {
+      "id": "politica-retencao",
+      "lexicalTerms": ["decisao", "retencao", "trinta"],
+      "brainTerms": ["retencao", "politica"],
+      "vector": [0, 1, 0],
+      "evidence": { "quote": "retenção por 30 dias", "timestamp": 1840 }
+    },
+    {
+      "id": "plano-a",
+      "lexicalTerms": ["plano", "lancamento", "junho"],
+      "brainTerms": ["plano", "aprovacao"],
+      "vector": [0, 0, 1],
+      "evidence": { "quote": "lançamento em junho", "timestamp": 300 }
+    },
+    {
+      "id": "plano-b",
+      "lexicalTerms": ["plano", "aprovacao", "condicional"],
+      "brainTerms": ["plano", "aprovacao"],
+      "vector": [0, 0, 1],
+      "evidence": { "quote": "aprovação condicional", "timestamp": 320 }
+    }
+  ],
   "cases": [
     {
       "id": "sinonimo-repo",
       "question": "onde fica o código do Buzz?",
+      "lexicalTerms": ["codigo", "buzz"],
+      "brainTerms": ["codigo", "buzz"],
+      "vector": [1, 0, 0],
       "expectedSources": ["buzz-repo"],
       "expectedQuote": "github.com/block/buzz",
       "expectedTimestamp": 42
@@ -11,6 +44,9 @@
     {
       "id": "informal-link",
       "question": "manda o link do buzz aí",
+      "lexicalTerms": ["link", "buzz"],
+      "brainTerms": ["link", "buzz"],
+      "vector": [1, 0, 0],
       "expectedSources": ["buzz-repo"],
       "expectedQuote": "github.com/block/buzz",
       "expectedTimestamp": 42
@@ -18,6 +54,9 @@
     {
       "id": "conteudo-longo",
       "question": "qual decisão sobre retenção?",
+      "lexicalTerms": ["decisao", "retencao"],
+      "brainTerms": ["retencao"],
+      "vector": [0, 1, 0],
       "expectedSources": ["politica-retencao"],
       "expectedQuote": "retenção por 30 dias",
       "expectedTimestamp": 1840
@@ -25,6 +64,9 @@
     {
       "id": "multiplas-fontes",
       "question": "quais fontes confirmam o plano?",
+      "lexicalTerms": ["plano", "lancamento"],
+      "brainTerms": ["plano"],
+      "vector": [0, 0, 1],
       "expectedSources": ["plano-a", "plano-b"],
       "expectedQuote": "lançamento em junho",
       "expectedTimestamp": 300
@@ -32,6 +74,9 @@
     {
       "id": "conflito",
       "question": "o plano foi aprovado?",
+      "lexicalTerms": ["plano", "aprovacao"],
+      "brainTerms": ["aprovacao"],
+      "vector": [0, 0, 1],
       "expectedSources": ["plano-a", "plano-b"],
       "expectedQuote": "aprovação condicional",
       "expectedTimestamp": 320
@@ -39,6 +84,9 @@
     {
       "id": "sem-evidencia",
       "question": "qual a senha do servidor?",
+      "lexicalTerms": ["senha", "servidor"],
+      "brainTerms": ["senha"],
+      "vector": [-1, -1, -1],
       "expectedSources": [],
       "expectedQuote": null,
       "expectedTimestamp": null
