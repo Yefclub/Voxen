@@ -3,8 +3,11 @@ import { db } from '../src/lib/db';
 import {
   mergeKnowledgeResults,
   applyHybridRanks,
+  fallbackToLexical,
+  fuseTranscriptCandidates,
   preloadRelevantContent,
   searchKnowledgeBase,
+  semanticTranscriptNodeWhere,
   type KnowledgeSearchResult,
 } from '../src/lib/retrieval';
 
@@ -79,6 +82,48 @@ describe('mergeKnowledgeResults', () => {
 
     expect(merged.map((item) => item.id)).toEqual(['hibrido-maior', 'lexical-maior']);
     expect(merged[0]?.rank).toBeGreaterThan(merged[1]?.rank ?? 0);
+  });
+
+  it('expõe a origem lexical, semântica e híbrida para depuração', () => {
+    const lexical = [result('transcript', 'hibrido', 0.3)];
+    const semantic = [result('transcript', 'somente-semantico', 0)];
+    const fused = fuseTranscriptCandidates(
+      lexical,
+      semantic,
+      new Map([
+        ['hibrido', 0.8],
+        ['somente-semantico', 0.95],
+      ]),
+    );
+
+    expect(fused.find((item) => item.id === 'hibrido')?.retrievalSource).toBe('hybrid');
+    expect(fused.find((item) => item.id === 'somente-semantico')?.retrievalSource).toBe(
+      'semantic',
+    );
+    expect(
+      fuseTranscriptCandidates(lexical, [], new Map()).find((item) => item.id === 'hibrido')
+        ?.retrievalSource,
+    ).toBe('lexical');
+  });
+
+  it('degrada para FTS quando o embedding da consulta falha', async () => {
+    const lexical = [result('transcript', 'resultado-fts', 0.6)];
+
+    await expect(
+      fallbackToLexical(lexical, async () => {
+        throw new Error('OpenRouter indisponível');
+      }),
+    ).resolves.toBe(lexical);
+  });
+
+  it('fixa candidatos semânticos no userId da consulta', () => {
+    expect(semanticTranscriptNodeWhere('owner-a')).toMatchObject({
+      userId: 'owner-a',
+      status: 'ACTIVE',
+      sourceType: 'TRANSCRIPT',
+      sourceId: { not: null },
+    });
+    expect(semanticTranscriptNodeWhere('owner-a')).not.toEqual(semanticTranscriptNodeWhere('owner-b'));
   });
 });
 
