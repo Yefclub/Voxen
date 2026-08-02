@@ -1152,12 +1152,43 @@ function registerBrainTools(server: McpServer, userId: string): void {
           sourceType: true,
           sourceId: true,
           chunkId: true,
+          startLine: true,
+          endLine: true,
           startSec: true,
           endSec: true,
           excerpt: true,
         },
       });
       return ok({ sources });
+    },
+  );
+
+  server.registerTool(
+    'voxen_brain_compilation_status',
+    {
+      title: 'Status de compilação do Brain',
+      description:
+        'Retorna a cobertura da extração grounded de um conteúdo: estado, quantidade total de ' +
+        'segmentos e quantidade concluída. Use antes de tratar o Brain como cobertura completa.',
+      inputSchema: {
+        transcript_id: z.string().min(1).describe('ID do conteúdo na Base de conhecimento.'),
+      },
+      annotations: { ...READ_ONLY, title: 'Status de compilação do Brain' },
+    },
+    async (args) => {
+      const transcriptId = args.transcript_id.trim();
+      if (!transcriptId) return fail('transcript_id obrigatório.');
+      const compilation = await db.brainCompilation.findFirst({
+        where: { userId, transcriptId },
+        select: {
+          status: true,
+          totalSegments: true,
+          completedSegments: true,
+          lastError: true,
+          updatedAt: true,
+        },
+      });
+      return ok({ compilation });
     },
   );
 

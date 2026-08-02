@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import asyncpg
+import pytest
 
 from src import db
 
@@ -241,6 +242,74 @@ async def test_worker_stops_refresh_cleanup_when_local_lease_is_lost(
     assert 'SELECT bs."edgeId"' in conn.fetch_calls[0][0]
     assert not any('DELETE FROM "BrainSource"' in query for query, _args in conn.execute_calls)
     assert "topicIndexVersion" not in conn.metadata
+
+
+async def test_worker_reindex_preserves_segmented_grounded_evidence() -> None:
+    lease = _FakeLease()
+    conn = _FakeConnection()
+
+    assert await db._remove_transcript_brain_refreshable_sources(
+        cast(asyncpg.Connection, conn),
+        lease=lease,
+        user_id="user-1",
+        transcript_id="transcript-1",
+    )
+
+    queries = "\n".join(query for query, _args in [*conn.fetch_calls, *conn.execute_calls])
+    assert "llm-grounded" not in queries
+    assert "method = 'keyword'" in queries
+
+
+class _SegmentTransaction:
+    def __init__(self) -> None:
+        self.rolled_back = False
+
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(self, exc_type: Any, _exc: Any, _tb: Any) -> bool:
+        self.rolled_back = exc_type is not None
+        return False
+
+
+class _SegmentConnection:
+    def __init__(self, lease: _FakeLease) -> None:
+        self.lease = lease
+        self.transaction_state = _SegmentTransaction()
+
+    def transaction(self) -> _SegmentTransaction:
+        return self.transaction_state
+
+    async def fetchrow(self, _query: str, *_args: object) -> dict[str, str]:
+        return {"id": "content-node"}
+
+    async def execute(self, query: str, *_args: object) -> str:
+        if 'DELETE FROM "BrainSource" source' in query:
+            self.lease.owned = False
+        return "OK"
+
+
+async def test_grounded_segment_rolls_back_when_lease_is_lost(monkeypatch: Any) -> None:
+    lease = _FakeLease()
+    conn = _SegmentConnection(lease)
+
+    @asynccontextmanager
+    async def segment_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", segment_connection)
+
+    with pytest.raises(db.GroundedCompilationLeaseLostError):
+        await db.upsert_grounded_brain_items(
+            user_id="user-1",
+            transcript_id="transcript-1",
+            compilation_id="compilation-1",
+            segment={"key": "segment-1", "start_line": 1, "end_line": 2},
+            items=[],
+            lease=lease,
+        )
+
+    assert conn.transaction_state.rolled_back is True
 
 
 async def test_worker_treats_zero_row_topic_marker_update_as_incomplete(

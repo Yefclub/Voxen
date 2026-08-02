@@ -74,6 +74,7 @@ model User {
   brainNodes       BrainNode[]
   brainEdges       BrainEdge[]
   brainSources     BrainSource[]
+  brainCompilations BrainCompilation[]
   telegramLink     TelegramLink?
   automations      Automation[]
   automationRuns   AutomationRun[]
@@ -310,6 +311,7 @@ model Transcript {
   conversations        Conversation[]
   tags                 TranscriptTag[]
   noteSources          NoteTranscriptSource[]
+  brainCompilation     BrainCompilation?
   // Índice GIN no tsvector criado via SQL na migration
 
   @@index([userId, createdAt(sort: Desc)])
@@ -419,6 +421,14 @@ enum BrainEdgeKind {
   NEXT_TO
 }
 
+enum BrainCompilationStatus {
+  PENDING
+  PARTIAL
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
 model BrainNode {
   id          String           @id @default(cuid())
   userId      String
@@ -469,24 +479,67 @@ model BrainEdge {
 }
 
 model BrainSource {
-  id         String          @id @default(cuid())
-  userId     String
-  nodeId     String?
-  edgeId     String?
-  sourceType BrainSourceType
-  sourceId   String
-  chunkId    String?
-  startSec   Int?
-  endSec     Int?
-  excerpt    String?         @db.Text
-  createdAt  DateTime        @default(now())
-  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  node       BrainNode?      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-  edge       BrainEdge?      @relation(fields: [edgeId], references: [id], onDelete: Cascade)
+  id          String          @id @default(cuid())
+  userId      String
+  nodeId      String?
+  edgeId      String?
+  sourceType  BrainSourceType
+  sourceId    String
+  chunkId     String?
+  startLine   Int?
+  endLine     Int?
+  startSec    Int?
+  endSec      Int?
+  segmentKey  String?
+  evidenceKey String?
+  excerpt     String?         @db.Text
+  createdAt   DateTime        @default(now())
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  node        BrainNode?      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  edge        BrainEdge?      @relation(fields: [edgeId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, evidenceKey])
   @@index([userId, sourceType, sourceId])
   @@index([nodeId])
   @@index([edgeId])
+}
+
+model BrainCompilation {
+  id                String                    @id @default(cuid())
+  userId            String
+  transcriptId      String                    @unique
+  contentHash       String
+  status            BrainCompilationStatus    @default(PENDING)
+  totalSegments     Int                       @default(0)
+  completedSegments Int                       @default(0)
+  lastError         String?                   @db.Text
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript        Transcript                @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  segments          BrainCompilationSegment[]
+
+  @@index([userId, status, updatedAt(sort: Desc)])
+}
+
+model BrainCompilationSegment {
+  id            String                 @id @default(cuid())
+  compilationId String
+  segmentKey    String
+  status        BrainCompilationStatus @default(PENDING)
+  startLine     Int
+  endLine       Int
+  startSec      Int?
+  endSec        Int?
+  itemCount     Int                    @default(0)
+  attempts      Int                    @default(0)
+  error         String?                @db.Text
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  compilation   BrainCompilation       @relation(fields: [compilationId], references: [id], onDelete: Cascade)
+
+  @@unique([compilationId, segmentKey])
+  @@index([compilationId, status])
 }
 
 // ============================================================================
