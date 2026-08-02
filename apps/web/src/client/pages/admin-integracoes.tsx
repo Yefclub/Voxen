@@ -26,6 +26,7 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Label } from '../components/ui/label';
+import { Input } from '../components/ui/input';
 import { Spinner } from '../components/ui/spinner';
 import { Switch } from '../components/ui/switch';
 import { api, ApiError, apiDelete, apiGet, apiPatch, apiPost } from '../lib/api';
@@ -101,6 +102,7 @@ export function AdminIntegracoesPage(): React.ReactElement {
           description={t('admin.integrations.description')}
         />
 
+        <AiHealthSection />
         <ModelsSection />
         <ConfigRevisionSection />
         <McpSection />
@@ -108,6 +110,274 @@ export function AdminIntegracoesPage(): React.ReactElement {
         <ProxyAgentSection />
       </div>
     </PageShell>
+  );
+}
+
+type AiHealthCapability = {
+  id: 'chat' | 'transcription' | 'webSearch' | 'vision' | 'document' | 'xAnalysis' | 'embeddings';
+  modelId: string | null;
+  modelName: string | null;
+  inputModalities: string[];
+  outputModalities: string[];
+  availability: 'ACTIVE' | 'INACTIVE' | 'MISSING' | 'UNAVAILABLE';
+  reason: string | null;
+  metrics: {
+    events: number;
+    costUsd: number;
+    tokens: number;
+    lastUsedAt: string | null;
+    latencyMs: number | null;
+  };
+  lastFailure: { message: string | null; at: string | null } | null;
+};
+
+interface AiHealthResponse {
+  catalogAvailable: boolean;
+  catalogError: string | null;
+  revision: { number: number; createdAt: string } | null;
+  capabilities: AiHealthCapability[];
+}
+
+const AI_CAPABILITY_LABELS: Record<
+  AiHealthCapability['id'],
+  Parameters<ReturnType<typeof useI18n>['t']>[0]
+> = {
+  chat: 'admin.integrations.aiHealth.capability.chat',
+  transcription: 'admin.integrations.aiHealth.capability.transcription',
+  webSearch: 'admin.integrations.aiHealth.capability.webSearch',
+  vision: 'admin.integrations.aiHealth.capability.vision',
+  document: 'admin.integrations.aiHealth.capability.document',
+  xAnalysis: 'admin.integrations.aiHealth.capability.xAnalysis',
+  embeddings: 'admin.integrations.aiHealth.capability.embeddings',
+};
+
+const AI_HEALTH_STATUS_LABELS: Record<
+  AiHealthCapability['availability'],
+  Parameters<ReturnType<typeof useI18n>['t']>[0]
+> = {
+  ACTIVE: 'admin.integrations.aiHealth.status.ACTIVE',
+  INACTIVE: 'admin.integrations.aiHealth.status.INACTIVE',
+  MISSING: 'admin.integrations.aiHealth.status.MISSING',
+  UNAVAILABLE: 'admin.integrations.aiHealth.status.UNAVAILABLE',
+};
+
+function healthBadgeVariant(
+  availability: AiHealthCapability['availability'],
+): 'success' | 'warning' | 'danger' | 'muted' {
+  if (availability === 'ACTIVE') return 'success';
+  if (availability === 'INACTIVE') return 'muted';
+  if (availability === 'MISSING') return 'warning';
+  return 'danger';
+}
+
+function AiHealthSection(): React.ReactElement {
+  const { t, locale } = useI18n();
+  const [health, setHealth] = useState<AiHealthResponse | null>(null);
+  const [testing, setTesting] = useState<string | null>(null);
+  const [impactModel, setImpactModel] = useState<Partial<Record<AiHealthCapability['id'], string>>>(
+    {},
+  );
+  const [impact, setImpact] = useState<Partial<Record<AiHealthCapability['id'], string>>>({});
+
+  async function refresh(): Promise<void> {
+    try {
+      setHealth(await apiGet<AiHealthResponse>('/api/admin/ai-health'));
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : t('admin.integrations.aiHealth.loadError'),
+      );
+      setHealth({ catalogAvailable: false, catalogError: null, revision: null, capabilities: [] });
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  async function testCapability(capability: AiHealthCapability): Promise<void> {
+    setTesting(capability.id);
+    try {
+      const result = await apiPost<{ ok: boolean; reason: string | null }>(
+        '/api/admin/ai-health/test',
+        {
+          capability: capability.id,
+        },
+      );
+      if (result.ok) toast.success(t('admin.integrations.aiHealth.testSuccess'));
+      else toast.error(result.reason ?? t('admin.integrations.aiHealth.testFailure'));
+      await refresh();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : t('admin.integrations.aiHealth.testFailure'),
+      );
+    } finally {
+      setTesting(null);
+    }
+  }
+
+  async function simulateImpact(capability: AiHealthCapability): Promise<void> {
+    const modelId = impactModel[capability.id]?.trim();
+    if (!modelId) return;
+    try {
+      const result = await apiPost<{ compatible: boolean; reason: string | null }>(
+        '/api/admin/ai-health/impact',
+        { capability: capability.id, modelId },
+      );
+      setImpact((current) => ({
+        ...current,
+        [capability.id]: result.compatible
+          ? t('admin.integrations.aiHealth.impactSafe')
+          : (result.reason ?? t('admin.integrations.aiHealth.impactUnsafe')),
+      }));
+    } catch (error) {
+      setImpact((current) => ({
+        ...current,
+        [capability.id]: error instanceof ApiError ? error.message : t('common.error'),
+      }));
+    }
+  }
+
+  if (!health) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <Spinner />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+      <Card elevated>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 font-display">
+            <ShieldCheck className="h-4 w-4 text-emerald-400" />
+            {t('admin.integrations.aiHealth.title')}
+          </CardTitle>
+          <CardDescription>{t('admin.integrations.aiHealth.description')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {health.catalogError && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-100">
+              {health.catalogError}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-app-muted)]">
+            <Badge variant={health.catalogAvailable ? 'success' : 'warning'}>
+              {health.catalogAvailable
+                ? t('admin.integrations.aiHealth.catalogAvailable')
+                : t('admin.integrations.aiHealth.catalogUnavailable')}
+            </Badge>
+            {health.revision &&
+              t('admin.integrations.aiHealth.revision', { number: health.revision.number })}
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {health.capabilities.map((capability) => (
+              <div
+                key={capability.id}
+                className="rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/35 p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">
+                      {t(AI_CAPABILITY_LABELS[capability.id])}
+                    </p>
+                    <p className="mt-1 truncate font-mono text-[11px] text-[var(--color-app-muted)]">
+                      {capability.modelName ?? t('admin.integrations.aiHealth.noModel')}
+                    </p>
+                  </div>
+                  <Badge variant={healthBadgeVariant(capability.availability)}>
+                    {t(AI_HEALTH_STATUS_LABELS[capability.availability])}
+                  </Badge>
+                </div>
+                {capability.reason && (
+                  <p className="mt-2 text-xs text-amber-200/90">{capability.reason}</p>
+                )}
+                <p className="mt-2 text-[11px] text-[var(--color-app-muted)]">
+                  {t('admin.integrations.aiHealth.modalities', {
+                    input: capability.inputModalities.join(', ') || '—',
+                    output: capability.outputModalities.join(', ') || '—',
+                  })}
+                </p>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                  <Metric
+                    label={t('admin.integrations.aiHealth.events')}
+                    value={String(capability.metrics.events)}
+                  />
+                  <Metric
+                    label={t('admin.integrations.aiHealth.cost')}
+                    value={new Intl.NumberFormat(locale, {
+                      style: 'currency',
+                      currency: 'USD',
+                    }).format(capability.metrics.costUsd)}
+                  />
+                  <Metric
+                    label={t('admin.integrations.aiHealth.lastUsed')}
+                    value={
+                      capability.metrics.lastUsedAt
+                        ? new Date(capability.metrics.lastUsedAt).toLocaleDateString(locale)
+                        : '—'
+                    }
+                  />
+                </div>
+                <p className="mt-3 text-[11px] text-[var(--color-app-muted)]">
+                  {t('admin.integrations.aiHealth.latencyUnavailable')}
+                </p>
+                {capability.lastFailure && (
+                  <p className="mt-2 text-xs text-red-200/90">{capability.lastFailure.message}</p>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={testing === capability.id}
+                    onClick={() => void testCapability(capability)}
+                  >
+                    {testing === capability.id ? (
+                      <Spinner size={14} />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" />
+                    )}
+                    {t('admin.integrations.aiHealth.test')}
+                  </Button>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <Input
+                    value={impactModel[capability.id] ?? ''}
+                    onChange={(event) =>
+                      setImpactModel((current) => ({
+                        ...current,
+                        [capability.id]: event.target.value,
+                      }))
+                    }
+                    placeholder={t('admin.integrations.aiHealth.impactPlaceholder')}
+                    className="h-9 font-mono text-xs"
+                  />
+                  <Button variant="ghost" size="sm" onClick={() => void simulateImpact(capability)}>
+                    {t('admin.integrations.aiHealth.impact')}
+                  </Button>
+                </div>
+                {impact[capability.id] && (
+                  <p className="mt-2 text-xs text-[var(--color-app-muted)]">
+                    {impact[capability.id]}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }): React.ReactElement {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-[var(--color-app-muted)]">{label}</p>
+      <p className="mt-1 truncate font-medium">{value}</p>
+    </div>
   );
 }
 

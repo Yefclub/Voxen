@@ -17,6 +17,7 @@ import { adminRoutes } from './routes/admin';
 import { adminModelsRoutes } from './routes/admin-models';
 import { adminConfigRevisionRoutes } from './routes/admin-config-revisions';
 import { adminIntegrationCookieRoutes } from './routes/admin-integrations-cookies';
+import { adminAiHealthRoutes } from './routes/admin-ai-health';
 import { jobsRoutes } from './routes/jobs';
 import { libraryRoutes } from './routes/library';
 import { setupRoutes } from './routes/setup';
@@ -261,6 +262,8 @@ app.route('/api/admin', adminRoutes);
 app.route('/api/admin/models', adminModelsRoutes);
 
 app.route('/api/admin/config-revisions', adminConfigRevisionRoutes);
+
+app.route('/api/admin/ai-health', adminAiHealthRoutes);
 
 // Cookies de plataforma capturados pela extensão (spec 121, admin only)
 app.route('/api/admin/integrations/cookies', adminIntegrationCookieRoutes);
