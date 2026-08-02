@@ -3,10 +3,11 @@ import corpus from './fixtures/retrieval-quality-pt-br.v1.json';
 import {
   assertNoQualityRegression,
   evaluateRetrievalBenchmark,
+  type BenchmarkCase,
   type BenchmarkObservation,
 } from '../src/lib/retrieval-benchmark';
 
-const cases = corpus.cases;
+const cases = corpus.cases as BenchmarkCase[];
 
 function observations(strategy: 'fts' | 'hybrid' | 'brain'): BenchmarkObservation[] {
   return cases.map((item) => {

@@ -38,7 +38,14 @@ export function evaluateRetrievalBenchmark(
   let latency = 0;
   let cost = 0;
   for (const item of cases) {
-    const result = byId.get(item.id) ?? { sources: [], latencyMs: 0, costUsd: 0 };
+    const result: BenchmarkObservation = byId.get(item.id) ?? {
+      caseId: item.id,
+      sources: [],
+      quote: null,
+      timestamp: null,
+      latencyMs: 0,
+      costUsd: 0,
+    };
     expectedSources += item.expectedSources.length;
     foundSources += item.expectedSources.filter((source) => result.sources.includes(source)).length;
     if (item.expectedQuote) {
