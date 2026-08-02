@@ -43,7 +43,14 @@ export async function citationsFromToolEvents(
   userId: string,
   events: readonly StoredToolEvent[],
 ): Promise<ChatCitation[]> {
-  const candidates: Array<{ claim: CitationClaim; result: Record<string, unknown> }> = [];
+  const finalVerification = [...events]
+    .reverse()
+    .find((event) => event.name === 'verify_citations' && event.state === 'completed');
+  const candidates: Array<{
+    claim: CitationClaim;
+    result: Record<string, unknown>;
+    final: boolean;
+  }> = [];
   for (const event of events) {
     if (event.name !== 'verify_citations' || event.state !== 'completed') continue;
     const input = asRecord(event.input);
@@ -63,7 +70,7 @@ export async function citationsFromToolEvents(
       if (!transcriptId) continue;
       const claim = claims[index];
       if (!claim || claim.transcriptId !== transcriptId) continue;
-      candidates.push({ claim, result });
+      candidates.push({ claim, result, final: event === finalVerification });
     }
   }
   const ids = [...new Set(candidates.map(({ claim }) => claim.transcriptId))];
@@ -75,7 +82,14 @@ export async function citationsFromToolEvents(
   const sourceById = new Map(sources.map((source) => [source.id, source]));
   const seen = new Set<string>();
   const citations: ChatCitation[] = [];
-  for (const { claim, result } of candidates) {
+  let inlineOrdinal = 0;
+  // A verificação final define os marcadores inline. Ao priorizá-la antes da
+  // deduplicação, uma claim revalidada no fim do turno não fica presa à cópia
+  // antiga sem ordinal.
+  const orderedCandidates = [...candidates].sort(
+    (left, right) => Number(right.final) - Number(left.final),
+  );
+  for (const { claim, result, final } of orderedCandidates) {
     const source = sourceById.get(claim.transcriptId);
     if (!source) continue; // não serializa referência de outro workspace
     const supported = result.supported === true;
@@ -87,6 +101,7 @@ export async function citationsFromToolEvents(
     const key = `${source.id}:${claim.quote}:${fromLine ?? ''}:${fromSec ?? ''}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    const citationInlineOrdinal = final && supported ? ++inlineOrdinal : null;
     const anchor = fromSec ?? toSec;
     citations.push({
       sourceType: 'TRANSCRIPT',
@@ -101,6 +116,7 @@ export async function citationsFromToolEvents(
       href: `/transcricoes/${source.id}${anchor !== null ? `#t=${Math.floor(anchor)}` : fromLine ? `#l=${fromLine}` : ''}`,
       kind: supported ? 'EVIDENCE' : 'NO_EVIDENCE',
       verified: supported,
+      inlineOrdinal: citationInlineOrdinal,
     });
   }
   return citations;

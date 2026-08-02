@@ -14,16 +14,22 @@
 // bg-background) que não existem no design system do Voxen. Para garantir ZERO
 // regressão visual, sobrescrevemos os elementos estruturais com tags simples e
 // deixamos o tema zinc ser governado pelos seletores descendentes do wrapper.
-import { memo, useEffect, useRef, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Streamdown, type Components, type ExtraProps } from 'streamdown';
 import { Check, Copy } from '@/components/ui/icons';
+import type { ChatCitation } from '../../../shared/chat-citations';
+import { citationFromInlineHref, renderInlineCitations } from '../../lib/chat-inline-citations';
 import { cn } from '../../lib/utils';
 import { useI18n } from '../../lib/i18n';
+import { Popover, PopoverContent, PopoverTrigger } from './popover';
 
 interface MarkdownProps {
   children: string;
   className?: string;
+  citations?: readonly ChatCitation[];
 }
+
+const ChatCitationContext = createContext<readonly ChatCitation[]>([]);
 
 // Bloco de código fenced (```...```). O Streamdown só roteia fences para `code`
 // (inline vai para `inlineCode`), então aqui sempre renderizamos o bloco rico.
@@ -100,10 +106,45 @@ function InlineCode({
 }
 
 // Links externos: nova aba + rel seguro. O Streamdown já harden-iza a URL.
+function InlineCitation({
+  citation,
+  children,
+}: {
+  citation: ChatCitation;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <a
+          href={citation.href}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          className="mx-0.5 inline-flex -translate-y-px items-center rounded-full bg-[var(--color-app-surface)] px-1.5 py-0.5 text-[10px] font-medium leading-none text-[var(--color-app-muted)] no-underline transition-colors hover:bg-[var(--color-accent-primary)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
+        >
+          {children}
+        </a>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 p-3" side="bottom" align="start">
+        <p className="truncate text-xs font-medium text-[var(--color-app-fg)]">{citation.title}</p>
+        <blockquote className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-[var(--color-app-muted)]">
+          “{citation.quote}”
+        </blockquote>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function Anchor({
   href,
   children,
 }: React.ComponentPropsWithoutRef<'a'> & ExtraProps): React.ReactElement {
+  const citations = useContext(ChatCitationContext);
+  const citation = citationFromInlineHref(href, citations);
+  if (citation) return <InlineCitation citation={citation}>{children}</InlineCitation>;
   return (
     <a
       href={href}
@@ -124,7 +165,7 @@ function kids(p: { children?: React.ReactNode }): React.ReactNode {
 
 // Componentes estruturais sobrescritos com tags simples para neutralizar as
 // classes shadcn default do Streamdown — o tema zinc vem do wrapper.
-const components: Components = {
+const structuralComponents: Components = {
   code: CodeBlock,
   inlineCode: InlineCode,
   a: Anchor,
@@ -163,7 +204,9 @@ const components: Components = {
 export const Markdown = memo(function Markdown({
   children,
   className,
+  citations = [],
 }: MarkdownProps): React.ReactElement {
+  const content = useMemo(() => renderInlineCitations(children, citations), [children, citations]);
   return (
     <div
       className={cn(
@@ -192,9 +235,11 @@ export const Markdown = memo(function Markdown({
         className,
       )}
     >
-      <Streamdown parseIncompleteMarkdown controls={false} components={components}>
-        {children}
-      </Streamdown>
+      <ChatCitationContext.Provider value={citations}>
+        <Streamdown parseIncompleteMarkdown controls={false} components={structuralComponents}>
+          {content}
+        </Streamdown>
+      </ChatCitationContext.Provider>
     </div>
   );
 });

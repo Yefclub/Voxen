@@ -112,11 +112,40 @@ describeIfDb('structured chat citations', () => {
         title: 'Fonte da citação',
         verified: true,
         kind: 'EVIDENCE',
+        inlineOrdinal: 1,
         href: `/transcricoes/${transcriptId}#t=42`,
         fromLine: 7,
         toLine: 8,
       }),
-      expect.objectContaining({ quote: 'Quote sem suporte', verified: false, kind: 'NO_EVIDENCE' }),
+      expect.objectContaining({
+        quote: 'Quote sem suporte',
+        verified: false,
+        kind: 'NO_EVIDENCE',
+        inlineOrdinal: null,
+      }),
     ]);
+  });
+
+  it('prioriza uma evidência revalidada na verificação final para citação inline', async () => {
+    const claim = { transcriptId, quote: 'Trecho verificável', fromLine: 7 };
+    const citations = await citationsFromToolEvents(ownerId, [
+      {
+        id: 'verify-earlier',
+        name: 'verify_citations',
+        state: 'completed',
+        input: { claims: [claim] },
+        output: { results: [{ transcriptId, supported: true, region: { from: 7, to: 7 } }] },
+      },
+      {
+        id: 'verify-final',
+        name: 'verify_citations',
+        state: 'completed',
+        input: { claims: [claim] },
+        output: { results: [{ transcriptId, supported: true, region: { from: 7, to: 7 } }] },
+      },
+    ]);
+
+    expect(citations).toHaveLength(1);
+    expect(citations[0]).toEqual(expect.objectContaining({ inlineOrdinal: 1, verified: true }));
   });
 });
