@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.13.0-dev.1785706085 — 2026-08-02 · Dev
+
+### 🎨 Fontes do chat ficam mais fáceis de consultar e o Brain abre completo
+
+As evidências de cada resposta agora aparecem em um resumo compacto e abrem um
+painel lateral com fonte, trecho, localização e estado de verificação. O Brain
+também passa a abrir diretamente na visão completa, sem exibir o bloqueio de
+recorte.
+
 ## v0.13.0-dev.1785695013 — 2026-08-02 · Dev
 
 ### ✨ Artefatos de pesquisa agora preservam evidências navegáveis
