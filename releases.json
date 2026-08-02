@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785681907",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Citações verificáveis e clicáveis no chat",
+    "body": "Respostas do chat agora persistem evidências validadas de forma determinística,\ncom fonte, trecho, localização e link navegável para a transcrição. Citações\nsem validação não recebem selo de evidência.",
+    "pr": 558,
+    "author": "Kalyel",
+    "date": "2026-08-02T11:44:55-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/558"
+  },
+  {
     "version": "0.13.0-dev.1785680287",
     "channel": "dev",
     "type": "feat",

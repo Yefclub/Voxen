@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.0-dev.1785681907 — 2026-08-02 · Dev
+
+### ✨ Citações verificáveis e clicáveis no chat
+
+Respostas do chat agora persistem evidências validadas de forma determinística,
+com fonte, trecho, localização e link navegável para a transcrição. Citações
+sem validação não recebem selo de evidência.
+
 ## v0.13.0-dev.1785680287 — 2026-08-02 · Dev
 
 ### ✨ Tokens MCP individuais e revogáveis
