@@ -11,6 +11,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
+from hashlib import sha256
 from typing import Any
 
 import httpx
@@ -21,6 +22,9 @@ OR_BASE_URL = openrouter.OR_BASE_URL
 MAX_ENTITIES = 8
 MAX_CLAIMS = 6
 MAX_TEXT = 6_000
+
+_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
+_TIMESTAMP_RE = re.compile(r"^\s*\[(\d{1,2}):([0-5]?\d):([0-5]?\d)\]")
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,95 @@ class GroundedExtractionResult:
     model: str
     tokens_in: int
     tokens_out: int
+
+
+@dataclass(frozen=True)
+class ExtractionSegment:
+    """Trecho contíguo do documento com localização estável na versão atual."""
+
+    key: str
+    text: str
+    start_line: int
+    end_line: int
+    start_sec: int | None
+    end_sec: int | None
+
+
+def parse_timestamp_seconds(line: str) -> int | None:
+    """Lê o timestamp canônico `[hh:mm:ss]` no começo da linha."""
+    match = _TIMESTAMP_RE.match(line)
+    if not match:
+        return None
+    return int(match.group(1)) * 3_600 + int(match.group(2)) * 60 + int(match.group(3))
+
+
+def segment_content(content: str, max_chars: int = MAX_TEXT) -> list[ExtractionSegment]:
+    """Divide Markdown em blocos contíguos, preferindo headings/timestamps.
+
+    Cada segmento fica abaixo do limite de contexto e conserva as linhas e os
+    timestamps que o delimitam. O corte só ocorre entre linhas, exceto por uma
+    linha isolada que exceda o limite — nesse caso ela é fracionada sem perder a
+    referência de linha.
+    """
+    if max_chars < 80:
+        raise ValueError("max_chars deve ser ao menos 80")
+    lines = (content or "").replace("\x00", " ").splitlines()
+    if not lines:
+        return []
+
+    segments: list[ExtractionSegment] = []
+    current: list[str] = []
+    start_line = 1
+
+    def emit(end_line: int) -> None:
+        nonlocal current
+        text = "\n".join(current).strip()
+        if not text:
+            current = []
+            return
+        timestamps = [parse_timestamp_seconds(line) for line in current]
+        secs = [sec for sec in timestamps if sec is not None]
+        digest = sha256(text.encode("utf-8")).hexdigest()[:16]
+        segments.append(
+            ExtractionSegment(
+                key=f"{start_line}:{end_line}:{digest}",
+                text=text,
+                start_line=start_line,
+                end_line=end_line,
+                start_sec=secs[0] if secs else None,
+                end_sec=secs[-1] if secs else None,
+            )
+        )
+        current = []
+
+    for line_number, line in enumerate(lines, start=1):
+        is_boundary = bool(_HEADING_RE.match(line) or parse_timestamp_seconds(line) is not None)
+        proposed = "\n".join([*current, line]) if current else line
+        # Os delimitadores são cortes preferenciais; o tamanho é o limite duro.
+        should_cut = len(proposed) > max_chars or (
+            is_boundary and len("\n".join(current)) >= max_chars // 2
+        )
+        if current and should_cut:
+            emit(line_number - 1)
+            start_line = line_number
+
+        if len(line) <= max_chars:
+            current.append(line)
+            continue
+
+        # Texto sem quebras pode vir de páginas raspadas. Particiona a linha,
+        # mantendo a localização original para a evidência abrir o contexto.
+        if current:
+            emit(line_number - 1)
+            start_line = line_number
+        for offset in range(0, len(line), max_chars):
+            current = [line[offset : offset + max_chars]]
+            emit(line_number)
+        start_line = line_number + 1
+
+    if current:
+        emit(len(lines))
+    return segments
 
 
 def normalize_for_grounding(value: str) -> str:
@@ -141,9 +234,13 @@ async def extract_grounded_concepts(
     language: str = "pt-BR",
     client: httpx.AsyncClient | None = None,
 ) -> GroundedExtractionResult:
-    """Chama OpenRouter e devolve só itens com excerpt groundable."""
-    body = (content or "").strip().replace("\x00", " ")[:MAX_TEXT]
-    source_for_ground = f"{title}\n{body}"
+    """Chama OpenRouter para um segmento e devolve itens literalmente grounded."""
+    body = (content or "").strip().replace("\x00", " ")
+    if len(body) > MAX_TEXT:
+        raise ValueError("segmento excede o limite de extração")
+    # O título contextualiza o modelo, mas a evidência deve existir no segmento;
+    # assim toda citação recebe uma localização verificável no documento.
+    source_for_ground = body
     if language == "en":
         system = (
             "Extract structured knowledge for a personal KB. Reply ONLY with JSON:\n"

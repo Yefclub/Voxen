@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
+from hashlib import sha256
 from typing import Any
 
 import asyncpg
@@ -860,112 +861,334 @@ async def _delete_orphan_grounded_concept_nodes(conn: asyncpg.Connection, user_i
     )
 
 
-async def upsert_grounded_brain_items(
+async def prepare_grounded_brain_compilation(
     *,
     user_id: str,
     transcript_id: str,
-    items: list[dict[str, Any]],
-) -> int:
-    """Materializa entidades/claims grounded (method=llm-grounded). Best-effort."""
-    if not items:
-        return 0
-    lease = await acquire_graph_index_lease(user_id)
-    if lease is None:
-        return 0
-    created = 0
-    try:
-        async with lease.heartbeat():
-            async with connection() as conn:
-                content = await conn.fetchrow(
+    content_hash: str,
+    segments: list[dict[str, Any]],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Cria/retoma a cobertura segmentada sem mexer em dados manuais."""
+    async with connection() as conn:
+        async with conn.transaction():
+            compilation = await conn.fetchrow(
+                """
+                SELECT id, "contentHash" FROM "BrainCompilation"
+                WHERE "userId" = $1 AND "transcriptId" = $2 FOR UPDATE
+                """,
+                user_id,
+                transcript_id,
+            )
+            if compilation and compilation["contentHash"] != content_hash:
+                # Arestas grounded saem junto com suas evidências via cascade;
+                # arestas manuais e de outros métodos não participam deste delete.
+                await conn.execute(
                     """
-                    SELECT id FROM "BrainNode"
-                    WHERE "userId" = $1 AND key = $2
+                    DELETE FROM "BrainEdge" edge
+                    USING "BrainNode" content
+                    WHERE edge."userId" = $1
+                      AND edge.method = 'llm-grounded'
+                      AND content."userId" = $1
+                      AND content.key = $2
+                      AND edge."fromNodeId" = content.id
                     """,
                     user_id,
                     f"TRANSCRIPT:{transcript_id}",
                 )
-                if not content:
-                    return 0
-                content_node_id = str(content["id"])
-                for item in items:
-                    if not lease.locally_owned():
-                        return created
-                    kind = str(item.get("kind") or "entity")
-                    label = str(item.get("label") or "").strip()
-                    excerpt = str(item.get("excerpt") or "").strip()
-                    conf = float(item.get("confidence") or 0.7)
-                    slug = str(item.get("slug") or "")
-                    if not label or not excerpt or not slug:
-                        continue
-                    node_type = "CLAIM" if kind == "claim" else "ENTITY"
-                    key_prefix = "CLAIM" if kind == "claim" else "ENTITY"
-                    concept_id = await _upsert_grounded_concept_node(
-                        conn,
-                        user_id=user_id,
-                        key=f"{key_prefix}:{slug}",
-                        node_type=node_type,
-                        label=label,
+                await conn.execute(
+                    'DELETE FROM "BrainCompilationSegment" WHERE "compilationId" = $1',
+                    compilation["id"],
+                )
+                await conn.execute(
+                    """
+                    UPDATE "BrainCompilation"
+                    SET "contentHash" = $2, status = 'PENDING'::"BrainCompilationStatus",
+                        "totalSegments" = 0, "completedSegments" = 0, "lastError" = NULL,
+                        "updatedAt" = NOW()
+                    WHERE id = $1
+                    """,
+                    compilation["id"],
+                    content_hash,
+                )
+            elif not compilation:
+                compilation = await conn.fetchrow(
+                    """
+                    INSERT INTO "BrainCompilation" (
+                        id, "userId", "transcriptId", "contentHash", status,
+                        "totalSegments", "completedSegments", "createdAt", "updatedAt"
+                    ) VALUES (
+                        $1, $2, $3, $4, 'PENDING'::"BrainCompilationStatus", 0, 0, NOW(), NOW()
                     )
-                    if not lease.locally_owned():
-                        return created
-                    edge_row = await conn.fetchrow(
-                        """
-                        INSERT INTO "BrainEdge" (
-                            id, "userId", "fromNodeId", "toNodeId", kind, confidence,
-                            method, status, metadata, "createdAt", "updatedAt"
-                        ) VALUES (
-                            $1, $2, $3, $4, 'MENTIONS'::"BrainEdgeKind", $5,
-                            'llm-grounded', 'ACTIVE'::"ContentStatus", $6::jsonb, NOW(), NOW()
-                        )
-                        ON CONFLICT ("userId", "fromNodeId", "toNodeId", kind, method) DO UPDATE SET
-                            confidence = EXCLUDED.confidence,
-                            status = EXCLUDED.status,
-                            metadata = EXCLUDED.metadata,
-                            "updatedAt" = NOW()
-                        RETURNING id
-                        """,
-                        generate_cuid(),
-                        user_id,
-                        content_node_id,
-                        concept_id,
-                        conf,
-                        json.dumps(
-                            {
-                                "term": slug,
-                                "kind": kind,
-                                "extractor": "openrouter-grounded",
-                            }
-                        ),
+                    RETURNING id, "contentHash"
+                    """,
+                    generate_cuid(),
+                    user_id,
+                    transcript_id,
+                    content_hash,
+                )
+            assert compilation is not None
+            compilation_id = str(compilation["id"])
+            for segment in segments:
+                await conn.execute(
+                    """
+                    INSERT INTO "BrainCompilationSegment" (
+                        id, "compilationId", "segmentKey", status, "startLine", "endLine",
+                        "startSec", "endSec", "createdAt", "updatedAt"
+                    ) VALUES (
+                        $1, $2, $3, 'PENDING'::"BrainCompilationStatus", $4, $5, $6, $7,
+                        NOW(), NOW()
+                    ) ON CONFLICT ("compilationId", "segmentKey") DO NOTHING
+                    """,
+                    generate_cuid(),
+                    compilation_id,
+                    segment["key"],
+                    segment["start_line"],
+                    segment["end_line"],
+                    segment.get("start_sec"),
+                    segment.get("end_sec"),
+                )
+            await _refresh_grounded_compilation(conn, compilation_id)
+            rows = await conn.fetch(
+                """
+                SELECT "segmentKey", status, "startLine", "endLine", "startSec", "endSec"
+                FROM "BrainCompilationSegment"
+                WHERE "compilationId" = $1 AND status IN (
+                    'PENDING'::"BrainCompilationStatus", 'FAILED'::"BrainCompilationStatus"
+                )
+                ORDER BY "startLine", "endLine", "segmentKey"
+                """,
+                compilation_id,
+            )
+    return compilation_id, [dict(row) for row in rows]
+
+
+async def mark_grounded_compilation_skipped(compilation_id: str) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE "BrainCompilation"
+            SET status = 'SKIPPED'::"BrainCompilationStatus", "lastError" = NULL,
+                "updatedAt" = NOW()
+            WHERE id = $1
+            """,
+            compilation_id,
+        )
+
+
+async def mark_grounded_segment_failed(
+    *,
+    compilation_id: str,
+    segment_key: str,
+    error: str,
+) -> None:
+    async with connection() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                UPDATE "BrainCompilationSegment"
+                SET status = 'FAILED'::"BrainCompilationStatus", attempts = attempts + 1,
+                    error = $3, "updatedAt" = NOW()
+                WHERE "compilationId" = $1 AND "segmentKey" = $2
+                """,
+                compilation_id,
+                segment_key,
+                _truncate(error, 500),
+            )
+            await _refresh_grounded_compilation(conn, compilation_id)
+
+
+async def _refresh_grounded_compilation(
+    conn: asyncpg.Connection,
+    compilation_id: str,
+) -> None:
+    await conn.execute(
+        """
+        UPDATE "BrainCompilation" compilation
+        SET "totalSegments" = counts.total,
+            "completedSegments" = counts.completed,
+            status = CASE
+                WHEN counts.total = 0 THEN 'PENDING'::"BrainCompilationStatus"
+                WHEN counts.completed = counts.total THEN 'COMPLETED'::"BrainCompilationStatus"
+                WHEN counts.completed > 0 THEN 'PARTIAL'::"BrainCompilationStatus"
+                WHEN counts.failed = counts.total THEN 'FAILED'::"BrainCompilationStatus"
+                ELSE 'PENDING'::"BrainCompilationStatus"
+            END,
+            "lastError" = CASE
+                WHEN counts.failed > 0 THEN counts.last_error
+                ELSE NULL
+            END,
+            "updatedAt" = NOW()
+        FROM (
+            SELECT COUNT(*)::integer AS total,
+                   COUNT(*) FILTER (
+                       WHERE status = 'COMPLETED'::"BrainCompilationStatus"
+                   )::integer AS completed,
+                   COUNT(*) FILTER (
+                       WHERE status = 'FAILED'::"BrainCompilationStatus"
+                   )::integer AS failed,
+                   MAX(error) FILTER (
+                       WHERE status = 'FAILED'::"BrainCompilationStatus"
+                   ) AS last_error
+            FROM "BrainCompilationSegment"
+            WHERE "compilationId" = $1
+        ) counts
+        WHERE compilation.id = $1
+        """,
+        compilation_id,
+    )
+
+
+def _grounded_evidence_key(
+    transcript_id: str,
+    segment_key: str,
+    slug: str,
+    excerpt: str,
+) -> str:
+    normalized_excerpt = re.sub(r"\s+", " ", excerpt).strip().casefold()
+    raw = "\0".join((transcript_id, segment_key, slug, normalized_excerpt))
+    return sha256(raw.encode("utf-8")).hexdigest()
+
+
+async def upsert_grounded_brain_items(
+    *,
+    user_id: str,
+    transcript_id: str,
+    compilation_id: str,
+    segment: dict[str, Any],
+    items: list[dict[str, Any]],
+    lease: GraphIndexLease,
+) -> int:
+    """Materializa um segmento atomicamente e marca sua cobertura concluída."""
+    created = 0
+    async with connection() as conn:
+        async with conn.transaction():
+            content = await conn.fetchrow(
+                """
+                SELECT id FROM "BrainNode"
+                WHERE "userId" = $1 AND key = $2
+                """,
+                user_id,
+                f"TRANSCRIPT:{transcript_id}",
+            )
+            if not content or not lease.locally_owned():
+                return 0
+            content_node_id = str(content["id"])
+            # Uma retomada substitui somente a evidência daquele segmento.
+            await conn.execute(
+                """
+                DELETE FROM "BrainSource" source
+                USING "BrainEdge" edge
+                WHERE source."userId" = $1
+                  AND source."sourceId" = $2
+                  AND source."segmentKey" = $3
+                  AND source."edgeId" = edge.id
+                  AND edge.method = 'llm-grounded'
+                """,
+                user_id,
+                transcript_id,
+                segment["key"],
+            )
+            for item in items:
+                if not lease.locally_owned():
+                    return created
+                kind = str(item.get("kind") or "entity")
+                label = str(item.get("label") or "").strip()
+                excerpt = str(item.get("excerpt") or "").strip()
+                conf = float(item.get("confidence") or 0.7)
+                slug = str(item.get("slug") or "")
+                if not label or not excerpt or not slug:
+                    continue
+                node_type = "CLAIM" if kind == "claim" else "ENTITY"
+                key_prefix = "CLAIM" if kind == "claim" else "ENTITY"
+                concept_id = await _upsert_grounded_concept_node(
+                    conn,
+                    user_id=user_id,
+                    key=f"{key_prefix}:{slug}",
+                    node_type=node_type,
+                    label=label,
+                )
+                edge_row = await conn.fetchrow(
+                    """
+                    INSERT INTO "BrainEdge" (
+                        id, "userId", "fromNodeId", "toNodeId", kind, confidence,
+                        method, status, metadata, "createdAt", "updatedAt"
+                    ) VALUES (
+                        $1, $2, $3, $4, 'MENTIONS'::"BrainEdgeKind", $5,
+                        'llm-grounded', 'ACTIVE'::"ContentStatus", $6::jsonb, NOW(), NOW()
                     )
-                    if not edge_row:
-                        continue
-                    if not lease.locally_owned():
-                        return created
-                    try:
-                        await conn.execute(
-                            """
-                            INSERT INTO "BrainSource" (
-                                id, "userId", "edgeId", "sourceType", "sourceId",
-                                excerpt, "createdAt"
-                            ) VALUES (
-                                $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, NOW()
-                            )
-                            """,
-                            generate_cuid(),
-                            user_id,
-                            edge_row["id"],
-                            transcript_id,
-                            _truncate(excerpt, 600),
-                        )
-                        created += 1
-                    except Exception:  # noqa: BLE001
-                        log.warning(
-                            "brain-grounded-source-skipped",
-                            transcript_id=transcript_id,
-                            edge_id=edge_row["id"],
-                        )
-    finally:
-        await lease.release()
+                    ON CONFLICT ("userId", "fromNodeId", "toNodeId", kind, method) DO UPDATE SET
+                        confidence = EXCLUDED.confidence,
+                        status = EXCLUDED.status,
+                        metadata = EXCLUDED.metadata,
+                        "updatedAt" = NOW()
+                    RETURNING id
+                    """,
+                    generate_cuid(),
+                    user_id,
+                    content_node_id,
+                    concept_id,
+                    conf,
+                    json.dumps(
+                        {
+                            "term": slug,
+                            "kind": kind,
+                            "extractor": "openrouter-grounded-segmented",
+                        }
+                    ),
+                )
+                if not edge_row or not lease.locally_owned():
+                    return created
+                await conn.execute(
+                    """
+                    INSERT INTO "BrainSource" (
+                        id, "userId", "edgeId", "sourceType", "sourceId", "startLine", "endLine",
+                        "startSec", "endSec", "segmentKey", "evidenceKey", excerpt, "createdAt"
+                    ) VALUES (
+                        $1, $2, $3, 'TRANSCRIPT'::"BrainSourceType", $4, $5, $6,
+                        $7, $8, $9, $10, $11, NOW()
+                    ) ON CONFLICT ("userId", "evidenceKey") DO UPDATE SET
+                        "startLine" = EXCLUDED."startLine", "endLine" = EXCLUDED."endLine",
+                        "startSec" = EXCLUDED."startSec", "endSec" = EXCLUDED."endSec",
+                        excerpt = EXCLUDED.excerpt
+                    """,
+                    generate_cuid(),
+                    user_id,
+                    edge_row["id"],
+                    transcript_id,
+                    segment["start_line"],
+                    segment["end_line"],
+                    segment.get("start_sec"),
+                    segment.get("end_sec"),
+                    segment["key"],
+                    _grounded_evidence_key(transcript_id, segment["key"], slug, excerpt),
+                    _truncate(excerpt, 600),
+                )
+                created += 1
+            await conn.execute(
+                """
+                DELETE FROM "BrainEdge" edge
+                WHERE edge."userId" = $1
+                  AND edge.method = 'llm-grounded'
+                  AND edge."fromNodeId" = $2
+                  AND NOT EXISTS (
+                      SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id
+                  )
+                """,
+                user_id,
+                content_node_id,
+            )
+            await conn.execute(
+                """
+                UPDATE "BrainCompilationSegment"
+                SET status = 'COMPLETED'::"BrainCompilationStatus", attempts = attempts + 1,
+                    "itemCount" = $3, error = NULL, "updatedAt" = NOW()
+                WHERE "compilationId" = $1 AND "segmentKey" = $2
+                """,
+                compilation_id,
+                segment["key"],
+                created,
+            )
+            await _refresh_grounded_compilation(conn, compilation_id)
     return created
 
 
@@ -1299,7 +1522,7 @@ async def get_transcript_title_summary_folder(
     user_id: str,
     transcript_id: str,
 ) -> tuple[str, str, str | None] | None:
-    """title, content (summaryMd or plainText), folderId — para auto-tags."""
+    """title, content (summaryMd ou plainText), folderId — para enriquecimentos."""
     async with connection() as conn:
         row = await conn.fetchrow(
             """
@@ -1318,6 +1541,29 @@ async def get_transcript_title_summary_folder(
     content = summary or plain
     folder_id = row["folderId"]
     return title, content, (str(folder_id) if folder_id else None)
+
+
+async def get_transcript_title_content_md_path(
+    user_id: str,
+    transcript_id: str,
+) -> tuple[str, str, str | None] | None:
+    """Título, conteúdo textual e caminho do Markdown canônico para o Brain."""
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT title, "plainText", "summaryMd", "mdPath"
+            FROM "Transcript"
+            WHERE "userId" = $1 AND id = $2
+            """,
+            user_id,
+            transcript_id,
+        )
+    if not row:
+        return None
+    title = str(row["title"] or "")
+    content = (row["summaryMd"] or row["plainText"] or "").strip()
+    md_path = row["mdPath"]
+    return title, content, (str(md_path) if md_path else None)
 
 
 async def apply_tags_to_transcript(

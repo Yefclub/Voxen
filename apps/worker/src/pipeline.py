@@ -8,6 +8,7 @@ import tempfile
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -31,6 +32,7 @@ from . import (
 from .audio_chunking import AudioChunk, split_audio
 from .audio_probe import AudioValidationError, validate_audio_for_transcription
 from .cancellation import CancelledException, clear_cancelled, is_cancelled
+from .graph_index_lease import acquire_graph_index_lease
 from .openrouter import (
     OpenrouterAuthError,
     OpenrouterTransientError,
@@ -1026,62 +1028,130 @@ async def _maybe_grounded_brain_extract(
     transcript_id: str,
     log: Any,  # noqa: ANN401
 ) -> None:
-    """Compile grounded (spec 104): entidades/claims com excerpt literal."""
+    """Compila entidades/claims por segmentos, sem derrubar a ingestão."""
     try:
         from . import brain_extract
 
-        row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
+        row = await db.get_transcript_title_content_md_path(user_id, transcript_id)
         if not row:
             return
-        title, content, _folder = row
+        title, fallback_content, md_path = row
+        content = fallback_content
+        if md_path:
+            try:
+                content = await storage.get_markdown(key=md_path)
+            except Exception as e:  # noqa: BLE001 — fallback sem localização temporal
+                log.warning(
+                    "brain-extract-markdown-unavailable",
+                    transcript_id=transcript_id,
+                    **_error_diagnostic(e, "BRAIN_MARKDOWN_UNAVAILABLE"),
+                )
         if len((content or "").strip()) < 80:
+            return
+        segments = brain_extract.segment_content(content)
+        if not segments:
+            return
+        segment_payload: list[dict[str, Any]] = [
+            {
+                "key": segment.key,
+                "text": segment.text,
+                "start_line": segment.start_line,
+                "end_line": segment.end_line,
+                "start_sec": segment.start_sec,
+                "end_sec": segment.end_sec,
+            }
+            for segment in segments
+        ]
+        content_hash = sha256(f"{title}\0{content}".encode()).hexdigest()
+        compilation_id, pending_rows = await db.prepare_grounded_brain_compilation(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            content_hash=content_hash,
+            segments=segment_payload,
+        )
+        pending_keys = {str(row["segmentKey"]) for row in pending_rows}
+        if not pending_keys:
+            log.info("brain-extract-already-complete", transcript_id=transcript_id)
             return
         config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
         if not config.api_key or not config.model:
+            await db.mark_grounded_compilation_skipped(compilation_id)
             log.info("brain-extract-skipped-missing-config", transcript_id=transcript_id)
             return
-        api_key = config.api_key
-        model = config.model
-        language = await voxen_settings.get_app_language()
-        result = await brain_extract.extract_grounded_concepts(
-            title=title,
-            content=content,
-            api_key=api_key,
-            model=model,
-            language=language,
-        )
-        if not result.items:
-            log.info("brain-extract-empty", transcript_id=transcript_id)
+        lease = await acquire_graph_index_lease(user_id)
+        if lease is None:
+            log.info("brain-extract-deferred-lease", transcript_id=transcript_id)
             return
-        await db.insert_cost_event(
-            user_id=user_id,
-            kind="CHAT",
-            model=result.model,
-            tokens_in=result.tokens_in,
-            tokens_out=result.tokens_out,
-            cost_usd=result.cost_usd,
-            meta={"source": "brain_grounded_extract", "transcript_id": transcript_id},
-        )
-        payload = [
-            {
-                "kind": item.kind,
-                "label": item.label,
-                "excerpt": item.excerpt,
-                "confidence": item.confidence,
-                "slug": brain_extract.slugify_label(item.label),
-            }
-            for item in result.items
-        ]
-        n = await db.upsert_grounded_brain_items(
-            user_id=user_id,
-            transcript_id=transcript_id,
-            items=payload,
-        )
+        language = await voxen_settings.get_app_language()
+        total_items = 0
+        total_edges = 0
+        try:
+            async with lease.heartbeat():
+                for segment in segment_payload:
+                    if segment["key"] not in pending_keys:
+                        continue
+                    if not lease.locally_owned():
+                        log.info("brain-extract-interrupted-lease", transcript_id=transcript_id)
+                        return
+                    try:
+                        result = await brain_extract.extract_grounded_concepts(
+                            title=title,
+                            content=segment["text"],
+                            api_key=config.api_key,
+                            model=config.model,
+                            language=language,
+                        )
+                        await db.insert_cost_event(
+                            user_id=user_id,
+                            kind="CHAT",
+                            model=result.model,
+                            tokens_in=result.tokens_in,
+                            tokens_out=result.tokens_out,
+                            cost_usd=result.cost_usd,
+                            meta={
+                                "source": "brain_grounded_extract",
+                                "transcript_id": transcript_id,
+                                "segment_key": segment["key"],
+                            },
+                        )
+                        payload = [
+                            {
+                                "kind": item.kind,
+                                "label": item.label,
+                                "excerpt": item.excerpt,
+                                "confidence": item.confidence,
+                                "slug": brain_extract.slugify_label(item.label),
+                            }
+                            for item in result.items
+                        ]
+                        total_items += len(payload)
+                        total_edges += await db.upsert_grounded_brain_items(
+                            user_id=user_id,
+                            transcript_id=transcript_id,
+                            compilation_id=compilation_id,
+                            segment=segment,
+                            items=payload,
+                            lease=lease,
+                        )
+                    except Exception as e:  # noqa: BLE001 — um segmento não invalida os demais
+                        await db.mark_grounded_segment_failed(
+                            compilation_id=compilation_id,
+                            segment_key=segment["key"],
+                            error=type(e).__name__,
+                        )
+                        log.warning(
+                            "brain-extract-segment-failed",
+                            transcript_id=transcript_id,
+                            segment_key=segment["key"],
+                            **_error_diagnostic(e, "BRAIN_EXTRACTION_SEGMENT_FAILED"),
+                        )
+        finally:
+            await lease.release()
         log.info(
             "brain-extract-done",
             transcript_id=transcript_id,
-            items=len(result.items),
-            edges=n,
+            items=total_items,
+            edges=total_edges,
         )
     except Exception as e:  # noqa: BLE001 — best-effort
         log.warning(
