@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.13.0-dev.1785685922 — 2026-08-02 · Dev
+
+### ✨ Relações verificáveis entre conhecimentos do Brain
+
+O Brain agora registra suporte, contradição e aliases de entidades com trechos literais, linhas e timestamps da fonte. Ao consultar uma contradição, as evidências dos dois lados ficam disponíveis para conferência.
+
 ## v0.13.0-dev.1785684055 — 2026-08-02 · Dev
 
 ### ✨ Extração do Brain por seções com cobertura retomável
