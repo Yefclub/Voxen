@@ -6,6 +6,7 @@ import { uploadObjectKey } from '../src/lib/media-upload';
 import { findRelated, searchKnowledgeBase } from '../src/lib/retrieval';
 import { db } from '../src/lib/db';
 import { deleteSetting, getSetting, setSetting } from '../src/lib/settings';
+import { hashMcpToken } from '../src/lib/mcp-tokens';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -187,7 +188,14 @@ describeIfDb('matriz de isolamento entre usuários (spec 137)', () => {
       }),
     ]);
     const mcpTokenA = `isolation-mcp-${crypto.randomUUID().replaceAll('-', '')}`;
-    await setSetting('mcp_api_token', `${ownerA.id}:${mcpTokenA}`);
+    await db.mcpToken.create({
+      data: {
+        userId: ownerA.id,
+        tokenHash: hashMcpToken(mcpTokenA),
+        label: 'Matriz A',
+        scopes: 'READ,WRITE',
+      },
+    });
 
     fixture = {
       adminCookie,

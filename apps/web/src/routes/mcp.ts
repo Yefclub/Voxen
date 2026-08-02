@@ -5,9 +5,8 @@
 // Cursor, agentes próprios) via o SDK oficial @modelcontextprotocol/sdk + o
 // transporte Streamable HTTP do @hono/mcp.
 //
-// Auth: Bearer token armazenado em Setting `mcp_api_token` (cifrado), no formato
-// `<userId>:<token>`. Cada token pertence a UM user — TODAS as queries das tools
-// são escopadas por esse userId (isolamento de workspace).
+// Auth: Bearer token individual, persistido apenas como SHA-256. Cada token
+// pertence a UM user — TODAS as queries das tools são escopadas por esse userId.
 //
 // Stateless por design: um McpServer + transport são criados por request, com as
 // tools fechando sobre o userId autenticado. Sem Mcp-Session-Id — alinhado com a
@@ -20,7 +19,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPTransport } from '@hono/mcp';
 import { db } from '../lib/db';
-import { getSetting } from '../lib/settings';
+import { deserializeMcpScopes, hashMcpToken, type McpScope } from '../lib/mcp-tokens';
 import { createAutoJobForUser } from './jobs';
 import { getTranscriptBrief } from '../lib/agent-content';
 import { reindexNotesBrain } from '../lib/brain';
@@ -108,14 +107,14 @@ mcpRoutes.all('/', async (c) => {
   if (!originAllowed(c)) {
     return c.json({ error: 'Origem não permitida.' }, 403);
   }
-  const userId = await authenticateMcp(c);
-  if (!userId) {
+  const identity = await authenticateMcp(c);
+  if (!identity) {
     return c.json(
       { error: 'Auth obrigatória ou inválida. Envie Authorization: Bearer <token>.' },
       401,
     );
   }
-  const server = buildVoxenMcpServer(userId, resolveMcpPublicOrigin(c));
+  const server = buildVoxenMcpServer(identity.userId, identity.scopes, resolveMcpPublicOrigin(c));
   // enableJsonResponse: responde application/json em vez de abrir um stream SSE
   // por request. Nossas tools são request/response (sem streaming do servidor),
   // então JSON é mais simples e compatível (curl, Open WebUI, etc.).
@@ -163,33 +162,62 @@ function toMcpContentUrl(publicOrigin: string, href: string): string {
   return new URL(href, publicOrigin).toString();
 }
 
-// Bearer token -> userId. Setting `mcp_api_token` = `<userId>:<token>` (cifrado).
-// Confirma que o user ainda existe e está APPROVED. Comparação constant-time.
-async function authenticateMcp(c: Context): Promise<string | null> {
+// Bearer token -> identidade imutável do dono. O token legado global não é
+// aceito: o admin o revoga explicitamente pela tela de integrações.
+async function authenticateMcp(c: Context): Promise<{ userId: string; scopes: McpScope[] } | null> {
   const token = (c.req.header('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
   if (!token) return null;
-  const stored = await getSetting('mcp_api_token').catch(() => null);
-  if (!stored) return null;
-  const [storedUserId, storedToken] = stored.split(':');
-  if (!storedUserId || !storedToken || !timingSafeEqual(token, storedToken)) return null;
-  const user = await db.user.findUnique({ where: { id: storedUserId }, select: { status: true } });
-  if (!user || user.status !== 'APPROVED') return null;
-  return storedUserId;
+  const now = new Date();
+  const row = await db.mcpToken
+    .findUnique({
+      where: { tokenHash: hashMcpToken(token) },
+      select: {
+        id: true,
+        userId: true,
+        scopes: true,
+        revokedAt: true,
+        expiresAt: true,
+        user: { select: { status: true } },
+      },
+    })
+    .catch(() => null);
+  if (
+    !row ||
+    row.revokedAt ||
+    (row.expiresAt && row.expiresAt <= now) ||
+    row.user.status !== 'APPROVED'
+  ) {
+    return null;
+  }
+  const scopes = deserializeMcpScopes(row.scopes);
+  if (scopes.length === 0) return null;
+  // Não há informação sensível no timestamp; falha de telemetria não bloqueia
+  // uma conexão MCP válida.
+  await db.mcpToken
+    .update({ where: { id: row.id }, data: { lastUsedAt: now } })
+    .catch(() => undefined);
+  return { userId: row.userId, scopes };
 }
 
 // ----------------------------------------------------------------------------
 // Server + tools (criados por request, fechando sobre o userId)
 // ----------------------------------------------------------------------------
 
-function buildVoxenMcpServer(userId: string, publicOrigin: string): McpServer {
+function buildVoxenMcpServer(
+  userId: string,
+  scopes: readonly McpScope[],
+  publicOrigin: string,
+): McpServer {
   const server = new McpServer(
     { name: 'voxen-mcp', version: '0.3.0' },
     { instructions: VOXEN_INSTRUCTIONS },
   );
-  registerTranscriptTools(server, userId, publicOrigin);
-  registerNoteTools(server, userId, publicOrigin);
-  registerBrainTools(server, userId);
-  registerWriteTools(server, userId);
+  if (scopes.includes('READ')) {
+    registerTranscriptTools(server, userId, publicOrigin);
+    registerNoteTools(server, userId, publicOrigin);
+    registerBrainTools(server, userId);
+  }
+  if (scopes.includes('WRITE')) registerWriteTools(server, userId);
   return server;
 }
 
@@ -1383,14 +1411,4 @@ function decodeCursor(cursor: string | undefined): number {
 
 function encodeCursor(offset: number): string {
   return Buffer.from(String(offset), 'utf8').toString('base64');
-}
-
-// Comparação constant-time pra evitar timing attacks no token.
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
 }

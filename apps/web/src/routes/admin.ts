@@ -13,7 +13,13 @@ import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
-import { getAppTimezone, getSetting, setSetting, setSettings } from '../lib/settings';
+import { getAppTimezone, getSetting, setSettings } from '../lib/settings';
+import {
+  createMcpToken,
+  hashMcpToken,
+  parseMcpScopes,
+  toMcpTokenMetadata,
+} from '../lib/mcp-tokens';
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
 
 type AdminVariables = {
@@ -150,55 +156,110 @@ adminRoutes.patch('/instance', async (c) => {
   });
 });
 
-// GET /api/admin/mcp — estado do MCP server (token configurado? qual user?).
-// Não retorna o token bruto (não há "ver token de novo" — só rotacionar).
+// GET /api/admin/mcp — metadados de todos os tokens sem hashes ou segredos.
 adminRoutes.get('/mcp', async (c) => {
-  const stored = await getSetting('mcp_api_token').catch(() => null);
-  if (!stored) {
-    return c.json({ enabled: false, userId: null, tokenPreview: null });
-  }
-  const [userId, token] = stored.split(':');
+  const [tokens, legacy, policy] = await Promise.all([
+    db.mcpToken.findMany({
+      include: { user: { select: { email: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+    }),
+    getSetting('mcp_api_token').catch(() => null),
+    getSetting('mcp_user_tokens_enabled').catch(() => null),
+  ]);
   return c.json({
-    enabled: !!(userId && token),
-    userId: userId ?? null,
-    tokenPreview: token ? token.slice(0, 8) + '…' : null,
+    // Campos de compatibilidade para clientes anteriores; não carregam segredo.
+    enabled: tokens.some(
+      (token) => !token.revokedAt && (!token.expiresAt || token.expiresAt > new Date()),
+    ),
+    userId: null,
+    tokenPreview: null,
+    allowUserTokens: policy === 'true',
+    legacyTokenConfigured: !!legacy,
+    tokens: tokens.map((token) => ({
+      ...toMcpTokenMetadata(token),
+      user: token.user,
+    })),
   });
 });
 
-// POST /api/admin/mcp/rotate — gera novo token MCP pra o admin chamando.
-// Retorna o token UMA vez (não é recuperável depois). Sobrescreve o anterior.
+// PATCH /api/admin/mcp — política de emissão por usuários aprovados.
+adminRoutes.patch('/mcp', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  if (typeof body.allowUserTokens !== 'boolean') {
+    return c.json({ error: 'Envie allowUserTokens (boolean).' }, 400);
+  }
+  await setSettings(
+    { mcp_user_tokens_enabled: body.allowUserTokens ? 'true' : 'false' },
+    { actorUserId: c.get('adminUserId') },
+  );
+  return c.json({ allowUserTokens: body.allowUserTokens });
+});
+
+// Alias preservado para clientes antigos: cria um token individual do admin,
+// sem substituir nem revelar tokens anteriores.
 adminRoutes.post('/mcp/rotate', async (c) => {
   const adminUserId = c.get('adminUserId');
-  // 32 bytes hex = 64 chars, entropia adequada pra Bearer token.
-  const tokenBytes = new Uint8Array(32);
-  crypto.getRandomValues(tokenBytes);
-  const token = Array.from(tokenBytes, (b) => b.toString(16).padStart(2, '0')).join('');
-  await setSetting('mcp_api_token', `${adminUserId}:${token}`, { actorUserId: adminUserId });
-  return c.json({
-    token,
+  const created = await createMcpToken({
     userId: adminUserId,
-    warning: 'Salve este token agora — não será exibido novamente.',
+    label: 'Admin',
+    scopes: ['READ', 'WRITE'],
+    expiresAt: null,
   });
+  return c.json(
+    {
+      ...created,
+      userId: adminUserId,
+      warning: 'Salve este token agora — não será exibido novamente.',
+    },
+    201,
+  );
+});
+
+// POST /api/admin/mcp/tokens — admin emite token para qualquer usuário aprovado.
+adminRoutes.post('/mcp/tokens', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const userId = typeof body.userId === 'string' ? body.userId : '';
+  const label = typeof body.label === 'string' ? body.label.trim() : '';
+  const scopes = parseMcpScopes(body.scopes);
+  const expiresAt = parseMcpExpiry(body.expiresAt);
+  if (!userId || !label || label.length > 100 || !scopes || expiresAt === undefined) {
+    return c.json({ error: 'Dados do token MCP inválidos.' }, 400);
+  }
+  const owner = await db.user.findUnique({ where: { id: userId }, select: { status: true } });
+  if (!owner || owner.status !== 'APPROVED')
+    return c.json({ error: 'Usuário aprovado não encontrado.' }, 404);
+  return c.json(await createMcpToken({ userId, label, scopes, expiresAt }), 201);
+});
+
+// DELETE /api/admin/mcp/tokens/:id — revogação preserva metadados auditáveis.
+adminRoutes.delete('/mcp/tokens/:id', async (c) => {
+  const result = await db.mcpToken.updateMany({
+    where: { id: c.req.param('id'), revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (result.count === 0) return c.json({ error: 'Token não encontrado ou já revogado.' }, 404);
+  return c.json({ ok: true });
 });
 
 // POST /api/admin/mcp/prompt — gera prompt pronto para configurar um agente.
 // Retorna o token dentro do prompt porque a ação é explícita, admin-only e
 // feita sob demanda. Não incluir esse payload em logs.
 adminRoutes.post('/mcp/prompt', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { appUrl?: unknown };
+  const body = (await c.req.json().catch(() => ({}))) as { appUrl?: unknown; token?: unknown };
   const appUrl = normalizeAppOrigin(body.appUrl);
   if (!appUrl) {
     return c.json({ error: 'URL da aplicação inválida.' }, 400);
   }
 
-  const stored = await getSetting('mcp_api_token').catch(() => null);
-  if (!stored) {
-    return c.json({ error: 'Token MCP não configurado.' }, 409);
-  }
-  const [userId, token] = stored.split(':');
-  if (!userId || !token) {
-    return c.json({ error: 'Token MCP inválido. Rotacione o token.' }, 409);
-  }
+  // O segredo vem explicitamente da tela logo após criá-lo. Ele não é
+  // recuperado do banco e deve pertencer ao admin que fez a requisição.
+  const token = typeof body.token === 'string' ? body.token.trim() : '';
+  if (!token) return c.json({ error: 'Informe o token recém-criado.' }, 400);
+  const valid = await db.mcpToken.findFirst({
+    where: { tokenHash: hashMcpToken(token), userId: c.get('adminUserId'), revokedAt: null },
+    select: { id: true },
+  });
+  if (!valid) return c.json({ error: 'Token MCP inválido ou revogado.' }, 409);
 
   const endpoint = `${appUrl}/mcp`;
   const prompt = [
@@ -243,11 +304,18 @@ adminRoutes.post('/mcp/prompt', async (c) => {
   return c.json({ prompt });
 });
 
-// DELETE /api/admin/mcp — revoga o token (apaga setting)
+// DELETE /api/admin/mcp — revoga explicitamente a credencial global legada.
 adminRoutes.delete('/mcp', async (c) => {
   await setSettings({ mcp_api_token: null }, { actorUserId: c.get('adminUserId') });
   return c.json({ ok: true });
 });
+
+function parseMcpExpiry(value: unknown): Date | null | undefined {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string') return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) || date <= new Date() ? undefined : date;
+}
 
 // ----------------------------------------------------------------------------
 // Agente de Proxy (túnel residencial) — token de conexão (cifrado em DB)

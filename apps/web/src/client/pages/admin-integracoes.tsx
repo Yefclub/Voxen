@@ -66,6 +66,9 @@ interface McpAdminStatus {
   enabled: boolean;
   userId: string | null;
   tokenPreview: string | null;
+  allowUserTokens?: boolean;
+  legacyTokenConfigured?: boolean;
+  tokens?: { id: string; revokedAt: string | null; user: { email: string; name: string } }[];
 }
 
 interface McpPromptResponse {
@@ -935,6 +938,7 @@ function McpSection(): React.ReactElement {
   const { t } = useI18n();
   const [status, setStatus] = useState<McpAdminStatus | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
+  const [newTokenId, setNewTokenId] = useState<string | null>(null);
   const [rotating, setRotating] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -957,8 +961,12 @@ function McpSection(): React.ReactElement {
   async function rotate(): Promise<void> {
     setRotating(true);
     try {
-      const r = await apiPost<{ token: string; userId: string }>('/api/admin/mcp/rotate', {});
+      const r = await apiPost<{ token: string; metadata: { id: string } }>(
+        '/api/admin/mcp/rotate',
+        {},
+      );
       setNewToken(r.token);
+      setNewTokenId(r.metadata.id);
       toast.success(t('admin.integrations.mcp.generated'));
       await refresh();
     } catch (err) {
@@ -970,13 +978,15 @@ function McpSection(): React.ReactElement {
 
   async function revoke(): Promise<void> {
     try {
-      const res = await fetch('/api/admin/mcp', {
+      if (!newTokenId) throw new Error(t('common.error'));
+      const res = await fetch(`/api/admin/mcp/tokens/${newTokenId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
       if (!res.ok) throw new Error(t('common.error'));
       toast.success(t('admin.integrations.mcp.revoked'));
       setNewToken(null);
+      setNewTokenId(null);
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('common.error'));
@@ -995,11 +1005,14 @@ function McpSection(): React.ReactElement {
   }
 
   async function copyAgentPrompt(): Promise<void> {
-    if (!status?.enabled || copyingPrompt) return;
+    if (!newToken || copyingPrompt) return;
     setCopyingPrompt(true);
     try {
       const origin = window.location.origin;
-      const res = await apiPost<McpPromptResponse>('/api/admin/mcp/prompt', { appUrl: origin });
+      const res = await apiPost<McpPromptResponse>('/api/admin/mcp/prompt', {
+        appUrl: origin,
+        token: newToken,
+      });
       await writeClipboardText(res.prompt, t('admin.integrations.copyError'));
       setPromptCopied(true);
       toast.success(t('admin.integrations.mcp.promptCopied'));
@@ -1107,7 +1120,7 @@ function McpSection(): React.ReactElement {
                 size="sm"
                 className="w-full sm:w-auto"
                 onClick={() => void copyAgentPrompt()}
-                disabled={!status.enabled || copyingPrompt}
+                disabled={!newToken || copyingPrompt}
                 aria-label={t('admin.integrations.mcp.copyAgentPrompt')}
               >
                 {copyingPrompt ? (

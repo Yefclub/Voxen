@@ -23,6 +23,7 @@ import { costRoutes } from './routes/cost';
 import { notesRoutes } from './routes/notes';
 import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
+import { mcpTokenRoutes } from './routes/mcp-tokens';
 import { graphRoutes } from './routes/graph';
 import { releasesRoutes } from './routes/releases';
 import { shareTargetRoutes } from './routes/share-target';
@@ -274,6 +275,7 @@ app.route('/api/library', libraryRoutes);
 app.route('/api/automations', automationsRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
+app.route('/api/mcp/tokens', mcpTokenRoutes);
 // Graph view (visualização Obsidian-like da KB)
 app.route('/api/graph', graphRoutes);
 // Changelog / release notes (releases.json)

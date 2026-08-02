@@ -138,14 +138,17 @@ describeIfDb('auth + admin approval flow', () => {
         body: JSON.stringify({}),
       }),
     );
-    expect(rotate.status).toBe(200);
+    expect(rotate.status).toBe(201);
     const rotated = (await rotate.json()) as { token: string };
 
     const promptRes = await app.fetch(
       new Request('http://localhost/api/admin/mcp/prompt', {
         method: 'POST',
         headers: { cookie, 'content-type': 'application/json' },
-        body: JSON.stringify({ appUrl: 'https://voxen.local/admin/integracoes' }),
+        body: JSON.stringify({
+          appUrl: 'https://voxen.local/admin/integracoes',
+          token: rotated.token,
+        }),
       }),
     );
     expect(promptRes.status).toBe(200);
@@ -154,6 +157,81 @@ describeIfDb('auth + admin approval flow', () => {
     expect(body.prompt).toContain('https://voxen.local/mcp');
     expect(body.prompt).toContain(rotated.token);
     expect(body.prompt).toContain('Voxen');
+  });
+
+  it('emite token MCP por usuário, respeita escopo e permite revogação', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('mcp-user@voxen.local', 'senha-super-segura-456', 'MCP User');
+    const adminCookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const pending = await db.user.findUnique({ where: { email: 'mcp-user@voxen.local' } });
+    await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${pending!.id}/approve`, {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    const userCookie = extractCookie(
+      await signIn('mcp-user@voxen.local', 'senha-super-segura-456'),
+    );
+    const denied = await app.fetch(
+      new Request('http://localhost/api/mcp/tokens', {
+        method: 'POST',
+        headers: { cookie: userCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ label: 'Cursor', scopes: ['READ'] }),
+      }),
+    );
+    expect(denied.status).toBe(403);
+    const policy = await app.fetch(
+      new Request('http://localhost/api/admin/mcp', {
+        method: 'PATCH',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ allowUserTokens: true }),
+      }),
+    );
+    expect(policy.status).toBe(200);
+    const created = await app.fetch(
+      new Request('http://localhost/api/mcp/tokens', {
+        method: 'POST',
+        headers: { cookie: userCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ label: 'Cursor', scopes: ['READ'] }),
+      }),
+    );
+    expect(created.status).toBe(201);
+    const token = (await created.json()) as { token: string; metadata: { id: string } };
+    const list = await app.fetch(
+      new Request('http://localhost/api/mcp/tokens', { headers: { cookie: userCookie } }),
+    );
+    const listBody = (await list.json()) as { tokens: Record<string, unknown>[] };
+    expect(listBody.tokens[0]).not.toHaveProperty('token');
+    const tools = await app.fetch(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token.token}`,
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      }),
+    );
+    const toolBody = (await tools.json()) as { result?: { tools?: { name: string }[] } };
+    expect(toolBody.result?.tools?.map((item) => item.name)).not.toContain('voxen_create_note');
+    const revoke = await app.fetch(
+      new Request(`http://localhost/api/mcp/tokens/${token.metadata.id}`, {
+        method: 'DELETE',
+        headers: { cookie: userCookie },
+      }),
+    );
+    expect(revoke.status).toBe(200);
+    const rejected = await app.fetch(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      }),
+    );
+    expect(rejected.status).toBe(401);
   });
 
   it('admin gera token de proxy: persiste cifrado e GET não vaza', async () => {

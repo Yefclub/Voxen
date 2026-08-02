@@ -55,8 +55,11 @@ export type GlobalSettingKey =
   // Default 120s. Útil pra textos muito longos ou modelos lentos.
   | 'summary_timeout_sec'
   // MCP server token (formato `<userId>:<token>`). Endpoint /mcp aceita
-  // Bearer <token> e mapeia pro userId. Apenas 1 token por instância no MVP.
+  // Bearer <token> e mapeia pro userId. Legado: não é mais aceito pelo MCP;
+  // permanece só para que o administrador possa revogá-lo explicitamente.
   | 'mcp_api_token'
+  /** Permite usuários aprovados emitirem seus próprios tokens MCP. */
+  | 'mcp_user_tokens_enabled'
   // Token de conexão do agente de proxy residencial (chisel). Cifrado em DB.
   // O agente residencial usa este token pra autenticar o túnel reverso.
   // Apenas 1 token por instância no MVP. Ver spec 058.

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import app from '../src/index';
 import { db } from '../src/lib/db';
-import { deleteSetting, setSetting } from '../src/lib/settings';
+import { hashMcpToken } from '../src/lib/mcp-tokens';
 
 async function call(body: unknown, token = ''): Promise<Response> {
   return app.fetch(
@@ -63,11 +63,12 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       data: { email: `mcp-test-${Date.now()}@voxen.local`, name: 'MCP Test', status: 'APPROVED' },
     });
     userId = user.id;
-    await setSetting('mcp_api_token', `${userId}:${TOKEN}`);
+    await db.mcpToken.create({
+      data: { userId, tokenHash: hashMcpToken(TOKEN), label: 'Teste MCP', scopes: 'READ,WRITE' },
+    });
   });
 
   afterAll(async () => {
-    await deleteSetting('mcp_api_token').catch(() => {});
     if (userId) await db.user.delete({ where: { id: userId } }).catch(() => {});
   });
 
@@ -109,6 +110,21 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_brain_search');
     const search = tools.find((t) => t.name === 'voxen_search_transcripts');
     expect(search?.annotations?.readOnlyHint).toBe(true);
+  });
+
+  it('recusa token expirado', async () => {
+    const expired = 'expired-mcp-token-' + crypto.randomUUID();
+    await db.mcpToken.create({
+      data: {
+        userId,
+        tokenHash: hashMcpToken(expired),
+        label: 'Expirado',
+        scopes: 'READ',
+        expiresAt: new Date(Date.now() - 1_000),
+      },
+    });
+    const res = await call({ jsonrpc: '2.0', id: 22, method: 'tools/list' }, expired);
+    expect(res.status).toBe(401);
   });
 
   it('tools/call voxen_list_transcripts retorna lista vazia escopada', async () => {
