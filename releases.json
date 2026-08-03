@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785737401",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Contas de plataforma agora são privadas por usuário",
+    "body": "As sessões de TikTok, Instagram e YouTube passaram a ficar em **Contas de plataforma**, na área pessoal. Cada pessoa conecta a própria sessão pela extensão do Voxen e ela é usada somente nos seus processamentos.\n\nA tela de Integrações administrativas ficou dedicada às configurações globais da instância. Também atualizamos os modelos padrão de Chat e Busca na web para DeepSeek V4 Flash, e os de Documentos e Visão para GPT-5.6 Luna.",
+    "pr": 581,
+    "author": "Kalyel",
+    "date": "2026-08-03T03:09:46-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/581"
+  },
+  {
     "version": "0.13.0-dev.1785723415",
     "channel": "dev",
     "type": "fix",
