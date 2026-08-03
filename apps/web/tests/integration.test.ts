@@ -127,6 +127,99 @@ describeIfDb('auth + admin approval flow', () => {
     expect(userLogin.status).toBe(200);
   });
 
+  it('admin bloqueia uma conta, invalida suas sessões e pode reativá-la', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('user@voxen.local', 'senha-super-segura-456', 'User');
+    const adminCookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'user@voxen.local' } });
+
+    const approve = await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${user.id}/approve`, {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(approve.status).toBe(200);
+    expect((await signIn('user@voxen.local', 'senha-super-segura-456')).status).toBe(200);
+    expect(await db.session.count({ where: { userId: user.id } })).toBeGreaterThan(0);
+
+    const disable = await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${user.id}/disable`, {
+        method: 'POST',
+        headers: { cookie: adminCookie },
+      }),
+    );
+    expect(disable.status).toBe(200);
+    expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).status).toBe('DISABLED');
+    expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
+
+    const enable = await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${user.id}/enable`, {
+        method: 'POST',
+        headers: { cookie: adminCookie },
+      }),
+    );
+    expect(enable.status).toBe(200);
+    expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).status).toBe('APPROVED');
+  });
+
+  it('protege o último admin e exige o e-mail literal para excluir uma conta', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('remove@voxen.local', 'senha-super-segura-456', 'Remove');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const target = await db.user.findUniqueOrThrow({ where: { email: 'remove@voxen.local' } });
+    const adminCookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+
+    const lastAdmin = await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${admin.id}/role`, {
+        method: 'PATCH',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ role: 'USER' }),
+      }),
+    );
+    expect(lastAdmin.status).toBe(409);
+
+    const wrongConfirmation = await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${target.id}`, {
+        method: 'DELETE',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ confirmEmail: ' remove@voxen.local ' }),
+      }),
+    );
+    expect(wrongConfirmation.status).toBe(400);
+    expect(await db.user.findUnique({ where: { id: target.id } })).not.toBeNull();
+
+    await db.setting.create({
+      data: { scope: 'USER', userId: target.id, key: 'private_setting', valueEnc: 'opaque' },
+    });
+    await db.verification.create({
+      data: {
+        identifier: target.email,
+        value: 'pending-verification',
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const previousS3DeleteDisabled = process.env.S3_DELETE_DISABLED;
+    process.env.S3_DELETE_DISABLED = 'true';
+    try {
+      const deleted = await app.fetch(
+        new Request(`http://localhost/api/admin/usuarios/${target.id}`, {
+          method: 'DELETE',
+          headers: { cookie: adminCookie, 'content-type': 'application/json' },
+          body: JSON.stringify({ confirmEmail: target.email }),
+        }),
+      );
+      expect(deleted.status).toBe(200);
+    } finally {
+      if (previousS3DeleteDisabled === undefined) delete process.env.S3_DELETE_DISABLED;
+      else process.env.S3_DELETE_DISABLED = previousS3DeleteDisabled;
+    }
+    expect(await db.user.findUnique({ where: { id: target.id } })).toBeNull();
+    expect(await db.setting.count({ where: { userId: target.id } })).toBe(0);
+    expect(await db.verification.count({ where: { identifier: target.email } })).toBe(0);
+  });
+
   it('admin pode copiar prompt MCP com URL atual e token ativo', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');

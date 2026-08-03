@@ -231,9 +231,9 @@ adminRoutes.delete('/usuarios/:id', async (c) => {
     return c.json({ error: 'Não é permitido excluir a própria conta administrativa.' }, 400);
   }
   const body = (await c.req.json().catch(() => ({}))) as { confirmEmail?: unknown };
-  const confirmEmail = typeof body.confirmEmail === 'string' ? body.confirmEmail.trim() : '';
+  const confirmEmail = typeof body.confirmEmail === 'string' ? body.confirmEmail : '';
   try {
-    await withAdminRosterLock(async (tx) => {
+    const target = await withAdminRosterLock(async (tx) => {
       const target = await tx.user.findUnique({ where: { id } });
       if (!target) throw new AdminUserActionError('Usuário não encontrado.', 404);
       if (confirmEmail !== target.email) {
@@ -242,11 +242,23 @@ adminRoutes.delete('/usuarios/:id', async (c) => {
         );
       }
       await assertMayRemoveApprovedAdmin(tx, target);
-      // O namespace é exclusivamente do workspace; só removemos após validar
-      // todas as proteções da conta dentro da mesma transação serializada.
-      await deleteS3Prefix(`workspaces/${target.id}/`);
-      await tx.setting.deleteMany({ where: { scope: 'USER', userId: target.id } });
-      await tx.user.delete({ where: { id: target.id } });
+      return { id: target.id, email: target.email };
+    });
+    // S3 é I/O de rede; não mantemos uma transação PostgreSQL aberta durante
+    // a limpeza. Revalidamos o estado protegido logo antes da exclusão local.
+    await deleteS3Prefix(`workspaces/${target.id}/`);
+    await withAdminRosterLock(async (tx) => {
+      const current = await tx.user.findUnique({ where: { id: target.id } });
+      if (!current) throw new AdminUserActionError('Usuário não encontrado.', 404);
+      if (confirmEmail !== current.email) {
+        throw new AdminUserActionError(
+          'Digite exatamente o e-mail da conta para confirmar a exclusão.',
+        );
+      }
+      await assertMayRemoveApprovedAdmin(tx, current);
+      await tx.setting.deleteMany({ where: { scope: 'USER', userId: current.id } });
+      await tx.verification.deleteMany({ where: { identifier: current.email } });
+      await tx.user.delete({ where: { id: current.id } });
     });
     return c.json({ ok: true });
   } catch (error) {

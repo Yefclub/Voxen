@@ -116,6 +116,9 @@ def _fetch_youtube_transcript_sync(video_id: str, proxy_url: str | None) -> Tran
             language_hint=language,
             available_subtitles={},
             automatic_captions={},
+            author=metadata.get("author_name"),
+            canonical_url=f"https://www.youtube.com/watch?v={video_id}",
+            channel_url=metadata.get("author_url"),
         )
         return TranscriptFetch(probe=probe, segments=segments, language=language.split("-")[0])
     except (
