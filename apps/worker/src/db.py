@@ -33,6 +33,7 @@ TOPIC_MIN_LEN = 4
 BRAIN_TOPIC_INDEX_VERSION = 1
 JOB_LEASE_TTL_SEC = 90
 JOB_MAX_ATTEMPTS = 3
+JOB_CHECKPOINT_EXTRA_ATTEMPTS = 1
 WORKER_INTERRUPTED_MESSAGE = (
     "O processamento foi interrompido após reinícios do worker. Tente enviar novamente."
 )
@@ -93,6 +94,35 @@ def _utcnow_naive() -> datetime:
 def _job_token(job_id: str) -> JobLeaseToken | None:
     token = current_job_lease()
     return token if token is not None and token.job_id == job_id else None
+
+
+async def assert_job_lease_in_connection(
+    conn: asyncpg.Connection,
+    *,
+    job_id: str,
+    user_id: str,
+) -> None:
+    """Aplica o fence do lease dentro da transação da escrita canônica."""
+    token = _job_token(job_id)
+    if token is None:
+        # Helpers e migrações legadas podem persistir fora do executor. Todo
+        # job do worker ativa um token antes de entrar no pipeline.
+        return
+    owner = await conn.fetchrow(
+        """
+        SELECT id FROM "Job"
+        WHERE id = $1 AND "userId" = $2 AND status = 'RUNNING'
+          AND "workerId" = $3 AND attempt = $4
+          AND "leaseExpiresAt" >= NOW()
+        FOR KEY SHARE
+        """,
+        job_id,
+        user_id,
+        token.worker_id,
+        token.attempt,
+    )
+    if owner is None:
+        raise JobLeaseLostError("canonical write rejected by lease fence")
 
 
 def database_url() -> str:
@@ -181,6 +211,7 @@ async def renew_job_lease(token: JobLeaseToken) -> bool:
             SET "heartbeatAt" = $4, "leaseExpiresAt" = $5
             WHERE id = $1 AND status = 'RUNNING'
               AND "workerId" = $2 AND attempt = $3
+              AND "leaseExpiresAt" >= $4
             RETURNING id
             """,
             token.job_id,
@@ -249,10 +280,13 @@ async def recover_expired_jobs(
                 limit,
             )
             for row in rows:
-                # Um checkpoint canônico já persistido precisa de uma última
-                # tentativa barata para virar DONE, mesmo se o processamento
-                # pesado já consumiu o limite normal.
-                retry = row["transcriptId"] is not None or int(row["attempt"] or 0) < max_attempts
+                # Um checkpoint canônico ganha no máximo uma tentativa barata
+                # adicional para virar DONE; ele nunca contorna o limite para sempre.
+                attempt = int(row["attempt"] or 0)
+                allowed_attempts = max_attempts + (
+                    JOB_CHECKPOINT_EXTRA_ATTEMPTS if row["transcriptId"] is not None else 0
+                )
+                retry = attempt < allowed_attempts
                 if retry:
                     await conn.execute(
                         """
@@ -315,12 +349,17 @@ async def record_job_progress(
                     SELECT id FROM "Job"
                     WHERE id = $1 AND "userId" = $2
                       AND "workerId" = $3 AND attempt = $4
+                      AND (
+                        (status = 'RUNNING' AND "leaseExpiresAt" >= $5)
+                        OR status IN ('DONE', 'FAILED', 'CANCELLED')
+                      )
                     FOR KEY SHARE
                     """,
                     job_id,
                     user_id,
                     token.worker_id,
                     token.attempt,
+                    created_at,
                 )
             else:
                 owner = await conn.fetchrow(
@@ -528,6 +567,7 @@ async def link_job_transcript_in_connection(
             UPDATE "Job" SET "transcriptId" = $2
             WHERE id = $1 AND status = 'RUNNING'
               AND "workerId" = $3 AND attempt = $4
+              AND "leaseExpiresAt" >= NOW()
             RETURNING id
             """,
             job_id,
@@ -1690,7 +1730,7 @@ async def list_transcript_tag_names(user_id: str, transcript_id: str) -> list[st
     return [str(row["name"]) for row in rows if row["name"]]
 
 
-async def start_summary_enrichment(user_id: str, transcript_id: str) -> bool:
+async def start_summary_enrichment(user_id: str, transcript_id: str) -> int | None:
     async with connection() as conn:
         row = await conn.fetchrow(
             """
@@ -1706,12 +1746,12 @@ async def start_summary_enrichment(user_id: str, transcript_id: str) -> bool:
               AND (
                 "summaryNextAttemptAt" IS NULL OR "summaryNextAttemptAt" <= NOW()
               )
-            RETURNING id
+            RETURNING "summaryAttempts"
             """,
             user_id,
             transcript_id,
         )
-    return row is not None
+    return int(row["summaryAttempts"]) if row is not None else None
 
 
 async def claim_pending_summary_enrichments(limit: int = 10) -> list[dict[str, Any]]:
@@ -1760,7 +1800,7 @@ async def claim_pending_summary_enrichments(limit: int = 10) -> list[dict[str, A
                 "summaryStartedAt" = NOW(), "summaryError" = NULL
             FROM candidates
             WHERE t.id = candidates.id
-            RETURNING t.id, t."userId", (
+            RETURNING t.id, t."userId", t."summaryAttempts" AS "summaryAttempt", (
               SELECT j.id FROM "Job" j WHERE j."transcriptId" = t.id LIMIT 1
             ) AS "jobId"
             """,
@@ -1773,11 +1813,12 @@ async def finish_summary_enrichment(
     user_id: str,
     transcript_id: str,
     *,
+    claim_attempt: int,
     status: str,
     error: str | None = None,
-) -> None:
+) -> bool:
     async with connection() as conn:
-        await conn.execute(
+        row = await conn.fetchrow(
             """
             UPDATE "Transcript"
             SET "summaryStatus" = CASE
@@ -1794,12 +1835,46 @@ async def finish_summary_enrichment(
                   ) ELSE NULL END,
                 "summaryError" = $4
             WHERE "userId" = $1 AND id = $2
+              AND "summaryStatus" = 'RUNNING'::"EnrichmentStatus"
+              AND "summaryAttempts" = $5
+            RETURNING id
             """,
             user_id,
             transcript_id,
             status,
             (error or "")[:500] or None,
+            claim_attempt,
         )
+    return row is not None
+
+
+async def complete_summary_enrichment(
+    user_id: str,
+    transcript_id: str,
+    *,
+    claim_attempt: int,
+    summary_md: str,
+) -> bool:
+    """Persiste o resumo somente se esta geração ainda possui o claim."""
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE "Transcript"
+            SET "summaryMd" = $4,
+                "summaryStatus" = 'COMPLETE'::"EnrichmentStatus",
+                "summaryStartedAt" = NULL, "summaryNextAttemptAt" = NULL,
+                "summaryError" = NULL, "updatedAt" = NOW()
+            WHERE id = $1 AND "userId" = $2
+              AND "summaryStatus" = 'RUNNING'::"EnrichmentStatus"
+              AND "summaryAttempts" = $3
+            RETURNING id
+            """,
+            transcript_id,
+            user_id,
+            claim_attempt,
+            summary_md,
+        )
+    return row is not None
 
 
 async def start_tag_enrichment(user_id: str, transcript_id: str) -> bool:
@@ -2241,6 +2316,7 @@ async def mark_job_done(job_id: str) -> None:
                     "heartbeatAt" = NULL, "leaseExpiresAt" = NULL
                 WHERE id = $1 AND status = 'RUNNING'
                   AND "workerId" = $3 AND attempt = $4
+                  AND "leaseExpiresAt" >= $2
                 RETURNING id
                 """,
                 job_id,
@@ -2274,6 +2350,7 @@ async def mark_job_failed(job_id: str, error_msg: str) -> None:
                     "heartbeatAt" = NULL, "leaseExpiresAt" = NULL
                 WHERE id = $1 AND status = 'RUNNING'
                   AND "workerId" = $4 AND attempt = $5
+                  AND "leaseExpiresAt" >= $3
                 RETURNING id
                 """,
                 job_id,

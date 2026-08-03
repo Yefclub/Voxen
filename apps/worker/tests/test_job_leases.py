@@ -9,7 +9,7 @@ from unittest.mock import ANY, AsyncMock
 import asyncpg
 import pytest
 
-from src import db, main, pipeline
+from src import db, events, main, pipeline
 from src.job_lease import (
     JobLease,
     JobLeaseLostError,
@@ -72,6 +72,29 @@ async def test_reaper_requeues_before_limit_and_fails_at_limit(
     assert "status = 'QUEUED'" in sql
     assert "status = 'FAILED'" in sql
     assert db.WORKER_INTERRUPTED_MESSAGE in repr(conn.executed)
+
+
+async def test_checkpoint_gets_only_one_bounded_extra_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _RecoveryConnection(
+        [
+            {"id": "last-chance", "userId": "u1", "attempt": 3, "transcriptId": "t1"},
+            {"id": "exhausted", "userId": "u2", "attempt": 4, "transcriptId": "t2"},
+        ]
+    )
+
+    @asynccontextmanager
+    async def fake_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", fake_connection)
+    result = await db.recover_expired_jobs(max_attempts=3)
+
+    assert [(item["id"], item["action"]) for item in result] == [
+        ("last-chance", "requeued"),
+        ("exhausted", "failed"),
+    ]
 
 
 async def test_old_worker_cannot_finalize_after_lease_changes(
@@ -187,16 +210,40 @@ async def test_summary_enrichment_is_reclaimed_independently_from_job(
     monkeypatch.setattr(
         main.db,
         "claim_pending_summary_enrichments",
-        AsyncMock(return_value=[{"id": "t1", "userId": "u1", "jobId": "j1"}]),
+        AsyncMock(
+            return_value=[
+                {
+                    "id": "t1",
+                    "userId": "u1",
+                    "jobId": "j1",
+                    "summaryAttempt": 2,
+                }
+            ]
+        ),
     )
     generate = AsyncMock()
     monkeypatch.setattr(main.summary, "maybe_generate", generate)
 
-    assert await main._reconcile_summaries_once() == 1
+    tasks: set[asyncio.Task[None]] = set()
+    assert await main._reconcile_summaries_once(asyncio.Semaphore(1), tasks) == 1
+    await asyncio.gather(*tasks)
     generate.assert_awaited_once_with(
         user_id="u1",
         job_id="j1",
         transcript_id="t1",
         log=main.log,
         already_claimed=True,
+        claim_attempt=2,
     )
+
+
+async def test_job_event_survives_redis_outage_after_postgres_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    persisted = AsyncMock(return_value=("event-1", db._utcnow_naive()))
+    monkeypatch.setattr(db, "record_job_progress", persisted)
+    monkeypatch.setattr(events, "get_redis", AsyncMock(side_effect=ConnectionError("offline")))
+
+    await events.publish_job_event("u1", "j1", "running", percent=0)
+
+    persisted.assert_awaited_once()

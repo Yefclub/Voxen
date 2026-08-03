@@ -70,14 +70,23 @@ async def maybe_generate(
     job_id: str | None,
     log: Any,  # noqa: ANN401
     already_claimed: bool = False,
+    claim_attempt: int | None = None,
 ) -> None:
-    if not already_claimed and not await db.start_summary_enrichment(user_id, transcript_id):
-        return
+    if already_claimed:
+        if claim_attempt is None:
+            raise ValueError("claim_attempt is required for a claimed summary")
+        active_attempt = claim_attempt
+    else:
+        started_attempt = await db.start_summary_enrichment(user_id, transcript_id)
+        if started_attempt is None:
+            return
+        active_attempt = started_attempt
 
     async def finish(status: str, error: str | None = None) -> None:
         await db.finish_summary_enrichment(
             user_id,
             transcript_id,
+            claim_attempt=active_attempt,
             status=status,
             error=error,
         )
@@ -109,6 +118,7 @@ async def maybe_generate(
         text = str(row["plainText"]).strip()
         if not text:
             log.info("summary-skipped-empty-text")
+            await finish("SKIPPED", "SUMMARY_EMPTY_TEXT")
             return
         if len(text) > 60_000:
             text = text[:60_000] + "\n\n[…transcrição truncada para resumo…]"
@@ -180,17 +190,12 @@ async def maybe_generate(
             return
 
         try:
-            async with db.connection() as conn:
-                await conn.execute(
-                    'UPDATE "Transcript" SET "summaryMd" = $2, '
-                    '"summaryStatus" = \'COMPLETE\'::"EnrichmentStatus", '
-                    '"summaryStartedAt" = NULL, "summaryNextAttemptAt" = NULL, '
-                    '"summaryError" = NULL, "updatedAt" = NOW() '
-                    'WHERE id = $1 AND "userId" = $3',
-                    transcript_id,
-                    summary,
-                    user_id,
-                )
+            persisted = await db.complete_summary_enrichment(
+                user_id,
+                transcript_id,
+                claim_attempt=active_attempt,
+                summary_md=summary,
+            )
         except Exception as e:  # noqa: BLE001
             log.error(
                 "summary-persist-failed",
@@ -221,6 +226,14 @@ async def maybe_generate(
                 transcript_id=transcript_id,
                 **error_diagnostic(e, "SUMMARY_COST_EVENT_FAILED"),
             )
+
+        if not persisted:
+            log.info(
+                "summary-stale-claim-discarded",
+                transcript_id=transcript_id,
+                claim_attempt=active_attempt,
+            )
+            return
 
         log.info("summary-done", transcript_id=transcript_id, language=language)
     except Exception as e:  # noqa: BLE001 — resumo é melhoria, não bloqueia

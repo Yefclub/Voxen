@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,7 +19,9 @@ async def test_reconcile_tags_processes_claimed_batch(monkeypatch: pytest.Monkey
     monkeypatch.setattr(main.db, "claim_pending_tag_enrichments", claim)
     monkeypatch.setattr(main, "_maybe_generate_tags", generate)
 
-    count = await main._reconcile_tags_once(limit=2)
+    tasks: set[asyncio.Task[None]] = set()
+    count = await main._reconcile_tags_once(asyncio.Semaphore(1), tasks, limit=2)
+    await asyncio.gather(*tasks)
 
     assert count == 2
     claim.assert_awaited_once_with(limit=2)

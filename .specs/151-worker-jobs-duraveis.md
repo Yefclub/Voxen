@@ -32,6 +32,12 @@ subscriber não são supervisionadas durante o shutdown.
   compilação do grafo.
 - O POSTGRES DEVE ser a fonte durável da fila. Redis DEVE permanecer somente
   como wakeup e transporte realtime.
+- Escritas canônicas de refresh DEVEM validar o lease na mesma transação da
+  alteração do `Transcript`.
+- Reconciliação e resumo DEVEM possuir cadências independentes; chamadas de IA
+  não podem bloquear o reaper de jobs.
+- Claims de resumo DEVEM ser cercados por sua geração (`summaryAttempts`) para
+  impedir que uma execução antiga sobrescreva uma mais nova.
 
 ## Modelo de dados
 
@@ -49,6 +55,8 @@ Criar índice por `status, leaseExpiresAt` para o reaper.
 - Lease: 90 segundos.
 - Heartbeat: 20 segundos.
 - Máximo: 3 tentativas.
+- Checkpoint canônico: no máximo 1 tentativa adicional e barata para concluir
+  `DONE`; falhas posteriores encerram o job.
 - Reconciliação: no boot e no ciclo periódico existente.
 - Falha final pública: informar que o processamento foi interrompido e pode ser
   reenviado, sem expor diagnóstico interno.
@@ -62,6 +70,11 @@ Criar índice por `status, leaseExpiresAt` para o reaper.
 - Teste de restart confirma retomada de job com transcrição já vinculada sem
   executar novamente o pipeline de ingestão.
 - Teste de shutdown confirma rastreamento e cancelamento/requeue das tarefas.
+- Teste de indisponibilidade do Redis confirma persistência de progresso e
+  processamento de `QUEUED` exclusivamente via Postgres.
+- Testes de fencing confirmam que refresh e resumo antigos não sobrescrevem a
+  geração atual.
+- Migration SQL pode ser reaplicada apó execução parcial.
 - Documentação não afirma mais que ARQ é a implementação atual.
 
 ## Fora de escopo

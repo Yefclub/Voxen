@@ -167,27 +167,29 @@ async def _persist_locked(
     # uma consulta sem mudança não chama IA nem sobrescreve storage.
     if refresh_transcript_id:
         assert locked_conn is not None
-        current = await locked_conn.fetchrow(
-            """
+        async with locked_conn.transaction():
+            await db.assert_job_lease_in_connection(locked_conn, job_id=job_id, user_id=user_id)
+            current = await locked_conn.fetchrow(
+                """
                 SELECT id, "plainText", "mdPath", "sourceChecksum", "sourceVersion",
                        "sourceMetadata", source
                 FROM "Transcript"
                 WHERE id = $1 AND "userId" = $2
-            """,
-            refresh_transcript_id,
-            user_id,
-        )
-        if not current or current["source"] != "WEB":
-            raise PermanentError.public(
-                "SOURCE_REFRESH_MISSING",
-                "A fonte não está mais disponível para atualização.",
+                """,
+                refresh_transcript_id,
+                user_id,
             )
-        current_checksum = current["sourceChecksum"] or _source_checksum(current["plainText"])
-        current_version = int(current["sourceVersion"] or 0)
-        baseline_version = current_version or 1
-        if current_checksum == checksum:
-            await locked_conn.execute(
-                """
+            if not current or current["source"] != "WEB":
+                raise PermanentError.public(
+                    "SOURCE_REFRESH_MISSING",
+                    "A fonte não está mais disponível para atualização.",
+                )
+            current_checksum = current["sourceChecksum"] or _source_checksum(current["plainText"])
+            current_version = int(current["sourceVersion"] or 0)
+            baseline_version = current_version or 1
+            if current_checksum == checksum:
+                await locked_conn.execute(
+                    """
                     UPDATE "Transcript"
                     SET "sourceChecksum" = $3,
                         "sourceVersion" = $4,
@@ -197,32 +199,32 @@ async def _persist_locked(
                         "sourceRefreshError" = NULL,
                         "updatedAt" = NOW()
                     WHERE id = $1 AND "userId" = $2
-                """,
-                refresh_transcript_id,
-                user_id,
-                checksum,
-                baseline_version,
-                json.dumps(metadata),
-            )
-            # Legados passam a ter o primeiro snapshot sem criar conteúdo novo.
-            await locked_conn.execute(
-                """
+                    """,
+                    refresh_transcript_id,
+                    user_id,
+                    checksum,
+                    baseline_version,
+                    json.dumps(metadata),
+                )
+                # Legados passam a ter o primeiro snapshot sem criar conteúdo novo.
+                await locked_conn.execute(
+                    """
                     INSERT INTO "SourceContentVersion" (
                       id, "userId", "transcriptId", version, checksum,
                       "mdPath", "plainText", metadata
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
                     ON CONFLICT ("transcriptId", checksum) DO NOTHING
-                """,
-                db.generate_cuid(),
-                user_id,
-                refresh_transcript_id,
-                baseline_version,
-                checksum,
-                current["mdPath"],
-                current["plainText"],
-                json.dumps(metadata),
-            )
-            return PersistResult(refresh_transcript_id, changed=False)
+                    """,
+                    db.generate_cuid(),
+                    user_id,
+                    refresh_transcript_id,
+                    baseline_version,
+                    checksum,
+                    current["mdPath"],
+                    current["plainText"],
+                    json.dumps(metadata),
+                )
+                return PersistResult(refresh_transcript_id, changed=False)
         transcript_id = refresh_transcript_id
         next_version = baseline_version + 1
         old_snapshot = {
@@ -279,6 +281,7 @@ async def _persist_locked(
         }
 
     async with _persist_connection(locked_conn) as conn:
+        await db.assert_job_lease_in_connection(conn, job_id=job_id, user_id=user_id)
         if old_snapshot:
             # Snapshot da versão anterior antes de mover o ponteiro do Transcript.
             await conn.execute(
@@ -423,7 +426,8 @@ async def _persist_locked(
 @asynccontextmanager
 async def _persist_connection(existing_conn: Any | None) -> AsyncIterator[Any]:  # noqa: ANN401
     if existing_conn is not None:
-        yield existing_conn
+        async with existing_conn.transaction():
+            yield existing_conn
         return
     async with db.connection() as conn:
         async with conn.transaction():

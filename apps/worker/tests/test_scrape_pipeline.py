@@ -9,6 +9,7 @@ import pytest
 
 from src import pipeline, scrape_pipeline, scraper, thumbnail
 from src.cancellation import CancelledException
+from src.job_lease import JobLeaseLostError, JobLeaseToken, activate_job_lease
 from src.pipeline import PermanentError
 
 
@@ -231,6 +232,45 @@ async def test_changed_refresh_versions_and_invalidates_only_affected_artifacts(
     assert 'UPDATE "ChatMessage"' in statements
     assert "pg_advisory_lock" in first_conn.execute.await_args_list[0].args[0]
     assert "pg_advisory_unlock" in first_conn.execute.await_args_list[-1].args[0]
+
+
+async def test_stale_refresh_attempt_is_fenced_before_transcript_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _scrape_result()
+    fake_conn = MagicMock()
+    fake_conn.execute = AsyncMock(return_value=None)
+
+    async def reject_stale_owner(query: str, *_args: object) -> object:
+        assert 'FROM "Job"' in query
+        return None
+
+    fake_conn.fetchrow = AsyncMock(side_effect=reject_stale_owner)
+    fake_tx = MagicMock()
+    fake_tx.__aenter__ = AsyncMock(return_value=None)
+    fake_tx.__aexit__ = AsyncMock(return_value=False)
+    fake_conn.transaction.return_value = fake_tx
+    fake_ctx = MagicMock()
+    fake_ctx.__aenter__ = AsyncMock(return_value=fake_conn)
+    fake_ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(scrape_pipeline.db, "connection", lambda: fake_ctx)
+    put_markdown = AsyncMock()
+    monkeypatch.setattr(scrape_pipeline.storage, "put_markdown", put_markdown)
+
+    token = JobLeaseToken("job1", "old-worker", 1)
+    with activate_job_lease(token), pytest.raises(JobLeaseLostError):
+        await scrape_pipeline._persist(
+            user_id="user1",
+            job_id="job1",
+            source_url=result.url,
+            result=result,
+            refresh_transcript_id="t1",
+            log=_FakeLogger(),
+        )
+
+    put_markdown.assert_not_awaited()
+    statements = "\n".join(str(call.args[0]) for call in fake_conn.execute.await_args_list)
+    assert 'UPDATE "Transcript"' not in statements
 
 
 async def test_robots_blocked_raises_permanent(

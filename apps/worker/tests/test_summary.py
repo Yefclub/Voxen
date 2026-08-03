@@ -13,8 +13,9 @@ from src import summary
 
 @pytest.fixture(autouse=True)
 def _summary_enrichment_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(summary.db, "start_summary_enrichment", AsyncMock(return_value=True))
+    monkeypatch.setattr(summary.db, "start_summary_enrichment", AsyncMock(return_value=1))
     monkeypatch.setattr(summary.db, "finish_summary_enrichment", AsyncMock(return_value=None))
+    monkeypatch.setattr(summary.db, "complete_summary_enrichment", AsyncMock(return_value=True))
 
 
 class _FakeLogger:
@@ -101,7 +102,7 @@ async def test_skip_when_missing_config(monkeypatch: pytest.MonkeyPatch) -> None
 
 async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
-    fake_conn = _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem ipsum"})
+    _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem ipsum"})
     _patch_model_config(monkeypatch, api_key="sk-test", model="openai/gpt-4o-mini")
     monkeypatch.setattr(
         summary.voxen_settings,
@@ -144,7 +145,12 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
 
     assert ("info", "summary-done") in log.events
     assert seen_timeout["value"] == 42.0
-    fake_conn.execute.assert_awaited()
+    summary.db.complete_summary_enrichment.assert_awaited_once_with(  # type: ignore[attr-defined]
+        "u1",
+        "t1",
+        claim_attempt=1,
+        summary_md="## Em poucas linhas\nfoo",
+    )
     insert_cost.assert_awaited()
     kwargs = insert_cost.await_args.kwargs
     assert kwargs["kind"] == "CHAT"

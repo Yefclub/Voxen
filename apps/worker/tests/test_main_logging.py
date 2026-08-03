@@ -97,6 +97,7 @@ def test_real_asyncio_supervisor_awaits_failing_sibling_cleanup_without_stderr(
     monkeypatch.setattr(main, "log", logger)
     monkeypatch.setattr(main, "_subscriber_loop", primary_failure)
     monkeypatch.setattr(main, "_reconciliation_loop", idle_component)
+    monkeypatch.setattr(main, "_enrichment_reconciliation_loop", idle_component)
     monkeypatch.setattr(main, "cancel_subscriber", idle_cancel_subscriber)
     monkeypatch.setattr(main, "_automation_subscriber_loop", sibling_cleanup_failure)
     monkeypatch.setattr(main, "_automation_scheduler_loop", idle_component)
