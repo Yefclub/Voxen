@@ -71,10 +71,12 @@ Criar índice por `status, leaseExpiresAt` para o reaper.
   executar novamente o pipeline de ingestão.
 - Teste de shutdown confirma rastreamento e cancelamento/requeue das tarefas.
 - Teste de indisponibilidade do Redis confirma persistência de progresso e
-  processamento de `QUEUED` exclusivamente via Postgres.
+  processamento de `QUEUED` exclusivamente via Postgres; um `CANCELLED`
+  persistido também interrompe o executor sem depender do canal Redis.
 - Testes de fencing confirmam que refresh e resumo antigos não sobrescrevem a
   geração atual.
-- Migration SQL pode ser reaplicada apó execução parcial.
+- Migration SQL pode ser reaplicada apó execução parcial sem encurtar leases
+  ativos que já possuem dono.
 - Documentação não afirma mais que ARQ é a implementação atual.
 
 ## Fora de escopo

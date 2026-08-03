@@ -226,7 +226,7 @@ async def renew_job_lease(token: JobLeaseToken) -> bool:
             """
             SELECT id FROM "Job"
             WHERE id = $1 AND "workerId" = $2 AND attempt = $3
-              AND status IN ('DONE', 'FAILED', 'CANCELLED')
+              AND status IN ('DONE', 'FAILED')
             """,
             token.job_id,
             token.worker_id,

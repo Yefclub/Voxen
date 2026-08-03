@@ -8,7 +8,9 @@ ADD COLUMN IF NOT EXISTS "leaseExpiresAt" TIMESTAMP(3);
 -- entram no mesmo recovery das novas tentativas.
 UPDATE "Job"
 SET "leaseExpiresAt" = NOW()
-WHERE status = 'RUNNING';
+WHERE status = 'RUNNING'
+  AND "workerId" IS NULL
+  AND "leaseExpiresAt" IS NULL;
 
 CREATE INDEX IF NOT EXISTS "Job_status_leaseExpiresAt_idx"
 ON "Job"("status", "leaseExpiresAt");

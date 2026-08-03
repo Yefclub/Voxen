@@ -4,6 +4,7 @@ import asyncio
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import asyncpg
 import pytest
@@ -134,6 +135,59 @@ async def test_stale_summary_claim_cannot_overwrite_new_generation() -> None:
         )
         assert row is not None
         assert dict(row) == {"summaryMd": "current", "summaryStatus": "COMPLETE"}
+    finally:
+        await conn.execute('DELETE FROM "User" WHERE id = $1', user_id)
+        await conn.close()
+
+
+async def test_migration_reapply_preserves_active_future_lease() -> None:
+    assert os.environ.get("DATABASE_URL")
+    conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+    suffix = uuid.uuid4().hex
+    user_id = f"migration-user-{suffix}"
+    job_id = f"migration-job-{suffix}"
+    now = datetime.now(UTC).replace(tzinfo=None)
+    future_lease = now + timedelta(minutes=10)
+    migration = (
+        Path(__file__).parents[3]
+        / "prisma/migrations/20260802210000_worker_job_leases/migration.sql"
+    ).read_text()
+    try:
+        await conn.execute(
+            """
+            INSERT INTO "User" (id, email, name, status, role, "createdAt", "updatedAt")
+            VALUES ($1, $2, 'Migration Test', 'APPROVED', 'USER', $3, $3)
+            """,
+            user_id,
+            f"migration-{suffix}@example.test",
+            now,
+        )
+        await conn.execute(
+            """
+            INSERT INTO "Job" (
+              id, "userId", type, status, "sourceUrl", "queuedAt", "workerId",
+              attempt, "heartbeatAt", "leaseExpiresAt"
+            ) VALUES (
+              $1, $2, 'SCRAPE_WEB', 'RUNNING', 'https://example.test', $3,
+              'worker-live', 1, $3, $4
+            )
+            """,
+            job_id,
+            user_id,
+            now,
+            future_lease,
+        )
+        stored_future_lease = await conn.fetchval(
+            'SELECT "leaseExpiresAt" FROM "Job" WHERE id = $1', job_id
+        )
+
+        await conn.execute(migration)
+        await conn.execute(migration)
+
+        lease_after = await conn.fetchval(
+            'SELECT "leaseExpiresAt" FROM "Job" WHERE id = $1', job_id
+        )
+        assert lease_after == stored_future_lease
     finally:
         await conn.execute('DELETE FROM "User" WHERE id = $1', user_id)
         await conn.close()

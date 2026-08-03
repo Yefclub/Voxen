@@ -47,6 +47,29 @@ async def test_heartbeat_cancels_executor_when_fencing_is_lost() -> None:
     renew.assert_awaited_once_with(token)
 
 
+async def test_persisted_cancel_is_not_treated_as_owned_terminal_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _CancelledConnection:
+        calls = 0
+
+        async def fetchrow(self, query: str, *_args: object) -> None:
+            self.calls += 1
+            if self.calls == 2:
+                assert "'CANCELLED'" not in query
+            return None
+
+    @asynccontextmanager
+    async def fake_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, _CancelledConnection())
+
+    monkeypatch.setattr(db, "connection", fake_connection)
+
+    owned = await db.renew_job_lease(JobLeaseToken("job-1", "worker-a", 1))
+
+    assert owned is False
+
+
 async def test_reaper_requeues_before_limit_and_fails_at_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -235,6 +258,25 @@ async def test_summary_enrichment_is_reclaimed_independently_from_job(
         already_claimed=True,
         claim_attempt=2,
     )
+
+
+async def test_summary_reconciler_claims_only_available_local_slots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claim = AsyncMock(return_value=[])
+    monkeypatch.setattr(main.db, "claim_pending_summary_enrichments", claim)
+    occupied = asyncio.create_task(asyncio.sleep(0))
+    tasks: set[asyncio.Task[None]] = {occupied}
+
+    await main._reconcile_summaries_once(
+        asyncio.Semaphore(2),
+        tasks,
+        limit=5,
+        max_in_flight=2,
+    )
+    await occupied
+
+    claim.assert_awaited_once_with(limit=1)
 
 
 async def test_job_event_survives_redis_outage_after_postgres_snapshot(

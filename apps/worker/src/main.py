@@ -211,8 +211,9 @@ async def _reconcile_tags_once(
     sem: asyncio.Semaphore,
     tasks: set[asyncio.Task[None]],
     limit: int = 10,
+    max_in_flight: int = ENRICHMENT_MAX_CONCURRENCY,
 ) -> int:
-    capacity = max(0, limit - len(tasks))
+    capacity = min(limit, max(0, max_in_flight - len(tasks)))
     pending_tags = await db.claim_pending_tag_enrichments(limit=capacity) if capacity else []
     for item in pending_tags:
         _track_task(tasks, _run_tag_with_sem(sem, item))
@@ -244,8 +245,9 @@ async def _reconcile_summaries_once(
     sem: asyncio.Semaphore,
     tasks: set[asyncio.Task[None]],
     limit: int = 5,
+    max_in_flight: int = ENRICHMENT_MAX_CONCURRENCY,
 ) -> int:
-    capacity = max(0, limit - len(tasks))
+    capacity = min(limit, max(0, max_in_flight - len(tasks)))
     pending = await db.claim_pending_summary_enrichments(limit=capacity) if capacity else []
     for item in pending:
         _track_task(tasks, _run_summary_with_sem(sem, item))
