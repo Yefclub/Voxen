@@ -17,6 +17,8 @@ test('ship skills require English pull-request surfaces in both harnesses', () =
     const skill = read(path);
     assert.match(skill, /--title "<English Conventional Commit title>"/);
     assert.match(skill, /--body "<detailed English body>"/);
+    assert.match(skill, /quality-gate-report/);
+    assert.match(skill, /Never relax `quality-gate\/baseline\.json`/);
     assert.doesNotMatch(skill, /título em PT-BR|corpo detalhado em PT-BR/);
   }
 });
@@ -25,7 +27,9 @@ test('version bot creates an English pull request and workflow output', () => {
   const workflow = read('.github/workflows/version-dev.yml');
 
   assert.match(workflow, /Automatic dev version bump/);
-  assert.match(workflow, /Seven exact required checks passed/);
+  assert.match(workflow, /Eight exact required checks passed/);
+  assert.match(workflow, /\.name == "Quality Gate"/);
+  assert.match(workflow, /REQUIRED_TOTAL:-0}" = "8"/);
   assert.doesNotMatch(workflow, /Bump automático|Sete required checks/);
 });
 

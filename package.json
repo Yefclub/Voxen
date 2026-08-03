@@ -34,8 +34,13 @@
     "format:check": "make format-check",
     "typecheck": "make typecheck",
     "migrate": "make migrate",
+    "quality:duplicates": "jscpd apps/web/src apps/extension apps/worker/src",
+    "quality:check": "node scripts/quality-gate.mjs",
     "release:prepare": "node scripts/prepare-release.mjs",
     "github:settings": "node scripts/github-repository-settings.mjs"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "jscpd": "5.0.14"
+  }
 }

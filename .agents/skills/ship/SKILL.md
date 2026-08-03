@@ -59,6 +59,12 @@ required check, has no pending or failed conclusions, and ends with
 If CI fails, investigate, fix, push, and repeat. Do not review or merge a red
 head.
 
+When `Quality Gate` fails, download the `quality-gate-report` artifact from the
+failed workflow run. Read `summary.md` and `metrics.json`; use
+`jscpd-report.json` for duplicate locations and the raw coverage reports for
+untested lines. Address every regression on the same branch, push, and resume
+monitoring. Never relax `quality-gate/baseline.json` to make a regression pass.
+
 ### 5. Independent review — always required
 
 After CI is green, read and run the `review-pr` skill at

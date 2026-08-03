@@ -1,0 +1,18 @@
+{
+  "minLines": 5,
+  "minTokens": 50,
+  "mode": "weak",
+  "formats": ["css", "javascript", "jsx", "python", "tsx", "typescript"],
+  "crossFormats": ["javascript,jsx,typescript,tsx"],
+  "ignore": [
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/tests/**",
+    "**/__tests__/**",
+    "**/prisma-generated/**",
+    "**/dist/**",
+    "**/public/extension/**"
+  ],
+  "reporters": ["json"],
+  "output": "quality-gate/output"
+}
