@@ -1,6 +1,9 @@
 # Architecture Decision Records — Voxen
 
-This document summarizes the major architectural decisions. The Portuguese file remains the canonical ADR log; this English mirror exists so contributors can understand the system without reading Portuguese.
+This English document is the default ADR index for contributors. The
+Portuguese file preserves the detailed historical log while decisions are
+progressively migrated; new public repository decisions must be documented in
+English first.
 
 ## ADR-001: Electron to Web
 

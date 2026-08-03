@@ -1,9 +1,8 @@
 # ============================================================================
-# pr-release-labels — valida SemVer em PRs pra main
+# pr-release-labels — validates SemVer in pull requests to main
 # ============================================================================
-# PRs para main devem ser release PRs: uma label release:* e package.json já
-# bumpado para a próxima versão esperada. Assim main pode ser protegida sem
-# workflow tentando commitar direto nela após o merge.
+# Pull requests to main must be release PRs with one release:* label and the
+# expected package version. This keeps main protected without workflow commits.
 # ============================================================================
 
 name: PR release labels
@@ -27,11 +26,12 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: "22"
 
-      - name: Validate release label and version bump
+      - name: Validate release label, version bump, and title
         env:
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
 
@@ -45,7 +45,7 @@ jobs:
           done
 
           if [ "$count" -ne 1 ]; then
-            echo "PR para main precisa de exatamente uma label: release:patch, release:minor ou release:major."
+            echo "A PR to main requires exactly one label: release:patch, release:minor, or release:major."
             exit 1
           fi
 
@@ -69,16 +69,20 @@ jobs:
           web_version="$(node -p "require('./apps/web/package.json').version")"
 
           if ! echo "$root_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "package.json precisa estar em SemVer estável X.Y.Z; atual: $root_version"
+            echo "package.json must contain stable SemVer X.Y.Z; current: $root_version"
             exit 1
           fi
           if [ "$root_version" != "$web_version" ]; then
-            echo "Versões divergentes: package.json=$root_version apps/web/package.json=$web_version"
+            echo "Version mismatch: package.json=$root_version apps/web/package.json=$web_version"
             exit 1
           fi
           if [ "$root_version" != "$expected" ]; then
-            echo "Versão esperada para release:$bump a partir de $base_version: $expected; atual: $root_version"
-            echo "Rode: pnpm release:prepare $bump"
+            echo "Expected release:$bump version from $base_version: $expected; current: $root_version"
+            echo "Run: pnpm release:prepare $bump"
+            exit 1
+          fi
+          if [ "$PR_TITLE" != "v$root_version" ]; then
+            echo "Release PR title must be exactly v$root_version; current: $PR_TITLE"
             exit 1
           fi
 
@@ -86,6 +90,7 @@ jobs:
             echo "## Release gate"
             echo ""
             echo "- Bump: \`$bump\`"
-            echo "- Última estável: \`$base_version\`"
-            echo "- Próxima release: \`$expected\`"
+            echo "- Previous stable version: \`$base_version\`"
+            echo "- Next release: \`$expected\`"
+            echo "- Required title: \`v$root_version\`"
           } >> "$GITHUB_STEP_SUMMARY"

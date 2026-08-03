@@ -1,81 +1,74 @@
-# Release — Preparar PR de Release (dev → main)
+# Release — prepare a stable release PR (dev → main)
 
-Automatiza a preparação de uma PR de release coletando tudo que foi mergeado em `dev` desde a última release.
+Prepare a stable release by collecting everything merged into `dev` since the
+previous tag.
 
 ## Inputs
 
-- Label de release: `release:patch`, `release:minor`, ou `release:major`
-- Notas adicionais (opcional): contexto extra para o corpo da PR
+- Release label: `release:patch`, `release:minor`, or `release:major`
+- Optional context for the pull-request body
 
-## Fluxo
+## Flow
 
-### 1. Identificar Escopo
+### 1. Identify the scope
 
 ```bash
-# Último release tag ou merge em main
-git log main --oneline -1
-LAST_RELEASE_SHA=$(git rev-parse main)
-
-# PRs mergeadas em dev desde última release
-gh pr list --state merged --base dev --search "merged:>=YYYY-MM-DD" --json number,title,labels,mergedAt,author
-
-# Diff stats
-git diff main...dev --stat
+git fetch origin --tags
+git log origin/main --oneline -1
+gh pr list --state merged --base dev --search "merged:>=YYYY-MM-DD" \
+  --json number,title,labels,mergedAt,author
+git diff origin/main...origin/dev --stat
 ```
 
-### 2. Categorizar Mudanças
+Group changes into features, fixes, improvements, infrastructure, and other
+maintenance. Check for open PRs targeting `dev` that appear release-critical.
 
-Agrupar PRs mergeadas por tipo:
-- **Funcionalidades** — PRs com label `feature` ou título com `feat`
-- **Correções** — PRs com label `bug` ou título com `fix`
-- **Melhorias** — PRs com label `enhancement` ou `refactor`
-- **Infraestrutura** — PRs com label `infra`, `ci`, `devops`
-- **Outros** — PRs sem categorização clara
+### 2. Prepare the version and curated notes
 
-### 3. Verificar Prontidão
+Run the deterministic preparation command from a fresh release branch:
 
 ```bash
-# CI status da branch dev
-gh pr checks $(gh pr list --base main --head dev --json number -q '.[0].number') 2>/dev/null
-
-# Verificar se há PRs abertas para dev que deveriam entrar
-gh pr list --state open --base dev --json number,title
+pnpm release:prepare patch # or minor/major
 ```
 
-Se houver PRs abertas para dev que parecem relevantes para a release, listar e perguntar se devem ser esperadas.
+Review `changelog/RELEASE.md`, `releases.json`, both package versions, and
+`CHANGELOG.md`. Stable notes must be user-facing and grouped by product theme.
 
-### 4. Criar PR de Release
+### 3. Validate
+
+Run the full local validation required by `CLAUDE.md`, including the release
+script tests. Confirm that the prepared version is stable SemVer and matches the
+selected label.
+
+### 4. Create the release PR
+
+The PR title must be the exact version tag, without a `release:` prefix:
 
 ```bash
-gh pr create --base main --head dev \
-  --title "Release [versão] — [resumo curto]" \
+gh pr create --base main --head release/vX.Y.Z \
+  --title "vX.Y.Z" \
   --label "release:patch|minor|major" \
-  --body "$(cat <<'EOF'
-## Release [versão]
-
-### Funcionalidades
-- PR #N — título
-
-### Correções
-- PR #N — título
-
-### Melhorias
-- PR #N — título
-
-### Números
-- X PRs incluídas
-- +Y/-Z linhas
-- Período: [data início] a [data fim]
-
-### Notas
-[notas adicionais se fornecidas]
-EOF
-)"
+  --body-file /tmp/voxen-release-pr-body.md
 ```
 
-### Regras
+The body is in English and includes a user-facing summary, migrations or
+operational warnings, validation evidence, and the curated release notes.
 
-- NUNCA mergear a PR de release — apenas criar e reportar o link
-- Corpo da PR em PT-BR
-- Se houver migrations novas no período, destacar na seção de notas como alerta
-- Se a diff for muito grande (>50 arquivos), sugerir ao usuário revisar por área
+### 5. Stop for owner approval
+
+Never merge a release PR without explicit owner approval. Keep monitoring CI
+and run the independent review, but report the ready PR and wait.
+
+When the owner later approves the merge, use an explicit version-only subject
+and blank body. Do not use GitHub's default squash subject:
+
+```bash
+gh pr merge <PR_NUMBER> --squash --delete-branch \
+  --subject "vX.Y.Z" \
+  --body ""
+```
+
+This exact command prevents PR numbers, commit lists, and generated trailers
+from appearing in the stable release commit or deployment label.
+
+After publication, synchronize `main` back into `dev` through a normal PR.

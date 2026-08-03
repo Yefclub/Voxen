@@ -1,6 +1,6 @@
 # Voxen Documentation
 
-[Português (Brasil)](../../README.md) | English
+English | [Português (Brasil)](../README.md)
 
 Voxen is a self-hosted web platform for multimodal knowledge bases. It ingests videos, audio, images, documents, and web pages, stores structured Markdown transcripts, and provides an agentic chat interface over the collection.
 
@@ -22,15 +22,15 @@ the account and applies the canonical models automatically.
 
 ## Documentation Map
 
-| Document | Topic |
-|---|---|
-| [`DEVELOPMENT.md`](DEVELOPMENT.md) | Local development, commands, tests, SDD/TDD, and contribution workflow |
-| [`DEPLOY.md`](DEPLOY.md) | Production deployment on home-lab, VPS, Proxmox, nginx, Docker Compose, and Easypanel |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Apps, services, main flows, and architecture decisions |
-| [`STACK.md`](STACK.md) | Runtime, libraries, infrastructure images, CI tooling, and upgrade policy |
-| [`DECISIONS.md`](DECISIONS.md) | Architecture Decision Records |
-| [`SECURITY.md`](SECURITY.md) | Threat model, auth, secrets, SSRF prevention, CI security, and incident response |
-| [`TRANSCRIPT-FORMAT.md`](TRANSCRIPT-FORMAT.md) | Canonical Markdown transcript format |
+| Document                                       | Topic                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [`DEVELOPMENT.md`](DEVELOPMENT.md)             | Local development, commands, tests, SDD/TDD, and contribution workflow                |
+| [`DEPLOY.md`](DEPLOY.md)                       | Production deployment on home-lab, VPS, Proxmox, nginx, Docker Compose, and Easypanel |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)           | Apps, services, main flows, and architecture decisions                                |
+| [`STACK.md`](STACK.md)                         | Runtime, libraries, infrastructure images, CI tooling, and upgrade policy             |
+| [`DECISIONS.md`](DECISIONS.md)                 | Architecture Decision Records                                                         |
+| [`SECURITY.md`](SECURITY.md)                   | Threat model, auth, secrets, SSRF prevention, CI security, and incident response      |
+| [`TRANSCRIPT-FORMAT.md`](TRANSCRIPT-FORMAT.md) | Canonical Markdown transcript format                                                  |
 
 ## Core Workflow
 

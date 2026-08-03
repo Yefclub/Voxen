@@ -57,10 +57,15 @@ function createReleaseRepository(releases) {
 }
 
 function prepare(root) {
-  execFileSync(process.execPath, ['scripts/prepare-release.mjs', 'patch'], {
-    cwd: root,
-    stdio: 'pipe',
-  });
+  return execFileSync(
+    process.execPath,
+    ['scripts/prepare-release.mjs', 'patch'],
+    {
+      cwd: root,
+      stdio: 'pipe',
+      encoding: 'utf8',
+    },
+  );
 }
 
 test('release preparation promotes only changes after the previous production', () => {
@@ -177,4 +182,19 @@ test('release preparation fails closed when the feed is missing', () => {
     '1.0.0',
   );
   assert.equal(existsSync(join(root, 'CHANGELOG.md')), false);
+});
+
+test('release instructions enforce a version-only squash subject and blank body', () => {
+  const root = createReleaseRepository([]);
+  const output = prepare(root);
+
+  assert.match(
+    output,
+    /gh pr create --base main --label release:patch --title "v1\.0\.1"/,
+  );
+  assert.match(
+    output,
+    /gh pr merge <PR> --squash --delete-branch --subject "v1\.0\.1" --body ""/,
+  );
+  assert.doesNotMatch(output, /--title "release: v/);
 });

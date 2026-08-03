@@ -1,8 +1,8 @@
 # ============================================================================
-# PR Changelog Guard — exige changeset em changelog/unreleased/*.md
+# PR Changelog Guard — requires a changeset under changelog/unreleased/*.md
 # ============================================================================
-# Isento: PRs que só tocam .github/, docs/, *.md de raiz, LICENSE, dotfiles.
-# Release (base main): exige changelog/RELEASE.md curado.
+# Exempt: PRs that only touch .github/, docs/, root Markdown, LICENSE, dotfiles.
+# Release PRs to main require a curated changelog/RELEASE.md.
 # ============================================================================
 
 name: PR Changelog Guard
@@ -24,7 +24,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Require a changelog file
         env:
@@ -42,17 +42,17 @@ jobs:
           BASE=$(git merge-base "origin/$BASE_REF" HEAD 2>/dev/null || echo "")
           if [ -z "$BASE" ]; then BASE=$(git rev-parse --verify -q HEAD~1 || echo ""); fi
 
-          # PR automática de version-dev: "set version to …" (e legado chore:)
+          # Automatic version-dev PR: "set version to …" (plus legacy chore:)
           TITLE=$(gh pr view "${{ github.event.pull_request.number }}" --json title -q .title 2>/dev/null || echo "")
           if [ "$IS_RELEASE" = 0 ] && { [[ "$TITLE" == set\ version\ to\ * ]] || [[ "$TITLE" == chore:\ set\ version\ to\ * ]]; }; then
-            echo "[changelog] PR de version-dev (isento) — changelog não exigido."
+            echo "[changelog] version-dev PR is exempt."
             exit 0
           fi
 
           if [ "$IS_RELEASE" = 0 ] && [ -n "$BASE" ]; then
             ALL=$(git diff --name-only "$BASE" HEAD 2>/dev/null || echo "")
             if [ -z "$ALL" ]; then
-              echo "[changelog] PR apenas reconcilia histórico (sem diferença de arquivos) — changelog não exigido."
+              echo "[changelog] history-only reconciliation PR is exempt."
               exit 0
             fi
             NON_EXEMPT=0
@@ -63,7 +63,7 @@ jobs:
               esac
             done
             if [ -n "$ALL" ] && [ "$NON_EXEMPT" = 0 ]; then
-              echo "[changelog] PR só toca infra/CI/docs/version (isento) — changelog não exigido."
+              echo "[changelog] infrastructure, CI, docs, or version-only PR is exempt."
               exit 0
             fi
           fi
@@ -81,45 +81,45 @@ jobs:
               printf '%s\n' \
                 "" \
                 "===============================================================" \
-                "PR DE RELEASE (dev→main) SEM O CHANGELOG DE PRODUÇÃO — falhou." \
+                "RELEASE PR (dev→main) HAS NO PRODUCTION CHANGELOG." \
                 "" \
-                "A release precisa de um changelog CURADO, voltado ao usuário." \
-                "Colete as entradas de dev desde a última produção, filtre ruído" \
-                "interno (chore/infra/refactors) e destaque o que muda a UX." \
+                "A release requires a CURATED, user-facing changelog." \
+                "Collect dev entries since the previous production release," \
+                "filter internal noise, and highlight user-visible changes." \
                 "" \
-                "→ Crie:  changelog/RELEASE.md" \
+                "→ Create:  changelog/RELEASE.md" \
                 "" \
                 "  ---" \
-                "  titulo: Voxen <versão> — <tema da release>" \
+                "  titulo: Voxen <version> — <release theme>" \
                 "  ---" \
                 "" \
-                "  Corpo em markdown (seções por tema, não por PR)." \
+                "  Markdown body grouped by theme rather than by PR." \
                 "===============================================================" \
                 "" >&2
-              echo "::error::PR de release sem changelog/RELEASE.md (changelog curado de produção). Detalhes no log."
+              echo "::error::Release PR is missing curated changelog/RELEASE.md. See the log."
             else
               printf '%s\n' \
                 "" \
                 "===============================================================" \
-                "ESTA PR NÃO ADICIONA UM ARQUIVO DE CHANGELOG — por isso falhou." \
+                "THIS PR DOES NOT ADD A CHANGELOG FILE." \
                 "" \
-                "Toda mudança de produto precisa de uma entrada em" \
-                "changelog/unreleased/<slug>.md (linguagem de usuário final)." \
-                "PRs só de infra/CI/docs estão isentas." \
+                "Every product change requires a user-facing entry under" \
+                "changelog/unreleased/<slug>.md. Infrastructure, CI, and" \
+                "documentation-only PRs are exempt." \
                 "" \
-                "→ Crie UM arquivo:  changelog/unreleased/<slug-descritivo>.md" \
+                "→ Create ONE file:  changelog/unreleased/<descriptive-slug>.md" \
                 "" \
                 "  ---" \
                 "  tipo: feat        # feat|fix|perf|ui|infra|security|chore" \
-                "  titulo: Título claro voltado ao usuário" \
+                "  titulo: Clear user-facing title" \
                 "  ---" \
                 "" \
-                "  Corpo em markdown: o que mudou, onde aparece e por quê." \
+                "  Markdown body: what changed, where it appears, and why." \
                 "" \
-                "Formato completo: changelog/README.md" \
+                "Full format: changelog/README.md" \
                 "===============================================================" \
                 "" >&2
-              echo "::error::PR sem arquivo de changelog. Crie changelog/unreleased/<slug>.md (detalhes no log)."
+              echo "::error::PR has no changelog file. Create changelog/unreleased/<slug>.md."
             fi
             exit 1
           fi
@@ -129,7 +129,7 @@ jobs:
             if ! RN_SOURCE="$f" node scripts/release-notes.mjs check; then FAIL=1; fi
           done
           if [ "$FAIL" != 0 ]; then
-            echo "::error::Arquivo de changelog inválido (precisa de frontmatter tipo + titulo e corpo markdown). Veja changelog/README.md."
+            echo "::error::Invalid changelog file: tipo/titulo frontmatter and a Markdown body are required."
             exit 1
           fi
-          echo "[changelog] OK — changelog presente e válido."
+          echo "[changelog] OK — a valid changelog is present."

@@ -1,57 +1,58 @@
-# Politica de Seguranca
+# Security Policy
 
-Obrigado por ajudar a manter o Voxen seguro.
+Thank you for helping keep Voxen secure.
 
-## Versoes suportadas
+## Supported versions
 
-O Voxen ainda esta em fase `0.x`. Apenas a ultima release publicada e a branch `main` recebem correcao de seguranca.
+Voxen is currently in the `0.x` series. Only the latest published release and
+the `main` branch receive security fixes.
 
-| Versao | Suporte |
-|---|---|
-| Ultima release `v0.x.y` | Sim |
-| `main` | Sim |
-| Releases antigas | Nao garantido |
+| Version                 | Supported      |
+| ----------------------- | -------------- |
+| Latest `v0.x.y` release | Yes            |
+| `main`                  | Yes            |
+| Older releases          | Not guaranteed |
 
-## Reportando vulnerabilidades
+## Reporting a vulnerability
 
-Nao abra issue publica para vulnerabilidades.
+Do not open a public issue for a vulnerability. Use GitHub private
+vulnerability reporting through **Security → Report a vulnerability**.
 
-Use o GitHub private vulnerability reporting pelo botao "Report a vulnerability" na aba Security do repositorio.
+If that channel is temporarily unavailable, contact the maintainer privately
+through their GitHub profile and share only the minimum information needed to
+establish a secure channel.
 
-Se o canal privado estiver temporariamente indisponivel, abra um contato privado com o mantenedor pelo perfil GitHub e inclua apenas o minimo necessario ate existir um canal seguro.
+Please include, when possible:
 
-Inclua, quando possivel:
+- affected version or commit;
+- minimal reproduction steps;
+- expected impact;
+- logs or examples without real secrets;
+- a suggested remediation, if known.
 
-- Versao ou commit afetado.
-- Passos para reproduzir.
-- Impacto esperado.
-- Logs ou exemplos sem secrets reais.
-- Sugestao de correcao, se houver.
+## Response process
 
-## Processo esperado
+- Initial acknowledgement: best effort within 7 days.
+- Triage and severity assessment: best effort within 14 days.
+- Remediation: prioritized by impact and complexity.
+- Public disclosure: only after a fix or mitigation is available.
 
-- Confirmacao inicial: melhor esforco em ate 7 dias.
-- Triagem e severidade: melhor esforco em ate 14 dias.
-- Correcao: priorizada conforme impacto e complexidade.
-- Divulgacao publica: somente depois da correcao ou mitigacao estar disponivel.
+## Scope
 
-## Escopo
+In scope:
 
-Dentro do escopo:
+- authentication or authorization bypass;
+- cross-user data exposure;
+- secret disclosure;
+- SSRF, RCE, path traversal, or command injection;
+- supply-chain, container image, or CI workflow compromise.
 
-- Bypass de autenticacao/autorizacao.
-- Vazamento de dados entre usuarios.
-- Exposicao de secrets.
-- SSRF, RCE, path traversal, command injection.
-- Supply chain, imagens Docker e workflows de CI.
+Out of scope:
 
-Fora do escopo:
+- attacks requiring root access to the host;
+- issues caused by weak or exposed production environment values;
+- intentional administrator usage that consumes rate limits or model budget;
+- known dependency vulnerabilities with no applicable Voxen exploit.
 
-- Ataques que exigem acesso root ao host.
-- Problemas causados por `.env` de producao fraco ou exposto pelo operador.
-- Rate limits/custos causados por uso intencional do proprio admin.
-- Vulnerabilidades ja conhecidas em dependencias sem exploit aplicavel ao Voxen.
-
-## Mais detalhes
-
-O threat model e os controles tecnicos ficam em [docs/SECURITY.md](docs/SECURITY.md).
+See the [technical security model](docs/en/SECURITY.md) for implementation
+details.

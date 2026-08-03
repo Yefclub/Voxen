@@ -186,10 +186,13 @@ com versão SemVer de desenvolvimento e changelog:
   (ou `minor`/`major`). O comando materializa a versão e a entrada de produção;
   commite `package.json`, `apps/web/package.json`, `releases.json`, `CHANGELOG.md`
   e `changelog/RELEASE.md`.
-- Abra PR para `main` com label `release:patch`, `release:minor` ou
-  `release:major`.
+- Abra PR para `main` com título exato `vX.Y.Z` e label `release:patch`,
+  `release:minor` ou `release:major`.
 - `pr-release-labels.yml` valida que a versão preparada bate com a label e com
   a última tag estável.
+- Após a aprovação explícita do owner, faça o merge com
+  `gh pr merge <PR> --squash --delete-branch --subject "vX.Y.Z" --body ""`.
+  Isso evita número da PR, lista de commits e trailers no commit estável.
 - Após o merge, `version-main.yml` cria a tag `vX.Y.Z` se ela ainda não existir
   e despacha `release.yml`, que publica imagens e GitHub Release.
 - Sincronize `main` de volta em `dev` por PR normal quando houver commit de

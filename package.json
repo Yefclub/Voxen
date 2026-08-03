@@ -2,7 +2,7 @@
   "name": "voxen",
   "version": "0.13.1-dev.1785757969",
   "private": true,
-  "description": "Voxen — base de conhecimento self-hosted com Vox, sua assistente IA",
+  "description": "Voxen — a self-hosted multimodal knowledge base with agentic search",
   "engines": {
     "bun": ">=1.2.0",
     "node": ">=22.0.0",
@@ -34,7 +34,8 @@
     "format:check": "make format-check",
     "typecheck": "make typecheck",
     "migrate": "make migrate",
-    "release:prepare": "node scripts/prepare-release.mjs"
+    "release:prepare": "node scripts/prepare-release.mjs",
+    "github:settings": "node scripts/github-repository-settings.mjs"
   },
   "license": "MIT"
 }

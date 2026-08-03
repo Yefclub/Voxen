@@ -326,7 +326,7 @@ jobs:
           failed=0
           for pair in "web:$WEB" "worker:$WORKER" "easypanel:$EASYPANEL"; do
             if [ "${pair#*:}" != "success" ]; then
-              echo "::error::Build da imagem ${pair%%:*} não passou (${pair#*:})."
+              echo "::error::Image build ${pair%%:*} did not pass (${pair#*:})."
               failed=1
             fi
           done
