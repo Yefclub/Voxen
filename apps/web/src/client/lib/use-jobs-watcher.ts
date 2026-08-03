@@ -113,6 +113,7 @@ export function useJobsWatcher(enabled: boolean, onNavigate: (path: string) => v
 
 function terminalStage(status: string): TerminalJobStage | null {
   if (status === 'DONE') return 'done';
+  if (status === 'COMPLETED_WITH_WARNINGS') return 'completed_with_warnings';
   if (status === 'FAILED') return 'failed';
   if (status === 'CANCELLED') return 'cancelled';
   return null;
@@ -129,7 +130,7 @@ async function notifyTerminalJob(
   if (
     documentHidden &&
     permission === 'default' &&
-    (evt.stage === 'done' || evt.stage === 'failed')
+    (evt.stage === 'done' || evt.stage === 'completed_with_warnings' || evt.stage === 'failed')
   ) {
     permission = await ensureNotificationPermission();
   }
@@ -142,7 +143,10 @@ async function notifyTerminalJob(
 
   if (channel === 'none') return;
 
-  if (channel === 'notification' && (evt.stage === 'done' || evt.stage === 'failed')) {
+  if (
+    channel === 'notification' &&
+    (evt.stage === 'done' || evt.stage === 'completed_with_warnings' || evt.stage === 'failed')
+  ) {
     const content = buildJobSystemNotification({
       stage: evt.stage,
       jobId: evt.jobId,

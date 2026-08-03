@@ -10,6 +10,7 @@
 // ============================================================================
 
 import { Hono } from 'hono';
+import type { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
@@ -21,12 +22,50 @@ import {
   toMcpTokenMetadata,
 } from '../lib/mcp-tokens';
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
+import { deleteS3Prefix } from '../lib/s3';
 
 type AdminVariables = {
   adminUserId: string;
 };
 
 export const adminRoutes = new Hono<{ Variables: AdminVariables }>();
+
+class AdminUserActionError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 404 | 409 = 400,
+  ) {
+    super(message);
+  }
+}
+
+async function withAdminRosterLock<T>(
+  operation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return db.$transaction(async (tx) => {
+    // Serializa ações que poderiam remover o último administrador aprovado.
+    await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext('voxen:admin-roster'))");
+    return operation(tx);
+  });
+}
+
+async function assertMayRemoveApprovedAdmin(
+  tx: Prisma.TransactionClient,
+  user: {
+    id: string;
+    role: 'ADMIN' | 'USER';
+    status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED';
+  },
+): Promise<void> {
+  if (user.role !== 'ADMIN' || user.status !== 'APPROVED') return;
+  const count = await tx.user.count({ where: { role: 'ADMIN', status: 'APPROVED' } });
+  if (count <= 1) {
+    throw new AdminUserActionError(
+      'É necessário manter pelo menos um administrador aprovado.',
+      409,
+    );
+  }
+}
 
 // Middleware: require session + role ADMIN
 adminRoutes.use('*', async (c, next) => {
@@ -112,6 +151,109 @@ adminRoutes.post('/usuarios/:id/reject', async (c) => {
     select: { id: true, email: true, status: true },
   });
   return c.json({ user: updated });
+});
+
+// POST /api/admin/usuarios/:id/disable — bloqueia acesso e invalida sessões.
+adminRoutes.post('/usuarios/:id/disable', async (c) => {
+  const id = c.req.param('id');
+  if (id === c.get('adminUserId')) {
+    return c.json({ error: 'Não é permitido bloquear a própria conta administrativa.' }, 400);
+  }
+  try {
+    const user = await withAdminRosterLock(async (tx) => {
+      const target = await tx.user.findUnique({ where: { id } });
+      if (!target) throw new AdminUserActionError('Usuário não encontrado.', 404);
+      if (target.status === 'DISABLED')
+        throw new AdminUserActionError('Usuário já está bloqueado.');
+      await assertMayRemoveApprovedAdmin(tx, target);
+      await tx.session.deleteMany({ where: { userId: id } });
+      return tx.user.update({
+        where: { id },
+        data: { status: 'DISABLED' },
+        select: { id: true, email: true, status: true, role: true },
+      });
+    });
+    return c.json({ user });
+  } catch (error) {
+    if (error instanceof AdminUserActionError)
+      return c.json({ error: error.message }, error.status);
+    throw error;
+  }
+});
+
+// POST /api/admin/usuarios/:id/enable — restaura somente uma conta bloqueada.
+adminRoutes.post('/usuarios/:id/enable', async (c) => {
+  const id = c.req.param('id');
+  const user = await db.user.findUnique({ where: { id } });
+  if (!user) return c.json({ error: 'Usuário não encontrado.' }, 404);
+  if (user.status !== 'DISABLED')
+    return c.json({ error: 'Somente usuários bloqueados podem ser reativados.' }, 400);
+  const updated = await db.user.update({
+    where: { id },
+    data: { status: 'APPROVED', approvedAt: user.approvedAt ?? new Date() },
+    select: { id: true, email: true, status: true, role: true },
+  });
+  return c.json({ user: updated });
+});
+
+// PATCH /api/admin/usuarios/:id/role — concede ou remove papel administrativo.
+adminRoutes.patch('/usuarios/:id/role', async (c) => {
+  const id = c.req.param('id');
+  const body = (await c.req.json().catch(() => ({}))) as { role?: unknown };
+  if (body.role !== 'ADMIN' && body.role !== 'USER') {
+    return c.json({ error: 'Papel inválido. Use ADMIN ou USER.' }, 400);
+  }
+  const role = body.role;
+  try {
+    const user = await withAdminRosterLock(async (tx) => {
+      const target = await tx.user.findUnique({ where: { id } });
+      if (!target) throw new AdminUserActionError('Usuário não encontrado.', 404);
+      if (target.role === role) return target;
+      if (role === 'USER') await assertMayRemoveApprovedAdmin(tx, target);
+      return tx.user.update({
+        where: { id },
+        data: { role },
+        select: { id: true, email: true, status: true, role: true },
+      });
+    });
+    return c.json({ user });
+  } catch (error) {
+    if (error instanceof AdminUserActionError)
+      return c.json({ error: error.message }, error.status);
+    throw error;
+  }
+});
+
+// DELETE /api/admin/usuarios/:id — exclusão irreversível com confirmação por e-mail.
+adminRoutes.delete('/usuarios/:id', async (c) => {
+  const id = c.req.param('id');
+  if (id === c.get('adminUserId')) {
+    return c.json({ error: 'Não é permitido excluir a própria conta administrativa.' }, 400);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as { confirmEmail?: unknown };
+  const confirmEmail = typeof body.confirmEmail === 'string' ? body.confirmEmail.trim() : '';
+  try {
+    await withAdminRosterLock(async (tx) => {
+      const target = await tx.user.findUnique({ where: { id } });
+      if (!target) throw new AdminUserActionError('Usuário não encontrado.', 404);
+      if (confirmEmail !== target.email) {
+        throw new AdminUserActionError(
+          'Digite exatamente o e-mail da conta para confirmar a exclusão.',
+        );
+      }
+      await assertMayRemoveApprovedAdmin(tx, target);
+      // O namespace é exclusivamente do workspace; só removemos após validar
+      // todas as proteções da conta dentro da mesma transação serializada.
+      await deleteS3Prefix(`workspaces/${target.id}/`);
+      await tx.setting.deleteMany({ where: { scope: 'USER', userId: target.id } });
+      await tx.user.delete({ where: { id: target.id } });
+    });
+    return c.json({ ok: true });
+  } catch (error) {
+    if (error instanceof AdminUserActionError)
+      return c.json({ error: error.message }, error.status);
+    throw error;
+  }
 });
 
 // GET /api/admin/instance — estado da instância (allow_signups + timezone)

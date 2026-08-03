@@ -344,6 +344,7 @@ export async function reindexTranscriptBrain(
       url: true,
       title: true,
       channel: true,
+      author: true,
       language: true,
       transcriptionMethod: true,
       thumbnailUrl: true,
@@ -371,6 +372,7 @@ export async function reindexTranscriptBrain(
       source: transcript.source,
       url: transcript.url,
       channel: transcript.channel,
+      author: transcript.author,
       language: transcript.language,
       transcriptionMethod: transcript.transcriptionMethod,
       thumbnailUrl: transcript.thumbnailUrl,
@@ -425,7 +427,7 @@ export async function reindexTranscriptBrain(
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
     status: transcript.status,
-    text: `${transcript.title}\n${transcript.channel ?? ''}\n${transcript.summaryMd || transcript.plainText}`,
+    text: `${transcript.title}\n${transcript.channel ?? ''}\n${transcript.author ?? ''}\n${transcript.summaryMd || transcript.plainText}`,
     beforeEdgeWrite: options.beforeEdgeWrite,
     assertLeaseOwnership: options.assertLeaseOwnership,
   });
@@ -1637,6 +1639,13 @@ function scoreSemanticProfile(
   if (currentChannel && currentChannel === candidateChannel) {
     score += 0.85;
     reasons.push({ kind: 'channel', label: 'Mesmo canal', value: currentChannel, weight: 0.85 });
+  }
+
+  const currentAuthor = conceptSlug(asString(currentMetadata.author));
+  const candidateAuthor = conceptSlug(asString(candidateMetadata.author));
+  if (currentAuthor && currentAuthor === candidateAuthor) {
+    score += 0.9;
+    reasons.push({ kind: 'author', label: 'Mesmo autor', value: currentAuthor, weight: 0.9 });
   }
 
   const currentDomain = urlDomain(asString(currentMetadata.url));

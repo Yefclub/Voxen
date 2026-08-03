@@ -1059,6 +1059,59 @@ jobsRoutes.post('/:id/retry', async (c) => {
   return c.json({ jobId: newJob.id, status: newJob.status, sourceUrl: newJob.sourceUrl }, 201);
 });
 
+// POST /api/jobs/:id/enrichment-retry — reaproveita a transcrição persistida.
+jobsRoutes.post('/:id/enrichment-retry', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const job = await db.job.findFirst({
+    where: { id, userId, status: 'COMPLETED_WITH_WARNINGS' },
+    select: { id: true, transcriptId: true },
+  });
+  if (!job?.transcriptId) {
+    return c.json({ error: 'Não há enriquecimentos pendentes para este job.' }, 400);
+  }
+  const transcript = await db.transcript.findFirst({
+    where: { id: job.transcriptId, userId },
+    select: { summaryStatus: true, taggingStatus: true },
+  });
+  if (!transcript) return c.json({ error: 'Conteúdo não encontrado.' }, 404);
+  await db.$transaction([
+    db.transcript.update({
+      where: { id: job.transcriptId },
+      data: {
+        ...(transcript.summaryStatus !== 'COMPLETE' && transcript.summaryStatus !== 'SKIPPED'
+          ? { summaryStatus: 'RETRY', summaryNextAttemptAt: new Date() }
+          : {}),
+        ...(transcript.taggingStatus !== 'COMPLETE' && transcript.taggingStatus !== 'SKIPPED'
+          ? { taggingStatus: 'RETRY', taggingNextAttemptAt: new Date() }
+          : {}),
+      },
+    }),
+    db.job.update({
+      where: { id },
+      data: {
+        status: 'QUEUED',
+        errorMsg: null,
+        progressStage: 'queued',
+        progressPercent: 0,
+        progressedAt: new Date(),
+        startedAt: null,
+        finishedAt: null,
+        workerId: null,
+        heartbeatAt: null,
+        leaseExpiresAt: null,
+      },
+    }),
+  ]);
+  await notifyNewJob(id).catch(() => undefined);
+  await publishJobEvent(userId, {
+    jobId: id,
+    stage: 'queued',
+    transcriptId: job.transcriptId,
+  }).catch(() => undefined);
+  return c.json({ jobId: id, transcriptId: job.transcriptId, status: 'QUEUED' });
+});
+
 // POST /api/jobs/:id/cancel — sinaliza cancelamento.
 // QUEUED → vira CANCELLED imediatamente no DB.
 // RUNNING → publica no canal jobs:cancel; worker checa periodicamente
@@ -1212,7 +1265,9 @@ jobsRoutes.get('/:id/events', async (c) => {
         jobId: snapshot.id,
         type: snapshot.type,
         stage: snapshot.progressStage ?? snapshot.status.toLowerCase(),
-        percent: snapshot.progressPercent ?? (snapshot.status === 'DONE' ? 100 : 0),
+        percent:
+          snapshot.progressPercent ??
+          (snapshot.status === 'DONE' || snapshot.status === 'COMPLETED_WITH_WARNINGS' ? 100 : 0),
         transcriptId: snapshot.transcriptId,
         errorMsg: snapshot.errorMsg,
         ts: (snapshot.progressedAt ?? new Date()).toISOString(),
@@ -1247,6 +1302,7 @@ jobsRoutes.get('/:id/events', async (c) => {
     // Job já em estado terminal: o snapshot é suficiente.
     if (
       snapshot.status === 'DONE' ||
+      snapshot.status === 'COMPLETED_WITH_WARNINGS' ||
       snapshot.status === 'FAILED' ||
       snapshot.status === 'CANCELLED'
     ) {

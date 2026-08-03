@@ -4,7 +4,7 @@
  * - auto-navegação para a transcrição no DONE focado
  */
 
-export type TerminalJobStage = 'done' | 'failed' | 'cancelled';
+export type TerminalJobStage = 'done' | 'completed_with_warnings' | 'failed' | 'cancelled';
 
 export type TerminalFeedbackChannel = 'toast' | 'notification' | 'none';
 
@@ -60,12 +60,12 @@ export function buildJobSystemNotification(
   args: BuildJobNotificationArgs,
 ): SystemNotificationContent {
   const icon = args.iconUrl ?? '/voxen-192.png';
-  if (args.stage === 'done') {
+  if (args.stage === 'done' || args.stage === 'completed_with_warnings') {
     return {
       title: args.labels.readyTitle,
       body: args.labels.readyBody,
       icon,
-      tag: `voxen-job-${args.jobId}-done`,
+      tag: `voxen-job-${args.jobId}-${args.stage}`,
       url: args.transcriptId ? `/transcricoes/${args.transcriptId}` : `/jobs/${args.jobId}`,
     };
   }

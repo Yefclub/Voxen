@@ -78,8 +78,12 @@ export function JobDetalhePage(): React.ReactElement {
     setRetryError(null);
     setRetrying(true);
     try {
-      const res = await apiPost<{ jobId: string; transcriptId?: string }>(`/api/jobs/${id}/retry`);
-      if (res.transcriptId) {
+      const endpoint =
+        data?.job?.status === 'COMPLETED_WITH_WARNINGS' ? 'enrichment-retry' : 'retry';
+      const res = await apiPost<{ jobId: string; transcriptId?: string }>(
+        `/api/jobs/${id}/${endpoint}`,
+      );
+      if (res.transcriptId && endpoint === 'retry') {
         navigate(`/transcricoes/${res.transcriptId}`);
         return;
       }
@@ -103,7 +107,12 @@ export function JobDetalhePage(): React.ReactElement {
       }
       setEvents((prev) => mergeJobProgressEvents(prev, [evt]));
       if (typeof evt.percent === 'number') setPercent(evt.percent);
-      if (evt.stage === 'done' || evt.stage === 'failed' || evt.stage === 'cancelled') {
+      if (
+        evt.stage === 'done' ||
+        evt.stage === 'completed_with_warnings' ||
+        evt.stage === 'failed' ||
+        evt.stage === 'cancelled'
+      ) {
         if (evt.stage === 'done' && id) {
           const target = shouldAutoOpenTranscript({
             stage: evt.stage,
@@ -353,6 +362,22 @@ export function JobDetalhePage(): React.ReactElement {
             </motion.div>
           )}
 
+          {job.status === 'COMPLETED_WITH_WARNINGS' && job.transcriptId && (
+            <Alert variant="warning">
+              <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+                <span>
+                  {job.errorMsg ?? 'Conteúdo disponível; resumo, tags ou Brain têm pendências.'}
+                </span>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to={`/transcricoes/${job.transcriptId}`}>Abrir conteúdo</Link>
+                </Button>
+                <Button variant="primary" size="sm" onClick={onRetry} disabled={retrying}>
+                  {retrying ? <Spinner /> : <RotateCw className="h-3.5 w-3.5" />} Repetir pendências
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Estado de erro */}
           {job.status === 'FAILED' && (
             <motion.div
@@ -407,7 +432,9 @@ export function JobDetalhePage(): React.ReactElement {
                     const isCurrent = i === events.length - 1 && isActive;
                     const isDone =
                       i < events.length - 1 ||
-                      (job.status === 'DONE' && e.stage !== 'failed' && e.stage !== 'cancelled');
+                      ((job.status === 'DONE' || job.status === 'COMPLETED_WITH_WARNINGS') &&
+                        e.stage !== 'failed' &&
+                        e.stage !== 'cancelled');
                     const eventDuration = formatJobElapsed(
                       jobProgressEventDurationMs(events, i, job.finishedAt, now),
                     );

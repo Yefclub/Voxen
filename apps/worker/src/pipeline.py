@@ -159,20 +159,12 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
     )
     log.info("job-claimed")
 
-    # Checkpoint canônico: se o processo morreu após vincular o conteúdo, a
-    # nova tentativa apenas conclui o mesmo job; nunca cria outra transcrição.
+    # Checkpoint canônico: se morreu após vincular o conteúdo, retomamos apenas
+    # os enriquecimentos; o job não é concluído até a etapa final de fato.
     existing_transcript_id: str | None = claimed.get("transcriptId")
     if existing_transcript_id:
-        await db.mark_job_done(job_id)
-        await events.publish_job_event(
-            user_id,
-            job_id,
-            "done",
-            percent=100,
-            transcript_id=existing_transcript_id,
-        )
         log.info("job-resumed-from-transcript-checkpoint", transcript_id=existing_transcript_id)
-        await _enrich_persisted_transcript(
+        await _complete_persisted_job(
             user_id=user_id,
             transcript_id=existing_transcript_id,
             job_id=job_id,
@@ -530,11 +522,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_transcript(job_id, new_transcript_id)
 
-    await db.mark_job_done(job_id)
-    await events.publish_job_event(
-        user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
-    )
-    await _enrich_persisted_transcript(
+    await _complete_persisted_job(
         user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
     log.info("job-done", transcript_id=new_transcript_id)
@@ -668,11 +656,7 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_transcript(job_id, new_transcript_id)
-    await db.mark_job_done(job_id)
-    await events.publish_job_event(
-        user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
-    )
-    await _enrich_persisted_transcript(
+    await _complete_persisted_job(
         user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
     log.info("upload-job-done", transcript_id=new_transcript_id)
@@ -782,11 +766,7 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_transcript(job_id, new_transcript_id)
-    await db.mark_job_done(job_id)
-    await events.publish_job_event(
-        user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
-    )
-    await _enrich_persisted_transcript(
+    await _complete_persisted_job(
         user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
     log.info("image-job-done", transcript_id=new_transcript_id)
@@ -895,11 +875,7 @@ async def _run_document_pipeline(
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_transcript(job_id, new_transcript_id)
-    await db.mark_job_done(job_id)
-    await events.publish_job_event(
-        user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
-    )
-    await _enrich_persisted_transcript(
+    await _complete_persisted_job(
         user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
     log.info("document-job-done", transcript_id=new_transcript_id)
@@ -1049,11 +1025,7 @@ async def _run_x_analysis_pipeline(
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_transcript(job_id, new_transcript_id)
-    await db.mark_job_done(job_id)
-    await events.publish_job_event(
-        user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
-    )
-    await _enrich_persisted_transcript(
+    await _complete_persisted_job(
         user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
     log.info("x-analysis-job-done", transcript_id=new_transcript_id)
@@ -1065,22 +1037,27 @@ async def _enrich_persisted_transcript(
     transcript_id: str,
     job_id: str,
     log: Any,  # noqa: ANN401
-) -> None:
-    """Enriquecimentos não bloqueiam o estado canônico DONE do Job."""
+) -> list[str]:
+    """Executa as etapas finais e devolve pendências recuperáveis explícitas."""
+    warnings: list[str] = []
     try:
+        await events.publish_job_event(user_id, job_id, "summarizing", percent=72, transcript_id=transcript_id)
         await summary.maybe_generate(
             user_id=user_id,
             transcript_id=transcript_id,
             job_id=job_id,
             log=log,
         )
+        await events.publish_job_event(user_id, job_id, "tagging", percent=82, transcript_id=transcript_id)
         await _maybe_generate_tags(
             user_id=user_id,
             job_id=job_id,
             transcript_id=transcript_id,
             log=log,
         )
-        await db.reindex_transcript_brain_node(user_id, transcript_id)
+        await events.publish_job_event(user_id, job_id, "indexing_brain", percent=92, transcript_id=transcript_id)
+        if not await db.reindex_transcript_brain_node(user_id, transcript_id):
+            warnings.append("A indexação no Brain será repetida automaticamente.")
         await _maybe_grounded_brain_extract(
             user_id=user_id,
             transcript_id=transcript_id,
@@ -1092,12 +1069,48 @@ async def _enrich_persisted_transcript(
             transcript_id=transcript_id,
             log=log,
         )
-    except Exception as exc:  # noqa: BLE001 — estado canônico já está DONE
+    except Exception as exc:  # noqa: BLE001 — preserva o conteúdo e expõe a pendência
+        warnings.append("Uma etapa de enriquecimento falhou temporariamente.")
         log.warning(
             "transcript-enrichment-deferred",
             transcript_id=transcript_id,
             **_error_diagnostic(exc, "TRANSCRIPT_ENRICHMENT_DEFERRED"),
         )
+    statuses = await db.get_transcript_enrichment_statuses(user_id, transcript_id)
+    if statuses:
+        if statuses["summary"] not in {"COMPLETE", "SKIPPED"}:
+            warnings.append("Resumo pendente de nova tentativa.")
+        if statuses["tagging"] not in {"COMPLETE", "SKIPPED"}:
+            warnings.append("Tags pendentes de nova tentativa.")
+    else:
+        warnings.append("Não foi possível confirmar as etapas do conteúdo.")
+    return list(dict.fromkeys(warnings))
+
+
+async def _complete_persisted_job(
+    *,
+    user_id: str,
+    transcript_id: str,
+    job_id: str,
+    log: Any,  # noqa: ANN401
+) -> None:
+    warnings = await _enrich_persisted_transcript(
+        user_id=user_id, transcript_id=transcript_id, job_id=job_id, log=log
+    )
+    if warnings:
+        message = " ".join(warnings)
+        await db.mark_job_completed_with_warnings(job_id, message)
+        await events.publish_job_event(
+            user_id,
+            job_id,
+            "completed_with_warnings",
+            percent=100,
+            transcript_id=transcript_id,
+            error_msg=message,
+        )
+        return
+    await db.mark_job_done(job_id)
+    await events.publish_job_event(user_id, job_id, "done", percent=100, transcript_id=transcript_id)
 
 
 async def _maybe_grounded_brain_extract(
@@ -1667,7 +1680,8 @@ async def _persist(
     # Sem fallback: URL já foi validada por parseVideoUrl no web + _canonical_video_url
     # no chat. Se chegou aqui sem source detectável, é bug de canonicalização —
     # prefere falhar cedo a salvar Transcript com source errado.
-    source = source_override or video_url.detect_source(source_url)
+    canonical_url = probe_info.canonical_url or source_url
+    source = source_override or video_url.detect_source(canonical_url)
     if source is None:
         raise PermanentError.public(
             "SOURCE_URL_INVALID",
@@ -1682,7 +1696,7 @@ async def _persist(
             remote_url=probe_info.thumbnail_url,
             user_id=user_id,
             transcript_id=transcript_id,
-            source_url=source_url,
+            source_url=canonical_url,
         )
         if mirrored_key:
             preview_object_key = mirrored_key
@@ -1702,11 +1716,11 @@ async def _persist(
         transcript_id=transcript_id,
         user_id=user_id,
         source=source,
-        url=source_url,
+        url=canonical_url,
         video_id=probe_info.video_id,
         title=title_override or probe_info.title,
         channel=probe_info.channel,
-        author=None,
+        author=probe_info.author,
         duration_sec=probe_info.duration_sec,
         published_at=probe_info.published_at,
         thumbnail_url=thumbnail_for_doc,
@@ -1742,12 +1756,12 @@ async def _persist(
                 "publishedAt", "thumbnailUrl", language, "transcriptionMethod",
                 model, "costUsd", "mdPath", "plainText", frontmatter,
                 "originalObjectKey", "originalFilename", "originalMimeType",
-                "previewObjectKey", "previewMimeType",
+                "previewObjectKey", "previewMimeType", "sourceMetadata",
                 "createdAt", "updatedAt"
             ) VALUES (
                 $1, $2, $3::"TranscriptSource", $4, $5, $6, $7, $8, $9, $10, $11,
                 $12::"TranscriptionMethod", $13, $14, $15, $16, $17::jsonb,
-                $18, $19, $20, $21, $22,
+                $18, $19, $20, $21, $22, $23::jsonb,
                 NOW(), NOW()
             )
             """,
@@ -1775,6 +1789,13 @@ async def _persist(
                 original_mime_type,
                 preview_object_key,
                 preview_mime_type,
+                json.dumps(
+                    {
+                        "submittedUrl": source_url,
+                        "canonicalUrl": canonical_url,
+                        "channelUrl": probe_info.channel_url,
+                    }
+                ),
             )
             await db.upsert_transcript_brain_node(
                 conn,
@@ -1784,6 +1805,7 @@ async def _persist(
                 url=doc.url,
                 title=doc.title,
                 channel=doc.channel,
+                author=doc.author,
                 language=doc.language,
                 transcription_method=doc.transcription_method,
                 thumbnail_url=doc.thumbnail_url,

@@ -63,7 +63,13 @@ export interface ModelPurposeStatus {
   effective: string;
 }
 
-export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';
+export type JobStatus =
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'DONE'
+  | 'COMPLETED_WITH_WARNINGS'
+  | 'FAILED'
+  | 'CANCELLED';
 export type JobType =
   | 'DOWNLOAD_AND_TRANSCRIBE'
   | 'SCRAPE_WEB'
