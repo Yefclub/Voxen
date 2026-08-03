@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785723415",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Jobs em processamento se recuperam após reinícios",
+    "body": "- Jobs em execução usam lease e heartbeat persistidos no Postgres.\n- Um worker reiniciado recupera tentativas interrompidas sem deixar a Fila presa\n  em 99%; após três interrupções, o job termina com uma mensagem recuperável.\n- Conteúdo já persistido é retomado pelo checkpoint existente, sem criar uma\n  segunda transcrição.\n- Resumo, tags, embeddings e grafo não bloqueiam mais a conclusão canônica do\n  job depois que o conteúdo foi salvo.\n- Redis continua acelerando wakeups e progresso realtime, enquanto o Postgres é\n  a fonte durável da fila.",
+    "pr": 579,
+    "author": "Kalyel",
+    "date": "2026-08-02T23:16:45-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/579"
+  },
+  {
     "version": "0.13.0-dev.1785717760",
     "channel": "dev",
     "type": "fix",
