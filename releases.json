@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.1-dev.1785771252",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Quality Gate impede regressões graduais no código",
+    "body": "O CI agora compara cobertura de testes, duplicação e tamanho de arquivos com\numa linha de base versionada. A catraca permite manter ou melhorar cada métrica,\nmas bloqueia novas dívidas e publica um relatório detalhado para orientar a\ncorreção automática da pull request.",
+    "pr": 599,
+    "author": "Kalyel",
+    "date": "2026-08-03T12:34:00-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/599"
+  },
+  {
     "version": "0.13.1-dev.1785767741",
     "channel": "dev",
     "type": "feat",

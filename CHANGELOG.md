@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.13.1-dev.1785771252 — 2026-08-03 · Dev
+
+### 🧹 Quality Gate impede regressões graduais no código
+
+O CI agora compara cobertura de testes, duplicação e tamanho de arquivos com
+uma linha de base versionada. A catraca permite manter ou melhorar cada métrica,
+mas bloqueia novas dívidas e publica um relatório detalhado para orientar a
+correção automática da pull request.
+
 ## v0.13.1-dev.1785767741 — 2026-08-03 · Dev
 
 ### ✨ Personal classic and focused interface modes
