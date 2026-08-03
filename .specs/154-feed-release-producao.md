@@ -30,6 +30,8 @@ canal de desenvolvimento.
   produções anteriores ao adicionar uma nova produção.
 - The system shall manter uma única entrada de produção por versão, mesmo se a
   preparação for repetida na mesma branch.
+- The system shall rejeitar um feed ausente, malformado ou cuja raiz não seja
+  uma lista antes de alterar versões ou histórico.
 
 ### Event-driven (resposta a evento)
 
@@ -53,6 +55,8 @@ canal de desenvolvimento.
       entradas `dev` ainda não promovidas.
 - [ ] `changelog/RELEASE.md` continua presente depois da preparação.
 - [ ] Repetir a preparação da mesma versão atualiza a promoção sem duplicá-la.
+- [ ] JSON malformado e raiz não-array falham sem sobrescrever o feed ou alterar
+      as versões dos pacotes.
 - [ ] `CHANGELOG.md` é regenerado com a nova produção.
 - [ ] Um teste de integração do comando impede regressão do contrato completo.
 - [ ] O histórico atual contém a produção `0.13.1`, tornando-a visível em

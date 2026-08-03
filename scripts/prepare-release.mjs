@@ -67,12 +67,6 @@ if (!parsedBase) {
 
 const next = bumpVersion(parsedBase, bump);
 
-for (const file of versionFiles) {
-  const json = JSON.parse(readFileSync(file, 'utf8'));
-  json.version = next;
-  writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
-}
-
 execFileSync(process.execPath, ['scripts/release-notes.mjs', 'prod'], {
   env: {
     ...process.env,
@@ -80,6 +74,12 @@ execFileSync(process.execPath, ['scripts/release-notes.mjs', 'prod'], {
   },
   stdio: 'inherit',
 });
+
+for (const file of versionFiles) {
+  const json = JSON.parse(readFileSync(file, 'utf8'));
+  json.version = next;
+  writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
+}
 
 console.log(`Release preparada: ${base} -> ${next} (${bump})`);
 console.log('');
