@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import postgres from "migration-gate-postgres";
 import {
   analyzeMigrationHistory,
   missingCustomGinIndexes,
@@ -114,19 +115,45 @@ function runPrisma(name, args, env) {
   };
 }
 
-function driftStage(env) {
+async function catalogIndexMethods() {
+  const sql = postgres(databaseUrl, {
+    max: 1,
+    connect_timeout: 5,
+    idle_timeout: 1,
+    max_lifetime: 60,
+    prepare: false,
+  });
+  try {
+    const rows = await sql`
+      SELECT relation.relname AS name, method.amname AS method
+         FROM pg_catalog.pg_class AS relation
+         JOIN pg_catalog.pg_namespace AS namespace
+           ON namespace.oid = relation.relnamespace
+         JOIN pg_catalog.pg_am AS method
+           ON method.oid = relation.relam
+        WHERE relation.relkind = 'i'
+          AND namespace.nspname = current_schema()
+        ORDER BY relation.relname
+    `;
+    return new Map(rows.map(({ name, method }) => [name, method]));
+  } finally {
+    await sql.end({ timeout: 1 }).catch(() => {});
+  }
+}
+
+async function driftStage(env) {
   const allowlist = JSON.parse(readFileSync(DRIFT_ALLOWLIST, "utf8"));
   if (allowlist?.schemaVersion !== 1) {
     throw new Error("prisma/migration-drift-allowlist.json is invalid.");
   }
-  const migrationSql = [...currentMigrations().values()].join("\n");
+  const indexMethods = await catalogIndexMethods();
   const missingIndexes = missingCustomGinIndexes(
-    migrationSql,
+    indexMethods,
     allowlist.ignoredIndexes,
   );
   if (missingIndexes.length > 0) {
     throw new Error(
-      `Drift allowlist entries are not custom GIN indexes in migration history: ${missingIndexes.join(", ")}.`,
+      `Drift allowlist entries are not live GIN indexes in the replayed database: ${missingIndexes.join(", ")}.`,
     );
   }
   const result = spawnSync(
@@ -183,9 +210,9 @@ function driftStage(env) {
   };
 }
 
-function captureStage(name, operation) {
+async function captureStage(name, operation) {
   try {
-    return operation();
+    return await operation();
   } catch (error) {
     mkdirSync(join(OUTPUT, "logs"), { recursive: true });
     const log = `logs/${name}.log`;
@@ -250,7 +277,7 @@ function renderSummary(staticResult, stages, urlFailures) {
   return `${lines.join("\n")}\n`;
 }
 
-function main() {
+async function main() {
   mkdirSync(OUTPUT, { recursive: true });
   let staticResult;
   try {
@@ -281,17 +308,17 @@ function main() {
   if (urlFailures.length === 0) {
     const env = { ...process.env, DATABASE_URL: databaseUrl };
     stages.push(
-      captureStage("validate", () =>
+      await captureStage("validate", () =>
         runPrisma("validate", ["validate", `--schema=${SCHEMA}`], env),
       ),
-      captureStage("format", () => formatStage(env)),
-      captureStage("deploy", () =>
+      await captureStage("format", () => formatStage(env)),
+      await captureStage("deploy", () =>
         runPrisma("deploy", ["migrate", "deploy", `--schema=${SCHEMA}`], env),
       ),
-      captureStage("status", () =>
+      await captureStage("status", () =>
         runPrisma("status", ["migrate", "status", `--schema=${SCHEMA}`], env),
       ),
-      captureStage("drift", () => driftStage(env)),
+      await captureStage("drift", () => driftStage(env)),
     );
   }
 
@@ -324,4 +351,4 @@ function main() {
   }
 }
 
-main();
+await main();

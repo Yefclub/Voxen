@@ -11,8 +11,10 @@ Fix the new migration or schema mismatch; never edit, rename or remove a
 migration already present on the target branch.
 
 `prisma/migration-drift-allowlist.json` contains only the names of custom GIN
-indexes that the Prisma data model cannot express. It does not suppress column,
-constraint, table, enum or ordinary index drift.
+indexes that the Prisma data model cannot express. The gate verifies each entry
+against the access method in the replayed PostgreSQL catalog; it does not infer
+the final state from SQL text. It does not suppress column, constraint, table,
+enum or ordinary index drift.
 
 The dynamic check requires two empty PostgreSQL databases whose names end in
 `migration_gate` and `shadow`, respectively:
