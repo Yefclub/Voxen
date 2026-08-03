@@ -139,8 +139,11 @@ function addProd() {
   }
   const hadFile = fs.existsSync(FILE);
   const entries = load();
+  const entriesWithoutCurrentVersion = entries.filter(
+    (entry) => !(entry.channel === 'prod' && entry.version === version),
+  );
   const promoted = [];
-  for (const e of entries) {
+  for (const e of entriesWithoutCurrentVersion) {
     if (e.channel === 'prod') break;
     if (e.channel === 'dev') {
       promoted.unshift({
@@ -181,16 +184,9 @@ function addProd() {
     entry.title = curated.title;
     entry.body = curated.body;
   }
-  entries.unshift(entry);
-  save(entries);
-  if (curated) {
-    try {
-      fs.unlinkSync(RELEASE_FILE);
-    } catch {
-      /* best-effort */
-    }
-  }
-  genChangelog(entries);
+  const nextEntries = [entry, ...entriesWithoutCurrentVersion];
+  save(nextEntries);
+  genChangelog(nextEntries);
   const msg = `prod: v${version} ${curated ? '(curado) ' : ''}agregou ${promoted.length} mudança(s)`;
   console.log(`[changelog] ${msg}`);
   summary(`- **release notes** — ${msg}`);

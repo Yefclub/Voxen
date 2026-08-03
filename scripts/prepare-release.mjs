@@ -73,10 +73,20 @@ for (const file of versionFiles) {
   writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
 }
 
+execFileSync(process.execPath, ['scripts/release-notes.mjs', 'prod'], {
+  env: {
+    ...process.env,
+    RN_VERSION: next,
+  },
+  stdio: 'inherit',
+});
+
 console.log(`Release preparada: ${base} -> ${next} (${bump})`);
 console.log('');
 console.log('Próximos passos sugeridos:');
 console.log(`  git checkout -b release/v${next}   # se ainda não estiver numa branch de release`);
-console.log('  git add package.json apps/web/package.json');
+console.log(
+  '  git add package.json apps/web/package.json releases.json CHANGELOG.md changelog/RELEASE.md',
+);
 console.log(`  git commit -m "chore: release v${next}"`);
 console.log(`  gh pr create --base main --label release:${bump} --title "release: v${next}"`);

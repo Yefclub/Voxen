@@ -92,11 +92,16 @@ jobs:
       MASTER_KEY: dm94ZW5fY2lfbWFzdGVyX2tleV8zMl9ieXRlcyEhISE=
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
+      - name: Test release automation
+        run: node --test scripts/*.test.mjs
       # Testes da extensão MV3 (apps/extension/tests) — não dependem de DB nem
       # de Prisma, então rodam antes e falham rápido.
       - name: Test extension
