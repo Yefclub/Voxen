@@ -46,6 +46,11 @@ const AdminIntegracoesPage = lazy(() =>
     default: AdminIntegracoesPage,
   })),
 );
+const AdminAutenticacaoPage = lazy(() =>
+  import('./pages/admin-autenticacao').then(({ AdminAutenticacaoPage }) => ({
+    default: AdminAutenticacaoPage,
+  })),
+);
 const ContaPage = lazy(() =>
   import('./pages/conta').then(({ ContaPage }) => ({ default: ContaPage })),
 );
@@ -196,6 +201,7 @@ function AppRoutes(): React.ReactElement {
           <Route path="usuarios" element={<AdminUsuariosPage />} />
           <Route path="custos" element={<AdminCustosPage />} />
           <Route path="integracoes" element={<AdminIntegracoesPage />} />
+          <Route path="autenticacao" element={<AdminAutenticacaoPage />} />
         </Route>
         <Route path="/conta" element={<ContaPage />} />
         <Route path="/conta/plataformas" element={<ContaPlataformasPage />} />

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, Eye, EyeOff, Lock } from '@/components/ui/icons';
+import { ArrowRight, Eye, EyeOff, KeyRound, Lock } from '@/components/ui/icons';
 import { motion } from 'motion/react';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Spinner } from '../components/ui/spinner';
@@ -25,6 +25,7 @@ export function LoginPage(): React.ReactElement {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [ssoLoading, setSsoLoading] = useState(false);
   const [instance, setInstance] = useState<InstanceState | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -45,6 +46,32 @@ export function LoginPage(): React.ReactElement {
     };
   }, [setLocale]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const ssoError = params.get('error');
+    if (ssoError === 'ACCOUNT_PENDING') {
+      navigate('/pendente', { replace: true });
+    } else if (ssoError === 'ACCOUNT_REJECTED') {
+      setError(t('auth.ssoRejected'));
+    } else if (ssoError === 'ACCOUNT_DISABLED') {
+      setError(t('auth.ssoDisabled'));
+    } else if (ssoError) {
+      setError(t('auth.ssoError'));
+    }
+  }, [location.search, navigate, t]);
+
+  function nextPath(): string {
+    const fromState =
+      typeof location.state === 'object' &&
+      location.state !== null &&
+      'from' in location.state &&
+      typeof location.state.from === 'string'
+        ? location.state.from
+        : null;
+    const fromQuery = new URLSearchParams(location.search).get('next');
+    return safeNextPath(fromQuery ?? fromState, '/');
+  }
+
   async function onSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setError(null);
@@ -52,16 +79,7 @@ export function LoginPage(): React.ReactElement {
     try {
       await apiPost('/api/auth/sign-in/email', { email, password });
       await refresh();
-      const fromState =
-        typeof location.state === 'object' &&
-        location.state !== null &&
-        'from' in location.state &&
-        typeof location.state.from === 'string'
-          ? location.state.from
-          : null;
-      const fromQuery = new URLSearchParams(location.search).get('next');
-      const nextPath = safeNextPath(fromQuery ?? fromState, '/');
-      navigate(nextPath);
+      navigate(nextPath());
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         setError(err.message);
@@ -72,6 +90,35 @@ export function LoginPage(): React.ReactElement {
       }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onSso(): Promise<void> {
+    if (!email.trim()) {
+      setError(t('auth.ssoEmailRequired'));
+      return;
+    }
+    setError(null);
+    setSsoLoading(true);
+    try {
+      const response = await apiPost<{ url: string; redirect: true }>('/api/auth/sign-in/sso', {
+        email: email.trim(),
+        loginHint: email.trim(),
+        callbackURL: nextPath(),
+        errorCallbackURL: '/entrar',
+        newUserCallbackURL: '/pendente',
+        providerType: 'oidc',
+      });
+      const target = new URL(response.url);
+      if (target.protocol !== 'https:') throw new Error('Unsafe SSO redirect');
+      window.location.assign(target.toString());
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.status === 404
+          ? t('auth.ssoNoProvider')
+          : t('auth.ssoError'),
+      );
+      setSsoLoading(false);
     }
   }
 
@@ -165,12 +212,31 @@ export function LoginPage(): React.ReactElement {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || ssoLoading}
                   className="w-full rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-500 py-3.5 font-semibold text-emerald-950 hover:from-emerald-300 hover:to-emerald-400 active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-60"
                 >
                   {loading ? <Spinner /> : t('auth.signIn')}
                   {!loading && <ArrowRight className="h-4 w-4" />}
                 </button>
+
+                {instance?.ssoEnabled && (
+                  <div className="space-y-3 pt-1">
+                    <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
+                      <span className="h-px flex-1 bg-[var(--color-app-border)]" />
+                      {t('auth.ssoSeparator')}
+                      <span className="h-px flex-1 bg-[var(--color-app-border)]" />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={loading || ssoLoading}
+                      onClick={() => void onSso()}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface)] py-3.5 text-sm font-semibold text-[var(--color-app-fg)] transition-colors hover:bg-[var(--color-app-surface-hover)] disabled:opacity-60"
+                    >
+                      {ssoLoading ? <Spinner /> : <KeyRound className="h-4 w-4" />}
+                      {t('auth.ssoAction')}
+                    </button>
+                  </div>
+                )}
               </form>
 
               {canSignUp && (

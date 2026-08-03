@@ -150,6 +150,27 @@ model Verification {
   @@index([identifier])
 }
 
+// Provedor OIDC global da instância. `oidcConfig` contém o envelope
+// AES-256-GCM completo; o adapter de autenticação o abre apenas em memória.
+// `userId` registra quem criou a configuração, mas não define propriedade e
+// não possui FK de propósito: excluir um admin não pode excluir o SSO global.
+model SsoProvider {
+  id             String    @id @default(cuid())
+  providerId     String    @unique
+  issuer         String
+  domain         String
+  domainVerified Boolean   @default(false)
+  oidcConfig     String?   @db.Text
+  samlConfig     String?   @db.Text
+  userId         String
+  organizationId String?
+  disabledAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([domainVerified, disabledAt])
+}
+
 // ============================================================================
 // SETTINGS (cifrado com master key)
 // ============================================================================
