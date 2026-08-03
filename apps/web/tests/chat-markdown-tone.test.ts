@@ -38,6 +38,8 @@ describe('tom visual do markdown do chat (spec 091)', () => {
 
     expect(source).toContain('renderInlineCitations');
     expect(source).toContain('citationFromInlineHref');
-    expect(source).toContain('PopoverContent');
+    expect(source).toContain('TooltipContent');
+    expect(source).toContain('disableHoverableContent');
+    expect(source).not.toContain('onMouseEnter={() => setOpen(true)}');
   });
 });

@@ -9,6 +9,20 @@ function read(relativePath: string): string {
 }
 
 describe('estabilidade do runtime de jobs', () => {
+  test('páginas e Chat revalidam uma única vez ao retomar a aba', () => {
+    const hooks = read('lib/hooks.ts');
+    const chat = read('pages/chat.tsx');
+
+    expect(hooks).toContain('resumeRefreshInFlight.current');
+    expect(hooks).toContain("window.addEventListener('focus', revalidateWhenVisible)");
+    expect(hooks).toContain("window.addEventListener('pageshow', revalidateWhenVisible)");
+    expect(hooks).toContain("document.addEventListener('visibilitychange', revalidateWhenVisible)");
+    expect(hooks).toContain('setLoading(loadedPath.current !== path)');
+    expect(chat).toContain('snapshotRefreshInFlight.current');
+    expect(chat).toContain('reconcileSnapshot(true)');
+    expect(chat).toContain('replace && abortRef.current === null');
+  });
+
   test('revalidação da Fila preserva os dados já renderizados', () => {
     const source = read('components/ingest/jobs-queue-section.tsx');
 

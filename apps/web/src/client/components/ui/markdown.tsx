@@ -21,7 +21,7 @@ import type { ChatCitation } from '../../../shared/chat-citations';
 import { citationFromInlineHref, renderInlineCitations } from '../../lib/chat-inline-citations';
 import { cn } from '../../lib/utils';
 import { useI18n } from '../../lib/i18n';
-import { Popover, PopoverContent, PopoverTrigger } from './popover';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 
 interface MarkdownProps {
   children: string;
@@ -113,28 +113,23 @@ function InlineCitation({
   citation: ChatCitation;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <Tooltip>
+      <TooltipTrigger asChild>
         <a
           href={citation.href}
-          onMouseEnter={() => setOpen(true)}
-          onMouseLeave={() => setOpen(false)}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setOpen(false)}
           className="mx-0.5 inline-flex -translate-y-px items-center rounded-full bg-[var(--color-app-surface)] px-1.5 py-0.5 text-[10px] font-medium leading-none text-[var(--color-app-muted)] no-underline transition-colors hover:bg-[var(--color-accent-primary)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
         >
           {children}
         </a>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 p-3" side="bottom" align="start">
+      </TooltipTrigger>
+      <TooltipContent className="w-80 p-3" side="bottom" align="start">
         <p className="truncate text-xs font-medium text-[var(--color-app-fg)]">{citation.title}</p>
         <blockquote className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-[var(--color-app-muted)]">
           “{citation.quote}”
         </blockquote>
-      </PopoverContent>
-    </Popover>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -235,11 +230,13 @@ export const Markdown = memo(function Markdown({
         className,
       )}
     >
-      <ChatCitationContext.Provider value={citations}>
-        <Streamdown parseIncompleteMarkdown controls={false} components={structuralComponents}>
-          {content}
-        </Streamdown>
-      </ChatCitationContext.Provider>
+      <TooltipProvider delayDuration={120} skipDelayDuration={300} disableHoverableContent>
+        <ChatCitationContext.Provider value={citations}>
+          <Streamdown parseIncompleteMarkdown controls={false} components={structuralComponents}>
+            {content}
+          </Streamdown>
+        </ChatCitationContext.Provider>
+      </TooltipProvider>
     </div>
   );
 });

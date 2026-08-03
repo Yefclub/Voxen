@@ -879,6 +879,7 @@ export function ChatPage(): React.ReactElement {
   const spacerNodeRef = useRef<HTMLDivElement>(null);
   const didInitialScroll = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const snapshotRefreshInFlight = useRef<Promise<void> | null>(null);
   const streamingAssistantId = useRef<string | null>(null);
   const pendingAnchorIdRef = useRef<string | null>(null);
   /** Handoff one-shot de outras páginas (detalhe de transcrição, etc.). */
@@ -1132,6 +1133,35 @@ export function ChatPage(): React.ReactElement {
     }
   };
 
+  /**
+   * Revalidação silenciosa usada por retomada de aba e pelo observador de
+   * turno. Compartilhar a Promise evita que focus + visibilitychange + poll
+   * consultem o mesmo snapshot em paralelo.
+   */
+  const reconcileSnapshot = (replace = false): Promise<void> => {
+    if (snapshotRefreshInFlight.current) return snapshotRefreshInFlight.current;
+    const request = apiGet<Snapshot>('/api/chat')
+      .then((snapshot) => {
+        // Retomada de uma aba precisa remover mensagens apagadas ou ramos
+        // abandonados em outra aba. Durante um stream local, porém, preservar
+        // as bolhas otimistas evita rollback visual de deltas ainda não lidos.
+        applySnapshot(snapshot, replace && abortRef.current === null);
+        if (!snapshot.activeTurn) {
+          streamingAssistantId.current = null;
+          setStreaming(false);
+          setStatus(null);
+        }
+      })
+      .catch(() => {
+        // Mantém o snapshot exibido; a próxima retomada ou tick tenta de novo.
+      });
+    snapshotRefreshInFlight.current = request;
+    void request.then(() => {
+      if (snapshotRefreshInFlight.current === request) snapshotRefreshInFlight.current = null;
+    });
+    return request;
+  };
+
   async function loadOlderMessages(): Promise<void> {
     if (!nextCursor || loadingOlder) return;
     const scroller = scrollerRef.current;
@@ -1158,6 +1188,24 @@ export function ChatPage(): React.ReactElement {
     void refresh();
   }, []);
 
+  // Mesmo sem turno ativo, uma aba retomada precisa convergir para alterações
+  // feitas em outra aba. A consulta é silenciosa e preserva o histórico atual.
+  useEffect(() => {
+    const onResume = (): void => {
+      if (document.visibilityState === 'visible') void reconcileSnapshot(true);
+    };
+    window.addEventListener('focus', onResume);
+    window.addEventListener('online', onResume);
+    window.addEventListener('pageshow', onResume);
+    document.addEventListener('visibilitychange', onResume);
+    return () => {
+      window.removeEventListener('focus', onResume);
+      window.removeEventListener('online', onResume);
+      window.removeEventListener('pageshow', onResume);
+      document.removeEventListener('visibilitychange', onResume);
+    };
+  }, []);
+
   // A conexão SSE é um observador, não a posse do turno. Em reload, retorno do
   // background ou troca de rede, acompanha o estado persistido até terminar.
   useEffect(() => {
@@ -1166,38 +1214,14 @@ export function ChatPage(): React.ReactElement {
     setStreaming(true);
     setStatus(t('chat.recovering'));
     let disposed = false;
-    let polling = false;
     const poll = async (): Promise<void> => {
-      if (disposed || polling) return;
-      polling = true;
-      try {
-        const snapshot = await apiGet<Snapshot>('/api/chat');
-        if (disposed) return;
-        applySnapshot(snapshot);
-        if (!snapshot.activeTurn) {
-          streamingAssistantId.current = null;
-          setStreaming(false);
-          setStatus(null);
-        }
-      } catch {
-        // Offline/background: o próximo tick, `online` ou visibilitychange retoma.
-      } finally {
-        polling = false;
-      }
-    };
-    const onResume = (): void => {
-      if (document.visibilityState === 'visible' || navigator.onLine) void poll();
+      if (disposed) return;
+      await reconcileSnapshot();
     };
     const timer = window.setInterval(() => void poll(), 2_000);
-    window.addEventListener('online', onResume);
-    window.addEventListener('pageshow', onResume);
-    document.addEventListener('visibilitychange', onResume);
     return () => {
       disposed = true;
       window.clearInterval(timer);
-      window.removeEventListener('online', onResume);
-      window.removeEventListener('pageshow', onResume);
-      document.removeEventListener('visibilitychange', onResume);
     };
   }, [activeTurn?.id]);
 
