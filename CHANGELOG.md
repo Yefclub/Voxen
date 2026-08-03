@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.13.1-dev.1785760507 — 2026-08-03 · Dev
+
+### 🧹 Publicação do projeto passa a usar inglês e merges de release ficam limpos
+
+As superfícies públicas do repositório passam a adotar inglês como idioma
+principal. Releases estáveis também recebem um commit com somente `vX.Y.Z` no
+assunto e corpo vazio, evitando que ferramentas de deploy exibam todo o
+histórico da pull request.
+
 ## v0.13.1-dev.1785757969 — 2026-08-03 · Dev
 
 ### 🐛 Novidades passa a mostrar as releases de produção
