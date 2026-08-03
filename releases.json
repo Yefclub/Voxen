@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.1-dev.1785757969",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Novidades passa a mostrar as releases de produção",
+    "body": "A preparação de uma versão estável agora grava sua nota curada no feed de\n**Novidades** antes da publicação. A versão `0.13.1` também foi recuperada no\nhistórico, e repetir o comando de preparação não duplica a mesma release.\nO processo também interrompe a publicação sem alterar versões quando o arquivo\ndo histórico está ausente ou inválido.",
+    "pr": 591,
+    "author": "Kalyel",
+    "date": "2026-08-03T08:52:28-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/591"
+  },
+  {
     "version": "0.13.1",
     "channel": "prod",
     "date": "2026-08-03T10:40:45Z",
