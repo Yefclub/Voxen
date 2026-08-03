@@ -76,7 +76,8 @@ async def test_extract_info_sets_cookiefile_when_configured(
         return {"id": "x"}
 
     monkeypatch.setattr(ytdl, "_extract_info", fake_extract)
-    await ytdl._extract_info_with_cookies("https://example.com", {"quiet": True})
+    await ytdl._extract_info_with_cookies("https://example.com", {"quiet": True}, user_id="user-a")
+    ytdl.voxen_settings.get_yt_dlp_cookies.assert_awaited_once_with("user-a")
     assert "cookiefile" in seen
     # Limpeza após a chamada.
     assert not Path(str(seen["cookiefile"])).exists()
@@ -95,7 +96,7 @@ async def test_extract_info_no_cookiefile_when_absent(monkeypatch: pytest.Monkey
         return {"id": "x"}
 
     monkeypatch.setattr(ytdl, "_extract_info", fake_extract)
-    await ytdl._extract_info_with_cookies("https://example.com", {"quiet": True})
+    await ytdl._extract_info_with_cookies("https://example.com", {"quiet": True}, user_id="user-a")
     assert "cookiefile" not in seen
 
 
@@ -111,7 +112,8 @@ async def test_download_sets_cookiefile_when_configured(monkeypatch: pytest.Monk
         seen.update(opts)
 
     monkeypatch.setattr(ytdl, "_run_download", fake_download)
-    await ytdl._download_with_cookies("https://example.com", {"quiet": True})
+    await ytdl._download_with_cookies("https://example.com", {"quiet": True}, user_id="user-a")
+    ytdl.voxen_settings.get_yt_dlp_cookies.assert_awaited_once_with("user-a")
     assert "cookiefile" in seen
 
 
@@ -127,7 +129,7 @@ async def test_download_no_cookiefile_when_absent(monkeypatch: pytest.MonkeyPatc
         seen.update(opts)
 
     monkeypatch.setattr(ytdl, "_run_download", fake_download)
-    await ytdl._download_with_cookies("https://example.com", {"quiet": True})
+    await ytdl._download_with_cookies("https://example.com", {"quiet": True}, user_id="user-a")
     assert "cookiefile" not in seen
 
 

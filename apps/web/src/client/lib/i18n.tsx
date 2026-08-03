@@ -143,6 +143,7 @@ const ptBRMessages = {
   'artifacts.type.mindMap': 'Mapa mental',
   'shell.nav.graph': 'Grafo',
   'shell.nav.extension': 'Extensão',
+  'shell.nav.platformAccounts': 'Contas de plataforma',
   'shell.nav.users': 'Usuários',
   'shell.nav.costs': 'Custos',
   'shell.nav.integrations': 'Integrações',
@@ -831,40 +832,6 @@ const ptBRMessages = {
   'admin.users.status.disabled': 'Desativado',
 
   'admin.integrations.title': 'Integrações',
-  'admin.integrations.aiHealth.title': 'Saúde da configuração de IA',
-  'admin.integrations.aiHealth.description':
-    'Valide as capacidades que a instância entrega antes de os usuários encontrarem uma falha.',
-  'admin.integrations.aiHealth.loadError':
-    'Não foi possível carregar a saúde da configuração de IA.',
-  'admin.integrations.aiHealth.catalogAvailable': 'Catálogo autorizado',
-  'admin.integrations.aiHealth.catalogUnavailable': 'Catálogo indisponível',
-  'admin.integrations.aiHealth.revision': 'Revisão atual #{number}',
-  'admin.integrations.aiHealth.capability.chat': 'Chat',
-  'admin.integrations.aiHealth.capability.transcription': 'Transcrição',
-  'admin.integrations.aiHealth.capability.webSearch': 'Pesquisa web',
-  'admin.integrations.aiHealth.capability.vision': 'Visão',
-  'admin.integrations.aiHealth.capability.document': 'Documentos',
-  'admin.integrations.aiHealth.capability.xAnalysis': 'Análise do X',
-  'admin.integrations.aiHealth.capability.embeddings': 'Embeddings',
-  'admin.integrations.aiHealth.status.ACTIVE': 'Ativa',
-  'admin.integrations.aiHealth.status.INACTIVE': 'Inativa',
-  'admin.integrations.aiHealth.status.MISSING': 'Incompleta',
-  'admin.integrations.aiHealth.status.UNAVAILABLE': 'Indisponível',
-  'admin.integrations.aiHealth.noModel': 'Modelo não configurado',
-  'admin.integrations.aiHealth.modalities': 'Entrada: {input} · saída: {output}',
-  'admin.integrations.aiHealth.events': 'Usos',
-  'admin.integrations.aiHealth.cost': 'Custo',
-  'admin.integrations.aiHealth.lastUsed': 'Último uso',
-  'admin.integrations.aiHealth.latencyUnavailable': 'A latência histórica ainda não é persistida.',
-  'admin.integrations.aiHealth.latency': 'Latência média: {ms} ms',
-  'admin.integrations.aiHealth.test': 'Verificar',
-  'admin.integrations.aiHealth.testSuccess': 'Capacidade verificada sem criar conteúdo.',
-  'admin.integrations.aiHealth.testFailure': 'A capacidade não está pronta para uso.',
-  'admin.integrations.aiHealth.impact': 'Simular',
-  'admin.integrations.aiHealth.impactPlaceholder': 'Modelo candidato',
-  'admin.integrations.aiHealth.impactSafe': 'O modelo candidato mantém esta capacidade disponível.',
-  'admin.integrations.aiHealth.impactUnsafe':
-    'O modelo candidato deixaria esta capacidade indisponível.',
   'admin.integrations.description':
     'Configure tokens do servidor MCP e integrações. Secrets ficam cifrados no banco com a master key.',
   'admin.integrations.telegram.title': 'Bot do Telegram',
@@ -917,21 +884,6 @@ const ptBRMessages = {
   'admin.integrations.revoke': 'Revogar',
   'admin.integrations.show': 'Ver',
   'admin.integrations.hide': 'Ocultar',
-
-  'admin.integrations.cookies.title': 'Contas de plataforma',
-  'admin.integrations.cookies.description':
-    'Sessões de TikTok, Instagram e YouTube usadas pelo extrator quando o conteúdo exige login. A sessão é capturada pela extensão do Voxen e guardada cifrada — o valor nunca é exibido de volta.',
-  'admin.integrations.cookies.connected': 'Conectado',
-  'admin.integrations.cookies.notConnected': 'Não conectado',
-  'admin.integrations.cookies.stale': 'Possivelmente expirado',
-  'admin.integrations.cookies.capturedAt': 'capturado em {date}',
-  'admin.integrations.cookies.disconnect': 'Desconectar',
-  'admin.integrations.cookies.disconnected': 'Conta desconectada.',
-  'admin.integrations.cookies.disconnectTitle': 'Desconectar {platform}?',
-  'admin.integrations.cookies.disconnectDescription':
-    'A sessão guardada é apagada. Conteúdo que exige login dessa plataforma volta a falhar até você conectar de novo pela extensão.',
-  'admin.integrations.cookies.captureHint':
-    'Para conectar ou renovar: abra as opções da extensão do Voxen, faça login na plataforma no mesmo perfil do browser e clique em Conectar. Sessões passam de "possivelmente expiradas" após 7 dias.',
 
   'admin.integrations.proxy.title': 'Agente de Proxy',
   'admin.integrations.proxy.description':
@@ -1011,6 +963,24 @@ const ptBRMessages = {
   'modelPicker.empty': 'Nenhum modelo compatível encontrado.',
 
   'account.eyebrow': 'Conta',
+  'account.platforms.title': 'Contas de plataforma',
+  'account.platforms.description':
+    'Suas sessões de plataforma são privadas e usadas apenas nos seus próprios processamentos.',
+  'account.platforms.cardTitle': 'Suas sessões conectadas',
+  'account.platforms.cardDescription':
+    'A extensão captura a sessão no seu perfil de navegador e o conteúdo fica cifrado.',
+  'account.platforms.connected': 'Conectado',
+  'account.platforms.notConnected': 'Não conectado',
+  'account.platforms.stale': 'Possivelmente expirado',
+  'account.platforms.capturedAt': 'capturado em {date}',
+  'account.platforms.disconnect': 'Desconectar',
+  'account.platforms.disconnected': 'Conta desconectada.',
+  'account.platforms.disconnectTitle': 'Desconectar {platform}?',
+  'account.platforms.disconnectDescription':
+    'A sua sessão guardada será apagada. Conteúdo que exige login voltará a falhar até você conectá-la de novo pela extensão.',
+  'account.platforms.captureHint':
+    'Para conectar ou renovar, abra as opções da extensão do Voxen, faça login na plataforma neste mesmo perfil do browser e clique em Conectar.',
+  'account.platforms.openExtension': 'Abrir extensão',
   'account.title': 'Seu perfil',
   'account.description': 'Atualize seus dados e gerencie sua senha.',
   'account.nameUpdated': 'Nome atualizado.',
@@ -1508,6 +1478,7 @@ const enMessages: Record<I18nKey, string> = {
   'artifacts.type.mindMap': 'Mind map',
   'shell.nav.graph': 'Graph',
   'shell.nav.extension': 'Extension',
+  'shell.nav.platformAccounts': 'Platform accounts',
   'shell.nav.users': 'Users',
   'shell.nav.costs': 'Costs',
   'shell.nav.integrations': 'Integrations',
@@ -2190,39 +2161,6 @@ const enMessages: Record<I18nKey, string> = {
   'admin.users.status.disabled': 'Disabled',
 
   'admin.integrations.title': 'Integrations',
-  'admin.integrations.aiHealth.title': 'AI configuration health',
-  'admin.integrations.aiHealth.description':
-    'Validate what the instance can deliver before users run into a failure.',
-  'admin.integrations.aiHealth.loadError': 'Could not load AI configuration health.',
-  'admin.integrations.aiHealth.catalogAvailable': 'Authorized catalog',
-  'admin.integrations.aiHealth.catalogUnavailable': 'Catalog unavailable',
-  'admin.integrations.aiHealth.revision': 'Current revision #{number}',
-  'admin.integrations.aiHealth.capability.chat': 'Chat',
-  'admin.integrations.aiHealth.capability.transcription': 'Transcription',
-  'admin.integrations.aiHealth.capability.webSearch': 'Web search',
-  'admin.integrations.aiHealth.capability.vision': 'Vision',
-  'admin.integrations.aiHealth.capability.document': 'Documents',
-  'admin.integrations.aiHealth.capability.xAnalysis': 'X analysis',
-  'admin.integrations.aiHealth.capability.embeddings': 'Embeddings',
-  'admin.integrations.aiHealth.status.ACTIVE': 'Active',
-  'admin.integrations.aiHealth.status.INACTIVE': 'Inactive',
-  'admin.integrations.aiHealth.status.MISSING': 'Incomplete',
-  'admin.integrations.aiHealth.status.UNAVAILABLE': 'Unavailable',
-  'admin.integrations.aiHealth.noModel': 'No configured model',
-  'admin.integrations.aiHealth.modalities': 'Input: {input} · output: {output}',
-  'admin.integrations.aiHealth.events': 'Uses',
-  'admin.integrations.aiHealth.cost': 'Cost',
-  'admin.integrations.aiHealth.lastUsed': 'Last use',
-  'admin.integrations.aiHealth.latencyUnavailable': 'Historical latency is not persisted yet.',
-  'admin.integrations.aiHealth.latency': 'Average latency: {ms} ms',
-  'admin.integrations.aiHealth.test': 'Check',
-  'admin.integrations.aiHealth.testSuccess': 'Capability checked without creating content.',
-  'admin.integrations.aiHealth.testFailure': 'The capability is not ready to use.',
-  'admin.integrations.aiHealth.impact': 'Simulate',
-  'admin.integrations.aiHealth.impactPlaceholder': 'Candidate model',
-  'admin.integrations.aiHealth.impactSafe': 'The candidate model keeps this capability available.',
-  'admin.integrations.aiHealth.impactUnsafe':
-    'The candidate model would make this capability unavailable.',
   'admin.integrations.description':
     'Configure MCP server tokens and integrations. Secrets are encrypted in the database with the master key.',
   'admin.integrations.telegram.title': 'Telegram bot',
@@ -2274,21 +2212,6 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.revoke': 'Revoke',
   'admin.integrations.show': 'Show',
   'admin.integrations.hide': 'Hide',
-
-  'admin.integrations.cookies.title': 'Platform accounts',
-  'admin.integrations.cookies.description':
-    'TikTok, Instagram and YouTube sessions used by the extractor when the content requires a login. The session is captured by the Voxen extension and stored encrypted — the value is never shown back.',
-  'admin.integrations.cookies.connected': 'Connected',
-  'admin.integrations.cookies.notConnected': 'Not connected',
-  'admin.integrations.cookies.stale': 'Possibly expired',
-  'admin.integrations.cookies.capturedAt': 'captured on {date}',
-  'admin.integrations.cookies.disconnect': 'Disconnect',
-  'admin.integrations.cookies.disconnected': 'Account disconnected.',
-  'admin.integrations.cookies.disconnectTitle': 'Disconnect {platform}?',
-  'admin.integrations.cookies.disconnectDescription':
-    'The stored session is deleted. Login-gated content from this platform will fail again until you reconnect from the extension.',
-  'admin.integrations.cookies.captureHint':
-    'To connect or renew: open the Voxen extension options, sign in to the platform in the same browser profile and click Connect. Sessions are flagged as possibly expired after 7 days.',
 
   'admin.integrations.proxy.title': 'Proxy Agent',
   'admin.integrations.proxy.description':
@@ -2367,6 +2290,24 @@ const enMessages: Record<I18nKey, string> = {
   'modelPicker.empty': 'No compatible model found.',
 
   'account.eyebrow': 'Account',
+  'account.platforms.title': 'Platform accounts',
+  'account.platforms.description':
+    'Your platform sessions are private and used only in your own processing jobs.',
+  'account.platforms.cardTitle': 'Your connected sessions',
+  'account.platforms.cardDescription':
+    'The extension captures the session in your browser profile and the content is encrypted.',
+  'account.platforms.connected': 'Connected',
+  'account.platforms.notConnected': 'Not connected',
+  'account.platforms.stale': 'Possibly expired',
+  'account.platforms.capturedAt': 'captured on {date}',
+  'account.platforms.disconnect': 'Disconnect',
+  'account.platforms.disconnected': 'Account disconnected.',
+  'account.platforms.disconnectTitle': 'Disconnect {platform}?',
+  'account.platforms.disconnectDescription':
+    'Your stored session will be deleted. Login-gated content will fail until you reconnect it from the extension.',
+  'account.platforms.captureHint':
+    'To connect or renew, open the Voxen extension options, sign in to the platform in this same browser profile, and click Connect.',
+  'account.platforms.openExtension': 'Open extension',
   'account.title': 'Your profile',
   'account.description': 'Update your details and manage your password.',
   'account.nameUpdated': 'Name updated.',

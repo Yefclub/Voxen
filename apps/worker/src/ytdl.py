@@ -228,7 +228,7 @@ def _youtube_video_id(url: str) -> str | None:
     return None
 
 
-async def probe(url: str, *, force_impersonate: str | None = None) -> VideoProbe:
+async def probe(url: str, *, user_id: str, force_impersonate: str | None = None) -> VideoProbe:
     """Extrai metadata SEM baixar áudio (`skip_download=True`)."""
     base_opts = await _runtime_options(force_impersonate=force_impersonate)
     opts = {
@@ -241,7 +241,7 @@ async def probe(url: str, *, force_impersonate: str | None = None) -> VideoProbe
     }
     # yt-dlp é sync — chamamos em thread pra não bloquear o loop. O cookiefile
     # (se configurado) é materializado/limpo dentro do helper.
-    info = await _extract_info_with_cookies(url, opts)
+    info = await _extract_info_with_cookies(url, opts, user_id=user_id)
     return VideoProbe(
         video_id=info["id"],
         title=info.get("title") or "(sem título)",
@@ -295,7 +295,7 @@ def _best_subtitle_format(formats: list[dict[str, Any]]) -> str | None:
     return None
 
 
-async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path) -> Path:
+async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path, *, user_id: str) -> Path:
     """Baixa apenas a legenda. Retorna path do arquivo .vtt/.srt.
 
     yt-dlp pode salvar com qualquer das variantes (`pt`, `pt-BR`, `pt-orig`,
@@ -319,7 +319,7 @@ async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path) -> Pat
     }
     # download=True faz o yt-dlp escrever os arquivos de legenda.
     # Com skip_download=True, NÃO baixa o vídeo, apenas as legendas.
-    await _download_with_cookies(url, opts)
+    await _download_with_cookies(url, opts, user_id=user_id)
     # tmpdir é exclusivo do job, então `*.{fmt}` é seguro
     candidates = sorted(out_dir.glob(f"*.{fmt}"))
     if not candidates:
@@ -334,6 +334,7 @@ async def download_audio_opus(
     url: str,
     out_dir: Path,
     *,
+    user_id: str,
     force_impersonate: str | None = None,
 ) -> Path:
     """Extrai áudio como opus mono 16kHz 32kbps (spec 002)."""
@@ -365,7 +366,7 @@ async def download_audio_opus(
             "32k",
         ],
     }
-    await _download_with_cookies(url, opts)
+    await _download_with_cookies(url, opts, user_id=user_id)
     files = list(out_dir.glob("*.opus")) + list(out_dir.glob("*.ogg"))
     if not files:
         raise RuntimeError("Áudio opus não foi gerado")
@@ -404,11 +405,13 @@ def _cookiefile_opts(cookies: str | None) -> Iterator[dict[str, Any]]:
         path.unlink(missing_ok=True)
 
 
-async def _extract_info_with_cookies(url: str, opts: dict[str, Any]) -> dict[str, Any]:
+async def _extract_info_with_cookies(
+    url: str, opts: dict[str, Any], *, user_id: str
+) -> dict[str, Any]:
     """Roda `probe`/extract_info com cookiefile temporário, se configurado."""
     import asyncio
 
-    cookies = await voxen_settings.get_yt_dlp_cookies()
+    cookies = await voxen_settings.get_yt_dlp_cookies(user_id)
 
     def _run() -> dict[str, Any]:
         with _cookiefile_opts(cookies) as cookie_patch:
@@ -417,11 +420,11 @@ async def _extract_info_with_cookies(url: str, opts: dict[str, Any]) -> dict[str
     return await asyncio.to_thread(_run)
 
 
-async def _download_with_cookies(url: str, opts: dict[str, Any]) -> None:
+async def _download_with_cookies(url: str, opts: dict[str, Any], *, user_id: str) -> None:
     """Roda download (áudio/legenda) com cookiefile temporário, se configurado."""
     import asyncio
 
-    cookies = await voxen_settings.get_yt_dlp_cookies()
+    cookies = await voxen_settings.get_yt_dlp_cookies(user_id)
 
     def _run() -> None:
         with _cookiefile_opts(cookies) as cookie_patch:

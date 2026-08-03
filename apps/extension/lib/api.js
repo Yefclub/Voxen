@@ -275,7 +275,7 @@ export async function fetchMe(baseUrl) {
  */
 
 /**
- * Traduz o status HTTP das rotas admin de cookie num código estável pra UI.
+ * Traduz o status HTTP das rotas pessoais de cookie num código estável pra UI.
  * @param {number} status
  * @returns {{ code: string, message: string } | null}
  */
@@ -284,13 +284,13 @@ function adminHttpFailure(status) {
     return { code: 'unauthorized', message: 'Entre na instância Voxen e tente de novo.' };
   }
   if (status === 403) {
-    return { code: 'forbidden', message: 'Só administradores podem conectar contas.' };
+    return { code: 'forbidden', message: 'Sua conta precisa estar aprovada para conectar contas.' };
   }
   return null;
 }
 
 /**
- * GET /api/admin/integrations/cookies — estado por plataforma. A resposta
+ * GET /api/integrations/cookies — estado pessoal por plataforma. A resposta
  * nunca traz o valor dos cookies (só hasCookie/capturedAt/stale).
  * @param {{ baseUrl: string, token?: string | null }} opts
  */
@@ -328,7 +328,7 @@ export async function fetchPlatformCookieStatus(opts) {
 }
 
 /**
- * PATCH /api/admin/integrations/cookies — envia a captura de uma plataforma.
+ * PATCH /api/integrations/cookies — envia a captura pessoal de uma plataforma.
  *
  * O payload é um cookie de sessão de conta real: nenhuma mensagem devolvida
  * daqui pode carregar pedaço dele. Por isso o erro de rede vira texto fixo em
@@ -378,7 +378,7 @@ export async function sendPlatformCookies(opts) {
 }
 
 /**
- * DELETE /api/admin/integrations/cookies/:platform — revoga a credencial
+ * DELETE /api/integrations/cookies/:platform — revoga a credencial pessoal
  * guardada daquela plataforma.
  * @param {{ baseUrl: string, platform: string, token?: string | null }} opts
  */

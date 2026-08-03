@@ -71,6 +71,22 @@ function installFetchMock(impl: FetchMock): void {
 
 const CANONICAL_MODELS: OrModel[] = [
   {
+    id: 'deepseek/deepseek-v4-flash-0731',
+    name: 'DeepSeek V4 Flash',
+    architecture: {
+      input_modalities: ['text'],
+      output_modalities: ['text'],
+    },
+  },
+  {
+    id: 'openai/gpt-5.6-luna',
+    name: 'GPT-5.6 Luna',
+    architecture: {
+      input_modalities: ['text', 'image', 'file'],
+      output_modalities: ['text'],
+    },
+  },
+  {
     id: 'x-ai/grok-4.5',
     name: 'Grok 4.5',
     architecture: {
@@ -173,11 +189,13 @@ describeIfDb('setup flow', () => {
     );
 
     expect(res.status).toBe(200);
-    await expect(getSetting('default_chat_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_chat_model')).resolves.toBe('deepseek/deepseek-v4-flash-0731');
     await expect(getSetting('default_transcription_model')).resolves.toBe('x-ai/grok-stt-1.0');
-    await expect(getSetting('default_web_search_model')).resolves.toBe('x-ai/grok-4.5');
-    await expect(getSetting('default_vision_model')).resolves.toBe('x-ai/grok-4.5');
-    await expect(getSetting('default_document_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_web_search_model')).resolves.toBe(
+      'deepseek/deepseek-v4-flash-0731',
+    );
+    await expect(getSetting('default_vision_model')).resolves.toBe('openai/gpt-5.6-luna');
+    await expect(getSetting('default_document_model')).resolves.toBe('openai/gpt-5.6-luna');
     await expect(getSetting('default_x_analysis_model')).resolves.toBe('x-ai/grok-4.5');
   });
 
@@ -341,11 +359,11 @@ describeIfDb('setup flow', () => {
 
     await setSettings({
       openrouter_api_key: VALID_KEY,
-      default_chat_model: 'x-ai/grok-4.5',
+      default_chat_model: 'deepseek/deepseek-v4-flash-0731',
       default_transcription_model: 'x-ai/grok-stt-1.0',
-      default_web_search_model: 'x-ai/grok-4.5',
-      default_vision_model: 'x-ai/grok-4.5',
-      default_document_model: 'x-ai/grok-4.5',
+      default_web_search_model: 'deepseek/deepseek-v4-flash-0731',
+      default_vision_model: 'openai/gpt-5.6-luna',
+      default_document_model: 'openai/gpt-5.6-luna',
       default_x_analysis_model: 'x-ai/grok-4.5',
       app_language: 'pt-BR',
       app_timezone: 'America/Sao_Paulo',
@@ -365,11 +383,13 @@ describeIfDb('setup flow', () => {
     );
     expect(res.status).toBe(200);
     await expect(getSetting('openrouter_api_key')).resolves.toBe(REPLACEMENT_KEY);
-    await expect(getSetting('default_chat_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_chat_model')).resolves.toBe('deepseek/deepseek-v4-flash-0731');
     await expect(getSetting('default_transcription_model')).resolves.toBe('x-ai/grok-stt-1.0');
-    await expect(getSetting('default_web_search_model')).resolves.toBe('x-ai/grok-4.5');
-    await expect(getSetting('default_vision_model')).resolves.toBe('x-ai/grok-4.5');
-    await expect(getSetting('default_document_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_web_search_model')).resolves.toBe(
+      'deepseek/deepseek-v4-flash-0731',
+    );
+    await expect(getSetting('default_vision_model')).resolves.toBe('openai/gpt-5.6-luna');
+    await expect(getSetting('default_document_model')).resolves.toBe('openai/gpt-5.6-luna');
     await expect(getSetting('default_x_analysis_model')).resolves.toBe('x-ai/grok-4.5');
     await expect(getSetting('app_language')).resolves.toBe('en');
     await expect(getSetting('app_timezone')).resolves.toBe('UTC');
@@ -383,9 +403,9 @@ describeIfDb('setup flow', () => {
       openrouter_api_key: VALID_KEY,
       default_chat_model: 'custom/indisponivel',
       default_transcription_model: 'x-ai/grok-stt-1.0',
-      default_web_search_model: 'x-ai/grok-4.5',
-      default_vision_model: 'x-ai/grok-4.5',
-      default_document_model: 'x-ai/grok-4.5',
+      default_web_search_model: 'deepseek/deepseek-v4-flash-0731',
+      default_vision_model: 'openai/gpt-5.6-luna',
+      default_document_model: 'openai/gpt-5.6-luna',
       default_x_analysis_model: 'x-ai/grok-4.5',
       app_language: 'pt-BR',
       app_timezone: 'America/Sao_Paulo',
@@ -418,7 +438,11 @@ describeIfDb('setup flow', () => {
       purpose: 'default_chat_model',
       modelId: 'custom/indisponivel',
       reason: 'unavailable',
-      compatibleModels: [{ id: 'x-ai/grok-4.5', name: 'Grok 4.5' }],
+      compatibleModels: [
+        { id: 'deepseek/deepseek-v4-flash-0731', name: 'DeepSeek V4 Flash' },
+        { id: 'openai/gpt-5.6-luna', name: 'GPT-5.6 Luna' },
+        { id: 'x-ai/grok-4.5', name: 'Grok 4.5' },
+      ],
     });
     await expect(
       getSettings(Object.keys(previous) as Array<keyof typeof previous>),
@@ -431,11 +455,11 @@ describeIfDb('setup flow', () => {
     const cookie = extractCookie(signin);
     await setSettings({
       openrouter_api_key: VALID_KEY,
-      default_chat_model: 'x-ai/grok-4.5',
+      default_chat_model: 'deepseek/deepseek-v4-flash-0731',
       default_transcription_model: 'x-ai/grok-stt-1.0',
-      default_web_search_model: 'x-ai/grok-4.5',
+      default_web_search_model: 'deepseek/deepseek-v4-flash-0731',
       default_vision_model: 'custom/sem-imagem',
-      default_document_model: 'x-ai/grok-4.5',
+      default_document_model: 'openai/gpt-5.6-luna',
       default_x_analysis_model: 'x-ai/grok-4.5',
     });
     installValidOpenRouterMock([
@@ -473,6 +497,7 @@ describeIfDb('setup flow', () => {
       modelId: 'custom/sem-imagem',
       reason: 'incompatible',
       compatibleModels: [
+        { id: 'openai/gpt-5.6-luna', name: 'GPT-5.6 Luna' },
         { id: 'x-ai/grok-4.5', name: 'Grok 4.5' },
         { id: 'openai/vision-compativel', name: 'Vision compatível' },
       ],
@@ -489,9 +514,9 @@ describeIfDb('setup flow', () => {
       openrouter_api_key: VALID_KEY,
       default_chat_model: 'custom/indisponivel',
       default_transcription_model: 'x-ai/grok-stt-1.0',
-      default_web_search_model: 'x-ai/grok-4.5',
-      default_vision_model: 'x-ai/grok-4.5',
-      default_document_model: 'x-ai/grok-4.5',
+      default_web_search_model: 'deepseek/deepseek-v4-flash-0731',
+      default_vision_model: 'openai/gpt-5.6-luna',
+      default_document_model: 'openai/gpt-5.6-luna',
       default_x_analysis_model: 'x-ai/grok-4.5',
       app_language: 'pt-BR',
       app_timezone: 'America/Sao_Paulo',

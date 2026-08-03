@@ -47,6 +47,11 @@ const AdminIntegracoesPage = lazy(() =>
 const ContaPage = lazy(() =>
   import('./pages/conta').then(({ ContaPage }) => ({ default: ContaPage })),
 );
+const ContaPlataformasPage = lazy(() =>
+  import('./pages/conta-plataformas').then(({ ContaPlataformasPage }) => ({
+    default: ContaPlataformasPage,
+  })),
+);
 const FilaPage = lazy(() => import('./pages/fila').then(({ FilaPage }) => ({ default: FilaPage })));
 const JobDetalhePage = lazy(() =>
   import('./pages/jobs-detalhe').then(({ JobDetalhePage }) => ({ default: JobDetalhePage })),
@@ -182,6 +187,7 @@ function AppRoutes(): React.ReactElement {
         <Route path="/admin/custos" element={<AdminCustosPage />} />
         <Route path="/admin/integracoes" element={<AdminIntegracoesPage />} />
         <Route path="/conta" element={<ContaPage />} />
+        <Route path="/conta/plataformas" element={<ContaPlataformasPage />} />
         <Route path="/fila" element={<FilaPage />} />
         <Route path="/jobs" element={<JobsIndexRedirect />} />
         <Route path="/jobs/:id" element={<JobDetalhePage />} />

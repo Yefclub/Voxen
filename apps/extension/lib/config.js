@@ -94,11 +94,11 @@ export function meUrl(baseUrl) {
 }
 
 /**
- * Rota admin de cookies de plataforma (spec 121).
+ * Rota pessoal de cookies de plataforma (spec 152).
  * @param {string} baseUrl
  */
 export function platformCookiesUrl(baseUrl) {
-  return `${baseUrl.replace(/\/$/, '')}/api/admin/integrations/cookies`;
+  return `${baseUrl.replace(/\/$/, '')}/api/integrations/cookies`;
 }
 
 /**

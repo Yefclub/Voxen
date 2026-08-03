@@ -51,18 +51,18 @@ def looks_rolling(plain_text: str) -> bool:
     return overlapping / (len(paras) - 1) > 0.3
 
 
-async def _fresh_segments(url: str) -> tuple[tuple[Segment, ...], str] | None:
+async def _fresh_segments(url: str, user_id: str) -> tuple[tuple[Segment, ...], str] | None:
     """Mesmos caminhos do pipeline: transcript API → fallback VTT/SRT."""
     fetch = await ytdl.fetch_youtube_transcript(url)
     if fetch is not None:
         return fetch.segments, fetch.language
-    probe = await ytdl.probe(url)
+    probe = await ytdl.probe(url, user_id=user_id)
     pick = ytdl.pick_subtitle_lang(probe)
     if pick is None:
         return None
     lang, fmt = pick
     with tempfile.TemporaryDirectory(prefix="voxen-repair-") as tmp:
-        sub_path = await ytdl.download_subtitle(url, lang, fmt, Path(tmp))
+        sub_path = await ytdl.download_subtitle(url, lang, fmt, Path(tmp), user_id=user_id)
         content = sub_path.read_text(encoding="utf-8")
     return ytdl.parse_vtt_or_srt(content), lang.split("-")[0]
 
@@ -110,7 +110,7 @@ async def repair(dry_run: bool) -> None:
             log.info("repair-skip-clean", transcript_id=tid)
             continue
         try:
-            fresh = await _fresh_segments(row["url"])
+            fresh = await _fresh_segments(row["url"], row["userId"])
         except Exception as e:  # noqa: BLE001
             skipped += 1
             log.warning(

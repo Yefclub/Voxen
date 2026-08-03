@@ -104,11 +104,10 @@ async function connect(baseUrl) {
 }
 
 // ---------------------------------------------------------------------------
-// Contas de plataforma (spec 121)
+// Contas de plataforma (spec 152)
 // ---------------------------------------------------------------------------
-// A seção inteira fica OCULTA (não desabilitada) enquanto não se confirmar que
-// o usuário logado na instância é ADMIN — a escrita do cookie é admin-only no
-// backend, e mostrar um botão que sempre dá 403 é ruído.
+// A seção só aparece quando existe uma sessão Voxen válida. A conta de cada
+// plataforma pertence ao usuário da sessão, não ao administrador da instância.
 //
 // O valor do cookie nunca é exibido, guardado em `chrome.storage` nem logado:
 // ele existe só como variável local entre o `chrome.cookies.getAll` e o PATCH.
@@ -125,7 +124,7 @@ function hideAccounts() {
 
 /**
  * Consulta o estado por plataforma e (re)desenha a seção. Silenciosa quando o
- * usuário não é ADMIN ou não está logado: a seção simplesmente não aparece.
+ * usuário não está logado: a seção simplesmente não aparece.
  * @param {string} baseUrl
  */
 async function refreshAccounts(baseUrl) {
@@ -136,7 +135,7 @@ async function refreshAccounts(baseUrl) {
   }
 
   const me = await fetchMe(baseUrl);
-  if (me?.role !== 'ADMIN') {
+  if (!me) {
     hideAccounts();
     return;
   }

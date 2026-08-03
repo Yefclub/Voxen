@@ -110,19 +110,30 @@ describe('OpenRouter user model catalog', () => {
     expect((error as Error).message).not.toContain('sk-or-private');
   });
 
-  it('accepts the canonical STT model when the account catalog omits input modalities', () => {
+  it('accepts all canonical resources with their required modalities', () => {
     expect(
       hasCanonicalOpenRouterModels([
         {
-          id: 'x-ai/grok-4.5',
+          id: 'deepseek/deepseek-v4-flash-0731',
           architecture: {
-            input_modalities: ['text', 'image', 'file'],
+            input_modalities: ['text'],
             output_modalities: ['text'],
           },
         },
         {
           id: 'x-ai/grok-stt-1.0',
           architecture: { output_modalities: ['transcription'] },
+        },
+        {
+          id: 'openai/gpt-5.6-luna',
+          architecture: {
+            input_modalities: ['text', 'image', 'file'],
+            output_modalities: ['text'],
+          },
+        },
+        {
+          id: 'x-ai/grok-4.5',
+          architecture: { output_modalities: ['text'] },
         },
       ]),
     ).toBe(true);
@@ -132,9 +143,9 @@ describe('OpenRouter user model catalog', () => {
     expect(
       hasCanonicalOpenRouterModels([
         {
-          id: 'x-ai/grok-4.5',
+          id: 'deepseek/deepseek-v4-flash-0731',
           architecture: {
-            input_modalities: ['text', 'image'],
+            input_modalities: ['text'],
             output_modalities: ['text'],
           },
         },
