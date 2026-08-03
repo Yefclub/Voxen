@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.13.1-dev.1785776402 — 2026-08-03 · Dev
+
+### 🛠️ Gate de migrations protege o histórico do banco
+
+Pull requests agora preservam o histórico integrado do Prisma, exigem uma nova
+migration ordenada para mudanças de schema e reproduzem toda a evolução em um
+PostgreSQL isolado. O CI também detecta divergências em relação ao modelo atual
+e publica diagnósticos sem credenciais para orientar a correção.
+
 ## v0.13.1-dev.1785771252 — 2026-08-03 · Dev
 
 ### 🧹 Quality Gate impede regressões graduais no código

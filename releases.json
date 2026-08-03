@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.1-dev.1785776402",
+    "channel": "dev",
+    "type": "infra",
+    "title": "Gate de migrations protege o histórico do banco",
+    "body": "Pull requests agora preservam o histórico integrado do Prisma, exigem uma nova\nmigration ordenada para mudanças de schema e reproduzem toda a evolução em um\nPostgreSQL isolado. O CI também detecta divergências em relação ao modelo atual\ne publica diagnósticos sem credenciais para orientar a correção.",
+    "pr": 601,
+    "author": "Kalyel",
+    "date": "2026-08-03T13:59:45-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/601"
+  },
+  {
     "version": "0.13.1-dev.1785771252",
     "channel": "dev",
     "type": "chore",
