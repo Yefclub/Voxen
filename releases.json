@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.13.1-dev.1785760507",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Publicação do projeto passa a usar inglês e merges de release ficam limpos",
+    "body": "As superfícies públicas do repositório passam a adotar inglês como idioma\nprincipal. Releases estáveis também recebem um commit com somente `vX.Y.Z` no\nassunto e corpo vazio, evitando que ferramentas de deploy exibam todo o\nhistórico da pull request.",
+    "pr": null,
+    "author": "Kalyel",
+    "date": "2026-08-03T09:34:53-03:00"
+  },
+  {
     "version": "0.13.1-dev.1785757969",
     "channel": "dev",
     "type": "fix",
