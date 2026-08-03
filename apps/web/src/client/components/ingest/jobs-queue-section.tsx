@@ -289,7 +289,12 @@ const JobRow = memo(function JobRow({
           progressedAt: progressTimestamp(evt.ts) || Date.now(),
         }),
       );
-      if (evt.stage === 'done' || evt.stage === 'failed' || evt.stage === 'cancelled') {
+      if (
+        evt.stage === 'done' ||
+        evt.stage === 'completed_with_warnings' ||
+        evt.stage === 'failed' ||
+        evt.stage === 'cancelled'
+      ) {
         terminalRefreshRef.current?.schedule(() => onUpdateRef.current());
       }
     },
@@ -318,7 +323,8 @@ const JobRow = memo(function JobRow({
     if (reprocessing) return;
     setReprocessing(true);
     try {
-      const res = await apiPost<{ jobId?: string | null }>(`/api/jobs/${job.id}/retry`);
+      const endpoint = job.status === 'COMPLETED_WITH_WARNINGS' ? 'enrichment-retry' : 'retry';
+      const res = await apiPost<{ jobId?: string | null }>(`/api/jobs/${job.id}/${endpoint}`);
       const feedback = resolveJobRetryFeedback(
         { ok: true, jobId: res?.jobId ?? null },
         t('jobs.reprocessError'),

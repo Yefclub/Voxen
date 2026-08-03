@@ -9,7 +9,7 @@ import type { JobStatus } from './types';
 
 /** Só job terminado em erro/cancelamento pode ser reenfileirado. */
 export function canRetryJob(status: JobStatus): boolean {
-  return status === 'FAILED' || status === 'CANCELLED';
+  return status === 'FAILED' || status === 'CANCELLED' || status === 'COMPLETED_WITH_WARNINGS';
 }
 
 export type JobRetryFeedback =

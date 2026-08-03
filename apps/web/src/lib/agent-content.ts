@@ -129,7 +129,7 @@ export async function waitForTranscriptJob(options: {
       lastProgressAt = Date.now();
       options.onProgress?.(job.status);
     }
-    if (job.status === 'DONE') {
+    if (job.status === 'DONE' || job.status === 'COMPLETED_WITH_WARNINGS') {
       if (!job.transcriptId) throw new Error('Job concluído sem transcrição.');
       return getTranscriptBrief(options.userId, job.transcriptId, {
         abortSignal: options.abortSignal,

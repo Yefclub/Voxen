@@ -65,7 +65,12 @@ export function classifyJobStatus(status) {
   const normalized = String(status ?? '')
     .trim()
     .toUpperCase();
-  if (normalized === 'SUCCEEDED' || normalized === 'DONE' || normalized === 'COMPLETED') {
+  if (
+    normalized === 'SUCCEEDED' ||
+    normalized === 'DONE' ||
+    normalized === 'COMPLETED' ||
+    normalized === 'COMPLETED_WITH_WARNINGS'
+  ) {
     return 'succeeded';
   }
   if (normalized === 'FAILED' || normalized === 'CANCELLED') return 'failed';

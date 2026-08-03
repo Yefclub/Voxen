@@ -75,18 +75,17 @@ async def run(
     if not refresh_transcript_id:
         await db.link_job_transcript(job_id, transcript_id)
 
-    await db.mark_job_done(job_id)
-    await events.publish_job_event(
-        user_id, job_id, "done", percent=100, transcript_id=transcript_id
-    )
-
     if not persisted.changed:
+        await db.mark_job_done(job_id)
+        await events.publish_job_event(
+            user_id, job_id, "done", percent=100, transcript_id=transcript_id
+        )
         log.info("source-refresh-unchanged", transcript_id=transcript_id)
         return
 
-    from .pipeline import _enrich_persisted_transcript
+    from .pipeline import _complete_persisted_job
 
-    await _enrich_persisted_transcript(
+    await _complete_persisted_job(
         user_id=user_id, transcript_id=transcript_id, job_id=job_id, log=log
     )
     log.info("scrape-done", transcript_id=transcript_id, refresh=bool(refresh_transcript_id))

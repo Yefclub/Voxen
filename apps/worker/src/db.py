@@ -226,7 +226,7 @@ async def renew_job_lease(token: JobLeaseToken) -> bool:
             """
             SELECT id FROM "Job"
             WHERE id = $1 AND "workerId" = $2 AND attempt = $3
-              AND status IN ('DONE', 'FAILED')
+              AND status IN ('DONE', 'COMPLETED_WITH_WARNINGS', 'FAILED')
             """,
             token.job_id,
             token.worker_id,
@@ -351,7 +351,7 @@ async def record_job_progress(
                       AND "workerId" = $3 AND attempt = $4
                       AND (
                         (status = 'RUNNING' AND "leaseExpiresAt" >= $5)
-                        OR status IN ('DONE', 'FAILED', 'CANCELLED')
+                        OR status IN ('DONE', 'COMPLETED_WITH_WARNINGS', 'FAILED', 'CANCELLED')
                       )
                     FOR KEY SHARE
                     """,
@@ -559,6 +559,7 @@ async def write_transcript(
                 url=url,
                 title=title,
                 channel=channel,
+                author=author,
                 language=language,
                 transcription_method=transcription_method,
                 thumbnail_url=thumbnail_url,
@@ -620,6 +621,7 @@ async def upsert_transcript_brain_node(
     thumbnail_url: str | None,
     plain_text: str,
     status: str = "ACTIVE",
+    author: str | None = None,
 ) -> bool:
     """Materializa o CONTENT somente sob o lease compartilhado por usuário."""
     lease = await acquire_graph_index_lease(user_id)
@@ -636,6 +638,7 @@ async def upsert_transcript_brain_node(
                 url=url,
                 title=title,
                 channel=channel,
+                author=author,
                 language=language,
                 transcription_method=transcription_method,
                 thumbnail_url=thumbnail_url,
@@ -656,6 +659,7 @@ async def _upsert_transcript_brain_node_with_lease(
     url: str,
     title: str,
     channel: str | None,
+    author: str | None,
     language: str,
     transcription_method: str,
     thumbnail_url: str | None,
@@ -671,6 +675,7 @@ async def _upsert_transcript_brain_node_with_lease(
         "source": source,
         "url": url,
         "channel": channel,
+        "author": author,
         "language": language,
         "transcriptionMethod": transcription_method,
         "thumbnailUrl": thumbnail_url,
@@ -776,7 +781,7 @@ async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> boo
             async with connection() as conn:
                 row = await conn.fetchrow(
                     """
-                    SELECT source, url, title, channel, language, "transcriptionMethod",
+                    SELECT source, url, title, channel, author, language, "transcriptionMethod",
                            "thumbnailUrl", "plainText", "summaryMd", status
                     FROM "Transcript"
                     WHERE id = $1 AND "userId" = $2
@@ -810,6 +815,7 @@ async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> boo
                     url=row["url"],
                     title=row["title"],
                     channel=row["channel"],
+                    author=row["author"],
                     language=row["language"],
                     transcription_method=row["transcriptionMethod"],
                     thumbnail_url=row["thumbnailUrl"],
@@ -2344,6 +2350,56 @@ async def mark_job_done(job_id: str) -> None:
                 job_id,
                 _utcnow_naive(),
             )
+
+
+async def mark_job_completed_with_warnings(job_id: str, warning: str) -> None:
+    """Finaliza um job utilizável, porém com enriquecimentos recuperáveis pendentes."""
+    token = _job_token(job_id)
+    async with connection() as conn:
+        if token:
+            row = await conn.fetchrow(
+                """
+                UPDATE "Job"
+                SET status = 'COMPLETED_WITH_WARNINGS', "errorMsg" = $2, "finishedAt" = $3,
+                    "heartbeatAt" = NULL, "leaseExpiresAt" = NULL
+                WHERE id = $1 AND status = 'RUNNING'
+                  AND "workerId" = $4 AND attempt = $5 AND "leaseExpiresAt" >= $3
+                RETURNING id
+                """,
+                job_id,
+                warning[:1000],
+                _utcnow_naive(),
+                token.worker_id,
+                token.attempt,
+            )
+            if row is None:
+                raise JobLeaseLostError("job completion rejected by lease fence")
+        else:
+            await conn.execute(
+                """
+                UPDATE "Job"
+                SET status = 'COMPLETED_WITH_WARNINGS', "errorMsg" = $2, "finishedAt" = $3
+                WHERE id = $1
+                """,
+                job_id,
+                warning[:1000],
+                _utcnow_naive(),
+            )
+
+
+async def get_transcript_enrichment_statuses(
+    user_id: str, transcript_id: str
+) -> dict[str, str] | None:
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT "summaryStatus"::text AS summary, "taggingStatus"::text AS tagging
+            FROM "Transcript" WHERE id = $1 AND "userId" = $2
+            """,
+            transcript_id,
+            user_id,
+        )
+    return {"summary": str(row["summary"]), "tagging": str(row["tagging"])} if row else None
 
 
 async def link_job_done(job_id: str, transcript_id: str) -> None:

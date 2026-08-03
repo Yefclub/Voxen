@@ -18,6 +18,7 @@ describe('classifyJobStatus', () => {
     expect(classifyJobStatus('SUCCEEDED')).toBe('succeeded');
     expect(classifyJobStatus('DONE')).toBe('succeeded');
     expect(classifyJobStatus('COMPLETED')).toBe('succeeded');
+    expect(classifyJobStatus('COMPLETED_WITH_WARNINGS')).toBe('succeeded');
     expect(classifyJobStatus('done')).toBe('succeeded');
   });
 
