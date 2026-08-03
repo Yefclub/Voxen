@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlencode, urlparse, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
 import structlog
@@ -42,6 +42,11 @@ class VideoProbe:
     language_hint: str | None
     available_subtitles: dict[str, list[dict[str, Any]]]
     automatic_captions: dict[str, list[dict[str, Any]]]
+    # Proveniência retornada por yt-dlp; defaults preservam os probes internos
+    # (upload, documento e X) que não têm uma página pública canônica.
+    author: str | None = None
+    canonical_url: str | None = None
+    channel_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -111,6 +116,9 @@ def _fetch_youtube_transcript_sync(video_id: str, proxy_url: str | None) -> Tran
             language_hint=language,
             available_subtitles={},
             automatic_captions={},
+            author=metadata.get("author_name"),
+            canonical_url=f"https://www.youtube.com/watch?v={video_id}",
+            channel_url=metadata.get("author_url"),
         )
         return TranscriptFetch(probe=probe, segments=segments, language=language.split("-")[0])
     except (
@@ -179,38 +187,19 @@ def _is_supported_proxy(proxy_url: str | None) -> bool:
     return bool(proxy_url and proxy_url.startswith(_SUPPORTED_PROXY_SCHEMES))
 
 
-def _mask_proxy(url: str) -> str:
-    """Remove o userinfo (usuário:senha) de uma URL de proxy para log seguro.
-
-    Preserva esquema + host + porta. Ex.: `socks5h://127.0.0.1:1080` continua
-    legível; `http://user:pass@host:8080` vira `http://host:8080`. NUNCA devolve
-    a string crua quando há risco de userinfo embutido — robusto a URL malformada.
-    """
-    try:
-        parsed = urlsplit(url)
-    except ValueError:
-        return "<proxy oculto>"
-
-    scheme = parsed.scheme
-    # Só confiamos no parse quando o esquema é um proxy conhecido. Sem esquema
-    # ("user:secret@host:1080" cai inteiro em .path) OU pseudo-esquema — ex.:
-    # "myuser:senha@host:1080", onde urlsplit lê "myuser" como scheme e o
-    # username VAZARIA no fallback `f"{scheme}://..."` — caem aqui e são ocultados.
-    if f"{scheme}://" not in _SUPPORTED_PROXY_SCHEMES:
-        return "<proxy oculto>"
-
-    try:
-        host = parsed.hostname
-        port = parsed.port
-    except ValueError:
-        # Porta inválida / parse de netloc falhou: não arrisca vazar userinfo.
-        return f"{scheme}://<host oculto>"
-
-    if not host:
-        return f"{scheme}://<host oculto>"
-
-    netloc = f"{host}:{port}" if port is not None else host
-    return urlunsplit((scheme, netloc, "", "", ""))
+def _proxy_log_category(url: str) -> str:
+    """Classifica o proxy para telemetria sem expor endereço ou credenciais."""
+    normalized = url.lower()
+    categories = {
+        "http://": "HTTP",
+        "https://": "HTTPS",
+        "socks5://": "SOCKS5",
+        "socks5h://": "SOCKS5H",
+    }
+    for prefix, category in categories.items():
+        if normalized.startswith(prefix):
+            return category
+    return "UNKNOWN"
 
 
 def _youtube_video_id(url: str) -> str | None:
@@ -247,7 +236,7 @@ def _youtube_video_id(url: str) -> str | None:
     return None
 
 
-async def probe(url: str, *, force_impersonate: str | None = None) -> VideoProbe:
+async def probe(url: str, *, user_id: str, force_impersonate: str | None = None) -> VideoProbe:
     """Extrai metadata SEM baixar áudio (`skip_download=True`)."""
     base_opts = await _runtime_options(force_impersonate=force_impersonate)
     opts = {
@@ -260,7 +249,7 @@ async def probe(url: str, *, force_impersonate: str | None = None) -> VideoProbe
     }
     # yt-dlp é sync — chamamos em thread pra não bloquear o loop. O cookiefile
     # (se configurado) é materializado/limpo dentro do helper.
-    info = await _extract_info_with_cookies(url, opts)
+    info = await _extract_info_with_cookies(url, opts, user_id=user_id)
     return VideoProbe(
         video_id=info["id"],
         title=info.get("title") or "(sem título)",
@@ -271,6 +260,9 @@ async def probe(url: str, *, force_impersonate: str | None = None) -> VideoProbe
         language_hint=info.get("language"),
         available_subtitles=info.get("subtitles") or {},
         automatic_captions=info.get("automatic_captions") or {},
+        author=info.get("uploader") or info.get("channel"),
+        canonical_url=info.get("webpage_url") or info.get("original_url") or url,
+        channel_url=info.get("channel_url") or info.get("uploader_url"),
     )
 
 
@@ -314,7 +306,7 @@ def _best_subtitle_format(formats: list[dict[str, Any]]) -> str | None:
     return None
 
 
-async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path) -> Path:
+async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path, *, user_id: str) -> Path:
     """Baixa apenas a legenda. Retorna path do arquivo .vtt/.srt.
 
     yt-dlp pode salvar com qualquer das variantes (`pt`, `pt-BR`, `pt-orig`,
@@ -338,7 +330,7 @@ async def download_subtitle(url: str, lang: str, fmt: str, out_dir: Path) -> Pat
     }
     # download=True faz o yt-dlp escrever os arquivos de legenda.
     # Com skip_download=True, NÃO baixa o vídeo, apenas as legendas.
-    await _download_with_cookies(url, opts)
+    await _download_with_cookies(url, opts, user_id=user_id)
     # tmpdir é exclusivo do job, então `*.{fmt}` é seguro
     candidates = sorted(out_dir.glob(f"*.{fmt}"))
     if not candidates:
@@ -353,6 +345,7 @@ async def download_audio_opus(
     url: str,
     out_dir: Path,
     *,
+    user_id: str,
     force_impersonate: str | None = None,
 ) -> Path:
     """Extrai áudio como opus mono 16kHz 32kbps (spec 002)."""
@@ -384,7 +377,7 @@ async def download_audio_opus(
             "32k",
         ],
     }
-    await _download_with_cookies(url, opts)
+    await _download_with_cookies(url, opts, user_id=user_id)
     files = list(out_dir.glob("*.opus")) + list(out_dir.glob("*.ogg"))
     if not files:
         raise RuntimeError("Áudio opus não foi gerado")
@@ -423,11 +416,13 @@ def _cookiefile_opts(cookies: str | None) -> Iterator[dict[str, Any]]:
         path.unlink(missing_ok=True)
 
 
-async def _extract_info_with_cookies(url: str, opts: dict[str, Any]) -> dict[str, Any]:
+async def _extract_info_with_cookies(
+    url: str, opts: dict[str, Any], *, user_id: str
+) -> dict[str, Any]:
     """Roda `probe`/extract_info com cookiefile temporário, se configurado."""
     import asyncio
 
-    cookies = await voxen_settings.get_yt_dlp_cookies()
+    cookies = await voxen_settings.get_yt_dlp_cookies(user_id)
 
     def _run() -> dict[str, Any]:
         with _cookiefile_opts(cookies) as cookie_patch:
@@ -436,11 +431,11 @@ async def _extract_info_with_cookies(url: str, opts: dict[str, Any]) -> dict[str
     return await asyncio.to_thread(_run)
 
 
-async def _download_with_cookies(url: str, opts: dict[str, Any]) -> None:
+async def _download_with_cookies(url: str, opts: dict[str, Any], *, user_id: str) -> None:
     """Roda download (áudio/legenda) com cookiefile temporário, se configurado."""
     import asyncio
 
-    cookies = await voxen_settings.get_yt_dlp_cookies()
+    cookies = await voxen_settings.get_yt_dlp_cookies(user_id)
 
     def _run() -> None:
         with _cookiefile_opts(cookies) as cookie_patch:
@@ -506,10 +501,9 @@ async def _runtime_options(*, force_impersonate: str | None = None) -> dict[str,
     proxy_urls = [line.strip() for line in re.split(r"[\n,]+", proxy_urls_raw) if line.strip()]
     if proxy_urls:
         opts["proxy"] = secrets.choice(proxy_urls)
-        # Observabilidade: torna auto-evidente nos logs quando o job sai por
-        # proxy (ex.: túnel residencial socks5h). MASCARADO — nunca loga
-        # credenciais. Silêncio (sem esta linha) = sem proxy.
-        logger.info("proxy-active", proxy=_mask_proxy(opts["proxy"]))
+        # Observabilidade fechada: informa apenas a categoria do egress.
+        # Silêncio (sem esta linha) = sem proxy.
+        logger.info("proxy-active", proxy_kind=_proxy_log_category(opts["proxy"]))
 
     # Browser impersonation (curl_cffi). Plataformas como TikTok exigem imitar o
     # TLS/JA3 de um browser real; o extractor pede impersonation sozinho e, com

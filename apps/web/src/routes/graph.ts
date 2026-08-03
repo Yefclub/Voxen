@@ -7,7 +7,7 @@
 //
 // Spec: .specs/020-brain-knowledge-harness.md
 // Limite full: 500 nós / 1500 arestas (defensivo).
-// Map view (default): recorte rápido — ver graph-slice.ts / spec 103.
+// Full view (default): universo completo dentro dos caps defensivos — ver graph-slice.ts.
 // Cache: 60s em Redis (key voxen:graph:<userId>:<view>[:focus]) — refresh manual.
 // ============================================================================
 
@@ -21,7 +21,7 @@ import {
   reindexTranscriptsBrain,
 } from '../lib/brain';
 import { db } from '../lib/db';
-import { graphCacheKey, invalidateGraphCache } from '../lib/graph-cache';
+import { graphCacheKey, graphInvalidationChannel, invalidateGraphCache } from '../lib/graph-cache';
 import {
   GRAPH_INDEX_ERROR_COOLDOWN_MS,
   GRAPH_INDEX_HEARTBEAT_MS,
@@ -45,7 +45,7 @@ import {
   parseGraphView,
   selectGraphSlice,
 } from '../lib/graph-slice';
-import { getRedisPublisher } from '../lib/redis';
+import { createSubscriber, getRedisPublisher } from '../lib/redis';
 import type { GraphIndexErrorReason, GraphIndexStatus } from '../shared/graph-index';
 
 type Vars = { userId: string };
@@ -128,14 +128,67 @@ const CACHE_TTL_SEC = 60;
 graphRoutes.get('/status', async (c) => {
   const userId = c.get('userId');
   const force = c.req.query('force') === '1';
-  let status = await currentGraphIndexStatus(userId);
-  if (
-    status.state === 'idle' ||
-    (status.state === 'error' && shouldStartGraphIndex(status, force))
-  ) {
-    status = await ensureBrainCoverage(userId, force);
-  }
-  return c.json(status);
+  return c.json(
+    force ? await ensureBrainCoverage(userId, true) : await currentGraphIndexStatus(userId),
+  );
+});
+
+graphRoutes.get('/events', async (c) => {
+  const userId = c.get('userId');
+  const subscriber = createSubscriber();
+  const encoder = new TextEncoder();
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
+  const cleanup = async (): Promise<void> => {
+    if (heartbeat) {
+      clearInterval(heartbeat);
+      heartbeat = null;
+    }
+    await subscriber.quit().catch(() => undefined);
+  };
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: string, data: string): void => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
+        } catch {
+          closed = true;
+        }
+      };
+      subscriber.on('message', (_channel, payload) => send('invalidated', payload));
+      subscriber.on('error', () => {
+        closed = true;
+        void cleanup();
+        try {
+          controller.close();
+        } catch {
+          // Client or proxy already closed the stream.
+        }
+      });
+      try {
+        await subscriber.subscribe(graphInvalidationChannel(userId));
+        send('connected', '{}');
+        heartbeat = setInterval(() => send('ping', String(Date.now())), 10_000);
+      } catch (error) {
+        closed = true;
+        await cleanup();
+        controller.error(error);
+      }
+    },
+    async cancel() {
+      closed = true;
+      await cleanup();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  });
 });
 
 graphRoutes.get('/', async (c) => {
@@ -159,9 +212,12 @@ graphRoutes.get('/', async (c) => {
     }
   }
 
-  const indexStatus = await ensureBrainCoverage(userId, force);
+  const indexStatus = force
+    ? await ensureBrainCoverage(userId, true)
+    : await currentGraphIndexStatus(userId);
 
-  // Busca o universo candidatado (cap full) e recorta no slice puro.
+  // Busca o universo completo permitido pelos caps defensivos; `map` só existe
+  // para URLs legadas e a UI sempre pede a visão completa.
   const rawNodes = await db.brainNode.findMany({
     where: { userId, status: 'ACTIVE' },
     orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
@@ -520,6 +576,29 @@ async function ensureBrainCoverage(userId: string, force: boolean): Promise<Grap
   };
   await persistGraphIndexStatus(userId, ready);
   return ready;
+}
+
+let graphUsersReconciliationInFlight = false;
+
+/**
+ * Mantém o Brain atualizado independentemente de alguém abrir /grafo.
+ * O lease Redis já existente torna a rotina segura entre múltiplas réplicas.
+ */
+export async function reconcileGraphUsers(): Promise<void> {
+  if (graphUsersReconciliationInFlight) return;
+  graphUsersReconciliationInFlight = true;
+  try {
+    const users = await db.user.findMany({
+      where: { status: 'APPROVED' },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    for (const user of users) {
+      await ensureBrainCoverage(user.id, false);
+    }
+  } finally {
+    graphUsersReconciliationInFlight = false;
+  }
 }
 
 async function readBrainCoverage(userId: string): Promise<BrainCoverage> {

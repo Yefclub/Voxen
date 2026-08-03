@@ -19,6 +19,7 @@ export type ToolFamily = 'search' | 'read' | 'notes' | 'brain' | 'web' | 'transc
 const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   // busca
   search_transcripts: 'search',
+  search_knowledge: 'search',
   search_notes: 'search',
   list_transcripts: 'search',
   list_notes: 'search',
@@ -72,22 +73,6 @@ export function prettifyToolName(name: string): string {
 /** `true` se há rótulo i18n `tools.<name>` para esta ferramenta. */
 export function hasToolLabel(name: string): boolean {
   return KNOWN_TOOL_NAMES.includes(name);
-}
-
-/**
- * Estado agregado do toolblock (spec 090):
- * - `running` só enquanto a ferramenta está de fato em execução;
- * - aprovação pendente NÃO conta como running (HITL vive fora do “Pensando”);
- * - senão `error` se alguma falhou;
- * - senão `done`.
- */
-export function toolBlockState(tools: readonly ToolLike[]): 'running' | 'error' | 'done' {
-  let hasError = false;
-  for (const tool of tools) {
-    if (tool.state === 'running') return 'running';
-    if (tool.state === 'error') hasError = true;
-  }
-  return hasError ? 'error' : 'done';
 }
 
 export {

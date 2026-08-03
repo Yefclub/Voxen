@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Check, Globe2, Lock, ShieldCheck, Users as UsersIcon, X } from 'lucide-react';
-import { toast } from 'sonner';
+import {
+  Check,
+  Globe2,
+  Lock,
+  ShieldCheck,
+  ShieldX,
+  Trash2,
+  Users as UsersIcon,
+  X,
+} from '@/components/ui/icons';
+import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { FetchError } from '../components/ui/fetch-error';
@@ -12,9 +21,19 @@ import { ApiError, apiGet, apiPost, api } from '../lib/api';
 import { useFetch } from '../lib/hooks';
 import type { AdminUser } from '../lib/types';
 import { formatRelative } from '../lib/format';
-import { AnimatedPage } from '../components/motion/animated-page';
+import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { useI18n, type TranslateFn } from '../lib/i18n';
 import { TimezoneSelect } from '../components/timezone-select';
+import { DataSurface } from '../components/ui/data-surface';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
 
 interface InstanceResponse {
   allowSignups: boolean;
@@ -29,6 +48,8 @@ export function AdminUsuariosPage(): React.ReactElement {
   const [timezone, setTimezone] = useState<string | null>(null);
   const [togglingSignups, setTogglingSignups] = useState(false);
   const [savingTimezone, setSavingTimezone] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState<AdminUser | null>(null);
+  const [deleteEmail, setDeleteEmail] = useState('');
 
   useEffect(() => {
     // Guarda contra setState após unmount (apiGet não aceita AbortController).
@@ -66,6 +87,57 @@ export function AdminUsuariosPage(): React.ReactElement {
       refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t('admin.users.rejectError'));
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function changeUser(id: string, action: 'disable' | 'enable'): Promise<void> {
+    setPendingId(id);
+    try {
+      await apiPost(`/api/admin/usuarios/${id}/${action}`, {});
+      toast.success(action === 'disable' ? 'Usuário bloqueado.' : 'Usuário reativado.');
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível atualizar o usuário.');
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function toggleAdmin(user: AdminUser): Promise<void> {
+    const role = user.role === 'ADMIN' ? 'USER' : 'ADMIN';
+    setPendingId(user.id);
+    try {
+      await api(`/api/admin/usuarios/${user.id}/role`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      });
+      toast.success(
+        role === 'ADMIN' ? 'Administrador definido.' : 'Acesso administrativo removido.',
+      );
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível atualizar o papel.');
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function deleteUser(): Promise<void> {
+    if (!deleteCandidate) return;
+    setPendingId(deleteCandidate.id);
+    try {
+      await api(`/api/admin/usuarios/${deleteCandidate.id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ confirmEmail: deleteEmail }),
+      });
+      toast.success('Conta e workspace excluídos.');
+      setDeleteCandidate(null);
+      setDeleteEmail('');
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível excluir o usuário.');
     } finally {
       setPendingId(null);
     }
@@ -120,20 +192,15 @@ export function AdminUsuariosPage(): React.ReactElement {
   const others = users.filter((u) => u.status !== 'PENDING');
 
   return (
-    <AnimatedPage>
-      <div className="mx-auto max-w-6xl space-y-6 px-4 py-5 sm:space-y-10 sm:px-8 sm:py-12">
-        <header className="space-y-3">
-          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-            {t('admin.eyebrow')}
-          </div>
-          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
-            {t('admin.users.title')}
-          </h1>
-          <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            {t('admin.users.description')}
-          </p>
-        </header>
+    <PageShell width="wide">
+      <div data-page-content className="space-y-6 sm:space-y-10">
+        <PageHeader
+          eyebrow={t('admin.eyebrow')}
+          icon={ShieldCheck}
+          iconClassName="text-emerald-400"
+          title={t('admin.users.title')}
+          description={t('admin.users.description')}
+        />
 
         {/* Toggle de cadastros */}
         <Card elevated>
@@ -225,7 +292,7 @@ export function AdminUsuariosPage(): React.ReactElement {
           )}
 
           {!loading && pending.length > 0 && (
-            <Card>
+            <DataSurface>
               <ul className="divide-y divide-[var(--color-app-border)]">
                 {pending.map((u) => (
                   <li
@@ -270,7 +337,7 @@ export function AdminUsuariosPage(): React.ReactElement {
                   </li>
                 ))}
               </ul>
-            </Card>
+            </DataSurface>
           )}
         </section>
 
@@ -288,7 +355,7 @@ export function AdminUsuariosPage(): React.ReactElement {
           )}
 
           {!loading && others.length > 0 && (
-            <Card>
+            <DataSurface>
               <ul className="divide-y divide-[var(--color-app-border)]">
                 {others.map((u) => (
                   <li
@@ -319,15 +386,107 @@ export function AdminUsuariosPage(): React.ReactElement {
                             : t('admin.users.disabled')}
                       </p>
                     </div>
-                    <StatusBadge status={u.status} t={t} />
+                    <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                      <StatusBadge status={u.status} t={t} />
+                      {u.status === 'DISABLED' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={pendingId === u.id}
+                          onClick={() => void changeUser(u.id, 'enable')}
+                        >
+                          <Check className="h-3.5 w-3.5" /> Reativar
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={pendingId === u.id}
+                          onClick={() => void changeUser(u.id, 'disable')}
+                        >
+                          <ShieldX className="h-3.5 w-3.5" /> Bloquear
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pendingId === u.id}
+                        onClick={() => void toggleAdmin(u)}
+                      >
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        {u.role === 'ADMIN' ? 'Remover admin' : 'Tornar admin'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={pendingId === u.id}
+                        onClick={() => {
+                          setDeleteCandidate(u);
+                          setDeleteEmail('');
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Excluir
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
-            </Card>
+            </DataSurface>
           )}
         </section>
+
+        <Dialog
+          open={deleteCandidate !== null}
+          onOpenChange={(open) => {
+            if (!open && pendingId !== deleteCandidate?.id) {
+              setDeleteCandidate(null);
+              setDeleteEmail('');
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Excluir conta definitivamente?</DialogTitle>
+              <DialogDescription>
+                Isso remove a conta, sessões, credenciais pessoais e todo o workspace. Digite
+                exatamente <strong>{deleteCandidate?.email}</strong> para confirmar.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              value={deleteEmail}
+              onChange={(event) => setDeleteEmail(event.target.value)}
+              placeholder={deleteCandidate?.email ?? 'email@exemplo.com'}
+              autoComplete="off"
+              aria-label="E-mail de confirmação da exclusão"
+            />
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDeleteCandidate(null);
+                  setDeleteEmail('');
+                }}
+                disabled={pendingId === deleteCandidate?.id}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => void deleteUser()}
+                disabled={
+                  !deleteCandidate ||
+                  deleteEmail !== deleteCandidate.email ||
+                  pendingId === deleteCandidate.id
+                }
+              >
+                {pendingId === deleteCandidate?.id && <Spinner />}
+                Excluir definitivamente
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
-    </AnimatedPage>
+    </PageShell>
   );
 }
 

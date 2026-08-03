@@ -10,17 +10,62 @@
 // ============================================================================
 
 import { Hono } from 'hono';
+import type { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
-import { deleteSetting, getAppTimezone, getSetting, setSetting } from '../lib/settings';
+import { getAppTimezone, getSetting, setSettings } from '../lib/settings';
+import {
+  createMcpToken,
+  hashMcpToken,
+  parseMcpScopes,
+  toMcpTokenMetadata,
+} from '../lib/mcp-tokens';
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
+import { deleteS3Prefix } from '../lib/s3';
 
 type AdminVariables = {
   adminUserId: string;
 };
 
 export const adminRoutes = new Hono<{ Variables: AdminVariables }>();
+
+class AdminUserActionError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 404 | 409 = 400,
+  ) {
+    super(message);
+  }
+}
+
+async function withAdminRosterLock<T>(
+  operation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return db.$transaction(async (tx) => {
+    // Serializa ações que poderiam remover o último administrador aprovado.
+    await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext('voxen:admin-roster'))");
+    return operation(tx);
+  });
+}
+
+async function assertMayRemoveApprovedAdmin(
+  tx: Prisma.TransactionClient,
+  user: {
+    id: string;
+    role: 'ADMIN' | 'USER';
+    status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED';
+  },
+): Promise<void> {
+  if (user.role !== 'ADMIN' || user.status !== 'APPROVED') return;
+  const count = await tx.user.count({ where: { role: 'ADMIN', status: 'APPROVED' } });
+  if (count <= 1) {
+    throw new AdminUserActionError(
+      'É necessário manter pelo menos um administrador aprovado.',
+      409,
+    );
+  }
+}
 
 // Middleware: require session + role ADMIN
 adminRoutes.use('*', async (c, next) => {
@@ -108,6 +153,121 @@ adminRoutes.post('/usuarios/:id/reject', async (c) => {
   return c.json({ user: updated });
 });
 
+// POST /api/admin/usuarios/:id/disable — bloqueia acesso e invalida sessões.
+adminRoutes.post('/usuarios/:id/disable', async (c) => {
+  const id = c.req.param('id');
+  if (id === c.get('adminUserId')) {
+    return c.json({ error: 'Não é permitido bloquear a própria conta administrativa.' }, 400);
+  }
+  try {
+    const user = await withAdminRosterLock(async (tx) => {
+      const target = await tx.user.findUnique({ where: { id } });
+      if (!target) throw new AdminUserActionError('Usuário não encontrado.', 404);
+      if (target.status === 'DISABLED')
+        throw new AdminUserActionError('Usuário já está bloqueado.');
+      await assertMayRemoveApprovedAdmin(tx, target);
+      await tx.session.deleteMany({ where: { userId: id } });
+      return tx.user.update({
+        where: { id },
+        data: { status: 'DISABLED' },
+        select: { id: true, email: true, status: true, role: true },
+      });
+    });
+    return c.json({ user });
+  } catch (error) {
+    if (error instanceof AdminUserActionError)
+      return c.json({ error: error.message }, error.status);
+    throw error;
+  }
+});
+
+// POST /api/admin/usuarios/:id/enable — restaura somente uma conta bloqueada.
+adminRoutes.post('/usuarios/:id/enable', async (c) => {
+  const id = c.req.param('id');
+  const user = await db.user.findUnique({ where: { id } });
+  if (!user) return c.json({ error: 'Usuário não encontrado.' }, 404);
+  if (user.status !== 'DISABLED')
+    return c.json({ error: 'Somente usuários bloqueados podem ser reativados.' }, 400);
+  const updated = await db.user.update({
+    where: { id },
+    data: { status: 'APPROVED', approvedAt: user.approvedAt ?? new Date() },
+    select: { id: true, email: true, status: true, role: true },
+  });
+  return c.json({ user: updated });
+});
+
+// PATCH /api/admin/usuarios/:id/role — concede ou remove papel administrativo.
+adminRoutes.patch('/usuarios/:id/role', async (c) => {
+  const id = c.req.param('id');
+  const body = (await c.req.json().catch(() => ({}))) as { role?: unknown };
+  if (body.role !== 'ADMIN' && body.role !== 'USER') {
+    return c.json({ error: 'Papel inválido. Use ADMIN ou USER.' }, 400);
+  }
+  const role = body.role;
+  try {
+    const user = await withAdminRosterLock(async (tx) => {
+      const target = await tx.user.findUnique({ where: { id } });
+      if (!target) throw new AdminUserActionError('Usuário não encontrado.', 404);
+      if (target.role === role) return target;
+      if (role === 'USER') await assertMayRemoveApprovedAdmin(tx, target);
+      return tx.user.update({
+        where: { id },
+        data: { role },
+        select: { id: true, email: true, status: true, role: true },
+      });
+    });
+    return c.json({ user });
+  } catch (error) {
+    if (error instanceof AdminUserActionError)
+      return c.json({ error: error.message }, error.status);
+    throw error;
+  }
+});
+
+// DELETE /api/admin/usuarios/:id — exclusão irreversível com confirmação por e-mail.
+adminRoutes.delete('/usuarios/:id', async (c) => {
+  const id = c.req.param('id');
+  if (id === c.get('adminUserId')) {
+    return c.json({ error: 'Não é permitido excluir a própria conta administrativa.' }, 400);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as { confirmEmail?: unknown };
+  const confirmEmail = typeof body.confirmEmail === 'string' ? body.confirmEmail : '';
+  try {
+    const target = await withAdminRosterLock(async (tx) => {
+      const target = await tx.user.findUnique({ where: { id } });
+      if (!target) throw new AdminUserActionError('Usuário não encontrado.', 404);
+      if (confirmEmail !== target.email) {
+        throw new AdminUserActionError(
+          'Digite exatamente o e-mail da conta para confirmar a exclusão.',
+        );
+      }
+      await assertMayRemoveApprovedAdmin(tx, target);
+      return { id: target.id, email: target.email };
+    });
+    // S3 é I/O de rede; não mantemos uma transação PostgreSQL aberta durante
+    // a limpeza. Revalidamos o estado protegido logo antes da exclusão local.
+    await deleteS3Prefix(`workspaces/${target.id}/`);
+    await withAdminRosterLock(async (tx) => {
+      const current = await tx.user.findUnique({ where: { id: target.id } });
+      if (!current) throw new AdminUserActionError('Usuário não encontrado.', 404);
+      if (confirmEmail !== current.email) {
+        throw new AdminUserActionError(
+          'Digite exatamente o e-mail da conta para confirmar a exclusão.',
+        );
+      }
+      await assertMayRemoveApprovedAdmin(tx, current);
+      await tx.setting.deleteMany({ where: { scope: 'USER', userId: current.id } });
+      await tx.verification.deleteMany({ where: { identifier: current.email } });
+      await tx.user.delete({ where: { id: current.id } });
+    });
+    return c.json({ ok: true });
+  } catch (error) {
+    if (error instanceof AdminUserActionError)
+      return c.json({ error: error.message }, error.status);
+    throw error;
+  }
+});
+
 // GET /api/admin/instance — estado da instância (allow_signups + timezone)
 adminRoutes.get('/instance', async (c) => {
   const [allowSignupsRaw, timezone] = await Promise.all([
@@ -128,16 +288,18 @@ adminRoutes.patch('/instance', async (c) => {
       400,
     );
   }
+  const settings: Partial<Record<'app_timezone' | 'allow_signups', string>> = {};
   if (hasTimezone) {
     const tz = String(body.timezone).trim();
     if (!isValidIanaTimezone(tz)) {
       return c.json({ error: 'Timezone IANA inválido.' }, 400);
     }
-    await setSetting('app_timezone', normalizeAppTimezone(tz));
+    settings.app_timezone = normalizeAppTimezone(tz);
   }
   if (hasSignups) {
-    await setSetting('allow_signups', body.allowSignups ? 'true' : 'false');
+    settings.allow_signups = body.allowSignups ? 'true' : 'false';
   }
+  await setSettings(settings, { actorUserId: c.get('adminUserId') });
   const [allowSignupsRaw, timezone] = await Promise.all([
     getSetting('allow_signups').catch(() => null),
     getAppTimezone(),
@@ -148,55 +310,113 @@ adminRoutes.patch('/instance', async (c) => {
   });
 });
 
-// GET /api/admin/mcp — estado do MCP server (token configurado? qual user?).
-// Não retorna o token bruto (não há "ver token de novo" — só rotacionar).
+// GET /api/admin/mcp — metadados de todos os tokens sem hashes ou segredos.
 adminRoutes.get('/mcp', async (c) => {
-  const stored = await getSetting('mcp_api_token').catch(() => null);
-  if (!stored) {
-    return c.json({ enabled: false, userId: null, tokenPreview: null });
-  }
-  const [userId, token] = stored.split(':');
+  const [tokens, legacy, policy] = await Promise.all([
+    db.mcpToken.findMany({
+      include: { user: { select: { email: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+    }),
+    getSetting('mcp_api_token').catch(() => null),
+    getSetting('mcp_user_tokens_enabled').catch(() => null),
+  ]);
   return c.json({
-    enabled: !!(userId && token),
-    userId: userId ?? null,
-    tokenPreview: token ? token.slice(0, 8) + '…' : null,
+    // Campos de compatibilidade para clientes anteriores; não carregam segredo.
+    enabled: tokens.some(
+      (token) => !token.revokedAt && (!token.expiresAt || token.expiresAt > new Date()),
+    ),
+    userId: null,
+    tokenPreview: null,
+    allowUserTokens: policy === 'true',
+    legacyTokenConfigured: !!legacy,
+    tokens: tokens.map((token) => ({
+      ...toMcpTokenMetadata(token),
+      user: token.user,
+    })),
   });
 });
 
-// POST /api/admin/mcp/rotate — gera novo token MCP pra o admin chamando.
-// Retorna o token UMA vez (não é recuperável depois). Sobrescreve o anterior.
+// PATCH /api/admin/mcp — política de emissão por usuários aprovados.
+adminRoutes.patch('/mcp', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  if (typeof body.allowUserTokens !== 'boolean') {
+    return c.json({ error: 'Envie allowUserTokens (boolean).' }, 400);
+  }
+  await setSettings(
+    { mcp_user_tokens_enabled: body.allowUserTokens ? 'true' : 'false' },
+    { actorUserId: c.get('adminUserId') },
+  );
+  return c.json({ allowUserTokens: body.allowUserTokens });
+});
+
+// Alias preservado para clientes antigos: cria um token individual do admin,
+// sem substituir nem revelar tokens anteriores.
 adminRoutes.post('/mcp/rotate', async (c) => {
   const adminUserId = c.get('adminUserId');
-  // 32 bytes hex = 64 chars, entropia adequada pra Bearer token.
-  const tokenBytes = new Uint8Array(32);
-  crypto.getRandomValues(tokenBytes);
-  const token = Array.from(tokenBytes, (b) => b.toString(16).padStart(2, '0')).join('');
-  await setSetting('mcp_api_token', `${adminUserId}:${token}`);
-  return c.json({
-    token,
+  const created = await createMcpToken({
     userId: adminUserId,
-    warning: 'Salve este token agora — não será exibido novamente.',
+    label: 'Admin',
+    scopes: ['READ', 'WRITE'],
+    expiresAt: null,
   });
+  c.header('Cache-Control', 'no-store');
+  return c.json(
+    {
+      ...created,
+      userId: adminUserId,
+      warning: 'Salve este token agora — não será exibido novamente.',
+    },
+    201,
+  );
+});
+
+// POST /api/admin/mcp/tokens — admin emite token para qualquer usuário aprovado.
+adminRoutes.post('/mcp/tokens', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const userId = typeof body.userId === 'string' ? body.userId : '';
+  const label = typeof body.label === 'string' ? body.label.trim() : '';
+  const scopes = parseMcpScopes(body.scopes);
+  const expiresAt = parseMcpExpiry(body.expiresAt);
+  if (!userId || !label || label.length > 100 || !scopes || expiresAt === undefined) {
+    return c.json({ error: 'Dados do token MCP inválidos.' }, 400);
+  }
+  const owner = await db.user.findUnique({ where: { id: userId }, select: { status: true } });
+  if (!owner || owner.status !== 'APPROVED')
+    return c.json({ error: 'Usuário aprovado não encontrado.' }, 404);
+  const created = await createMcpToken({ userId, label, scopes, expiresAt });
+  c.header('Cache-Control', 'no-store');
+  return c.json(created, 201);
+});
+
+// DELETE /api/admin/mcp/tokens/:id — revogação preserva metadados auditáveis.
+adminRoutes.delete('/mcp/tokens/:id', async (c) => {
+  const result = await db.mcpToken.updateMany({
+    where: { id: c.req.param('id'), revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (result.count === 0) return c.json({ error: 'Token não encontrado ou já revogado.' }, 404);
+  return c.json({ ok: true });
 });
 
 // POST /api/admin/mcp/prompt — gera prompt pronto para configurar um agente.
 // Retorna o token dentro do prompt porque a ação é explícita, admin-only e
 // feita sob demanda. Não incluir esse payload em logs.
 adminRoutes.post('/mcp/prompt', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { appUrl?: unknown };
+  const body = (await c.req.json().catch(() => ({}))) as { appUrl?: unknown; token?: unknown };
   const appUrl = normalizeAppOrigin(body.appUrl);
   if (!appUrl) {
     return c.json({ error: 'URL da aplicação inválida.' }, 400);
   }
 
-  const stored = await getSetting('mcp_api_token').catch(() => null);
-  if (!stored) {
-    return c.json({ error: 'Token MCP não configurado.' }, 409);
-  }
-  const [userId, token] = stored.split(':');
-  if (!userId || !token) {
-    return c.json({ error: 'Token MCP inválido. Rotacione o token.' }, 409);
-  }
+  // O segredo vem explicitamente da tela logo após criá-lo. Ele não é
+  // recuperado do banco e deve pertencer ao admin que fez a requisição.
+  const token = typeof body.token === 'string' ? body.token.trim() : '';
+  if (!token) return c.json({ error: 'Informe o token recém-criado.' }, 400);
+  const valid = await db.mcpToken.findFirst({
+    where: { tokenHash: hashMcpToken(token), userId: c.get('adminUserId'), revokedAt: null },
+    select: { id: true },
+  });
+  if (!valid) return c.json({ error: 'Token MCP inválido ou revogado.' }, 409);
 
   const endpoint = `${appUrl}/mcp`;
   const prompt = [
@@ -205,7 +425,7 @@ adminRoutes.post('/mcp/prompt', async (c) => {
     'O que é o Voxen:',
     '- Voxen é uma base de conhecimento web self-hosted e single-tenant.',
     '- Ele guarda transcrições de vídeos, páginas web, uploads, notas e relações do Voxen Brain.',
-    '- Este MCP lê o acervo do usuário dono do token e também pode criar/editar notas e solicitar transcrições em nome dele.',
+    '- Este MCP lê a Base de conhecimento do usuário dono do token e também pode criar/editar notas e solicitar transcrições em nome dele.',
     '',
     'Como conectar:',
     `- URL da aplicação: ${appUrl}`,
@@ -214,6 +434,7 @@ adminRoutes.post('/mcp/prompt', async (c) => {
     `- Header obrigatório: Authorization: Bearer ${token}`,
     '',
     'Ferramentas de leitura:',
+    '- voxen_search_knowledge: busca unificada em notas e transcrições; use primeiro para perguntas temáticas ou factuais.',
     '- voxen_search_transcripts: busca full-text; retorna trechos, resumo, tags e id.',
     '- voxen_read_transcript: lê uma transcrição completa pelo transcript_id.',
     '- voxen_list_transcripts: lista transcrições (paginação por cursor).',
@@ -240,12 +461,18 @@ adminRoutes.post('/mcp/prompt', async (c) => {
   return c.json({ prompt });
 });
 
-// DELETE /api/admin/mcp — revoga o token (apaga setting)
+// DELETE /api/admin/mcp — revoga explicitamente a credencial global legada.
 adminRoutes.delete('/mcp', async (c) => {
-  const { deleteSetting } = await import('../lib/settings');
-  await deleteSetting('mcp_api_token');
+  await setSettings({ mcp_api_token: null }, { actorUserId: c.get('adminUserId') });
   return c.json({ ok: true });
 });
+
+function parseMcpExpiry(value: unknown): Date | null | undefined {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string') return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) || date <= new Date() ? undefined : date;
+}
 
 // ----------------------------------------------------------------------------
 // Agente de Proxy (túnel residencial) — token de conexão (cifrado em DB)
@@ -294,15 +521,18 @@ adminRoutes.patch('/proxy-agent', async (c) => {
       return c.json({ error: 'Gere o token do agente de proxy antes de ativar.' }, 409);
     }
   }
-  await setSetting('proxy_agent_enabled', body.enabled ? 'true' : 'false');
+  const settings: Partial<Record<'proxy_agent_enabled' | 'yt_dlp_proxy_urls', string | null>> = {
+    proxy_agent_enabled: body.enabled ? 'true' : 'false',
+  };
   const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
   if (body.enabled) {
     if (!currentProxy) {
-      await setSetting('yt_dlp_proxy_urls', LOCAL_TUNNEL_SOCKS_URL);
+      settings.yt_dlp_proxy_urls = LOCAL_TUNNEL_SOCKS_URL;
     }
   } else if (currentProxy === LOCAL_TUNNEL_SOCKS_URL) {
-    await deleteSetting('yt_dlp_proxy_urls');
+    settings.yt_dlp_proxy_urls = null;
   }
+  await setSettings(settings, { actorUserId: c.get('adminUserId') });
   return c.json({ enabled: body.enabled });
 });
 
@@ -314,16 +544,21 @@ adminRoutes.post('/proxy-agent/token', async (c) => {
   const tokenBytes = new Uint8Array(32);
   crypto.getRandomValues(tokenBytes);
   const token = toBase64Url(tokenBytes);
-  await setSetting('proxy_agent_token', token);
+  const settings: Partial<
+    Record<'proxy_agent_token' | 'proxy_agent_enabled' | 'yt_dlp_proxy_urls', string | null>
+  > = {
+    proxy_agent_token: token,
+    proxy_agent_enabled: 'true',
+  };
   // Gerar token = intenção de usar o proxy → liga o switch.
-  await setSetting('proxy_agent_enabled', 'true');
   // Aponta o worker pro SOCKS local do túnel (worker já é socks5-capable, spec
   // 058). Só seta se ainda não houver um proxy customizado configurado pelo
   // operador — não sobrescrevemos um http proxy intencional.
   const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
   if (!currentProxy) {
-    await setSetting('yt_dlp_proxy_urls', LOCAL_TUNNEL_SOCKS_URL);
+    settings.yt_dlp_proxy_urls = LOCAL_TUNNEL_SOCKS_URL;
   }
+  await setSettings(settings, { actorUserId: c.get('adminUserId') });
   // Sincroniza o authfile do chisel e recarrega o servidor (best-effort).
   const { syncChiselAuthfile } = await import('../lib/proxy-agent-tunnel');
   await syncChiselAuthfile();
@@ -336,15 +571,16 @@ adminRoutes.post('/proxy-agent/token', async (c) => {
 
 // DELETE /api/admin/proxy-agent/token — revoga (apaga setting).
 adminRoutes.delete('/proxy-agent/token', async (c) => {
-  const { deleteSetting } = await import('../lib/settings');
-  await deleteSetting('proxy_agent_token');
-  await deleteSetting('proxy_agent_enabled');
+  const settings: Partial<
+    Record<'proxy_agent_token' | 'proxy_agent_enabled' | 'yt_dlp_proxy_urls', string | null>
+  > = { proxy_agent_token: null, proxy_agent_enabled: null };
   // Limpa o proxy do worker SOMENTE se for exatamente o SOCKS local do túnel —
   // não apaga um proxy http custom que o operador tenha configurado.
   const currentProxy = (await getSetting('yt_dlp_proxy_urls').catch(() => null))?.trim();
   if (currentProxy === LOCAL_TUNNEL_SOCKS_URL) {
-    await deleteSetting('yt_dlp_proxy_urls');
+    settings.yt_dlp_proxy_urls = null;
   }
+  await setSettings(settings, { actorUserId: c.get('adminUserId') });
   // Limpa o authfile (passa a {} -> nega conexões) e recarrega (best-effort).
   const { syncChiselAuthfile } = await import('../lib/proxy-agent-tunnel');
   await syncChiselAuthfile();

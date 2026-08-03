@@ -70,7 +70,10 @@ jobs:
           push: false
           load: true
           tags: voxen-${{ matrix.app }}:scan
-          cache-from: type=gha
+          # Mesmo escopo que o ci.yml grava, para o Trivy reaproveitar o
+          # build já feito em vez de subir frio. Só leitura: quem popula é o
+          # CI, este job não deve sobrescrever o cache dele.
+          cache-from: type=gha,scope=${{ matrix.app }}
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: voxen-${{ matrix.app }}:scan

@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, Loader2, ShieldX } from 'lucide-react';
+import { CheckCircle2, Loader2, ShieldX } from '@/components/ui/icons';
 import { motion } from 'motion/react';
 import { Button } from '../components/ui/button';
 import { apiPost } from '../lib/api';

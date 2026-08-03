@@ -4,6 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Voxen</title>
+    <!-- Aplica o tema ANTES do primeiro paint (evita flash). Script clássico
+         em arquivo próprio: a CSP do MV3 bloqueia inline e type="module"
+         seria adiado. popup.js refina com o tema real assim que resolvido. -->
+    <script src="theme-init.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&display=swap"
+    />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
@@ -12,17 +22,32 @@
       <header class="header">
         <div class="brand">
           <div class="logo-wrap">
-            <img src="icons/icon-48.png" width="32" height="32" alt="" />
+            <img src="icons/icon-48.png" width="28" height="28" alt="" />
           </div>
           <div>
             <h1>Voxen</h1>
             <p class="muted" id="instance-line">Salvar na sua base</p>
           </div>
         </div>
-        <button type="button" id="open-options" class="icon-btn" title="Configurações" aria-label="Configurações">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+        <button
+          type="button"
+          id="open-options"
+          class="icon-btn"
+          title="Configurações"
+          aria-label="Configurações"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+          >
             <circle cx="12" cy="12" r="3" />
-            <path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
+            <path
+              d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"
+            />
           </svg>
         </button>
       </header>
@@ -32,17 +57,14 @@
         <button type="button" id="update-open" class="banner-btn">Atualizar</button>
       </div>
 
+      <!-- Estado "não conectado". A conexão em si acontece só na página de
+           opções (superfície única — ver spec 122 / README), então aqui só
+           explicamos o estado e levamos pra lá. -->
       <section id="setup-needed" class="panel hidden">
         <div class="empty-art" aria-hidden="true">✦</div>
         <h2>Conecte sua instância</h2>
-        <p class="body">
-          Em 1 passo: use a aba do Voxen aberta ou cole a URL da sua instalação.
-        </p>
-        <button type="button" id="detect-instance" class="btn primary block">
-          Detectar instância aberta
-        </button>
-        <button type="button" id="go-options" class="btn ghost block">Configurar manualmente</button>
-        <p id="setup-status" class="status" role="status"></p>
+        <p class="body">Ainda não encontramos uma instância Voxen conectada neste perfil.</p>
+        <button type="button" id="go-options" class="btn primary block">Conectar instância</button>
       </section>
 
       <section id="main" class="panel hidden">
@@ -79,7 +101,7 @@
       </section>
 
       <footer class="foot">
-        <span id="version-label" class="muted tiny">v0.2.0</span>
+        <span id="version-label" class="muted tiny">v0.4.0</span>
         <button type="button" id="check-update" class="linkish">Checar update</button>
       </footer>
     </main>

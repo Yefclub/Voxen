@@ -24,6 +24,9 @@ O workspace continua sendo isolado por usuário. “Sessão única” significa 
 - The system shall derivar o usuário exclusivamente da sessão autenticada e isolar todas as leituras, escritas, ferramentas e referências por `userId`.
 - The system shall preservar mensagens originais após compactação e não enviar mensagens marcadas como compactadas ao modelo.
 - The system shall apresentar respostas Markdown, fontes e eventos de ferramentas sem expor segredos, cadeia de raciocínio bruta ou JSON técnico não seguro.
+  > **Superseded em parte pela spec 126.** O raciocínio emitido pelo modelo é
+  > exibido dentro do bloco recolhível do turno. Segredos e JSON técnico não
+  > seguro continuam proibidos.
 - The system shall registrar custo e uso de tokens de cada resposta do chat.
 
 ### Event-driven

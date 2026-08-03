@@ -80,7 +80,11 @@ export async function getTranscriptBrief(
           tokensIn: generated.tokensIn,
           tokensOut: generated.tokensOut,
           costUsd: generated.costUsd,
-          meta: { source: 'agent_transcript_tags', transcript_id: transcript.id, tags },
+          meta: {
+            source: 'agent_transcript_tags',
+            transcript_id: transcript.id,
+            generated_count: tags.length,
+          },
         },
       });
     }
@@ -125,7 +129,7 @@ export async function waitForTranscriptJob(options: {
       lastProgressAt = Date.now();
       options.onProgress?.(job.status);
     }
-    if (job.status === 'DONE') {
+    if (job.status === 'DONE' || job.status === 'COMPLETED_WITH_WARNINGS') {
       if (!job.transcriptId) throw new Error('Job concluído sem transcrição.');
       return getTranscriptBrief(options.userId, job.transcriptId, {
         abortSignal: options.abortSignal,

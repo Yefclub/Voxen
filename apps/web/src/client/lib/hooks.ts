@@ -62,25 +62,52 @@ export function useFetch<T>(path: string | null): {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const loadedPath = useRef<string | null>(null);
+  const resumeRefreshInFlight = useRef(false);
   const refresh = useCallback(() => setTick((n) => n + 1), []);
+
+  useEffect(() => {
+    const revalidateWhenVisible = (): void => {
+      if (document.visibilityState !== 'visible' || resumeRefreshInFlight.current) return;
+      // visibilitychange + focus/pageshow normalmente chegam juntos. A trava
+      // permanece até a consulta disparada abaixo terminar.
+      resumeRefreshInFlight.current = true;
+      setTick((n) => n + 1);
+    };
+    window.addEventListener('focus', revalidateWhenVisible);
+    window.addEventListener('pageshow', revalidateWhenVisible);
+    document.addEventListener('visibilitychange', revalidateWhenVisible);
+    return () => {
+      window.removeEventListener('focus', revalidateWhenVisible);
+      window.removeEventListener('pageshow', revalidateWhenVisible);
+      document.removeEventListener('visibilitychange', revalidateWhenVisible);
+    };
+  }, []);
 
   useEffect(() => {
     if (path === null) {
       setData(null);
       setLoading(false);
+      resumeRefreshInFlight.current = false;
       return;
     }
     let cancelled = false;
-    setLoading(true);
+    // Revalidação é stale-while-revalidate: mantém dados e controles visíveis.
+    // A tela de loading só volta quando ainda não existe conteúdo para mostrar.
+    setLoading(loadedPath.current !== path);
     setError(null);
     apiGet<T>(path)
       .then((d) => {
-        if (!cancelled) setData(d);
+        if (!cancelled) {
+          loadedPath.current = path;
+          setData(d);
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Erro.');
       })
       .finally(() => {
+        resumeRefreshInFlight.current = false;
         if (!cancelled) setLoading(false);
       });
     return () => {

@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { resolveServerBuild, shouldNotify, type VersionPayload } from './version-monitor-core';
+import { registerSW } from 'virtual:pwa-register';
+import {
+  createVersionSnooze,
+  parseVersionSnooze,
+  resolveDisplayedFromVersion,
+  resolveServerBuild,
+  shouldNotify,
+  type StoredVersionSnooze,
+  type VersionPayload,
+} from './version-monitor-core';
+import {
+  activatePromptedVersionUpdate,
+  applyVersionUpdate,
+  prepareVersionUpdate,
+} from './version-apply';
 
 export interface VersionUpdate {
   fromVersion: string | null;
@@ -10,105 +24,135 @@ export interface VersionUpdate {
 export interface VersionMonitorState {
   update: VersionUpdate | null;
   apply: () => void;
-  dismiss: () => void;
+  snooze: () => void;
 }
 
 const VERSION_POLL_MS = 60_000;
-// Build já tratado pelo usuário (dispensado OU acionado). Persistido pra que o
-// toast NÃO reapareça em loop pro mesmo build — o furo principal do sistema
-// antigo. Só um serverBuild diferente do registrado aqui volta a notificar.
-const HANDLED_BUILD_KEY = 'voxen.versionMonitor.handledBuild';
-// Tempo até o fallback assumir se o reload normal não trouxe o build novo.
-const UPDATE_FALLBACK_MS = 3500;
+const SNOOZE_KEY = 'voxen.versionMonitor.snooze';
 
-// localStorage defensivo: modo privado/erro não pode quebrar o monitor.
-// Fallback em memória mantém a dedupe dentro da sessão atual.
-let inMemoryHandledBuild: string | null = null;
+let inMemorySnooze: StoredVersionSnooze | null = null;
+let registeredServiceWorker: ServiceWorkerRegistration | null = null;
+let waitingServiceWorker = false;
+const controllerChangeListeners = new Set<() => void>();
+const waitingServiceWorkerListeners = new Set<() => void>();
 
-function readHandledBuild(): string | null {
+// O modo prompt baixa o worker novo, mas só `updateServiceWorker(true)` envia
+// SKIP_WAITING. `onNeedReload` mantém o reload sob controle do fluxo testável.
+const updateServiceWorker = registerSW({
+  immediate: true,
+  onNeedRefresh: () => {
+    waitingServiceWorker = true;
+    for (const listener of waitingServiceWorkerListeners) listener();
+  },
+  onRegisteredSW: (_scriptUrl, registration) => {
+    registeredServiceWorker = registration ?? null;
+  },
+  onNeedReload: () => {
+    waitingServiceWorker = false;
+    for (const listener of controllerChangeListeners) listener();
+  },
+});
+
+function waitUntilServiceWorkerWaiting(timeoutMs: number): Promise<boolean> {
+  if (waitingServiceWorker) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ready: boolean): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      waitingServiceWorkerListeners.delete(onWaiting);
+      resolve(ready);
+    };
+    const onWaiting = (): void => finish(true);
+    const timeout = window.setTimeout(() => finish(false), timeoutMs);
+    waitingServiceWorkerListeners.add(onWaiting);
+  });
+}
+
+function readSnooze(): StoredVersionSnooze | null {
   try {
-    return window.localStorage.getItem(HANDLED_BUILD_KEY) ?? inMemoryHandledBuild;
+    const raw = window.localStorage.getItem(SNOOZE_KEY);
+    if (!raw) return inMemorySnooze;
+    return parseVersionSnooze(raw) ?? inMemorySnooze;
   } catch {
-    return inMemoryHandledBuild;
+    return inMemorySnooze;
   }
 }
 
-function writeHandledBuild(build: string): void {
-  inMemoryHandledBuild = build;
+function writeSnooze(build: string): void {
+  const value = createVersionSnooze(build);
+  inMemorySnooze = value;
   try {
-    window.localStorage.setItem(HANDLED_BUILD_KEY, build);
+    window.localStorage.setItem(SNOOZE_KEY, JSON.stringify(value));
   } catch {
-    // sem localStorage: já guardamos em memória acima.
+    // sem localStorage: o fallback em memória mantém o adiamento nesta sessão.
+  }
+}
+
+function clearSnooze(): void {
+  inMemorySnooze = null;
+  try {
+    window.localStorage.removeItem(SNOOZE_KEY);
+  } catch {
+    // sem localStorage: o fallback já foi limpo.
   }
 }
 
 /**
- * Aplica o update do PWA. Persiste o build acionado ANTES de recarregar (pra não
- * reaparecer), tenta o caminho normal (SW update + controllerchange → reload) e,
- * se ele não recarregar em ~3,5s, faz um reload simples. Nunca limpa caches nem
- * desregistra o service worker: isso pode apagar trabalho ainda em andamento.
+ * Aplica o update do PWA. Limpa apenas o adiamento temporário, tenta o caminho
+ * normal (SW update + controllerchange → reload) e, se ele não recarregar em
+ * ~3,5s, faz um reload simples. O build não é marcado como aplicado antes de o
+ * novo HTML realmente carregar: se a aba continuar antiga, o aviso volta.
  */
-async function applyUpdate(serverBuild: string | null): Promise<void> {
-  if (serverBuild) writeHandledBuild(serverBuild);
+async function applyUpdate(): Promise<void> {
+  await applyVersionUpdate({
+    clearSnooze,
+    reload: () => window.location.reload(),
+    scheduleFallback: (callback, delayMs) => window.setTimeout(callback, delayMs),
+    cancelFallback: (handle) => window.clearTimeout(handle as number),
+    requestActivation: async () => {
+      await activatePromptedVersionUpdate({
+        isWaiting: () => waitingServiceWorker,
+        checkForUpdate: async () => {
+          await registeredServiceWorker?.update();
+        },
+        waitUntilWaiting: waitUntilServiceWorkerWaiting,
+        activate: async () => {
+          await updateServiceWorker(true);
+        },
+      });
+    },
+    onControllerChange: (listener) => {
+      controllerChangeListeners.add(listener);
+      return () => controllerChangeListeners.delete(listener);
+    },
+  });
+}
 
-  let reloaded = false;
-  const reloadOnce = (): void => {
-    if (reloaded) return;
-    reloaded = true;
-    window.location.reload();
-  };
-  // Se o novo controller não assumir a tempo, o reload revalida a página sem
-  // destruir a instalação PWA nem seus caches.
-  const updateTimer = window.setTimeout(() => {
-    if (reloaded) return;
-    reloadOnce();
-  }, UPDATE_FALLBACK_MS);
-
-  try {
-    if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.getRegistration();
-      if (reg) {
-        // Quando o SW novo assume o controle, os assets servidos já são os novos.
-        navigator.serviceWorker.addEventListener(
-          'controllerchange',
-          () => {
-            window.clearTimeout(updateTimer);
-            reloadOnce();
-          },
-          { once: true },
-        );
-        // No modo generateSW + autoUpdate (vite-plugin-pwa), o SW novo já chama
-        // skipWaiting()/clientsClaim() sozinho — basta buscá-lo.
-        await reg.update();
-        return; // o controllerchange ou o nuclearTimer cuidam do reload
-      }
-    }
-  } catch {
-    // sem service worker / erro: cai no reload simples abaixo
-  }
-  // Sem SW: o timer de fallback é desnecessário, recarrega já.
-  window.clearTimeout(updateTimer);
-  window.location.reload();
+async function prepareUpdate(): Promise<void> {
+  const serviceWorker = 'serviceWorker' in navigator ? navigator.serviceWorker : null;
+  await prepareVersionUpdate({
+    getRegistration: async () =>
+      registeredServiceWorker ?? (await serviceWorker?.getRegistration()) ?? null,
+  });
 }
 
 /**
  * Monitor de versão (padrão Orbital): reconsulta /api/version a cada 60s +
  * nos eventos focus/online/visibilitychange e expõe a transição de versão
  * (de→para) quando detecta build novo — renderizada como modal pelo
- * `<UpdateModal>`, com ações de recarregar/dispensar.
+ * `<UpdateModal>`, com ações de recarregar/adiar.
  *
  * À prova de loop:
- *  - Persiste em localStorage o build que o usuário dispensou OU acionou; o
- *    mesmo build não re-notifica (`shouldNotify`).
- *  - O "Atualizar" tem fallback nuclear (limpa caches + unregister SW) pra
- *    garantir o reload no build fresco mesmo se o index.html precacheado for
- *    servido velho.
+ *  - Um adiamento persiste por 30 minutos, sem esconder a versão para sempre.
+ *  - O "Atualizar" usa o fluxo normal do SW e fallback de reload; se o bundle
+ *    continuar antigo, a comparação de builds permanece verdadeira.
  *
  * Baseline de identidade do bundle carregado:
- * 1. Meta `voxen-build` injetado pelo servidor no HTML servido. Essencial no
- *    PWA: o SW serve index.html precacheado (antigo), então um baseline buscado
- *    da rede viria sempre do servidor novo e o app instalado nunca se perceberia
- *    velho. Com o meta, mismatch contra /api/version = bundle de outro build.
+ * 1. Meta `voxen-build` gravado pelo Vite no HTML durante o build. O HTML usa
+ *    NetworkFirst e `no-store` no servidor, mas uma aba aberta continua com o
+ *    JavaScript anterior; o meta mantém a identidade daquele bundle imutável.
  * 2. Fallback (dev Vite, builds antigos sem o meta): baseline da primeira
  *    resposta de /api/version.
  */
@@ -116,14 +160,16 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
   const [update, setUpdate] = useState<VersionUpdate | null>(null);
   // Evita re-emitir o mesmo build a cada poll enquanto o modal está aberto.
   const shownBuildRef = useRef<string | null>(null);
+  // Evita disparar registration.update() repetidamente para o mesmo deploy.
+  const preparedBuildRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
     const buildMeta =
       document.querySelector('meta[name="voxen-build"]')?.getAttribute('content') || null;
-    // version amigável do bundle carregado (quando o meta = gitSha, fica null e
-    // o modal cai pro formato "(Y)").
-    let loadedVersion: string | null = null;
+    const versionMeta =
+      document.querySelector('meta[name="voxen-version"]')?.getAttribute('content') || null;
+    let loadedVersion: string | null = versionMeta;
     // baseline de identidade (dev sem meta).
     let baseline: string | null = null;
     let stopped = false;
@@ -161,14 +207,28 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
         loadedBuild = baseline;
       }
 
-      if (!shouldNotify({ serverBuild, loadedBuild, lastHandledBuild: readHandledBuild() })) {
+      const snooze = readSnooze();
+      if (
+        !shouldNotify({
+          serverBuild,
+          loadedBuild,
+          waitingServiceWorker,
+          snoozedBuild: snooze?.build ?? null,
+          snoozedUntil: snooze?.until ?? null,
+        })
+      ) {
         return;
       }
       if (shownBuildRef.current === serverBuild) return;
       shownBuildRef.current = serverBuild;
+      if (!waitingServiceWorker && preparedBuildRef.current !== serverBuild) {
+        preparedBuildRef.current = serverBuild;
+        void prepareUpdate();
+      }
+      const toVersion = payload.version ?? null;
       setUpdate({
-        fromVersion: loadedVersion,
-        toVersion: payload.version ?? null,
+        fromVersion: resolveDisplayedFromVersion(loadedVersion, toVersion),
+        toVersion,
         serverBuild,
       });
     };
@@ -185,6 +245,7 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
     window.addEventListener('focus', onWake);
     window.addEventListener('online', onWake);
     document.addEventListener('visibilitychange', onWake);
+    waitingServiceWorkerListeners.add(onWake);
 
     return () => {
       stopped = true;
@@ -193,18 +254,19 @@ export function useVersionMonitor(enabled: boolean): VersionMonitorState {
       window.removeEventListener('focus', onWake);
       window.removeEventListener('online', onWake);
       document.removeEventListener('visibilitychange', onWake);
+      waitingServiceWorkerListeners.delete(onWake);
     };
   }, [enabled]);
 
   const apply = useCallback(() => {
-    if (update) void applyUpdate(update.serverBuild);
+    if (update) void applyUpdate();
   }, [update]);
 
-  const dismiss = useCallback(() => {
-    // Dispensar persiste: o mesmo build não reaparece.
-    if (update?.serverBuild) writeHandledBuild(update.serverBuild);
+  const snooze = useCallback(() => {
+    if (update?.serverBuild) writeSnooze(update.serverBuild);
+    shownBuildRef.current = null;
     setUpdate(null);
   }, [update]);
 
-  return { update, apply, dismiss };
+  return { update, apply, snooze };
 }

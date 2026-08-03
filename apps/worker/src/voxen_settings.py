@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import db
 from .voxen_crypto import decrypt, load_master_key, load_master_key_value
 
 _master_key_cache: bytes | None = None
+
+
+@dataclass(frozen=True)
+class OpenRouterModelConfig:
+    api_key: str | None
+    model: str | None
 
 
 def get_master_key() -> bytes:
@@ -81,6 +88,22 @@ async def get_default_document_model() -> str | None:
     return decrypt(enc, get_master_key())
 
 
+async def get_openrouter_model_config(
+    model_keys: tuple[str, ...],
+) -> OpenRouterModelConfig:
+    """Lê chave e modelo no mesmo snapshot para não cruzar commits de setup."""
+    settings = await db.get_settings_enc(("openrouter_api_key", *model_keys))
+    key_enc = settings.get("openrouter_api_key")
+    api_key = decrypt(key_enc, get_master_key()) if key_enc is not None else None
+    model: str | None = None
+    for model_key in model_keys:
+        model_enc = settings.get(model_key)
+        if model_enc is not None:
+            model = decrypt(model_enc, get_master_key())
+            break
+    return OpenRouterModelConfig(api_key=api_key, model=model)
+
+
 async def get_first_setting(keys: tuple[str, ...]) -> str | None:
     for key in keys:
         enc = await db.get_setting_enc(key)
@@ -107,14 +130,14 @@ async def get_yt_dlp_proxy_urls() -> str | None:
     return decrypt(enc, get_master_key())
 
 
-async def get_yt_dlp_cookies() -> str | None:
+async def get_yt_dlp_cookies(user_id: str) -> str | None:
     """Conteúdo do cookies.txt (formato Netscape) para extração autenticada.
 
     Secret cifrado (mesma master key). Quando setado, o worker materializa o
     conteúdo num arquivo temporário 600 e passa via `cookiefile` ao yt-dlp.
     NUNCA logar o retorno desta função.
     """
-    enc = await db.get_setting_enc("yt_dlp_cookies")
+    enc = await db.get_user_setting_enc(user_id, "yt_dlp_cookies")
     if enc is None:
         return None
     return decrypt(enc, get_master_key())

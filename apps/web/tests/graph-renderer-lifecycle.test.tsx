@@ -10,6 +10,7 @@ import {
 let graphCanvasMounts = 0;
 let graphCanvasUnmounts = 0;
 let graphCanvasRenders = 0;
+let exposeGraphCanvasRef = true;
 const centerGraphMock = mock(() => undefined);
 const fitNodesInViewMock = mock(() => undefined);
 const zoomInMock = mock(() => undefined);
@@ -17,15 +18,19 @@ const zoomOutMock = mock(() => undefined);
 
 const GraphCanvasMock = forwardRef(function GraphCanvasMock(props: Record<string, unknown>, ref) {
   graphCanvasRenders += 1;
-  useImperativeHandle(ref, () => ({
-    centerGraph: centerGraphMock,
-    fitNodesInView: fitNodesInViewMock,
-    zoomIn: zoomInMock,
-    zoomOut: zoomOutMock,
-    getGraph: mock(() => null),
-    getControls: mock(() => null),
-    exportCanvas: mock(() => ''),
-  }));
+  useImperativeHandle(ref, () =>
+    exposeGraphCanvasRef
+      ? {
+          centerGraph: centerGraphMock,
+          fitNodesInView: fitNodesInViewMock,
+          zoomIn: zoomInMock,
+          zoomOut: zoomOutMock,
+          getGraph: mock(() => null),
+          getControls: mock(() => null),
+          exportCanvas: mock(() => ''),
+        }
+      : null,
+  );
   useEffect(() => {
     graphCanvasMounts += 1;
     return () => {
@@ -42,9 +47,40 @@ const MotionElementMock = forwardRef(function MotionElementMock(
   return React.createElement('motion-element-mock', { ...props, ref }, children);
 });
 
+const StaticIconMock = (props: Record<string, unknown>) => React.createElement('icon-mock', props);
+
+// Bun mantém mock.module no processo inteiro da suíte. Preserve todos os
+// exports reais para não quebrar testes carregados depois deste arquivo — só
+// os componentes de elemento viram mock. Sobrescrever `useReducedMotion` aqui
+// desligava a animação de TODO teste carregado depois (foi o que quebrou
+// `icon-cue-lifecycle` e `icons`); os elementos mockados já ignoram animação.
+const actualMotion = await import('motion/react');
 mock.module('motion/react', () => ({
+  ...actualMotion,
   motion: { div: MotionElementMock, svg: MotionElementMock },
-  useReducedMotion: () => true,
+}));
+
+const actualIcons = await import('../src/client/components/ui/icons');
+mock.module('@/components/ui/icons', () => ({
+  ...actualIcons,
+  AlertTriangle: StaticIconMock,
+  ArrowLeft: StaticIconMock,
+  Box: StaticIconMock,
+  BrainCircuit: StaticIconMock,
+  ChevronRight: StaticIconMock,
+  ExternalLink: StaticIconMock,
+  Focus: StaticIconMock,
+  Layers3: StaticIconMock,
+  Loader2: StaticIconMock,
+  Network: StaticIconMock,
+  PanelLeft: StaticIconMock,
+  RefreshCw: StaticIconMock,
+  RotateCw: StaticIconMock,
+  Search: StaticIconMock,
+  Square: StaticIconMock,
+  X: StaticIconMock,
+  ZoomIn: StaticIconMock,
+  ZoomOut: StaticIconMock,
 }));
 
 mock.module('reagraph', () => ({
@@ -118,6 +154,7 @@ beforeEach(() => {
   graphCanvasMounts = 0;
   graphCanvasUnmounts = 0;
   graphCanvasRenders = 0;
+  exposeGraphCanvasRef = true;
   centerGraphMock.mockClear();
   fitNodesInViewMock.mockClear();
   zoomInMock.mockClear();
@@ -231,6 +268,53 @@ describe('BrainGraph3DCanvas lifecycle', () => {
     });
     expect(onFallback).toHaveBeenCalledTimes(1);
 
+    await act(async () => renderer.unmount());
+  });
+
+  test('keeps initialization budget armed until GraphCanvas publishes its ref', async () => {
+    exposeGraphCanvasRef = false;
+    const onFallback = mock(() => undefined);
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        React.createElement(BrainGraph3DCanvas, {
+          ...renderGraph().props,
+          onFallback,
+          initializationTimeoutMs: 1,
+        }),
+        { createNodeMock: () => containerMock },
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Bun.sleep(5);
+    });
+
+    expect(graphCanvasMounts).toBe(1);
+    expect(onFallback).toHaveBeenCalledTimes(1);
+    await act(async () => renderer.unmount());
+  });
+
+  test('cancels initialization budget only after GraphCanvas is ready', async () => {
+    const onFallback = mock(() => undefined);
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        React.createElement(BrainGraph3DCanvas, {
+          ...renderGraph().props,
+          onFallback,
+          initializationTimeoutMs: 1,
+        }),
+        { createNodeMock: () => containerMock },
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Bun.sleep(5);
+    });
+
+    expect(graphCanvasMounts).toBe(1);
+    expect(onFallback).not.toHaveBeenCalled();
     await act(async () => renderer.unmount());
   });
 

@@ -9,10 +9,20 @@ import {
   getChatSnapshot,
   type ChatStreamEvent,
 } from '../lib/chat/runtime';
+import { ApprovalBody } from '../lib/chat/approval-input';
+import { MAX_MESSAGE_ATTACHMENTS } from '../lib/chat/message-attachments';
+import { resolveAttachments } from '../lib/chat/attachment-resolver';
+import {
+  activateMessageVersion,
+  MessageVersionError,
+  resolveVersionTarget,
+} from '../lib/chat/message-versions';
 import {
   cancelActiveChatTurn,
   ChatTurnBusyError,
+  ChatTurnVersionTargetError,
   createChatTurn,
+  createHitlResumeTurn,
   recoverOrphanedUserTurn,
   runChatTurn,
 } from '../lib/chat/turn-runtime';
@@ -85,7 +95,12 @@ chatRoutes.post('/cancel', async (c) => {
   return c.json({ cancelled: await cancelActiveChatTurn(c.get('userId')) });
 });
 
-const SendBody = z.object({ content: z.string().trim().min(1).max(20_000) });
+const SendBody = z.object({
+  content: z.string().trim().min(1).max(20_000),
+  // O cliente só informa QUAIS jobs de upload acompanham a mensagem. Nome e
+  // tipo do anexo são resolvidos no servidor (spec 126).
+  attachmentJobIds: z.array(z.string().min(1).max(64)).max(MAX_MESSAGE_ATTACHMENTS).optional(),
+});
 
 /** Comentário SSE a cada ~15s de ociosidade (spec 065 + Bun idleTimeout). */
 export const CHAT_SSE_KEEPALIVE_MS = 15_000;
@@ -95,26 +110,15 @@ function encodeSse(event: ChatStreamEvent): Uint8Array {
   return new TextEncoder().encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
 }
 
-chatRoutes.post('/', async (c) => {
-  const parsed = SendBody.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: 'Mensagem inválida.' }, 400);
-  const userId = c.get('userId');
-  const quota = await rateLimit(`voxen:rl:chat:${userId}`, 12, 60);
-  if (!quota.allowed) {
-    return c.json(
-      { error: 'Muitas mensagens em pouco tempo. Tente novamente em instantes.' },
-      429,
-      { 'Retry-After': String(quota.resetIn) },
-    );
-  }
-  let turn: Awaited<ReturnType<typeof createChatTurn>>;
-  try {
-    turn = await createChatTurn(userId, parsed.data.content);
-  } catch (error) {
-    if (error instanceof ChatTurnBusyError) return c.json({ error: error.message }, 409);
-    throw error;
-  }
-
+/**
+ * Resposta SSE de um turno já criado. Compartilhada entre o envio normal e o
+ * reenvio de uma versão (spec 127) — o stream é idêntico; o que muda é só onde
+ * a mensagem do usuário foi pendurada na árvore.
+ */
+function streamTurnResponse(
+  turn: Awaited<ReturnType<typeof createChatTurn>>,
+  requestStartedAt: number,
+): Response {
   // Keepalive: Bun fecha conexões ociosas em 10s por padrão; Cloudflare em ~100s.
   // Durante request_transcription (minutos sem token de modelo) o stream morria e
   // o browser mostrava "network error" mesmo com a transcrição concluindo no servidor.
@@ -161,8 +165,19 @@ chatRoutes.post('/', async (c) => {
       };
 
       armKeepalive();
-      emit({ type: 'status', label: 'Preparando resposta…' });
-      void runChatTurn(turn.id, emit)
+      emit({
+        type: 'start',
+        turnId: turn.id,
+        userMessageId: turn.userMessageId,
+        assistantMessageId: turn.assistantMessageId,
+        startedAt: turn.createdAt.toISOString(),
+      });
+      emit({
+        type: 'status',
+        code: 'preparing-response',
+        label: 'Preparando resposta…',
+      });
+      void runChatTurn(turn.id, emit, { requestStartedAt })
         .catch((error: unknown) => {
           emit({
             type: 'error',
@@ -193,15 +208,155 @@ chatRoutes.post('/', async (c) => {
       'X-Accel-Buffering': 'no',
     },
   });
+}
+
+chatRoutes.post('/', async (c) => {
+  const requestStartedAt = Date.now();
+  const parsed = SendBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Mensagem inválida.' }, 400);
+  const userId = c.get('userId');
+  const quota = await rateLimit(`voxen:rl:chat:${userId}`, 12, 60);
+  if (!quota.allowed) {
+    return c.json(
+      { error: 'Muitas mensagens em pouco tempo. Tente novamente em instantes.' },
+      429,
+      {
+        'Retry-After': String(quota.resetIn),
+      },
+    );
+  }
+  const attachments = await resolveAttachments(userId, parsed.data.attachmentJobIds);
+  let turn: Awaited<ReturnType<typeof createChatTurn>>;
+  try {
+    turn = await createChatTurn(userId, parsed.data.content, attachments);
+  } catch (error) {
+    if (error instanceof ChatTurnBusyError) return c.json({ error: error.message }, 409);
+    throw error;
+  }
+  return streamTurnResponse(turn, requestStartedAt);
 });
 
-const ApprovalBody = z.object({ approvalId: z.string().uuid() });
+/** O erro já carrega o status certo — 400 de papel inválido não vira 404. */
+function versionErrorStatus(error: MessageVersionError): 400 | 404 | 409 {
+  return error.status === 400 ? 400 : error.status === 409 ? 409 : 404;
+}
+
+/**
+ * Reenvia uma mensagem do usuário como VERSÃO nova (spec 127).
+ *
+ * A versão nasce irmã da mensagem editada — mesmo antecessor —, vira a trilha
+ * ativa e gera a resposta ali. A trilha anterior continua no banco, navegável.
+ * Reenviar o mesmo texto é uso legítimo (tentar outra resposta), então não há
+ * verificação de "texto mudou".
+ */
+chatRoutes.post('/messages/:id/versions', async (c) => {
+  const requestStartedAt = Date.now();
+  const parsed = SendBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Mensagem inválida.' }, 400);
+  const userId = c.get('userId');
+  const quota = await rateLimit(`voxen:rl:chat:${userId}`, 12, 60);
+  if (!quota.allowed) {
+    return c.json(
+      { error: 'Muitas mensagens em pouco tempo. Tente novamente em instantes.' },
+      429,
+      {
+        'Retry-After': String(quota.resetIn),
+      },
+    );
+  }
+
+  let target: Awaited<ReturnType<typeof resolveVersionTarget>>;
+  try {
+    // `userId` da SESSÃO: mensagem de outra conversa não é encontrada aqui.
+    target = await resolveVersionTarget(userId, c.req.param('id'));
+  } catch (error) {
+    if (error instanceof MessageVersionError) {
+      return c.json({ error: error.message }, versionErrorStatus(error));
+    }
+    throw error;
+  }
+
+  const attachments = await resolveAttachments(userId, parsed.data.attachmentJobIds);
+  let turn: Awaited<ReturnType<typeof createChatTurn>>;
+  try {
+    // Passa o ID, não o antecessor: em conversa legada o antecessor
+    // só existe depois do encadeamento, que roda dentro da transação do turno.
+    turn = await createChatTurn(userId, parsed.data.content, attachments, {
+      branchFrom: { messageId: target.id },
+    });
+  } catch (error) {
+    if (error instanceof ChatTurnBusyError) return c.json({ error: error.message }, 409);
+    if (error instanceof ChatTurnVersionTargetError) return c.json({ error: error.message }, 404);
+    throw error;
+  }
+  return streamTurnResponse(turn, requestStartedAt);
+});
+
+/** Troca a trilha exibida para a que passa por esta versão (spec 127). */
+chatRoutes.post('/messages/:id/activate', async (c) => {
+  try {
+    const result = await activateMessageVersion(c.get('userId'), c.req.param('id'));
+    return c.json({ activeLeafId: result.activeLeafId });
+  } catch (error) {
+    if (error instanceof MessageVersionError) {
+      return c.json({ error: error.message }, versionErrorStatus(error));
+    }
+    throw error;
+  }
+});
 
 chatRoutes.post('/approve', async (c) => {
+  const requestStartedAt = Date.now();
   const parsed = ApprovalBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: 'Confirmação inválida.' }, 400);
+  const userId = c.get('userId');
   try {
-    return c.json(await approveChatAction(c.get('userId'), parsed.data.approvalId));
+    const approved = await approveChatAction(userId, parsed.data.approvalId, {
+      alwaysAllow: parsed.data.alwaysAllow === true,
+    });
+    if (!approved.shouldResume) {
+      return c.json({
+        message: approved.message,
+        noteId: approved.noteId,
+        resume: false,
+      });
+    }
+    // Spec 132: after side effect, open an agent resume turn as SSE (same
+    // shape as POST /api/chat) so the model continues the plan.
+    let turn: Awaited<ReturnType<typeof createHitlResumeTurn>>;
+    try {
+      turn = await createHitlResumeTurn(userId, {
+        conversationId: approved.conversationId,
+        hitlMessageId: approved.hitlMessageId,
+        resumeContent: approved.resumePrompt,
+      });
+    } catch (error) {
+      if (error instanceof ChatTurnBusyError) {
+        // Note already created; client can refresh. Resume deferred.
+        return c.json({
+          message: approved.message,
+          noteId: approved.noteId,
+          resume: false,
+          resumeDeferred: true,
+        });
+      }
+      throw error;
+    }
+    // Prefer Accept: text/event-stream or ?stream=1; default SSE for resume.
+    const wantsJson =
+      c.req.header('accept')?.includes('application/json') &&
+      !c.req.header('accept')?.includes('text/event-stream');
+    if (wantsJson && c.req.query('stream') !== '1') {
+      return c.json({
+        message: approved.message,
+        noteId: approved.noteId,
+        resume: true,
+        turnId: turn.id,
+        userMessageId: turn.userMessageId,
+        assistantMessageId: turn.assistantMessageId,
+      });
+    }
+    return streamTurnResponse(turn, requestStartedAt);
   } catch (error) {
     return c.json(
       { error: error instanceof Error ? error.message : 'Não foi possível confirmar.' },

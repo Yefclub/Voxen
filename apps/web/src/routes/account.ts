@@ -54,7 +54,7 @@ accountRoutes.get('/', async (c) => {
 const PatchBody = z
   .object({
     name: z.string().min(2).max(100).optional(),
-    theme: z.enum(['zinc', 'emerald', 'light']).optional(),
+    theme: z.enum(['linear', 'zinc', 'emerald', 'light']).optional(),
   })
   .refine((value) => value.name !== undefined || value.theme !== undefined, {
     message: 'Informe name e/ou theme.',
@@ -66,7 +66,7 @@ accountRoutes.patch('/', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'Dados inválidos.' }, 400);
   }
-  const data: { name?: string; theme?: 'zinc' | 'emerald' | 'light' } = {};
+  const data: { name?: string; theme?: 'linear' | 'zinc' | 'emerald' | 'light' } = {};
   if (parsed.data.name !== undefined) data.name = parsed.data.name.trim();
   if (parsed.data.theme !== undefined) data.theme = parsed.data.theme;
   const u = await db.user.update({

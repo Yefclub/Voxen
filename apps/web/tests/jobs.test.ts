@@ -67,7 +67,7 @@ async function completeSetup(): Promise<void> {
   // Bypassa o validateApiKey gravando direto no DB cifrado.
   await setSetting('openrouter_api_key', 'sk-or-v1-' + 'x'.repeat(40));
   await setSetting('default_chat_model', 'openrouter/auto');
-  await setSetting('default_transcription_model', 'openai/whisper-1');
+  await setSetting('default_transcription_model', 'x-ai/grok-stt-1.0');
 }
 
 const VALID_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
@@ -430,6 +430,62 @@ describeIfDb('jobs API', () => {
     const body = (await res.json()) as { jobId: string };
     const retry = await db.job.findUniqueOrThrow({ where: { id: body.jobId } });
     expect(retry.type).toBe('SCRAPE_WEB');
+  });
+
+  it('POST /api/jobs/:id/enrichment-retry reaproveita a transcrição e retoma só pendências', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: admin.id,
+        source: 'YOUTUBE',
+        url: VALID_URL,
+        title: 'Vídeo parcialmente enriquecido',
+        durationSec: 1,
+        language: 'pt',
+        transcriptionMethod: 'SUBTITLES',
+        mdPath: `workspaces/${admin.id}/transcripts/partial.md`,
+        plainText: 'transcrição já persistida',
+        frontmatter: {},
+        summaryStatus: 'RETRY',
+        taggingStatus: 'COMPLETE',
+      },
+    });
+    const job = await db.job.create({
+      data: {
+        userId: admin.id,
+        type: 'DOWNLOAD_AND_TRANSCRIBE',
+        status: 'COMPLETED_WITH_WARNINGS',
+        sourceUrl: CANONICAL,
+        transcriptId: transcript.id,
+        errorMsg: 'Resumo indisponível',
+        finishedAt: new Date(),
+      },
+    });
+
+    const res = await app.fetch(
+      new Request(`http://localhost/api/jobs/${job.id}/enrichment-retry`, {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { jobId: string; transcriptId: string; status: string }).toEqual({
+      jobId: job.id,
+      transcriptId: transcript.id,
+      status: 'QUEUED',
+    });
+    const [retriedJob, retriedTranscript] = await Promise.all([
+      db.job.findUniqueOrThrow({ where: { id: job.id } }),
+      db.transcript.findUniqueOrThrow({ where: { id: transcript.id } }),
+    ]);
+    expect(retriedJob.status).toBe('QUEUED');
+    expect(retriedJob.transcriptId).toBe(transcript.id);
+    expect(retriedJob.errorMsg).toBeNull();
+    expect(retriedTranscript.summaryStatus).toBe('RETRY');
+    expect(retriedTranscript.taggingStatus).toBe('COMPLETE');
   });
 
   it('SSE entrega evento publicado no canal e fecha em stage terminal', async () => {

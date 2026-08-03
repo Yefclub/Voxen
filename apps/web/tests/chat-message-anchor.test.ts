@@ -29,10 +29,15 @@ describe('chat message anchor wiring (spec 092)', () => {
     expect(chatSource).toContain('new ResizeObserver(() => handleContentGrowth())');
   });
 
-  test('gates reengage: spacer + allow only after final text (or turn end)', () => {
+  test('gates reengage by geometry after any streamed content, including reasoning', () => {
     expect(chatSource).toContain('allowAnchorReengageRef');
     expect(chatSource).toContain('allowAnchorReengageRef.current = false');
     expect(chatSource).toContain('allowAnchorReengageRef.current = true');
+    expect(chatSource).toContain("event.type === 'reasoning'");
+    expect(chatSource).toContain("event.type === 'tool'");
+    expect(chatSource).toContain(
+      'ResizeObserver só ativa o follow depois que a reserva se esgota.',
+    );
     expect(chatSource).toContain('spacerHeight: spacerHeightRef.current');
     expect(chatSource).toContain('allowReengage: allowAnchorReengageRef.current');
   });
@@ -42,5 +47,17 @@ describe('chat message anchor wiring (spec 092)', () => {
     expect(chatSource).toContain('nextScrollLatestVisibility');
     expect(chatSource).toContain('{showScrollLatest && (');
     expect(chatSource).not.toContain('{!nearBottom && (');
+  });
+
+  test('automatic follow is immediate and smooth scrolling is explicit', () => {
+    expect(chatSource).toContain("behavior: 'auto'");
+    expect(chatSource).not.toContain("behavior: streaming ? 'auto' : 'smooth'");
+    expect(chatSource).toContain('onClick={() => scrollToBottom(true)}');
+  });
+
+  test('rekeys optimistic messages from the server start event', () => {
+    expect(chatSource).toContain("type: 'start'");
+    expect(chatSource).toContain('event.assistantMessageId');
+    expect(chatSource).toContain('event.userMessageId');
   });
 });

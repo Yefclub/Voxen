@@ -11,6 +11,7 @@ import { apiPatch } from './api';
 import { useMe } from './hooks';
 import {
   applyThemeToDocument,
+  DEFAULT_THEME,
   normalizeAppTheme,
   persistThemeLocally,
   readStoredTheme,
@@ -28,7 +29,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }): React.ReactElement {
   const { data, refresh } = useMe();
-  const [theme, setThemeState] = useState<AppTheme>(() => readStoredTheme() ?? 'zinc');
+  const [theme, setThemeState] = useState<AppTheme>(() => readStoredTheme() ?? DEFAULT_THEME);
 
   useEffect(() => {
     applyThemeToDocument(theme);

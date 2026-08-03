@@ -7,13 +7,12 @@
 import { Hono } from 'hono';
 import { auth } from './lib/auth';
 import { db } from './lib/db';
-import {
-  getAppLanguage,
-  getDefaultXAnalysisModel,
-  getSetting,
-  isSetupComplete,
-} from './lib/settings';
+import { getAppLanguage, getSetting, isSetupComplete } from './lib/settings';
 import { adminRoutes } from './routes/admin';
+import { adminModelsRoutes } from './routes/admin-models';
+import { adminConfigRevisionRoutes } from './routes/admin-config-revisions';
+import { integrationCookieRoutes } from './routes/integration-cookies';
+import { getPublicActiveCapabilities } from './lib/capabilities';
 import { jobsRoutes } from './routes/jobs';
 import { libraryRoutes } from './routes/library';
 import { setupRoutes } from './routes/setup';
@@ -24,11 +23,13 @@ import { costRoutes } from './routes/cost';
 import { notesRoutes } from './routes/notes';
 import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
+import { mcpTokenRoutes } from './routes/mcp-tokens';
 import { graphRoutes } from './routes/graph';
 import { releasesRoutes } from './routes/releases';
 import { shareTargetRoutes } from './routes/share-target';
 import { chatRoutes } from './routes/chat';
 import { extensionMetaRoutes } from './routes/extension-meta';
+import { researchArtifactsRoutes } from './routes/research-artifacts';
 import { getRedisPublisher } from './lib/redis';
 import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
@@ -42,9 +43,10 @@ app.get('/health', (c) => c.json({ ok: true, service: 'web' }));
 // Versão da build — fonte canônica em ordem de prioridade:
 //   1. env VOXEN_VERSION (release.yml injeta da tag git; Makefile injeta
 //      via `git describe --tags --always --dirty` no dev local)
-//   2. Easypanel source deploy: package next-patch + DEPLOY_TIMESTAMP
-//      (`X.Y.Z-dev.<unix_epoch_seconds>`) quando há GIT_SHA
-//   3. package.json (fallback se build foi feito sem injeção)
+//   2. package.json quando já contém uma prerelease (o version-dev é canônico)
+//   3. Easypanel source deploy de uma versão estável: package next-patch +
+//      DEPLOY_TIMESTAMP (`X.Y.Z-dev.<unix_epoch_seconds>`) quando há GIT_SHA
+//   4. package.json (fallback se build foi feito sem injeção)
 // Tag git é a verdade no Voxen — package.json fica como fallback estável.
 async function loadAppVersion(): Promise<string> {
   if (process.env.VOXEN_VERSION) return process.env.VOXEN_VERSION;
@@ -81,6 +83,10 @@ export function formatDevVersionFromDeploy(
   deployTimestamp?: string,
   gitSha?: string,
 ): string | null {
+  // Uma versão produzida pelo workflow version-dev precisa coincidir
+  // literalmente com releases.json. Reescrevê-la no startup criaria uma
+  // versão sintética sem notas correspondentes.
+  if (packageVersion.includes('-')) return null;
   const stamp = deployTimestampToUnixSeconds(deployTimestamp);
   if (!stamp || !gitSha) return null;
   const base = packageVersion.split('-', 1)[0] ?? packageVersion;
@@ -166,21 +172,9 @@ app.get('/api/instance', async (c) => {
 // UI consulta pra mostrar/esconder botões (ex: upload de imagem só aparece
 // se admin configurou modelo de visão).
 app.get('/api/capabilities', async (c) => {
-  const [chatModel, visionModel, webSearchModel, documentModel, xAnalysisModel] = await Promise.all(
-    [
-      getSetting('default_chat_model').catch(() => null),
-      getSetting('default_vision_model').catch(() => null),
-      getSetting('default_web_search_model').catch(() => null),
-      getSetting('default_document_model').catch(() => null),
-      getDefaultXAnalysisModel().catch(() => null),
-    ],
-  );
-  return c.json({
-    vision: !!visionModel,
-    webSearch: !!(webSearchModel || chatModel),
-    document: !!documentModel,
-    xAnalysis: !!xAnalysisModel,
-  });
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) return c.json({ error: 'Não autenticado.' }, 401);
+  return c.json(await getPublicActiveCapabilities());
 });
 
 // Better Auth: aceita TODOS os métodos em /api/auth/*.
@@ -229,9 +223,12 @@ app.get('/api/me', async (c) => {
     },
   });
   const theme =
-    user?.theme === 'emerald' || user?.theme === 'light' || user?.theme === 'zinc'
+    user?.theme === 'linear' ||
+    user?.theme === 'emerald' ||
+    user?.theme === 'light' ||
+    user?.theme === 'zinc'
       ? user.theme
-      : 'zinc';
+      : 'linear';
   return c.json({
     user: user ? { ...user, theme } : null,
     setupComplete,
@@ -245,6 +242,14 @@ app.route('/api/setup', setupRoutes);
 
 // Admin endpoints (protegidos por middleware no próprio router)
 app.route('/api/admin', adminRoutes);
+
+// Seleção manual de modelos por finalidade (spec 123, admin only)
+app.route('/api/admin/models', adminModelsRoutes);
+
+app.route('/api/admin/config-revisions', adminConfigRevisionRoutes);
+
+// Cookies de plataforma capturados pela extensão, dedicados ao usuário da sessão.
+app.route('/api/integrations/cookies', integrationCookieRoutes);
 
 // Jobs endpoints (download + transcrição — spec 002)
 app.route('/api/jobs', jobsRoutes);
@@ -263,17 +268,19 @@ app.route('/api/admin/custos', costRoutes);
 
 // KB manual de notas (CRUD + FTS + tree)
 app.route('/api/notes', notesRoutes);
+app.route('/api/research-artifacts', researchArtifactsRoutes);
 // Organização compartilhada da biblioteca
 app.route('/api/library', libraryRoutes);
 // Automações (jobs periódicos com continuidade — spec 008)
 app.route('/api/automations', automationsRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
+app.route('/api/mcp/tokens', mcpTokenRoutes);
 // Graph view (visualização Obsidian-like da KB)
 app.route('/api/graph', graphRoutes);
 // Changelog / release notes (releases.json)
 app.route('/api/releases', releasesRoutes);
-// Conversa canônica por usuário, streaming e ferramentas do acervo.
+// Conversa canônica por usuário, streaming e ferramentas da Base de conhecimento.
 app.route('/api/chat', chatRoutes);
 // PWA Web Share Target (Android/Chrome instalado)
 app.route('/share-target', shareTargetRoutes);
@@ -321,14 +328,11 @@ import { join } from 'node:path';
 const distDir = join(import.meta.dir, '..', 'dist');
 const distExists = existsSync(distDir);
 
-// Identidade do build injetada no HTML na hora de servir. Por quê: o PWA
-// precacheia index.html/assets — um app instalado pode estar rodando um bundle
-// ANTIGO servido pelo service worker enquanto o servidor já tem build novo.
-// O monitor de versão (use-version-monitor) compara este meta (identidade do
-// bundle carregado) contra /api/version a cada poll e detecta o descompasso —
-// baseline buscado da rede não cobre esse caso, porque viria sempre do
-// servidor novo. Sanitizamos pra chars seguros de atributo HTML por defesa.
+// Fallback de identidade para builds antigos ou sem Vite. Builds atuais gravam
+// estes metas durante a compilação; assim uma variável alterada apenas no
+// runtime não pode fazer JavaScript antigo se declarar como build novo.
 const VOXEN_BUILD_ID = (VOXEN_GIT_SHA || VOXEN_VERSION).replace(/[^A-Za-z0-9._+-]/g, '');
+const VOXEN_VERSION_ID = VOXEN_VERSION.replace(/[^A-Za-z0-9._+-]/g, '');
 
 // Cache em memória do HTML transformado por path: o dist é imutável durante a
 // vida do processo, então lemos/injetamos uma única vez por arquivo em vez de
@@ -339,7 +343,13 @@ async function serveHtmlWithBuildMeta(target: string, headers: Headers): Promise
   let html = htmlBuildMetaCache.get(target);
   if (html === undefined) {
     const raw = await Bun.file(target).text();
-    html = raw.replace('<head>', `<head><meta name="voxen-build" content="${VOXEN_BUILD_ID}">`);
+    html =
+      raw.includes('name="voxen-build"') && raw.includes('name="voxen-version"')
+        ? raw
+        : raw.replace(
+            '<head>',
+            `<head><meta name="voxen-build" content="${VOXEN_BUILD_ID}"><meta name="voxen-version" content="${VOXEN_VERSION_ID}">`,
+          );
     htmlBuildMetaCache.set(target, html);
   }
   headers.set('Content-Type', 'text/html; charset=utf-8');
@@ -436,6 +446,22 @@ if (process.env.NODE_ENV === 'production') {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`[chat] runtime de continuidade indisponível: ${message}`);
     });
+
+  void import('./routes/graph')
+    .then(({ reconcileGraphUsers }) => {
+      const reconcile = (): void => {
+        void reconcileGraphUsers().catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(`[graph] reconciliação automática falhou: ${message}`);
+        });
+      };
+      reconcile();
+      setInterval(reconcile, 60_000);
+    })
+    .catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[graph] rotina automática indisponível: ${message}`);
+    });
 }
 
 // Proxy de WebSocket do túnel: antes de cair no Hono, tentamos fazer upgrade do
@@ -453,7 +479,7 @@ function isLongLivedStreamRequest(req: Request): boolean {
   if (req.method === 'GET') {
     const path = new URL(req.url).pathname;
     // Jobs SSE: heartbeat a cada 10s, mas idle do Bun ainda pode matar a conexão.
-    return /\/api\/jobs\/[^/]+\/events$/.test(path);
+    return /\/api\/jobs\/[^/]+\/events$/.test(path) || path.endsWith('/api/graph/events');
   }
   return false;
 }

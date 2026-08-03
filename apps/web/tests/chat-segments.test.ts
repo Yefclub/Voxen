@@ -2,9 +2,11 @@ import { describe, expect, it } from 'bun:test';
 import {
   applySegmentEvent,
   closeTrailingReasoning,
+  parseMessageSegments,
   segmentsFromPersistedTools,
   segmentsReasoningDuration,
-  segmentsRunning,
+  segmentsToolCount,
+  thinkingDuration,
   type MessageSegment,
   type ToolEvent,
 } from '../src/client/lib/chat-segments';
@@ -170,39 +172,6 @@ describe('segmentsFromPersistedTools (mensagem histórica)', () => {
   });
 });
 
-describe('segmentsRunning', () => {
-  it('true se há raciocínio aberto', () => {
-    const segments: MessageSegment[] = [
-      { type: 'reasoning', id: 'r0', text: 'x', startedAt: 1000 },
-    ];
-    expect(segmentsRunning(segments)).toBe(true);
-  });
-
-  it('true se algum tool-group tem ferramenta running', () => {
-    expect(
-      segmentsRunning([{ type: 'tool-group', id: 'g0', tools: [tool('t1', 'running')] }]),
-    ).toBe(true);
-  });
-
-  it('false se só há approval-required (HITL não mantém Pensando)', () => {
-    expect(
-      segmentsRunning([{ type: 'tool-group', id: 'g0', tools: [tool('t1', 'approval-required')] }]),
-    ).toBe(false);
-  });
-
-  it('false quando tudo terminou (reasoning fechado + tools completos/erro)', () => {
-    const segments: MessageSegment[] = [
-      { type: 'reasoning', id: 'r0', text: 'x', startedAt: 1000, endedAt: 1200 },
-      { type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed'), tool('t2', 'error')] },
-    ];
-    expect(segmentsRunning(segments)).toBe(false);
-  });
-
-  it('array vazio não está rodando', () => {
-    expect(segmentsRunning([])).toBe(false);
-  });
-});
-
 describe('segmentsReasoningDuration', () => {
   it('um único segmento de raciocínio: endedAt - startedAt', () => {
     const segments: MessageSegment[] = [
@@ -220,6 +189,13 @@ describe('segmentsReasoningDuration', () => {
     expect(segmentsReasoningDuration(segments)).toBe(2100 - 1000);
   });
 
+  it('inclui o processamento anterior ao primeiro delta quando o início do turno é conhecido', () => {
+    const segments: MessageSegment[] = [
+      { type: 'reasoning', id: 'r0', text: 'a', startedAt: 1000, endedAt: 1800 },
+    ];
+    expect(segmentsReasoningDuration(segments, 250)).toBe(1800 - 250);
+  });
+
   it('sem segmento de raciocínio (turno só de ferramentas) retorna null', () => {
     const segments: MessageSegment[] = [
       { type: 'tool-group', id: 'g0', tools: [{ id: 't1', name: 'search', state: 'completed' }] },
@@ -232,6 +208,36 @@ describe('segmentsReasoningDuration', () => {
       { type: 'reasoning', id: 'r0', text: 'x', startedAt: 1000 },
     ];
     expect(segmentsReasoningDuration(segments)).toBeNull();
+  });
+
+  it('timestamps invertidos ou não finitos retornam null', () => {
+    expect(
+      segmentsReasoningDuration([
+        { type: 'reasoning', id: 'r0', text: 'x', startedAt: 3_000, endedAt: 2_000 },
+      ]),
+    ).toBeNull();
+    expect(
+      segmentsReasoningDuration([
+        {
+          type: 'reasoning',
+          id: 'r0',
+          text: 'x',
+          startedAt: Number.NaN,
+          endedAt: 2_000,
+        },
+      ]),
+    ).toBeNull();
+    expect(
+      segmentsReasoningDuration([
+        {
+          type: 'reasoning',
+          id: 'r0',
+          text: 'x',
+          startedAt: 1_000,
+          endedAt: Number.POSITIVE_INFINITY,
+        },
+      ]),
+    ).toBeNull();
   });
 
   it('array vazio retorna null', () => {
@@ -258,6 +264,144 @@ describe('segmentsReasoningDuration', () => {
 
     // estado local do componente NÃO existe mais após o remount (live=false,
     // frozen=null) — só os segments reanexados na mensagem restam.
-    expect(segmentsReasoningDuration(segments)).toBe(2_500 - 1_000);
+    expect(segmentsReasoningDuration(segments, 500)).toBe(2_500 - 500);
+  });
+});
+
+describe('thinkingDuration', () => {
+  it('não mostra duração enquanto o turno está ao vivo — lá o cabeçalho é o shimmer', () => {
+    const segments: MessageSegment[] = [
+      { type: 'reasoning', id: 'r0', text: 'pensando', startedAt: 1_000, endedAt: 3_000 },
+    ];
+
+    expect(thinkingDuration(segments, true, 500)).toBeNull();
+  });
+
+  it('turno encerrado usa só os timestamps persistidos', () => {
+    const segments: MessageSegment[] = [
+      { type: 'reasoning', id: 'r0', text: 'pensando', startedAt: 1_000, endedAt: 3_000 },
+    ];
+
+    expect(thinkingDuration(segments, false, 500)).toBe(3_000 - 500);
+  });
+
+  it('reasoning histórico aberto não vira duração inventada', () => {
+    // Sem `endedAt` não há janela confiável: melhor cabeçalho sem número do
+    // que "Pensou por 57 anos" numa mensagem recarregada.
+    const segments: MessageSegment[] = [
+      { type: 'reasoning', id: 'r0', text: 'interrompido', startedAt: 1_000 },
+    ];
+
+    expect(thinkingDuration(segments, false, 500)).toBeNull();
+  });
+});
+
+describe('segmentsToolCount', () => {
+  it('conta ferramentas de todos os grupos', () => {
+    const segments: MessageSegment[] = [
+      { type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed'), tool('t2', 'completed')] },
+      { type: 'reasoning', id: 'r0', text: 'x', startedAt: 1, endedAt: 2 },
+      { type: 'tool-group', id: 'g1', tools: [tool('t3', 'error')] },
+    ];
+    expect(segmentsToolCount(segments)).toBe(3);
+  });
+
+  it('zero quando o turno só teve raciocínio', () => {
+    expect(segmentsToolCount([{ type: 'reasoning', id: 'r0', text: 'x', startedAt: 1 }])).toBe(0);
+    expect(segmentsToolCount([])).toBe(0);
+  });
+});
+
+// ============================================================================
+// Normalização do JSONB (spec 126)
+// ----------------------------------------------------------------------------
+// `segments` chega do snapshot só *tipado*; a coluna é JSONB sem schema. Desde
+// que o render passou a chamar `segment.text.trim()`, um registro sem `text`
+// lança TypeError e o ErrorBoundary global derruba a página inteira.
+// ============================================================================
+
+describe('parseMessageSegments', () => {
+  it('null quando o valor não é uma lista — chamador cai no fallback de tools', () => {
+    expect(parseMessageSegments(null)).toBeNull();
+    expect(parseMessageSegments(undefined)).toBeNull();
+    expect(parseMessageSegments('[]')).toBeNull();
+    expect(parseMessageSegments({ type: 'reasoning' })).toBeNull();
+  });
+
+  it('raciocínio sem `text` vira string vazia em vez de derrubar o render', () => {
+    const parsed = parseMessageSegments([{ type: 'reasoning', id: 'r0', startedAt: 10 }]);
+
+    expect(parsed).toEqual([{ type: 'reasoning', id: 'r0', text: '', startedAt: 10 }]);
+    // O contrato que interessa: o render chama .trim() sem explodir.
+    expect(() => parsed?.map((s) => (s.type === 'reasoning' ? s.text.trim() : ''))).not.toThrow();
+  });
+
+  it('preserva raciocínio íntegro, com e sem `endedAt`', () => {
+    expect(
+      parseMessageSegments([
+        { type: 'reasoning', id: 'r0', text: 'oi', startedAt: 10, endedAt: 20 },
+        { type: 'reasoning', id: 'r1', text: 'em curso', startedAt: 30 },
+      ]),
+    ).toEqual([
+      { type: 'reasoning', id: 'r0', text: 'oi', startedAt: 10, endedAt: 20 },
+      { type: 'reasoning', id: 'r1', text: 'em curso', startedAt: 30 },
+    ]);
+  });
+
+  it('descarta segmentos sem id, de tipo desconhecido ou não-objetos', () => {
+    expect(
+      parseMessageSegments([
+        { type: 'reasoning', text: 'sem id', startedAt: 1 },
+        { type: 'coisa-nova', id: 'x', text: 'y', startedAt: 1 },
+        null,
+        'texto',
+      ]),
+    ).toEqual([]);
+  });
+
+  it('descarta raciocínio com `startedAt` inválido (evita duração absurda)', () => {
+    expect(
+      parseMessageSegments([
+        { type: 'reasoning', id: 'r0', text: 'x', startedAt: 'ontem' },
+        { type: 'reasoning', id: 'r1', text: 'x', startedAt: Number.NaN },
+        { type: 'reasoning', id: 'r2', text: 'x', startedAt: -5 },
+        { type: 'reasoning', id: 'r3', text: 'x' },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('filtra ferramentas malformadas dentro do tool-group', () => {
+    expect(
+      parseMessageSegments([
+        {
+          type: 'tool-group',
+          id: 'g0',
+          tools: [tool('t1', 'completed'), { id: 't2', state: 'completed' }, { id: 't3' }],
+        },
+      ]),
+    ).toEqual([{ type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed')] }]);
+  });
+
+  it('descarta tool-group sem ferramenta válida ou com `tools` não-lista', () => {
+    expect(
+      parseMessageSegments([
+        { type: 'tool-group', id: 'g0', tools: [{ id: 'sem-nome', state: 'completed' }] },
+        { type: 'tool-group', id: 'g1', tools: 'nada' },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('normaliza uma timeline mista preservando a ordem', () => {
+    expect(
+      parseMessageSegments([
+        { type: 'reasoning', id: 'r0', text: 'pensando', startedAt: 1, endedAt: 2 },
+        { type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed')] },
+        { type: 'reasoning', id: 'r1', startedAt: 3 },
+      ]),
+    ).toEqual([
+      { type: 'reasoning', id: 'r0', text: 'pensando', startedAt: 1, endedAt: 2 },
+      { type: 'tool-group', id: 'g0', tools: [tool('t1', 'completed')] },
+      { type: 'reasoning', id: 'r1', text: '', startedAt: 3 },
+    ]);
   });
 });

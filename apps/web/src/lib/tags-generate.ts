@@ -6,7 +6,7 @@
 //   - pós-processamento determinístico: slug, dedup, cap
 // ============================================================================
 
-import { getAppLanguage, getSetting, type AppLanguage } from './settings';
+import { getAppLanguage, getSettings, type AppLanguage } from './settings';
 
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -15,7 +15,7 @@ export const MAX_TAGS = 5;
 // Frases/raciocínio que o modelo às vezes cospe no lugar de uma tag curta.
 // Match por substring (não só prefixo): "Looking at the content" não começa com
 // "the content", mas ainda é ruído de raciocínio.
-const TAG_BAD_MARKERS = [
+export const TAG_BAD_MARKERS = [
   'the content',
   'this content',
   'looking at',
@@ -31,12 +31,17 @@ const TAG_BAD_MARKERS = [
   'here is',
   'the tags',
   'as tags',
+  'tags total',
+  'json array only',
+  'return json only',
+  'no duplicates',
+  'no sentences',
   'o conteúdo',
   'este conteúdo',
 ] as const;
 
 // Rótulos genéricos demais para virar tag útil.
-const TAG_STOP_LABELS = new Set([
+export const TAG_STOP_LABELS = new Set([
   'content',
   'conteúdo',
   'conteudo',
@@ -57,6 +62,7 @@ const TAG_STOP_LABELS = new Set([
   'n/a',
   'na',
   'null',
+  'i see',
 ]);
 
 /**
@@ -197,7 +203,7 @@ function buildTagsPrompt(
 Existing tags (reuse these when they fit):
 ${tagsBlock}
 
-Return JSON only, e.g.: ["Anime","Review","Studio Ghibli"]
+Return JSON only, e.g.: {"tags":["Anime","Review","Studio Ghibli"]}
 Prefer 2-4 relevant tags. No duplicates. No sentences.
 
 Content excerpt:
@@ -215,7 +221,7 @@ ${excerpt}`,
 Tags existentes (reutilize quando couber):
 ${tagsBlock}
 
-Responda só JSON, ex.: ["Anime","Review","Estúdio Ghibli"]
+Responda só JSON, ex.: {"tags":["Anime","Review","Estúdio Ghibli"]}
 Prefira 2-4 tags relevantes. Sem duplicatas. Sem frases.
 
 Trecho do conteúdo:
@@ -231,6 +237,44 @@ export interface TagsGenerationResult {
   costUsd: string;
 }
 
+export function buildTagsRequestBody(
+  model: string,
+  system: string,
+  user: string,
+): Record<string, unknown> {
+  return {
+    model,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    temperature: 0.2,
+    max_tokens: 256,
+    reasoning: { enabled: false },
+    response_format: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'content_tags',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: {
+            tags: {
+              type: 'array',
+              items: { type: 'string', minLength: 2, maxLength: 40 },
+              minItems: 1,
+              maxItems: MAX_TAGS,
+            },
+          },
+          required: ['tags'],
+          additionalProperties: false,
+        },
+      },
+    },
+    usage: { include: true },
+  };
+}
+
 /**
  * Gera tags para um conteúdo via OpenRouter. Não persiste — quem chama decide
  * (criar/reutilizar Tag, garantir pasta, ligar TranscriptTag).
@@ -241,8 +285,9 @@ export async function generateTagsForContent(input: {
   existingTags: string[];
   abortSignal?: AbortSignal;
 }): Promise<TagsGenerationResult> {
-  const apiKey = await getSetting('openrouter_api_key');
-  const model = await getSetting('default_chat_model');
+  const settings = await getSettings(['openrouter_api_key', 'default_chat_model'] as const);
+  const apiKey = settings.openrouter_api_key;
+  const model = settings.default_chat_model;
   if (!apiKey || !model) {
     throw new Error('Setup incompleto — OpenRouter/modelo ausentes.');
   }
@@ -260,24 +305,13 @@ export async function generateTagsForContent(input: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      temperature: 0.2,
-      max_tokens: 96,
-      reasoning: { enabled: false },
-      usage: { include: true },
-    }),
+    body: JSON.stringify(buildTagsRequestBody(model, system, user)),
     signal: input.abortSignal
       ? AbortSignal.any([input.abortSignal, AbortSignal.timeout(60_000)])
       : AbortSignal.timeout(60_000),
   });
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`OpenRouter ${res.status}${body ? `: ${body.slice(0, 160)}` : ''}`);
+    throw new Error(`OpenRouter retornou status ${res.status} ao gerar tags.`);
   }
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;

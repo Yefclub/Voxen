@@ -6,19 +6,29 @@
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Eye, EyeOff, FileText, Library, Loader2, Save } from 'lucide-react';
-import { toast } from 'sonner';
+import {
+  Eye,
+  EyeOff,
+  FileText,
+  FolderPlus,
+  Library,
+  Loader2,
+  Plus,
+  Save,
+} from '@/components/ui/icons';
+import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { FetchError } from '../components/ui/fetch-error';
 import { Markdown } from '../components/ui/markdown';
 import { MarkdownEditor } from '../components/notes/markdown-editor';
+import { NotesTree } from '../components/notes/notes-tree';
 import { Spinner } from '../components/ui/spinner';
 import { useFetch } from '../lib/hooks';
 import { useNotes } from '../lib/use-notes';
-import { AnimatedPage } from '../components/motion/animated-page';
+import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { useI18n } from '../lib/i18n';
 
 interface NoteFull {
@@ -38,64 +48,143 @@ interface GetResp {
 export function NotasPage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const { t } = useI18n();
-  const [previewMode, setPreviewMode] = useState(false);
-  const { notes, refresh } = useNotes();
+  const { notes, loading: notesLoading, refresh, create } = useNotes();
+  const revalidationStarted = useRef(false);
+  const focusRefreshInFlight = useRef(false);
+  const enteredWithInitialLoad = useRef(notesLoading);
+
+  useEffect(() => {
+    // A primeira carga já é iniciada por useNotes. Esperamos que ela termine
+    // antes de instalar a revalidação desta página, evitando duas requests
+    // concorrentes sem cache e o estado vazio intermediário.
+    if (notesLoading || revalidationStarted.current) return;
+    revalidationStarted.current = true;
+    // Sem cache, a própria carga inicial já trouxe a versão mais recente. Não
+    // fazemos uma segunda leitura sequencial ao terminar essa primeira entrada.
+    if (enteredWithInitialLoad.current) return;
+    // A lista pode ter mudado pelo chat, MCP ou uma automação enquanto esta
+    // tela estava desmontada. Revalida ao entrar sem depender de reload manual.
+    void refresh();
+  }, [notesLoading, refresh]);
+
+  useEffect(() => {
+    // Este efeito não compartilha a guarda da primeira revalidação: no
+    // StrictMode o React executa setup → cleanup → setup e precisa reinstalar
+    // os listeners depois da primeira limpeza.
+    const revalidateWhenVisible = (): void => {
+      if (document.visibilityState !== 'visible' || focusRefreshInFlight.current) return;
+      // Ao retornar à aba, navegadores disparam visibilitychange e focus na
+      // mesma interação. Uma única consulta basta para os dois eventos.
+      focusRefreshInFlight.current = true;
+      void refresh().finally(() => {
+        focusRefreshInFlight.current = false;
+      });
+    };
+    window.addEventListener('focus', revalidateWhenVisible);
+    document.addEventListener('visibilitychange', revalidateWhenVisible);
+    return () => {
+      window.removeEventListener('focus', revalidateWhenVisible);
+      document.removeEventListener('visibilitychange', revalidateWhenVisible);
+    };
+  }, [refresh]);
 
   return (
-    <AnimatedPage>
-      <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 sm:space-y-8 sm:px-8 sm:py-10">
-        <header className="space-y-3">
-          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
-            <Library className="h-3.5 w-3.5 text-violet-400" />
-            {t('notes.manualBase')}
-          </div>
-          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
-            {t('notes.title')}
-          </h1>
-          <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed max-w-2xl">
-            {t('notes.description')}
-          </p>
-        </header>
+    <PageShell width="workspace">
+      <PageHeader
+        eyebrow={t('notes.manualBase')}
+        icon={Library}
+        iconClassName="text-violet-400"
+        title={t('notes.title')}
+        description={t('notes.description')}
+      />
 
-        {id ? (
-          <NoteEditor
-            key={id}
-            noteId={id}
-            previewMode={previewMode}
-            onTogglePreview={() => setPreviewMode((v) => !v)}
-            onSaved={() => void refresh()}
-          />
-        ) : (
-          <Card elevated>
-            <CardContent className="py-20 text-center space-y-4 max-w-md mx-auto">
-              <div className="mx-auto h-14 w-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-emerald-500/20 border border-[var(--color-app-border-strong)] flex items-center justify-center">
-                <FileText className="h-6 w-6 text-violet-400" />
+      {id ? (
+        <NoteEditor key={id} noteId={id} onSaved={() => void refresh()} />
+      ) : (
+        <NotesLibrary notesCount={notes.length} loading={notesLoading} onCreate={create} />
+      )}
+    </PageShell>
+  );
+}
+
+function NotesLibrary({
+  notesCount,
+  loading,
+  onCreate,
+}: {
+  notesCount: number;
+  loading: boolean;
+  onCreate: (kind: 'NOTE' | 'FOLDER', parentId?: string | null) => Promise<{ id: string } | null>;
+}): React.ReactElement {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const [creating, setCreating] = useState<'NOTE' | 'FOLDER' | null>(null);
+
+  async function createItem(kind: 'NOTE' | 'FOLDER'): Promise<void> {
+    if (creating) return;
+    setCreating(kind);
+    try {
+      const item = await onCreate(kind);
+      if (item && kind === 'NOTE') navigate(`/notas/${item.id}`);
+    } finally {
+      setCreating(null);
+    }
+  }
+
+  return (
+    <Card elevated className="overflow-hidden">
+      <CardContent className="p-0">
+        <div className="flex flex-col gap-4 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)]/35 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="min-w-0">
+            <p className="font-display text-lg font-semibold tracking-tight">
+              {t('notes.libraryTitle')}
+            </p>
+            <p className="mt-1 text-sm text-[var(--color-app-muted)]">
+              {notesCount === 0 ? t('notes.emptyDescription') : t('notes.libraryDescription')}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={creating !== null}
+              onClick={() => void createItem('FOLDER')}
+            >
+              <FolderPlus className="h-3.5 w-3.5" />
+              {creating === 'FOLDER' ? t('common.loading') : t('notes.createFolder')}
+            </Button>
+            <Button size="sm" disabled={creating !== null} onClick={() => void createItem('NOTE')}>
+              <Plus className="h-3.5 w-3.5" />
+              {creating === 'NOTE' ? t('common.loading') : t('notes.createNote')}
+            </Button>
+          </div>
+        </div>
+        <div className="min-h-72 p-3 sm:p-5">
+          {loading ? (
+            <div className="flex min-h-64 items-center justify-center">
+              <Spinner size={20} />
+            </div>
+          ) : notesCount === 0 ? (
+            <div className="flex min-h-64 max-w-md flex-col items-center justify-center gap-3 text-center mx-auto">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--color-app-border-strong)] bg-violet-500/10">
+                <FileText className="h-5 w-5 text-violet-400" />
               </div>
-              <div className="space-y-1.5">
-                <p className="font-display text-xl font-semibold tracking-tight">
-                  {notes.length === 0 ? t('notes.emptyTitle') : t('notes.selectTitle')}
-                </p>
-                <p className="text-sm text-[var(--color-app-muted)] leading-relaxed">
-                  {notes.length === 0 ? t('notes.emptyDescription') : t('notes.selectDescription')}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    </AnimatedPage>
+              <p className="text-sm text-[var(--color-app-muted)]">{t('notes.useButtonAbove')}</p>
+            </div>
+          ) : (
+            <NotesTree variant="card" />
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 function NoteEditor({
   noteId,
-  previewMode,
-  onTogglePreview,
   onSaved,
 }: {
   noteId: string;
-  previewMode: boolean;
-  onTogglePreview: () => void;
   onSaved: () => void;
 }): React.ReactElement {
   const { data, loading, error, refresh } = useFetch<GetResp>(`/api/notes/${noteId}`);
@@ -104,6 +193,8 @@ function NoteEditor({
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // O componente recebe key=noteId: toda nota recém-aberta começa em Preview.
+  const [previewMode, setPreviewMode] = useState(true);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // AbortController do PATCH em voo: garante que dois saves concorrentes
   // (debounce + onBlur, ou save manual) não compitam — o anterior é abortado e
@@ -204,51 +295,68 @@ function NoteEditor({
       transition={{ duration: 0.25 }}
     >
       <Card elevated className="overflow-hidden p-0 min-h-[calc(100dvh-280px)] flex flex-col">
-        <div className="flex items-center gap-3 px-4 py-3 sm:px-6 sm:py-4 border-b border-[var(--color-app-border)]">
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              setDirty(true);
-            }}
-            onBlur={() => void save()}
-            placeholder={t('notes.untitled')}
-            className="flex-1 bg-transparent text-xl font-display font-semibold tracking-tight text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none"
-          />
-          <span className="text-[11px] uppercase tracking-wider tabular-nums">
-            {saving ? (
-              <span className="inline-flex items-center gap-1.5 text-[var(--color-app-muted)]">
-                <Loader2 className="h-3 w-3 animate-spin" /> {t('common.saving')}
-              </span>
-            ) : dirty ? (
-              <span className="text-amber-300">{t('notes.pending')}</span>
-            ) : (
-              <span className="text-emerald-300">{t('common.saved')}</span>
-            )}
-          </span>
-          <Button size="sm" variant="ghost" onClick={onTogglePreview}>
-            {previewMode ? (
-              <>
-                <EyeOff className="h-3.5 w-3.5" />
-                {t('notes.edit')}
-              </>
-            ) : (
-              <>
-                <Eye className="h-3.5 w-3.5" />
-                {t('notes.preview')}
-              </>
-            )}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => void save()}
-            disabled={!dirty || saving}
-          >
-            <Save className="h-3.5 w-3.5" />
-            {t('common.save')}
-          </Button>
+        <div
+          data-note-editor-toolbar
+          className="flex min-w-0 flex-col gap-3 border-b border-[var(--color-app-border)] px-4 py-3 sm:flex-row sm:items-center sm:px-6 sm:py-4"
+        >
+          {previewMode ? (
+            <h2 className="min-w-0 flex-1 truncate font-display text-xl font-semibold tracking-tight text-[var(--color-app-fg)]">
+              {title || t('notes.untitled')}
+            </h2>
+          ) : (
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setDirty(true);
+              }}
+              onBlur={() => void save()}
+              placeholder={t('notes.untitled')}
+              className="w-full min-w-0 flex-1 bg-transparent font-display text-xl font-semibold tracking-tight text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none"
+            />
+          )}
+          <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0">
+            <span className="mr-auto shrink-0 text-[11px] uppercase tracking-wider tabular-nums sm:mr-1">
+              {saving ? (
+                <span className="inline-flex items-center gap-1.5 text-[var(--color-app-muted)]">
+                  <Loader2 className="h-3 w-3 animate-spin" /> {t('common.saving')}
+                </span>
+              ) : dirty ? (
+                <span className="text-amber-300">{t('notes.pending')}</span>
+              ) : (
+                <span className="text-emerald-300">{t('common.saved')}</span>
+              )}
+            </span>
+            <Button
+              className="shrink-0"
+              size="sm"
+              variant="ghost"
+              onClick={() => setPreviewMode((value) => !value)}
+            >
+              {previewMode ? (
+                <>
+                  <EyeOff className="h-3.5 w-3.5" />
+                  {t('notes.edit')}
+                </>
+              ) : (
+                <>
+                  <Eye className="h-3.5 w-3.5" />
+                  {t('notes.preview')}
+                </>
+              )}
+            </Button>
+            <Button
+              className="shrink-0"
+              size="sm"
+              variant="outline"
+              onClick={() => void save()}
+              disabled={!dirty || saving}
+            >
+              <Save className="h-3.5 w-3.5" />
+              {t('common.save')}
+            </Button>
+          </div>
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">

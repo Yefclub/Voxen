@@ -6,6 +6,7 @@ import {
   hasOwnMobileChrome,
   isChatRoute,
   hidesBottomNav,
+  shouldResetMobileDrawerForDesktop,
 } from './mobile-nav';
 
 describe('isBottomNavTab', () => {
@@ -21,7 +22,6 @@ describe('isBottomNavTab', () => {
     '/dashboard',
     '/jobs',
     '/fila',
-    '/chat',
     '/chat/abc',
     '/notas/abc',
     '/automacoes',
@@ -32,6 +32,10 @@ describe('isBottomNavTab', () => {
     '/admin/integracoes',
   ])('NÃO trata %s como aba de topo', (path) => {
     expect(isBottomNavTab(path)).toBe(false);
+  });
+
+  test('/chat herda a mesma semântica de topo da rota canônica /', () => {
+    expect(isBottomNavTab('/chat')).toBe(true);
   });
 });
 
@@ -157,7 +161,20 @@ describe('decisão do botão de voltar flutuante (showsMobileBack && !hasOwnMobi
     expect(shouldShowBack(path)).toBe(true);
   });
 
-  test('/chat visitada diretamente (não é aba de topo): mostra voltar — motivo pelo qual o botão de abrir menu (AppLayout) exige !showBack', () => {
-    expect(shouldShowBack('/chat')).toBe(true);
+  test('/chat visitada diretamente é alias da home e abre o mesmo menu', () => {
+    expect(shouldShowBack('/chat')).toBe(false);
+  });
+});
+
+describe('reset do drawer ao entrar no desktop', () => {
+  test('zera qualquer estado mobile visual ou semântico ao cruzar md', () => {
+    expect(shouldResetMobileDrawerForDesktop(true, true, false, 0)).toBe(true);
+    expect(shouldResetMobileDrawerForDesktop(true, false, true, 0)).toBe(true);
+    expect(shouldResetMobileDrawerForDesktop(true, false, false, 0.4)).toBe(true);
+  });
+
+  test('não interfere no gesto mobile nem no desktop já limpo', () => {
+    expect(shouldResetMobileDrawerForDesktop(false, true, true, 1)).toBe(false);
+    expect(shouldResetMobileDrawerForDesktop(true, false, false, 0)).toBe(false);
   });
 });

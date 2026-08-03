@@ -5,11 +5,13 @@ import {
   ArrowLeft,
   ChevronDown,
   DollarSign,
+  FileText,
   House,
   ListOrdered,
   MessageCircle,
   FolderPlus,
   ListVideo,
+  Link2,
   LogOut,
   Network,
   Notebook,
@@ -22,13 +24,21 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   Workflow,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import type { MeUser } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { useSidebarCollapsed } from '../../lib/sidebar-state';
 import { useIsDesktop } from '../../lib/use-media-query';
 import { useNotes } from '../../lib/use-notes';
 import { useI18n, type I18nKey } from '../../lib/i18n';
+import {
+  ICON_CUE_DURATION,
+  ICON_CUE_PANEL_DELAY_MS,
+  useIconCueGroup,
+  useIconCueSignal,
+  useIconCueTrigger,
+  type IconCueHandle,
+} from '../../lib/icon-cue';
 import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import { NotesTree } from '../notes/notes-tree';
@@ -54,16 +64,39 @@ export const NAV: NavItem[] = [
   { to: '/fila', labelKey: 'shell.nav.queue', Icon: ListOrdered },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
   { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow },
+  { to: '/artefatos', labelKey: 'shell.nav.artifacts', Icon: FileText },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },
   { to: '/extensao', labelKey: 'shell.nav.extension', Icon: Puzzle },
+  { to: '/conta/plataformas', labelKey: 'shell.nav.platformAccounts', Icon: Link2 },
   { to: '/admin/usuarios', labelKey: 'shell.nav.users', Icon: ShieldCheck, adminOnly: true },
   { to: '/admin/custos', labelKey: 'shell.nav.costs', Icon: DollarSign, adminOnly: true },
   { to: '/admin/integracoes', labelKey: 'shell.nav.integrations', Icon: Plug, adminOnly: true },
   { to: '/setup', labelKey: 'shell.nav.settings', Icon: SettingsIcon, adminOnly: true },
 ];
 
-const SIDEBAR_WIDTH = 264;
+const SIDEBAR_WIDTH = 288;
 const RAIL_WIDTH = 60;
+
+/**
+ * Alvo de clique do rail: quadrado de 36px, ícone de 18px centralizado. Todo
+ * item do rail usa esta base — o que muda entre eles é só a cor do hover.
+ */
+const RAIL_ITEM_CLASS = 'flex h-9 w-9 items-center justify-center rounded-lg transition-colors';
+const RAIL_ITEM_IDLE_CLASS =
+  'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]';
+/**
+ * Sair é a única ação do rail que não é navegação, e a única com consequência.
+ * Constante compartilhada com a sidebar aberta para as duas larguras não
+ * discordarem sobre o que o botão significa.
+ *
+ * A cor vem de `--color-app-danger` e não de um tom fixo do Tailwind: o app
+ * troca de tema por variável CSS, sem variante `dark:`, e nenhum vermelho único
+ * passa em AA nos dois extremos. O `rose-200` que estava aqui sumia no tema
+ * claro — rosa claro sobre `rose-500/10` —, deixando ilegível justamente no
+ * hover o único aviso de que a ação desconecta.
+ */
+const SIGN_OUT_HOVER_CLASS = 'hover:bg-rose-500/10 hover:text-[var(--color-app-danger)]';
+const RAIL_ICON_CLASS = 'h-[18px] w-[18px]';
 
 /**
  * Corpo modo-aware da sidebar: nav (default) | notas (em /notas). Reutilizado
@@ -77,12 +110,16 @@ const RAIL_WIDTH = 60;
 export function SidebarModeBody({
   user,
   hideHome = false,
+  cueSignal = 0,
 }: {
   user: MeUser;
   /** Oculta o item "Início" (desktop: `/` já É o chat, então é redundante). */
   hideHome?: boolean;
+  /** Sinal de deixa dos ícones da nav — ver `NavBody`. */
+  cueSignal?: number;
 }): React.ReactElement {
   const location = useLocation();
+  const reduceMotion = useReducedMotion();
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN').filter(
     (n) => !hideHome || n.to !== '/',
   );
@@ -92,15 +129,15 @@ export function SidebarModeBody({
   return (
     <motion.div
       key={`${mode}-mode`}
-      initial={{ opacity: 0 }}
+      initial={reduceMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
       className="flex-1 flex flex-col min-h-0"
     >
       {mode === 'notas' ? (
         <NotasModeBody items={items} pathname={location.pathname} />
       ) : (
-        <NavBody items={items} pathname={location.pathname} />
+        <NavBody items={items} pathname={location.pathname} cueSignal={cueSignal} />
       )}
     </motion.div>
   );
@@ -110,6 +147,15 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const location = useLocation();
   const { collapsed, setCollapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
+  const reduceMotion = useReducedMotion();
+
+  // A deixa dos ícones da nav é um contador, não um booleano de montagem: só
+  // uma MUDANÇA de sinal dispara. Assim o primeiro carregamento não pontua
+  // (aí quem pontua é o cabeçalho da página), a troca de estado pontua uma
+  // única vez, e o painel que está saindo de cena — que o `AnimatePresence`
+  // rerenderiza com as props congeladas da última vez em que esteve presente —
+  // nunca recebe sinal novo, então não varre ícones enquanto desaparece.
+  const cueSignal = useIconCueTrigger(collapsed);
 
   // No mobile (< md) a navegação é o drawer + bottom-nav. A sidebar desktop e
   // seu corpo modo-aware (que monta os hooks pesados de notas) NÃO
@@ -128,6 +174,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
           <SidebarRail
             user={user}
             pathname={location.pathname}
+            cueSignal={cueSignal}
             onExpand={() => setCollapsed(false)}
           />
         )}
@@ -136,15 +183,17 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
       <AnimatePresence>
         {!collapsed && (
           <motion.aside
-            initial={{ x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
+            initial={reduceMotion ? false : { x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+            exit={reduceMotion ? { opacity: 0 } : { x: -(SIDEBAR_WIDTH + 24), opacity: 0 }}
+            transition={
+              reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }
+            }
             className="hidden md:flex fixed top-4 bottom-4 left-4 z-40 flex-col rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl overflow-hidden"
             style={{ width: SIDEBAR_WIDTH }}
           >
             <SidebarHeader onCollapse={() => setCollapsed(true)} />
-            <SidebarModeBody user={user} hideHome />
+            <SidebarModeBody user={user} hideHome cueSignal={cueSignal} />
             <SidebarChangelogButton />
             <SidebarSignOut />
           </motion.aside>
@@ -163,17 +212,22 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
 function SidebarRail({
   user,
   pathname,
+  cueSignal,
   onExpand,
 }: {
   user: MeUser;
   pathname: string;
+  cueSignal: number;
   onExpand: () => void;
 }): React.ReactElement {
   const { t } = useI18n();
   const reduceMotion = useReducedMotion();
+  const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN').filter(
     (n) => n.to !== '/',
   );
+
+  useIconCueSignal(playCue, cueSignal, ICON_CUE_PANEL_DELAY_MS);
 
   return (
     <motion.nav
@@ -211,27 +265,73 @@ function SidebarRail({
                 <NavLink
                   to={to}
                   className={cn(
-                    'flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
+                    RAIL_ITEM_CLASS,
                     isActive
                       ? 'bg-[var(--color-app-surface-hover)] text-emerald-400'
-                      : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
+                      : RAIL_ITEM_IDLE_CLASS,
                   )}
                   aria-label={t(labelKey)}
                 >
-                  <Icon className="h-[18px] w-[18px]" />
+                  <Icon
+                    ref={registerIcon(to)}
+                    duration={ICON_CUE_DURATION}
+                    className={RAIL_ICON_CLASS}
+                  />
                 </NavLink>
               </TooltipTrigger>
               <TooltipContent side="right">{t(labelKey)}</TooltipContent>
             </Tooltip>
           );
         })}
+
+        {/*
+          Conta e novidades fecham o rail, empurradas para o rodapé pelo
+          `mt-auto` — mesma ordem e mesmo lugar da sidebar aberta, para trocar
+          de largura não mudar onde a ação mora. O separador repete o do topo,
+          então o rail lê como [expandir | navegação | conta] nas duas pontas.
+        */}
+        <div className="mt-auto flex w-full flex-col items-center gap-1">
+          <div className="my-1 h-px w-6 bg-[var(--color-app-border)]" />
+          <SidebarChangelogButton variant="rail" iconRef={registerIcon('changelog')} />
+          <SidebarSignOut variant="rail" iconRef={registerIcon('sign-out')} />
+        </div>
       </TooltipProvider>
     </motion.nav>
   );
 }
 
-export function SidebarChangelogButton(): React.ReactElement {
+/** Como o item de conta se apresenta: rótulo ao lado do ícone, ou só o ícone. */
+type SidebarItemVariant = 'full' | 'rail';
+
+interface SidebarItemProps {
+  variant?: SidebarItemVariant;
+  /** Entra na cascata de ícones do rail — ver `useIconCueGroup`. */
+  iconRef?: React.Ref<IconCueHandle>;
+}
+
+export function SidebarChangelogButton({
+  variant = 'full',
+  iconRef,
+}: SidebarItemProps = {}): React.ReactElement {
   const { t } = useI18n();
+  const label = t('shell.nav.changelog');
+
+  if (variant === 'rail') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link
+            to="/novidades"
+            aria-label={label}
+            className={cn(RAIL_ITEM_CLASS, RAIL_ITEM_IDLE_CLASS)}
+          >
+            <Sparkles ref={iconRef} duration={ICON_CUE_DURATION} className={RAIL_ICON_CLASS} />
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    );
+  }
 
   return (
     <div className="shrink-0 px-3 py-1.5">
@@ -241,16 +341,20 @@ export function SidebarChangelogButton(): React.ReactElement {
         className="flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
       >
         <Sparkles className="h-4 w-4 shrink-0" />
-        <span className="truncate">{t('shell.nav.changelog')}</span>
+        <span className="truncate">{label}</span>
       </Link>
     </div>
   );
 }
 
-export function SidebarSignOut(): React.ReactElement {
+export function SidebarSignOut({
+  variant = 'full',
+  iconRef,
+}: SidebarItemProps = {}): React.ReactElement {
   const { t } = useI18n();
   const { refresh } = useMe();
   const navigate = useNavigate();
+  const label = t('shell.signOut');
 
   async function signOut(): Promise<void> {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
@@ -258,15 +362,36 @@ export function SidebarSignOut(): React.ReactElement {
     navigate('/entrar');
   }
 
+  if (variant === 'rail') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            aria-label={label}
+            className={cn(RAIL_ITEM_CLASS, 'text-[var(--color-app-muted)]', SIGN_OUT_HOVER_CLASS)}
+          >
+            <LogOut ref={iconRef} duration={ICON_CUE_DURATION} className={RAIL_ICON_CLASS} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
   return (
     <div className="shrink-0 border-t border-[var(--color-app-border)] p-3">
       <button
         type="button"
         onClick={() => void signOut()}
-        className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-[var(--color-app-muted)] transition-colors hover:bg-rose-500/10 hover:text-rose-200"
+        className={cn(
+          'flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-[var(--color-app-muted)] transition-colors',
+          SIGN_OUT_HOVER_CLASS,
+        )}
       >
         <LogOut className="h-4 w-4 shrink-0" />
-        <span className="truncate">{t('shell.signOut')}</span>
+        <span className="truncate">{label}</span>
       </button>
     </div>
   );
@@ -309,8 +434,22 @@ function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactE
 // Modo normal — nav items
 // ---------------------------------------------------------------------------
 
-function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): React.ReactElement {
+function NavBody({
+  items,
+  pathname,
+  cueSignal = 0,
+}: {
+  items: NavItem[];
+  pathname: string;
+  /** Cada mudança de valor roda a deixa dos ícones — ver `useIconCueSignal`. */
+  cueSignal?: number;
+}): React.ReactElement {
   const { t } = useI18n();
+  const reduceMotion = useReducedMotion();
+  const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
+
+  useIconCueSignal(playCue, cueSignal, ICON_CUE_PANEL_DELAY_MS);
+
   return (
     <nav className="flex-1 p-3 overflow-y-auto">
       <ul className="space-y-0.5">
@@ -322,9 +461,11 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
             <li key={to} className="relative">
               {isActive && (
                 <motion.div
-                  layoutId="sidebar-pill"
+                  layoutId={reduceMotion ? undefined : 'sidebar-pill'}
                   className="absolute inset-0 rounded-lg bg-[var(--color-app-surface-hover)] border border-[var(--color-app-border-strong)]"
-                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  transition={
+                    reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 30 }
+                  }
                 />
               )}
               <NavLink
@@ -338,6 +479,8 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
                 )}
               >
                 <Icon
+                  ref={registerIcon(to)}
+                  duration={ICON_CUE_DURATION}
                   className={cn(
                     'h-[18px] w-[18px] transition-colors shrink-0',
                     isActive ? 'text-emerald-400' : 'text-[var(--color-app-muted)]',
@@ -346,9 +489,13 @@ function NavBody({ items, pathname }: { items: NavItem[]; pathname: string }): R
                 <span className="truncate">{t(labelKey)}</span>
                 {isActive && (
                   <motion.span
-                    layoutId="sidebar-active-dot"
+                    layoutId={reduceMotion ? undefined : 'sidebar-active-dot'}
                     className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    transition={
+                      reduceMotion
+                        ? { duration: 0 }
+                        : { type: 'spring', stiffness: 380, damping: 30 }
+                    }
                   />
                 )}
               </NavLink>
@@ -373,6 +520,7 @@ function NotasModeBody({
 }): React.ReactElement {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const reduceMotion = useReducedMotion();
   const { create } = useNotes();
   const [creating, setCreating] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -439,17 +587,21 @@ function NotasModeBody({
           className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors"
         >
           <ChevronDown
-            className={cn('h-3 w-3 transition-transform', menuOpen ? '' : 'rotate-180')}
+            className={cn(
+              'h-3 w-3',
+              !reduceMotion && 'transition-transform',
+              menuOpen ? '' : 'rotate-180',
+            )}
           />
           {t('shell.menu')}
         </button>
         <AnimatePresence initial={false}>
           {menuOpen && (
             <motion.ul
-              initial={{ height: 0, opacity: 0 }}
+              initial={reduceMotion ? false : { height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2 }}
               className="overflow-hidden px-3 pb-3 space-y-0.5"
             >
               {items
@@ -476,6 +628,7 @@ function NotasModeBody({
 export function SidebarSpacer(): React.ReactElement | null {
   const { collapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
+  const reduceMotion = useReducedMotion();
   // No mobile não há sidebar montada — sem spacer (evita reservar largura).
   if (!isDesktop) return null;
   const width = collapsed ? RAIL_WIDTH + 16 : SIDEBAR_WIDTH + 32;
@@ -484,7 +637,7 @@ export function SidebarSpacer(): React.ReactElement | null {
       className="hidden md:block shrink-0"
       animate={{ width }}
       initial={false}
-      transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+      transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }}
       aria-hidden
     />
   );

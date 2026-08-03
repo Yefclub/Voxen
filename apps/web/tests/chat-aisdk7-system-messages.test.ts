@@ -7,7 +7,9 @@ const runtimeSource = readFileSync(join(import.meta.dir, '../src/lib/chat/runtim
 describe('AI SDK 7 system message handling in chat runtime', () => {
   test('streamText opts into trusted SYSTEM history via allowSystemInMessages', () => {
     expect(runtimeSource).toContain('allowSystemInMessages: true');
-    expect(runtimeSource).toContain('messages: toModelMessages(active)');
+    // History from trail + optional synthetic resume user turn (spec 132).
+    expect(runtimeSource).toContain('const historyMessages = toModelMessages(active)');
+    expect(runtimeSource).toContain('messages: modelMessages');
   });
 
   test('compaction generateText uses instructions instead of deprecated system', () => {

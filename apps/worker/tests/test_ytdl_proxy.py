@@ -7,10 +7,18 @@ import pytest
 from src import ytdl
 from src.ytdl import (
     _is_supported_proxy,
-    _mask_proxy,
+    _proxy_log_category,
     _requests_proxy_dict,
     _transcript_proxy_config,
 )
+
+
+class _Logger:
+    def __init__(self) -> None:
+        self.entries: list[tuple[str, dict[str, object]]] = []
+
+    def info(self, event: str, **kwargs: object) -> None:
+        self.entries.append((event, kwargs))
 
 
 @pytest.mark.parametrize(
@@ -77,59 +85,57 @@ async def test_runtime_options_applies_socks5_proxy(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.delenv("YTDLP_PROXY_URLS", raising=False)
     monkeypatch.delenv("YTDLP_PROXY_URL", raising=False)
+    logger = _Logger()
+    proxy = "socks5h://user:pass@residential.example:1080"
     monkeypatch.setattr(
         ytdl.voxen_settings,
         "get_yt_dlp_proxy_urls",
-        AsyncMock(return_value="socks5h://user:pass@proxy.example:1080"),
+        AsyncMock(return_value=proxy),
     )
+    monkeypatch.setattr(ytdl, "logger", logger)
     opts = await ytdl._runtime_options()
-    assert opts["proxy"] == "socks5h://user:pass@proxy.example:1080"
-
-
-def test_mask_proxy_keeps_credential_free_socks_url() -> None:
-    # Sem userinfo: a URL é logável tal qual (host:porta legíveis).
-    assert _mask_proxy("socks5h://127.0.0.1:1080") == "socks5h://127.0.0.1:1080"
-
-
-def test_mask_proxy_strips_userinfo() -> None:
-    masked = _mask_proxy("http://user:secret@host.com:8080")
-    assert "user" not in masked
-    assert "secret" not in masked
-    assert "host.com:8080" in masked
-    assert masked == "http://host.com:8080"
-
-
-def test_mask_proxy_strips_userinfo_socks5h() -> None:
-    masked = _mask_proxy("socks5h://alice:hunter2@residential.example:1080")
-    assert "alice" not in masked
-    assert "hunter2" not in masked
-    assert masked == "socks5h://residential.example:1080"
-
-
-def test_mask_proxy_without_port() -> None:
-    masked = _mask_proxy("http://user:pw@host.com")
-    assert "user" not in masked
-    assert "pw" not in masked
-    assert masked == "http://host.com"
+    assert opts["proxy"] == proxy
+    assert logger.entries == [("proxy-active", {"proxy_kind": "SOCKS5H"})]
+    assert "residential.example" not in repr(logger.entries)
+    assert "user" not in repr(logger.entries)
+    assert "pass" not in repr(logger.entries)
 
 
 @pytest.mark.parametrize(
-    "url",
+    ("url", "expected"),
     [
-        "garbage",
-        "://nope",
-        "http://user:secret@",
-        # Sem esquema: "myuser" é lido como scheme por urlsplit — não pode vazar.
-        "myuser:secret@no-scheme:1080",
-        "user:secret@no-scheme:1080",
-        "",
+        ("http://user:secret@host.com:8080", "HTTP"),
+        ("https://host.com:8080", "HTTPS"),
+        ("socks5://user:secret@host.com:1080", "SOCKS5"),
+        ("socks5h://user:secret@residential.example:1080", "SOCKS5H"),
     ],
 )
-def test_mask_proxy_malformed_never_leaks_credential(url: str) -> None:
-    # Robusto a URL malformada: nunca lança e nunca devolve a string crua com
-    # userinfo embutido — nem a senha NEM o usuário (metade do par de credencial).
-    masked = _mask_proxy(url)
-    assert "secret" not in masked
-    assert "myuser" not in masked
-    assert "user" not in masked
-    assert isinstance(masked, str)
+def test_proxy_log_category_is_closed(url: str, expected: str) -> None:
+    category = _proxy_log_category(url)
+    assert category == expected
+    assert "host.com" not in category
+    assert "residential.example" not in category
+    assert "user" not in category
+    assert "secret" not in category
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("garbage", "UNKNOWN"),
+        ("://nope", "UNKNOWN"),
+        ("http://user:secret@", "HTTP"),
+        ("myuser:secret@no-scheme:1080", "UNKNOWN"),
+        ("user:secret@no-scheme:1080", "UNKNOWN"),
+        ("", "UNKNOWN"),
+    ],
+)
+def test_proxy_log_category_malformed_never_leaks_credential(
+    url: str,
+    expected: str,
+) -> None:
+    category = _proxy_log_category(url)
+    assert category == expected
+    assert "secret" not in category
+    assert "myuser" not in category
+    assert "user" not in category

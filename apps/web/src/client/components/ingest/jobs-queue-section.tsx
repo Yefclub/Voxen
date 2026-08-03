@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Globe, PlayCircle, RefreshCw } from 'lucide-react';
+import { ArrowRight, Globe, PlayCircle, RefreshCw, RotateCw } from '@/components/ui/icons';
 import { motion } from 'motion/react';
+import { toast } from '@/lib/toast';
+import { ApiError, apiPost } from '../../lib/api';
+import { canRetryJob, jobRetryRefusalMessage, resolveJobRetryFeedback } from '../../lib/job-retry';
 import { Button } from '../ui/button';
+import { Spinner } from '../ui/spinner';
 import { Card, CardContent } from '../ui/card';
 import { FetchError } from '../ui/fetch-error';
 import { Badge } from '../ui/badge';
@@ -21,6 +25,11 @@ import {
 import { StaggerContainer, StaggerItem } from '../motion/animated-page';
 import { useI18n, type Locale, type TranslateFn } from '../../lib/i18n';
 import { jobDestination } from './job-destination';
+import {
+  createDeferredJobRefresh,
+  reconcileClosedJobStreams,
+  reconcileJobSummaries,
+} from '../../lib/job-list-reconciliation';
 
 interface ProgressEvent {
   jobId: string;
@@ -30,6 +39,60 @@ interface ProgressEvent {
   transcriptId?: string;
   errorMsg?: string;
   ts: string;
+}
+
+export interface JobProgressState {
+  jobId: string;
+  stage: string;
+  percent: number;
+  progressedAt: number;
+}
+
+function progressTimestamp(value: string | null | undefined): number {
+  if (!value) return 0;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function progressPercent(value: number | null | undefined, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(100, Math.max(0, value))
+    : fallback;
+}
+
+export function jobProgressSnapshot(
+  job: Pick<JobSummary, 'id' | 'status' | 'progressStage' | 'progressPercent' | 'progressedAt'>,
+): JobProgressState {
+  const percent =
+    typeof job.progressPercent === 'number' && Number.isFinite(job.progressPercent)
+      ? Math.min(100, Math.max(0, job.progressPercent))
+      : 0;
+
+  return {
+    jobId: job.id,
+    stage: job.progressStage?.trim() || job.status.toLowerCase(),
+    percent,
+    progressedAt: progressTimestamp(job.progressedAt),
+  };
+}
+
+export function reconcileJobProgress(
+  current: JobProgressState,
+  incoming: JobProgressState,
+): JobProgressState {
+  if (current.jobId !== incoming.jobId) return incoming;
+  if (incoming.progressedAt < current.progressedAt) return current;
+  if (incoming.progressedAt === current.progressedAt && incoming.percent < current.percent) {
+    return current;
+  }
+  if (
+    incoming.stage === current.stage &&
+    incoming.percent === current.percent &&
+    incoming.progressedAt === current.progressedAt
+  ) {
+    return current;
+  }
+  return incoming;
 }
 
 export function JobsQueueSection({
@@ -56,19 +119,42 @@ export function JobsQueueSection({
     totalPages: number;
   }>(queueUrl);
   const { locale, t } = useI18n();
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const [closedJobStreams, setClosedJobStreams] = useState<ReadonlySet<string>>(() => new Set());
+  const reportStreamState = useCallback((jobId: string, closed: boolean): void => {
+    setClosedJobStreams((current) => reconcileClosedJobStreams(current, jobId, closed));
+  }, []);
 
-  const jobs = data?.jobs ?? [];
-  const queueTotal = data?.total ?? jobs.length;
-  const totalPages = data?.totalPages ?? 1;
-  const hasActiveJobs = jobs.some((job) => job.status === 'QUEUED' || job.status === 'RUNNING');
+  const currentData = data?.page === queuePage ? data : null;
+  const jobsCacheRef = useRef<{ page: number; jobs: JobSummary[] }>({ page: queuePage, jobs: [] });
+  const jobs = useMemo(() => {
+    if (!currentData)
+      return jobsCacheRef.current.page === queuePage ? jobsCacheRef.current.jobs : [];
+    const previous = jobsCacheRef.current.page === queuePage ? jobsCacheRef.current.jobs : [];
+    const reconciled = reconcileJobSummaries(previous, currentData.jobs);
+    jobsCacheRef.current = { page: queuePage, jobs: reconciled };
+    return reconciled;
+  }, [currentData, queuePage]);
+  const queueTotal = currentData?.total ?? jobs.length;
+  const totalPages = currentData?.totalPages ?? 1;
 
   useEffect(() => {
-    if (!hasActiveJobs) return;
-    const id = window.setInterval(() => {
-      refresh();
-    }, 6_000);
-    return () => window.clearInterval(id);
-  }, [hasActiveJobs, refresh]);
+    if (closedJobStreams.size === 0) return;
+
+    const reconcile = (): void => {
+      if (document.visibilityState === 'hidden' || !navigator.onLine) return;
+      refreshRef.current();
+    };
+    const interval = window.setInterval(reconcile, 10_000);
+    window.addEventListener('online', reconcile);
+    document.addEventListener('visibilitychange', reconcile);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('online', reconcile);
+      document.removeEventListener('visibilitychange', reconcile);
+    };
+  }, [closedJobStreams.size]);
 
   return (
     <section className="space-y-3" aria-labelledby={showHeading ? titleId : undefined}>
@@ -101,7 +187,7 @@ export function JobsQueueSection({
         </Button>
       </div>
 
-      {loading && (
+      {loading && !currentData && (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-16 w-full" />
@@ -109,13 +195,13 @@ export function JobsQueueSection({
         </div>
       )}
 
-      {!loading && queueError && (
+      {!loading && queueError && !currentData && (
         <Card>
           <FetchError message={queueError} onRetry={refresh} />
         </Card>
       )}
 
-      {!loading && !queueError && jobs.length === 0 && (
+      {!loading && !queueError && currentData && jobs.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center text-sm text-[var(--color-app-muted)]">
             {t('jobs.queueEmpty')}
@@ -123,12 +209,18 @@ export function JobsQueueSection({
         </Card>
       )}
 
-      {!loading && jobs.length > 0 && (
+      {currentData && jobs.length > 0 && (
         <>
           <StaggerContainer delay={0.05} className="space-y-1.5">
             {jobs.map((j) => (
               <StaggerItem key={j.id}>
-                <JobRow job={j} onUpdate={refresh} locale={locale} t={t} />
+                <JobRow
+                  job={j}
+                  onUpdate={refresh}
+                  locale={locale}
+                  t={t}
+                  onStreamStateChange={reportStreamState}
+                />
               </StaggerItem>
             ))}
           </StaggerContainer>
@@ -165,42 +257,98 @@ export function JobsQueueSection({
   );
 }
 
-function JobRow({
+const JobRow = memo(function JobRow({
   job,
   onUpdate,
   locale,
   t,
+  onStreamStateChange,
 }: {
   job: JobSummary;
   onUpdate: () => void;
   locale: Locale;
   t: TranslateFn;
+  onStreamStateChange: (jobId: string, closed: boolean) => void;
 }): React.ReactElement {
   const isActive = job.status === 'QUEUED' || job.status === 'RUNNING';
-  const [stage, setStage] = useState<string>(job.status === 'RUNNING' ? 'running' : 'queued');
-  const [percent, setPercent] = useState<number>(0);
+  const [progress, setProgress] = useState<JobProgressState>(() => jobProgressSnapshot(job));
+  const [reprocessing, setReprocessing] = useState(false);
+  const onUpdateRef = useRef(onUpdate);
+  const terminalRefreshRef = useRef<ReturnType<typeof createDeferredJobRefresh> | null>(null);
+  terminalRefreshRef.current ??= createDeferredJobRefresh();
+  onUpdateRef.current = onUpdate;
 
   const { closed } = useSse<ProgressEvent>(
     isActive ? `/api/jobs/${job.id}/events` : null,
     (evt) => {
-      setStage(evt.stage);
-      if (typeof evt.percent === 'number') setPercent(evt.percent);
-      if (evt.stage === 'done' || evt.stage === 'failed' || evt.stage === 'cancelled') {
-        setTimeout(onUpdate, 400);
+      setProgress((current) =>
+        reconcileJobProgress(current, {
+          jobId: job.id,
+          stage: evt.stage.trim() || current.stage,
+          percent: progressPercent(evt.percent, current.percent),
+          progressedAt: progressTimestamp(evt.ts) || Date.now(),
+        }),
+      );
+      if (
+        evt.stage === 'done' ||
+        evt.stage === 'completed_with_warnings' ||
+        evt.stage === 'failed' ||
+        evt.stage === 'cancelled'
+      ) {
+        terminalRefreshRef.current?.schedule(() => onUpdateRef.current());
       }
     },
   );
 
   useEffect(() => {
-    setStage(job.status === 'RUNNING' ? 'running' : 'queued');
-    setPercent(0);
-  }, [job.id, job.status]);
+    const snapshot = jobProgressSnapshot(job);
+    setProgress((current) => reconcileJobProgress(current, snapshot));
+  }, [job.id, job.progressedAt, job.progressPercent, job.progressStage, job.status]);
 
   useEffect(() => {
-    if (closed && isActive) onUpdate();
-  }, [closed, isActive, onUpdate]);
+    onStreamStateChange(job.id, isActive && closed);
+  }, [closed, isActive, job.id, onStreamStateChange]);
+
+  useEffect(() => {
+    return () => {
+      onStreamStateChange(job.id, false);
+      terminalRefreshRef.current?.cancel();
+    };
+  }, [job.id, onStreamStateChange]);
+
+  // Reprocessa um item que falhou/foi cancelado sem exigir que o usuário recole
+  // o link. Reaproveita `POST /api/jobs/:id/retry` (dono derivado da sessão,
+  // dedupe de job em andamento). Recusa só notifica — o item fica como estava.
+  async function onReprocess(): Promise<void> {
+    if (reprocessing) return;
+    setReprocessing(true);
+    try {
+      const endpoint = job.status === 'COMPLETED_WITH_WARNINGS' ? 'enrichment-retry' : 'retry';
+      const res = await apiPost<{ jobId?: string | null }>(`/api/jobs/${job.id}/${endpoint}`);
+      const feedback = resolveJobRetryFeedback(
+        { ok: true, jobId: res?.jobId ?? null },
+        t('jobs.reprocessError'),
+      );
+      if (feedback.kind === 'queued') {
+        toast.success(t('jobs.reprocessQueued'));
+        onUpdateRef.current();
+        return;
+      }
+      toast.error(feedback.message);
+    } catch (err) {
+      toast.error(
+        jobRetryRefusalMessage(
+          err instanceof ApiError ? err.message : null,
+          t('jobs.reprocessError'),
+        ),
+      );
+    } finally {
+      setReprocessing(false);
+    }
+  }
 
   const { variant, label } = jobStatusBadge(job.status, t);
+  const canReprocess = canRetryJob(job.status);
   const source = detectSourceFromUrl(job.sourceUrl);
   const isUpload = isUploadSourceUrl(job.sourceUrl);
   const ytId = source === 'YOUTUBE' ? youtubeVideoId(job.sourceUrl) : null;
@@ -217,11 +365,15 @@ function JobRow({
   const displayTitle = job.title?.trim() || displayJobSource(job.sourceUrl);
 
   return (
-    <Link
-      to={jobDestination(job)}
-      aria-label={`${job.transcriptId ? t('common.open') : t('jobs.details')}: ${displayTitle}`}
-      className="group flex flex-col gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40 sm:flex-row sm:items-center sm:gap-4"
-    >
+    // O link cobre a linha inteira como overlay (`absolute inset-0`) em vez de
+    // envolver o conteúdo: assim a ação de reprocessar é um <button> de verdade,
+    // e não um botão aninhado dentro de um <a> (HTML inválido + a11y quebrada).
+    <div className="group relative flex flex-col gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--color-app-border)] hover:bg-[var(--color-app-surface-hover)] sm:flex-row sm:items-center sm:gap-4">
+      <Link
+        to={jobDestination(job)}
+        aria-label={`${job.transcriptId ? t('common.open') : t('jobs.details')}: ${displayTitle}`}
+        className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40"
+      />
       <JobPreview
         previewSrc={previewSrc}
         source={source}
@@ -232,7 +384,7 @@ function JobRow({
         variant={variant}
         className="hidden shrink-0 min-w-28 justify-center text-center sm:inline-flex"
       >
-        {isActive ? stageLabel(stage, t) : label}
+        {isActive ? stageLabel(progress.stage, t, job.type) : label}
       </Badge>
       <div className="flex-1 min-w-0 space-y-1.5">
         <p className="text-sm text-[var(--color-app-fg)] truncate font-medium tracking-tight font-display">
@@ -245,19 +397,19 @@ function JobRow({
           <div className="flex items-center gap-2.5">
             <div className="h-1 flex-1 max-w-[280px] rounded-full bg-[var(--color-app-bg-elevated)] overflow-hidden">
               <motion.div
-                animate={{ width: `${Math.max(3, percent)}%` }}
+                animate={{ width: `${Math.max(3, progress.percent)}%` }}
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="h-full rounded-full bg-emerald-500"
               />
             </div>
             <span className="text-[10px] font-mono tabular-nums text-[var(--color-app-muted)]">
-              {percent}%
+              {progress.percent}%
             </span>
           </div>
         ) : (
           <div className="flex min-w-0 items-center gap-2">
             <Badge variant={variant} className="shrink-0 sm:hidden">
-              {isActive ? stageLabel(stage, t) : label}
+              {isActive ? stageLabel(progress.stage, t, job.type) : label}
             </Badge>
             <p className="text-xs text-[var(--color-app-muted)] truncate">
               {job.finishedAt
@@ -270,13 +422,29 @@ function JobRow({
           <p className="text-xs text-rose-300 mt-1 line-clamp-2 break-words">{job.errorMsg}</p>
         )}
       </div>
-      <span className="inline-flex w-full shrink-0 items-center justify-end gap-1 text-xs text-[var(--color-app-muted)] transition-colors group-hover:text-[var(--color-app-fg)] sm:w-auto">
-        {job.transcriptId ? t('common.open') : t('jobs.details')}
-        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-      </span>
-    </Link>
+      <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
+        {canReprocess && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            // z-10: fica acima do overlay do link, senão o clique vira navegação.
+            className="relative z-10 h-8 shrink-0 text-xs"
+            disabled={reprocessing}
+            onClick={() => void onReprocess()}
+          >
+            {reprocessing ? <Spinner size={14} /> : <RotateCw className="h-3.5 w-3.5" />}
+            {reprocessing ? t('jobs.reprocessing') : t('jobs.reprocess')}
+          </Button>
+        )}
+        <span className="inline-flex items-center gap-1 text-xs text-[var(--color-app-muted)] transition-colors group-hover:text-[var(--color-app-fg)]">
+          {job.transcriptId ? t('common.open') : t('jobs.details')}
+          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </div>
+    </div>
   );
-}
+});
 
 function JobPreview({
   previewSrc,

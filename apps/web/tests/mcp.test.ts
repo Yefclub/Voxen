@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import app from '../src/index';
 import { db } from '../src/lib/db';
-import { deleteSetting, setSetting } from '../src/lib/settings';
+import { hashMcpToken } from '../src/lib/mcp-tokens';
 
 async function call(body: unknown, token = ''): Promise<Response> {
   return app.fetch(
@@ -63,11 +63,12 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       data: { email: `mcp-test-${Date.now()}@voxen.local`, name: 'MCP Test', status: 'APPROVED' },
     });
     userId = user.id;
-    await setSetting('mcp_api_token', `${userId}:${TOKEN}`);
+    await db.mcpToken.create({
+      data: { userId, tokenHash: hashMcpToken(TOKEN), label: 'Teste MCP', scopes: 'READ,WRITE' },
+    });
   });
 
   afterAll(async () => {
-    await deleteSetting('mcp_api_token').catch(() => {});
     if (userId) await db.user.delete({ where: { id: userId } }).catch(() => {});
   });
 
@@ -103,11 +104,27 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     };
     const tools = data.result?.tools ?? [];
     const names = tools.map((t) => t.name);
+    expect(names).toContain('voxen_search_knowledge');
     expect(names).toContain('voxen_search_transcripts');
     expect(names).toContain('voxen_read_transcript');
     expect(names).toContain('voxen_brain_search');
     const search = tools.find((t) => t.name === 'voxen_search_transcripts');
     expect(search?.annotations?.readOnlyHint).toBe(true);
+  });
+
+  it('recusa token expirado', async () => {
+    const expired = 'expired-mcp-token-' + crypto.randomUUID();
+    await db.mcpToken.create({
+      data: {
+        userId,
+        tokenHash: hashMcpToken(expired),
+        label: 'Expirado',
+        scopes: 'READ',
+        expiresAt: new Date(Date.now() - 1_000),
+      },
+    });
+    const res = await call({ jsonrpc: '2.0', id: 22, method: 'tools/list' }, expired);
+    expect(res.status).toBe(401);
   });
 
   it('tools/call voxen_list_transcripts retorna lista vazia escopada', async () => {
@@ -127,6 +144,52 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(Array.isArray(data.result?.structuredContent?.transcripts)).toBe(true);
     expect(data.result?.structuredContent?.transcripts?.length).toBe(0);
     expect(data.result?.structuredContent?.nextCursor).toBe(null);
+  });
+
+  it('voxen_search_knowledge reúne nota e transcrição do workspace', async () => {
+    await db.transcript.create({
+      data: {
+        userId,
+        source: 'WEB',
+        url: `https://example.com/mcp-buzz-${Date.now()}`,
+        title: 'Vídeo MCP sobre Buzz',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${userId}/transcripts/mcp-buzz.md`,
+        plainText: 'O Buzz tem um repositório oficial.',
+        frontmatter: {},
+      },
+    });
+    await db.note.create({
+      data: {
+        userId,
+        kind: 'NOTE',
+        title: 'Buzz — links oficiais',
+        content: 'Repositório: github.com/block/buzz',
+      },
+    });
+
+    const res = await call(
+      {
+        jsonrpc: '2.0',
+        id: 31,
+        method: 'tools/call',
+        params: { name: 'voxen_search_knowledge', arguments: { query: 'Buzz repositório' } },
+      },
+      TOKEN,
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      result?: { structuredContent?: { results?: { sourceType: string; href: string }[] } };
+    };
+    const results = data.result?.structuredContent?.results ?? [];
+    expect(results.map((result) => result.sourceType)).toEqual(
+      expect.arrayContaining(['note', 'transcript']),
+    );
+    expect(results.find((result) => result.sourceType === 'note')?.href).toMatch(
+      /^http:\/\/localhost\/notas\//u,
+    );
   });
 
   it('tools/call em transcript inexistente retorna isError (não erro de protocolo)', async () => {
@@ -176,6 +239,74 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     const note = await db.note.findFirst({ where: { id: noteId, userId } });
     expect(note?.title).toBe('Nota MCP');
     expect(note?.userId).toBe(userId);
+  });
+
+  it('voxen_create_note persiste e voxen_read_note devolve fontes de transcrição', async () => {
+    const transcript = await db.transcript.create({
+      data: {
+        userId,
+        source: 'WEB',
+        url: `https://example.com/mcp-source-${Date.now()}`,
+        title: 'Fonte MCP',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${userId}/transcripts/mcp-source.md`,
+        plainText: 'Fonte de uma nota MCP.',
+        frontmatter: {},
+      },
+    });
+    const create = await call(
+      {
+        jsonrpc: '2.0',
+        id: 41,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_create_note',
+          arguments: { title: 'Nota com fonte MCP', source_transcript_ids: [transcript.id] },
+        },
+      },
+      TOKEN,
+    );
+    const created = (await create.json()) as { result?: { structuredContent?: { id?: string } } };
+    const noteId = created.result?.structuredContent?.id;
+    expect(typeof noteId).toBe('string');
+    const stored = await db.noteTranscriptSource.findUnique({
+      where: { noteId_transcriptId: { noteId: noteId!, transcriptId: transcript.id } },
+    });
+    expect(stored?.userId).toBe(userId);
+
+    const read = await call(
+      {
+        jsonrpc: '2.0',
+        id: 42,
+        method: 'tools/call',
+        params: { name: 'voxen_read_note', arguments: { note_id: noteId } },
+      },
+      TOKEN,
+    );
+    const readBody = (await read.json()) as {
+      result?: { structuredContent?: { href?: string; sources?: { href: string }[] } };
+    };
+    expect(readBody.result?.structuredContent?.href).toBe(`http://localhost/notas/${noteId}`);
+    expect(readBody.result?.structuredContent?.sources?.[0]?.href).toBe(
+      `http://localhost/transcricoes/${transcript.id}`,
+    );
+
+    const invalid = await call(
+      {
+        jsonrpc: '2.0',
+        id: 43,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_create_note',
+          arguments: { title: 'Fonte inválida MCP', source_transcript_ids: ['   '] },
+        },
+      },
+      TOKEN,
+    );
+    const invalidBody = (await invalid.json()) as { result?: { isError?: boolean } };
+    expect(invalidBody.result?.isError).toBe(true);
   });
 
   it('voxen_update_note não edita nota de outro user (isolamento)', async () => {

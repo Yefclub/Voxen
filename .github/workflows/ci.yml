@@ -35,6 +35,13 @@ jobs:
       - name: Format check
         run: bun run format:check
         working-directory: apps/web
+      # A extensão é irmã de apps/web, não filha: o eslint/prettier rodando
+      # com cwd em apps/web nunca a alcançou, e ela ficou sem nenhum gate de
+      # estilo desde que existe. `test:extension` era o único check sobre
+      # esses arquivos.
+      - name: Format check (apps/extension)
+        run: pnpm exec prettier --check ../extension
+        working-directory: apps/web
 
   typecheck-ts:
     name: Typecheck TS (apps/web)
@@ -90,6 +97,11 @@ jobs:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
+      # Testes da extensão MV3 (apps/extension/tests) — não dependem de DB nem
+      # de Prisma, então rodam antes e falham rápido.
+      - name: Test extension
+        run: bun run test:extension
+        working-directory: apps/web
       - name: Prisma generate
         run: pnpm exec prisma generate --schema=../../prisma/schema.prisma
         working-directory: apps/web
@@ -100,8 +112,6 @@ jobs:
         run: bun test
         working-directory: apps/web
 
-
-
   lint-py-worker:
     name: Lint Python (apps/worker)
     runs-on: ubuntu-latest
@@ -109,7 +119,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --frozen
         working-directory: apps/worker
@@ -123,20 +133,55 @@ jobs:
   test-py-worker:
     name: Test Python (apps/worker)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: voxen_worker_test
+          POSTGRES_USER: voxen
+          POSTGRES_PASSWORD: dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U voxen"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://voxen:dev@localhost:5432/voxen_worker_test
     steps:
       - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.x
+      - uses: pnpm/action-setup@v6
+      - run: pnpm install --frozen-lockfile
+      - name: Prisma migrate deploy
+        run: pnpm exec prisma migrate deploy --schema=../../prisma/schema.prisma
+        working-directory: apps/web
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --frozen
         working-directory: apps/worker
       - run: uv run pytest
         working-directory: apps/worker
 
-
-  docker-build:
-    name: Docker build (apps + Easypanel)
+  # ==========================================================================
+  # As três imagens são construídas em PARALELO. Antes eram três passos
+  # sequenciais num job só, e o job custava o tempo somado: web 3m57s +
+  # worker 3m01s + Easypanel 2m47s = 10m40s, o caminho crítico do CI inteiro
+  # (o segundo job mais lento leva 2m10s). Como `version-dev` abre PR e espera
+  # estes mesmos checks para mergear o bump, todo commit de versão pagava os
+  # dez minutos.
+  #
+  # `scope` distinto por imagem é obrigatório, não cosmético: o cache
+  # `type=gha` usa um escopo único por padrão, então três builds concorrentes
+  # com `mode=max` sobrescreveriam o cache um do outro a cada run.
+  # ==========================================================================
+  docker-build-web:
+    name: Docker build (web)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -147,16 +192,30 @@ jobs:
           context: .
           file: apps/web/Dockerfile
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  docker-build-worker:
+    name: Docker build (worker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
       - name: Build worker
         uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/worker/Dockerfile
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+
+  docker-build-easypanel:
+    name: Docker build (Easypanel App)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
       - name: Build Easypanel App image
         uses: docker/build-push-action@v7
         with:
@@ -165,8 +224,8 @@ jobs:
           push: false
           load: true
           tags: voxen-easypanel:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=easypanel
+          cache-to: type=gha,mode=max,scope=easypanel
       - name: Smoke test Easypanel App image
         run: |
           set -eux
@@ -232,6 +291,41 @@ jobs:
 
           docker logs voxen-easypanel
           exit 1
+
+  # ==========================================================================
+  # Agregador. Existe por causa do NOME: `Docker build (apps + Easypanel)` é
+  # um required status check da proteção de `dev`/`main` E está escrito por
+  # extenso no laço de espera do `version-dev.yml`. Dividir os builds sem
+  # manter este nome faria toda PR travar esperando um contexto que nunca mais
+  # reportaria.
+  #
+  # `if: always()` + asserção explícita dos resultados é o que torna isto
+  # seguro. Sem `always()`, uma build que falha deixa este job como `skipped`,
+  # e a proteção de branch trata `skipped` como aprovado — daria verde falso
+  # exatamente no caso em que o build quebrou.
+  # ==========================================================================
+  docker-build:
+    name: Docker build (apps + Easypanel)
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [docker-build-web, docker-build-worker, docker-build-easypanel]
+    steps:
+      - name: Assert image builds succeeded
+        env:
+          WEB: ${{ needs.docker-build-web.result }}
+          WORKER: ${{ needs.docker-build-worker.result }}
+          EASYPANEL: ${{ needs.docker-build-easypanel.result }}
+        run: |
+          set -eu
+          echo "web=$WEB worker=$WORKER easypanel=$EASYPANEL"
+          failed=0
+          for pair in "web:$WEB" "worker:$WORKER" "easypanel:$EASYPANEL"; do
+            if [ "${pair#*:}" != "success" ]; then
+              echo "::error::Build da imagem ${pair%%:*} não passou (${pair#*:})."
+              failed=1
+            fi
+          done
+          exit "$failed"
 
   compose-validate:
     name: docker-compose validate

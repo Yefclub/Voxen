@@ -85,6 +85,31 @@ export function extensionVersionUrl(baseUrl) {
 }
 
 /**
+ * GET /api/me — usada só para descobrir o tema do usuário logado (cookie de
+ * sessão do browser). Nunca envia/expõe token Bearer aqui.
+ * @param {string} baseUrl
+ */
+export function meUrl(baseUrl) {
+  return `${baseUrl.replace(/\/$/, '')}/api/me`;
+}
+
+/**
+ * Rota pessoal de cookies de plataforma (spec 152).
+ * @param {string} baseUrl
+ */
+export function platformCookiesUrl(baseUrl) {
+  return `${baseUrl.replace(/\/$/, '')}/api/integrations/cookies`;
+}
+
+/**
+ * @param {string} baseUrl
+ * @param {string} platform
+ */
+export function platformCookieUrl(baseUrl, platform) {
+  return `${platformCookiesUrl(baseUrl)}/${encodeURIComponent(platform)}`;
+}
+
+/**
  * @param {string} baseUrl
  * @param {string} jobId
  */
@@ -142,4 +167,4 @@ export function looksLikeVoxenTab(tabUrl, tabTitle) {
 }
 
 /** Versão embutida no package (espelha manifest). */
-export const EXTENSION_VERSION = '0.2.0';
+export const EXTENSION_VERSION = '0.4.0';

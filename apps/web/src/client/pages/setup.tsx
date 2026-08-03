@@ -1,53 +1,88 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
-import {
-  ArrowRight,
-  CheckCircle2,
-  ExternalLink,
-  KeyRound,
-  Languages,
-  RotateCw,
-  Sparkles,
-} from 'lucide-react';
+import { ArrowRight, CheckCircle2, ExternalLink, KeyRound, Languages } from '@/components/ui/icons';
+import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
+import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { PageHeader, PageShell } from '../components/ui/page-shell';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
-import { Badge } from '../components/ui/badge';
 import { ApiError, apiGet, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
-import type { OrModel } from '../lib/types';
-import { AnimatedPage } from '../components/motion/animated-page';
-import { ModelPicker } from '../components/model-picker';
 import { LOCALES, useI18n, type Locale } from '../lib/i18n';
 import { detectBrowserTimezone, TimezoneSelect } from '../components/timezone-select';
 
-interface ModelsResponse {
-  chat: OrModel[];
-  transcription: OrModel[];
-  vision: OrModel[];
-  document: OrModel[];
-  xAnalysis: OrModel[];
-  web: OrModel[];
-}
-
 interface SetupStatus {
   complete: boolean;
+  hasApiKey: boolean;
   language: Locale;
   timezone: string;
-  chatModel: string | null;
-  transcriptionModel: string | null;
-  webSearchModel: string | null;
-  visionModel: string | null;
-  documentModel: string | null;
-  xAnalysisModel: string | null;
-  hasApiKey: boolean;
 }
 
-type Step = 'loading' | 'key' | 'modelos' | 'done';
+type Step = 'loading' | 'form' | 'done';
+
+type ModelPurpose =
+  | 'default_chat_model'
+  | 'default_transcription_model'
+  | 'default_web_search_model'
+  | 'default_vision_model'
+  | 'default_document_model'
+  | 'default_x_analysis_model';
+
+interface ModelOption {
+  id: string;
+  name: string;
+}
+
+interface IncompatibleModel {
+  purpose: ModelPurpose;
+  modelId: string;
+  reason: 'unavailable' | 'incompatible';
+  compatibleModels: ModelOption[];
+}
+
+const PURPOSE_LABEL_KEYS: Record<
+  ModelPurpose,
+  | 'admin.integrations.models.purpose.chat'
+  | 'admin.integrations.models.purpose.transcription'
+  | 'admin.integrations.models.purpose.webSearch'
+  | 'admin.integrations.models.purpose.vision'
+  | 'admin.integrations.models.purpose.document'
+  | 'admin.integrations.models.purpose.xAnalysis'
+> = {
+  default_chat_model: 'admin.integrations.models.purpose.chat',
+  default_transcription_model: 'admin.integrations.models.purpose.transcription',
+  default_web_search_model: 'admin.integrations.models.purpose.webSearch',
+  default_vision_model: 'admin.integrations.models.purpose.vision',
+  default_document_model: 'admin.integrations.models.purpose.document',
+  default_x_analysis_model: 'admin.integrations.models.purpose.xAnalysis',
+};
+
+function incompatibleModelsFrom(body: unknown): IncompatibleModel[] | null {
+  if (!body || typeof body !== 'object' || !('incompatible' in body)) return null;
+  const incompatible = (body as { incompatible?: unknown }).incompatible;
+  if (!Array.isArray(incompatible)) return null;
+  return incompatible.filter((item): item is IncompatibleModel =>
+    Boolean(
+      item &&
+      typeof item === 'object' &&
+      'purpose' in item &&
+      'modelId' in item &&
+      'reason' in item &&
+      'compatibleModels' in item &&
+      Array.isArray(item.compatibleModels),
+    ),
+  );
+}
 
 export function SetupPage(): React.ReactElement {
   const { locale, setLocale, t } = useI18n();
@@ -56,66 +91,32 @@ export function SetupPage(): React.ReactElement {
   const [appLanguage, setAppLanguage] = useState<Locale>(locale);
   const [appTimezone, setAppTimezone] = useState(() => detectBrowserTimezone());
   const [apiKey, setApiKey] = useState('');
-  const [chatModel, setChatModel] = useState('');
-  const [transcriptionModel, setTranscriptionModel] = useState('');
-  const [webSearchModel, setWebSearchModel] = useState('');
-  const [visionModel, setVisionModel] = useState('');
-  const [documentModel, setDocumentModel] = useState('');
-  const [xAnalysisModel, setXAnalysisModel] = useState('');
-  const [models, setModels] = useState<ModelsResponse | null>(null);
+  const [incompatibleModels, setIncompatibleModels] = useState<IncompatibleModel[]>([]);
+  const [modelReplacements, setModelReplacements] = useState<Partial<Record<ModelPurpose, string>>>(
+    {},
+  );
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { refresh } = useMe();
 
-  // Carrega estado atual ao montar
   useEffect(() => {
     let cancelled = false;
 
-    function hydrateStatus(s: SetupStatus): void {
-      setStatus(s);
-      setAppLanguage(s.language);
-      setLocale(s.language);
-      if (s.timezone) setAppTimezone(s.timezone);
-      if (!s.complete) return;
-      setChatModel(s.chatModel ?? '');
-      setTranscriptionModel(s.transcriptionModel ?? '');
-      setWebSearchModel(s.webSearchModel ?? '');
-      setVisionModel(s.visionModel ?? '');
-      setDocumentModel(s.documentModel ?? '');
-      setXAnalysisModel(s.xAnalysisModel ?? '');
-    }
-
     async function load(): Promise<void> {
       try {
-        const s = await apiGet<SetupStatus>('/api/setup');
+        const nextStatus = await apiGet<SetupStatus>('/api/setup');
         if (cancelled) return;
-        hydrateStatus(s);
-        if (!s.complete) {
-          setStep('key');
-          return;
-        }
-        const data = await apiPost<ModelsResponse>('/api/setup/models', {});
-        if (cancelled) return;
-        setModels(data);
-        if (!s.transcriptionModel) {
-          setTranscriptionModel(preferredTranscriptionModel(data.transcription)?.id ?? '');
-        }
-        if (!s.chatModel) {
-          setChatModel(preferredChatModel(data.chat)?.id ?? data.chat[0]?.id ?? '');
-        }
-        if (!s.documentModel) {
-          setDocumentModel(data.document[0]?.id ?? '');
-        }
-        if (!s.xAnalysisModel) {
-          setXAnalysisModel(preferredXModel(data.xAnalysis)?.id ?? data.xAnalysis[0]?.id ?? '');
-        }
-        setStep('modelos');
+        setStatus(nextStatus);
+        setAppLanguage(nextStatus.language);
+        setLocale(nextStatus.language);
+        if (nextStatus.timezone) setAppTimezone(nextStatus.timezone);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof ApiError ? err.message : t('setup.error.load'));
-        setStep('key');
+      } finally {
+        if (!cancelled) setStep('form');
       }
     }
 
@@ -125,93 +126,31 @@ export function SetupPage(): React.ReactElement {
     };
   }, [setLocale]);
 
-  async function refreshStatus(): Promise<void> {
-    const s = await apiGet<SetupStatus>('/api/setup');
-    setStatus(s);
-    setAppLanguage(s.language);
-    setLocale(s.language);
-    setChatModel(s.chatModel ?? '');
-    setTranscriptionModel(s.transcriptionModel ?? '');
-    setWebSearchModel(s.webSearchModel ?? '');
-    setVisionModel(s.visionModel ?? '');
-    setDocumentModel(s.documentModel ?? '');
-    setXAnalysisModel(s.xAnalysisModel ?? '');
-  }
-
-  async function validateAndListModels(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
-    setError(null);
-    setSaved(false);
-    setLoading(true);
-    try {
-      const data = await apiPost<ModelsResponse>('/api/setup/models', {
-        openrouter_api_key: apiKey,
-      });
-      setModels(data);
-      if (!transcriptionModel) {
-        setTranscriptionModel(preferredTranscriptionModel(data.transcription)?.id ?? '');
-      }
-      if (!chatModel) setChatModel(preferredChatModel(data.chat)?.id ?? data.chat[0]?.id ?? '');
-      if (!documentModel) setDocumentModel(data.document[0]?.id ?? '');
-      if (!xAnalysisModel) {
-        setXAnalysisModel(preferredXModel(data.xAnalysis)?.id ?? data.xAnalysis[0]?.id ?? '');
-      }
-      setStep('modelos');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('setup.error.key'));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function refreshModelCatalog(): Promise<void> {
-    setError(null);
-    setSaved(false);
-    setLoading(true);
-    try {
-      const body = apiKey.trim() ? { openrouter_api_key: apiKey.trim() } : {};
-      const data = await apiPost<ModelsResponse>('/api/setup/models', body);
-      setModels(data);
-      if (!transcriptionModel) {
-        setTranscriptionModel(preferredTranscriptionModel(data.transcription)?.id ?? '');
-      }
-      if (!chatModel) setChatModel(preferredChatModel(data.chat)?.id ?? data.chat[0]?.id ?? '');
-      if (!documentModel) setDocumentModel(data.document[0]?.id ?? '');
-      if (!xAnalysisModel) {
-        setXAnalysisModel(preferredXModel(data.xAnalysis)?.id ?? data.xAnalysis[0]?.id ?? '');
-      }
-      setStep('modelos');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('setup.error.models'));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function saveSetup(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
+  async function saveSetup(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
     setError(null);
     setSaved(false);
     setLoading(true);
     const wasConfigured = Boolean(status?.complete);
+
     try {
-      const body: Record<string, string | boolean> = {
+      const body: Record<string, unknown> = {
         app_language: appLanguage,
         app_timezone: appTimezone,
-        default_chat_model: chatModel,
-        default_transcription_model: transcriptionModel,
       };
-      body.default_web_search_model = webSearchModel;
-      body.default_vision_model = visionModel;
-      body.default_document_model = documentModel;
-      body.default_x_analysis_model = xAnalysisModel;
-      if (apiKey.trim()) {
-        body.openrouter_api_key = apiKey.trim();
-      }
-      await apiPost('/api/setup', body);
-      await refreshStatus().catch(() => undefined);
+      if (apiKey.trim()) body.openrouter_api_key = apiKey.trim();
+      if (Object.keys(modelReplacements).length > 0) body.model_replacements = modelReplacements;
+      const result = await apiPost<{ complete: boolean }>('/api/setup', body);
+      setStatus({
+        complete: result.complete,
+        hasApiKey: result.complete || Boolean(status?.hasApiKey),
+        language: appLanguage,
+        timezone: appTimezone,
+      });
       await refresh();
       setApiKey('');
+      setIncompatibleModels([]);
+      setModelReplacements({});
       if (wasConfigured) {
         setSaved(true);
         return;
@@ -219,6 +158,19 @@ export function SetupPage(): React.ReactElement {
       setStep('done');
       setTimeout(() => navigate('/'), 1500);
     } catch (err) {
+      const incompatible = err instanceof ApiError ? incompatibleModelsFrom(err.body) : null;
+      if (incompatible) {
+        setIncompatibleModels(incompatible);
+        setModelReplacements(
+          (current) =>
+            Object.fromEntries(
+              incompatible.map((item) => [
+                item.purpose,
+                current[item.purpose] ?? item.compatibleModels[0]?.id ?? '',
+              ]),
+            ) as Partial<Record<ModelPurpose, string>>,
+        );
+      }
       setError(err instanceof ApiError ? err.message : t('setup.error.save'));
     } finally {
       setLoading(false);
@@ -227,492 +179,264 @@ export function SetupPage(): React.ReactElement {
 
   if (step === 'loading') {
     return (
-      <div className="flex justify-center px-4 py-16 sm:px-8 sm:py-24">
+      <PageShell width="workspace" className="flex min-h-64 items-center justify-center">
         <Spinner size={22} className="text-[var(--color-app-muted)]" />
-      </div>
+      </PageShell>
     );
   }
 
   if (step === 'done') {
     return (
-      <AnimatedPage>
-        <div className="mx-auto flex max-w-3xl flex-col items-center px-4 py-12 text-center sm:px-6 sm:py-20">
-          <motion.div
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 250, damping: 18 }}
-            className="relative"
-          >
-            <div className="absolute inset-0 rounded-full bg-emerald-500/40 blur-2xl" />
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 border border-emerald-400/50">
-              <CheckCircle2 className="h-7 w-7 text-emerald-950" strokeWidth={2.5} />
-            </div>
-          </motion.div>
-          <motion.h2
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="font-display text-3xl font-semibold mt-8"
-          >
-            {t('setup.doneTitle')}
-          </motion.h2>
-          <motion.p
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.22 }}
-            className="text-[15px] text-[var(--color-app-muted)] mt-3"
-          >
-            {t('setup.doneSubtitle')}
-          </motion.p>
+      <PageShell
+        width="workspace"
+        className="flex min-h-[60dvh] flex-col items-center justify-center text-center"
+      >
+        <div className="relative">
+          <div className="absolute inset-0 rounded-full bg-emerald-500/40 blur-2xl" />
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-emerald-400/50 bg-gradient-to-br from-emerald-400 to-emerald-600">
+            <CheckCircle2 className="h-7 w-7 text-emerald-950" />
+          </div>
         </div>
-      </AnimatedPage>
+        <h2 className="mt-8 font-display text-3xl font-semibold">{t('setup.doneTitle')}</h2>
+        <p className="mt-3 text-[15px] text-[var(--color-app-muted)]">{t('setup.doneSubtitle')}</p>
+      </PageShell>
     );
   }
 
-  const editingConfigured = Boolean(status?.complete && step === 'modelos');
+  const editingConfigured = Boolean(status?.complete);
+  const trimmedKeyLength = apiKey.trim().length;
+  const keyIsInvalid =
+    (!editingConfigured && trimmedKeyLength < 20) ||
+    (trimmedKeyLength > 0 && trimmedKeyLength < 20);
+  const unresolvedModels = incompatibleModels.some(
+    (item) => !modelReplacements[item.purpose] || item.compatibleModels.length === 0,
+  );
 
-  // Wizard de primeira configuração ou formulário direto de edição da instância.
   return (
-    <AnimatedPage>
-      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-12">
-        <PageHeader
-          badge={editingConfigured ? t('setup.badge.edit') : t('setup.badge.initial')}
-          title={
-            editingConfigured ? (
-              t('setup.title.edit')
-            ) : (
-              <>
-                {t('setup.title.initialPrefix')}
-                <span className="text-emerald-accent">OpenRouter</span>
-                {t('setup.title.initialSuffix')}
-              </>
-            )
-          }
-          sub={editingConfigured ? t('setup.subtitle.edit') : t('setup.subtitle.initial')}
-        />
+    <PageShell width="workspace">
+      <PageHeader
+        eyebrow={editingConfigured ? t('setup.badge.edit') : t('setup.badge.initial')}
+        icon={KeyRound}
+        iconClassName="text-emerald-400"
+        title={
+          editingConfigured ? (
+            t('setup.title.edit')
+          ) : (
+            <>
+              {t('setup.title.initialPrefix')}
+              <span className="text-emerald-accent">OpenRouter</span>
+              {t('setup.title.initialSuffix')}
+            </>
+          )
+        }
+        description={editingConfigured ? t('setup.subtitle.edit') : t('setup.subtitle.initial')}
+      />
 
-        {/* Stepper */}
-        {!editingConfigured && (
-          <div className="mb-8 flex items-center gap-3">
-            <StepDot
-              index={1}
-              active={step === 'key'}
-              done={step !== 'key'}
-              label={t('setup.step.key')}
-            />
-            <div className="flex-1 h-px relative">
-              <div className="absolute inset-0 bg-[var(--color-app-border)]" />
-              <motion.div
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: step === 'key' ? 0 : 1 }}
-                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                className="absolute inset-0 origin-left bg-gradient-to-r from-emerald-400 to-violet-400"
+      {error && (
+        <div className="mb-6">
+          <Alert variant="destructive">
+            <AlertTitle>{t('setup.validationTitle')}</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      {saved && (
+        <div className="mb-6">
+          <Alert variant="success">
+            <CheckCircle2 className="mt-0.5 h-4 w-4" />
+            <AlertDescription>{t('setup.saved')}</AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      <form onSubmit={saveSetup} className="space-y-5">
+        <Card elevated>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 font-display">
+              <Languages className="h-4 w-4 text-emerald-400" />
+              {t('setup.language.title')}
+            </CardTitle>
+            <CardDescription>{t('setup.language.description')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2">
+              {(Object.keys(LOCALES) as Locale[]).map((language) => (
+                <button
+                  key={language}
+                  type="button"
+                  onClick={() => {
+                    setSaved(false);
+                    setAppLanguage(language);
+                    setLocale(language);
+                  }}
+                  className={[
+                    'rounded-xl border px-4 py-3 text-left transition-colors',
+                    appLanguage === language
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+                      : 'border-[var(--color-app-border)] bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
+                  ].join(' ')}
+                >
+                  <span className="block text-sm font-semibold">
+                    {LOCALES[language].nativeName}
+                  </span>
+                  <span className="mt-1 block text-[11px] uppercase tracking-wider text-[var(--color-app-muted)]">
+                    {LOCALES[language].shortName}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-5">
+              <TimezoneSelect
+                id="setup-timezone"
+                value={appTimezone}
+                onChange={(next) => {
+                  setSaved(false);
+                  setAppTimezone(next);
+                }}
+                label={t('setup.timezone.title')}
+                hint={t('setup.timezone.description')}
               />
             </div>
-            <StepDot
-              index={2}
-              active={step === 'modelos'}
-              done={false}
-              label={t('setup.step.models')}
-            />
-          </div>
-        )}
+          </CardContent>
+        </Card>
 
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <Alert variant="destructive">
-              <AlertTitle>{t('setup.validationTitle')}</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          </motion.div>
-        )}
+        <Card elevated>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle className="flex items-center gap-2.5 font-display">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10">
+                    <KeyRound className="h-3.5 w-3.5 text-emerald-400" />
+                  </span>
+                  {t('setup.openrouter.title')}
+                </CardTitle>
+                <CardDescription>
+                  {editingConfigured
+                    ? t('setup.openrouter.description.active')
+                    : t('setup.openrouter.description.new')}{' '}
+                  <a
+                    href="https://openrouter.ai/keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[var(--color-app-fg)] underline-offset-4 transition-colors hover:text-emerald-400 hover:underline"
+                  >
+                    OpenRouter
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </CardDescription>
+              </div>
+              {status?.hasApiKey && <Badge variant="success">{t('setup.openrouter.active')}</Badge>}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {status?.hasApiKey && (
+              <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2 text-sm text-emerald-200">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>{t('setup.openrouter.stored')}</span>
+                <span className="ml-auto font-mono text-[11px] tracking-widest text-emerald-300/80">
+                  ••••••••••••
+                </span>
+              </div>
+            )}
 
-        {saved && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <Alert variant="success">
-              <CheckCircle2 className="mt-0.5 h-4 w-4" />
-              <AlertDescription>{t('setup.saved')}</AlertDescription>
-            </Alert>
-          </motion.div>
-        )}
+            <div className="space-y-2">
+              <Label htmlFor="openrouter-key">
+                {editingConfigured ? t('setup.openrouter.newKey') : t('setup.openrouter.apiKey')}
+              </Label>
+              <Input
+                id="openrouter-key"
+                type="password"
+                value={apiKey}
+                onChange={(event) => {
+                  setSaved(false);
+                  setApiKey(event.target.value);
+                  setIncompatibleModels([]);
+                  setModelReplacements({});
+                }}
+                placeholder={
+                  editingConfigured ? t('setup.openrouter.newKeyPlaceholder') : 'sk-or-v1-...'
+                }
+                autoComplete="off"
+                spellCheck={false}
+                required={!editingConfigured}
+                minLength={20}
+                maxLength={512}
+                className="h-11 font-mono text-[15px]"
+              />
+            </div>
 
-        <AnimatePresence mode="wait">
-          {step === 'key' && (
-            <motion.div
-              key="key"
-              initial={{ opacity: 0, x: -12 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 12 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <Card elevated>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2.5 font-display">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                      <KeyRound className="h-3.5 w-3.5 text-emerald-400" />
-                    </span>
-                    {t('setup.openrouter.apiKey')}
-                  </CardTitle>
-                  <CardDescription>
-                    {t('setup.openrouter.description.new')}{' '}
-                    <a
-                      href="https://openrouter.ai/keys"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-[var(--color-app-fg)] underline-offset-4 hover:text-emerald-400 hover:underline transition-colors"
-                    >
-                      OpenRouter
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={validateAndListModels} className="space-y-5">
-                    <div className="space-y-2">
-                      <Label htmlFor="key">{t('setup.openrouter.apiKey')}</Label>
-                      <Input
-                        id="key"
-                        type="password"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="sk-or-v1-..."
-                        autoComplete="off"
-                        spellCheck={false}
-                        required
-                        minLength={20}
-                        className="font-mono h-11 text-[15px]"
-                      />
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <Button
-                        type="submit"
-                        variant="primary"
-                        size="lg"
-                        disabled={loading}
-                        className="w-full h-11"
-                      >
-                        {loading ? <Spinner /> : t('onboarding.validateContinue')}
-                        {!loading && <ArrowRight className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
+            <p className="text-xs leading-relaxed text-[var(--color-app-muted)]">
+              {t('setup.openrouter.defaults')}
+            </p>
 
-          {step === 'modelos' && models && (
-            <motion.div
-              key="modelos"
-              initial={{ opacity: 0, x: 12 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -12 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <form onSubmit={saveSetup} className="space-y-5">
-                <Card elevated>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-display">
-                      <Languages className="h-4 w-4 text-emerald-400" />
-                      {t('setup.language.title')}
-                    </CardTitle>
-                    <CardDescription>{t('setup.language.description')}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {(Object.keys(LOCALES) as Locale[]).map((language) => (
-                        <button
-                          key={language}
-                          type="button"
-                          onClick={() => {
-                            setSaved(false);
-                            setAppLanguage(language);
-                            setLocale(language);
-                          }}
-                          className={[
-                            'rounded-xl border px-4 py-3 text-left transition-colors',
-                            appLanguage === language
-                              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
-                              : 'border-[var(--color-app-border)] bg-[var(--color-app-surface)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface-hover)]',
-                          ].join(' ')}
-                        >
-                          <span className="block text-sm font-semibold">
-                            {LOCALES[language].nativeName}
-                          </span>
-                          <span className="mt-1 block text-[11px] uppercase tracking-wider text-[var(--color-app-muted)]">
-                            {LOCALES[language].shortName}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-5">
-                      <TimezoneSelect
-                        id="setup-timezone"
-                        value={appTimezone}
-                        onChange={(next) => {
-                          setSaved(false);
-                          setAppTimezone(next);
-                        }}
-                        label={t('setup.timezone.title')}
-                        hint={t('setup.timezone.description')}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card elevated>
-                  <CardHeader>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <CardTitle className="flex items-center gap-2 font-display">
-                          <KeyRound className="h-4 w-4 text-emerald-400" />
-                          {t('setup.openrouter.title')}
-                        </CardTitle>
-                        <CardDescription>
-                          {status?.complete
-                            ? t('setup.openrouter.description.active')
-                            : t('setup.openrouter.description.new')}
-                        </CardDescription>
-                      </div>
-                      {status?.hasApiKey && (
-                        <Badge variant="success">{t('setup.openrouter.active')}</Badge>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {status?.hasApiKey && (
-                      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2 text-sm text-emerald-200">
-                        <CheckCircle2 className="h-4 w-4 shrink-0" />
-                        <span>{t('setup.openrouter.stored')}</span>
-                        <span className="ml-auto font-mono text-[11px] tracking-widest text-emerald-300/80">
-                          ••••••••••••
-                        </span>
-                      </div>
-                    )}
-                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                      <div className="space-y-2">
-                        <Label htmlFor="configured-key">
-                          {status?.complete
-                            ? t('setup.openrouter.newKey')
-                            : t('setup.openrouter.apiKey')}
-                        </Label>
-                        <Input
-                          id="configured-key"
-                          type="password"
-                          value={apiKey}
-                          onChange={(e) => {
-                            setSaved(false);
-                            setApiKey(e.target.value);
-                          }}
-                          placeholder={t('setup.openrouter.newKeyPlaceholder')}
-                          autoComplete="off"
-                          spellCheck={false}
-                          className="font-mono h-11 text-[15px]"
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="lg"
-                        onClick={() => void refreshModelCatalog()}
-                        disabled={loading}
-                      >
-                        {loading ? <Spinner /> : <RotateCw className="h-4 w-4" />}
-                        {t('setup.openrouter.refreshModels')}
-                      </Button>
-                    </div>
-                    <p className="text-xs leading-relaxed text-[var(--color-app-muted)]">
-                      {status?.complete
-                        ? t('setup.openrouter.refreshHint.active')
-                        : t('setup.openrouter.refreshHint.new')}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card elevated>
-                  <CardHeader>
-                    <CardTitle className="font-display">{t('setup.models.title')}</CardTitle>
-                    <CardDescription>{t('setup.models.description')}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <ModelPicker
-                      label={t('setup.models.transcription')}
-                      value={transcriptionModel}
-                      onChange={setTranscriptionModel}
-                      options={models.transcription}
-                      count={models.transcription.length}
-                    />
-                    <ModelPicker
-                      label={t('setup.models.chat')}
-                      value={chatModel}
-                      onChange={setChatModel}
-                      options={models.chat}
-                      count={models.chat.length}
-                    />
-                    <ModelPicker
-                      label={t('setup.models.web')}
-                      value={webSearchModel}
-                      onChange={setWebSearchModel}
-                      options={models.web}
-                      count={models.web.length}
-                      optional
-                      hint={t('setup.models.webHint')}
-                    />
-                    <ModelPicker
-                      label={t('setup.models.vision')}
-                      value={visionModel}
-                      onChange={setVisionModel}
-                      options={models.vision}
-                      count={models.vision.length}
-                      optional
-                      hint={t('setup.models.visionHint')}
-                    />
-                    <ModelPicker
-                      label={t('setup.models.documents')}
-                      value={documentModel}
-                      onChange={setDocumentModel}
-                      options={models.document}
-                      count={models.document.length}
-                      optional
-                      hint={t('setup.models.documentsHint')}
-                    />
-                    <ModelPicker
-                      label={t('setup.models.x')}
-                      value={xAnalysisModel}
-                      onChange={setXAnalysisModel}
-                      options={models.xAnalysis}
-                      count={models.xAnalysis.length}
-                      optional
-                      hint={t('setup.models.xHint')}
-                    />
-                  </CardContent>
-                </Card>
-
-                <div className="flex justify-end gap-3 pt-2">
-                  {!editingConfigured && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => {
-                        setStep('key');
-                        setError(null);
-                      }}
-                    >
-                      {t('common.back')}
-                    </Button>
-                  )}
-                  <Button type="submit" variant="primary" size="lg" disabled={loading}>
-                    {loading ? (
-                      <Spinner />
-                    ) : editingConfigured ? (
-                      t('setup.save')
-                    ) : (
-                      t('common.saveContinue')
-                    )}
-                    {!loading && <ArrowRight className="h-4 w-4" />}
-                  </Button>
+            {incompatibleModels.length > 0 && (
+              <div className="space-y-4 rounded-xl border border-amber-500/35 bg-amber-500/[0.06] p-4">
+                <div>
+                  <p className="text-sm font-medium text-amber-100">
+                    {t('setup.models.incompatibleTitle')}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-amber-200/80">
+                    {t('setup.models.incompatibleDescription')}
+                  </p>
                 </div>
-              </form>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </AnimatedPage>
-  );
-}
+                {incompatibleModels.map((item) => (
+                  <div key={item.purpose} className="space-y-2">
+                    <Label htmlFor={`replacement-${item.purpose}`}>
+                      {t(PURPOSE_LABEL_KEYS[item.purpose])}
+                    </Label>
+                    <p className="text-xs text-[var(--color-app-muted)]">
+                      {t(
+                        item.reason === 'unavailable'
+                          ? 'setup.models.reason.unavailable'
+                          : 'setup.models.reason.incompatible',
+                        { model: item.modelId },
+                      )}
+                    </p>
+                    <Select
+                      value={modelReplacements[item.purpose] ?? ''}
+                      onValueChange={(modelId) =>
+                        setModelReplacements((current) => ({ ...current, [item.purpose]: modelId }))
+                      }
+                    >
+                      <SelectTrigger id={`replacement-${item.purpose}`}>
+                        <SelectValue placeholder={t('setup.models.selectPlaceholder')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {item.compatibleModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.name} ({model.id})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {item.compatibleModels.length === 0 && (
+                      <p className="text-xs text-amber-200">{t('setup.models.noCompatible')}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
-function preferredXModel(models: OrModel[]): OrModel | undefined {
-  return (
-    models.find((m) => m.id === 'x-ai/grok-4-fast:free') ??
-    models.find((m) => m.id.toLowerCase().includes('grok-4-fast')) ??
-    models.find((m) => m.id.toLowerCase().includes('grok-4')) ??
-    models.find((m) => m.id.toLowerCase().includes('grok'))
-  );
-}
-
-function preferredTranscriptionModel(models: OrModel[]): OrModel | undefined {
-  return (
-    models.find((m) => m.id.toLowerCase().includes('whisper-large-v3-turbo')) ??
-    models.find((m) => m.id.toLowerCase().includes('whisper')) ??
-    models[0]
-  );
-}
-
-function preferredChatModel(models: OrModel[]): OrModel | undefined {
-  return (
-    models.find((m) => m.id === 'google/gemini-3.1-flash-lite') ??
-    models.find(
-      (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
-    ) ??
-    models.find((m) => m.id.toLowerCase().includes('sonnet')) ??
-    models[0]
-  );
-}
-
-function PageHeader({
-  badge,
-  title,
-  sub,
-}: {
-  badge: string;
-  title: React.ReactNode;
-  sub: string;
-}): React.ReactElement {
-  return (
-    <header className="mb-7 space-y-3">
-      <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-violet-400 font-medium">
-        <Sparkles className="h-3.5 w-3.5" />
-        {badge}
-      </div>
-      <h1 className="font-display text-3xl font-semibold text-[var(--color-app-fg)]">{title}</h1>
-      <p className="max-w-2xl text-sm text-[var(--color-app-muted)] leading-relaxed">{sub}</p>
-    </header>
-  );
-}
-
-function StepDot({
-  index,
-  active,
-  done,
-  label,
-}: {
-  index: number;
-  active: boolean;
-  done: boolean;
-  label: string;
-}): React.ReactElement {
-  return (
-    <div className="flex items-center gap-2.5">
-      <motion.div
-        animate={{ scale: active ? 1.05 : 1 }}
-        className={[
-          'h-7 w-7 rounded-full border flex items-center justify-center text-[11px] font-bold transition-all duration-300',
-          done
-            ? 'bg-emerald-500 border-emerald-400 text-emerald-950'
-            : active
-              ? 'bg-[var(--color-app-inverted)] border-[var(--color-app-inverted)] text-[var(--color-app-inverted-fg)]'
-              : 'bg-transparent border-[var(--color-app-border-strong)] text-[var(--color-app-muted)]',
-        ].join(' ')}
-      >
-        {done ? '✓' : index}
-      </motion.div>
-      <span
-        className={
-          active || done
-            ? 'text-[var(--color-app-fg)] text-sm font-medium'
-            : 'text-[var(--color-app-muted)] text-sm'
-        }
-      >
-        {label}
-      </span>
-    </div>
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              disabled={loading || keyIsInvalid || unresolvedModels}
+              className="h-11 w-full"
+            >
+              {loading ? (
+                <Spinner />
+              ) : editingConfigured ? (
+                t('setup.save')
+              ) : (
+                t('onboarding.validateContinue')
+              )}
+              {!loading && <ArrowRight className="h-4 w-4" />}
+            </Button>
+          </CardContent>
+        </Card>
+      </form>
+    </PageShell>
   );
 }

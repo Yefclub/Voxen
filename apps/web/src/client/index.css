@@ -3,7 +3,7 @@
 /* ============================================================================
    Voxen — Design system com temas (spec 073)
    ----------------------------------------------------------------------------
-   Temas: zinc (padrão, cinza neutro) | emerald (viés verde) | light
+   Temas: linear (padrão) | zinc | emerald | light
    Tokens semânticos --color-app-* / --color-accent-* são a fonte da verdade.
    Tipografia: Bricolage Grotesque (display) + Inter (UI) + JetBrains Mono
    ============================================================================ */
@@ -13,17 +13,17 @@
   --font-display: 'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* Defaults = zinc (overridden by [data-theme] below) */
-  --color-app-bg: #212121;
-  --color-app-bg-elevated: #2a2a2a;
-  --color-app-surface: #2f2f2f;
-  --color-app-surface-hover: #3a3a3a;
-  --color-app-border: #3a3a3a;
-  --color-app-border-strong: #4a4a4a;
+  /* Defaults = linear (overridden by [data-theme] below) */
+  --color-app-bg: #111113;
+  --color-app-bg-elevated: #151517;
+  --color-app-surface: #1b1b1e;
+  --color-app-surface-hover: #222226;
+  --color-app-border: #29292d;
+  --color-app-border-strong: #38383e;
 
-  --color-app-fg: #ececec;
-  --color-app-muted: #8e8e8e;
-  --color-app-subtle: #b4b4b4;
+  --color-app-fg: #f2f2f3;
+  --color-app-muted: #8a8a92;
+  --color-app-subtle: #b4b4bb;
 
   --color-accent-emerald: oklch(73% 0.16 159);
   --color-accent-emerald-soft: oklch(73% 0.16 159 / 0.18);
@@ -31,8 +31,15 @@
   --color-accent-violet-soft: oklch(72% 0.18 290 / 0.2);
   --color-accent-amber: oklch(80% 0.16 78);
   --color-accent-rose: oklch(70% 0.2 18);
-  --color-accent-primary: #19c37d;
-  --color-accent-primary-soft: rgba(25, 195, 125, 0.1);
+  /*
+   * Cor de ação destrutiva em repouso sobre a superfície do tema — usada no
+   * hover do "Sair". Precisa de um valor por tema: um vermelho que passa em
+   * AA no fundo escuro não passa no claro e vice-versa, e o app não tem
+   * variante `dark:` para escolher em tempo de classe.
+   */
+  --color-app-danger: oklch(70% 0.18 18);
+  --color-accent-primary: #8b7cf6;
+  --color-accent-primary-soft: rgba(139, 124, 246, 0.13);
 
   /* Superfície sólida de alto contraste (botão default / chip forte) — inverte por tema */
   --color-app-inverted: #ececec;
@@ -53,6 +60,35 @@
 
 /* Theme packs — applied via documentElement[data-theme] */
 :root,
+[data-theme='linear'] {
+  color-scheme: dark;
+  --color-app-bg: #111113;
+  --color-app-bg-elevated: #151517;
+  --color-app-surface: #1b1b1e;
+  --color-app-surface-hover: #222226;
+  --color-app-border: #29292d;
+  --color-app-border-strong: #38383e;
+  --color-app-fg: #f2f2f3;
+  --color-app-muted: #8a8a92;
+  --color-app-subtle: #b4b4bb;
+  --color-accent-primary: #8b7cf6;
+  --color-accent-primary-soft: rgba(139, 124, 246, 0.13);
+  --color-app-inverted: #f2f2f3;
+  --color-app-inverted-fg: #151517;
+  --color-app-inverted-hover: #ffffff;
+  --color-app-elevate: rgba(255, 255, 255, 0.035);
+  --color-accent-emerald: oklch(73% 0.14 159);
+  --color-accent-emerald-soft: oklch(73% 0.14 159 / 0.15);
+  --color-accent-violet: oklch(69% 0.17 290);
+  --color-accent-violet-soft: oklch(69% 0.17 290 / 0.18);
+  --theme-html-bg: #111113;
+  --theme-mesh-a: oklch(62% 0.15 288 / 0.055);
+  --theme-mesh-b: transparent;
+  --theme-mesh-c: transparent;
+  --theme-selection: oklch(69% 0.17 290 / 0.28);
+  --theme-focus: oklch(69% 0.17 290 / 0.55);
+}
+
 [data-theme='zinc'] {
   color-scheme: dark;
   --color-app-bg: #212121;
@@ -128,6 +164,7 @@
   --color-accent-emerald-soft: oklch(55% 0.14 159 / 0.14);
   --color-accent-violet: oklch(52% 0.18 290);
   --color-accent-violet-soft: oklch(52% 0.18 290 / 0.14);
+  --color-app-danger: oklch(50% 0.2 18);
   --theme-html-bg: #f7f7f8;
   --theme-mesh-a: oklch(72% 0.18 290 / 0.04);
   --theme-mesh-b: oklch(73% 0.16 159 / 0.04);
@@ -161,7 +198,7 @@
     width: 100%;
     max-width: 100%;
     color-scheme: dark;
-    background: var(--theme-html-bg, #212121);
+    background: var(--theme-html-bg, #111113);
     color: var(--color-app-fg);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -508,6 +545,12 @@
     }
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .anim-in {
+      animation: none !important;
+    }
+  }
+
   /* Pulse violet (status "ao vivo") */
   .pulse-dot {
     position: relative;
@@ -530,6 +573,18 @@
       transform: scale(2.5);
       opacity: 0;
     }
+  }
+}
+
+/* O chat mantém prosa e composer na mesma coluna. Apenas tabelas podem usar a
+   largura operacional extra no desktop, sem alargar raciocínio ou mensagens. */
+@media (min-width: 80rem) {
+  .chat-response-markdown [data-horizontal-scroll='true'] {
+    position: relative;
+    left: 50%;
+    width: min(64rem, calc(100vw - 24rem));
+    max-width: none;
+    transform: translateX(-50%);
   }
 }
 

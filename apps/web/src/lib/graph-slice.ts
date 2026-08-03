@@ -1,5 +1,5 @@
 /**
- * Recorte do grafo para UI rápida (spec 103).
+ * Visões legadas e focadas do grafo (spec 103).
  * Funções puras — testáveis sem DB/Redis.
  */
 
@@ -49,7 +49,7 @@ const WEAK_METHODS = [
 ];
 
 export function parseGraphView(raw: string | undefined | null): GraphSliceView {
-  return raw === 'full' ? 'full' : 'map';
+  return raw === 'map' ? 'map' : 'full';
 }
 
 export function parseGraphHops(raw: string | undefined | null): number {
@@ -105,8 +105,8 @@ function isConceptType(type: string): boolean {
 
 /**
  * Seleciona o subgrafo para a UI.
- * - map: conteúdos/pastas + conceitos com grau≥2 + arestas fortes
- * - full: só aplica caps defensivos
+ * - full (padrão): só aplica caps defensivos
+ * - map (legado): conteúdos/pastas + conceitos com grau≥2 + arestas fortes
  * - focus: ego-network a N hops
  */
 export function selectGraphSlice<N extends SliceNode, E extends SliceEdge>(input: {
@@ -188,12 +188,12 @@ export function selectGraphSlice<N extends SliceNode, E extends SliceEdge>(input
   const finalEdges = strongEdges.filter((e) => finalIds.has(e.from) && finalIds.has(e.to));
 
   const withClusters = injectClusterHubs(finalNodes, finalEdges);
-  // Cap final após hubs virtuais (clusters contam no budget do mapa).
-  const cappedNodes = withClusters.nodes.slice(0, MAP_NODE_LIMIT + 24);
+  // Hubs virtuais também contam no orçamento do mapa.
+  const cappedNodes = withClusters.nodes.slice(0, MAP_NODE_LIMIT);
   const cappedIds = new Set(cappedNodes.map((n) => n.id));
   const cappedEdges = withClusters.edges
     .filter((e) => cappedIds.has(e.from) && cappedIds.has(e.to))
-    .slice(0, MAP_EDGE_LIMIT + 48);
+    .slice(0, MAP_EDGE_LIMIT);
   return {
     nodes: cappedNodes,
     edges: cappedEdges,

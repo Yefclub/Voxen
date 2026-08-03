@@ -6,6 +6,9 @@ import {
   extensionVersionUrl,
   jobStatusUrl,
   jobsAutoUrl,
+  meUrl,
+  platformCookieUrl,
+  platformCookiesUrl,
 } from './config.js';
 
 /**
@@ -27,6 +30,36 @@ import {
  */
 
 /**
+ * Teto de espera de qualquer requisição da extensão.
+ *
+ * `fetch` sem `signal` não tem prazo: uma instância que **pendura** (proxy de
+ * pé com o backend travado, rota com DROP no caminho) nunca resolve nem
+ * rejeita. O popup fica preso em "Salvo — processando", porque a fase que
+ * libera o botão só roda depois que a consulta volta, e a rodada do service
+ * worker também nunca termina. Errar é recuperável; pendurar não é.
+ */
+const REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * O enfileiramento tem prazo maior: abortar depois que o servidor já aceitou o
+ * job mostraria erro para um envio que na verdade entrou na fila.
+ */
+const SUBMIT_TIMEOUT_MS = 30_000;
+
+/**
+ * `AbortSignal.timeout` existe desde o Chrome 103; o fallback `undefined`
+ * mantém o comportamento antigo (sem prazo) em runtime que não o tenha, em vez
+ * de derrubar a requisição inteira.
+ * @param {number} ms
+ * @returns {AbortSignal | undefined}
+ */
+function timeoutSignal(ms) {
+  return typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(ms)
+    : undefined;
+}
+
+/**
  * @param {string} baseUrl
  * @param {string | null | undefined} token
  * @returns {Record<string, string>}
@@ -45,6 +78,16 @@ function authHeaders(token) {
  * @returns {SubmitResult}
  */
 function networkError(err) {
+  // O abort por prazo chega como DOMException 'TimeoutError' com mensagem em
+  // inglês do runtime — traduzir aqui evita vazá-la para a UI.
+  const name = /** @type {{ name?: unknown }} */ (err || {}).name;
+  if (name === 'TimeoutError' || name === 'AbortError') {
+    return {
+      ok: false,
+      code: 'network',
+      message: 'A instância não respondeu a tempo. Confira se ela está no ar e tente de novo.',
+    };
+  }
   const msg = err instanceof Error ? err.message : String(err);
   if (/Failed to fetch|NetworkError|CORS|Load failed/i.test(msg)) {
     return {
@@ -77,6 +120,7 @@ export async function submitUrlToVoxen(opts) {
       headers,
       credentials: 'include',
       body: JSON.stringify({ url: pageUrl }),
+      signal: timeoutSignal(SUBMIT_TIMEOUT_MS),
     });
   } catch (err) {
     return networkError(err);
@@ -129,7 +173,7 @@ export async function submitUrlToVoxen(opts) {
         ok: false,
         code: 'error',
         status: 409,
-        message: 'Este conteúdo já está no acervo.',
+        message: 'Este conteúdo já está na Base de conhecimento.',
       };
     }
   }
@@ -157,6 +201,7 @@ export async function fetchJobStatus(opts) {
       method: 'GET',
       headers: authHeaders(token),
       credentials: 'include',
+      signal: timeoutSignal(REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
     return { ok: false, code: 'network', message: networkError(err).message };
@@ -185,14 +230,178 @@ export async function fetchJobStatus(opts) {
     ok: true,
     job: {
       id: job.id,
+      type: typeof job.type === 'string' ? job.type : null,
       status: String(job.status || ''),
       sourceUrl: typeof job.sourceUrl === 'string' ? job.sourceUrl : null,
       errorMsg: typeof job.errorMsg === 'string' ? job.errorMsg : null,
       transcriptId: typeof job.transcriptId === 'string' ? job.transcriptId : null,
       title: typeof job.title === 'string' ? job.title : null,
       summary: typeof job.summary === 'string' ? job.summary : null,
+      progressStage: typeof job.progressStage === 'string' ? job.progressStage : null,
+      progressPercent: typeof job.progressPercent === 'number' ? job.progressPercent : null,
     },
   };
+}
+
+/**
+ * GET /api/me — tema do usuário (cosmético) + role (decide se a seção de
+ * contas de plataforma aparece). Falha silenciosa (retorna null) em qualquer
+ * erro: nunca deve travar o popup/options.
+ * @param {string} baseUrl
+ * @returns {Promise<{ theme: string, role: string | null } | null>}
+ */
+export async function fetchMe(baseUrl) {
+  try {
+    const res = await fetch(meUrl(baseUrl), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      credentials: 'include',
+      cache: 'no-store',
+      signal: timeoutSignal(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    const theme = body?.user?.theme;
+    if (typeof theme !== 'string') return null;
+    const role = typeof body?.user?.role === 'string' ? body.user.role : null;
+    return { theme, role };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @typedef {{ platform: string, hasCookie: boolean, capturedAt: string | null, stale: boolean }} PlatformCookieStatus
+ */
+
+/**
+ * Traduz o status HTTP das rotas pessoais de cookie num código estável pra UI.
+ * @param {number} status
+ * @returns {{ code: string, message: string } | null}
+ */
+function adminHttpFailure(status) {
+  if (status === 401) {
+    return { code: 'unauthorized', message: 'Entre na instância Voxen e tente de novo.' };
+  }
+  if (status === 403) {
+    return { code: 'forbidden', message: 'Sua conta precisa estar aprovada para conectar contas.' };
+  }
+  return null;
+}
+
+/**
+ * GET /api/integrations/cookies — estado pessoal por plataforma. A resposta
+ * nunca traz o valor dos cookies (só hasCookie/capturedAt/stale).
+ * @param {{ baseUrl: string, token?: string | null }} opts
+ */
+export async function fetchPlatformCookieStatus(opts) {
+  const { baseUrl, token } = opts;
+  let res;
+  try {
+    res = await fetch(platformCookiesUrl(baseUrl), {
+      method: 'GET',
+      headers: authHeaders(token),
+      credentials: 'include',
+      cache: 'no-store',
+      signal: timeoutSignal(REQUEST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    return { ok: false, code: 'network', message: networkError(err).message };
+  }
+
+  const failure = adminHttpFailure(res.status);
+  if (failure) return { ok: false, ...failure };
+  if (!res.ok) {
+    return { ok: false, code: 'error', message: `Falha ao consultar contas (HTTP ${res.status}).` };
+  }
+
+  let body = null;
+  try {
+    body = await res.json();
+  } catch {
+    return { ok: false, code: 'error', message: 'Resposta inválida da instância.' };
+  }
+  if (!Array.isArray(body?.platforms)) {
+    return { ok: false, code: 'error', message: 'Resposta inválida da instância.' };
+  }
+  return { ok: true, platforms: body.platforms };
+}
+
+/**
+ * PATCH /api/integrations/cookies — envia a captura pessoal de uma plataforma.
+ *
+ * O payload é um cookie de sessão de conta real: nenhuma mensagem devolvida
+ * daqui pode carregar pedaço dele. Por isso o erro de rede vira texto fixo em
+ * vez de repassar `err.message` (que pode conter a URL/corpo da requisição).
+ * @param {{ baseUrl: string, platform: string, cookies: string, token?: string | null }} opts
+ */
+export async function sendPlatformCookies(opts) {
+  const { baseUrl, platform, cookies, token } = opts;
+  let res;
+  try {
+    res = await fetch(platformCookiesUrl(baseUrl), {
+      method: 'PATCH',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ platform, cookies }),
+      // Prazo longo como no envio de página: abortar depois que o servidor já
+      // gravou o cookie mostraria erro para uma captura que de fato entrou.
+      signal: timeoutSignal(SUBMIT_TIMEOUT_MS),
+    });
+  } catch {
+    return {
+      ok: false,
+      code: 'network',
+      message: 'Não foi possível contactar a instância. O que já estava salvo continua lá.',
+    };
+  }
+
+  const failure = adminHttpFailure(res.status);
+  if (failure) return { ok: false, ...failure };
+
+  let body = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+
+  if (res.ok && body && typeof body.platform === 'string') {
+    return { ok: true, status: /** @type {PlatformCookieStatus} */ (body) };
+  }
+
+  const serverMsg =
+    body && typeof body.error === 'string'
+      ? body.error
+      : `Falha ao salvar a conta (HTTP ${res.status}).`;
+  return { ok: false, code: 'error', message: serverMsg };
+}
+
+/**
+ * DELETE /api/integrations/cookies/:platform — revoga a credencial pessoal
+ * guardada daquela plataforma.
+ * @param {{ baseUrl: string, platform: string, token?: string | null }} opts
+ */
+export async function deletePlatformCookies(opts) {
+  const { baseUrl, platform, token } = opts;
+  let res;
+  try {
+    res = await fetch(platformCookieUrl(baseUrl, platform), {
+      method: 'DELETE',
+      headers: authHeaders(token),
+      credentials: 'include',
+      signal: timeoutSignal(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    return { ok: false, code: 'network', message: 'Não foi possível contactar a instância.' };
+  }
+
+  const failure = adminHttpFailure(res.status);
+  if (failure) return { ok: false, ...failure };
+  if (!res.ok) {
+    return { ok: false, code: 'error', message: `Falha ao desconectar (HTTP ${res.status}).` };
+  }
+  return { ok: true };
 }
 
 /**
@@ -206,6 +415,7 @@ export async function fetchExtensionVersion(baseUrl) {
       headers: { Accept: 'application/json' },
       credentials: 'omit',
       cache: 'no-store',
+      signal: timeoutSignal(REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     const body = await res.json();
@@ -227,8 +437,12 @@ export async function fetchExtensionVersion(baseUrl) {
  * @param {string} b
  */
 export function compareSemver(a, b) {
-  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
+  const pa = String(a)
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
+  const pb = String(b)
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
   for (let i = 0; i < 3; i++) {
     const d = (pa[i] || 0) - (pb[i] || 0);
     if (d !== 0) return d;

@@ -9,18 +9,18 @@ Plataforma web self-hosted de **biblioteca multimodal** com transcrição, anál
 1. Cola um link ou envia um arquivo de áudio, vídeo, imagem ou documento
 2. Backend extrai conteúdo, faz chunking/transcrição quando necessário e usa OpenRouter para análise
 3. Salva como `.md` com metadados, timestamps quando existirem, link original e **resumo IA** em markdown
-4. Organiza em pastas (IA + manual) e expõe o acervo via **MCP** e grafo Brain
+4. Organiza em pastas (IA + manual) e expõe a Base de conhecimento via **MCP** e grafo Brain
 
 ## Stack
 
 - **Web/API**: Bun + Hono + Vite + React + Tailwind v4 + shadcn/ui (tema zinc)
 - **MCP**: Streamable HTTP no app web (`/mcp`) para clientes externos (Claude, Cursor, etc.)
-- **Worker**: Python + ARQ + extrator de mídia (`yt-dlp` internamente) + `ffmpeg`
+- **Worker**: Python asyncio + extrator de mídia (`yt-dlp` internamente) + `ffmpeg`
 - **Auth**: better-auth (email/senha) com aprovação manual do admin
 - **DB**: Postgres 17 + Prisma + FTS (`tsvector` GIN, dicionário `portuguese`)
-- **Fila**: Redis + ARQ
+- **Fila**: Postgres (jobs duráveis com lease/heartbeat); Redis apenas para wakeup e realtime
 - **Storage**: MinIO/S3-compatible (`S3_*`)
-- **LLM/Transcrição**: OpenRouter (chat + Whisper unificados)
+- **LLM/Transcrição**: OpenRouter (Grok 4.5 + Grok STT unificados)
 
 ## Subir em 1 minuto (dev local)
 
@@ -32,7 +32,9 @@ cd Voxen
 make dev
 ```
 
-Abre em `http://localhost:3000`. Primeiro cadastro vira admin e cai no onboarding (cola OpenRouter API key + escolhe modelos default). Pronto.
+Abre em `http://localhost:3000`. Primeiro cadastro vira admin e cai no
+onboarding: basta colar a chave da OpenRouter; a Voxen valida a conta e aplica
+automaticamente os modelos canônicos. Pronto.
 
 `make dev` cria/completa `.env` se necessário, sobe Postgres, Redis, MinIO, web e worker. MinIO fica em `http://localhost:9001`.
 

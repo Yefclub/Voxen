@@ -1,0 +1,111 @@
+"""Campos operacionais allowlisted para erros sem serializar mensagens externas."""
+
+from __future__ import annotations
+
+_ALLOWED_ERROR_CODES = frozenset(
+    {
+        "AUDIO_VALIDATION_FAILED",
+        "AUTOMATION_RECONCILIATION_FAILED",
+        "AUTOMATION_RUN_CRASHED",
+        "AUTOMATION_RUN_PUBLISH_FAILED",
+        "AUTOMATION_SUBSCRIBER_DISCONNECTED",
+        "AUTOMATION_SCHEDULE_FAILED",
+        "AUTOMATION_SCHEDULER_FAILED",
+        "AUTOMATION_STALE_REAPER_FAILED",
+        "BRAIN_EXTRACTION_FAILED",
+        "BRAIN_RECONCILIATION_FAILED",
+        "DOCUMENT_ANALYSIS_EMPTY",
+        "DOCUMENT_EXTRACTION_FAILED",
+        "DOCUMENT_MODEL_NOT_CONFIGURED",
+        "EMBEDDING_FAILED",
+        "EXTERNAL_DOWNLOAD_BLOCKED",
+        "FOLDER_CLASSIFICATION_FAILED",
+        "IMAGE_ANALYSIS_EMPTY",
+        "JOB_RECONCILIATION_FAILED",
+        "JOBS_SUBSCRIBER_DISCONNECTED",
+        "OPENROUTER_AUTH_REJECTED",
+        "OPENROUTER_NOT_CONFIGURED",
+        "PERMANENT_FAILURE",
+        "PROCESS_JOB_CRASHED",
+        "REPAIR_FETCH_FAILED",
+        "ROBOTS_CHECK_FAILED",
+        "SCRAPE_ACCESS_BLOCKED",
+        "SCRAPE_CONTENT_EMPTY",
+        "SCRAPE_ROBOTS_BLOCKED",
+        "SOURCE_URL_INVALID",
+        "SUBTITLE_FALLBACK_API",
+        "SUMMARY_COST_EVENT_FAILED",
+        "SUMMARY_FAILED",
+        "SUMMARY_PERSIST_FAILED",
+        "SUMMARY_UPSTREAM_UNAVAILABLE",
+        "TAG_GENERATION_FAILED",
+        "TAG_RECONCILIATION_FAILED",
+        "TAG_STATUS_FINISH_FAILED",
+        "TAG_STATUS_START_FAILED",
+        "THUMBNAIL_FETCH_FAILED",
+        "THUMBNAIL_UPLOAD_FAILED",
+        "TIKTOK_AUDIO_RETRY",
+        "TIKTOK_PROBE_RETRY",
+        "TITLE_GENERATION_FAILED",
+        "TRANSCRIPTION_EMPTY",
+        "TRANSCRIPTION_MODEL_NOT_CONFIGURED",
+        "UNEXPECTED_JOB_FAILURE",
+        "UPLOAD_AUDIO_UNREADABLE",
+        "UPLOAD_INVALID",
+        "UPLOAD_MEDIA_UNREADABLE",
+        "UPLOAD_PREVIEW_FAILED",
+        "UPLOAD_TOO_LONG",
+        "VIDEO_TOO_LONG",
+        "VISION_MODEL_NOT_CONFIGURED",
+        "WEB_TITLE_GENERATION_FAILED",
+        "WORKER_RUNTIME_FAILED",
+        "X_ANALYSIS_EMPTY",
+        "X_MODEL_NOT_CONFIGURED",
+        "X_URL_INVALID",
+    }
+)
+_ALLOWED_ERROR_TYPES = frozenset(
+    {
+        "AudioValidationError",
+        "BotoCoreError",
+        "CancelledError",
+        "ClientError",
+        "ConnectError",
+        "ConnectTimeout",
+        "ConnectionError",
+        "EmptyContentError",
+        "EndpointConnectionError",
+        "Exception",
+        "FetchBlockedError",
+        "FileNotFoundError",
+        "HTTPStatusError",
+        "NetworkError",
+        "OpenrouterAuthError",
+        "OpenrouterTransientError",
+        "OSError",
+        "PermanentError",
+        "PermissionError",
+        "PoolTimeout",
+        "ProxyError",
+        "ReadError",
+        "ReadTimeout",
+        "RobotsBlockedError",
+        "RuntimeError",
+        "TimeoutError",
+        "TransientError",
+        "TypeError",
+        "ValueError",
+        "WriteError",
+        "WriteTimeout",
+        "YoutubeDLError",
+    }
+)
+
+
+def error_diagnostic(exc: BaseException, code: str) -> dict[str, str]:
+    """Retorna somente código interno e tipo normalizado da exceção."""
+    error_type = type(exc).__name__
+    if error_type not in _ALLOWED_ERROR_TYPES:
+        error_type = "Exception"
+    normalized_code = code if code in _ALLOWED_ERROR_CODES else "UNEXPECTED_FAILURE"
+    return {"error_code": normalized_code, "error_type": error_type}

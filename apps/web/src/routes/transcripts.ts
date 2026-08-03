@@ -16,7 +16,9 @@ import { auth } from '../lib/auth';
 import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
+import { notifyNewJob, publishJobEvent } from '../lib/job-events';
 import { rateLimit } from '../lib/rate-limit';
+import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
 import { deleteS3Object, s3Bucket, s3Client } from '../lib/s3';
 import { isSetupComplete } from '../lib/settings';
 import { generateTagsForContent, slugifyTag } from '../lib/tags-generate';
@@ -483,7 +485,17 @@ transcriptsRoutes.get('/:id', async (c) => {
       mdPath: true,
       plainText: true,
       summaryMd: true,
+      taggingStatus: true,
+      taggingAttempts: true,
+      taggingNextAttemptAt: true,
+      taggingError: true,
       frontmatter: true,
+      sourceChecksum: true,
+      sourceVersion: true,
+      sourceCollectedAt: true,
+      sourceMetadata: true,
+      sourceRefreshStatus: true,
+      sourceRefreshError: true,
       archivedAt: true,
       trashedAt: true,
       createdAt: true,
@@ -494,7 +506,7 @@ transcriptsRoutes.get('/:id', async (c) => {
   }
 
   // Soma custos relacionados (summary é registrado em CostEvent.meta com
-  // {transcript_id}; Whisper não vem com cost confiável do OR mas o Decimal
+  // {transcript_id}; STT remoto pode não vir com cost confiável da OR, mas o Decimal
   // do Transcript pode conter). totalCostUsd reflete o custo *real* do user.
   const summaryCosts = await db.$queryRaw<{ total: string | null }[]>`
     SELECT COALESCE(SUM("costUsd"), 0)::text AS total
@@ -517,13 +529,102 @@ transcriptsRoutes.get('/:id', async (c) => {
       );
       return (await res.Body?.transformToString('utf-8')) ?? '';
     } catch (err) {
-      console.error('[transcripts] erro ao baixar .md:', err);
+      console.error(
+        '[transcripts] erro ao baixar .md',
+        safeErrorDiagnostic('TRANSCRIPT_MARKDOWN_READ_FAILED', err),
+      );
       return `# ${transcript.title}\n\n${transcript.plainText}`;
     }
   })();
 
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
-  return c.json({ transcript: { ...transcript, totalCostUsd, tags }, markdown });
+  const sourceVersions =
+    transcript.source === 'WEB'
+      ? await db.sourceContentVersion.findMany({
+          where: { userId, transcriptId: transcript.id },
+          orderBy: { version: 'desc' },
+          take: 12,
+          select: { version: true, checksum: true, collectedAt: true, metadata: true },
+        })
+      : [];
+  return c.json({ transcript: { ...transcript, totalCostUsd, tags, sourceVersions }, markdown });
+});
+
+// POST /api/transcripts/:id/refresh — consulta novamente uma fonte WEB sem
+// duplicar sua identidade. O worker compara checksum e só reprocessa se mudou.
+transcriptsRoutes.post('/:id/refresh', async (c) => {
+  const userId = c.get('userId');
+  const transcriptId = c.req.param('id');
+  if (!(await isSetupComplete())) {
+    return c.json(
+      { error: 'Setup incompleto. Aguarde o administrador concluir a configuração.' },
+      412,
+    );
+  }
+
+  const queued = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`voxen:source-refresh:${transcriptId}`}))`;
+    const transcript = await tx.transcript.findFirst({
+      where: { id: transcriptId, userId, source: 'WEB', status: { not: 'TRASH' } },
+      select: { id: true, url: true },
+    });
+    if (!transcript) return { kind: 'missing' as const };
+    const inflight = await tx.job.findFirst({
+      where: {
+        userId,
+        refreshTranscriptId: transcript.id,
+        status: { in: ['QUEUED', 'RUNNING'] },
+      },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+    if (inflight) return { kind: 'inflight' as const, job: inflight };
+
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
+    const revision = await tx.configRevision.findFirst({
+      orderBy: { number: 'desc' },
+      select: { id: true },
+    });
+    const job = await tx.job.create({
+      data: {
+        userId,
+        type: 'SCRAPE_WEB',
+        status: 'QUEUED',
+        sourceUrl: transcript.url,
+        refreshTranscriptId: transcript.id,
+        configRevisionId: revision?.id,
+      },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+    await tx.transcript.update({
+      where: { id: transcript.id },
+      data: { sourceRefreshStatus: 'CHECKING', sourceRefreshError: null },
+    });
+    return { kind: 'created' as const, job };
+  });
+
+  if (queued.kind === 'missing') return c.json({ error: 'Fonte web não encontrada.' }, 404);
+  if (queued.kind === 'inflight') {
+    return c.json(
+      {
+        error: 'Esta fonte já está sendo atualizada.',
+        jobId: queued.job.id,
+        status: queued.job.status,
+        sourceUrl: queued.job.sourceUrl,
+      },
+      409,
+    );
+  }
+  await notifyNewJob(queued.job.id).catch((err) => {
+    console.error(
+      '[transcripts] notify source refresh failed',
+      safeErrorDiagnostic('JOB_NOTIFY_FAILED', err),
+    );
+  });
+  await publishJobEvent(userId, { jobId: queued.job.id, stage: 'queued' }).catch(() => undefined);
+  return c.json(
+    { jobId: queued.job.id, status: queued.job.status, sourceUrl: queued.job.sourceUrl },
+    201,
+  );
 });
 
 transcriptsRoutes.get('/:id/original', async (c) => {
@@ -572,7 +673,10 @@ transcriptsRoutes.get('/:id/original', async (c) => {
     if (httpStatus === 416) {
       return c.json({ error: 'Range solicitado inválido.' }, 416);
     }
-    console.error('[transcripts] erro ao baixar original:', err);
+    console.error(
+      '[transcripts] erro ao baixar original',
+      safeErrorDiagnostic('TRANSCRIPT_ORIGINAL_READ_FAILED', err),
+    );
     return c.json({ error: 'Falha ao baixar arquivo original.' }, 502);
   }
 });
@@ -647,7 +751,10 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
         },
       });
     } catch (err) {
-      console.error('[transcripts] erro ao baixar preview:', err);
+      console.error(
+        '[transcripts] erro ao baixar preview',
+        safeErrorDiagnostic('TRANSCRIPT_PREVIEW_READ_FAILED', err),
+      );
     }
   }
   return new Response(renderPreviewSvg(transcript.title, transcript.source), {
@@ -740,8 +847,10 @@ transcriptsRoutes.get('/:id/notes', async (c) => {
     where: {
       userId,
       kind: 'NOTE',
-      sourceType: 'TRANSCRIPT',
-      sourceId: id,
+      OR: [
+        { sourceType: 'TRANSCRIPT', sourceId: id },
+        { transcriptSources: { some: { transcriptId: id, userId } } },
+      ],
     },
     orderBy: { updatedAt: 'desc' },
     select: {
@@ -776,6 +885,7 @@ transcriptsRoutes.post('/:id/notes', async (c) => {
       content: parsed.data.content,
       sourceType: 'TRANSCRIPT',
       sourceId: id,
+      transcriptSources: { create: { transcriptId: id, userId } },
     },
     select: {
       id: true,
@@ -866,7 +976,10 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
       existingTags,
     });
   } catch (err) {
-    console.error('[transcripts] falha ao gerar tags:', err);
+    console.error(
+      '[transcripts] falha ao gerar tags',
+      safeErrorDiagnostic('TRANSCRIPT_TAG_GENERATION_FAILED', err),
+    );
     return c.json({ error: 'Falha ao gerar tags. Tente novamente.' }, 502);
   }
 
@@ -878,7 +991,11 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
       tokensIn: result.tokensIn,
       tokensOut: result.tokensOut,
       costUsd: result.costUsd,
-      meta: { source: 'tag_generation', transcript_id: transcript.id, tags: result.tags },
+      meta: {
+        source: 'tag_generation',
+        transcript_id: transcript.id,
+        generated_count: result.tags.length,
+      },
     },
   });
 
@@ -956,7 +1073,10 @@ transcriptsRoutes.delete('/:id', async (c) => {
         .map((key) => deleteS3Object(key)),
     );
   } catch (err) {
-    console.error('[transcripts] erro ao apagar objetos no S3:', err);
+    console.error(
+      '[transcripts] erro ao apagar objetos no S3',
+      safeErrorDiagnostic('TRANSCRIPT_OBJECT_DELETE_FAILED', err),
+    );
     return c.json({ error: 'Falha ao apagar arquivos no armazenamento S3.' }, 502);
   }
 
@@ -1020,7 +1140,10 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
     if (err instanceof TranscriptSummaryError) {
       return c.json({ error: err.message }, err.status as 400);
     }
-    console.error('[transcripts] summary failed:', err);
+    console.error(
+      '[transcripts] summary failed',
+      safeErrorDiagnostic('TRANSCRIPT_SUMMARY_FAILED', err),
+    );
     return c.json({ error: 'Falha ao gerar resumo.' }, 502);
   }
 });
@@ -1260,8 +1383,8 @@ async function tryMirrorRemoteThumbnail(opts: {
     return { key, mime };
   } catch (err) {
     console.warn(
-      '[transcripts] mirror thumbnail failed:',
-      err instanceof Error ? err.message : err,
+      '[transcripts] mirror thumbnail failed',
+      safeErrorDiagnostic('TRANSCRIPT_THUMBNAIL_MIRROR_FAILED', err),
     );
     return null;
   }

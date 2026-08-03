@@ -41,4 +41,29 @@ describe('graph loading lifecycle contract', () => {
       'window.setTimeout(() => setGraphRequest({ tick: Date.now(), force: false })',
     );
   });
+
+  test('opens the complete graph by default and keeps selection independent of filtering', () => {
+    const pageSource = readFileSync(
+      new URL('../src/client/pages/grafo.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(pageSource).toContain("params.set('view', 'full')");
+    expect(pageSource).not.toContain("useState<'map' | 'full'>('map')");
+    expect(pageSource).not.toContain("params.set('view', view)");
+    expect(pageSource).not.toContain('onClick={() => setView(nextView)}');
+    expect(pageSource).not.toContain('!filtered.nodes.some((node) => node.id === selectedId)');
+  });
+
+  test('exposes the provenance of every visible connection in the inspector', () => {
+    const pageSource = readFileSync(
+      new URL('../src/client/pages/grafo.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(pageSource).toContain("translate('graph.relationReason'");
+    expect(pageSource).toContain("translate('graph.relationMethod'");
+    expect(pageSource).toContain("translate('graph.relationConfidence'");
+    expect(pageSource).toContain("translate('graph.relationEvidence'");
+  });
 });

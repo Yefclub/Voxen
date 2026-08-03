@@ -32,6 +32,7 @@ from typing import Any
 import structlog
 
 from . import db, storage, ytdl
+from .safe_diagnostics import error_diagnostic
 from .transcript_md import Segment, TranscriptDoc, render_markdown, render_plain_text
 
 log = structlog.get_logger(__name__)
@@ -50,18 +51,18 @@ def looks_rolling(plain_text: str) -> bool:
     return overlapping / (len(paras) - 1) > 0.3
 
 
-async def _fresh_segments(url: str) -> tuple[tuple[Segment, ...], str] | None:
+async def _fresh_segments(url: str, user_id: str) -> tuple[tuple[Segment, ...], str] | None:
     """Mesmos caminhos do pipeline: transcript API → fallback VTT/SRT."""
     fetch = await ytdl.fetch_youtube_transcript(url)
     if fetch is not None:
         return fetch.segments, fetch.language
-    probe = await ytdl.probe(url)
+    probe = await ytdl.probe(url, user_id=user_id)
     pick = ytdl.pick_subtitle_lang(probe)
     if pick is None:
         return None
     lang, fmt = pick
     with tempfile.TemporaryDirectory(prefix="voxen-repair-") as tmp:
-        sub_path = await ytdl.download_subtitle(url, lang, fmt, Path(tmp))
+        sub_path = await ytdl.download_subtitle(url, lang, fmt, Path(tmp), user_id=user_id)
         content = sub_path.read_text(encoding="utf-8")
     return ytdl.parse_vtt_or_srt(content), lang.split("-")[0]
 
@@ -106,17 +107,21 @@ async def repair(dry_run: bool) -> None:
         dirty = looks_rolling(row["plainText"])
         if not dirty:
             clean += 1
-            log.info("repair-skip-clean", transcript_id=tid, title=row["title"][:60])
+            log.info("repair-skip-clean", transcript_id=tid)
             continue
         try:
-            fresh = await _fresh_segments(row["url"])
+            fresh = await _fresh_segments(row["url"], row["userId"])
         except Exception as e:  # noqa: BLE001
             skipped += 1
-            log.warning("repair-fetch-failed", transcript_id=tid, error=str(e)[:200])
+            log.warning(
+                "repair-fetch-failed",
+                transcript_id=tid,
+                **error_diagnostic(e, "REPAIR_FETCH_FAILED"),
+            )
             continue
         if fresh is None:
             skipped += 1
-            log.warning("repair-no-subtitles", transcript_id=tid, url=row["url"])
+            log.warning("repair-no-subtitles", transcript_id=tid)
             continue
         segments, language = fresh
         doc = TranscriptDoc(
@@ -145,7 +150,6 @@ async def repair(dry_run: bool) -> None:
             log.info(
                 "repair-dry-run",
                 transcript_id=tid,
-                title=row["title"][:60],
                 chars_before=before,
                 chars_after=after,
             )
@@ -161,7 +165,6 @@ async def repair(dry_run: bool) -> None:
         log.info(
             "repair-done",
             transcript_id=tid,
-            title=row["title"][:60],
             chars_before=before,
             chars_after=after,
         )

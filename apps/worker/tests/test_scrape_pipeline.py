@@ -7,8 +7,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src import scrape_pipeline, scraper
+from src import pipeline, scrape_pipeline, scraper, thumbnail
 from src.cancellation import CancelledException
+from src.job_lease import JobLeaseLostError, JobLeaseToken, activate_job_lease
 from src.pipeline import PermanentError
 
 
@@ -78,18 +79,8 @@ async def test_happy_path_persists_and_publishes_events(
         "upsert_transcript_brain_node",
         AsyncMock(return_value=None),
     )
-    monkeypatch.setattr(
-        scrape_pipeline.db,
-        "reindex_transcript_brain_node",
-        AsyncMock(return_value=True),
-    )
-
-    # Mock summary.maybe_generate (best-effort, não precisa testar aqui)
-    monkeypatch.setattr(
-        scrape_pipeline.summary,
-        "maybe_generate",
-        AsyncMock(return_value=None),
-    )
+    complete = AsyncMock(side_effect=lambda **_: events_published.append("complete"))
+    monkeypatch.setattr(pipeline, "_complete_persisted_job", complete)
 
     # cancel = false
     monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
@@ -105,14 +96,181 @@ async def test_happy_path_persists_and_publishes_events(
     assert "downloading" in events_published
     assert "uploading" in events_published
     assert "indexing" in events_published
-    assert "summarizing" in events_published
-    assert "done" in events_published
+    assert "complete" in events_published
+    assert "done" not in events_published
 
-    # Job só vira DONE depois da tentativa de resumo.
+    # O Job só finaliza depois dos enriquecimentos derivados.
     scrape_pipeline.db.link_job_transcript.assert_awaited_once_with("job1", "ctest123")  # type: ignore[attr-defined]
     scrape_pipeline.db.upsert_transcript_brain_node.assert_awaited_once()  # type: ignore[attr-defined]
-    scrape_pipeline.db.reindex_transcript_brain_node.assert_awaited_once_with("user1", "ctest123")  # type: ignore[attr-defined]
-    scrape_pipeline.db.mark_job_done.assert_awaited_once_with("job1")  # type: ignore[attr-defined]
+    complete.assert_awaited_once()
+
+
+async def test_unchanged_refresh_skips_storage_and_all_derived_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mesmo checksum atualiza a coleta, mas não gera custo nem reindexa."""
+    result = _scrape_result()
+    checksum = scrape_pipeline._source_checksum(result.plain_text)
+    fake_conn = MagicMock()
+    fake_conn.fetchrow = AsyncMock(
+        return_value={
+            "source": "WEB",
+            "sourceChecksum": checksum,
+            "sourceVersion": 1,
+            "mdPath": "workspaces/user1/transcripts/t1/sources/v1.md",
+            "plainText": result.plain_text,
+            "sourceMetadata": {},
+        }
+    )
+    fake_conn.execute = AsyncMock(return_value=None)
+    fake_ctx = MagicMock()
+    fake_ctx.__aenter__ = AsyncMock(return_value=fake_conn)
+    fake_ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(scrape_pipeline.db, "connection", lambda: fake_ctx)
+    monkeypatch.setattr(scrape_pipeline.db, "generate_cuid", lambda: "version-row")
+    put_markdown = AsyncMock(return_value=None)
+    monkeypatch.setattr(scrape_pipeline.storage, "put_markdown", put_markdown)
+    title = AsyncMock(return_value="não deveria chamar")
+    monkeypatch.setattr(scrape_pipeline, "_maybe_generate_title", title)
+
+    persisted = await scrape_pipeline._persist(
+        user_id="user1",
+        job_id="job1",
+        source_url=result.url,
+        result=result,
+        refresh_transcript_id="t1",
+        log=_FakeLogger(),
+    )
+
+    assert persisted == scrape_pipeline.PersistResult("t1", changed=False)
+    put_markdown.assert_not_awaited()
+    title.assert_not_awaited()
+    assert fake_conn.execute.await_count == 4
+    assert "pg_advisory_lock" in fake_conn.execute.await_args_list[0].args[0]
+    assert "pg_advisory_unlock" in fake_conn.execute.await_args_list[-1].args[0]
+
+
+async def test_unchanged_refresh_run_skips_summary_tags_brain_and_embedding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        scrape_pipeline.scraper,
+        "fetch_and_extract",
+        AsyncMock(return_value=_scrape_result()),
+    )
+    monkeypatch.setattr(
+        scrape_pipeline,
+        "_persist",
+        AsyncMock(return_value=scrape_pipeline.PersistResult("t1", changed=False)),
+    )
+    monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
+    monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
+    monkeypatch.setattr(scrape_pipeline.db, "link_job_transcript", AsyncMock())
+    monkeypatch.setattr(scrape_pipeline.db, "mark_job_done", AsyncMock())
+    complete = AsyncMock()
+    monkeypatch.setattr(pipeline, "_complete_persisted_job", complete)
+
+    await scrape_pipeline.run(
+        job_id="job1",
+        user_id="user1",
+        source_url="https://example.com/post",
+        refresh_transcript_id="t1",
+        log=_FakeLogger(),
+    )
+
+    complete.assert_not_awaited()
+    scrape_pipeline.db.link_job_transcript.assert_not_awaited()  # type: ignore[attr-defined]
+
+
+async def test_changed_refresh_versions_and_invalidates_only_affected_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mudança preserva o snapshot e limpa apenas derivados do transcript."""
+    result = _scrape_result()
+    first_conn = MagicMock()
+    first_conn.fetchrow = AsyncMock(
+        return_value={
+            "source": "WEB",
+            "sourceChecksum": "checksum-antigo",
+            "sourceVersion": 1,
+            "mdPath": "workspaces/user1/transcripts/t1/sources/v1.md",
+            "plainText": "Texto da versão anterior.",
+            "sourceMetadata": {"url": result.url},
+        }
+    )
+    first_conn.execute = AsyncMock(return_value=None)
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=first_conn)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(scrape_pipeline.db, "connection", lambda: ctx)
+    monkeypatch.setattr(scrape_pipeline.db, "generate_cuid", lambda: "version-row")
+    monkeypatch.setattr(scrape_pipeline.storage, "put_markdown", AsyncMock())
+    monkeypatch.setattr(
+        scrape_pipeline, "_maybe_generate_title", AsyncMock(return_value=result.title)
+    )
+    monkeypatch.setattr(
+        thumbnail,
+        "resolve_thumbnail_for_persist",
+        AsyncMock(return_value=(None, None, None)),
+    )
+    monkeypatch.setattr(scrape_pipeline.db, "upsert_transcript_brain_node", AsyncMock())
+
+    persisted = await scrape_pipeline._persist(
+        user_id="user1",
+        job_id="job1",
+        source_url=result.url,
+        result=result,
+        refresh_transcript_id="t1",
+        log=_FakeLogger(),
+    )
+
+    assert persisted == scrape_pipeline.PersistResult("t1", changed=True)
+    statements = "\n".join(str(call.args[0]) for call in first_conn.execute.await_args_list)
+    assert 'INSERT INTO "SourceContentVersion"' in statements
+    assert '"sourceVersion" = $16' in statements
+    assert 'DELETE FROM "TranscriptTag"' in statements
+    assert 'UPDATE "ChatMessage"' in statements
+    assert "pg_advisory_lock" in first_conn.execute.await_args_list[0].args[0]
+    assert "pg_advisory_unlock" in first_conn.execute.await_args_list[-1].args[0]
+
+
+async def test_stale_refresh_attempt_is_fenced_before_transcript_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _scrape_result()
+    fake_conn = MagicMock()
+    fake_conn.execute = AsyncMock(return_value=None)
+
+    async def reject_stale_owner(query: str, *_args: object) -> object:
+        assert 'FROM "Job"' in query
+        return None
+
+    fake_conn.fetchrow = AsyncMock(side_effect=reject_stale_owner)
+    fake_tx = MagicMock()
+    fake_tx.__aenter__ = AsyncMock(return_value=None)
+    fake_tx.__aexit__ = AsyncMock(return_value=False)
+    fake_conn.transaction.return_value = fake_tx
+    fake_ctx = MagicMock()
+    fake_ctx.__aenter__ = AsyncMock(return_value=fake_conn)
+    fake_ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(scrape_pipeline.db, "connection", lambda: fake_ctx)
+    put_markdown = AsyncMock()
+    monkeypatch.setattr(scrape_pipeline.storage, "put_markdown", put_markdown)
+
+    token = JobLeaseToken("job1", "old-worker", 1)
+    with activate_job_lease(token), pytest.raises(JobLeaseLostError):
+        await scrape_pipeline._persist(
+            user_id="user1",
+            job_id="job1",
+            source_url=result.url,
+            result=result,
+            refresh_transcript_id="t1",
+            log=_FakeLogger(),
+        )
+
+    put_markdown.assert_not_awaited()
+    statements = "\n".join(str(call.args[0]) for call in fake_conn.execute.await_args_list)
+    assert 'UPDATE "Transcript"' not in statements
 
 
 async def test_robots_blocked_raises_permanent(
@@ -127,13 +285,18 @@ async def test_robots_blocked_raises_permanent(
     monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
     monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
 
-    with pytest.raises(PermanentError, match="robots"):
+    with pytest.raises(PermanentError) as exc_info:
         await scrape_pipeline.run(
             job_id="job1",
             user_id="user1",
             source_url="https://blocked.example.com/",
             log=_FakeLogger(),
         )
+    assert exc_info.value.code == "SCRAPE_ROBOTS_BLOCKED"
+    assert (
+        exc_info.value.public_message == "O site não permite a leitura automatizada deste conteúdo."
+    )
+    assert "robots blocked" not in exc_info.value.public_message
 
 
 async def test_fetch_blocked_raises_permanent(
@@ -148,13 +311,16 @@ async def test_fetch_blocked_raises_permanent(
     monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
     monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
 
-    with pytest.raises(PermanentError, match="403"):
+    with pytest.raises(PermanentError) as exc_info:
         await scrape_pipeline.run(
             job_id="job1",
             user_id="user1",
             source_url="https://example.com/",
             log=_FakeLogger(),
         )
+    assert exc_info.value.code == "SCRAPE_ACCESS_BLOCKED"
+    assert exc_info.value.public_message == "Não foi possível acessar esta página com segurança."
+    assert "HTTP 403" not in exc_info.value.public_message
 
 
 async def test_empty_content_raises_permanent(
@@ -169,13 +335,18 @@ async def test_empty_content_raises_permanent(
     monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
     monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
 
-    with pytest.raises(PermanentError, match="vazio"):
+    with pytest.raises(PermanentError) as exc_info:
         await scrape_pipeline.run(
             job_id="job1",
             user_id="user1",
             source_url="https://paywall.example.com/",
             log=_FakeLogger(),
         )
+    assert exc_info.value.code == "SCRAPE_CONTENT_EMPTY"
+    assert (
+        exc_info.value.public_message == "A página não ofereceu conteúdo suficiente para análise."
+    )
+    assert "vazio" not in exc_info.value.public_message
 
 
 async def test_cancel_before_start(monkeypatch: pytest.MonkeyPatch) -> None:

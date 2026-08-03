@@ -8,7 +8,7 @@ Versões fixadas e justificativas. Atualizar este arquivo SEMPRE que mudar uma v
 |---|---|---|
 | Bun | `>=1.2` (CI `1.2.x`; imagens Docker `1.3`) | Runtime do `apps/web`. Rápido, suporta TS nativo, ótimo dev experience |
 | Node | `22 LTS` | Compatibilidade com tooling que ainda não cobre Bun (Prisma CLI roda melhor em Node) |
-| Python | `3.13` | Latest stable. `apps/chat` (Agno) e `apps/worker` (extração de mídia + ARQ) |
+| Python | `3.13` | Latest stable. `apps/chat` (Agno) e `apps/worker` (asyncio + jobs duráveis no Postgres) |
 | pnpm | `9.x` | Package manager monorepo TS |
 | uv | latest | Package manager Python (substitui pip/poetry — mais rápido e moderno) |
 
@@ -52,7 +52,7 @@ Versões fixadas e justificativas. Atualizar este arquivo SEMPRE que mudar uma v
 
 | Lib | Versão | Função |
 |---|---|---|
-| `arq` | `^0.26` | Async Redis queue |
+| `asyncio` + `asyncpg` | stdlib / `^0.30` | Claim, lease, heartbeat e recovery da fila durável no Postgres |
 | `yt-dlp` | latest | Motor interno atual do extrator de mídia multi-plataforma |
 | `httpx` | `^0.27` | Chamadas OpenRouter |
 | `asyncpg` | `^0.30` | Postgres driver |
@@ -73,7 +73,7 @@ Versões fixadas e justificativas. Atualizar este arquivo SEMPRE que mudar uma v
 | Componente | Imagem | Versão | Função |
 |---|---|---|---|
 | Postgres | `postgres:17-alpine` | 17.x | DB principal |
-| Redis | `redis:7-alpine` | 7.x | Fila ARQ + cache |
+| Redis | `redis:7-alpine` | 7.x | Wakeup/realtime efêmeros + cache; não é a fonte durável da fila |
 | MinIO | `minio/minio` | latest | Object storage S3-compatible |
 
 ## Tooling de CI
@@ -103,4 +103,4 @@ Versões fixadas e justificativas. Atualizar este arquivo SEMPRE que mudar uma v
 
 - ADR-002 `docs/DECISIONS.md`: monorepo TS+Python sem Turbo
 - ADR-004 `docs/DECISIONS.md`: Postgres FTS em vez de pgvector
-- ADR-005 `docs/DECISIONS.md`: ARQ em vez de BullMQ
+- ADR-005 `docs/DECISIONS.md`: decisão histórica de ARQ, substituída pela fila durável no Postgres

@@ -31,7 +31,7 @@ def _doc(**overrides: object) -> TranscriptDoc:
         "thumbnail_url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
         "language": "pt",
         "transcription_method": "API",
-        "model": "openai/whisper-large-v3-turbo",
+        "model": "x-ai/grok-stt-1.0",
         "cost_usd": Decimal("0.0042"),
         "segments": (
             Segment(start_sec=0.0, text="Olá pessoal, hoje vou falar de FTS."),

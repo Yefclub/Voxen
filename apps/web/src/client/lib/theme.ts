@@ -1,14 +1,31 @@
-export const APP_THEMES = ['zinc', 'emerald', 'light'] as const;
+/**
+ * Identificadores de tema — valor persistido por usuário, usado em `data-theme`
+ * e espelhado pela extensão (`apps/extension/theme-init.js`).
+ *
+ * `linear` é o tema padrão e o usuário o vê como **"Voxen"**: o rótulo exibido
+ * vive no i18n (`theme.linear`), separado do identificador. Renomear o
+ * identificador exigiria migrar o valor já gravado em cada conta e no
+ * `localStorage`, além de sincronizar a extensão — custo e risco sem ganho,
+ * já que o usuário só enxerga o rótulo. Ao mexer aqui, manter essa separação.
+ *
+ * A extensão espelha esta lista à mão (`apps/extension/theme-init.js` e
+ * `theme.css`). Não há teste amarrando os dois arquivos: `apps/web` lendo
+ * fonte de `apps/extension` quebraria a cada reformatação da extensão, que é
+ * editada em paralelo. Quem adicionar ou renomear um identificador aqui
+ * precisa atualizar a extensão junto.
+ */
+export const APP_THEMES = ['linear', 'zinc', 'emerald', 'light'] as const;
 export type AppTheme = (typeof APP_THEMES)[number];
 
 const THEME_COLORS: Record<AppTheme, string> = {
+  linear: '#111113',
   zinc: '#212121',
   emerald: '#19211f',
   light: '#f7f7f8',
 };
 
-export const DEFAULT_THEME: AppTheme = 'zinc';
-export const DARK_THEMES = ['zinc', 'emerald'] as const;
+export const DEFAULT_THEME = 'linear' as const satisfies AppTheme;
+export const DARK_THEMES = ['linear', 'zinc', 'emerald'] as const;
 export type DarkTheme = (typeof DARK_THEMES)[number];
 
 export const THEME_STORAGE_KEY = 'voxen:theme';
@@ -23,7 +40,7 @@ export function normalizeAppTheme(value: unknown): AppTheme {
 }
 
 export function isDarkTheme(theme: AppTheme): theme is DarkTheme {
-  return theme === 'zinc' || theme === 'emerald';
+  return theme === 'linear' || theme === 'zinc' || theme === 'emerald';
 }
 
 export function applyThemeToDocument(theme: AppTheme): void {
@@ -60,12 +77,14 @@ export function persistThemeLocally(theme: AppTheme): void {
 }
 
 export function readLastDarkTheme(): DarkTheme {
-  if (typeof window === 'undefined') return 'zinc';
+  if (typeof window === 'undefined') return DEFAULT_THEME;
   try {
     const stored = window.localStorage.getItem(LAST_DARK_THEME_KEY);
-    return stored === 'emerald' ? 'emerald' : 'zinc';
+    return (DARK_THEMES as readonly string[]).includes(stored ?? '')
+      ? (stored as DarkTheme)
+      : DEFAULT_THEME;
   } catch {
-    return 'zinc';
+    return DEFAULT_THEME;
   }
 }
 

@@ -1,18 +1,62 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
+import packageJson from './package.json';
 
 const API_TARGET = process.env.VITE_API_TARGET ?? 'http://localhost:3000';
+const BUILD_VERSION = process.env.VOXEN_VERSION?.trim() || packageJson.version;
+const BUILD_SHA = process.env.VOXEN_GIT_SHA?.trim() || process.env.GIT_SHA?.trim() || '';
+const BUILD_ID = (BUILD_SHA || BUILD_VERSION).replace(/[^A-Za-z0-9._+-]/g, '');
+const BUILD_TIME =
+  process.env.VOXEN_BUILT_AT?.trim() || deployTimestampToIso(process.env.DEPLOY_TIMESTAMP) || '';
+
+function deployTimestampToIso(value?: string): string | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const numeric = Number(value);
+  if (!Number.isSafeInteger(numeric) || numeric <= 0) return null;
+  const milliseconds = numeric > 9_999_999_999 ? numeric : numeric * 1000;
+  const date = new Date(milliseconds);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function buildMetadataPlugin(): Plugin {
+  return {
+    name: 'voxen-build-metadata',
+    transformIndexHtml: {
+      order: 'pre',
+      handler: () => [
+        {
+          tag: 'meta',
+          attrs: { name: 'voxen-build', content: BUILD_ID },
+          injectTo: 'head-prepend',
+        },
+        {
+          tag: 'meta',
+          attrs: { name: 'voxen-version', content: BUILD_VERSION },
+          injectTo: 'head-prepend',
+        },
+        {
+          tag: 'meta',
+          attrs: { name: 'voxen-built-at', content: BUILD_TIME },
+          injectTo: 'head-prepend',
+        },
+      ],
+    },
+  };
+}
 
 export default defineConfig({
   plugins: [
+    buildMetadataPlugin(),
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      // A troca de controller só acontece após a ação explícita no modal.
+      // O monitor pode baixar o SW novo em background, mas não o ativa sozinho.
+      registerType: 'prompt',
+      injectRegister: false,
       includeAssets: ['favicon.ico', 'favicon-16.png', 'favicon-32.png', 'apple-touch-icon.png'],
       manifest: {
         id: '/',
@@ -23,8 +67,8 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        background_color: '#212121',
-        theme_color: '#212121',
+        background_color: '#111113',
+        theme_color: '#111113',
         categories: ['productivity', 'education', 'utilities'],
         icons: [
           {
@@ -126,9 +170,32 @@ export default defineConfig({
         },
       },
       workbox: {
-        navigateFallback: '/index.html',
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        navigateFallbackDenylist: [/^\/api\//, /^\/mcp\//, /^\/share-target$/],
+        cleanupOutdatedCaches: true,
+        importScripts: ['pwa-cache-cleanup.js'],
+        // O HTML contém a identidade do build servido. Se index.html entrar no
+        // precache, um cliente pode continuar executando o modal/bundle antigo
+        // justamente quando precisa aplicar uma atualização.
+        navigateFallback: null,
+        navigationPreload: true,
+        globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ request, url }) =>
+              request.mode === 'navigate' &&
+              !url.pathname.startsWith('/api/') &&
+              !url.pathname.startsWith('/mcp/') &&
+              url.pathname !== '/share-target',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: `voxen-navigation-${BUILD_ID}`,
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 24,
+                maxAgeSeconds: 7 * 24 * 60 * 60,
+              },
+            },
+          },
+        ],
       },
     }),
   ],

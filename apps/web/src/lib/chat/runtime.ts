@@ -10,6 +10,7 @@ import { invalidateGraphCache } from '../graph-cache';
 import {
   expandContextFromMd,
   findRelated,
+  ftsSearchNotes,
   ftsSearchTranscripts,
   loadTranscriptMd,
   parseOutline,
@@ -17,22 +18,61 @@ import {
   readLinesFromMd,
   readSectionFromMd,
   readTimespanFromMd,
+  searchKnowledgeBase,
   verifyClaimAgainstMd,
-  type FtsResult,
+  type KnowledgeSearchResult,
 } from '../retrieval';
-import { getAppTimezone, getSetting } from '../settings';
+import { getAppTimezone, getSettings } from '../settings';
 import { researchWeb } from '../web-research';
 import { buildAgentClockInstructions, buildInstanceClock } from '../app-timezone';
+import type { ChatStatusCode } from '../../shared/chat-status';
+import {
+  activeTrailIds,
+  loadActiveHistory,
+  loadConversationTrail,
+  orderByTrail,
+  type TrailNodeRow,
+} from './conversation-trail';
+import {
+  ensureConversationLinearized,
+  linearizeWith,
+  resolveAppendParent,
+} from './message-versions';
+import { parseMessageAttachments } from './message-attachments';
 import { parseTemporalBounds } from './temporal-bounds';
+import {
+  HITL_ACTION_CREATE_NOTE,
+  buildHitlResumePrompt,
+  resolveProposeCreateNoteApproval,
+  shouldInjectTurnContentAsUserMessage,
+  shouldResumeAfterApprove,
+} from './hitl-policy';
+import { grantAlwaysAllowAction, loadAlwaysAllowActions } from './hitl-preferences';
+import { isProviderObservedEvent } from './stream-timing';
+import {
+  buildUrlIntentInstructions,
+  classifyUrlIntent,
+  isSharedUrl,
+  type UrlIntent,
+} from './url-intent';
 import {
   healStaleRunningInSegments,
   healStaleRunningTools,
   isToolErrorOutput,
 } from './tool-outcomes';
+import { citationsFromToolEvents } from './citations';
 
 const KEEP_RECENT = 6;
 const DEFAULT_CONTEXT_LIMIT = 32_000;
 const COMPACTION_RATIO = 0.7;
+
+function logChatTiming(payload: Record<string, unknown>): void {
+  try {
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+  } catch {
+    // Diagnóstico é best-effort e nunca pode interromper uma resposta.
+  }
+}
 
 // Fluxo de recuperação progressiva (ADR-004, harness sem embeddings). Instrui o
 // agente a recuperar contexto de forma incremental — buscar, ver estrutura, ler
@@ -52,8 +92,9 @@ const AGENT_INSTRUCTIONS = [
   '   (start_of_local_day_utc, start_of_local_week_monday_utc, now_utc). Se a janela não for',
   '   clara, use os últimos 7 dias a partir de now_utc. Depois outline/read dos itens',
   '   relevantes e resuma com citações — NÃO diga que só busca por termo.',
-  '2. Para tópicos/termos/entidades, busque com search_transcripts, search_notes, brain_search',
-  '   — retornam trechos curtos + id.',
+  '2. Para tópicos/termos/entidades, busque primeiro com search_knowledge — ele consulta',
+  '   toda a Base de conhecimento (notas e transcrições) e retorna trechos curtos + fonte.',
+  '   Use search_transcripts, search_notes ou brain_search apenas para aprofundar uma fonte.',
   '3. Antes de abrir conteúdo, veja a ESTRUTURA com outline_transcript (seções, linhas, tempos).',
   '4. Leia só trechos específicos: read_lines (intervalo de linhas), read_section (seção),',
   '   read_timespan (intervalo de tempo). Não leia o documento inteiro por padrão.',
@@ -64,20 +105,24 @@ const AGENT_INSTRUCTIONS = [
   '9. Cite exatamente doc + linhas/seção + timestamp (hh:mm:ss) do que usar.',
   '10. Valide: cada afirmação factual forte precisa de evidência recuperada — use verify_citations.',
   '11. Se não houver evidência suficiente, diga isso claramente; não invente.',
+  '12. Após a verificação final, marque cada afirmação apoiada com [[n]] imediatamente após',
+  '    a frase: n é a posição (começando em 1) entre os resultados SUPPORTED distintos dessa verificação.',
+  '    Não emita [[n]] para resultado não suportado, fonte desatualizada ou afirmação sem evidência.',
   '',
   'Você possui ferramentas reais de pesquisa na web e no X. Para fatos atuais ou externos, use',
   'web_search; para posts, threads e tendências no X, use search_x. Nunca alegue genericamente',
   'que não possui internet: se uma ferramenta não estiver configurada, informe qual modelo falta.',
   '',
-  'Se o usuário compartilhar uma URL (vídeo do YouTube/Instagram/TikTok/X ou página web) que',
-  'não aparecer em search_transcripts, ela ainda não está no acervo: use',
-  'request_transcription(url). A ferramenta aguarda a ingestão e devolve resumo, tags e conteúdos',
-  'relacionados. Responda somente depois de receber esse brief. Leia a transcrição completa apenas',
-  'se o resumo não bastar para a pergunta.',
+  'Para uma URL compartilhada, siga a política específica do turno. Com intenção explícita de',
+  'transcrever, resumir, analisar, salvar ou organizar o conteúdo, use request_transcription(url)',
+  'para a própria URL — nunca substitua o conteúdo por web_search ou search_x. Sem uma ação',
+  'explícita, pergunte o que o usuário quer fazer com o link antes de agir.',
   '',
-  'Quando propor criar uma nota (propose_create_note), a interface pedirá confirmação ao usuário',
-  'e o turno será pausado. Não tente criar a nota de outro modo nem repita a ferramenta no mesmo',
-  'turno. Se a ação não for aprovada, informe isso e não insista.',
+  'Quando propor criar uma nota (propose_create_note), a interface pode pedir confirmação e',
+  'pausar o turno. Se o usuário já liberou essa ação, a nota é criada sem pausa. Não tente',
+  'criar a nota por outro caminho nem repita a ferramenta no mesmo turno após a proposta.',
+  'Depois de uma confirmação (mensagem do sistema de nota criada), continue o plano sem',
+  're-propor a mesma nota.',
   '',
   'Comunicação com o usuário (OBRIGATÓRIO — a resposta final é produto, não log de API):',
   '- NUNCA mencione nomes de ferramentas, parâmetros, IDs internos (transcriptId, approvalId)',
@@ -86,8 +131,10 @@ const AGENT_INSTRUCTIONS = [
   '- NÃO diga ao usuário para “pedir” ou “chamar” uma ferramenta. Você decide e usa sozinha.',
   '- Próximos passos em português natural de produto: “posso detalhar esse item”, “posso abrir',
   '  o trecho sobre X”, “posso montar uma nota com o resumo”. Nunca ensine o protocolo interno.',
-  '- Cite o acervo por título, tema, seção ou timestamp legível (hh:mm:ss) — não por IDs crus,',
+  '- Cite a Base de conhecimento por título, tema, seção ou timestamp legível (hh:mm:ss) — não por IDs crus,',
   '  a menos que o usuário peça explicitamente o identificador.',
+  '- Ao se apoiar em uma nota, use o href retornado para citá-la como link Markdown navegável',
+  '  (ex.: [Título da nota](/notas/id)). Só cite depois de ler ou confirmar o conteúdo.',
   '- Fale como assistente da base de conhecimento, não como operador de API ou engenheiro do',
   '  harness. Se faltar evidência, diga com clareza em linguagem humana.',
 ].join('\n');
@@ -105,7 +152,14 @@ export type StoredMessageSegment =
   | { type: 'tool-group'; id: string; tools: StoredToolEvent[] };
 
 export type ChatStreamEvent =
-  | { type: 'status'; label: string }
+  | {
+      type: 'start';
+      turnId: string;
+      userMessageId: string;
+      assistantMessageId: string;
+      startedAt: string;
+    }
+  | { type: 'status'; label: string; code?: ChatStatusCode }
   | { type: 'text'; delta: string }
   | { type: 'reasoning'; delta: string }
   | { type: 'tool'; tool: StoredToolEvent }
@@ -125,7 +179,15 @@ type ActiveMessage = {
 };
 
 export async function getOrCreateConversation(userId: string) {
-  const select = { id: true, userId: true, compactionCount: true, updatedAt: true } as const;
+  const select = {
+    id: true,
+    userId: true,
+    compactionCount: true,
+    updatedAt: true,
+    // Folha da trilha ativa (spec 127): toda leitura de histórico parte daqui.
+    activeLeafId: true,
+    messagesLinearized: true,
+  } as const;
   try {
     return await db.conversation.upsert({
       where: { userId },
@@ -147,25 +209,28 @@ export async function getChatSnapshot(
   options: { before?: string; limit?: number } = {},
 ) {
   const conversation = await getOrCreateConversation(userId);
-  await reconcileStaleHitl(userId, conversation.id);
   const limit = Math.min(100, Math.max(1, options.limit ?? 60));
+  // A trilha é resolvida ANTES de qualquer outra leitura: numa árvore,
+  // `createdAt` não define mais a sequência, então a paginação passa a
+  // recortar a caminhada, não a ordem cronológica do banco (spec 127).
+  const { trail, versionGroups } = await loadConversationTrail(conversation.id, {
+    activeLeafId: conversation.activeLeafId,
+    linearized: conversation.messagesLinearized,
+  });
+  const visibleIds = activeTrailIds(trail, { onlyNormalKind: true });
+  await reconcileStaleHitl(userId, conversation.id, visibleIds);
+
+  let end = visibleIds.length;
   if (options.before) {
-    const cursor = await db.chatMessage.findFirst({
-      where: {
-        id: options.before,
-        conversationId: conversation.id,
-        compactedAt: null,
-        kind: 'NORMAL',
-      },
-      select: { id: true },
-    });
-    if (!cursor) throw new Error('Cursor de histórico inválido.');
+    const cursorIndex = visibleIds.indexOf(options.before);
+    if (cursorIndex < 0) throw new Error('Cursor de histórico inválido.');
+    end = cursorIndex;
   }
-  const newestFirst = await db.chatMessage.findMany({
-    where: { conversationId: conversation.id, compactedAt: null, kind: 'NORMAL' },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    ...(options.before ? { cursor: { id: options.before }, skip: 1 } : {}),
-    take: limit + 1,
+  const start = Math.max(0, end - limit);
+  const pageIds = visibleIds.slice(start, end);
+  const hasOlder = start > 0;
+  const rows = await db.chatMessage.findMany({
+    where: { id: { in: pageIds }, conversationId: conversation.id },
     select: {
       id: true,
       role: true,
@@ -173,12 +238,21 @@ export async function getChatSnapshot(
       content: true,
       tools: true,
       segments: true,
+      citations: true,
+      attachments: true,
       compactedAt: true,
+      parentId: true,
       createdAt: true,
     },
   });
-  const hasOlder = newestFirst.length > limit;
-  const messages = newestFirst.slice(0, limit).reverse();
+  const messages = orderByTrail(rows, pageIds).map((message) => ({
+    ...message,
+    // A coluna `attachments` é JSONB sem schema: normaliza antes de sair da
+    // camada de dados para que o render nunca receba forma inesperada.
+    attachments: parseMessageAttachments(message.attachments),
+    // Só ponto de ramificação carrega indicador; conversa antiga fica limpa.
+    versions: versionGroups.get(message.id) ?? null,
+  }));
   // Persisted `running` tools are always stale once a turn is saved — heal so
   // reloads don't leave the Thinking block stuck on "Pensando…".
   const healedMessages = await Promise.all(
@@ -241,7 +315,12 @@ export async function clearConversation(userId: string): Promise<void> {
     db.chatApproval.deleteMany({ where: { conversationId: conversation.id, userId } }),
     db.chatTurn.deleteMany({ where: { conversationId: conversation.id, userId } }),
     db.chatMessage.deleteMany({ where: { conversationId: conversation.id } }),
-    db.conversation.update({ where: { id: conversation.id }, data: { thinking: false } }),
+    // O ponteiro de folha ativa (spec 127) tem que cair junto: apontar para
+    // mensagem apagada deixaria a próxima leitura resolvendo trilha vazia.
+    db.conversation.update({
+      where: { id: conversation.id },
+      data: { thinking: false, activeLeafId: null },
+    }),
   ]);
 }
 
@@ -287,12 +366,11 @@ function normalizeError(error: unknown): string {
 }
 
 async function getModelConfig(): Promise<{ apiKey: string; model: string }> {
-  const [apiKey, model] = await Promise.all([
-    getSetting('openrouter_api_key'),
-    getSetting('default_chat_model'),
-  ]);
+  const settings = await getSettings(['openrouter_api_key', 'default_chat_model'] as const);
+  const apiKey = settings.openrouter_api_key;
+  const model = settings.default_chat_model;
   if (!apiKey || !model) {
-    throw new Error('Configure a chave OpenRouter e o modelo de chat em Configurações.');
+    throw new Error('Conclua a configuração da OpenRouter em Configurações.');
   }
   return { apiKey, model };
 }
@@ -346,11 +424,15 @@ function cleanUntrustedMetadata(value: string, max: number): string {
     .slice(0, max);
 }
 
-export function buildLibrarySuggestionsInstructions(items: readonly FtsResult[]): string {
+export function buildLibrarySuggestionsInstructions(
+  items: readonly KnowledgeSearchResult[],
+): string {
   if (items.length === 0) return '';
   const metadata = items.map((item) => ({
     id: cleanUntrustedMetadata(item.id, 100),
     title: cleanUntrustedMetadata(item.title, 180),
+    sourceType: item.sourceType,
+    href: cleanUntrustedMetadata(item.href, 240),
     tags: item.tags.slice(0, 8).map((tag) => cleanUntrustedMetadata(tag, 80)),
     folder: item.folder ? cleanUntrustedMetadata(item.folder, 120) : null,
     capturedAt: item.createdAt.toISOString(),
@@ -385,7 +467,11 @@ const temporalListInputSchema = z.object({
 
 export function buildTools(
   userId: string,
-  options: { abortSignal?: AbortSignal; emitStatus?: (label: string) => void } = {},
+  options: {
+    abortSignal?: AbortSignal;
+    emitStatus?: (label: string) => void;
+    urlIntent?: UrlIntent;
+  } = {},
 ) {
   return {
     list_transcripts: tool({
@@ -488,7 +574,30 @@ export function buildTools(
       }),
       execute: async ({ query, limit }) => {
         const results = await ftsSearchTranscripts(userId, query, limit ?? 8);
-        return { results };
+        // FtsResult.createdAt é Date (vem de $queryRaw) — o AI SDK exige
+        // valores JSON-safe no output de tool para o histórico multi-step,
+        // e rejeita Date com AI_TypeValidationError. As outras tools já
+        // convertem (list_transcripts, read_transcript, search_notes); esta
+        // ficou de fora e derrubava toda vez que o agente chamava a busca.
+        return {
+          results: results.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+        };
+      },
+    }),
+    search_knowledge: tool({
+      description:
+        'Busca na Base de conhecimento inteira (notas curadas e transcrições). Use como ' +
+        'primeiro passo para perguntas factuais ou temáticas. Retorna trechos curtos, tipo da ' +
+        'fonte e link de citação; notas só recebem prioridade quando sua relevância é comparável.',
+      inputSchema: z.object({
+        query: z.string().min(1).max(300),
+        limit: z.number().int().min(1).max(25).optional(),
+      }),
+      execute: async ({ query, limit }) => {
+        const results = await searchKnowledgeBase(userId, query, limit ?? 8);
+        return {
+          results: results.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+        };
       },
     }),
     web_search: tool({
@@ -496,16 +605,24 @@ export function buildTools(
         'Pesquisa a web atual usando o modelo configurado e devolve síntese com citações URL. ' +
         'Use para notícias, documentação, fatos recentes e fontes fora da biblioteca.',
       inputSchema: z.object({ query: z.string().min(1).max(1_000) }),
-      execute: async ({ query }, execution) =>
-        researchWeb(userId, query, 'web', execution.abortSignal ?? options.abortSignal),
+      execute: async ({ query }, execution) => {
+        if (options.urlIntent?.kind !== undefined && options.urlIntent.kind !== 'none') {
+          return { error: 'Uma URL compartilhada neste turno precisa seguir a política de URL.' };
+        }
+        return researchWeb(userId, query, 'web', execution.abortSignal ?? options.abortSignal);
+      },
     }),
     search_x: tool({
       description:
         'Pesquisa publicações e threads do X usando o Modelo de análise do X (Grok) configurado. ' +
         'Use quando o usuário pedir conteúdo, tendências ou opiniões publicadas no X.',
       inputSchema: z.object({ query: z.string().min(1).max(1_000) }),
-      execute: async ({ query }, execution) =>
-        researchWeb(userId, query, 'x', execution.abortSignal ?? options.abortSignal),
+      execute: async ({ query }, execution) => {
+        if (options.urlIntent?.kind !== undefined && options.urlIntent.kind !== 'none') {
+          return { error: 'Uma URL compartilhada neste turno precisa seguir a política de URL.' };
+        }
+        return researchWeb(userId, query, 'x', execution.abortSignal ?? options.abortSignal);
+      },
     }),
     outline_transcript: tool({
       description:
@@ -692,13 +809,25 @@ export function buildTools(
     }),
     request_transcription: tool({
       description:
-        'Ingere uma URL que ainda não está no acervo e AGUARDA a conclusão. Retorna um brief ' +
+        'Ingere uma URL que ainda não está na Base de conhecimento e AGUARDA a conclusão. Retorna um brief ' +
         'rico com transcriptId, resumo, tags e conteúdos relacionados. Não responda ao usuário ' +
         'antes deste resultado; abra a transcrição completa apenas se o brief não bastar.',
       inputSchema: z.object({
         url: z.string().min(1).max(2048),
       }),
       execute: async ({ url }, execution) => {
+        if (options.urlIntent?.kind === 'ambiguous') {
+          return {
+            outcome: 'clarification-required' as const,
+            error: 'O usuário enviou uma URL sem informar o que deseja fazer com ela.',
+          };
+        }
+        if (options.urlIntent?.kind === 'explicit-ingest' && !isSharedUrl(options.urlIntent, url)) {
+          return {
+            outcome: 'error' as const,
+            error: 'A URL solicitada não corresponde à URL compartilhada neste turno.',
+          };
+        }
         const toolSignal = execution.abortSignal ?? options.abortSignal;
         try {
           const result = await createAutoJobForUser(userId, url);
@@ -765,39 +894,54 @@ export function buildTools(
       },
     }),
     search_notes: tool({
-      description: 'Busca notas do workspace atual.',
-      inputSchema: z.object({ query: z.string().min(1).max(300) }),
-      execute: async ({ query }) => {
-        const rows = await db.note.findMany({
-          where: {
-            userId,
-            kind: 'NOTE',
-            OR: [
-              { title: { contains: query, mode: 'insensitive' } },
-              { content: { contains: query, mode: 'insensitive' } },
-            ],
-          },
-          orderBy: { updatedAt: 'desc' },
-          take: 8,
-          select: { id: true, title: true, content: true, updatedAt: true },
-        });
-        return rows.map((row) => ({
-          id: row.id,
-          title: row.title,
-          excerpt: row.content.slice(0, 900),
-          updatedAt: row.updatedAt.toISOString(),
-        }));
+      description:
+        'Busca FTS somente nas notas da Base de conhecimento. Use depois de search_knowledge ' +
+        'quando precisar aprofundar ou restringir a pesquisa às notas curadas.',
+      inputSchema: z.object({
+        query: z.string().min(1).max(300),
+        limit: z.number().int().min(1).max(25).optional(),
+      }),
+      execute: async ({ query, limit }) => {
+        const results = await ftsSearchNotes(userId, query, limit ?? 8);
+        return {
+          results: results.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+        };
       },
     }),
     read_note: tool({
-      description: 'Lê uma nota específica do workspace atual.',
+      description:
+        'Lê uma nota específica do workspace atual. Use href como citação navegável na resposta.',
       inputSchema: z.object({ noteId: z.string().min(1) }),
       execute: async ({ noteId }) => {
         const note = await db.note.findFirst({
           where: { id: noteId, userId, kind: 'NOTE' },
-          select: { id: true, title: true, content: true },
+          select: {
+            id: true,
+            title: true,
+            content: true,
+            transcriptSources: {
+              orderBy: { createdAt: 'asc' },
+              select: {
+                transcriptId: true,
+                transcript: { select: { title: true, url: true } },
+              },
+            },
+          },
         });
-        return note ?? { error: 'Nota não encontrada.' };
+        return note
+          ? {
+              id: note.id,
+              title: note.title,
+              content: note.content,
+              href: `/notas/${note.id}`,
+              sources: note.transcriptSources.map((source) => ({
+                id: source.transcriptId,
+                title: source.transcript.title,
+                href: `/transcricoes/${source.transcriptId}`,
+                url: source.transcript.url,
+              })),
+            }
+          : { error: 'Nota não encontrada.' };
       },
     }),
     brain_search: tool({
@@ -830,19 +974,36 @@ export function buildTools(
     }),
     propose_create_note: tool({
       description:
-        'Propõe criar uma nota. A interface pede confirmação explícita; não escreve sozinha neste turno.',
+        'Propõe criar uma nota. Sem always-allow do usuário a interface pede confirmação; ' +
+        'com always-allow a nota é criada neste turno.',
       inputSchema: z.object({
         title: z.string().min(1).max(200),
         content: z.string().max(200_000),
       }),
-      // Primary write path is approveChatAction (UI confirm). This execute only
-      // runs if a future resume injects tool-approval-response into streamText;
-      // it must not create the note (avoids double-write with the UI path).
-      execute: async ({ title, content }) => ({
-        handledBy: 'ui_approve',
-        title,
-        contentLength: content.length,
-      }),
+      // Com toolApproval user-approval o execute NÃO roda (UI aprova via
+      // approveChatAction). Com always-allow (toolApproval approved) o execute
+      // cria a nota — único write path nesse fluxo, sem double-create.
+      execute: async ({ title, content }) => {
+        const always = await loadAlwaysAllowActions(userId);
+        if (!always.has(HITL_ACTION_CREATE_NOTE)) {
+          return {
+            handledBy: 'ui_approve',
+            title,
+            contentLength: content.length,
+          };
+        }
+        const note = await db.note.create({
+          data: { userId, kind: 'NOTE', title, content },
+        });
+        void reindexNotesBrain(userId).catch(() => undefined);
+        void invalidateGraphCache(userId).catch(() => undefined);
+        return {
+          ok: true,
+          noteId: note.id,
+          title: note.title,
+          handledBy: 'always_allow',
+        };
+      },
     }),
   };
 }
@@ -891,15 +1052,15 @@ async function findAssistantMessagesWithApproval(
   conversationId: string,
   approvalId: string,
 ): Promise<Array<{ id: string; tools: Prisma.JsonValue; segments: Prisma.JsonValue }>> {
-  const approvalNeedle = `%${approvalId}%`;
+  const approvalNeedle = JSON.stringify(approvalId);
   return tx.$queryRaw`
     SELECT id, tools, segments
     FROM "ChatMessage"
     WHERE "conversationId" = ${conversationId}
       AND role = 'ASSISTANT'
       AND (
-        COALESCE(tools::text, '') LIKE ${approvalNeedle}
-        OR COALESCE(segments::text, '') LIKE ${approvalNeedle}
+        strpos(COALESCE(tools::text, ''), ${approvalNeedle}) > 0
+        OR strpos(COALESCE(segments::text, ''), ${approvalNeedle}) > 0
       )
     ORDER BY "createdAt" DESC, id DESC
   `;
@@ -1032,14 +1193,24 @@ async function clearApprovalGhostInConversation(
  * message still shows approval-required. Revive recoverable create_note
  * payloads; dismiss ghosts that were already decided.
  */
-async function reconcileStaleHitl(userId: string, conversationId: string): Promise<void> {
+async function reconcileStaleHitl(
+  userId: string,
+  conversationId: string,
+  // Ids visíveis da TRILHA ATIVA (spec 127). Só o que a UI renderiza precisa
+  // de reconciliação; card de aprovação de trilha abandonada não está na tela.
+  trailIds: readonly string[],
+): Promise<void> {
+  if (trailIds.length === 0) return;
   const messages = await db.chatMessage.findMany({
-    where: { conversationId, role: 'ASSISTANT', compactedAt: null, kind: 'NORMAL' },
+    where: {
+      conversationId,
+      role: 'ASSISTANT',
+      // O snapshot não pode voltar a varrer uma conversa canônica inteira. HITL
+      // não expira; 200 respostas ativas cobrem a recuperação sem reintroduzir
+      // o custo não limitado que travava a abertura do chat.
+      id: { in: trailIds.slice(-200) },
+    },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    // O snapshot não pode voltar a varrer uma conversa canônica inteira. HITL
-    // não expira; 200 respostas ativas cobrem a recuperação sem reintroduzir
-    // o custo não limitado que travava a abertura do chat.
-    take: 200,
     select: { id: true, tools: true, segments: true },
   });
   const approvalIds = new Set<string>();
@@ -1050,10 +1221,10 @@ async function reconcileStaleHitl(userId: string, conversationId: string): Promi
   if (approvalIds.size === 0) return;
 
   const existing = await db.chatApproval.findMany({
-    where: { userId, id: { in: [...approvalIds] } },
-    select: { id: true, status: true },
+    where: { userId, providerApprovalId: { in: [...approvalIds] } },
+    select: { providerApprovalId: true, status: true },
   });
-  const byId = new Map(existing.map((row) => [row.id, row.status]));
+  const byId = new Map(existing.map((row) => [row.providerApprovalId, row.status]));
 
   await db.$transaction(async (tx) => {
     for (const approvalId of approvalIds) {
@@ -1075,11 +1246,11 @@ async function reconcileStaleHitl(userId: string, conversationId: string): Promi
         continue;
       }
       await tx.chatApproval.upsert({
-        where: { id: approvalId },
+        where: { userId_providerApprovalId: { userId, providerApprovalId: approvalId } },
         create: {
-          id: approvalId,
           userId,
           conversationId,
+          providerApprovalId: approvalId,
           action: payload.action,
           payload: {
             ...payload,
@@ -1111,13 +1282,13 @@ async function ensurePendingApproval(
   approvalId: string,
 ): Promise<{ id: string; action: string; payload: unknown; conversationId: string }> {
   const pending = await tx.chatApproval.findFirst({
-    where: { id: approvalId, userId, status: 'PENDING' },
+    where: { providerApprovalId: approvalId, userId, status: 'PENDING' },
     select: { id: true, action: true, payload: true, conversationId: true },
   });
   if (pending) return pending;
 
   const existing = await tx.chatApproval.findFirst({
-    where: { id: approvalId, userId },
+    where: { providerApprovalId: approvalId, userId },
     select: { id: true, status: true, conversationId: true },
   });
   if (existing?.status === 'APPROVED' || existing?.status === 'REJECTED') {
@@ -1139,11 +1310,11 @@ async function ensurePendingApproval(
   }
 
   return tx.chatApproval.upsert({
-    where: { id: approvalId },
+    where: { userId_providerApprovalId: { userId, providerApprovalId: approvalId } },
     create: {
-      id: approvalId,
       userId,
       conversationId: conversation.id,
+      providerApprovalId: approvalId,
       action: recovered.action,
       payload: {
         ...recovered,
@@ -1168,10 +1339,23 @@ async function ensurePendingApproval(
   });
 }
 
+export type ApproveChatActionResult = {
+  message: string;
+  noteId?: string;
+  conversationId: string;
+  action: string;
+  title?: string;
+  hitlMessageId: string;
+  /** Conteúdo sintético do turno de resume (spec 132). */
+  resumePrompt: string;
+  shouldResume: boolean;
+};
+
 export async function approveChatAction(
   userId: string,
   approvalId: string,
-): Promise<{ message: string; noteId?: string }> {
+  options: { alwaysAllow?: boolean } = {},
+): Promise<ApproveChatActionResult> {
   const result = await db.$transaction(async (tx) => {
     const now = new Date();
     const approval = await ensurePendingApproval(tx, userId, approvalId);
@@ -1211,16 +1395,55 @@ export async function approveChatAction(
       });
       break;
     }
-    await tx.chatMessage.create({
+    // A confirmação vira mensagem NA trilha ativa (spec 127). Criada sem
+    // antecessor, ela ficaria fora de toda caminhada — invisível para o
+    // modelo — e ainda faria a conversa parecer não encadeada, apagando os
+    // indicadores de versão de todos os pontos de ramificação.
+    const conversation = await tx.conversation.findUnique({
+      where: { id: approval.conversationId },
+      select: { activeLeafId: true, messagesLinearized: true },
+    });
+    const { trail } = await loadConversationTrail(
+      approval.conversationId,
+      {
+        activeLeafId: conversation?.activeLeafId,
+        linearized: conversation?.messagesLinearized,
+      },
+      (query) => tx.chatMessage.findMany(query) as unknown as Promise<TrailNodeRow[]>,
+    );
+    const hitlMessage = await tx.chatMessage.create({
       data: {
         conversationId: approval.conversationId,
         role: 'SYSTEM',
         kind: 'HITL_RESPONSE',
         content: `Nota “${note.title}” criada após confirmação do usuário.`,
+        parentId: resolveAppendParent(trail),
       },
+      select: { id: true },
     });
-    return { message: `Nota “${note.title}” criada.`, noteId: note.id };
+    await tx.conversation.update({
+      where: { id: approval.conversationId },
+      data: { activeLeafId: hitlMessage.id },
+    });
+    const resumePrompt = buildHitlResumePrompt({
+      action: approval.action,
+      title: note.title,
+      noteId: note.id,
+    });
+    return {
+      message: `Nota “${note.title}” criada.`,
+      noteId: note.id,
+      conversationId: approval.conversationId,
+      action: approval.action,
+      title: note.title,
+      hitlMessageId: hitlMessage.id,
+      resumePrompt,
+      shouldResume: shouldResumeAfterApprove({ approved: true, action: approval.action }),
+    };
   });
+  if (options.alwaysAllow) {
+    await grantAlwaysAllowAction(userId, result.action).catch(() => undefined);
+  }
   await reindexNotesBrain(userId).catch(() => undefined);
   await invalidateGraphCache(userId).catch(() => undefined);
   return result;
@@ -1229,6 +1452,7 @@ export async function approveChatAction(
 async function maybeCompact(
   conversationId: string,
   modelConfig: { apiKey: string; model: string },
+  emitStatus?: (label: string) => void,
 ): Promise<{ before: number; after: number } | null> {
   const ownerId = crypto.randomUUID();
   const acquired = await db.$executeRaw`
@@ -1240,24 +1464,48 @@ async function maybeCompact(
   `;
   if (acquired !== 1) return null;
   try {
-    const active = (await db.chatMessage.findMany({
-      where: { conversationId, compactedAt: null },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: {
-        id: true,
-        role: true,
-        kind: true,
-        content: true,
-        tools: true,
-        segments: true,
-        createdAt: true,
-      },
-    })) as ActiveMessage[];
+    const conversation = await db.conversation.findUnique({
+      where: { id: conversationId },
+      select: { userId: true, activeLeafId: true, messagesLinearized: true },
+    });
+    if (!conversation) return null;
+    // Compactação percorre SOMENTE a trilha ativa (spec 127). Sem isso a
+    // memória resumiria mensagens de ramos abandonados para dentro do
+    // contexto do modelo — o vazamento que a spec trata como risco nº 1.
+    const { nodes, trail } = await loadConversationTrail(conversationId, {
+      activeLeafId: conversation.activeLeafId,
+      linearized: conversation.messagesLinearized,
+    });
+    // O resumo é inserido como nó ENTRE o último compactado e seus filhos.
+    // Numa conversa legada (toda sem antecessor) não haveria onde
+    // pendurar, então o encadeamento preguiçoso roda antes.
+    await ensureConversationLinearized(
+      nodes,
+      conversation.messagesLinearized,
+      linearizeWith(conversationId, db),
+    );
+    const activeIds = activeTrailIds(trail);
+    const active = orderByTrail(
+      (await db.chatMessage.findMany({
+        where: { id: { in: activeIds }, conversationId },
+        select: {
+          id: true,
+          role: true,
+          kind: true,
+          content: true,
+          tools: true,
+          segments: true,
+          createdAt: true,
+        },
+      })) as ActiveMessage[],
+      activeIds,
+    );
     const before = estimateTokens(active);
     if (before < DEFAULT_CONTEXT_LIMIT * COMPACTION_RATIO || active.length <= KEEP_RECENT)
       return null;
     const compacted = active.slice(0, -KEEP_RECENT);
     if (compacted.length === 0) return null;
+    emitStatus?.('Organizando a memória da conversa…');
     const provider = createOpenRouter({ apiKey: modelConfig.apiKey });
     const { text, usage } = await generateText({
       model: provider(modelConfig.model),
@@ -1269,31 +1517,41 @@ async function maybeCompact(
     });
     if (!text.trim()) return null;
     const now = new Date();
-    await db.$transaction([
-      db.chatMessage.create({
+    const lastCompactedId = compacted[compacted.length - 1]?.id ?? null;
+    await db.$transaction(async (tx) => {
+      const summary = await tx.chatMessage.create({
         data: {
           conversationId,
           role: 'SYSTEM',
           kind: 'COMPACTION_SUMMARY',
           content: text.trim(),
+          // O resumo entra NA trilha, como filho do último compactado. Se
+          // ficasse sem antecessor, a caminhada nunca passaria por ele e o
+          // modelo perderia a memória inteira da conversa compactada.
+          parentId: lastCompactedId,
         },
-      }),
-      db.chatMessage.updateMany({
+        select: { id: true },
+      });
+      if (lastCompactedId) {
+        // Reparenta TODOS os filhos do último compactado (a continuação da
+        // trilha ativa e as versões irmãs) para o resumo. Mover só a trilha
+        // ativa separaria versões que eram irmãs e apagaria o indicador.
+        await tx.chatMessage.updateMany({
+          where: { conversationId, parentId: lastCompactedId, id: { not: summary.id } },
+          data: { parentId: summary.id },
+        });
+      }
+      await tx.chatMessage.updateMany({
         where: { id: { in: compacted.map((message) => message.id) } },
         data: { compactedAt: now },
-      }),
-      db.conversation.update({
+      });
+      await tx.conversation.update({
         where: { id: conversationId },
         data: { compactionCount: { increment: 1 } },
-      }),
-      db.costEvent.create({
+      });
+      await tx.costEvent.create({
         data: {
-          userId: (
-            await db.conversation.findUniqueOrThrow({
-              where: { id: conversationId },
-              select: { userId: true },
-            })
-          ).userId,
+          userId: conversation.userId,
           kind: 'CHAT',
           model: modelConfig.model,
           tokensIn: usage.inputTokens ?? 0,
@@ -1301,8 +1559,8 @@ async function maybeCompact(
           costUsd: 0,
           meta: { source: 'compaction' },
         },
-      }),
-    ]);
+      });
+    });
     return {
       before,
       after: estimateTokens(active.slice(-KEEP_RECENT)) + Math.ceil(text.length / 4),
@@ -1310,6 +1568,30 @@ async function maybeCompact(
   } finally {
     await db.chatCompactionLease.deleteMany({ where: { conversationId, ownerId } });
   }
+}
+
+/**
+ * Cria a resposta do assistente já pendurada na trilha e move o ponteiro de
+ * folha ativa. Só o caminho sem turno pré-criado passa por aqui — o caminho
+ * normal recebe a linha do assistente já posicionada por `createChatTurn`.
+ */
+async function createTrailedAssistant(
+  conversationId: string,
+  parentId: string | null,
+  data: { content: string; tools?: Prisma.InputJsonValue; segments?: Prisma.InputJsonValue },
+): Promise<{ id: string }> {
+  const assistant = await db.chatMessage.create({
+    data: { conversationId, role: 'ASSISTANT', parentId, ...data },
+    select: { id: true },
+  });
+  // Sem engolir a falha: se o ponteiro não avançar, a folha ativa fica na
+  // mensagem do usuário e esta resposta some do histórico da próxima chamada
+  // — exatamente a inconsistência silenciosa que a spec 127 existe pra evitar.
+  await db.conversation.update({
+    where: { id: conversationId },
+    data: { activeLeafId: assistant.id },
+  });
+  return assistant;
 }
 
 export async function streamAssistantReply(options: {
@@ -1320,13 +1602,41 @@ export async function streamAssistantReply(options: {
   emit: (event: ChatStreamEvent) => void;
   userMessageId?: string;
   assistantMessageId?: string;
+  requestStartedAt?: number;
+  claimStartedAt?: number;
+  runtimeStartedAt?: number;
+  turnCreatedAt?: Date;
 }): Promise<string> {
   const { userId, conversationId, content, abortSignal, emit, assistantMessageId } = options;
+  const runtimeStartedAt = options.runtimeStartedAt ?? Date.now();
+  const requestStartedAt =
+    options.requestStartedAt ?? options.turnCreatedAt?.getTime() ?? runtimeStartedAt;
+  const claimStartedAt = options.claimStartedAt ?? runtimeStartedAt;
+  // Caminho sem turno pré-criado: a mensagem entra no FIM da trilha ativa, não
+  // no fim cronológico da conversa — numa árvore os dois podem divergir.
+  let pendingParentId: string | null = null;
   if (!options.userMessageId) {
-    await db.chatMessage.create({ data: { conversationId, role: 'USER', content } });
+    const conversation = await db.conversation.findUnique({
+      where: { id: conversationId },
+      select: { activeLeafId: true, messagesLinearized: true },
+    });
+    const { nodes, trail } = await loadConversationTrail(conversationId, {
+      activeLeafId: conversation?.activeLeafId,
+      linearized: conversation?.messagesLinearized,
+    });
+    await ensureConversationLinearized(
+      nodes,
+      conversation?.messagesLinearized ?? false,
+      linearizeWith(conversationId, db),
+    );
+    const userMessage = await db.chatMessage.create({
+      data: { conversationId, role: 'USER', content, parentId: resolveAppendParent(trail) },
+      select: { id: true },
+    });
+    pendingParentId = userMessage.id;
     await db.conversation.update({
       where: { id: conversationId },
-      data: { updatedAt: new Date() },
+      data: { updatedAt: new Date(), activeLeafId: userMessage.id },
     });
   }
   let modelConfig: { apiKey: string; model: string };
@@ -1339,14 +1649,19 @@ export async function streamAssistantReply(options: {
           where: { id: assistantMessageId },
           data: { content: message, tools: [], segments: [] },
         })
-      : await db.chatMessage.create({
-          data: { conversationId, role: 'ASSISTANT', content: message },
-        });
+      : await createTrailedAssistant(conversationId, pendingParentId, { content: message });
     emit({ type: 'error', message });
     emit({ type: 'done', messageId: assistant.id });
     return assistant.id;
   }
-  const compaction = await maybeCompact(conversationId, modelConfig).catch(() => {
+  // Estas leituras são independentes da compactação. Iniciá-las agora tira
+  // trabalho do caminho crítico sem consultar mensagens antes de a memória
+  // decidir quais linhas continuam ativas.
+  const relevantPromise = preloadRelevantContent(userId, content, 5).catch(() => []);
+  const timezonePromise = getAppTimezone().catch(() => 'America/Sao_Paulo');
+  const compaction = await maybeCompact(conversationId, modelConfig, (label) =>
+    emit({ type: 'status', label }),
+  ).catch(() => {
     emit({
       type: 'error',
       message: 'A memória não pôde ser atualizada; a resposta usará o contexto recente.',
@@ -1355,48 +1670,87 @@ export async function streamAssistantReply(options: {
   });
   if (compaction) emit({ type: 'compaction', ...compaction });
 
-  const active = (await db.chatMessage.findMany({
-    where: {
+  emit({ type: 'status', label: 'Analisando sua solicitação…' });
+  const conversationRow = await db.conversation.findUnique({
+    where: { id: conversationId },
+    select: { activeLeafId: true, messagesLinearized: true },
+  });
+  const [active, relevant, timezone] = await Promise.all([
+    // Único caminho pelo qual o prompt é montado (spec 127): a trilha ativa,
+    // na ordem da caminhada, sem compactadas e sem a resposta em construção.
+    loadActiveHistory(
       conversationId,
-      compactedAt: null,
-      ...(assistantMessageId ? { id: { not: assistantMessageId } } : {}),
-    },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    select: {
-      id: true,
-      role: true,
-      kind: true,
-      content: true,
-      tools: true,
-      segments: true,
-      createdAt: true,
-    },
-  })) as ActiveMessage[];
+      {
+        activeLeafId: conversationRow?.activeLeafId,
+        linearized: conversationRow?.messagesLinearized,
+      },
+      { excludeId: assistantMessageId },
+    ) as Promise<ActiveMessage[]>,
+    relevantPromise,
+    timezonePromise,
+  ]);
   const provider = createOpenRouter({ apiKey: modelConfig.apiKey });
   let answer = '';
   const tools: StoredToolEvent[] = [];
   const segments: StoredMessageSegment[] = [];
-  emit({ type: 'status', label: 'Buscando na sua biblioteca…' });
-  const relevant = await preloadRelevantContent(userId, content, 5).catch(() => []);
   const suggestions = buildLibrarySuggestionsInstructions(relevant);
-  const timezone = await getAppTimezone().catch(() => 'America/Sao_Paulo');
   const clock = buildAgentClockInstructions(buildInstanceClock(new Date(), timezone));
+  const urlIntent = classifyUrlIntent(content);
+  const alwaysAllow = await loadAlwaysAllowActions(userId).catch(
+    () => new Set() as Awaited<ReturnType<typeof loadAlwaysAllowActions>>,
+  );
+  const alwaysAllowCreateNote = alwaysAllow.has(HITL_ACTION_CREATE_NOTE);
+  const providerStartedAt = Date.now();
+  emit({
+    type: 'status',
+    code: 'connecting-model',
+    label: 'Conectando ao modelo…',
+  });
+  logChatTiming({
+    event: 'chat-provider-request-start',
+    messageId: assistantMessageId ?? null,
+    model: modelConfig.model,
+    requestToClaimMs: Math.max(0, claimStartedAt - requestStartedAt),
+    claimAndLoadMs: Math.max(0, runtimeStartedAt - claimStartedAt),
+    preparationMs: providerStartedAt - runtimeStartedAt,
+    totalToProviderStartMs: providerStartedAt - requestStartedAt,
+  });
+  // Histórico da trilha. No resume HITL (spec 132) o `content` é um prompt
+  // sintético (não é uma bolha USER na trilha) — injeta como última mensagem
+  // user só no call do modelo, para o agente continuar o plano.
+  const historyMessages = toModelMessages(active);
+  const modelMessages: ModelMessage[] = shouldInjectTurnContentAsUserMessage({
+    content,
+    history: active,
+  })
+    ? [...historyMessages, { role: 'user', content }]
+    : historyMessages;
+
   const result = streamText({
     model: provider(modelConfig.model),
-    instructions: AGENT_INSTRUCTIONS + clock + suggestions,
+    instructions: AGENT_INSTRUCTIONS + clock + suggestions + buildUrlIntentInstructions(urlIntent),
     // AI SDK 7 rejects role:system inside `messages` unless opted in. Our
     // SYSTEM rows (compaction summaries, HITL responses) are server-authored
     // only — never from the client — so allowing them preserves trusted history.
     allowSystemInMessages: true,
-    messages: toModelMessages(active),
+    messages: modelMessages,
     tools: buildTools(userId, {
       abortSignal,
       emitStatus: (label) => emit({ type: 'status', label }),
+      urlIntent,
     }),
-    // Structural HITL pause (spec 090 / AI SDK toolApproval): do not execute
-    // propose_create_note; emit tool-approval-request and end the turn.
+    // A intenção explícita de processar o link não depende da obediência ao
+    // prompt: só o primeiro passo precisa chamar a ingestão. Depois do brief,
+    // os passos seguintes voltam a `auto` para que o modelo possa responder.
+    prepareStep: ({ stepNumber }) => ({
+      toolChoice:
+        urlIntent.kind === 'explicit-ingest' && stepNumber === 0
+          ? { type: 'tool', toolName: 'request_transcription' }
+          : 'auto',
+    }),
+    // Spec 090 pause; spec 132 always-allow → approved (execute cria a nota).
     toolApproval: {
-      propose_create_note: 'user-approval',
+      propose_create_note: resolveProposeCreateNoteApproval(alwaysAllowCreateNote),
     },
     stopWhen: stepCountIs(12),
     abortSignal,
@@ -1416,9 +1770,24 @@ export async function streamAssistantReply(options: {
   });
 
   try {
+    let firstProviderEventLogged = false;
     for await (const rawPart of result.fullStream) {
       const part = rawPart as unknown as Record<string, unknown>;
       const type = part.type;
+      if (!firstProviderEventLogged && isProviderObservedEvent(type)) {
+        firstProviderEventLogged = true;
+        const firstEventAt = Date.now();
+        logChatTiming({
+          event: 'chat-turn-latency',
+          messageId: assistantMessageId ?? null,
+          model: modelConfig.model,
+          requestToClaimMs: Math.max(0, claimStartedAt - requestStartedAt),
+          claimAndLoadMs: Math.max(0, runtimeStartedAt - claimStartedAt),
+          preparationMs: providerStartedAt - runtimeStartedAt,
+          providerFirstEventMs: firstEventAt - providerStartedAt,
+          totalToFirstEventMs: firstEventAt - requestStartedAt,
+        });
+      }
       const reasoningDelta = extractReasoningDelta(part);
       if (reasoningDelta) {
         appendReasoning(segments, reasoningDelta);
@@ -1466,11 +1835,11 @@ export async function streamAssistantReply(options: {
           output,
         };
         await db.chatApproval.upsert({
-          where: { id: approvalId },
+          where: { userId_providerApprovalId: { userId, providerApprovalId: approvalId } },
           create: {
-            id: approvalId,
             userId,
             conversationId,
+            providerApprovalId: approvalId,
             action,
             payload: {
               ...inputRecord,
@@ -1587,12 +1956,11 @@ export async function streamAssistantReply(options: {
     content: answer || (awaitingHitl ? '' : failureFallback),
     tools: tools as unknown as Prisma.InputJsonValue,
     segments: segments as unknown as Prisma.InputJsonValue,
+    citations: (await citationsFromToolEvents(userId, tools)) as unknown as Prisma.InputJsonValue,
   };
   const assistant = assistantMessageId
     ? await db.chatMessage.update({ where: { id: assistantMessageId }, data: assistantData })
-    : await db.chatMessage.create({
-        data: { conversationId, role: 'ASSISTANT', ...assistantData },
-      });
+    : await createTrailedAssistant(conversationId, pendingParentId, assistantData);
   await db.costEvent.create({
     data: {
       userId,
@@ -1601,7 +1969,7 @@ export async function streamAssistantReply(options: {
       tokensIn: usage.inputTokens ?? 0,
       tokensOut: usage.outputTokens ?? 0,
       costUsd: 0,
-      meta: { toolCount: tools.length },
+      meta: { toolCount: tools.length, latencyMs: Math.max(0, Date.now() - providerStartedAt) },
     },
   });
   emit({

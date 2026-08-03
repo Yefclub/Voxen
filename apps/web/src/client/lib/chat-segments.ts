@@ -10,7 +10,7 @@
 // empilhado (se o tipo mudou). Puro e testável (sem DOM/React).
 // ============================================================================
 
-import { toolBlockState, type ToolState } from './chat-tools';
+import { type ToolState } from './chat-tools';
 
 const VALID_TOOL_STATES: readonly ToolState[] = [
   'running',
@@ -163,40 +163,134 @@ export function segmentsFromPersistedTools(
 }
 
 /**
- * `true` se algo ainda está em andamento: um raciocínio sem `endedAt`, ou
- * qualquer tool-group com ferramenta `running`. Aprovação pendente (HITL) não
- * conta — o card fica acima do composer (spec 090).
+ * Normaliza os `segments` vindos do snapshot.
+ *
+ * `ChatMessage.segments` é uma coluna JSONB sem schema, e o backend faz
+ * `as StoredMessageSegment[]` sem validar (`runtime.ts`) — o que chega ao
+ * render é dado cru do Postgres, só *tipado* como `MessageSegment[]`. Até a
+ * spec 119 isso era inofensivo (`{segment.text}` com `undefined` não
+ * renderiza nada); desde a spec 126 o render chama `segment.text.trim()`, que
+ * LANÇA `TypeError` — e o ErrorBoundary é global (`main.tsx`), então UMA
+ * mensagem malformada apaga o app inteiro. Mesmo cuidado que `tools` já
+ * recebe em `isValidToolEvent`, criado depois do incidente com
+ * `HITL_RESPONSE` sem `name`.
+ *
+ * Retorna `null` quando o valor não é sequer uma lista: aí o chamador cai no
+ * fallback histórico (`segmentsFromPersistedTools`), em vez de exibir um
+ * turno vazio.
  */
-export function segmentsRunning(segments: readonly MessageSegment[]): boolean {
-  return segments.some((segment) =>
-    segment.type === 'reasoning'
-      ? segment.endedAt == null
-      : toolBlockState(segment.tools) === 'running',
-  );
+export function parseMessageSegments(value: unknown): MessageSegment[] | null {
+  if (!Array.isArray(value)) return null;
+  const normalized: MessageSegment[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const candidate = raw as Record<string, unknown>;
+    const id = typeof candidate.id === 'string' && candidate.id.length > 0 ? candidate.id : null;
+    if (!id) continue;
+
+    if (candidate.type === 'reasoning') {
+      // `startedAt` inválido alimentaria `segmentsReasoningDuration` com uma
+      // janela absurda ("Pensou por 57 anos"), então o segmento é descartado.
+      if (typeof candidate.startedAt !== 'number' || !Number.isFinite(candidate.startedAt))
+        continue;
+      if (candidate.startedAt < 0) continue;
+      const endedAt =
+        typeof candidate.endedAt === 'number' && Number.isFinite(candidate.endedAt)
+          ? candidate.endedAt
+          : undefined;
+      // Texto ausente não descarta o segmento: sem texto o render já cai no
+      // resumo operacional ("Raciocinando…"), preservando a cronologia.
+      const text = typeof candidate.text === 'string' ? candidate.text : '';
+      const segment: ReasoningSegment = {
+        type: 'reasoning',
+        id,
+        text,
+        startedAt: candidate.startedAt,
+      };
+      normalized.push(endedAt == null ? segment : { ...segment, endedAt });
+      continue;
+    }
+
+    if (candidate.type === 'tool-group') {
+      if (!Array.isArray(candidate.tools)) continue;
+      const tools = candidate.tools.filter(isValidToolEvent);
+      if (tools.length === 0) continue;
+      normalized.push({ type: 'tool-group', id, tools });
+    }
+  }
+  return normalized;
 }
 
 /**
  * Duração (ms) do turno derivada dos timestamps dos PRÓPRIOS segments de
- * raciocínio: do `startedAt` do primeiro ao `endedAt` do último. Serve de
- * fallback pro cronômetro local do `ThinkingBlock` (`startedAtRef`/`frozen`),
- * que é estado de componente e por isso NÃO sobrevive quando `send()` troca
- * as mensagens pelo snapshot do servidor ao fim do turno — o React remonta o
- * componente (a mensagem ganha o id real do banco, mudando a `key`), zerando
- * esse estado local. Esta função deriva a duração a partir dos timestamps
- * persistidos, sem depender de estado local.
+ * raciocínio: do `startedAt` do primeiro ao `endedAt` do último.
+ *
+ * Desde a spec 130 é a ÚNICA fonte da duração exibida — antes era o fallback
+ * de um cronômetro de parede local, que morreu junto com o `setInterval` que o
+ * alimentava. Ler dos timestamps persistidos é o que faz o número sobreviver a
+ * remount e a reload sem depender de estado de componente.
  *
  * `null` se não há segmento de raciocínio (turno só de ferramentas — sem
  * duração, como já era antes desta spec) ou se algum ainda está aberto (sem
  * `endedAt` — não deveria ocorrer quando o turno já terminou).
  */
-export function segmentsReasoningDuration(segments: readonly MessageSegment[]): number | null {
+export function segmentsReasoningDuration(
+  segments: readonly MessageSegment[],
+  turnStartedAt?: number,
+): number | null {
   let start: number | null = null;
   let end: number | null = null;
   for (const segment of segments) {
     if (segment.type !== 'reasoning') continue;
     if (segment.endedAt == null) return null;
+    if (
+      !Number.isFinite(segment.startedAt) ||
+      !Number.isFinite(segment.endedAt) ||
+      segment.startedAt < 0 ||
+      segment.endedAt < segment.startedAt
+    ) {
+      return null;
+    }
     start = start == null ? segment.startedAt : Math.min(start, segment.startedAt);
     end = end == null ? segment.endedAt : Math.max(end, segment.endedAt);
   }
-  return start != null && end != null ? end - start : null;
+  if (start == null || end == null) return null;
+  const effectiveStart =
+    turnStartedAt != null && Number.isFinite(turnStartedAt)
+      ? Math.min(turnStartedAt, start)
+      : start;
+  const duration = end - effectiveStart;
+  return Number.isFinite(duration) && duration >= 0 ? duration : null;
+}
+
+/**
+ * Total de ferramentas chamadas no turno — insumo do resumo compacto exibido
+ * no cabeçalho quando o bloco está recolhido (spec 126).
+ */
+export function segmentsToolCount(segments: readonly MessageSegment[]): number {
+  let total = 0;
+  for (const segment of segments) {
+    if (segment.type === 'tool-group') total += segment.tools.length;
+  }
+  return total;
+}
+
+/**
+ * Duração exibida no cabeçalho do bloco "Pensando".
+ *
+ * Só o turno encerrado tem duração para mostrar: durante o voo o cabeçalho é o
+ * shimmer "Pensando", sem número. E turno encerrado usa exclusivamente os
+ * timestamps persistidos, então uma mensagem antiga nunca "envelhece" ao
+ * remontar ou ao voltar para a conversa.
+ *
+ * Até a spec 130 isso passava por um cronômetro de parede local alimentado por
+ * um `setInterval` de 200 ms; o valor nunca chegava à tela (durante o voo o
+ * cabeçalho não mostra duração), então o intervalo só gerava re-render.
+ */
+export function thinkingDuration(
+  segments: readonly MessageSegment[],
+  live: boolean,
+  turnStartedAt: number,
+): number | null {
+  return live ? null : segmentsReasoningDuration(segments, turnStartedAt);
 }

@@ -1,5 +1,707 @@
 # Changelog
 
+## v0.13.0-dev.1785737401 — 2026-08-03 · Dev
+
+### ✨ Contas de plataforma agora são privadas por usuário
+
+As sessões de TikTok, Instagram e YouTube passaram a ficar em **Contas de plataforma**, na área pessoal. Cada pessoa conecta a própria sessão pela extensão do Voxen e ela é usada somente nos seus processamentos.
+
+A tela de Integrações administrativas ficou dedicada às configurações globais da instância. Também atualizamos os modelos padrão de Chat e Busca na web para DeepSeek V4 Flash, e os de Documentos e Visão para GPT-5.6 Luna.
+
+## v0.13.0-dev.1785723415 — 2026-08-02 · Dev
+
+### 🐛 Jobs em processamento se recuperam após reinícios
+
+- Jobs em execução usam lease e heartbeat persistidos no Postgres.
+- Um worker reiniciado recupera tentativas interrompidas sem deixar a Fila presa
+  em 99%; após três interrupções, o job termina com uma mensagem recuperável.
+- Conteúdo já persistido é retomado pelo checkpoint existente, sem criar uma
+  segunda transcrição.
+- Resumo, tags, embeddings e grafo não bloqueiam mais a conclusão canônica do
+  job depois que o conteúdo foi salvo.
+- Redis continua acelerando wakeups e progresso realtime, enquanto o Postgres é
+  a fonte durável da fila.
+
+## v0.13.0-dev.1785717760 — 2026-08-02 · Dev
+
+### 🐛 Citações estáveis e páginas atualizadas ao retomar abas
+
+Os previews das citações no Chat agora permanecem estáveis ao alternar o cursor
+entre vários marcadores, sem piscar nem interferir nos links para as fontes.
+
+Ao voltar para uma aba do Voxen, a página revalida seus dados silenciosamente.
+O Chat também reconcilia o histórico com o servidor mesmo quando nenhuma
+resposta está em andamento, refletindo alterações feitas em outra aba sem exigir
+recarregamento manual.
+
+## v0.13.0-dev.1785713547 — 2026-08-02 · Dev
+
+### 🎨 Fontes e citações integradas ao Chat
+
+Integra o painel de fontes ao layout do Chat e adiciona citações inline verificáveis às respostas.
+
+## v0.13.0-dev.1785706085 — 2026-08-02 · Dev
+
+### 🎨 Fontes do chat ficam mais fáceis de consultar e o Brain abre completo
+
+As evidências de cada resposta agora aparecem em um resumo compacto e abrem um
+painel lateral com fonte, trecho, localização e estado de verificação. O Brain
+também passa a abrir diretamente na visão completa, sem exibir o bloqueio de
+recorte.
+
+## v0.13.0-dev.1785695013 — 2026-08-02 · Dev
+
+### ✨ Artefatos de pesquisa agora preservam evidências navegáveis
+
+Agora é possível criar briefing, FAQ, guia de estudo, linha do tempo e mapa
+mental a partir de fontes escolhidas. Cada resultado mantém a fonte e o trecho
+usado como evidência, respeita o espaço de trabalho de quem o criou e informa
+quando alguma fonte selecionada está indisponível.
+
+## v0.13.0-dev.1785692656 — 2026-08-02 · Dev
+
+### ✨ Fontes web agora podem ser atualizadas sem perder o histórico
+
+Páginas web da Base de conhecimento agora mostram quando foram coletadas e podem
+ser atualizadas manualmente. Se nada mudou, o Voxen só registra a nova consulta;
+se o conteúdo mudou, preserva a versão anterior, atualiza os índices e sinaliza
+citações antigas para que não pareçam evidência da versão atual.
+
+## v0.13.0-dev.1785690745 — 2026-08-02 · Dev
+
+### 🧹 Base de testes passa a medir qualidade de busca e citações
+
+O Voxen agora mantém um corpus sintético para comparar busca textual, híbrida e
+Brain. Isso ajuda a evitar regressões de fontes e citações sem enviar dados ou
+perguntas reais a serviços externos durante os testes.
+
+## v0.13.0-dev.1785687938 — 2026-08-02 · Dev
+
+### ✨ Busca encontra conteúdos por significado, não apenas por palavras-chave
+
+Quando embeddings estão habilitados, a busca de transcrições combina palavras-chave
+com a semelhança de significado dos conteúdos já compilados no Brain. Assim, uma
+pergunta pode encontrar uma fonte mesmo usando termos diferentes dos originais.
+
+Se o serviço de embeddings estiver indisponível, a busca continua funcionando com
+o resultado textual tradicional.
+
+## v0.13.0-dev.1785685922 — 2026-08-02 · Dev
+
+### ✨ Relações verificáveis entre conhecimentos do Brain
+
+O Brain agora registra suporte, contradição e aliases de entidades com trechos literais, linhas e timestamps da fonte. Ao consultar uma contradição, as evidências dos dois lados ficam disponíveis para conferência.
+
+## v0.13.0-dev.1785684055 — 2026-08-02 · Dev
+
+### ✨ Extração do Brain por seções com cobertura retomável
+
+A extração grounded do Brain agora cobre conteúdos longos por seções e timestamps, preserva linhas de evidência e retoma apenas os segmentos pendentes ou que falharam.
+
+## v0.13.0-dev.1785681907 — 2026-08-02 · Dev
+
+### ✨ Citações verificáveis e clicáveis no chat
+
+Respostas do chat agora persistem evidências validadas de forma determinística,
+com fonte, trecho, localização e link navegável para a transcrição. Citações
+sem validação não recebem selo de evidência.
+
+## v0.13.0-dev.1785680287 — 2026-08-02 · Dev
+
+### ✨ Tokens MCP individuais e revogáveis
+
+O MCP agora usa tokens individuais por usuário, com escopos de leitura/escrita,
+expiração, último uso e revogação. Administradores gerenciam metadados sem ver
+segredos novamente e podem desativar a emissão de tokens por usuários.
+
+## v0.13.0-dev.1785678128 — 2026-08-02 · Dev
+
+### ✨ Saúde operacional da configuração de IA
+
+Administradores agora veem quais capacidades de IA estão ativas, o modelo efetivo, modalidades, uso e custo agregados, revisão de configuração e falhas recentes. A tela também permite verificar uma finalidade sem criar conteúdo e simular a compatibilidade de um modelo antes da troca.
+
+## v0.13.0-dev.1785674957 — 2026-08-02 · Dev
+
+### 🐛 Validação dos modelos efetivos na troca de chave OpenRouter
+
+Ao trocar a chave da OpenRouter, a Voxen agora confere os seis modelos efetivos — inclusive overrides — no catálogo autorizado da nova chave. Quando houver incompatibilidade, a tela informa a finalidade afetada e oferece alternativas compatíveis, sem alterar a configuração até a confirmação válida.
+
+## v0.13.0-dev.1785673503 — 2026-08-02 · Dev
+
+### ✨ Histórico auditável da configuração da instância
+
+Administradores agora consultam revisões ordenadas da configuração global, com executor, data e diff legível. Chaves, tokens e cookies continuam redigidos no histórico. É possível restaurar valores permitidos em uma nova revisão, sem restaurar segredos, e novos jobs e turnos de chat passam a registrar a revisão de configuração vigente.
+
+## v0.13.0-dev.1785672400 — 2026-08-02 · Dev
+
+### 🧹 Matriz de regressão impede acesso cruzado entre usuários
+
+O CI agora valida o isolamento de conteúdos, jobs, chat, Brain, eventos,
+armazenamento e MCP entre usuários. Publicadores web e worker também recusam
+progresso para jobs que não pertencem ao workspace informado.
+
+## v0.13.0-dev.1785670528 — 2026-08-02 · Dev
+
+### 🎨 Brain abre no mapa rápido 2D
+
+O Brain agora abre no mapa 2D recortado e mantém o mapa completo como uma
+escolha explícita. Ao explorar conexões, o painel também informa a relação,
+método, confiança e origem da evidência.
+
+## v0.13.0-dev.1785668893 — 2026-08-02 · Dev
+
+### 🎨 Raciocínios longos acompanham a rolagem do chat
+
+Quando a IA estiver mostrando um raciocínio longo antes da resposta final, o
+chat agora acompanha o conteúdo novo automaticamente. Raciocínios curtos ainda
+mantêm a pergunta visível, e uma rolagem manual continua sob seu controle.
+
+## v0.13.0-dev.1785667820 — 2026-08-02 · Dev
+
+### 🎨 Notas atualizadas ao abrir e visualizadas em Preview
+
+A página de Notas agora atualiza sua lista ao abrir e quando você volta à aba,
+mostrando sem recarregar manualmente as notas criadas pelo chat, MCP ou
+automações.
+
+As notas também abrem em **Preview**, com título e conteúdo protegidos contra
+edição acidental. Use **Editar** para abrir os campos de alteração.
+
+## v0.13.0-dev.1785664499 — 2026-08-02 · Dev
+
+### ✨ Base de conhecimento unificada para chat e MCP
+
+O chat e as integrações MCP agora consultam notas e transcrições na mesma busca,
+priorizando notas curadas sem esconder fontes mais relevantes. As respostas podem
+citar notas com links navegáveis e cada nota pode registrar múltiplas transcrições
+de origem.
+
+Também adotamos **Base de conhecimento** em português e **Knowledge base** em
+inglês como a nomenclatura consistente de toda a aplicação.
+
+## v0.13.0-dev.1785658852 — 2026-08-02 · Dev
+
+### ✨ Após confirmar uma ação, a Vox continua a conversa — e você pode sempre permitir
+
+Quando a Vox pede confirmação para criar uma nota e você confirma, ela volta a
+responder e segue o plano — não para só com a mensagem de “nota criada”.
+
+No card de confirmação há também **Sempre permitir**: a partir daí, criar nota
+não pede confirmação de novo neste usuário. A preferência fica salva na sua
+conta.
+
+## v0.13.0-dev.1785656401 — 2026-08-02 · Dev
+
+### 🎨 Atualização automática, notificações de job e toasts mais estáveis no PWA
+
+No app instalado (PWA), a nova versão passa a ser aplicada sozinha ao abrir o app
+quando o chat não está respondendo — sem o modal de atualização a cada deploy.
+
+Quando uma transcrição termina ou falha com o app em segundo plano e as
+notificações estão permitidas, o sistema mostra uma notificação com a identidade
+da Voxen (em vez de só um aviso interno ao voltar para a aba).
+
+Toasts antigos não ficam “presos” nem reaparecem em fila depois de muito tempo
+com a aba em background. Na tela de detalhe de um job em andamento, a
+transcrição pronta abre automaticamente ao concluir.
+
+## v0.13.0-dev.1785574769 — 2026-08-01 · Dev
+
+### 🎨 Os ícones animam ao passar o mouse no botão, e a barra estreita ganhou novidades e sair
+
+Dois acabamentos de interface que apareceram no uso do dia a dia.
+
+**O ícone agora anima pelo botão inteiro.** Antes, a animação de um ícone só
+acontecia se o ponteiro passasse exatamente por cima do desenho — encostar no
+botão que o contém não fazia nada, e em botão com texto ao lado ("Buscar na
+biblioteca") o desenho quase nunca era tocado. Agora qualquer parte do botão,
+link ou item de menu acende o ícone que ele contém, e passar direto no desenho
+continua funcionando como antes. Atravessar do botão para o desenho não
+reinicia nem interrompe a animação no meio: é um gesto só, do momento em que o
+ponteiro entra ao momento em que sai.
+
+Vale para o app inteiro — sidebar, barra do topo, cards da biblioteca, menus,
+diálogos —, sem exceção por tipo de botão. **No celular nada muda**: toque não
+é o mesmo que passar o mouse, e um toque não deixa mais o ícone parado no meio
+do desenho.
+
+**A barra estreita ficou completa.** Com a navegação recolhida, "Novidades" e
+"Sair" simplesmente não existiam: para se desconectar era preciso abrir a
+sidebar antes. Os dois agora fecham a barra estreita, no mesmo rodapé e na
+mesma ordem da sidebar aberta, cada um com o nome aparecendo ao lado quando o
+ponteiro para em cima. O "Sair" continua com o destaque avermelhado que avisa
+que a ação desconecta — e esse aviso, que no tema claro ficava quase invisível,
+voltou a ser legível nos quatro temas.
+
+**Quem usa o sistema com movimento reduzido não vê animação nenhuma**, nem pelo
+botão nem pelo ícone: a preferência do sistema continua desligando tudo.
+
+## v0.13.0-dev.1785572765 — 2026-08-01 · Dev
+
+### 🐛 O bloco "Pensando" para de abrir e fechar sozinho durante a resposta
+
+Em turnos em que a Vox alterna entre escrever e consultar ferramentas, o bloco
+**Pensando** abria e fechava a cada consulta, e o título trocava entre
+"Pensando" e "Pensou por 12s · 3 ferramentas" no mesmo ritmo — empurrando a
+conversa para cima e para baixo enquanto você tentava ler.
+
+Agora o bloco abre uma vez quando o turno começa e recolhe uma vez, um instante
+depois que a resposta termina; o título fica no shimmer "Pensando" durante todo
+o turno e só vira o resumo no fim. E o bloco passou a ser clicável também
+durante a resposta: se você abrir ou fechar na mão, ele fica exatamente como
+você deixou — nada mais mexe nele sozinho, nem quando a conexão cai e volta.
+
+Junto disso, o contador de versões `‹ 2/3 ›` das suas mensagens agora aparece e
+some com o ponteiro, igual aos botões de copiar e editar da mesma linha, em vez
+de ficar sempre na tela. Navegando pelo teclado, o contador continua acessível e
+reaparece assim que uma das setas recebe o foco.
+
+## v0.13.0-dev.1785569810 — 2026-08-01 · Dev
+
+### 🛠️ CI mais rápido e extensão sob o mesmo padrão de formatação
+
+O cache de build passou a ser separado por imagem também na publicação de
+release e na varredura de segurança. Antes as duas imagens dividiam o mesmo
+espaço de cache: na publicação uma sobrescrevia a da outra, e a varredura lia
+de um espaço que ninguém preenchia. Nos dois casos cada execução recomeçava
+quase do zero.
+
+Os arquivos da extensão do navegador passaram a seguir o mesmo padrão de
+formatação do resto do projeto, agora com verificação automática. Nada muda
+no que a extensão faz — é organização de código.
+
+## v0.13.0-dev.1785565397 — 2026-08-01 · Dev
+
+### ✨ Editar uma pergunta do chat e navegar entre as versões dela
+
+Agora dá para reescrever uma pergunta que você já enviou e recebê-la de volta
+com uma resposta nova, sem perder a anterior. É a metade de cima do
+versionamento de mensagens: a parte que aparece na tela.
+
+**Como usar.** Passe o mouse por cima de uma mensagem sua e, ao lado do
+"Copiar", aparece "Editar". A bolha vira uma caixa de texto já preenchida com o
+que você escreveu, e o botão "Reenviar" manda a versão nova. Enter reenvia,
+Shift+Enter quebra a linha e Esc fecha sem mandar nada.
+
+**Reenviar não apaga nada.** A pergunta anterior e a resposta que ela recebeu
+continuam guardadas. No ponto onde existe mais de uma versão aparece um
+contador `‹ 2/3 ›` junto da mensagem, e as setas alternam entre elas — a
+conversa inteira daquele ponto para a frente acompanha a versão escolhida.
+Trocar de versão não gasta uma resposta nova: só mostra a que já existia.
+
+**Reenviar o mesmo texto é válido.** Se você só quer outra tentativa da Vox,
+mande a mesma pergunta de novo — vira uma versão como qualquer outra.
+
+**Os anexos vêm junto.** Editar uma pergunta que tinha arquivo anexado mantém o
+arquivo na versão nova, sem precisar subir de novo.
+
+**Enquanto a Vox responde, os controles ficam travados.** Editar e trocar de
+versão só voltam quando a resposta em andamento termina.
+
+**Conversa sem versão nenhuma continua igual.** O contador só aparece onde
+existe mais de uma versão, então quem nunca editou uma pergunta não vê nada de
+novo além do botão "Editar".
+
+## v0.13.0-dev.1785560565 — 2026-08-01 · Dev
+
+### ✨ Chat preparado para versionar mensagens, com histórico preso à trilha em uso
+
+A conversa do chat deixou de ser uma lista e passou a ser uma árvore. Isso é o
+alicerce do versionamento de mensagens: em breve vai dar para editar uma
+pergunta sua e reenviá-la como uma trilha nova, mantendo a resposta anterior
+guardada e navegável em vez de perdida.
+
+Esta entrega é a metade de baixo — a que garante que a coisa funcione certo.
+Os botões de versionar e de navegar entre versões chegam na próxima.
+
+**O que muda desde já.** Cada mensagem passa a saber qual veio antes dela, e a
+conversa passa a lembrar em qual trilha você estava. Isso vale inclusive depois
+de recarregar a página: a trilha volta como estava, não como "a mensagem mais
+recente que existir no banco".
+
+**O que a Vox lê continua sendo só o que você está vendo.** Todo lugar que monta
+o histórico da conversa — a resposta que ela gera, a organização automática da
+memória quando a conversa fica longa, a restauração da tela ao abrir o chat —
+passou a percorrer exatamente a trilha em uso. Uma resposta de uma trilha
+abandonada nunca entra no contexto sem você ver.
+
+**Conversas antigas continuam intactas.** Nada precisa ser migrado e nada some:
+uma conversa criada antes desta mudança é lida como sempre foi, de ponta a
+ponta, e não ganha nenhum indicador de versão na tela.
+
+**A memória longa também respeita a trilha.** Quando a conversa fica grande e a
+Vox resume a parte antiga para caber no contexto, o resumo agora pertence à
+trilha em que foi feito e continua no caminho certo do histórico.
+
+## v0.13.0-dev.1785546542 — 2026-07-31 · Dev
+
+### 🐛 Chat mostra o raciocínio, compacta as ferramentas e guarda os anexos da mensagem
+
+Cinco acertos no chat, todos visíveis no uso do dia a dia.
+
+**Raciocínio aparece de novo.** O texto de raciocínio que o modelo emite volta
+a ser exibido na linha do tempo do turno, dentro do bloco "Pensando" (basta
+expandir). Quando o modelo não emite raciocínio — ou só sinaliza a etapa sem
+texto — o bloco continua mostrando o resumo operacional de sempre, sem espaço
+vazio nem indicador travado.
+
+**Ferramentas compactam assim que a resposta começa.** Antes o bloco de
+ferramentas ficava aberto ocupando a tela até o fim do stream, empurrando a
+resposta pra baixo justamente na hora de ler. Agora, no instante em que o
+primeiro trecho da resposta final chega, o bloco se recolhe num resumo curto
+("Pensou por 4,2s · 3 ferramentas") — e um clique reabre o detalhe. Se o agente
+voltar a usar ferramentas depois disso, o bloco reabre sozinho.
+
+**Documento anexado fica preso à mensagem.** O arquivo enviado pelo composer
+continua indo para a Base de conhecimento, mas agora também fica vinculado à mensagem em que
+foi enviado: os anexos aparecem logo abaixo da sua bolha no histórico e
+continuam lá depois de recarregar a página. São até 5 anexos por mensagem.
+
+Se o envio falhar — turno ocupado, limite de mensagens ou queda de conexão —
+os anexos continuam no composer, prontos pra tentar de novo. Antes eles sumiam
+e era preciso subir o arquivo outra vez.
+
+**O composer cresce com o texto.** Escrever mensagens longas ficou confortável:
+a caixa expande conforme você digita até uma altura máxima e só então passa a
+rolar internamente. No celular esse teto acompanha a tela, então o teclado
+aberto não engole a conversa.
+
+**Ícone de enviar alinhado ao resto do app.** O avião de papel deu lugar ao
+chevron, a mesma família de ícones usada em toda a interface. O chat do detalhe
+de transcrição mantém o avião de propósito: ali o chevron já significa
+expandir/recolher. Anexos de imagem também passam a mostrar ícone de imagem em
+vez de ícone de documento.
+
+## v0.13.0-dev.1785539796 — 2026-07-31 · Dev
+
+### 🎨 Tema padrão agora se chama Voxen, e os ícones ganham vida ao navegar
+
+O tema escuro padrão da aplicação passa a aparecer como **Voxen** no seletor de
+tema (menu do avatar, no canto superior direito). Antes ele se chamava "Linear",
+nome herdado da referência visual que inspirou a paleta — nada a ver com o
+produto. Só o nome mudou: as cores são exatamente as mesmas, o tema continua
+sendo o padrão de quem nunca escolheu outro, e quem já tinha algum tema salvo
+continua exatamente com o que escolheu.
+
+Os ícones também deixaram de ser estáticos em dois momentos:
+
+- **Ao abrir uma página**, o ícone que identifica a página se desenha uma vez,
+  junto com o conteúdo entrando.
+- **Ao abrir ou fechar a sidebar** — e ao abrir o menu no celular —, os ícones
+  de navegação se desenham em cascata, acompanhando o painel.
+
+A animação é curta e deliberadamente contida — só esses dois momentos, para
+pontuar a navegação sem virar ruído. Quem usa o sistema com "reduzir movimento"
+ativado não vê nenhuma dessas animações.
+
+## v0.13.0-dev.1785537512 — 2026-07-31 · Dev
+
+### ✨ Conectar contas de TikTok, Instagram e YouTube pela extensão
+
+Vídeo que só baixa com login — TikTok, Instagram, YouTube com restrição de
+idade — agora tem um caminho de verdade: a extensão do Voxen conecta a conta.
+
+Nas opções da extensão apareceu a seção **Contas de plataforma**, com um
+botão "Conectar" para cada uma das três. Faça login no site normalmente, no
+mesmo perfil do browser, clique em Conectar e pronto: a extensão pede a
+permissão daquele site na hora, pega a sessão e envia cifrada para a sua
+instância. Nada de exportar `cookies.txt` na mão nem instalar extensão de
+terceiro.
+
+A permissão é pedida por site, uma de cada vez, e só no momento do clique —
+a extensão não ganha acesso a nenhum outro site. O valor da sessão nunca é
+exibido de volta, nem na extensão nem no Voxen.
+
+Em **Integrações** (admin) há um painel de estado mostrando quais plataformas
+estão conectadas, quando foram conectadas e quais podem já ter expirado —
+sessões passam a ser sinalizadas como "possivelmente expiradas" depois de 7
+dias, e basta reconectar pela extensão. O botão "Desconectar" apaga a sessão
+guardada a qualquer momento.
+
+Conectar uma plataforma não mexe nas outras: cada uma é substituída
+isoladamente.
+
+## v0.13.0-dev.1785537512 — 2026-07-31 · Dev
+
+### 🐛 Conteúdo em markdown renderizado, reprocessar direto da fila e campo de link em destaque
+
+Quatro correções no dia a dia de capturar e ler conteúdo.
+
+**Análises em markdown voltam a aparecer formatadas.** Posts do X analisados por
+IA (e qualquer conteúdo sem marcação de tempo) eram exibidos pelo leitor de
+transcrição, que junta tudo num parágrafo só e mostra `##` e `**` crus. Agora a
+página escolhe o modo de exibição pelo próprio conteúdo: com marcações de tempo,
+segue a leitura por trechos clicáveis; sem elas, renderiza markdown com títulos,
+listas, tabelas e negrito.
+
+**Reprocessar item da fila.** Itens que falharam ou foram cancelados agora têm um
+botão de reprocessar na própria fila — não é mais preciso recolar o link. Se o
+conteúdo já estiver em processamento, já tiver sido indexado ou o servidor
+recusar, o motivo aparece num aviso e o item continua como estava.
+
+**Campo de colar link com destaque.** O placeholder longo com exemplos de URL deu
+lugar a um "Cole o link aqui" direto, e o campo ganhou superfície elevada, borda
+mais forte e realce de foco — é a ação principal da tela de conteúdo.
+
+**Linha do tempo do job alinhada.** Os marcadores de cada etapa no histórico de um
+job agora ficam centrados na linha vertical que os conecta.
+
+## v0.13.0-dev.1785534442 — 2026-07-31 · Dev
+
+### 🐛 Extensão mantém o progresso do envio ao fechar e reabrir o popup
+
+Fechar o popup da extensão não perde mais o acompanhamento do envio. Antes, o
+progresso vivia só na janelinha aberta: bastava clicar fora para o Chrome
+descartar tudo e, ao reabrir, a extensão mostrava a tela inicial mesmo com a
+transcrição rodando.
+
+Agora, ao reabrir o popup:
+
+- **Envio em andamento** volta com a barra de progresso e a etapa real
+  (baixando, transcrevendo, gerando resumo…), além do botão "Ver na fila".
+- **Envio que terminou com o popup fechado** aparece com o resultado — resumo e
+  botão para abrir o conteúdo, ou a mensagem de erro se falhou. O resultado é
+  mostrado uma vez; depois disso o popup volta ao normal.
+- **Instância fora do ar ou sem rede** avisa que o acompanhamento está
+  indisponível no momento, sem sumir com o envio nem fingir que terminou — e
+  sem travar o botão: não saber em que pé está o envio anterior não impede
+  mandar a próxima página. Isso vale também para instância que fica pendurada
+  em vez de recusar a conexão: agora toda requisição tem prazo, então um
+  backend travado atrás de um proxy de pé não deixa mais o botão preso em
+  "Salvo — processando".
+- **Acompanhamento que nunca resolve** (instância trocada nas opções, job
+  apagado no servidor) é descartado depois de algumas horas em vez de ficar
+  para sempre. O prazo conta a partir da última vez em que o servidor
+  confirmou o envio em andamento, e não do momento do envio: fila cheia com
+  vários vídeos longos à frente não faz mais o último da fila perder a
+  notificação por tempo de espera.
+
+Também nesta entrega, acabamento da extensão: cantos mais arredondados no
+popup, página de conexão reorganizada em duas colunas (cabe sem rolagem, com o
+bloco "Token Bearer" separado das ações principais por um divisor) e ícones da
+barra do Chrome regerados a partir da arte em alta resolução, agora centrados e
+mais nítidos em 16 px.
+
+## v0.13.0-dev.1785524483 — 2026-07-31 · Dev
+
+### ✨ Escolha manual de modelo por finalidade nas integrações admin
+
+A configuração da OpenRouter continua exigindo só a chave no onboarding,
+mas agora o admin pode sobrescrever individualmente o modelo usado em cada
+uma das 6 finalidades (chat, transcrição, busca na web, visão, documentos
+e análise do X) em **Integrações**.
+
+A nova seção mostra o modelo padrão e o override ativo de cada finalidade,
+com um diálogo de busca sobre o catálogo da sua chave OpenRouter — a lista
+já vem filtrada pelos modelos compatíveis com aquela finalidade (ex.: só
+modelos com suporte a imagem aparecem na finalidade de visão). Tentar
+escolher um modelo incompatível é bloqueado com uma mensagem explicando o
+motivo, e um botão "Voltar ao padrão" remove o override a qualquer
+momento. Trocar a chave da OpenRouter não apaga overrides já configurados.
+
+## v0.13.0-dev.1785522932 — 2026-07-31 · Dev
+
+### 🎨 Extensão de browser redesenhada com a identidade visual do Voxen
+
+O popup e a página de opções da extensão de browser agora usam os mesmos
+tokens de cor e a mesma tipografia do Voxen web (Bricolage Grotesque + Inter,
+temas padrão/zinc/emerald/light) — antes a extensão tinha uma paleta
+verde/indigo própria, sempre escura, desconectada do resto do produto.
+
+- **Tema segue a instância conectada**: se você já tem um tema escolhido no
+  Voxen (`Conta → Aparência`), a extensão aplica o mesmo tema assim que
+  detecta a instância — tanto no popup quanto na página de opções. Sem
+  instância conectada ainda, ela segue o esquema claro/escuro do sistema
+  operacional.
+- **Uma única tela de conexão**: a página de opções (`chrome-extension://.../options.html`)
+  passa a ser a única superfície onde a extensão se conecta a uma instância
+  Voxen. O popup não reimplementa mais esse formulário — quando ainda não há
+  instância conectada, ele mostra um estado vazio com um botão que abre as
+  opções, eliminando a duplicação de fluxo entre popup e opções.
+- **Progresso mostra a etapa real**: enquanto um job está processando, o
+  popup exibe a etapa atual (baixando, transcrevendo, gerando resumo…) em vez
+  de um "Processando…" genérico, sempre que o status do job traz essa
+  informação.
+- Todos os estados existentes (detecção de instância, envio de aba,
+  progresso, resultado com resumo, ações pós-envio) continuam disponíveis —
+  nenhuma capacidade foi removida, só reorganizada.
+
+## v0.13.0-dev.1785520081 — 2026-07-31 · Dev
+
+### 🐛 Busca na Base de conhecimento quebrava o turno inteiro do chat
+
+Corrigido bug que fazia o agente de chat falhar sempre que usava a ferramenta de busca na Base de conhecimento (`search_transcripts`) — um campo de data era devolvido em formato incompatível com o que o modelo de IA espera, derrubando a resposta inteira com erro técnico. O mesmo problema foi corrigido no servidor MCP.
+
+## v0.13.0-dev.1785517091 — 2026-07-31 · Dev
+
+### 🐛 Retry com impersonate=chrome do TikTok nunca era acionado
+
+Corrigido bug de controle de fluxo que fazia a mitigação de retry do TikTok (forçar impersonation de browser via `curl_cffi` quando o download falha com "unable to extract universal data for rehydration") nunca ser executada — o erro já virava falha permanente antes do retry ter chance de rodar. O TikTok está passando por uma instabilidade conhecida e ainda não corrigida no `yt-dlp` upstream; esse retry agora funciona de verdade e recupera parte dos downloads que antes falhavam de cara.
+
+## v0.13.0-dev.1785440574 — 2026-07-30 · Dev
+
+### 🐛 Cabeçalhos, chat e atualização novamente consistentes
+
+As páginas operacionais agora começam logo após o cabeçalho flutuante e usam um
+padrão único de título, descrição, identificação da área e ícone colorido
+animado. A página da extensão também passa a aproveitar a mesma largura das
+demais telas.
+
+O histórico do chat volta a acompanhar a largura do campo de mensagem, e o
+botão de envio mostra um pictograma de envio claro. O modal de nova versão deixa
+de desenhar uma moldura roxa ao redor de todo o conteúdo quando recebe foco.
+
+## v0.13.0-dev.1785431966 — 2026-07-30 · Dev
+
+### 🐛 Rótulos legíveis ao explorar o Brain
+
+O hover dos nós do Grafo agora usa uma superfície compatível com o tema ativo,
+mantendo título e fundo com contraste adequado no modo escuro. Títulos muito
+longos também são limitados para não atravessarem toda a visualização.
+
+## v0.13.0-dev.1785429740 — 2026-07-30 · Dev
+
+### 🐛 Interface mais estável, legível e consistente
+
+A navegação entre telas deixa de exibir conteúdo da rota anterior ou saltar o
+scroll durante a troca. O carregamento preserva o shell da aplicação, e as
+páginas operacionais passam a aproveitar melhor a largura disponível sem
+alongar excessivamente textos de leitura.
+
+No mobile, o menu lateral mantém animação, foco, sombra e bloqueio da página
+sincronizados até o fim do gesto. O editor de notas reorganiza título, status e
+ações para manter Preview e Salvar acessíveis em telas estreitas; `/` e `/chat`
+também passam a compartilhar o mesmo comportamento de navegação.
+
+O Grafo ganha contraste confiável ao passar o mouse ou selecionar nós, resumo
+sem marcadores Markdown crus e preparação antecipada do modo 3D. No chat, a
+timeline mostra estados operacionais seguros, preserva durações concluídas e
+oferece mais espaço para tabelas e outros dados estruturados.
+
+O aviso de nova versão ganhou uma área maior e rolável com cabeçalho e ações
+sempre visíveis. Detalhes da fila e a página de novidades receberam correções
+de hierarquia e navegação.
+
+Por fim, instruções e comentários indevidos deixam de virar tags. Rótulos
+históricos conhecidos são saneados no deploy e conteúdos que ficarem sem tags
+voltam automaticamente ao processamento idempotente.
+
+## v0.13.0-dev.1785406211 — 2026-07-30 · Dev
+
+### 🐛 Configuração simples e interface estável no uso diário
+
+A configuração da OpenRouter passa a pedir somente a chave de API e aplica
+automaticamente os modelos recomendados para conversa, análise e transcrição.
+O processamento continua especializado por formato: PDFs usam o parser Mistral,
+outros documentos usam MarkItDown e imagens, áudio e vídeo seguem pela
+OpenRouter.
+
+Notificações agora aparecem uma por vez durante cinco segundos. A Fila mantém
+os dados visíveis e reconcilia mudanças em segundo plano, sem trocar a lista por
+skeletons periódicos nem reiniciar itens que não mudaram.
+
+No mobile, gestos horizontais em tabelas, conteúdos roláveis e no canvas do
+Grafo não abrem mais a sidebar, e o menu fechado não deixa sombra na lateral.
+A atualização da aplicação também passa a respeitar a versão exata do build,
+inclusive quando um service worker já está aguardando, e só ativa a nova versão
+quando a pessoa confirma.
+
+## v0.13.0-dev.1785376533 — 2026-07-29 · Dev
+
+### 🐛 Atualizações deixam de prender a interface antiga
+
+O aviso de nova versão passa a usar a versão exata do pacote e prepara a
+atualização do app em segundo plano. Navegações online deixam de reutilizar o
+HTML antigo do PWA, evitando que uma interface desatualizada continue ativa
+depois de um deploy.
+
+O modal mantém cabeçalho e ações sempre acessíveis e concentra a rolagem em uma
+única região central, inclusive quando as notas da versão são extensas.
+
+## v0.13.0-dev.1785366299 — 2026-07-29 · Dev
+
+### 🐛 Atualizações e páginas com comportamento consistente
+
+O aviso de nova versão agora mostra somente as notas da versão correta, mantém
+cabeçalho e ações visíveis e permite rolar todo o conteúdo central por mouse,
+trackpad, toque ou teclado. Carregamento, indisponibilidade e falha possuem
+estados próprios, e adiar não é mais confundido com aplicar a atualização.
+
+As páginas de conteúdo passaram a compartilhar larguras, margens e ritmo
+vertical adequados a cada tipo de trabalho, aproveitando melhor a tela e
+evitando mudanças bruscas de tamanho durante a navegação.
+
+O chat também informa o início do preparo imediatamente, executa etapas
+independentes em paralelo e registra separadamente o tempo interno e a espera
+pelo primeiro evento do modelo.
+
+## v0.13.0-dev.1785359396 — 2026-07-29 · Dev
+
+### ✨ Superfícies mais claras, fluidas e prontas para uso
+
+A navegação mobile deixa de repetir “Início” e passa a abrir um menu lateral
+parcial que acompanha o gesto da borda ou do centro da tela, com foco contido,
+fechamento acessível e respeito a movimento reduzido.
+
+As telas de processamento agora descrevem a etapa real de vídeos, páginas,
+documentos, imagens e conteúdo do X, preservam o histórico recebido em tempo
+real e mostram a duração de cada fase sem redirecionar antes da conclusão.
+
+O Brain passa a ser reconciliado mesmo sem visitas ao Grafo. Novos conteúdos
+invalidam o snapshot e atualizam a página aberta em tempo real; o Grafo inicia
+sempre na visualização completa e mantém os títulos legíveis no tema escuro.
+
+Novidades ganhou fluxo contínuo, busca, filtros e paginação. O aviso de nova
+versão ficou maior, explica a mudança de versão e oferece acesso direto ao
+histórico completo. O onboarding continua simples, enquanto a configuração
+avançada dos modelos permanece disponível para administradores.
+
+## v0.13.0-dev.1785355315 — 2026-07-29 · Dev
+
+### ✨ Interface mais clara, densa e consistente
+
+A Voxen ganhou uma nova fundação visual inspirada nos princípios de hierarquia
+e foco do Linear. O tema escuro principal, a sidebar mais confortável, os
+ícones animados e os novos layouts reutilizáveis aproveitam melhor a tela sem
+adicionar ruído.
+
+As transições também respeitam a preferência de movimento reduzido, e a
+navegação mobile mantém o drawer leve e sem destinos redundantes.
+
+## v0.13.0-dev.1785351539 — 2026-07-29 · Dev
+
+### ✨ OpenRouter pronta para uso com uma única chave
+
+O onboarding agora pede somente a chave da OpenRouter e configura
+automaticamente os modelos recomendados para conversa, transcrição, imagens,
+documentos, pesquisa e conteúdo do X. O administrador continua podendo trocar
+cada modelo depois na página de Configuração.
+
+PDFs passam a usar o parser Mistral OCR pela OpenRouter. A geração automática de
+tags também ficou mais confiável: respostas estruturadas evitam tags vazias e
+conteúdos incompletos entram numa reconciliação em segundo plano, com tentativas
+limitadas e diagnóstico preservado.
+
+## v0.13.0-dev.1785340742 — 2026-07-29 · Dev
+
+### ✨ Chat mobile e ingestão de links mais confiáveis
+
+- Melhora a abertura do menu no mobile, a biblioteca de notas e as telas de atualizações.
+- Mostra o andamento real de transcrições e análises, inclusive após reconectar a página.
+- Trata links enviados no chat de acordo com a intenção: processa quando solicitado e pede esclarecimento quando necessário.
+
+## v0.13.0-dev.1785219429 — 2026-07-28 · Dev
+
+### 🐛 Chat mais estável, rápido e confiável
+
+O chat agora descreve corretamente o que está fazendo antes de responder, prepara em paralelo
+as informações independentes de que precisa e mede o tempo de raciocínio desde o início real da
+solicitação.
+
+Também corrigimos a confirmação de criação de notas, inclusive para os identificadores usados
+pelo provedor de IA, e reduzimos remontagens e movimentos involuntários da conversa durante
+respostas e recuperações.
+
 ## v0.12.0-dev.1785168327 — 2026-07-27 · Dev
 
 ### 🔒 Atualização de segurança nos componentes internos da Voxen
@@ -34,7 +736,7 @@ Isso mantém a organização por tags rápida mesmo quando a base de conheciment
 
 ### ✨ Biblioteca Viva organiza conteúdos por semana, Inbox, pastas e tags
 
-A Biblioteca agora separa os conteúdos por semana de captura e permite reduzir o acervo pela semana atual ou anterior. O Inbox destaca materiais que ainda não entraram em uma pasta, enquanto pastas e tags aparecem como filtros visíveis com contagem de conteúdos.
+A Biblioteca agora separa os conteúdos por semana de captura e permite reduzir a Base de conhecimento pela semana atual ou anterior. O Inbox destaca materiais que ainda não entraram em uma pasta, enquanto pastas e tags aparecem como filtros visíveis com contagem de conteúdos.
 
 As combinações de busca, período, pasta, tag e status permanecem na URL para que uma organização possa ser compartilhada ou retomada. A Vox também recebe a pasta, tags e data de captura nos resultados da Biblioteca, deixando suas sugestões e leituras de contexto mais situadas.
 
@@ -305,7 +1007,7 @@ acompanhamento automático.
 
 ## v0.11.0-dev.1784071986 — 2026-07-14 · Dev
 
-### ✨ Agente lista acervo por data de ingestão (resuma minha semana)
+### ✨ Agente lista a Base de conhecimento por data de ingestão (resuma minha semana)
 
 Novas tools `list_transcripts` e `list_notes` com `since`/`until` em `createdAt`.
 Perguntas como “resuma minha semana” passam a listar o intake real da janela
@@ -407,7 +1109,7 @@ deixam de ficar presos em uma versão antiga após novos deploys.
 
 ### 🐛 Agente in-app ganha ferramenta para enfileirar transcrição de links compartilhados
 
-O agente respondia que não tinha acesso à internet e não conseguia abrir links quando o usuário colava uma URL do YouTube, X ou qualquer página — apesar do Voxen ser justamente uma plataforma de ingestão de links. A causa era a falta de uma ferramenta de enfileiramento: o agente só enxergava tools de leitura sobre o que já estava transcrito no acervo. Agora ele também tem `request_transcription` (enfileira a URL nova, ou aponta direto a transcrição já existente) e `get_job_status` (acompanha o job até concluir), espelhando o par que o servidor MCP já usava para agentes externos.
+O agente respondia que não tinha acesso à internet e não conseguia abrir links quando o usuário colava uma URL do YouTube, X ou qualquer página — apesar do Voxen ser justamente uma plataforma de ingestão de links. A causa era a falta de uma ferramenta de enfileiramento: o agente só enxergava tools de leitura sobre o que já estava transcrito na Base de conhecimento. Agora ele também tem `request_transcription` (enfileira a URL nova, ou aponta direto a transcrição já existente) e `get_job_status` (acompanha o job até concluir), espelhando o par que o servidor MCP já usava para agentes externos.
 
 ## v0.11.0-dev.1783907036 — 2026-07-12 · Dev
 
@@ -521,8 +1223,8 @@ O chat ganhou uma cara nova e profissional: bloco de ferramentas que mostra
 "Trabalhando" com contador enquanto roda e colapsa num resumo (nº de ações,
 famílias e duração) ao terminar, com cada ação abrindo o detalhe; raciocínio em
 tempo real com efeito "Pensando" que vira "Pensou por Xs" recolhível; e um novo
-composer com anexo de arquivos (imagem, áudio/vídeo e documentos entram direto no
-acervo), estado do envio em chip e envio por Enter. O chat abre já no fim da
+composer com anexo de arquivos (imagem, áudio/vídeo e documentos entram direto na
+Base de conhecimento), estado do envio em chip e envio por Enter. O chat abre já no fim da
 conversa e a barra de rolagem fica na borda da tela, com o conteúdo centralizado.
 
 No shell, os botões de som e de limpar conversa passaram para o cabeçalho, ao lado
@@ -582,10 +1284,10 @@ o switch para voltar a rotear pelo agente.
 
 ## v0.11.0-dev.1783821598 — 2026-07-11 · Dev
 
-### ✨ Regenerar títulos de todo o acervo com IA
+### ✨ Regenerar títulos de toda a Base de conhecimento com IA
 
 Novo botão **Regenerar títulos** na biblioteca: reescreve com IA os títulos de
-todos os conteúdos, drenando o acervo em lotes. Útil depois das melhorias na
+todos os conteúdos, drenando a Base de conhecimento em lotes. Útil depois das melhorias na
 geração de título (sempre em português, sem vazar o "raciocínio" do modelo) —
 conteúdos antigos com título ruim são atualizados; os que já estão bons são
 mantidos. Consome créditos de IA (uma chamada por conteúdo).

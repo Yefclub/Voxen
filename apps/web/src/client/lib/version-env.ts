@@ -2,11 +2,13 @@
 // exposta por `GET /api/version`. Lógica pura — sem DOM, sem fetch, sem React —
 // pra ficar 100% testável via `bun test`.
 //
-// Builds de dev (Easypanel source deploy, branch `dev`) carregam a versão no
-// formato `X.Y.(Z+1)-dev.<unix_ts>` (ver `formatDevVersionFromDeploy` em
-// apps/web/src/index.ts). Uma release publicada carrega semver "limpo", sem
-// esse sufixo (ex.: `0.11.0`). A presença do marcador `-dev.` é o único
-// critério usado aqui pra distinguir os dois ambientes.
+// Builds de dev carregam a versão canônica `X.Y.Z-dev.<unix_ts>` produzida pelo
+// workflow version-dev. O fallback de source deploy só sintetiza
+// `X.Y.(Z+1)-dev.<unix_ts>` quando o package.json ainda contém uma versão
+// estável (ver `formatDevVersionFromDeploy` em apps/web/src/index.ts). Uma
+// release publicada carrega semver "limpo", sem esse sufixo (ex.: `0.11.0`).
+// A presença do marcador `-dev.` é o único critério usado aqui pra distinguir
+// os dois ambientes.
 
 export type VersionEnvironment = 'dev' | 'prod';
 

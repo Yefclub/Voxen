@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { motion } from 'motion/react';
 import {
   ArrowLeft,
   Archive,
@@ -17,12 +16,13 @@ import {
   MessageSquare,
   NotebookPen,
   RotateCcw,
+  RefreshCw,
   Sparkles,
   Tags,
   Trash2,
   Wand2,
-} from 'lucide-react';
-import { toast } from 'sonner';
+} from '@/components/ui/icons';
+import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -31,7 +31,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
 import { apiPost, ApiError } from '../lib/api';
 import { formatDateTime, formatDuration, formatUsd } from '../lib/format';
-import { AnimatedPage } from '../components/motion/animated-page';
+import { PageShell } from '../components/ui/page-shell';
 import { TranscriptViewer } from '../components/ui/transcript-viewer';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
@@ -47,6 +47,7 @@ import {
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 import { cn } from '../lib/utils';
 import { buildTranscriptChatMessage, type ChatHandoffState } from '../lib/chat-handoff';
+import { stripMarkdownFrontmatter, transcriptRenderMode } from '../lib/transcript-render';
 import { TranscriptChatDock } from '../components/library/transcript-chat-dock';
 import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
 
@@ -80,6 +81,18 @@ interface TranscriptDetail {
   plainText: string;
   summaryMd: string | null;
   frontmatter: unknown;
+  sourceChecksum: string | null;
+  sourceVersion: number;
+  sourceCollectedAt: string | null;
+  sourceMetadata: unknown;
+  sourceRefreshStatus: 'CURRENT' | 'CHECKING' | 'FAILED';
+  sourceRefreshError: string | null;
+  sourceVersions: Array<{
+    version: number;
+    checksum: string;
+    collectedAt: string;
+    metadata: unknown;
+  }>;
   archivedAt: string | null;
   trashedAt: string | null;
   createdAt: string;
@@ -140,6 +153,27 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
+  const [refreshingSource, setRefreshingSource] = useState(false);
+
+  useEffect(() => {
+    if (data?.transcript.sourceRefreshStatus !== 'CHECKING') return;
+    const timer = window.setInterval(() => void refresh(), 7_500);
+    return () => window.clearInterval(timer);
+  }, [data?.transcript.sourceRefreshStatus, refresh]);
+
+  async function refreshSource(): Promise<void> {
+    if (!id || refreshingSource) return;
+    setRefreshingSource(true);
+    try {
+      await apiPost(`/api/transcripts/${id}/refresh`, {});
+      toast.success(translate('library.sourceRefreshQueued'));
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : translate('library.sourceRefreshError'));
+    } finally {
+      setRefreshingSource(false);
+    }
+  }
 
   async function generateSummary(force: boolean): Promise<void> {
     if (!id) return;
@@ -362,15 +396,15 @@ export function TranscricaoDetalhePage(): React.ReactElement {
 
   if (!loading && error) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-10">
+      <PageShell width="wide">
         <FetchError message={error} onRetry={refresh} />
-      </div>
+      </PageShell>
     );
   }
 
   if (loading || !data) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-10">
+      <PageShell width="wide">
         <Skeleton className="h-7 w-32 mb-8" />
         <Skeleton className="h-12 w-3/4 mb-3" />
         <Skeleton className="h-5 w-1/3 mb-10" />
@@ -382,7 +416,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           </div>
           <Skeleton className="h-64 rounded-2xl" />
         </div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -393,11 +427,23 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const isDocumentTranscript = t.transcriptionMethod === 'DOCUMENT';
   const canUseContextualActions = t.status !== 'TRASH';
   const contentMarkdown = stripMarkdownFrontmatter(data.markdown);
+  const renderMode = transcriptRenderMode({
+    source: t.source,
+    transcriptionMethod: t.transcriptionMethod,
+    markdown: data.markdown,
+  });
+  const contentHeading = isDocumentTranscript
+    ? translate('library.documentAnalysis')
+    : isVisualTranscript
+      ? translate('library.analysis')
+      : t.transcriptionMethod === 'X_SEARCH'
+        ? translate('library.postAnalysis')
+        : translate('library.content');
   const previewSrc = resolveTranscriptPreviewSrc(t.id, t.thumbnailUrl);
 
   return (
-    <AnimatedPage>
-      <div className="relative mx-auto max-w-5xl overflow-x-clip px-4 pb-28 pt-5 sm:px-6 sm:pb-32 sm:pt-8 lg:px-8 lg:pt-10">
+    <>
+      <PageShell width="wide" className="relative overflow-x-clip pb-28 sm:pb-32">
         <Button variant="ghost" size="sm" asChild className="mb-6 -ml-2 hidden sm:inline-flex">
           <Link to="/transcricoes">
             <ArrowLeft className="h-3.5 w-3.5" />
@@ -405,12 +451,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
           </Link>
         </Button>
 
-        <motion.header
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="mb-6 space-y-4 sm:mb-8"
-        >
+        <header className="mb-6 space-y-4 sm:mb-8">
           <div className="flex items-center gap-2 flex-wrap">
             {/* Source primário — clarifica origem do conteúdo */}
             <Badge variant={t.source === 'WEB' ? 'muted' : 'success'} className="text-[10px]">
@@ -496,30 +537,21 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               {translate('library.chatBarHint')}
             </p>
           )}
-        </motion.header>
+        </header>
 
         <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-8">
           {/* Coluna principal: resumo + transcrição */}
-          <motion.article
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, delay: 0.1 }}
-            className="min-w-0 space-y-7 sm:space-y-8"
-          >
+          <article className="min-w-0 space-y-7 sm:space-y-8">
             <SummaryBlock
               summary={t.summaryMd}
               generating={generating}
               onGenerate={() => void generateSummary(false)}
               t={translate}
             />
-            {t.source === 'WEB' || isVisualTranscript || isDocumentTranscript ? (
+            {renderMode === 'markdown' ? (
               <section className="space-y-3">
                 <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-subtle)] sm:text-lg">
-                  {isDocumentTranscript
-                    ? translate('library.documentAnalysis')
-                    : isVisualTranscript
-                      ? translate('library.analysis')
-                      : translate('library.content')}
+                  {contentHeading}
                 </h2>
                 <Card elevated className="border-[var(--color-app-border)]/80">
                   <CardContent className="px-5 py-5 sm:px-6">
@@ -530,15 +562,10 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             ) : (
               <TranscriptViewer markdown={data.markdown} />
             )}
-          </motion.article>
+          </article>
 
           {/* Sidebar: metadata + thumbnail */}
-          <motion.aside
-            initial={{ opacity: 0, x: 8 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.45, delay: 0.18 }}
-            className="flex flex-col gap-4 self-start lg:sticky lg:top-24"
-          >
+          <aside className="flex flex-col gap-4 self-start lg:sticky lg:top-24">
             <Card className="order-2 overflow-hidden p-0 lg:order-none" elevated>
               {t.originalObjectKey && t.originalMimeType ? (
                 <UploadMediaViewer
@@ -600,6 +627,15 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                     Icon={Calendar}
                     label={translate('library.published')}
                     value={formatDateTime(published, locale)}
+                  />
+                )}
+                {t.source === 'WEB' && (
+                  <SourceFreshness
+                    transcript={t}
+                    locale={locale}
+                    translate={translate}
+                    refreshing={refreshingSource}
+                    onRefresh={() => void refreshSource()}
                   />
                 )}
                 {t.model && (
@@ -719,9 +755,9 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 </a>
               </Button>
             )}
-          </motion.aside>
+          </aside>
         </div>
-      </div>
+      </PageShell>
 
       {canUseContextualActions && (
         <TranscriptChatDock
@@ -754,7 +790,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         onConfirm={() => hardDelete()}
         loading={deleting}
       />
-    </AnimatedPage>
+    </>
   );
 }
 
@@ -999,11 +1035,6 @@ function TagsControl({
   );
 }
 
-function stripMarkdownFrontmatter(markdown: string): string {
-  const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdown);
-  return match ? markdown.slice(match[0].length).trimStart() : markdown;
-}
-
 function SummaryBlock({
   summary,
   generating,
@@ -1138,6 +1169,72 @@ function SummaryBlock({
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+function SourceFreshness({
+  transcript,
+  locale,
+  translate,
+  refreshing,
+  onRefresh,
+}: {
+  transcript: Pick<
+    TranscriptDetail,
+    | 'sourceCollectedAt'
+    | 'sourceVersion'
+    | 'sourceRefreshStatus'
+    | 'sourceRefreshError'
+    | 'sourceVersions'
+  >;
+  locale: Locale;
+  translate: TranslateFn;
+  refreshing: boolean;
+  onRefresh: () => void;
+}): React.ReactElement {
+  const checking = transcript.sourceRefreshStatus === 'CHECKING';
+  const failed = transcript.sourceRefreshStatus === 'FAILED';
+  const status = checking
+    ? translate('library.sourceChecking')
+    : failed
+      ? translate('library.sourceRefreshFailed')
+      : translate('library.sourceCurrent');
+  const statusClass = checking ? 'text-amber-300' : failed ? 'text-red-300' : 'text-emerald-400';
+  return (
+    <div className="space-y-2 border-t border-[var(--color-app-border)] pt-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
+          <RefreshCw className={cn('h-3.5 w-3.5', checking && 'animate-spin')} />
+          {translate('library.sourceVersion', { version: transcript.sourceVersion || 1 })}
+        </div>
+        <span className={cn('text-[11px]', statusClass)}>{status}</span>
+      </div>
+      {transcript.sourceCollectedAt && (
+        <p className="text-[11px] text-[var(--color-app-muted)]">
+          {translate('library.sourceCollected')}:{' '}
+          {formatDateTime(new Date(transcript.sourceCollectedAt), locale)}
+        </p>
+      )}
+      {transcript.sourceVersions.length > 1 && (
+        <p className="text-[11px] text-[var(--color-app-muted)]">
+          {translate('library.sourceVersionHistory', { count: transcript.sourceVersions.length })}
+        </p>
+      )}
+      {failed && transcript.sourceRefreshError && (
+        <p className="text-[11px] leading-relaxed text-red-300">{transcript.sourceRefreshError}</p>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8 w-full text-[11px]"
+        disabled={checking || refreshing}
+        onClick={onRefresh}
+      >
+        <RefreshCw className={cn('h-3 w-3', (checking || refreshing) && 'animate-spin')} />
+        {translate('library.sourceRefresh')}
+      </Button>
+    </div>
   );
 }
 

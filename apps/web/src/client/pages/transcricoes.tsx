@@ -15,8 +15,8 @@ import {
   Trash2,
   Type,
   X,
-} from 'lucide-react';
-import { toast } from 'sonner';
+} from '@/components/ui/icons';
+import { toast } from '@/lib/toast';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
@@ -37,7 +37,7 @@ import {
   libraryWeekBounds,
   type LibraryPeriod,
 } from '../lib/library-organization';
-import { AnimatedPage } from '../components/motion/animated-page';
+import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { ContentIngestCard } from '../components/ingest/content-ingest-card';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
@@ -376,7 +376,7 @@ export function TranscricoesPage(): React.ReactElement {
     }
   }
 
-  // Regenera os títulos via IA drenando o acervo por cursor. Custa créditos
+  // Regenera os títulos via IA drenando a Base de conhecimento por cursor. Custa créditos
   // (1 chamada LLM por conteúdo); títulos já bons voltam KEEP e são mantidos.
   async function regenerateTitles(): Promise<void> {
     if (regeneratingTitles) return;
@@ -456,19 +456,15 @@ export function TranscricoesPage(): React.ReactElement {
   const captureWeeks = useMemo(() => groupByCaptureWeek(items), [items]);
 
   return (
-    <AnimatedPage>
-      <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-[var(--color-app-muted)] font-medium">
-              <Library className="h-3 w-3 text-[var(--color-app-muted)]" />
-              {t('library.eyebrow')}
-            </div>
-            <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">
-              {t('library.title')}
-            </h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+    <PageShell width="wide">
+      <PageHeader
+        eyebrow={t('library.eyebrow')}
+        icon={Library}
+        iconClassName="text-violet-400"
+        title={t('library.title')}
+        description={t('library.description')}
+        actions={
+          <>
             <Button
               type="button"
               variant="outline"
@@ -533,309 +529,309 @@ export function TranscricoesPage(): React.ReactElement {
                 {t('library.clearFolders')}
               </Button>
             )}
-          </div>
-        </header>
+          </>
+        }
+      />
 
-        <ConfirmDialog
-          open={confirmClearOpen}
-          onOpenChange={setConfirmClearOpen}
-          variant="destructive"
-          title={t('library.clearFolders')}
-          description={t('library.clearFoldersConfirm')}
-          confirmLabel={t('library.clearFolders')}
-          loading={clearingFolders}
-          onConfirm={clearAllFolders}
+      <ConfirmDialog
+        open={confirmClearOpen}
+        onOpenChange={setConfirmClearOpen}
+        variant="destructive"
+        title={t('library.clearFolders')}
+        description={t('library.clearFoldersConfirm')}
+        confirmLabel={t('library.clearFolders')}
+        loading={clearingFolders}
+        onConfirm={clearAllFolders}
+      />
+
+      <ConfirmDialog
+        open={confirmRetitleOpen}
+        onOpenChange={setConfirmRetitleOpen}
+        title={t('library.retitleAction')}
+        description={t('library.retitleConfirm')}
+        confirmLabel={t('library.retitleAction')}
+        loading={regeneratingTitles}
+        onConfirm={regenerateTitles}
+      />
+
+      <ContentIngestCard />
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none z-10" />
+        <input
+          type="text"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t('library.searchPlaceholder')}
+          autoComplete="off"
+          spellCheck={false}
+          className="w-full h-10 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/50 pl-9 pr-10 text-sm text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60 focus:ring-1 focus:ring-zinc-500/20 transition-colors"
         />
-
-        <ConfirmDialog
-          open={confirmRetitleOpen}
-          onOpenChange={setConfirmRetitleOpen}
-          title={t('library.retitleAction')}
-          description={t('library.retitleConfirm')}
-          confirmLabel={t('library.retitleAction')}
-          loading={regeneratingTitles}
-          onConfirm={regenerateTitles}
-        />
-
-        <ContentIngestCard />
-
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none z-10" />
-          <input
-            type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={t('library.searchPlaceholder')}
-            autoComplete="off"
-            spellCheck={false}
-            className="w-full h-10 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/50 pl-9 pr-10 text-sm text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60 focus:ring-1 focus:ring-zinc-500/20 transition-colors"
-          />
-          {q.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setQ('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]"
-              aria-label={t('library.clearSearch')}
-            >
-              {queryChanging ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <X className="h-3 w-3" />
-              )}
-            </button>
-          )}
-        </div>
-
-        <section className="space-y-2">
-          <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
-            {t('library.added')}
-          </p>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {(['all', 'this-week', 'previous-week'] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setPeriod(item)}
-                aria-pressed={period === item}
-                className={[
-                  'min-h-11 rounded-md px-3 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
-                  period === item
-                    ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
-                    : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
-                ].join(' ')}
-              >
-                {item === 'all'
-                  ? t('library.allPeriods')
-                  : item === 'this-week'
-                    ? t('library.thisWeek')
-                    : t('library.previousWeek')}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* Organização — Inbox e pastas em uma superfície única. */}
-        <section className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <FolderChip
-              active={inbox}
-              onClick={() => setInbox(!inbox)}
-              icon={<Inbox className="h-3 w-3 text-violet-400" />}
-              label={t('library.inbox')}
-            />
-            <FolderChip
-              active={!inbox && folderFilter === null}
-              onClick={() => setFolder(null)}
-              icon={<FolderOpen className="h-3 w-3" />}
-              label={t('library.allFolders')}
-            />
-            {visibleFolders.map((folder) => (
-              <FolderChip
-                key={folder.id}
-                active={!inbox && folderFilter === folder.id}
-                onClick={() => setFolder(folder.id)}
-                icon={<Folder className="h-3 w-3 text-amber-500/80" />}
-                label={folder.name}
-                count={folder._count.transcripts}
-              />
-            ))}
-            {overflowFolders.length > 0 && (
-              <FolderOverflowMenu
-                folders={sortedFolders}
-                hiddenCount={overflowFolders.length}
-                active={activeFolderHidden}
-                activeFolderId={folderFilter}
-                onSelect={setFolder}
-                translate={t}
-              />
+        {q.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setQ('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]"
+            aria-label={t('library.clearSearch')}
+          >
+            {queryChanging ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <X className="h-3 w-3" />
             )}
-          </div>
-          <div className="flex min-w-0 gap-2">
-            <input
-              type="text"
-              value={newFolderName}
-              onChange={(event) => setNewFolderName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') void createFolder();
-              }}
-              placeholder={t('library.newFolderPlaceholder')}
-              className="h-8 min-w-0 flex-1 rounded-md border border-[var(--color-app-border)] bg-transparent px-2.5 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
-              disabled={creatingFolder}
-              maxLength={120}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={creatingFolder || newFolderName.trim().length === 0}
-              onClick={() => void createFolder()}
-              className="h-8 px-2.5 text-xs"
-            >
-              {creatingFolder ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <FolderPlus className="h-3 w-3" />
-              )}
-              <span className="hidden sm:inline">{t('library.createFolder')}</span>
-            </Button>
-          </div>
-        </section>
-
-        {tagTotal > 0 && (
-          <section className="space-y-2">
-            <div className="flex items-center gap-2">
-              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
-                {t('library.tagsLabel')}
-              </p>
-              {tagFilter && (
-                <button
-                  type="button"
-                  onClick={() => setTag(null)}
-                  className="inline-flex h-5 items-center gap-1 rounded px-1 text-[10px] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
-                >
-                  <X className="h-2.5 w-2.5" />
-                  {t('library.clearTagFilter')}
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {tags.map((tag) => (
-                <FolderChip
-                  key={tag.id}
-                  active={tagFilter === tag.id}
-                  onClick={() => setTag(tagFilter === tag.id ? null : tag.id)}
-                  icon={<Tags className="h-3 w-3 text-violet-400" />}
-                  label={tag.name}
-                  count={tag.count}
-                />
-              ))}
-              {tagTotal > tags.length && (
-                <TagOverflowMenu
-                  hiddenCount={tagTotal - tags.length}
-                  active={activeTagHidden}
-                  activeTagId={tagFilter}
-                  onSelect={setTag}
-                  translate={t}
-                />
-              )}
-            </div>
-          </section>
+          </button>
         )}
+      </div>
 
+      <section className="space-y-2">
+        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+          {t('library.added')}
+        </p>
         <div className="flex flex-wrap items-center gap-1.5">
-          {(['active', 'archived', 'trash'] as const).map((item) => (
+          {(['all', 'this-week', 'previous-week'] as const).map((item) => (
             <button
               key={item}
               type="button"
-              onClick={() => setStatus(item)}
+              onClick={() => setPeriod(item)}
+              aria-pressed={period === item}
               className={[
-                'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
-                status === item
+                'min-h-11 rounded-md px-3 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+                period === item
                   ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
                   : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
               ].join(' ')}
             >
-              {statusFilterLabel(item, t)}
+              {item === 'all'
+                ? t('library.allPeriods')
+                : item === 'this-week'
+                  ? t('library.thisWeek')
+                  : t('library.previousWeek')}
             </button>
           ))}
-          {!pageLoading && total > 0 && (
-            <span className="ml-auto text-[11px] tabular-nums text-[var(--color-app-muted)]">
-              {items.length}
-              {total > items.length ? ` / ${total}` : ''}
-            </span>
+        </div>
+      </section>
+
+      {/* Organização — Inbox e pastas em uma superfície única. */}
+      <section className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <FolderChip
+            active={inbox}
+            onClick={() => setInbox(!inbox)}
+            icon={<Inbox className="h-3 w-3 text-violet-400" />}
+            label={t('library.inbox')}
+          />
+          <FolderChip
+            active={!inbox && folderFilter === null}
+            onClick={() => setFolder(null)}
+            icon={<FolderOpen className="h-3 w-3" />}
+            label={t('library.allFolders')}
+          />
+          {visibleFolders.map((folder) => (
+            <FolderChip
+              key={folder.id}
+              active={!inbox && folderFilter === folder.id}
+              onClick={() => setFolder(folder.id)}
+              icon={<Folder className="h-3 w-3 text-amber-500/80" />}
+              label={folder.name}
+              count={folder._count.transcripts}
+            />
+          ))}
+          {overflowFolders.length > 0 && (
+            <FolderOverflowMenu
+              folders={sortedFolders}
+              hiddenCount={overflowFolders.length}
+              active={activeFolderHidden}
+              activeFolderId={folderFilter}
+              onSelect={setFolder}
+              translate={t}
+            />
           )}
         </div>
+        <div className="flex min-w-0 gap-2">
+          <input
+            type="text"
+            value={newFolderName}
+            onChange={(event) => setNewFolderName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void createFolder();
+            }}
+            placeholder={t('library.newFolderPlaceholder')}
+            className="h-8 min-w-0 flex-1 rounded-md border border-[var(--color-app-border)] bg-transparent px-2.5 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60"
+            disabled={creatingFolder}
+            maxLength={120}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={creatingFolder || newFolderName.trim().length === 0}
+            onClick={() => void createFolder()}
+            className="h-8 px-2.5 text-xs"
+          >
+            {creatingFolder ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <FolderPlus className="h-3 w-3" />
+            )}
+            <span className="hidden sm:inline">{t('library.createFolder')}</span>
+          </Button>
+        </div>
+      </section>
 
-        {isSearching && !pageLoading && (
-          <p className="text-[11px] text-[var(--color-app-muted)] -mt-2">
-            <span className="tabular-nums">{total}</span>{' '}
-            {t('library.searchResults', {
-              count: total,
-              label: total === 1 ? t('library.resultSingular') : t('library.resultPlural'),
-              query: debouncedQ,
-            })}
-          </p>
-        )}
-
-        {pageLoading && (
-          <div className="space-y-2">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-[72px] rounded-lg" />
+      {tagTotal > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+              {t('library.tagsLabel')}
+            </p>
+            {tagFilter && (
+              <button
+                type="button"
+                onClick={() => setTag(null)}
+                className="inline-flex h-5 items-center gap-1 rounded px-1 text-[10px] text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+              >
+                <X className="h-2.5 w-2.5" />
+                {t('library.clearTagFilter')}
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {tags.map((tag) => (
+              <FolderChip
+                key={tag.id}
+                active={tagFilter === tag.id}
+                onClick={() => setTag(tagFilter === tag.id ? null : tag.id)}
+                icon={<Tags className="h-3 w-3 text-violet-400" />}
+                label={tag.name}
+                count={tag.count}
+              />
             ))}
+            {tagTotal > tags.length && (
+              <TagOverflowMenu
+                hiddenCount={tagTotal - tags.length}
+                active={activeTagHidden}
+                activeTagId={tagFilter}
+                onSelect={setTag}
+                translate={t}
+              />
+            )}
           </div>
-        )}
+        </section>
+      )}
 
-        {!pageLoading && error && items.length === 0 && (
-          <Card elevated>
-            <FetchError message={error} onRetry={refreshTranscripts} />
-          </Card>
-        )}
-
-        {!pageLoading && !error && items.length === 0 && (
-          <Card elevated>
-            <CardContent className="py-14 text-center space-y-3">
-              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]">
-                <Search className="h-4 w-4 text-[var(--color-app-muted)]" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium">
-                  {isSearching ? t('library.noResults') : t('library.empty')}
-                </p>
-                <p className="text-xs text-[var(--color-app-muted)]">
-                  {isSearching ? t('library.tryOtherKeywords') : t('library.emptyDescription')}
-                </p>
-              </div>
-              {!isSearching && (
-                <Button variant="primary" size="sm" asChild className="mt-2">
-                  <Link to="/">{t('library.addFirst')}</Link>
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {!pageLoading && items.length > 0 && (
-          <div className="space-y-5">
-            {captureWeeks.map((week) => (
-              <section key={week.key} className="space-y-1.5">
-                <h2 className="px-1 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
-                  {t('library.capturedWeek', { date: formatCaptureWeek(week.start, locale) })}
-                </h2>
-                <div className="space-y-1.5">
-                  {week.items.map((transcript) => (
-                    <TranscriptRow
-                      key={transcript.id}
-                      t={transcript}
-                      highlightQuery={debouncedQ}
-                      locale={locale}
-                      translate={t}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
-
-        {hasMore && (
-          <div className="flex justify-center pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={loadingMore || loading}
-              onClick={loadMore}
-              className="h-8 text-xs"
-            >
-              {loadingMore || (loading && offset > 0) ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : null}
-              {t('library.loadMore')}
-            </Button>
-          </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {(['active', 'archived', 'trash'] as const).map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setStatus(item)}
+            className={[
+              'h-7 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
+              status === item
+                ? 'bg-[var(--color-app-surface-hover)] text-[var(--color-app-fg)]'
+                : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)] hover:bg-[var(--color-app-surface-hover)]',
+            ].join(' ')}
+          >
+            {statusFilterLabel(item, t)}
+          </button>
+        ))}
+        {!pageLoading && total > 0 && (
+          <span className="ml-auto text-[11px] tabular-nums text-[var(--color-app-muted)]">
+            {items.length}
+            {total > items.length ? ` / ${total}` : ''}
+          </span>
         )}
       </div>
-    </AnimatedPage>
+
+      {isSearching && !pageLoading && (
+        <p className="text-[11px] text-[var(--color-app-muted)] -mt-2">
+          <span className="tabular-nums">{total}</span>{' '}
+          {t('library.searchResults', {
+            count: total,
+            label: total === 1 ? t('library.resultSingular') : t('library.resultPlural'),
+            query: debouncedQ,
+          })}
+        </p>
+      )}
+
+      {pageLoading && (
+        <div className="space-y-2">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-[72px] rounded-lg" />
+          ))}
+        </div>
+      )}
+
+      {!pageLoading && error && items.length === 0 && (
+        <Card elevated>
+          <FetchError message={error} onRetry={refreshTranscripts} />
+        </Card>
+      )}
+
+      {!pageLoading && !error && items.length === 0 && (
+        <Card elevated>
+          <CardContent className="py-14 text-center space-y-3">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]">
+              <Search className="h-4 w-4 text-[var(--color-app-muted)]" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">
+                {isSearching ? t('library.noResults') : t('library.empty')}
+              </p>
+              <p className="text-xs text-[var(--color-app-muted)]">
+                {isSearching ? t('library.tryOtherKeywords') : t('library.emptyDescription')}
+              </p>
+            </div>
+            {!isSearching && (
+              <Button variant="primary" size="sm" asChild className="mt-2">
+                <Link to="/">{t('library.addFirst')}</Link>
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {!pageLoading && items.length > 0 && (
+        <div className="space-y-5">
+          {captureWeeks.map((week) => (
+            <section key={week.key} className="space-y-1.5">
+              <h2 className="px-1 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
+                {t('library.capturedWeek', { date: formatCaptureWeek(week.start, locale) })}
+              </h2>
+              <div className="space-y-1.5">
+                {week.items.map((transcript) => (
+                  <TranscriptRow
+                    key={transcript.id}
+                    t={transcript}
+                    highlightQuery={debouncedQ}
+                    locale={locale}
+                    translate={t}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+
+      {hasMore && (
+        <div className="flex justify-center pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loadingMore || loading}
+            onClick={loadMore}
+            className="h-8 text-xs"
+          >
+            {loadingMore || (loading && offset > 0) ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : null}
+            {t('library.loadMore')}
+          </Button>
+        </div>
+      )}
+    </PageShell>
   );
 }
 

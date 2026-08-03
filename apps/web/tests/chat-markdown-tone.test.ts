@@ -22,4 +22,24 @@ describe('tom visual do markdown do chat (spec 091)', () => {
     expect(source).toContain('chat.copyMessage');
     expect(source).toContain('pt-12');
   });
+
+  test('fontes ficam nas ações por hover e abrem um painel que reduz o chat', () => {
+    const source = readClientSource('pages/chat.tsx');
+
+    expect(source).toContain('CitationSourcesButton');
+    expect(source).toContain('md:group-hover:opacity-100');
+    expect(source).toContain('setSourceCitations(message.citations ?? [])');
+    expect(source).toContain("sourceCitations && 'md:pr-[22rem]'");
+    expect(source).toContain('absolute inset-y-0 right-0 hidden w-[22rem]');
+  });
+
+  test('markdown converte apenas marcadores internos em citações inline', () => {
+    const source = readClientSource('components/ui/markdown.tsx');
+
+    expect(source).toContain('renderInlineCitations');
+    expect(source).toContain('citationFromInlineHref');
+    expect(source).toContain('TooltipContent');
+    expect(source).toContain('disableHoverableContent');
+    expect(source).not.toContain('onMouseEnter={() => setOpen(true)}');
+  });
 });

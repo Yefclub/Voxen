@@ -2,7 +2,27 @@
 
 from __future__ import annotations
 
-from src.brain_extract import is_grounded, parse_grounded_payload, slugify_label
+import json
+from contextlib import asynccontextmanager
+from decimal import Decimal
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import AsyncMock
+
+import httpx
+import pytest
+
+from src import brain_extract, openrouter, pipeline
+from src.brain_extract import (
+    ExtractionSegment,
+    GroundedExtractionResult,
+    extract_grounded_concepts,
+    is_grounded,
+    parse_grounded_payload,
+    parse_grounded_relations,
+    segment_content,
+    slugify_label,
+)
 
 
 def test_is_grounded_requires_substring() -> None:
@@ -49,3 +69,192 @@ def test_parse_keeps_only_grounded_items() -> None:
 
 def test_slugify() -> None:
     assert slugify_label("Estúdio Ghibli") == "estudio-ghibli"
+
+
+def test_parse_grounded_relations_requires_evidence_and_confident_alias() -> None:
+    source = "PostgreSQL também é chamado de Postgres. PostgreSQL suporta índices GIN."
+    raw = json.dumps(
+        {
+            "entities": [
+                {"label": "PostgreSQL", "excerpt": "PostgreSQL também é chamado de Postgres"},
+                {"label": "Postgres", "excerpt": "PostgreSQL também é chamado de Postgres"},
+            ],
+            "claims": [
+                {
+                    "label": "PostgreSQL suporta índices GIN",
+                    "excerpt": "PostgreSQL suporta índices GIN",
+                }
+            ],
+            "relations": [
+                {
+                    "subject": "PostgreSQL",
+                    "predicate": "same_as",
+                    "object": "Postgres",
+                    "kind": "SAME_AS",
+                    "excerpt": "PostgreSQL também é chamado de Postgres",
+                    "confidence": 0.93,
+                },
+                {
+                    "subject": "Postgres",
+                    "predicate": "contradicts",
+                    "object": "PostgreSQL suporta índices GIN",
+                    "kind": "CONTRADICTS",
+                    "excerpt": "evidência inventada",
+                    "confidence": 0.9,
+                },
+            ],
+        }
+    )
+    items = parse_grounded_payload(raw, source)
+    relations = parse_grounded_relations(raw, source, items)
+
+    assert [(relation.kind, relation.subject, relation.object) for relation in relations] == [
+        ("SAME_AS", "PostgreSQL", "Postgres")
+    ]
+
+
+def test_segment_content_covers_long_markdown_with_lines_and_timestamps() -> None:
+    content = "\n".join(
+        [
+            "# Introdução",
+            "Contexto inicial " * 12,
+            "## Transcrição",
+            "[00:00:00](https://example.test?t=0) Primeiro bloco importante.",
+            "[00:00:15](https://example.test?t=15) Segundo bloco importante.",
+            "## Conclusão",
+            "Conclusão posterior " * 15,
+        ]
+    )
+
+    segments = segment_content(content, max_chars=180)
+
+    assert len(segments) >= 3
+    assert all(len(segment.text) <= 180 for segment in segments)
+    assert segments[0].start_line == 1
+    assert segments[-1].end_line == len(content.splitlines())
+    timestamped = next(segment for segment in segments if segment.start_sec == 0)
+    assert timestamped.end_sec == 15
+    assert "Conclusão posterior" in segments[-1].text
+
+
+def test_segment_content_uses_stable_key_and_splits_oversized_line() -> None:
+    content = "A" * 260
+    first = segment_content(content, max_chars=100)
+    second = segment_content(content, max_chars=100)
+
+    assert [segment.key for segment in first] == [segment.key for segment in second]
+    assert len(first) == 3
+    assert all(segment.start_line == segment.end_line == 1 for segment in first)
+
+
+class _Lease:
+    def locally_owned(self) -> bool:
+        return True
+
+    @asynccontextmanager
+    async def heartbeat(self) -> Any:
+        yield
+
+    async def release(self) -> bool:
+        return True
+
+
+async def test_segment_failure_keeps_following_segment_and_records_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = ExtractionSegment("first", "primeira seção", 1, 1, None, None)
+    second = ExtractionSegment("second", "segunda seção grounded", 2, 2, 15, 15)
+    monkeypatch.setattr(
+        pipeline.db,
+        "get_transcript_title_content_md_path",
+        AsyncMock(return_value=("Título", "fallback suficiente " * 8, None)),
+    )
+    monkeypatch.setattr(brain_extract, "segment_content", lambda _: [first, second])
+    prepared = AsyncMock(
+        return_value=("compilation-1", [{"segmentKey": "first"}, {"segmentKey": "second"}])
+    )
+    monkeypatch.setattr(
+        pipeline.db,
+        "prepare_grounded_brain_compilation",
+        prepared,
+    )
+    monkeypatch.setattr(
+        pipeline.voxen_settings,
+        "get_openrouter_model_config",
+        AsyncMock(return_value=SimpleNamespace(api_key="key", model="model")),
+    )
+    monkeypatch.setattr(
+        pipeline.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
+    monkeypatch.setattr(pipeline, "acquire_graph_index_lease", AsyncMock(return_value=_Lease()))
+    monkeypatch.setattr(pipeline.db, "insert_cost_event", AsyncMock())
+    upsert = AsyncMock(return_value=1)
+    failed = AsyncMock()
+    monkeypatch.setattr(pipeline.db, "upsert_grounded_brain_items", upsert)
+    monkeypatch.setattr(pipeline.db, "mark_grounded_segment_failed", failed)
+
+    async def extract(**kwargs: Any) -> GroundedExtractionResult:
+        if kwargs["content"] == "primeira seção":
+            raise RuntimeError("provider indisponível")
+        return GroundedExtractionResult(
+            items=[], relations=[], cost_usd=Decimal("0"), model="model", tokens_in=10, tokens_out=2
+        )
+
+    monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract)
+
+    await pipeline._maybe_grounded_brain_extract(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+    )
+
+    failed.assert_awaited_once_with(
+        compilation_id="compilation-1", segment_key="first", error="RuntimeError"
+    )
+    upsert.assert_awaited_once()
+    assert upsert.await_args.kwargs["segment"]["key"] == "second"
+
+    async def extract_retry(**kwargs: Any) -> GroundedExtractionResult:
+        return GroundedExtractionResult(
+            items=[], relations=[], cost_usd=Decimal("0"), model="model", tokens_in=10, tokens_out=2
+        )
+
+    monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract_retry)
+    prepared.return_value = ("compilation-1", [{"segmentKey": "first"}])
+    await pipeline._maybe_grounded_brain_extract(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+    )
+    assert upsert.await_count == 2
+    assert upsert.await_args.kwargs["segment"]["key"] == "first"
+
+
+class _ExternalErrorClient:
+    async def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+    ) -> httpx.Response:
+        return httpx.Response(
+            502,
+            text="Bearer body-secret sk-or-v1-secret socks5h://user:pass@127.0.0.1:1080",
+        )
+
+
+async def test_grounded_extraction_does_not_propagate_upstream_body() -> None:
+    with pytest.raises(openrouter.OpenrouterTransientError) as raised:
+        await extract_grounded_concepts(
+            title="Título",
+            content="Conteúdo suficiente para a extração estruturada.",
+            api_key="sk-test",
+            model="x-ai/grok-4.5",
+            client=_ExternalErrorClient(),  # type: ignore[arg-type]
+        )
+
+    assert str(raised.value) == "OpenRouter 502"
+    assert "body-secret" not in str(raised.value)

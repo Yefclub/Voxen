@@ -111,6 +111,11 @@ def transcript_key(user_id: str, transcript_id: str) -> str:
     return f"workspaces/{user_id}/transcripts/{transcript_id}.md"
 
 
+def source_version_key(user_id: str, transcript_id: str, version: int) -> str:
+    """Chave imutável de um snapshot de fonte externa."""
+    return f"workspaces/{user_id}/transcripts/{transcript_id}/sources/v{version}.md"
+
+
 def upload_key(user_id: str, upload_id: str, filename: str) -> str:
     return f"workspaces/{user_id}/uploads/{upload_id}/{filename}"
 
@@ -138,3 +143,18 @@ async def download_to_file(*, key: str, dest: Path, bucket: str | None = None) -
             close = getattr(body, "close", None)
             if close is not None:
                 close()
+
+
+async def get_markdown(*, key: str, bucket: str | None = None) -> str:
+    """Lê o Markdown canônico do S3 para preservar linhas e timestamps."""
+    session = s3_session()
+    async with session.client(**s3_client_kwargs()) as s3:
+        response = await s3.get_object(Bucket=bucket or s3_bucket(), Key=key)
+        body = response["Body"]
+        try:
+            raw = await body.read()
+        finally:
+            close = getattr(body, "close", None)
+            if close is not None:
+                close()
+    return bytes(raw).decode("utf-8", errors="replace")

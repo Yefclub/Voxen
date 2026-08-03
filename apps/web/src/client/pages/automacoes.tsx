@@ -11,9 +11,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { AnimatedPage } from '../components/motion/animated-page';
+} from '@/components/ui/icons';
+import { toast } from '@/lib/toast';
+import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { Markdown } from '../components/ui/markdown';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
@@ -169,29 +169,25 @@ export function AutomacoesPage(): React.ReactElement {
   }
 
   return (
-    <AnimatedPage className="max-w-5xl mx-auto px-4 py-5 space-y-5 sm:px-6 sm:py-8 sm:space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="size-10 rounded-xl bg-[var(--color-app-surface)] flex items-center justify-center ring-1 ring-[var(--color-app-border)]">
-            <Workflow className="size-5 text-[var(--color-app-subtle)]" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-[var(--color-app-fg)]">
-              {t('automations.title')}
-            </h1>
-            <p className="text-sm text-[var(--color-app-muted)]">{t('automations.description')}</p>
-          </div>
-        </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setFormOpen(true);
-          }}
-        >
-          <Plus className="size-4 mr-1.5" />
-          {t('automations.new')}
-        </Button>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        eyebrow={t('shell.nav.automations')}
+        icon={Workflow}
+        iconClassName="text-amber-400"
+        title={t('automations.title')}
+        description={t('automations.description')}
+        actions={
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setFormOpen(true);
+            }}
+          >
+            <Plus className="mr-1.5 size-4" />
+            {t('automations.new')}
+          </Button>
+        }
+      />
 
       {loading ? (
         <div className="py-12 text-center text-[var(--color-app-muted)] text-sm">
@@ -262,7 +258,7 @@ export function AutomacoesPage(): React.ReactElement {
           if (pendingDelete) await confirmRemove(pendingDelete);
         }}
       />
-    </AnimatedPage>
+    </PageShell>
   );
 }
 

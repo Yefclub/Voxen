@@ -14,20 +14,26 @@ import {
   Copy,
   KeyRound,
   Network,
+  RotateCcw,
   RotateCw,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
-} from 'lucide-react';
-import { toast } from 'sonner';
+} from '@/components/ui/icons';
+import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Label } from '../components/ui/label';
 import { Spinner } from '../components/ui/spinner';
 import { Switch } from '../components/ui/switch';
-import { api, ApiError, apiGet, apiPost } from '../lib/api';
-import { AnimatedPage } from '../components/motion/animated-page';
+import { api, ApiError, apiDelete, apiGet, apiPatch, apiPost } from '../lib/api';
+import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { ModelPickerDialog } from '../components/model-picker-dialog';
 import { useI18n } from '../lib/i18n';
+import type { ModelPurpose, ModelPurposeStatus, OrModel } from '../lib/types';
+import { cn } from '../lib/utils';
 
 // Path do proxy de WebSocket do túnel na web do Voxen. Deve casar com o default
 // do backend (PROXY_TUNNEL_PATH). Usado só como fallback de EXIBIÇÃO quando o
@@ -58,6 +64,15 @@ interface McpAdminStatus {
   enabled: boolean;
   userId: string | null;
   tokenPreview: string | null;
+  allowUserTokens: boolean;
+  legacyTokenConfigured: boolean;
+  tokens: {
+    id: string;
+    label: string;
+    scopes: string[];
+    revokedAt: string | null;
+    user: { email: string; name: string };
+  }[];
 }
 
 interface McpPromptResponse {
@@ -84,25 +99,413 @@ export function AdminIntegracoesPage(): React.ReactElement {
   const { t } = useI18n();
 
   return (
-    <AnimatedPage>
-      <div className="mx-auto max-w-3xl space-y-8 px-4 py-8 sm:space-y-10 sm:px-8 sm:py-12">
-        <header className="space-y-3">
-          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-medium">
-            <Sparkles className="h-3.5 w-3.5 text-violet-400" />
-            {t('shell.admin')}
-          </div>
-          <h1 className="font-display text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
-            {t('admin.integrations.title')}
-          </h1>
-          <p className="text-[15px] text-[var(--color-app-muted)] leading-relaxed">
-            {t('admin.integrations.description')}
-          </p>
-        </header>
+    <PageShell width="workspace">
+      <div data-page-content className="space-y-8 sm:space-y-10">
+        <PageHeader
+          eyebrow={t('shell.admin')}
+          icon={Sparkles}
+          iconClassName="text-violet-400"
+          title={t('admin.integrations.title')}
+          description={t('admin.integrations.description')}
+        />
 
+        <ModelsSection />
+        <ConfigRevisionSection />
         <McpSection />
         <ProxyAgentSection />
       </div>
-    </AnimatedPage>
+    </PageShell>
+  );
+}
+
+interface ConfigRevision {
+  id: string;
+  number: number;
+  isBaseline: boolean;
+  reason: string | null;
+  createdAt: string;
+  actor: { id: string; name: string; email: string } | null;
+  changes: Array<{
+    key: string;
+    isSecret: boolean;
+    previousValue: string | null;
+    nextValue: string | null;
+  }>;
+}
+
+function ConfigRevisionSection(): React.ReactElement {
+  const { t, locale } = useI18n();
+  const [revisions, setRevisions] = useState<ConfigRevision[] | null>(null);
+  const [nextBefore, setNextBefore] = useState<number | null>(null);
+  const [target, setTarget] = useState<ConfigRevision | null>(null);
+  const [rollingBack, setRollingBack] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  async function refresh(): Promise<void> {
+    try {
+      const response = await apiGet<{ revisions: ConfigRevision[]; nextBefore: number | null }>(
+        '/api/admin/config-revisions',
+      );
+      setRevisions(response.revisions);
+      setNextBefore(response.nextBefore);
+    } catch {
+      setRevisions([]);
+      setNextBefore(null);
+    }
+  }
+
+  async function loadMore(): Promise<void> {
+    if (nextBefore === null || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const response = await apiGet<{ revisions: ConfigRevision[]; nextBefore: number | null }>(
+        `/api/admin/config-revisions?before=${nextBefore}`,
+      );
+      setRevisions((current) => [...(current ?? []), ...response.revisions]);
+      setNextBefore(response.nextBefore);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  async function rollback(): Promise<void> {
+    if (!target) return;
+    setRollingBack(true);
+    try {
+      const result = await apiPost<{ skippedSecretKeys: string[] }>(
+        `/api/admin/config-revisions/${target.number}/rollback`,
+        {},
+      );
+      toast.success(
+        result.skippedSecretKeys.length > 0
+          ? t('admin.integrations.revisions.rollbackPartial')
+          : t('admin.integrations.revisions.rollbackSuccess'),
+      );
+      setTarget(null);
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : t('common.error'));
+    } finally {
+      setRollingBack(false);
+    }
+  }
+
+  if (!revisions) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <Spinner />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+      <Card elevated>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 font-display">
+            <RotateCcw className="h-4 w-4 text-sky-400" />
+            {t('admin.integrations.revisions.title')}
+          </CardTitle>
+          <CardDescription>{t('admin.integrations.revisions.description')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {revisions.length === 0 ? (
+            <p className="text-sm text-[var(--color-app-muted)]">
+              {t('admin.integrations.revisions.empty')}
+            </p>
+          ) : (
+            revisions.map((revision, index) => (
+              <div
+                key={revision.id}
+                className="rounded-lg border border-[var(--color-app-border)] p-3"
+              >
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-semibold">#{revision.number}</span>
+                  {index === 0 && (
+                    <Badge variant="success">{t('admin.integrations.revisions.current')}</Badge>
+                  )}
+                  <span className="text-[var(--color-app-muted)]">
+                    {revision.actor?.name ?? t('admin.integrations.revisions.system')} ·{' '}
+                    {new Date(revision.createdAt).toLocaleString(locale)}
+                  </span>
+                </div>
+                {revision.reason && (
+                  <p className="mt-1 text-xs text-[var(--color-app-muted)]">{revision.reason}</p>
+                )}
+                <ul className="mt-2 space-y-1 font-mono text-[11px] text-[var(--color-app-fg)]">
+                  {revision.changes.map((change) => (
+                    <li key={change.key}>
+                      {change.key}:{' '}
+                      {change.isSecret
+                        ? t('admin.integrations.revisions.secret')
+                        : `${change.previousValue ?? '∅'} → ${change.nextValue ?? '∅'}`}
+                    </li>
+                  ))}
+                </ul>
+                {!revision.isBaseline && (
+                  <Button
+                    className="mt-3"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setTarget(revision)}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    {t('admin.integrations.revisions.rollback')}
+                  </Button>
+                )}
+              </div>
+            ))
+          )}
+          {nextBefore !== null && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void loadMore()}
+              disabled={loadingMore}
+            >
+              {loadingMore ? <Spinner /> : t('admin.integrations.revisions.loadMore')}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+      <ConfirmDialog
+        open={target !== null}
+        onOpenChange={(open) => !open && setTarget(null)}
+        title={t('admin.integrations.revisions.rollbackTitle')}
+        description={t('admin.integrations.revisions.rollbackDescription')}
+        confirmLabel={t('admin.integrations.revisions.rollback')}
+        onConfirm={rollback}
+        loading={rollingBack}
+      />
+    </motion.div>
+  );
+}
+
+const PURPOSE_LABEL_KEYS: Record<ModelPurpose, Parameters<ReturnType<typeof useI18n>['t']>[0]> = {
+  default_chat_model: 'admin.integrations.models.purpose.chat',
+  default_transcription_model: 'admin.integrations.models.purpose.transcription',
+  default_web_search_model: 'admin.integrations.models.purpose.webSearch',
+  default_vision_model: 'admin.integrations.models.purpose.vision',
+  default_document_model: 'admin.integrations.models.purpose.document',
+  default_x_analysis_model: 'admin.integrations.models.purpose.xAnalysis',
+};
+
+interface ModelsStatusResponse {
+  purposes: ModelPurposeStatus[];
+  hasApiKey: boolean;
+}
+
+interface ModelCatalogResponse {
+  models: OrModel[];
+}
+
+function ModelsSection(): React.ReactElement {
+  const { t } = useI18n();
+  const [status, setStatus] = useState<ModelsStatusResponse | null>(null);
+  const [dialogPurpose, setDialogPurpose] = useState<ModelPurpose | null>(null);
+  const [catalog, setCatalog] = useState<OrModel[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [resettingPurpose, setResettingPurpose] = useState<ModelPurpose | null>(null);
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  async function refresh(): Promise<void> {
+    try {
+      const s = await apiGet<ModelsStatusResponse>('/api/admin/models');
+      setStatus(s);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t('admin.integrations.models.loadError'));
+    }
+  }
+
+  function openDialog(purpose: ModelPurpose): void {
+    setDialogPurpose(purpose);
+    setCatalog([]);
+    setCatalogError(null);
+    setCatalogLoading(true);
+    apiGet<ModelCatalogResponse>(`/api/admin/models/catalog/${purpose}`)
+      .then((res) => setCatalog(res.models))
+      .catch((err) => {
+        setCatalogError(
+          err instanceof ApiError ? err.message : t('admin.integrations.models.catalogUnavailable'),
+        );
+      })
+      .finally(() => setCatalogLoading(false));
+  }
+
+  async function selectModel(modelId: string): Promise<void> {
+    if (!dialogPurpose) return;
+    setSaving(true);
+    try {
+      const updated = await apiPatch<ModelPurposeStatus>(`/api/admin/models/${dialogPurpose}`, {
+        modelId,
+      });
+      setStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              purposes: prev.purposes.map((p) => (p.purpose === updated.purpose ? updated : p)),
+            }
+          : prev,
+      );
+      toast.success(t('admin.integrations.models.changeSuccess'));
+      setDialogPurpose(null);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function resetPurpose(purpose: ModelPurpose): Promise<void> {
+    setResettingPurpose(purpose);
+    try {
+      const updated = await apiDelete<ModelPurposeStatus>(`/api/admin/models/${purpose}`);
+      setStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              purposes: prev.purposes.map((p) => (p.purpose === updated.purpose ? updated : p)),
+            }
+          : prev,
+      );
+      toast.success(t('admin.integrations.models.resetSuccess'));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
+    } finally {
+      setResettingPurpose(null);
+    }
+  }
+
+  if (!status) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <Spinner />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const dialogStatus = status.purposes.find((p) => p.purpose === dialogPurpose) ?? null;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+      <Card elevated>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 font-display">
+            <SlidersHorizontal className="h-4 w-4 text-amber-400" />
+            {t('admin.integrations.models.title')}
+          </CardTitle>
+          <CardDescription>{t('admin.integrations.models.description')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!status.hasApiKey && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
+              <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-200/90">{t('admin.integrations.models.noApiKey')}</p>
+            </div>
+          )}
+
+          {status.purposes.map((p) => (
+            <ModelPurposeRow
+              key={p.purpose}
+              status={p}
+              disabled={!status.hasApiKey}
+              resetting={resettingPurpose === p.purpose}
+              onChange={() => openDialog(p.purpose)}
+              onReset={() => void resetPurpose(p.purpose)}
+            />
+          ))}
+        </CardContent>
+      </Card>
+
+      {dialogStatus && (
+        <ModelPickerDialog
+          open={dialogPurpose !== null}
+          onOpenChange={(next) => {
+            if (!next) setDialogPurpose(null);
+          }}
+          title={t(PURPOSE_LABEL_KEYS[dialogStatus.purpose])}
+          models={catalog}
+          loading={catalogLoading}
+          error={catalogError}
+          value={dialogStatus.effective}
+          saving={saving}
+          onSelect={(modelId) => void selectModel(modelId)}
+        />
+      )}
+    </motion.div>
+  );
+}
+
+function ModelPurposeRow({
+  status,
+  disabled,
+  resetting,
+  onChange,
+  onReset,
+}: {
+  status: ModelPurposeStatus;
+  disabled: boolean;
+  resetting: boolean;
+  onChange: () => void;
+  onReset: () => void;
+}): React.ReactElement {
+  const { t } = useI18n();
+  const hasOverride = status.override !== null;
+
+  return (
+    <div className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-[var(--color-app-fg)]">
+            {t(PURPOSE_LABEL_KEYS[status.purpose])}
+          </p>
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+              hasOverride
+                ? 'bg-violet-500/15 text-violet-300'
+                : 'bg-[var(--color-app-surface)] text-[var(--color-app-muted)]',
+            )}
+          >
+            {hasOverride
+              ? t('admin.integrations.models.overrideBadge')
+              : t('admin.integrations.models.canonicalBadge')}
+          </span>
+        </div>
+        <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--color-app-fg)]">
+          {status.effective}
+        </p>
+        <p className="text-[11px] text-[var(--color-app-muted)]">
+          {hasOverride
+            ? t('admin.integrations.models.canonicalHint', { model: status.canonical })
+            : t('admin.integrations.models.usingCanonical')}
+        </p>
+      </div>
+      <div className="flex shrink-0 gap-2">
+        <Button variant="outline" size="sm" onClick={onChange} disabled={disabled}>
+          {t('admin.integrations.models.change')}
+        </Button>
+        {hasOverride && (
+          <Button variant="ghost" size="sm" onClick={onReset} disabled={disabled || resetting}>
+            {resetting ? <Spinner /> : <RotateCcw className="h-3.5 w-3.5" />}
+            {t('admin.integrations.models.reset')}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -110,8 +513,11 @@ function McpSection(): React.ReactElement {
   const { t } = useI18n();
   const [status, setStatus] = useState<McpAdminStatus | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
+  const [newTokenId, setNewTokenId] = useState<string | null>(null);
   const [rotating, setRotating] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
+  const [tokenToRevoke, setTokenToRevoke] = useState<string | null>(null);
+  const [updatingPolicy, setUpdatingPolicy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
   const [copyingPrompt, setCopyingPrompt] = useState(false);
@@ -125,15 +531,26 @@ function McpSection(): React.ReactElement {
       const s = await apiGet<McpAdminStatus>('/api/admin/mcp');
       setStatus(s);
     } catch {
-      setStatus({ enabled: false, userId: null, tokenPreview: null });
+      setStatus({
+        enabled: false,
+        userId: null,
+        tokenPreview: null,
+        allowUserTokens: false,
+        legacyTokenConfigured: false,
+        tokens: [],
+      });
     }
   }
 
   async function rotate(): Promise<void> {
     setRotating(true);
     try {
-      const r = await apiPost<{ token: string; userId: string }>('/api/admin/mcp/rotate', {});
+      const r = await apiPost<{ token: string; metadata: { id: string } }>(
+        '/api/admin/mcp/rotate',
+        {},
+      );
       setNewToken(r.token);
+      setNewTokenId(r.metadata.id);
       toast.success(t('admin.integrations.mcp.generated'));
       await refresh();
     } catch (err) {
@@ -143,18 +560,39 @@ function McpSection(): React.ReactElement {
     }
   }
 
-  async function revoke(): Promise<void> {
+  async function revoke(tokenId: string): Promise<void> {
     try {
-      const res = await fetch('/api/admin/mcp', {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error(t('common.error'));
+      await apiDelete(`/api/admin/mcp/tokens/${tokenId}`);
       toast.success(t('admin.integrations.mcp.revoked'));
-      setNewToken(null);
+      if (newTokenId === tokenId) {
+        setNewToken(null);
+        setNewTokenId(null);
+      }
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('common.error'));
+    }
+  }
+
+  async function toggleUserTokens(enabled: boolean): Promise<void> {
+    setUpdatingPolicy(true);
+    try {
+      await apiPatch('/api/admin/mcp', { allowUserTokens: enabled });
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
+    } finally {
+      setUpdatingPolicy(false);
+    }
+  }
+
+  async function revokeLegacy(): Promise<void> {
+    try {
+      await apiDelete('/api/admin/mcp');
+      toast.success(t('admin.integrations.mcp.legacyRevoked'));
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
     }
   }
 
@@ -170,11 +608,14 @@ function McpSection(): React.ReactElement {
   }
 
   async function copyAgentPrompt(): Promise<void> {
-    if (!status?.enabled || copyingPrompt) return;
+    if (!newToken || copyingPrompt) return;
     setCopyingPrompt(true);
     try {
       const origin = window.location.origin;
-      const res = await apiPost<McpPromptResponse>('/api/admin/mcp/prompt', { appUrl: origin });
+      const res = await apiPost<McpPromptResponse>('/api/admin/mcp/prompt', {
+        appUrl: origin,
+        token: newToken,
+      });
       await writeClipboardText(res.prompt, t('admin.integrations.copyError'));
       setPromptCopied(true);
       toast.success(t('admin.integrations.mcp.promptCopied'));
@@ -219,14 +660,71 @@ function McpSection(): React.ReactElement {
                   {t('admin.integrations.mcp.enabled')}
                 </p>
                 <p className="text-[11px] text-[var(--color-app-muted)] font-mono">
-                  {t('admin.integrations.mcp.copyToken').toLowerCase()}:{' '}
-                  {status.tokenPreview ?? '••••'}
+                  {t('admin.integrations.mcp.activeCount', {
+                    count: status.tokens.filter((token) => !token.revokedAt).length,
+                  })}
                 </p>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmRevoke(true)}>
-                <Trash2 className="h-3.5 w-3.5" />
-                {t('admin.integrations.revoke')}
-              </Button>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-[var(--color-app-border)] px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-[var(--color-app-fg)]">
+                  {t('admin.integrations.mcp.userPolicy')}
+                </p>
+                <p className="text-xs text-[var(--color-app-muted)]">
+                  {t('admin.integrations.mcp.userPolicyHint')}
+                </p>
+              </div>
+              <Switch
+                checked={status.allowUserTokens}
+                onCheckedChange={(enabled) => void toggleUserTokens(enabled)}
+                disabled={updatingPolicy}
+                aria-label={t('admin.integrations.mcp.userPolicy')}
+              />
+            </div>
+            {status.legacyTokenConfigured && (
+              <div className="flex items-center justify-between gap-3 border-t border-[var(--color-app-border)] pt-3">
+                <p className="text-xs text-amber-300">
+                  {t('admin.integrations.mcp.legacyPending')}
+                </p>
+                <Button variant="outline" size="sm" onClick={() => void revokeLegacy()}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t('admin.integrations.mcp.revokeLegacy')}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {status.tokens.length > 0 && (
+            <div className="rounded-lg border border-[var(--color-app-border)] divide-y divide-[var(--color-app-border)]">
+              {status.tokens.map((token) => (
+                <div key={token.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-[var(--color-app-fg)]">{token.label}</p>
+                    <p className="truncate text-xs text-[var(--color-app-muted)]">
+                      {token.user.name || token.user.email} · {token.scopes.join(', ')}
+                    </p>
+                  </div>
+                  {token.revokedAt ? (
+                    <Badge variant="outline">{t('admin.integrations.mcp.revokedStatus')}</Badge>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setTokenToRevoke(token.id);
+                        setConfirmRevoke(true);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {t('admin.integrations.revoke')}
+                    </Button>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 
@@ -282,7 +780,7 @@ function McpSection(): React.ReactElement {
                 size="sm"
                 className="w-full sm:w-auto"
                 onClick={() => void copyAgentPrompt()}
-                disabled={!status.enabled || copyingPrompt}
+                disabled={!newToken || copyingPrompt}
                 aria-label={t('admin.integrations.mcp.copyAgentPrompt')}
               >
                 {copyingPrompt ? (
@@ -314,7 +812,7 @@ function McpSection(): React.ReactElement {
         description={t('admin.integrations.mcp.revokeDescription')}
         confirmLabel={t('admin.integrations.revoke')}
         variant="destructive"
-        onConfirm={revoke}
+        onConfirm={() => (tokenToRevoke ? revoke(tokenToRevoke) : Promise.resolve())}
       />
     </motion.div>
   );
@@ -579,7 +1077,11 @@ function ProxyAgentSection(): React.ReactElement {
             <p className="text-[11px] text-[var(--color-app-muted)] leading-relaxed">
               {t('admin.integrations.proxy.installHint')}
             </p>
-            <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed text-[var(--color-app-fg)] bg-[var(--color-app-bg-elevated)] rounded px-3 py-3 border border-[var(--color-app-border)]">
+            <pre
+              data-horizontal-scroll="true"
+              data-drawer-gesture-ignore
+              className="touch-pan-x touch-pan-y overflow-x-auto font-mono text-[11px] leading-relaxed text-[var(--color-app-fg)] bg-[var(--color-app-bg-elevated)] rounded px-3 py-3 border border-[var(--color-app-border)]"
+            >
               {snippet}
             </pre>
             <Button variant="outline" size="sm" onClick={() => void copySnippet()}>

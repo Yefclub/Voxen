@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="pt-BR" data-theme="zinc">
+<html lang="pt-BR" data-theme="linear">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#212121" />
+    <meta name="theme-color" content="#111113" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Voxen" />
@@ -27,10 +27,17 @@
       (function () {
         try {
           var t = localStorage.getItem('voxen:theme');
-          if (t === 'zinc' || t === 'emerald' || t === 'light') {
+          if (t === 'linear' || t === 'zinc' || t === 'emerald' || t === 'light') {
             document.documentElement.dataset.theme = t;
             document.documentElement.style.colorScheme = t === 'light' ? 'light' : 'dark';
-            var themeColor = t === 'emerald' ? '#19211f' : t === 'light' ? '#f7f7f8' : '#212121';
+            var themeColor =
+              t === 'linear'
+                ? '#111113'
+                : t === 'emerald'
+                  ? '#19211f'
+                  : t === 'light'
+                    ? '#f7f7f8'
+                    : '#212121';
             document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColor);
           }
         } catch (e) {}

@@ -1,0 +1,2 @@
+ALTER TABLE "ChatMessage"
+  ADD COLUMN IF NOT EXISTS "citations" JSONB;

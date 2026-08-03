@@ -14,16 +14,22 @@
 // bg-background) que não existem no design system do Voxen. Para garantir ZERO
 // regressão visual, sobrescrevemos os elementos estruturais com tags simples e
 // deixamos o tema zinc ser governado pelos seletores descendentes do wrapper.
-import { memo, useEffect, useRef, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Streamdown, type Components, type ExtraProps } from 'streamdown';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy } from '@/components/ui/icons';
+import type { ChatCitation } from '../../../shared/chat-citations';
+import { citationFromInlineHref, renderInlineCitations } from '../../lib/chat-inline-citations';
 import { cn } from '../../lib/utils';
 import { useI18n } from '../../lib/i18n';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 
 interface MarkdownProps {
   children: string;
   className?: string;
+  citations?: readonly ChatCitation[];
 }
+
+const ChatCitationContext = createContext<readonly ChatCitation[]>([]);
 
 // Bloco de código fenced (```...```). O Streamdown só roteia fences para `code`
 // (inline vai para `inlineCode`), então aqui sempre renderizamos o bloco rico.
@@ -77,7 +83,11 @@ function CodeBlock({
           )}
         </button>
       </div>
-      <pre className="overflow-x-auto px-4 py-3 text-[13px] leading-relaxed font-mono text-[var(--color-app-subtle)]">
+      <pre
+        data-horizontal-scroll="true"
+        data-drawer-gesture-ignore
+        className="touch-pan-x touch-pan-y overflow-x-auto px-4 py-3 text-[13px] leading-relaxed font-mono text-[var(--color-app-subtle)]"
+      >
         <code>{raw}</code>
       </pre>
     </div>
@@ -96,10 +106,40 @@ function InlineCode({
 }
 
 // Links externos: nova aba + rel seguro. O Streamdown já harden-iza a URL.
+function InlineCitation({
+  citation,
+  children,
+}: {
+  citation: ChatCitation;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <a
+          href={citation.href}
+          className="mx-0.5 inline-flex -translate-y-px items-center rounded-full bg-[var(--color-app-surface)] px-1.5 py-0.5 text-[10px] font-medium leading-none text-[var(--color-app-muted)] no-underline transition-colors hover:bg-[var(--color-accent-primary)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
+        >
+          {children}
+        </a>
+      </TooltipTrigger>
+      <TooltipContent className="w-80 p-3" side="bottom" align="start">
+        <p className="truncate text-xs font-medium text-[var(--color-app-fg)]">{citation.title}</p>
+        <blockquote className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-[var(--color-app-muted)]">
+          “{citation.quote}”
+        </blockquote>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function Anchor({
   href,
   children,
 }: React.ComponentPropsWithoutRef<'a'> & ExtraProps): React.ReactElement {
+  const citations = useContext(ChatCitationContext);
+  const citation = citationFromInlineHref(href, citations);
+  if (citation) return <InlineCitation citation={citation}>{children}</InlineCitation>;
   return (
     <a
       href={href}
@@ -120,7 +160,7 @@ function kids(p: { children?: React.ReactNode }): React.ReactNode {
 
 // Componentes estruturais sobrescritos com tags simples para neutralizar as
 // classes shadcn default do Streamdown — o tema zinc vem do wrapper.
-const components: Components = {
+const structuralComponents: Components = {
   code: CodeBlock,
   inlineCode: InlineCode,
   a: Anchor,
@@ -141,7 +181,11 @@ const components: Components = {
   // Wrapper com scroll-x: sob `overflow-x: clip` global, tabela larga seria
   // cortada no mobile em vez de rolar.
   table: (p) => (
-    <div className="my-3 overflow-x-auto">
+    <div
+      data-horizontal-scroll="true"
+      data-drawer-gesture-ignore
+      className="my-4 touch-pan-x touch-pan-y overflow-x-auto rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)]"
+    >
       <table>{kids(p)}</table>
     </div>
   ),
@@ -155,7 +199,9 @@ const components: Components = {
 export const Markdown = memo(function Markdown({
   children,
   className,
+  citations = [],
 }: MarkdownProps): React.ReactElement {
+  const content = useMemo(() => renderInlineCitations(children, citations), [children, citations]);
   return (
     <div
       className={cn(
@@ -174,15 +220,23 @@ export const Markdown = memo(function Markdown({
         '[&_h2]:font-display [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:mt-4',
         '[&_h3]:font-display [&_h3]:text-base [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:mt-3',
         '[&_hr]:border-[var(--color-app-border)] [&_hr]:my-4',
-        '[&_table]:w-full [&_table]:text-[13px] [&_table]:border-collapse',
-        '[&_th]:text-left [&_th]:font-semibold [&_th]:text-[var(--color-app-subtle)] [&_th]:border-b [&_th]:border-[var(--color-app-border-strong)] [&_th]:px-2 [&_th]:py-1.5',
-        '[&_td]:border-b [&_td]:border-[var(--color-app-border)] [&_td]:px-2 [&_td]:py-1.5',
+        '[&_table]:w-full [&_table]:min-w-[520px] [&_table]:text-[13px] [&_table]:border-collapse',
+        '[&_thead]:bg-[var(--color-app-bg-elevated)]',
+        '[&_tbody_tr:nth-child(even)]:bg-[var(--color-app-bg-elevated)]/35',
+        '[&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-[var(--color-app-surface-hover)]/70',
+        '[&_th]:whitespace-nowrap [&_th]:text-left [&_th]:text-[11px] [&_th]:uppercase [&_th]:tracking-[0.1em] [&_th]:font-medium [&_th]:text-[var(--color-app-muted)] [&_th]:border-b [&_th]:border-[var(--color-app-border-strong)] [&_th]:px-3.5 [&_th]:py-2.5',
+        '[&_td]:align-top [&_td]:border-b [&_td]:border-[var(--color-app-border)] [&_td]:px-3.5 [&_td]:py-2.5 [&_td]:text-[var(--color-app-subtle)]',
+        '[&_tbody_tr:last-child_td]:border-b-0',
         className,
       )}
     >
-      <Streamdown parseIncompleteMarkdown controls={false} components={components}>
-        {children}
-      </Streamdown>
+      <TooltipProvider delayDuration={120} skipDelayDuration={300} disableHoverableContent>
+        <ChatCitationContext.Provider value={citations}>
+          <Streamdown parseIncompleteMarkdown controls={false} components={structuralComponents}>
+            {content}
+          </Streamdown>
+        </ChatCitationContext.Provider>
+      </TooltipProvider>
     </div>
   );
 });

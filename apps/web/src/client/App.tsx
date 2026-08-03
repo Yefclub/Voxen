@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
-import { flushSync } from 'react-dom';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { Toaster } from './components/ui/sonner';
 import { Spinner } from './components/ui/spinner';
 import { AppLayout } from './components/layout/app-layout';
@@ -48,6 +47,11 @@ const AdminIntegracoesPage = lazy(() =>
 const ContaPage = lazy(() =>
   import('./pages/conta').then(({ ContaPage }) => ({ default: ContaPage })),
 );
+const ContaPlataformasPage = lazy(() =>
+  import('./pages/conta-plataformas').then(({ ContaPlataformasPage }) => ({
+    default: ContaPlataformasPage,
+  })),
+);
 const FilaPage = lazy(() => import('./pages/fila').then(({ FilaPage }) => ({ default: FilaPage })));
 const JobDetalhePage = lazy(() =>
   import('./pages/jobs-detalhe').then(({ JobDetalhePage }) => ({ default: JobDetalhePage })),
@@ -65,6 +69,9 @@ const NotasPage = lazy(() =>
 );
 const AutomacoesPage = lazy(() =>
   import('./pages/automacoes').then(({ AutomacoesPage }) => ({ default: AutomacoesPage })),
+);
+const ArtefatosPage = lazy(() =>
+  import('./pages/artefatos').then(({ ArtefatosPage }) => ({ default: ArtefatosPage })),
 );
 const GrafoPage = lazy(() =>
   import('./pages/grafo').then(({ GrafoPage }) => ({ default: GrafoPage })),
@@ -110,16 +117,6 @@ function FullscreenRouteLoading(): React.ReactElement {
   );
 }
 
-type ViewTransitionHandle = {
-  finished: Promise<void>;
-  ready: Promise<void>;
-  skipTransition: () => void;
-};
-
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (callback: () => void) => ViewTransitionHandle;
-};
-
 /** Redirect that preserves search/hash (legacy `/dashboard`, share-target query params). */
 function RedirectPreserveSearch({ to }: { to: string }): React.ReactElement {
   const location = useLocation();
@@ -135,25 +132,8 @@ function JobsIndexRedirect(): React.ReactElement {
 }
 
 function AppRoutes(): React.ReactElement {
-  const location = useLocation();
-  const [displayLocation, setDisplayLocation] = useState(location);
-
-  useEffect(() => {
-    if (location.key === displayLocation.key) return;
-    const doc = document as ViewTransitionDocument;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!doc.startViewTransition || reduceMotion) {
-      setDisplayLocation(location);
-      return;
-    }
-    const transition = doc.startViewTransition(() => {
-      flushSync(() => setDisplayLocation(location));
-    });
-    transition.finished.catch(() => undefined);
-  }, [displayLocation.key, location]);
-
   return (
-    <Routes location={displayLocation}>
+    <Routes>
       {/* Auth (sem login) */}
       <Route
         element={
@@ -207,6 +187,7 @@ function AppRoutes(): React.ReactElement {
         <Route path="/admin/custos" element={<AdminCustosPage />} />
         <Route path="/admin/integracoes" element={<AdminIntegracoesPage />} />
         <Route path="/conta" element={<ContaPage />} />
+        <Route path="/conta/plataformas" element={<ContaPlataformasPage />} />
         <Route path="/fila" element={<FilaPage />} />
         <Route path="/jobs" element={<JobsIndexRedirect />} />
         <Route path="/jobs/:id" element={<JobDetalhePage />} />
@@ -215,6 +196,7 @@ function AppRoutes(): React.ReactElement {
         <Route path="/notas" element={<NotasPage />} />
         <Route path="/notas/:id" element={<NotasPage />} />
         <Route path="/automacoes" element={<AutomacoesPage />} />
+        <Route path="/artefatos" element={<ArtefatosPage />} />
         <Route path="/grafo" element={<GrafoPage />} />
         <Route path="/novidades" element={<NovidadesPage />} />
         <Route path="/extensao" element={<ExtensaoPage />} />

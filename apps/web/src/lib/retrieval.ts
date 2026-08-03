@@ -1,9 +1,9 @@
 // ============================================================================
-// retrieval.ts — Harness de recuperação progressiva (sem embeddings)
+// retrieval.ts — Harness de recuperação progressiva (FTS + semântica opt-in)
 // ============================================================================
 // Lógica compartilhada entre o agente in-app (lib/chat/runtime.ts) e o servidor
 // MCP (routes/mcp.ts). A ideia (ADR-004, harness/Karpathy) é dar ao agente
-// ferramentas determinísticas de leitura progressiva sobre o acervo em vez de
+// ferramentas determinísticas de leitura progressiva sobre a Base de conhecimento em vez de
 // RAG vetorial:
 //   buscar (FTS) -> ver estrutura (outline) -> ler trechos (linhas/seção/tempo)
 //   -> expandir contexto -> relacionar -> validar citações.
@@ -20,7 +20,9 @@
 // ============================================================================
 
 import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
+import { fuseHybridScores } from './hybrid-search';
 import { s3Bucket, s3Client } from './s3';
 
 // Caps de saída — nenhuma tool devolve o documento inteiro sem intenção explícita.
@@ -351,7 +353,16 @@ export type FtsResult = {
   tags: string[];
   folder: string | null;
   createdAt: Date;
+  /** Diagnóstico interno: origem do candidato antes da apresentação ao agente. */
+  retrievalSource?: 'lexical' | 'semantic' | 'hybrid';
 };
+
+export type KnowledgeSearchResult = FtsResult & {
+  sourceType: 'transcript' | 'note';
+  href: string;
+};
+
+const CURATED_NOTE_BOOST = 0.15;
 
 const PROMPT_STOP_WORDS = new Set([
   'para',
@@ -392,17 +403,18 @@ export function promptSearchQuery(prompt: string): string {
  * português): ts_headline (trecho destacado) + ts_rank (relevância). Retorna
  * trechos curtos, NUNCA o texto completo. Espelha voxen_search_transcripts.
  */
-export async function ftsSearchTranscripts(
+export async function queryTranscriptFts(
   userId: string,
   query: string,
   limit: number,
+  client: Pick<typeof db, '$queryRaw'> = db,
 ): Promise<FtsResult[]> {
   const q = query.trim();
   if (!q) return [];
   const take = clampInt(limit, 8, 1, 25);
-  const lexical = await db.$queryRaw<FtsResult[]>`
+  return client.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
-      ts_headline('portuguese', t."plainText", websearch_to_tsquery('portuguese', ${q}),
+      ts_headline('portuguese', concat_ws(E'\n\n', t.title, t."plainText"), websearch_to_tsquery('portuguese', ${q}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
       ts_rank(t."searchVector", websearch_to_tsquery('portuguese', ${q})) AS rank,
       LEFT(t."summaryMd", 800) AS summary,
@@ -422,62 +434,275 @@ export async function ftsSearchTranscripts(
     ORDER BY rank DESC, t."createdAt" DESC
     LIMIT ${take}
   `;
-  return maybeHybridRerank(userId, q, lexical);
 }
 
-async function maybeHybridRerank(
+export async function ftsSearchTranscripts(
+  userId: string,
+  query: string,
+  limit: number,
+): Promise<FtsResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const take = clampInt(limit, 8, 1, 25);
+  const lexical = await queryTranscriptFts(userId, q, take);
+  return maybeHybridSearch(userId, q, lexical, take);
+}
+
+/** Busca FTS nas notas manuais do workspace com o mesmo parser usado nas transcrições. */
+export async function ftsSearchNotes(
+  userId: string,
+  query: string,
+  limit: number,
+): Promise<KnowledgeSearchResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const take = clampInt(limit, 8, 1, 25);
+  type NoteRow = {
+    id: string;
+    title: string;
+    snippet: string;
+    rank: number;
+    createdAt: Date;
+  };
+  const rows = await db.$queryRaw<NoteRow[]>`
+    SELECT n.id, n.title,
+      ts_headline('portuguese', concat_ws(E'\n\n', n.title, n.content), websearch_to_tsquery('portuguese', ${q}),
+        'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
+      ts_rank(n."searchVector", websearch_to_tsquery('portuguese', ${q})) AS rank,
+      n."createdAt"
+    FROM "Note" n
+    WHERE n."userId" = ${userId}
+      AND n.kind = 'NOTE'::"NoteKind"
+      AND n."searchVector" @@ websearch_to_tsquery('portuguese', ${q})
+    ORDER BY rank DESC, n."updatedAt" DESC
+    LIMIT ${take}
+  `;
+  return rows.map((row) => ({
+    ...row,
+    sourceType: 'note' as const,
+    href: `/notas/${row.id}`,
+    summary: null,
+    tags: [],
+    folder: null,
+  }));
+}
+
+/**
+ * Junta resultados da Base de conhecimento. Notas são curadoria humana e recebem
+ * um bônus pequeno, calculado sobre o melhor score da consulta, para vencer só
+ * resultados de transcrição comparáveis — nunca uma fonte muito mais precisa.
+ */
+export function mergeKnowledgeResults(
+  items: readonly KnowledgeSearchResult[],
+  limit = 8,
+): KnowledgeSearchResult[] {
+  const take = clampInt(limit, 8, 1, 25);
+  const bestRank = Math.max(0, ...items.map((item) => Number(item.rank) || 0));
+  return [...items]
+    .sort((a, b) => {
+      const aScore = a.rank + (a.sourceType === 'note' ? bestRank * CURATED_NOTE_BOOST : 0);
+      const bScore = b.rank + (b.sourceType === 'note' ? bestRank * CURATED_NOTE_BOOST : 0);
+      if (bScore !== aScore) return bScore - aScore;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    })
+    .slice(0, take);
+}
+
+/** Propaga o score híbrido para o contrato público na mesma escala do FTS. */
+export function applyHybridRanks(
+  lexical: readonly FtsResult[],
+  fused: readonly { id: string; score: number }[],
+): FtsResult[] {
+  const byId = new Map(lexical.map((item) => [item.id, item]));
+  const maxLexicalRank = Math.max(...lexical.map((item) => Number(item.rank) || 0), 1e-9);
+  return fused.flatMap((hit) => {
+    const item = byId.get(hit.id);
+    return item ? [{ ...item, rank: hit.score * maxLexicalRank }] : [];
+  });
+}
+
+/** Busca unificada da Base de conhecimento, escopada por workspace. */
+export async function searchKnowledgeBase(
+  userId: string,
+  query: string,
+  limit = 8,
+): Promise<KnowledgeSearchResult[]> {
+  const take = clampInt(limit, 8, 1, 25);
+  const [transcripts, notes] = await Promise.all([
+    ftsSearchTranscripts(userId, query, take),
+    ftsSearchNotes(userId, query, take),
+  ]);
+  return mergeKnowledgeResults(
+    [
+      ...transcripts.map((item) => ({
+        ...item,
+        sourceType: 'transcript' as const,
+        href: `/transcricoes/${item.id}`,
+      })),
+      ...notes,
+    ],
+    take,
+  );
+}
+
+const SEMANTIC_SCAN_LIMIT = 500;
+const SEMANTIC_MIN_SCORE = 0.25;
+const LOW_LEXICAL_CONFIDENCE = 0.1;
+
+/** Evita custo remoto quando FTS já encontrou uma resposta suficientemente forte. */
+export function shouldUseSemanticRescue(lexical: readonly FtsResult[]): boolean {
+  return (
+    lexical.length === 0 ||
+    Math.max(...lexical.map((row) => Number(row.rank) || 0)) < LOW_LEXICAL_CONFIDENCE
+  );
+}
+
+/** Filtro único e testável que fixa a busca vetorial no workspace solicitado. */
+export function semanticTranscriptNodeWhere(userId: string) {
+  return {
+    userId,
+    status: 'ACTIVE' as const,
+    sourceType: 'TRANSCRIPT' as const,
+    sourceId: { not: null },
+  };
+}
+
+/**
+ * Carrega detalhes apenas para os IDs que o vetor resgatou fora do FTS. A
+ * cláusula userId é deliberadamente repetida: a busca semântica jamais aceita
+ * um id de outro workspace, mesmo que um metadata tenha sido corrompido.
+ */
+async function loadSemanticTranscriptRows(
+  userId: string,
+  ids: readonly string[],
+): Promise<FtsResult[]> {
+  if (ids.length === 0) return [];
+  const rows = await db.$queryRaw<FtsResult[]>`
+    SELECT t.id, t.title,
+      LEFT(COALESCE(NULLIF(t."summaryMd", ''), t."plainText"), 800) AS snippet,
+      0::float AS rank,
+      LEFT(t."summaryMd", 800) AS summary,
+      folder.name AS folder,
+      t."createdAt",
+      COALESCE((
+        SELECT array_agg(tag.name ORDER BY tag.name)
+        FROM "TranscriptTag" tt
+        JOIN "Tag" tag ON tag.id = tt."tagId" AND tag."userId" = t."userId"
+        WHERE tt."transcriptId" = t.id
+      ), ARRAY[]::text[]) AS tags
+    FROM "Transcript" t
+    LEFT JOIN "LibraryFolder" folder ON folder.id = t."folderId" AND folder."userId" = t."userId"
+    WHERE t."userId" = ${userId}
+      AND t.status = 'ACTIVE'::"ContentStatus"
+      AND t.id IN (${Prisma.join(ids)})
+  `;
+  return rows;
+}
+
+/** Junta candidatos semânticos e FTS sem esconder a origem usada no diagnóstico. */
+export function fuseTranscriptCandidates(
+  lexical: readonly FtsResult[],
+  semantic: readonly FtsResult[],
+  vectorScores: ReadonlyMap<string, number>,
+  options: { semanticRescue?: boolean } = {},
+): FtsResult[] {
+  const byId = new Map<string, FtsResult>();
+  for (const row of semantic) byId.set(row.id, row);
+  for (const row of lexical) byId.set(row.id, row);
+  const maxLexicalRank = Math.max(...lexical.map((row) => Number(row.rank) || 0), 1e-9);
+  return fuseHybridScores(
+    [...byId.values()].map((row) => ({
+      id: row.id,
+      lexicalScore: Number(row.rank) || 0,
+      vectorScore: vectorScores.get(row.id) ?? null,
+    })),
+    options.semanticRescue ? { alpha: 0.75, missingVector: 'zero' } : { alpha: 0.35 },
+  ).map((hit) => {
+    const row = byId.get(hit.id);
+    if (!row) throw new Error('Candidato híbrido ausente.');
+    const lexicalScore = Number(row.rank) || 0;
+    const vectorScore = vectorScores.get(row.id);
+    return {
+      ...row,
+      rank: hit.score * maxLexicalRank,
+      retrievalSource:
+        lexicalScore > 0 && vectorScore != null
+          ? 'hybrid'
+          : lexicalScore > 0
+            ? 'lexical'
+            : 'semantic',
+    };
+  });
+}
+
+/** Uma falha opcional do ramo semântico nunca interrompe a recuperação FTS. */
+export async function fallbackToLexical<T>(
+  lexical: T,
+  semanticSearch: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await semanticSearch();
+  } catch {
+    return lexical;
+  }
+}
+
+async function maybeHybridSearch(
   userId: string,
   query: string,
   lexical: FtsResult[],
+  limit: number,
 ): Promise<FtsResult[]> {
-  if (lexical.length < 2) return lexical;
-  try {
+  return fallbackToLexical(lexical, async () => {
+    if (!shouldUseSemanticRescue(lexical)) return lexical;
     const { getSetting } = await import('./settings');
     const enabled = (await getSetting('embeddings_enabled'))?.trim().toLowerCase();
     if (enabled !== 'true' && enabled !== '1' && enabled !== 'yes' && enabled !== 'on') {
       return lexical;
     }
-    const { cosineSimilarity, fuseHybridScores, readEmbeddingFromMetadata } =
-      await import('./hybrid-search');
+    const [apiKey, configuredModel] = await Promise.all([
+      getSetting('openrouter_api_key'),
+      getSetting('embedding_model'),
+    ]);
+    if (!apiKey) return lexical;
+
+    const [{ createEmbedding }, { rankSemanticCandidates, readEmbeddingFromMetadata }] =
+      await Promise.all([import('./openrouter'), import('./hybrid-search')]);
+    const queryVector = await createEmbedding(
+      apiKey,
+      configuredModel || 'openai/text-embedding-3-small',
+      query,
+    );
+    if (queryVector.length < 8) return lexical;
+
     const nodes = await db.brainNode.findMany({
-      where: {
-        userId,
-        status: 'ACTIVE',
-        sourceType: 'TRANSCRIPT',
-        sourceId: { in: lexical.map((item) => item.id) },
-      },
+      where: semanticTranscriptNodeWhere(userId),
+      orderBy: { updatedAt: 'desc' },
+      take: SEMANTIC_SCAN_LIMIT,
       select: { sourceId: true, metadata: true },
     });
-    const byTranscript = new Map(
-      nodes
-        .map((node) => [node.sourceId, readEmbeddingFromMetadata(node.metadata)] as const)
-        .filter((entry): entry is [string, number[]] => Boolean(entry[0] && entry[1])),
-    );
-    if (byTranscript.size === 0) return lexical;
-
-    // Query embedding: se não houver, cai no lexical puro (sem chamada de rede no path de chat
-    // a menos que o operador habilite embeddings e exista cache futuro).
-    // Aqui só reordena com vetores já persistidos + similaridade entre hits via centroide FTS.
-    // Similaridade ao query exigiria embed da query no request — fazemos com o top lexical
-    // como âncora (MMR-lite): score = lex + cos(top0, item).
-    const topVec = byTranscript.get(lexical[0]?.id ?? '');
-    if (!topVec) return lexical;
-    const fused = fuseHybridScores(
-      lexical.map((item) => {
-        const vec = byTranscript.get(item.id);
-        return {
-          id: item.id,
-          lexicalScore: Number(item.rank) || 0,
-          vectorScore: vec ? cosineSimilarity(topVec, vec) : null,
-        };
+    const semanticHits = rankSemanticCandidates(
+      queryVector,
+      nodes.flatMap((node) => {
+        const vector = readEmbeddingFromMetadata(node.metadata);
+        return node.sourceId && vector ? [{ id: node.sourceId, vector }] : [];
       }),
-      { alpha: 0.3 },
+      { limit, minScore: SEMANTIC_MIN_SCORE },
     );
-    const byId = new Map(lexical.map((item) => [item.id, item]));
-    return fused.map((hit) => byId.get(hit.id)).filter((item): item is FtsResult => Boolean(item));
-  } catch {
-    return lexical;
-  }
+    if (semanticHits.length === 0) return lexical;
+
+    const lexicalIds = new Set(lexical.map((row) => row.id));
+    const semanticRows = await loadSemanticTranscriptRows(
+      userId,
+      semanticHits.map((hit) => hit.id).filter((id) => !lexicalIds.has(id)),
+    );
+    return fuseTranscriptCandidates(
+      lexical,
+      semanticRows,
+      new Map(semanticHits.map((hit) => [hit.id, hit.vectorScore])),
+      { semanticRescue: true },
+    ).slice(0, limit);
+  });
 }
 
 /** Pré-busca best-effort usada pelo harness antes do primeiro step do modelo. */
@@ -485,10 +710,10 @@ export async function preloadRelevantContent(
   userId: string,
   prompt: string,
   limit = 5,
-): Promise<FtsResult[]> {
+): Promise<KnowledgeSearchResult[]> {
   const query = promptSearchQuery(prompt);
   if (!query) return [];
-  return ftsSearchTranscripts(userId, query, limit);
+  return searchKnowledgeBase(userId, query, limit);
 }
 
 export type RelatedItem = {

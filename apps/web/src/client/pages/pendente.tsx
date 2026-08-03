@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Clock, LogOut } from 'lucide-react';
+import { Clock, LogOut } from '@/components/ui/icons';
 import { motion } from 'motion/react';
 import { Button } from '../components/ui/button';
 import { useMe } from '../lib/hooks';

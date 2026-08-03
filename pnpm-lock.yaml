@@ -26,6 +26,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@animateicons/react':
+        specifier: ^0.3.5
+        version: 0.3.5(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@aws-sdk/client-s3':
         specifier: ^3.1050.0
         version: 3.1050.0
@@ -44,6 +47,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.0
         version: 6.43.0
+      '@gsap/react':
+        specifier: ^2.1.2
+        version: 2.1.2(gsap@3.15.0)(react@19.2.6)
       '@hono/mcp':
         specifier: ^0.3.0
         version: 0.3.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(hono-rate-limiter@0.5.3(hono@4.12.25))(hono@4.12.25)(zod@4.4.3)
@@ -122,15 +128,15 @@ importers:
       graphology:
         specifier: ^0.26.0
         version: 0.26.0(graphology-types@0.24.8)
+      gsap:
+        specifier: ^3.13.0
+        version: 3.15.0
       hono:
         specifier: ^4.12.25
         version: 4.12.25
       ioredis:
         specifier: ^5.10.1
         version: 5.10.1
-      lucide-react:
-        specifier: ^1.16.0
-        version: 1.16.0(react@19.2.6)
       motion:
         specifier: ^12.39.0
         version: 12.39.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -225,6 +231,9 @@ importers:
       vite-plugin-pwa:
         specifier: ^1.3.0
         version: 1.3.0(vite@6.4.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0))(workbox-build@7.4.1(@types/babel__core@7.20.5))(workbox-window@7.4.1)
+      workbox-window:
+        specifier: ^7.4.1
+        version: 7.4.1
 
   packages/shared-types: {}
 
@@ -245,6 +254,13 @@ packages:
   '@ai-sdk/provider@4.0.3':
     resolution: {integrity: sha512-e0CpNWJUY7OxAFAnCZkw+ri9QOHWwTs1tXP42782KFGCU07qt8NiXCrCVowyCB5dP2r5/Uls+g2oPd8kOJn9dw==}
     engines: {node: '>=22'}
+
+  '@animateicons/react@0.3.5':
+    resolution: {integrity: sha512-ZL8F2EsVfLPGt5a7LPMHrKxgdlS2UWrW4dtkIF++tg7AHzXhPaFIAFjCRV/OvrMgNHkj5GlNwzHD7f6LaLdmOA==}
+    engines: {node: '>=18.17.0'}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
 
   '@antfu/install-pkg@1.1.0':
     resolution: {integrity: sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ==}
@@ -1260,6 +1276,12 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
+
+  '@gsap/react@2.1.2':
+    resolution: {integrity: sha512-JqliybO1837UcgH2hVOM4VO+38APk3ECNrsuSM4MuXp+rbf+/2IG2K1YJiqfTcXQHH7XlA0m3ykniFYstfq0Iw==}
+    peerDependencies:
+      gsap: ^3.12.5
+      react: '>=17'
 
   '@hono/mcp@0.3.0':
     resolution: {integrity: sha512-UhSWFbZwRxHBdptOn2r1HyB8Vt6gU+BL3AbTis2t8TBW69ZhG4soJQ09yEL/t/ymxszJnWp5Rq6tOXXOjuK1qg==}
@@ -3799,6 +3821,9 @@ packages:
     peerDependencies:
       graphology-types: '>=0.24.0'
 
+  gsap@3.15.0:
+    resolution: {integrity: sha512-dMW4CWBTUK1AEEDeZc1g4xpPGIrSf9fJF960qbTZmN/QwZIWY5wgliS6JWl9/25fpTGJrMRtSjGtOmPnfjZB+A==}
+
   hachure-fill@0.5.2:
     resolution: {integrity: sha512-3GKBOn+m2LX9iq+JC1064cSFprJY4jL1jCXTcpnfER5HYE2l/4EfWSGzkPa/ZDBmYI0ZOEj5VHV/eKnPGkHuOg==}
 
@@ -4285,11 +4310,6 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
-
-  lucide-react@1.16.0:
-    resolution: {integrity: sha512-dYwyPzb4MEKpGUmNYk3WKWPnMrHs3FKM+q94kAnJrcDIqqn1hq2xY8scaS2ovsOCM5D51ey2gaRG3PBb1vgoYQ==}
-    peerDependencies:
-      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   maath@0.10.8:
     resolution: {integrity: sha512-tRvbDF0Pgqz+9XUa4jjfgAQ8/aPKmQdWXilFu2tMy4GWj4NOsx99HlULO4IeREfbO3a0sA145DZYyvXPkybm0g==}
@@ -5624,6 +5644,11 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
+  '@animateicons/react@0.3.5(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+
   '@antfu/install-pkg@1.1.0':
     dependencies:
       package-manager-detector: 1.6.0
@@ -6919,6 +6944,11 @@ snapshots:
       react-dom: 19.2.6(react@19.2.6)
 
   '@floating-ui/utils@0.2.11': {}
+
+  '@gsap/react@2.1.2(gsap@3.15.0)(react@19.2.6)':
+    dependencies:
+      gsap: 3.15.0
+      react: 19.2.6
 
   '@hono/mcp@0.3.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(hono-rate-limiter@0.5.3(hono@4.12.25))(hono@4.12.25)(zod@4.4.3)':
     dependencies:
@@ -9565,6 +9595,8 @@ snapshots:
       events: 3.3.0
       graphology-types: 0.24.8
 
+  gsap@3.15.0: {}
+
   hachure-fill@0.5.2: {}
 
   has-bigints@1.1.0: {}
@@ -10036,10 +10068,6 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
-
-  lucide-react@1.16.0(react@19.2.6):
-    dependencies:
-      react: 19.2.6
 
   maath@0.10.8(@types/three@0.185.1)(three@0.184.0):
     dependencies:

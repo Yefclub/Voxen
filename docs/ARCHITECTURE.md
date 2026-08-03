@@ -22,7 +22,7 @@ Voxen é uma plataforma web self-hosted composta por **3 apps** e **3 serviços 
                 ▼                          ▼                     ▼
        ┌──────────────────┐   ┌────────────────────────┐   ┌─────────────────┐
        │    Postgres 17   │   │       apps/chat        │   │     Redis 7     │
-       │  (Prisma + FTS)  │   │  Python + FastAPI +     │   │  (ARQ queue,    │
+       │  (Prisma + FTS)  │   │  Python + FastAPI +     │   │  (wakeup,       │
        │  Users, Sessions,│   │  Agno (streaming SSE)   │   │   sessions,     │
        │  Transcripts,    │   │  Tools: list, search,   │   │   rate-limit)   │
        │  Chunks, Jobs,   │   │  read, get_metadata     │   └────────┬────────┘
@@ -32,7 +32,8 @@ Voxen é uma plataforma web self-hosted composta por **3 apps** e **3 serviços 
                 ▲                        │                          ▼
                 │                        │              ┌───────────────────────┐
                 │                        │              │      apps/worker      │
-                └────────────────────────┴──────────────┤   Python + ARQ +      │
+                └────────────────────────┴──────────────┤ Python asyncio +      │
+                                                        │ leases no Postgres +  │
                                                         │   media extractor     │
                                                         │   + ffmpeg            │
                                                         └──────────┬────────────┘
@@ -79,16 +80,21 @@ Serviço interno (porta 8001, só na rede `voxen-net`). Responsabilidades:
   - `get_metadata(id)` → frontmatter
 - Cada chamada loga `cost_events` no Postgres (modelo, tokens, custo OpenRouter)
 
-### `apps/worker` — Python + ARQ + extração de mídia + ffmpeg
+### `apps/worker` — Python asyncio + jobs duráveis no Postgres + ffmpeg
 
-Worker assíncrono que consome jobs via Redis (ARQ). Responsabilidades:
+Worker assíncrono que faz claim dos jobs persistidos no Postgres com
+`FOR UPDATE SKIP LOCKED`. Cada tentativa recebe lease renovável; leases vencidos
+voltam atomicamente para `QUEUED` ou terminam em `FAILED` após o limite. Redis
+Pub/Sub apenas acorda o worker e transporta progresso realtime.
+
+Responsabilidades:
 
 - Job `download_and_transcribe(job_id)`:
   1. Carrega job do DB → URL, userId
   2. O extrator de mídia tenta legendas oficiais primeiro
   3. Se legenda OK → pula transcrição, gera `.md` direto
   4. Se não → baixa áudio, `ffmpeg` segmenta em chunks de ~5min com overlap
-  5. Pra cada chunk → OpenRouter `/audio/transcriptions` (modelo escolhido pelo admin)
+  5. Pra cada chunk → OpenRouter `/audio/transcriptions` (modelo canônico de transcrição)
   6. Concatena resultado com timestamps, gera `.md` com frontmatter
   7. Upload `.md` pro MinIO/S3
   8. Insere `transcripts` no Postgres (texto + frontmatter + `tsvector` via trigger)
@@ -139,7 +145,7 @@ worker --socks5h://127.0.0.1:1080--> chisel server (voxen-app)
 
 ### Redis 7
 
-- Backend da fila ARQ (`apps/worker`)
+- Wakeup efêmero de jobs e transporte realtime; o Postgres é a fila durável
 - Backend de rate-limit do better-auth (futuro)
 - Backend de cache de sessões (opcional)
 
@@ -159,9 +165,13 @@ worker --socks5h://127.0.0.1:1080--> chisel server (voxen-app)
 2. User acessa /cadastro, preenche nome+email+senha
 3. Backend: count(users) == 0 → marca admin=true, status=approved
 4. Login → redireciona pra /setup (obrigatório enquanto Settings.GLOBAL.openrouter_api_key == null)
-5. Admin cola OR API key, escolhe modelos default → salva cifrado em Settings
+5. Admin cola apenas a OR API key; o backend valida o catálogo disponível para essa chave e salva, na mesma transação, a chave cifrada e os modelos recomendados
 6. Sistema pronto pra receber outros cadastros (pending)
 ```
+
+Depois do onboarding, `/admin/configuracao` mantém a mesma superfície unificada:
+o admin atualiza somente a chave da OpenRouter e a Voxen reaplica o conjunto
+canônico de modelos como uma única configuração.
 
 Spec completa: `.specs/000-setup-inicial.md`.
 
@@ -180,7 +190,7 @@ Spec completa: `.specs/000-setup-inicial.md`.
 ```
 1. User cola URL em /dashboard, POST /api/jobs
 2. apps/web cria Job(status=queued, userId, source_url)
-3. apps/web enfileira em ARQ (Redis): "download_and_transcribe", jobId
+3. apps/web publica `jobs:new` no Redis como wakeup best-effort; o Job já está durável no Postgres
 4. apps/worker consome:
    - Valida URL (allowlist hosts → previne SSRF)
    - extrator de mídia tenta legendas oficiais
@@ -231,7 +241,7 @@ Cada decisão grande é documentada como ADR em `docs/DECISIONS.md`. Resumo:
 2. **Monorepo pnpm + Makefile** — TS+Python sem Turbo
 3. **Agno > AI SDK** — multi-agent, memória, RAG nativos no Python
 4. **Postgres FTS > pgvector** (harness/Karpathy) — agente usa tools, não vector RAG
-5. **ARQ > BullMQ** — worker em Python (extração de mídia + ffmpeg nativos)
+5. **Jobs Postgres + lease** — worker Python, fila durável e Redis apenas como wakeup (ADR-005 preserva a decisão histórica)
 6. **MinIO/S3-compatible** — padrão único para local, VPS e Easypanel
 7. **better-auth + workflow aprovação** — adoção restrita por design
 8. **Master key via env** — `MASTER_KEY` em todos os modos documentados

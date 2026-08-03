@@ -29,6 +29,11 @@ describe('dev version formatting', () => {
     );
   });
 
+  it('preserva a prerelease canônica do package.json', () => {
+    expect(formatDevVersionFromDeploy('0.13.0-dev.1785366299', '1785372519', 'abc123')).toBe(null);
+    expect(formatDevVersionFromDeploy('0.13.0-rc.1', '1785372519', 'abc123')).toBe(null);
+  });
+
   it('não gera versão dev sem sha ou timestamp válido', () => {
     expect(formatDevVersionFromDeploy('0.9.3', '1780337076')).toBe(null);
     expect(formatDevVersionFromDeploy('0.9.3', 'not-a-number', 'abc123')).toBe(null);
@@ -57,7 +62,9 @@ describe('build identity meta', () => {
     expect(res.headers.get('cache-control')).toContain('no-store');
     expect(res.headers.get('content-type')).toContain('text/html');
     const html = await res.text();
-    expect(html).toMatch(/<head><meta name="voxen-build" content="[^"]+">/);
+    expect(html).toMatch(/<meta name="voxen-build" content="[^"]+">/);
+    expect(html).toMatch(/<meta name="voxen-version" content="[^"]+">/);
+    expect(html).toMatch(/<meta name="voxen-built-at" content="[^"]*">/);
   });
 
   it.skipIf(!distIndexExists)('injeta o mesmo meta no fallback SPA', async () => {
@@ -65,5 +72,6 @@ describe('build identity meta', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toMatch(/<meta name="voxen-build" content="[^"]+">/);
+    expect(html).toMatch(/<meta name="voxen-version" content="[^"]+">/);
   });
 });

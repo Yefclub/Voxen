@@ -21,7 +21,10 @@ describe('chat handoff wiring', () => {
     const chat = readFileSync(join(import.meta.dir, '../src/client/pages/chat.tsx'), 'utf8');
     expect(chat).toContain('pendingAutoSendRef');
     expect(chat).toContain('ChatHandoffState');
-    expect(chat).toContain('async function send(override?: string)');
+    // Sem o parêntese de fechamento: o que importa aqui é que `send` aceita o
+    // texto do handoff, não a lista completa de parâmetros dela.
+    expect(chat).toContain('async function send(override?: string');
+    expect(chat).toContain('void send(pending)');
   });
 
   test('transcript detail has copy summary and chat bar', () => {

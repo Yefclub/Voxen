@@ -1,4 +1,4 @@
-import { AlertTriangle, RotateCw } from 'lucide-react';
+import { AlertTriangle, RotateCw } from '@/components/ui/icons';
 import { Button } from './button';
 import { useI18n } from '../../lib/i18n';
 import { cn } from '../../lib/utils';

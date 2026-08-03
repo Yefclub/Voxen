@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from src.tags import pick_folder_id, resolve_tags_decision, slugify_tag
+from typing import Any
+
+import httpx
+
+from src.tags import generate_content_tags, pick_folder_id, resolve_tags_decision, slugify_tag
 
 
 def test_slugify_lowercases_and_strips_accents() -> None:
@@ -60,11 +64,57 @@ def test_resolve_drops_noise() -> None:
     assert resolve_tags_decision('["a really long tag with too many words here","OK Tag"]', []) == [
         "OK Tag"
     ]
+    assert resolve_tags_decision(
+        '["tags total","JSON array only","no duplicates","I see","Segurança Web"]',
+        [],
+    ) == ["Segurança Web"]
 
 
 def test_resolve_empty() -> None:
     assert resolve_tags_decision("", []) == []
     assert resolve_tags_decision("none", []) == []
+
+
+class _CaptureClient:
+    def __init__(self) -> None:
+        self.payload: dict[str, Any] | None = None
+
+    async def post(
+        self,
+        _url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+    ) -> httpx.Response:
+        assert headers["Authorization"] == "Bearer sk-test"
+        self.payload = json
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": '{"tags":["Python","Automação"]}'}}],
+                "usage": {"cost": "0.001", "prompt_tokens": 10, "completion_tokens": 5},
+            },
+        )
+
+
+async def test_generation_uses_structured_output_without_reasoning() -> None:
+    client = _CaptureClient()
+    result = await generate_content_tags(
+        title="Automação em Python",
+        content="Conteúdo longo sobre automações confiáveis escritas em Python.",
+        existing_tags=[],
+        api_key="sk-test",
+        model="x-ai/grok-4.5",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert result.tags == ["Python", "Automação"]
+    assert client.payload is not None
+    assert client.payload["reasoning"] == {"enabled": False}
+    assert client.payload["max_tokens"] >= 256
+    response_format = client.payload["response_format"]
+    assert isinstance(response_format, dict)
+    assert response_format["type"] == "json_schema"
 
 
 def test_pick_folder_id() -> None:

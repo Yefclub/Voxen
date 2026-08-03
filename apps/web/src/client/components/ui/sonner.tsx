@@ -1,14 +1,16 @@
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
+import { TOAST_DURATION_MS } from '../../lib/toast';
 
 export function Toaster(props: ToasterProps): React.ReactElement {
   return (
     <Sonner
+      {...props}
       theme="dark"
       position="bottom-right"
       richColors={false}
       closeButton={false}
-      duration={4000}
-      visibleToasts={4}
+      duration={TOAST_DURATION_MS}
+      visibleToasts={1}
       toastOptions={{
         classNames: {
           toast:
@@ -24,7 +26,6 @@ export function Toaster(props: ToasterProps): React.ReactElement {
           warning: '!border-amber-500/30',
         },
       }}
-      {...props}
     />
   );
 }

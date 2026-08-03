@@ -26,7 +26,9 @@ make dev
 minio, web, chat, worker). O bucket `voxen-transcripts` é criado
 automaticamente.
 
-Acessa `http://localhost:3000`. Primeiro cadastro vira admin → tela de setup pede OpenRouter API key + modelos default. Console MinIO: `http://localhost:9001`.
+Acessa `http://localhost:3000`. Primeiro cadastro vira admin → tela de setup
+pede somente a chave da OpenRouter e aplica automaticamente os modelos
+canônicos. Console MinIO: `http://localhost:9001`.
 
 > Repositório atual: `Yefclub/Voxen` (público/open source). `main` e `dev`
 > são protegidas; contribuições normais entram por PR para `dev`.

@@ -159,6 +159,8 @@ export interface GraphPalette {
   canvas: string;
   label: string;
   selected: string;
+  activeNode: string;
+  activeLabel: string;
   labelStroke: string;
   dimNode: string;
   dimEdge: string;
@@ -225,6 +227,22 @@ export function toOpaqueGraphColor(color: string): string {
     .join('')}`;
 }
 
+/**
+ * Descrição compacta para o inspetor do grafo. Resumos vêm da Base de conhecimento e podem
+ * conter Markdown estrutural; o inspetor é uma superfície curta de metadata,
+ * então apresenta o texto sem marcadores literais como `##` ou `**`.
+ */
+export function graphDescriptionText(value: string): string {
+  return value
+    .replace(/```(?:[\w-]+)?/gu, ' ')
+    .replace(/^#{1,6}\s+/gmu, '')
+    .replace(/^\s*[-*+]\s+/gmu, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/gu, '$1')
+    .replace(/[*_`~]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
 const LIGHT_NODE_COLORS: Record<GraphNodeType, string> = {
   transcript: '#7c3aed',
   note: '#059669',
@@ -256,6 +274,8 @@ export function resolveGraphPalette(theme: AppTheme): GraphPalette {
       // Alto contraste: texto quase preto + halo branco (evita título ilegível).
       label: '#09090b',
       selected: '#09090b',
+      activeNode: '#6d28d9',
+      activeLabel: '#ffffff',
       labelStroke: 'rgba(255, 255, 255, 0.92)',
       dimNode: 'rgba(161, 161, 170, 0.4)',
       dimEdge: 'rgba(161, 161, 170, 0.16)',
@@ -264,13 +284,15 @@ export function resolveGraphPalette(theme: AppTheme): GraphPalette {
       edges: LIGHT_EDGE_COLORS,
     };
   }
-  const canvas = theme === 'emerald' ? '#19211f' : '#212121';
+  const canvas = theme === 'linear' ? '#111113' : theme === 'emerald' ? '#19211f' : '#212121';
   return {
     canvas,
     // Texto claro + contorno escuro opaco — títulos legíveis sobre nós coloridos.
     label: '#fafafa',
     selected: '#ffffff',
-    labelStroke: canvas === '#19211f' ? 'rgba(15, 23, 20, 0.92)' : 'rgba(9, 9, 11, 0.92)',
+    activeNode: '#8b5cf6',
+    activeLabel: '#ffffff',
+    labelStroke: canvas === '#19211f' ? 'rgba(15, 23, 20, 0.92)' : 'rgba(9, 9, 11, 0.94)',
     dimNode: 'rgba(82, 82, 91, 0.42)',
     dimEdge: 'rgba(82, 82, 91, 0.14)',
     neutralEdge: 'rgba(148, 163, 184, 0.34)',
@@ -391,7 +413,7 @@ export function buildSigmaGraphModel(
   data: GraphResp,
   translate?: TranslateFn,
   layoutOptions: GraphLayoutOptions = {},
-  palette: GraphPalette = resolveGraphPalette('zinc'),
+  palette: GraphPalette = resolveGraphPalette('linear'),
 ): SigmaGraphModel {
   const communities = buildGraphCommunities(data);
   const layout = buildGraphLayout(data, layoutOptions, communities);

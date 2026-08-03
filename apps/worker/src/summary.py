@@ -16,6 +16,7 @@ import httpx
 
 from . import db, openrouter, voxen_settings
 from .cancellation import is_cancelled
+from .safe_diagnostics import error_diagnostic
 
 OR_BASE_URL = openrouter.OR_BASE_URL
 
@@ -66,12 +67,34 @@ async def maybe_generate(
     *,
     user_id: str,
     transcript_id: str,
-    job_id: str,
+    job_id: str | None,
     log: Any,  # noqa: ANN401
+    already_claimed: bool = False,
+    claim_attempt: int | None = None,
 ) -> None:
+    if already_claimed:
+        if claim_attempt is None:
+            raise ValueError("claim_attempt is required for a claimed summary")
+        active_attempt = claim_attempt
+    else:
+        started_attempt = await db.start_summary_enrichment(user_id, transcript_id)
+        if started_attempt is None:
+            return
+        active_attempt = started_attempt
+
+    async def finish(status: str, error: str | None = None) -> None:
+        await db.finish_summary_enrichment(
+            user_id,
+            transcript_id,
+            claim_attempt=active_attempt,
+            status=status,
+            error=error,
+        )
+
     # Respeita cancel pedido entre persistência do transcript e summary.
-    if is_cancelled(job_id):
+    if job_id and is_cancelled(job_id):
         log.info("summary-skipped-cancelled")
+        await finish("RETRY", "SUMMARY_CANCELLED")
         return
     try:
         async with db.connection() as conn:
@@ -81,17 +104,21 @@ async def maybe_generate(
             )
         if not row or not row["plainText"]:
             log.info("summary-skipped-empty-text")
+            await finish("SKIPPED", "SUMMARY_EMPTY_TEXT")
             return
 
-        api_key = await voxen_settings.get_openrouter_api_key()
-        model = await voxen_settings.get_default_chat_model()
-        if not api_key or not model:
+        config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
+        if not config.api_key or not config.model:
             log.warning("summary-skipped-missing-config")
+            await finish("RETRY", "SUMMARY_CONFIG_MISSING")
             return
+        api_key = config.api_key
+        model = config.model
 
         text = str(row["plainText"]).strip()
         if not text:
             log.info("summary-skipped-empty-text")
+            await finish("SKIPPED", "SUMMARY_EMPTY_TEXT")
             return
         if len(text) > 60_000:
             text = text[:60_000] + "\n\n[…transcrição truncada para resumo…]"
@@ -124,19 +151,24 @@ async def maybe_generate(
                     headers={"Authorization": f"Bearer {api_key}"},
                     json=payload,
                 )
-            except (httpx.TimeoutException, httpx.NetworkError) as e:
-                log.warning("summary-network-error", error=str(e)[:200])
+            except httpx.TransportError as e:
+                log.warning(
+                    "summary-network-error",
+                    **error_diagnostic(e, "SUMMARY_UPSTREAM_UNAVAILABLE"),
+                )
+                await finish("RETRY", "SUMMARY_UPSTREAM_UNAVAILABLE")
                 return
 
         if res.status_code in (401, 403):
             log.warning("summary-auth-error", status=res.status_code)
+            await finish("RETRY", "SUMMARY_AUTH_ERROR")
             return
         if res.status_code >= 400:
             log.warning(
                 "summary-upstream-non-200",
                 status=res.status_code,
-                body=res.text[:200],
             )
+            await finish("RETRY", "SUMMARY_UPSTREAM_ERROR")
             return
 
         data = res.json()
@@ -154,19 +186,23 @@ async def maybe_generate(
 
         if not summary:
             log.info("summary-empty")
+            await finish("SKIPPED", "SUMMARY_EMPTY_RESPONSE")
             return
 
         try:
-            async with db.connection() as conn:
-                await conn.execute(
-                    'UPDATE "Transcript" SET "summaryMd" = $2, "updatedAt" = NOW() '
-                    'WHERE id = $1 AND "userId" = $3',
-                    transcript_id,
-                    summary,
-                    user_id,
-                )
-        except Exception:  # noqa: BLE001
-            log.exception("summary-persist-failed", transcript_id=transcript_id)
+            persisted = await db.complete_summary_enrichment(
+                user_id,
+                transcript_id,
+                claim_attempt=active_attempt,
+                summary_md=summary,
+            )
+        except Exception as e:  # noqa: BLE001
+            log.error(
+                "summary-persist-failed",
+                transcript_id=transcript_id,
+                **error_diagnostic(e, "SUMMARY_PERSIST_FAILED"),
+            )
+            await finish("RETRY", "SUMMARY_PERSIST_FAILED")
             return
 
         try:
@@ -184,9 +220,33 @@ async def maybe_generate(
                     "language": language,
                 },
             )
-        except Exception:  # noqa: BLE001
-            log.exception("summary-cost-event-failed", transcript_id=transcript_id)
+        except Exception as e:  # noqa: BLE001
+            log.error(
+                "summary-cost-event-failed",
+                transcript_id=transcript_id,
+                **error_diagnostic(e, "SUMMARY_COST_EVENT_FAILED"),
+            )
+
+        if not persisted:
+            log.info(
+                "summary-stale-claim-discarded",
+                transcript_id=transcript_id,
+                claim_attempt=active_attempt,
+            )
+            return
 
         log.info("summary-done", transcript_id=transcript_id, language=language)
-    except Exception:  # noqa: BLE001 — resumo é melhoria, não bloqueia
-        log.exception("summary-failed", transcript_id=transcript_id)
+    except Exception as e:  # noqa: BLE001 — resumo é melhoria, não bloqueia
+        log.error(
+            "summary-failed",
+            transcript_id=transcript_id,
+            **error_diagnostic(e, "SUMMARY_FAILED"),
+        )
+        try:
+            await finish("RETRY", "SUMMARY_FAILED")
+        except Exception as finish_error:  # noqa: BLE001
+            log.error(
+                "summary-state-persist-failed",
+                transcript_id=transcript_id,
+                **error_diagnostic(finish_error, "SUMMARY_STATE_PERSIST_FAILED"),
+            )

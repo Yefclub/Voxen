@@ -34,6 +34,11 @@ TAG_BAD_MARKERS = (
     "here is",
     "the tags",
     "as tags",
+    "tags total",
+    "json array only",
+    "return json only",
+    "no duplicates",
+    "no sentences",
     "o conteúdo",
     "este conteúdo",
 )
@@ -59,6 +64,7 @@ TAG_STOP_LABELS = {
     "n/a",
     "na",
     "null",
+    "i see",
 }
 
 
@@ -188,28 +194,28 @@ async def generate_content_tags(
     )
     if language == "en":
         system = (
-            "You tag content for a personal knowledge base. Reply ONLY with a JSON "
-            "array of 1-5 short tags (1-3 words each). Reuse an existing tag verbatim "
+            "You tag content for a personal knowledge base. Return 1-5 short tags "
+            "(1-3 words each). Reuse an existing tag verbatim "
             "when it fits; only invent a new one when none applies. Never write a sentence."
         )
         user = (
             f"Title: {title.strip() or '(no title)'}\n"
             f"Existing tags (reuse these when they fit):\n{tags_block}\n\n"
-            'Return JSON only, e.g.: ["Anime","Review","Studio Ghibli"]\n'
+            'Return tags such as ["Anime","Review","Studio Ghibli"].\n'
             "Prefer 2-4 relevant tags. No duplicates. No sentences.\n\n"
             f"Content excerpt:\n{excerpt}"
         )
     else:
         system = (
-            "Você cria tags para uma base de conhecimento pessoal. Responda APENAS com "
-            "um array JSON de 1 a 5 tags curtas (1-3 palavras cada). Reutilize uma tag "
+            "Você cria tags para uma base de conhecimento pessoal. Retorne de 1 a 5 "
+            "tags curtas (1-3 palavras cada). Reutilize uma tag "
             "existente exatamente quando couber; só invente nova quando nenhuma servir. "
             "Nunca escreva frase."
         )
         user = (
             f"Título: {title.strip() or '(sem título)'}\n"
             f"Tags existentes (reutilize quando couber):\n{tags_block}\n\n"
-            'Responda só JSON, ex.: ["Anime","Review","Estúdio Ghibli"]\n'
+            'Retorne tags como ["Anime","Review","Estúdio Ghibli"].\n'
             "Prefira 2-4 tags relevantes. Sem duplicatas. Sem frases.\n\n"
             f"Trecho do conteúdo:\n{excerpt}"
         )
@@ -221,7 +227,28 @@ async def generate_content_tags(
             {"role": "user", "content": user},
         ],
         "temperature": 0.2,
-        "max_tokens": 96,
+        "max_tokens": 256,
+        "reasoning": {"enabled": False},
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "content_tags",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string", "minLength": 2, "maxLength": 40},
+                            "minItems": 1,
+                            "maxItems": MAX_TAGS,
+                        }
+                    },
+                    "required": ["tags"],
+                    "additionalProperties": False,
+                },
+            },
+        },
         "usage": {"include": True},
     }
     result = await _chat_completion_document(

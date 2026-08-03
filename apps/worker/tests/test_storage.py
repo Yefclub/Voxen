@@ -28,6 +28,13 @@ def test_transcript_key_format() -> None:
     )
 
 
+def test_source_version_key_is_immutable_per_version() -> None:
+    assert (
+        storage.source_version_key("cuser01", "ctranscript01", 3)
+        == "workspaces/cuser01/transcripts/ctranscript01/sources/v3.md"
+    )
+
+
 def test_upload_key_format() -> None:
     assert (
         storage.upload_key("cuser01", "123e4567-e89b-12d3-a456-426614174000", "aula.mp4")

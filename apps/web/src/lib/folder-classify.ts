@@ -3,7 +3,7 @@
 // Usado no backfill "Organizar com IA" da biblioteca.
 // ============================================================================
 
-import { getAppLanguage, getSetting, type AppLanguage } from './settings';
+import { getAppLanguage, getSettings, type AppLanguage } from './settings';
 
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -306,8 +306,9 @@ export async function classifyFolderForContent(input: {
   tokensOut: number;
   costUsd: string;
 }> {
-  const apiKey = await getSetting('openrouter_api_key');
-  const model = await getSetting('default_chat_model');
+  const settings = await getSettings(['openrouter_api_key', 'default_chat_model'] as const);
+  const apiKey = settings.openrouter_api_key;
+  const model = settings.default_chat_model;
   if (!apiKey || !model) {
     throw new Error('Setup incompleto — OpenRouter/modelo ausentes.');
   }
@@ -338,8 +339,7 @@ export async function classifyFolderForContent(input: {
     signal: AbortSignal.timeout(60_000),
   });
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`OpenRouter ${res.status}${body ? `: ${body.slice(0, 160)}` : ''}`);
+    throw new Error(`OpenRouter retornou status ${res.status} ao classificar o conteúdo.`);
   }
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;

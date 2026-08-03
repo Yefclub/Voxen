@@ -10,6 +10,7 @@ import {
 } from '../src/lib/brain';
 import { db } from '../src/lib/db';
 import { acquireGraphIndexLease, releaseGraphIndexLease } from '../src/lib/graph-index-coordinator';
+import { reconcileGraphUsers } from '../src/routes/graph';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -742,7 +743,7 @@ describeIfDb('brain indexer', () => {
     expect(timeline).not.toBeNull();
   });
 
-  it('reindexes stale Brain source nodes on graph load', async () => {
+  it('reindexes stale Brain source nodes in automatic reconciliation', async () => {
     await signUp('stale-brain@voxen.local', 'senha-super-segura-123', 'Stale Brain');
     const signin = await signIn('stale-brain@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
@@ -771,6 +772,7 @@ describeIfDb('brain indexer', () => {
       },
     });
 
+    await reconcileGraphUsers();
     await waitForGraphReindex(cookie, false);
 
     const node = await db.brainNode.findUniqueOrThrow({
@@ -818,6 +820,7 @@ describeIfDb('brain indexer', () => {
       await releaseGraphIndexLease(user.id, workerOwner);
     }
 
+    await reconcileGraphUsers();
     await waitForGraphReindex(cookie, false);
     expect(
       await db.brainNode.findUnique({

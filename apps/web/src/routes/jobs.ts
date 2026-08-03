@@ -33,6 +33,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { deleteS3Object, presignClient, presignEnabled, s3Bucket, s3Client } from '../lib/s3';
 import { rateLimit } from '../lib/rate-limit';
 import { createSubscriber } from '../lib/redis';
+import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
 import {
   isTerminalStage,
   jobChannel,
@@ -62,6 +63,34 @@ type SseConnection = {
   isClosed(): boolean;
   onClose(fn: () => void | Promise<void>): void;
 };
+
+type QueuedJobType =
+  | 'DOWNLOAD_AND_TRANSCRIBE'
+  | 'SCRAPE_WEB'
+  | 'UPLOAD_AND_TRANSCRIBE'
+  | 'UPLOAD_AND_ANALYZE_IMAGE'
+  | 'UPLOAD_AND_ANALYZE_DOCUMENT'
+  | 'ANALYZE_X';
+
+async function createQueuedJob(
+  userId: string,
+  type: QueuedJobType,
+  sourceUrl: string,
+): Promise<{ id: string; status: string; sourceUrl: string }> {
+  return db.$transaction(async (tx) => {
+    // Compartilha o lock da publicação de settings: a revisão lida e o job
+    // nascem no mesmo corte lógico da configuração global.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
+    const revision = await tx.configRevision.findFirst({
+      orderBy: { number: 'desc' },
+      select: { id: true },
+    });
+    return tx.job.create({
+      data: { userId, type, status: 'QUEUED', sourceUrl, configRevisionId: revision?.id },
+      select: { id: true, status: true, sourceUrl: true },
+    });
+  });
+}
 
 const SSE_HEARTBEAT_MS = 10_000;
 const SSE_RETRY_MS = 5_000;
@@ -264,15 +293,7 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
     }
     let job: { id: string; status: string; sourceUrl: string };
     try {
-      job = await db.job.create({
-        data: {
-          userId,
-          type: jobType,
-          status: 'QUEUED',
-          sourceUrl: video.canonical,
-        },
-        select: { id: true, status: true, sourceUrl: true },
-      });
+      job = await createQueuedJob(userId, jobType, video.canonical);
     } catch (err) {
       if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
         return { outcome: 'inflight', error: 'Esta URL já está sendo processada.', kind };
@@ -280,7 +301,7 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
       throw err;
     }
     await notifyNewJob(job.id).catch((err) => {
-      console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+      console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
     });
     await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
     return {
@@ -323,10 +344,7 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
   }
   let webJob: { id: string; status: string; sourceUrl: string };
   try {
-    webJob = await db.job.create({
-      data: { userId, type: 'SCRAPE_WEB', status: 'QUEUED', sourceUrl: normalized },
-      select: { id: true, status: true, sourceUrl: true },
-    });
+    webJob = await createQueuedJob(userId, 'SCRAPE_WEB', normalized);
   } catch (err) {
     if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
       return { outcome: 'inflight', error: 'Esta URL já está sendo processada.', kind: 'web' };
@@ -334,7 +352,7 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
     throw err;
   }
   await notifyNewJob(webJob.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
   });
   await publishJobEvent(userId, { jobId: webJob.id, stage: 'queued' }).catch(() => undefined);
   return {
@@ -366,18 +384,10 @@ async function enqueueUploadJob(
   kind: UploadKind,
 ): Promise<{ jobId: string; status: string; sourceUrl: string }> {
   const sourceUrl = uploadSourceUrl(uploadId, filename);
-  const job = await db.job.create({
-    data: {
-      userId,
-      type: jobTypeForKind(kind),
-      status: 'QUEUED',
-      sourceUrl,
-    },
-    select: { id: true, status: true, sourceUrl: true },
-  });
+  const job = await createQueuedJob(userId, jobTypeForKind(kind), sourceUrl);
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -433,7 +443,7 @@ export async function createUploadJobForUser(
       contentType,
     });
   } catch (err) {
-    console.error('[jobs] upload to S3 failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] upload to S3 failed', safeErrorDiagnostic('UPLOAD_STORE_FAILED', err));
     return {
       outcome: 'error',
       status: 502,
@@ -523,15 +533,7 @@ jobsRoutes.post('/', async (c) => {
 
   let job: { id: string; status: string; sourceUrl: string };
   try {
-    job = await db.job.create({
-      data: {
-        userId,
-        type: jobType,
-        status: 'QUEUED',
-        sourceUrl: video.canonical,
-      },
-      select: { id: true, status: true, sourceUrl: true },
-    });
+    job = await createQueuedJob(userId, jobType, video.canonical);
   } catch (err) {
     // Partial unique index `Job_user_url_active_unique` cobre a race entre
     // 2 POSTs simultâneos da mesma URL: o primeiro cria, o segundo cai aqui.
@@ -542,7 +544,7 @@ jobsRoutes.post('/', async (c) => {
   }
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -682,8 +684,11 @@ jobsRoutes.post('/upload/presign', async (c) => {
       { expiresIn: PRESIGN_EXPIRES_SEC },
     );
   } catch (err) {
-    // Não logar a URL (contém assinatura) — só a key.
-    console.error(`[jobs] presign failed (key=${key}):`, err instanceof Error ? err.message : err);
+    console.error('[jobs] presign failed', {
+      upload_id: uploadId,
+      content_kind: kind,
+      ...safeErrorDiagnostic('UPLOAD_PRESIGN_FAILED', err),
+    });
     return c.json({ error: 'Falha ao gerar URL de upload.' }, 502);
   }
 
@@ -748,10 +753,11 @@ jobsRoutes.post('/upload/confirm', async (c) => {
     if (name === 'NotFound' || name === 'NoSuchKey') {
       return c.json({ error: 'Upload não encontrado. Reenvie o arquivo.' }, 400);
     }
-    console.error(
-      `[jobs] confirm HeadObject failed (key=${key}):`,
-      err instanceof Error ? err.message : err,
-    );
+    console.error('[jobs] confirm HeadObject failed', {
+      upload_id: parsed.data.uploadId,
+      content_kind: kind,
+      ...safeErrorDiagnostic('UPLOAD_HEAD_FAILED', err),
+    });
     return c.json({ error: 'Falha ao validar upload no armazenamento S3.' }, 502);
   }
 
@@ -814,15 +820,7 @@ jobsRoutes.post('/scrape', async (c) => {
 
   let job: { id: string; status: string; sourceUrl: string };
   try {
-    job = await db.job.create({
-      data: {
-        userId,
-        type: 'SCRAPE_WEB',
-        status: 'QUEUED',
-        sourceUrl: normalized,
-      },
-      select: { id: true, status: true, sourceUrl: true },
-    });
+    job = await createQueuedJob(userId, 'SCRAPE_WEB', normalized);
   } catch (err) {
     if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
       return c.json({ error: 'Esta URL já está sendo processada.' }, 409);
@@ -831,7 +829,7 @@ jobsRoutes.post('/scrape', async (c) => {
   }
 
   await notifyNewJob(job.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
   });
   await publishJobEvent(userId, { jobId: job.id, stage: 'queued' }).catch(() => undefined);
 
@@ -869,10 +867,14 @@ jobsRoutes.get('/', async (c) => {
       take: limit,
       select: {
         id: true,
+        type: true,
         status: true,
         sourceUrl: true,
         errorMsg: true,
         transcriptId: true,
+        progressStage: true,
+        progressPercent: true,
+        progressedAt: true,
         queuedAt: true,
         startedAt: true,
         finishedAt: true,
@@ -891,10 +893,14 @@ jobsRoutes.get('/', async (c) => {
   return c.json({
     jobs: jobs.map((job) => ({
       id: job.id,
+      type: job.type,
       status: job.status,
       sourceUrl: job.sourceUrl,
       errorMsg: job.errorMsg,
       transcriptId: job.transcriptId,
+      progressStage: job.progressStage,
+      progressPercent: job.progressPercent,
+      progressedAt: job.progressedAt,
       queuedAt: job.queuedAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
@@ -917,10 +923,14 @@ jobsRoutes.get('/:id', async (c) => {
     where: { id, userId },
     select: {
       id: true,
+      type: true,
       status: true,
       sourceUrl: true,
       errorMsg: true,
       transcriptId: true,
+      progressStage: true,
+      progressPercent: true,
+      progressedAt: true,
       queuedAt: true,
       startedAt: true,
       finishedAt: true,
@@ -931,6 +941,19 @@ jobsRoutes.get('/:id', async (c) => {
           summaryMd: true,
           source: true,
           thumbnailUrl: true,
+        },
+      },
+      progressEvents: {
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 120,
+        select: {
+          id: true,
+          stage: true,
+          percent: true,
+          chunkIndex: true,
+          transcriptId: true,
+          errorMsg: true,
+          createdAt: true,
         },
       },
     },
@@ -944,10 +967,14 @@ jobsRoutes.get('/:id', async (c) => {
   return c.json({
     job: {
       id: job.id,
+      type: job.type,
       status: job.status,
       sourceUrl: job.sourceUrl,
       errorMsg: job.errorMsg,
       transcriptId: job.transcriptId,
+      progressStage: job.progressStage,
+      progressPercent: job.progressPercent,
+      progressedAt: job.progressedAt,
       queuedAt: job.queuedAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
@@ -955,6 +982,16 @@ jobsRoutes.get('/:id', async (c) => {
       summary,
       transcriptSource: job.transcript?.source ?? null,
       thumbnailUrl: job.transcript?.thumbnailUrl ?? null,
+      events: [...job.progressEvents].reverse().map((event) => ({
+        id: event.id,
+        jobId: job.id,
+        stage: event.stage,
+        percent: event.percent,
+        chunkIndex: event.chunkIndex,
+        transcriptId: event.transcriptId,
+        errorMsg: event.errorMsg,
+        ts: event.createdAt.toISOString(),
+      })),
     },
   });
 });
@@ -991,15 +1028,7 @@ jobsRoutes.post('/:id/retry', async (c) => {
   // Cria novo job (partial unique index permite porque o original é FAILED)
   let newJob: { id: string; status: string; sourceUrl: string };
   try {
-    newJob = await db.job.create({
-      data: {
-        userId,
-        type: original.type,
-        status: 'QUEUED',
-        sourceUrl: original.sourceUrl,
-      },
-      select: { id: true, status: true, sourceUrl: true },
-    });
+    newJob = await createQueuedJob(userId, original.type, original.sourceUrl);
   } catch (err) {
     // Race: outro retry já criou um job ativo. Devolve o que existe.
     if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
@@ -1023,11 +1052,64 @@ jobsRoutes.post('/:id/retry', async (c) => {
   }
 
   await notifyNewJob(newJob.id).catch((err) => {
-    console.error('[jobs] notifyNewJob failed:', err instanceof Error ? err.message : err);
+    console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
   });
   await publishJobEvent(userId, { jobId: newJob.id, stage: 'queued' }).catch(() => undefined);
 
   return c.json({ jobId: newJob.id, status: newJob.status, sourceUrl: newJob.sourceUrl }, 201);
+});
+
+// POST /api/jobs/:id/enrichment-retry — reaproveita a transcrição persistida.
+jobsRoutes.post('/:id/enrichment-retry', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const job = await db.job.findFirst({
+    where: { id, userId, status: 'COMPLETED_WITH_WARNINGS' },
+    select: { id: true, transcriptId: true },
+  });
+  if (!job?.transcriptId) {
+    return c.json({ error: 'Não há enriquecimentos pendentes para este job.' }, 400);
+  }
+  const transcript = await db.transcript.findFirst({
+    where: { id: job.transcriptId, userId },
+    select: { summaryStatus: true, taggingStatus: true },
+  });
+  if (!transcript) return c.json({ error: 'Conteúdo não encontrado.' }, 404);
+  await db.$transaction([
+    db.transcript.update({
+      where: { id: job.transcriptId },
+      data: {
+        ...(transcript.summaryStatus !== 'COMPLETE' && transcript.summaryStatus !== 'SKIPPED'
+          ? { summaryStatus: 'RETRY', summaryNextAttemptAt: new Date() }
+          : {}),
+        ...(transcript.taggingStatus !== 'COMPLETE' && transcript.taggingStatus !== 'SKIPPED'
+          ? { taggingStatus: 'RETRY', taggingNextAttemptAt: new Date() }
+          : {}),
+      },
+    }),
+    db.job.update({
+      where: { id },
+      data: {
+        status: 'QUEUED',
+        errorMsg: null,
+        progressStage: 'queued',
+        progressPercent: 0,
+        progressedAt: new Date(),
+        startedAt: null,
+        finishedAt: null,
+        workerId: null,
+        heartbeatAt: null,
+        leaseExpiresAt: null,
+      },
+    }),
+  ]);
+  await notifyNewJob(id).catch(() => undefined);
+  await publishJobEvent(userId, {
+    jobId: id,
+    stage: 'queued',
+    transcriptId: job.transcriptId,
+  }).catch(() => undefined);
+  return c.json({ jobId: id, transcriptId: job.transcriptId, status: 'QUEUED' });
 });
 
 // POST /api/jobs/:id/cancel — sinaliza cancelamento.
@@ -1102,7 +1184,7 @@ jobsRoutes.get('/:id/events', async (c) => {
   const id = c.req.param('id');
   const job = await db.job.findFirst({
     where: { id, userId },
-    select: { id: true, status: true },
+    select: { id: true },
   });
   if (!job) {
     return c.json({ error: 'Job não encontrado.' }, 404);
@@ -1119,26 +1201,15 @@ jobsRoutes.get('/:id/events', async (c) => {
       void stream.close();
     });
 
-    // Evento inicial pra confirmar conexão (facilita debug e UI)
-    stream.writeSSE({
-      event: 'connected',
-      data: JSON.stringify({ jobId: job.id }),
-      retry: SSE_RETRY_MS,
-    });
-
-    // Job já em estado terminal: manda 1 evento e fecha
-    if (job.status === 'DONE' || job.status === 'FAILED' || job.status === 'CANCELLED') {
-      stream.writeSSE({
-        event: 'snapshot',
-        data: JSON.stringify({ jobId: job.id, stage: job.status.toLowerCase() }),
-      });
-      await stream.close();
-      return;
-    }
-
     await sub.subscribe(jobChannel(userId, id));
+    const pending: string[] = [];
+    let snapshotSent = false;
     sub.on('message', (_chan, raw) => {
       if (stream.isClosed()) return;
+      if (!snapshotSent) {
+        pending.push(raw);
+        return;
+      }
       let evt: JobEvent;
       try {
         evt = JSON.parse(raw) as JobEvent;
@@ -1150,6 +1221,94 @@ jobsRoutes.get('/:id/events', async (c) => {
         void stream.close();
       }
     });
+
+    // Assina antes da leitura e mantém eventos em buffer até o snapshot ser
+    // enviado. Assim, uma publicação entre os dois passos não se perde.
+    const snapshot = await db.job.findFirst({
+      where: { id, userId },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        progressStage: true,
+        progressPercent: true,
+        progressedAt: true,
+        transcriptId: true,
+        errorMsg: true,
+        progressEvents: {
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 120,
+          select: {
+            id: true,
+            stage: true,
+            percent: true,
+            chunkIndex: true,
+            transcriptId: true,
+            errorMsg: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+    if (!snapshot) {
+      await stream.close();
+      return;
+    }
+    stream.writeSSE({
+      event: 'connected',
+      data: JSON.stringify({ jobId: snapshot.id }),
+      retry: SSE_RETRY_MS,
+    });
+    stream.writeSSE({
+      event: 'snapshot',
+      data: JSON.stringify({
+        jobId: snapshot.id,
+        type: snapshot.type,
+        stage: snapshot.progressStage ?? snapshot.status.toLowerCase(),
+        percent:
+          snapshot.progressPercent ??
+          (snapshot.status === 'DONE' || snapshot.status === 'COMPLETED_WITH_WARNINGS' ? 100 : 0),
+        transcriptId: snapshot.transcriptId,
+        errorMsg: snapshot.errorMsg,
+        ts: (snapshot.progressedAt ?? new Date()).toISOString(),
+        events: [...snapshot.progressEvents].reverse().map((event) => ({
+          id: event.id,
+          jobId: snapshot.id,
+          stage: event.stage,
+          percent: event.percent ?? undefined,
+          chunkIndex: event.chunkIndex ?? undefined,
+          transcriptId: event.transcriptId ?? undefined,
+          errorMsg: event.errorMsg ?? undefined,
+          ts: event.createdAt.toISOString(),
+        })),
+      }),
+    });
+    snapshotSent = true;
+    for (const raw of pending) {
+      if (stream.isClosed()) break;
+      let evt: JobEvent;
+      try {
+        evt = JSON.parse(raw) as JobEvent;
+      } catch {
+        continue;
+      }
+      stream.writeSSE({ event: 'progress', data: raw });
+      if (isTerminalStage(evt.stage)) {
+        await stream.close();
+        return;
+      }
+    }
+
+    // Job já em estado terminal: o snapshot é suficiente.
+    if (
+      snapshot.status === 'DONE' ||
+      snapshot.status === 'COMPLETED_WITH_WARNINGS' ||
+      snapshot.status === 'FAILED' ||
+      snapshot.status === 'CANCELLED'
+    ) {
+      await stream.close();
+      return;
+    }
 
     // Heartbeat curto para Traefik/HTTP2 e proxies que fecham SSE ocioso cedo.
     stream.writeSSE({ event: 'ping', data: String(Date.now()) });

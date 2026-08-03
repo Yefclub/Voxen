@@ -36,9 +36,12 @@ Tradeoff:
 - semantic queries without matching terms can be weaker than vector search
 - very large corpora may require future optimization
 
-## ADR-005: ARQ Instead of BullMQ
+## ADR-005: ARQ Instead of BullMQ (superseded)
 
-The worker needs Python-native media extraction and ffmpeg integration. ARQ keeps the worker in Python while Redis remains the queue backend.
+The worker needs Python-native media extraction and ffmpeg integration. ARQ was
+originally selected, but it was never used by the runtime. The current worker
+uses durable Postgres `Job` rows, `FOR UPDATE SKIP LOCKED`, and renewable leases.
+Redis Pub/Sub is only an ephemeral wakeup and realtime transport.
 
 ## ADR-006: S3-Compatible Object Storage
 

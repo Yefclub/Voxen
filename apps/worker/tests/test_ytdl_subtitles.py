@@ -204,6 +204,7 @@ async def test_fetch_youtube_transcript_builds_probe_and_segments(monkeypatch) -
         lambda video_id, proxy_url: {
             "title": "Video de teste",
             "author_name": "Canal",
+            "author_url": "https://www.youtube.com/@canal",
             "thumbnail_url": "https://img.example/thumb.jpg",
         },
     )
@@ -214,6 +215,9 @@ async def test_fetch_youtube_transcript_builds_probe_and_segments(monkeypatch) -
     assert result.language == "pt"
     assert result.probe.title == "Video de teste"
     assert result.probe.channel == "Canal"
+    assert result.probe.author == "Canal"
+    assert result.probe.canonical_url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert result.probe.channel_url == "https://www.youtube.com/@canal"
     assert result.probe.duration_sec == 6
     assert result.segments[0].text == "Olá mundo"
 

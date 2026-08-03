@@ -11,6 +11,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
+from hashlib import sha256
 from typing import Any
 
 import httpx
@@ -21,6 +22,11 @@ OR_BASE_URL = openrouter.OR_BASE_URL
 MAX_ENTITIES = 8
 MAX_CLAIMS = 6
 MAX_TEXT = 6_000
+ALIAS_CONFIDENCE_MIN = 0.9
+BRAIN_GROUNDED_EXTRACT_VERSION = 2
+
+_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
+_TIMESTAMP_RE = re.compile(r"^\s*\[(\d{1,2}):([0-5]?\d):([0-5]?\d)\]")
 
 
 @dataclass(frozen=True)
@@ -32,12 +38,112 @@ class GroundedItem:
 
 
 @dataclass(frozen=True)
+class GroundedRelation:
+    subject: str
+    predicate: str
+    object: str
+    kind: str
+    excerpt: str
+    confidence: float
+
+
+@dataclass(frozen=True)
 class GroundedExtractionResult:
     items: list[GroundedItem]
+    relations: list[GroundedRelation]
     cost_usd: Decimal
     model: str
     tokens_in: int
     tokens_out: int
+
+
+@dataclass(frozen=True)
+class ExtractionSegment:
+    """Trecho contíguo do documento com localização estável na versão atual."""
+
+    key: str
+    text: str
+    start_line: int
+    end_line: int
+    start_sec: int | None
+    end_sec: int | None
+
+
+def parse_timestamp_seconds(line: str) -> int | None:
+    """Lê o timestamp canônico `[hh:mm:ss]` no começo da linha."""
+    match = _TIMESTAMP_RE.match(line)
+    if not match:
+        return None
+    return int(match.group(1)) * 3_600 + int(match.group(2)) * 60 + int(match.group(3))
+
+
+def segment_content(content: str, max_chars: int = MAX_TEXT) -> list[ExtractionSegment]:
+    """Divide Markdown em blocos contíguos, preferindo headings/timestamps.
+
+    Cada segmento fica abaixo do limite de contexto e conserva as linhas e os
+    timestamps que o delimitam. O corte só ocorre entre linhas, exceto por uma
+    linha isolada que exceda o limite — nesse caso ela é fracionada sem perder a
+    referência de linha.
+    """
+    if max_chars < 80:
+        raise ValueError("max_chars deve ser ao menos 80")
+    lines = (content or "").replace("\x00", " ").splitlines()
+    if not lines:
+        return []
+
+    segments: list[ExtractionSegment] = []
+    current: list[str] = []
+    start_line = 1
+
+    def emit(end_line: int) -> None:
+        nonlocal current
+        text = "\n".join(current).strip()
+        if not text:
+            current = []
+            return
+        timestamps = [parse_timestamp_seconds(line) for line in current]
+        secs = [sec for sec in timestamps if sec is not None]
+        digest = sha256(text.encode("utf-8")).hexdigest()[:16]
+        segments.append(
+            ExtractionSegment(
+                key=f"{start_line}:{end_line}:{digest}",
+                text=text,
+                start_line=start_line,
+                end_line=end_line,
+                start_sec=secs[0] if secs else None,
+                end_sec=secs[-1] if secs else None,
+            )
+        )
+        current = []
+
+    for line_number, line in enumerate(lines, start=1):
+        is_boundary = bool(_HEADING_RE.match(line) or parse_timestamp_seconds(line) is not None)
+        proposed = "\n".join([*current, line]) if current else line
+        # Os delimitadores são cortes preferenciais; o tamanho é o limite duro.
+        should_cut = len(proposed) > max_chars or (
+            is_boundary and len("\n".join(current)) >= max_chars // 2
+        )
+        if current and should_cut:
+            emit(line_number - 1)
+            start_line = line_number
+
+        if len(line) <= max_chars:
+            current.append(line)
+            continue
+
+        # Texto sem quebras pode vir de páginas raspadas. Particiona a linha,
+        # mantendo a localização original para a evidência abrir o contexto.
+        if current:
+            emit(line_number - 1)
+            start_line = line_number
+        for offset in range(0, len(line), max_chars):
+            current = [line[offset : offset + max_chars]]
+            emit(line_number)
+        start_line = line_number + 1
+
+    if current:
+        emit(len(lines))
+    return segments
 
 
 def normalize_for_grounding(value: str) -> str:
@@ -132,6 +238,93 @@ def parse_grounded_payload(raw: str, source_text: str) -> list[GroundedItem]:
     return out
 
 
+def parse_grounded_relations(
+    raw: str,
+    source_text: str,
+    items: list[GroundedItem],
+) -> list[GroundedRelation]:
+    """Aceita apenas relações entre itens extraídos e evidenciados no segmento."""
+    text = (raw or "").strip()
+    if not text or not items:
+        return []
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.I)
+    payload_src = fence.group(1) if fence else text
+    obj_match = re.search(r"\{[\s\S]*\}", payload_src)
+    if not obj_match:
+        return []
+    try:
+        parsed = json.loads(obj_match.group(0))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("relations"), list):
+        return []
+
+    known = {slugify_label(item.label): item for item in items}
+    out: list[GroundedRelation] = []
+    seen: set[tuple[str, str, str]] = set()
+    kind_map = {
+        "supports": "SUPPORTS",
+        "contradicts": "CONTRADICTS",
+        "same_as": "SAME_AS",
+        "related_to": "RELATED_TO",
+        "part_of": "PART_OF",
+    }
+    for relation in parsed["relations"][:12]:
+        if not isinstance(relation, dict):
+            continue
+        subject = relation.get("subject")
+        predicate = relation.get("predicate")
+        obj = relation.get("object")
+        excerpt = relation.get("excerpt") or relation.get("evidence")
+        if not all(isinstance(value, str) for value in (subject, predicate, obj, excerpt)):
+            continue
+        assert isinstance(subject, str)
+        assert isinstance(predicate, str)
+        assert isinstance(obj, str)
+        assert isinstance(excerpt, str)
+        subject_label = " ".join(subject.split()).strip()[:80]
+        object_label = " ".join(obj.split()).strip()[:80]
+        predicate_label = " ".join(predicate.split()).strip()[:80]
+        subject_item = known.get(slugify_label(subject_label))
+        object_item = known.get(slugify_label(object_label))
+        kind = kind_map.get(str(relation.get("kind") or predicate_label).strip().lower())
+        evidence = " ".join(excerpt.split()).strip()[:400]
+        if (
+            not subject_item
+            or not object_item
+            or not kind
+            or subject_item.label == object_item.label
+            or len(predicate_label) < 2
+            or not is_grounded(evidence, source_text)
+        ):
+            continue
+        confidence = relation.get("confidence", 0.7)
+        conf = 0.7
+        if isinstance(confidence, (int, float)):
+            conf = max(0.4, min(0.95, float(confidence)))
+        if kind == "SAME_AS" and (
+            subject_item.kind != "entity"
+            or object_item.kind != "entity"
+            or conf < ALIAS_CONFIDENCE_MIN
+        ):
+            continue
+        key = (slugify_label(subject_item.label), kind, slugify_label(object_item.label))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            GroundedRelation(
+                subject=subject_item.label,
+                predicate=predicate_label,
+                object=object_item.label,
+                kind=kind,
+                excerpt=evidence,
+                confidence=conf,
+            )
+        )
+    return out
+
+
 async def extract_grounded_concepts(
     *,
     title: str,
@@ -141,18 +334,27 @@ async def extract_grounded_concepts(
     language: str = "pt-BR",
     client: httpx.AsyncClient | None = None,
 ) -> GroundedExtractionResult:
-    """Chama OpenRouter e devolve só itens com excerpt groundable."""
-    body = (content or "").strip().replace("\x00", " ")[:MAX_TEXT]
-    source_for_ground = f"{title}\n{body}"
+    """Chama OpenRouter para um segmento e devolve itens literalmente grounded."""
+    body = (content or "").strip().replace("\x00", " ")
+    if len(body) > MAX_TEXT:
+        raise ValueError("segmento excede o limite de extração")
+    # O título contextualiza o modelo, mas a evidência deve existir no segmento;
+    # assim toda citação recebe uma localização verificável no documento.
+    source_for_ground = body
     if language == "en":
         system = (
             "Extract structured knowledge for a personal KB. Reply ONLY with JSON:\n"
             '{"entities":[{"label":"...","excerpt":"verbatim quote from the text",'
             '"confidence":0.0-1.0}],'
             '"claims":[{"label":"short factual claim","excerpt":"verbatim quote",'
-            '"confidence":0.0-1.0}]}\n'
+            '"confidence":0.0-1.0}],'
+            '"relations":[{"subject":"exact extracted label","predicate":"...",'
+            '"object":"exact extracted label",'
+            '"kind":"SUPPORTS|CONTRADICTS|SAME_AS|RELATED_TO|PART_OF",'
+            '"excerpt":"verbatim quote","confidence":0.0-1.0}]}\n'
             "excerpt MUST be a contiguous substring of the content. Max 8 entities, 6 claims. "
-            "Prefer proper names, tools, products. No invented quotes."
+            "Relations must reference extracted labels. SAME_AS only for unambiguous aliases. "
+            "No invented quotes."
         )
         user = f"Title: {title.strip() or '(none)'}\n\nContent:\n{body}"
     else:
@@ -161,9 +363,14 @@ async def extract_grounded_concepts(
             '{"entities":[{"label":"...","excerpt":"trecho literal do texto",'
             '"confidence":0.0-1.0}],'
             '"claims":[{"label":"afirmação curta","excerpt":"trecho literal",'
-            '"confidence":0.0-1.0}]}\n'
+            '"confidence":0.0-1.0}],'
+            '"relations":[{"subject":"rótulo extraído exato","predicate":"...",'
+            '"object":"rótulo extraído exato",'
+            '"kind":"SUPPORTS|CONTRADICTS|SAME_AS|RELATED_TO|PART_OF",'
+            '"excerpt":"trecho literal","confidence":0.0-1.0}]}\n'
             "excerpt DEVE ser substring contígua do conteúdo. Máx. 8 entidades, 6 claims. "
-            "Prefira nomes próprios, ferramentas, produtos. Sem citações inventadas."
+            "Relações devem usar rótulos extraídos. SAME_AS só para aliases sem ambiguidade. "
+            "Sem citações inventadas."
         )
         user = f"Título: {title.strip() or '(sem título)'}\n\nConteúdo:\n{body}"
 
@@ -188,10 +395,15 @@ async def extract_grounded_concepts(
     try:
         res = await http.post(f"{OR_BASE_URL}/chat/completions", headers=headers, json=payload)
         if res.status_code in (401, 403):
-            raise openrouter.OpenrouterAuthError(res.text[:200])
+            raise openrouter.OpenrouterAuthError(
+                f"OpenRouter rejeitou a chave (HTTP {res.status_code})."
+            )
         if res.status_code >= 500:
-            raise openrouter.OpenrouterTransientError(res.text[:200])
-        res.raise_for_status()
+            raise openrouter.OpenrouterTransientError(f"OpenRouter {res.status_code}")
+        if not res.is_success:
+            raise RuntimeError(
+                f"OpenRouter retornou uma resposta inesperada (HTTP {res.status_code})."
+            )
         data: dict[str, Any] = res.json()
     finally:
         if owns_client:
@@ -209,8 +421,10 @@ async def extract_grounded_concepts(
         cost = Decimal(tokens_in + tokens_out) * Decimal("0.000001")
 
     items = parse_grounded_payload(str(raw), source_for_ground)
+    relations = parse_grounded_relations(str(raw), source_for_ground, items)
     return GroundedExtractionResult(
         items=items,
+        relations=relations,
         cost_usd=cost,
         model=model,
         tokens_in=tokens_in,

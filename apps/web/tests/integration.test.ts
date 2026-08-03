@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import app from '../src/index';
 import { db } from '../src/lib/db';
+import { getSetting, setSetting } from '../src/lib/settings';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -126,6 +127,99 @@ describeIfDb('auth + admin approval flow', () => {
     expect(userLogin.status).toBe(200);
   });
 
+  it('admin bloqueia uma conta, invalida suas sessões e pode reativá-la', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('user@voxen.local', 'senha-super-segura-456', 'User');
+    const adminCookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'user@voxen.local' } });
+
+    const approve = await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${user.id}/approve`, {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(approve.status).toBe(200);
+    expect((await signIn('user@voxen.local', 'senha-super-segura-456')).status).toBe(200);
+    expect(await db.session.count({ where: { userId: user.id } })).toBeGreaterThan(0);
+
+    const disable = await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${user.id}/disable`, {
+        method: 'POST',
+        headers: { cookie: adminCookie },
+      }),
+    );
+    expect(disable.status).toBe(200);
+    expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).status).toBe('DISABLED');
+    expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
+
+    const enable = await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${user.id}/enable`, {
+        method: 'POST',
+        headers: { cookie: adminCookie },
+      }),
+    );
+    expect(enable.status).toBe(200);
+    expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).status).toBe('APPROVED');
+  });
+
+  it('protege o último admin e exige o e-mail literal para excluir uma conta', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('remove@voxen.local', 'senha-super-segura-456', 'Remove');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const target = await db.user.findUniqueOrThrow({ where: { email: 'remove@voxen.local' } });
+    const adminCookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+
+    const lastAdmin = await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${admin.id}/role`, {
+        method: 'PATCH',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ role: 'USER' }),
+      }),
+    );
+    expect(lastAdmin.status).toBe(409);
+
+    const wrongConfirmation = await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${target.id}`, {
+        method: 'DELETE',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ confirmEmail: ' remove@voxen.local ' }),
+      }),
+    );
+    expect(wrongConfirmation.status).toBe(400);
+    expect(await db.user.findUnique({ where: { id: target.id } })).not.toBeNull();
+
+    await db.setting.create({
+      data: { scope: 'USER', userId: target.id, key: 'private_setting', valueEnc: 'opaque' },
+    });
+    await db.verification.create({
+      data: {
+        identifier: target.email,
+        value: 'pending-verification',
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const previousS3DeleteDisabled = process.env.S3_DELETE_DISABLED;
+    process.env.S3_DELETE_DISABLED = 'true';
+    try {
+      const deleted = await app.fetch(
+        new Request(`http://localhost/api/admin/usuarios/${target.id}`, {
+          method: 'DELETE',
+          headers: { cookie: adminCookie, 'content-type': 'application/json' },
+          body: JSON.stringify({ confirmEmail: target.email }),
+        }),
+      );
+      expect(deleted.status).toBe(200);
+    } finally {
+      if (previousS3DeleteDisabled === undefined) delete process.env.S3_DELETE_DISABLED;
+      else process.env.S3_DELETE_DISABLED = previousS3DeleteDisabled;
+    }
+    expect(await db.user.findUnique({ where: { id: target.id } })).toBeNull();
+    expect(await db.setting.count({ where: { userId: target.id } })).toBe(0);
+    expect(await db.verification.count({ where: { identifier: target.email } })).toBe(0);
+  });
+
   it('admin pode copiar prompt MCP com URL atual e token ativo', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
@@ -138,14 +232,17 @@ describeIfDb('auth + admin approval flow', () => {
         body: JSON.stringify({}),
       }),
     );
-    expect(rotate.status).toBe(200);
+    expect(rotate.status).toBe(201);
     const rotated = (await rotate.json()) as { token: string };
 
     const promptRes = await app.fetch(
       new Request('http://localhost/api/admin/mcp/prompt', {
         method: 'POST',
         headers: { cookie, 'content-type': 'application/json' },
-        body: JSON.stringify({ appUrl: 'https://voxen.local/admin/integracoes' }),
+        body: JSON.stringify({
+          appUrl: 'https://voxen.local/admin/integracoes',
+          token: rotated.token,
+        }),
       }),
     );
     expect(promptRes.status).toBe(200);
@@ -154,6 +251,124 @@ describeIfDb('auth + admin approval flow', () => {
     expect(body.prompt).toContain('https://voxen.local/mcp');
     expect(body.prompt).toContain(rotated.token);
     expect(body.prompt).toContain('Voxen');
+    const metadata = await app.fetch(
+      new Request('http://localhost/api/admin/mcp', { headers: { cookie } }),
+    );
+    const adminMcp = (await metadata.json()) as { tokens: { id: string; token?: string }[] };
+    expect(adminMcp.tokens[0]).not.toHaveProperty('token');
+    const revoke = await app.fetch(
+      new Request(`http://localhost/api/admin/mcp/tokens/${adminMcp.tokens[0]!.id}`, {
+        method: 'DELETE',
+        headers: { cookie },
+      }),
+    );
+    expect(revoke.status).toBe(200);
+    const legacyToken = 'legacy-only-mcp-token';
+    await setSetting('mcp_api_token', `legacy-owner:${legacyToken}`);
+    const legacyAuth = await app.fetch(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${legacyToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      }),
+    );
+    expect(legacyAuth.status).toBe(401);
+    const revokeLegacy = await app.fetch(
+      new Request('http://localhost/api/admin/mcp', { method: 'DELETE', headers: { cookie } }),
+    );
+    expect(revokeLegacy.status).toBe(200);
+    expect(await getSetting('mcp_api_token')).toBeNull();
+  });
+
+  it('emite token MCP por usuário, respeita escopo e permite revogação', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('mcp-user@voxen.local', 'senha-super-segura-456', 'MCP User');
+    const adminCookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const pending = await db.user.findUnique({ where: { email: 'mcp-user@voxen.local' } });
+    await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${pending!.id}/approve`, {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    const userCookie = extractCookie(
+      await signIn('mcp-user@voxen.local', 'senha-super-segura-456'),
+    );
+    const denied = await app.fetch(
+      new Request('http://localhost/api/mcp/tokens', {
+        method: 'POST',
+        headers: { cookie: userCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ label: 'Cursor', scopes: ['READ'] }),
+      }),
+    );
+    expect(denied.status).toBe(403);
+    const policy = await app.fetch(
+      new Request('http://localhost/api/admin/mcp', {
+        method: 'PATCH',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ allowUserTokens: true }),
+      }),
+    );
+    expect(policy.status).toBe(200);
+    const created = await app.fetch(
+      new Request('http://localhost/api/mcp/tokens', {
+        method: 'POST',
+        headers: { cookie: userCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ label: 'Cursor', scopes: ['READ'] }),
+      }),
+    );
+    expect(created.status).toBe(201);
+    const token = (await created.json()) as { token: string; metadata: { id: string } };
+    const list = await app.fetch(
+      new Request('http://localhost/api/mcp/tokens', { headers: { cookie: userCookie } }),
+    );
+    const listBody = (await list.json()) as { tokens: Record<string, unknown>[] };
+    expect(listBody.tokens[0]).not.toHaveProperty('token');
+    const tools = await app.fetch(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token.token}`,
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      }),
+    );
+    const toolBody = (await tools.json()) as { result?: { tools?: { name: string }[] } };
+    expect(toolBody.result?.tools?.map((item) => item.name)).not.toContain('voxen_create_note');
+    const revoke = await app.fetch(
+      new Request(`http://localhost/api/mcp/tokens/${token.metadata.id}`, {
+        method: 'DELETE',
+        headers: { cookie: userCookie },
+      }),
+    );
+    expect(revoke.status).toBe(200);
+    const rejected = await app.fetch(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      }),
+    );
+    expect(rejected.status).toBe(401);
+    const delegated = await app.fetch(
+      new Request('http://localhost/api/admin/mcp/tokens', {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ userId: pending!.id, label: 'Admin-managed', scopes: ['READ'] }),
+      }),
+    );
+    const delegatedBody = (await delegated.json()) as { metadata: { id: string } };
+    expect(delegated.status).toBe(201);
+    const adminRevoke = await app.fetch(
+      new Request(`http://localhost/api/admin/mcp/tokens/${delegatedBody.metadata.id}`, {
+        method: 'DELETE',
+        headers: { cookie: adminCookie },
+      }),
+    );
+    expect(adminRevoke.status).toBe(200);
   });
 
   it('admin gera token de proxy: persiste cifrado e GET não vaza', async () => {

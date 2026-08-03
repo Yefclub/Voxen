@@ -1,16 +1,18 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  ArrowUp,
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   CircleStop,
   Copy,
   FileText,
   Globe,
+  Image as ImageIcon,
   Loader2,
   LoaderCircle,
+  Music2,
   Network,
   NotebookPen,
   Paperclip,
@@ -18,13 +20,15 @@ import {
   Video,
   Wrench,
   X,
-} from 'lucide-react';
-import { toast } from 'sonner';
+} from '@/components/ui/icons';
+import { toast } from '@/lib/toast';
 import { play } from 'cuelume';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../components/ui/sheet';
 import { ApiError, apiDelete, apiGet, apiPost } from '../lib/api';
 import { isTransientStreamDisconnect } from '../lib/chat-stream-errors';
+import { countCitationSources } from '../lib/chat-citation-summary';
 import { useMe } from '../lib/hooks';
 import { useI18n, type I18nKey, type TranslateFn } from '../lib/i18n';
 import { cn } from '../lib/utils';
@@ -43,12 +47,19 @@ import {
 import {
   applySegmentEvent,
   closeTrailingReasoning,
+  parseMessageSegments,
   segmentsFromPersistedTools,
-  segmentsReasoningDuration,
-  segmentsRunning,
+  segmentsToolCount,
+  thinkingDuration,
   type MessageSegment,
   type ToolEvent,
 } from '../lib/chat-segments';
+import { useThinkingDisclosure } from '../lib/thinking-disclosure';
+import { useMediaQuery } from '../lib/use-media-query';
+import {
+  MAX_MESSAGE_ATTACHMENTS,
+  type MessageAttachment,
+} from '../../lib/chat/message-attachments';
 import {
   ANCHOR_MOUNT_RETRY_FRAMES,
   SCROLL_LATEST_SHOW_DISTANCE_PX,
@@ -62,13 +73,28 @@ import {
   type ScrollPhase,
 } from '../lib/chat-scroll';
 import type { ChatHandoffState } from '../lib/chat-handoff';
-import { mergeChatMessagePages } from '../lib/chat-pagination';
+import {
+  planBranchRollback,
+  planSend,
+  truncateTrailFrom,
+  type MessageVersions,
+} from '../lib/chat-versions';
+import { MessageEditForm, UserMessageActions } from '../components/chat/message-versioning';
+import { parseChatCitations, type ChatCitation } from '../../shared/chat-citations';
+import { claimPendingId, reconcileChatStart, sameActiveTurn } from '../lib/chat-reconciliation';
 import {
   getSoundsEnabled,
   setChatEmpty,
   setChatStreaming,
   useChatShell,
 } from '../lib/chat-shell-state';
+import { chatStatusI18nKey, type ChatStatusCode } from '../../shared/chat-status';
+import {
+  createSnapshotReconciler,
+  reconcileSnapshotMessages,
+  shouldFinishSnapshotStreaming,
+  type SnapshotReconciler,
+} from '../lib/chat-snapshot-reconciliation';
 
 type ChatMessage = {
   id: string;
@@ -80,7 +106,22 @@ type ChatMessage = {
   createdAt: string;
   /** Segmentos cronológicos persistidos; durante o stream são atualizados localmente. */
   segments?: MessageSegment[];
+  /** Anexos vinculados à mensagem do usuário (spec 126). */
+  attachments?: MessageAttachment[];
+  /** Evidências estruturadas; ausente em mensagens anteriores à spec 141. */
+  citations?: ChatCitation[];
+  /**
+   * Posição entre as versões irmãs — só vem preenchido em ponto de
+   * ramificação, e só em mensagem do usuário (spec 127).
+   */
+  versions?: MessageVersions | null;
 };
+/**
+ * Alvo de um reenvio versionado (spec 127): a mensagem editada e os anexos que
+ * a versão nova herda dela.
+ */
+type BranchTarget = { messageId: string; attachments: MessageAttachment[] };
+
 type ActiveTurn = {
   id: string;
   status: 'PENDING' | 'RUNNING';
@@ -94,11 +135,114 @@ type Snapshot = {
   nextCursor: string | null;
   activeTurn: ActiveTurn | null;
 };
+
+/**
+ * `segments` chega do snapshot apenas *tipado* como `MessageSegment[]` — a
+ * coluna é JSONB e o backend não valida a forma. Normaliza na fronteira para
+ * que nenhum render toque em campo cru (spec 126).
+ */
+function normalizeSnapshotMessage(message: ChatMessage): ChatMessage {
+  const segments = parseMessageSegments(message.segments);
+  const citations = parseChatCitations(message.citations);
+  return { ...message, segments: segments ?? undefined, citations: citations ?? undefined };
+}
+
+function citationLocation(citation: ChatCitation, t: TranslateFn): string | null {
+  if (citation.fromSec !== null) {
+    const minutes = Math.floor(citation.fromSec / 60);
+    const seconds = citation.fromSec % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  if (citation.fromLine !== null) {
+    return citation.toLine && citation.toLine !== citation.fromLine
+      ? t('chat.citationLines', { from: citation.fromLine, to: citation.toLine })
+      : t('chat.citationLine', { line: citation.fromLine });
+  }
+  return null;
+}
+
+function CitationSourcesButton({
+  citations,
+  onOpen,
+}: {
+  citations: ChatCitation[];
+  onOpen: () => void;
+}): React.ReactElement | null {
+  const { t } = useI18n();
+  if (citations.length === 0) return null;
+  const sourceCount = countCitationSources(citations);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--color-app-muted)] transition-opacity hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] opacity-70 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+      aria-label={t(sourceCount === 1 ? 'chat.sourcesOne' : 'chat.sourcesMany', {
+        count: sourceCount,
+      })}
+      title={t('chat.sources')}
+    >
+      <FileText className="h-3.5 w-3.5" />
+      <span>{sourceCount}</span>
+    </button>
+  );
+}
+
+function CitationSourceList({ citations }: { citations: ChatCitation[] }): React.ReactElement {
+  const { t } = useI18n();
+  return (
+    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+      {citations.map((citation, index) => {
+        const location = citationLocation(citation, t);
+        const verified = citation.verified && citation.kind === 'EVIDENCE' && !citation.stale;
+        return (
+          <a
+            key={`${citation.sourceId}-${index}`}
+            href={citation.href}
+            className={cn(
+              'block rounded-xl border p-3.5 transition-colors hover:bg-[var(--color-app-surface)]',
+              verified ? 'border-emerald-500/30' : 'border-amber-500/35',
+            )}
+          >
+            <div className="flex items-center gap-2 text-xs">
+              <FileText
+                className={cn('h-3.5 w-3.5', verified ? 'text-emerald-400' : 'text-amber-300')}
+              />
+              <span className="min-w-0 flex-1 truncate font-medium text-[var(--color-app-fg)]">
+                {citation.title}
+              </span>
+              <span className={verified ? 'text-emerald-400' : 'text-amber-300'}>
+                {citation.stale
+                  ? t('chat.citationStale')
+                  : verified
+                    ? t('chat.citationVerified')
+                    : t('chat.citationUnverified')}
+              </span>
+            </div>
+            {location && (
+              <p className="mt-2 text-[11px] text-[var(--color-app-muted)]">{location}</p>
+            )}
+            <blockquote className="mt-2 text-sm leading-relaxed text-[var(--color-app-subtle)]">
+              “{citation.quote}”
+            </blockquote>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
 type StreamEvent =
+  | {
+      type: 'start';
+      turnId: string;
+      userMessageId: string;
+      assistantMessageId: string;
+      startedAt: string;
+    }
   | { type: 'text'; delta: string }
   | { type: 'reasoning'; delta: string }
   | { type: 'tool'; tool: ToolEvent }
-  | { type: 'status'; label: string }
+  | { type: 'status'; label: string; code?: ChatStatusCode }
   | { type: 'compaction'; before: number; after: number }
   | { type: 'usage'; inputTokens: number; outputTokens: number }
   | { type: 'error'; message: string }
@@ -225,87 +369,87 @@ function ToolRow({ tool }: { tool: ToolEvent }) {
   );
 }
 
+/**
+ * Rótulo compacto do bloco recolhido (spec 126): duração do raciocínio e/ou
+ * quantidade de ferramentas usadas. Sem nenhum dos dois, cai no rótulo neutro.
+ */
+function thinkingSummaryLabel(duration: number | null, toolCount: number, t: TranslateFn): string {
+  const parts: string[] = [];
+  if (duration != null)
+    parts.push(t('chat.thoughtFor', { duration: formatToolDuration(duration) }));
+  if (toolCount > 0) {
+    parts.push(
+      toolCount === 1 ? t('chat.toolsUsedOne') : t('chat.toolsUsedMany', { count: toolCount }),
+    );
+  }
+  return parts.length > 0 ? parts.join(' · ') : t('chat.reasoning');
+}
+
 // ---------------------------------------------------------------------------
 // Bloco de pensamento — raciocínio e ferramentas num único container
-// cronológico (spec 078): "Pensando" (shimmer) enquanto o turno está ao vivo
-// (`live`) OU algum segmento ainda roda — e "Pensou por Xs" só ao terminar o
-// turno. Gaps entre tools (running=false por milissegundos) NÃO colapsam o
-// bloco; isso evitava o flicker compacta/reabre no harness multi-step.
+// cronológico (spec 078). Tudo aqui é dirigido por `live`, e só por ele
+// (spec 130): shimmer "Pensando" com a timeline aberta enquanto o stream do
+// turno está aberto, resumo compacto ("Pensou por Xs · N ferramentas") com a
+// timeline recolhida depois. Um sinal que mudasse no meio do turno — como o
+// `thinkingInFlight` que a 126 introduziu e a 130 aposentou — faria bloco e
+// rótulo pularem a cada ida-e-volta de ferramenta.
+// A duração vem sempre dos timestamps persistidos, então mensagem recarregada
+// não "envelhece" nem reativa cronômetro nenhum.
 // HITL fica acima do composer (spec 090), não neste bloco.
 // ---------------------------------------------------------------------------
 function ThinkingBlock({
   segments,
   live,
+  startedAt,
 }: {
   segments: MessageSegment[];
+  /** O stream deste turno ainda está aberto. */
   live: boolean;
+  startedAt: number;
 }): React.ReactElement {
   const { t } = useI18n();
-  const running = segmentsRunning(segments);
-  // Turno em voo: stream ainda aberto OU algum step de fato em andamento.
-  const inFlight = live || running;
-  // Timeline aberta enquanto o turno está em voo; recolhe só ao terminar
-  // (usuário reabre no header).
-  const [expanded, setExpanded] = useState(true);
-  // Cronômetro de parede (honesto): conta do 1º evento até terminar. Só há
-  // timing em turnos ao vivo; blocos recarregados não exibem duração.
-  const startedAtRef = useRef<number | null>(live ? Date.now() : null);
-  const [elapsed, setElapsed] = useState(0);
-  const [frozen, setFrozen] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!inFlight) {
-      setExpanded(false);
-      if (startedAtRef.current != null && frozen == null) {
-        setFrozen(Date.now() - startedAtRef.current);
-      }
-      return;
-    }
-    setExpanded(true);
-    if (startedAtRef.current == null) startedAtRef.current = Date.now();
-    const id = window.setInterval(() => {
-      if (startedAtRef.current != null) setElapsed(Date.now() - startedAtRef.current);
-    }, 200);
-    return () => window.clearInterval(id);
-  }, [inFlight, frozen]);
-
-  // `frozen`/`startedAtRef` são estado local — não sobrevivem quando `send()`
-  // troca a mensagem pelo snapshot do servidor (a `key` muda pro id real do
-  // banco e o React remonta este componente com `live=false`, zerando o
-  // cronômetro). Nesse caso, cai pro fallback: a duração derivada dos
-  // próprios timestamps dos segments de raciocínio (preservados pelo swap).
-  const duration = frozen ?? (inFlight ? elapsed : segmentsReasoningDuration(segments));
+  // Spec 130: bloco E cabeçalho dirigidos por `live`, o único sinal do turno
+  // que não oscila. O gatilho anterior (`thinkingInFlight`) alternava a cada
+  // ida-e-volta de ferramenta — abrindo/fechando a timeline e trocando o
+  // rótulo entre "Pensando" e "Pensou por Xs" no meio da resposta, contra a
+  // própria regra da spec 078.
+  const { expanded, toggle } = useThinkingDisclosure(live);
+  const duration = thinkingDuration(segments, live, startedAt);
+  const toolCount = segmentsToolCount(segments);
 
   return (
-    <section className="mb-2.5 flex flex-col gap-1">
+    <section className="mb-2.5 flex max-w-3xl flex-col gap-1">
+      {/*
+        Clicável também durante o turno: a spec 130 exige que o usuário possa
+        assumir o controle no meio do voo, e `disabled` tirava isso dele.
+      */}
       <button
         type="button"
-        onClick={() => !inFlight && setExpanded((v) => !v)}
-        disabled={inFlight}
+        onClick={toggle}
+        aria-expanded={expanded}
         className="flex items-center gap-1.5 self-start rounded-md px-1 py-0.5 text-left"
       >
-        {inFlight ? (
+        <ChevronRight
+          className={cn(
+            'h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform',
+            expanded && 'rotate-90',
+          )}
+        />
+        {live ? (
           <span className="text-shimmer text-[12.5px] font-medium">{t('chat.thinking')}</span>
         ) : (
-          <>
-            <ChevronRight
-              className={cn(
-                'h-3.5 w-3.5 text-[var(--color-app-muted)] transition-transform',
-                expanded && 'rotate-90',
-              )}
-            />
-            <span className="text-[12.5px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]">
-              {duration != null
-                ? t('chat.thoughtFor', { duration: formatToolDuration(duration) })
-                : t('chat.reasoning')}
-            </span>
-          </>
+          <span className="text-[12.5px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-subtle)]">
+            {thinkingSummaryLabel(duration, toolCount, t)}
+          </span>
         )}
       </button>
       <Collapsible open={expanded}>
         <div className="ml-2 flex flex-col gap-2.5 border-l-2 border-[var(--color-app-border)] py-0.5 pl-3">
           {segments.map((segment) =>
             segment.type === 'reasoning' ? (
+              // Raciocínio emitido pelo provedor (spec 126). Vive dentro do
+              // bloco recolhível: quem quiser acompanhar, expande. Sem texto
+              // (provedor que só sinaliza a etapa), cai no resumo operacional.
               <p
                 key={segment.id}
                 className={cn(
@@ -315,7 +459,11 @@ function ThinkingBlock({
                     : 'text-[var(--color-app-muted)]',
                 )}
               >
-                {segment.text}
+                {segment.text.trim().length > 0
+                  ? segment.text
+                  : segment.endedAt == null
+                    ? t('chat.reasoningInProgress')
+                    : t('chat.reasoningCompleted')}
               </p>
             ) : (
               <div key={segment.id} className="flex flex-col">
@@ -337,9 +485,16 @@ function ThinkingBlock({
 function MessageCopyButton({
   text,
   align = 'start',
+  /**
+   * `row` = já está dentro da linha de ações da mensagem do usuário, que cuida
+   * do espaçamento e do alinhamento (spec 127). `standalone` é o copiar
+   * sozinho embaixo da resposta do assistente.
+   */
+  layout = 'standalone',
 }: {
   text: string;
   align?: 'start' | 'end';
+  layout?: 'standalone' | 'row';
 }): React.ReactElement | null {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -368,9 +523,10 @@ function MessageCopyButton({
       type="button"
       onClick={() => void copy()}
       className={cn(
-        'mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--color-app-muted)] transition-opacity hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
+        'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--color-app-muted)] transition-opacity hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
         'opacity-70 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100',
-        align === 'end' ? 'self-end' : 'self-start',
+        layout === 'standalone' && 'mt-1.5',
+        layout === 'standalone' && (align === 'end' ? 'self-end' : 'self-start'),
       )}
       aria-label={t('chat.copyMessage')}
       title={t('chat.copyMessage')}
@@ -381,47 +537,109 @@ function MessageCopyButton({
   );
 }
 
+const ATTACHMENT_ICON: Record<MessageAttachment['kind'], typeof FileText> = {
+  document: FileText,
+  image: ImageIcon,
+  media: Music2,
+};
+
+/**
+ * Anexos vinculados à mensagem do usuário (spec 126). Vêm do snapshot, então
+ * continuam visíveis depois de recarregar a página.
+ */
+function MessageAttachments({
+  attachments,
+}: {
+  attachments?: MessageAttachment[];
+}): React.ReactElement | null {
+  const { t } = useI18n();
+  if (!attachments?.length) return null;
+  return (
+    <ul
+      className="mt-1.5 flex max-w-[85%] flex-wrap justify-end gap-1.5"
+      aria-label={t('chat.attachmentsLabel')}
+    >
+      {attachments.map((attachment) => {
+        const Icon = ATTACHMENT_ICON[attachment.kind];
+        return (
+          <li
+            key={attachment.jobId}
+            className="flex items-center gap-1.5 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--color-app-subtle)]"
+          >
+            <Icon className="h-3 w-3 shrink-0 text-[var(--color-app-muted)]" />
+            <span className="max-w-[180px] truncate" title={attachment.name}>
+              {attachment.name}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function HitlConfirmBar({
   pending,
+  approving,
   onApprove,
 }: {
   pending: PendingHitl[];
-  onApprove: (id: string) => void;
+  approving: ReadonlySet<string>;
+  onApprove: (id: string, options?: { alwaysAllow?: boolean }) => void;
 }): React.ReactElement | null {
   const { t } = useI18n();
   if (pending.length === 0) return null;
   return (
     <div className="mb-2 flex flex-col gap-2" role="region" aria-label={t('chat.hitlRegion')}>
-      {pending.map((item) => (
-        <div
-          key={item.approvalId}
-          className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-accent-amber)]/30 bg-[var(--color-accent-amber)]/10 px-3 py-2.5"
-        >
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-[var(--color-app-fg)]">
-              {item.title
-                ? t('chat.hitlProposeNote', { title: item.title })
-                : t('chat.confirmationTitle')}
-            </p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
-              {t('chat.hitlConfirmHint')}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onApprove(item.approvalId)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90"
+      {pending.map((item) => {
+        const busy = approving.has(item.approvalId);
+        return (
+          <div
+            key={item.approvalId}
+            className="flex flex-col gap-2 rounded-xl border border-[var(--color-accent-amber)]/30 bg-[var(--color-accent-amber)]/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
           >
-            <Check className="h-3.5 w-3.5" /> {t('chat.confirm')}
-          </button>
-        </div>
-      ))}
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-[var(--color-app-fg)]">
+                {item.title
+                  ? t('chat.hitlProposeNote', { title: item.title })
+                  : t('chat.confirmationTitle')}
+              </p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
+                {t('chat.hitlConfirmHint')}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => onApprove(item.approvalId, { alwaysAllow: true })}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-accent-amber)]/40 bg-transparent px-2.5 py-1.5 text-xs font-medium text-[var(--color-app-fg)] hover:bg-[var(--color-accent-amber)]/15 disabled:cursor-wait disabled:opacity-60"
+              >
+                {t('chat.hitlAlwaysAllow')}
+              </button>
+              <button
+                type="button"
+                onClick={() => onApprove(item.approvalId)}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
+              >
+                {busy ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Check className="h-3.5 w-3.5" />
+                )}{' '}
+                {t('chat.confirm')}
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Anexo do composer — upload independente para o acervo (ingestão via jobs)
+// Anexo do composer — o arquivo continua indo para a Base de conhecimento (job de ingestão),
+// mas agora o job também é vinculado à mensagem enviada (spec 126).
 // ---------------------------------------------------------------------------
 type Attachment = {
   id: string;
@@ -429,76 +647,93 @@ type Attachment = {
   status: 'uploading' | 'done' | 'error';
   progress: number;
   error?: string;
+  /** Job de ingestão criado pelo upload — é o que vincula o anexo à mensagem. */
+  jobId?: string;
   controller: AbortController;
 };
+
+/** Ids de job dos anexos prontos, na ordem em que o usuário anexou. */
+function readyAttachmentJobIds(attachments: readonly Attachment[]): string[] {
+  const ids: string[] = [];
+  for (const item of attachments) {
+    if (item.status !== 'done' || !item.jobId) continue;
+    ids.push(item.jobId);
+    if (ids.length === MAX_MESSAGE_ATTACHMENTS) break;
+  }
+  return ids;
+}
+
+/** Altura máxima do composer antes de rolar internamente (spec 126). */
+const COMPOSER_MAX_HEIGHT_PX = 200;
+/**
+ * ...mas nunca mais que esta fração da viewport. Num celular com o teclado
+ * aberto sobram ~300px de área útil: 200px fixos engoliriam quase tudo,
+ * deixando a conversa invisível enquanto se digita.
+ */
+const COMPOSER_MAX_HEIGHT_VH = 0.3;
+
+function composerMaxHeight(): number {
+  const viewport = window.visualViewport?.height ?? window.innerHeight;
+  if (!Number.isFinite(viewport) || viewport <= 0) return COMPOSER_MAX_HEIGHT_PX;
+  return Math.min(COMPOSER_MAX_HEIGHT_PX, viewport * COMPOSER_MAX_HEIGHT_VH);
+}
 
 function Composer({
   input,
   setInput,
   streaming,
+  busy = false,
   onSend,
   onStop,
+  attachments,
+  onAttachFile,
+  onRemoveAttachment,
   autoFocus,
   className,
 }: {
   input: string;
   setInput: (value: string) => void;
   streaming: boolean;
+  /**
+   * Ocupado sem ter turno para interromper — hoje só a troca de trilha
+   * (spec 127). Trava o envio como `streaming`, mas NÃO troca o botão por
+   * "parar": não há nada a parar, e oferecer o botão mentiria.
+   */
+  busy?: boolean;
   onSend: () => void;
   onStop: () => void;
+  attachments: Attachment[];
+  onAttachFile: (file: File) => void;
+  onRemoveAttachment: (id: string) => void;
   autoFocus?: boolean;
   className?: string;
 }): React.ReactElement {
   const { t } = useI18n();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  function patch(id: string, next: Partial<Attachment>): void {
-    setAttachments((current) => current.map((a) => (a.id === id ? { ...a, ...next } : a)));
-  }
-
-  async function startUpload(file: File): Promise<void> {
-    const kind = attachmentKind(file.name, file.type);
-    if (!kind) {
-      toast.error(t('chat.attachUnsupported'));
-      return;
+  // Cresce com o conteúdo até o teto e só então rola internamente. Medir
+  // exige zerar a altura antes de ler `scrollHeight`, senão o valor fica
+  // preso na altura anterior e o composer nunca encolhe (mesmo padrão do
+  // dock de transcrição). O teclado virtual muda a viewport sem mudar o
+  // texto, então o resize também remede.
+  useLayoutEffect(() => {
+    const element = textareaRef.current;
+    if (!element) return;
+    function measure(): void {
+      if (!element) return;
+      element.style.height = 'auto';
+      element.style.height = `${Math.min(element.scrollHeight, composerMaxHeight())}px`;
     }
-    const id = crypto.randomUUID();
-    const controller = new AbortController();
-    setAttachments((current) => [
-      ...current,
-      { id, name: file.name, status: 'uploading', progress: 0, controller },
-    ]);
-    try {
-      await uploadMedia(file, {
-        signal: controller.signal,
-        onProgress: (percent) => patch(id, { progress: percent }),
-      });
-      patch(id, { status: 'done', progress: 100 });
-      toast.success(t('chat.attachQueued', { name: file.name }));
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        setAttachments((current) => current.filter((a) => a.id !== id));
-        return;
-      }
-      const message =
-        err instanceof ApiError
-          ? err.status === 413
-            ? t('jobs.error.uploadTooLarge')
-            : err.message
-          : t('jobs.error.unexpected');
-      patch(id, { status: 'error', error: message });
-      toast.error(t('chat.attachError', { name: file.name }));
-    }
-  }
-
-  function removeAttachment(id: string): void {
-    setAttachments((current) => {
-      const target = current.find((a) => a.id === id);
-      if (target?.status === 'uploading') target.controller.abort();
-      return current.filter((a) => a.id !== id);
-    });
-  }
+    measure();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', measure);
+    window.addEventListener('resize', measure);
+    return () => {
+      viewport?.removeEventListener('resize', measure);
+      window.removeEventListener('resize', measure);
+    };
+  }, [input]);
 
   return (
     <form
@@ -510,6 +745,7 @@ function Composer({
     >
       <div className="flex flex-col gap-1.5 rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-surface)] p-2 shadow-lg shadow-black/10 transition-colors focus-within:border-[var(--color-accent-primary)]/50">
         <textarea
+          ref={textareaRef}
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
@@ -520,9 +756,12 @@ function Composer({
           }}
           placeholder={t('prompt.placeholder')}
           rows={1}
-          disabled={streaming}
+          disabled={streaming || busy}
           autoFocus={autoFocus}
-          className="max-h-40 min-h-9 w-full resize-none bg-transparent px-2 py-1.5 text-sm text-[var(--color-app-fg)] outline-none placeholder:text-[var(--color-app-muted)] disabled:opacity-60"
+          style={{
+            maxHeight: `min(${COMPOSER_MAX_HEIGHT_PX}px, ${COMPOSER_MAX_HEIGHT_VH * 100}dvh)`,
+          }}
+          className="min-h-9 w-full resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-sm text-[var(--color-app-fg)] outline-none placeholder:text-[var(--color-app-muted)] disabled:opacity-60"
         />
 
         {attachments.length > 0 && (
@@ -550,7 +789,7 @@ function Composer({
                 )}
                 <button
                   type="button"
-                  onClick={() => removeAttachment(a.id)}
+                  onClick={() => onRemoveAttachment(a.id)}
                   className="grid h-4 w-4 place-items-center rounded text-[var(--color-app-muted)] hover:text-[var(--color-accent-rose)]"
                   aria-label={t('common.close')}
                 >
@@ -569,14 +808,14 @@ function Composer({
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) void startUpload(file);
+              if (file) onAttachFile(file);
               if (fileRef.current) fileRef.current.value = '';
             }}
           />
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            disabled={streaming}
+            disabled={streaming || busy}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[var(--color-app-border)] text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] disabled:opacity-50"
             aria-label={t('chat.attach')}
             title={t('chat.attach')}
@@ -596,11 +835,11 @@ function Composer({
           ) : (
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={!input.trim() || busy}
               className="grid h-9 w-9 place-items-center rounded-full bg-[var(--color-accent-primary)] text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label={t('chat.send')}
             >
-              <ArrowUp className="h-4 w-4" />
+              <ChevronUp className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -611,6 +850,7 @@ function Composer({
 
 export function ChatPage(): React.ReactElement {
   const { t } = useI18n();
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const location = useLocation();
   const navigate = useNavigate();
   const { data: me } = useMe();
@@ -628,11 +868,23 @@ export function ChatPage(): React.ReactElement {
   const [showScrollLatest, setShowScrollLatest] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [sourceCitations, setSourceCitations] = useState<ChatCitation[] | null>(null);
+  const [approvingHitl, setApprovingHitl] = useState<ReadonlySet<string>>(new Set());
+  // Versionamento (spec 127): qual mensagem está aberta para edição e se uma
+  // troca de trilha está em voo. Só o id vive aqui — o rascunho pertence ao
+  // formulário, que nasce com o texto atual da mensagem.
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [switchingVersion, setSwitchingVersion] = useState(false);
+  // Anexos vivem na página (não no Composer) porque `send()` precisa deles
+  // para vincular os jobs à mensagem enviada (spec 126).
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const approvingHitlRef = useRef(new Set<string>());
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentWrapRef = useRef<HTMLDivElement>(null);
   const spacerNodeRef = useRef<HTMLDivElement>(null);
   const didInitialScroll = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const snapshotReconcilerRef = useRef<SnapshotReconciler | null>(null);
   const streamingAssistantId = useRef<string | null>(null);
   const pendingAnchorIdRef = useRef<string | null>(null);
   /** Handoff one-shot de outras páginas (detalhe de transcrição, etc.). */
@@ -646,10 +898,10 @@ export function ChatPage(): React.ReactElement {
   const returningToEndRef = useRef(false);
   const userScrollIntentUntilRef = useRef(0);
   /**
-   * Gate do reengage da âncora (spec 092): durante o stream, só libera quando
-   * a resposta final já tem texto. Tools/raciocínio sozinhos não devem
-   * desancorar e voltar pro stick-to-bottom. Lido no ResizeObserver via ref
-   * (o observer é montado uma vez; closure stale).
+   * Gate do reengage da âncora (spec 135): o primeiro conteúdo transmitido,
+   * inclusive raciocínio ou ferramenta, pode consumir a reserva e ativar o
+   * follow. A geometria ainda mantém a âncora enquanto esse conteúdo couber.
+   * Lido no ResizeObserver via ref (o observer é montado uma vez; closure stale).
    */
   const allowAnchorReengageRef = useRef(true);
   const { clearSignal } = useChatShell();
@@ -804,18 +1056,74 @@ export function ChatPage(): React.ReactElement {
   }, [visibleMessages]);
   const isEmpty = !loading && visibleMessages.length === 0;
 
+  function patchAttachment(id: string, next: Partial<Attachment>): void {
+    setAttachments((current) => current.map((a) => (a.id === id ? { ...a, ...next } : a)));
+  }
+
+  async function startUpload(file: File): Promise<void> {
+    const kind = attachmentKind(file.name, file.type);
+    if (!kind) {
+      toast.error(t('chat.attachUnsupported'));
+      return;
+    }
+    if (attachments.length >= MAX_MESSAGE_ATTACHMENTS) {
+      toast.error(t('chat.attachTooMany', { max: MAX_MESSAGE_ATTACHMENTS }));
+      return;
+    }
+    const id = crypto.randomUUID();
+    const controller = new AbortController();
+    setAttachments((current) => [
+      ...current,
+      { id, name: file.name, status: 'uploading', progress: 0, controller },
+    ]);
+    try {
+      const uploaded = await uploadMedia(file, {
+        signal: controller.signal,
+        onProgress: (percent) => patchAttachment(id, { progress: percent }),
+      });
+      // O jobId é o que amarra este arquivo à próxima mensagem enviada.
+      patchAttachment(id, { status: 'done', progress: 100, jobId: uploaded.jobId });
+      toast.success(t('chat.attachQueued', { name: file.name }));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setAttachments((current) => current.filter((a) => a.id !== id));
+        return;
+      }
+      const message =
+        err instanceof ApiError
+          ? err.status === 413
+            ? t('jobs.error.uploadTooLarge')
+            : err.message
+          : t('jobs.error.unexpected');
+      patchAttachment(id, { status: 'error', error: message });
+      toast.error(t('chat.attachError', { name: file.name }));
+    }
+  }
+
+  function removeAttachment(id: string): void {
+    setAttachments((current) => {
+      const target = current.find((a) => a.id === id);
+      if (target?.status === 'uploading') target.controller.abort();
+      return current.filter((a) => a.id !== id);
+    });
+  }
+
   function applySnapshot(snapshot: Snapshot, replace = false): void {
+    // Funil único de mensagens vindas do servidor: normaliza aqui para que o
+    // render nunca receba `segments` cru do JSONB (ver parseMessageSegments).
+    const messages = snapshot.messages.map(normalizeSnapshotMessage);
     setMessages((current) =>
-      replace
-        ? snapshot.messages
-        : mergeChatMessagePages(
-            current.filter((message) => !message.id.startsWith('local-')),
-            snapshot.messages,
-          ),
+      reconcileSnapshotMessages(current, messages, {
+        replace,
+        localStreamActive: abortRef.current !== null,
+        streamingMessageId: streamingAssistantId.current,
+      }),
     );
     setHasOlder(snapshot.hasOlder);
     setNextCursor(snapshot.nextCursor);
-    setActiveTurn(snapshot.activeTurn);
+    setActiveTurn((current) =>
+      sameActiveTurn(current, snapshot.activeTurn) ? current : snapshot.activeTurn,
+    );
   }
 
   const refresh = async (): Promise<void> => {
@@ -828,6 +1136,36 @@ export function ChatPage(): React.ReactElement {
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Revalidação silenciosa usada por retomada de aba e pelo observador de
+   * turno. Compartilhar a Promise evita que focus + visibilitychange + poll
+   * consultem o mesmo snapshot em paralelo.
+   */
+  const reconcileSnapshot = (replace = false): Promise<void> => {
+    if (!snapshotReconcilerRef.current) {
+      snapshotReconcilerRef.current = createSnapshotReconciler(
+        () => apiGet<Snapshot>('/api/chat'),
+        (snapshot, canonical) => {
+          // Retomada de uma aba precisa remover mensagens apagadas ou ramos
+          // abandonados em outra aba. Durante um stream local, porém, preservar
+          // as bolhas otimistas evita rollback visual de deltas ainda não lidos.
+          applySnapshot(snapshot, canonical);
+          if (
+            shouldFinishSnapshotStreaming(snapshot.activeTurn !== null, abortRef.current !== null)
+          ) {
+            streamingAssistantId.current = null;
+            setStreaming(false);
+            setStatus(null);
+          }
+        },
+        () => {
+          // Mantém o snapshot exibido; a próxima retomada ou tick tenta de novo.
+        },
+      );
+    }
+    return snapshotReconcilerRef.current.reconcile(replace);
   };
 
   async function loadOlderMessages(): Promise<void> {
@@ -856,6 +1194,24 @@ export function ChatPage(): React.ReactElement {
     void refresh();
   }, []);
 
+  // Mesmo sem turno ativo, uma aba retomada precisa convergir para alterações
+  // feitas em outra aba. A consulta é silenciosa e preserva o histórico atual.
+  useEffect(() => {
+    const onResume = (): void => {
+      if (document.visibilityState === 'visible') void reconcileSnapshot(true);
+    };
+    window.addEventListener('focus', onResume);
+    window.addEventListener('online', onResume);
+    window.addEventListener('pageshow', onResume);
+    document.addEventListener('visibilitychange', onResume);
+    return () => {
+      window.removeEventListener('focus', onResume);
+      window.removeEventListener('online', onResume);
+      window.removeEventListener('pageshow', onResume);
+      document.removeEventListener('visibilitychange', onResume);
+    };
+  }, []);
+
   // A conexão SSE é um observador, não a posse do turno. Em reload, retorno do
   // background ou troca de rede, acompanha o estado persistido até terminar.
   useEffect(() => {
@@ -864,38 +1220,14 @@ export function ChatPage(): React.ReactElement {
     setStreaming(true);
     setStatus(t('chat.recovering'));
     let disposed = false;
-    let polling = false;
     const poll = async (): Promise<void> => {
-      if (disposed || polling) return;
-      polling = true;
-      try {
-        const snapshot = await apiGet<Snapshot>('/api/chat');
-        if (disposed) return;
-        applySnapshot(snapshot);
-        if (!snapshot.activeTurn) {
-          streamingAssistantId.current = null;
-          setStreaming(false);
-          setStatus(null);
-        }
-      } catch {
-        // Offline/background: o próximo tick, `online` ou visibilitychange retoma.
-      } finally {
-        polling = false;
-      }
-    };
-    const onResume = (): void => {
-      if (document.visibilityState === 'visible' || navigator.onLine) void poll();
+      if (disposed) return;
+      await reconcileSnapshot();
     };
     const timer = window.setInterval(() => void poll(), 2_000);
-    window.addEventListener('online', onResume);
-    window.addEventListener('pageshow', onResume);
-    document.addEventListener('visibilitychange', onResume);
     return () => {
       disposed = true;
       window.clearInterval(timer);
-      window.removeEventListener('online', onResume);
-      window.removeEventListener('pageshow', onResume);
-      document.removeEventListener('visibilitychange', onResume);
     };
   }, [activeTurn?.id]);
 
@@ -967,9 +1299,9 @@ export function ChatPage(): React.ReactElement {
     markProgrammaticScroll();
     element.scrollTo({
       top: element.scrollHeight,
-      behavior: streaming ? 'auto' : 'smooth',
+      behavior: 'auto',
     });
-  }, [messages, nearBottom, streaming]);
+  }, [messages, nearBottom]);
 
   // Shrink spacer as the assistant reply grows during an anchored turn.
   // Re-attach when the scroller mounts (loading/empty → conversation view).
@@ -1035,16 +1367,180 @@ export function ChatPage(): React.ReactElement {
     prevScrollTopRef.current = scrollTop;
   }
 
-  async function approve(id: string): Promise<void> {
+  async function approve(id: string, options: { alwaysAllow?: boolean } = {}): Promise<void> {
+    if (streaming || switchingVersion) return;
+    if (!claimPendingId(approvingHitlRef.current, id)) return;
+    setApprovingHitl(new Set(approvingHitlRef.current));
+
+    // Resume SSE (spec 132): optimistic assistant bubble while the model continues.
+    const localStartedAt = new Date().toISOString();
+    const localAssistant: ChatMessage = {
+      id: `local-assistant-${crypto.randomUUID()}`,
+      role: 'ASSISTANT',
+      kind: 'NORMAL',
+      content: '',
+      tools: [],
+      compactedAt: null,
+      createdAt: localStartedAt,
+    };
+    let liveAssistantMessageId = localAssistant.id;
+    streamingAssistantId.current = localAssistant.id;
+    liveSegmentsRef.current = null;
+    setMessages((current) => [...current, localAssistant]);
+    setStreaming(true);
+    setStatus(t('chat.thinking'));
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let persistedActiveTurn: ActiveTurn | null = null;
+
     try {
-      const result = await apiPost<{ message: string }>('/api/chat/approve', { approvalId: id });
-      toast.success(result.message);
+      const response = await fetch('/api/chat/approve', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'text/event-stream',
+        },
+        body: JSON.stringify({
+          approvalId: id,
+          ...(options.alwaysAllow ? { alwaysAllow: true } : {}),
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? t('chat.approveError'));
+      }
+      const contentType = response.headers.get('content-type') ?? '';
+      // JSON path: approve without resume (busy) or legacy clients.
+      if (contentType.includes('application/json') || !response.body) {
+        const result = (await response.json()) as { message?: string };
+        if (result.message) toast.success(result.message);
+        if (getSoundsEnabled()) play('success');
+        await refresh().catch(() => undefined);
+        return;
+      }
       if (getSoundsEnabled()) play('success');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const apply = (event: StreamEvent): void => {
+        if (event.type === 'start') {
+          const previousAssistantMessageId = liveAssistantMessageId;
+          liveAssistantMessageId = event.assistantMessageId;
+          streamingAssistantId.current = event.assistantMessageId;
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === previousAssistantMessageId
+                ? { ...message, id: event.assistantMessageId }
+                : message,
+            ),
+          );
+        } else if (event.type === 'text') {
+          allowAnchorReengageRef.current = true;
+          setMessages((current) =>
+            current.map((message) => {
+              if (message.id !== liveAssistantMessageId) return message;
+              const segments = closeTrailingReasoning(message.segments ?? [], Date.now());
+              liveSegmentsRef.current = segments;
+              return { ...message, content: message.content + event.delta, segments };
+            }),
+          );
+        } else if (event.type === 'reasoning') {
+          // Raciocínio longo também consome a área reservada pela âncora. O
+          // ResizeObserver só ativa o follow depois que a reserva se esgota.
+          allowAnchorReengageRef.current = true;
+          setMessages((current) =>
+            current.map((message) => {
+              if (message.id !== liveAssistantMessageId) return message;
+              const segments = applySegmentEvent(message.segments ?? [], event, Date.now());
+              liveSegmentsRef.current = segments;
+              return { ...message, segments };
+            }),
+          );
+        } else if (event.type === 'status') {
+          const statusKey = chatStatusI18nKey(event.code);
+          setStatus(statusKey ? t(statusKey) : event.label);
+        } else if (event.type === 'tool') {
+          allowAnchorReengageRef.current = true;
+          setMessages((current) =>
+            current.map((message) => {
+              if (message.id !== liveAssistantMessageId) return message;
+              const segments = applySegmentEvent(message.segments ?? [], event, Date.now());
+              liveSegmentsRef.current = segments;
+              return { ...message, segments };
+            }),
+          );
+        } else if (event.type === 'error') {
+          setStatus(event.message);
+        } else if (event.type === 'done' && getSoundsEnabled()) {
+          play('success');
+        }
+      };
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() ?? '';
+        for (const frame of frames) {
+          const dataLine = frame.split('\n').find((line) => line.startsWith('data: '));
+          if (!dataLine) continue;
+          try {
+            apply(JSON.parse(dataLine.slice(6)) as StreamEvent);
+          } catch {
+            /* ignore invalid frame */
+          }
+        }
+      }
+      if (liveSegmentsRef.current) {
+        liveSegmentsRef.current = closeTrailingReasoning(liveSegmentsRef.current, Date.now());
+      }
+      const snapshot = await apiGet<Snapshot>('/api/chat');
+      persistedActiveTurn = snapshot.activeTurn;
+      applySnapshot(snapshot);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('chat.approveError'));
-    } finally {
-      // Always reload: success clears the card; stale/already-used heals ghosts.
+      if (!controller.signal.aborted) {
+        toast.error(error instanceof Error ? error.message : t('chat.approveError'));
+      }
       await refresh().catch(() => undefined);
+    } finally {
+      abortRef.current = null;
+      liveSegmentsRef.current = null;
+      approvingHitlRef.current.delete(id);
+      setApprovingHitl(new Set(approvingHitlRef.current));
+      if (persistedActiveTurn) {
+        streamingAssistantId.current = persistedActiveTurn.assistantMessageId;
+        setStreaming(true);
+        setStatus(t('chat.recovering'));
+      } else {
+        streamingAssistantId.current = null;
+        setStreaming(false);
+        setStatus(null);
+      }
+    }
+  }
+
+  /**
+   * Troca a trilha exibida para a que passa por esta versão (spec 127). Não
+   * gera resposta: o servidor só reposiciona o ponteiro de folha ativa, e o
+   * snapshot seguinte traz a trilha inteira.
+   *
+   * `replace`, não mesclagem: a trilha nova e a antiga compartilham só o
+   * prefixo até o ponto de ramificação, e mesclar deixaria o ramo abandonado
+   * na tela junto com o escolhido.
+   */
+  async function switchVersion(messageId: string): Promise<void> {
+    if (streaming || switchingVersion) return;
+    setEditingMessageId(null);
+    setSwitchingVersion(true);
+    try {
+      await apiPost(`/api/chat/messages/${encodeURIComponent(messageId)}/activate`);
+      applySnapshot(await apiGet<Snapshot>('/api/chat'), true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('chat.versionSwitchError'));
+    } finally {
+      setSwitchingVersion(false);
     }
   }
 
@@ -1063,17 +1559,71 @@ export function ChatPage(): React.ReactElement {
     }
   }
 
-  async function send(override?: string): Promise<void> {
+  async function send(override?: string, branch?: BranchTarget): Promise<void> {
     const content = (override ?? input).trim();
-    if (!content || streaming) return;
+    // `switchingVersion` no guarda: a troca de trilha grava a folha ativa e só
+    // depois relê o snapshot. Um envio que entre nessa janela cria o turno
+    // entre as duas operações, e o `replace` da troca apaga as bolhas otimistas
+    // dele — `reconcileChatStart` só renomeia o que já está na lista, então a
+    // pergunta e a resposta ficariam invisíveis até o turno acabar.
+    if (!content || streaming || switchingVersion) return;
+    // Espelho otimista dos anexos: o servidor devolve a forma canônica no
+    // snapshot, mas a bolha já nasce com o vínculo visível.
+    //
+    // Reenvio de versão não mexe no composer: a versão carrega os anexos da
+    // mensagem editada (os mesmos jobs, re-vinculados pelo servidor com escopo
+    // de workspace), não os arquivos que o usuário deixou preparados embaixo
+    // para a próxima mensagem. Sem isso, editar uma pergunta perderia em
+    // silêncio o PDF que a acompanhava.
+    const localAttachments: MessageAttachment[] = branch
+      ? branch.attachments
+      : attachments
+          .filter((item) => item.status === 'done' && item.jobId)
+          .slice(0, MAX_MESSAGE_ATTACHMENTS)
+          .map((item) => ({
+            jobId: item.jobId as string,
+            name: item.name,
+            kind: attachmentKind(item.name, '') ?? 'document',
+          }));
+    const plan = planSend({ branch, composerJobIds: readyAttachmentJobIds(attachments) });
+    const attachmentJobIds = plan.attachmentJobIds;
+    // Lista exibida ANTES do corte, para desfazê-lo se o turno não nascer. O
+    // snapshot não serve de rollback: ele devolve só os últimos 60 da trilha
+    // (`getChatSnapshot`), então numa conversa longa a mesclagem com o prefixo
+    // cortado deixaria um buraco no meio da conversa.
+    const trailBeforeBranch = branch ? messages : null;
+    /**
+     * O servidor aceitou o reenvio — a partir daqui a versão EXISTE no banco e
+     * o corte não pode mais ser desfeito. A rota cria o turno antes de abrir o
+     * stream, então o 2xx é o sinal exato; esperar o evento `start` deixaria
+     * uma janela em que a versão já existe e um rollback empilharia as duas
+     * versões da mesma pergunta na tela.
+     */
+    let versionCreated = false;
+    /**
+     * Desfaz o corte quando NENHUM snapshot pôde ser lido (offline de verdade).
+     * Sem isso a tela fica com o prefixo cortado mais duas bolhas otimistas
+     * órfãs, e nada se auto-cura: `persistedActiveTurn` é nulo, o poll de
+     * recuperação não liga, e o histórico só volta num reload.
+     *
+     * A decisão de restaurar (ou não, quando o turno já nasceu) mora em
+     * `planBranchRollback`, testável sem montar a página inteira.
+     */
+    function restoreBranchTrail(): void {
+      setMessages(
+        (current) => planBranchRollback({ trailBeforeBranch, current, versionCreated }) ?? current,
+      );
+    }
+    const localStartedAt = new Date().toISOString();
     const localUser: ChatMessage = {
       id: `local-user-${crypto.randomUUID()}`,
       role: 'USER',
       kind: 'NORMAL',
       content,
       tools: null,
+      attachments: localAttachments,
       compactedAt: null,
-      createdAt: new Date().toISOString(),
+      createdAt: localStartedAt,
     };
     const localAssistant: ChatMessage = {
       id: `local-assistant-${crypto.randomUUID()}`,
@@ -1082,16 +1632,38 @@ export function ChatPage(): React.ReactElement {
       content: '',
       tools: [],
       compactedAt: null,
-      createdAt: new Date().toISOString(),
+      createdAt: localStartedAt,
     };
+    let liveUserMessageId = localUser.id;
+    let liveAssistantMessageId = localAssistant.id;
     streamingAssistantId.current = localAssistant.id;
     liveSegmentsRef.current = null;
     pendingAnchorIdRef.current = localUser.id;
-    // Bloqueia reengage até chegar texto final (tools/raciocínio não desancoram).
+    // Aguarda o primeiro segmento transmitido antes de consumir a âncora.
     allowAnchorReengageRef.current = false;
     scrollPhaseRef.current = 'free';
-    setMessages((current) => [...current, localUser, localAssistant]);
-    setInput('');
+    // Reenvio de versão recorta a trilha no ponto de ramificação: a mensagem
+    // editada e tudo que veio depois dela saem da tela, porque a versão nova
+    // nasce IRMÃ dela e o snapshot seguinte não as traz de volta.
+    setMessages((current) => [
+      ...(branch ? truncateTrailFrom(current, branch.messageId) : current),
+      localUser,
+      localAssistant,
+    ]);
+    if (plan.clearsComposer) setInput('');
+    // Chips que saem do composer QUANDO o servidor aceitar a mensagem: os
+    // prontos (foram vinculados) e os que falharam (erro já avisado por
+    // toast). Uploads em andamento seguem no composer e valem para a próxima
+    // mensagem. Limpar aqui, antes do POST, perdia os anexos em 409 (turno
+    // ocupado), 429 (rate limit) ou queda de rede — a mensagem não era criada
+    // e não há como re-vincular um job existente, restando subir o arquivo de
+    // novo. Guardamos os ids em vez de filtrar por status depois, para não
+    // levar junto um anexo que o usuário adicionou durante a requisição.
+    const consumedAttachmentIds = new Set<string>(
+      plan.clearsComposer
+        ? attachments.filter((item) => item.status !== 'uploading').map((item) => item.id)
+        : [],
+    );
     setNearBottom(false);
     setShowScrollLatest(false);
     setStreaming(true);
@@ -1101,24 +1673,43 @@ export function ChatPage(): React.ReactElement {
     let persistedActiveTurn: ActiveTurn | null = null;
 
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetch(plan.endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(
+          attachmentJobIds.length > 0 ? { content, attachmentJobIds } : { content },
+        ),
         signal: controller.signal,
       });
+      // Antes da checagem de corpo, de propósito: um 2xx sem `body` ainda
+      // significa turno criado, e marcar depois deixaria o rollback achar que
+      // a versão não existe.
+      versionCreated = response.ok;
       if (!response.ok || !response.body) throw new Error(t('chat.streamStartError'));
+      // Mensagem aceita: só agora os chips consumidos saem do composer.
+      setAttachments((current) => current.filter((item) => !consumedAttachmentIds.has(item.id)));
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       const apply = (event: StreamEvent): void => {
-        if (event.type === 'text') {
+        if (event.type === 'start') {
+          const previousUserMessageId = liveUserMessageId;
+          const previousAssistantMessageId = liveAssistantMessageId;
+          liveUserMessageId = event.userMessageId;
+          liveAssistantMessageId = event.assistantMessageId;
+          streamingAssistantId.current = event.assistantMessageId;
+          if (pendingAnchorIdRef.current === previousUserMessageId)
+            pendingAnchorIdRef.current = event.userMessageId;
+          setMessages((current) =>
+            reconcileChatStart(current, previousUserMessageId, previousAssistantMessageId, event),
+          );
+        } else if (event.type === 'text') {
           // Texto final: libera reengage se o conteúdo preencher o viewport.
           allowAnchorReengageRef.current = true;
           setMessages((current) =>
             current.map((message) => {
-              if (message.id !== localAssistant.id) return message;
+              if (message.id !== liveAssistantMessageId) return message;
               // Texto final encerra o raciocínio em aberto (se houver) — a
               // partir daqui esse segmento não recebe mais deltas.
               const segments = closeTrailingReasoning(message.segments ?? [], Date.now());
@@ -1127,20 +1718,25 @@ export function ChatPage(): React.ReactElement {
             }),
           );
         } else if (event.type === 'reasoning') {
+          // Raciocínio longo também consome a área reservada pela âncora. O
+          // ResizeObserver só ativa o follow depois que a reserva se esgota.
+          allowAnchorReengageRef.current = true;
           setMessages((current) =>
             current.map((message) => {
-              if (message.id !== localAssistant.id) return message;
+              if (message.id !== liveAssistantMessageId) return message;
               const segments = applySegmentEvent(message.segments ?? [], event, Date.now());
               liveSegmentsRef.current = segments;
               return { ...message, segments };
             }),
           );
         } else if (event.type === 'status') {
-          setStatus(event.label);
+          const statusKey = chatStatusI18nKey(event.code);
+          setStatus(statusKey ? t(statusKey) : event.label);
         } else if (event.type === 'tool') {
+          allowAnchorReengageRef.current = true;
           setMessages((current) =>
             current.map((message) => {
-              if (message.id !== localAssistant.id) return message;
+              if (message.id !== liveAssistantMessageId) return message;
               const segments = applySegmentEvent(message.segments ?? [], event, Date.now());
               liveSegmentsRef.current = segments;
               return { ...message, segments };
@@ -1187,11 +1783,18 @@ export function ChatPage(): React.ReactElement {
     } catch (error) {
       // Desconexão de transporte (Bun idle / proxy / rede) ≠ falha do turno.
       // Tenta recuperar o estado canônico antes de alarmar o usuário.
+      //
+      // Num reenvio, o snapshot de recuperação entra como `replace`, nunca
+      // mesclado. Aqui não dá para saber se a versão chegou a ser criada: se
+      // foi, mesclar traria a mensagem editada de volta ao lado da versão nova;
+      // se não foi, mesclar com o prefixo cortado abre um buraco, porque o
+      // snapshot é só uma janela da trilha. Substituir acerta nos dois casos —
+      // a janela é sempre contígua e `hasOlder`/`nextCursor` vêm com ela.
       if (!controller.signal.aborted) {
         try {
           const snapshot = await apiGet<Snapshot>('/api/chat');
           persistedActiveTurn = snapshot.activeTurn;
-          applySnapshot(snapshot);
+          applySnapshot(snapshot, Boolean(branch));
           if (snapshot.activeTurn) {
             // Turno ainda roda no servidor — sem toast de erro; UI mostra recovering.
           } else if (isTransientStreamDisconnect(error)) {
@@ -1200,6 +1803,7 @@ export function ChatPage(): React.ReactElement {
             toast.error(error instanceof Error ? error.message : t('chat.streamError'));
           }
         } catch {
+          restoreBranchTrail();
           if (isTransientStreamDisconnect(error)) {
             toast.error(t('chat.streamDisconnected'));
           } else {
@@ -1210,9 +1814,10 @@ export function ChatPage(): React.ReactElement {
         try {
           const snapshot = await apiGet<Snapshot>('/api/chat');
           persistedActiveTurn = snapshot.activeTurn;
-          applySnapshot(snapshot);
+          applySnapshot(snapshot, Boolean(branch));
         } catch {
           // Offline: o turno continua durável e será restaurado no próximo acesso.
+          restoreBranchTrail();
         }
       }
     } finally {
@@ -1248,7 +1853,12 @@ export function ChatPage(): React.ReactElement {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
+    <div
+      className={cn(
+        'relative flex h-full min-h-0 w-full flex-col',
+        sourceCitations && 'md:pr-[22rem]',
+      )}
+    >
       <p className="sr-only" aria-live="polite">
         {streaming ? (status ?? t('chat.responding')) : ''}
       </p>
@@ -1268,8 +1878,11 @@ export function ChatPage(): React.ReactElement {
             streaming={streaming}
             onSend={() => void send()}
             onStop={() => void stopStreaming()}
+            attachments={attachments}
+            onAttachFile={(file) => void startUpload(file)}
+            onRemoveAttachment={removeAttachment}
             autoFocus
-            className="w-full max-w-2xl"
+            className="w-full max-w-3xl"
           />
         </div>
       ) : (
@@ -1318,16 +1931,48 @@ export function ChatPage(): React.ReactElement {
                   const isStreamingAssistant =
                     streaming && message.id === streamingAssistantId.current;
                   if (message.role === 'USER') {
+                    // Bolha ainda otimista não tem id no banco: versionar iria
+                    // para um 404. Some assim que o evento `start` reconcilia.
+                    const unpersisted = message.id.startsWith('local-');
                     return (
                       <article
                         key={message.id}
                         data-message-id={message.id}
                         className="group mb-5 flex flex-col items-end"
                       >
-                        <div className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-[var(--color-accent-primary-soft)] px-4 py-2.5 text-[14.5px] leading-relaxed text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-primary)]/15">
-                          {message.content}
-                        </div>
-                        <MessageCopyButton text={message.content} align="end" />
+                        {editingMessageId === message.id ? (
+                          <MessageEditForm
+                            initialText={message.content}
+                            disabled={streaming || switchingVersion}
+                            onCancel={() => setEditingMessageId(null)}
+                            onSubmit={(content) => {
+                              setEditingMessageId(null);
+                              void send(content, {
+                                messageId: message.id,
+                                attachments: message.attachments ?? [],
+                              });
+                            }}
+                            t={t}
+                          />
+                        ) : (
+                          <>
+                            <div className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-[var(--color-accent-primary-soft)] px-4 py-2.5 text-[14.5px] leading-relaxed text-[var(--color-app-fg)] ring-1 ring-[var(--color-accent-primary)]/15">
+                              {message.content}
+                            </div>
+                            <MessageAttachments attachments={message.attachments} />
+                            <div className="mt-1.5 flex items-center gap-0.5 self-end">
+                              <UserMessageActions
+                                versions={message.versions}
+                                streaming={streaming}
+                                pending={switchingVersion || unpersisted}
+                                onEdit={() => setEditingMessageId(message.id)}
+                                onNavigate={(id) => void switchVersion(id)}
+                                t={t}
+                              />
+                              <MessageCopyButton text={message.content} align="end" layout="row" />
+                            </div>
+                          </>
+                        )}
                       </article>
                     );
                   }
@@ -1335,15 +1980,30 @@ export function ChatPage(): React.ReactElement {
                   return (
                     <article key={message.id} className="group mb-6 flex flex-col">
                       {segments.length > 0 && (
-                        <ThinkingBlock segments={segments} live={isStreamingAssistant} />
+                        <ThinkingBlock
+                          segments={segments}
+                          live={isStreamingAssistant}
+                          startedAt={Date.parse(message.createdAt)}
+                        />
                       )}
                       {message.content && (
                         <>
                           <div className="text-[15px] leading-relaxed text-[var(--color-app-fg)]">
-                            <Markdown>{message.content}</Markdown>
+                            <Markdown
+                              citations={message.citations}
+                              className="chat-response-markdown [&_p]:max-w-3xl [&_ul]:max-w-3xl [&_ol]:max-w-3xl [&_blockquote]:max-w-3xl"
+                            >
+                              {message.content}
+                            </Markdown>
                           </div>
                           {!isStreamingAssistant && (
-                            <MessageCopyButton text={message.content} align="start" />
+                            <div className="mt-1.5 flex items-center gap-0.5 self-start">
+                              <MessageCopyButton text={message.content} layout="row" />
+                              <CitationSourcesButton
+                                citations={message.citations ?? []}
+                                onOpen={() => setSourceCitations(message.citations ?? [])}
+                              />
+                            </div>
                           )}
                         </>
                       )}
@@ -1378,13 +2038,21 @@ export function ChatPage(): React.ReactElement {
               {status && !streaming && (
                 <p className="mb-2 text-xs text-[var(--color-accent-amber)]">{status}</p>
               )}
-              <HitlConfirmBar pending={pendingHitl} onApprove={(id) => void approve(id)} />
+              <HitlConfirmBar
+                pending={pendingHitl}
+                approving={approvingHitl}
+                onApprove={(id, options) => void approve(id, options)}
+              />
               <Composer
                 input={input}
                 setInput={setInput}
                 streaming={streaming}
+                busy={switchingVersion}
                 onSend={() => void send()}
                 onStop={() => void stopStreaming()}
+                attachments={attachments}
+                onAttachFile={(file) => void startUpload(file)}
+                onRemoveAttachment={removeAttachment}
               />
             </div>
           </div>
@@ -1401,6 +2069,51 @@ export function ChatPage(): React.ReactElement {
         loading={clearing}
         onConfirm={clearHistory}
       />
+
+      {sourceCitations && (
+        <aside className="absolute inset-y-0 right-0 hidden w-[22rem] flex-col border-l border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] md:flex">
+          <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-app-border)] px-5 py-5">
+            <div className="min-w-0">
+              <h2 className="font-display text-lg font-semibold text-[var(--color-app-fg)]">
+                {t('chat.sources')}
+              </h2>
+              <p className="mt-1 text-sm text-[var(--color-app-muted)]">
+                {t('chat.sourcesDescription', { count: sourceCitations.length })}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSourceCitations(null)}
+              className="rounded-md p-1 text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+              aria-label={t('common.close')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </header>
+          <CitationSourceList citations={sourceCitations} />
+        </aside>
+      )}
+
+      <Sheet
+        open={isMobile && sourceCitations !== null}
+        onOpenChange={(open) => !open && setSourceCitations(null)}
+      >
+        <SheetContent className="md:hidden">
+          {sourceCitations && (
+            <>
+              <header className="shrink-0 border-b border-[var(--color-app-border)] px-5 py-5 pr-12">
+                <SheetTitle className="font-display text-lg font-semibold">
+                  {t('chat.sources')}
+                </SheetTitle>
+                <SheetDescription className="mt-1 text-sm text-[var(--color-app-muted)]">
+                  {t('chat.sourcesDescription', { count: sourceCitations.length })}
+                </SheetDescription>
+              </header>
+              <CitationSourceList citations={sourceCitations} />
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

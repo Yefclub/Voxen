@@ -5,7 +5,12 @@
 // `GARAGE_*` permanece apenas como fallback de compatibilidade.
 // ============================================================================
 
-import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { existsSync, readFileSync } from 'node:fs';
 
 function envOr(...keys: string[]): string | undefined {
@@ -118,4 +123,28 @@ export async function deleteS3Object(key: string): Promise<void> {
       Key: key,
     }),
   );
+}
+
+/** Remove todos os objetos privados de um workspace antes de apagar sua conta. */
+export async function deleteS3Prefix(prefix: string): Promise<void> {
+  if (process.env.S3_DELETE_DISABLED === 'true') return;
+  let continuationToken: string | undefined;
+  do {
+    const page = await s3Client().send(
+      new ListObjectsV2Command({
+        Bucket: s3Bucket(),
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+    const objects = (page.Contents ?? []).flatMap((object) =>
+      object.Key ? [{ Key: object.Key }] : [],
+    );
+    if (objects.length > 0) {
+      await s3Client().send(
+        new DeleteObjectsCommand({ Bucket: s3Bucket(), Delete: { Objects: objects, Quiet: true } }),
+      );
+    }
+    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (continuationToken);
 }

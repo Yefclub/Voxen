@@ -12,8 +12,8 @@ import {
   Users,
   Lock,
   Languages,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+} from '@/components/ui/icons';
+import type { LucideIcon } from '@/components/ui/icons';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
@@ -22,22 +22,11 @@ import { Logo } from '../components/ui/logo';
 import { cn } from '../lib/utils';
 import { ApiError, apiPost } from '../lib/api';
 import { useMe } from '../lib/hooks';
-import type { OrModel } from '../lib/types';
 import { Spinner as Spin } from '../components/ui/spinner';
-import { ModelPicker } from '../components/model-picker';
 import { LOCALES, useI18n, type Locale } from '../lib/i18n';
 import { detectBrowserTimezone, TimezoneSelect } from '../components/timezone-select';
 
-interface ModelsResponse {
-  chat: OrModel[];
-  transcription: OrModel[];
-  vision: OrModel[];
-  document: OrModel[];
-  xAnalysis: OrModel[];
-  web: OrModel[];
-}
-
-type Step = 'idioma' | 'fuso' | 'key' | 'modelos' | 'modo' | 'perfil' | 'pronto';
+type Step = 'idioma' | 'fuso' | 'key' | 'modo' | 'perfil' | 'pronto';
 
 export function OnboardingPage(): React.ReactElement {
   const navigate = useNavigate();
@@ -78,13 +67,6 @@ function OnboardingContent({
   const [appLanguage, setAppLanguage] = useState<Locale>(locale);
   const [appTimezone, setAppTimezone] = useState(() => detectBrowserTimezone());
   const [apiKey, setApiKey] = useState('');
-  const [models, setModels] = useState<ModelsResponse | null>(null);
-  const [chatModel, setChatModel] = useState('');
-  const [transcriptionModel, setTranscriptionModel] = useState('');
-  const [webSearchModel, setWebSearchModel] = useState('');
-  const [visionModel, setVisionModel] = useState('');
-  const [documentModel, setDocumentModel] = useState('');
-  const [xAnalysisModel, setXAnalysisModel] = useState('');
   const [allowSignups, setAllowSignups] = useState<boolean>(true);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,63 +87,14 @@ function OnboardingContent({
     setError(null);
     setLoading(true);
     try {
-      const res = await apiPost<ModelsResponse>('/api/setup/models', {
-        openrouter_api_key: apiKey,
+      await apiPost('/api/setup', {
+        openrouter_api_key: apiKey.trim(),
+        app_language: appLanguage,
+        app_timezone: appTimezone,
       });
-      setModels(res);
-      const whisper = res.transcription.find((m) => m.id.toLowerCase().includes('whisper'));
-      // Default preferido: google/gemini-3.1-flash-lite. Cai em sonnet / primeiro.
-      const preferred =
-        res.chat.find((m) => m.id === 'google/gemini-3.1-flash-lite') ??
-        res.chat.find(
-          (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
-        ) ??
-        res.chat.find((m) => m.id.toLowerCase().includes('sonnet'));
-      const preferredVision =
-        res.vision.find((m) => m.id === 'google/gemini-3.1-flash-lite') ??
-        res.vision.find(
-          (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
-        ) ??
-        res.vision.find((m) => m.id.toLowerCase().includes('vision'));
-      const preferredDocument =
-        res.document.find((m) => m.id === 'google/gemini-3.1-flash-lite') ??
-        res.document.find(
-          (m) => m.id.toLowerCase().includes('gemini') && m.id.toLowerCase().includes('flash'),
-        ) ??
-        res.document.find((m) => m.id.toLowerCase().includes('claude'));
-      const preferredX = preferredXModel(res.xAnalysis);
-      setTranscriptionModel(whisper?.id ?? res.transcription[0]?.id ?? '');
-      setChatModel(preferred?.id ?? res.chat[0]?.id ?? '');
-      setWebSearchModel(preferred?.id ?? res.chat[0]?.id ?? '');
-      setVisionModel(preferredVision?.id ?? res.vision[0]?.id ?? '');
-      setDocumentModel(preferredDocument?.id ?? res.document[0]?.id ?? '');
-      setXAnalysisModel(preferredX?.id ?? res.xAnalysis[0]?.id ?? '');
-      setStep('modelos');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('onboarding.error.key'));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function saveModels(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    try {
-      const body: Record<string, string> = {
-        openrouter_api_key: apiKey,
-        default_chat_model: chatModel,
-        default_transcription_model: transcriptionModel,
-      };
-      if (webSearchModel) body.default_web_search_model = webSearchModel;
-      if (visionModel) body.default_vision_model = visionModel;
-      if (documentModel) body.default_document_model = documentModel;
-      if (xAnalysisModel) body.default_x_analysis_model = xAnalysisModel;
-      await apiPost('/api/setup', body);
       setStep('modo');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('onboarding.error.save'));
+      setError(err instanceof ApiError ? err.message : t('onboarding.error.key'));
     } finally {
       setLoading(false);
     }
@@ -216,7 +149,7 @@ function OnboardingContent({
     }
   }
 
-  const stepOrder: Step[] = ['idioma', 'fuso', 'key', 'modelos', 'modo', 'perfil'];
+  const stepOrder: Step[] = ['idioma', 'fuso', 'key', 'modo', 'perfil'];
   const currentIdx = stepOrder.indexOf(step);
 
   if (step === 'pronto') {
@@ -231,7 +164,7 @@ function OnboardingContent({
           <div className="relative inline-block">
             <div className="absolute inset-0 rounded-full bg-emerald-500/40 blur-2xl" />
             <div className="relative flex h-16 w-16 mx-auto items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 border border-emerald-400/50">
-              <CheckCircle2 className="h-7 w-7 text-emerald-950" strokeWidth={2.5} />
+              <CheckCircle2 className="h-7 w-7 text-emerald-950" />
             </div>
           </div>
           <h2 className="font-display text-3xl font-semibold tracking-[-0.03em] mt-8">
@@ -383,78 +316,6 @@ function OnboardingContent({
             </Slide>
           )}
 
-          {step === 'modelos' && models && (
-            <Slide key="modelos">
-              <Heading
-                eyebrow={t('onboarding.models.eyebrow')}
-                title={t('onboarding.models.title')}
-                sub={t('onboarding.models.sub')}
-              />
-              <form onSubmit={saveModels} className="space-y-5">
-                <ModelPicker
-                  label={t('onboarding.models.transcription')}
-                  value={transcriptionModel}
-                  onChange={setTranscriptionModel}
-                  options={models.transcription}
-                  count={models.transcription.length}
-                />
-                <ModelPicker
-                  label={t('onboarding.models.chat')}
-                  value={chatModel}
-                  onChange={setChatModel}
-                  options={models.chat}
-                  count={models.chat.length}
-                />
-                <ModelPicker
-                  label={t('onboarding.models.web')}
-                  value={webSearchModel}
-                  onChange={setWebSearchModel}
-                  options={models.web}
-                  count={models.web.length}
-                  optional
-                  hint={t('onboarding.models.webHint')}
-                />
-                <ModelPicker
-                  label={t('onboarding.models.vision')}
-                  value={visionModel}
-                  onChange={setVisionModel}
-                  options={models.vision}
-                  count={models.vision.length}
-                  optional
-                  hint={t('onboarding.models.visionHint')}
-                />
-                <ModelPicker
-                  label={t('onboarding.models.documents')}
-                  value={documentModel}
-                  onChange={setDocumentModel}
-                  options={models.document}
-                  count={models.document.length}
-                  optional
-                  hint={t('onboarding.models.documentsHint')}
-                />
-                <ModelPicker
-                  label={t('onboarding.models.x')}
-                  value={xAnalysisModel}
-                  onChange={setXAnalysisModel}
-                  options={models.xAnalysis}
-                  count={models.xAnalysis.length}
-                  optional
-                  hint={t('onboarding.models.xHint')}
-                />
-                <div className="flex justify-between pt-2">
-                  <GhostButton type="button" onClick={() => setStep('key')}>
-                    <ArrowLeft className="h-3.5 w-3.5" />
-                    {t('common.back')}
-                  </GhostButton>
-                  <PrimaryButton type="submit" disabled={loading}>
-                    {loading ? <Spinner /> : t('common.saveContinue')}
-                    {!loading && <ArrowRight className="h-4 w-4" />}
-                  </PrimaryButton>
-                </div>
-              </form>
-            </Slide>
-          )}
-
           {step === 'modo' && (
             <Slide key="modo">
               <Heading
@@ -479,7 +340,7 @@ function OnboardingContent({
                 />
               </div>
               <div className="flex justify-between pt-2 mt-6">
-                <GhostButton type="button" onClick={() => setStep('modelos')}>
+                <GhostButton type="button" onClick={() => setStep('key')}>
                   <ArrowLeft className="h-3.5 w-3.5" />
                   {t('common.back')}
                 </GhostButton>
@@ -616,15 +477,6 @@ function FieldLabel({
     >
       {children}
     </label>
-  );
-}
-
-function preferredXModel(models: OrModel[]): OrModel | undefined {
-  return (
-    models.find((m) => m.id === 'x-ai/grok-4-fast:free') ??
-    models.find((m) => m.id.toLowerCase().includes('grok-4-fast')) ??
-    models.find((m) => m.id.toLowerCase().includes('grok-4')) ??
-    models.find((m) => m.id.toLowerCase().includes('grok'))
   );
 }
 

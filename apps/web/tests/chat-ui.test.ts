@@ -5,13 +5,13 @@ import {
   hasToolLabel,
   pendingHitlFromTools,
   prettifyToolName,
-  toolBlockState,
   toolFamily,
 } from '../src/client/lib/chat-tools';
 
 describe('toolFamily', () => {
   it('mapeia buscas', () => {
     expect(toolFamily('search_transcripts')).toBe('search');
+    expect(toolFamily('search_knowledge')).toBe('search');
     expect(toolFamily('search_notes')).toBe('search');
   });
   it('mapeia leituras/recuperação progressiva', () => {
@@ -43,6 +43,7 @@ describe('prettifyToolName / hasToolLabel', () => {
   });
   it('hasToolLabel reconhece nomes conhecidos', () => {
     expect(hasToolLabel('search_transcripts')).toBe(true);
+    expect(hasToolLabel('search_knowledge')).toBe(true);
     expect(hasToolLabel('mystery_tool')).toBe(false);
   });
   it('hasToolLabel reconhece as tools de ingestão de URL', () => {
@@ -81,31 +82,6 @@ describe('pendingHitlFromTools', () => {
     expect(
       pendingHitlFromTools([{ name: 'propose_create_note', state: 'completed', output: {} }]),
     ).toEqual([]);
-  });
-});
-
-describe('toolBlockState', () => {
-  it('running enquanto houver ferramenta rodando', () => {
-    expect(
-      toolBlockState([
-        { name: 'a', state: 'completed' },
-        { name: 'b', state: 'running' },
-      ]),
-    ).toBe('running');
-  });
-  it('approval-required não conta como running (HITL fora do Pensando)', () => {
-    expect(toolBlockState([{ name: 'a', state: 'approval-required' }])).toBe('done');
-  });
-  it('error se alguma falhou e nenhuma roda', () => {
-    expect(
-      toolBlockState([
-        { name: 'a', state: 'completed' },
-        { name: 'b', state: 'error' },
-      ]),
-    ).toBe('error');
-  });
-  it('done quando todas concluíram sem erro', () => {
-    expect(toolBlockState([{ name: 'a', state: 'completed' }])).toBe('done');
   });
 });
 

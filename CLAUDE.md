@@ -49,7 +49,7 @@ Antes de implementar qualquer coisa, confirme seu entendimento do pedido em 1-2 
 
 ## Visão Geral do Projeto
 
-Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecimento** alimentada por transcrição de vídeos (YouTube/Instagram/TikTok) e scraping de páginas web, com chat-agente que navega o acervo via ferramentas (sem embeddings — abordagem harness/Karpathy).
+Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecimento** alimentada por transcrição de vídeos (YouTube/Instagram/TikTok) e scraping de páginas web, com chat-agente que navega a Base de conhecimento via ferramentas (sem embeddings — abordagem harness/Karpathy).
 
 **Posicionamento (importante).** Voxen **NÃO é SaaS comercial**, não é multi-tenant pago, não tem planos free/pago. É um produto pra usuários (indivíduos ou pequenos times) instalarem **no próprio servidor** e construírem sua KB interna de conteúdos. Owner do deploy controla tudo (chaves, modelos, usuários aprovados via better-auth).
 
@@ -286,7 +286,7 @@ O chat-agente Agno NÃO usa embeddings/RAG vetorial. Em vez disso, recebe tools:
 - `read_transcript_section(id, from_ts, to_ts)` → recorte
 - `get_metadata(id)` → frontmatter
 
-Ao adicionar tool nova, manter o padrão: tools devem ser **simples, determinísticas, sem efeito colateral** (read-only sobre o acervo). Decisão em `docs/DECISIONS.md` ADR-004.
+Ao adicionar tool nova, manter o padrão: tools devem ser **simples, determinísticas, sem efeito colateral** (read-only sobre a Base de conhecimento). Decisão em `docs/DECISIONS.md` ADR-004.
 
 ### Formato `.md` de transcrição
 
