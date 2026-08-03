@@ -33,6 +33,12 @@ from .audio_chunking import AudioChunk, split_audio
 from .audio_probe import AudioValidationError, validate_audio_for_transcription
 from .cancellation import CancelledException, clear_cancelled, is_cancelled
 from .graph_index_lease import acquire_graph_index_lease
+from .job_lease import (
+    JobLease,
+    JobLeaseLostError,
+    JobLeaseToken,
+    activate_job_lease,
+)
 from .openrouter import (
     OpenrouterAuthError,
     OpenrouterTransientError,
@@ -104,12 +110,42 @@ def _source_kind_for_log(source_url: str, job_type: str) -> str:
     return "UNKNOWN"
 
 
-async def process_job(job_id: str) -> None:
+JOB_HEARTBEAT_INTERVAL_SEC = 20
+
+
+async def process_job(job_id: str, worker_id: str = "standalone-worker") -> None:
     """Executa o pipeline completo para `job_id`. Faz claim, processa, finaliza."""
-    claimed = await db.claim_job(job_id)
+    claimed = await db.claim_job(job_id, worker_id)
     if claimed is None:
         logger.info("job-not-claimable", job_id=job_id)
         return
+
+    token = JobLeaseToken(job_id, worker_id, int(claimed["attempt"]))
+    lease = JobLease(
+        token,
+        db.renew_job_lease,
+        heartbeat_interval_sec=JOB_HEARTBEAT_INTERVAL_SEC,
+    )
+    try:
+        with activate_job_lease(token):
+            async with lease.heartbeat():
+                await _process_claimed_job(job_id, claimed)
+    except JobLeaseLostError:
+        logger.warning(
+            "job-lease-lost",
+            job_id=job_id,
+            worker_id=worker_id,
+            attempt=token.attempt,
+        )
+    except asyncio.CancelledError:
+        # SIGTERM não espera o TTL: devolve o job imediatamente. `shield`
+        # permite concluir o fencing mesmo com a task já cancelada.
+        await asyncio.shield(db.release_job_lease(token))
+        raise
+
+
+async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
+    """Executa somente a tentativa que já possui um lease ativo."""
 
     user_id: str = claimed["userId"]
     source_url: str = claimed["sourceUrl"]
@@ -122,6 +158,27 @@ async def process_job(job_id: str) -> None:
         source_kind=_source_kind_for_log(source_url, job_type),
     )
     log.info("job-claimed")
+
+    # Checkpoint canônico: se o processo morreu após vincular o conteúdo, a
+    # nova tentativa apenas conclui o mesmo job; nunca cria outra transcrição.
+    existing_transcript_id: str | None = claimed.get("transcriptId")
+    if existing_transcript_id:
+        await db.mark_job_done(job_id)
+        await events.publish_job_event(
+            user_id,
+            job_id,
+            "done",
+            percent=100,
+            transcript_id=existing_transcript_id,
+        )
+        log.info("job-resumed-from-transcript-checkpoint", transcript_id=existing_transcript_id)
+        await _enrich_persisted_transcript(
+            user_id=user_id,
+            transcript_id=existing_transcript_id,
+            job_id=job_id,
+            log=log,
+        )
+        return
 
     # Já cancelado antes mesmo de começar (DB já está CANCELLED via endpoint).
     if is_cancelled(job_id):
@@ -171,6 +228,9 @@ async def process_job(job_id: str) -> None:
         )
         if refresh_transcript_id:
             await db.clear_source_refresh_check(user_id, refresh_transcript_id)
+    except JobLeaseLostError:
+        # O novo dono decide o estado; esta tentativa não pode publicar FAILED.
+        raise
     except PermanentError as e:
         log.warning("job-failed-permanent", **_error_diagnostic(e, e.code))
         await db.mark_job_failed(job_id, e.public_message)
@@ -465,13 +525,12 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_transcript(job_id, new_transcript_id)
 
-    await _generate_summary_with_progress(
-        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
-    )
-
     await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
+    )
+    await _enrich_persisted_transcript(
+        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
     log.info("job-done", transcript_id=new_transcript_id)
 
@@ -604,12 +663,12 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_transcript(job_id, new_transcript_id)
-    await _generate_summary_with_progress(
-        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
-    )
     await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
+    )
+    await _enrich_persisted_transcript(
+        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
     log.info("upload-job-done", transcript_id=new_transcript_id)
 
@@ -718,12 +777,12 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_transcript(job_id, new_transcript_id)
-    await _generate_summary_with_progress(
-        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
-    )
     await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
+    )
+    await _enrich_persisted_transcript(
+        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
     log.info("image-job-done", transcript_id=new_transcript_id)
 
@@ -831,12 +890,12 @@ async def _run_document_pipeline(
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_transcript(job_id, new_transcript_id)
-    await _generate_summary_with_progress(
-        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
-    )
     await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
+    )
+    await _enrich_persisted_transcript(
+        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
     )
     log.info("document-job-done", transcript_id=new_transcript_id)
 
@@ -985,54 +1044,55 @@ async def _run_x_analysis_pipeline(
 
     await events.publish_job_event(user_id, job_id, "indexing", percent=95)
     await db.link_job_transcript(job_id, new_transcript_id)
-    await _generate_summary_with_progress(
-        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
-    )
     await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=new_transcript_id
     )
+    await _enrich_persisted_transcript(
+        user_id=user_id, transcript_id=new_transcript_id, job_id=job_id, log=log
+    )
     log.info("x-analysis-job-done", transcript_id=new_transcript_id)
 
 
-async def _generate_summary_with_progress(
+async def _enrich_persisted_transcript(
     *,
     user_id: str,
     transcript_id: str,
     job_id: str,
     log: Any,  # noqa: ANN401
 ) -> None:
-    # Resumo via IA — best-effort, mas agora visível no realtime da UI.
-    _check_cancel(job_id)
-    await events.publish_job_event(user_id, job_id, "summarizing", percent=98)
-    await summary.maybe_generate(
-        user_id=user_id,
-        transcript_id=transcript_id,
-        job_id=job_id,
-        log=log,
-    )
-    # Tags automáticas (spec 075 + 096): após o resumo, com o texto/resumo
-    # disponíveis. Best-effort — não derruba o job.
-    _check_cancel(job_id)
-    await events.publish_job_event(user_id, job_id, "tagging", percent=99)
-    await _maybe_generate_tags(
-        user_id=user_id,
-        job_id=job_id,
-        transcript_id=transcript_id,
-        log=log,
-    )
-    await db.reindex_transcript_brain_node(user_id, transcript_id)
-    await _maybe_grounded_brain_extract(
-        user_id=user_id,
-        transcript_id=transcript_id,
-        log=log,
-    )
-    await events.publish_graph_invalidation(user_id)
-    await _maybe_store_embedding(
-        user_id=user_id,
-        transcript_id=transcript_id,
-        log=log,
-    )
+    """Enriquecimentos não bloqueiam o estado canônico DONE do Job."""
+    try:
+        await summary.maybe_generate(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            job_id=job_id,
+            log=log,
+        )
+        await _maybe_generate_tags(
+            user_id=user_id,
+            job_id=job_id,
+            transcript_id=transcript_id,
+            log=log,
+        )
+        await db.reindex_transcript_brain_node(user_id, transcript_id)
+        await _maybe_grounded_brain_extract(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            log=log,
+        )
+        await events.publish_graph_invalidation(user_id)
+        await _maybe_store_embedding(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            log=log,
+        )
+    except Exception as exc:  # noqa: BLE001 — estado canônico já está DONE
+        log.warning(
+            "transcript-enrichment-deferred",
+            transcript_id=transcript_id,
+            **_error_diagnostic(exc, "TRANSCRIPT_ENRICHMENT_DEFERRED"),
+        )
 
 
 async def _maybe_grounded_brain_extract(
@@ -1669,8 +1729,9 @@ async def _persist(
 
     # Insert no Postgres (passamos o mesmo id usado no path do S3)
     async with db.connection() as conn:
-        await conn.execute(
-            """
+        async with conn.transaction():
+            await conn.execute(
+                """
             INSERT INTO "Transcript" (
                 id, "userId", source, url, title, channel, author, "durationSec",
                 "publishedAt", "thumbnailUrl", language, "transcriptionMethod",
@@ -1685,44 +1746,48 @@ async def _persist(
                 NOW(), NOW()
             )
             """,
-            transcript_id,
-            user_id,
-            doc.source,
-            doc.url,
-            doc.title,
-            doc.channel,
-            doc.author,
-            doc.duration_sec,
-            doc.published_at.replace(tzinfo=None)
-            if doc.published_at and doc.published_at.tzinfo
-            else doc.published_at,
-            doc.thumbnail_url,
-            doc.language,
-            doc.transcription_method,
-            doc.model,
-            doc.cost_usd,
-            md_key,
-            plain_text,
-            frontmatter_json,
-            original_object_key,
-            original_filename,
-            original_mime_type,
-            preview_object_key,
-            preview_mime_type,
-        )
-        await db.upsert_transcript_brain_node(
-            conn,
-            user_id=user_id,
-            transcript_id=transcript_id,
-            source=doc.source,
-            url=doc.url,
-            title=doc.title,
-            channel=doc.channel,
-            language=doc.language,
-            transcription_method=doc.transcription_method,
-            thumbnail_url=doc.thumbnail_url,
-            plain_text=plain_text,
-        )
+                transcript_id,
+                user_id,
+                doc.source,
+                doc.url,
+                doc.title,
+                doc.channel,
+                doc.author,
+                doc.duration_sec,
+                doc.published_at.replace(tzinfo=None)
+                if doc.published_at and doc.published_at.tzinfo
+                else doc.published_at,
+                doc.thumbnail_url,
+                doc.language,
+                doc.transcription_method,
+                doc.model,
+                doc.cost_usd,
+                md_key,
+                plain_text,
+                frontmatter_json,
+                original_object_key,
+                original_filename,
+                original_mime_type,
+                preview_object_key,
+                preview_mime_type,
+            )
+            await db.upsert_transcript_brain_node(
+                conn,
+                user_id=user_id,
+                transcript_id=transcript_id,
+                source=doc.source,
+                url=doc.url,
+                title=doc.title,
+                channel=doc.channel,
+                language=doc.language,
+                transcription_method=doc.transcription_method,
+                thumbnail_url=doc.thumbnail_url,
+                plain_text=plain_text,
+            )
+            # O insert canônico e o checkpoint do Job são atômicos. Se o
+            # processo morrer depois do commit, a próxima tentativa retoma o
+            # transcriptId em vez de criar conteúdo duplicado.
+            await db.link_job_transcript_in_connection(conn, job_id, transcript_id)
     assign_log = log or logger
     await _maybe_assign_folder(
         user_id=user_id,

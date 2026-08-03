@@ -11,14 +11,10 @@ from typing import Any
 
 import structlog
 
-from . import db, events, scraper, storage, summary, voxen_settings
+from . import db, events, scraper, storage, voxen_settings
 from .cancellation import CancelledException, is_cancelled
 from .openrouter import generate_content_title
-from .pipeline import (  # noqa: PLC2701
-    PermanentError,
-    _maybe_assign_folder,
-    _maybe_generate_tags,
-)
+from .pipeline import PermanentError, _maybe_assign_folder  # noqa: PLC2701
 from .safe_diagnostics import error_diagnostic
 
 log = structlog.get_logger(__name__)
@@ -79,46 +75,19 @@ async def run(
     if not refresh_transcript_id:
         await db.link_job_transcript(job_id, transcript_id)
 
-    if not persisted.changed:
-        await db.mark_job_done(job_id)
-        await events.publish_job_event(
-            user_id, job_id, "done", percent=100, transcript_id=transcript_id
-        )
-        log.info("source-refresh-unchanged", transcript_id=transcript_id)
-        return
-
-    # Resumo via IA — best-effort, delega pro chat service (mesmo padrão do vídeo)
-    _check_cancel(job_id)
-    await events.publish_job_event(user_id, job_id, "summarizing", percent=98)
-    await summary.maybe_generate(
-        user_id=user_id, transcript_id=transcript_id, job_id=job_id, log=log
-    )
-    _check_cancel(job_id)
-    await events.publish_job_event(user_id, job_id, "tagging", percent=99)
-    await _maybe_generate_tags(
-        user_id=user_id,
-        job_id=job_id,
-        transcript_id=transcript_id,
-        log=log,
-    )
-    await db.reindex_transcript_brain_node(user_id, transcript_id)
-    from .pipeline import _maybe_grounded_brain_extract, _maybe_store_embedding
-
-    await _maybe_grounded_brain_extract(
-        user_id=user_id,
-        transcript_id=transcript_id,
-        log=log,
-    )
-    await events.publish_graph_invalidation(user_id)
-    await _maybe_store_embedding(
-        user_id=user_id,
-        transcript_id=transcript_id,
-        log=log,
-    )
-
     await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=transcript_id
+    )
+
+    if not persisted.changed:
+        log.info("source-refresh-unchanged", transcript_id=transcript_id)
+        return
+
+    from .pipeline import _enrich_persisted_transcript
+
+    await _enrich_persisted_transcript(
+        user_id=user_id, transcript_id=transcript_id, job_id=job_id, log=log
     )
     log.info("scrape-done", transcript_id=transcript_id, refresh=bool(refresh_transcript_id))
 
@@ -336,6 +305,9 @@ async def _persist_locked(
                     "mdPath" = $10, "plainText" = $11, frontmatter = $12::jsonb,
                     "previewObjectKey" = $13, "previewMimeType" = $14,
                     "summaryMd" = NULL, "taggingStatus" = 'PENDING'::"EnrichmentStatus",
+                    "summaryStatus" = 'PENDING'::"EnrichmentStatus",
+                    "summaryAttempts" = 0, "summaryStartedAt" = NULL,
+                    "summaryNextAttemptAt" = NULL, "summaryError" = NULL,
                     "taggingAttempts" = 0, "taggingStartedAt" = NULL,
                     "taggingNextAttemptAt" = NULL, "taggingError" = NULL,
                     "sourceChecksum" = $15, "sourceVersion" = $16,
@@ -433,6 +405,8 @@ async def _persist_locked(
             thumbnail_url=thumbnail_url,
             plain_text=result.plain_text,
         )
+        if not refresh_transcript_id:
+            await db.link_job_transcript_in_connection(conn, job_id, transcript_id)
     if not old_snapshot:
         await _maybe_assign_folder(
             user_id=user_id,
@@ -452,7 +426,8 @@ async def _persist_connection(existing_conn: Any | None) -> AsyncIterator[Any]: 
         yield existing_conn
         return
     async with db.connection() as conn:
-        yield conn
+        async with conn.transaction():
+            yield conn
 
 
 def _source_checksum(plain_text: str) -> str:

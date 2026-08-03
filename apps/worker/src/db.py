@@ -8,7 +8,7 @@ import re
 import unicodedata
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from hashlib import sha256
 from typing import Any
@@ -17,6 +17,7 @@ import asyncpg
 import structlog
 
 from .graph_index_lease import GraphIndexLease, acquire_graph_index_lease
+from .job_lease import JobLeaseLostError, JobLeaseToken, current_job_lease
 
 log = structlog.get_logger(__name__)
 
@@ -30,6 +31,11 @@ _pool: asyncpg.Pool | None = None
 TOPIC_LIMIT = 8
 TOPIC_MIN_LEN = 4
 BRAIN_TOPIC_INDEX_VERSION = 1
+JOB_LEASE_TTL_SEC = 90
+JOB_MAX_ATTEMPTS = 3
+WORKER_INTERRUPTED_MESSAGE = (
+    "O processamento foi interrompido após reinícios do worker. Tente enviar novamente."
+)
 TOPIC_STOPWORDS = {
     "ainda",
     "algo",
@@ -84,6 +90,11 @@ def _utcnow_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+def _job_token(job_id: str) -> JobLeaseToken | None:
+    token = current_job_lease()
+    return token if token is not None and token.job_id == job_id else None
+
+
 def database_url() -> str:
     url = os.environ.get("DATABASE_URL")
     if not url:
@@ -114,7 +125,7 @@ async def connection() -> AsyncIterator[asyncpg.Connection]:
         yield conn
 
 
-async def claim_job(job_id: str) -> dict[str, Any] | None:
+async def claim_job(job_id: str, worker_id: str) -> dict[str, Any] | None:
     """Tenta marcar Job como RUNNING. SKIP LOCKED evita race com outros workers.
 
     Retorna o job se conseguiu claim, None se outro worker já pegou ou se está
@@ -124,7 +135,8 @@ async def claim_job(job_id: str) -> dict[str, Any] | None:
         async with conn.transaction():
             row = await conn.fetchrow(
                 """
-                SELECT id, "userId", "sourceUrl", status, type, "refreshTranscriptId"
+                SELECT id, "userId", "sourceUrl", status, type, "refreshTranscriptId",
+                       "transcriptId", attempt, "progressStage"
                 FROM "Job"
                 WHERE id = $1 AND status = 'QUEUED'
                 FOR UPDATE SKIP LOCKED
@@ -139,17 +151,139 @@ async def claim_job(job_id: str) -> dict[str, Any] | None:
             revision = await conn.fetchrow(
                 'SELECT id FROM "ConfigRevision" ORDER BY number DESC LIMIT 1'
             )
+            claimed_at = _utcnow_naive()
+            attempt = int(row["attempt"] or 0) + 1
             await conn.execute(
                 """
                 UPDATE "Job"
-                SET status = 'RUNNING', "startedAt" = $2, "configRevisionId" = $3
+                SET status = 'RUNNING', "startedAt" = COALESCE("startedAt", $2),
+                    "finishedAt" = NULL, "errorMsg" = NULL,
+                    "configRevisionId" = $3, "workerId" = $4, attempt = $5,
+                    "heartbeatAt" = $2, "leaseExpiresAt" = $6
                 WHERE id = $1
                 """,
                 job_id,
-                _utcnow_naive(),
+                claimed_at,
                 revision["id"] if revision else None,
+                worker_id,
+                attempt,
+                claimed_at + timedelta(seconds=JOB_LEASE_TTL_SEC),
             )
-            return dict(row)
+            return {**dict(row), "workerId": worker_id, "attempt": attempt}
+
+
+async def renew_job_lease(token: JobLeaseToken) -> bool:
+    now = _utcnow_naive()
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE "Job"
+            SET "heartbeatAt" = $4, "leaseExpiresAt" = $5
+            WHERE id = $1 AND status = 'RUNNING'
+              AND "workerId" = $2 AND attempt = $3
+            RETURNING id
+            """,
+            token.job_id,
+            token.worker_id,
+            token.attempt,
+            now,
+            now + timedelta(seconds=JOB_LEASE_TTL_SEC),
+        )
+        if row is not None:
+            return True
+        terminal = await conn.fetchrow(
+            """
+            SELECT id FROM "Job"
+            WHERE id = $1 AND "workerId" = $2 AND attempt = $3
+              AND status IN ('DONE', 'FAILED', 'CANCELLED')
+            """,
+            token.job_id,
+            token.worker_id,
+            token.attempt,
+        )
+        return terminal is not None
+
+
+async def release_job_lease(token: JobLeaseToken) -> bool:
+    """Devolve imediatamente ao reconciliador um job cancelado por shutdown."""
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE "Job"
+            SET status = 'QUEUED', "workerId" = NULL, "heartbeatAt" = NULL,
+                "leaseExpiresAt" = NULL, "progressStage" = 'queued',
+                "progressPercent" = 0, "progressedAt" = $4
+            WHERE id = $1 AND status = 'RUNNING'
+              AND "workerId" = $2 AND attempt = $3
+            RETURNING id
+            """,
+            token.job_id,
+            token.worker_id,
+            token.attempt,
+            _utcnow_naive(),
+        )
+        return row is not None
+
+
+async def recover_expired_jobs(
+    *,
+    limit: int = 50,
+    max_attempts: int = JOB_MAX_ATTEMPTS,
+) -> list[dict[str, Any]]:
+    """Requeue/finaliza leases vencidos sob locks incompatíveis entre workers."""
+    now = _utcnow_naive()
+    recovered: list[dict[str, Any]] = []
+    async with connection() as conn:
+        async with conn.transaction():
+            rows = await conn.fetch(
+                """
+                SELECT id, "userId", attempt, "transcriptId", "refreshTranscriptId"
+                FROM "Job"
+                WHERE status = 'RUNNING'
+                  AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" < $1)
+                ORDER BY "leaseExpiresAt" ASC
+                LIMIT $2
+                FOR UPDATE SKIP LOCKED
+                """,
+                now,
+                limit,
+            )
+            for row in rows:
+                # Um checkpoint canônico já persistido precisa de uma última
+                # tentativa barata para virar DONE, mesmo se o processamento
+                # pesado já consumiu o limite normal.
+                retry = row["transcriptId"] is not None or int(row["attempt"] or 0) < max_attempts
+                if retry:
+                    await conn.execute(
+                        """
+                        UPDATE "Job"
+                        SET status = 'QUEUED', "workerId" = NULL,
+                            "heartbeatAt" = NULL, "leaseExpiresAt" = NULL,
+                            "progressStage" = 'queued', "progressPercent" = 0,
+                            "progressedAt" = $2
+                        WHERE id = $1
+                        """,
+                        row["id"],
+                        now,
+                    )
+                    action = "requeued"
+                else:
+                    await conn.execute(
+                        """
+                        UPDATE "Job"
+                        SET status = 'FAILED', "workerId" = NULL,
+                            "heartbeatAt" = NULL, "leaseExpiresAt" = NULL,
+                            "progressStage" = 'failed', "progressedAt" = $2,
+                            "errorMsg" = $3, "finishedAt" = $2
+                        WHERE id = $1
+                        """,
+                        row["id"],
+                        now,
+                        WORKER_INTERRUPTED_MESSAGE,
+                    )
+                    action = "failed"
+                recovered.append({**dict(row), "action": action})
+    return recovered
 
 
 async def record_job_progress(
@@ -169,22 +303,38 @@ async def record_job_progress(
     """
     event_id = generate_cuid()
     created_at = _utcnow_naive()
+    token = _job_token(job_id)
     async with connection() as conn:
         async with conn.transaction():
             # O payload do worker sempre carrega user_id e job_id. Validar a
             # dupla dentro da mesma transação evita que erro de roteamento
             # persista progresso de um job pertencente a outro workspace.
-            owner = await conn.fetchrow(
-                """
-                SELECT id
-                FROM "Job"
-                WHERE id = $1 AND "userId" = $2
-                FOR KEY SHARE
-                """,
-                job_id,
-                user_id,
-            )
+            if token:
+                owner = await conn.fetchrow(
+                    """
+                    SELECT id FROM "Job"
+                    WHERE id = $1 AND "userId" = $2
+                      AND "workerId" = $3 AND attempt = $4
+                    FOR KEY SHARE
+                    """,
+                    job_id,
+                    user_id,
+                    token.worker_id,
+                    token.attempt,
+                )
+            else:
+                owner = await conn.fetchrow(
+                    """
+                    SELECT id FROM "Job"
+                    WHERE id = $1 AND "userId" = $2
+                    FOR KEY SHARE
+                    """,
+                    job_id,
+                    user_id,
+                )
             if owner is None:
+                if token:
+                    raise JobLeaseLostError("job progress rejected by lease fence")
                 raise ValueError("job does not belong to the informed workspace")
             await conn.execute(
                 """
@@ -366,14 +516,39 @@ async def write_transcript(
         return new_id
 
 
+async def link_job_transcript_in_connection(
+    conn: asyncpg.Connection,
+    job_id: str,
+    transcript_id: str,
+) -> None:
+    token = _job_token(job_id)
+    if token:
+        row = await conn.fetchrow(
+            """
+            UPDATE "Job" SET "transcriptId" = $2
+            WHERE id = $1 AND status = 'RUNNING'
+              AND "workerId" = $3 AND attempt = $4
+            RETURNING id
+            """,
+            job_id,
+            transcript_id,
+            token.worker_id,
+            token.attempt,
+        )
+        if row is None:
+            raise JobLeaseLostError("job transcript link rejected by lease fence")
+    else:
+        await conn.execute(
+            'UPDATE "Job" SET "transcriptId" = $2 WHERE id = $1',
+            job_id,
+            transcript_id,
+        )
+
+
 async def link_job_transcript(job_id: str, transcript_id: str) -> None:
     async with connection() as conn:
-        await conn.execute(
-            """
-            UPDATE "Job"
-            SET "transcriptId" = $2
-            WHERE id = $1
-            """,
+        await link_job_transcript_in_connection(
+            conn,
             job_id,
             transcript_id,
         )
@@ -1515,6 +1690,118 @@ async def list_transcript_tag_names(user_id: str, transcript_id: str) -> list[st
     return [str(row["name"]) for row in rows if row["name"]]
 
 
+async def start_summary_enrichment(user_id: str, transcript_id: str) -> bool:
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE "Transcript"
+            SET "summaryStatus" = 'RUNNING'::"EnrichmentStatus",
+                "summaryAttempts" = "summaryAttempts" + 1,
+                "summaryStartedAt" = NOW(), "summaryError" = NULL
+            WHERE "userId" = $1 AND id = $2 AND "summaryMd" IS NULL
+              AND "summaryAttempts" < 6
+              AND "summaryStatus" IN (
+                'PENDING'::"EnrichmentStatus", 'RETRY'::"EnrichmentStatus"
+              )
+              AND (
+                "summaryNextAttemptAt" IS NULL OR "summaryNextAttemptAt" <= NOW()
+              )
+            RETURNING id
+            """,
+            user_id,
+            transcript_id,
+        )
+    return row is not None
+
+
+async def claim_pending_summary_enrichments(limit: int = 10) -> list[dict[str, Any]]:
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            WITH exhausted AS (
+                UPDATE "Transcript"
+                SET "summaryStatus" = 'SKIPPED'::"EnrichmentStatus",
+                    "summaryStartedAt" = NULL, "summaryNextAttemptAt" = NULL,
+                    "summaryError" = COALESCE(
+                      "summaryError", 'Limite de 6 tentativas de resumo atingido.'
+                    )
+                WHERE "summaryAttempts" >= 6 AND "summaryMd" IS NULL
+                  AND (
+                    "summaryStatus" IN (
+                      'PENDING'::"EnrichmentStatus", 'RETRY'::"EnrichmentStatus"
+                    ) OR (
+                      "summaryStatus" = 'RUNNING'::"EnrichmentStatus"
+                      AND "summaryStartedAt" < NOW() - INTERVAL '15 minutes'
+                    )
+                  )
+                RETURNING id
+            ), candidates AS (
+                SELECT id FROM "Transcript"
+                WHERE status = 'ACTIVE'::"ContentStatus" AND "summaryMd" IS NULL
+                  AND "summaryAttempts" < 6
+                  AND (
+                    "summaryStatus" IN (
+                      'PENDING'::"EnrichmentStatus", 'RETRY'::"EnrichmentStatus"
+                    ) OR (
+                      "summaryStatus" = 'RUNNING'::"EnrichmentStatus"
+                      AND "summaryStartedAt" < NOW() - INTERVAL '15 minutes'
+                    )
+                  )
+                  AND (
+                    "summaryNextAttemptAt" IS NULL OR "summaryNextAttemptAt" <= NOW()
+                  )
+                ORDER BY "createdAt" ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT $1
+            )
+            UPDATE "Transcript" t
+            SET "summaryStatus" = 'RUNNING'::"EnrichmentStatus",
+                "summaryAttempts" = t."summaryAttempts" + 1,
+                "summaryStartedAt" = NOW(), "summaryError" = NULL
+            FROM candidates
+            WHERE t.id = candidates.id
+            RETURNING t.id, t."userId", (
+              SELECT j.id FROM "Job" j WHERE j."transcriptId" = t.id LIMIT 1
+            ) AS "jobId"
+            """,
+            limit,
+        )
+    return [dict(row) for row in rows]
+
+
+async def finish_summary_enrichment(
+    user_id: str,
+    transcript_id: str,
+    *,
+    status: str,
+    error: str | None = None,
+) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE "Transcript"
+            SET "summaryStatus" = CASE
+                  WHEN $3::text = 'RETRY' AND "summaryAttempts" >= 6
+                  THEN 'SKIPPED'::"EnrichmentStatus"
+                  ELSE $3::"EnrichmentStatus"
+                END,
+                "summaryStartedAt" = NULL,
+                "summaryNextAttemptAt" = CASE
+                  WHEN $3::text = 'RETRY' AND "summaryAttempts" < 6
+                  THEN NOW() + (
+                    LEAST(3600, 60 * POWER(2, LEAST("summaryAttempts", 6)))
+                    * INTERVAL '1 second'
+                  ) ELSE NULL END,
+                "summaryError" = $4
+            WHERE "userId" = $1 AND id = $2
+            """,
+            user_id,
+            transcript_id,
+            status,
+            (error or "")[:500] or None,
+        )
+
+
 async def start_tag_enrichment(user_id: str, transcript_id: str) -> bool:
     """Tenta reservar atomicamente o enriquecimento inline deste conteúdo."""
     async with connection() as conn:
@@ -1944,16 +2231,31 @@ async def set_transcript_folder(transcript_id: str, folder_id: str) -> None:
 
 
 async def mark_job_done(job_id: str) -> None:
+    token = _job_token(job_id)
     async with connection() as conn:
-        await conn.execute(
-            """
-            UPDATE "Job"
-            SET status = 'DONE', "finishedAt" = $2
-            WHERE id = $1
-            """,
-            job_id,
-            _utcnow_naive(),
-        )
+        if token:
+            row = await conn.fetchrow(
+                """
+                UPDATE "Job"
+                SET status = 'DONE', "finishedAt" = $2,
+                    "heartbeatAt" = NULL, "leaseExpiresAt" = NULL
+                WHERE id = $1 AND status = 'RUNNING'
+                  AND "workerId" = $3 AND attempt = $4
+                RETURNING id
+                """,
+                job_id,
+                _utcnow_naive(),
+                token.worker_id,
+                token.attempt,
+            )
+            if row is None:
+                raise JobLeaseLostError("job completion rejected by lease fence")
+        else:
+            await conn.execute(
+                'UPDATE "Job" SET status = \'DONE\', "finishedAt" = $2 WHERE id = $1',
+                job_id,
+                _utcnow_naive(),
+            )
 
 
 async def link_job_done(job_id: str, transcript_id: str) -> None:
@@ -1962,17 +2264,37 @@ async def link_job_done(job_id: str, transcript_id: str) -> None:
 
 
 async def mark_job_failed(job_id: str, error_msg: str) -> None:
+    token = _job_token(job_id)
     async with connection() as conn:
-        await conn.execute(
-            """
-            UPDATE "Job"
-            SET status = 'FAILED', "errorMsg" = $2, "finishedAt" = $3
-            WHERE id = $1
-            """,
-            job_id,
-            error_msg[:1000],
-            _utcnow_naive(),
-        )
+        if token:
+            row = await conn.fetchrow(
+                """
+                UPDATE "Job"
+                SET status = 'FAILED', "errorMsg" = $2, "finishedAt" = $3,
+                    "heartbeatAt" = NULL, "leaseExpiresAt" = NULL
+                WHERE id = $1 AND status = 'RUNNING'
+                  AND "workerId" = $4 AND attempt = $5
+                RETURNING id
+                """,
+                job_id,
+                error_msg[:1000],
+                _utcnow_naive(),
+                token.worker_id,
+                token.attempt,
+            )
+            if row is None:
+                raise JobLeaseLostError("job failure rejected by lease fence")
+        else:
+            await conn.execute(
+                """
+                UPDATE "Job"
+                SET status = 'FAILED', "errorMsg" = $2, "finishedAt" = $3
+                WHERE id = $1
+                """,
+                job_id,
+                error_msg[:1000],
+                _utcnow_naive(),
+            )
 
 
 async def mark_source_refresh_failed(user_id: str, transcript_id: str, error_msg: str) -> None:

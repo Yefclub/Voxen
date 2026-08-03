@@ -11,6 +11,12 @@ import pytest
 from src import summary
 
 
+@pytest.fixture(autouse=True)
+def _summary_enrichment_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(summary.db, "start_summary_enrichment", AsyncMock(return_value=True))
+    monkeypatch.setattr(summary.db, "finish_summary_enrichment", AsyncMock(return_value=None))
+
+
 class _FakeLogger:
     def __init__(self) -> None:
         self.events: list[tuple[str, str]] = []

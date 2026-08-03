@@ -15,10 +15,10 @@ Plataforma web self-hosted de **biblioteca multimodal** com transcrição, anál
 
 - **Web/API**: Bun + Hono + Vite + React + Tailwind v4 + shadcn/ui (tema zinc)
 - **MCP**: Streamable HTTP no app web (`/mcp`) para clientes externos (Claude, Cursor, etc.)
-- **Worker**: Python + ARQ + extrator de mídia (`yt-dlp` internamente) + `ffmpeg`
+- **Worker**: Python asyncio + extrator de mídia (`yt-dlp` internamente) + `ffmpeg`
 - **Auth**: better-auth (email/senha) com aprovação manual do admin
 - **DB**: Postgres 17 + Prisma + FTS (`tsvector` GIN, dicionário `portuguese`)
-- **Fila**: Redis + ARQ
+- **Fila**: Postgres (jobs duráveis com lease/heartbeat); Redis apenas para wakeup e realtime
 - **Storage**: MinIO/S3-compatible (`S3_*`)
 - **LLM/Transcrição**: OpenRouter (Grok 4.5 + Grok STT unificados)
 

@@ -67,7 +67,12 @@ def test_real_asyncio_supervisor_awaits_failing_sibling_cleanup_without_stderr(
     cleanup_secret = "socks5h://cleanup-user:cleanup-pass@residential.example:1080"
     logger = _Logger()
 
-    async def primary_failure(_sem: asyncio.Semaphore, _stop: asyncio.Event) -> None:
+    async def primary_failure(
+        _sem: asyncio.Semaphore,
+        _stop: asyncio.Event,
+        _worker_id: str,
+        _tasks: set[asyncio.Task[None]],
+    ) -> None:
         await asyncio.sleep(0)
         raise ConnectionError(primary_secret)
 

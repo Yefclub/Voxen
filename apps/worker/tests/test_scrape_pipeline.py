@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src import scrape_pipeline, scraper, thumbnail
+from src import pipeline, scrape_pipeline, scraper, thumbnail
 from src.cancellation import CancelledException
 from src.pipeline import PermanentError
 
@@ -78,18 +78,8 @@ async def test_happy_path_persists_and_publishes_events(
         "upsert_transcript_brain_node",
         AsyncMock(return_value=None),
     )
-    monkeypatch.setattr(
-        scrape_pipeline.db,
-        "reindex_transcript_brain_node",
-        AsyncMock(return_value=True),
-    )
-
-    # Mock summary.maybe_generate (best-effort, não precisa testar aqui)
-    monkeypatch.setattr(
-        scrape_pipeline.summary,
-        "maybe_generate",
-        AsyncMock(return_value=None),
-    )
+    enrich = AsyncMock(side_effect=lambda **_: events_published.append("enrich"))
+    monkeypatch.setattr(pipeline, "_enrich_persisted_transcript", enrich)
 
     # cancel = false
     monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
@@ -105,13 +95,12 @@ async def test_happy_path_persists_and_publishes_events(
     assert "downloading" in events_published
     assert "uploading" in events_published
     assert "indexing" in events_published
-    assert "summarizing" in events_published
     assert "done" in events_published
+    assert events_published.index("done") < events_published.index("enrich")
 
-    # Job só vira DONE depois da tentativa de resumo.
+    # Conteúdo canônico vira DONE antes dos enriquecimentos derivados.
     scrape_pipeline.db.link_job_transcript.assert_awaited_once_with("job1", "ctest123")  # type: ignore[attr-defined]
     scrape_pipeline.db.upsert_transcript_brain_node.assert_awaited_once()  # type: ignore[attr-defined]
-    scrape_pipeline.db.reindex_transcript_brain_node.assert_awaited_once_with("user1", "ctest123")  # type: ignore[attr-defined]
     scrape_pipeline.db.mark_job_done.assert_awaited_once_with("job1")  # type: ignore[attr-defined]
 
 
@@ -177,12 +166,8 @@ async def test_unchanged_refresh_run_skips_summary_tags_brain_and_embedding(
     monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
     monkeypatch.setattr(scrape_pipeline.db, "link_job_transcript", AsyncMock())
     monkeypatch.setattr(scrape_pipeline.db, "mark_job_done", AsyncMock())
-    summary = AsyncMock()
-    monkeypatch.setattr(scrape_pipeline.summary, "maybe_generate", summary)
-    tags = AsyncMock()
-    monkeypatch.setattr(scrape_pipeline, "_maybe_generate_tags", tags)
-    reindex = AsyncMock()
-    monkeypatch.setattr(scrape_pipeline.db, "reindex_transcript_brain_node", reindex)
+    enrich = AsyncMock()
+    monkeypatch.setattr(pipeline, "_enrich_persisted_transcript", enrich)
 
     await scrape_pipeline.run(
         job_id="job1",
@@ -192,9 +177,7 @@ async def test_unchanged_refresh_run_skips_summary_tags_brain_and_embedding(
         log=_FakeLogger(),
     )
 
-    summary.assert_not_awaited()
-    tags.assert_not_awaited()
-    reindex.assert_not_awaited()
+    enrich.assert_not_awaited()
     scrape_pipeline.db.link_job_transcript.assert_not_awaited()  # type: ignore[attr-defined]
 
 

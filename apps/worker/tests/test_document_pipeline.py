@@ -41,7 +41,7 @@ def _install_pipeline_completion_mocks(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pipeline, "_persist", AsyncMock(return_value="transcript-1"))
     monkeypatch.setattr(
         pipeline,
-        "_generate_summary_with_progress",
+        "_enrich_persisted_transcript",
         AsyncMock(return_value=None),
     )
     monkeypatch.setattr(pipeline.db, "link_job_transcript", AsyncMock(return_value=None))

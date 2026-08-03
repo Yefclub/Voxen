@@ -6,19 +6,23 @@ Arquitetura (spec 002):
   3. Processa em pipeline.process_job
   4. Semáforo limita concorrência (max 2 jobs simultâneos)
 
-Reconciliação: ao iniciar e a cada 60s, escaneia Job(status=QUEUED) pra
-pegar jobs perdidos (notify do Redis pode ter sumido).
+Reconciliação: ao iniciar e a cada 60s, recupera leases RUNNING vencidos e
+escaneia Job(status=QUEUED) pra pegar jobs perdidos (notify pode ter sumido).
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
-from typing import NoReturn
+import socket
+import uuid
+from collections.abc import Coroutine
+from typing import Any, NoReturn
 
 import structlog
 
-from . import automation, db, events, ytdl
+from . import automation, db, events, summary, ytdl
 from .cancellation import cancel_subscriber
 from .pipeline import _maybe_generate_tags, process_job
 from .safe_diagnostics import error_diagnostic
@@ -29,12 +33,24 @@ MAX_CONCURRENCY = 2
 RECONCILIATION_INTERVAL_SEC = 60
 AUTOMATION_SCHEDULER_INTERVAL_SEC = 60
 AUTOMATION_MAX_CONCURRENCY = 2
+JOB_SHUTDOWN_GRACE_SEC = 30
 
 
-async def _process_with_sem(sem: asyncio.Semaphore, job_id: str) -> None:
+def _track_task(
+    tasks: set[asyncio.Task[None]],
+    coroutine: Coroutine[Any, Any, None],
+) -> None:
+    task = asyncio.create_task(coroutine)
+    tasks.add(task)
+    task.add_done_callback(tasks.discard)
+
+
+async def _process_with_sem(sem: asyncio.Semaphore, job_id: str, worker_id: str) -> None:
     async with sem:
         try:
-            await process_job(job_id)
+            await process_job(job_id, worker_id)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             log.error(
                 "process_job-crashed",
@@ -43,7 +59,12 @@ async def _process_with_sem(sem: asyncio.Semaphore, job_id: str) -> None:
             )
 
 
-async def _subscriber_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> None:
+async def _subscriber_loop(
+    sem: asyncio.Semaphore,
+    stop: asyncio.Event,
+    worker_id: str,
+    tasks: set[asyncio.Task[None]],
+) -> None:
     client = await events.get_redis()
     pubsub = client.pubsub()
     await pubsub.subscribe(events.JOBS_NEW_CHANNEL)
@@ -57,19 +78,22 @@ async def _subscriber_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> None:
             if not isinstance(job_id, str) or not job_id:
                 continue
             log.info("notify-received", job_id=job_id)
-            asyncio.create_task(_process_with_sem(sem, job_id))
+            _track_task(tasks, _process_with_sem(sem, job_id, worker_id))
     finally:
         await pubsub.unsubscribe(events.JOBS_NEW_CHANNEL)
         await pubsub.aclose()  # type: ignore[no-untyped-call]
 
 
-async def _reconciliation_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> None:
+async def _reconciliation_loop(
+    sem: asyncio.Semaphore,
+    stop: asyncio.Event,
+    worker_id: str,
+    tasks: set[asyncio.Task[None]],
+) -> None:
     """Garante que jobs órfãos em QUEUED são processados mesmo se notify se perdeu."""
     while not stop.is_set():
         try:
-            ids = await db.list_queued_job_ids(limit=10)
-            for job_id in ids:
-                asyncio.create_task(_process_with_sem(sem, job_id))
+            await _reconcile_jobs_once(sem, worker_id, tasks)
         except Exception as exc:  # noqa: BLE001
             log.error(
                 "reconciliation-failed",
@@ -83,6 +107,15 @@ async def _reconciliation_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> N
             log.error(
                 "brain-reconciliation-failed",
                 **error_diagnostic(exc, "BRAIN_RECONCILIATION_FAILED"),
+            )
+        try:
+            pending_summaries = await _reconcile_summaries_once()
+            if pending_summaries:
+                log.info("summary-reconciliation-processed", count=pending_summaries)
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "summary-reconciliation-failed",
+                **error_diagnostic(exc, "SUMMARY_RECONCILIATION_FAILED"),
             )
         try:
             pending_tags = await _reconcile_tags_once()
@@ -99,6 +132,31 @@ async def _reconciliation_loop(sem: asyncio.Semaphore, stop: asyncio.Event) -> N
             continue
 
 
+async def _reconcile_jobs_once(
+    sem: asyncio.Semaphore,
+    worker_id: str,
+    tasks: set[asyncio.Task[None]],
+) -> None:
+    recovered = await db.recover_expired_jobs()
+    for item in recovered:
+        if item["action"] == "failed":
+            await events.publish_job_event(
+                item["userId"],
+                item["id"],
+                "failed",
+                error_msg=db.WORKER_INTERRUPTED_MESSAGE,
+            )
+    if recovered:
+        log.info(
+            "job-leases-recovered",
+            requeued=sum(item["action"] == "requeued" for item in recovered),
+            failed=sum(item["action"] == "failed" for item in recovered),
+        )
+    ids = await db.list_queued_job_ids(limit=10)
+    for job_id in ids:
+        _track_task(tasks, _process_with_sem(sem, job_id, worker_id))
+
+
 async def _reconcile_tags_once(limit: int = 10) -> int:
     pending_tags = await db.claim_pending_tag_enrichments(limit=limit)
     for item in pending_tags:
@@ -110,6 +168,19 @@ async def _reconcile_tags_once(limit: int = 10) -> int:
             already_claimed=True,
         )
     return len(pending_tags)
+
+
+async def _reconcile_summaries_once(limit: int = 5) -> int:
+    pending = await db.claim_pending_summary_enrichments(limit=limit)
+    for item in pending:
+        await summary.maybe_generate(
+            user_id=item["userId"],
+            job_id=item.get("jobId"),
+            transcript_id=item["id"],
+            log=log,
+            already_claimed=True,
+        )
+    return len(pending)
 
 
 async def _process_automation_run(sem: asyncio.Semaphore, run_id: str) -> None:
@@ -185,6 +256,8 @@ async def amain() -> None:
     sem = asyncio.Semaphore(MAX_CONCURRENCY)
     automation_sem = asyncio.Semaphore(AUTOMATION_MAX_CONCURRENCY)
     stop = asyncio.Event()
+    job_tasks: set[asyncio.Task[None]] = set()
+    worker_id = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:12]}"
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -205,11 +278,20 @@ async def amain() -> None:
         # falha. Assim, exceções em finally/cleanup entram no ExceptionGroup e
         # nunca viram "unhandled exception during asyncio.run() shutdown".
         async with asyncio.TaskGroup() as supervisor:
-            supervisor.create_task(_subscriber_loop(sem, stop))
-            supervisor.create_task(_reconciliation_loop(sem, stop))
+            supervisor.create_task(_subscriber_loop(sem, stop, worker_id, job_tasks))
+            supervisor.create_task(_reconciliation_loop(sem, stop, worker_id, job_tasks))
             supervisor.create_task(cancel_subscriber(stop))
             supervisor.create_task(_automation_subscriber_loop(automation_sem, stop))
             supervisor.create_task(_automation_scheduler_loop(automation_sem, stop))
+        if job_tasks:
+            done, pending = await asyncio.wait(job_tasks, timeout=JOB_SHUTDOWN_GRACE_SEC)
+            if pending:
+                log.info("worker-shutdown-cancelling-jobs", count=len(pending))
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+            # Recupera exceções de tasks que terminaram durante a janela de graça.
+            await asyncio.gather(*done, return_exceptions=True)
     finally:
         await db.close_pool()
         await events.close_redis()
