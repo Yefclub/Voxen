@@ -38,6 +38,8 @@ subscriber não são supervisionadas durante o shutdown.
   não podem bloquear o reaper de jobs.
 - Claims de resumo DEVEM ser cercados por sua geração (`summaryAttempts`) para
   impedir que uma execução antiga sobrescreva uma mais nova.
+- O dispatcher de enriquecimentos DEVE reservar capacidade justa entre resumo
+  e tags para que backlog de uma fila não impeça o progresso da outra.
 
 ## Modelo de dados
 

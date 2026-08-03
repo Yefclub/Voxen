@@ -279,6 +279,54 @@ async def test_summary_reconciler_claims_only_available_local_slots(
     claim.assert_awaited_once_with(limit=1)
 
 
+async def test_enrichment_dispatcher_advances_summary_and_tags_under_backlog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    summary_queue = [
+        {"id": "s1", "userId": "u1", "jobId": None, "summaryAttempt": 1},
+        {"id": "s2", "userId": "u1", "jobId": None, "summaryAttempt": 1},
+    ]
+    tag_queue = [
+        {"id": "t1", "userId": "u1", "jobId": None},
+        {"id": "t2", "userId": "u1", "jobId": None},
+    ]
+
+    async def claim_summaries(limit: int) -> list[dict[str, Any]]:
+        batch = summary_queue[:limit]
+        del summary_queue[:limit]
+        return batch
+
+    async def claim_tags(limit: int) -> list[dict[str, Any]]:
+        batch = tag_queue[:limit]
+        del tag_queue[:limit]
+        return batch
+
+    gate = asyncio.Event()
+
+    async def wait_for_gate(**_kwargs: object) -> None:
+        await gate.wait()
+
+    monkeypatch.setattr(main.db, "claim_pending_summary_enrichments", claim_summaries)
+    monkeypatch.setattr(main.db, "claim_pending_tag_enrichments", claim_tags)
+    monkeypatch.setattr(main.summary, "maybe_generate", wait_for_gate)
+    monkeypatch.setattr(main, "_maybe_generate_tags", wait_for_gate)
+    tasks: set[asyncio.Task[None]] = set()
+    sem = asyncio.Semaphore(2)
+
+    assert await main._reconcile_enrichments_once(sem, tasks) == (1, 1)
+    assert len(tasks) == 2
+    assert await main._reconcile_enrichments_once(sem, tasks) == (0, 0)
+
+    gate.set()
+    await asyncio.gather(*list(tasks))
+    await asyncio.sleep(0)
+    assert await main._reconcile_enrichments_once(sem, tasks) == (1, 1)
+    await asyncio.gather(*list(tasks))
+
+    assert summary_queue == []
+    assert tag_queue == []
+
+
 async def test_job_event_survives_redis_outage_after_postgres_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

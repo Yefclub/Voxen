@@ -139,22 +139,15 @@ async def _enrichment_reconciliation_loop(
                 **error_diagnostic(exc, "BRAIN_RECONCILIATION_FAILED"),
             )
         try:
-            pending_summaries = await _reconcile_summaries_once(sem, tasks)
+            pending_summaries, pending_tags = await _reconcile_enrichments_once(sem, tasks)
             if pending_summaries:
                 log.info("summary-reconciliation-dispatched", count=pending_summaries)
-        except Exception as exc:  # noqa: BLE001
-            log.error(
-                "summary-reconciliation-failed",
-                **error_diagnostic(exc, "SUMMARY_RECONCILIATION_FAILED"),
-            )
-        try:
-            pending_tags = await _reconcile_tags_once(sem, tasks)
             if pending_tags:
                 log.info("tag-reconciliation-dispatched", count=pending_tags)
         except Exception as exc:  # noqa: BLE001
             log.error(
-                "tag-reconciliation-failed",
-                **error_diagnostic(exc, "TAG_RECONCILIATION_FAILED"),
+                "enrichment-reconciliation-failed",
+                **error_diagnostic(exc, "SUMMARY_RECONCILIATION_FAILED"),
             )
         try:
             await asyncio.wait_for(stop.wait(), timeout=RECONCILIATION_INTERVAL_SEC)
@@ -252,6 +245,51 @@ async def _reconcile_summaries_once(
     for item in pending:
         _track_task(tasks, _run_summary_with_sem(sem, item))
     return len(pending)
+
+
+async def _reconcile_enrichments_once(
+    sem: asyncio.Semaphore,
+    tasks: set[asyncio.Task[None]],
+    *,
+    max_in_flight: int = ENRICHMENT_MAX_CONCURRENCY,
+) -> tuple[int, int]:
+    """Reserva uma vaga por fila antes de usar capacidade ociosa.
+
+    Com duas vagas, backlog de summaries e tags progride em paralelo. Se uma
+    fila estiver vazia, a outra aproveita a vaga restante no mesmo ciclo.
+    """
+    if len(tasks) >= max_in_flight:
+        return 0, 0
+
+    summaries = await _reconcile_summaries_once(
+        sem,
+        tasks,
+        limit=1,
+        max_in_flight=max_in_flight,
+    )
+    tags = await _reconcile_tags_once(
+        sem,
+        tasks,
+        limit=1,
+        max_in_flight=max_in_flight,
+    )
+
+    remaining = max(0, max_in_flight - len(tasks))
+    if remaining and summaries == 0:
+        tags += await _reconcile_tags_once(
+            sem,
+            tasks,
+            limit=remaining,
+            max_in_flight=max_in_flight,
+        )
+    elif remaining and tags == 0:
+        summaries += await _reconcile_summaries_once(
+            sem,
+            tasks,
+            limit=remaining,
+            max_in_flight=max_in_flight,
+        )
+    return summaries, tags
 
 
 async def _process_automation_run(sem: asyncio.Semaphore, run_id: str) -> None:
