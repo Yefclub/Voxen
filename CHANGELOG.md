@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.13.0-dev.1785717760 — 2026-08-02 · Dev
+
+### 🐛 Citações estáveis e páginas atualizadas ao retomar abas
+
+Os previews das citações no Chat agora permanecem estáveis ao alternar o cursor
+entre vários marcadores, sem piscar nem interferir nos links para as fontes.
+
+Ao voltar para uma aba do Voxen, a página revalida seus dados silenciosamente.
+O Chat também reconcilia o histórico com o servidor mesmo quando nenhuma
+resposta está em andamento, refletindo alterações feitas em outra aba sem exigir
+recarregamento manual.
+
 ## v0.13.0-dev.1785713547 — 2026-08-02 · Dev
 
 ### 🎨 Fontes e citações integradas ao Chat

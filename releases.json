@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785717760",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Citações estáveis e páginas atualizadas ao retomar abas",
+    "body": "Os previews das citações no Chat agora permanecem estáveis ao alternar o cursor\nentre vários marcadores, sem piscar nem interferir nos links para as fontes.\n\nAo voltar para uma aba do Voxen, a página revalida seus dados silenciosamente.\nO Chat também reconcilia o histórico com o servidor mesmo quando nenhuma\nresposta está em andamento, refletindo alterações feitas em outra aba sem exigir\nrecarregamento manual.",
+    "pr": 577,
+    "author": "Kalyel",
+    "date": "2026-08-02T21:42:29-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/577"
+  },
+  {
     "version": "0.13.0-dev.1785713547",
     "channel": "dev",
     "type": "ui",
