@@ -242,12 +242,12 @@ jobs:
             sleep 30
           done
 
-          # Validate the eight protected contexts by exact name and SUCCESS.
+          # Validate the nine protected contexts by exact name and SUCCESS.
           # An empty rollup is never success.
           for attempt in $(seq 1 70); do
             PR_HEAD=$(gh pr view "$PR_URL" --json headRefOid --jq .headRefOid)
             REQUIRED=$(gh pr view "$PR_URL" --json statusCheckRollup --jq \
-              '[.statusCheckRollup[] | select(.name == "docker-compose validate" or .name == "Lint TS (apps/web)" or .name == "Typecheck TS (apps/web)" or .name == "Test TS (apps/web)" or .name == "Lint Python (apps/worker)" or .name == "Test Python (apps/worker)" or .name == "Docker build (apps + Easypanel)" or .name == "Quality Gate")] | unique_by(.name)')
+              '[.statusCheckRollup[] | select(.name == "docker-compose validate" or .name == "Lint TS (apps/web)" or .name == "Typecheck TS (apps/web)" or .name == "Test TS (apps/web)" or .name == "Lint Python (apps/worker)" or .name == "Test Python (apps/worker)" or .name == "Docker build (apps + Easypanel)" or .name == "Quality Gate" or .name == "Prisma migration gate")] | unique_by(.name)')
             REQUIRED_TOTAL=$(printf '%s' "$REQUIRED" | jq 'length')
             REQUIRED_NOT_SUCCESS=$(printf '%s' "$REQUIRED" | jq \
               '[.[] | select(.status != "COMPLETED" or .conclusion != "SUCCESS")] | length')
@@ -255,8 +255,8 @@ jobs:
               echo "PR head differs from the expected snapshot ($PR_HEAD != $HEAD_SHA)."
               exit 1
             fi
-            if [ "${REQUIRED_TOTAL:-0}" = "8" ] && [ "${REQUIRED_NOT_SUCCESS:-1}" = "0" ]; then
-              echo "Eight exact required checks passed on head $HEAD_SHA."
+            if [ "${REQUIRED_TOTAL:-0}" = "9" ] && [ "${REQUIRED_NOT_SUCCESS:-1}" = "0" ]; then
+              echo "Nine exact required checks passed on head $HEAD_SHA."
               break
             fi
             if [ "$attempt" = "70" ]; then

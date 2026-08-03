@@ -16,10 +16,10 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
   `dev`.
 - The system shall executar a automação somente quando o ref de origem for
   exatamente `dev`, inclusive em disparos manuais.
-- The system shall exigir os oito required checks registrados no SHA atual antes
+- The system shall exigir os nove required checks registrados no SHA atual antes
   de mergear um bump de versão.
 - The system shall exigir conclusão `success` dos workflows CI, Security e PR
-  Changelog Guard, além dos oito required checks identificados por nome exato,
+  Changelog Guard, além dos nove required checks identificados por nome exato,
   antes de considerar a PR `CLEAN`.
 - The system shall tratar rollup vazio ou pertencente a outro SHA como falha, nunca
   como CI verde.
@@ -58,7 +58,7 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 - [ ] Um `workflow_dispatch` selecionado em qualquer ref diferente de `dev` não
       executa o job nem cria PR.
 - [ ] O workflow reroda os três workflows de `pull_request` criados pelo bot.
-- [ ] O merge só ocorre com os três workflows concluídos em `success` e os oito
+- [ ] O merge só ocorre com os três workflows concluídos em `success` e os nove
       required checks exatos verdes no head atual.
 - [ ] Falha, timeout, rollup vazio ou head divergente mantêm a PR aberta.
 - [ ] O próximo bump consome todas as entradas acumuladas em
@@ -71,7 +71,7 @@ a versão e todas as novas notas presas em `changelog/unreleased`.
 
 ## Riscos / Decisões pendentes
 
-- Os nomes `CI`, `Security` e `PR Changelog Guard` e os oito contexts exigidos
+- Os nomes `CI`, `Security` e `PR Changelog Guard` e os nove contexts exigidos
   pela proteção são contratos operacionais. Se mudarem, esta automação e a spec
   precisam ser atualizadas juntas.
 
@@ -94,3 +94,7 @@ e changelog por uma PR protegida pelos mesmos required checks da branch.
 > 2026-08-03: `Quality Gate` became the eighth protected context. The version
 > bot now waits for its repository-quality ratchet together with the original
 > seven checks.
+
+> 2026-08-03: `Prisma migration gate` became the ninth protected context. The
+> version bot waits for migration-history replay and drift validation before
+> merging an automatic bump.

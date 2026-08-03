@@ -31,6 +31,7 @@ coverage/
 htmlcov/
 quality-gate/input/
 quality-gate/output/
+prisma-migration-gate/output/
 
 # Env / secrets (NUNCA commitar)
 .env

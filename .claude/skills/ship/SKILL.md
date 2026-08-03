@@ -65,6 +65,12 @@ failed workflow run. Read `summary.md` and `metrics.json`; use
 untested lines. Address every regression on the same branch, push, and resume
 monitoring. Never relax `quality-gate/baseline.json` to make a regression pass.
 
+When `Prisma migration gate` fails, download the
+`prisma-migration-gate-report` artifact. Read `summary.md`, then `results.json`
+and the referenced redacted stage log. Add or correct a new ordered migration;
+never edit, rename, or delete a migration that already exists on the target
+branch.
+
 ### 5. Independent review — always required
 
 After CI is green, read and run the `review-pr` skill at

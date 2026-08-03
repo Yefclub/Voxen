@@ -1,0 +1,4 @@
+{
+  "schemaVersion": 1,
+  "ignoredIndexes": ["Note_searchVector_idx", "Transcript_searchVector_idx"]
+}
