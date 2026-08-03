@@ -73,7 +73,6 @@ import {
   type ScrollPhase,
 } from '../lib/chat-scroll';
 import type { ChatHandoffState } from '../lib/chat-handoff';
-import { mergeChatMessagePages } from '../lib/chat-pagination';
 import {
   planBranchRollback,
   planSend,
@@ -90,6 +89,12 @@ import {
   useChatShell,
 } from '../lib/chat-shell-state';
 import { chatStatusI18nKey, type ChatStatusCode } from '../../shared/chat-status';
+import {
+  createSnapshotReconciler,
+  reconcileSnapshotMessages,
+  shouldFinishSnapshotStreaming,
+  type SnapshotReconciler,
+} from '../lib/chat-snapshot-reconciliation';
 
 type ChatMessage = {
   id: string;
@@ -879,7 +884,7 @@ export function ChatPage(): React.ReactElement {
   const spacerNodeRef = useRef<HTMLDivElement>(null);
   const didInitialScroll = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
-  const snapshotRefreshInFlight = useRef<Promise<void> | null>(null);
+  const snapshotReconcilerRef = useRef<SnapshotReconciler<Snapshot> | null>(null);
   const streamingAssistantId = useRef<string | null>(null);
   const pendingAnchorIdRef = useRef<string | null>(null);
   /** Handoff one-shot de outras páginas (detalhe de transcrição, etc.). */
@@ -1107,13 +1112,13 @@ export function ChatPage(): React.ReactElement {
     // Funil único de mensagens vindas do servidor: normaliza aqui para que o
     // render nunca receba `segments` cru do JSONB (ver parseMessageSegments).
     const messages = snapshot.messages.map(normalizeSnapshotMessage);
-    setMessages((current) => {
-      if (replace) return messages;
-      return mergeChatMessagePages(
-        current.filter((message) => !message.id.startsWith('local-')),
-        messages,
-      );
-    });
+    setMessages((current) =>
+      reconcileSnapshotMessages(current, messages, {
+        replace,
+        localStreamActive: abortRef.current !== null,
+        streamingMessageId: streamingAssistantId.current,
+      }),
+    );
     setHasOlder(snapshot.hasOlder);
     setNextCursor(snapshot.nextCursor);
     setActiveTurn((current) =>
@@ -1139,27 +1144,28 @@ export function ChatPage(): React.ReactElement {
    * consultem o mesmo snapshot em paralelo.
    */
   const reconcileSnapshot = (replace = false): Promise<void> => {
-    if (snapshotRefreshInFlight.current) return snapshotRefreshInFlight.current;
-    const request = apiGet<Snapshot>('/api/chat')
-      .then((snapshot) => {
-        // Retomada de uma aba precisa remover mensagens apagadas ou ramos
-        // abandonados em outra aba. Durante um stream local, porém, preservar
-        // as bolhas otimistas evita rollback visual de deltas ainda não lidos.
-        applySnapshot(snapshot, replace && abortRef.current === null);
-        if (!snapshot.activeTurn) {
-          streamingAssistantId.current = null;
-          setStreaming(false);
-          setStatus(null);
-        }
-      })
-      .catch(() => {
-        // Mantém o snapshot exibido; a próxima retomada ou tick tenta de novo.
-      });
-    snapshotRefreshInFlight.current = request;
-    void request.then(() => {
-      if (snapshotRefreshInFlight.current === request) snapshotRefreshInFlight.current = null;
-    });
-    return request;
+    if (!snapshotReconcilerRef.current) {
+      snapshotReconcilerRef.current = createSnapshotReconciler(
+        () => apiGet<Snapshot>('/api/chat'),
+        (snapshot, canonical) => {
+          // Retomada de uma aba precisa remover mensagens apagadas ou ramos
+          // abandonados em outra aba. Durante um stream local, porém, preservar
+          // as bolhas otimistas evita rollback visual de deltas ainda não lidos.
+          applySnapshot(snapshot, canonical);
+          if (
+            shouldFinishSnapshotStreaming(snapshot.activeTurn !== null, abortRef.current !== null)
+          ) {
+            streamingAssistantId.current = null;
+            setStreaming(false);
+            setStatus(null);
+          }
+        },
+        () => {
+          // Mantém o snapshot exibido; a próxima retomada ou tick tenta de novo.
+        },
+      );
+    }
+    return snapshotReconcilerRef.current.reconcile(replace);
   };
 
   async function loadOlderMessages(): Promise<void> {

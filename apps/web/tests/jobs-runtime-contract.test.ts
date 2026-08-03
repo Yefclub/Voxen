@@ -18,9 +18,9 @@ describe('estabilidade do runtime de jobs', () => {
     expect(hooks).toContain("window.addEventListener('pageshow', revalidateWhenVisible)");
     expect(hooks).toContain("document.addEventListener('visibilitychange', revalidateWhenVisible)");
     expect(hooks).toContain('setLoading(loadedPath.current !== path)');
-    expect(chat).toContain('snapshotRefreshInFlight.current');
+    expect(chat).toContain('snapshotReconcilerRef.current');
     expect(chat).toContain('reconcileSnapshot(true)');
-    expect(chat).toContain('replace && abortRef.current === null');
+    expect(chat).toContain('shouldFinishSnapshotStreaming(');
   });
 
   test('revalidação da Fila preserva os dados já renderizados', () => {
