@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.0-dev.1785752822",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Jobs só concluem após todas as etapas e administração ganha controles de conta",
+    "body": "Agora a fila mostra resumo, tags e conexão com o Brain como etapas reais antes de marcar um conteúdo como concluído. Quando uma etapa recuperável ficar pendente, o conteúdo continua acessível e recebe o status **Concluído com pendências**, com opção de repetir apenas essas etapas sem transcrever novamente.\n\nAdministradores também podem bloquear, reativar, promover, rebaixar e excluir contas. A exclusão exige digitar o e-mail exato e remove o workspace e as credenciais pessoais associadas. Conteúdos novos preservam URL canônica, canal e autor para melhorar suas conexões no grafo.",
+    "pr": 583,
+    "author": "Kalyel",
+    "date": "2026-08-03T07:24:16-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/583"
+  },
+  {
     "version": "0.13.0-dev.1785737401",
     "channel": "dev",
     "type": "feat",
