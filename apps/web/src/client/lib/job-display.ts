@@ -14,6 +14,11 @@ export function jobStatusBadge(
       return { variant: 'warning', label: t?.('job.status.running') ?? 'Processando' };
     case 'DONE':
       return { variant: 'success', label: t?.('job.status.done') ?? 'Concluído' };
+    case 'COMPLETED_WITH_WARNINGS':
+      return {
+        variant: 'warning',
+        label: t?.('job.status.completedWithWarnings') ?? 'Concluído com pendências',
+      };
     case 'FAILED':
       return { variant: 'danger', label: t?.('job.status.failed') ?? 'Falhou' };
     case 'CANCELLED':
@@ -40,6 +45,8 @@ export function stageLabel(stage: string, t?: TranslateFn, jobType?: JobType): s
     indexing: t?.('job.stage.indexing') ?? 'Indexando',
     summarizing: t?.('job.stage.summarizing') ?? 'Gerando resumo',
     tagging: t?.('job.stage.tagging') ?? 'Gerando tags',
+    indexing_brain: t?.('job.stage.indexingBrain') ?? 'Conectando ao Brain',
+    completed_with_warnings: t?.('job.stage.completedWithWarnings') ?? 'Concluído com pendências',
     done: t?.('job.stage.done') ?? 'Concluído',
     failed: t?.('job.stage.failed') ?? 'Falhou',
     cancelled: t?.('job.stage.cancelled') ?? 'Cancelado',

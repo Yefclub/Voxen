@@ -440,7 +440,7 @@ function registerWriteTools(server: McpServer, userId: string): void {
       });
       if (!job) return fail('Job não encontrado.');
       const brief =
-        job.status === 'DONE' && job.transcriptId
+        (job.status === 'DONE' || job.status === 'COMPLETED_WITH_WARNINGS') && job.transcriptId
           ? await getTranscriptBrief(userId, job.transcriptId, { enrichMissing: false })
           : null;
       return ok({

@@ -24,7 +24,10 @@ export type JobStage =
   | 'uploading'
   | 'indexing'
   | 'summarizing'
+  | 'tagging'
+  | 'indexing_brain'
   | 'done'
+  | 'completed_with_warnings'
   | 'failed'
   | 'cancelled';
 
@@ -135,5 +138,10 @@ export async function notifyNewJob(jobId: string, pub: Redis = getRedisPublisher
 }
 
 export function isTerminalStage(stage: JobStage): boolean {
-  return stage === 'done' || stage === 'failed' || stage === 'cancelled';
+  return (
+    stage === 'done' ||
+    stage === 'completed_with_warnings' ||
+    stage === 'failed' ||
+    stage === 'cancelled'
+  );
 }

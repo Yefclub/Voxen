@@ -42,6 +42,11 @@ class VideoProbe:
     language_hint: str | None
     available_subtitles: dict[str, list[dict[str, Any]]]
     automatic_captions: dict[str, list[dict[str, Any]]]
+    # Proveniência retornada por yt-dlp; defaults preservam os probes internos
+    # (upload, documento e X) que não têm uma página pública canônica.
+    author: str | None = None
+    canonical_url: str | None = None
+    channel_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -111,6 +116,9 @@ def _fetch_youtube_transcript_sync(video_id: str, proxy_url: str | None) -> Tran
             language_hint=language,
             available_subtitles={},
             automatic_captions={},
+            author=metadata.get("author_name"),
+            canonical_url=f"https://www.youtube.com/watch?v={video_id}",
+            channel_url=metadata.get("author_url"),
         )
         return TranscriptFetch(probe=probe, segments=segments, language=language.split("-")[0])
     except (
@@ -252,6 +260,9 @@ async def probe(url: str, *, user_id: str, force_impersonate: str | None = None)
         language_hint=info.get("language"),
         available_subtitles=info.get("subtitles") or {},
         automatic_captions=info.get("automatic_captions") or {},
+        author=info.get("uploader") or info.get("channel"),
+        canonical_url=info.get("webpage_url") or info.get("original_url") or url,
+        channel_url=info.get("channel_url") or info.get("uploader_url"),
     )
 
 

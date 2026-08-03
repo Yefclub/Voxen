@@ -155,18 +155,21 @@ async def test_retry_with_transcript_checkpoint_does_not_run_ingestion(
         ),
     )
     monkeypatch.setattr(pipeline.db, "renew_job_lease", AsyncMock(return_value=True))
-    monkeypatch.setattr(pipeline.db, "mark_job_done", AsyncMock())
     monkeypatch.setattr(pipeline.events, "publish_job_event", AsyncMock())
-    enrich = AsyncMock()
-    monkeypatch.setattr(pipeline, "_enrich_persisted_transcript", enrich)
+    complete = AsyncMock()
+    monkeypatch.setattr(pipeline, "_complete_persisted_job", complete)
     ingest = AsyncMock()
     monkeypatch.setattr(pipeline, "_run_pipeline", ingest)
 
     await pipeline.process_job("job-1", "worker-a")
 
     ingest.assert_not_awaited()
-    pipeline.db.mark_job_done.assert_awaited_once_with("job-1")  # type: ignore[attr-defined]
-    enrich.assert_awaited_once()
+    complete.assert_awaited_once_with(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        job_id="job-1",
+        log=ANY,
+    )
 
 
 async def test_cancelled_executor_releases_lease_for_immediate_retry(

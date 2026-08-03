@@ -79,8 +79,8 @@ async def test_happy_path_persists_and_publishes_events(
         "upsert_transcript_brain_node",
         AsyncMock(return_value=None),
     )
-    enrich = AsyncMock(side_effect=lambda **_: events_published.append("enrich"))
-    monkeypatch.setattr(pipeline, "_enrich_persisted_transcript", enrich)
+    complete = AsyncMock(side_effect=lambda **_: events_published.append("complete"))
+    monkeypatch.setattr(pipeline, "_complete_persisted_job", complete)
 
     # cancel = false
     monkeypatch.setattr(scrape_pipeline, "is_cancelled", lambda _: False)
@@ -96,13 +96,13 @@ async def test_happy_path_persists_and_publishes_events(
     assert "downloading" in events_published
     assert "uploading" in events_published
     assert "indexing" in events_published
-    assert "done" in events_published
-    assert events_published.index("done") < events_published.index("enrich")
+    assert "complete" in events_published
+    assert "done" not in events_published
 
-    # Conteúdo canônico vira DONE antes dos enriquecimentos derivados.
+    # O Job só finaliza depois dos enriquecimentos derivados.
     scrape_pipeline.db.link_job_transcript.assert_awaited_once_with("job1", "ctest123")  # type: ignore[attr-defined]
     scrape_pipeline.db.upsert_transcript_brain_node.assert_awaited_once()  # type: ignore[attr-defined]
-    scrape_pipeline.db.mark_job_done.assert_awaited_once_with("job1")  # type: ignore[attr-defined]
+    complete.assert_awaited_once()
 
 
 async def test_unchanged_refresh_skips_storage_and_all_derived_work(
@@ -167,8 +167,8 @@ async def test_unchanged_refresh_run_skips_summary_tags_brain_and_embedding(
     monkeypatch.setattr(scrape_pipeline.events, "publish_job_event", AsyncMock())
     monkeypatch.setattr(scrape_pipeline.db, "link_job_transcript", AsyncMock())
     monkeypatch.setattr(scrape_pipeline.db, "mark_job_done", AsyncMock())
-    enrich = AsyncMock()
-    monkeypatch.setattr(pipeline, "_enrich_persisted_transcript", enrich)
+    complete = AsyncMock()
+    monkeypatch.setattr(pipeline, "_complete_persisted_job", complete)
 
     await scrape_pipeline.run(
         job_id="job1",
@@ -178,7 +178,7 @@ async def test_unchanged_refresh_run_skips_summary_tags_brain_and_embedding(
         log=_FakeLogger(),
     )
 
-    enrich.assert_not_awaited()
+    complete.assert_not_awaited()
     scrape_pipeline.db.link_job_transcript.assert_not_awaited()  # type: ignore[attr-defined]
 
 

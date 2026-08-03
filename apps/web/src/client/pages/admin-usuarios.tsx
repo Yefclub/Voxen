@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Check, Globe2, Lock, ShieldCheck, Users as UsersIcon, X } from '@/components/ui/icons';
+import {
+  Check,
+  Globe2,
+  Lock,
+  ShieldCheck,
+  ShieldX,
+  Trash2,
+  Users as UsersIcon,
+  X,
+} from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -16,6 +25,15 @@ import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { useI18n, type TranslateFn } from '../lib/i18n';
 import { TimezoneSelect } from '../components/timezone-select';
 import { DataSurface } from '../components/ui/data-surface';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
 
 interface InstanceResponse {
   allowSignups: boolean;
@@ -30,6 +48,8 @@ export function AdminUsuariosPage(): React.ReactElement {
   const [timezone, setTimezone] = useState<string | null>(null);
   const [togglingSignups, setTogglingSignups] = useState(false);
   const [savingTimezone, setSavingTimezone] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState<AdminUser | null>(null);
+  const [deleteEmail, setDeleteEmail] = useState('');
 
   useEffect(() => {
     // Guarda contra setState após unmount (apiGet não aceita AbortController).
@@ -67,6 +87,57 @@ export function AdminUsuariosPage(): React.ReactElement {
       refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t('admin.users.rejectError'));
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function changeUser(id: string, action: 'disable' | 'enable'): Promise<void> {
+    setPendingId(id);
+    try {
+      await apiPost(`/api/admin/usuarios/${id}/${action}`, {});
+      toast.success(action === 'disable' ? 'Usuário bloqueado.' : 'Usuário reativado.');
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível atualizar o usuário.');
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function toggleAdmin(user: AdminUser): Promise<void> {
+    const role = user.role === 'ADMIN' ? 'USER' : 'ADMIN';
+    setPendingId(user.id);
+    try {
+      await api(`/api/admin/usuarios/${user.id}/role`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      });
+      toast.success(
+        role === 'ADMIN' ? 'Administrador definido.' : 'Acesso administrativo removido.',
+      );
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível atualizar o papel.');
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function deleteUser(): Promise<void> {
+    if (!deleteCandidate) return;
+    setPendingId(deleteCandidate.id);
+    try {
+      await api(`/api/admin/usuarios/${deleteCandidate.id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ confirmEmail: deleteEmail }),
+      });
+      toast.success('Conta e workspace excluídos.');
+      setDeleteCandidate(null);
+      setDeleteEmail('');
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Não foi possível excluir o usuário.');
     } finally {
       setPendingId(null);
     }
@@ -315,13 +386,105 @@ export function AdminUsuariosPage(): React.ReactElement {
                             : t('admin.users.disabled')}
                       </p>
                     </div>
-                    <StatusBadge status={u.status} t={t} />
+                    <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                      <StatusBadge status={u.status} t={t} />
+                      {u.status === 'DISABLED' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={pendingId === u.id}
+                          onClick={() => void changeUser(u.id, 'enable')}
+                        >
+                          <Check className="h-3.5 w-3.5" /> Reativar
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={pendingId === u.id}
+                          onClick={() => void changeUser(u.id, 'disable')}
+                        >
+                          <ShieldX className="h-3.5 w-3.5" /> Bloquear
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pendingId === u.id}
+                        onClick={() => void toggleAdmin(u)}
+                      >
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        {u.role === 'ADMIN' ? 'Remover admin' : 'Tornar admin'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={pendingId === u.id}
+                        onClick={() => {
+                          setDeleteCandidate(u);
+                          setDeleteEmail('');
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Excluir
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
             </DataSurface>
           )}
         </section>
+
+        <Dialog
+          open={deleteCandidate !== null}
+          onOpenChange={(open) => {
+            if (!open && pendingId !== deleteCandidate?.id) {
+              setDeleteCandidate(null);
+              setDeleteEmail('');
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Excluir conta definitivamente?</DialogTitle>
+              <DialogDescription>
+                Isso remove a conta, sessões, credenciais pessoais e todo o workspace. Digite
+                exatamente <strong>{deleteCandidate?.email}</strong> para confirmar.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              value={deleteEmail}
+              onChange={(event) => setDeleteEmail(event.target.value)}
+              placeholder={deleteCandidate?.email ?? 'email@exemplo.com'}
+              autoComplete="off"
+              aria-label="E-mail de confirmação da exclusão"
+            />
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDeleteCandidate(null);
+                  setDeleteEmail('');
+                }}
+                disabled={pendingId === deleteCandidate?.id}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => void deleteUser()}
+                disabled={
+                  !deleteCandidate ||
+                  deleteEmail !== deleteCandidate.email ||
+                  pendingId === deleteCandidate.id
+                }
+              >
+                {pendingId === deleteCandidate?.id && <Spinner />}
+                Excluir definitivamente
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </PageShell>
   );

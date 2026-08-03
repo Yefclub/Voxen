@@ -432,6 +432,62 @@ describeIfDb('jobs API', () => {
     expect(retry.type).toBe('SCRAPE_WEB');
   });
 
+  it('POST /api/jobs/:id/enrichment-retry reaproveita a transcrição e retoma só pendências', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: admin.id,
+        source: 'YOUTUBE',
+        url: VALID_URL,
+        title: 'Vídeo parcialmente enriquecido',
+        durationSec: 1,
+        language: 'pt',
+        transcriptionMethod: 'SUBTITLES',
+        mdPath: `workspaces/${admin.id}/transcripts/partial.md`,
+        plainText: 'transcrição já persistida',
+        frontmatter: {},
+        summaryStatus: 'RETRY',
+        taggingStatus: 'COMPLETE',
+      },
+    });
+    const job = await db.job.create({
+      data: {
+        userId: admin.id,
+        type: 'DOWNLOAD_AND_TRANSCRIBE',
+        status: 'COMPLETED_WITH_WARNINGS',
+        sourceUrl: CANONICAL,
+        transcriptId: transcript.id,
+        errorMsg: 'Resumo indisponível',
+        finishedAt: new Date(),
+      },
+    });
+
+    const res = await app.fetch(
+      new Request(`http://localhost/api/jobs/${job.id}/enrichment-retry`, {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { jobId: string; transcriptId: string; status: string }).toEqual({
+      jobId: job.id,
+      transcriptId: transcript.id,
+      status: 'QUEUED',
+    });
+    const [retriedJob, retriedTranscript] = await Promise.all([
+      db.job.findUniqueOrThrow({ where: { id: job.id } }),
+      db.transcript.findUniqueOrThrow({ where: { id: transcript.id } }),
+    ]);
+    expect(retriedJob.status).toBe('QUEUED');
+    expect(retriedJob.transcriptId).toBe(transcript.id);
+    expect(retriedJob.errorMsg).toBeNull();
+    expect(retriedTranscript.summaryStatus).toBe('RETRY');
+    expect(retriedTranscript.taggingStatus).toBe('COMPLETE');
+  });
+
   it('SSE entrega evento publicado no canal e fecha em stage terminal', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
