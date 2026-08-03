@@ -113,6 +113,26 @@ describeIfDb('/api/integrations/cookies', () => {
     );
   });
 
+  it('preserva capturas simultâneas de plataformas diferentes do mesmo usuário', async () => {
+    const user = await createApprovedUser('concurrent@voxen.local');
+    const [tiktok, instagram] = await Promise.all([
+      patch(user.cookie, 'tiktok', netscapeDoc(cookieLine('.tiktok.com', 'sid', 'tiktok-secret'))),
+      patch(
+        user.cookie,
+        'instagram',
+        netscapeDoc(cookieLine('.instagram.com', 'sessionid', 'instagram-secret')),
+      ),
+    ]);
+
+    expect(tiktok.status).toBe(200);
+    expect(instagram.status).toBe(200);
+    const stored = await getUserSettings(user.id, ['yt_dlp_cookies', 'platform_cookies_meta']);
+    expect(stored.yt_dlp_cookies).toContain('tiktok-secret');
+    expect(stored.yt_dlp_cookies).toContain('instagram-secret');
+    expect(stored.platform_cookies_meta).toContain('tiktok');
+    expect(stored.platform_cookies_meta).toContain('instagram');
+  });
+
   it('rejeita uma captura inválida sem apagar a sessão pessoal anterior', async () => {
     const user = await createApprovedUser('valid@voxen.local');
     await patch(

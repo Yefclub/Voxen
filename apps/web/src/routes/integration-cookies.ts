@@ -17,7 +17,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
+import { decrypt, encrypt } from '../lib/crypto';
 import { db } from '../lib/db';
+import { getMasterKey } from '../lib/master-key';
 import {
   COOKIE_PLATFORMS,
   hasPlatformCookie,
@@ -30,7 +32,7 @@ import {
   serializeCaptureMeta,
   type CookiePlatform,
 } from '../lib/platform-cookies';
-import { getUserSettings, setUserSettings } from '../lib/settings';
+import { getUserSettings } from '../lib/settings';
 
 type Vars = { userId: string };
 
@@ -41,7 +43,7 @@ integrationCookieRoutes.use('*', async (c, next) => {
   if (!session) return c.json({ error: 'Não autenticado.' }, 401);
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { role: true, status: true },
+    select: { status: true },
   });
   if (!user || user.status !== 'APPROVED') {
     return c.json({ error: 'Acesso negado.' }, 403);
@@ -67,6 +69,55 @@ async function readState(userId: string): Promise<{
     cookies: stored.yt_dlp_cookies,
     meta: parseCaptureMeta(stored.platform_cookies_meta),
   };
+}
+
+/**
+ * Serializa o read-modify-write de um usuário dentro do Postgres. Sem este
+ * lock, duas capturas simultâneas poderiam fazer a última escrita apagar o
+ * bloco de plataforma que a primeira acabou de incluir.
+ */
+async function mutateState<Result>(
+  userId: string,
+  mutate: (state: { cookies: string | null; meta: ReturnType<typeof parseCaptureMeta> }) => {
+    cookies: string | null;
+    meta: ReturnType<typeof parseCaptureMeta>;
+    result: Result;
+  },
+): Promise<Result> {
+  const masterKey = getMasterKey();
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`voxen:user-settings:${userId}`}))`;
+    const rows = await tx.setting.findMany({
+      where: {
+        scope: 'USER',
+        userId,
+        key: { in: ['yt_dlp_cookies', 'platform_cookies_meta'] },
+      },
+      select: { key: true, valueEnc: true },
+    });
+    const stored = new Map(rows.map((row) => [row.key, decrypt(row.valueEnc, masterKey)]));
+    const next = mutate({
+      cookies: stored.get('yt_dlp_cookies') ?? null,
+      meta: parseCaptureMeta(stored.get('platform_cookies_meta') ?? null),
+    });
+    const values = {
+      yt_dlp_cookies: next.cookies,
+      platform_cookies_meta: serializeCaptureMeta(next.meta),
+    } as const;
+    for (const [key, value] of Object.entries(values)) {
+      const uniqueWhere = { scope_userId_key: { scope: 'USER' as const, userId, key } };
+      if (value === null) {
+        await tx.setting.deleteMany({ where: { scope: 'USER', userId, key } });
+      } else {
+        await tx.setting.upsert({
+          where: uniqueWhere,
+          create: { scope: 'USER', userId, key, valueEnc: encrypt(value, masterKey) },
+          update: { valueEnc: encrypt(value, masterKey) },
+        });
+      }
+    }
+    return next.result;
+  });
 }
 
 function buildStatus(
@@ -113,17 +164,13 @@ integrationCookieRoutes.patch('/', async (c) => {
     return c.json({ error: parsed.error }, parsed.status);
   }
 
-  const state = await readState(c.get('userId'));
-  const merged = mergePlatformCookies(state.cookies, platform, parsed.lines);
   const capturedAt = new Date().toISOString();
-  const meta = { ...state.meta, [platform]: { capturedAt } };
-
-  await setUserSettings(c.get('userId'), {
-    yt_dlp_cookies: merged,
-    platform_cookies_meta: serializeCaptureMeta(meta),
+  const status = await mutateState(c.get('userId'), (state) => {
+    const cookies = mergePlatformCookies(state.cookies, platform, parsed.lines);
+    const meta = { ...state.meta, [platform]: { capturedAt } };
+    return { cookies, meta, result: buildStatus(cookies, meta, platform) };
   });
-
-  return c.json(buildStatus(merged, meta, platform));
+  return c.json(status);
 });
 
 // DELETE /:platform — revoga a credencial guardada daquela plataforma.
@@ -134,15 +181,11 @@ integrationCookieRoutes.delete('/:platform', async (c) => {
     return c.json({ error: 'Plataforma não suportada.' }, 400);
   }
 
-  const state = await readState(c.get('userId'));
-  const remaining = removePlatformCookies(state.cookies, platform);
-  const meta = { ...state.meta };
-  delete meta[platform];
-
-  await setUserSettings(c.get('userId'), {
-    yt_dlp_cookies: remaining || null,
-    platform_cookies_meta: serializeCaptureMeta(meta),
+  const status = await mutateState(c.get('userId'), (state) => {
+    const cookies = removePlatformCookies(state.cookies, platform) || null;
+    const meta = { ...state.meta };
+    delete meta[platform];
+    return { cookies, meta, result: buildStatus(cookies, meta, platform) };
   });
-
-  return c.json(buildStatus(remaining, meta, platform));
+  return c.json(status);
 });

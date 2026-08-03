@@ -173,50 +173,6 @@ export async function getUserSettings<const Keys extends readonly UserSettingKey
   return values;
 }
 
-/**
- * Atualiza atomically settings pessoais cifradas. Não gera ConfigRevision:
- * esse histórico é reservado à configuração global e não pode revelar nem
- * sugerir a existência de uma sessão privada de plataforma.
- */
-export async function setUserSettings(
-  userId: string,
-  values: Partial<Record<UserSettingKey, string | null>>,
-): Promise<void> {
-  const entries = Object.entries(values).filter(
-    (entry): entry is [UserSettingKey, string | null] =>
-      (entry[0] === 'yt_dlp_cookies' || entry[0] === 'platform_cookies_meta') &&
-      (typeof entry[1] === 'string' || entry[1] === null),
-  );
-  if (entries.length === 0) return;
-  const masterKey = getMasterKey();
-  await db.$transaction(async (tx) => {
-    for (const [key, value] of entries) {
-      const where = { scope_userId_key: { scope: 'USER' as const, userId, key } };
-      if (value === null) {
-        await tx.setting.delete({ where }).catch((error: unknown) => {
-          if (isRecordNotFoundError(error)) return;
-          throw error;
-        });
-        continue;
-      }
-      await tx.setting.upsert({
-        where,
-        create: { scope: 'USER', userId, key, valueEnc: encrypt(value, masterKey) },
-        update: { valueEnc: encrypt(value, masterKey) },
-      });
-    }
-  });
-}
-
-function isRecordNotFoundError(error: unknown): boolean {
-  return Boolean(
-    error &&
-    typeof error === 'object' &&
-    'code' in error &&
-    (error as { code?: unknown }).code === 'P2025',
-  );
-}
-
 export async function getAppLanguage(): Promise<AppLanguage> {
   return normalizeAppLanguage(await getSetting('app_language'));
 }

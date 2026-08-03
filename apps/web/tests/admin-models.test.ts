@@ -56,6 +56,16 @@ function extractCookie(res: Response): string {
 
 const CATALOG = [
   {
+    id: 'deepseek/deepseek-v4-flash-0731',
+    name: 'DeepSeek V4 Flash',
+    architecture: { input_modalities: ['text'], output_modalities: ['text'] },
+  },
+  {
+    id: 'openai/gpt-5.6-luna',
+    name: 'GPT-5.6 Luna',
+    architecture: { input_modalities: ['text', 'image', 'file'], output_modalities: ['text'] },
+  },
+  {
     id: 'x-ai/grok-4.5',
     name: 'Grok 4.5',
     architecture: { input_modalities: ['text', 'image', 'file'], output_modalities: ['text'] },
@@ -110,11 +120,11 @@ async function setupAdmin(): Promise<{ cookie: string }> {
   const cookie = extractCookie(signin);
   await setSettings({
     openrouter_api_key: VALID_KEY,
-    default_chat_model: 'x-ai/grok-4.5',
+    default_chat_model: 'deepseek/deepseek-v4-flash-0731',
     default_transcription_model: 'x-ai/grok-stt-1.0',
-    default_web_search_model: 'x-ai/grok-4.5',
-    default_vision_model: 'x-ai/grok-4.5',
-    default_document_model: 'x-ai/grok-4.5',
+    default_web_search_model: 'deepseek/deepseek-v4-flash-0731',
+    default_vision_model: 'openai/gpt-5.6-luna',
+    default_document_model: 'openai/gpt-5.6-luna',
     default_x_analysis_model: 'x-ai/grok-4.5',
   });
   return { cookie };
@@ -208,9 +218,9 @@ describeIfDb('/api/admin/models', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { override: string | null; canonical: string };
     expect(body.override).toBeNull();
-    expect(body.canonical).toBe('x-ai/grok-4.5');
+    expect(body.canonical).toBe('openai/gpt-5.6-luna');
 
-    await expect(getSetting('default_document_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_document_model')).resolves.toBe('openai/gpt-5.6-luna');
   });
 
   it('PATCH rejeita modelo incompatível com a finalidade e não persiste', async () => {
@@ -229,7 +239,7 @@ describeIfDb('/api/admin/models', () => {
     expect(body.error).toMatch(/não é compatível/i);
 
     // Nada foi persistido — finalidade continua no canônico.
-    await expect(getSetting('default_vision_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_vision_model')).resolves.toBe('openai/gpt-5.6-luna');
   });
 
   it('PATCH rejeita modelo de transcrição na finalidade de análise X', async () => {
@@ -259,7 +269,7 @@ describeIfDb('/api/admin/models', () => {
       }),
     );
     expect(res.status).toBe(404);
-    await expect(getSetting('default_chat_model')).resolves.toBe('x-ai/grok-4.5');
+    await expect(getSetting('default_chat_model')).resolves.toBe('deepseek/deepseek-v4-flash-0731');
   });
 
   it('GET /catalog/:purpose informa indisponibilidade sem apagar overrides existentes', async () => {
