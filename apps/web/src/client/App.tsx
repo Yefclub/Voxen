@@ -8,6 +8,7 @@ import { AuthLayout } from './components/layout/auth-layout';
 import { RootEntry } from './pages/root-entry';
 import { I18nProvider, useI18n } from './lib/i18n';
 import { ThemeProvider } from './lib/theme-provider';
+import { InterfaceModeProvider } from './lib/interface-mode-provider';
 import { useMe } from './lib/hooks';
 import { PwaInstallPrompt } from './components/pwa-install-prompt';
 
@@ -92,12 +93,14 @@ export function App(): React.ReactElement {
   return (
     <I18nProvider>
       <ThemeProvider>
-        <I18nRuntimeSync />
-        <BrowserRouter>
-          <Toaster />
-          <PwaInstallGate />
-          <AppRoutes />
-        </BrowserRouter>
+        <InterfaceModeProvider>
+          <I18nRuntimeSync />
+          <BrowserRouter>
+            <Toaster />
+            <PwaInstallGate />
+            <AppRoutes />
+          </BrowserRouter>
+        </InterfaceModeProvider>
       </ThemeProvider>
     </I18nProvider>
   );

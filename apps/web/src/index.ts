@@ -220,6 +220,7 @@ app.get('/api/me', async (c) => {
       status: true,
       role: true,
       theme: true,
+      interfaceMode: true,
     },
   });
   const theme =
@@ -229,8 +230,9 @@ app.get('/api/me', async (c) => {
     user?.theme === 'zinc'
       ? user.theme
       : 'linear';
+  const interfaceMode = user?.interfaceMode === 'focus' ? 'focus' : 'classic';
   return c.json({
-    user: user ? { ...user, theme } : null,
+    user: user ? { ...user, theme, interfaceMode } : null,
     setupComplete,
     onboardingDone,
     language,

@@ -3,6 +3,7 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  PanelLeft,
   QrCode,
   RefreshCw,
   ShieldAlert,
@@ -24,6 +25,9 @@ import { useMe } from '../lib/hooks';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { formatDateTime } from '../lib/format';
 import { useI18n } from '../lib/i18n';
+import { useInterfaceMode } from '../lib/interface-mode-provider';
+import type { AppInterfaceMode } from '../lib/interface-mode';
+import { cn } from '../lib/utils';
 
 interface AccountData {
   id: string;
@@ -157,6 +161,8 @@ export function ContaPage(): React.ReactElement {
         title={t('account.title')}
         description={t('account.description')}
       />
+
+      <InterfaceModeCard />
 
       {/* Avatar */}
       <Card elevated>
@@ -318,6 +324,76 @@ export function ContaPage(): React.ReactElement {
         {t('account.createdAt', { date: formatDateTime(new Date(account.createdAt), locale) })}
       </p>
     </PageShell>
+  );
+}
+
+function InterfaceModeCard(): React.ReactElement {
+  const { t } = useI18n();
+  const { interfaceMode, saving, setInterfaceMode } = useInterfaceMode();
+  const choices: Array<{
+    mode: AppInterfaceMode;
+    title: 'interface.classic' | 'interface.focus';
+    description: 'account.interface.classicDescription' | 'account.interface.focusDescription';
+  }> = [
+    {
+      mode: 'classic',
+      title: 'interface.classic',
+      description: 'account.interface.classicDescription',
+    },
+    {
+      mode: 'focus',
+      title: 'interface.focus',
+      description: 'account.interface.focusDescription',
+    },
+  ];
+
+  const selectMode = async (mode: AppInterfaceMode): Promise<void> => {
+    if (mode === interfaceMode) return;
+    try {
+      await setInterfaceMode(mode);
+      toast.success(t('interface.updated'));
+    } catch {
+      toast.error(t('interface.updateFailed'));
+    }
+  };
+
+  return (
+    <Card elevated>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 font-display text-lg">
+          <PanelLeft className="h-4 w-4 text-[var(--color-accent-violet)]" />
+          {t('account.interface.title')}
+        </CardTitle>
+        <CardDescription>{t('account.interface.description')}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-2">
+        {choices.map((choice) => {
+          const selected = interfaceMode === choice.mode;
+          return (
+            <button
+              key={choice.mode}
+              type="button"
+              disabled={saving}
+              aria-pressed={selected}
+              onClick={() => void selectMode(choice.mode)}
+              className={cn(
+                'rounded-xl border p-4 text-left transition-colors disabled:cursor-wait disabled:opacity-60',
+                selected
+                  ? 'border-[var(--color-accent-violet)]/45 bg-[var(--color-accent-violet-soft)]'
+                  : 'border-[var(--color-app-border)] bg-[var(--color-app-bg)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface)]',
+              )}
+            >
+              <span className="block text-sm font-semibold text-[var(--color-app-fg)]">
+                {t(choice.title)}
+              </span>
+              <span className="mt-1.5 block text-xs leading-relaxed text-[var(--color-app-muted)]">
+                {t(choice.description)}
+              </span>
+            </button>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 

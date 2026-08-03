@@ -218,6 +218,13 @@ const ptBRMessages = {
   'theme.switchToLight': 'Mudar para tema claro',
   'theme.switchToDark': 'Mudar para tema escuro',
 
+  'interface.classic': 'Interface clássica',
+  'interface.focus': 'Interface focada',
+  'interface.switchToClassic': 'Usar interface clássica',
+  'interface.switchToFocus': 'Usar interface focada',
+  'interface.updated': 'Interface atualizada.',
+  'interface.updateFailed': 'Não foi possível atualizar a interface.',
+
   'pending.setupTitle': 'Aguardando configuração',
   'pending.setupDescription':
     'O sistema ainda está sendo configurado pelo administrador. Volte em alguns instantes.',
@@ -1029,6 +1036,13 @@ const ptBRMessages = {
   'account.mcp.neverUsed': 'Nunca utilizado',
   'account.title': 'Seu perfil',
   'account.description': 'Atualize seus dados e gerencie sua senha.',
+  'account.interface.title': 'Interface',
+  'account.interface.description':
+    'Escolha como o conteúdo e a navegação se organizam no desktop. Esta preferência é só sua.',
+  'account.interface.classicDescription':
+    'Mantém o shell atual, com a navegação em um painel flutuante.',
+  'account.interface.focusDescription':
+    'Usa a navegação como fundo e destaca o conteúdo em uma superfície central.',
   'account.nameUpdated': 'Nome atualizado.',
   'account.saveFailed': 'Falha ao salvar.',
   'account.avatarUploadError': 'Erro ao enviar imagem.',
@@ -1594,6 +1608,13 @@ const enMessages: Record<I18nKey, string> = {
   'theme.light': 'Light',
   'theme.switchToLight': 'Switch to light theme',
   'theme.switchToDark': 'Switch to dark theme',
+
+  'interface.classic': 'Classic interface',
+  'interface.focus': 'Focused interface',
+  'interface.switchToClassic': 'Use classic interface',
+  'interface.switchToFocus': 'Use focused interface',
+  'interface.updated': 'Interface updated.',
+  'interface.updateFailed': 'Could not update the interface.',
 
   'pending.setupTitle': 'Waiting for setup',
   'pending.setupDescription':
@@ -2402,6 +2423,13 @@ const enMessages: Record<I18nKey, string> = {
   'account.mcp.neverUsed': 'Never used',
   'account.title': 'Your profile',
   'account.description': 'Update your details and manage your password.',
+  'account.interface.title': 'Interface',
+  'account.interface.description':
+    'Choose how content and navigation are arranged on desktop. This preference belongs only to you.',
+  'account.interface.classicDescription':
+    'Keeps the current shell, with navigation in a floating panel.',
+  'account.interface.focusDescription':
+    'Uses navigation as the backdrop and highlights content in one central surface.',
   'account.nameUpdated': 'Name updated.',
   'account.saveFailed': 'Failed to save.',
   'account.avatarUploadError': 'Error uploading image.',

@@ -1,9 +1,11 @@
 import type { AppTheme } from './theme';
+import type { AppInterfaceMode } from './interface-mode';
 
 export type UserStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED';
 export type UserRole = 'ADMIN' | 'USER';
 export type AppLanguage = 'pt-BR' | 'en';
 export type { AppTheme };
+export type { AppInterfaceMode };
 
 export interface MeUser {
   id: string;
@@ -13,6 +15,7 @@ export interface MeUser {
   status: UserStatus;
   role: UserRole;
   theme: AppTheme;
+  interfaceMode: AppInterfaceMode;
 }
 
 export interface MeResponse {
