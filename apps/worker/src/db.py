@@ -461,6 +461,18 @@ async def get_setting_enc(key: str) -> str | None:
         return row["valueEnc"] if row else None
 
 
+async def get_user_setting_enc(user_id: str, key: str) -> str | None:
+    """Lê segredo pessoal; o user_id sempre vem do Job já reivindicado."""
+    async with connection() as conn:
+        row = await conn.fetchrow(
+            'SELECT "valueEnc" FROM "Setting" '
+            "WHERE scope = 'USER' AND \"userId\" = $1 AND key = $2",
+            user_id,
+            key,
+        )
+        return row["valueEnc"] if row else None
+
+
 async def get_settings_enc(keys: tuple[str, ...]) -> dict[str, str]:
     """Lê um snapshot de Settings globais em uma única consulta."""
     if not keys:

@@ -241,7 +241,10 @@ async def test_run_pipeline_retries_probe_with_impersonate_after_rehydration(
         )
 
     assert probe.await_count == 2
-    assert probe.await_args_list[1].kwargs == {"force_impersonate": "chrome"}
+    assert probe.await_args_list[1].kwargs == {
+        "user_id": "user-1",
+        "force_impersonate": "chrome",
+    }
 
 
 async def test_run_pipeline_retries_audio_download_with_impersonate_after_rehydration(
@@ -278,5 +281,5 @@ async def test_run_pipeline_retries_audio_download_with_impersonate_after_rehydr
         )
 
     assert len(calls) >= 2
-    assert calls[0] == {}
-    assert calls[1] == {"force_impersonate": "chrome"}
+    assert calls[0] == {"user_id": "user-1"}
+    assert calls[1] == {"user_id": "user-1", "force_impersonate": "chrome"}

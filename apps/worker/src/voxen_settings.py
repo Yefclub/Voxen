@@ -130,14 +130,14 @@ async def get_yt_dlp_proxy_urls() -> str | None:
     return decrypt(enc, get_master_key())
 
 
-async def get_yt_dlp_cookies() -> str | None:
+async def get_yt_dlp_cookies(user_id: str) -> str | None:
     """Conteúdo do cookies.txt (formato Netscape) para extração autenticada.
 
     Secret cifrado (mesma master key). Quando setado, o worker materializa o
     conteúdo num arquivo temporário 600 e passa via `cookiefile` ao yt-dlp.
     NUNCA logar o retorno desta função.
     """
-    enc = await db.get_setting_enc("yt_dlp_cookies")
+    enc = await db.get_user_setting_enc(user_id, "yt_dlp_cookies")
     if enc is None:
         return None
     return decrypt(enc, get_master_key())

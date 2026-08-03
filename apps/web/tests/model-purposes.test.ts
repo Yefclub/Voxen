@@ -71,9 +71,14 @@ describe('MODEL_PURPOSES', () => {
   });
 
   it('canonicalModelForPurpose retorna o modelo canônico de cada finalidade', () => {
-    expect(canonicalModelForPurpose('default_chat_model')).toBe('x-ai/grok-4.5');
+    expect(canonicalModelForPurpose('default_chat_model')).toBe('deepseek/deepseek-v4-flash-0731');
     expect(canonicalModelForPurpose('default_transcription_model')).toBe('x-ai/grok-stt-1.0');
-    expect(canonicalModelForPurpose('default_web_search_model')).toBe('x-ai/grok-4.5');
+    expect(canonicalModelForPurpose('default_web_search_model')).toBe(
+      'deepseek/deepseek-v4-flash-0731',
+    );
+    expect(canonicalModelForPurpose('default_vision_model')).toBe('openai/gpt-5.6-luna');
+    expect(canonicalModelForPurpose('default_document_model')).toBe('openai/gpt-5.6-luna');
+    expect(canonicalModelForPurpose('default_x_analysis_model')).toBe('x-ai/grok-4.5');
   });
 });
 

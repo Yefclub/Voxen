@@ -386,7 +386,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
     else:
         try:
             probe_info = await _retry_transient(
-                lambda: ytdl.probe(source_url),
+                lambda: ytdl.probe(source_url, user_id=user_id),
                 tries=3,
                 immediate_passthrough=_is_tiktok_rehydration_error,
             )
@@ -398,7 +398,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                     **_error_diagnostic(e, "TIKTOK_PROBE_RETRY"),
                 )
                 probe_info = await _retry_transient(
-                    lambda: ytdl.probe(source_url, force_impersonate="chrome"),
+                    lambda: ytdl.probe(source_url, user_id=user_id, force_impersonate="chrome"),
                     tries=2,
                 )
             else:
@@ -423,7 +423,9 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                 log.info("path-subtitles", lang=lang, fmt=fmt)
                 try:
                     sub_path = await _retry_transient(
-                        lambda: ytdl.download_subtitle(source_url, lang, fmt, tmpdir),
+                        lambda: ytdl.download_subtitle(
+                            source_url, lang, fmt, tmpdir, user_id=user_id
+                        ),
                         tries=3,
                     )
                     content = sub_path.read_text(encoding="utf-8")
@@ -457,7 +459,7 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                 log.info("path-api")
                 try:
                     audio_path = await _retry_transient(
-                        lambda: ytdl.download_audio_opus(source_url, tmpdir),
+                        lambda: ytdl.download_audio_opus(source_url, tmpdir, user_id=user_id),
                         tries=3,
                         immediate_passthrough=_is_tiktok_rehydration_error,
                     )
@@ -471,7 +473,10 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
                         )
                         audio_path = await _retry_transient(
                             lambda: ytdl.download_audio_opus(
-                                source_url, tmpdir, force_impersonate="chrome"
+                                source_url,
+                                tmpdir,
+                                user_id=user_id,
+                                force_impersonate="chrome",
                             ),
                             tries=2,
                         )

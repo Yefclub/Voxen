@@ -8,12 +8,10 @@ afterEach(() => {
 });
 
 describe('URLs da rota de cookies', () => {
-  test('monta os endpoints admin', () => {
-    expect(platformCookiesUrl('https://a.com/')).toBe(
-      'https://a.com/api/admin/integrations/cookies',
-    );
+  test('monta os endpoints pessoais', () => {
+    expect(platformCookiesUrl('https://a.com/')).toBe('https://a.com/api/integrations/cookies');
     expect(platformCookieUrl('https://a.com', 'tiktok')).toBe(
-      'https://a.com/api/admin/integrations/cookies/tiktok',
+      'https://a.com/api/integrations/cookies/tiktok',
     );
   });
 });
@@ -29,7 +27,7 @@ describe('fetchPlatformCookieStatus', () => {
     expect(res.platforms).toHaveLength(1);
   });
 
-  test('403 vira forbidden (usuário não é admin)', async () => {
+  test('403 vira forbidden (usuário não aprovado)', async () => {
     globalThis.fetch = async () => new Response('{}', { status: 403 });
     const res = await fetchPlatformCookieStatus({ baseUrl: 'https://a.com' });
     expect(res).toMatchObject({ ok: false, code: 'forbidden' });
@@ -64,7 +62,7 @@ describe('sendPlatformCookies', () => {
     });
     expect(res.ok).toBe(true);
     expect(res.status.hasCookie).toBe(true);
-    expect(seen.url).toBe('https://a.com/api/admin/integrations/cookies');
+    expect(seen.url).toBe('https://a.com/api/integrations/cookies');
     expect(seen.init.method).toBe('PATCH');
     expect(seen.init.credentials).toBe('include');
     expect(JSON.parse(seen.init.body).platform).toBe('tiktok');

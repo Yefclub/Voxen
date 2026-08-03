@@ -114,6 +114,15 @@ export function AppLayout(): React.ReactElement {
     return <Navigate to="/pendente" replace />;
   }
 
+  // A API já tem guards próprios, mas não montar a tela administrativa evita
+  // confundir usuários comuns e impede flashes de conteúdo ao colar uma URL.
+  if (
+    data.user.role !== 'ADMIN' &&
+    (location.pathname === '/setup' || location.pathname.startsWith('/admin/'))
+  ) {
+    return <Navigate to="/" replace />;
+  }
+
   // App shell de altura fixa: o cabeçalho (Topbar) é um pill flutuante (não
   // ocupa espaço em fluxo) e o conteúdo rola dentro do <main>. /grafo ocupa a
   // tela toda e gerencia a própria altura, então não recebe overflow-y-auto

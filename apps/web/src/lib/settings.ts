@@ -73,6 +73,13 @@ export type GlobalSettingKey =
   /** Modelo OpenRouter de embedding (ex.: openai/text-embedding-3-small). */
   | 'embedding_model';
 
+/**
+ * Segredos e preferências que pertencem à pessoa autenticada, nunca à
+ * instância. Manter esta lista pequena evita que uma configuração operacional
+ * seja gravada acidentalmente no workspace de um usuário.
+ */
+export type UserSettingKey = 'yt_dlp_cookies' | 'platform_cookies_meta';
+
 const X_ANALYSIS_SETTING_KEYS = [
   'default_x_analysis_model',
   'default_grok_model',
@@ -131,7 +138,7 @@ export async function getSettingsByKeys<const Keys extends readonly string[]>(
   const mutableValues = values as Record<string, string | null>;
   const masterKey = rows.length > 0 ? getMasterKey() : null;
   for (const row of rows) {
-    if (masterKey && uniqueKeys.includes(row.key)) {
+    if (masterKey && (uniqueKeys as readonly string[]).includes(row.key)) {
       mutableValues[row.key] = decrypt(row.valueEnc, masterKey);
     }
   }
@@ -142,6 +149,72 @@ export async function getSettings<const Keys extends readonly GlobalSettingKey[]
   keys: Keys,
 ): Promise<{ [Key in Keys[number]]: string | null }> {
   return getSettingsByKeys(keys);
+}
+
+export async function getUserSettings<const Keys extends readonly UserSettingKey[]>(
+  userId: string,
+  keys: Keys,
+): Promise<{ [Key in Keys[number]]: string | null }> {
+  const uniqueKeys = [...new Set(keys)];
+  const rows = await db.setting.findMany({
+    where: { scope: 'USER', userId, key: { in: uniqueKeys } },
+    select: { key: true, valueEnc: true },
+  });
+  const values = Object.fromEntries(keys.map((key) => [key, null])) as {
+    [Key in Keys[number]]: string | null;
+  };
+  const mutableValues = values as Record<string, string | null>;
+  const masterKey = rows.length > 0 ? getMasterKey() : null;
+  for (const row of rows) {
+    if (masterKey && (uniqueKeys as readonly string[]).includes(row.key)) {
+      mutableValues[row.key] = decrypt(row.valueEnc, masterKey);
+    }
+  }
+  return values;
+}
+
+/**
+ * Atualiza atomically settings pessoais cifradas. Não gera ConfigRevision:
+ * esse histórico é reservado à configuração global e não pode revelar nem
+ * sugerir a existência de uma sessão privada de plataforma.
+ */
+export async function setUserSettings(
+  userId: string,
+  values: Partial<Record<UserSettingKey, string | null>>,
+): Promise<void> {
+  const entries = Object.entries(values).filter(
+    (entry): entry is [UserSettingKey, string | null] =>
+      (entry[0] === 'yt_dlp_cookies' || entry[0] === 'platform_cookies_meta') &&
+      (typeof entry[1] === 'string' || entry[1] === null),
+  );
+  if (entries.length === 0) return;
+  const masterKey = getMasterKey();
+  await db.$transaction(async (tx) => {
+    for (const [key, value] of entries) {
+      const where = { scope_userId_key: { scope: 'USER' as const, userId, key } };
+      if (value === null) {
+        await tx.setting.delete({ where }).catch((error: unknown) => {
+          if (isRecordNotFoundError(error)) return;
+          throw error;
+        });
+        continue;
+      }
+      await tx.setting.upsert({
+        where,
+        create: { scope: 'USER', userId, key, valueEnc: encrypt(value, masterKey) },
+        update: { valueEnc: encrypt(value, masterKey) },
+      });
+    }
+  });
+}
+
+function isRecordNotFoundError(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2025',
+  );
 }
 
 export async function getAppLanguage(): Promise<AppLanguage> {

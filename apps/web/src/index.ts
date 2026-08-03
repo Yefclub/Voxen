@@ -11,8 +11,8 @@ import { getAppLanguage, getSetting, isSetupComplete } from './lib/settings';
 import { adminRoutes } from './routes/admin';
 import { adminModelsRoutes } from './routes/admin-models';
 import { adminConfigRevisionRoutes } from './routes/admin-config-revisions';
-import { adminIntegrationCookieRoutes } from './routes/admin-integrations-cookies';
-import { adminAiHealthRoutes, getPublicActiveCapabilities } from './routes/admin-ai-health';
+import { integrationCookieRoutes } from './routes/integration-cookies';
+import { getPublicActiveCapabilities } from './lib/capabilities';
 import { jobsRoutes } from './routes/jobs';
 import { libraryRoutes } from './routes/library';
 import { setupRoutes } from './routes/setup';
@@ -248,10 +248,8 @@ app.route('/api/admin/models', adminModelsRoutes);
 
 app.route('/api/admin/config-revisions', adminConfigRevisionRoutes);
 
-app.route('/api/admin/ai-health', adminAiHealthRoutes);
-
-// Cookies de plataforma capturados pela extensão (spec 121, admin only)
-app.route('/api/admin/integrations/cookies', adminIntegrationCookieRoutes);
+// Cookies de plataforma capturados pela extensão, dedicados ao usuário da sessão.
+app.route('/api/integrations/cookies', integrationCookieRoutes);
 
 // Jobs endpoints (download + transcrição — spec 002)
 app.route('/api/jobs', jobsRoutes);

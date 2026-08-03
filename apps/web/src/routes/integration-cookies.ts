@@ -1,17 +1,17 @@
 // ============================================================================
-// /api/admin/integrations/cookies — cookies de plataforma (spec 121)
+// /api/integrations/cookies — contas pessoais de plataforma (spec 152)
 // ============================================================================
 // Recebe da extensão Voxen o `cookies.txt` (formato Netscape) de uma
-// plataforma de conteúdo (TikTok/Instagram/YouTube) e o persiste cifrado na
-// setting GLOBAL `yt_dlp_cookies` — a MESMA que o worker já consome. As três
-// plataformas convivem no mesmo arquivo; ver lib/platform-cookies.ts.
+// plataforma de conteúdo (TikTok/Instagram/YouTube) e o persiste cifrado no
+// escopo USER. As três plataformas convivem no arquivo daquele usuário; ver
+// lib/platform-cookies.ts.
 //
 // Regra de ouro desta rota: o valor do cookie NUNCA sai daqui. Nenhuma
 // resposta, mensagem de erro ou log carrega o conteúdo — nem mascarado. A
 // leitura de status devolve só { platform, hasCookie, capturedAt, stale }.
 //
-// Escrita restrita a ADMIN: é config de infraestrutura do operador, no mesmo
-// padrão de `yt_dlp_proxy_urls` e `proxy_agent_token`.
+// A sessão do Voxen identifica o dono em todas as operações. Não existe
+// fallback para cookies globais legados: eles não têm proprietário verificável.
 // ============================================================================
 
 import { Hono } from 'hono';
@@ -30,13 +30,13 @@ import {
   serializeCaptureMeta,
   type CookiePlatform,
 } from '../lib/platform-cookies';
-import { getSettings, setSettings } from '../lib/settings';
+import { getUserSettings, setUserSettings } from '../lib/settings';
 
-type Vars = { adminUserId: string };
+type Vars = { userId: string };
 
-export const adminIntegrationCookieRoutes = new Hono<{ Variables: Vars }>();
+export const integrationCookieRoutes = new Hono<{ Variables: Vars }>();
 
-adminIntegrationCookieRoutes.use('*', async (c, next) => {
+integrationCookieRoutes.use('*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.json({ error: 'Não autenticado.' }, 401);
   const user = await db.user.findUnique({
@@ -46,10 +46,7 @@ adminIntegrationCookieRoutes.use('*', async (c, next) => {
   if (!user || user.status !== 'APPROVED') {
     return c.json({ error: 'Acesso negado.' }, 403);
   }
-  if (user.role !== 'ADMIN') {
-    return c.json({ error: 'Acesso restrito a administradores.' }, 403);
-  }
-  c.set('adminUserId', session.user.id);
+  c.set('userId', session.user.id);
   return next();
 });
 
@@ -61,11 +58,11 @@ interface PlatformCookieStatus {
 }
 
 /** Lê o arquivo atual + metadados. O conteúdo fica só nesta closure. */
-async function readState(): Promise<{
+async function readState(userId: string): Promise<{
   cookies: string | null;
   meta: ReturnType<typeof parseCaptureMeta>;
 }> {
-  const stored = await getSettings(['yt_dlp_cookies', 'platform_cookies_meta']);
+  const stored = await getUserSettings(userId, ['yt_dlp_cookies', 'platform_cookies_meta']);
   return {
     cookies: stored.yt_dlp_cookies,
     meta: parseCaptureMeta(stored.platform_cookies_meta),
@@ -84,8 +81,8 @@ function buildStatus(
 }
 
 // GET / — estado das três plataformas. NUNCA devolve o valor dos cookies.
-adminIntegrationCookieRoutes.get('/', async (c) => {
-  const { cookies, meta } = await readState();
+integrationCookieRoutes.get('/', async (c) => {
+  const { cookies, meta } = await readState(c.get('userId'));
   return c.json({
     platforms: COOKIE_PLATFORMS.map((platform) => buildStatus(cookies, meta, platform)),
   });
@@ -101,7 +98,7 @@ const PatchBody = z
 // PATCH / — grava a captura de uma plataforma (merge por domínio: substitui só
 // o bloco daquela plataforma). Captura inválida é rejeitada ANTES de qualquer
 // escrita — o que já estava gravado permanece intacto.
-adminIntegrationCookieRoutes.patch('/', async (c) => {
+integrationCookieRoutes.patch('/', async (c) => {
   const parsedBody = PatchBody.safeParse(await c.req.json().catch(() => null));
   if (!parsedBody.success) {
     return c.json({ error: 'Informe "platform" e "cookies".' }, 400);
@@ -116,42 +113,36 @@ adminIntegrationCookieRoutes.patch('/', async (c) => {
     return c.json({ error: parsed.error }, parsed.status);
   }
 
-  const state = await readState();
+  const state = await readState(c.get('userId'));
   const merged = mergePlatformCookies(state.cookies, platform, parsed.lines);
   const capturedAt = new Date().toISOString();
   const meta = { ...state.meta, [platform]: { capturedAt } };
 
-  await setSettings(
-    {
-      yt_dlp_cookies: merged,
-      platform_cookies_meta: serializeCaptureMeta(meta),
-    },
-    { actorUserId: c.get('adminUserId') },
-  );
+  await setUserSettings(c.get('userId'), {
+    yt_dlp_cookies: merged,
+    platform_cookies_meta: serializeCaptureMeta(meta),
+  });
 
   return c.json(buildStatus(merged, meta, platform));
 });
 
 // DELETE /:platform — revoga a credencial guardada daquela plataforma.
 // Preserva as outras plataformas e cookies manuais de outros domínios.
-adminIntegrationCookieRoutes.delete('/:platform', async (c) => {
+integrationCookieRoutes.delete('/:platform', async (c) => {
   const platform = c.req.param('platform');
   if (!isCookiePlatform(platform)) {
     return c.json({ error: 'Plataforma não suportada.' }, 400);
   }
 
-  const state = await readState();
+  const state = await readState(c.get('userId'));
   const remaining = removePlatformCookies(state.cookies, platform);
   const meta = { ...state.meta };
   delete meta[platform];
 
-  await setSettings(
-    {
-      yt_dlp_cookies: remaining || null,
-      platform_cookies_meta: serializeCaptureMeta(meta),
-    },
-    { actorUserId: c.get('adminUserId') },
-  );
+  await setUserSettings(c.get('userId'), {
+    yt_dlp_cookies: remaining || null,
+    platform_cookies_meta: serializeCaptureMeta(meta),
+  });
 
   return c.json(buildStatus(remaining, meta, platform));
 });
