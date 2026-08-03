@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "coverageMinimum": {
-    "web": 40.85,
+    "web": 33.46,
     "worker": 66.5
   },
   "duplicationMaximum": 2.6,

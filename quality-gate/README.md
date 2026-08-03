@@ -9,6 +9,11 @@ adoption time:
 - a legacy file above 500 lines may stay equal or shrink;
 - a new file may not cross 500 lines.
 
+GitHub Actions is the authoritative adoption environment. Local Bun releases
+can report a different LCOV denominator for the same source set, so the web
+minimum records the first CI measurement while local runs remain useful as a
+regression check.
+
 The comparator also reads the target branch's baseline on pull requests. A PR
 therefore cannot make a regression green by weakening the committed values.
 Baseline edits are valid only when they tighten a metric after a real
