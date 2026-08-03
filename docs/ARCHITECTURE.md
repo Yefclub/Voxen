@@ -53,11 +53,11 @@ Voxen é uma plataforma web self-hosted composta por **3 apps** e **3 serviços 
 Único serviço exposto na borda (porta 3000). Responsabilidades:
 
 - **Front-end**: SPA React (Vite build) com Tailwind v4 + shadcn/ui (zinc). Rotas:
-  - `/login`, `/cadastro`, `/setup` (primeiro user), `/aguardando-aprovacao`
+  - `/entrar`, `/cadastro`, `/onboarding` (primeiro user), `/pendente`
   - `/dashboard` (lista de transcrições, biblioteca)
   - `/chat` (chat com agente, consumindo SSE do `apps/chat`)
   - `/transcricao/:id` (renderiza o `.md` com timestamps clicáveis)
-  - `/admin/usuarios` (aprovação de cadastros), `/admin/custos` (painel)
+  - `/admin/configuracao`, `/admin/integracoes`, `/admin/usuarios`, `/admin/custos`
 - **API HTTP** (Hono routes):
   - `/api/auth/*` — better-auth handlers (email/senha, sessões)
   - `/api/jobs` — POST cria job de download/transcrição, GET lista jobs do user
@@ -164,7 +164,7 @@ worker --socks5h://127.0.0.1:1080--> chisel server (voxen-app)
 1. DB vazio
 2. User acessa /cadastro, preenche nome+email+senha
 3. Backend: count(users) == 0 → marca admin=true, status=approved
-4. Login → redireciona pra /setup (obrigatório enquanto Settings.GLOBAL.openrouter_api_key == null)
+4. Login → redireciona para `/onboarding` enquanto o fluxo inicial não foi concluído
 5. Admin cola apenas a OR API key; o backend valida o catálogo disponível para essa chave e salva, na mesma transação, a chave cifrada e os modelos recomendados
 6. Sistema pronto pra receber outros cadastros (pending)
 ```

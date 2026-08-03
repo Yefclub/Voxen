@@ -17,9 +17,9 @@ export function AdminLayout(): React.ReactElement {
   return (
     <div className="min-h-full">
       <header className="mx-auto mb-7 w-full max-w-[1600px] px-4 sm:px-7 xl:px-10">
-        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.045] p-4 sm:p-5">
+        <div className="rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-accent-violet-soft)] p-4 sm:p-5">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-500/25 bg-violet-500/10 text-violet-300">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--color-accent-violet)]/25 bg-[var(--color-app-bg-elevated)] text-[var(--color-accent-violet)]">
               <ShieldCheck className="h-4 w-4" />
             </span>
             <div className="min-w-0">
@@ -32,7 +32,7 @@ export function AdminLayout(): React.ReactElement {
             </div>
           </div>
           <nav
-            className="mt-4 flex gap-1 overflow-x-auto border-t border-violet-500/15 pt-3"
+            className="mt-4 flex gap-1 overflow-x-auto border-t border-[var(--color-app-border)] pt-3"
             aria-label={t('admin.shell.title')}
           >
             {ADMIN_NAV.map(({ to, labelKey, Icon }) => (
@@ -43,7 +43,7 @@ export function AdminLayout(): React.ReactElement {
                   cn(
                     'flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors',
                     isActive
-                      ? 'bg-violet-500/15 text-violet-200'
+                      ? 'bg-[var(--color-app-bg-elevated)] text-[var(--color-accent-violet)]'
                       : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
                   )
                 }

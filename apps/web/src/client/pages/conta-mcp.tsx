@@ -13,6 +13,7 @@ import { Spinner } from '../components/ui/spinner';
 import { Switch } from '../components/ui/switch';
 import { ApiError, apiDelete, apiGet, apiPost } from '../lib/api';
 import { useI18n } from '../lib/i18n';
+import { nextLocalDateTimeInputMin } from '../lib/local-datetime';
 
 interface PersonalMcpToken {
   id: string;
@@ -40,6 +41,7 @@ export function ContaMcpPage(): React.ReactElement {
   const [copied, setCopied] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<PersonalMcpToken | null>(null);
   const endpoint = useMemo(() => `${window.location.origin}/mcp`, []);
+  const minExpiry = useMemo(() => nextLocalDateTimeInputMin(new Date()), []);
 
   async function refresh(): Promise<void> {
     try {
@@ -127,9 +129,14 @@ export function ContaMcpPage(): React.ReactElement {
             <CardDescription>{t('account.mcp.secretDescription')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex gap-2">
-              <Input readOnly value={secret} className="font-mono text-xs" />
-              <Button type="button" variant="outline" onClick={() => void copySecret()}>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input readOnly value={secret} className="min-w-0 font-mono text-xs" />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => void copySecret()}
+              >
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 {copied ? t('common.copied') : t('common.copy')}
               </Button>
@@ -180,7 +187,7 @@ export function ContaMcpPage(): React.ReactElement {
                   id="mcp-token-expiry"
                   type="datetime-local"
                   value={expiresAt}
-                  min={new Date().toISOString().slice(0, 16)}
+                  min={minExpiry}
                   onChange={(event) => setExpiresAt(event.target.value)}
                 />
                 <p className="text-[11px] text-[var(--color-app-muted)]">
