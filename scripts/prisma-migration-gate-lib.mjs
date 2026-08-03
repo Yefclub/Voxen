@@ -110,9 +110,13 @@ export function validateGateDatabaseUrls(databaseUrl, shadowDatabaseUrl) {
     try {
       const url = new URL(value);
       const database = decodeURIComponent(url.pathname.replace(/^\//, ""));
+      const hostname =
+        url.hostname.startsWith("[") && url.hostname.endsWith("]")
+          ? url.hostname.slice(1, -1)
+          : url.hostname;
       if (!["postgres:", "postgresql:"].includes(url.protocol))
         throw new Error("must use PostgreSQL");
-      if (!["localhost", "127.0.0.1", "::1"].includes(url.hostname))
+      if (!["localhost", "127.0.0.1", "::1"].includes(hostname))
         throw new Error("must use a loopback host");
       if (!database.endsWith(suffix))
         throw new Error(`database name must end with ${suffix}`);
@@ -160,11 +164,158 @@ export function missingCustomGinIndexes(migrationSql, ignoredIndexes) {
   ) {
     throw new Error("Drift allowlist contains an invalid index name.");
   }
-  return ignoredIndexes.filter((name) => {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return !new RegExp(
-      `CREATE\\s+(?:UNIQUE\\s+)?INDEX(?:\\s+IF\\s+NOT\\s+EXISTS)?\\s+"${escaped}"[^;]*USING\\s+GIN`,
-      "i",
-    ).test(migrationSql);
-  });
+  const indexes = finalIndexMethods(migrationSql);
+  return ignoredIndexes.filter((name) => indexes.get(name) !== "GIN");
+}
+
+function sqlStatements(source) {
+  const statements = [];
+  let statement = "";
+  let state = "normal";
+  let dollarTag = "";
+  let blockDepth = 0;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1] ?? "";
+
+    if (state === "line-comment") {
+      if (char === "\n") {
+        state = "normal";
+        statement += "\n";
+      }
+      continue;
+    }
+    if (state === "block-comment") {
+      if (char === "/" && next === "*") {
+        blockDepth += 1;
+        index += 1;
+      } else if (char === "*" && next === "/") {
+        blockDepth -= 1;
+        index += 1;
+        if (blockDepth === 0) state = "normal";
+      }
+      continue;
+    }
+    if (state === "single-quote") {
+      if (char === "\\") {
+        index += 1;
+      } else if (char === "'" && next === "'") {
+        index += 1;
+      } else if (char === "'") {
+        state = "normal";
+        statement += "''";
+      }
+      continue;
+    }
+    if (state === "double-quote") {
+      statement += char;
+      if (char === '"' && next === '"') {
+        statement += next;
+        index += 1;
+      } else if (char === '"') {
+        state = "normal";
+      }
+      continue;
+    }
+    if (state === "dollar-quote") {
+      if (source.startsWith(dollarTag, index)) {
+        index += dollarTag.length - 1;
+        state = "normal";
+        statement += "''";
+      }
+      continue;
+    }
+
+    if (char === "-" && next === "-") {
+      state = "line-comment";
+      index += 1;
+    } else if (char === "/" && next === "*") {
+      state = "block-comment";
+      blockDepth = 1;
+      index += 1;
+    } else if (char === "'") {
+      state = "single-quote";
+    } else if (char === '"') {
+      state = "double-quote";
+      statement += char;
+    } else if (char === "$") {
+      const match = source
+        .slice(index)
+        .match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/);
+      if (match) {
+        dollarTag = match[0];
+        state = "dollar-quote";
+        index += dollarTag.length - 1;
+      } else {
+        statement += char;
+      }
+    } else if (char === ";") {
+      if (statement.trim()) statements.push(statement.trim());
+      statement = "";
+    } else {
+      statement += char;
+    }
+  }
+
+  if (statement.trim()) statements.push(statement.trim());
+  return statements;
+}
+
+function finalIndexMethods(source) {
+  const indexes = new Map();
+  for (const statement of sqlStatements(source)) {
+    const create = statement.match(
+      /^CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+CONCURRENTLY)?(\s+IF\s+NOT\s+EXISTS)?\s+"((?:[^"]|"")+)"([\s\S]*)$/i,
+    );
+    if (create) {
+      const name = create[2].replaceAll('""', '"');
+      if (create[1] && indexes.has(name)) continue;
+      const method = stripQuotedIdentifiers(create[3]).match(
+        /\bUSING\s+([A-Za-z][A-Za-z0-9_]*)\b/i,
+      );
+      indexes.set(name, (method?.[1] ?? "BTREE").toUpperCase());
+      continue;
+    }
+
+    const drop = statement.match(
+      /^DROP\s+INDEX(?:\s+CONCURRENTLY)?(?:\s+IF\s+EXISTS)?\s+([\s\S]+)$/i,
+    );
+    if (drop) {
+      for (const match of drop[1].matchAll(/"([^"]+)"/g)) {
+        indexes.delete(match[1]);
+      }
+      continue;
+    }
+
+    const rename = statement.match(
+      /^ALTER\s+INDEX(?:\s+IF\s+EXISTS)?\s+"([^"]+)"\s+RENAME\s+TO\s+"([^"]+)"$/i,
+    );
+    if (rename && indexes.has(rename[1])) {
+      const method = indexes.get(rename[1]);
+      indexes.delete(rename[1]);
+      indexes.set(rename[2], method);
+    }
+  }
+  return indexes;
+}
+
+function stripQuotedIdentifiers(source) {
+  let output = "";
+  let quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1] ?? "";
+    if (!quoted && char === '"') {
+      quoted = true;
+      output += '""';
+    } else if (quoted && char === '"' && next === '"') {
+      index += 1;
+    } else if (quoted && char === '"') {
+      quoted = false;
+    } else if (!quoted) {
+      output += char;
+    }
+  }
+  return output;
 }

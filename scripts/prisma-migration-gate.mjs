@@ -46,6 +46,7 @@ function currentMigrations() {
   return new Map(
     readdirSync(MIGRATIONS, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
+      .sort((left, right) => left.name.localeCompare(right.name))
       .map((entry) => {
         const path = `prisma/migrations/${entry.name}/migration.sql`;
         const absolute = join(ROOT, path);

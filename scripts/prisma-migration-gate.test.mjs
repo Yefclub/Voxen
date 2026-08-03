@@ -94,7 +94,7 @@ test("database URLs are restricted to dedicated loopback databases", () => {
   assert.deepEqual(
     validateGateDatabaseUrls(
       "postgresql://voxen:dev@127.0.0.1:5432/voxen_migration_gate",
-      "postgresql://voxen:dev@localhost:5432/voxen_shadow",
+      "postgresql://voxen:dev@[::1]:5432/voxen_shadow",
     ),
     [],
   );
@@ -143,5 +143,29 @@ test("drift allowlist suppresses only exact custom index removals", () => {
       ["ordinary_idx"],
     ),
     ["ordinary_idx"],
+  );
+  assert.deepEqual(
+    missingCustomGinIndexes(
+      [
+        'CREATE INDEX "ordinary_idx" ON "Note" ("updatedAt");',
+        '-- CREATE INDEX "ordinary_idx" ON "Note" USING GIN ("searchVector");',
+        'SELECT \'CREATE INDEX "ordinary_idx" ON "Note" USING GIN ("searchVector");\';',
+        'DO $$ BEGIN RAISE NOTICE \'CREATE INDEX "ordinary_idx" ON "Note" USING GIN ("searchVector");\'; END $$;',
+        'CREATE INDEX "quoted_idx" ON "table USING GIN fake" ("value");',
+      ].join("\n"),
+      ["ordinary_idx", "quoted_idx"],
+    ),
+    ["ordinary_idx", "quoted_idx"],
+  );
+  assert.deepEqual(
+    missingCustomGinIndexes(
+      [
+        'CREATE INDEX "replaced_idx" ON "Note" USING GIN ("searchVector");',
+        'DROP INDEX "replaced_idx";',
+        'CREATE INDEX "replaced_idx" ON "Note" ("updatedAt");',
+      ].join("\n"),
+      ["replaced_idx"],
+    ),
+    ["replaced_idx"],
   );
 });
