@@ -45,7 +45,7 @@ export function reconcileSnapshotMessages<T extends SnapshotMessage>(
   return mergeChatMessagePages(base, protectedMessages);
 }
 
-export type SnapshotReconciler<T> = {
+export type SnapshotReconciler = {
   reconcile(replace?: boolean): Promise<void>;
 };
 
@@ -58,7 +58,7 @@ export function createSnapshotReconciler<T>(
   load: () => Promise<T>,
   apply: (snapshot: T, replace: boolean) => void,
   onError: () => void = () => undefined,
-): SnapshotReconciler<T> {
+): SnapshotReconciler {
   let inFlight: Promise<void> | null = null;
   let currentReplace = false;
   let pendingReplace = false;

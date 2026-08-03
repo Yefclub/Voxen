@@ -884,7 +884,7 @@ export function ChatPage(): React.ReactElement {
   const spacerNodeRef = useRef<HTMLDivElement>(null);
   const didInitialScroll = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
-  const snapshotReconcilerRef = useRef<SnapshotReconciler<Snapshot> | null>(null);
+  const snapshotReconcilerRef = useRef<SnapshotReconciler | null>(null);
   const streamingAssistantId = useRef<string | null>(null);
   const pendingAnchorIdRef = useRef<string | null>(null);
   /** Handoff one-shot de outras páginas (detalhe de transcrição, etc.). */
