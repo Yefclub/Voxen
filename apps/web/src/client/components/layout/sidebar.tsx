@@ -17,6 +17,7 @@ import {
   Notebook,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelLeft,
   Plus,
   Puzzle,
   ShieldCheck,
@@ -42,6 +43,8 @@ import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import { NotesTree } from '../notes/notes-tree';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+import { useInterfaceMode } from '../../lib/interface-mode-provider';
+import { toast } from '../../lib/toast';
 
 export interface NavItem {
   to: string;
@@ -169,6 +172,8 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const { collapsed, setCollapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
   const reduceMotion = useReducedMotion();
+  const { interfaceMode } = useInterfaceMode();
+  const focusInterface = interfaceMode === 'focus';
 
   // A deixa dos ícones da nav é um contador, não um booleano de montagem: só
   // uma MUDANÇA de sinal dispara. Assim o primeiro carregamento não pontua
@@ -210,11 +215,17 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             transition={
               reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }
             }
-            className="hidden md:flex fixed top-4 bottom-4 left-4 z-40 flex-col rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl overflow-hidden"
+            className={cn(
+              'hidden md:flex fixed z-40 flex-col overflow-hidden',
+              focusInterface
+                ? 'inset-y-0 left-0 bg-transparent'
+                : 'top-4 bottom-4 left-4 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl',
+            )}
             style={{ width: SIDEBAR_WIDTH }}
           >
-            <SidebarHeader onCollapse={() => setCollapsed(true)} />
+            <SidebarHeader focusInterface={focusInterface} onCollapse={() => setCollapsed(true)} />
             <SidebarModeBody user={user} hideHome cueSignal={cueSignal} />
+            <SidebarInterfaceModeButton />
             <SidebarChangelogButton />
             <SidebarSignOut />
           </motion.aside>
@@ -243,6 +254,8 @@ function SidebarRail({
 }): React.ReactElement {
   const { t } = useI18n();
   const reduceMotion = useReducedMotion();
+  const { interfaceMode } = useInterfaceMode();
+  const focusInterface = interfaceMode === 'focus';
   const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN').filter(
     (n) => n.to !== '/',
@@ -257,7 +270,12 @@ function SidebarRail({
       animate={{ opacity: 1, x: 0 }}
       exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -16 }}
       transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }}
-      className="hidden md:flex fixed top-4 bottom-4 left-4 z-40 flex-col items-center gap-1 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2 py-3 backdrop-blur-xl"
+      className={cn(
+        'hidden md:flex fixed z-40 flex-col items-center gap-1 px-2 py-3',
+        focusInterface
+          ? 'inset-y-0 left-0 bg-transparent'
+          : 'top-4 bottom-4 left-4 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl',
+      )}
       style={{ width: RAIL_WIDTH }}
       aria-label={t('shell.openMenu')}
     >
@@ -313,6 +331,7 @@ function SidebarRail({
         */}
         <div className="mt-auto flex w-full flex-col items-center gap-1">
           <div className="my-1 h-px w-6 bg-[var(--color-app-border)]" />
+          <SidebarInterfaceModeButton variant="rail" iconRef={registerIcon('interface-mode')} />
           <SidebarChangelogButton variant="rail" iconRef={registerIcon('changelog')} />
           <SidebarSignOut variant="rail" iconRef={registerIcon('sign-out')} />
         </div>
@@ -368,6 +387,74 @@ export function SidebarChangelogButton({
   );
 }
 
+export function SidebarInterfaceModeButton({
+  variant = 'full',
+  iconRef,
+}: SidebarItemProps = {}): React.ReactElement {
+  const { t } = useI18n();
+  const { interfaceMode, saving, toggleInterface } = useInterfaceMode();
+  const focusInterface = interfaceMode === 'focus';
+  const actionLabel = t(focusInterface ? 'interface.switchToClassic' : 'interface.switchToFocus');
+
+  const onToggle = async (): Promise<void> => {
+    try {
+      await toggleInterface();
+      toast.success(t('interface.updated'));
+    } catch {
+      toast.error(t('interface.updateFailed'));
+    }
+  };
+
+  if (variant === 'rail') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void onToggle()}
+            aria-label={actionLabel}
+            aria-pressed={focusInterface}
+            className={cn(
+              RAIL_ITEM_CLASS,
+              focusInterface
+                ? 'bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]'
+                : RAIL_ITEM_IDLE_CLASS,
+              'disabled:cursor-wait disabled:opacity-50',
+            )}
+          >
+            <PanelLeft ref={iconRef} duration={ICON_CUE_DURATION} className={RAIL_ICON_CLASS} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{actionLabel}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <div className="shrink-0 px-3 py-1.5">
+      <button
+        type="button"
+        disabled={saving}
+        onClick={() => void onToggle()}
+        aria-pressed={focusInterface}
+        className={cn(
+          'flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium transition-colors disabled:cursor-wait disabled:opacity-50',
+          focusInterface
+            ? 'bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]'
+            : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
+        )}
+      >
+        <PanelLeft className="h-4 w-4 shrink-0" />
+        <span className="truncate">
+          {t(focusInterface ? 'interface.focus' : 'interface.classic')}
+        </span>
+        <span className="sr-only">{actionLabel}</span>
+      </button>
+    </div>
+  );
+}
+
 export function SidebarSignOut({
   variant = 'full',
   iconRef,
@@ -418,10 +505,21 @@ export function SidebarSignOut({
   );
 }
 
-function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactElement {
+function SidebarHeader({
+  focusInterface,
+  onCollapse,
+}: {
+  focusInterface: boolean;
+  onCollapse: () => void;
+}): React.ReactElement {
   const { t } = useI18n();
   return (
-    <div className="flex items-center h-16 px-4 border-b border-[var(--color-app-border)] shrink-0">
+    <div
+      className={cn(
+        'flex h-16 shrink-0 items-center px-4',
+        !focusInterface && 'border-b border-[var(--color-app-border)]',
+      )}
+    >
       <div className="relative shrink-0 h-9 w-9">
         <img
           src="/voxen-256.png"
@@ -677,11 +775,19 @@ function NotasModeBody({
 
 export function SidebarSpacer(): React.ReactElement | null {
   const { collapsed } = useSidebarCollapsed();
+  const { interfaceMode } = useInterfaceMode();
   const isDesktop = useIsDesktop();
   const reduceMotion = useReducedMotion();
   // No mobile não há sidebar montada — sem spacer (evita reservar largura).
   if (!isDesktop) return null;
-  const width = collapsed ? RAIL_WIDTH + 16 : SIDEBAR_WIDTH + 32;
+  const width =
+    interfaceMode === 'focus'
+      ? collapsed
+        ? RAIL_WIDTH
+        : SIDEBAR_WIDTH
+      : collapsed
+        ? RAIL_WIDTH + 16
+        : SIDEBAR_WIDTH + 32;
   return (
     <motion.div
       className="hidden md:block shrink-0"

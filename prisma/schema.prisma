@@ -54,6 +54,8 @@ model User {
   role                  UserRole               @default(USER)
   // UI theme: linear (default) | zinc | emerald | light
   theme                 String                 @default("linear")
+  // Desktop shell preference: classic (default) | focus
+  interfaceMode         String                 @default("classic")
   monthlyBudgetUsd      Decimal?               @db.Decimal(10, 4) // null = sem limite
   approvedAt            DateTime?
   approvedBy            String?

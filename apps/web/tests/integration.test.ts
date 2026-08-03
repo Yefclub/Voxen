@@ -630,4 +630,73 @@ describeIfDb('auth + admin approval flow', () => {
     const res = await app.fetch(new Request('http://localhost/api/admin/usuarios'));
     expect(res.status).toBe(401);
   });
+
+  it('persists interface mode only for the authenticated account and rejects unknown modes', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('user@voxen.local', 'senha-super-segura-456', 'User');
+    const adminCookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'user@voxen.local' } });
+    await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${user.id}/approve`, {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    const userCookie = extractCookie(await signIn('user@voxen.local', 'senha-super-segura-456'));
+
+    const update = await app.fetch(
+      new Request('http://localhost/api/account', {
+        method: 'PATCH',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ interfaceMode: 'focus' }),
+      }),
+    );
+    expect(update.status).toBe(200);
+    expect((await update.json()) as unknown).toMatchObject({
+      user: { interfaceMode: 'focus' },
+    });
+
+    const adminMe = await app.fetch(
+      new Request('http://localhost/api/me', { headers: { cookie: adminCookie } }),
+    );
+    const userMe = await app.fetch(
+      new Request('http://localhost/api/me', { headers: { cookie: userCookie } }),
+    );
+    expect((await adminMe.json()) as unknown).toMatchObject({
+      user: { email: 'admin@voxen.local', interfaceMode: 'focus' },
+    });
+    expect((await userMe.json()) as unknown).toMatchObject({
+      user: { email: 'user@voxen.local', interfaceMode: 'classic' },
+    });
+
+    const invalid = await app.fetch(
+      new Request('http://localhost/api/account', {
+        method: 'PATCH',
+        headers: { cookie: userCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ interfaceMode: 'immersive' }),
+      }),
+    );
+    expect(invalid.status).toBe(400);
+    expect(
+      (await db.user.findUniqueOrThrow({ where: { email: 'user@voxen.local' } })).interfaceMode,
+    ).toBe('classic');
+
+    await db.user.update({
+      where: { email: 'user@voxen.local' },
+      data: { interfaceMode: 'unsupported-value' },
+    });
+    const defensiveMe = await app.fetch(
+      new Request('http://localhost/api/me', { headers: { cookie: userCookie } }),
+    );
+    const defensiveAccount = await app.fetch(
+      new Request('http://localhost/api/account', { headers: { cookie: userCookie } }),
+    );
+    expect((await defensiveMe.json()) as unknown).toMatchObject({
+      user: { interfaceMode: 'classic' },
+    });
+    expect((await defensiveAccount.json()) as unknown).toMatchObject({
+      user: { interfaceMode: 'classic' },
+    });
+  });
 });

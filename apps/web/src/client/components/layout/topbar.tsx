@@ -32,6 +32,7 @@ import { APP_THEMES, type AppTheme } from '../../lib/theme';
 import { cn } from '../../lib/utils';
 import { hidesBottomNav, isChatRoute } from '../../lib/mobile-nav';
 import { requestClearConversation, setSounds, useChatShell } from '../../lib/chat-shell-state';
+import { useInterfaceMode } from '../../lib/interface-mode-provider';
 
 function initials(name: string): string {
   return name
@@ -67,6 +68,7 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   const { refresh } = useMe();
   const { t } = useI18n();
   const { theme, setTheme, toggleAppearance } = useTheme();
+  const { interfaceMode } = useInterfaceMode();
   const inChat = isChatRoute(location.pathname);
   const mobileUserMenuNeeded = hidesBottomNav(location.pathname, false);
   const onSignOut = async (): Promise<void> => {
@@ -79,7 +81,10 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
     <header
       className={cn(
         'fixed right-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 flex items-center gap-1.5 border-0 bg-transparent p-0 shadow-none backdrop-blur-none',
-        'md:right-4 md:top-[calc(env(safe-area-inset-top)+1rem)] md:gap-3 md:rounded-2xl md:border md:border-[var(--color-app-border)] md:bg-[var(--color-app-bg-elevated)]/85 md:px-2.5 md:py-2 md:backdrop-blur-xl',
+        'md:gap-3 md:rounded-2xl md:border md:border-[var(--color-app-border)] md:bg-[var(--color-app-bg-elevated)]/85 md:px-2.5 md:py-2 md:backdrop-blur-xl',
+        interfaceMode === 'focus'
+          ? 'md:right-5 md:top-[calc(env(safe-area-inset-top)+1.25rem)]'
+          : 'md:right-4 md:top-[calc(env(safe-area-inset-top)+1rem)]',
       )}
     >
       {inChat && <ChatShellControls />}
