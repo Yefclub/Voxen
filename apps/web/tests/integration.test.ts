@@ -295,6 +295,14 @@ describeIfDb('auth + admin approval flow', () => {
     const userCookie = extractCookie(
       await signIn('mcp-user@voxen.local', 'senha-super-segura-456'),
     );
+    const initialList = await app.fetch(
+      new Request('http://localhost/api/mcp/tokens', { headers: { cookie: userCookie } }),
+    );
+    expect(await initialList.json()).toMatchObject({ tokens: [], allowCreate: false });
+    const adminPersonalList = await app.fetch(
+      new Request('http://localhost/api/mcp/tokens', { headers: { cookie: adminCookie } }),
+    );
+    expect(await adminPersonalList.json()).toMatchObject({ allowCreate: true });
     const denied = await app.fetch(
       new Request('http://localhost/api/mcp/tokens', {
         method: 'POST',
@@ -320,10 +328,21 @@ describeIfDb('auth + admin approval flow', () => {
     );
     expect(created.status).toBe(201);
     const token = (await created.json()) as { token: string; metadata: { id: string } };
+    const crossUserRevoke = await app.fetch(
+      new Request(`http://localhost/api/mcp/tokens/${token.metadata.id}`, {
+        method: 'DELETE',
+        headers: { cookie: adminCookie },
+      }),
+    );
+    expect(crossUserRevoke.status).toBe(404);
     const list = await app.fetch(
       new Request('http://localhost/api/mcp/tokens', { headers: { cookie: userCookie } }),
     );
-    const listBody = (await list.json()) as { tokens: Record<string, unknown>[] };
+    const listBody = (await list.json()) as {
+      tokens: Record<string, unknown>[];
+      allowCreate: boolean;
+    };
+    expect(listBody.allowCreate).toBe(true);
     expect(listBody.tokens[0]).not.toHaveProperty('token');
     const tools = await app.fetch(
       new Request('http://localhost/mcp', {

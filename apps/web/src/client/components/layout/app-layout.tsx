@@ -118,7 +118,9 @@ export function AppLayout(): React.ReactElement {
   // confundir usuários comuns e impede flashes de conteúdo ao colar uma URL.
   if (
     data.user.role !== 'ADMIN' &&
-    (location.pathname === '/setup' || location.pathname.startsWith('/admin/'))
+    (location.pathname === '/setup' ||
+      location.pathname === '/admin' ||
+      location.pathname.startsWith('/admin/'))
   ) {
     return <Navigate to="/" replace />;
   }
@@ -199,8 +201,8 @@ function getSectionKey(pathname: string): string {
   if (isChatRoute(pathname)) return 'chat';
   const segments = pathname.split('/').filter(Boolean);
   const root = segments[0] ?? 'dashboard';
-  // /admin/usuarios, /admin/custos e /admin/integracoes são seções distintas.
-  return root === 'admin' ? `admin/${segments[1] ?? ''}` : root;
+  // Administration has its own shell; switching tabs does not remount the domain.
+  return root === 'admin' ? 'admin' : root;
 }
 
 /**
