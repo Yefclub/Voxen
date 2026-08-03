@@ -45,12 +45,25 @@ export function parseLcov(
   for (const record of source.split("end_of_record")) {
     const path = record.match(/^SF:(.+)$/m)?.[1]?.replaceAll("\\", "/");
     if (!path || !include(path)) continue;
-    reported.add(path);
-    const found = Number(record.match(/^LF:(\d+)$/m)?.[1] ?? 0);
-    const hit = Number(record.match(/^LH:(\d+)$/m)?.[1] ?? 0);
-    if (!Number.isFinite(found) || !Number.isFinite(hit) || hit > found) {
+    if (reported.has(path))
+      throw new Error(`Web LCOV contains duplicate source record ${path}.`);
+    const foundMatch = record.match(/^LF:(\d+)$/m);
+    const hitMatch = record.match(/^LH:(\d+)$/m);
+    if (!foundMatch || !hitMatch) {
+      throw new Error(`Web LCOV is missing line totals for ${path}.`);
+    }
+    const found = Number(foundMatch[1]);
+    const hit = Number(hitMatch[1]);
+    if (
+      !Number.isSafeInteger(found) ||
+      !Number.isSafeInteger(hit) ||
+      found < 0 ||
+      hit < 0 ||
+      hit > found
+    ) {
       throw new Error(`Invalid LCOV line totals for ${path}.`);
     }
+    reported.add(path);
     totalLines += found;
     coveredLines += hit;
   }
@@ -69,12 +82,14 @@ export function parseLcov(
 
 export function parsePythonCoverage(source) {
   const report = JSON.parse(source);
-  const coveredLines = Number(report?.totals?.covered_lines);
-  const totalLines = Number(report?.totals?.num_statements);
+  const coveredLines = report?.totals?.covered_lines;
+  const totalLines = report?.totals?.num_statements;
   if (
-    !Number.isFinite(coveredLines) ||
-    !Number.isFinite(totalLines) ||
-    totalLines <= 0
+    !Number.isSafeInteger(coveredLines) ||
+    !Number.isSafeInteger(totalLines) ||
+    coveredLines < 0 ||
+    totalLines <= 0 ||
+    coveredLines > totalLines
   ) {
     throw new Error("Worker coverage JSON has invalid totals.");
   }
@@ -88,14 +103,17 @@ export function parsePythonCoverage(source) {
 export function parseJscpdReport(source) {
   const report = JSON.parse(source);
   const total = report?.statistics?.total;
-  const duplicatedLines = Number(total?.duplicatedLines);
-  const totalLines = Number(total?.lines);
-  const clones = Number(total?.clones);
+  const duplicatedLines = total?.duplicatedLines;
+  const totalLines = total?.lines;
+  const clones = total?.clones;
   if (
-    !Number.isFinite(duplicatedLines) ||
-    !Number.isFinite(totalLines) ||
+    !Number.isSafeInteger(duplicatedLines) ||
+    !Number.isSafeInteger(totalLines) ||
+    duplicatedLines < 0 ||
     totalLines <= 0 ||
-    !Number.isFinite(clones)
+    duplicatedLines > totalLines ||
+    !Number.isSafeInteger(clones) ||
+    clones < 0
   ) {
     throw new Error("jscpd JSON has invalid totals.");
   }

@@ -192,6 +192,7 @@ jobs:
     name: Quality Gate
     runs-on: ubuntu-latest
     needs: [test-ts, test-py-worker]
+    if: ${{ always() }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -205,23 +206,40 @@ jobs:
         if: github.event_name == 'pull_request'
         run: git fetch --no-tags origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
       - name: Download web coverage
+        if: ${{ always() }}
         uses: actions/download-artifact@v7
         with:
           name: web-coverage
           path: quality-gate/input/web
       - name: Download worker coverage
+        if: ${{ always() }}
         uses: actions/download-artifact@v7
         with:
           name: worker-coverage
           path: quality-gate/input/worker
       - name: Preserve raw coverage evidence
+        if: ${{ always() }}
         run: |
           mkdir -p quality-gate/output/raw
-          cp quality-gate/input/web/lcov.info quality-gate/output/raw/web-lcov.info
-          cp quality-gate/input/worker/coverage.json quality-gate/output/raw/worker-coverage.json
+          missing=0
+          if [ -f quality-gate/input/web/lcov.info ]; then
+            cp quality-gate/input/web/lcov.info quality-gate/output/raw/web-lcov.info
+          else
+            echo "Web coverage artifact is missing."
+            missing=1
+          fi
+          if [ -f quality-gate/input/worker/coverage.json ]; then
+            cp quality-gate/input/worker/coverage.json quality-gate/output/raw/worker-coverage.json
+          else
+            echo "Worker coverage artifact is missing."
+            missing=1
+          fi
+          exit "$missing"
       - name: Collect duplication evidence
+        if: ${{ always() }}
         run: pnpm quality:duplicates
       - name: Evaluate quality ratchet
+        if: ${{ always() }}
         env:
           QUALITY_GATE_BASELINE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: pnpm quality:check
@@ -232,6 +250,7 @@ jobs:
           name: quality-gate-report
           path: quality-gate/output
           retention-days: 14
+          if-no-files-found: error
 
   # ==========================================================================
   # As três imagens são construídas em PARALELO. Antes eram três passos

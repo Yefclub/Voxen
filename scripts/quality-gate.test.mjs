@@ -172,6 +172,57 @@ test("malformed evidence fails closed", () => {
   assert.throws(() =>
     parseLcov("SF:tests/only.test.ts\nLF:2\nLH:2\nend_of_record"),
   );
+  assert.throws(() => parseLcov("SF:src/missing-totals.ts\nend_of_record"));
+  assert.throws(() =>
+    parseLcov("SF:src/impossible.ts\nLF:1\nLH:2\nend_of_record"),
+  );
+  assert.throws(() =>
+    parseLcov(
+      "SF:src/duplicate.ts\nLF:1\nLH:1\nend_of_record\nSF:src/duplicate.ts\nLF:1\nLH:1\nend_of_record",
+    ),
+  );
   assert.throws(() => parsePythonCoverage("{}"));
+  assert.throws(() =>
+    parsePythonCoverage(
+      JSON.stringify({ totals: { covered_lines: 20, num_statements: 10 } }),
+    ),
+  );
+  assert.throws(() =>
+    parsePythonCoverage(
+      JSON.stringify({ totals: { covered_lines: -1, num_statements: 10 } }),
+    ),
+  );
+  assert.throws(() =>
+    parsePythonCoverage(
+      JSON.stringify({ totals: { covered_lines: "8", num_statements: 10 } }),
+    ),
+  );
   assert.throws(() => parseJscpdReport("{}"));
+  assert.throws(() =>
+    parseJscpdReport(
+      JSON.stringify({
+        statistics: {
+          total: { duplicatedLines: -5, lines: 100, clones: 1 },
+        },
+      }),
+    ),
+  );
+  assert.throws(() =>
+    parseJscpdReport(
+      JSON.stringify({
+        statistics: {
+          total: { duplicatedLines: 101, lines: 100, clones: -1 },
+        },
+      }),
+    ),
+  );
+  assert.throws(() =>
+    parseJscpdReport(
+      JSON.stringify({
+        statistics: {
+          total: { duplicatedLines: "5", lines: 100, clones: 1 },
+        },
+      }),
+    ),
+  );
 });
