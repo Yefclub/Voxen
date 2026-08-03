@@ -19,6 +19,9 @@ WORKDIR /app
 
 # apt-get upgrade pega CVEs HIGH/CRITICAL em libs base (libcap2, libsystemd0,
 # libudev1) que já têm fix upstream mas vêm desatualizadas na tag slim.
+# Cachebuster explícito: a disponibilidade de patches APT muda sem alterar o
+# digest da instrução; atualize a data quando o scanner apontar fix disponível.
+ARG VOXEN_APT_SECURITY_REFRESH=2026-08-03
 RUN apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends ffmpeg ca-certificates \

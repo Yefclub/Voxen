@@ -51,9 +51,13 @@ def _install_job_dependencies(
                 "userId": "user-1",
                 "sourceUrl": source_url,
                 "type": "DOWNLOAD_AND_TRANSCRIBE",
+                "attempt": 1,
+                "transcriptId": None,
             }
         ),
     )
+    monkeypatch.setattr(pipeline.db, "renew_job_lease", AsyncMock(return_value=True))
+    monkeypatch.setattr(pipeline.db, "release_job_lease", AsyncMock(return_value=True))
     monkeypatch.setattr(pipeline.events, "publish_job_event", AsyncMock(return_value=None))
     monkeypatch.setattr(pipeline.db, "mark_job_failed", AsyncMock(return_value=None))
     monkeypatch.setattr(pipeline, "is_cancelled", lambda _job_id: False)
@@ -296,7 +300,7 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
     monkeypatch.setattr(pipeline.db, "link_job_transcript", AsyncMock(return_value=None))
     monkeypatch.setattr(
         pipeline,
-        "_generate_summary_with_progress",
+        "_enrich_persisted_transcript",
         AsyncMock(return_value=None),
     )
     monkeypatch.setattr(pipeline.db, "mark_job_done", AsyncMock(return_value=None))

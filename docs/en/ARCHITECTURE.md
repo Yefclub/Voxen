@@ -10,9 +10,9 @@ Browser
   v
 apps/web (Bun + Hono + React)
   |---- Postgres 17 (Prisma, FTS, users, sessions, transcripts, jobs, settings)
-  |---- Redis 7 (queue, cache, rate-limit)
+  |---- Redis 7 (wakeup, realtime, cache, rate-limit)
   |---- apps/chat (Python + FastAPI + Agno agent)
-  |---- apps/worker (Python + ARQ + media extraction + ffmpeg)
+  |---- apps/worker (Python asyncio + Postgres job leases + media extraction + ffmpeg)
                  |
                  v
              MinIO / S3-compatible storage
@@ -46,7 +46,10 @@ The agent uses deterministic tools instead of embedding search:
 
 ## `apps/worker`
 
-`apps/worker` consumes background jobs through Redis and ARQ.
+`apps/worker` claims durable jobs from Postgres with `FOR UPDATE SKIP LOCKED`.
+Each running attempt owns a renewable lease; expired leases are atomically
+requeued or failed after the retry limit. Redis Pub/Sub only wakes workers and
+delivers realtime progress, so a lost notification never loses a job.
 
 Main job flow:
 
@@ -62,7 +65,7 @@ Main job flow:
 
 ## Infrastructure
 
-Postgres stores durable relational data and full-text search vectors. Redis backs the queue and operational caches. MinIO or another S3-compatible store keeps Markdown transcripts and media artifacts.
+Postgres stores durable relational data, the job queue with leases, and full-text search vectors. Redis provides ephemeral wakeups, realtime events, and operational caches. MinIO or another S3-compatible store keeps Markdown transcripts and media artifacts.
 
 ## Main Flows
 

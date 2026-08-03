@@ -156,7 +156,7 @@ Mantém a ADR: determinístico, custo zero de indexação, sem pgvector/embeddin
 ## ADR-005 — ARQ em vez de BullMQ
 
 **Data**: 2026-05-15
-**Status**: Aceita
+**Status**: Substituída pela implementação de jobs duráveis no Postgres (issue #576)
 
 ### Contexto
 
@@ -171,7 +171,13 @@ Manter o worker em TS exigiria subprocess para extração de mídia e perderia i
 
 **ARQ** (async Redis queue pra Python). Redis continua o broker. Worker é Python.
 
-### Consequências
+> Nota de implementação (2026-08-02): ARQ nunca chegou a ser usado no runtime.
+> A implementação atual persiste a fila em `Job` no Postgres, faz claim com
+> `FOR UPDATE SKIP LOCKED` e protege tentativas com lease/heartbeat. Redis
+> Pub/Sub é somente wakeup e transporte realtime. Esta nota preserva a decisão
+> histórica sem descrever incorretamente a arquitetura em produção.
+
+### Consequências históricas (substituídas)
 
 - Worker e chat compartilham mesmo ecossistema (Python 3.13)
 - Sem BullMQ → API web não enfileira diretamente; cria registro `Job` no Postgres e o worker faz poll OU API web fala com Redis usando o protocolo ARQ (decisão a refinar na implementação do worker)

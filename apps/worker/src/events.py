@@ -101,8 +101,13 @@ async def publish_job_event(
         payload["transcriptId"] = transcript_id
     if error_msg is not None:
         payload["errorMsg"] = error_msg
-    client = await get_redis()
-    body = json.dumps(payload)
-    # canal do job (detalhe + lista) e canal do user (notif global)
-    await client.publish(job_channel(user_id, job_id), body)
-    await client.publish(user_channel(user_id), body)
+    try:
+        client = await get_redis()
+        body = json.dumps(payload)
+        # Redis reduz latência, mas o evento persistido acima é autoritativo.
+        await client.publish(job_channel(user_id, job_id), body)
+        await client.publish(user_channel(user_id), body)
+    except Exception:
+        # O reconciliador e o snapshot no Postgres mantêm o job executável e
+        # observável mesmo durante indisponibilidade total do Redis.
+        return

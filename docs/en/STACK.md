@@ -40,7 +40,7 @@ Update it whenever a meaningful runtime, major version, or infrastructure compon
 | httpx | Async HTTP client |
 | asyncpg | Direct Postgres access for tools and workers |
 | Pydantic | Schemas and validation |
-| ARQ | Redis-backed async queue |
+| asyncio + asyncpg | Postgres-backed durable jobs with leases and heartbeats |
 | yt-dlp | Media extraction engine |
 | ffmpeg | Audio extraction and segmentation |
 | ruff, mypy, pytest | Linting, type checking, and tests |
@@ -50,7 +50,7 @@ Update it whenever a meaningful runtime, major version, or infrastructure compon
 | Component | Image | Purpose |
 |---|---|---|
 | Postgres | `postgres:17-alpine` | Primary database and full-text search |
-| Redis | `redis:7-alpine` | Queue, cache, and rate-limit backing store |
+| Redis | `redis:7-alpine` | Ephemeral job wakeups, realtime events, cache, and rate limits |
 | MinIO | `minio/minio` | S3-compatible object storage |
 
 ## CI and Security Tooling

@@ -95,6 +95,9 @@ class _ClaimConnection:
                 "userId": "user-1",
                 "sourceUrl": "https://example.test",
                 "type": "SCRAPE_WEB",
+                "attempt": 0,
+                "transcriptId": None,
+                "progressStage": None,
             }
         if 'FROM "ConfigRevision"' in query:
             return {"id": "revision-at-start"}
@@ -115,7 +118,7 @@ async def test_claim_job_captures_current_config_revision(
 
     monkeypatch.setattr(db, "connection", fake_connection)
 
-    claimed = await db.claim_job("job-1")
+    claimed = await db.claim_job("job-1", "worker-1")
 
     assert claimed is not None
     assert any("pg_advisory_xact_lock" in query for query, _ in conn.executed)
@@ -123,3 +126,5 @@ async def test_claim_job_captures_current_config_revision(
     assert update is not None
     assert update[0] == "job-1"
     assert update[2] == "revision-at-start"
+    assert update[3] == "worker-1"
+    assert update[4] == 1

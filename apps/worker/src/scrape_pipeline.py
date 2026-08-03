@@ -11,14 +11,10 @@ from typing import Any
 
 import structlog
 
-from . import db, events, scraper, storage, summary, voxen_settings
+from . import db, events, scraper, storage, voxen_settings
 from .cancellation import CancelledException, is_cancelled
 from .openrouter import generate_content_title
-from .pipeline import (  # noqa: PLC2701
-    PermanentError,
-    _maybe_assign_folder,
-    _maybe_generate_tags,
-)
+from .pipeline import PermanentError, _maybe_assign_folder  # noqa: PLC2701
 from .safe_diagnostics import error_diagnostic
 
 log = structlog.get_logger(__name__)
@@ -79,46 +75,19 @@ async def run(
     if not refresh_transcript_id:
         await db.link_job_transcript(job_id, transcript_id)
 
-    if not persisted.changed:
-        await db.mark_job_done(job_id)
-        await events.publish_job_event(
-            user_id, job_id, "done", percent=100, transcript_id=transcript_id
-        )
-        log.info("source-refresh-unchanged", transcript_id=transcript_id)
-        return
-
-    # Resumo via IA — best-effort, delega pro chat service (mesmo padrão do vídeo)
-    _check_cancel(job_id)
-    await events.publish_job_event(user_id, job_id, "summarizing", percent=98)
-    await summary.maybe_generate(
-        user_id=user_id, transcript_id=transcript_id, job_id=job_id, log=log
-    )
-    _check_cancel(job_id)
-    await events.publish_job_event(user_id, job_id, "tagging", percent=99)
-    await _maybe_generate_tags(
-        user_id=user_id,
-        job_id=job_id,
-        transcript_id=transcript_id,
-        log=log,
-    )
-    await db.reindex_transcript_brain_node(user_id, transcript_id)
-    from .pipeline import _maybe_grounded_brain_extract, _maybe_store_embedding
-
-    await _maybe_grounded_brain_extract(
-        user_id=user_id,
-        transcript_id=transcript_id,
-        log=log,
-    )
-    await events.publish_graph_invalidation(user_id)
-    await _maybe_store_embedding(
-        user_id=user_id,
-        transcript_id=transcript_id,
-        log=log,
-    )
-
     await db.mark_job_done(job_id)
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=transcript_id
+    )
+
+    if not persisted.changed:
+        log.info("source-refresh-unchanged", transcript_id=transcript_id)
+        return
+
+    from .pipeline import _enrich_persisted_transcript
+
+    await _enrich_persisted_transcript(
+        user_id=user_id, transcript_id=transcript_id, job_id=job_id, log=log
     )
     log.info("scrape-done", transcript_id=transcript_id, refresh=bool(refresh_transcript_id))
 
@@ -198,27 +167,29 @@ async def _persist_locked(
     # uma consulta sem mudança não chama IA nem sobrescreve storage.
     if refresh_transcript_id:
         assert locked_conn is not None
-        current = await locked_conn.fetchrow(
-            """
+        async with locked_conn.transaction():
+            await db.assert_job_lease_in_connection(locked_conn, job_id=job_id, user_id=user_id)
+            current = await locked_conn.fetchrow(
+                """
                 SELECT id, "plainText", "mdPath", "sourceChecksum", "sourceVersion",
                        "sourceMetadata", source
                 FROM "Transcript"
                 WHERE id = $1 AND "userId" = $2
-            """,
-            refresh_transcript_id,
-            user_id,
-        )
-        if not current or current["source"] != "WEB":
-            raise PermanentError.public(
-                "SOURCE_REFRESH_MISSING",
-                "A fonte não está mais disponível para atualização.",
+                """,
+                refresh_transcript_id,
+                user_id,
             )
-        current_checksum = current["sourceChecksum"] or _source_checksum(current["plainText"])
-        current_version = int(current["sourceVersion"] or 0)
-        baseline_version = current_version or 1
-        if current_checksum == checksum:
-            await locked_conn.execute(
-                """
+            if not current or current["source"] != "WEB":
+                raise PermanentError.public(
+                    "SOURCE_REFRESH_MISSING",
+                    "A fonte não está mais disponível para atualização.",
+                )
+            current_checksum = current["sourceChecksum"] or _source_checksum(current["plainText"])
+            current_version = int(current["sourceVersion"] or 0)
+            baseline_version = current_version or 1
+            if current_checksum == checksum:
+                await locked_conn.execute(
+                    """
                     UPDATE "Transcript"
                     SET "sourceChecksum" = $3,
                         "sourceVersion" = $4,
@@ -228,32 +199,32 @@ async def _persist_locked(
                         "sourceRefreshError" = NULL,
                         "updatedAt" = NOW()
                     WHERE id = $1 AND "userId" = $2
-                """,
-                refresh_transcript_id,
-                user_id,
-                checksum,
-                baseline_version,
-                json.dumps(metadata),
-            )
-            # Legados passam a ter o primeiro snapshot sem criar conteúdo novo.
-            await locked_conn.execute(
-                """
+                    """,
+                    refresh_transcript_id,
+                    user_id,
+                    checksum,
+                    baseline_version,
+                    json.dumps(metadata),
+                )
+                # Legados passam a ter o primeiro snapshot sem criar conteúdo novo.
+                await locked_conn.execute(
+                    """
                     INSERT INTO "SourceContentVersion" (
                       id, "userId", "transcriptId", version, checksum,
                       "mdPath", "plainText", metadata
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
                     ON CONFLICT ("transcriptId", checksum) DO NOTHING
-                """,
-                db.generate_cuid(),
-                user_id,
-                refresh_transcript_id,
-                baseline_version,
-                checksum,
-                current["mdPath"],
-                current["plainText"],
-                json.dumps(metadata),
-            )
-            return PersistResult(refresh_transcript_id, changed=False)
+                    """,
+                    db.generate_cuid(),
+                    user_id,
+                    refresh_transcript_id,
+                    baseline_version,
+                    checksum,
+                    current["mdPath"],
+                    current["plainText"],
+                    json.dumps(metadata),
+                )
+                return PersistResult(refresh_transcript_id, changed=False)
         transcript_id = refresh_transcript_id
         next_version = baseline_version + 1
         old_snapshot = {
@@ -310,6 +281,7 @@ async def _persist_locked(
         }
 
     async with _persist_connection(locked_conn) as conn:
+        await db.assert_job_lease_in_connection(conn, job_id=job_id, user_id=user_id)
         if old_snapshot:
             # Snapshot da versão anterior antes de mover o ponteiro do Transcript.
             await conn.execute(
@@ -336,6 +308,9 @@ async def _persist_locked(
                     "mdPath" = $10, "plainText" = $11, frontmatter = $12::jsonb,
                     "previewObjectKey" = $13, "previewMimeType" = $14,
                     "summaryMd" = NULL, "taggingStatus" = 'PENDING'::"EnrichmentStatus",
+                    "summaryStatus" = 'PENDING'::"EnrichmentStatus",
+                    "summaryAttempts" = 0, "summaryStartedAt" = NULL,
+                    "summaryNextAttemptAt" = NULL, "summaryError" = NULL,
                     "taggingAttempts" = 0, "taggingStartedAt" = NULL,
                     "taggingNextAttemptAt" = NULL, "taggingError" = NULL,
                     "sourceChecksum" = $15, "sourceVersion" = $16,
@@ -433,6 +408,8 @@ async def _persist_locked(
             thumbnail_url=thumbnail_url,
             plain_text=result.plain_text,
         )
+        if not refresh_transcript_id:
+            await db.link_job_transcript_in_connection(conn, job_id, transcript_id)
     if not old_snapshot:
         await _maybe_assign_folder(
             user_id=user_id,
@@ -449,10 +426,12 @@ async def _persist_locked(
 @asynccontextmanager
 async def _persist_connection(existing_conn: Any | None) -> AsyncIterator[Any]:  # noqa: ANN401
     if existing_conn is not None:
-        yield existing_conn
+        async with existing_conn.transaction():
+            yield existing_conn
         return
     async with db.connection() as conn:
-        yield conn
+        async with conn.transaction():
+            yield conn
 
 
 def _source_checksum(plain_text: str) -> str:

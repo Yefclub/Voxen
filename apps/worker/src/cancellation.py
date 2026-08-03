@@ -32,22 +32,35 @@ def clear_cancelled(job_id: str) -> None:
 
 async def cancel_subscriber(stop: asyncio.Event) -> None:
     """Listener do canal jobs:cancel — popula `_cancelled` em tempo real."""
-    client = await get_redis()
-    pubsub = client.pubsub()
-    await pubsub.subscribe(JOBS_CANCEL_CHANNEL)
-    log.info("subscribed", channel=JOBS_CANCEL_CHANNEL)
-    try:
-        while not stop.is_set():
-            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-            if msg is None:
-                continue
-            job_id = msg.get("data")
-            if isinstance(job_id, str) and job_id:
-                _cancelled.add(job_id)
-                log.info("cancel-received", job_id=job_id)
-    finally:
-        await pubsub.unsubscribe(JOBS_CANCEL_CHANNEL)
-        await pubsub.aclose()  # type: ignore[no-untyped-call]
+    while not stop.is_set():
+        pubsub = None
+        try:
+            client = await get_redis()
+            pubsub = client.pubsub()
+            await pubsub.subscribe(JOBS_CANCEL_CHANNEL)
+            log.info("subscribed", channel=JOBS_CANCEL_CHANNEL)
+            while not stop.is_set():
+                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if msg is None:
+                    continue
+                job_id = msg.get("data")
+                if isinstance(job_id, str) and job_id:
+                    _cancelled.add(job_id)
+                    log.info("cancel-received", job_id=job_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- cancelamento também existe no Postgres
+            log.warning("cancel-subscriber-disconnected", error_type=type(exc).__name__)
+        finally:
+            if pubsub is not None:
+                try:
+                    await pubsub.aclose()  # type: ignore[no-untyped-call]
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("cancel-subscriber-close-failed", error_type=type(exc).__name__)
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=1.0)
+        except TimeoutError:
+            continue
 
 
 class CancelledException(Exception):  # noqa: N818 — nome consagrado, paralelo a asyncio.CancelledError
