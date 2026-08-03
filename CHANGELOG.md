@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.13.0-dev.1785752822 — 2026-08-03 · Dev
+## v0.13.1-dev.1785754177 — 2026-08-03 · Dev
 
 ### ✨ Jobs só concluem após todas as etapas e administração ganha controles de conta
 

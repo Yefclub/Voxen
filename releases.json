@@ -1,6 +1,6 @@
 [
   {
-    "version": "0.13.0-dev.1785752822",
+    "version": "0.13.1-dev.1785754177",
     "channel": "dev",
     "type": "feat",
     "title": "Jobs só concluem após todas as etapas e administração ganha controles de conta",

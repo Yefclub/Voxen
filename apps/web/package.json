@@ -1,6 +1,6 @@
 {
   "name": "@voxen/web",
-  "version": "0.13.0-dev.1785752822",
+  "version": "0.13.1-dev.1785754177",
   "private": true,
   "type": "module",
   "scripts": {
