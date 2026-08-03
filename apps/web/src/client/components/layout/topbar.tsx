@@ -30,7 +30,7 @@ import { useI18n } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme-provider';
 import { APP_THEMES, type AppTheme } from '../../lib/theme';
 import { cn } from '../../lib/utils';
-import { isChatRoute } from '../../lib/mobile-nav';
+import { hidesBottomNav, isChatRoute } from '../../lib/mobile-nav';
 import { requestClearConversation, setSounds, useChatShell } from '../../lib/chat-shell-state';
 
 function initials(name: string): string {
@@ -68,6 +68,7 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   const { t } = useI18n();
   const { theme, setTheme, toggleAppearance } = useTheme();
   const inChat = isChatRoute(location.pathname);
+  const mobileUserMenuNeeded = hidesBottomNav(location.pathname, false);
   const onSignOut = async (): Promise<void> => {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
     await refresh();
@@ -100,6 +101,7 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
             className={cn(
               chromeControlClass,
               'overflow-hidden p-0 ring-offset-2 ring-offset-[var(--color-app-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 md:rounded-full',
+              !mobileUserMenuNeeded && 'max-md:hidden',
             )}
             aria-label={t('shell.userMenu')}
           >

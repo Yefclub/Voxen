@@ -4,7 +4,6 @@ import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
   ChevronDown,
-  DollarSign,
   FileText,
   House,
   ListOrdered,
@@ -12,17 +11,17 @@ import {
   FolderPlus,
   ListVideo,
   Link2,
+  KeyRound,
   LogOut,
   Network,
   Notebook,
-  Plug,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Puzzle,
   ShieldCheck,
-  Settings as SettingsIcon,
   Sparkles,
+  User as UserIcon,
   Workflow,
 } from '@/components/ui/icons';
 import type { MeUser } from '../../lib/types';
@@ -49,30 +48,52 @@ export interface NavItem {
   labelKey: I18nKey;
   Icon: typeof House;
   adminOnly?: boolean;
+  scope: 'workspace' | 'personal' | 'admin';
 }
 
 /**
- * Lista canônica de destinos de navegação. Fonte única — consumida pela sidebar
- * desktop, pelo drawer mobile e pelo menu do Perfil da bottom-nav (que expõe os
- * destinos que não são abas de topo). Manter em sincronia com `BOTTOM_NAV_TABS`
- * em `lib/mobile-nav.ts`.
+ * Canonical navigation destinations shared by desktop, the mobile drawer, and
+ * the bottom-nav profile menu. Keep top-level tabs aligned with
+ * `BOTTOM_NAV_TABS` in `lib/mobile-nav.ts`.
  */
 export const NAV: NavItem[] = [
-  { to: '/', labelKey: 'shell.nav.home', Icon: House },
-  { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessageCircle },
-  { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
-  { to: '/fila', labelKey: 'shell.nav.queue', Icon: ListOrdered },
-  { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
-  { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow },
-  { to: '/artefatos', labelKey: 'shell.nav.artifacts', Icon: FileText },
-  { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },
-  { to: '/extensao', labelKey: 'shell.nav.extension', Icon: Puzzle },
-  { to: '/conta/plataformas', labelKey: 'shell.nav.platformAccounts', Icon: Link2 },
-  { to: '/admin/usuarios', labelKey: 'shell.nav.users', Icon: ShieldCheck, adminOnly: true },
-  { to: '/admin/custos', labelKey: 'shell.nav.costs', Icon: DollarSign, adminOnly: true },
-  { to: '/admin/integracoes', labelKey: 'shell.nav.integrations', Icon: Plug, adminOnly: true },
-  { to: '/setup', labelKey: 'shell.nav.settings', Icon: SettingsIcon, adminOnly: true },
+  { to: '/', labelKey: 'shell.nav.home', Icon: House, scope: 'workspace' },
+  { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessageCircle, scope: 'workspace' },
+  { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo, scope: 'workspace' },
+  { to: '/fila', labelKey: 'shell.nav.queue', Icon: ListOrdered, scope: 'workspace' },
+  { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook, scope: 'workspace' },
+  { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow, scope: 'workspace' },
+  { to: '/artefatos', labelKey: 'shell.nav.artifacts', Icon: FileText, scope: 'workspace' },
+  { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network, scope: 'workspace' },
+  { to: '/extensao', labelKey: 'shell.nav.extension', Icon: Puzzle, scope: 'workspace' },
+  { to: '/conta', labelKey: 'shell.nav.account', Icon: UserIcon, scope: 'personal' },
+  {
+    to: '/conta/plataformas',
+    labelKey: 'shell.nav.platformAccounts',
+    Icon: Link2,
+    scope: 'personal',
+  },
+  { to: '/conta/mcp', labelKey: 'shell.nav.mcpAccess', Icon: KeyRound, scope: 'personal' },
+  {
+    to: '/admin',
+    labelKey: 'shell.nav.administration',
+    Icon: ShieldCheck,
+    adminOnly: true,
+    scope: 'admin',
+  },
 ];
+
+const NAV_SCOPES = ['workspace', 'personal', 'admin'] as const;
+const NAV_SCOPE_LABELS: Record<(typeof NAV_SCOPES)[number], I18nKey> = {
+  workspace: 'shell.navGroup.workspace',
+  personal: 'shell.navGroup.personal',
+  admin: 'shell.navGroup.admin',
+};
+
+export function isNavItemActive(pathname: string, to: string): boolean {
+  if (to === '/' || to === '/conta') return pathname === to;
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
 
 const SIDEBAR_WIDTH = 288;
 const RAIL_WIDTH = 60;
@@ -258,7 +279,7 @@ function SidebarRail({
         <div className="my-1 h-px w-6 bg-[var(--color-app-border)]" />
 
         {items.map(({ to, labelKey, Icon }) => {
-          const isActive = pathname === to || pathname.startsWith(to + '/');
+          const isActive = isNavItemActive(pathname, to);
           return (
             <Tooltip key={to}>
               <TooltipTrigger asChild>
@@ -451,58 +472,74 @@ function NavBody({
   useIconCueSignal(playCue, cueSignal, ICON_CUE_PANEL_DELAY_MS);
 
   return (
-    <nav className="flex-1 p-3 overflow-y-auto">
-      <ul className="space-y-0.5">
-        {items.map(({ to, labelKey, Icon }) => {
-          // `/` não pode usar prefix match — senão fica ativo em todas as rotas.
-          const isActive =
-            to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(to + '/');
+    <nav className="flex-1 overflow-y-auto p-3">
+      <div className="space-y-4">
+        {NAV_SCOPES.map((scope) => {
+          const scopedItems = items.filter((item) => item.scope === scope);
+          if (scopedItems.length === 0) return null;
           return (
-            <li key={to} className="relative">
-              {isActive && (
-                <motion.div
-                  layoutId={reduceMotion ? undefined : 'sidebar-pill'}
-                  className="absolute inset-0 rounded-lg bg-[var(--color-app-surface-hover)] border border-[var(--color-app-border-strong)]"
-                  transition={
-                    reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 30 }
-                  }
-                />
-              )}
-              <NavLink
-                to={to}
-                className={cn(
-                  'relative z-10 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
-                  'transition-colors duration-150',
-                  isActive
-                    ? 'text-[var(--color-app-fg)]'
-                    : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]',
-                )}
+            <section key={scope} aria-labelledby={`nav-scope-${scope}`}>
+              <h2
+                id={`nav-scope-${scope}`}
+                className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-app-muted)]"
               >
-                <Icon
-                  ref={registerIcon(to)}
-                  duration={ICON_CUE_DURATION}
-                  className={cn(
-                    'h-[18px] w-[18px] transition-colors shrink-0',
-                    isActive ? 'text-emerald-400' : 'text-[var(--color-app-muted)]',
-                  )}
-                />
-                <span className="truncate">{t(labelKey)}</span>
-                {isActive && (
-                  <motion.span
-                    layoutId={reduceMotion ? undefined : 'sidebar-active-dot'}
-                    className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400"
-                    transition={
-                      reduceMotion
-                        ? { duration: 0 }
-                        : { type: 'spring', stiffness: 380, damping: 30 }
-                    }
-                  />
-                )}
-              </NavLink>
-            </li>
+                {t(NAV_SCOPE_LABELS[scope])}
+              </h2>
+              <ul className="space-y-0.5">
+                {scopedItems.map(({ to, labelKey, Icon }) => {
+                  const isActive = isNavItemActive(pathname, to);
+                  return (
+                    <li key={to} className="relative">
+                      {isActive && (
+                        <motion.div
+                          layoutId={reduceMotion ? undefined : 'sidebar-pill'}
+                          className="absolute inset-0 rounded-lg bg-[var(--color-app-surface-hover)] border border-[var(--color-app-border-strong)]"
+                          transition={
+                            reduceMotion
+                              ? { duration: 0 }
+                              : { type: 'spring', stiffness: 380, damping: 30 }
+                          }
+                        />
+                      )}
+                      <NavLink
+                        to={to}
+                        className={cn(
+                          'relative z-10 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
+                          'transition-colors duration-150',
+                          isActive
+                            ? 'text-[var(--color-app-fg)]'
+                            : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]',
+                        )}
+                      >
+                        <Icon
+                          ref={registerIcon(to)}
+                          duration={ICON_CUE_DURATION}
+                          className={cn(
+                            'h-[18px] w-[18px] transition-colors shrink-0',
+                            isActive ? 'text-emerald-400' : 'text-[var(--color-app-muted)]',
+                          )}
+                        />
+                        <span className="truncate">{t(labelKey)}</span>
+                        {isActive && (
+                          <motion.span
+                            layoutId={reduceMotion ? undefined : 'sidebar-active-dot'}
+                            className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400"
+                            transition={
+                              reduceMotion
+                                ? { duration: 0 }
+                                : { type: 'spring', stiffness: 380, damping: 30 }
+                            }
+                          />
+                        )}
+                      </NavLink>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
           );
         })}
-      </ul>
+      </div>
     </nav>
   );
 }
@@ -597,27 +634,40 @@ function NotasModeBody({
         </button>
         <AnimatePresence initial={false}>
           {menuOpen && (
-            <motion.ul
+            <motion.div
               initial={reduceMotion ? false : { height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: reduceMotion ? 0 : 0.2 }}
-              className="overflow-hidden px-3 pb-3 space-y-0.5"
+              className="space-y-3 overflow-hidden px-3 pb-3"
             >
-              {items
-                .filter((n) => n.to !== '/notas')
-                .map(({ to, labelKey, Icon }) => (
-                  <li key={to}>
-                    <NavLink
-                      to={to}
-                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors"
-                    >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{t(labelKey)}</span>
-                    </NavLink>
-                  </li>
-                ))}
-            </motion.ul>
+              {NAV_SCOPES.map((scope) => {
+                const scopedItems = items.filter(
+                  (item) => item.scope === scope && item.to !== '/notas',
+                );
+                if (scopedItems.length === 0) return null;
+                return (
+                  <section key={scope}>
+                    <h3 className="px-3 pb-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
+                      {t(NAV_SCOPE_LABELS[scope])}
+                    </h3>
+                    <ul className="space-y-0.5">
+                      {scopedItems.map(({ to, labelKey, Icon }) => (
+                        <li key={to}>
+                          <NavLink
+                            to={to}
+                            className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
+                          >
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{t(labelKey)}</span>
+                          </NavLink>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
