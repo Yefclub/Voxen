@@ -29,6 +29,8 @@ coverage/
 .mypy_cache/
 .ruff_cache/
 htmlcov/
+quality-gate/input/
+quality-gate/output/
 
 # Env / secrets (NUNCA commitar)
 .env
