@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.1-dev.1785764402",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Administração e conta pessoal agora têm áreas próprias",
+    "body": "A navegação separa claramente o trabalho na base, os dados da conta pessoal e a\nconfiguração compartilhada da instância. Administradores entram em uma área\nprópria para modelos, integrações, usuários e custos, sem misturar esses controles\ncom as páginas comuns.\n\nCada usuário também passa a gerenciar seus próprios tokens MCP em **Conta →\nAcesso MCP**, com segredo exibido uma única vez, permissões de leitura/escrita,\nexpiração opcional e revogação individual. A política de criação continua sob\ncontrole do administrador.",
+    "pr": 595,
+    "author": "Kalyel",
+    "date": "2026-08-03T10:39:50-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/595"
+  },
+  {
     "version": "0.13.1-dev.1785760507",
     "channel": "dev",
     "type": "chore",
