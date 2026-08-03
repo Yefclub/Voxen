@@ -1,5 +1,358 @@
 [
   {
+    "version": "0.13.1",
+    "channel": "prod",
+    "date": "2026-08-03T10:40:45Z",
+    "promoted": [
+      {
+        "type": "fix",
+        "title": "Chat mais estável, rápido e confiável",
+        "body": "O chat agora descreve corretamente o que está fazendo antes de responder, prepara em paralelo\nas informações independentes de que precisa e mede o tempo de raciocínio desde o início real da\nsolicitação.\n\nTambém corrigimos a confirmação de criação de notas, inclusive para os identificadores usados\npelo provedor de IA, e reduzimos remontagens e movimentos involuntários da conversa durante\nrespostas e recuperações.",
+        "pr": 465,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/465"
+      },
+      {
+        "type": "feat",
+        "title": "Chat mobile e ingestão de links mais confiáveis",
+        "body": "- Melhora a abertura do menu no mobile, a biblioteca de notas e as telas de atualizações.\n- Mostra o andamento real de transcrições e análises, inclusive após reconectar a página.\n- Trata links enviados no chat de acordo com a intenção: processa quando solicitado e pede esclarecimento quando necessário.",
+        "pr": 467,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/467"
+      },
+      {
+        "type": "feat",
+        "title": "OpenRouter pronta para uso com uma única chave",
+        "body": "O onboarding agora pede somente a chave da OpenRouter e configura\nautomaticamente os modelos recomendados para conversa, transcrição, imagens,\ndocumentos, pesquisa e conteúdo do X. O administrador continua podendo trocar\ncada modelo depois na página de Configuração.\n\nPDFs passam a usar o parser Mistral OCR pela OpenRouter. A geração automática de\ntags também ficou mais confiável: respostas estruturadas evitam tags vazias e\nconteúdos incompletos entram numa reconciliação em segundo plano, com tentativas\nlimitadas e diagnóstico preservado.",
+        "pr": 470,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/470"
+      },
+      {
+        "type": "feat",
+        "title": "Interface mais clara, densa e consistente",
+        "body": "A Voxen ganhou uma nova fundação visual inspirada nos princípios de hierarquia\ne foco do Linear. O tema escuro principal, a sidebar mais confortável, os\nícones animados e os novos layouts reutilizáveis aproveitam melhor a tela sem\nadicionar ruído.\n\nAs transições também respeitam a preferência de movimento reduzido, e a\nnavegação mobile mantém o drawer leve e sem destinos redundantes.",
+        "pr": 472,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/472"
+      },
+      {
+        "type": "feat",
+        "title": "Superfícies mais claras, fluidas e prontas para uso",
+        "body": "A navegação mobile deixa de repetir “Início” e passa a abrir um menu lateral\nparcial que acompanha o gesto da borda ou do centro da tela, com foco contido,\nfechamento acessível e respeito a movimento reduzido.\n\nAs telas de processamento agora descrevem a etapa real de vídeos, páginas,\ndocumentos, imagens e conteúdo do X, preservam o histórico recebido em tempo\nreal e mostram a duração de cada fase sem redirecionar antes da conclusão.\n\nO Brain passa a ser reconciliado mesmo sem visitas ao Grafo. Novos conteúdos\ninvalidam o snapshot e atualizam a página aberta em tempo real; o Grafo inicia\nsempre na visualização completa e mantém os títulos legíveis no tema escuro.\n\nNovidades ganhou fluxo contínuo, busca, filtros e paginação. O aviso de nova\nversão ficou maior, explica a mudança de versão e oferece acesso direto ao\nhistórico completo. O onboarding continua simples, enquanto a configuração\navançada dos modelos permanece disponível para administradores.",
+        "pr": 474,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/474"
+      },
+      {
+        "type": "fix",
+        "title": "Atualizações e páginas com comportamento consistente",
+        "body": "O aviso de nova versão agora mostra somente as notas da versão correta, mantém\ncabeçalho e ações visíveis e permite rolar todo o conteúdo central por mouse,\ntrackpad, toque ou teclado. Carregamento, indisponibilidade e falha possuem\nestados próprios, e adiar não é mais confundido com aplicar a atualização.\n\nAs páginas de conteúdo passaram a compartilhar larguras, margens e ritmo\nvertical adequados a cada tipo de trabalho, aproveitando melhor a tela e\nevitando mudanças bruscas de tamanho durante a navegação.\n\nO chat também informa o início do preparo imediatamente, executa etapas\nindependentes em paralelo e registra separadamente o tempo interno e a espera\npelo primeiro evento do modelo.",
+        "pr": 476,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/476"
+      },
+      {
+        "type": "fix",
+        "title": "Atualizações deixam de prender a interface antiga",
+        "body": "O aviso de nova versão passa a usar a versão exata do pacote e prepara a\natualização do app em segundo plano. Navegações online deixam de reutilizar o\nHTML antigo do PWA, evitando que uma interface desatualizada continue ativa\ndepois de um deploy.\n\nO modal mantém cabeçalho e ações sempre acessíveis e concentra a rolagem em uma\núnica região central, inclusive quando as notas da versão são extensas.",
+        "pr": 478,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/478"
+      },
+      {
+        "type": "fix",
+        "title": "Configuração simples e interface estável no uso diário",
+        "body": "A configuração da OpenRouter passa a pedir somente a chave de API e aplica\nautomaticamente os modelos recomendados para conversa, análise e transcrição.\nO processamento continua especializado por formato: PDFs usam o parser Mistral,\noutros documentos usam MarkItDown e imagens, áudio e vídeo seguem pela\nOpenRouter.\n\nNotificações agora aparecem uma por vez durante cinco segundos. A Fila mantém\nos dados visíveis e reconcilia mudanças em segundo plano, sem trocar a lista por\nskeletons periódicos nem reiniciar itens que não mudaram.\n\nNo mobile, gestos horizontais em tabelas, conteúdos roláveis e no canvas do\nGrafo não abrem mais a sidebar, e o menu fechado não deixa sombra na lateral.\nA atualização da aplicação também passa a respeitar a versão exata do build,\ninclusive quando um service worker já está aguardando, e só ativa a nova versão\nquando a pessoa confirma.",
+        "pr": null
+      },
+      {
+        "type": "fix",
+        "title": "Interface mais estável, legível e consistente",
+        "body": "A navegação entre telas deixa de exibir conteúdo da rota anterior ou saltar o\nscroll durante a troca. O carregamento preserva o shell da aplicação, e as\npáginas operacionais passam a aproveitar melhor a largura disponível sem\nalongar excessivamente textos de leitura.\n\nNo mobile, o menu lateral mantém animação, foco, sombra e bloqueio da página\nsincronizados até o fim do gesto. O editor de notas reorganiza título, status e\nações para manter Preview e Salvar acessíveis em telas estreitas; `/` e `/chat`\ntambém passam a compartilhar o mesmo comportamento de navegação.\n\nO Grafo ganha contraste confiável ao passar o mouse ou selecionar nós, resumo\nsem marcadores Markdown crus e preparação antecipada do modo 3D. No chat, a\ntimeline mostra estados operacionais seguros, preserva durações concluídas e\noferece mais espaço para tabelas e outros dados estruturados.\n\nO aviso de nova versão ganhou uma área maior e rolável com cabeçalho e ações\nsempre visíveis. Detalhes da fila e a página de novidades receberam correções\nde hierarquia e navegação.\n\nPor fim, instruções e comentários indevidos deixam de virar tags. Rótulos\nhistóricos conhecidos são saneados no deploy e conteúdos que ficarem sem tags\nvoltam automaticamente ao processamento idempotente.",
+        "pr": 484,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/484"
+      },
+      {
+        "type": "fix",
+        "title": "Rótulos legíveis ao explorar o Brain",
+        "body": "O hover dos nós do Grafo agora usa uma superfície compatível com o tema ativo,\nmantendo título e fundo com contraste adequado no modo escuro. Títulos muito\nlongos também são limitados para não atravessarem toda a visualização.",
+        "pr": 486,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/486"
+      },
+      {
+        "type": "fix",
+        "title": "Cabeçalhos, chat e atualização novamente consistentes",
+        "body": "As páginas operacionais agora começam logo após o cabeçalho flutuante e usam um\npadrão único de título, descrição, identificação da área e ícone colorido\nanimado. A página da extensão também passa a aproveitar a mesma largura das\ndemais telas.\n\nO histórico do chat volta a acompanhar a largura do campo de mensagem, e o\nbotão de envio mostra um pictograma de envio claro. O modal de nova versão deixa\nde desenhar uma moldura roxa ao redor de todo o conteúdo quando recebe foco.",
+        "pr": 488,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/488"
+      },
+      {
+        "type": "fix",
+        "title": "Retry com impersonate=chrome do TikTok nunca era acionado",
+        "body": "Corrigido bug de controle de fluxo que fazia a mitigação de retry do TikTok (forçar impersonation de browser via `curl_cffi` quando o download falha com \"unable to extract universal data for rehydration\") nunca ser executada — o erro já virava falha permanente antes do retry ter chance de rodar. O TikTok está passando por uma instabilidade conhecida e ainda não corrigida no `yt-dlp` upstream; esse retry agora funciona de verdade e recupera parte dos downloads que antes falhavam de cara.",
+        "pr": 491,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/491"
+      },
+      {
+        "type": "fix",
+        "title": "Busca na Base de conhecimento quebrava o turno inteiro do chat",
+        "body": "Corrigido bug que fazia o agente de chat falhar sempre que usava a ferramenta de busca na Base de conhecimento (`search_transcripts`) — um campo de data era devolvido em formato incompatível com o que o modelo de IA espera, derrubando a resposta inteira com erro técnico. O mesmo problema foi corrigido no servidor MCP.",
+        "pr": 495,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/495"
+      },
+      {
+        "type": "ui",
+        "title": "Extensão de browser redesenhada com a identidade visual do Voxen",
+        "body": "O popup e a página de opções da extensão de browser agora usam os mesmos\ntokens de cor e a mesma tipografia do Voxen web (Bricolage Grotesque + Inter,\ntemas padrão/zinc/emerald/light) — antes a extensão tinha uma paleta\nverde/indigo própria, sempre escura, desconectada do resto do produto.\n\n- **Tema segue a instância conectada**: se você já tem um tema escolhido no\n  Voxen (`Conta → Aparência`), a extensão aplica o mesmo tema assim que\n  detecta a instância — tanto no popup quanto na página de opções. Sem\n  instância conectada ainda, ela segue o esquema claro/escuro do sistema\n  operacional.\n- **Uma única tela de conexão**: a página de opções (`chrome-extension://.../options.html`)\n  passa a ser a única superfície onde a extensão se conecta a uma instância\n  Voxen. O popup não reimplementa mais esse formulário — quando ainda não há\n  instância conectada, ele mostra um estado vazio com um botão que abre as\n  opções, eliminando a duplicação de fluxo entre popup e opções.\n- **Progresso mostra a etapa real**: enquanto um job está processando, o\n  popup exibe a etapa atual (baixando, transcrevendo, gerando resumo…) em vez\n  de um \"Processando…\" genérico, sempre que o status do job traz essa\n  informação.\n- Todos os estados existentes (detecção de instância, envio de aba,\n  progresso, resultado com resumo, ações pós-envio) continuam disponíveis —\n  nenhuma capacidade foi removida, só reorganizada.",
+        "pr": 494,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/494"
+      },
+      {
+        "type": "feat",
+        "title": "Escolha manual de modelo por finalidade nas integrações admin",
+        "body": "A configuração da OpenRouter continua exigindo só a chave no onboarding,\nmas agora o admin pode sobrescrever individualmente o modelo usado em cada\numa das 6 finalidades (chat, transcrição, busca na web, visão, documentos\ne análise do X) em **Integrações**.\n\nA nova seção mostra o modelo padrão e o override ativo de cada finalidade,\ncom um diálogo de busca sobre o catálogo da sua chave OpenRouter — a lista\njá vem filtrada pelos modelos compatíveis com aquela finalidade (ex.: só\nmodelos com suporte a imagem aparecem na finalidade de visão). Tentar\nescolher um modelo incompatível é bloqueado com uma mensagem explicando o\nmotivo, e um botão \"Voltar ao padrão\" remove o override a qualquer\nmomento. Trocar a chave da OpenRouter não apaga overrides já configurados.",
+        "pr": 493,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/493"
+      },
+      {
+        "type": "fix",
+        "title": "Extensão mantém o progresso do envio ao fechar e reabrir o popup",
+        "body": "Fechar o popup da extensão não perde mais o acompanhamento do envio. Antes, o\nprogresso vivia só na janelinha aberta: bastava clicar fora para o Chrome\ndescartar tudo e, ao reabrir, a extensão mostrava a tela inicial mesmo com a\ntranscrição rodando.\n\nAgora, ao reabrir o popup:\n\n- **Envio em andamento** volta com a barra de progresso e a etapa real\n  (baixando, transcrevendo, gerando resumo…), além do botão \"Ver na fila\".\n- **Envio que terminou com o popup fechado** aparece com o resultado — resumo e\n  botão para abrir o conteúdo, ou a mensagem de erro se falhou. O resultado é\n  mostrado uma vez; depois disso o popup volta ao normal.\n- **Instância fora do ar ou sem rede** avisa que o acompanhamento está\n  indisponível no momento, sem sumir com o envio nem fingir que terminou — e\n  sem travar o botão: não saber em que pé está o envio anterior não impede\n  mandar a próxima página. Isso vale também para instância que fica pendurada\n  em vez de recusar a conexão: agora toda requisição tem prazo, então um\n  backend travado atrás de um proxy de pé não deixa mais o botão preso em\n  \"Salvo — processando\".\n- **Acompanhamento que nunca resolve** (instância trocada nas opções, job\n  apagado no servidor) é descartado depois de algumas horas em vez de ficar\n  para sempre. O prazo conta a partir da última vez em que o servidor\n  confirmou o envio em andamento, e não do momento do envio: fila cheia com\n  vários vídeos longos à frente não faz mais o último da fila perder a\n  notificação por tempo de espera.\n\nTambém nesta entrega, acabamento da extensão: cantos mais arredondados no\npopup, página de conexão reorganizada em duas colunas (cabe sem rolagem, com o\nbloco \"Token Bearer\" separado das ações principais por um divisor) e ícones da\nbarra do Chrome regerados a partir da arte em alta resolução, agora centrados e\nmais nítidos em 16 px.",
+        "pr": 500,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/500"
+      },
+      {
+        "type": "fix",
+        "title": "Conteúdo em markdown renderizado, reprocessar direto da fila e campo de link em destaque",
+        "body": "Quatro correções no dia a dia de capturar e ler conteúdo.\n\n**Análises em markdown voltam a aparecer formatadas.** Posts do X analisados por\nIA (e qualquer conteúdo sem marcação de tempo) eram exibidos pelo leitor de\ntranscrição, que junta tudo num parágrafo só e mostra `##` e `**` crus. Agora a\npágina escolhe o modo de exibição pelo próprio conteúdo: com marcações de tempo,\nsegue a leitura por trechos clicáveis; sem elas, renderiza markdown com títulos,\nlistas, tabelas e negrito.\n\n**Reprocessar item da fila.** Itens que falharam ou foram cancelados agora têm um\nbotão de reprocessar na própria fila — não é mais preciso recolar o link. Se o\nconteúdo já estiver em processamento, já tiver sido indexado ou o servidor\nrecusar, o motivo aparece num aviso e o item continua como estava.\n\n**Campo de colar link com destaque.** O placeholder longo com exemplos de URL deu\nlugar a um \"Cole o link aqui\" direto, e o campo ganhou superfície elevada, borda\nmais forte e realce de foco — é a ação principal da tela de conteúdo.\n\n**Linha do tempo do job alinhada.** Os marcadores de cada etapa no histórico de um\njob agora ficam centrados na linha vertical que os conecta.",
+        "pr": 501,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/501"
+      },
+      {
+        "type": "feat",
+        "title": "Conectar contas de TikTok, Instagram e YouTube pela extensão",
+        "body": "Vídeo que só baixa com login — TikTok, Instagram, YouTube com restrição de\nidade — agora tem um caminho de verdade: a extensão do Voxen conecta a conta.\n\nNas opções da extensão apareceu a seção **Contas de plataforma**, com um\nbotão \"Conectar\" para cada uma das três. Faça login no site normalmente, no\nmesmo perfil do browser, clique em Conectar e pronto: a extensão pede a\npermissão daquele site na hora, pega a sessão e envia cifrada para a sua\ninstância. Nada de exportar `cookies.txt` na mão nem instalar extensão de\nterceiro.\n\nA permissão é pedida por site, uma de cada vez, e só no momento do clique —\na extensão não ganha acesso a nenhum outro site. O valor da sessão nunca é\nexibido de volta, nem na extensão nem no Voxen.\n\nEm **Integrações** (admin) há um painel de estado mostrando quais plataformas\nestão conectadas, quando foram conectadas e quais podem já ter expirado —\nsessões passam a ser sinalizadas como \"possivelmente expiradas\" depois de 7\ndias, e basta reconectar pela extensão. O botão \"Desconectar\" apaga a sessão\nguardada a qualquer momento.\n\nConectar uma plataforma não mexe nas outras: cada uma é substituída\nisoladamente.",
+        "pr": 499,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/499"
+      },
+      {
+        "type": "ui",
+        "title": "Tema padrão agora se chama Voxen, e os ícones ganham vida ao navegar",
+        "body": "O tema escuro padrão da aplicação passa a aparecer como **Voxen** no seletor de\ntema (menu do avatar, no canto superior direito). Antes ele se chamava \"Linear\",\nnome herdado da referência visual que inspirou a paleta — nada a ver com o\nproduto. Só o nome mudou: as cores são exatamente as mesmas, o tema continua\nsendo o padrão de quem nunca escolheu outro, e quem já tinha algum tema salvo\ncontinua exatamente com o que escolheu.\n\nOs ícones também deixaram de ser estáticos em dois momentos:\n\n- **Ao abrir uma página**, o ícone que identifica a página se desenha uma vez,\n  junto com o conteúdo entrando.\n- **Ao abrir ou fechar a sidebar** — e ao abrir o menu no celular —, os ícones\n  de navegação se desenham em cascata, acompanhando o painel.\n\nA animação é curta e deliberadamente contida — só esses dois momentos, para\npontuar a navegação sem virar ruído. Quem usa o sistema com \"reduzir movimento\"\nativado não vê nenhuma dessas animações.",
+        "pr": 502,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/502"
+      },
+      {
+        "type": "fix",
+        "title": "Chat mostra o raciocínio, compacta as ferramentas e guarda os anexos da mensagem",
+        "body": "Cinco acertos no chat, todos visíveis no uso do dia a dia.\n\n**Raciocínio aparece de novo.** O texto de raciocínio que o modelo emite volta\na ser exibido na linha do tempo do turno, dentro do bloco \"Pensando\" (basta\nexpandir). Quando o modelo não emite raciocínio — ou só sinaliza a etapa sem\ntexto — o bloco continua mostrando o resumo operacional de sempre, sem espaço\nvazio nem indicador travado.\n\n**Ferramentas compactam assim que a resposta começa.** Antes o bloco de\nferramentas ficava aberto ocupando a tela até o fim do stream, empurrando a\nresposta pra baixo justamente na hora de ler. Agora, no instante em que o\nprimeiro trecho da resposta final chega, o bloco se recolhe num resumo curto\n(\"Pensou por 4,2s · 3 ferramentas\") — e um clique reabre o detalhe. Se o agente\nvoltar a usar ferramentas depois disso, o bloco reabre sozinho.\n\n**Documento anexado fica preso à mensagem.** O arquivo enviado pelo composer\ncontinua indo para a Base de conhecimento, mas agora também fica vinculado à mensagem em que\nfoi enviado: os anexos aparecem logo abaixo da sua bolha no histórico e\ncontinuam lá depois de recarregar a página. São até 5 anexos por mensagem.\n\nSe o envio falhar — turno ocupado, limite de mensagens ou queda de conexão —\nos anexos continuam no composer, prontos pra tentar de novo. Antes eles sumiam\ne era preciso subir o arquivo outra vez.\n\n**O composer cresce com o texto.** Escrever mensagens longas ficou confortável:\na caixa expande conforme você digita até uma altura máxima e só então passa a\nrolar internamente. No celular esse teto acompanha a tela, então o teclado\naberto não engole a conversa.\n\n**Ícone de enviar alinhado ao resto do app.** O avião de papel deu lugar ao\nchevron, a mesma família de ícones usada em toda a interface. O chat do detalhe\nde transcrição mantém o avião de propósito: ali o chevron já significa\nexpandir/recolher. Anexos de imagem também passam a mostrar ícone de imagem em\nvez de ícone de documento.",
+        "pr": 503,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/503"
+      },
+      {
+        "type": "feat",
+        "title": "Chat preparado para versionar mensagens, com histórico preso à trilha em uso",
+        "body": "A conversa do chat deixou de ser uma lista e passou a ser uma árvore. Isso é o\nalicerce do versionamento de mensagens: em breve vai dar para editar uma\npergunta sua e reenviá-la como uma trilha nova, mantendo a resposta anterior\nguardada e navegável em vez de perdida.\n\nEsta entrega é a metade de baixo — a que garante que a coisa funcione certo.\nOs botões de versionar e de navegar entre versões chegam na próxima.\n\n**O que muda desde já.** Cada mensagem passa a saber qual veio antes dela, e a\nconversa passa a lembrar em qual trilha você estava. Isso vale inclusive depois\nde recarregar a página: a trilha volta como estava, não como \"a mensagem mais\nrecente que existir no banco\".\n\n**O que a Vox lê continua sendo só o que você está vendo.** Todo lugar que monta\no histórico da conversa — a resposta que ela gera, a organização automática da\nmemória quando a conversa fica longa, a restauração da tela ao abrir o chat —\npassou a percorrer exatamente a trilha em uso. Uma resposta de uma trilha\nabandonada nunca entra no contexto sem você ver.\n\n**Conversas antigas continuam intactas.** Nada precisa ser migrado e nada some:\numa conversa criada antes desta mudança é lida como sempre foi, de ponta a\nponta, e não ganha nenhum indicador de versão na tela.\n\n**A memória longa também respeita a trilha.** Quando a conversa fica grande e a\nVox resume a parte antiga para caber no contexto, o resumo agora pertence à\ntrilha em que foi feito e continua no caminho certo do histórico.",
+        "pr": 511,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/511"
+      },
+      {
+        "type": "feat",
+        "title": "Editar uma pergunta do chat e navegar entre as versões dela",
+        "body": "Agora dá para reescrever uma pergunta que você já enviou e recebê-la de volta\ncom uma resposta nova, sem perder a anterior. É a metade de cima do\nversionamento de mensagens: a parte que aparece na tela.\n\n**Como usar.** Passe o mouse por cima de uma mensagem sua e, ao lado do\n\"Copiar\", aparece \"Editar\". A bolha vira uma caixa de texto já preenchida com o\nque você escreveu, e o botão \"Reenviar\" manda a versão nova. Enter reenvia,\nShift+Enter quebra a linha e Esc fecha sem mandar nada.\n\n**Reenviar não apaga nada.** A pergunta anterior e a resposta que ela recebeu\ncontinuam guardadas. No ponto onde existe mais de uma versão aparece um\ncontador `‹ 2/3 ›` junto da mensagem, e as setas alternam entre elas — a\nconversa inteira daquele ponto para a frente acompanha a versão escolhida.\nTrocar de versão não gasta uma resposta nova: só mostra a que já existia.\n\n**Reenviar o mesmo texto é válido.** Se você só quer outra tentativa da Vox,\nmande a mesma pergunta de novo — vira uma versão como qualquer outra.\n\n**Os anexos vêm junto.** Editar uma pergunta que tinha arquivo anexado mantém o\narquivo na versão nova, sem precisar subir de novo.\n\n**Enquanto a Vox responde, os controles ficam travados.** Editar e trocar de\nversão só voltam quando a resposta em andamento termina.\n\n**Conversa sem versão nenhuma continua igual.** O contador só aparece onde\nexiste mais de uma versão, então quem nunca editou uma pergunta não vê nada de\nnovo além do botão \"Editar\".",
+        "pr": 513,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/513"
+      },
+      {
+        "type": "infra",
+        "title": "CI mais rápido e extensão sob o mesmo padrão de formatação",
+        "body": "O cache de build passou a ser separado por imagem também na publicação de\nrelease e na varredura de segurança. Antes as duas imagens dividiam o mesmo\nespaço de cache: na publicação uma sobrescrevia a da outra, e a varredura lia\nde um espaço que ninguém preenchia. Nos dois casos cada execução recomeçava\nquase do zero.\n\nOs arquivos da extensão do navegador passaram a seguir o mesmo padrão de\nformatação do resto do projeto, agora com verificação automática. Nada muda\nno que a extensão faz — é organização de código.",
+        "pr": 517,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/517"
+      },
+      {
+        "type": "fix",
+        "title": "O bloco \"Pensando\" para de abrir e fechar sozinho durante a resposta",
+        "body": "Em turnos em que a Vox alterna entre escrever e consultar ferramentas, o bloco\n**Pensando** abria e fechava a cada consulta, e o título trocava entre\n\"Pensando\" e \"Pensou por 12s · 3 ferramentas\" no mesmo ritmo — empurrando a\nconversa para cima e para baixo enquanto você tentava ler.\n\nAgora o bloco abre uma vez quando o turno começa e recolhe uma vez, um instante\ndepois que a resposta termina; o título fica no shimmer \"Pensando\" durante todo\no turno e só vira o resumo no fim. E o bloco passou a ser clicável também\ndurante a resposta: se você abrir ou fechar na mão, ele fica exatamente como\nvocê deixou — nada mais mexe nele sozinho, nem quando a conexão cai e volta.\n\nJunto disso, o contador de versões `‹ 2/3 ›` das suas mensagens agora aparece e\nsome com o ponteiro, igual aos botões de copiar e editar da mesma linha, em vez\nde ficar sempre na tela. Navegando pelo teclado, o contador continua acessível e\nreaparece assim que uma das setas recebe o foco.",
+        "pr": 519,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/519"
+      },
+      {
+        "type": "ui",
+        "title": "Os ícones animam ao passar o mouse no botão, e a barra estreita ganhou novidades e sair",
+        "body": "Dois acabamentos de interface que apareceram no uso do dia a dia.\n\n**O ícone agora anima pelo botão inteiro.** Antes, a animação de um ícone só\nacontecia se o ponteiro passasse exatamente por cima do desenho — encostar no\nbotão que o contém não fazia nada, e em botão com texto ao lado (\"Buscar na\nbiblioteca\") o desenho quase nunca era tocado. Agora qualquer parte do botão,\nlink ou item de menu acende o ícone que ele contém, e passar direto no desenho\ncontinua funcionando como antes. Atravessar do botão para o desenho não\nreinicia nem interrompe a animação no meio: é um gesto só, do momento em que o\nponteiro entra ao momento em que sai.\n\nVale para o app inteiro — sidebar, barra do topo, cards da biblioteca, menus,\ndiálogos —, sem exceção por tipo de botão. **No celular nada muda**: toque não\né o mesmo que passar o mouse, e um toque não deixa mais o ícone parado no meio\ndo desenho.\n\n**A barra estreita ficou completa.** Com a navegação recolhida, \"Novidades\" e\n\"Sair\" simplesmente não existiam: para se desconectar era preciso abrir a\nsidebar antes. Os dois agora fecham a barra estreita, no mesmo rodapé e na\nmesma ordem da sidebar aberta, cada um com o nome aparecendo ao lado quando o\nponteiro para em cima. O \"Sair\" continua com o destaque avermelhado que avisa\nque a ação desconecta — e esse aviso, que no tema claro ficava quase invisível,\nvoltou a ser legível nos quatro temas.\n\n**Quem usa o sistema com movimento reduzido não vê animação nenhuma**, nem pelo\nbotão nem pelo ícone: a preferência do sistema continua desligando tudo.",
+        "pr": 521,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/521"
+      },
+      {
+        "type": "ui",
+        "title": "Atualização automática, notificações de job e toasts mais estáveis no PWA",
+        "body": "No app instalado (PWA), a nova versão passa a ser aplicada sozinha ao abrir o app\nquando o chat não está respondendo — sem o modal de atualização a cada deploy.\n\nQuando uma transcrição termina ou falha com o app em segundo plano e as\nnotificações estão permitidas, o sistema mostra uma notificação com a identidade\nda Voxen (em vez de só um aviso interno ao voltar para a aba).\n\nToasts antigos não ficam “presos” nem reaparecem em fila depois de muito tempo\ncom a aba em background. Na tela de detalhe de um job em andamento, a\ntranscrição pronta abre automaticamente ao concluir.",
+        "pr": 523,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/523"
+      },
+      {
+        "type": "feat",
+        "title": "Após confirmar uma ação, a Vox continua a conversa — e você pode sempre permitir",
+        "body": "Quando a Vox pede confirmação para criar uma nota e você confirma, ela volta a\nresponder e segue o plano — não para só com a mensagem de “nota criada”.\n\nNo card de confirmação há também **Sempre permitir**: a partir daí, criar nota\nnão pede confirmação de novo neste usuário. A preferência fica salva na sua\nconta.",
+        "pr": 525,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/525"
+      },
+      {
+        "type": "feat",
+        "title": "Base de conhecimento unificada para chat e MCP",
+        "body": "O chat e as integrações MCP agora consultam notas e transcrições na mesma busca,\npriorizando notas curadas sem esconder fontes mais relevantes. As respostas podem\ncitar notas com links navegáveis e cada nota pode registrar múltiplas transcrições\nde origem.\n\nTambém adotamos **Base de conhecimento** em português e **Knowledge base** em\ninglês como a nomenclatura consistente de toda a aplicação.",
+        "pr": 527,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/527"
+      },
+      {
+        "type": "ui",
+        "title": "Notas atualizadas ao abrir e visualizadas em Preview",
+        "body": "A página de Notas agora atualiza sua lista ao abrir e quando você volta à aba,\nmostrando sem recarregar manualmente as notas criadas pelo chat, MCP ou\nautomações.\n\nAs notas também abrem em **Preview**, com título e conteúdo protegidos contra\nedição acidental. Use **Editar** para abrir os campos de alteração.",
+        "pr": 529,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/529"
+      },
+      {
+        "type": "ui",
+        "title": "Raciocínios longos acompanham a rolagem do chat",
+        "body": "Quando a IA estiver mostrando um raciocínio longo antes da resposta final, o\nchat agora acompanha o conteúdo novo automaticamente. Raciocínios curtos ainda\nmantêm a pergunta visível, e uma rolagem manual continua sob seu controle.",
+        "pr": 531,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/531"
+      },
+      {
+        "type": "ui",
+        "title": "Brain abre no mapa rápido 2D",
+        "body": "O Brain agora abre no mapa 2D recortado e mantém o mapa completo como uma\nescolha explícita. Ao explorar conexões, o painel também informa a relação,\nmétodo, confiança e origem da evidência.",
+        "pr": 546,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/546"
+      },
+      {
+        "type": "chore",
+        "title": "Matriz de regressão impede acesso cruzado entre usuários",
+        "body": "O CI agora valida o isolamento de conteúdos, jobs, chat, Brain, eventos,\narmazenamento e MCP entre usuários. Publicadores web e worker também recusam\nprogresso para jobs que não pertencem ao workspace informado.",
+        "pr": 548,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/548"
+      },
+      {
+        "type": "feat",
+        "title": "Histórico auditável da configuração da instância",
+        "body": "Administradores agora consultam revisões ordenadas da configuração global, com executor, data e diff legível. Chaves, tokens e cookies continuam redigidos no histórico. É possível restaurar valores permitidos em uma nova revisão, sem restaurar segredos, e novos jobs e turnos de chat passam a registrar a revisão de configuração vigente.",
+        "pr": 550,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/550"
+      },
+      {
+        "type": "fix",
+        "title": "Validação dos modelos efetivos na troca de chave OpenRouter",
+        "body": "Ao trocar a chave da OpenRouter, a Voxen agora confere os seis modelos efetivos — inclusive overrides — no catálogo autorizado da nova chave. Quando houver incompatibilidade, a tela informa a finalidade afetada e oferece alternativas compatíveis, sem alterar a configuração até a confirmação válida.",
+        "pr": 552,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/552"
+      },
+      {
+        "type": "feat",
+        "title": "Saúde operacional da configuração de IA",
+        "body": "Administradores agora veem quais capacidades de IA estão ativas, o modelo efetivo, modalidades, uso e custo agregados, revisão de configuração e falhas recentes. A tela também permite verificar uma finalidade sem criar conteúdo e simular a compatibilidade de um modelo antes da troca.",
+        "pr": 554,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/554"
+      },
+      {
+        "type": "feat",
+        "title": "Tokens MCP individuais e revogáveis",
+        "body": "O MCP agora usa tokens individuais por usuário, com escopos de leitura/escrita,\nexpiração, último uso e revogação. Administradores gerenciam metadados sem ver\nsegredos novamente e podem desativar a emissão de tokens por usuários.",
+        "pr": 556,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/556"
+      },
+      {
+        "type": "feat",
+        "title": "Citações verificáveis e clicáveis no chat",
+        "body": "Respostas do chat agora persistem evidências validadas de forma determinística,\ncom fonte, trecho, localização e link navegável para a transcrição. Citações\nsem validação não recebem selo de evidência.",
+        "pr": 558,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/558"
+      },
+      {
+        "type": "feat",
+        "title": "Extração do Brain por seções com cobertura retomável",
+        "body": "A extração grounded do Brain agora cobre conteúdos longos por seções e timestamps, preserva linhas de evidência e retoma apenas os segmentos pendentes ou que falharam.",
+        "pr": 560,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/560"
+      },
+      {
+        "type": "feat",
+        "title": "Relações verificáveis entre conhecimentos do Brain",
+        "body": "O Brain agora registra suporte, contradição e aliases de entidades com trechos literais, linhas e timestamps da fonte. Ao consultar uma contradição, as evidências dos dois lados ficam disponíveis para conferência.",
+        "pr": 562,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/562"
+      },
+      {
+        "type": "feat",
+        "title": "Busca encontra conteúdos por significado, não apenas por palavras-chave",
+        "body": "Quando embeddings estão habilitados, a busca de transcrições combina palavras-chave\ncom a semelhança de significado dos conteúdos já compilados no Brain. Assim, uma\npergunta pode encontrar uma fonte mesmo usando termos diferentes dos originais.\n\nSe o serviço de embeddings estiver indisponível, a busca continua funcionando com\no resultado textual tradicional.",
+        "pr": 564,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/564"
+      },
+      {
+        "type": "chore",
+        "title": "Base de testes passa a medir qualidade de busca e citações",
+        "body": "O Voxen agora mantém um corpus sintético para comparar busca textual, híbrida e\nBrain. Isso ajuda a evitar regressões de fontes e citações sem enviar dados ou\nperguntas reais a serviços externos durante os testes.",
+        "pr": 566,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/566"
+      },
+      {
+        "type": "feat",
+        "title": "Fontes web agora podem ser atualizadas sem perder o histórico",
+        "body": "Páginas web da Base de conhecimento agora mostram quando foram coletadas e podem\nser atualizadas manualmente. Se nada mudou, o Voxen só registra a nova consulta;\nse o conteúdo mudou, preserva a versão anterior, atualiza os índices e sinaliza\ncitações antigas para que não pareçam evidência da versão atual.",
+        "pr": 568,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/568"
+      },
+      {
+        "type": "feat",
+        "title": "Artefatos de pesquisa agora preservam evidências navegáveis",
+        "body": "Agora é possível criar briefing, FAQ, guia de estudo, linha do tempo e mapa\nmental a partir de fontes escolhidas. Cada resultado mantém a fonte e o trecho\nusado como evidência, respeita o espaço de trabalho de quem o criou e informa\nquando alguma fonte selecionada está indisponível.",
+        "pr": 570,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/570"
+      },
+      {
+        "type": "ui",
+        "title": "Fontes do chat ficam mais fáceis de consultar e o Brain abre completo",
+        "body": "As evidências de cada resposta agora aparecem em um resumo compacto e abrem um\npainel lateral com fonte, trecho, localização e estado de verificação. O Brain\ntambém passa a abrir diretamente na visão completa, sem exibir o bloqueio de\nrecorte.",
+        "pr": 572,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/572"
+      },
+      {
+        "type": "ui",
+        "title": "Fontes e citações integradas ao Chat",
+        "body": "Integra o painel de fontes ao layout do Chat e adiciona citações inline verificáveis às respostas.",
+        "pr": 574,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/574"
+      },
+      {
+        "type": "fix",
+        "title": "Citações estáveis e páginas atualizadas ao retomar abas",
+        "body": "Os previews das citações no Chat agora permanecem estáveis ao alternar o cursor\nentre vários marcadores, sem piscar nem interferir nos links para as fontes.\n\nAo voltar para uma aba do Voxen, a página revalida seus dados silenciosamente.\nO Chat também reconcilia o histórico com o servidor mesmo quando nenhuma\nresposta está em andamento, refletindo alterações feitas em outra aba sem exigir\nrecarregamento manual.",
+        "pr": 577,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/577"
+      },
+      {
+        "type": "fix",
+        "title": "Jobs em processamento se recuperam após reinícios",
+        "body": "- Jobs em execução usam lease e heartbeat persistidos no Postgres.\n- Um worker reiniciado recupera tentativas interrompidas sem deixar a Fila presa\n  em 99%; após três interrupções, o job termina com uma mensagem recuperável.\n- Conteúdo já persistido é retomado pelo checkpoint existente, sem criar uma\n  segunda transcrição.\n- Resumo, tags, embeddings e grafo não bloqueiam mais a conclusão canônica do\n  job depois que o conteúdo foi salvo.\n- Redis continua acelerando wakeups e progresso realtime, enquanto o Postgres é\n  a fonte durável da fila.",
+        "pr": 579,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/579"
+      },
+      {
+        "type": "feat",
+        "title": "Contas de plataforma agora são privadas por usuário",
+        "body": "As sessões de TikTok, Instagram e YouTube passaram a ficar em **Contas de plataforma**, na área pessoal. Cada pessoa conecta a própria sessão pela extensão do Voxen e ela é usada somente nos seus processamentos.\n\nA tela de Integrações administrativas ficou dedicada às configurações globais da instância. Também atualizamos os modelos padrão de Chat e Busca na web para DeepSeek V4 Flash, e os de Documentos e Visão para GPT-5.6 Luna.",
+        "pr": 581,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/581"
+      },
+      {
+        "type": "feat",
+        "title": "Jobs só concluem após todas as etapas e administração ganha controles de conta",
+        "body": "Agora a fila mostra resumo, tags e conexão com o Brain como etapas reais antes de marcar um conteúdo como concluído. Quando uma etapa recuperável ficar pendente, o conteúdo continua acessível e recebe o status **Concluído com pendências**, com opção de repetir apenas essas etapas sem transcrever novamente.\n\nAdministradores também podem bloquear, reativar, promover, rebaixar e excluir contas. A exclusão exige digitar o e-mail exato e remove o workspace e as credenciais pessoais associadas. Conteúdos novos preservam URL canônica, canal e autor para melhorar suas conexões no grafo.",
+        "pr": 583,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/583"
+      }
+    ],
+    "pr": 588,
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/588",
+    "title": "Voxen 0.13.1 — administração segura e processamento confiável",
+    "body": "## Uma Biblioteca que se organiza com você\n\nA Biblioteca agora deixa mais claro o que chegou nesta semana, o que ficou sem classificação e como cada conteúdo se relaciona com suas pastas e tags. Filtros visíveis, agrupamento semanal, Inbox e uma busca de tags que continua leve mesmo com uma Base de conhecimento maior ajudam a encontrar e organizar o conhecimento sem interromper o trabalho.\n\n## Acesso mais rápido às áreas da Voxen\n\nAs telas secundárias passam a carregar sob demanda na web. A aplicação abre com menos código inicial, preservando a navegação, os controles de acesso e uma transição acessível enquanto cada área fica pronta.\n\n## Brain mais confiável\n\nO processamento de embeddings do Brain passou a respeitar a mesma coordenação usada na indexação. Isso evita concorrência entre tarefas de fundo e protege a Base de conhecimento quando uma atualização perde a posse do trabalho em andamento.\n\n## Processamento que só termina quando está pronto\n\nUm conteúdo não é mais apresentado como concluído enquanto ainda faltam resumo, tags ou processamento no Brain. Quando uma etapa de enriquecimento precisa de atenção, a Voxen mostra esse estado de forma explícita e permite retomar somente o que ficou pendente, sem repetir a transcrição ou o download original.\n\n## Administração e privacidade por pessoa\n\nAdministradores agora contam com controles claros para aprovar, bloquear, reativar, promover ou remover usuários. As contas de plataformas, cookies e tokens pessoais permanecem isolados por usuário, e o bloqueio de uma conta invalida suas sessões ativas.\n\n## Fontes que explicam o conhecimento\n\nConteúdos do YouTube preservam autor, endereço canônico e canal de origem. Essas referências acompanham o conteúdo até o Brain, deixando relações no grafo mais rastreáveis e fáceis de conferir."
+  },
+  {
     "version": "0.13.1-dev.1785754177",
     "channel": "dev",
     "type": "feat",
@@ -536,6 +889,14 @@
     "author": "Kalyel",
     "date": "2026-07-28T06:16:58Z",
     "prUrl": "https://github.com/Yefclub/Voxen/pull/465"
+  },
+  {
+    "version": "0.13.0",
+    "channel": "prod",
+    "date": "2026-07-27T16:45:37Z",
+    "promoted": [],
+    "title": "Voxen 0.13.0 — Biblioteca Viva e conhecimento que acompanha seu ritmo",
+    "body": "## Uma Biblioteca que se organiza com você\n\nA Biblioteca agora deixa mais claro o que chegou nesta semana, o que ficou sem classificação e como cada conteúdo se relaciona com suas pastas e tags. Filtros visíveis, agrupamento semanal, Inbox e uma busca de tags que continua leve mesmo com um acervo maior ajudam a encontrar e organizar o conhecimento sem interromper o trabalho.\n\n## Acesso mais rápido às áreas da Voxen\n\nAs telas secundárias passam a carregar sob demanda na web. A aplicação abre com menos código inicial, preservando a navegação, os controles de acesso e uma transição acessível enquanto cada área fica pronta.\n\n## Brain mais confiável\n\nO processamento de embeddings do Brain passou a respeitar a mesma coordenação usada na indexação. Isso evita concorrência entre tarefas de fundo e protege o acervo quando uma atualização perde a posse do trabalho em andamento."
   },
   {
     "version": "0.12.0-dev.1785168327",

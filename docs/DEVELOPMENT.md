@@ -183,7 +183,9 @@ com versão SemVer de desenvolvimento e changelog:
 **Release estável em `main`**:
 
 - Prepare uma branch de release a partir de `dev`: `pnpm release:prepare patch`
-  (ou `minor`/`major`) e commite `package.json` + `apps/web/package.json`.
+  (ou `minor`/`major`). O comando materializa a versão e a entrada de produção;
+  commite `package.json`, `apps/web/package.json`, `releases.json`, `CHANGELOG.md`
+  e `changelog/RELEASE.md`.
 - Abra PR para `main` com label `release:patch`, `release:minor` ou
   `release:major`.
 - `pr-release-labels.yml` valida que a versão preparada bate com a label e com
