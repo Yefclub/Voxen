@@ -1,10 +1,10 @@
 # ============================================================================
-# version-main — publica tag estável vX.Y.Z a partir de main
+# version-main — publishes stable vX.Y.Z tags from main
 # ============================================================================
 # Branch-protection friendly:
-#  - a PR de release já deve trazer package.json em X.Y.Z estável;
-#  - este workflow não commita em main nem em dev;
-#  - se a tag vX.Y.Z ainda não existir, cria a tag e despacha release.yml.
+#  - the release PR already contains a stable X.Y.Z package version;
+#  - this workflow never commits to main or dev;
+#  - when vX.Y.Z does not exist, it creates the tag and dispatches release.yml.
 # ============================================================================
 
 name: Publish stable release
@@ -35,7 +35,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Read stable version
         id: version
@@ -44,11 +44,11 @@ jobs:
           ROOT_VER=$(node -p "require('./package.json').version")
           WEB_VER=$(node -p "require('./apps/web/package.json').version")
           if ! echo "$ROOT_VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "package.json precisa estar em SemVer estável X.Y.Z; atual: $ROOT_VER"
+            echo "package.json must contain stable SemVer X.Y.Z; current: $ROOT_VER"
             exit 1
           fi
           if [ "$ROOT_VER" != "$WEB_VER" ]; then
-            echo "Versões divergentes: package.json=$ROOT_VER apps/web/package.json=$WEB_VER"
+            echo "Version mismatch: package.json=$ROOT_VER apps/web/package.json=$WEB_VER"
             exit 1
           fi
           echo "version=$ROOT_VER" >> "$GITHUB_OUTPUT"
@@ -65,10 +65,10 @@ jobs:
           existing_sha=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1 || true)
           if [ -n "$existing_sha" ]; then
             if [ "$existing_sha" = "$(git rev-parse HEAD)" ]; then
-              echo "Tag $TAG já aponta para HEAD. Nada para publicar."
+              echo "Tag $TAG already points to HEAD. Nothing to publish."
               exit 0
             fi
-            echo "Tag $TAG já existe em outro commit ($existing_sha). Nenhuma nova release será criada."
+            echo "Tag $TAG already exists on another commit ($existing_sha). No release will be created."
             exit 0
           fi
 
@@ -79,10 +79,10 @@ jobs:
           gh workflow run release.yml --ref "$TAG"
 
           {
-            echo "## Release publicada"
+            echo "## Published release"
             echo ""
             echo "- Tag: \`$TAG\`"
-            echo "- Versão: \`$VERSION\`"
+            echo "- Version: \`$VERSION\`"
             echo ""
-            echo "Abra uma PR de sync \`main → dev\` se dev ainda não contém o commit de release."
+            echo "Open a \`main → dev\` sync PR if dev does not contain the release commit."
           } >> "$GITHUB_STEP_SUMMARY"

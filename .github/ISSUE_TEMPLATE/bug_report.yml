@@ -1,72 +1,71 @@
 name: Bug report
-description: Reporte um bug reproduzivel no Voxen.
+description: Report a reproducible Voxen defect.
 title: "fix: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Obrigado por reportar. Nao inclua secrets, tokens, cookies ou valores reais do `.env`.
+        Thank you for reporting a bug. Do not include secrets, tokens, cookies, or real `.env` values.
   - type: textarea
-    id: resumo
+    id: summary
     attributes:
-      label: Resumo
-      description: O que aconteceu?
-      placeholder: Descreva o problema em poucas frases.
+      label: Summary
+      description: What happened?
+      placeholder: Describe the problem in a few sentences.
     validations:
       required: true
   - type: textarea
-    id: passos
+    id: steps
     attributes:
-      label: Passos para reproduzir
-      description: Liste o menor caminho para reproduzir o bug.
+      label: Reproduction steps
+      description: Provide the shortest path that reproduces the defect.
       placeholder: |
-        1. Subir com `make dev`
-        2. Acessar ...
-        3. Clicar em ...
-        4. Ver erro ...
+        1. Start Voxen with `make dev`
+        2. Open ...
+        3. Select ...
+        4. Observe ...
     validations:
       required: true
   - type: textarea
-    id: esperado
+    id: expected
     attributes:
-      label: Comportamento esperado
-      description: O que deveria acontecer?
+      label: Expected behavior
+      description: What should have happened?
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: Logs relevantes
-      description: Cole logs sem secrets. Use blocos de codigo.
+      label: Relevant logs
+      description: Paste logs without secrets. Use code blocks.
       render: shell
     validations:
       required: false
   - type: dropdown
-    id: ambiente
+    id: environment
     attributes:
-      label: Ambiente
+      label: Environment
       options:
-        - Docker local
+        - Local Docker
         - Proxmox CT/LXC
-        - Home-lab
-        - VPS/servidor dedicado
+        - Home lab
+        - VPS or dedicated server
         - Easypanel
-        - Outro
+        - Other
     validations:
       required: true
   - type: input
-    id: versao
+    id: version
     attributes:
-      label: Versao ou commit
-      placeholder: v0.7.2 ou SHA
+      label: Version or commit
+      placeholder: v0.13.1 or commit SHA
     validations:
       required: true
   - type: textarea
-    id: contexto
+    id: context
     attributes:
-      label: Contexto adicional
-      description: Prints, links, configuracoes nao sensiveis ou hipoteses.
+      label: Additional context
+      description: Screenshots, links, non-sensitive configuration, or hypotheses.
     validations:
       required: false
-

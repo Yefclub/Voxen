@@ -2,9 +2,9 @@ name: Release
 
 on:
   push:
-    # Só tags estáveis vX.Y.Z disparam release.
-    # Builds de dev usam metadata efêmera e não criam tags/release.
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    # Only stable vX.Y.Z tags publish a release.
+    # Development builds use ephemeral metadata and do not create tags.
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
   workflow_dispatch:
 
 permissions:
@@ -37,7 +37,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-
             type=raw,value=latest
-      - name: Build args (versão/sha/timestamp) injetados na image
+      - name: Inject version, SHA, and timestamp build arguments
         id: bargs
         run: |
           REF=${GITHUB_REF#refs/tags/v}
@@ -53,10 +53,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Escopo por app: o `scope` padrão do type=gha é a constante literal
-          # `buildkit`, então sem isto web e worker se sobrescrevem e o cache
-          # guarda só o índice do último a terminar (mesmo defeito corrigido
-          # no ci.yml pela PR #515).
+          # Use one cache scope per app. The default `type=gha` scope is the
+          # literal `buildkit`, which lets web and worker overwrite each other.
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
           build-args: |
@@ -90,11 +88,11 @@ jobs:
         with:
           generate_release_notes: true
           body: |
-            ## Mudanças
+            ## Changes
 
             ${{ steps.changelog.outputs.log }}
 
-            ## Imagens
+            ## Images
 
             - `ghcr.io/${{ github.repository_owner }}/voxen-web:${{ github.ref_name }}`
             - `ghcr.io/${{ github.repository_owner }}/voxen-worker:${{ github.ref_name }}`

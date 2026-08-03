@@ -1,36 +1,37 @@
-# Contribuindo com o Voxen
+# Contributing to Voxen
 
-Obrigado por querer contribuir. O Voxen e um projeto self-hosted com foco em instalacao simples, soberania de dados e manutencao segura. Contribuicoes sao bem-vindas quando preservam esses principios.
+Thank you for contributing. Voxen is a self-hosted project focused on simple
+operation, data sovereignty, and safe maintenance. Contributions are welcome
+when they preserve those principles.
 
-## Antes de comecar
+## Before you start
 
-- Leia o [README](README.md), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) e [docs/SECURITY.md](docs/SECURITY.md).
-- Para bugs, abra uma issue com passos de reproducao.
-- Para features maiores, abra uma issue primeiro para alinhar escopo antes de implementar.
-- Para vulnerabilidades, siga [SECURITY.md](SECURITY.md) e nao abra issue publica.
+- Read the [README](README.md), [development guide](docs/en/DEVELOPMENT.md),
+  [architecture](docs/en/ARCHITECTURE.md), and [security model](docs/en/SECURITY.md).
+- Open a reproducible bug report for defects.
+- Discuss large features in an issue before implementation.
+- Report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
 
-## Fluxo de branches
+## Branch workflow
 
-- `main`: branch default e de release. Protegida.
-- `dev`: branch de integracao. Protegida.
-- PRs de feature/correcao devem mirar `dev`.
-- PRs para `main` sao apenas releases e precisam de uma label `release:patch`, `release:minor` ou `release:major`.
+- `main` is the protected stable release branch.
+- `dev` is the protected integration branch.
+- Feature and maintenance pull requests target `dev`.
+- Pull requests to `main` are releases and require exactly one of
+  `release:patch`, `release:minor`, or `release:major`.
 
-Use branches com prefixo claro:
+Use a focused branch name:
 
-```bash
-feat/minha-feature
-fix/meu-bug
-docs/minha-doc
-chore/minha-manutencao
+```text
+feat/my-feature
+fix/my-bug
+docs/my-guide
+chore/my-maintenance
 ```
 
-## Setup local
+## Local setup
 
-Prerequisitos minimos:
-
-- Docker + Docker Compose v2
-- Git
+Minimum requirements are Git, Docker, and Docker Compose v2.
 
 ```bash
 git clone https://github.com/Yefclub/Voxen.git
@@ -38,16 +39,12 @@ cd Voxen
 make dev
 ```
 
-Opcional para rodar tooling fora dos containers:
+Running tooling outside containers additionally requires Bun, pnpm, Python,
+and uv in the versions documented in [STACK.md](docs/en/STACK.md).
 
-- Bun 1.2+
-- pnpm 9+
-- Python 3.13
-- uv
+## Quality checks
 
-## Qualidade antes do PR
-
-Rode os checks mais relevantes antes de abrir PR:
+Run the relevant checks before opening a pull request:
 
 ```bash
 make format-check
@@ -57,62 +54,35 @@ make test
 docker compose build
 ```
 
-Para aplicar formatacao automaticamente:
+Use `make format` to apply automated formatting.
 
-```bash
-make format
-```
+TypeScript uses ESLint and Prettier. Avoid `any`, validate API input with Zod,
+and keep handlers small and testable. Python uses Ruff, strict mypy, mandatory
+type hints in application code, and Pydantic at data boundaries.
 
-## Estilo de codigo
+Every bug fix or behavior change should include a regression test. Schema
+changes require a Prisma migration and, where relevant, an upgrade-path test.
 
-TypeScript:
+## Commits and pull requests
 
-- ESLint + Prettier.
-- Evite `any`; prefira `unknown` com narrowing.
-- Valide entrada de API com Zod.
-- Mantenha handlers pequenos e testaveis.
-
-Python:
-
-- Ruff para lint e format.
-- mypy strict.
-- Type hints obrigatorios em codigo de app.
-- Validacao com Pydantic quando dados cruzam fronteiras.
-
-## Testes
-
-- `apps/web/tests`: testes Bun/Vitest para web/API.
-- `apps/chat/tests`: pytest do servico de chat.
-- `apps/worker/tests`: pytest do worker.
-
-Inclua teste quando corrigir bug ou mudar comportamento. Para mudancas de schema, inclua migration Prisma e teste de fluxo quando fizer sentido.
-
-## Commits
-
-Use Conventional Commits:
+Use English Conventional Commits:
 
 ```text
-feat(web): adiciona filtro de jobs
-fix(worker): corrige retry de transcricao
-docs(deploy): documenta Cloudflare Tunnel
-ci(security): atualiza scanner de secrets
+feat(web): add job filter
+fix(worker): recover interrupted transcription
+docs(deploy): document Cloudflare Tunnel
+ci(security): update secret scanner
 ```
 
-Titulos podem ser em ingles ou portugues, mas mantenha o tipo/scope em formato convencional.
+A good pull request explains the problem and solution, identifies critical
+files, lists the tests that ran, updates affected documentation, and stays small
+enough to review. Changes spanning more than two files should normally start
+with an EARS specification under `.specs/NNN-slug.md`.
 
-## Pull requests
+Do not include AI attribution, generated-by footers, or co-authorship trailers
+in commits, pull requests, issues, documentation, or code.
 
-Um bom PR:
+## Dependency licenses
 
-- Explica problema e solucao.
-- Lista arquivos/areas criticas.
-- Inclui plano de testes executado.
-- Atualiza docs quando muda comportamento, deploy, seguranca ou workflow.
-- Mantem escopo pequeno o suficiente para review.
-
-Mudancas grandes devem nascer de uma spec em `.specs/NNN-slug.md` ou de uma issue discutida previamente.
-
-## Licencas de dependencias
-
-Novas dependencias devem ter licenca permissiva, como MIT, Apache-2.0, BSD ou ISC. Evite GPL, AGPL, SSPL ou licencas que possam impor obrigacoes incompatíveis com o projeto.
-
+New dependencies must use a permissive license such as MIT, Apache-2.0, BSD, or
+ISC. Avoid GPL, AGPL, SSPL, or licenses that impose incompatible obligations.

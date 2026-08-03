@@ -1,34 +1,32 @@
-# Título da PR (em PT-BR, sem emoji, sem rodapé de IA)
+# Pull request title (English, no emoji or AI attribution)
 
-## Contexto
+## Context
 
-Por que essa mudança existe? Que problema resolve?
+Why does this change exist? Which problem does it solve?
 
-## O que foi feito
+## What changed
 
-Lista clara das mudanças.
+- Change 1
+- Change 2
 
-- Mudança 1
-- Mudança 2
+## Technical details
 
-## Detalhes técnicos
+Explain decisions, trade-offs, and complex behavior. List critical files.
 
-Decisões, trade-offs, partes complicadas. Liste arquivos críticos modificados.
+## Test plan
 
-## Plano de testes
+- [ ] `make format-check` passes
+- [ ] `make lint` passes
+- [ ] `make typecheck` passes
+- [ ] `make test` passes
+- [ ] `docker compose build` passes
+- [ ] Easypanel Dockerfile passes `Docker build (apps + Easypanel)`
+- [ ] Specification added or updated under `.specs/` when applicable
+- [ ] Prisma migration added when the schema changed
+- [ ] Manual scenarios verified: describe them here
 
-- [ ] `make format-check` verde
-- [ ] `make lint` verde
-- [ ] `make typecheck` verde
-- [ ] `make test` verde
-- [ ] `docker compose build` verde
-- [ ] Dockerfile Easypanel validado pelo CI (`Docker build (apps + Easypanel)`)
-- [ ] Spec atualizada/criada: `.specs/NNN-slug.md` (se aplicável)
-- [ ] Migration Prisma criada (se mudou schema)
-- [ ] Testado manualmente: <descrever cenários>
+## References
 
-## Referências
-
-- Issue: #N (se aplicável)
-- Spec: `.specs/NNN-slug.md` (se aplicável)
-- ADR: `docs/DECISIONS.md` ADR-N (se aplicável)
+- Issue: #N (when applicable)
+- Spec: `.specs/NNN-slug.md` (when applicable)
+- ADR: `docs/DECISIONS.md` ADR-N (when applicable)

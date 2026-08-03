@@ -1,34 +1,33 @@
-name: Pergunta
-description: Tire uma duvida de uso, deploy ou desenvolvimento.
+name: Question
+description: Ask about usage, deployment, or development.
 title: "question: "
 labels: ["question"]
 body:
   - type: textarea
-    id: pergunta
+    id: question
     attributes:
-      label: Pergunta
-      description: Seja especifico sobre o que voce tentou e onde travou.
+      label: Question
+      description: Be specific about what you tried and where you are blocked.
     validations:
       required: true
   - type: dropdown
-    id: assunto
+    id: topic
     attributes:
-      label: Assunto
+      label: Topic
       options:
-        - Instalacao
+        - Installation
         - Proxmox CT/LXC
         - Docker Compose
         - Easypanel
-        - Uso da aplicacao
-        - Desenvolvimento
-        - Outro
+        - Application usage
+        - Development
+        - Other
     validations:
       required: true
   - type: textarea
-    id: contexto
+    id: context
     attributes:
-      label: Contexto
-      description: Ambiente, versao, logs sem secrets e links para docs que voce consultou.
+      label: Context
+      description: Environment, version, logs without secrets, and links to documentation you consulted.
     validations:
       required: false
-

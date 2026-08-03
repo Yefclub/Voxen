@@ -1,30 +1,38 @@
 # Voxen
 
-[Português (Brasil)](README.md) | [English](docs/en/README.md)
+English | [Português (Brasil)](docs/README.md)
 
-Plataforma web self-hosted de **biblioteca multimodal** com transcrição, análise de documentos/imagens e grafo de conhecimento. Acesso de agentes externos via **MCP**. Sem embeddings — abordagem harness/Karpathy.
+Voxen is a self-hosted **multimodal knowledge base** with transcription,
+document and image analysis, agentic search, and a knowledge graph. External
+agents can access the library through **MCP**. Retrieval is evidence-first and
+does not require vector embeddings.
 
-## O que faz
+## What it does
 
-1. Cola um link ou envia um arquivo de áudio, vídeo, imagem ou documento
-2. Backend extrai conteúdo, faz chunking/transcrição quando necessário e usa OpenRouter para análise
-3. Salva como `.md` com metadados, timestamps quando existirem, link original e **resumo IA** em markdown
-4. Organiza em pastas (IA + manual) e expõe a Base de conhecimento via **MCP** e grafo Brain
+1. Paste a URL or upload audio, video, image, or document files.
+2. Voxen extracts the content, transcribes or chunks it when necessary, and
+   sends only the required analysis to the configured models.
+3. It stores structured Markdown with source metadata, timestamps, canonical
+   links, and an AI-generated summary.
+4. It organizes the library into folders and exposes it through chat, MCP, and
+   the Brain knowledge graph.
 
 ## Stack
 
-- **Web/API**: Bun + Hono + Vite + React + Tailwind v4 + shadcn/ui (tema zinc)
-- **MCP**: Streamable HTTP no app web (`/mcp`) para clientes externos (Claude, Cursor, etc.)
-- **Worker**: Python asyncio + extrator de mídia (`yt-dlp` internamente) + `ffmpeg`
-- **Auth**: better-auth (email/senha) com aprovação manual do admin
-- **DB**: Postgres 17 + Prisma + FTS (`tsvector` GIN, dicionário `portuguese`)
-- **Fila**: Postgres (jobs duráveis com lease/heartbeat); Redis apenas para wakeup e realtime
-- **Storage**: MinIO/S3-compatible (`S3_*`)
-- **LLM/Transcrição**: OpenRouter (Grok 4.5 + Grok STT unificados)
+- **Web/API:** Bun, Hono, Vite, React, Tailwind CSS v4, and shadcn/ui
+- **MCP:** Streamable HTTP at `/mcp` for Claude Code, Codex, Cursor, and other
+  compatible clients
+- **Worker:** Python asyncio, `yt-dlp`, and `ffmpeg`
+- **Authentication:** Better Auth with email/password and administrator approval
+- **Database:** PostgreSQL 17, Prisma, and full-text search
+- **Queue:** durable PostgreSQL jobs with leases and heartbeats; Redis is used
+  for wakeups and realtime events
+- **Storage:** MinIO or another S3-compatible service
+- **Models:** OpenRouter, configured centrally by an administrator
 
-## Subir em 1 minuto (dev local)
+## Local quick start
 
-Pré-requisitos: `docker` + `docker compose`. Nada além disso.
+Requirements: Docker and Docker Compose v2.
 
 ```bash
 git clone https://github.com/Yefclub/Voxen.git
@@ -32,114 +40,90 @@ cd Voxen
 make dev
 ```
 
-Abre em `http://localhost:3000`. Primeiro cadastro vira admin e cai no
-onboarding: basta colar a chave da OpenRouter; a Voxen valida a conta e aplica
-automaticamente os modelos canônicos. Pronto.
+Open `http://localhost:3000`. The first account becomes the administrator and
+enters onboarding. Add an OpenRouter key; Voxen validates it and applies the
+canonical model configuration for the instance.
 
-`make dev` cria/completa `.env` se necessário, sobe Postgres, Redis, MinIO, web e worker. MinIO fica em `http://localhost:9001`.
+`make dev` creates or completes `.env` when necessary and starts PostgreSQL,
+Redis, MinIO, the web app, and the worker. The MinIO console is available at
+`http://localhost:9001`.
 
-## Subir em produção
+## Production deployment
 
-> **Recomendado: rode em home-lab** (mini-PC, NAS, Proxmox em casa). IP
-> residencial evita o bloqueio do YouTube em downloads, custo mensal é
-> praticamente zero e seus dados ficam fisicamente com você. VPS continua
-> suportada, mas exige cuidado extra com extração de mídia — detalhes em
-> [`docs/DEPLOY.md#home-lab-vs-vps`](docs/DEPLOY.md#home-lab-vs-vps). Em VPS, o
-> jeito de baixar por IP residencial é o
-> [Agente de proxy residencial](docs/DEPLOY.md#agente-de-proxy-residencial):
-> um container leve que roda na sua casa e o Voxen roteia o egress de download
-> por ele via túnel reverso.
+Voxen is best suited to a home lab, where data stays under your control and a
+residential IP is less likely to trigger media download restrictions. VPS,
+Proxmox LXC, Docker Compose, nginx, and Easypanel deployments are also
+supported. See the [deployment guide](docs/en/DEPLOY.md) for the complete
+instructions.
 
-Tem guia passo-a-passo pra cada cenário em [`docs/DEPLOY.md`](docs/DEPLOY.md):
+For Easypanel, prefer the published images:
 
-| Cenário | Quando usar |
-|---|---|
-| **Home-lab (recomendado)** | Mini-PC, NAS ou Proxmox em casa, IP residencial |
-| **LXC do Proxmox** | Self-hosted, container LXC (`nesting=1`) — em casa ou em servidor |
-| **Servidor + nginx do host** | VPS Linux com nginx nativo + certbot (⚠ ver aviso VPS) |
-| **Servidor + nginx em container** | Tudo em Docker, profile `nginx` (⚠ ver aviso VPS) |
-| **Easypanel** | Plataforma cuida de HTTPS/domínio sozinha |
+```text
+ghcr.io/yefclub/voxen-web:latest
+ghcr.io/yefclub/voxen-worker:latest
+```
 
-Para Easypanel em produção, prefira Source **Docker image** com
-`ghcr.io/yefclub/voxen:dev` ou `ghcr.io/yefclub/voxen:latest`. O modo
-GitHub/Dockerfile também funciona, mas o Easypanel expõe Environment no
-build-time; isso pode mostrar secrets como build args no log de build.
-
-TL;DR home-lab (Debian/Ubuntu com Docker):
+A minimal Docker Compose deployment starts with:
 
 ```bash
 git clone https://github.com/Yefclub/Voxen.git ~/voxen
 cd ~/voxen
-cp .env.example .env  # edite secrets + APP_BASE_URL
+cp .env.example .env
+# Edit secrets and APP_BASE_URL before continuing.
 mv docker-compose.override.yml docker-compose.override.dev.yml
 docker compose up -d --build
-
-# Acesso externo: Cloudflare Tunnel é o caminho mais simples em home-lab.
-# Veja docs/DEPLOY.md#home-lab pra detalhes (DDNS, port forwarding, Let's Encrypt).
 ```
 
-## Operação — reset de senha
+Migrations are applied automatically by the web container through
+`prisma migrate deploy`.
 
-Voxen **não tem SMTP nem reset por email** (decisão deliberada — self-hosted single-tenant não compensa SMTP). Quando um user esquece a senha, o owner do deploy roda no servidor:
+## Operations
+
+Safe update commands preserve the PostgreSQL, Redis, and MinIO volumes:
 
 ```bash
-# Via Make (recomendado — passa PASSWORD via env var, não vaza no `ps`)
-make reset-password EMAIL=user@exemplo.com PASSWORD='novaSenhaForte12chars'
-
-# Direto via env var
-docker compose exec -e VOXEN_NEW_PASSWORD='novaSenhaForte12chars' web \
-  bun apps/web/src/scripts/reset-password.ts user@exemplo.com
-
-# Direto via arg (senha aparece em `ps` e shell history — pra debug rápido)
-docker compose exec web bun apps/web/src/scripts/reset-password.ts \
-  user@exemplo.com 'novaSenhaForte12chars'
+make update
+make build
+make restart
+make backup
 ```
 
-O script:
-1. Localiza o user pelo email
-2. Gera hash da nova senha (mesmo algoritmo do `/sign-up` — better-auth scrypt)
-3. Atualiza `Account.password`
-4. **Revoga todas as sessões ativas** (forçando re-login)
+Do not run `make clean` in production: that target removes all volumes after an
+interactive confirmation.
 
-Mínimo 12 caracteres. Mais detalhes em [`docs/DEPLOY.md`](docs/DEPLOY.md#reset-de-senha).
-
-## Operação — atualizar sem perder dados
-
-Comandos seguros que preservam volumes (postgres, redis, minio):
+Voxen intentionally does not require SMTP for password recovery. An instance
+owner can reset a password from the server and revoke existing sessions:
 
 ```bash
-make update          # rolling restart com rebuild (zero downtime perceptível)
-make build           # rebuild de imagens (sem reiniciar)
-make restart         # down + up (curta indisponibilidade, dados preservados)
-make backup          # snapshot postgres + MASTER_KEY + minio em ./backups/
+make reset-password EMAIL=user@example.com PASSWORD='a-new-strong-password'
 ```
 
-**NUNCA** use `make clean` em produção — ele remove TODOS os volumes e perde os dados. O target já pede confirmação interativa.
+## Documentation
 
-Migrations rodam automaticamente no entrypoint do `web` (Prisma `migrate deploy`).
+The [documentation index](docs/README.md) links the English and Portuguese
+documentation tracks.
 
-## Documentação
+| Document                                          | Topic                                                 |
+| ------------------------------------------------- | ----------------------------------------------------- |
+| [Development](docs/en/DEVELOPMENT.md)             | Local environment, tests, SDD/TDD, and workflow       |
+| [Deployment](docs/en/DEPLOY.md)                   | Home lab, VPS, Proxmox, nginx, Compose, and Easypanel |
+| [Architecture](docs/en/ARCHITECTURE.md)           | Components, flows, and architectural decisions        |
+| [Stack](docs/en/STACK.md)                         | Runtime and dependency choices                        |
+| [Decisions](docs/en/DECISIONS.md)                 | Architecture Decision Records                         |
+| [Security](docs/en/SECURITY.md)                   | Threat model and technical controls                   |
+| [Transcript format](docs/en/TRANSCRIPT-FORMAT.md) | Canonical Markdown schema                             |
+| [Contributing](CONTRIBUTING.md)                   | Contribution requirements                             |
+| [Security policy](SECURITY.md)                    | Private vulnerability reporting                       |
+| [Support](SUPPORT.md)                             | Where to ask for help                                 |
+| [Changelog](CHANGELOG.md)                         | Release and development history                       |
 
-Índice bilíngue completo: [`docs/README.md`](docs/README.md).
+## Branch and release workflow
 
-| Doc | Tema |
-|---|---|
-| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Rodar local, testes, TDD/SDD |
-| [`docs/DEPLOY.md`](docs/DEPLOY.md) | **Deploy em home-lab / VPS / Proxmox / Easypanel + nginx + HTTPS** |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Diagrama, fluxos, decisões de design |
-| [`docs/STACK.md`](docs/STACK.md) | Versões fixadas e justificativa |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | ADRs |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | Threat model |
-| [`docs/TRANSCRIPT-FORMAT.md`](docs/TRANSCRIPT-FORMAT.md) | Schema do `.md` |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Como contribuir |
-| [`SECURITY.md`](SECURITY.md) | Como reportar vulnerabilidades |
-| [`SUPPORT.md`](SUPPORT.md) | Onde pedir ajuda |
-| [`CHANGELOG.md`](CHANGELOG.md) | Politica de changelog/releases |
+`main` is the stable default branch and `dev` is the protected integration
+branch. Feature and maintenance pull requests target `dev`. Stable releases are
+prepared from `dev`, reviewed through a pull request to `main`, and published as
+SemVer tags.
 
-## Workflow
+## License
 
-Branch default: `main`. Desenvolvimento entra por PR em `dev`; releases saem por PR para `main` com label `release:patch|minor|major` e versão SemVer já preparada. Detalhes em `CLAUDE.md` e `docs/DEVELOPMENT.md`.
-
-## Licença
-
-MIT — ver [`LICENSE`](LICENSE).
+MIT — see [LICENSE](LICENSE).
