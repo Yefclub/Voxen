@@ -1,7 +1,6 @@
 ---
-title: Personal classic and focused interface modes
-type: feature
-area: account
+tipo: feat
+titulo: Personal classic and focused interface modes
 ---
 
 - Added a per-user interface preference with the existing Voxen shell as the
