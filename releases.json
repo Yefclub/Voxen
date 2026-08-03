@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.1-dev.1785767741",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Personal classic and focused interface modes",
+    "body": "- Added a per-user interface preference with the existing Voxen shell as the\n  safe default.\n- Added an opt-in focused desktop shell inspired by Vesper, where navigation\n  belongs to the background canvas and the main content sits in one inset\n  surface.\n- Added accessible controls in the desktop sidebar, collapsed rail and personal\n  account page.\n- Kept mobile geometry unchanged and revalidate the preference when returning\n  to a browser tab.",
+    "pr": 597,
+    "author": "Kalyel",
+    "date": "2026-08-03T11:35:26-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/597"
+  },
+  {
     "version": "0.13.1-dev.1785764402",
     "channel": "dev",
     "type": "ui",
