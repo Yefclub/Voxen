@@ -19,6 +19,8 @@ test("ship skills require English pull-request surfaces in both harnesses", () =
     assert.match(skill, /--body "<detailed English body>"/);
     assert.match(skill, /quality-gate-report/);
     assert.match(skill, /Never relax `quality-gate\/baseline\.json`/);
+    assert.match(skill, /prisma-migration-gate-report/);
+    assert.match(skill, /never edit, rename, or delete a migration/);
     assert.doesNotMatch(skill, /título em PT-BR|corpo detalhado em PT-BR/);
   }
 });
@@ -27,16 +29,17 @@ test("version bot creates an English pull request and workflow output", () => {
   const workflow = read(".github/workflows/version-dev.yml");
 
   assert.match(workflow, /Automatic dev version bump/);
-  assert.match(workflow, /Eight exact required checks passed/);
+  assert.match(workflow, /Nine exact required checks passed/);
   assert.match(workflow, /\.name == "Quality Gate"/);
-  assert.match(workflow, /REQUIRED_TOTAL:-0}" = "8"/);
+  assert.match(workflow, /\.name == "Prisma migration gate"/);
+  assert.match(workflow, /REQUIRED_TOTAL:-0}" = "9"/);
   assert.doesNotMatch(workflow, /Bump automático|Sete required checks/);
 });
 
 test("quality evidence survives producer and collector failures", () => {
   const workflow = read(".github/workflows/ci.yml");
   const start = workflow.indexOf("  quality-gate:");
-  const end = workflow.indexOf("  docker-build-web:", start);
+  const end = workflow.indexOf("  prisma-migration-gate:", start);
   const job = workflow.slice(start, end);
 
   assert.match(
@@ -55,6 +58,24 @@ test("quality evidence survives producer and collector failures", () => {
       new RegExp(`- name: ${step}\\n        if: \\$\\{\\{ always\\(\\) \\}\\}`),
     );
   }
+  assert.match(job, /if-no-files-found: error/);
+});
+
+test("migration gate uses isolated databases and retains diagnostics", () => {
+  const workflow = read(".github/workflows/ci.yml");
+  const start = workflow.indexOf("  prisma-migration-gate:");
+  const end = workflow.indexOf("  docker-build-web:", start);
+  const job = workflow.slice(start, end);
+
+  assert.match(job, /name: Prisma migration gate/);
+  assert.match(job, /MIGRATION_GATE_DATABASE_URL:/);
+  assert.match(job, /MIGRATION_GATE_SHADOW_DATABASE_URL:/);
+  assert.match(job, /job\.services\.postgres\.id/);
+  assert.match(
+    job,
+    /- name: Validate migration history and replay\n        if: \$\{\{ always\(\) \}\}/,
+  );
+  assert.match(job, /name: prisma-migration-gate-report/);
   assert.match(job, /if-no-files-found: error/);
 });
 

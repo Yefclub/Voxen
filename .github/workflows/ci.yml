@@ -252,6 +252,53 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  prisma-migration-gate:
+    name: Prisma migration gate
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: voxen_migration_gate
+          POSTGRES_USER: voxen
+          POSTGRES_PASSWORD: dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U voxen"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MIGRATION_GATE_DATABASE_URL: postgresql://voxen:dev@localhost:5432/voxen_migration_gate
+      MIGRATION_GATE_SHADOW_DATABASE_URL: postgresql://voxen:dev@localhost:5432/voxen_shadow
+      MIGRATION_GATE_BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v6
+      - run: pnpm install --frozen-lockfile
+      - name: Fetch target migration history
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+      - name: Create dedicated shadow database
+        run: docker exec "${{ job.services.postgres.id }}" createdb -U voxen voxen_shadow
+      - name: Validate migration history and replay
+        if: ${{ always() }}
+        run: pnpm migration:check
+      - name: Upload migration evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: prisma-migration-gate-report
+          path: prisma-migration-gate/output
+          retention-days: 14
+          if-no-files-found: error
+
   # ==========================================================================
   # As três imagens são construídas em PARALELO. Antes eram três passos
   # sequenciais num job só, e o job custava o tempo somado: web 3m57s +

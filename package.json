@@ -34,6 +34,7 @@
     "format:check": "make format-check",
     "typecheck": "make typecheck",
     "migrate": "make migrate",
+    "migration:check": "node scripts/prisma-migration-gate.mjs",
     "quality:duplicates": "jscpd apps/web/src apps/extension apps/worker/src",
     "quality:check": "node scripts/quality-gate.mjs",
     "release:prepare": "node scripts/prepare-release.mjs",
@@ -41,6 +42,7 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "jscpd": "5.0.14"
+    "jscpd": "5.0.14",
+    "migration-gate-postgres": "npm:postgres@3.4.9"
   }
 }

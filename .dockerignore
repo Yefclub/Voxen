@@ -26,6 +26,7 @@ coverage
 **/coverage
 quality-gate/input
 quality-gate/output
+prisma-migration-gate/output
 .pytest_cache
 **/.pytest_cache
 .mypy_cache
