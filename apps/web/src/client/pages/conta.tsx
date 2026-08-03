@@ -348,6 +348,7 @@ function InterfaceModeCard(): React.ReactElement {
   ];
 
   const selectMode = async (mode: AppInterfaceMode): Promise<void> => {
+    if (mode === interfaceMode) return;
     try {
       await setInterfaceMode(mode);
       toast.success(t('interface.updated'));

@@ -1,52 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError, apiGet } from './api';
-import type { MeResponse } from './types';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { apiGet } from './api';
+import { meStore, type MeStore } from './me-store';
 
 // ============================================================================
 // useMe — sessão atual (auto-refetch on mount; revalida sob demanda)
 // ============================================================================
-type MeState = { data: MeResponse | null; loading: boolean; error: string | null };
-
-const meSubscribers = new Set<(s: MeState) => void>();
-let meCache: MeState = { data: null, loading: true, error: null };
-
-async function fetchMe(): Promise<void> {
-  meCache = { ...meCache, loading: true, error: null };
-  meSubscribers.forEach((cb) => cb(meCache));
-  try {
-    const data = await apiGet<MeResponse>('/api/me');
-    meCache = { data, loading: false, error: null };
-  } catch (e) {
-    // A sessao realmente expirada continua seguindo o fluxo de login. Falhas de
-    // rede/servidor ficam explicitas para nao desconectar um PWA instalado.
-    if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-      meCache = { data: null, loading: false, error: null };
-      meSubscribers.forEach((cb) => cb(meCache));
-      return;
-    }
-    meCache = {
-      data: null,
-      loading: false,
-      error: e instanceof Error ? e.message : 'Erro ao carregar sessão.',
-    };
-  }
-  meSubscribers.forEach((cb) => cb(meCache));
+export function useMeStore(store: MeStore) {
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  useEffect(() => {
+    void store.ensureLoaded();
+  }, [store]);
+  return { ...state, refresh: store.refresh, mutate: store.mutate };
 }
 
-export function useMe(): MeState & { refresh: () => Promise<void> } {
-  const [state, setState] = useState<MeState>(meCache);
-  useEffect(() => {
-    meSubscribers.add(setState);
-    if (meCache.data === null && !meCache.error) {
-      void fetchMe();
-    } else {
-      setState(meCache);
-    }
-    return () => {
-      meSubscribers.delete(setState);
-    };
-  }, []);
-  return { ...state, refresh: fetchMe };
+export function useMe() {
+  return useMeStore(meStore);
 }
 
 // ============================================================================

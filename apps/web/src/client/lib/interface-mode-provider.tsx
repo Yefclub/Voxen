@@ -26,7 +26,7 @@ type InterfaceModeContextValue = {
 const InterfaceModeContext = createContext<InterfaceModeContextValue | null>(null);
 
 export function InterfaceModeProvider({ children }: { children: ReactNode }): React.ReactElement {
-  const { data, refresh } = useMe();
+  const { data, refresh, mutate } = useMe();
   const [optimisticMode, setOptimisticMode] = useState<AppInterfaceMode | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -38,7 +38,7 @@ export function InterfaceModeProvider({ children }: { children: ReactNode }): Re
   useEffect(() => {
     let refreshing = false;
     const revalidate = (): void => {
-      if (document.visibilityState !== 'visible' || refreshing) return;
+      if (document.visibilityState !== 'visible' || refreshing || savingRef.current) return;
       refreshing = true;
       void refresh().finally(() => {
         refreshing = false;
@@ -62,7 +62,10 @@ export function InterfaceModeProvider({ children }: { children: ReactNode }): Re
       setOptimisticMode(next);
       try {
         await apiPatch('/api/account', { interfaceMode: next });
-        await refresh();
+        mutate((current) => ({
+          ...current,
+          user: current.user ? { ...current.user, interfaceMode: next } : null,
+        }));
         setOptimisticMode(null);
       } catch (error) {
         setOptimisticMode(null);
@@ -72,7 +75,7 @@ export function InterfaceModeProvider({ children }: { children: ReactNode }): Re
         setSaving(false);
       }
     },
-    [interfaceMode, refresh],
+    [interfaceMode, mutate],
   );
 
   const toggleInterface = useCallback(async () => {
