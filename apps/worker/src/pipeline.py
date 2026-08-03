@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import tempfile
 from collections.abc import Awaitable, Callable
@@ -1041,21 +1042,27 @@ async def _enrich_persisted_transcript(
     """Executa as etapas finais e devolve pendências recuperáveis explícitas."""
     warnings: list[str] = []
     try:
-        await events.publish_job_event(user_id, job_id, "summarizing", percent=72, transcript_id=transcript_id)
+        await events.publish_job_event(
+            user_id, job_id, "summarizing", percent=72, transcript_id=transcript_id
+        )
         await summary.maybe_generate(
             user_id=user_id,
             transcript_id=transcript_id,
             job_id=job_id,
             log=log,
         )
-        await events.publish_job_event(user_id, job_id, "tagging", percent=82, transcript_id=transcript_id)
+        await events.publish_job_event(
+            user_id, job_id, "tagging", percent=82, transcript_id=transcript_id
+        )
         await _maybe_generate_tags(
             user_id=user_id,
             job_id=job_id,
             transcript_id=transcript_id,
             log=log,
         )
-        await events.publish_job_event(user_id, job_id, "indexing_brain", percent=92, transcript_id=transcript_id)
+        await events.publish_job_event(
+            user_id, job_id, "indexing_brain", percent=92, transcript_id=transcript_id
+        )
         if not await db.reindex_transcript_brain_node(user_id, transcript_id):
             warnings.append("A indexação no Brain será repetida automaticamente.")
         await _maybe_grounded_brain_extract(
@@ -1110,7 +1117,9 @@ async def _complete_persisted_job(
         )
         return
     await db.mark_job_done(job_id)
-    await events.publish_job_event(user_id, job_id, "done", percent=100, transcript_id=transcript_id)
+    await events.publish_job_event(
+        user_id, job_id, "done", percent=100, transcript_id=transcript_id
+    )
 
 
 async def _maybe_grounded_brain_extract(

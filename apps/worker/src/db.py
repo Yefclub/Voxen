@@ -2387,13 +2387,15 @@ async def mark_job_completed_with_warnings(job_id: str, warning: str) -> None:
             )
 
 
-async def get_transcript_enrichment_statuses(user_id: str, transcript_id: str) -> dict[str, str] | None:
+async def get_transcript_enrichment_statuses(
+    user_id: str, transcript_id: str
+) -> dict[str, str] | None:
     async with connection() as conn:
         row = await conn.fetchrow(
-            '''
+            """
             SELECT "summaryStatus"::text AS summary, "taggingStatus"::text AS tagging
             FROM "Transcript" WHERE id = $1 AND "userId" = $2
-            ''',
+            """,
             transcript_id,
             user_id,
         )
