@@ -1,7 +1,6 @@
 ---
-title: Jobs do worker agora se recuperam após reinícios
-category: Fixed
-audience: Admins
+tipo: fix
+titulo: Jobs em processamento se recuperam após reinícios
 ---
 
 - Jobs em execução usam lease e heartbeat persistidos no Postgres.
