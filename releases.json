@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.1-dev.1785851298",
+    "channel": "dev",
+    "type": "security",
+    "title": "Patched vulnerable web and worker dependencies",
+    "body": "Patched four HIGH-severity findings reported by the release security scan:\n\n- `fast-uri` 3.1.5 resolves CVE-2026-18446;\n- `ip-address` 10.3.1 resolves CVE-2026-69192;\n- `aiohttp` 3.14.3 resolves CVE-2026-69244; and\n- `cryptography` 50.0.0 resolves CVE-2026-69247.\n\nThe worker image now also requires its audited lockfile, installs it strictly,\nand pins the `uv` installer image by version and digest. Dependency audits are\ngating checks now that both ecosystems pass cleanly.",
+    "pr": 606,
+    "author": "Kalyel",
+    "date": "2026-08-04T10:48:05-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/606"
+  },
+  {
     "version": "0.13.1-dev.1785801676",
     "channel": "dev",
     "type": "feat",
