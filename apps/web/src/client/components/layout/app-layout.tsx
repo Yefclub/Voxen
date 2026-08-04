@@ -150,7 +150,8 @@ export function AppLayout(): React.ReactElement {
   const showMobileNavButton = isChat && !isDesktop && !showBack;
   // The Topbar floats above the shell. Mobile chat reserves only the safe area
   // because its scroller owns the initial offset; other mobile routes keep a
-  // 4rem clearance. Desktop content does not reserve a row for floating chrome.
+  // 4rem clearance. Desktop page content owns a compact 20 px clearance via
+  // PageShell instead of reserving a full row for floating chrome.
   const headerPad = isFullBleed
     ? ''
     : isChat
@@ -241,7 +242,7 @@ function RouteLoading(): React.ReactElement {
     <div
       data-route-loading
       aria-busy="true"
-      className="mx-auto min-h-full w-full max-w-[1600px] px-4 pb-5 pt-0 sm:px-7 sm:pb-9 sm:pt-0 xl:px-10"
+      className="mx-auto min-h-full w-full max-w-[1600px] px-4 pb-5 pt-0 sm:px-7 sm:pb-9 sm:pt-0 md:pt-5 xl:px-10"
     >
       <div className="h-0.5 w-full overflow-hidden rounded-full bg-[var(--color-app-surface)]">
         <div className="h-full w-2/5 animate-pulse rounded-full bg-[var(--color-accent-violet)]" />

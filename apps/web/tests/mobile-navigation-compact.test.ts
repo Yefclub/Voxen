@@ -10,7 +10,10 @@ describe('chrome de navegação mobile compacto', () => {
     const source = readClientSource('components/layout/topbar.tsx');
 
     expect(source).toContain('right-2');
-    expect(source).toContain('md:right-4');
+    expect(source).toContain('md:right-7');
+    expect(source).toContain('md:right-9');
+    expect(source).not.toContain('md:right-4');
+    expect(source).not.toContain('md:right-5');
     expect(source).toContain('bg-transparent');
     expect(source).toContain('md:bg-[var(--color-app-bg-elevated)]/85');
     expect(source).toContain('top-[calc(env(safe-area-inset-top)+0.5rem)]');
@@ -40,5 +43,14 @@ describe('chrome de navegação mobile compacto', () => {
     expect(source).toContain('pt-[env(safe-area-inset-top)] md:pt-0');
     expect(source).toContain('pt-[calc(env(safe-area-inset-top)+4rem)]');
     expect(source).not.toContain('md:pt-[calc(env(safe-area-inset-top)+5rem)]');
+  });
+
+  test('page shell gives desktop pages a compact 20 px top clearance', () => {
+    const source = readClientSource('components/ui/page-shell.tsx');
+    const appLayout = readClientSource('components/layout/app-layout.tsx');
+
+    expect(source).toContain('md:pt-5');
+    expect(appLayout).toContain('sm:px-7 sm:pb-9 sm:pt-0 md:pt-5 xl:px-10');
+    expect(appLayout).not.toContain('md:pt-[calc(env(safe-area-inset-top)+5rem)]');
   });
 });

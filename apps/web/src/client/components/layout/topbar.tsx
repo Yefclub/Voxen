@@ -83,8 +83,8 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
         'fixed right-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 flex items-center gap-1.5 border-0 bg-transparent p-0 shadow-none backdrop-blur-none',
         'md:gap-2 md:rounded-xl md:border md:border-[var(--color-app-border)] md:bg-[var(--color-app-bg-elevated)]/85 md:px-2 md:py-1.5 md:backdrop-blur-xl',
         interfaceMode === 'focus'
-          ? 'md:right-5 md:top-[calc(env(safe-area-inset-top)+1.25rem)]'
-          : 'md:right-4 md:top-[calc(env(safe-area-inset-top)+1rem)]',
+          ? 'md:right-9 md:top-[calc(env(safe-area-inset-top)+1.25rem)]'
+          : 'md:right-7 md:top-[calc(env(safe-area-inset-top)+1rem)]',
       )}
     >
       {inChat && <ChatShellControls />}
