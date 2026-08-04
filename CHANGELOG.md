@@ -1,50 +1,28 @@
 # Changelog
 
-## v0.14.0 — 2026-08-04 · Produção
+## v0.13.1-dev.1785858147 — 2026-08-04 · Dev
 
-### Voxen 0.14.0 — espaços pessoais, login empresarial e qualidade verificável
+### 🐛 Refined focused scrolling and recoverable graph indexing
 
-## Uma interface que se adapta a cada pessoa
+Desktop scrollbars now include directional controls and stay visually inset
+inside rounded focused panels. Partial Brain coverage is shown as a recoverable
+waiting state and retried automatically instead of being logged and presented
+as an indexing failure.
 
-Cada usuário pode continuar com a navegação clássica ou ativar o novo modo
-focado, inspirado no Vesper. Nesse modo, a navegação fica integrada ao fundo e
-o conteúdo principal ganha uma superfície dedicada, sem alterar a experiência
-em telas menores. A preferência é pessoal, acessível e permanece sincronizada
-quando a pessoa retorna a outra aba do navegador.
+## v0.13.1-dev.1785851298 — 2026-08-04 · Dev
 
-## Administração e conta pessoal em lugares distintos
+### 🔒 Patched vulnerable web and worker dependencies
 
-Configurações compartilhadas da instância agora vivem em uma área administrativa
-própria, separada das páginas de uso diário e dos dados particulares. Modelos,
-autenticação, integrações, usuários e custos ficam claros para administradores,
-enquanto cada pessoa controla os próprios acessos MCP, expiração e revogação sem
-expor segredos de outros usuários.
+Patched four HIGH-severity findings reported by the release security scan:
 
-## Login empresarial com OIDC seguro
+- `fast-uri` 3.1.5 resolves CVE-2026-18446;
+- `ip-address` 10.3.1 resolves CVE-2026-69192;
+- `aiohttp` 3.14.3 resolves CVE-2026-69244; and
+- `cryptography` 50.0.0 resolves CVE-2026-69247.
 
-Administradores podem configurar provedores OpenID Connect para os domínios da
-organização. O fluxo usa PKCE, exige e-mail verificado, valida destinos HTTPS e
-mantém a política de aprovação de contas da Voxen. Segredos do provedor ficam
-criptografados, tokens do provedor não são armazenados e contas bloqueadas ou
-rejeitadas não conseguem criar sessão.
-
-## Qualidade e migrations verificadas antes do merge
-
-O CI ganhou uma catraca de qualidade que acompanha cobertura, duplicação e
-tamanho de arquivos sem exigir que toda a dívida histórica seja resolvida de
-uma vez. Novas regressões são bloqueadas e recebem um relatório próprio para
-orientar a correção.
-
-O histórico do Prisma também passa por um gate dedicado: mudanças de schema
-exigem migrations ordenadas, o histórico integrado não pode ser reescrito e a
-evolução completa é reproduzida em PostgreSQL isolado antes do merge.
-
-## Novidades de produção confiáveis
-
-A preparação da release agora grava a nota curada no feed de **Novidades** de
-forma idempotente. Assim, a página mostra o que realmente chegou à produção,
-sem duplicar versões nem confundir entradas de desenvolvimento com releases
-estáveis.
+The worker image now also requires its audited lockfile, installs it strictly,
+and pins the `uv` installer image by version and digest. Dependency audits are
+gating checks now that both ecosystems pass cleanly.
 
 ## v0.13.1-dev.1785801676 — 2026-08-03 · Dev
 

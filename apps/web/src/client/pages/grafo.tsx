@@ -34,6 +34,7 @@ import {
   ZoomOut,
 } from '@/components/ui/icons';
 import { AnimatedPage } from '../components/motion/animated-page';
+import { GraphIndexDeferredState, GraphIndexStatusBadge } from '../components/graph-index-feedback';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { FetchError } from '../components/ui/fetch-error';
@@ -61,7 +62,7 @@ import {
   type SigmaGraphModel,
   type SigmaNodeAttributes,
 } from '../lib/graph-model';
-import { resolveGraphPollingAction } from '../lib/graph-loading';
+import { graphIndexState, isGraphIndexDeferred } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
   GRAPH_3D_INIT_TIMEOUT_MS,
@@ -73,6 +74,7 @@ import {
 import { useFetch } from '../lib/hooks';
 import { useI18n, type TranslateFn } from '../lib/i18n';
 import { useIsCoarsePointer } from '../lib/use-media-query';
+import { useGraphIndexPolling } from '../lib/use-graph-index-polling';
 import { useTheme } from '../lib/theme-provider';
 import { cn } from '../lib/utils';
 import type { GraphIndexStatus } from '../../shared/graph-index';
@@ -230,17 +232,30 @@ export function GrafoPage(): React.ReactElement {
   } = useFetch<GraphIndexStatus>('/api/graph/status');
   const indexStatus = latestGraphIndexStatus(data?.indexStatus, polledIndexStatus);
   const indexing = indexStatus?.state === 'running' || (!indexStatus && data?.indexing === true);
-  const indexFailed = indexStatus?.state === 'error';
-  const previousIndexState = useRef<GraphIndexStatus['state'] | null>(null);
+  const indexDeferred = isGraphIndexDeferred(indexStatus);
+  const indexFailed = indexStatus?.state === 'error' && !indexDeferred;
+  const indexUnavailable = indexing || indexDeferred || indexFailed;
+  const refreshGraphSnapshot = useCallback(
+    () => setGraphRequest({ tick: Date.now(), force: false }),
+    [],
+  );
+
+  useGraphIndexPolling({
+    indexStatus,
+    snapshotIndexing: data?.indexing === true,
+    statusError,
+    refreshIndexStatus,
+    refreshSnapshot: refreshGraphSnapshot,
+  });
 
   useEffect(() => {
     const events = new EventSource('/api/graph/events');
     events.addEventListener('invalidated', () => {
-      setGraphRequest({ tick: Date.now(), force: false });
+      refreshGraphSnapshot();
       refreshIndexStatus();
     });
     return () => events.close();
-  }, [refreshIndexStatus]);
+  }, [refreshGraphSnapshot, refreshIndexStatus]);
 
   const filtered = useMemo(
     () => (data ? filterGraphData(data, deferredSearch, activeTypes) : null),
@@ -268,26 +283,6 @@ export function GrafoPage(): React.ReactElement {
     () => filtered?.nodes.find((node) => node.id === selectedId) ?? null,
     [filtered, selectedId],
   );
-
-  useEffect(() => {
-    if (!indexStatus) {
-      const timer = window.setTimeout(refreshIndexStatus, 2_500);
-      return () => window.clearTimeout(timer);
-    }
-    const action = resolveGraphPollingAction(
-      previousIndexState.current,
-      indexStatus,
-      data?.indexing === true,
-    );
-    previousIndexState.current = indexStatus.state;
-    if (action === 'refresh-snapshot') {
-      setGraphRequest({ tick: Date.now(), force: false });
-      return;
-    }
-    if (action !== 'poll-status') return;
-    const timer = window.setTimeout(refreshIndexStatus, 2_500);
-    return () => window.clearTimeout(timer);
-  }, [data?.indexing, indexStatus, refreshIndexStatus, statusError]);
 
   const openNode = useCallback(
     (node: GraphNode) => {
@@ -338,24 +333,10 @@ export function GrafoPage(): React.ReactElement {
                     <h1 className="truncate font-display text-base font-semibold">
                       {t('graph.title')}
                     </h1>
-                    {indexing ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-500">
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
-                        {t('graph.indexing')}
-                      </span>
-                    ) : indexFailed ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-400/25 bg-rose-400/10 px-2 py-0.5 text-[10px] font-medium text-rose-500">
-                        <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
-                        {t('graph.indexError')}
-                      </span>
-                    ) : (
-                      data && (
-                        <span className="hidden items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-500 sm:inline-flex">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                          {t('graph.ready')}
-                        </span>
-                      )
-                    )}
+                    <GraphIndexStatusBadge
+                      state={graphIndexState(indexing, indexDeferred, indexFailed, Boolean(data))}
+                      translate={t}
+                    />
                   </div>
                   <p className="hidden truncate text-xs text-[var(--color-app-muted)] sm:block">
                     {t('graph.subtitle')}
@@ -535,7 +516,7 @@ export function GrafoPage(): React.ReactElement {
                 </Button>
               </div>
             )}
-            {!loading && data && data.nodes.length === 0 && !indexing && !indexFailed && (
+            {!loading && data && data.nodes.length === 0 && !indexUnavailable && (
               <GraphEmptyState translate={t} onNavigate={navigate} />
             )}
             {indexing && data && data.nodes.length === 0 && (
@@ -550,6 +531,9 @@ export function GrafoPage(): React.ReactElement {
                   </p>
                 </div>
               </div>
+            )}
+            {indexDeferred && data && data.nodes.length === 0 && (
+              <GraphIndexDeferredState translate={t} onRetry={() => setReprocessOpen(true)} />
             )}
             {indexFailed && data && data.nodes.length === 0 && (
               <div className="absolute inset-0 z-10 flex items-center justify-center px-6">
