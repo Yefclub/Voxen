@@ -118,7 +118,6 @@ jobs:
         run: uv export --frozen --format requirements.txt --no-hashes --output-file /tmp/${{ matrix.app }}-requirements.txt
         working-directory: apps/${{ matrix.app }}
       - run: pip-audit --requirement /tmp/${{ matrix.app }}-requirements.txt --strict
-        continue-on-error: true  # remove once green
 
   pnpm-audit:
     name: pnpm audit
@@ -130,9 +129,11 @@ jobs:
           bun-version: 1.2.x
       - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
-      - run: pnpm audit --prod
-        continue-on-error: true
-    continue-on-error: true
+      - name: Audit production dependencies
+        run: >-
+          node scripts/pnpm-audit-gate.mjs
+          --level high
+          --allow GHSA-qwww-vcr4-c8h2
 
   gitleaks:
     name: Gitleaks (secret scanning)
