@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.14.1-dev.1785872155",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Mais espaço útil e navegação mais limpa",
+    "body": "O cabeçalho flutuante ocupa menos espaço no desktop e deixa de criar uma faixa\nvazia sobre o conteúdo. No celular, as mensagens do chat permanecem abaixo dos\ncontroles, enquanto barras de rolagem mais finas exibem apenas a seta correta em\ncada extremidade. A área de Artefatos fica temporariamente fora da navegação até\nque seu desenvolvimento seja retomado.",
+    "pr": 619,
+    "author": "Kalyel",
+    "date": "2026-08-04T16:35:42-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/619"
+  },
+  {
     "version": "0.14.1-dev.1785869169",
     "channel": "dev",
     "type": "fix",
