@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.13.2-dev.1785864563 — 2026-08-04 · Dev
+
+### 🐛 Development builds now stay ahead of the stable release
+
+The automated development-version workflow now compares its package version
+with `main`. When both point to the same release core, the next development
+build advances to the following patch before adding its timestamp, preserving
+correct SemVer ordering for deployments and update detection.
+
 ## v0.13.1-dev.1785862977 — 2026-08-04 · Dev
 
 ### 🐛 Hardened release reliability, SSO, and database writes

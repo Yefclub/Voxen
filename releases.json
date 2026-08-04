@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.2-dev.1785864563",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Development builds now stay ahead of the stable release",
+    "body": "The automated development-version workflow now compares its package version\nwith `main`. When both point to the same release core, the next development\nbuild advances to the following patch before adding its timestamp, preserving\ncorrect SemVer ordering for deployments and update detection.",
+    "pr": 612,
+    "author": "Kalyel",
+    "date": "2026-08-04T14:29:09-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/612"
+  },
+  {
     "version": "0.13.1-dev.1785862977",
     "channel": "dev",
     "type": "fix",
