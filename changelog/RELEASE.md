@@ -38,6 +38,22 @@ O histórico do Prisma também passa por um gate dedicado: mudanças de schema
 exigem migrations ordenadas, o histórico integrado não pode ser reescrito e a
 evolução completa é reproduzida em PostgreSQL isolado antes do merge.
 
+## Dependências críticas atualizadas e auditadas
+
+As dependências web e do worker receberam correções para quatro vulnerabilidades
+de alta severidade. O CI agora bloqueia novas ocorrências nas duas plataformas,
+e a imagem do worker passa a instalar o lockfile auditado de forma estrita para
+que o ambiente publicado corresponda ao que foi validado.
+
+## Rolagem e grafo mais previsíveis
+
+O modo focado ganhou barras de rolagem alinhadas às superfícies arredondadas,
+com controles direcionais completos no desktop e comportamento preservado em
+dispositivos de toque. No grafo, cobertura parcial deixa de aparecer como falha:
+a interface explica que o conteúdo está aguardando indexação, respeita a janela
+de nova tentativa sem consultas infinitas e atualiza o mapa assim que o processo
+converge.
+
 ## Novidades de produção confiáveis
 
 A preparação da release agora grava a nota curada no feed de **Novidades** de

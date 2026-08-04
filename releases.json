@@ -1,5 +1,76 @@
 [
   {
+    "version": "0.14.0",
+    "channel": "prod",
+    "date": "2026-08-04T15:55:27.388Z",
+    "promoted": [
+      {
+        "type": "fix",
+        "title": "Novidades passa a mostrar as releases de produção",
+        "body": "A preparação de uma versão estável agora grava sua nota curada no feed de\n**Novidades** antes da publicação. A versão `0.13.1` também foi recuperada no\nhistórico, e repetir o comando de preparação não duplica a mesma release.\nO processo também interrompe a publicação sem alterar versões quando o arquivo\ndo histórico está ausente ou inválido.",
+        "pr": 591,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/591"
+      },
+      {
+        "type": "chore",
+        "title": "Publicação do projeto passa a usar inglês e merges de release ficam limpos",
+        "body": "As superfícies públicas do repositório passam a adotar inglês como idioma\nprincipal. Releases estáveis também recebem um commit com somente `vX.Y.Z` no\nassunto e corpo vazio, evitando que ferramentas de deploy exibam todo o\nhistórico da pull request.",
+        "pr": null
+      },
+      {
+        "type": "ui",
+        "title": "Administração e conta pessoal agora têm áreas próprias",
+        "body": "A navegação separa claramente o trabalho na base, os dados da conta pessoal e a\nconfiguração compartilhada da instância. Administradores entram em uma área\nprópria para modelos, integrações, usuários e custos, sem misturar esses controles\ncom as páginas comuns.\n\nCada usuário também passa a gerenciar seus próprios tokens MCP em **Conta →\nAcesso MCP**, com segredo exibido uma única vez, permissões de leitura/escrita,\nexpiração opcional e revogação individual. A política de criação continua sob\ncontrole do administrador.",
+        "pr": 595,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/595"
+      },
+      {
+        "type": "feat",
+        "title": "Personal classic and focused interface modes",
+        "body": "- Added a per-user interface preference with the existing Voxen shell as the\n  safe default.\n- Added an opt-in focused desktop shell inspired by Vesper, where navigation\n  belongs to the background canvas and the main content sits in one inset\n  surface.\n- Added accessible controls in the desktop sidebar, collapsed rail and personal\n  account page.\n- Kept mobile geometry unchanged and revalidate the preference when returning\n  to a browser tab.",
+        "pr": 597,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/597"
+      },
+      {
+        "type": "chore",
+        "title": "Quality Gate impede regressões graduais no código",
+        "body": "O CI agora compara cobertura de testes, duplicação e tamanho de arquivos com\numa linha de base versionada. A catraca permite manter ou melhorar cada métrica,\nmas bloqueia novas dívidas e publica um relatório detalhado para orientar a\ncorreção automática da pull request.",
+        "pr": 599,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/599"
+      },
+      {
+        "type": "infra",
+        "title": "Gate de migrations protege o histórico do banco",
+        "body": "Pull requests agora preservam o histórico integrado do Prisma, exigem uma nova\nmigration ordenada para mudanças de schema e reproduzem toda a evolução em um\nPostgreSQL isolado. O CI também detecta divergências em relação ao modelo atual\ne publica diagnósticos sem credenciais para orientar a correção.",
+        "pr": 601,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/601"
+      },
+      {
+        "type": "feat",
+        "title": "Enterprise login with secure OIDC single sign-on",
+        "body": "Voxen administrators can now configure instance-wide OpenID Connect providers from the dedicated **Admin → Authentication** page. Team members discover the correct provider from their email address and use the authentication policy already established for the platform.\n\nThe integration supports multiple verified domains and subdomains, preserves Voxen's account approval workflow, and keeps each user's workspace isolated. New federated accounts remain pending until an administrator approves them, while rejected or disabled accounts cannot create sessions.\n\nProvider secrets are encrypted with the instance master key and never returned by the API. Voxen also requires PKCE and verified email claims, refuses unexpected identity-provider redirects, validates public HTTPS endpoints, and does not retain access, refresh, or ID tokens after authentication.\n\nAdministrators can rotate provider secrets without breaking linked accounts, safely remove a provider, and recover from an unreadable encrypted configuration by deleting and registering it again.",
+        "pr": 603,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/603"
+      },
+      {
+        "type": "security",
+        "title": "Patched vulnerable web and worker dependencies",
+        "body": "Patched four HIGH-severity findings reported by the release security scan:\n\n- `fast-uri` 3.1.5 resolves CVE-2026-18446;\n- `ip-address` 10.3.1 resolves CVE-2026-69192;\n- `aiohttp` 3.14.3 resolves CVE-2026-69244; and\n- `cryptography` 50.0.0 resolves CVE-2026-69247.\n\nThe worker image now also requires its audited lockfile, installs it strictly,\nand pins the `uv` installer image by version and digest. Dependency audits are\ngating checks now that both ecosystems pass cleanly.",
+        "pr": 606,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/606"
+      },
+      {
+        "type": "fix",
+        "title": "Refined focused scrolling and recoverable graph indexing",
+        "body": "Desktop scrollbars now include directional controls and stay visually inset\ninside rounded focused panels. Partial Brain coverage is shown as a recoverable\nwaiting state and retried automatically instead of being logged and presented\nas an indexing failure.",
+        "pr": 608,
+        "prUrl": "https://github.com/Yefclub/Voxen/pull/608"
+      }
+    ],
+    "title": "Voxen 0.14.0 — espaços pessoais, login empresarial e qualidade verificável",
+    "body": "## Uma interface que se adapta a cada pessoa\n\nCada usuário pode continuar com a navegação clássica ou ativar o novo modo\nfocado, inspirado no Vesper. Nesse modo, a navegação fica integrada ao fundo e\no conteúdo principal ganha uma superfície dedicada, sem alterar a experiência\nem telas menores. A preferência é pessoal, acessível e permanece sincronizada\nquando a pessoa retorna a outra aba do navegador.\n\n## Administração e conta pessoal em lugares distintos\n\nConfigurações compartilhadas da instância agora vivem em uma área administrativa\nprópria, separada das páginas de uso diário e dos dados particulares. Modelos,\nautenticação, integrações, usuários e custos ficam claros para administradores,\nenquanto cada pessoa controla os próprios acessos MCP, expiração e revogação sem\nexpor segredos de outros usuários.\n\n## Login empresarial com OIDC seguro\n\nAdministradores podem configurar provedores OpenID Connect para os domínios da\norganização. O fluxo usa PKCE, exige e-mail verificado, valida destinos HTTPS e\nmantém a política de aprovação de contas da Voxen. Segredos do provedor ficam\ncriptografados, tokens do provedor não são armazenados e contas bloqueadas ou\nrejeitadas não conseguem criar sessão.\n\n## Qualidade e migrations verificadas antes do merge\n\nO CI ganhou uma catraca de qualidade que acompanha cobertura, duplicação e\ntamanho de arquivos sem exigir que toda a dívida histórica seja resolvida de\numa vez. Novas regressões são bloqueadas e recebem um relatório próprio para\norientar a correção.\n\nO histórico do Prisma também passa por um gate dedicado: mudanças de schema\nexigem migrations ordenadas, o histórico integrado não pode ser reescrito e a\nevolução completa é reproduzida em PostgreSQL isolado antes do merge.\n\n## Dependências críticas atualizadas e auditadas\n\nAs dependências web e do worker receberam correções para quatro vulnerabilidades\nde alta severidade. O CI agora bloqueia novas ocorrências nas duas plataformas,\ne a imagem do worker passa a instalar o lockfile auditado de forma estrita para\nque o ambiente publicado corresponda ao que foi validado.\n\n## Rolagem e grafo mais previsíveis\n\nO modo focado ganhou barras de rolagem alinhadas às superfícies arredondadas,\ncom controles direcionais completos no desktop e comportamento preservado em\ndispositivos de toque. No grafo, cobertura parcial deixa de aparecer como falha:\na interface explica que o conteúdo está aguardando indexação, respeita a janela\nde nova tentativa sem consultas infinitas e atualiza o mapa assim que o processo\nconverge.\n\n## Novidades de produção confiáveis\n\nA preparação da release agora grava a nota curada no feed de **Novidades** de\nforma idempotente. Assim, a página mostra o que realmente chegou à produção,\nsem duplicar versões nem confundir entradas de desenvolvimento com releases\nestáveis."
+  },
+  {
     "version": "0.13.1-dev.1785858147",
     "channel": "dev",
     "type": "fix",
