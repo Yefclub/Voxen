@@ -31,6 +31,12 @@ describe('desktop scrollbar contract', () => {
     expect(css).toMatch(
       /\*::-webkit-scrollbar-button:vertical:decrement:start,\s*\*::-webkit-scrollbar-button:vertical:increment:end,\s*\*::-webkit-scrollbar-button:horizontal:decrement:start,\s*\*::-webkit-scrollbar-button:horizontal:increment:end\s*{\s*display: block;/s,
     );
+    expect(css).toMatch(
+      /\*::-webkit-scrollbar-button:vertical:decrement:start,\s*\*::-webkit-scrollbar-button:vertical:increment:end\s*{\s*height: 16px;/s,
+    );
+    expect(css).toMatch(
+      /\*::-webkit-scrollbar-button:horizontal:decrement:start,\s*\*::-webkit-scrollbar-button:horizontal:increment:end\s*{\s*width: 16px;/s,
+    );
     expect(rule(css, '*::-webkit-scrollbar-button:hover')).toContain('opacity: 1;');
     expect(rules(css, '*::-webkit-scrollbar-button:vertical:decrement:start').join(' ')).toContain(
       'background-image: linear-gradient(135deg, transparent 50%, #fff 50%), linear-gradient(45deg, #fff 50%, transparent 50%) !important;',

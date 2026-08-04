@@ -44,6 +44,16 @@
     display: block;
   }
 
+  *::-webkit-scrollbar-button:vertical:decrement:start,
+  *::-webkit-scrollbar-button:vertical:increment:end {
+    height: 16px;
+  }
+
+  *::-webkit-scrollbar-button:horizontal:decrement:start,
+  *::-webkit-scrollbar-button:horizontal:increment:end {
+    width: 16px;
+  }
+
   *::-webkit-scrollbar-button:hover {
     opacity: 1;
   }
@@ -53,8 +63,8 @@
       linear-gradient(135deg, transparent 50%, #fff 50%),
       linear-gradient(45deg, #fff 50%, transparent 50%) !important;
     background-position:
-      1px 4px,
-      4px 4px !important;
+      1px 7px,
+      4px 7px !important;
   }
 
   *::-webkit-scrollbar-button:vertical:increment:end {
@@ -62,8 +72,8 @@
       linear-gradient(45deg, transparent 50%, #fff 50%),
       linear-gradient(135deg, #fff 50%, transparent 50%) !important;
     background-position:
-      1px 1px,
-      4px 1px !important;
+      1px 6px,
+      4px 6px !important;
   }
 
   *::-webkit-scrollbar-button:horizontal:decrement:start {
@@ -71,8 +81,8 @@
       linear-gradient(135deg, transparent 50%, #fff 50%),
       linear-gradient(45deg, transparent 50%, #fff 50%) !important;
     background-position:
-      4px 1px,
-      4px 4px !important;
+      7px 1px,
+      7px 4px !important;
   }
 
   *::-webkit-scrollbar-button:horizontal:increment:end {
@@ -80,8 +90,8 @@
       linear-gradient(45deg, #fff 50%, transparent 50%),
       linear-gradient(135deg, #fff 50%, transparent 50%) !important;
     background-position:
-      1px 1px,
-      1px 4px !important;
+      6px 1px,
+      6px 4px !important;
   }
 
   *::-webkit-scrollbar-corner {
