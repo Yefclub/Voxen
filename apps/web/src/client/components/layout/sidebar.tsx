@@ -4,7 +4,6 @@ import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
   ChevronDown,
-  FileText,
   House,
   ListOrdered,
   MessageCircle,
@@ -66,7 +65,6 @@ export const NAV: NavItem[] = [
   { to: '/fila', labelKey: 'shell.nav.queue', Icon: ListOrdered, scope: 'workspace' },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook, scope: 'workspace' },
   { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow, scope: 'workspace' },
-  { to: '/artefatos', labelKey: 'shell.nav.artifacts', Icon: FileText, scope: 'workspace' },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network, scope: 'workspace' },
   { to: '/extensao', labelKey: 'shell.nav.extension', Icon: Puzzle, scope: 'workspace' },
   { to: '/conta', labelKey: 'shell.nav.account', Icon: UserIcon, scope: 'personal' },

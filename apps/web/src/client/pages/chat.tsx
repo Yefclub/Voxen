@@ -984,8 +984,8 @@ export function ChatPage(): React.ReactElement {
       clientHeight: container.clientHeight,
       scrollHeight: container.scrollHeight,
       currentSpacerHeight: spacerHeightRef.current,
+      hasFloatingHeader: isMobile,
     });
-
     applySpacerHeight(plan.spacerHeight);
     reserveEndRef.current = plan.reserveEnd;
     scrollPhaseRef.current = 'anchor';
@@ -1912,7 +1912,7 @@ export function ChatPage(): React.ReactElement {
             role="log"
             aria-live="off"
             aria-label={t('chat.historyLabel')}
-            className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-5 pt-12 md:py-5"
+            className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-5 pt-16 md:py-5"
           >
             <div className="mx-auto flex w-full max-w-3xl flex-col">
               <div ref={contentWrapRef} className="flex flex-col">

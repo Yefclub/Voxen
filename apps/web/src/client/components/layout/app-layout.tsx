@@ -148,14 +148,14 @@ export function AppLayout(): React.ReactElement {
   // de chat nunca é sub-página, então showBack já é false ali; o `!showBack`
   // é defensivo caso essa invariante mude no futuro).
   const showMobileNavButton = isChat && !isDesktop && !showBack;
-  // Header flutuante (Topbar). No chat mobile o histórico passa por baixo do
-  // chrome transparente — só reserva o safe-area; o scroller do chat adiciona
-  // o offset inicial. Demais rotas mobile mantêm 4rem; desktop 5rem.
+  // The Topbar floats above the shell. Mobile chat reserves only the safe area
+  // because its scroller owns the initial offset; other mobile routes keep a
+  // 4rem clearance. Desktop content does not reserve a row for floating chrome.
   const headerPad = isFullBleed
     ? ''
     : isChat
-      ? ' pt-[env(safe-area-inset-top)] md:pt-[calc(env(safe-area-inset-top)+5rem)]'
-      : ' pt-[calc(env(safe-area-inset-top)+4rem)] md:pt-[calc(env(safe-area-inset-top)+5rem)]';
+      ? ' pt-[env(safe-area-inset-top)] md:pt-0'
+      : ' pt-[calc(env(safe-area-inset-top)+4rem)] md:pt-0';
   // O chat reserva o safe-area-inset-bottom pro composer não colar no
   // home-indicator; no desktop nunca teve bottom-nav mesmo, então zera.
   const chatBottomPad = isDesktop ? ' pb-0' : ' pb-[env(safe-area-inset-bottom)]';
