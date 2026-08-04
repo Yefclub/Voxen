@@ -1,7 +1,18 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { isGraphIndexDeferred, resolveGraphPollingAction } from '../src/client/lib/graph-loading';
+import {
+  graphIndexState,
+  isGraphIndexDeferred,
+  resolveGraphPollingAction,
+} from '../src/client/lib/graph-loading';
+import {
+  GraphIndexRunError,
+  createGraphIndexFailureStatus,
+  reportGraphIndexRunFailure,
+} from '../src/lib/graph-index-run-error';
 import type { GraphIndexStatus } from '../src/shared/graph-index';
+
+afterEach(() => mock.restore());
 
 function status(state: GraphIndexStatus['state'], runId = 'run-1'): GraphIndexStatus {
   return {
@@ -27,9 +38,26 @@ describe('resolveGraphPollingAction', () => {
   test('stops polling on a terminal error instead of looping forever', () => {
     expect(resolveGraphPollingAction('running', status('error'), true)).toBe('stop');
   });
+
+  test('keeps observing partial coverage until the automatic retry converges', () => {
+    expect(
+      resolveGraphPollingAction(
+        'running',
+        { ...status('error'), reason: 'coverage-incomplete', recoverable: true },
+        true,
+      ),
+    ).toBe('poll-status');
+  });
 });
 
 describe('recoverable graph coverage', () => {
+  test('renders deferred coverage independently from terminal failure and empty readiness', () => {
+    expect(graphIndexState(false, true, false, true)).toBe('deferred');
+    expect(graphIndexState(false, false, true, true)).toBe('failed');
+    expect(graphIndexState(false, false, false, true)).toBe('ready');
+    expect(graphIndexState(false, false, false, false)).toBeNull();
+  });
+
   test('distinguishes expected partial coverage from a real indexing failure', () => {
     expect(
       isGraphIndexDeferred({
@@ -45,12 +73,53 @@ describe('recoverable graph coverage', () => {
       }),
     ).toBe(false);
     expect(isGraphIndexDeferred({ ...status('error'), reason: 'failed' })).toBe(false);
+    expect(
+      isGraphIndexDeferred({ ...status('error'), reason: 'redis-unavailable', recoverable: true }),
+    ).toBe(false);
+    expect(
+      isGraphIndexDeferred({ ...status('error'), reason: 'lease-lost', recoverable: true }),
+    ).toBe(false);
+    expect(isGraphIndexDeferred(null)).toBe(false);
+    expect(isGraphIndexDeferred(undefined)).toBe(false);
   });
 
-  test('publishes partial coverage as deferred instead of logging a false failure', () => {
-    const routeSource = readFileSync(new URL('../src/routes/graph.ts', import.meta.url), 'utf8');
-    expect(routeSource).toContain("if (reason !== 'coverage-incomplete')");
-    expect(routeSource).toContain("recoverable: reason === 'coverage-incomplete'");
+  test('publishes partial coverage as recoverable with the normal retry cooldown', () => {
+    expect(
+      createGraphIndexFailureStatus(
+        status('running'),
+        'coverage-incomplete',
+        Date.parse('2026-07-15T12:00:00.000Z'),
+        300_000,
+      ),
+    ).toMatchObject({
+      state: 'error',
+      reason: 'coverage-incomplete',
+      recoverable: true,
+      retryAfter: '2026-07-15T12:05:00.000Z',
+    });
+  });
+
+  test('logs partial coverage as an observable deferred pass without a warning stack', () => {
+    const info = spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const warn = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const error = new GraphIndexRunError('coverage-incomplete', {
+      expectedSourceNodes: 4,
+      indexedSourceNodes: 3,
+      staleSourceNodes: 0,
+    });
+
+    expect(reportGraphIndexRunFailure('user-1', error)).toBe('coverage-incomplete');
+    expect(info).toHaveBeenCalledWith(
+      `${JSON.stringify({
+        level: 'info',
+        event: 'graph-reindex-deferred',
+        userId: 'user-1',
+        expectedSourceNodes: 4,
+        indexedSourceNodes: 3,
+        staleSourceNodes: 0,
+      })}\n`,
+    );
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 

@@ -1,0 +1,107 @@
+/* Desktop scrollbars stay visible and respect rounded application surfaces. */
+@media (pointer: fine) and (hover: hover) {
+  *::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 999px;
+    margin-block: 3px;
+    margin-inline: 3px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-app-border);
+    border: 0;
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--color-app-border-strong);
+    border: 0;
+  }
+
+  *::-webkit-scrollbar-button {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    width: 12px;
+    height: 12px;
+    border: 0;
+    background-color: transparent !important;
+    background-position: center;
+    background-repeat: no-repeat !important;
+    background-size: 4px 4px !important;
+    opacity: 0.55;
+  }
+
+  *::-webkit-scrollbar-button:hover {
+    opacity: 0.9;
+  }
+
+  *::-webkit-scrollbar-button:vertical:decrement {
+    background-image:
+      linear-gradient(135deg, transparent 50%, #fff 50%),
+      linear-gradient(45deg, #fff 50%, transparent 50%) !important;
+    background-position:
+      2px 5px,
+      6px 5px !important;
+  }
+
+  *::-webkit-scrollbar-button:vertical:increment {
+    background-image:
+      linear-gradient(45deg, transparent 50%, #fff 50%),
+      linear-gradient(135deg, #fff 50%, transparent 50%) !important;
+    background-position:
+      2px 3px,
+      6px 3px !important;
+  }
+
+  *::-webkit-scrollbar-button:horizontal:decrement {
+    background-image:
+      linear-gradient(45deg, transparent 50%, #fff 50%),
+      linear-gradient(135deg, #fff 50%, transparent 50%) !important;
+    background-position:
+      5px 2px,
+      5px 6px !important;
+  }
+
+  *::-webkit-scrollbar-button:horizontal:increment {
+    background-image:
+      linear-gradient(135deg, transparent 50%, #fff 50%),
+      linear-gradient(45deg, #fff 50%, transparent 50%) !important;
+    background-position:
+      3px 2px,
+      3px 6px !important;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  [data-theme='light'] *::-webkit-scrollbar-button:vertical:decrement {
+    background-image:
+      linear-gradient(135deg, transparent 50%, #000 50%),
+      linear-gradient(45deg, #000 50%, transparent 50%) !important;
+  }
+
+  [data-theme='light'] *::-webkit-scrollbar-button:vertical:increment {
+    background-image:
+      linear-gradient(45deg, transparent 50%, #000 50%),
+      linear-gradient(135deg, #000 50%, transparent 50%) !important;
+  }
+
+  [data-theme='light'] *::-webkit-scrollbar-button:horizontal:decrement {
+    background-image:
+      linear-gradient(45deg, transparent 50%, #000 50%),
+      linear-gradient(135deg, #000 50%, transparent 50%) !important;
+  }
+
+  [data-theme='light'] *::-webkit-scrollbar-button:horizontal:increment {
+    background-image:
+      linear-gradient(135deg, transparent 50%, #000 50%),
+      linear-gradient(45deg, #000 50%, transparent 50%) !important;
+  }
+}

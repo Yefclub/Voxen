@@ -34,6 +34,7 @@ import {
   ZoomOut,
 } from '@/components/ui/icons';
 import { AnimatedPage } from '../components/motion/animated-page';
+import { GraphIndexDeferredState, GraphIndexStatusBadge } from '../components/graph-index-feedback';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { FetchError } from '../components/ui/fetch-error';
@@ -61,7 +62,11 @@ import {
   type SigmaGraphModel,
   type SigmaNodeAttributes,
 } from '../lib/graph-model';
-import { isGraphIndexDeferred, resolveGraphPollingAction } from '../lib/graph-loading';
+import {
+  graphIndexState,
+  isGraphIndexDeferred,
+  resolveGraphPollingAction,
+} from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
   GRAPH_3D_INIT_TIMEOUT_MS,
@@ -232,6 +237,7 @@ export function GrafoPage(): React.ReactElement {
   const indexing = indexStatus?.state === 'running' || (!indexStatus && data?.indexing === true);
   const indexDeferred = isGraphIndexDeferred(indexStatus);
   const indexFailed = indexStatus?.state === 'error' && !indexDeferred;
+  const indexUnavailable = indexing || indexDeferred || indexFailed;
   const previousIndexState = useRef<GraphIndexStatus['state'] | null>(null);
 
   useEffect(() => {
@@ -339,29 +345,10 @@ export function GrafoPage(): React.ReactElement {
                     <h1 className="truncate font-display text-base font-semibold">
                       {t('graph.title')}
                     </h1>
-                    {indexing ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-500">
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
-                        {t('graph.indexing')}
-                      </span>
-                    ) : indexDeferred ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-500">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                        {t('graph.indexDeferred')}
-                      </span>
-                    ) : indexFailed ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-400/25 bg-rose-400/10 px-2 py-0.5 text-[10px] font-medium text-rose-500">
-                        <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
-                        {t('graph.indexError')}
-                      </span>
-                    ) : (
-                      data && (
-                        <span className="hidden items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-500 sm:inline-flex">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                          {t('graph.ready')}
-                        </span>
-                      )
-                    )}
+                    <GraphIndexStatusBadge
+                      state={graphIndexState(indexing, indexDeferred, indexFailed, Boolean(data))}
+                      translate={t}
+                    />
                   </div>
                   <p className="hidden truncate text-xs text-[var(--color-app-muted)] sm:block">
                     {t('graph.subtitle')}
@@ -541,12 +528,9 @@ export function GrafoPage(): React.ReactElement {
                 </Button>
               </div>
             )}
-            {!loading &&
-              data &&
-              data.nodes.length === 0 &&
-              !indexing &&
-              !indexDeferred &&
-              !indexFailed && <GraphEmptyState translate={t} onNavigate={navigate} />}
+            {!loading && data && data.nodes.length === 0 && !indexUnavailable && (
+              <GraphEmptyState translate={t} onNavigate={navigate} />
+            )}
             {indexing && data && data.nodes.length === 0 && (
               <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6">
                 <div className="max-w-sm rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/90 p-6 text-center shadow-xl backdrop-blur-xl">
@@ -561,22 +545,7 @@ export function GrafoPage(): React.ReactElement {
               </div>
             )}
             {indexDeferred && data && data.nodes.length === 0 && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center px-6">
-                <div className="max-w-sm rounded-2xl border border-amber-400/20 bg-[var(--color-app-bg-elevated)]/95 p-6 text-center shadow-xl backdrop-blur-xl">
-                  <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-amber-400/10 text-amber-500">
-                    <Layers3 className="h-5 w-5" />
-                  </div>
-                  <p className="font-display text-sm font-semibold">
-                    {t('graph.indexDeferredTitle')}
-                  </p>
-                  <p className="mt-1.5 text-xs leading-relaxed text-[var(--color-app-muted)]">
-                    {t('graph.indexDeferredDescription')}
-                  </p>
-                  <Button className="mt-4" onClick={() => setReprocessOpen(true)}>
-                    {t('graph.retryIndex')}
-                  </Button>
-                </div>
-              </div>
+              <GraphIndexDeferredState translate={t} onRetry={() => setReprocessOpen(true)} />
             )}
             {indexFailed && data && data.nodes.length === 0 && (
               <div className="absolute inset-0 z-10 flex items-center justify-center px-6">

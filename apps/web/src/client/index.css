@@ -226,64 +226,6 @@
     overscroll-behavior-x: none;
   }
 
-  /* Scrollbar estética em containers que rolam internamente (chat, sidebar).
-     Só em dispositivos com ponteiro fino (mouse) — em touch/PWA mobile a
-     barra visível denuncia "site" em vez de app; o scroll segue funcionando. */
-  @media (pointer: fine) {
-    *::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-    *::-webkit-scrollbar-track {
-      background: transparent;
-      border-radius: 999px;
-      margin-block: 3px;
-      margin-inline: 3px;
-    }
-    *::-webkit-scrollbar-thumb {
-      background: var(--color-app-border);
-      border-radius: 999px;
-      border: 0;
-    }
-    *::-webkit-scrollbar-thumb:hover {
-      background: var(--color-app-border-strong);
-      border: 0;
-    }
-    *::-webkit-scrollbar-button:single-button {
-      display: block;
-      width: 8px;
-      height: 8px;
-      background-color: var(--color-app-muted);
-      -webkit-mask-position: center;
-      -webkit-mask-repeat: no-repeat;
-      -webkit-mask-size: 6px 6px;
-      mask-position: center;
-      mask-repeat: no-repeat;
-      mask-size: 6px 6px;
-    }
-    *::-webkit-scrollbar-button:single-button:hover {
-      background-color: var(--color-app-fg);
-    }
-    *::-webkit-scrollbar-button:single-button:vertical:decrement {
-      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 5.5 4 3l2.5 2.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 5.5 4 3l2.5 2.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    }
-    *::-webkit-scrollbar-button:single-button:vertical:increment {
-      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 2.5 4 5l2.5-2.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 2.5 4 5l2.5-2.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    }
-    *::-webkit-scrollbar-button:single-button:horizontal:decrement {
-      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M5.5 1.5 3 4l2.5 2.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M5.5 1.5 3 4l2.5 2.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    }
-    *::-webkit-scrollbar-button:single-button:horizontal:increment {
-      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M2.5 1.5 5 4 2.5 6.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M2.5 1.5 5 4 2.5 6.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    }
-    *::-webkit-scrollbar-corner {
-      background: transparent;
-    }
-  }
   @media (pointer: coarse) {
     * {
       scrollbar-width: none;
