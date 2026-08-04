@@ -49,17 +49,17 @@ canal de desenvolvimento.
 
 ## Critérios de Aceite
 
-- [ ] `pnpm release:prepare patch` atualiza os dois `package.json` e cria uma
+- [x] `pnpm release:prepare patch` atualiza os dois `package.json` e cria uma
       entrada `prod` da mesma versão em `releases.json`.
-- [ ] A entrada usa o título e o corpo de `changelog/RELEASE.md` e agrega as
+- [x] A entrada usa o título e o corpo de `changelog/RELEASE.md` e agrega as
       entradas `dev` ainda não promovidas.
-- [ ] `changelog/RELEASE.md` continua presente depois da preparação.
-- [ ] Repetir a preparação da mesma versão atualiza a promoção sem duplicá-la.
-- [ ] JSON malformado e raiz não-array falham sem sobrescrever o feed ou alterar
+- [x] `changelog/RELEASE.md` continua presente depois da preparação.
+- [x] Repetir a preparação da mesma versão atualiza a promoção sem duplicá-la.
+- [x] JSON malformado e raiz não-array falham sem sobrescrever o feed ou alterar
       as versões dos pacotes.
-- [ ] `CHANGELOG.md` é regenerado com a nova produção.
-- [ ] Um teste de integração do comando impede regressão do contrato completo.
-- [ ] O histórico atual contém a produção `0.13.1`, tornando-a visível em
+- [x] `CHANGELOG.md` é regenerado com a nova produção.
+- [x] Um teste de integração do comando impede regressão do contrato completo.
+- [x] O histórico atual contém a produção `0.13.1`, tornando-a visível em
       `/novidades` após a próxima imagem.
 
 ## Fora de Escopo

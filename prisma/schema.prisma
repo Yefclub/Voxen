@@ -270,7 +270,7 @@ model ResearchArtifact {
   unavailableSources Json                 @default("[]")
   configRevisionId   String?
   createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  updatedAt          DateTime             @default(now()) @updatedAt
   user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   configRevision     ConfigRevision?      @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
 
@@ -430,7 +430,7 @@ model LibraryFolder {
   parentId    String?
   name        String
   createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  updatedAt   DateTime        @default(now()) @updatedAt
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent      LibraryFolder?  @relation("LibraryFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
   children    LibraryFolder[] @relation("LibraryFolderTree")
@@ -452,7 +452,7 @@ model Tag {
   slug        String // normalizado: minúsculas, sem acento, [a-z0-9-]
   folderId    String?         @unique
   createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  updatedAt   DateTime        @default(now()) @updatedAt
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   folder      LibraryFolder?  @relation("TagFolder", fields: [folderId], references: [id], onDelete: SetNull)
   transcripts TranscriptTag[]
@@ -541,7 +541,7 @@ model BrainNode {
   sourceType  BrainSourceType?
   sourceId    String?
   createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  updatedAt   DateTime         @default(now()) @updatedAt
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   outgoing    BrainEdge[]      @relation("BrainEdgeFrom")
   incoming    BrainEdge[]      @relation("BrainEdgeTo")
@@ -565,7 +565,7 @@ model BrainEdge {
   metadata   Json          @default("{}")
   createdBy  String?
   createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  updatedAt  DateTime      @default(now()) @updatedAt
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   from       BrainNode     @relation("BrainEdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
   to         BrainNode     @relation("BrainEdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
@@ -614,7 +614,7 @@ model BrainCompilation {
   completedSegments Int                       @default(0)
   lastError         String?                   @db.Text
   createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
+  updatedAt         DateTime                  @default(now()) @updatedAt
   user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcript        Transcript                @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
   segments          BrainCompilationSegment[]
@@ -635,7 +635,7 @@ model BrainCompilationSegment {
   attempts      Int                    @default(0)
   error         String?                @db.Text
   createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  updatedAt     DateTime               @default(now()) @updatedAt
   compilation   BrainCompilation       @relation(fields: [compilationId], references: [id], onDelete: Cascade)
 
   @@unique([compilationId, segmentKey])
@@ -969,7 +969,7 @@ model Note {
   // tsvector mantido por trigger SQL (sync com title+content).
   searchVector      Unsupported("tsvector")?
   createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
+  updatedAt         DateTime                 @default(now()) @updatedAt
   user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent            Note?                    @relation("NoteTree", fields: [parentId], references: [id], onDelete: Cascade)
   children          Note[]                   @relation("NoteTree")
@@ -1045,7 +1045,7 @@ model Automation {
   lastRunAt  DateTime?
   nextRunAt  DateTime?
   createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
+  updatedAt  DateTime            @default(now()) @updatedAt
 
   user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   runs AutomationRun[]

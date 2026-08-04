@@ -27,6 +27,11 @@ mantém a política de aprovação de contas da Voxen. Segredos do provedor fica
 criptografados, tokens do provedor não são armazenados e contas bloqueadas ou
 rejeitadas não conseguem criar sessão.
 
+A configuração também preserva desafios DNS ainda válidos ao recarregar a
+página, limita tentativas públicas de início de sessão e consulta somente
+provedores verificados e ativos. Isso reduz abuso e evita invalidar um registro
+TXT que já esteja em propagação.
+
 ## Qualidade e migrations verificadas antes do merge
 
 O CI ganhou uma catraca de qualidade que acompanha cobertura, duplicação e
@@ -37,6 +42,10 @@ orientar a correção.
 O histórico do Prisma também passa por um gate dedicado: mudanças de schema
 exigem migrations ordenadas, o histórico integrado não pode ser reescrito e a
 evolução completa é reproduzida em PostgreSQL isolado antes do merge.
+
+Os defaults de atualização das tabelas compartilhadas com o worker também foram
+restaurados no próprio PostgreSQL. Assim, gravações diretas em segundo plano
+continuam seguras mesmo quando não passam pelo cliente Prisma.
 
 ## Dependências críticas atualizadas e auditadas
 
@@ -60,3 +69,7 @@ A preparação da release agora grava a nota curada no feed de **Novidades** de
 forma idempotente. Assim, a página mostra o que realmente chegou à produção,
 sem duplicar versões nem confundir entradas de desenvolvimento com releases
 estáveis.
+
+O versionamento de desenvolvimento passou a comparar `dev` com `main` e reserva
+o próximo patch quando necessário. Builds de teste deixam de parecer anteriores
+à versão estável em comparações SemVer, mantendo deploys e atualizações em ordem.

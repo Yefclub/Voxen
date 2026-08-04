@@ -57,9 +57,9 @@ export function createMeStore(fetcher: MeFetcher = () => apiGet<MeResponse>('/ap
   };
 
   const mutate = (updater: (current: MeResponse) => MeResponse): void => {
+    if (state.data === null) return;
     // Any response started before this confirmed local mutation is obsolete.
     requestGeneration += 1;
-    if (state.data === null) return;
     state = { data: updater(state.data), loading: false, error: null };
     emit();
   };

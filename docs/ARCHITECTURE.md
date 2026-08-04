@@ -57,7 +57,7 @@ Voxen é uma plataforma web self-hosted composta por **3 apps** e **3 serviços 
   - `/dashboard` (lista de transcrições, biblioteca)
   - `/chat` (chat com agente, consumindo SSE do `apps/chat`)
   - `/transcricao/:id` (renderiza o `.md` com timestamps clicáveis)
-  - `/admin/configuracao`, `/admin/integracoes`, `/admin/usuarios`, `/admin/custos`
+  - `/admin/configuracao`, `/admin/integracoes`, `/admin/autenticacao`, `/admin/usuarios`, `/admin/custos`
 - **API HTTP** (Hono routes):
   - `/api/auth/*` — better-auth handlers (email/senha, sessões)
   - `/api/jobs` — POST cria job de download/transcrição, GET lista jobs do user

@@ -47,17 +47,17 @@ which produced a noisy label instead of the intended version-only identifier.
 
 ## Acceptance criteria
 
-- [ ] `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `SUPPORT.md` are in
+- [x] `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `SUPPORT.md` are in
       English and link to Portuguese documentation.
-- [ ] All files under `.github/ISSUE_TEMPLATE/` and the PR template are in
+- [x] All files under `.github/ISSUE_TEMPLATE/` and the PR template are in
       English.
-- [ ] Agent and release preparation instructions require a PR title and squash
+- [x] Agent and release preparation instructions require a PR title and squash
       subject equal to `vX.Y.Z`, with a blank merge body.
-- [ ] A deterministic script test prevents the release instructions from
+- [x] A deterministic script test prevents the release instructions from
       regressing to `release: vX.Y.Z`.
-- [ ] Repository metadata is English and GitHub's squash message setting is
+- [x] Repository metadata is English and GitHub's squash message setting is
       `BLANK`.
-- [ ] Existing product UI copy and release history are not rewritten.
+- [x] Existing product UI copy and release history are not rewritten.
 
 ## Out of scope
 

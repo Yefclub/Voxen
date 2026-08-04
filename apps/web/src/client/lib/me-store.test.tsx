@@ -115,4 +115,16 @@ describe('me store revalidation', () => {
     expect(store.getSnapshot().data?.user?.interfaceMode).toBe('focus');
     expect(store.getSnapshot().loading).toBe(false);
   });
+
+  it('keeps the initial refresh valid when a mutation arrives before data', async () => {
+    const initial = deferred<MeResponse>();
+    const store = createMeStore(() => initial.promise);
+
+    const load = store.ensureLoaded();
+    store.mutate((current) => current);
+    initial.resolve(me('classic'));
+    await load;
+
+    expect(store.getSnapshot()).toEqual({ data: me('classic'), loading: false, error: null });
+  });
 });

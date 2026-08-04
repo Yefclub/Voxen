@@ -405,17 +405,24 @@ export async function requestOidcDomainVerification(providerId: string): Promise
     throw new SsoProviderError('Provedor OIDC não encontrado.', 404);
   }
   const domains = normalizeSsoDomains(provider.domain);
-  const token = randomBytes(24).toString('base64url');
   const identifier = `${DOMAIN_VERIFICATION_PREFIX}${providerId}`;
-  await db.$transaction(async (tx) => {
+  const token = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${identifier}))`;
+    const existing = await tx.verification.findFirst({
+      where: { identifier, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existing) return existing.value;
+
     await tx.verification.deleteMany({ where: { identifier } });
-    await tx.verification.create({
+    const created = await tx.verification.create({
       data: {
         identifier,
-        value: token,
+        value: randomBytes(24).toString('base64url'),
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
     });
+    return created.value;
   });
   return {
     records: domains.map((domain) => ({

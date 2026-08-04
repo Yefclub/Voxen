@@ -29,6 +29,9 @@ test("version bot creates an English pull request and workflow output", () => {
   const workflow = read(".github/workflows/version-dev.yml");
 
   assert.match(workflow, /Automatic dev version bump/);
+  assert.match(workflow, /main:refs\/remotes\/origin\/main/);
+  assert.match(workflow, /resolve-dev-package-version\.mjs/);
+  assert.match(workflow, /stable baseline/);
   assert.match(workflow, /Nine exact required checks passed/);
   assert.match(workflow, /\.name == "Quality Gate"/);
   assert.match(workflow, /\.name == "Prisma migration gate"/);

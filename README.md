@@ -56,12 +56,16 @@ Proxmox LXC, Docker Compose, nginx, and Easypanel deployments are also
 supported. See the [deployment guide](docs/en/DEPLOY.md) for the complete
 instructions.
 
-For Easypanel, prefer the published images:
+For Easypanel, prefer the combined published image, which already contains the
+web app, chat service, and worker:
 
 ```text
-ghcr.io/yefclub/voxen-web:latest
-ghcr.io/yefclub/voxen-worker:latest
+ghcr.io/yefclub/voxen:latest
 ```
+
+Repository/Dockerfile source mode makes environment values available during
+the build and can expose secrets through build arguments or logs. Prefer image
+deployment so application secrets are supplied only at runtime.
 
 A minimal Docker Compose deployment starts with:
 

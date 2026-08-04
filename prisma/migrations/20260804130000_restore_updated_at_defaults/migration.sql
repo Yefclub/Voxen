@@ -1,0 +1,11 @@
+-- Worker SQL writes these shared tables directly and may omit updatedAt.
+-- Keep database-side defaults aligned with Prisma's @default(now()) contract.
+ALTER TABLE "Automation" ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "BrainCompilation" ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "BrainCompilationSegment" ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "BrainEdge" ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "BrainNode" ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "LibraryFolder" ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "Note" ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "ResearchArtifact" ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "Tag" ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;

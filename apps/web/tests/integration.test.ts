@@ -16,6 +16,7 @@ import { decryptOidcConfig, encryptOidcConfig, type StoredOidcConfig } from '../
 import {
   createOidcProvider,
   disableOidcProvider,
+  requestOidcDomainVerification,
   updateOidcProvider,
 } from '../src/lib/sso-provider-service';
 
@@ -844,6 +845,20 @@ describeIfDb('auth + admin approval flow', () => {
     }
   });
 
+  it('reuses an unexpired OIDC DNS challenge instead of rotating published records', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    await seedOidcProvider(admin.id);
+
+    const first = await requestOidcDomainVerification('corporate');
+    const second = await requestOidcDomainVerification('corporate');
+
+    expect(second).toEqual(first);
+    expect(
+      await db.verification.count({ where: { identifier: 'voxen-sso-domain:corporate' } }),
+    ).toBe(1);
+  });
+
   it('lista e permite excluir um provedor cuja configuração não pode ser decifrada', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
@@ -1379,6 +1394,25 @@ describeIfDb('auth + admin approval flow', () => {
         headers: { 'cf-connecting-ip': ip },
       }),
     );
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+  });
+
+  it('rate-limits unauthenticated OIDC sign-in initiation by IP', async () => {
+    const ip = `198.51.100.${(Math.floor(Date.now() / 1000) % 200) + 1}`;
+    const request = () =>
+      app.fetch(
+        new Request('http://localhost/api/auth/sign-in/sso', {
+          method: 'POST',
+          headers: { 'cf-connecting-ip': ip, 'content-type': 'application/json' },
+          body: JSON.stringify({ email: 'missing@example.com', callbackURL: '/' }),
+        }),
+      );
+
+    for (let attempt = 1; attempt <= 60; attempt += 1) {
+      expect((await request()).status).not.toBe(429);
+    }
+    const limited = await request();
     expect(limited.status).toBe(429);
     expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
   });

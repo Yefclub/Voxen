@@ -28,6 +28,11 @@ mantém a política de aprovação de contas da Voxen. Segredos do provedor fica
 criptografados, tokens do provedor não são armazenados e contas bloqueadas ou
 rejeitadas não conseguem criar sessão.
 
+A configuração também preserva desafios DNS ainda válidos ao recarregar a
+página, limita tentativas públicas de início de sessão e consulta somente
+provedores verificados e ativos. Isso reduz abuso e evita invalidar um registro
+TXT que já esteja em propagação.
+
 ## Qualidade e migrations verificadas antes do merge
 
 O CI ganhou uma catraca de qualidade que acompanha cobertura, duplicação e
@@ -38,6 +43,10 @@ orientar a correção.
 O histórico do Prisma também passa por um gate dedicado: mudanças de schema
 exigem migrations ordenadas, o histórico integrado não pode ser reescrito e a
 evolução completa é reproduzida em PostgreSQL isolado antes do merge.
+
+Os defaults de atualização das tabelas compartilhadas com o worker também foram
+restaurados no próprio PostgreSQL. Assim, gravações diretas em segundo plano
+continuam seguras mesmo quando não passam pelo cliente Prisma.
 
 ## Dependências críticas atualizadas e auditadas
 
@@ -61,6 +70,32 @@ A preparação da release agora grava a nota curada no feed de **Novidades** de
 forma idempotente. Assim, a página mostra o que realmente chegou à produção,
 sem duplicar versões nem confundir entradas de desenvolvimento com releases
 estáveis.
+
+O versionamento de desenvolvimento passou a comparar `dev` com `main` e reserva
+o próximo patch quando necessário. Builds de teste deixam de parecer anteriores
+à versão estável em comparações SemVer, mantendo deploys e atualizações em ordem.
+
+## v0.13.2-dev.1785864563 — 2026-08-04 · Dev
+
+### 🐛 Development builds now stay ahead of the stable release
+
+The automated development-version workflow now compares its package version
+with `main`. When both point to the same release core, the next development
+build advances to the following patch before adding its timestamp, preserving
+correct SemVer ordering for deployments and update detection.
+
+## v0.13.1-dev.1785862977 — 2026-08-04 · Dev
+
+### 🐛 Hardened release reliability, SSO, and database writes
+
+Database defaults used by background processing are restored so direct worker
+writes remain safe after migration. OIDC setup now preserves an unexpired DNS
+challenge across reloads, and public sign-in initiation has bounded abuse
+controls.
+
+The focused scrollbar controls have stronger contrast, session revalidation no
+longer loses its first response, and deployment guidance now points to the
+correct combined Easypanel image with safer secret handling.
 
 ## v0.13.1-dev.1785858147 — 2026-08-04 · Dev
 
