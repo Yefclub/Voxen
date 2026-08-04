@@ -73,13 +73,13 @@ describe('planAnchor', () => {
     expect(plan.reserveEnd).toBe(plan.targetScrollTop + 800);
   });
 
-  test('accepts the larger mobile gap so the floating header cannot cover the message', () => {
+  test('uses the larger mobile gap when the floating header is present', () => {
     const plan = planAnchor({
       messageTop: 5000,
       clientHeight: 800,
       scrollHeight: 5400,
       currentSpacerHeight: 0,
-      topGap: MOBILE_ANCHOR_TOP_GAP_PX,
+      hasFloatingHeader: true,
     });
     expect(plan.targetScrollTop).toBe(5000 - MOBILE_ANCHOR_TOP_GAP_PX);
     expect(MOBILE_ANCHOR_TOP_GAP_PX).toBeGreaterThan(ANCHOR_TOP_GAP_PX);

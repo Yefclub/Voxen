@@ -62,8 +62,6 @@ import {
 } from '../../lib/chat/message-attachments';
 import {
   ANCHOR_MOUNT_RETRY_FRAMES,
-  ANCHOR_TOP_GAP_PX,
-  MOBILE_ANCHOR_TOP_GAP_PX,
   SCROLL_LATEST_SHOW_DISTANCE_PX,
   canRearmFollow,
   isUserScrollUp,
@@ -986,9 +984,8 @@ export function ChatPage(): React.ReactElement {
       clientHeight: container.clientHeight,
       scrollHeight: container.scrollHeight,
       currentSpacerHeight: spacerHeightRef.current,
-      topGap: isMobile ? MOBILE_ANCHOR_TOP_GAP_PX : ANCHOR_TOP_GAP_PX,
+      hasFloatingHeader: isMobile,
     });
-
     applySpacerHeight(plan.spacerHeight);
     reserveEndRef.current = plan.reserveEnd;
     scrollPhaseRef.current = 'anchor';

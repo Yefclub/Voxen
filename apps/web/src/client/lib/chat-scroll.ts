@@ -105,9 +105,11 @@ export function planAnchor(params: {
   clientHeight: number;
   scrollHeight: number;
   currentSpacerHeight: number;
+  hasFloatingHeader?: boolean;
   topGap?: number;
 }): AnchorPlan {
-  const targetScrollTop = Math.max(0, params.messageTop - (params.topGap ?? ANCHOR_TOP_GAP_PX));
+  const defaultTopGap = params.hasFloatingHeader ? MOBILE_ANCHOR_TOP_GAP_PX : ANCHOR_TOP_GAP_PX;
+  const targetScrollTop = Math.max(0, params.messageTop - (params.topGap ?? defaultTopGap));
   const reserveEnd = targetScrollTop + params.clientHeight;
   const naturalEnd = params.scrollHeight - params.currentSpacerHeight;
   const spacerHeight = Math.max(0, reserveEnd - naturalEnd);
