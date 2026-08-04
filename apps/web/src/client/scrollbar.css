@@ -1,8 +1,8 @@
 /* Desktop scrollbars stay visible and respect rounded application surfaces. */
 @media (pointer: fine) and (hover: hover) {
   *::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
+    width: 8px;
+    height: 8px;
   }
 
   *::-webkit-scrollbar-track {
@@ -26,80 +26,87 @@
   *::-webkit-scrollbar-button {
     -webkit-appearance: none;
     appearance: none;
-    display: block;
-    width: 12px;
-    height: 12px;
+    display: none;
+    width: 8px;
+    height: 8px;
     border: 0;
     background-color: transparent !important;
     background-position: center;
     background-repeat: no-repeat !important;
-    background-size: 4px 4px !important;
+    background-size: 3px 3px !important;
     opacity: 0.85;
+  }
+
+  *::-webkit-scrollbar-button:vertical:decrement:start,
+  *::-webkit-scrollbar-button:vertical:increment:end,
+  *::-webkit-scrollbar-button:horizontal:decrement:start,
+  *::-webkit-scrollbar-button:horizontal:increment:end {
+    display: block;
   }
 
   *::-webkit-scrollbar-button:hover {
     opacity: 1;
   }
 
-  *::-webkit-scrollbar-button:vertical:decrement {
+  *::-webkit-scrollbar-button:vertical:decrement:start {
     background-image:
       linear-gradient(135deg, transparent 50%, #fff 50%),
       linear-gradient(45deg, #fff 50%, transparent 50%) !important;
     background-position:
-      2px 5px,
-      6px 5px !important;
+      1px 4px,
+      4px 4px !important;
   }
 
-  *::-webkit-scrollbar-button:vertical:increment {
+  *::-webkit-scrollbar-button:vertical:increment:end {
     background-image:
       linear-gradient(45deg, transparent 50%, #fff 50%),
       linear-gradient(135deg, #fff 50%, transparent 50%) !important;
     background-position:
-      2px 3px,
-      6px 3px !important;
+      1px 1px,
+      4px 1px !important;
   }
 
-  *::-webkit-scrollbar-button:horizontal:decrement {
+  *::-webkit-scrollbar-button:horizontal:decrement:start {
     background-image:
       linear-gradient(135deg, transparent 50%, #fff 50%),
       linear-gradient(45deg, transparent 50%, #fff 50%) !important;
     background-position:
-      5px 2px,
-      5px 6px !important;
+      4px 1px,
+      4px 4px !important;
   }
 
-  *::-webkit-scrollbar-button:horizontal:increment {
+  *::-webkit-scrollbar-button:horizontal:increment:end {
     background-image:
       linear-gradient(45deg, #fff 50%, transparent 50%),
       linear-gradient(135deg, #fff 50%, transparent 50%) !important;
     background-position:
-      3px 2px,
-      3px 6px !important;
+      1px 1px,
+      1px 4px !important;
   }
 
   *::-webkit-scrollbar-corner {
     background: transparent;
   }
 
-  [data-theme='light'] *::-webkit-scrollbar-button:vertical:decrement {
+  [data-theme='light'] *::-webkit-scrollbar-button:vertical:decrement:start {
     background-image:
       linear-gradient(135deg, transparent 50%, #000 50%),
       linear-gradient(45deg, #000 50%, transparent 50%) !important;
   }
 
-  [data-theme='light'] *::-webkit-scrollbar-button:vertical:increment {
+  [data-theme='light'] *::-webkit-scrollbar-button:vertical:increment:end {
     background-image:
       linear-gradient(45deg, transparent 50%, #000 50%),
       linear-gradient(135deg, #000 50%, transparent 50%) !important;
   }
 
-  [data-theme='light'] *::-webkit-scrollbar-button:horizontal:decrement {
+  [data-theme='light'] *::-webkit-scrollbar-button:horizontal:decrement:start {
     background-image:
       linear-gradient(135deg, transparent 50%, #000 50%),
       linear-gradient(45deg, transparent 50%, #000 50%) !important;
   }
 
-  [data-theme='light'] *::-webkit-scrollbar-button:horizontal:increment {
+  [data-theme='light'] *::-webkit-scrollbar-button:horizontal:increment:end {
     background-image:
       linear-gradient(45deg, #000 50%, transparent 50%),
       linear-gradient(135deg, #000 50%, transparent 50%) !important;

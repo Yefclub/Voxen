@@ -20,7 +20,7 @@ describe('tom visual do markdown do chat (spec 091)', () => {
 
     expect(source).toContain('MessageCopyButton');
     expect(source).toContain('chat.copyMessage');
-    expect(source).toContain('pt-12');
+    expect(source).toContain('pt-16');
   });
 
   test('fontes ficam nas ações por hover e abrem um painel que reduz o chat', () => {

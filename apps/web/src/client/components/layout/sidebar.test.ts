@@ -16,6 +16,10 @@ describe('application navigation domains', () => {
     ]);
   });
 
+  it('keeps the paused artifacts page out of shared navigation', () => {
+    expect(NAV.map((item) => item.to)).not.toContain('/artefatos');
+  });
+
   it('does not highlight the account overview together with its child page', () => {
     expect(isNavItemActive('/conta', '/conta')).toBe(true);
     expect(isNavItemActive('/conta/mcp', '/conta')).toBe(false);

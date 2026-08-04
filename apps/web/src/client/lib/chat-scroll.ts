@@ -17,6 +17,9 @@
 /** Respiro entre o topo do viewport do chat e a mensagem ancorada. */
 export const ANCHOR_TOP_GAP_PX = 12;
 
+/** Mobile clearance that keeps an anchored message below the floating Topbar. */
+export const MOBILE_ANCHOR_TOP_GAP_PX = 60;
+
 /** Gap (fração do viewport) entre resposta e promptbox que religa o follow. */
 export const REENGAGE_GAP_RATIO = 0.03;
 
@@ -102,8 +105,9 @@ export function planAnchor(params: {
   clientHeight: number;
   scrollHeight: number;
   currentSpacerHeight: number;
+  topGap?: number;
 }): AnchorPlan {
-  const targetScrollTop = Math.max(0, params.messageTop - ANCHOR_TOP_GAP_PX);
+  const targetScrollTop = Math.max(0, params.messageTop - (params.topGap ?? ANCHOR_TOP_GAP_PX));
   const reserveEnd = targetScrollTop + params.clientHeight;
   const naturalEnd = params.scrollHeight - params.currentSpacerHeight;
   const spacerHeight = Math.max(0, reserveEnd - naturalEnd);
