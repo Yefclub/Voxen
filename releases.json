@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.14.1-dev.1785869169",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Releases estáveis agora publicam a imagem completa do Easypanel",
+    "body": "A publicação de uma release passa a gerar também a imagem combinada com web,\nchat e worker, mantendo as tags da versão e `latest` alinhadas. Repetir o fluxo\npara a mesma versão recupera uma publicação interrompida sem recriar a tag.",
+    "pr": 617,
+    "author": "Kalyel",
+    "date": "2026-08-04T15:45:49-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/617"
+  },
+  {
     "version": "0.14.0",
     "channel": "prod",
     "date": "2026-08-04T17:42:01.342Z",

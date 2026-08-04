@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.1-dev.1785869169 — 2026-08-04 · Dev
+
+### 🐛 Releases estáveis agora publicam a imagem completa do Easypanel
+
+A publicação de uma release passa a gerar também a imagem combinada com web,
+chat e worker, mantendo as tags da versão e `latest` alinhadas. Repetir o fluxo
+para a mesma versão recupera uma publicação interrompida sem recriar a tag.
+
 ## v0.14.0 — 2026-08-04 · Produção
 
 ### Voxen 0.14.0 — espaços pessoais, login empresarial e qualidade verificável
