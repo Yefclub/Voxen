@@ -531,9 +531,11 @@ async function scheduleBrainReindex(
         throw new GraphIndexRunError('lease-lost');
       }
     } catch (err) {
-      console.warn('[graph] background reindex failed', { userId, err });
       const reason: GraphIndexErrorReason =
         err instanceof GraphIndexRunError ? err.reason : 'failed';
+      if (reason !== 'coverage-incomplete') {
+        console.warn('[graph] background reindex failed', { userId, err });
+      }
       if (reason !== 'lease-lost') {
         const failedAt = Date.now();
         const failed: GraphIndexStatus = {
@@ -543,6 +545,7 @@ async function scheduleBrainReindex(
           updatedAt: new Date(failedAt).toISOString(),
           retryAfter: new Date(failedAt + GRAPH_INDEX_ERROR_COOLDOWN_MS).toISOString(),
           reason,
+          recoverable: reason === 'coverage-incomplete',
         };
         await publishOwnedStatus(failed);
       }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { resolveGraphPollingAction } from '../src/client/lib/graph-loading';
+import { isGraphIndexDeferred, resolveGraphPollingAction } from '../src/client/lib/graph-loading';
 import type { GraphIndexStatus } from '../src/shared/graph-index';
 
 function status(state: GraphIndexStatus['state'], runId = 'run-1'): GraphIndexStatus {
@@ -26,6 +26,31 @@ describe('resolveGraphPollingAction', () => {
 
   test('stops polling on a terminal error instead of looping forever', () => {
     expect(resolveGraphPollingAction('running', status('error'), true)).toBe('stop');
+  });
+});
+
+describe('recoverable graph coverage', () => {
+  test('distinguishes expected partial coverage from a real indexing failure', () => {
+    expect(
+      isGraphIndexDeferred({
+        ...status('error'),
+        reason: 'coverage-incomplete',
+        recoverable: true,
+      }),
+    ).toBe(true);
+    expect(
+      isGraphIndexDeferred({
+        ...status('error'),
+        reason: 'coverage-incomplete',
+      }),
+    ).toBe(false);
+    expect(isGraphIndexDeferred({ ...status('error'), reason: 'failed' })).toBe(false);
+  });
+
+  test('publishes partial coverage as deferred instead of logging a false failure', () => {
+    const routeSource = readFileSync(new URL('../src/routes/graph.ts', import.meta.url), 'utf8');
+    expect(routeSource).toContain("if (reason !== 'coverage-incomplete')");
+    expect(routeSource).toContain("recoverable: reason === 'coverage-incomplete'");
   });
 });
 
