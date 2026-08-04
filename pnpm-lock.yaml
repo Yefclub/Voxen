@@ -13,7 +13,7 @@ overrides:
   js-yaml: 5.2.2
   '@babel/core': 7.29.6
   fast-uri: 3.1.5
-  express-rate-limit>ip-address: 10.3.1
+  ip-address: 10.3.1
   postcss: 8.5.18
 
 patchedDependencies:

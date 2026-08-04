@@ -23,8 +23,9 @@ describe('desktop scrollbar contract', () => {
       /\*::-webkit-scrollbar-track\s*{[^}]*border-radius: 999px;[^}]*margin-block: 3px;[^}]*margin-inline: 3px;/s,
     );
     expect(css).toMatch(
-      /\*::-webkit-scrollbar-button\s*{[^}]*appearance: none;[^}]*width: 12px;[^}]*height: 12px;[^}]*border: 0;[^}]*background-color: transparent !important;[^}]*background-size: 4px 4px !important;[^}]*opacity: 0.55;/s,
+      /\*::-webkit-scrollbar-button\s*{[^}]*appearance: none;[^}]*width: 12px;[^}]*height: 12px;[^}]*border: 0;[^}]*background-color: transparent !important;[^}]*background-size: 4px 4px !important;[^}]*opacity: 0.85;/s,
     );
+    expect(rule(css, '*::-webkit-scrollbar-button:hover')).toContain('opacity: 1;');
     expect(rule(css, '*::-webkit-scrollbar-button:vertical:decrement')).toContain(
       'background-image: linear-gradient(135deg, transparent 50%, #fff 50%), linear-gradient(45deg, #fff 50%, transparent 50%) !important;',
     );

@@ -31,6 +31,9 @@ Responsibilities:
 - transcript listing and rendering
 - chat proxy to `apps/chat`
 - settings stored in encrypted global settings
+- dedicated administrator surfaces at `/admin/configuracao`,
+  `/admin/integracoes`, `/admin/autenticacao`, `/admin/usuarios`, and
+  `/admin/custos`
 
 ## `apps/chat`
 

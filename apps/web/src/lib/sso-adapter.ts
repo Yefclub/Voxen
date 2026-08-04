@@ -64,7 +64,12 @@ function protectTransactionAdapter(adapter: TransactionAdapter): TransactionAdap
       // lookup against active, verified providers using Voxen's domain policy.
       const domain = domainLookup(args);
       if (!domain) return null;
-      const providers = await adapter.findMany<AdapterRecord>({ model: 'ssoProvider' });
+      // Plugin adapter schemas do not expose Voxen's disabledAt field. Query
+      // Prisma directly so the fallback never scans disabled or unverified
+      // provider secrets before applying the multi-domain policy.
+      const providers = await db.ssoProvider.findMany({
+        where: { domainVerified: true, disabledAt: null },
+      });
       for (const provider of providers) {
         const candidate = exposeProviderConfig(provider);
         if (candidate && providerMatchesDomain(candidate, domain)) return candidate as T;

@@ -34,11 +34,11 @@
     background-position: center;
     background-repeat: no-repeat !important;
     background-size: 4px 4px !important;
-    opacity: 0.55;
+    opacity: 0.85;
   }
 
   *::-webkit-scrollbar-button:hover {
-    opacity: 0.9;
+    opacity: 1;
   }
 
   *::-webkit-scrollbar-button:vertical:decrement {
