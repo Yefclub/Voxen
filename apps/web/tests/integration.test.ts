@@ -6,17 +6,91 @@
 // ============================================================================
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { generateKeyPairSync, sign } from 'node:crypto';
 import app from '../src/index';
+import { auth } from '../src/lib/auth';
 import { db } from '../src/lib/db';
+import { getMasterKey } from '../src/lib/master-key';
 import { getSetting, setSetting } from '../src/lib/settings';
+import { decryptOidcConfig, encryptOidcConfig, type StoredOidcConfig } from '../src/lib/sso-oidc';
+import {
+  createOidcProvider,
+  disableOidcProvider,
+  updateOidcProvider,
+} from '../src/lib/sso-provider-service';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
+const oidcKeyPair = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const oidcPublicJwk = {
+  ...oidcKeyPair.publicKey.export({ format: 'jwk' }),
+  alg: 'RS256',
+  kid: 'voxen-integration-test',
+  use: 'sig',
+};
+
+function encodeJwtPart(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function oidcIdToken(input: { email: string; emailVerified: boolean; subject: string }): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = encodeJwtPart({ alg: 'RS256', kid: oidcPublicJwk.kid, typ: 'JWT' });
+  const payload = encodeJwtPart({
+    iss: 'https://8.8.8.8',
+    aud: 'voxen-corporate-client',
+    sub: input.subject,
+    email: input.email,
+    email_verified: input.emailVerified,
+    name: 'Federated User',
+    iat: now,
+    exp: now + 300,
+  });
+  const message = `${header}.${payload}`;
+  return `${message}.${sign('RSA-SHA256', Buffer.from(message), oidcKeyPair.privateKey).toString('base64url')}`;
+}
+
+function responseCookies(response: Response): string {
+  const headers = response.headers as Headers & { getSetCookie?: () => string[] };
+  const values = headers.getSetCookie?.() ?? [headers.get('set-cookie') ?? ''];
+  return values
+    .filter(Boolean)
+    .map((value) => value.split(';')[0])
+    .join('; ');
+}
+
+function installOidcFetch(input: {
+  email: string;
+  emailVerified: boolean;
+  subject: string;
+}): () => void {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (request: RequestInfo | URL, init?: RequestInit) => {
+    const url =
+      typeof request === 'string' ? request : request instanceof URL ? request.href : request.url;
+    if (url === 'https://8.8.8.8/token') {
+      return Response.json({
+        access_token: 'must-not-persist-access',
+        refresh_token: 'must-not-persist-refresh',
+        id_token: oidcIdToken(input),
+        token_type: 'Bearer',
+        expires_in: 3600,
+        scope: 'openid email profile',
+      });
+    }
+    if (url === 'https://8.8.8.8/jwks') return Response.json({ keys: [oidcPublicJwk] });
+    return originalFetch(request, init);
+  }) as typeof fetch;
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
 
 async function wipeDb(): Promise<void> {
   await db.session.deleteMany();
   await db.account.deleteMany();
   await db.verification.deleteMany();
+  await db.ssoProvider.deleteMany();
   await db.setting.deleteMany();
   await db.user.deleteMany();
 }
@@ -45,6 +119,67 @@ function extractCookie(res: Response): string {
   const set = res.headers.get('set-cookie') ?? '';
   // Pega o primeiro cookie (better-auth.session_token)
   return set.split(';')[0] ?? '';
+}
+
+async function seedOidcProvider(userId: string, domain = 'example.com'): Promise<void> {
+  const config: StoredOidcConfig = {
+    issuer: 'https://8.8.8.8',
+    discoveryEndpoint: 'https://8.8.8.8/.well-known/openid-configuration',
+    authorizationEndpoint: 'https://8.8.8.8/authorize',
+    tokenEndpoint: 'https://8.8.8.8/token',
+    jwksEndpoint: 'https://8.8.8.8/jwks',
+    tokenEndpointAuthentication: 'client_secret_basic',
+    clientId: 'voxen-corporate-client',
+    clientSecret: 'never-return-this-secret',
+    pkce: true,
+    scopes: ['openid', 'email', 'profile'],
+  };
+  await db.ssoProvider.create({
+    data: {
+      providerId: 'corporate',
+      issuer: config.issuer,
+      domain,
+      domainVerified: true,
+      oidcConfig: encryptOidcConfig(config, getMasterKey()),
+      userId,
+    },
+  });
+}
+
+const oidcDiscovery = {
+  lookupAll: async () => [{ address: '93.184.216.34', family: 4 }],
+  discover: (async ({ issuer }: { issuer: string }) => ({
+    issuer,
+    discoveryEndpoint: `${issuer}/.well-known/openid-configuration`,
+    authorizationEndpoint: `${issuer}/authorize-v2`,
+    tokenEndpoint: `${issuer}/token-v2`,
+    jwksEndpoint: `${issuer}/jwks-v2`,
+    tokenEndpointAuthentication: 'client_secret_basic',
+  })) as never,
+};
+
+async function beginOidc(email: string): Promise<{ cookie: string; state: string }> {
+  const response = await app.fetch(
+    new Request('http://localhost/api/auth/sign-in/sso', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email, callbackURL: '/' }),
+    }),
+  );
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { url: string };
+  const state = new URL(body.url).searchParams.get('state');
+  expect(state).not.toBeNull();
+  return { cookie: responseCookies(response), state: state! };
+}
+
+async function completeOidc(flow: { cookie: string; state: string }): Promise<Response> {
+  return app.fetch(
+    new Request(
+      `http://localhost/api/auth/sso/callback/corporate?state=${encodeURIComponent(flow.state)}&code=integration-code`,
+      { headers: { cookie: flow.cookie } },
+    ),
+  );
 }
 
 describeIfDb('auth + admin approval flow', () => {
@@ -629,6 +764,640 @@ describeIfDb('auth + admin approval flow', () => {
   it('non-authenticated recebe 401 em /api/admin/usuarios', async () => {
     const res = await app.fetch(new Request('http://localhost/api/admin/usuarios'));
     expect(res.status).toBe(401);
+  });
+
+  it('mantém provedores OIDC cifrados e redigidos na API administrativa', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const config: StoredOidcConfig = {
+      issuer: 'https://8.8.8.8',
+      discoveryEndpoint: 'https://8.8.8.8/.well-known/openid-configuration',
+      authorizationEndpoint: 'https://8.8.8.8/authorize',
+      tokenEndpoint: 'https://8.8.8.8/token',
+      jwksEndpoint: 'https://8.8.8.8/jwks',
+      userInfoEndpoint: 'https://8.8.8.8/userinfo',
+      tokenEndpointAuthentication: 'client_secret_basic',
+      clientId: 'voxen-corporate-client',
+      clientSecret: 'never-return-this-secret',
+      pkce: true,
+      scopes: ['openid', 'email', 'profile'],
+    };
+    const encrypted = encryptOidcConfig(config, getMasterKey());
+    await db.ssoProvider.create({
+      data: {
+        providerId: 'corporate',
+        issuer: config.issuer,
+        domain: 'example.com',
+        domainVerified: true,
+        oidcConfig: encrypted,
+        userId: admin.id,
+      },
+    });
+
+    const response = await app.fetch(
+      new Request('http://localhost/api/admin/authentication/providers', {
+        headers: { cookie },
+      }),
+    );
+    expect(response.status).toBe(200);
+    const serialized = JSON.stringify(await response.json());
+    expect(serialized).toContain('corporate');
+    expect(serialized).toContain('ient');
+    expect(serialized).toContain('/api/auth/sso/callback/corporate');
+    expect(serialized).not.toContain(config.clientId);
+    expect(serialized).not.toContain(config.clientSecret);
+    expect(
+      (await db.ssoProvider.findUniqueOrThrow({ where: { providerId: 'corporate' } })).oidcConfig,
+    ).toBe(encrypted);
+
+    const ssoStart = await app.fetch(
+      new Request('http://localhost/api/auth/sign-in/sso', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'person@example.com', callbackURL: '/' }),
+      }),
+    );
+    expect(ssoStart.status).toBe(200);
+    const ssoBody = (await ssoStart.json()) as { url?: string };
+    expect(ssoBody.url).toContain('https://8.8.8.8/authorize');
+    expect(ssoBody.url).toContain('client_id=voxen-corporate-client');
+  });
+
+  it('inicia SSO para todos os domínios declarados e seus subdomínios', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    await seedOidcProvider(admin.id, 'example.com,subsidiary.com');
+
+    for (const email of ['person@subsidiary.com', 'person@team.example.com']) {
+      const response = await app.fetch(
+        new Request('http://localhost/api/auth/sign-in/sso', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email, callbackURL: '/' }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(((await response.json()) as { url: string }).url).toContain(
+        'https://8.8.8.8/authorize',
+      );
+    }
+  });
+
+  it('lista e permite excluir um provedor cuja configuração não pode ser decifrada', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    await db.ssoProvider.create({
+      data: {
+        providerId: 'corrupt-provider',
+        issuer: 'https://8.8.8.8',
+        domain: 'example.com',
+        domainVerified: true,
+        oidcConfig: 'corrupt-ciphertext',
+        userId: admin.id,
+      },
+    });
+
+    const listed = await app.fetch(
+      new Request('http://localhost/api/admin/authentication/providers', {
+        headers: { cookie },
+      }),
+    );
+    expect(listed.status).toBe(200);
+    const body = (await listed.json()) as {
+      providers: { providerId: string; configurationError: boolean; domainVerified: boolean }[];
+    };
+    expect(body.providers).toContainEqual(
+      expect.objectContaining({
+        providerId: 'corrupt-provider',
+        configurationError: true,
+        domainVerified: false,
+      }),
+    );
+
+    const rejectedEdit = await app.fetch(
+      new Request('http://localhost/api/admin/authentication/providers/corrupt-provider', {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ clientSecret: 'replacement-secret' }),
+      }),
+    );
+    expect(rejectedEdit.status).toBe(409);
+    expect(await rejectedEdit.json()).toEqual({
+      error: 'Configuração OIDC ilegível. Exclua o provedor e cadastre-o novamente.',
+    });
+
+    const removed = await app.fetch(
+      new Request('http://localhost/api/admin/authentication/providers/corrupt-provider', {
+        method: 'DELETE',
+        headers: { cookie },
+      }),
+    );
+    expect(removed.status).toBe(200);
+    expect(
+      await db.ssoProvider.findFirst({
+        where: { providerId: { startsWith: 'disabled:' }, disabledAt: { not: null } },
+      }),
+    ).not.toBeNull();
+  });
+
+  it('não inicia login por provedor ainda não verificado', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const config: StoredOidcConfig = {
+      issuer: 'https://8.8.8.8',
+      discoveryEndpoint: 'https://8.8.8.8/.well-known/openid-configuration',
+      authorizationEndpoint: 'https://8.8.8.8/authorize',
+      tokenEndpoint: 'https://8.8.8.8/token',
+      jwksEndpoint: 'https://8.8.8.8/jwks',
+      tokenEndpointAuthentication: 'client_secret_basic',
+      clientId: 'unverified-client',
+      clientSecret: 'unverified-secret',
+      pkce: true,
+      scopes: ['openid', 'email', 'profile'],
+    };
+    await db.ssoProvider.create({
+      data: {
+        providerId: 'unverified-provider',
+        issuer: config.issuer,
+        domain: 'example.com',
+        domainVerified: false,
+        oidcConfig: encryptOidcConfig(config, getMasterKey()),
+        userId: admin.id,
+      },
+    });
+
+    const response = await app.fetch(
+      new Request('http://localhost/api/auth/sign-in/sso', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'person@example.com', callbackURL: '/' }),
+      }),
+    );
+    expect(response.status).not.toBe(200);
+    expect(await response.text()).not.toContain('https://8.8.8.8/authorize');
+  });
+
+  it('rejeita pkce=false também no contrato administrativo', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const response = await app.fetch(
+      new Request('http://localhost/api/admin/authentication/providers', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          providerId: 'weak-provider',
+          issuer: 'https://8.8.8.8',
+          domains: ['example.com'],
+          clientId: 'weak-client',
+          clientSecret: 'weak-secret',
+          pkce: false,
+        }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain('PKCE');
+    expect(await db.ssoProvider.count()).toBe(0);
+  });
+
+  it('serializa cadastros concorrentes e impede domínios OIDC sobrepostos', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const discovery = {
+      lookupAll: async () => [{ address: '93.184.216.34', family: 4 }],
+      discover: (async ({ issuer }: { issuer: string }) => ({
+        issuer,
+        discoveryEndpoint: `${issuer}/.well-known/openid-configuration`,
+        authorizationEndpoint: `${issuer}/authorize`,
+        tokenEndpoint: `${issuer}/token`,
+        jwksEndpoint: `${issuer}/jwks`,
+        tokenEndpointAuthentication: 'client_secret_basic',
+      })) as never,
+    };
+    const results = await Promise.allSettled([
+      createOidcProvider(
+        {
+          providerId: 'corporate-a',
+          issuer: 'https://id-a.example.com',
+          domains: ['example.com'],
+          clientId: 'client-a',
+          clientSecret: 'client-secret-a',
+        },
+        admin.id,
+        discovery,
+      ),
+      createOidcProvider(
+        {
+          providerId: 'corporate-b',
+          issuer: 'https://id-b.example.com',
+          domains: ['team.example.com'],
+          clientId: 'client-b',
+          clientSecret: 'client-secret-b',
+        },
+        admin.id,
+        discovery,
+      ),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(await db.ssoProvider.count()).toBe(1);
+  });
+
+  it('permite rotação de segredo e metadata descoberta sem trocar a identidade', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('member@example.com', 'senha-super-segura-456', 'Member');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const member = await db.user.findUniqueOrThrow({ where: { email: 'member@example.com' } });
+    await seedOidcProvider(admin.id);
+    await db.account.create({
+      data: {
+        userId: member.id,
+        providerId: 'corporate',
+        accountId: 'immutable-subject',
+      },
+    });
+
+    await updateOidcProvider('corporate', { clientSecret: 'rotated-client-secret' }, oidcDiscovery);
+
+    const provider = await db.ssoProvider.findUniqueOrThrow({ where: { providerId: 'corporate' } });
+    const config = decryptOidcConfig(provider.oidcConfig!, getMasterKey());
+    expect(config.clientSecret).toBe('rotated-client-secret');
+    expect(config.tokenEndpoint).toBe('https://8.8.8.8/token-v2');
+    expect(
+      await db.account.findUnique({
+        where: {
+          providerId_accountId: { providerId: 'corporate', accountId: 'immutable-subject' },
+        },
+      }),
+    ).not.toBeNull();
+  });
+
+  it('libera o identificador excluído sem herdar vínculos federados antigos', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('member@example.com', 'senha-super-segura-456', 'Member');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const member = await db.user.findUniqueOrThrow({ where: { email: 'member@example.com' } });
+    await seedOidcProvider(admin.id);
+    await db.account.create({
+      data: {
+        userId: member.id,
+        providerId: 'corporate',
+        accountId: 'old-provider-subject',
+      },
+    });
+
+    await disableOidcProvider('corporate');
+    const tombstoned = await db.ssoProvider.findFirstOrThrow({
+      where: { disabledAt: { not: null } },
+    });
+    expect(tombstoned.providerId).toBe(`disabled:${tombstoned.id}`);
+    expect(tombstoned.oidcConfig).toBeNull();
+    const oldAccount = await db.account.findFirstOrThrow({
+      where: { accountId: 'old-provider-subject' },
+    });
+    expect(oldAccount.providerId).toBe(`disabled:${tombstoned.id}`);
+    expect(oldAccount.userId).toBe(member.id);
+
+    await createOidcProvider(
+      {
+        providerId: 'corporate',
+        issuer: 'https://8.8.8.8',
+        domains: ['example.com'],
+        clientId: 'replacement-client',
+        clientSecret: 'replacement-secret',
+      },
+      admin.id,
+      oidcDiscovery,
+    );
+    const replacement = await db.ssoProvider.findUniqueOrThrow({
+      where: { providerId: 'corporate' },
+    });
+    expect(replacement.id).not.toBe(tombstoned.id);
+    expect(await db.user.findUnique({ where: { id: member.id } })).not.toBeNull();
+  });
+
+  it('conclui o callback OIDC, vincula a conta existente e descarta todos os tokens', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('member@example.com', 'senha-super-segura-456', 'Member');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const member = await db.user.update({
+      where: { email: 'member@example.com' },
+      data: { status: 'APPROVED', approvedAt: new Date(), approvedBy: admin.id },
+    });
+    await seedOidcProvider(admin.id);
+    const flow = await beginOidc(member.email);
+    const restoreFetch = installOidcFetch({
+      email: member.email,
+      emailVerified: true,
+      subject: 'existing-member-subject',
+    });
+    let callback: Response;
+    try {
+      callback = await completeOidc(flow);
+    } finally {
+      restoreFetch();
+    }
+
+    expect(callback.status).toBe(302);
+    expect(callback.headers.get('location')).toBe('/');
+    expect(responseCookies(callback)).toContain('better-auth.session_token');
+    expect(await db.user.count()).toBe(2);
+    const account = await db.account.findFirstOrThrow({
+      where: { providerId: 'corporate', accountId: 'existing-member-subject' },
+    });
+    expect(account.userId).toBe(member.id);
+    expect(account.accessToken).toBeNull();
+    expect(account.refreshToken).toBeNull();
+    expect(account.idToken).toBeNull();
+  });
+
+  it('não vincula conta existente quando o IdP não verificou o e-mail', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('member@example.com', 'senha-super-segura-456', 'Member');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const member = await db.user.update({
+      where: { email: 'member@example.com' },
+      data: { status: 'APPROVED', approvedAt: new Date(), approvedBy: admin.id },
+    });
+    await seedOidcProvider(admin.id);
+    const flow = await beginOidc(member.email);
+    const restoreFetch = installOidcFetch({
+      email: member.email,
+      emailVerified: false,
+      subject: 'unverified-existing-subject',
+    });
+    try {
+      const callback = await completeOidc(flow);
+      expect(callback.status).toBe(302);
+      expect(callback.headers.get('location')).toContain('error');
+    } finally {
+      restoreFetch();
+    }
+
+    expect(
+      await db.account.findFirst({
+        where: { providerId: 'corporate', accountId: 'unverified-existing-subject' },
+      }),
+    ).toBeNull();
+    expect(await db.session.count({ where: { userId: member.id } })).toBe(0);
+  });
+
+  it('recusa redirects inesperados na troca de token e na leitura do JWKS', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    await seedOidcProvider(admin.id);
+    const flow = await beginOidc('redirect-check@example.com');
+    const originalFetch = globalThis.fetch;
+    let tokenRedirectMode: RequestRedirect | undefined;
+    let jwksRedirectMode: RequestRedirect | undefined;
+    let followedPrivateLocation = false;
+    globalThis.fetch = (async (request: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof request === 'string' ? request : request instanceof URL ? request.href : request.url;
+      if (url === 'https://8.8.8.8/token') {
+        tokenRedirectMode = init?.redirect;
+        return Response.json({
+          access_token: 'ephemeral-access',
+          id_token: oidcIdToken({
+            email: 'redirect-check@example.com',
+            emailVerified: true,
+            subject: 'redirect-check-subject',
+          }),
+          token_type: 'Bearer',
+          expires_in: 3600,
+        });
+      }
+      if (url === 'https://8.8.8.8/jwks') {
+        jwksRedirectMode = init?.redirect;
+        return new Response(null, {
+          status: 302,
+          headers: { location: 'https://127.0.0.1/private-jwks' },
+        });
+      }
+      if (url === 'https://127.0.0.1/private-jwks') followedPrivateLocation = true;
+      return originalFetch(request, init);
+    }) as typeof fetch;
+    try {
+      const callback = await completeOidc(flow);
+      expect(callback.status).toBe(302);
+      expect(callback.headers.get('location')).toContain('token_not_verified');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(tokenRedirectMode).toBe('manual');
+    expect(jwksRedirectMode).toBe('manual');
+    expect(followedPrivateLocation).toBe(false);
+    expect(await db.user.findUnique({ where: { email: 'redirect-check@example.com' } })).toBeNull();
+  });
+
+  it('provisiona usuário OIDC novo como PENDING sem liberar sessão', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    await seedOidcProvider(admin.id);
+    const flow = await beginOidc('new-member@example.com');
+    const restoreFetch = installOidcFetch({
+      email: 'new-member@example.com',
+      emailVerified: true,
+      subject: 'new-member-subject',
+    });
+    let callback: Response;
+    try {
+      callback = await completeOidc(flow);
+    } finally {
+      restoreFetch();
+    }
+
+    expect(callback.status).toBe(302);
+    expect(callback.headers.get('location')).toContain('ACCOUNT_PENDING');
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'new-member@example.com' } });
+    expect(user.status).toBe('PENDING');
+    expect(user.role).toBe('USER');
+    const account = await db.account.findFirstOrThrow({
+      where: { providerId: 'corporate', accountId: 'new-member-subject' },
+    });
+    expect(account.userId).toBe(user.id);
+    expect(account.accessToken).toBeNull();
+    expect(account.refreshToken).toBeNull();
+    expect(account.idToken).toBeNull();
+    expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
+  });
+
+  it('propaga códigos estáveis e não cria sessão para contas REJECTED ou DISABLED', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    await seedOidcProvider(admin.id);
+
+    for (const [status, email, subject, expectedCode] of [
+      ['REJECTED', 'rejected@example.com', 'rejected-subject', 'ACCOUNT_REJECTED'],
+      ['DISABLED', 'disabled@example.com', 'disabled-subject', 'ACCOUNT_DISABLED'],
+    ] as const) {
+      await signUp(email, 'senha-super-segura-456', status);
+      const user = await db.user.update({ where: { email }, data: { status } });
+      const flow = await beginOidc(email);
+      const restoreFetch = installOidcFetch({ email, emailVerified: true, subject });
+      try {
+        const callback = await completeOidc(flow);
+        expect(callback.status).toBe(302);
+        expect(callback.headers.get('location')).toContain(expectedCode);
+      } finally {
+        restoreFetch();
+      }
+      expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
+    }
+  });
+
+  it('recusa provisionamento OIDC fechado, não verificado ou fora do domínio', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    await seedOidcProvider(admin.id);
+    await setSetting('onboarding_done', 'true');
+    await setSetting('allow_signups', 'false');
+
+    const closedFlow = await beginOidc('closed@example.com');
+    let restoreFetch = installOidcFetch({
+      email: 'closed@example.com',
+      emailVerified: true,
+      subject: 'closed-subject',
+    });
+    try {
+      const callback = await completeOidc(closedFlow);
+      expect(callback.status).toBe(302);
+      expect(callback.headers.get('location')).toContain('/api/auth/error?error=');
+    } finally {
+      restoreFetch();
+    }
+    expect(await db.user.findUnique({ where: { email: 'closed@example.com' } })).toBeNull();
+
+    await setSetting('allow_signups', 'true');
+    const unverifiedFlow = await beginOidc('unverified@example.com');
+    restoreFetch = installOidcFetch({
+      email: 'unverified@example.com',
+      emailVerified: false,
+      subject: 'unverified-subject',
+    });
+    try {
+      const callback = await completeOidc(unverifiedFlow);
+      expect(callback.status).toBe(302);
+      expect(callback.headers.get('location')).toContain('error');
+    } finally {
+      restoreFetch();
+    }
+    expect(await db.user.findUnique({ where: { email: 'unverified@example.com' } })).toBeNull();
+
+    const wrongDomainFlow = await beginOidc('expected@example.com');
+    restoreFetch = installOidcFetch({
+      email: 'attacker@outside.invalid',
+      emailVerified: true,
+      subject: 'wrong-domain-subject',
+    });
+    try {
+      const callback = await completeOidc(wrongDomainFlow);
+      expect(callback.status).toBe(302);
+      expect(callback.headers.get('location')).toContain('error');
+    } finally {
+      restoreFetch();
+    }
+    expect(await db.user.findUnique({ where: { email: 'attacker@outside.invalid' } })).toBeNull();
+    expect(await db.account.count({ where: { providerId: 'corporate' } })).toBe(0);
+  });
+
+  it('nega a gestão OIDC para usuário comum', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await signUp('user@voxen.local', 'senha-super-segura-456', 'User');
+    const adminCookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'user@voxen.local' } });
+    await app.fetch(
+      new Request(`http://localhost/api/admin/usuarios/${user.id}/approve`, {
+        method: 'POST',
+        headers: { cookie: adminCookie, 'content-type': 'application/json' },
+        body: '{}',
+      }),
+    );
+    const userCookie = extractCookie(await signIn('user@voxen.local', 'senha-super-segura-456'));
+    const response = await app.fetch(
+      new Request('http://localhost/api/admin/authentication/providers', {
+        headers: { cookie: userCookie },
+      }),
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it('falha fechado antes do callback quando um endpoint OIDC deixa de ser público', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const privateConfig: StoredOidcConfig = {
+      issuer: 'https://id.example.com',
+      discoveryEndpoint: 'https://id.example.com/.well-known/openid-configuration',
+      authorizationEndpoint: 'https://id.example.com/authorize',
+      tokenEndpoint: 'https://127.0.0.1/token',
+      jwksEndpoint: 'https://id.example.com/jwks',
+      tokenEndpointAuthentication: 'client_secret_basic',
+      clientId: 'private-endpoint-client',
+      clientSecret: 'private-endpoint-secret',
+      pkce: true,
+      scopes: ['openid', 'email', 'profile'],
+    };
+    await db.ssoProvider.create({
+      data: {
+        providerId: 'private-endpoint',
+        issuer: privateConfig.issuer,
+        domain: 'example.com',
+        domainVerified: true,
+        oidcConfig: encryptOidcConfig(privateConfig, getMasterKey()),
+        userId: admin.id,
+      },
+    });
+
+    const callback = await app.fetch(
+      new Request(
+        'http://localhost/api/auth/sso/callback/private-endpoint?state=opaque&code=opaque',
+      ),
+    );
+    expect(callback.status).toBe(302);
+    expect(callback.headers.get('location')).toBe('/entrar?error=SSO_ENDPOINT_UNAVAILABLE');
+
+    const sharedCallback = await app.fetch(
+      new Request('http://localhost/api/auth/sso/callback?state=opaque&code=opaque'),
+    );
+    expect(sharedCallback.status).toBe(404);
+  });
+
+  it('limita callbacks OIDC não autenticados por IP antes do trabalho do provedor', async () => {
+    const ip = `203.0.113.${(Math.floor(Date.now() / 1000) % 200) + 1}`;
+    for (let attempt = 1; attempt <= 20; attempt += 1) {
+      const response = await app.fetch(
+        new Request('http://localhost/api/auth/sso/callback/missing?state=x&code=x', {
+          headers: { 'cf-connecting-ip': ip },
+        }),
+      );
+      expect(response.status).toBe(302);
+    }
+    const limited = await app.fetch(
+      new Request('http://localhost/api/auth/sso/callback/missing?state=x&code=x', {
+        headers: { 'cf-connecting-ip': ip },
+      }),
+    );
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+  });
+
+  it('aplica o bloqueio global de cadastros também na API interna do Better Auth', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    await setSetting('onboarding_done', 'true');
+    await setSetting('allow_signups', 'false');
+
+    await expect(
+      auth.api.signUpEmail({
+        body: {
+          email: 'blocked@voxen.local',
+          password: 'senha-super-segura-789',
+          name: 'Blocked',
+        },
+      }),
+    ).rejects.toMatchObject({ status: 'FORBIDDEN' });
+    expect(await db.user.findUnique({ where: { email: 'blocked@voxen.local' } })).toBeNull();
   });
 
   it('persists interface mode only for the authenticated account and rejects unknown modes', async () => {

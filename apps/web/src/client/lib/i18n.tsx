@@ -8,6 +8,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
 
 export type Locale = 'pt-BR' | 'en';
 
@@ -852,10 +853,7 @@ const ptBRMessages = {
   'admin.shell.title': 'Administração da instância',
   'admin.shell.description':
     'Configurações compartilhadas por todos os usuários. Apenas administradores podem alterar estes valores.',
-  'admin.shell.configuration': 'Configuração',
-  'admin.shell.integrations': 'IA e integrações',
-  'admin.shell.users': 'Usuários',
-  'admin.shell.costs': 'Custos',
+  ...ptBrSsoMessages,
   'admin.integrations.telegram.title': 'Bot do Telegram',
   'admin.integrations.telegram.description':
     'Cole o token do bot (formato {format}). Crie um bot via {botFather} no Telegram.',
@@ -2241,10 +2239,7 @@ const enMessages: Record<I18nKey, string> = {
   'admin.shell.title': 'Instance administration',
   'admin.shell.description':
     'Settings shared by every user. Only administrators can change these values.',
-  'admin.shell.configuration': 'Configuration',
-  'admin.shell.integrations': 'AI and integrations',
-  'admin.shell.users': 'Users',
-  'admin.shell.costs': 'Costs',
+  ...enSsoMessages,
   'admin.integrations.telegram.title': 'Telegram bot',
   'admin.integrations.telegram.description':
     'Paste the bot token ({format}). Create a bot through {botFather} on Telegram.',

@@ -11,7 +11,6 @@
 
 import { Hono } from 'hono';
 import type { Prisma } from '../../prisma-generated/client';
-import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { isValidIanaTimezone, normalizeAppTimezone } from '../lib/app-timezone';
 import { getAppTimezone, getSetting, setSettings } from '../lib/settings';
@@ -23,10 +22,8 @@ import {
 } from '../lib/mcp-tokens';
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
 import { deleteS3Prefix } from '../lib/s3';
-
-type AdminVariables = {
-  adminUserId: string;
-};
+import { adminAuthenticationRoutes } from './admin-authentication';
+import { requireApprovedAdmin, type AdminVariables } from './admin-guard';
 
 export const adminRoutes = new Hono<{ Variables: AdminVariables }>();
 
@@ -67,25 +64,9 @@ async function assertMayRemoveApprovedAdmin(
   }
 }
 
-// Middleware: require session + role ADMIN
-adminRoutes.use('*', async (c, next) => {
-  const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  if (!session) {
-    return c.json({ error: 'Não autenticado.' }, 401);
-  }
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, status: true },
-  });
-  if (!user || user.status !== 'APPROVED') {
-    return c.json({ error: 'Acesso negado.' }, 403);
-  }
-  if (user.role !== 'ADMIN') {
-    return c.json({ error: 'Acesso restrito a administradores.' }, 403);
-  }
-  c.set('adminUserId', session.user.id);
-  return next();
-});
+adminRoutes.use('*', requireApprovedAdmin);
+
+adminRoutes.route('/authentication', adminAuthenticationRoutes);
 
 // GET /api/admin/usuarios — lista todos
 adminRoutes.get('/usuarios', async (c) => {

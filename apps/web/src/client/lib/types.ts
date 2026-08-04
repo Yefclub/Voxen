@@ -30,6 +30,7 @@ export interface InstanceState {
   hasUsers: boolean;
   onboardingDone: boolean;
   language: AppLanguage;
+  ssoEnabled: boolean;
 }
 
 export interface VersionResponse {
