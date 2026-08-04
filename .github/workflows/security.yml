@@ -24,8 +24,10 @@ jobs:
       - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
-          # Voxen e uma SPA client-side com BrowserRouter; nao usa React Server
-          # Components nem Server Actions, superficie afetada por este advisory.
+          # Temporary exception: Voxen is a client-only BrowserRouter SPA and
+          # does not enable the React Server Components mode affected here.
+          # Owner: Voxen maintainers. Review/remove by 2026-09-01 or when the
+          # patched React Router dependency is available in the current stack.
           allow-ghsas: GHSA-qwww-vcr4-c8h2
 
   codeql:
@@ -133,6 +135,9 @@ jobs:
       - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
       - name: Audit production dependencies
+        # Temporary exception: Voxen does not enable the React Server Components
+        # mode affected by GHSA-qwww-vcr4-c8h2. Owner: Voxen maintainers.
+        # Review/remove by 2026-09-01 or when the patched dependency is available.
         run: >-
           node scripts/pnpm-audit-gate.mjs
           --level high

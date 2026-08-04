@@ -70,16 +70,16 @@ monitoring the same pull request.
 
 ## Acceptance criteria
 
-- [ ] Static tests cover valid additions, immutable-history edits/deletions,
+- [x] Static tests cover valid additions, immutable-history edits/deletions,
       schema changes without migrations, invalid names, duplicates, empty SQL
       and out-of-order additions.
-- [ ] The runner refuses unsafe database URLs and always writes diagnostics.
-- [ ] A clean PostgreSQL instance replays all migrations and reports no
+- [x] The runner refuses unsafe database URLs and always writes diagnostics.
+- [x] A clean PostgreSQL instance replays all migrations and reports no
       declarative drift against `schema.prisma`.
-- [ ] CI publishes the report on success and failure under a dedicated check.
-- [ ] The version bot waits for the new required context by exact name.
-- [ ] Local format, lint, typecheck, tests and production build pass.
-- [ ] The pull request has green CI and an independent review.
+- [x] CI publishes the report on success and failure under a dedicated check.
+- [x] The version bot waits for the new required context by exact name.
+- [x] Local format, lint, typecheck, tests and production build pass.
+- [x] The pull request has green CI and an independent review.
 
 ## Out of scope
 

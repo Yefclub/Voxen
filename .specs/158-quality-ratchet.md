@@ -103,13 +103,13 @@ push the correction and continue monitoring the same pull request.
       `dev` branch at adoption time.
 - [x] Tests cover equality, improvements, every regression category, malformed
       input and forbidden baseline relaxation.
-- [ ] CI produces coverage once per existing test job and evaluates a separate
+- [x] CI produces coverage once per existing test job and evaluates a separate
       required-quality job.
 - [x] A deliberate fixture regression makes the comparator fail with an
       actionable message.
 - [x] The complete artifact is uploaded on both success and failure.
 - [x] Local format, lint, typecheck, tests and production build pass.
-- [ ] The pull request has green CI and an independent review.
+- [x] The pull request has green CI and an independent review.
 
 ## Out of scope
 

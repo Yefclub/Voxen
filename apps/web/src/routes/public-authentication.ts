@@ -38,6 +38,21 @@ publicAuthenticationRoutes.on(['GET', 'POST'], '/api/auth/*', async (c) => {
     return c.json({ error: 'Rota não encontrada.' }, 404);
   }
   const oidcCallback = path.match(/^\/api\/auth\/sso\/callback\/([^/]+)\/?$/);
+  const oidcSignIn = /^\/api\/auth\/sign-in\/sso\/?$/.test(path);
+  if (oidcSignIn) {
+    // Redis is an abuse-control dependency, not an authentication dependency.
+    // Keep SSO available during a cache outage and restore limits on recovery.
+    const quota = await rateLimit(`voxen:rl:sso-sign-in:${clientIp(c)}`, 60, 60).catch(() => ({
+      allowed: true,
+      count: 0,
+      limit: 60,
+      resetIn: 60,
+    }));
+    if (!quota.allowed) {
+      c.header('Retry-After', String(quota.resetIn));
+      return c.json({ error: 'Muitas tentativas de autenticação. Tente novamente em breve.' }, 429);
+    }
+  }
   if (oidcCallback?.[1]) {
     // Redis is an abuse-control dependency, not an authentication dependency.
     // The positive DNS cache still bounds repeated work if Redis is unavailable.
