@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.1-dev.1785875339 — 2026-08-04 · Dev
+
+### 🐛 Mais respiro nas bordas da interface
+
+As páginas voltam a iniciar com uma margem discreta no desktop, sem recuperar a
+faixa vazia do cabeçalho. O painel flutuante se afasta da barra de rolagem e as
+setas da rolagem passam a ficar centralizadas em áreas próprias, longe dos
+cantos arredondados.
+
 ## v0.14.1-dev.1785872155 — 2026-08-04 · Dev
 
 ### 🐛 Mais espaço útil e navegação mais limpa
