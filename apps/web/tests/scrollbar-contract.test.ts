@@ -41,16 +41,28 @@ describe('desktop scrollbar contract', () => {
     expect(rules(css, '*::-webkit-scrollbar-button:vertical:decrement:start').join(' ')).toContain(
       'background-image: linear-gradient(135deg, transparent 50%, #fff 50%), linear-gradient(45deg, #fff 50%, transparent 50%) !important;',
     );
+    expect(rules(css, '*::-webkit-scrollbar-button:vertical:decrement:start').join(' ')).toContain(
+      'background-position: 1px 7px, 4px 7px !important;',
+    );
     expect(rules(css, '*::-webkit-scrollbar-button:vertical:increment:end').join(' ')).toContain(
       'background-image: linear-gradient(45deg, transparent 50%, #fff 50%), linear-gradient(135deg, #fff 50%, transparent 50%) !important;',
+    );
+    expect(rules(css, '*::-webkit-scrollbar-button:vertical:increment:end').join(' ')).toContain(
+      'background-position: 1px 6px, 4px 6px !important;',
     );
     expect(
       rules(css, '*::-webkit-scrollbar-button:horizontal:decrement:start').join(' '),
     ).toContain(
       'background-image: linear-gradient(135deg, transparent 50%, #fff 50%), linear-gradient(45deg, transparent 50%, #fff 50%) !important;',
     );
+    expect(
+      rules(css, '*::-webkit-scrollbar-button:horizontal:decrement:start').join(' '),
+    ).toContain('background-position: 7px 1px, 7px 4px !important;');
     expect(rules(css, '*::-webkit-scrollbar-button:horizontal:increment:end').join(' ')).toContain(
       'background-image: linear-gradient(45deg, #fff 50%, transparent 50%), linear-gradient(135deg, #fff 50%, transparent 50%) !important;',
+    );
+    expect(rules(css, '*::-webkit-scrollbar-button:horizontal:increment:end').join(' ')).toContain(
+      'background-position: 6px 1px, 6px 4px !important;',
     );
     expect(
       rule(css, "[data-theme='light'] *::-webkit-scrollbar-button:vertical:decrement:start"),

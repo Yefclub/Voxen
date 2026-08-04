@@ -17,7 +17,7 @@ export function AdminLayout(): React.ReactElement {
 
   return (
     <div className="min-h-full">
-      <header className="mx-auto mb-7 w-full max-w-[1600px] px-4 sm:px-7 xl:px-10">
+      <header className="mx-auto mb-7 w-full max-w-[1600px] px-4 sm:px-7 md:pt-5 xl:px-10">
         <div className="rounded-2xl border border-[var(--color-app-border-strong)] bg-[var(--color-accent-violet-soft)] p-4 sm:p-5">
           <div className="flex items-start gap-3">
             <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--color-accent-violet)]/25 bg-[var(--color-app-bg-elevated)] text-[var(--color-accent-violet)]">

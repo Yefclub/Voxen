@@ -12,10 +12,11 @@ ou alterar a navegação móvel.
 
 ### Ubiquitous
 
-- The system shall iniciar o conteúdo das páginas convencionais no desktop com
-  20 px de respiro acima do primeiro elemento da página.
-- The system shall manter o cabeçalho flutuante desktop com 28 px de distância
-  da borda direita da viewport, inclusive no modo de interface focada.
+- The system shall iniciar o conteúdo das páginas convencionais e de
+  administração no desktop com 20 px de respiro acima do primeiro elemento da
+  página.
+- The system shall manter o cabeçalho flutuante desktop com pelo menos 20 px
+  de distância efetiva da barra de rolagem, nos modos clássico e focado.
 - The system shall manter a espessura da barra de rolagem em 8 px e exibir
   somente os controles direcionais de início e fim lógico.
 - The system shall reservar 16 px no eixo de rolagem para cada controle
@@ -36,8 +37,9 @@ ou alterar a navegação móvel.
 
 ## Critérios de Aceite
 
-- [x] Páginas que usam o shell padrão iniciam 20 px abaixo do topo no desktop.
-- [x] O cabeçalho desktop fica 28 px afastado da borda que contém a barra de
+- [x] Páginas que usam o shell padrão e administrativo iniciam 20 px abaixo do
+      topo no desktop.
+- [x] O cabeçalho desktop fica ao menos 20 px afastado da barra de
       rolagem, nos modos clássico e focado.
 - [x] A barra mantém 8 px de largura e apenas as setas de início/fim.
 - [x] Cada seta vertical recebe 16 px de altura e cada seta horizontal recebe
