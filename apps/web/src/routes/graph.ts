@@ -39,6 +39,11 @@ import {
 } from '../lib/graph-index-coordinator';
 import { shouldScheduleGraphReindex } from '../lib/graph-index-state';
 import {
+  GraphIndexRunError,
+  createGraphIndexFailureStatus,
+  reportGraphIndexRunFailure,
+} from '../lib/graph-index-run-error';
+import {
   FULL_EDGE_LIMIT,
   FULL_NODE_LIMIT,
   parseGraphHops,
@@ -46,7 +51,7 @@ import {
   selectGraphSlice,
 } from '../lib/graph-slice';
 import { createSubscriber, getRedisPublisher } from '../lib/redis';
-import type { GraphIndexErrorReason, GraphIndexStatus } from '../shared/graph-index';
+import type { GraphIndexStatus } from '../shared/graph-index';
 
 type Vars = { userId: string };
 
@@ -516,7 +521,7 @@ async function scheduleBrainReindex(
 
       const coverage = await readBrainCoverage(userId);
       if (shouldScheduleGraphReindex({ force: false, ...coverage })) {
-        throw new GraphIndexRunError('coverage-incomplete');
+        throw new GraphIndexRunError('coverage-incomplete', coverage);
       }
       await assertLeaseOwnership();
       await invalidateGraphCache(userId);
@@ -531,19 +536,15 @@ async function scheduleBrainReindex(
         throw new GraphIndexRunError('lease-lost');
       }
     } catch (err) {
-      console.warn('[graph] background reindex failed', { userId, err });
-      const reason: GraphIndexErrorReason =
-        err instanceof GraphIndexRunError ? err.reason : 'failed';
+      const reason = reportGraphIndexRunFailure(userId, err);
       if (reason !== 'lease-lost') {
         const failedAt = Date.now();
-        const failed: GraphIndexStatus = {
-          state: 'error',
-          runId,
-          startedAt: running.startedAt,
-          updatedAt: new Date(failedAt).toISOString(),
-          retryAfter: new Date(failedAt + GRAPH_INDEX_ERROR_COOLDOWN_MS).toISOString(),
+        const failed = createGraphIndexFailureStatus(
+          running,
           reason,
-        };
+          failedAt,
+          GRAPH_INDEX_ERROR_COOLDOWN_MS,
+        );
         await publishOwnedStatus(failed);
       }
     } finally {
@@ -620,12 +621,6 @@ async function readBrainCoverage(userId: string): Promise<BrainCoverage> {
     indexedSourceNodes: brainNodes,
     staleSourceNodes,
   };
-}
-
-class GraphIndexRunError extends Error {
-  constructor(readonly reason: GraphIndexErrorReason) {
-    super(reason);
-  }
 }
 
 async function countStaleBrainSourceNodes(userId: string): Promise<number> {
