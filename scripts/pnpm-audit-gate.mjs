@@ -34,6 +34,11 @@ const result = spawnSync("pnpm", ["audit", "--prod", "--json"], {
   maxBuffer: 20 * 1024 * 1024,
 });
 if (result.error) throw result.error;
+if (result.signal || (result.status !== 0 && result.status !== 1)) {
+  throw new Error(
+    `pnpm audit did not complete normally (status=${result.status}, signal=${result.signal}).`,
+  );
+}
 if (!result.stdout.trim()) {
   throw new Error(`pnpm audit returned no JSON: ${result.stderr.trim()}`);
 }

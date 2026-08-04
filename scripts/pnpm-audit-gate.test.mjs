@@ -17,10 +17,14 @@ const report = {
       title: "Critical finding",
     },
     three: {
-      github_advisory_id: "GHSA-below-threshold",
       severity: "moderate",
       module_name: "tooling",
       title: "Moderate finding",
+    },
+    four: {
+      severity: "info",
+      module_name: "informational",
+      title: "Informational finding without a GHSA mapping",
     },
   },
 };
@@ -51,7 +55,15 @@ test("pnpm audit gate blocks a high advisory without an exception", () => {
 test("pnpm audit gate fails closed for malformed evidence", () => {
   assert.throws(() => evaluatePnpmAudit(null));
   assert.throws(() => evaluatePnpmAudit({}));
+  assert.throws(() => evaluatePnpmAudit({ advisories: [] }));
   assert.throws(() =>
-    evaluatePnpmAudit({ advisories: { broken: { severity: "high" } } }),
+    evaluatePnpmAudit({
+      advisories: {
+        broken: { severity: "high", module_name: "broken", title: "Broken" },
+      },
+    }),
+  );
+  assert.throws(() =>
+    evaluatePnpmAudit({ advisories: { broken: { severity: "unknown" } } }),
   );
 });
