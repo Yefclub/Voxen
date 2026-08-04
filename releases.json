@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.1-dev.1785858147",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Refined focused scrolling and recoverable graph indexing",
+    "body": "Desktop scrollbars now include directional controls and stay visually inset\ninside rounded focused panels. Partial Brain coverage is shown as a recoverable\nwaiting state and retried automatically instead of being logged and presented\nas an indexing failure.",
+    "pr": 608,
+    "author": "Kalyel",
+    "date": "2026-08-04T12:42:10-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/608"
+  },
+  {
     "version": "0.13.1-dev.1785851298",
     "channel": "dev",
     "type": "security",
