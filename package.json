@@ -18,7 +18,8 @@
       "shell-quote": "1.10.0",
       "js-yaml": "5.2.2",
       "@babel/core": "7.29.6",
-      "fast-uri": "3.1.4",
+      "fast-uri": "3.1.5",
+      "ip-address": "10.3.1",
       "postcss": "8.5.18"
     },
     "patchedDependencies": {
