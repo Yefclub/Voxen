@@ -136,6 +136,10 @@ Easypanel is supported. Prefer deploying a published Docker image:
 - `ghcr.io/yefclub/voxen:dev` for integration deployments
 - `ghcr.io/yefclub/voxen:latest` for stable releases
 
+Stable release automation publishes the versioned combined image and advances
+`latest` from the same `vX.Y.Z` tag. The `dev` image is published only through a
+manual `Easypanel Image` workflow run, avoiding a deployment on every merge.
+
 The GitHub/Dockerfile source mode can work, but build-time environment handling may expose secrets in build logs. Image-based deployment is safer.
 
 For SSE notifications behind Traefik/HTTP2, deploy a version with the

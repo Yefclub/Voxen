@@ -35,6 +35,14 @@ which produced a noisy label instead of the intended version-only identifier.
   create a PR titled exactly `vX.Y.Z`.
 - When the owner approves a stable release PR, the agent shall squash it with
   the explicit subject `vX.Y.Z` and an empty body.
+- When a stable release tag is published, the system shall dispatch both the
+  component-image release and the combined Easypanel-image publication for that
+  exact tag.
+- When the combined image is published from a stable tag, the system shall tag
+  it as `vX.Y.Z`, `X.Y.Z`, and `latest`.
+- When stable publication is retried and the tag still points to the current
+  release commit, the system shall reuse the tag and dispatch both publication
+  workflows again.
 - When GitHub renders an issue or pull-request form, the system shall present
   its prompts and validation guidance in English.
 
@@ -44,6 +52,8 @@ which produced a noisy label instead of the intended version-only identifier.
   agent shall not merge it until the explicit version-only command is used.
 - If a documentation change affects repository governance, then Portuguese
   must not remain described as the canonical GitHub language.
+- If an existing stable tag points to a different commit, then the system shall
+  not dispatch either publication workflow for that tag.
 
 ## Acceptance criteria
 
@@ -57,6 +67,12 @@ which produced a noisy label instead of the intended version-only identifier.
       regressing to `release: vX.Y.Z`.
 - [x] Repository metadata is English and GitHub's squash message setting is
       `BLANK`.
+- [x] Stable publication dispatches the component images and the combined
+      Easypanel image from the same tag.
+- [x] The stable combined image receives immutable version tags and the mutable
+      `latest` deployment tag.
+- [x] Retrying publication for the same release commit is recoverable, while a
+      conflicting tag fails closed.
 - [x] Existing product UI copy and release history are not rewritten.
 
 ## Out of scope
@@ -67,3 +83,6 @@ which produced a noisy label instead of the intended version-only identifier.
 
 > 2026-08-03: scope approved by the owner as part of the product and repository
 > improvement study.
+>
+> 2026-08-04: stable combined-image publication added after the v0.14.0 release
+> proved that tags created with `GITHUB_TOKEN` do not trigger the tag workflow.
