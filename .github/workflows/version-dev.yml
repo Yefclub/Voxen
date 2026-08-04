@@ -48,6 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin "$TARGET_BRANCH"
+          git fetch origin main:refs/remotes/origin/main
           git checkout -- . 2>/dev/null || true
           git pull --rebase origin "$TARGET_BRANCH"
 
@@ -60,9 +61,13 @@ jobs:
         run: |
           set -euo pipefail
           VER=$(node -p "require('./package.json').version")
-          BASE_VER=${VER%-dev*}
+          MAIN_VER=$(git show origin/main:package.json | node -e '
+            let input = "";
+            process.stdin.on("data", (chunk) => (input += chunk));
+            process.stdin.on("end", () => process.stdout.write(JSON.parse(input).version));
+          ')
           TS=$(date -u +%s)
-          NEW_VER="${BASE_VER}-dev.${TS}"
+          NEW_VER=$(node scripts/resolve-dev-package-version.mjs "$VER" "$MAIN_VER" "$TS")
           echo "version=$NEW_VER" >> "$GITHUB_OUTPUT"
           export NEW_VER
           node -e '
@@ -75,7 +80,7 @@ jobs:
               fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");
             }
           '
-          echo "Set version to $NEW_VER"
+          echo "Set version to $NEW_VER (stable baseline: $MAIN_VER)"
 
       - name: Changelog (dev, best-effort)
         continue-on-error: true
