@@ -63,6 +63,7 @@ jobs:
               version="${GITHUB_REF_NAME#v}"
               printf '%s\n' "${IMAGE_NAME}:${GITHUB_REF_NAME}" >> "$tags_file"
               printf '%s\n' "${IMAGE_NAME}:${version}" >> "$tags_file"
+              printf '%s\n' "${IMAGE_NAME}:latest" >> "$tags_file"
               ;;
             *)
               version="manual-${short_sha}"
