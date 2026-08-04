@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.13.1-dev.1785862977",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Hardened release reliability, SSO, and database writes",
+    "body": "Database defaults used by background processing are restored so direct worker\nwrites remain safe after migration. OIDC setup now preserves an unexpired DNS\nchallenge across reloads, and public sign-in initiation has bounded abuse\ncontrols.\n\nThe focused scrollbar controls have stronger contrast, session revalidation no\nlonger loses its first response, and deployment guidance now points to the\ncorrect combined Easypanel image with safer secret handling.",
+    "pr": 610,
+    "author": "Kalyel",
+    "date": "2026-08-04T14:02:42-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/610"
+  },
+  {
     "version": "0.13.1-dev.1785858147",
     "channel": "dev",
     "type": "fix",
