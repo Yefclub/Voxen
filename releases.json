@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.14.1-dev.1785875339",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Mais respiro nas bordas da interface",
+    "body": "As páginas voltam a iniciar com uma margem discreta no desktop, sem recuperar a\nfaixa vazia do cabeçalho. O painel flutuante se afasta da barra de rolagem e as\nsetas da rolagem passam a ficar centralizadas em áreas próprias, longe dos\ncantos arredondados.",
+    "pr": 621,
+    "author": "Kalyel",
+    "date": "2026-08-04T17:28:41-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/621"
+  },
+  {
     "version": "0.14.1-dev.1785872155",
     "channel": "dev",
     "type": "fix",
