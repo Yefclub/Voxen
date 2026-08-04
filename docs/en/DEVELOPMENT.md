@@ -99,6 +99,9 @@ Stable versions use SemVer tags on `main`, for example `v0.7.4`. Development bui
 Release flow:
 
 1. Prepare the patch, minor, or major version from `dev`.
-2. Open a release PR to `main` with the matching release label.
-3. After merge, the release workflow creates the tag and GitHub Release.
-4. Synchronize `main` back into `dev`.
+2. Open a release PR to `main` titled exactly `vX.Y.Z`, with the matching
+   release label.
+3. After explicit owner approval, merge with
+   `gh pr merge <PR> --squash --delete-branch --subject "vX.Y.Z" --body ""`.
+4. The release workflow creates the tag and GitHub Release.
+5. Synchronize `main` back into `dev`.

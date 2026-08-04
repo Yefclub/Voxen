@@ -8,6 +8,8 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
+import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
 
 export type Locale = 'pt-BR' | 'en';
 
@@ -143,7 +145,13 @@ const ptBRMessages = {
   'artifacts.type.mindMap': 'Mapa mental',
   'shell.nav.graph': 'Grafo',
   'shell.nav.extension': 'Extensão',
+  'shell.nav.account': 'Perfil e segurança',
   'shell.nav.platformAccounts': 'Contas de plataforma',
+  'shell.nav.mcpAccess': 'Acesso MCP',
+  'shell.nav.administration': 'Administração',
+  'shell.navGroup.workspace': 'Workspace',
+  'shell.navGroup.personal': 'Sua conta',
+  'shell.navGroup.admin': 'Instância',
   'shell.nav.users': 'Usuários',
   'shell.nav.costs': 'Custos',
   'shell.nav.integrations': 'Integrações',
@@ -211,6 +219,13 @@ const ptBRMessages = {
   'theme.light': 'Claro',
   'theme.switchToLight': 'Mudar para tema claro',
   'theme.switchToDark': 'Mudar para tema escuro',
+
+  'interface.classic': 'Interface clássica',
+  'interface.focus': 'Interface focada',
+  'interface.switchToClassic': 'Usar interface clássica',
+  'interface.switchToFocus': 'Usar interface focada',
+  'interface.updated': 'Interface atualizada.',
+  'interface.updateFailed': 'Não foi possível atualizar a interface.',
 
   'pending.setupTitle': 'Aguardando configuração',
   'pending.setupDescription':
@@ -577,7 +592,7 @@ const ptBRMessages = {
   'chat.readFileError': 'Falha ao ler arquivo.',
   'chat.documentsDisabled': 'Documentos não estão habilitados.',
   'chat.documentsDisabledDescription':
-    'Admin precisa concluir a configuração unificada da OpenRouter em /setup.',
+    'Admin precisa concluir a configuração unificada da OpenRouter em /admin/configuracao.',
   'chat.documentTooLarge': 'Documento muito grande.',
   'chat.documentLimit': 'Limite: 50 MB.',
   'chat.documentSendError': 'Falha ao enviar documento.',
@@ -699,10 +714,10 @@ const ptBRMessages = {
   'prompt.voiceNetworkError': 'Erro de rede ao enviar áudio.',
   'prompt.visionMissing': 'Visão não configurada.',
   'prompt.visionMissingDescription':
-    'Admin precisa concluir a configuração unificada da OpenRouter em /setup.',
+    'Admin precisa concluir a configuração unificada da OpenRouter em /admin/configuracao.',
   'prompt.documentsMissing': 'Documentos não configurados.',
   'prompt.documentsMissingDescription':
-    'Admin precisa concluir a configuração unificada da OpenRouter em /setup.',
+    'Admin precisa concluir a configuração unificada da OpenRouter em /admin/configuracao.',
   'prompt.imageLimit': 'Limite de 5MB.',
   'prompt.readImageError': 'Falha ao ler imagem.',
   'prompt.mentionLibrary': 'Biblioteca',
@@ -836,6 +851,10 @@ const ptBRMessages = {
   'admin.integrations.title': 'Integrações',
   'admin.integrations.description':
     'Configure tokens do servidor MCP e integrações. Secrets ficam cifrados no banco com a master key.',
+  'admin.shell.title': 'Administração da instância',
+  'admin.shell.description':
+    'Configurações compartilhadas por todos os usuários. Apenas administradores podem alterar estes valores.',
+  ...ptBrSsoMessages,
   'admin.integrations.telegram.title': 'Bot do Telegram',
   'admin.integrations.telegram.description':
     'Cole o token do bot (formato {format}). Crie um bot via {botFather} no Telegram.',
@@ -983,8 +1002,46 @@ const ptBRMessages = {
   'account.platforms.captureHint':
     'Para conectar ou renovar, abra as opções da extensão do Voxen, faça login na plataforma neste mesmo perfil do browser e clique em Conectar.',
   'account.platforms.openExtension': 'Abrir extensão',
+  'account.mcp.title': 'Acesso MCP',
+  'account.mcp.description':
+    'Conecte seus agentes à sua própria base. Cada token herda apenas a sua identidade e os seus dados.',
+  'account.mcp.cardTitle': 'Seus tokens',
+  'account.mcp.cardDescription':
+    'Tokens existentes nunca revelam o segredo novamente. Revogue qualquer credencial que não esteja mais em uso.',
+  'account.mcp.createTitle': 'Criar token pessoal',
+  'account.mcp.label': 'Nome do token',
+  'account.mcp.labelPlaceholder': 'Ex.: Claude Code no notebook',
+  'account.mcp.writeAccess': 'Permitir escrita',
+  'account.mcp.writeAccessHint': 'Permite criar ou editar conteúdo em seu nome.',
+  'account.mcp.expiresAt': 'Expiração',
+  'account.mcp.noExpiry': 'Sem expiração',
+  'account.mcp.create': 'Criar token',
+  'account.mcp.policyDisabled':
+    'A criação de tokens pessoais está desabilitada pelo administrador da instância.',
+  'account.mcp.empty': 'Você ainda não possui tokens MCP.',
+  'account.mcp.secretTitle': 'Copie este token agora',
+  'account.mcp.secretDescription': 'O segredo não será exibido novamente após fechar este aviso.',
+  'account.mcp.endpoint': 'Endpoint: {url}',
+  'account.mcp.created': 'Token MCP criado.',
+  'account.mcp.revoked': 'Token MCP revogado.',
+  'account.mcp.revoke': 'Revogar',
+  'account.mcp.revokeTitle': 'Revogar este token?',
+  'account.mcp.revokeDescription':
+    'Agentes que usam esta credencial perderão o acesso imediatamente.',
+  'account.mcp.statusActive': 'Ativo',
+  'account.mcp.statusRevoked': 'Revogado',
+  'account.mcp.statusExpired': 'Expirado',
+  'account.mcp.lastUsed': 'Último uso: {date}',
+  'account.mcp.neverUsed': 'Nunca utilizado',
   'account.title': 'Seu perfil',
   'account.description': 'Atualize seus dados e gerencie sua senha.',
+  'account.interface.title': 'Interface',
+  'account.interface.description':
+    'Escolha como o conteúdo e a navegação se organizam no desktop. Esta preferência é só sua.',
+  'account.interface.classicDescription':
+    'Mantém o shell atual, com a navegação em um painel flutuante.',
+  'account.interface.focusDescription':
+    'Usa a navegação como fundo e destaca o conteúdo em uma superfície central.',
   'account.nameUpdated': 'Nome atualizado.',
   'account.saveFailed': 'Falha ao salvar.',
   'account.avatarUploadError': 'Erro ao enviar imagem.',
@@ -1133,6 +1190,7 @@ const ptBRMessages = {
   'graph.title': 'Brain',
   'graph.subtitle': 'Explore conexões, comunidades e fontes do seu conhecimento.',
   'graph.indexing': 'Organizando',
+  ...ptBrGraphIndexMessages,
   'graph.indexError': 'Pausado',
   'graph.indexErrorTitle': 'A organização do Brain foi pausada',
   'graph.indexErrorDescription':
@@ -1480,7 +1538,13 @@ const enMessages: Record<I18nKey, string> = {
   'artifacts.type.mindMap': 'Mind map',
   'shell.nav.graph': 'Graph',
   'shell.nav.extension': 'Extension',
+  'shell.nav.account': 'Profile and security',
   'shell.nav.platformAccounts': 'Platform accounts',
+  'shell.nav.mcpAccess': 'MCP access',
+  'shell.nav.administration': 'Administration',
+  'shell.navGroup.workspace': 'Workspace',
+  'shell.navGroup.personal': 'Your account',
+  'shell.navGroup.admin': 'Instance',
   'shell.nav.users': 'Users',
   'shell.nav.costs': 'Costs',
   'shell.nav.integrations': 'Integrations',
@@ -1544,6 +1608,13 @@ const enMessages: Record<I18nKey, string> = {
   'theme.light': 'Light',
   'theme.switchToLight': 'Switch to light theme',
   'theme.switchToDark': 'Switch to dark theme',
+
+  'interface.classic': 'Classic interface',
+  'interface.focus': 'Focused interface',
+  'interface.switchToClassic': 'Use classic interface',
+  'interface.switchToFocus': 'Use focused interface',
+  'interface.updated': 'Interface updated.',
+  'interface.updateFailed': 'Could not update the interface.',
 
   'pending.setupTitle': 'Waiting for setup',
   'pending.setupDescription':
@@ -1907,7 +1978,7 @@ const enMessages: Record<I18nKey, string> = {
   'chat.readFileError': 'Failed to read file.',
   'chat.documentsDisabled': 'Documents are not enabled.',
   'chat.documentsDisabledDescription':
-    'An admin needs to complete the unified OpenRouter configuration in /setup.',
+    'An admin needs to complete the unified OpenRouter configuration in /admin/configuracao.',
   'chat.documentTooLarge': 'Document too large.',
   'chat.documentLimit': 'Limit: 50 MB.',
   'chat.documentSendError': 'Failed to upload document.',
@@ -2029,10 +2100,10 @@ const enMessages: Record<I18nKey, string> = {
   'prompt.voiceNetworkError': 'Network error while sending audio.',
   'prompt.visionMissing': 'Vision not configured.',
   'prompt.visionMissingDescription':
-    'An admin needs to complete the unified OpenRouter configuration in /setup.',
+    'An admin needs to complete the unified OpenRouter configuration in /admin/configuracao.',
   'prompt.documentsMissing': 'Documents not configured.',
   'prompt.documentsMissingDescription':
-    'An admin needs to complete the unified OpenRouter configuration in /setup.',
+    'An admin needs to complete the unified OpenRouter configuration in /admin/configuracao.',
   'prompt.imageLimit': '5MB limit.',
   'prompt.readImageError': 'Failed to read image.',
   'prompt.mentionLibrary': 'Library',
@@ -2167,6 +2238,10 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.title': 'Integrations',
   'admin.integrations.description':
     'Configure MCP server tokens and integrations. Secrets are encrypted in the database with the master key.',
+  'admin.shell.title': 'Instance administration',
+  'admin.shell.description':
+    'Settings shared by every user. Only administrators can change these values.',
+  ...enSsoMessages,
   'admin.integrations.telegram.title': 'Telegram bot',
   'admin.integrations.telegram.description':
     'Paste the bot token ({format}). Create a bot through {botFather} on Telegram.',
@@ -2312,8 +2387,46 @@ const enMessages: Record<I18nKey, string> = {
   'account.platforms.captureHint':
     'To connect or renew, open the Voxen extension options, sign in to the platform in this same browser profile, and click Connect.',
   'account.platforms.openExtension': 'Open extension',
+  'account.mcp.title': 'MCP access',
+  'account.mcp.description':
+    'Connect agents to your own knowledge base. Every token inherits only your identity and data.',
+  'account.mcp.cardTitle': 'Your tokens',
+  'account.mcp.cardDescription':
+    'Existing tokens never reveal their secret again. Revoke any credential you no longer use.',
+  'account.mcp.createTitle': 'Create personal token',
+  'account.mcp.label': 'Token name',
+  'account.mcp.labelPlaceholder': 'Example: Claude Code on laptop',
+  'account.mcp.writeAccess': 'Allow write access',
+  'account.mcp.writeAccessHint': 'Allows agents to create or edit content on your behalf.',
+  'account.mcp.expiresAt': 'Expiration',
+  'account.mcp.noExpiry': 'No expiration',
+  'account.mcp.create': 'Create token',
+  'account.mcp.policyDisabled':
+    'Personal token creation is disabled by the instance administrator.',
+  'account.mcp.empty': 'You do not have any MCP tokens yet.',
+  'account.mcp.secretTitle': 'Copy this token now',
+  'account.mcp.secretDescription':
+    'The secret will not be shown again after you close this notice.',
+  'account.mcp.endpoint': 'Endpoint: {url}',
+  'account.mcp.created': 'MCP token created.',
+  'account.mcp.revoked': 'MCP token revoked.',
+  'account.mcp.revoke': 'Revoke',
+  'account.mcp.revokeTitle': 'Revoke this token?',
+  'account.mcp.revokeDescription': 'Agents using this credential will lose access immediately.',
+  'account.mcp.statusActive': 'Active',
+  'account.mcp.statusRevoked': 'Revoked',
+  'account.mcp.statusExpired': 'Expired',
+  'account.mcp.lastUsed': 'Last used: {date}',
+  'account.mcp.neverUsed': 'Never used',
   'account.title': 'Your profile',
   'account.description': 'Update your details and manage your password.',
+  'account.interface.title': 'Interface',
+  'account.interface.description':
+    'Choose how content and navigation are arranged on desktop. This preference belongs only to you.',
+  'account.interface.classicDescription':
+    'Keeps the current shell, with navigation in a floating panel.',
+  'account.interface.focusDescription':
+    'Uses navigation as the backdrop and highlights content in one central surface.',
   'account.nameUpdated': 'Name updated.',
   'account.saveFailed': 'Failed to save.',
   'account.avatarUploadError': 'Error uploading image.',
@@ -2460,6 +2573,7 @@ const enMessages: Record<I18nKey, string> = {
   'graph.title': 'Brain',
   'graph.subtitle': 'Explore connections, communities, and sources across your knowledge.',
   'graph.indexing': 'Organizing',
+  ...enGraphIndexMessages,
   'graph.indexError': 'Paused',
   'graph.indexErrorTitle': 'Brain organization was paused',
   'graph.indexErrorDescription':

@@ -22,9 +22,12 @@ import {
 import { MobileBackButton } from './mobile-back-button';
 import { MobileMenuButton } from './mobile-menu-button';
 import { SessionUnavailable } from '../session-unavailable';
+import { useInterfaceMode } from '../../lib/interface-mode-provider';
+import { cn } from '../../lib/utils';
 
 export function AppLayout(): React.ReactElement {
   const { data, loading, error, refresh } = useMe();
+  const { interfaceMode } = useInterfaceMode();
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
@@ -56,6 +59,7 @@ export function AppLayout(): React.ReactElement {
   // Aviso de versão nova do backend — modal centralizado com o que mudou.
   const versionMonitor = useVersionMonitor(!!data?.user);
   const sectionKey = getSectionKey(location.pathname);
+  const focusInterface = interfaceMode === 'focus';
 
   // O scroll vive no <main>. Trocas dentro da mesma seção preservam a posição
   // (notas/detalhes); seções novas voltam ao topo antes da pintura, sem salto.
@@ -118,7 +122,9 @@ export function AppLayout(): React.ReactElement {
   // confundir usuários comuns e impede flashes de conteúdo ao colar uma URL.
   if (
     data.user.role !== 'ADMIN' &&
-    (location.pathname === '/setup' || location.pathname.startsWith('/admin/'))
+    (location.pathname === '/setup' ||
+      location.pathname === '/admin' ||
+      location.pathname.startsWith('/admin/'))
   ) {
     return <Navigate to="/" replace />;
   }
@@ -163,7 +169,10 @@ export function AppLayout(): React.ReactElement {
   return (
     <>
       <UpdateModal monitor={versionMonitor} />
-      <div className="flex h-dvh overflow-hidden bg-[var(--color-app-bg)]">
+      <div
+        data-interface-mode={interfaceMode}
+        className="flex h-dvh overflow-hidden bg-[var(--color-app-bg)]"
+      >
         <Sidebar user={data.user} />
         <MobileNavDrawer
           user={data.user}
@@ -174,7 +183,11 @@ export function AppLayout(): React.ReactElement {
         />
         <SidebarSpacer />
         <div
-          className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+          className={cn(
+            'relative flex min-h-0 min-w-0 flex-1 flex-col',
+            focusInterface &&
+              'md:m-2 md:overflow-hidden md:rounded-2xl md:border md:border-[var(--color-app-border-strong)] md:bg-[var(--color-app-bg-elevated)] md:shadow-xl md:shadow-black/10',
+          )}
           inert={mobileNavPresent ? true : undefined}
         >
           <Topbar user={data.user} />
@@ -199,8 +212,8 @@ function getSectionKey(pathname: string): string {
   if (isChatRoute(pathname)) return 'chat';
   const segments = pathname.split('/').filter(Boolean);
   const root = segments[0] ?? 'dashboard';
-  // /admin/usuarios, /admin/custos e /admin/integracoes são seções distintas.
-  return root === 'admin' ? `admin/${segments[1] ?? ''}` : root;
+  // Administration has its own shell; switching tabs does not remount the domain.
+  return root === 'admin' ? 'admin' : root;
 }
 
 /**

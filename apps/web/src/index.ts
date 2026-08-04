@@ -34,6 +34,7 @@ import { getRedisPublisher } from './lib/redis';
 import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
 import { s3Bucket, s3Client } from './lib/s3';
+import { publicAuthenticationRoutes } from './routes/public-authentication';
 
 const app = new Hono();
 
@@ -152,21 +153,7 @@ app.get('/health/deep', async (c) => {
   return c.json({ ok: allOk, checks }, allOk ? 200 : 503);
 });
 
-// Endpoint público: estado da instância (signups, primeira instalação)
-// Login page usa isso pra mostrar/esconder "Criar conta".
-app.get('/api/instance', async (c) => {
-  const [allowSignupsRaw, onboardingRaw, language] = await Promise.all([
-    getSetting('allow_signups').catch(() => null),
-    getSetting('onboarding_done').catch(() => null),
-    getAppLanguage().catch(() => 'pt-BR' as const),
-  ]);
-  // Sem onboarding feito: não há admin ainda OR admin não terminou setup.
-  // Nesse caso o primeiro signup é o do admin → sempre permitido.
-  const userCount = await db.user.count();
-  const onboardingDone = onboardingRaw === 'true';
-  const allowSignups = userCount === 0 || (onboardingDone && allowSignupsRaw !== 'false');
-  return c.json({ allowSignups, hasUsers: userCount > 0, onboardingDone, language });
-});
+app.route('/', publicAuthenticationRoutes);
 
 // Capabilities: features opcionais que o admin pode habilitar/desabilitar.
 // UI consulta pra mostrar/esconder botões (ex: upload de imagem só aparece
@@ -175,27 +162,6 @@ app.get('/api/capabilities', async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.json({ error: 'Não autenticado.' }, 401);
   return c.json(await getPublicActiveCapabilities());
-});
-
-// Better Auth: aceita TODOS os métodos em /api/auth/*.
-// Bloqueia sign-up se allow_signups=false (admin desativou).
-app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
-  const path = new URL(c.req.url).pathname;
-  if (path.startsWith('/api/auth/sign-up')) {
-    const userCount = await db.user.count();
-    if (userCount > 0) {
-      const [allowSignupsRaw, onboardingRaw] = await Promise.all([
-        getSetting('allow_signups').catch(() => null),
-        getSetting('onboarding_done').catch(() => null),
-      ]);
-      const onboardingDone = onboardingRaw === 'true';
-      const allowSignups = !onboardingDone || allowSignupsRaw !== 'false';
-      if (!allowSignups) {
-        return c.json({ error: 'Cadastros novos estão desativados nesta instância.' }, 403);
-      }
-    }
-  }
-  return auth.handler(c.req.raw);
 });
 
 // /api/me — devolve session corrente + flag de setupComplete (sempre exposta)
@@ -220,6 +186,7 @@ app.get('/api/me', async (c) => {
       status: true,
       role: true,
       theme: true,
+      interfaceMode: true,
     },
   });
   const theme =
@@ -229,8 +196,9 @@ app.get('/api/me', async (c) => {
     user?.theme === 'zinc'
       ? user.theme
       : 'linear';
+  const interfaceMode = user?.interfaceMode === 'focus' ? 'focus' : 'classic';
   return c.json({
-    user: user ? { ...user, theme } : null,
+    user: user ? { ...user, theme, interfaceMode } : null,
     setupComplete,
     onboardingDone,
     language,

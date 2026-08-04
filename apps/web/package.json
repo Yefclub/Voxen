@@ -1,6 +1,6 @@
 {
   "name": "@voxen/web",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,6 +21,7 @@
     "@animateicons/react": "^0.3.5",
     "@aws-sdk/client-s3": "^3.1050.0",
     "@aws-sdk/s3-request-presigner": "^3.1050.0",
+    "@better-auth/sso": "1.6.25",
     "@codemirror/lang-markdown": "^6.5.0",
     "@codemirror/language": "^6.12.3",
     "@codemirror/state": "^6.6.0",
@@ -46,7 +47,7 @@
     "@tailwindcss/vite": "^4",
     "@uiw/react-codemirror": "^4.25.9",
     "ai": "7.0.22",
-    "better-auth": "^1.6.23",
+    "better-auth": "1.6.25",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cuelume": "0.1.0",
@@ -55,6 +56,7 @@
     "gsap": "^3.13.0",
     "hono": "^4.12.25",
     "ioredis": "^5.10.1",
+    "ipaddr.js": "2.4.0",
     "motion": "^12.39.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.6",

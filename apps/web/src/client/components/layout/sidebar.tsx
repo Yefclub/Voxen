@@ -4,7 +4,6 @@ import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
   ChevronDown,
-  DollarSign,
   FileText,
   House,
   ListOrdered,
@@ -12,17 +11,18 @@ import {
   FolderPlus,
   ListVideo,
   Link2,
+  KeyRound,
   LogOut,
   Network,
   Notebook,
-  Plug,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelLeft,
   Plus,
   Puzzle,
   ShieldCheck,
-  Settings as SettingsIcon,
   Sparkles,
+  User as UserIcon,
   Workflow,
 } from '@/components/ui/icons';
 import type { MeUser } from '../../lib/types';
@@ -43,36 +43,60 @@ import { apiPost } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import { NotesTree } from '../notes/notes-tree';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+import { useInterfaceMode } from '../../lib/interface-mode-provider';
+import { toast } from '../../lib/toast';
 
 export interface NavItem {
   to: string;
   labelKey: I18nKey;
   Icon: typeof House;
   adminOnly?: boolean;
+  scope: 'workspace' | 'personal' | 'admin';
 }
 
 /**
- * Lista canônica de destinos de navegação. Fonte única — consumida pela sidebar
- * desktop, pelo drawer mobile e pelo menu do Perfil da bottom-nav (que expõe os
- * destinos que não são abas de topo). Manter em sincronia com `BOTTOM_NAV_TABS`
- * em `lib/mobile-nav.ts`.
+ * Canonical navigation destinations shared by desktop, the mobile drawer, and
+ * the bottom-nav profile menu. Keep top-level tabs aligned with
+ * `BOTTOM_NAV_TABS` in `lib/mobile-nav.ts`.
  */
 export const NAV: NavItem[] = [
-  { to: '/', labelKey: 'shell.nav.home', Icon: House },
-  { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessageCircle },
-  { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo },
-  { to: '/fila', labelKey: 'shell.nav.queue', Icon: ListOrdered },
-  { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook },
-  { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow },
-  { to: '/artefatos', labelKey: 'shell.nav.artifacts', Icon: FileText },
-  { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network },
-  { to: '/extensao', labelKey: 'shell.nav.extension', Icon: Puzzle },
-  { to: '/conta/plataformas', labelKey: 'shell.nav.platformAccounts', Icon: Link2 },
-  { to: '/admin/usuarios', labelKey: 'shell.nav.users', Icon: ShieldCheck, adminOnly: true },
-  { to: '/admin/custos', labelKey: 'shell.nav.costs', Icon: DollarSign, adminOnly: true },
-  { to: '/admin/integracoes', labelKey: 'shell.nav.integrations', Icon: Plug, adminOnly: true },
-  { to: '/setup', labelKey: 'shell.nav.settings', Icon: SettingsIcon, adminOnly: true },
+  { to: '/', labelKey: 'shell.nav.home', Icon: House, scope: 'workspace' },
+  { to: '/chat', labelKey: 'shell.nav.chat', Icon: MessageCircle, scope: 'workspace' },
+  { to: '/transcricoes', labelKey: 'shell.nav.library', Icon: ListVideo, scope: 'workspace' },
+  { to: '/fila', labelKey: 'shell.nav.queue', Icon: ListOrdered, scope: 'workspace' },
+  { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook, scope: 'workspace' },
+  { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow, scope: 'workspace' },
+  { to: '/artefatos', labelKey: 'shell.nav.artifacts', Icon: FileText, scope: 'workspace' },
+  { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network, scope: 'workspace' },
+  { to: '/extensao', labelKey: 'shell.nav.extension', Icon: Puzzle, scope: 'workspace' },
+  { to: '/conta', labelKey: 'shell.nav.account', Icon: UserIcon, scope: 'personal' },
+  {
+    to: '/conta/plataformas',
+    labelKey: 'shell.nav.platformAccounts',
+    Icon: Link2,
+    scope: 'personal',
+  },
+  { to: '/conta/mcp', labelKey: 'shell.nav.mcpAccess', Icon: KeyRound, scope: 'personal' },
+  {
+    to: '/admin',
+    labelKey: 'shell.nav.administration',
+    Icon: ShieldCheck,
+    adminOnly: true,
+    scope: 'admin',
+  },
 ];
+
+const NAV_SCOPES = ['workspace', 'personal', 'admin'] as const;
+const NAV_SCOPE_LABELS: Record<(typeof NAV_SCOPES)[number], I18nKey> = {
+  workspace: 'shell.navGroup.workspace',
+  personal: 'shell.navGroup.personal',
+  admin: 'shell.navGroup.admin',
+};
+
+export function isNavItemActive(pathname: string, to: string): boolean {
+  if (to === '/' || to === '/conta') return pathname === to;
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
 
 const SIDEBAR_WIDTH = 288;
 const RAIL_WIDTH = 60;
@@ -148,6 +172,8 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const { collapsed, setCollapsed } = useSidebarCollapsed();
   const isDesktop = useIsDesktop();
   const reduceMotion = useReducedMotion();
+  const { interfaceMode } = useInterfaceMode();
+  const focusInterface = interfaceMode === 'focus';
 
   // A deixa dos ícones da nav é um contador, não um booleano de montagem: só
   // uma MUDANÇA de sinal dispara. Assim o primeiro carregamento não pontua
@@ -189,11 +215,17 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             transition={
               reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }
             }
-            className="hidden md:flex fixed top-4 bottom-4 left-4 z-40 flex-col rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl overflow-hidden"
+            className={cn(
+              'hidden md:flex fixed z-40 flex-col overflow-hidden',
+              focusInterface
+                ? 'inset-y-0 left-0 bg-transparent'
+                : 'top-4 bottom-4 left-4 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl',
+            )}
             style={{ width: SIDEBAR_WIDTH }}
           >
-            <SidebarHeader onCollapse={() => setCollapsed(true)} />
+            <SidebarHeader focusInterface={focusInterface} onCollapse={() => setCollapsed(true)} />
             <SidebarModeBody user={user} hideHome cueSignal={cueSignal} />
+            <SidebarInterfaceModeButton />
             <SidebarChangelogButton />
             <SidebarSignOut />
           </motion.aside>
@@ -222,6 +254,8 @@ function SidebarRail({
 }): React.ReactElement {
   const { t } = useI18n();
   const reduceMotion = useReducedMotion();
+  const { interfaceMode } = useInterfaceMode();
+  const focusInterface = interfaceMode === 'focus';
   const { registerIcon, playCue } = useIconCueGroup(!reduceMotion);
   const items = NAV.filter((n) => !n.adminOnly || user.role === 'ADMIN').filter(
     (n) => n.to !== '/',
@@ -236,7 +270,12 @@ function SidebarRail({
       animate={{ opacity: 1, x: 0 }}
       exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -16 }}
       transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }}
-      className="hidden md:flex fixed top-4 bottom-4 left-4 z-40 flex-col items-center gap-1 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 px-2 py-3 backdrop-blur-xl"
+      className={cn(
+        'hidden md:flex fixed z-40 flex-col items-center gap-1 px-2 py-3',
+        focusInterface
+          ? 'inset-y-0 left-0 bg-transparent'
+          : 'top-4 bottom-4 left-4 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl',
+      )}
       style={{ width: RAIL_WIDTH }}
       aria-label={t('shell.openMenu')}
     >
@@ -258,7 +297,7 @@ function SidebarRail({
         <div className="my-1 h-px w-6 bg-[var(--color-app-border)]" />
 
         {items.map(({ to, labelKey, Icon }) => {
-          const isActive = pathname === to || pathname.startsWith(to + '/');
+          const isActive = isNavItemActive(pathname, to);
           return (
             <Tooltip key={to}>
               <TooltipTrigger asChild>
@@ -292,6 +331,7 @@ function SidebarRail({
         */}
         <div className="mt-auto flex w-full flex-col items-center gap-1">
           <div className="my-1 h-px w-6 bg-[var(--color-app-border)]" />
+          <SidebarInterfaceModeButton variant="rail" iconRef={registerIcon('interface-mode')} />
           <SidebarChangelogButton variant="rail" iconRef={registerIcon('changelog')} />
           <SidebarSignOut variant="rail" iconRef={registerIcon('sign-out')} />
         </div>
@@ -347,6 +387,74 @@ export function SidebarChangelogButton({
   );
 }
 
+export function SidebarInterfaceModeButton({
+  variant = 'full',
+  iconRef,
+}: SidebarItemProps = {}): React.ReactElement {
+  const { t } = useI18n();
+  const { interfaceMode, saving, toggleInterface } = useInterfaceMode();
+  const focusInterface = interfaceMode === 'focus';
+  const actionLabel = t(focusInterface ? 'interface.switchToClassic' : 'interface.switchToFocus');
+
+  const onToggle = async (): Promise<void> => {
+    try {
+      await toggleInterface();
+      toast.success(t('interface.updated'));
+    } catch {
+      toast.error(t('interface.updateFailed'));
+    }
+  };
+
+  if (variant === 'rail') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void onToggle()}
+            aria-label={actionLabel}
+            aria-pressed={focusInterface}
+            className={cn(
+              RAIL_ITEM_CLASS,
+              focusInterface
+                ? 'bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]'
+                : RAIL_ITEM_IDLE_CLASS,
+              'disabled:cursor-wait disabled:opacity-50',
+            )}
+          >
+            <PanelLeft ref={iconRef} duration={ICON_CUE_DURATION} className={RAIL_ICON_CLASS} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{actionLabel}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <div className="shrink-0 px-3 py-1.5">
+      <button
+        type="button"
+        disabled={saving}
+        onClick={() => void onToggle()}
+        aria-pressed={focusInterface}
+        className={cn(
+          'flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium transition-colors disabled:cursor-wait disabled:opacity-50',
+          focusInterface
+            ? 'bg-[var(--color-accent-violet-soft)] text-[var(--color-accent-violet)]'
+            : 'text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]',
+        )}
+      >
+        <PanelLeft className="h-4 w-4 shrink-0" />
+        <span className="truncate">
+          {t(focusInterface ? 'interface.focus' : 'interface.classic')}
+        </span>
+        <span className="sr-only">{actionLabel}</span>
+      </button>
+    </div>
+  );
+}
+
 export function SidebarSignOut({
   variant = 'full',
   iconRef,
@@ -397,10 +505,21 @@ export function SidebarSignOut({
   );
 }
 
-function SidebarHeader({ onCollapse }: { onCollapse: () => void }): React.ReactElement {
+function SidebarHeader({
+  focusInterface,
+  onCollapse,
+}: {
+  focusInterface: boolean;
+  onCollapse: () => void;
+}): React.ReactElement {
   const { t } = useI18n();
   return (
-    <div className="flex items-center h-16 px-4 border-b border-[var(--color-app-border)] shrink-0">
+    <div
+      className={cn(
+        'flex h-16 shrink-0 items-center px-4',
+        !focusInterface && 'border-b border-[var(--color-app-border)]',
+      )}
+    >
       <div className="relative shrink-0 h-9 w-9">
         <img
           src="/voxen-256.png"
@@ -451,58 +570,74 @@ function NavBody({
   useIconCueSignal(playCue, cueSignal, ICON_CUE_PANEL_DELAY_MS);
 
   return (
-    <nav className="flex-1 p-3 overflow-y-auto">
-      <ul className="space-y-0.5">
-        {items.map(({ to, labelKey, Icon }) => {
-          // `/` não pode usar prefix match — senão fica ativo em todas as rotas.
-          const isActive =
-            to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(to + '/');
+    <nav className="flex-1 overflow-y-auto p-3">
+      <div className="space-y-4">
+        {NAV_SCOPES.map((scope) => {
+          const scopedItems = items.filter((item) => item.scope === scope);
+          if (scopedItems.length === 0) return null;
           return (
-            <li key={to} className="relative">
-              {isActive && (
-                <motion.div
-                  layoutId={reduceMotion ? undefined : 'sidebar-pill'}
-                  className="absolute inset-0 rounded-lg bg-[var(--color-app-surface-hover)] border border-[var(--color-app-border-strong)]"
-                  transition={
-                    reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 30 }
-                  }
-                />
-              )}
-              <NavLink
-                to={to}
-                className={cn(
-                  'relative z-10 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
-                  'transition-colors duration-150',
-                  isActive
-                    ? 'text-[var(--color-app-fg)]'
-                    : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]',
-                )}
+            <section key={scope} aria-labelledby={`nav-scope-${scope}`}>
+              <h2
+                id={`nav-scope-${scope}`}
+                className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-app-muted)]"
               >
-                <Icon
-                  ref={registerIcon(to)}
-                  duration={ICON_CUE_DURATION}
-                  className={cn(
-                    'h-[18px] w-[18px] transition-colors shrink-0',
-                    isActive ? 'text-emerald-400' : 'text-[var(--color-app-muted)]',
-                  )}
-                />
-                <span className="truncate">{t(labelKey)}</span>
-                {isActive && (
-                  <motion.span
-                    layoutId={reduceMotion ? undefined : 'sidebar-active-dot'}
-                    className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400"
-                    transition={
-                      reduceMotion
-                        ? { duration: 0 }
-                        : { type: 'spring', stiffness: 380, damping: 30 }
-                    }
-                  />
-                )}
-              </NavLink>
-            </li>
+                {t(NAV_SCOPE_LABELS[scope])}
+              </h2>
+              <ul className="space-y-0.5">
+                {scopedItems.map(({ to, labelKey, Icon }) => {
+                  const isActive = isNavItemActive(pathname, to);
+                  return (
+                    <li key={to} className="relative">
+                      {isActive && (
+                        <motion.div
+                          layoutId={reduceMotion ? undefined : 'sidebar-pill'}
+                          className="absolute inset-0 rounded-lg bg-[var(--color-app-surface-hover)] border border-[var(--color-app-border-strong)]"
+                          transition={
+                            reduceMotion
+                              ? { duration: 0 }
+                              : { type: 'spring', stiffness: 380, damping: 30 }
+                          }
+                        />
+                      )}
+                      <NavLink
+                        to={to}
+                        className={cn(
+                          'relative z-10 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
+                          'transition-colors duration-150',
+                          isActive
+                            ? 'text-[var(--color-app-fg)]'
+                            : 'text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]',
+                        )}
+                      >
+                        <Icon
+                          ref={registerIcon(to)}
+                          duration={ICON_CUE_DURATION}
+                          className={cn(
+                            'h-[18px] w-[18px] transition-colors shrink-0',
+                            isActive ? 'text-emerald-400' : 'text-[var(--color-app-muted)]',
+                          )}
+                        />
+                        <span className="truncate">{t(labelKey)}</span>
+                        {isActive && (
+                          <motion.span
+                            layoutId={reduceMotion ? undefined : 'sidebar-active-dot'}
+                            className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400"
+                            transition={
+                              reduceMotion
+                                ? { duration: 0 }
+                                : { type: 'spring', stiffness: 380, damping: 30 }
+                            }
+                          />
+                        )}
+                      </NavLink>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
           );
         })}
-      </ul>
+      </div>
     </nav>
   );
 }
@@ -597,27 +732,40 @@ function NotasModeBody({
         </button>
         <AnimatePresence initial={false}>
           {menuOpen && (
-            <motion.ul
+            <motion.div
               initial={reduceMotion ? false : { height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: reduceMotion ? 0 : 0.2 }}
-              className="overflow-hidden px-3 pb-3 space-y-0.5"
+              className="space-y-3 overflow-hidden px-3 pb-3"
             >
-              {items
-                .filter((n) => n.to !== '/notas')
-                .map(({ to, labelKey, Icon }) => (
-                  <li key={to}>
-                    <NavLink
-                      to={to}
-                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface)] transition-colors"
-                    >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{t(labelKey)}</span>
-                    </NavLink>
-                  </li>
-                ))}
-            </motion.ul>
+              {NAV_SCOPES.map((scope) => {
+                const scopedItems = items.filter(
+                  (item) => item.scope === scope && item.to !== '/notas',
+                );
+                if (scopedItems.length === 0) return null;
+                return (
+                  <section key={scope}>
+                    <h3 className="px-3 pb-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
+                      {t(NAV_SCOPE_LABELS[scope])}
+                    </h3>
+                    <ul className="space-y-0.5">
+                      {scopedItems.map(({ to, labelKey, Icon }) => (
+                        <li key={to}>
+                          <NavLink
+                            to={to}
+                            className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)]"
+                          >
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{t(labelKey)}</span>
+                          </NavLink>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
@@ -627,11 +775,19 @@ function NotasModeBody({
 
 export function SidebarSpacer(): React.ReactElement | null {
   const { collapsed } = useSidebarCollapsed();
+  const { interfaceMode } = useInterfaceMode();
   const isDesktop = useIsDesktop();
   const reduceMotion = useReducedMotion();
   // No mobile não há sidebar montada — sem spacer (evita reservar largura).
   if (!isDesktop) return null;
-  const width = collapsed ? RAIL_WIDTH + 16 : SIDEBAR_WIDTH + 32;
+  const width =
+    interfaceMode === 'focus'
+      ? collapsed
+        ? RAIL_WIDTH
+        : SIDEBAR_WIDTH
+      : collapsed
+        ? RAIL_WIDTH + 16
+        : SIDEBAR_WIDTH + 32;
   return (
     <motion.div
       className="hidden md:block shrink-0"

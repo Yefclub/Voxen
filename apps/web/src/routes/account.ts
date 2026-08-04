@@ -44,21 +44,27 @@ accountRoutes.get('/', async (c) => {
       role: true,
       status: true,
       theme: true,
+      interfaceMode: true,
       monthlyBudgetUsd: true,
       createdAt: true,
     },
   });
-  return c.json({ user: u });
+  return c.json({
+    user: u ? { ...u, interfaceMode: u.interfaceMode === 'focus' ? 'focus' : 'classic' } : null,
+  });
 });
 
 const PatchBody = z
   .object({
     name: z.string().min(2).max(100).optional(),
     theme: z.enum(['linear', 'zinc', 'emerald', 'light']).optional(),
+    interfaceMode: z.enum(['classic', 'focus']).optional(),
   })
-  .refine((value) => value.name !== undefined || value.theme !== undefined, {
-    message: 'Informe name e/ou theme.',
-  });
+  .refine(
+    (value) =>
+      value.name !== undefined || value.theme !== undefined || value.interfaceMode !== undefined,
+    { message: 'Informe name, theme e/ou interfaceMode.' },
+  );
 
 accountRoutes.patch('/', async (c) => {
   const userId = c.get('userId');
@@ -66,13 +72,25 @@ accountRoutes.patch('/', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'Dados inválidos.' }, 400);
   }
-  const data: { name?: string; theme?: 'linear' | 'zinc' | 'emerald' | 'light' } = {};
+  const data: {
+    name?: string;
+    theme?: 'linear' | 'zinc' | 'emerald' | 'light';
+    interfaceMode?: 'classic' | 'focus';
+  } = {};
   if (parsed.data.name !== undefined) data.name = parsed.data.name.trim();
   if (parsed.data.theme !== undefined) data.theme = parsed.data.theme;
+  if (parsed.data.interfaceMode !== undefined) data.interfaceMode = parsed.data.interfaceMode;
   const u = await db.user.update({
     where: { id: userId },
     data,
-    select: { id: true, name: true, email: true, image: true, theme: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      image: true,
+      theme: true,
+      interfaceMode: true,
+    },
   });
   return c.json({ user: u });
 });

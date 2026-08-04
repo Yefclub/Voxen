@@ -1,10 +1,10 @@
 # ============================================================================
-# version-dev — bump package.json para X.Y.Z-dev.<unix> no merge em dev
+# version-dev — bumps package.json to X.Y.Z-dev.<unix> after a dev merge
 # ============================================================================
-# Cada push em `dev` (merge de PR) gera commit:
+# Every push to `dev` from a merged PR generates:
 #   set version to X.Y.Z-dev.<timestamp>
-# nos package.json (raiz + apps/web) e consome changelog/unreleased/*.md
-# para releases.json + CHANGELOG.md.
+# in the root and web package files, then consumes changelog/unreleased/*.md
+# into releases.json and CHANGELOG.md.
 # ============================================================================
 
 name: Dev version bump
@@ -29,9 +29,9 @@ concurrency:
 jobs:
   version-dev:
     runs-on: ubuntu-latest
-    # Evita loop: não re-bump se o push já for o commit/PR do bot de versão.
-    # Aceita formato novo ("set version to ") e legado ("chore: set version to ").
-    # Branch protection exige PR — o bot abre PR + auto-merge (não pusha em dev).
+    # Avoid loops when the push already is the version bot commit or PR.
+    # Accept both the current subject and the legacy `chore:` prefix.
+    # Branch protection requires the bot to open and merge a PR.
     if: >-
       ${{ github.ref_name == 'dev' && (github.event_name == 'workflow_dispatch' ||
       (github.event.head_commit != null &&
@@ -48,6 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin "$TARGET_BRANCH"
+          git fetch origin main:refs/remotes/origin/main
           git checkout -- . 2>/dev/null || true
           git pull --rebase origin "$TARGET_BRANCH"
 
@@ -60,9 +61,13 @@ jobs:
         run: |
           set -euo pipefail
           VER=$(node -p "require('./package.json').version")
-          BASE_VER=${VER%-dev*}
+          MAIN_VER=$(git show origin/main:package.json | node -e '
+            let input = "";
+            process.stdin.on("data", (chunk) => (input += chunk));
+            process.stdin.on("end", () => process.stdout.write(JSON.parse(input).version));
+          ')
           TS=$(date -u +%s)
-          NEW_VER="${BASE_VER}-dev.${TS}"
+          NEW_VER=$(node scripts/resolve-dev-package-version.mjs "$VER" "$MAIN_VER" "$TS")
           echo "version=$NEW_VER" >> "$GITHUB_OUTPUT"
           export NEW_VER
           node -e '
@@ -75,7 +80,7 @@ jobs:
               fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");
             }
           '
-          echo "Set version to $NEW_VER"
+          echo "Set version to $NEW_VER (stable baseline: $MAIN_VER)"
 
       - name: Changelog (dev, best-effort)
         continue-on-error: true
@@ -86,7 +91,7 @@ jobs:
           set -uo pipefail
           RN_SCRIPT="scripts/release-notes.mjs"
           if [ ! -f "$RN_SCRIPT" ]; then
-            echo "[changelog] scripts/release-notes.mjs ausente — pulando."
+            echo "[changelog] scripts/release-notes.mjs is missing; skipping."
             exit 0
           fi
           LAST_BUMP=$(git log --first-parent --format='%H%x09%s' -n 400 \
@@ -94,7 +99,7 @@ jobs:
           if [ -n "$LAST_BUMP" ]; then
             COMMITS=$(git log --reverse --first-parent --format=%H "${LAST_BUMP}..HEAD")
           else
-            # Repo sem bump ainda: varre os últimos merges first-parent.
+            # Repository without an earlier bump: inspect recent first-parent merges.
             COMMITS=$(git log --reverse --first-parent --format=%H -n 80)
           fi
           QUEUE=""
@@ -118,8 +123,7 @@ jobs:
           $f|$PR_NUM|$CDATE|$AUTHOR"
             done
           done
-          # Sobras no working tree (commits squashed que o range perdeu):
-          # consome qualquer .md ainda em unreleased/ não enfileirado.
+          # Catch files left in the working tree when a squash range omitted them.
           for f in changelog/unreleased/*.md; do
             [ -f "$f" ] || continue
             case "$f" in *.md) ;; *) continue ;; esac
@@ -143,7 +147,7 @@ jobs:
           if [ -n "$CONSUMED" ]; then
             git rm -q --ignore-unmatch $CONSUMED 2>/dev/null || true
           fi
-          echo "[changelog] $COUNT entrada(s) consumida(s) desde ${LAST_BUMP:-inicio}"
+          echo "[changelog] consumed $COUNT entries since ${LAST_BUMP:-the beginning}"
       - name: Commit on branch, open PR, auto-merge
         env:
           NEW_VER: ${{ steps.version.outputs.version }}
@@ -161,21 +165,19 @@ jobs:
             exit 0
           fi
 
-          # Uma PR criada com GITHUB_TOKEN registra os workflows de
-          # `pull_request` como `action_required`. Antes, ela ficava sem rollup
-          # executável e bloqueava para sempre todos os bumps seguintes.
-          # Substituímos qualquer bump pendente por um snapshot do `dev` atual.
+          # PRs created with GITHUB_TOKEN register pull_request workflows as
+          # action_required. Replace stale bumps with a snapshot of current dev.
           OPEN_URLS=$(gh pr list --base "$TARGET_BRANCH" --state open --json title,url --jq \
             '.[] | select((.title | startswith("set version to ")) or (.title | startswith("chore: set version to "))) | .url')
           while IFS= read -r OPEN_URL; do
             [ -z "$OPEN_URL" ] && continue
-            echo "Fechando bump obsoleto: $OPEN_URL"
+            echo "Closing stale version bump: $OPEN_URL"
             gh pr close "$OPEN_URL" --delete-branch || gh pr close "$OPEN_URL"
           done <<< "$OPEN_URLS"
 
           BRANCH="chore/version-dev-${NEW_VER//./-}"
-          # Mensagem limpa (sem chore/for dev). Squash usa o mesmo subject
-          # para o commit em dev não virar "… (#N)" com trailer de bot.
+          # Keep the subject free of prefixes. Squash reuses it verbatim so the
+          # dev commit does not gain a PR number or bot trailer.
           SUBJECT="set version to $NEW_VER"
           git commit -m "$SUBJECT"
           git checkout -B "$BRANCH"
@@ -183,14 +185,12 @@ jobs:
 
           PR_URL=$(gh pr create --base "$TARGET_BRANCH" --head "$BRANCH" \
             --title "$SUBJECT" \
-            --body "Bump automático de versão em dev (\`$NEW_VER\`) + consumo de changelog/unreleased.")
+            --body "Automatic dev version bump (\`$NEW_VER\`) and consumption of changelog/unreleased entries.")
           echo "PR: $PR_URL"
 
-          # PRs criadas pelo GITHUB_TOKEN registram os workflows de pull_request,
-          # mas o GitHub os deixa como `action_required`. Um workflow_dispatch no
-          # mesmo SHA executa os jobs, porém NÃO preenche o rollup da PR. Rerodar
-          # explicitamente os três runs pendentes é o caminho que registra os
-          # checks no pull request sem precisar de PAT externo.
+          # GITHUB_TOKEN-created PRs register pull_request workflows but GitHub
+          # leaves them action_required. Rerunning the three registered runs
+          # attaches checks to the PR without an external PAT.
           HEAD_SHA=$(git rev-parse HEAD)
           for attempt in $(seq 1 12); do
             RUNS=$(gh run list --branch "$BRANCH" --event pull_request --limit 20 \
@@ -205,7 +205,7 @@ jobs:
               break
             fi
             if [ "$attempt" = "12" ]; then
-              echo "Os três workflows de pull_request não foram registrados. PR mantida aberta."
+              echo "The three pull_request workflows were not registered. Leaving the PR open."
               exit 1
             fi
             sleep 5
@@ -214,13 +214,13 @@ jobs:
           for RUN_ID in "$CI_RUN" "$SECURITY_RUN" "$CHANGELOG_RUN"; do
             CONCLUSION=$(gh run view "$RUN_ID" --json conclusion --jq .conclusion)
             if [ "$CONCLUSION" = "action_required" ]; then
-              echo "Rerodando workflow pendente de aprovação: $RUN_ID"
+              echo "Rerunning workflow that was waiting for approval: $RUN_ID"
               gh run rerun "$RUN_ID"
             fi
           done
 
-          # Exige conclusão SUCCESS dos três workflows identificados. Assim um
-          # check extra/duplicado nunca mascara a ausência de um workflow.
+          # Require SUCCESS from each identified workflow so duplicate checks
+          # cannot hide a missing workflow.
           for attempt in $(seq 1 70); do
             RUN_FAILURE=0
             RUN_PENDING=0
@@ -236,36 +236,36 @@ jobs:
               fi
             done
             [ "$RUN_FAILURE" = "0" ] || {
-              echo "Um workflow da PR falhou. PR mantida aberta."
+              echo "A pull-request workflow failed. Leaving the PR open."
               exit 1
             }
             [ "$RUN_PENDING" = "0" ] && break
             if [ "$attempt" = "70" ]; then
-              echo "Timeout aguardando workflows da PR."
+              echo "Timed out waiting for pull-request workflows."
               exit 1
             fi
             sleep 30
           done
 
-          # Valida separadamente os sete contexts exigidos pela proteção, por
-          # nome exato e conclusão SUCCESS. Rollup vazio nunca é sucesso.
+          # Validate the nine protected contexts by exact name and SUCCESS.
+          # An empty rollup is never success.
           for attempt in $(seq 1 70); do
             PR_HEAD=$(gh pr view "$PR_URL" --json headRefOid --jq .headRefOid)
             REQUIRED=$(gh pr view "$PR_URL" --json statusCheckRollup --jq \
-              '[.statusCheckRollup[] | select(.name == "docker-compose validate" or .name == "Lint TS (apps/web)" or .name == "Typecheck TS (apps/web)" or .name == "Test TS (apps/web)" or .name == "Lint Python (apps/worker)" or .name == "Test Python (apps/worker)" or .name == "Docker build (apps + Easypanel)")] | unique_by(.name)')
+              '[.statusCheckRollup[] | select(.name == "docker-compose validate" or .name == "Lint TS (apps/web)" or .name == "Typecheck TS (apps/web)" or .name == "Test TS (apps/web)" or .name == "Lint Python (apps/worker)" or .name == "Test Python (apps/worker)" or .name == "Docker build (apps + Easypanel)" or .name == "Quality Gate" or .name == "Prisma migration gate")] | unique_by(.name)')
             REQUIRED_TOTAL=$(printf '%s' "$REQUIRED" | jq 'length')
             REQUIRED_NOT_SUCCESS=$(printf '%s' "$REQUIRED" | jq \
               '[.[] | select(.status != "COMPLETED" or .conclusion != "SUCCESS")] | length')
             if [ "$PR_HEAD" != "$HEAD_SHA" ]; then
-              echo "Head da PR divergiu do snapshot esperado ($PR_HEAD != $HEAD_SHA)."
+              echo "PR head differs from the expected snapshot ($PR_HEAD != $HEAD_SHA)."
               exit 1
             fi
-            if [ "${REQUIRED_TOTAL:-0}" = "7" ] && [ "${REQUIRED_NOT_SUCCESS:-1}" = "0" ]; then
-              echo "Sete required checks exatos verdes no head $HEAD_SHA."
+            if [ "${REQUIRED_TOTAL:-0}" = "9" ] && [ "${REQUIRED_NOT_SUCCESS:-1}" = "0" ]; then
+              echo "Nine exact required checks passed on head $HEAD_SHA."
               break
             fi
             if [ "$attempt" = "70" ]; then
-              echo "Timeout aguardando required checks. PR mantida aberta."
+              echo "Timed out waiting for required checks. Leaving the PR open."
               exit 1
             fi
             sleep 30
@@ -274,7 +274,7 @@ jobs:
           for attempt in $(seq 1 20); do
             STATE=$(gh pr view "$PR_URL" --json mergeStateStatus --jq .mergeStateStatus)
             if [ "$STATE" = "CLEAN" ]; then
-              # subject/body explícitos: evita "… (#N)" e Co-authored-by no squash.
+              # Explicit subject and body prevent PR numbers and trailers.
               gh pr merge --squash --delete-branch \
                 --subject "$SUBJECT" \
                 --body "" \
@@ -282,7 +282,7 @@ jobs:
               break
             fi
             if [ "$attempt" = "20" ]; then
-              echo "PR não ficou CLEAN após os checks (estado: $STATE)."
+              echo "PR did not become CLEAN after checks (state: $STATE)."
               exit 1
             fi
             sleep 15
@@ -291,6 +291,6 @@ jobs:
           {
             echo "## Dev version"
             echo ""
-            echo "- Versão: \`$NEW_VER\`"
+            echo "- Version: \`$NEW_VER\`"
             echo "- PR: $PR_URL"
           } >> "$GITHUB_STEP_SUMMARY"

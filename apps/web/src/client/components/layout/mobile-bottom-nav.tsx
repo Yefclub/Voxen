@@ -61,12 +61,16 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
   const { t } = useI18n();
   const { refresh } = useMe();
 
-  // Destinos únicos que NÃO são abas da bottom-nav (notas, automações, setup +
-  // admin) entram no menu do Perfil pra não dependerem do swipe/drawer.
-  // Fonte canônica = NAV da sidebar; aplica o mesmo gate de admin por role.
+  // Destinations outside the bottom tabs live in the profile menu. The sidebar
+  // NAV remains canonical and applies the same role gate here.
   const menuItems = NAV.filter(
-    (n) => !isBottomNavTab(n.to) && (!n.adminOnly || user.role === 'ADMIN'),
+    (n) => n.to !== '/conta' && !isBottomNavTab(n.to) && (!n.adminOnly || user.role === 'ADMIN'),
   );
+  const menuGroups = [
+    { scope: 'workspace', labelKey: 'shell.navGroup.workspace' },
+    { scope: 'personal', labelKey: 'shell.navGroup.personal' },
+    { scope: 'admin', labelKey: 'shell.navGroup.admin' },
+  ] as const;
 
   async function onSignOut(): Promise<void> {
     await apiPost('/api/auth/sign-out').catch(() => undefined);
@@ -168,17 +172,27 @@ export function MobileBottomNav({ user }: { user: MeUser }): React.ReactElement 
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            {/* Destinos únicos (não-abas): dashboard, notas, automações, setup +
-                admin. NavLinks fecham o dropdown ao navegar (comportamento padrão
-                do DropdownMenuItem ao clicar). */}
-            {menuItems.map(({ to, labelKey, Icon }) => (
-              <DropdownMenuItem key={to} asChild>
-                <NavLink to={to} className="flex items-center gap-2 cursor-pointer">
-                  <Icon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
-                  <span className="truncate">{t(labelKey)}</span>
-                </NavLink>
-              </DropdownMenuItem>
-            ))}
+            {/* Unique non-tab destinations, grouped by product domain. */}
+            {menuGroups.map(({ scope, labelKey }, groupIndex) => {
+              const groupItems = menuItems.filter((item) => item.scope === scope);
+              if (groupItems.length === 0) return null;
+              return (
+                <div key={scope}>
+                  {groupIndex > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel className="pb-1 text-[9px] uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
+                    {t(labelKey)}
+                  </DropdownMenuLabel>
+                  {groupItems.map(({ to, labelKey: itemLabelKey, Icon }) => (
+                    <DropdownMenuItem key={to} asChild>
+                      <NavLink to={to} className="flex items-center gap-2 cursor-pointer">
+                        <Icon className="h-3.5 w-3.5 text-[var(--color-app-muted)]" />
+                        <span className="truncate">{t(itemLabelKey)}</span>
+                      </NavLink>
+                    </DropdownMenuItem>
+                  ))}
+                </div>
+              );
+            })}
             <DropdownMenuSeparator />
             <DropdownMenuItem destructive onSelect={() => void onSignOut()}>
               <LogOut className="h-3.5 w-3.5" />

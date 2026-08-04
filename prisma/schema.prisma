@@ -54,6 +54,8 @@ model User {
   role                  UserRole               @default(USER)
   // UI theme: linear (default) | zinc | emerald | light
   theme                 String                 @default("linear")
+  // Desktop shell preference: classic (default) | focus
+  interfaceMode         String                 @default("classic")
   monthlyBudgetUsd      Decimal?               @db.Decimal(10, 4) // null = sem limite
   approvedAt            DateTime?
   approvedBy            String?
@@ -146,6 +148,27 @@ model Verification {
   updatedAt  DateTime @updatedAt
 
   @@index([identifier])
+}
+
+// Provedor OIDC global da instância. `oidcConfig` contém o envelope
+// AES-256-GCM completo; o adapter de autenticação o abre apenas em memória.
+// `userId` registra quem criou a configuração, mas não define propriedade e
+// não possui FK de propósito: excluir um admin não pode excluir o SSO global.
+model SsoProvider {
+  id             String    @id @default(cuid())
+  providerId     String    @unique
+  issuer         String
+  domain         String
+  domainVerified Boolean   @default(false)
+  oidcConfig     String?   @db.Text
+  samlConfig     String?   @db.Text
+  userId         String
+  organizationId String?
+  disabledAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([domainVerified, disabledAt])
 }
 
 // ============================================================================
@@ -247,7 +270,7 @@ model ResearchArtifact {
   unavailableSources Json                 @default("[]")
   configRevisionId   String?
   createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  updatedAt          DateTime             @default(now()) @updatedAt
   user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   configRevision     ConfigRevision?      @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
 
@@ -407,7 +430,7 @@ model LibraryFolder {
   parentId    String?
   name        String
   createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  updatedAt   DateTime        @default(now()) @updatedAt
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent      LibraryFolder?  @relation("LibraryFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
   children    LibraryFolder[] @relation("LibraryFolderTree")
@@ -429,7 +452,7 @@ model Tag {
   slug        String // normalizado: minúsculas, sem acento, [a-z0-9-]
   folderId    String?         @unique
   createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  updatedAt   DateTime        @default(now()) @updatedAt
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   folder      LibraryFolder?  @relation("TagFolder", fields: [folderId], references: [id], onDelete: SetNull)
   transcripts TranscriptTag[]
@@ -518,7 +541,7 @@ model BrainNode {
   sourceType  BrainSourceType?
   sourceId    String?
   createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  updatedAt   DateTime         @default(now()) @updatedAt
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   outgoing    BrainEdge[]      @relation("BrainEdgeFrom")
   incoming    BrainEdge[]      @relation("BrainEdgeTo")
@@ -542,7 +565,7 @@ model BrainEdge {
   metadata   Json          @default("{}")
   createdBy  String?
   createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  updatedAt  DateTime      @default(now()) @updatedAt
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   from       BrainNode     @relation("BrainEdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
   to         BrainNode     @relation("BrainEdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
@@ -591,7 +614,7 @@ model BrainCompilation {
   completedSegments Int                       @default(0)
   lastError         String?                   @db.Text
   createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
+  updatedAt         DateTime                  @default(now()) @updatedAt
   user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcript        Transcript                @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
   segments          BrainCompilationSegment[]
@@ -612,7 +635,7 @@ model BrainCompilationSegment {
   attempts      Int                    @default(0)
   error         String?                @db.Text
   createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  updatedAt     DateTime               @default(now()) @updatedAt
   compilation   BrainCompilation       @relation(fields: [compilationId], references: [id], onDelete: Cascade)
 
   @@unique([compilationId, segmentKey])
@@ -946,7 +969,7 @@ model Note {
   // tsvector mantido por trigger SQL (sync com title+content).
   searchVector      Unsupported("tsvector")?
   createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
+  updatedAt         DateTime                 @default(now()) @updatedAt
   user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent            Note?                    @relation("NoteTree", fields: [parentId], references: [id], onDelete: Cascade)
   children          Note[]                   @relation("NoteTree")
@@ -1022,7 +1045,7 @@ model Automation {
   lastRunAt  DateTime?
   nextRunAt  DateTime?
   createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
+  updatedAt  DateTime            @default(now()) @updatedAt
 
   user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   runs AutomationRun[]

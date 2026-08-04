@@ -3,10 +3,12 @@ import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { Toaster } from './components/ui/sonner';
 import { Spinner } from './components/ui/spinner';
 import { AppLayout } from './components/layout/app-layout';
+import { AdminLayout } from './components/layout/admin-layout';
 import { AuthLayout } from './components/layout/auth-layout';
 import { RootEntry } from './pages/root-entry';
 import { I18nProvider, useI18n } from './lib/i18n';
 import { ThemeProvider } from './lib/theme-provider';
+import { InterfaceModeProvider } from './lib/interface-mode-provider';
 import { useMe } from './lib/hooks';
 import { PwaInstallPrompt } from './components/pwa-install-prompt';
 
@@ -44,6 +46,11 @@ const AdminIntegracoesPage = lazy(() =>
     default: AdminIntegracoesPage,
   })),
 );
+const AdminAutenticacaoPage = lazy(() =>
+  import('./pages/admin-autenticacao').then(({ AdminAutenticacaoPage }) => ({
+    default: AdminAutenticacaoPage,
+  })),
+);
 const ContaPage = lazy(() =>
   import('./pages/conta').then(({ ContaPage }) => ({ default: ContaPage })),
 );
@@ -51,6 +58,9 @@ const ContaPlataformasPage = lazy(() =>
   import('./pages/conta-plataformas').then(({ ContaPlataformasPage }) => ({
     default: ContaPlataformasPage,
   })),
+);
+const ContaMcpPage = lazy(() =>
+  import('./pages/conta-mcp').then(({ ContaMcpPage }) => ({ default: ContaMcpPage })),
 );
 const FilaPage = lazy(() => import('./pages/fila').then(({ FilaPage }) => ({ default: FilaPage })));
 const JobDetalhePage = lazy(() =>
@@ -88,12 +98,14 @@ export function App(): React.ReactElement {
   return (
     <I18nProvider>
       <ThemeProvider>
-        <I18nRuntimeSync />
-        <BrowserRouter>
-          <Toaster />
-          <PwaInstallGate />
-          <AppRoutes />
-        </BrowserRouter>
+        <InterfaceModeProvider>
+          <I18nRuntimeSync />
+          <BrowserRouter>
+            <Toaster />
+            <PwaInstallGate />
+            <AppRoutes />
+          </BrowserRouter>
+        </InterfaceModeProvider>
       </ThemeProvider>
     </I18nProvider>
   );
@@ -182,12 +194,18 @@ function AppRoutes(): React.ReactElement {
         <Route path="/dashboard" element={<RedirectPreserveSearch to="/" />} />
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/chat/:id" element={<RedirectPreserveSearch to="/chat" />} />
-        <Route path="/setup" element={<SetupPage />} />
-        <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
-        <Route path="/admin/custos" element={<AdminCustosPage />} />
-        <Route path="/admin/integracoes" element={<AdminIntegracoesPage />} />
+        <Route path="/setup" element={<RedirectPreserveSearch to="/admin/configuracao" />} />
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<Navigate to="configuracao" replace />} />
+          <Route path="configuracao" element={<SetupPage />} />
+          <Route path="usuarios" element={<AdminUsuariosPage />} />
+          <Route path="custos" element={<AdminCustosPage />} />
+          <Route path="integracoes" element={<AdminIntegracoesPage />} />
+          <Route path="autenticacao" element={<AdminAutenticacaoPage />} />
+        </Route>
         <Route path="/conta" element={<ContaPage />} />
         <Route path="/conta/plataformas" element={<ContaPlataformasPage />} />
+        <Route path="/conta/mcp" element={<ContaMcpPage />} />
         <Route path="/fila" element={<FilaPage />} />
         <Route path="/jobs" element={<JobsIndexRedirect />} />
         <Route path="/jobs/:id" element={<JobDetalhePage />} />

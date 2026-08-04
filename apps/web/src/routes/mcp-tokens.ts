@@ -23,11 +23,17 @@ mcpTokenRoutes.use('*', async (c, next) => {
 });
 
 mcpTokenRoutes.get('/', async (c) => {
-  const tokens = await db.mcpToken.findMany({
-    where: { userId: c.get('userId') },
-    orderBy: { createdAt: 'desc' },
+  const [tokens, policy] = await Promise.all([
+    db.mcpToken.findMany({
+      where: { userId: c.get('userId') },
+      orderBy: { createdAt: 'desc' },
+    }),
+    getSetting('mcp_user_tokens_enabled').catch(() => null),
+  ]);
+  return c.json({
+    tokens: tokens.map(toMcpTokenMetadata),
+    allowCreate: c.get('isAdmin') || policy === 'true',
   });
-  return c.json({ tokens: tokens.map(toMcpTokenMetadata) });
 });
 
 mcpTokenRoutes.post('/', async (c) => {

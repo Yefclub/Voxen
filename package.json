@@ -1,8 +1,8 @@
 {
   "name": "voxen",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "private": true,
-  "description": "Voxen — base de conhecimento self-hosted com Vox, sua assistente IA",
+  "description": "Voxen — a self-hosted multimodal knowledge base with agentic search",
   "engines": {
     "bun": ">=1.2.0",
     "node": ">=22.0.0",
@@ -18,7 +18,8 @@
       "shell-quote": "1.10.0",
       "js-yaml": "5.2.2",
       "@babel/core": "7.29.6",
-      "fast-uri": "3.1.4",
+      "fast-uri": "3.1.5",
+      "ip-address": "10.3.1",
       "postcss": "8.5.18"
     },
     "patchedDependencies": {
@@ -34,7 +35,15 @@
     "format:check": "make format-check",
     "typecheck": "make typecheck",
     "migrate": "make migrate",
-    "release:prepare": "node scripts/prepare-release.mjs"
+    "migration:check": "node scripts/prisma-migration-gate.mjs",
+    "quality:duplicates": "jscpd apps/web/src apps/extension apps/worker/src",
+    "quality:check": "node scripts/quality-gate.mjs",
+    "release:prepare": "node scripts/prepare-release.mjs",
+    "github:settings": "node scripts/github-repository-settings.mjs"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "jscpd": "5.0.14",
+    "migration-gate-postgres": "npm:postgres@3.4.9"
+  }
 }

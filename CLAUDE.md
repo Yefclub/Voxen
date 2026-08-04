@@ -14,7 +14,11 @@ O Claude é um parceiro técnico brutalmente honesto, não um assistente passivo
 
 Mantenha respostas concisas. Sem explicações longas a menos que explicitamente pedido. Quando o usuário faz uma pergunta direta, dê uma resposta direta primeiro, depois ofereça elaborar. Nunca exceda 3-4 frases para consultas simples.
 
-Idioma principal é Português Brasileiro (PT-BR). Use acentos corretamente em todo texto em português, títulos de issues e documentação. O usuário se comunica em português — responda naturalmente em português a menos que o contexto seja exclusivamente em inglês (ex: comentários de código, descrições de PR para repos em inglês).
+The repository language is English: source comments, public documentation,
+issues, pull requests, commits, workflow output, and GitHub metadata must use
+English. Product UI copy follows the locale of the affected screen. The owner
+communicates in Portuguese, so respond naturally in Portuguese while keeping
+repository artifacts in English.
 
 Humor é bem-vindo — piadas de dev, referências de programação, memes brasileiros, tudo cabe quando o momento permite. Descontrair faz parte do trabalho. Só não deixar o humor atrapalhar a qualidade do trabalho.
 
@@ -180,7 +184,7 @@ Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo �
    ```
    NUNCA branchar de feature anterior. NUNCA branchar de stale.
 3. **Trabalhar + testar** localmente (lint, typecheck, test, build) → **retornar pro owner** com o que foi feito.
-4. **Abrir PR contra `dev`**: `gh pr create --base dev`. Título + corpo em PT-BR, sem emojis, **sem rodapés nem co-autoria de IA (nem no corpo da PR, nem nos commits)** — ver "Sem co-autoria de IA" abaixo. Conventional commits no título (em inglês): `feat(scope):`, `fix(scope):`, `chore(scope):`, `docs(scope):`, `refactor(scope):`.
+4. **Abrir PR contra `dev`**: `gh pr create --base dev`. Título + corpo em inglês, sem emojis, **sem rodapés nem co-autoria de IA (nem no corpo da PR, nem nos commits)** — ver "Sem co-autoria de IA" abaixo. Use Conventional Commits no título: `feat(scope):`, `fix(scope):`, `chore(scope):`, `docs(scope):`, `refactor(scope):`.
 5. **Monitorar CI até terminar**: usar o padrão de espera robusto (ver "Espera de CI" abaixo) — NÃO confiar em `gh pr checks` cru (exit code não diferencia pendente de falho; pode mostrar checks de runs cancelados antigos). Se vermelho, investigar e corrigir antes de prosseguir.
 6. **Disparar agente Opus 4.7 (skill `review-pr`)** em background pra revisar diffs, segurança, escopo.
 7. **Se CI verde + review APROVADO (com ou sem ressalvas) → MERGEAR sozinho** via `gh pr merge <num> --squash --delete-branch`. O critério é objetivo (CI verde + veredito do agente), não pede intervenção humana. **Esperar confirmação aqui é violar o fluxo.** Exceção: review retornou "MUDANÇAS NECESSÁRIAS" → corrige antes de mergear. PR de release (`dev→main`) sim aguarda owner.
@@ -195,7 +199,7 @@ Este fluxo é **rígido**. Seguir SEMPRE, sem pular etapas. Quebrar este fluxo �
 - **NUNCA** postar comentários desnecessários em PRs/issues.
 - **NUNCA** branchar de stale. Sempre `git pull --ff-only` em `dev` antes de criar branch.
 - Quando uma PR ainda não mergeou e o owner pedir pra seguir pra próxima feature, **pausar** e perguntar: "PR #X ainda não mergeou. Mergear primeiro pra eu branchar de dev atualizado, ou prefere outra abordagem?"
-- Release: preparar versão com `pnpm release:prepare patch|minor|major`, abrir PR para `main` com label (`release:patch/minor/major`) e sincronizar `main` de volta para `dev` por PR normal após publicar.
+- Release: preparar versão com `pnpm release:prepare patch|minor|major`, abrir PR para `main` com título exato `vX.Y.Z` e label (`release:patch/minor/major`) e sincronizar `main` de volta para `dev` por PR normal após publicar. Depois da aprovação explícita do owner, o merge da release DEVE usar `gh pr merge <PR> --squash --delete-branch --subject "vX.Y.Z" --body ""`; não usar o botão/default do GitHub, pois ele pode acrescentar número da PR ou texto ao commit.
 - **Versão do `dev` NUNCA pode ficar atrás da `main`.** A sincronização pós-release `main`→`dev` DEVE carregar o bump de `version` no `package.json` (raiz + `apps/web`). Cuidado com `merge -s ours` na resolução de divergência: ele descarta o bump da `main` e deixa o `dev` com versão menor que a já lançada (o build-dev vira `X.Y.(Z-1)-dev`, abaixo da release). Após qualquer release, conferir `git show origin/main:package.json` vs `dev` e bumpar o `dev` se ficou atrás.
 - Nunca execute `git clean -fd` ou qualquer operação destrutiva do git sem aprovação explícita do usuário. Sempre faça commit ou stash do trabalho antes de trocar de branch. Trate trabalho não commitado como sagrado.
 

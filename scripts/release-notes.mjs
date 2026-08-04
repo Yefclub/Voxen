@@ -33,6 +33,25 @@ function load(path = FILE) {
   }
 }
 
+function loadStrict(path = FILE) {
+  let raw;
+  try {
+    raw = fs.readFileSync(path, 'utf8');
+  } catch {
+    throw new Error(`[changelog] não consegui ler ${path}; promoção cancelada.`);
+  }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(`[changelog] ${path} contém JSON inválido; promoção cancelada.`);
+  }
+  if (!Array.isArray(data)) {
+    throw new Error(`[changelog] ${path} precisa conter uma lista; promoção cancelada.`);
+  }
+  return data;
+}
+
 function save(entries) {
   fs.writeFileSync(FILE, JSON.stringify(entries, null, 2) + '\n');
 }
@@ -137,10 +156,18 @@ function addProd() {
     console.error('[changelog] RN_VERSION ausente — pulando.');
     return false;
   }
-  const hadFile = fs.existsSync(FILE);
-  const entries = load();
+  let entries;
+  try {
+    entries = loadStrict();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : '[changelog] promoção cancelada.');
+    return false;
+  }
+  const entriesWithoutCurrentVersion = entries.filter(
+    (entry) => !(entry.channel === 'prod' && entry.version === version),
+  );
   const promoted = [];
-  for (const e of entries) {
+  for (const e of entriesWithoutCurrentVersion) {
     if (e.channel === 'prod') break;
     if (e.channel === 'dev') {
       promoted.unshift({
@@ -161,10 +188,6 @@ function addProd() {
   } catch {
     curated = null;
   }
-  if (!hadFile && !curated && promoted.length === 0) {
-    console.log('[changelog] nada a registrar — pulando.');
-    return true;
-  }
   const entry = {
     version,
     channel: 'prod',
@@ -181,16 +204,9 @@ function addProd() {
     entry.title = curated.title;
     entry.body = curated.body;
   }
-  entries.unshift(entry);
-  save(entries);
-  if (curated) {
-    try {
-      fs.unlinkSync(RELEASE_FILE);
-    } catch {
-      /* best-effort */
-    }
-  }
-  genChangelog(entries);
+  const nextEntries = [entry, ...entriesWithoutCurrentVersion];
+  save(nextEntries);
+  genChangelog(nextEntries);
   const msg = `prod: v${version} ${curated ? '(curado) ' : ''}agregou ${promoted.length} mudança(s)`;
   console.log(`[changelog] ${msg}`);
   summary(`- **release notes** — ${msg}`);

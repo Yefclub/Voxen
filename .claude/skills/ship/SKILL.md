@@ -1,119 +1,115 @@
-# Ship — Branch, PR, CI e Merge
+# Ship — branch, PR, CI, review, and merge
 
-Fluxo completo para entregar mudanças: criar branch, commitar, abrir PR, aguardar CI, e mergear quando verde. O pedido mais comum do projeto.
+Use this flow to deliver one focused change through the complete repository
+workflow.
 
 ## Inputs
 
-- Descrição das mudanças (obrigatório — usado para nomear branch e PR)
-- Merge automático (opcional): se o usuário disse explicitamente "faz merge se ok" → mergear após CI verde. Se não disse → apenas reportar que CI passou e aguardar instrução.
+- Required change description, used to name the branch and pull request
+- Merge intent from the owner; normal PRs merge autonomously when the project
+  rules authorize it, while stable releases always require explicit approval
 
-## Fluxo
+## Flow
 
-### 1. Preparar Branch
+### 1. Prepare a fresh branch
 
 ```bash
-# Verificar estado atual
 git status --short
 git branch --show-current
-
-# Se já está numa branch de feature → usar ela
-# Se está em dev/main → criar branch nova
-git checkout -b <tipo>/<nome-descritivo>
+git fetch origin
+git checkout dev
+git pull --ff-only origin dev
+git checkout -b <type>/<descriptive-name>
 ```
 
-Naming: `feat/`, `fix/`, `chore/`, `refactor/` conforme o tipo de mudança.
+Use `feat/`, `fix/`, `chore/`, or `refactor/` according to the change. Never
+branch from another feature or a stale local `dev`.
 
-### 2. Commitar
+### 2. Commit only scoped files
 
 ```bash
-# Verificar o que vai ser commitado
 git diff --stat
 git status --short
-
-# Adicionar APENAS arquivos relevantes (NUNCA git add -A)
-git add <arquivo1> <arquivo2> ...
-
-# Commit com mensagem descritiva
-git commit -m "<tipo>(<escopo>): <descrição concisa>"
+git add <file1> <file2> ...
+git commit -m "<type>(<scope>): <concise English description>"
 ```
 
-Regras do commit:
-- Mensagem em inglês no título (padrão conventional commits)
-- Apenas arquivos alterados pelo trabalho atual
-- Não incluir .env, credentials, ou arquivos pessoais
+Do not use `git add -A`. Never include environment files, credentials, personal
+files, unrelated work, AI attribution, or generated authorship trailers.
 
-### 3. Push + PR
+### 3. Push and open the PR
 
 ```bash
 git push -u origin <branch>
 
 gh pr create --base dev --head <branch> \
-  --title "<título em PT-BR>" \
-  --body "<corpo detalhado em PT-BR>"
+  --title "<English Conventional Commit title>" \
+  --body "<detailed English body>"
 ```
 
-Regras da PR:
-- Título e corpo em PT-BR
-- Corpo com: Contexto → O que foi feito → Detalhes técnicos → Plano de testes
-- Sem emojis, sem rodapés de IA
+The body uses these English sections: Context, What changed, Technical details,
+Test plan, and References. Do not add emoji or AI attribution.
 
-### 4. Aguardar CI
+### 4. Monitor CI robustly
 
-```bash
-# Esperar workflows de versionamento (se existirem)
-git pull --rebase
+Confirm that the rollup belongs to the current head SHA, contains every
+required check, has no pending or failed conclusions, and ends with
+`mergeStateStatus: CLEAN`. An empty or stale rollup is never success.
 
-# Monitorar CI
-gh pr checks <PR_NUMBER> --watch --fail-fast
-```
+If CI fails, investigate, fix, push, and repeat. Do not review or merge a red
+head.
 
-- Se CI falhar → reportar exatamente o que falhou, corrigir, push, repetir
-- NÃO prosseguir com review ou merge com CI vermelho
+When `Quality Gate` fails, download the `quality-gate-report` artifact from the
+failed workflow run. Read `summary.md` and `metrics.json`; use
+`jscpd-report.json` for duplicate locations and the raw coverage reports for
+untested lines. Address every regression on the same branch, push, and resume
+monitoring. Never relax `quality-gate/baseline.json` to make a regression pass.
 
-### 5. Review (SEMPRE)
+When `Prisma migration gate` fails, download the
+`prisma-migration-gate-report` artifact. Read `summary.md`, then `results.json`
+and the referenced redacted stage log. Add or correct a new ordered migration;
+never edit, rename, or delete a migration that already exists on the target
+branch.
 
-Após CI verde, executar a skill `review-pr` (`.claude/skills/review-pr/SKILL.md`):
-- Disparar sub-agente de review em background
-- Analisar diff, tipagem, segurança, testes, escopo, migrations
-- Retornar relatório com veredicto: APROVADO ou MUDANÇAS NECESSÁRIAS
+### 5. Independent review — always required
 
-Se **MUDANÇAS NECESSÁRIAS** → listar o que corrigir, aguardar decisão do usuário.
-Se **APROVADO** → prosseguir para o passo 6.
+After CI is green, read and run the `review-pr` skill at
+`.claude/skills/review-pr/SKILL.md` in a background sub-agent. The reviewer
+checks the diff, tests, security, scope, migrations, and specification without
+commenting on GitHub.
 
-### 6. Merge (somente se autorizado)
+If the verdict is `MUDANÇAS NECESSÁRIAS`, fix every blocking finding and repeat
+CI and review on the new head. If the verdict is `APROVADO`, continue.
 
-Merge é opt-in — depende do que o usuário pediu:
+### 6. Merge
 
-**Se o usuário disse explicitamente "merge se ok" / "shipa" / "manda":**
+For an authorized normal PR:
+
 ```bash
 gh pr merge <PR_NUMBER> --squash --delete-branch
 ```
 
-**Se o usuário NÃO pediu merge (default):**
-Apenas reportar: "PR #N com CI verde e review aprovado. Pronta para merge quando você quiser."
-
-### 7. Voltar para dev
+Stable release PRs (`dev` → `main`) are a special case: always wait for explicit
+owner approval, then preserve a version-only Git message:
 
 ```bash
+gh pr merge <PR_NUMBER> --squash --delete-branch \
+  --subject "vX.Y.Z" \
+  --body ""
+```
+
+### 7. Return to updated dev
+
+```bash
+git fetch origin --prune
 git checkout dev
-git pull
+git pull --ff-only origin dev
 ```
 
-## Output Final
+Perform the post-merge runtime rebuild required by `CLAUDE.md`, unless the PR
+is documentation-only.
 
-```
-PR #N — <título>
-CI: Verde
-Review: Aprovado / Mudanças necessárias
-Status: Mergeada / Aguardando sua aprovação
-Link: <url>
-```
+## Final output
 
-## Regras
-
-- NUNCA mergear sem instrução explícita do usuário — merge é preferência pessoal, não padrão do projeto
-- NUNCA commitar direto em dev ou main
-- SEMPRE rodar review após CI verde, mesmo para PRs pequenas
-- Se houver conflito de merge, reportar ao invés de resolver silenciosamente
-- Se o checklist pre-PR não foi rodado antes, rodar agora (lint, format, test, typecheck)
-- Branch é deletada automaticamente após merge (--delete-branch)
+Report the PR link, current head, CI result, review verdict, merge result, and
+post-merge validation. Never declare success from an incomplete or stale check.

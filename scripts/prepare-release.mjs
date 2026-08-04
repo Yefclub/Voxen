@@ -6,7 +6,7 @@ const bump = process.argv[2];
 const allowed = new Set(['patch', 'minor', 'major']);
 
 if (!allowed.has(bump)) {
-  console.error('Uso: pnpm release:prepare <patch|minor|major>');
+  console.error('Usage: pnpm release:prepare <patch|minor|major>');
   process.exit(2);
 }
 
@@ -61,11 +61,19 @@ if (!base) {
 
 const parsedBase = parseStable(base);
 if (!parsedBase) {
-  console.error(`Versão base inválida: ${base}`);
+  console.error(`Invalid base version: ${base}`);
   process.exit(1);
 }
 
 const next = bumpVersion(parsedBase, bump);
+
+execFileSync(process.execPath, ['scripts/release-notes.mjs', 'prod'], {
+  env: {
+    ...process.env,
+    RN_VERSION: next,
+  },
+  stdio: 'inherit',
+});
 
 for (const file of versionFiles) {
   const json = JSON.parse(readFileSync(file, 'utf8'));
@@ -73,10 +81,21 @@ for (const file of versionFiles) {
   writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
 }
 
-console.log(`Release preparada: ${base} -> ${next} (${bump})`);
+console.log(`Release prepared: ${base} -> ${next} (${bump})`);
 console.log('');
-console.log('Próximos passos sugeridos:');
-console.log(`  git checkout -b release/v${next}   # se ainda não estiver numa branch de release`);
-console.log('  git add package.json apps/web/package.json');
+console.log('Suggested next steps:');
+console.log(
+  `  git checkout -b release/v${next}   # if not already on a release branch`,
+);
+console.log(
+  '  git add package.json apps/web/package.json releases.json CHANGELOG.md changelog/RELEASE.md',
+);
 console.log(`  git commit -m "chore: release v${next}"`);
-console.log(`  gh pr create --base main --label release:${bump} --title "release: v${next}"`);
+console.log(
+  `  gh pr create --base main --label release:${bump} --title "v${next}"`,
+);
+console.log('');
+console.log('After explicit owner approval and green required checks:');
+console.log(
+  `  gh pr merge <PR> --squash --delete-branch --subject "v${next}" --body ""`,
+);
