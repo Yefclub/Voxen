@@ -62,11 +62,7 @@ import {
   type SigmaGraphModel,
   type SigmaNodeAttributes,
 } from '../lib/graph-model';
-import {
-  graphIndexState,
-  isGraphIndexDeferred,
-  resolveGraphPollingAction,
-} from '../lib/graph-loading';
+import { graphIndexState, isGraphIndexDeferred } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,
   GRAPH_3D_INIT_TIMEOUT_MS,
@@ -78,6 +74,7 @@ import {
 import { useFetch } from '../lib/hooks';
 import { useI18n, type TranslateFn } from '../lib/i18n';
 import { useIsCoarsePointer } from '../lib/use-media-query';
+import { useGraphIndexPolling } from '../lib/use-graph-index-polling';
 import { useTheme } from '../lib/theme-provider';
 import { cn } from '../lib/utils';
 import type { GraphIndexStatus } from '../../shared/graph-index';
@@ -238,16 +235,27 @@ export function GrafoPage(): React.ReactElement {
   const indexDeferred = isGraphIndexDeferred(indexStatus);
   const indexFailed = indexStatus?.state === 'error' && !indexDeferred;
   const indexUnavailable = indexing || indexDeferred || indexFailed;
-  const previousIndexState = useRef<GraphIndexStatus['state'] | null>(null);
+  const refreshGraphSnapshot = useCallback(
+    () => setGraphRequest({ tick: Date.now(), force: false }),
+    [],
+  );
+
+  useGraphIndexPolling({
+    indexStatus,
+    snapshotIndexing: data?.indexing === true,
+    statusError,
+    refreshIndexStatus,
+    refreshSnapshot: refreshGraphSnapshot,
+  });
 
   useEffect(() => {
     const events = new EventSource('/api/graph/events');
     events.addEventListener('invalidated', () => {
-      setGraphRequest({ tick: Date.now(), force: false });
+      refreshGraphSnapshot();
       refreshIndexStatus();
     });
     return () => events.close();
-  }, [refreshIndexStatus]);
+  }, [refreshGraphSnapshot, refreshIndexStatus]);
 
   const filtered = useMemo(
     () => (data ? filterGraphData(data, deferredSearch, activeTypes) : null),
@@ -275,26 +283,6 @@ export function GrafoPage(): React.ReactElement {
     () => filtered?.nodes.find((node) => node.id === selectedId) ?? null,
     [filtered, selectedId],
   );
-
-  useEffect(() => {
-    if (!indexStatus) {
-      const timer = window.setTimeout(refreshIndexStatus, 2_500);
-      return () => window.clearTimeout(timer);
-    }
-    const action = resolveGraphPollingAction(
-      previousIndexState.current,
-      indexStatus,
-      data?.indexing === true,
-    );
-    previousIndexState.current = indexStatus.state;
-    if (action === 'refresh-snapshot') {
-      setGraphRequest({ tick: Date.now(), force: false });
-      return;
-    }
-    if (action !== 'poll-status') return;
-    const timer = window.setTimeout(refreshIndexStatus, 2_500);
-    return () => window.clearTimeout(timer);
-  }, [data?.indexing, indexStatus, refreshIndexStatus, statusError]);
 
   const openNode = useCallback(
     (node: GraphNode) => {

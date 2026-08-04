@@ -34,8 +34,8 @@ export function GraphIndexStatusBadge({
   if (!state) return null;
   return (
     <span
-      role="status"
-      aria-live="polite"
+      role={state === 'deferred' ? undefined : 'status'}
+      aria-live={state === 'deferred' ? undefined : 'polite'}
       className={`${state === 'ready' ? 'hidden sm:inline-flex' : 'inline-flex'} items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium text-[var(--color-app-fg)] ${BADGE_STYLES[state]}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${DOT_STYLES[state]}`} />
@@ -52,22 +52,22 @@ export function GraphIndexDeferredState({
   onRetry: () => void;
 }) {
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      aria-labelledby="graph-index-deferred-title"
-      className="absolute inset-0 z-10 flex items-center justify-center px-6"
-    >
+    <div className="absolute inset-0 z-10 flex items-center justify-center px-6">
       <div className="max-w-sm rounded-2xl border border-amber-400/20 bg-[var(--color-app-bg-elevated)]/95 p-6 text-center shadow-xl backdrop-blur-xl">
-        <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-amber-400/10 text-[var(--color-app-fg)]">
+        <div
+          aria-hidden="true"
+          className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-amber-400/10 text-[var(--color-app-fg)]"
+        >
           <Layers3 className="h-5 w-5" />
         </div>
-        <p id="graph-index-deferred-title" className="font-display text-sm font-semibold">
-          {translate('graph.indexDeferredTitle')}
-        </p>
-        <p className="mt-1.5 text-xs leading-relaxed text-[var(--color-app-muted)]">
-          {translate('graph.indexDeferredDescription')}
-        </p>
+        <div role="status" aria-live="polite">
+          <p className="font-display text-sm font-semibold">
+            {translate('graph.indexDeferredTitle')}
+          </p>
+          <p className="mt-1.5 text-xs leading-relaxed text-[var(--color-app-muted)]">
+            {translate('graph.indexDeferredDescription')}
+          </p>
+        </div>
         <Button className="mt-4" onClick={onRetry}>
           {translate('graph.retryIndex')}
         </Button>
