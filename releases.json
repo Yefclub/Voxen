@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.14.1-dev.1785898252",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Busca da biblioteca apoiada pelo grafo",
+    "body": "A busca da biblioteca ganhou uma posição mais clara e agora também encontra conteúdos por conceitos relacionados no grafo, sempre limitados à base do usuário.",
+    "pr": 627,
+    "author": "Kalyel",
+    "date": "2026-08-04T23:50:37-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/627"
+  },
+  {
     "version": "0.14.1-dev.1785897416",
     "channel": "dev",
     "type": "ui",
