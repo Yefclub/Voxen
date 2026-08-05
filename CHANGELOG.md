@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.14.2-dev.1785911083 — 2026-08-05 · Dev
+
+### 🐛 What's new now follows the active environment and language
+
+The What's new feed now follows the environment actually running the instance:
+development builds show only development entries, while stable deployments show
+only production releases. The environment is informative rather than a manual
+filter, so URLs cannot mix histories from another channel.
+
+New release notes can include curated English and Brazilian Portuguese content.
+The page and update details use the selected interface language, while older
+single-language entries remain readable until they receive a translation.
+
 ## v0.14.1 — 2026-08-05 · Produção
 
 ### Voxen 0.14.1 — interface refinada e busca conectada

@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.2-dev.1785911083",
+    "channel": "dev",
+    "type": "fix",
+    "title": "What's new now follows the active environment and language",
+    "body": "The What's new feed now follows the environment actually running the instance:\ndevelopment builds show only development entries, while stable deployments show\nonly production releases. The environment is informative rather than a manual\nfilter, so URLs cannot mix histories from another channel.\n\nNew release notes can include curated English and Brazilian Portuguese content.\nThe page and update details use the selected interface language, while older\nsingle-language entries remain readable until they receive a translation.",
+    "pr": 634,
+    "author": "Kalyel",
+    "date": "2026-08-05T03:24:30-03:00",
+    "translations": {
+      "en": {
+        "title": "What's new now follows the active environment and language",
+        "body": "The What's new feed now follows the environment actually running the instance:\ndevelopment builds show only development entries, while stable deployments show\nonly production releases. The environment is informative rather than a manual\nfilter, so URLs cannot mix histories from another channel.\n\nNew release notes can include curated English and Brazilian Portuguese content.\nThe page and update details use the selected interface language, while older\nsingle-language entries remain readable until they receive a translation."
+      },
+      "pt-BR": {
+        "title": "Novidades agora acompanha o ambiente e o idioma ativos",
+        "body": "O feed de Novidades agora acompanha o ambiente que a instância realmente está\nexecutando: builds de desenvolvimento mostram apenas entradas de\ndesenvolvimento, enquanto implantações estáveis mostram apenas releases de\nprodução. O ambiente é informativo, não um filtro manual, e URLs não conseguem\nmisturar históricos de outro canal.\n\nAs novas notas de release podem incluir conteúdo curado em inglês e português\ndo Brasil. A página e os detalhes da atualização usam o idioma escolhido na\ninterface, enquanto entradas antigas em um único idioma permanecem legíveis até\nreceberem tradução."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/634"
+  },
+  {
     "version": "0.14.1",
     "channel": "prod",
     "date": "2026-08-05T03:23:44.109Z",
