@@ -4,7 +4,8 @@
 # Branch-protection friendly:
 #  - the release PR already contains a stable X.Y.Z package version;
 #  - this workflow never commits to main or dev;
-#  - when vX.Y.Z does not exist, it creates the tag and dispatches release.yml.
+#  - when vX.Y.Z does not exist, it creates the tag;
+#  - it dispatches both the component release and the combined Easypanel image.
 # ============================================================================
 
 name: Publish stable release
@@ -54,7 +55,7 @@ jobs:
           echo "version=$ROOT_VER" >> "$GITHUB_OUTPUT"
           echo "tag=v$ROOT_VER" >> "$GITHUB_OUTPUT"
 
-      - name: Create tag and dispatch release
+      - name: Create tag and dispatch release images
         env:
           VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -65,18 +66,20 @@ jobs:
           existing_sha=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1 || true)
           if [ -n "$existing_sha" ]; then
             if [ "$existing_sha" = "$(git rev-parse HEAD)" ]; then
-              echo "Tag $TAG already points to HEAD. Nothing to publish."
+              echo "Tag $TAG already points to HEAD. Reusing it for publication."
+            else
+              echo "Tag $TAG already exists on another commit ($existing_sha). No release will be created."
               exit 0
             fi
-            echo "Tag $TAG already exists on another commit ($existing_sha). No release will be created."
-            exit 0
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "Release $TAG"
-          git push origin "$TAG"
           gh workflow run release.yml --ref "$TAG"
+          gh workflow run easypanel-image.yml --ref "$TAG"
 
           {
             echo "## Published release"

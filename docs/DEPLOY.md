@@ -413,8 +413,10 @@ Port: 3000
 Health check path: /health
 ```
 
-O workflow `Easypanel Image` publica essa imagem automaticamente quando há push
-em `dev`, `main` ou tag `vX.Y.Z`. A imagem já contém `web`, `chat` e `worker`.
+Ao publicar uma release estável, a automação despacha o workflow `Easypanel
+Image` para a tag `vX.Y.Z` e atualiza também `latest`. Builds de homologação em
+`dev` são publicados somente por execução manual do mesmo workflow, evitando
+deploys a cada merge. A imagem já contém `web`, `chat` e `worker`.
 
 Por que essa é a opção recomendada: no Source **GitHub repository**, o Easypanel
 constrói a imagem no servidor e, conforme a

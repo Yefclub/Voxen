@@ -43,4 +43,13 @@ describe('carregamento progressivo de rotas', () => {
     expect(viteConfig).not.toContain('manualChunks');
     expect(viteConfig).not.toContain("markdown: ['streamdown']");
   });
+
+  test('mantém artefatos implementados, mas não carrega a página enquanto a rota está pausada', () => {
+    const source = readClientSource('App.tsx');
+    const artifacts = readClientSource('pages/artefatos.tsx');
+
+    expect(source).toContain('<Route path="/artefatos" element={<Navigate to="/" replace />} />');
+    expect(source).not.toContain("import('./pages/artefatos')");
+    expect(artifacts).toContain('export function ArtefatosPage');
+  });
 });

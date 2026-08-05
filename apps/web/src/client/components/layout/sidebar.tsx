@@ -4,7 +4,6 @@ import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
   ChevronDown,
-  FileText,
   House,
   ListOrdered,
   MessageCircle,
@@ -66,7 +65,6 @@ export const NAV: NavItem[] = [
   { to: '/fila', labelKey: 'shell.nav.queue', Icon: ListOrdered, scope: 'workspace' },
   { to: '/notas', labelKey: 'shell.nav.notes', Icon: Notebook, scope: 'workspace' },
   { to: '/automacoes', labelKey: 'shell.nav.automations', Icon: Workflow, scope: 'workspace' },
-  { to: '/artefatos', labelKey: 'shell.nav.artifacts', Icon: FileText, scope: 'workspace' },
   { to: '/grafo', labelKey: 'shell.nav.graph', Icon: Network, scope: 'workspace' },
   { to: '/extensao', labelKey: 'shell.nav.extension', Icon: Puzzle, scope: 'workspace' },
   { to: '/conta', labelKey: 'shell.nav.account', Icon: UserIcon, scope: 'personal' },
@@ -100,6 +98,7 @@ export function isNavItemActive(pathname: string, to: string): boolean {
 
 const SIDEBAR_WIDTH = 288;
 const RAIL_WIDTH = 60;
+const FOCUS_SURFACE_GAP = 8;
 
 /**
  * Alvo de clique do rail: quadrado de 36px, ícone de 18px centralizado. Todo
@@ -276,7 +275,7 @@ function SidebarRail({
           ? 'inset-y-0 left-0 bg-transparent'
           : 'top-4 bottom-4 left-4 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl',
       )}
-      style={{ width: RAIL_WIDTH }}
+      style={{ width: focusInterface ? RAIL_WIDTH + FOCUS_SURFACE_GAP : RAIL_WIDTH }}
       aria-label={t('shell.openMenu')}
     >
       <TooltipProvider delayDuration={200}>

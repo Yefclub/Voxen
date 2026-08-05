@@ -56,7 +56,7 @@ const THEME_LABEL_KEY: Record<
 
 /** Same comfortable 40×40 chrome target as MobileMenuButton on mobile. */
 const chromeControlClass =
-  'inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/75 text-[var(--color-app-muted)] shadow-sm shadow-black/10 backdrop-blur-md transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] md:h-9 md:w-9 md:rounded-lg md:bg-transparent md:shadow-none md:backdrop-blur-none';
+  'inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/75 text-[var(--color-app-muted)] shadow-sm shadow-black/10 backdrop-blur-md transition-colors hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] md:h-8 md:w-8 md:rounded-lg md:bg-transparent md:shadow-none md:backdrop-blur-none';
 
 /**
  * Cabeçalho do shell — no mobile os controles flutuam individuais e
@@ -69,6 +69,7 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   const { t } = useI18n();
   const { theme, setTheme, toggleAppearance } = useTheme();
   const { interfaceMode } = useInterfaceMode();
+  const { sourcesOpen } = useChatShell();
   const inChat = isChatRoute(location.pathname);
   const mobileUserMenuNeeded = hidesBottomNav(location.pathname, false);
   const onSignOut = async (): Promise<void> => {
@@ -80,11 +81,12 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   return (
     <header
       className={cn(
-        'fixed right-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 flex items-center gap-1.5 border-0 bg-transparent p-0 shadow-none backdrop-blur-none',
-        'md:gap-3 md:rounded-2xl md:border md:border-[var(--color-app-border)] md:bg-[var(--color-app-bg-elevated)]/85 md:px-2.5 md:py-2 md:backdrop-blur-xl',
+        'fixed right-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 flex items-center gap-1.5 border-0 bg-transparent p-0 shadow-none backdrop-blur-none transition-transform motion-reduce:transition-none',
+        'md:gap-2 md:rounded-xl md:border md:border-[var(--color-app-border)] md:bg-[var(--color-app-bg-elevated)]/85 md:px-2 md:py-1.5 md:backdrop-blur-xl',
         interfaceMode === 'focus'
-          ? 'md:right-5 md:top-[calc(env(safe-area-inset-top)+1.25rem)]'
-          : 'md:right-4 md:top-[calc(env(safe-area-inset-top)+1rem)]',
+          ? 'md:right-9 md:top-[calc(env(safe-area-inset-top)+1.25rem)]'
+          : 'md:right-7 md:top-[calc(env(safe-area-inset-top)+1rem)]',
+        inChat && sourcesOpen && 'md:-translate-x-[22rem]',
       )}
     >
       {inChat && <ChatShellControls />}
@@ -110,7 +112,7 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
             )}
             aria-label={t('shell.userMenu')}
           >
-            <Avatar className="h-8 w-8 bg-gradient-to-br from-emerald-500/30 to-violet-500/30 md:h-9 md:w-9">
+            <Avatar className="h-8 w-8 bg-gradient-to-br from-emerald-500/30 to-violet-500/30">
               {user.image && (
                 <AvatarPrimitive.Image
                   src={user.image}

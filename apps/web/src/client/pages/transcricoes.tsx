@@ -9,6 +9,7 @@ import {
   Library,
   Loader2,
   MoreHorizontal,
+  Network,
   Search,
   Sparkles,
   Tags,
@@ -39,6 +40,7 @@ import {
 } from '../lib/library-organization';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { ContentIngestCard } from '../components/ingest/content-ingest-card';
+import { LibrarySearch } from '../components/library/library-search';
 import { useI18n, type Locale, type TranslateFn } from '../lib/i18n';
 import { resolveTranscriptPreviewSrc } from '../lib/preview-src';
 import { sourceHostname } from '../lib/source-url';
@@ -64,6 +66,7 @@ interface TranscriptSummary {
   status: 'ACTIVE' | 'ARCHIVED' | 'TRASH';
   createdAt: string;
   snippet?: string;
+  graphMatch?: boolean;
 }
 
 interface SearchResponse {
@@ -554,34 +557,9 @@ export function TranscricoesPage(): React.ReactElement {
         onConfirm={regenerateTitles}
       />
 
-      <ContentIngestCard />
+      <LibrarySearch value={q} changing={queryChanging} onChange={setQ} onClear={() => setQ('')} />
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-app-muted)] pointer-events-none z-10" />
-        <input
-          type="text"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t('library.searchPlaceholder')}
-          autoComplete="off"
-          spellCheck={false}
-          className="w-full h-10 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/50 pl-9 pr-10 text-sm text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:outline-none focus:border-zinc-500/60 focus:ring-1 focus:ring-zinc-500/20 transition-colors"
-        />
-        {q.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setQ('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] hover:bg-[var(--color-app-surface-hover)]"
-            aria-label={t('library.clearSearch')}
-          >
-            {queryChanging ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <X className="h-3 w-3" />
-            )}
-          </button>
-        )}
-      </div>
+      <ContentIngestCard />
 
       <section className="space-y-2">
         <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
@@ -1182,6 +1160,15 @@ function TranscriptRow({
           {t.status === 'TRASH' && (
             <Badge variant="danger" className="h-4 px-1 text-[9px]">
               {translate('library.statusTrash')}
+            </Badge>
+          )}
+          {t.graphMatch && (
+            <Badge
+              variant="outline"
+              className="h-4 gap-1 px-1 text-[9px] text-[var(--color-accent-violet)]"
+            >
+              <Network className="h-2.5 w-2.5" aria-hidden />
+              {translate('library.graphMatch')}
             </Badge>
           )}
         </div>

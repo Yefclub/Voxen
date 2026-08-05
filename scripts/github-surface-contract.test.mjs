@@ -89,3 +89,18 @@ test("release gate requires the exact version-only pull-request title", () => {
   assert.match(workflow, /\[ "\$PR_TITLE" != "v\$root_version" \]/);
   assert.match(workflow, /Release PR title must be exactly v\$root_version/);
 });
+
+test("stable publication dispatches and tags the combined Easypanel image", () => {
+  const publisher = read(".github/workflows/version-main.yml");
+  const image = read(".github/workflows/easypanel-image.yml");
+  const deploymentGuide = read("docs/DEPLOY.md");
+
+  assert.match(publisher, /gh workflow run release\.yml --ref "\$TAG"/);
+  assert.match(publisher, /gh workflow run easypanel-image\.yml --ref "\$TAG"/);
+  assert.match(publisher, /Reusing it for publication/);
+  assert.match(image, /refs\/tags\/v\*\)[\s\S]*\$\{IMAGE_NAME\}:latest/);
+  assert.doesNotMatch(
+    deploymentGuide,
+    /automaticamente quando há push\s+em `dev`, `main` ou tag/,
+  );
+});

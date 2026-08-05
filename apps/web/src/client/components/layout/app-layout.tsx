@@ -148,14 +148,15 @@ export function AppLayout(): React.ReactElement {
   // de chat nunca é sub-página, então showBack já é false ali; o `!showBack`
   // é defensivo caso essa invariante mude no futuro).
   const showMobileNavButton = isChat && !isDesktop && !showBack;
-  // Header flutuante (Topbar). No chat mobile o histórico passa por baixo do
-  // chrome transparente — só reserva o safe-area; o scroller do chat adiciona
-  // o offset inicial. Demais rotas mobile mantêm 4rem; desktop 5rem.
+  // The Topbar floats above the shell. Mobile chat reserves only the safe area
+  // because its scroller owns the initial offset; other mobile routes keep a
+  // 4rem clearance. Desktop page content owns a compact 20 px clearance via
+  // PageShell instead of reserving a full row for floating chrome.
   const headerPad = isFullBleed
     ? ''
     : isChat
-      ? ' pt-[env(safe-area-inset-top)] md:pt-[calc(env(safe-area-inset-top)+5rem)]'
-      : ' pt-[calc(env(safe-area-inset-top)+4rem)] md:pt-[calc(env(safe-area-inset-top)+5rem)]';
+      ? ' pt-[env(safe-area-inset-top)] md:pt-0'
+      : ' pt-[calc(env(safe-area-inset-top)+4rem)] md:pt-0';
   // O chat reserva o safe-area-inset-bottom pro composer não colar no
   // home-indicator; no desktop nunca teve bottom-nav mesmo, então zera.
   const chatBottomPad = isDesktop ? ' pb-0' : ' pb-[env(safe-area-inset-bottom)]';
@@ -241,7 +242,7 @@ function RouteLoading(): React.ReactElement {
     <div
       data-route-loading
       aria-busy="true"
-      className="mx-auto min-h-full w-full max-w-[1600px] px-4 pb-5 pt-0 sm:px-7 sm:pb-9 sm:pt-0 xl:px-10"
+      className="mx-auto min-h-full w-full max-w-[1600px] px-4 pb-5 pt-0 sm:px-7 sm:pb-9 sm:pt-0 md:pt-5 xl:px-10"
     >
       <div className="h-0.5 w-full overflow-hidden rounded-full bg-[var(--color-app-surface)]">
         <div className="h-full w-2/5 animate-pulse rounded-full bg-[var(--color-accent-violet)]" />

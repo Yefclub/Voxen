@@ -60,6 +60,97 @@ describeIfDb('library organization API', () => {
     expect(res.status).toBe(401);
   });
 
+  it('finds transcripts through user-scoped Brain concepts', async () => {
+    await signUp('graph-search@voxen.local', 'senha-super-segura-123', 'Graph Search');
+    const signin = await signIn('graph-search@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const user = await db.user.findUniqueOrThrow({
+      where: { email: 'graph-search@voxen.local' },
+    });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/owned-graph-search',
+        title: 'Padrões de software',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/owned-graph-search.md`,
+        plainText: 'comparação entre abordagens de organização de código',
+        frontmatter: {},
+      },
+    });
+    const node = await db.brainNode.create({
+      data: {
+        userId: user.id,
+        key: 'TOPIC:arquitetura-hexagonal',
+        type: 'TOPIC',
+        label: 'Arquitetura hexagonal',
+        description: 'Separação por portas e adaptadores',
+      },
+    });
+    await db.brainSource.create({
+      data: {
+        userId: user.id,
+        nodeId: node.id,
+        sourceType: 'TRANSCRIPT',
+        sourceId: transcript.id,
+        evidenceKey: `search:${transcript.id}`,
+      },
+    });
+
+    await signUp('foreign-graph@voxen.local', 'senha-super-segura-456', 'Foreign Graph');
+    const foreign = await db.user.findUniqueOrThrow({
+      where: { email: 'foreign-graph@voxen.local' },
+    });
+    const foreignTranscript = await db.transcript.create({
+      data: {
+        userId: foreign.id,
+        source: 'WEB',
+        url: 'https://example.com/foreign-graph-search',
+        title: 'Conteúdo privado externo',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${foreign.id}/transcripts/foreign-graph-search.md`,
+        plainText: 'conteúdo sem o termo pesquisado',
+        frontmatter: {},
+      },
+    });
+    const foreignNode = await db.brainNode.create({
+      data: {
+        userId: foreign.id,
+        key: 'TOPIC:arquitetura-hexagonal',
+        type: 'TOPIC',
+        label: 'Arquitetura hexagonal',
+      },
+    });
+    await db.brainSource.create({
+      data: {
+        userId: foreign.id,
+        nodeId: foreignNode.id,
+        sourceType: 'TRANSCRIPT',
+        sourceId: foreignTranscript.id,
+        evidenceKey: `search:${foreignTranscript.id}`,
+      },
+    });
+
+    const response = await app.fetch(
+      new Request('http://localhost/api/transcripts?q=hexagonal', { headers: { cookie } }),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      total: number;
+      transcripts: Array<{ id: string; graphMatch?: boolean }>;
+    };
+    expect(body.total).toBe(1);
+    expect(body.transcripts).toEqual([
+      expect.objectContaining({ id: transcript.id, graphMatch: true }),
+    ]);
+    expect(body.transcripts.map((item) => item.id)).not.toContain(foreignTranscript.id);
+  });
+
   it('creates folders and assigns transcripts by user scope', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');

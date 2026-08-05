@@ -1,5 +1,102 @@
 # Changelog
 
+## v0.14.1 — 2026-08-05 · Produção
+
+### Voxen 0.14.1 — interface refinada e busca conectada
+
+## Navegação focada mais integrada
+
+A interface focada ganhou uma composição mais coesa: os controles da barra
+recolhida ficam centralizados, o painel de fontes passa a fazer parte do fundo
+do espaço de trabalho e a conversa se retrai suavemente quando as evidências são
+abertas. O cabeçalho flutuante acompanha essa transição sem cobrir o conteúdo.
+
+O espaçamento nas bordas, a altura do cabeçalho e as barras de rolagem também
+foram refinados. No desktop, os controles direcionais respeitam os cantos
+arredondados; no celular, a primeira mensagem permanece visível abaixo dos
+controles. A área de Artefatos fica temporariamente fora da navegação enquanto
+seu próximo ciclo de produto é preparado.
+
+## Conta pessoal consistente e separada da administração
+
+Perfil e segurança, contas de plataforma e acesso MCP agora compartilham a mesma
+navegação, hierarquia visual e largura de conteúdo das demais páginas. Isso
+reforça a separação entre escolhas particulares de cada pessoa e configurações
+globais reservadas aos administradores da instância.
+
+## Busca da biblioteca apoiada pelo grafo
+
+A busca das transcrições ocupa uma posição mais fácil de encontrar e passa a
+considerar conceitos relacionados já extraídos no grafo, além dos campos
+textuais tradicionais. Os sinais adicionais têm peso controlado, ignoram
+consultas curtas e continuam estritamente limitados à base do usuário atual.
+
+## Raciocínio do chat com Markdown
+
+O bloco de raciocínio agora apresenta títulos, listas, ênfases e código em
+Markdown com a mesma sanitização aplicada às respostas. Textos estruturados
+deixam de aparecer como marcação crua sem ampliar a superfície de conteúdo HTML.
+
+## Publicação completa no Easypanel
+
+Releases estáveis agora publicam também a imagem combinada que reúne web, chat e
+worker. As tags da versão e `latest` permanecem alinhadas, e uma execução
+interrompida pode ser retomada sem recriar a tag da release.
+
+## v0.14.1-dev.1785898252 — 2026-08-04 · Dev
+
+### 🧹 Busca da biblioteca apoiada pelo grafo
+
+A busca da biblioteca ganhou uma posição mais clara e agora também encontra conteúdos por conceitos relacionados no grafo, sempre limitados à base do usuário.
+
+## v0.14.1-dev.1785897416 — 2026-08-04 · Dev
+
+### 🎨 Páginas pessoais de conta mais consistentes
+
+As páginas de perfil, contas de plataforma e acesso MCP agora compartilham uma navegação própria, usam melhor o espaço disponível e permanecem claramente separadas da administração da instância.
+
+## v0.14.1-dev.1785896005 — 2026-08-04 · Dev
+
+### 🐛 Markdown no raciocínio do chat
+
+O raciocínio exibido no chat agora interpreta listas, ênfases, títulos e código em Markdown, mantendo a apresentação compacta e as mesmas proteções usadas nas respostas.
+
+## v0.14.1-dev.1785894389 — 2026-08-04 · Dev
+
+### 🎨 Navegação e fontes mais integradas ao espaço de trabalho
+
+The collapsed navigation rail now centers its controls across the complete
+focus-mode gutter. Chat sources open as animated background content while the
+conversation and floating controls retract together, and desktop scrollbar
+arrows keep additional clearance from rounded application edges.
+
+## v0.14.1-dev.1785875339 — 2026-08-04 · Dev
+
+### 🐛 Mais respiro nas bordas da interface
+
+As páginas voltam a iniciar com uma margem discreta no desktop, sem recuperar a
+faixa vazia do cabeçalho. O painel flutuante se afasta da barra de rolagem e as
+setas da rolagem passam a ficar centralizadas em áreas próprias, longe dos
+cantos arredondados.
+
+## v0.14.1-dev.1785872155 — 2026-08-04 · Dev
+
+### 🐛 Mais espaço útil e navegação mais limpa
+
+O cabeçalho flutuante ocupa menos espaço no desktop e deixa de criar uma faixa
+vazia sobre o conteúdo. No celular, as mensagens do chat permanecem abaixo dos
+controles, enquanto barras de rolagem mais finas exibem apenas a seta correta em
+cada extremidade. A área de Artefatos fica temporariamente fora da navegação até
+que seu desenvolvimento seja retomado.
+
+## v0.14.1-dev.1785869169 — 2026-08-04 · Dev
+
+### 🐛 Releases estáveis agora publicam a imagem completa do Easypanel
+
+A publicação de uma release passa a gerar também a imagem combinada com web,
+chat e worker, mantendo as tags da versão e `latest` alinhadas. Repetir o fluxo
+para a mesma versão recupera uma publicação interrompida sem recriar a tag.
+
 ## v0.14.0 — 2026-08-04 · Produção
 
 ### Voxen 0.14.0 — espaços pessoais, login empresarial e qualidade verificável

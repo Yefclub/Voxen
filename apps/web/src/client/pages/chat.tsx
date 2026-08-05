@@ -23,12 +23,11 @@ import {
 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { play } from 'cuelume';
+import { useReducedMotion } from 'motion/react';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../components/ui/sheet';
 import { ApiError, apiDelete, apiGet, apiPost } from '../lib/api';
 import { isTransientStreamDisconnect } from '../lib/chat-stream-errors';
-import { countCitationSources } from '../lib/chat-citation-summary';
 import { useMe } from '../lib/hooks';
 import { useI18n, type I18nKey, type TranslateFn } from '../lib/i18n';
 import { cn } from '../lib/utils';
@@ -80,11 +79,13 @@ import {
   type MessageVersions,
 } from '../lib/chat-versions';
 import { MessageEditForm, UserMessageActions } from '../components/chat/message-versioning';
+import { ChatSourcesPanel, CitationSourcesButton } from '../components/chat/chat-sources-panel';
 import { parseChatCitations, type ChatCitation } from '../../shared/chat-citations';
 import { claimPendingId, reconcileChatStart, sameActiveTurn } from '../lib/chat-reconciliation';
 import {
   getSoundsEnabled,
   setChatEmpty,
+  setChatSourcesOpen,
   setChatStreaming,
   useChatShell,
 } from '../lib/chat-shell-state';
@@ -145,90 +146,6 @@ function normalizeSnapshotMessage(message: ChatMessage): ChatMessage {
   const segments = parseMessageSegments(message.segments);
   const citations = parseChatCitations(message.citations);
   return { ...message, segments: segments ?? undefined, citations: citations ?? undefined };
-}
-
-function citationLocation(citation: ChatCitation, t: TranslateFn): string | null {
-  if (citation.fromSec !== null) {
-    const minutes = Math.floor(citation.fromSec / 60);
-    const seconds = citation.fromSec % 60;
-    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  }
-  if (citation.fromLine !== null) {
-    return citation.toLine && citation.toLine !== citation.fromLine
-      ? t('chat.citationLines', { from: citation.fromLine, to: citation.toLine })
-      : t('chat.citationLine', { line: citation.fromLine });
-  }
-  return null;
-}
-
-function CitationSourcesButton({
-  citations,
-  onOpen,
-}: {
-  citations: ChatCitation[];
-  onOpen: () => void;
-}): React.ReactElement | null {
-  const { t } = useI18n();
-  if (citations.length === 0) return null;
-  const sourceCount = countCitationSources(citations);
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--color-app-muted)] transition-opacity hover:bg-[var(--color-app-surface)] hover:text-[var(--color-app-fg)] opacity-70 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-      aria-label={t(sourceCount === 1 ? 'chat.sourcesOne' : 'chat.sourcesMany', {
-        count: sourceCount,
-      })}
-      title={t('chat.sources')}
-    >
-      <FileText className="h-3.5 w-3.5" />
-      <span>{sourceCount}</span>
-    </button>
-  );
-}
-
-function CitationSourceList({ citations }: { citations: ChatCitation[] }): React.ReactElement {
-  const { t } = useI18n();
-  return (
-    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
-      {citations.map((citation, index) => {
-        const location = citationLocation(citation, t);
-        const verified = citation.verified && citation.kind === 'EVIDENCE' && !citation.stale;
-        return (
-          <a
-            key={`${citation.sourceId}-${index}`}
-            href={citation.href}
-            className={cn(
-              'block rounded-xl border p-3.5 transition-colors hover:bg-[var(--color-app-surface)]',
-              verified ? 'border-emerald-500/30' : 'border-amber-500/35',
-            )}
-          >
-            <div className="flex items-center gap-2 text-xs">
-              <FileText
-                className={cn('h-3.5 w-3.5', verified ? 'text-emerald-400' : 'text-amber-300')}
-              />
-              <span className="min-w-0 flex-1 truncate font-medium text-[var(--color-app-fg)]">
-                {citation.title}
-              </span>
-              <span className={verified ? 'text-emerald-400' : 'text-amber-300'}>
-                {citation.stale
-                  ? t('chat.citationStale')
-                  : verified
-                    ? t('chat.citationVerified')
-                    : t('chat.citationUnverified')}
-              </span>
-            </div>
-            {location && (
-              <p className="mt-2 text-[11px] text-[var(--color-app-muted)]">{location}</p>
-            )}
-            <blockquote className="mt-2 text-sm leading-relaxed text-[var(--color-app-subtle)]">
-              “{citation.quote}”
-            </blockquote>
-          </a>
-        );
-      })}
-    </div>
-  );
 }
 
 type StreamEvent =
@@ -450,13 +367,14 @@ function ThinkingBlock({
               // Raciocínio emitido pelo provedor (spec 126). Vive dentro do
               // bloco recolhível: quem quiser acompanhar, expande. Sem texto
               // (provedor que só sinaliza a etapa), cai no resumo operacional.
-              <p
+              <Markdown
                 key={segment.id}
                 className={cn(
-                  'whitespace-pre-wrap text-[12.5px] leading-relaxed',
-                  live && segment.endedAt == null
-                    ? 'text-shimmer'
-                    : 'text-[var(--color-app-muted)]',
+                  'text-[12.5px] text-[var(--color-app-muted)]',
+                  '[&_p]:leading-relaxed [&_p+p]:mt-2 [&_p+ul]:mt-2 [&_p+ol]:mt-2',
+                  '[&_ul]:mt-1.5 [&_ol]:mt-1.5 [&_li]:leading-relaxed',
+                  '[&_h1]:mt-2 [&_h1]:text-sm [&_h2]:mt-2 [&_h2]:text-sm',
+                  '[&_h3]:mt-2 [&_h3]:text-[13px] [&_blockquote]:my-2',
                 )}
               >
                 {segment.text.trim().length > 0
@@ -464,7 +382,7 @@ function ThinkingBlock({
                   : segment.endedAt == null
                     ? t('chat.reasoningInProgress')
                     : t('chat.reasoningCompleted')}
-              </p>
+              </Markdown>
             ) : (
               <div key={segment.id} className="flex flex-col">
                 {segment.tools.map((tool) => (
@@ -851,6 +769,7 @@ function Composer({
 export function ChatPage(): React.ReactElement {
   const { t } = useI18n();
   const isMobile = useMediaQuery('(max-width: 767px)');
+  const reduceMotion = useReducedMotion();
   const location = useLocation();
   const navigate = useNavigate();
   const { data: me } = useMe();
@@ -984,8 +903,8 @@ export function ChatPage(): React.ReactElement {
       clientHeight: container.clientHeight,
       scrollHeight: container.scrollHeight,
       currentSpacerHeight: spacerHeightRef.current,
+      hasFloatingHeader: isMobile,
     });
-
     applySpacerHeight(plan.spacerHeight);
     reserveEndRef.current = plan.reserveEnd;
     scrollPhaseRef.current = 'anchor';
@@ -1249,9 +1168,13 @@ export function ChatPage(): React.ReactElement {
     setChatEmpty(isEmpty);
   }, [isEmpty]);
   useEffect(() => {
+    setChatSourcesOpen(sourceCitations !== null);
+  }, [sourceCitations]);
+  useEffect(() => {
     return () => {
       setChatStreaming(false);
       setChatEmpty(true);
+      setChatSourcesOpen(false);
     };
   }, []);
 
@@ -1855,7 +1778,8 @@ export function ChatPage(): React.ReactElement {
   return (
     <div
       className={cn(
-        'relative flex h-full min-h-0 w-full flex-col',
+        'relative flex h-full min-h-0 w-full flex-col transition-[padding] duration-300 ease-out',
+        reduceMotion && 'duration-0',
         sourceCitations && 'md:pr-[22rem]',
       )}
     >
@@ -1912,7 +1836,7 @@ export function ChatPage(): React.ReactElement {
             role="log"
             aria-live="off"
             aria-label={t('chat.historyLabel')}
-            className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-5 pt-12 md:py-5"
+            className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-5 pt-16 md:py-5"
           >
             <div className="mx-auto flex w-full max-w-3xl flex-col">
               <div ref={contentWrapRef} className="flex flex-col">
@@ -2070,50 +1994,12 @@ export function ChatPage(): React.ReactElement {
         onConfirm={clearHistory}
       />
 
-      {sourceCitations && (
-        <aside className="absolute inset-y-0 right-0 hidden w-[22rem] flex-col border-l border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] md:flex">
-          <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-app-border)] px-5 py-5">
-            <div className="min-w-0">
-              <h2 className="font-display text-lg font-semibold text-[var(--color-app-fg)]">
-                {t('chat.sources')}
-              </h2>
-              <p className="mt-1 text-sm text-[var(--color-app-muted)]">
-                {t('chat.sourcesDescription', { count: sourceCitations.length })}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSourceCitations(null)}
-              className="rounded-md p-1 text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
-              aria-label={t('common.close')}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </header>
-          <CitationSourceList citations={sourceCitations} />
-        </aside>
-      )}
-
-      <Sheet
-        open={isMobile && sourceCitations !== null}
-        onOpenChange={(open) => !open && setSourceCitations(null)}
-      >
-        <SheetContent className="md:hidden">
-          {sourceCitations && (
-            <>
-              <header className="shrink-0 border-b border-[var(--color-app-border)] px-5 py-5 pr-12">
-                <SheetTitle className="font-display text-lg font-semibold">
-                  {t('chat.sources')}
-                </SheetTitle>
-                <SheetDescription className="mt-1 text-sm text-[var(--color-app-muted)]">
-                  {t('chat.sourcesDescription', { count: sourceCitations.length })}
-                </SheetDescription>
-              </header>
-              <CitationSourceList citations={sourceCitations} />
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
+      <ChatSourcesPanel
+        citations={sourceCitations}
+        isMobile={isMobile}
+        reduceMotion={reduceMotion === true}
+        onClose={() => setSourceCitations(null)}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   ANCHOR_MAX_MESSAGE_RATIO,
   ANCHOR_TOP_GAP_PX,
+  MOBILE_ANCHOR_TOP_GAP_PX,
   FOLLOW_REARM_DISTANCE_PX,
   REENGAGE_GAP_MIN_PX,
   SCROLL_LATEST_SHOW_DISTANCE_PX,
@@ -70,6 +71,18 @@ describe('planAnchor', () => {
     });
     expect(plan.targetScrollTop).toBe(5000 - ANCHOR_TOP_GAP_PX);
     expect(plan.reserveEnd).toBe(plan.targetScrollTop + 800);
+  });
+
+  test('uses the larger mobile gap when the floating header is present', () => {
+    const plan = planAnchor({
+      messageTop: 5000,
+      clientHeight: 800,
+      scrollHeight: 5400,
+      currentSpacerHeight: 0,
+      hasFloatingHeader: true,
+    });
+    expect(plan.targetScrollTop).toBe(5000 - MOBILE_ANCHOR_TOP_GAP_PX);
+    expect(MOBILE_ANCHOR_TOP_GAP_PX).toBeGreaterThan(ANCHOR_TOP_GAP_PX);
   });
 
   test('computes spacer so the anchor sits at max scroll', () => {
