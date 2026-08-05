@@ -11,8 +11,7 @@ import {
 } from '@/components/ui/icons';
 import { useFetch } from '../lib/hooks';
 import { useI18n } from '../lib/i18n';
-import type { VersionResponse } from '../lib/types';
-import { resolveVersionEnvironment } from '../lib/version-env';
+import type { VersionEnvironment } from '../../shared/version-environment';
 import { releaseTypeI18nKey } from '../../shared/release-type';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -47,6 +46,7 @@ type ReleasesResponse = {
   limit: number;
   offset: number;
   hasMore: boolean;
+  environment: VersionEnvironment;
 };
 
 const PAGE_SIZE = 12;
@@ -60,7 +60,6 @@ export function NovidadesPage(): React.ReactElement {
   };
   const [searchParams, setSearchParams] = useSearchParams();
   const page = positivePage(searchParams.get('page'));
-  const channel = normalizeChannel(searchParams.get('channel'));
   const type = normalizeType(searchParams.get('type'));
   const queryParam = searchParams.get('q')?.trim() ?? '';
   const [query, setQuery] = useState(queryParam);
@@ -80,13 +79,12 @@ export function NovidadesPage(): React.ReactElement {
       limit: String(PAGE_SIZE),
       offset: String((page - 1) * PAGE_SIZE),
     });
-    if (channel !== 'all') params.set('channel', channel);
     if (type !== 'all') params.set('type', type);
     if (queryParam) params.set('q', queryParam);
+    params.set('locale', locale);
     return `/api/releases?${params.toString()}`;
-  }, [channel, page, queryParam, type]);
+  }, [locale, page, queryParam, type]);
   const { data, loading, error, refresh } = useFetch<ReleasesResponse>(releasesUrl);
-  const { data: versionData } = useFetch<VersionResponse>('/api/version');
 
   useEffect(() => {
     if (data) setRetained(data);
@@ -96,16 +94,16 @@ export function NovidadesPage(): React.ReactElement {
   const releases = feed?.releases ?? [];
   const total = feed?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const environment = versionData ? resolveVersionEnvironment(versionData.version) : null;
+  const environment = feed?.environment ?? null;
 
   useEffect(() => {
     if (!data || page <= totalPages) return;
     updateReleaseParams(setSearchParams, searchParams, { page: String(totalPages) });
   }, [data, page, searchParams, setSearchParams, totalPages]);
 
-  function setFilter(key: 'channel' | 'type', value: string): void {
+  function setFilter(value: string): void {
     updateReleaseParams(setSearchParams, searchParams, {
-      [key]: value === 'all' ? '' : value,
+      type: value === 'all' ? '' : value,
       page: '1',
     });
   }
@@ -135,7 +133,7 @@ export function NovidadesPage(): React.ReactElement {
       />
 
       <DataSurface data-page-reveal className="overflow-visible p-3 sm:p-4">
-        <div className="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_12rem_12rem_auto] lg:items-end">
+        <div className="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_12rem_auto] lg:items-end">
           <label className="space-y-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-app-muted)]">
               {t('novidades.search')}
@@ -151,19 +149,9 @@ export function NovidadesPage(): React.ReactElement {
             </span>
           </label>
           <ReleaseSelect
-            label={t('novidades.filter.channel')}
-            value={channel}
-            onChange={(value) => setFilter('channel', value)}
-            options={[
-              ['all', t('novidades.filter.all')],
-              ['prod', t('novidades.channel.prod')],
-              ['dev', t('novidades.channel.dev')],
-            ]}
-          />
-          <ReleaseSelect
             label={t('novidades.filter.type')}
             value={type}
-            onChange={(value) => setFilter('type', value)}
+            onChange={setFilter}
             options={[
               ['all', t('novidades.filter.all')],
               ...RELEASE_TYPES.map((releaseType) => [releaseType, typeLabel(releaseType)] as const),
@@ -239,8 +227,6 @@ export function NovidadesPage(): React.ReactElement {
                   promotedLabel={t('novidades.promoted', {
                     count: entry.promoted?.length ?? 0,
                   })}
-                  prodLabel={t('novidades.channel.prod')}
-                  devLabel={t('novidades.channel.dev')}
                 />
               ))}
             </ol>
@@ -311,15 +297,11 @@ function ReleaseItem({
   locale,
   typeLabel,
   promotedLabel,
-  prodLabel,
-  devLabel,
 }: {
   entry: ReleaseEntry;
   locale: string;
   typeLabel: (releaseType: string) => string;
   promotedLabel: string;
-  prodLabel: string;
-  devLabel: string;
 }): React.ReactElement {
   return (
     <li className="relative pl-10 sm:pl-12">
@@ -327,9 +309,6 @@ function ReleaseItem({
       <DataSurface className="p-4 transition-colors hover:border-[var(--color-app-border-strong)] sm:p-5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs text-[var(--color-app-subtle)]">v{entry.version}</span>
-          <Badge variant={entry.channel === 'prod' ? 'success' : 'muted'} className="text-[10px]">
-            {entry.channel === 'prod' ? prodLabel : devLabel}
-          </Badge>
           {entry.type && (
             <Badge variant="outline" className="text-[10px] uppercase">
               {typeLabel(entry.type)}
@@ -416,10 +395,6 @@ function updateReleaseParams(
 function positivePage(value: string | null): number {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-}
-
-function normalizeChannel(value: string | null): 'all' | 'dev' | 'prod' {
-  return value === 'dev' || value === 'prod' ? value : 'all';
 }
 
 function normalizeType(value: string | null): string {

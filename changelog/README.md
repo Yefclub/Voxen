@@ -1,46 +1,71 @@
 # Changelog
 
-As novidades do Voxen são montadas a partir de **um arquivo por PR**, commitado
-junto da mudança. Cada PR adiciona um arquivo `changelog/unreleased/<slug>.md`
-descrevendo o que mudou **para o usuário final**.
+Voxen release notes are assembled from **one file per PR**, committed with the
+change. Each product PR adds `changelog/unreleased/<slug>.md` describing what
+changed for an end user.
 
-No merge em `dev`, o workflow `version-dev` consome esses arquivos, carimba a
-versão (`X.Y.Z-dev.<timestamp>`) e a data, move o conteúdo para `releases.json`
-(página de **Novidades**) e remove o arquivo de `unreleased/`.
+When the PR merges into `dev`, the `version-dev` workflow consumes the files,
+stamps the version (`X.Y.Z-dev.<timestamp>`) and date, moves the content into
+`releases.json` (the **What's new** page), and removes the source file.
 
-O CI **falha a PR** que não adicionar o arquivo (exceto PRs só de infra/docs/CI).
+CI fails a product PR that does not add a release note. Infrastructure,
+documentation, and CI-only changes are exempt.
 
-## Formato
+## Bilingual format
+
+Release notes use English as the canonical repository language and include a
+curated Brazilian Portuguese translation for the product UI. The HTML marker is
+only a delimiter for the pipeline; it is not rendered to end users.
 
 ```markdown
 ---
-tipo: feat        # feat | fix | perf | ui | infra | security | chore
-titulo: Título claro e descritivo, voltado ao usuário
+tipo: feat # feat | fix | perf | ui | infra | security | chore
+titulo_en: Clear, user-facing English title
+titulo_pt_br: Título claro em português voltado à pessoa usuária
 ---
 
-Corpo em markdown **detalhado** — o que mudou, onde aparece na interface e por quê.
+Detailed English Markdown body — what changed, where it appears, and why.
+
+<!-- pt-BR -->
+
+Corpo detalhado em Markdown em português — o que mudou, onde aparece e por quê.
 ```
 
-## Tipos
+Entries created before this format remain supported and display their original
+text until they receive a curated translation.
 
-| tipo       | uso                         |
-| ---------- | --------------------------- |
-| `feat`     | nova funcionalidade visível |
-| `fix`      | correção de bug             |
-| `perf`     | melhoria de performance     |
-| `ui`       | mudança visual / UX         |
-| `infra`    | infra / DevOps / pipeline   |
-| `security` | segurança                   |
-| `chore`    | manutenção / interno        |
+## Types
 
-## Release de produção (dev → main)
+| type       | use                        |
+| ---------- | -------------------------- |
+| `feat`     | visible product feature    |
+| `fix`      | bug fix                    |
+| `perf`     | performance improvement    |
+| `ui`       | visual or UX change        |
+| `infra`    | infrastructure or pipeline |
+| `security` | security improvement       |
+| `chore`    | maintenance or internal    |
 
-Na PR de release, escreva **um** arquivo `changelog/RELEASE.md` curado:
+## Production release (`dev` → `main`)
+
+In the release PR, write one curated `changelog/RELEASE.md` using the same
+bilingual format:
 
 ```markdown
 ---
-titulo: Voxen 0.11 — Biblioteca e versionamento
+titulo_en: Voxen 0.11 — Library and versioning
+titulo_pt_br: Voxen 0.11 — Biblioteca e versionamento
 ---
+
+## Library
+
+Compact cards, folders, and AI-assisted organization…
+
+## Versioning
+
+Development builds now show X.Y.Z-dev.timestamp…
+
+<!-- pt-BR -->
 
 ## Biblioteca
 
@@ -48,5 +73,5 @@ Cards compactos, pastas e organização com IA…
 
 ## Versionamento
 
-Builds de dev agora exibem X.Y.Z-dev.timestamp…
+Builds de desenvolvimento agora exibem X.Y.Z-dev.timestamp…
 ```

@@ -8,7 +8,6 @@ import { Badge } from './ui/badge';
 import { useI18n } from '../lib/i18n';
 import type { VersionMonitorState } from '../lib/use-version-monitor';
 import { useChatShell } from '../lib/chat-shell-state';
-import { resolveVersionEnvironment } from '../lib/version-env';
 import { releaseTypeI18nKey } from '../../shared/release-type';
 import {
   resolveReleaseCopy,
@@ -51,7 +50,7 @@ export function UpdateModal({
 }: {
   monitor: VersionMonitorState;
 }): React.ReactElement | null {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const { update, apply, snooze } = monitor;
   const { streaming } = useChatShell();
   const location = useLocation();
@@ -65,11 +64,11 @@ export function UpdateModal({
     if (!update?.toVersion) return null;
     const params = new URLSearchParams({
       version: update.toVersion,
-      channel: resolveVersionEnvironment(update.toVersion),
       limit: '1',
+      locale,
     });
     return `/api/releases?${params.toString()}`;
-  }, [update?.toVersion]);
+  }, [locale, update?.toVersion]);
 
   // Silent apply: when an update is known and chat is not streaming, apply
   // without the modal. Streaming keeps the update pending until it ends.
