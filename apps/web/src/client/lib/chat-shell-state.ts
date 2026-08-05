@@ -19,6 +19,7 @@ interface ChatShellState {
   soundsEnabled: boolean;
   streaming: boolean;
   isEmpty: boolean;
+  sourcesOpen: boolean;
   /** Contador incremental — cada incremento é um pedido de limpar a conversa. */
   clearSignal: number;
 }
@@ -39,6 +40,7 @@ let current: ChatShellState = {
   soundsEnabled: initialSounds,
   streaming: false,
   isEmpty: true,
+  sourcesOpen: false,
   clearSignal: 0,
 };
 
@@ -67,6 +69,10 @@ export function setChatStreaming(next: boolean): void {
 
 export function setChatEmpty(next: boolean): void {
   if (current.isEmpty !== next) update({ isEmpty: next });
+}
+
+export function setChatSourcesOpen(next: boolean): void {
+  if (current.sourcesOpen !== next) update({ sourcesOpen: next });
 }
 
 export function requestClearConversation(): void {

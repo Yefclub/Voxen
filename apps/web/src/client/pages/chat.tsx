@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { play } from 'cuelume';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Markdown } from '../components/ui/markdown';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../components/ui/sheet';
@@ -85,6 +86,7 @@ import { claimPendingId, reconcileChatStart, sameActiveTurn } from '../lib/chat-
 import {
   getSoundsEnabled,
   setChatEmpty,
+  setChatSourcesOpen,
   setChatStreaming,
   useChatShell,
 } from '../lib/chat-shell-state';
@@ -851,6 +853,7 @@ function Composer({
 export function ChatPage(): React.ReactElement {
   const { t } = useI18n();
   const isMobile = useMediaQuery('(max-width: 767px)');
+  const reduceMotion = useReducedMotion();
   const location = useLocation();
   const navigate = useNavigate();
   const { data: me } = useMe();
@@ -1249,9 +1252,13 @@ export function ChatPage(): React.ReactElement {
     setChatEmpty(isEmpty);
   }, [isEmpty]);
   useEffect(() => {
+    setChatSourcesOpen(sourceCitations !== null);
+  }, [sourceCitations]);
+  useEffect(() => {
     return () => {
       setChatStreaming(false);
       setChatEmpty(true);
+      setChatSourcesOpen(false);
     };
   }, []);
 
@@ -1855,7 +1862,8 @@ export function ChatPage(): React.ReactElement {
   return (
     <div
       className={cn(
-        'relative flex h-full min-h-0 w-full flex-col',
+        'relative flex h-full min-h-0 w-full flex-col transition-[padding] duration-300 ease-out',
+        reduceMotion && 'duration-0',
         sourceCitations && 'md:pr-[22rem]',
       )}
     >
@@ -2070,29 +2078,39 @@ export function ChatPage(): React.ReactElement {
         onConfirm={clearHistory}
       />
 
-      {sourceCitations && (
-        <aside className="absolute inset-y-0 right-0 hidden w-[22rem] flex-col border-l border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] md:flex">
-          <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-app-border)] px-5 py-5">
-            <div className="min-w-0">
-              <h2 className="font-display text-lg font-semibold text-[var(--color-app-fg)]">
-                {t('chat.sources')}
-              </h2>
-              <p className="mt-1 text-sm text-[var(--color-app-muted)]">
-                {t('chat.sourcesDescription', { count: sourceCitations.length })}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSourceCitations(null)}
-              className="rounded-md p-1 text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
-              aria-label={t('common.close')}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </header>
-          <CitationSourceList citations={sourceCitations} />
-        </aside>
-      )}
+      <AnimatePresence initial={false}>
+        {sourceCitations && (
+          <motion.aside
+            initial={reduceMotion ? false : { x: '100%', opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
+            transition={
+              reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }
+            }
+            className="absolute inset-y-0 right-0 hidden w-[22rem] flex-col bg-[var(--color-app-bg)] md:flex"
+          >
+            <header className="flex shrink-0 items-start justify-between gap-3 px-5 pb-4 pt-5">
+              <div className="min-w-0">
+                <h2 className="font-display text-lg font-semibold text-[var(--color-app-fg)]">
+                  {t('chat.sources')}
+                </h2>
+                <p className="mt-1 text-sm text-[var(--color-app-muted)]">
+                  {t('chat.sourcesDescription', { count: sourceCitations.length })}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSourceCitations(null)}
+                className="rounded-md p-1 text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+                aria-label={t('common.close')}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </header>
+            <CitationSourceList citations={sourceCitations} />
+          </motion.aside>
+        )}
+      </AnimatePresence>
 
       <Sheet
         open={isMobile && sourceCitations !== null}

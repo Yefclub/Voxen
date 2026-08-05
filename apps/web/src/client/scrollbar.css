@@ -46,12 +46,12 @@
 
   *::-webkit-scrollbar-button:vertical:decrement:start,
   *::-webkit-scrollbar-button:vertical:increment:end {
-    height: 16px;
+    height: 24px;
   }
 
   *::-webkit-scrollbar-button:horizontal:decrement:start,
   *::-webkit-scrollbar-button:horizontal:increment:end {
-    width: 16px;
+    width: 24px;
   }
 
   *::-webkit-scrollbar-button:hover {
@@ -63,8 +63,8 @@
       linear-gradient(135deg, transparent 50%, #fff 50%),
       linear-gradient(45deg, #fff 50%, transparent 50%) !important;
     background-position:
-      1px 7px,
-      4px 7px !important;
+      1px 11px,
+      4px 11px !important;
   }
 
   *::-webkit-scrollbar-button:vertical:increment:end {
@@ -72,8 +72,8 @@
       linear-gradient(45deg, transparent 50%, #fff 50%),
       linear-gradient(135deg, #fff 50%, transparent 50%) !important;
     background-position:
-      1px 6px,
-      4px 6px !important;
+      1px 10px,
+      4px 10px !important;
   }
 
   *::-webkit-scrollbar-button:horizontal:decrement:start {
@@ -81,8 +81,8 @@
       linear-gradient(135deg, transparent 50%, #fff 50%),
       linear-gradient(45deg, transparent 50%, #fff 50%) !important;
     background-position:
-      7px 1px,
-      7px 4px !important;
+      11px 1px,
+      11px 4px !important;
   }
 
   *::-webkit-scrollbar-button:horizontal:increment:end {
@@ -90,8 +90,8 @@
       linear-gradient(45deg, #fff 50%, transparent 50%),
       linear-gradient(135deg, #fff 50%, transparent 50%) !important;
     background-position:
-      6px 1px,
-      6px 4px !important;
+      10px 1px,
+      10px 4px !important;
   }
 
   *::-webkit-scrollbar-corner {

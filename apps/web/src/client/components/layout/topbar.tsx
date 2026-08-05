@@ -69,6 +69,7 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   const { t } = useI18n();
   const { theme, setTheme, toggleAppearance } = useTheme();
   const { interfaceMode } = useInterfaceMode();
+  const { sourcesOpen } = useChatShell();
   const inChat = isChatRoute(location.pathname);
   const mobileUserMenuNeeded = hidesBottomNav(location.pathname, false);
   const onSignOut = async (): Promise<void> => {
@@ -80,11 +81,12 @@ export function Topbar({ user }: { user: MeUser }): React.ReactElement {
   return (
     <header
       className={cn(
-        'fixed right-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 flex items-center gap-1.5 border-0 bg-transparent p-0 shadow-none backdrop-blur-none',
+        'fixed right-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 flex items-center gap-1.5 border-0 bg-transparent p-0 shadow-none backdrop-blur-none transition-transform motion-reduce:transition-none',
         'md:gap-2 md:rounded-xl md:border md:border-[var(--color-app-border)] md:bg-[var(--color-app-bg-elevated)]/85 md:px-2 md:py-1.5 md:backdrop-blur-xl',
         interfaceMode === 'focus'
           ? 'md:right-9 md:top-[calc(env(safe-area-inset-top)+1.25rem)]'
           : 'md:right-7 md:top-[calc(env(safe-area-inset-top)+1rem)]',
+        inChat && sourcesOpen && 'md:-translate-x-[22rem]',
       )}
     >
       {inChat && <ChatShellControls />}
