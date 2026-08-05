@@ -1,6 +1,6 @@
 ---
-type: fix
-title: Shell navigation and sources polish
+tipo: ui
+titulo: Navegação e fontes mais integradas ao espaço de trabalho
 ---
 
 The collapsed navigation rail now centers its controls across the complete

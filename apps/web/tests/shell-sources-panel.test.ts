@@ -10,7 +10,9 @@ describe('desktop shell sources panel contract', () => {
     const sidebar = source('components/layout/sidebar.tsx');
 
     expect(sidebar).toContain('const FOCUS_SURFACE_GAP = 8');
-    expect(sidebar).toContain('width: focusInterface ? RAIL_WIDTH + FOCUS_SURFACE_GAP : RAIL_WIDTH');
+    expect(sidebar).toContain(
+      'width: focusInterface ? RAIL_WIDTH + FOCUS_SURFACE_GAP : RAIL_WIDTH',
+    );
   });
 
   test('animates the chat surface and sources as background content', () => {
