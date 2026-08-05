@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.1-dev.1785897416 — 2026-08-04 · Dev
+
+### 🎨 Páginas pessoais de conta mais consistentes
+
+As páginas de perfil, contas de plataforma e acesso MCP agora compartilham uma navegação própria, usam melhor o espaço disponível e permanecem claramente separadas da administração da instância.
+
 ## v0.14.1-dev.1785896005 — 2026-08-04 · Dev
 
 ### 🐛 Markdown no raciocínio do chat
