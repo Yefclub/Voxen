@@ -367,13 +367,14 @@ function ThinkingBlock({
               // Raciocínio emitido pelo provedor (spec 126). Vive dentro do
               // bloco recolhível: quem quiser acompanhar, expande. Sem texto
               // (provedor que só sinaliza a etapa), cai no resumo operacional.
-              <p
+              <Markdown
                 key={segment.id}
                 className={cn(
-                  'whitespace-pre-wrap text-[12.5px] leading-relaxed',
-                  live && segment.endedAt == null
-                    ? 'text-shimmer'
-                    : 'text-[var(--color-app-muted)]',
+                  'text-[12.5px] text-[var(--color-app-muted)]',
+                  '[&_p]:leading-relaxed [&_p+p]:mt-2 [&_p+ul]:mt-2 [&_p+ol]:mt-2',
+                  '[&_ul]:mt-1.5 [&_ol]:mt-1.5 [&_li]:leading-relaxed',
+                  '[&_h1]:mt-2 [&_h1]:text-sm [&_h2]:mt-2 [&_h2]:text-sm',
+                  '[&_h3]:mt-2 [&_h3]:text-[13px] [&_blockquote]:my-2',
                 )}
               >
                 {segment.text.trim().length > 0
@@ -381,7 +382,7 @@ function ThinkingBlock({
                   : segment.endedAt == null
                     ? t('chat.reasoningInProgress')
                     : t('chat.reasoningCompleted')}
-              </p>
+              </Markdown>
             ) : (
               <div key={segment.id} className="flex flex-col">
                 {segment.tools.map((tool) => (
