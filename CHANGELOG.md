@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.1-dev.1785894389 — 2026-08-04 · Dev
+
+### 🎨 Navegação e fontes mais integradas ao espaço de trabalho
+
+The collapsed navigation rail now centers its controls across the complete
+focus-mode gutter. Chat sources open as animated background content while the
+conversation and floating controls retract together, and desktop scrollbar
+arrows keep additional clearance from rounded application edges.
+
 ## v0.14.1-dev.1785875339 — 2026-08-04 · Dev
 
 ### 🐛 Mais respiro nas bordas da interface
