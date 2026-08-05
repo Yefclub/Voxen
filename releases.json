@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.14.1-dev.1785897416",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Páginas pessoais de conta mais consistentes",
+    "body": "As páginas de perfil, contas de plataforma e acesso MCP agora compartilham uma navegação própria, usam melhor o espaço disponível e permanecem claramente separadas da administração da instância.",
+    "pr": 625,
+    "author": "Kalyel",
+    "date": "2026-08-04T23:36:22-03:00",
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/625"
+  },
+  {
     "version": "0.14.1-dev.1785896005",
     "channel": "dev",
     "type": "fix",
