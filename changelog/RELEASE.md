@@ -1,75 +1,43 @@
 ---
 tipo: feat
-titulo: Voxen 0.14.0 — espaços pessoais, login empresarial e qualidade verificável
+titulo: Voxen 0.14.1 — interface refinada e busca conectada
 ---
 
-## Uma interface que se adapta a cada pessoa
+## Navegação focada mais integrada
 
-Cada usuário pode continuar com a navegação clássica ou ativar o novo modo
-focado, inspirado no Vesper. Nesse modo, a navegação fica integrada ao fundo e
-o conteúdo principal ganha uma superfície dedicada, sem alterar a experiência
-em telas menores. A preferência é pessoal, acessível e permanece sincronizada
-quando a pessoa retorna a outra aba do navegador.
+A interface focada ganhou uma composição mais coesa: os controles da barra
+recolhida ficam centralizados, o painel de fontes passa a fazer parte do fundo
+do espaço de trabalho e a conversa se retrai suavemente quando as evidências são
+abertas. O cabeçalho flutuante acompanha essa transição sem cobrir o conteúdo.
 
-## Administração e conta pessoal em lugares distintos
+O espaçamento nas bordas, a altura do cabeçalho e as barras de rolagem também
+foram refinados. No desktop, os controles direcionais respeitam os cantos
+arredondados; no celular, a primeira mensagem permanece visível abaixo dos
+controles. A área de Artefatos fica temporariamente fora da navegação enquanto
+seu próximo ciclo de produto é preparado.
 
-Configurações compartilhadas da instância agora vivem em uma área administrativa
-própria, separada das páginas de uso diário e dos dados particulares. Modelos,
-autenticação, integrações, usuários e custos ficam claros para administradores,
-enquanto cada pessoa controla os próprios acessos MCP, expiração e revogação sem
-expor segredos de outros usuários.
+## Conta pessoal consistente e separada da administração
 
-## Login empresarial com OIDC seguro
+Perfil e segurança, contas de plataforma e acesso MCP agora compartilham a mesma
+navegação, hierarquia visual e largura de conteúdo das demais páginas. Isso
+reforça a separação entre escolhas particulares de cada pessoa e configurações
+globais reservadas aos administradores da instância.
 
-Administradores podem configurar provedores OpenID Connect para os domínios da
-organização. O fluxo usa PKCE, exige e-mail verificado, valida destinos HTTPS e
-mantém a política de aprovação de contas da Voxen. Segredos do provedor ficam
-criptografados, tokens do provedor não são armazenados e contas bloqueadas ou
-rejeitadas não conseguem criar sessão.
+## Busca da biblioteca apoiada pelo grafo
 
-A configuração também preserva desafios DNS ainda válidos ao recarregar a
-página, limita tentativas públicas de início de sessão e consulta somente
-provedores verificados e ativos. Isso reduz abuso e evita invalidar um registro
-TXT que já esteja em propagação.
+A busca das transcrições ocupa uma posição mais fácil de encontrar e passa a
+considerar conceitos relacionados já extraídos no grafo, além dos campos
+textuais tradicionais. Os sinais adicionais têm peso controlado, ignoram
+consultas curtas e continuam estritamente limitados à base do usuário atual.
 
-## Qualidade e migrations verificadas antes do merge
+## Raciocínio do chat com Markdown
 
-O CI ganhou uma catraca de qualidade que acompanha cobertura, duplicação e
-tamanho de arquivos sem exigir que toda a dívida histórica seja resolvida de
-uma vez. Novas regressões são bloqueadas e recebem um relatório próprio para
-orientar a correção.
+O bloco de raciocínio agora apresenta títulos, listas, ênfases e código em
+Markdown com a mesma sanitização aplicada às respostas. Textos estruturados
+deixam de aparecer como marcação crua sem ampliar a superfície de conteúdo HTML.
 
-O histórico do Prisma também passa por um gate dedicado: mudanças de schema
-exigem migrations ordenadas, o histórico integrado não pode ser reescrito e a
-evolução completa é reproduzida em PostgreSQL isolado antes do merge.
+## Publicação completa no Easypanel
 
-Os defaults de atualização das tabelas compartilhadas com o worker também foram
-restaurados no próprio PostgreSQL. Assim, gravações diretas em segundo plano
-continuam seguras mesmo quando não passam pelo cliente Prisma.
-
-## Dependências críticas atualizadas e auditadas
-
-As dependências web e do worker receberam correções para quatro vulnerabilidades
-de alta severidade. O CI agora bloqueia novas ocorrências nas duas plataformas,
-e a imagem do worker passa a instalar o lockfile auditado de forma estrita para
-que o ambiente publicado corresponda ao que foi validado.
-
-## Rolagem e grafo mais previsíveis
-
-O modo focado ganhou barras de rolagem alinhadas às superfícies arredondadas,
-com controles direcionais completos no desktop e comportamento preservado em
-dispositivos de toque. No grafo, cobertura parcial deixa de aparecer como falha:
-a interface explica que o conteúdo está aguardando indexação, respeita a janela
-de nova tentativa sem consultas infinitas e atualiza o mapa assim que o processo
-converge.
-
-## Novidades de produção confiáveis
-
-A preparação da release agora grava a nota curada no feed de **Novidades** de
-forma idempotente. Assim, a página mostra o que realmente chegou à produção,
-sem duplicar versões nem confundir entradas de desenvolvimento com releases
-estáveis.
-
-O versionamento de desenvolvimento passou a comparar `dev` com `main` e reserva
-o próximo patch quando necessário. Builds de teste deixam de parecer anteriores
-à versão estável em comparações SemVer, mantendo deploys e atualizações em ordem.
+Releases estáveis agora publicam também a imagem combinada que reúne web, chat e
+worker. As tags da versão e `latest` permanecem alinhadas, e uma execução
+interrompida pode ser retomada sem recriar a tag da release.
