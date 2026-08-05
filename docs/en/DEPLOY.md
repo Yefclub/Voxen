@@ -131,16 +131,40 @@ docker compose --profile nginx up -d --build
 
 ## Easypanel
 
-Easypanel is supported. Prefer deploying a published Docker image:
+Easypanel is supported. The recommended topology is **one Voxen App** from the
+published combined image plus **three persistent data services** in the same
+Easypanel project: PostgreSQL, Redis, and MinIO (or another S3-compatible
+provider). Do not deploy separate `voxen-web`, `voxen-worker`, or `voxen-chat`
+services: the current Voxen image runs the web/API, worker, and integrated chat
+runtime together.
+
+Provision the data services first, create the `voxen-transcripts` bucket and an
+access key with read/write access, then deploy the App from a Docker image:
 
 - `ghcr.io/yefclub/voxen:dev` for integration deployments
 - `ghcr.io/yefclub/voxen:latest` for stable releases
+
+Configure port `3000` and health check path `/health`. In the App Environment,
+set `APP_BASE_URL`, `BETTER_AUTH_SECRET`, `MASTER_KEY`, `DATABASE_URL`,
+`REDIS_URL`, and the `S3_*` values for the services you provisioned. Use each
+service's internal Easypanel hostname where possible. After deployment, verify
+both `/health` and `/health/deep`; the deep health check confirms PostgreSQL,
+Redis, and S3/MinIO access.
 
 Stable release automation publishes the versioned combined image and advances
 `latest` from the same `vX.Y.Z` tag. The `dev` image is published only through a
 manual `Easypanel Image` workflow run, avoiding a deployment on every merge.
 
-The GitHub/Dockerfile source mode can work, but build-time environment handling may expose secrets in build logs. Image-based deployment is safer.
+The GitHub/Dockerfile source mode can work for an intentional test deployment,
+but build-time environment handling may expose secrets in build logs.
+Image-based deployment is the recommended production path because secrets are
+supplied only at runtime.
+
+On a home lab, this single App is all the Voxen application infrastructure you
+need. On a VPS/datacenter, the optional
+`ghcr.io/yefclub/voxen-proxy-agent` runs separately on a residential/home-lab
+host only when media platforms block the VPS IP; it routes extraction traffic
+and does not replace or duplicate the Voxen App.
 
 For SSE notifications behind Traefik/HTTP2, deploy a version with the
 HTTP2-safe SSE writer. It avoids `Connection` and `Transfer-Encoding` headers
