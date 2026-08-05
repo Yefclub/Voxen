@@ -98,6 +98,7 @@ export function isNavItemActive(pathname: string, to: string): boolean {
 
 const SIDEBAR_WIDTH = 288;
 const RAIL_WIDTH = 60;
+const FOCUS_SURFACE_GAP = 8;
 
 /**
  * Alvo de clique do rail: quadrado de 36px, ícone de 18px centralizado. Todo
@@ -274,7 +275,7 @@ function SidebarRail({
           ? 'inset-y-0 left-0 bg-transparent'
           : 'top-4 bottom-4 left-4 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/85 backdrop-blur-xl',
       )}
-      style={{ width: RAIL_WIDTH }}
+      style={{ width: focusInterface ? RAIL_WIDTH + FOCUS_SURFACE_GAP : RAIL_WIDTH }}
       aria-label={t('shell.openMenu')}
     >
       <TooltipProvider delayDuration={200}>
