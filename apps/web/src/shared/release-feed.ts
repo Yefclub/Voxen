@@ -149,7 +149,10 @@ export function localizeReleaseItem(
   locale: ReleaseLocale,
 ): LocalizedReleaseFeedItem {
   return {
-    ...entry,
+    ...(entry.type ? { type: entry.type } : {}),
+    ...(entry.pr !== undefined ? { pr: entry.pr } : {}),
+    ...(entry.prUrl ? { prUrl: entry.prUrl } : {}),
+    ...(entry.translations ? { translations: entry.translations } : {}),
     title: localizedValue(entry, 'title', locale),
     body: localizedValue(entry, 'body', locale),
     summary: localizedValue(entry, 'summary', locale),
@@ -160,9 +163,13 @@ export function localizeReleaseEntry(
   entry: ReleaseFeedEntry,
   locale: ReleaseLocale,
 ): LocalizedReleaseFeedEntry {
-  const { promoted, ...rest } = entry;
+  const { promoted } = entry;
   return {
-    ...localizeReleaseItem(rest, locale),
+    version: entry.version,
+    channel: entry.channel,
+    ...(entry.author !== undefined ? { author: entry.author } : {}),
+    ...(entry.date ? { date: entry.date } : {}),
+    ...localizeReleaseItem(entry, locale),
     ...(promoted ? { promoted: promoted.map((item) => localizeReleaseItem(item, locale)) } : {}),
   };
 }
