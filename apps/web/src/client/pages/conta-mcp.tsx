@@ -14,6 +14,7 @@ import { Switch } from '../components/ui/switch';
 import { ApiError, apiDelete, apiGet, apiPost } from '../lib/api';
 import { useI18n } from '../lib/i18n';
 import { nextLocalDateTimeInputMin } from '../lib/local-datetime';
+import { AccountPageNav } from '../components/account/account-page-nav';
 
 interface PersonalMcpToken {
   id: string;
@@ -110,7 +111,7 @@ export function ContaMcpPage(): React.ReactElement {
   }
 
   return (
-    <PageShell width="reading">
+    <PageShell width="wide">
       <PageHeader
         eyebrow={t('account.eyebrow')}
         icon={KeyRound}
@@ -118,6 +119,8 @@ export function ContaMcpPage(): React.ReactElement {
         title={t('account.mcp.title')}
         description={t('account.mcp.description')}
       />
+
+      <AccountPageNav />
 
       {secret && (
         <Card elevated className="border-emerald-500/30 bg-emerald-500/[0.045]">

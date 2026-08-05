@@ -11,6 +11,7 @@ import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { ApiError, apiDelete, apiGet } from '../lib/api';
 import { cn } from '../lib/utils';
 import { useI18n } from '../lib/i18n';
+import { AccountPageNav } from '../components/account/account-page-nav';
 
 const PLATFORM_LABELS: Record<string, string> = {
   tiktok: 'TikTok',
@@ -61,7 +62,7 @@ export function ContaPlataformasPage(): React.ReactElement {
   }
 
   return (
-    <PageShell width="reading">
+    <PageShell width="wide">
       <PageHeader
         eyebrow={t('account.eyebrow')}
         icon={Link2}
@@ -69,6 +70,8 @@ export function ContaPlataformasPage(): React.ReactElement {
         title={t('account.platforms.title')}
         description={t('account.platforms.description')}
       />
+
+      <AccountPageNav />
 
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
         <Card elevated>
