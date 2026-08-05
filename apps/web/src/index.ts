@@ -25,7 +25,7 @@ import { automationsRoutes } from './routes/automations';
 import { mcpRoutes } from './routes/mcp';
 import { mcpTokenRoutes } from './routes/mcp-tokens';
 import { graphRoutes } from './routes/graph';
-import { releasesRoutes } from './routes/releases';
+import { createReleasesRoutes } from './routes/releases';
 import { shareTargetRoutes } from './routes/share-target';
 import { chatRoutes } from './routes/chat';
 import { extensionMetaRoutes } from './routes/extension-meta';
@@ -247,7 +247,7 @@ app.route('/api/mcp/tokens', mcpTokenRoutes);
 // Graph view (visualização Obsidian-like da KB)
 app.route('/api/graph', graphRoutes);
 // Changelog / release notes (releases.json)
-app.route('/api/releases', releasesRoutes);
+app.route('/api/releases', createReleasesRoutes(VOXEN_VERSION));
 // Conversa canônica por usuário, streaming e ferramentas da Base de conhecimento.
 app.route('/api/chat', chatRoutes);
 // PWA Web Share Target (Android/Chrome instalado)
