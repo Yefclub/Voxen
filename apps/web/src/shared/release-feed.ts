@@ -1,10 +1,52 @@
-export interface ReleaseFeedEntry {
-  version: string;
-  channel: string;
+export type ReleaseLocale = 'pt-BR' | 'en';
+export type ReleaseEnvironment = 'dev' | 'prod';
+
+export interface ReleaseTranslation {
+  title?: string;
+  body?: string;
+  summary?: string;
+}
+
+export interface ReleaseTranslations {
+  'pt-BR'?: ReleaseTranslation;
+  en?: ReleaseTranslation;
+}
+
+export interface ReleaseFeedItem {
   type?: string;
   title?: string;
   body?: string;
   summary?: string;
+  pr?: number | null;
+  prUrl?: string;
+  translations?: ReleaseTranslations;
+}
+
+export interface ReleaseFeedEntry extends ReleaseFeedItem {
+  version: string;
+  channel: string;
+  author?: string | null;
+  date?: string;
+  promoted?: ReleaseFeedItem[];
+}
+
+export interface LocalizedReleaseFeedItem extends Omit<
+  ReleaseFeedItem,
+  'title' | 'body' | 'summary'
+> {
+  title?: string;
+  body?: string;
+  summary?: string;
+}
+
+export interface LocalizedReleaseFeedEntry extends Omit<
+  ReleaseFeedEntry,
+  'title' | 'body' | 'summary' | 'promoted'
+> {
+  title?: string;
+  body?: string;
+  summary?: string;
+  promoted?: LocalizedReleaseFeedItem[];
 }
 
 export interface ReleaseFeedQuery {
@@ -64,6 +106,71 @@ export function parseReleaseFeedQuery(input: {
     invalidVersion: versionRequested && version === null,
     limit: boundedInteger(input.limit, DEFAULT_RELEASE_PAGE_SIZE, 1, MAX_RELEASE_PAGE_SIZE),
     offset: boundedInteger(input.offset, 0, 0, Number.MAX_SAFE_INTEGER),
+  };
+}
+
+export function parseReleaseLocale(value: string | undefined): ReleaseLocale {
+  return value?.toLowerCase() === 'pt-br' ? 'pt-BR' : 'en';
+}
+
+/**
+ * The deployment version is the source of truth for the feed channel. Query
+ * parameters stay accepted for backwards-compatible URLs, but never widen the
+ * release history visible from a given instance.
+ */
+export function enforceReleaseFeedEnvironment(
+  query: ReleaseFeedQuery,
+  environment: ReleaseEnvironment,
+): ReleaseFeedQuery {
+  return { ...query, channel: environment };
+}
+
+function localizedValue(
+  entry: ReleaseFeedItem,
+  field: keyof ReleaseTranslation,
+  locale: ReleaseLocale,
+): string | undefined {
+  const requested = entry.translations?.[locale]?.[field];
+  if (requested?.trim()) return requested;
+  const english = entry.translations?.en?.[field];
+  if (english?.trim()) return english;
+  const portuguese = entry.translations?.['pt-BR']?.[field];
+  if (portuguese?.trim()) return portuguese;
+  const legacy = entry[field];
+  return typeof legacy === 'string' && legacy.trim() ? legacy : undefined;
+}
+
+/**
+ * Resolve a feed entry at the API boundary. Historical string-only entries
+ * remain valid while new entries can carry curated content for both locales.
+ */
+export function localizeReleaseItem(
+  entry: ReleaseFeedItem,
+  locale: ReleaseLocale,
+): LocalizedReleaseFeedItem {
+  return {
+    ...(entry.type ? { type: entry.type } : {}),
+    ...(entry.pr !== undefined ? { pr: entry.pr } : {}),
+    ...(entry.prUrl ? { prUrl: entry.prUrl } : {}),
+    ...(entry.translations ? { translations: entry.translations } : {}),
+    title: localizedValue(entry, 'title', locale),
+    body: localizedValue(entry, 'body', locale),
+    summary: localizedValue(entry, 'summary', locale),
+  };
+}
+
+export function localizeReleaseEntry(
+  entry: ReleaseFeedEntry,
+  locale: ReleaseLocale,
+): LocalizedReleaseFeedEntry {
+  const { promoted } = entry;
+  return {
+    version: entry.version,
+    channel: entry.channel,
+    ...(entry.author !== undefined ? { author: entry.author } : {}),
+    ...(entry.date ? { date: entry.date } : {}),
+    ...localizeReleaseItem(entry, locale),
+    ...(promoted ? { promoted: promoted.map((item) => localizeReleaseItem(item, locale)) } : {}),
   };
 }
 

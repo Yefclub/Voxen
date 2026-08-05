@@ -38,7 +38,7 @@ Aguarde a propagação (`dig voxen.seudominio.com` deve retornar o IP).
 
 - Ubuntu 22.04+ / Debian 12+ / qualquer Linux com kernel 5.x+
 - Docker Engine **24+** e Docker Compose **v2**
-- 2 GB RAM mínimo, 4 GB recomendado (worker + ffmpeg + chat agent)
+- 2 GB RAM mínimo, 4 GB recomendado (worker + ffmpeg + runtime de chat)
 - 20 GB de disco (DB + MinIO + imagens)
 - Portas 80 e 443 livres (se for usar HTTPS direto)
 
@@ -381,10 +381,12 @@ Siga os passos da seção [Servidor + nginx do host](#servidor--nginx-do-host) a
 
 ## Easypanel App
 
-Easypanel cuida automaticamente de HTTPS, domínio, backups e renovação. Para
-Easypanel, o caminho recomendado é **App via Dockerfile** com Postgres, Redis e
-MinIO como serviços separados do próprio painel. Esse é o fluxo mais parecido
-com o Orbital: um App principal via `Dockerfile`, infra gerenciada separada.
+Easypanel cuida automaticamente de HTTPS, domínio, backups e renovação. O
+caminho recomendado é **um único App via Source → Docker image**, com Postgres,
+Redis e MinIO/S3 como serviços persistentes separados no próprio painel. A
+imagem combinada do Voxen executa `web/API`, `worker` e o runtime de chat
+integrado no mesmo App; não crie serviços atuais separados para `voxen-web`,
+`voxen-worker` ou `voxen-chat`.
 
 ### 1. Provisionar dependências
 
@@ -416,7 +418,8 @@ Health check path: /health
 Ao publicar uma release estável, a automação despacha o workflow `Easypanel
 Image` para a tag `vX.Y.Z` e atualiza também `latest`. Builds de homologação em
 `dev` são publicados somente por execução manual do mesmo workflow, evitando
-deploys a cada merge. A imagem já contém `web`, `chat` e `worker`.
+deploys a cada merge. A imagem já contém `web/API`, `worker` e runtime de chat
+integrado.
 
 Por que essa é a opção recomendada: no Source **GitHub repository**, o Easypanel
 constrói a imagem no servidor e, conforme a
@@ -438,6 +441,12 @@ Se quiser usar GitHub/Dockerfile em ambiente de teste:
 Trate logs de build desse modo como sensíveis. Não cole logs públicos sem
 redigir `BETTER_AUTH_SECRET`, `MASTER_KEY`, `DATABASE_URL`, `REDIS_URL` e
 `S3_*`.
+
+Em home-lab, este App único já reúne toda a aplicação Voxen. Em VPS ou
+datacenter, o `ghcr.io/yefclub/voxen-proxy-agent` é **opcional** e roda em outro
+host com IP residencial apenas quando plataformas de mídia bloquearem o IP da
+VPS. Ele encaminha o tráfego de extração e não substitui nem duplica o App
+Voxen.
 
 ### 3. Variáveis de ambiente
 
@@ -493,9 +502,10 @@ Easypanel UI → Domains. Adicione `voxen.seudominio.com` apontando para a porta
 
 Easypanel UI → Deploy. Acompanhe os logs.
 
-No startup, a imagem roda `prisma generate`, `prisma migrate deploy` e sobe
-`chat`, `worker` e `web` no mesmo container. Antes disso ela valida Postgres,
-Redis e S3/MinIO, incluindo escrita de um objeto `.voxen/healthcheck` no bucket.
+No startup, a imagem roda `prisma generate`, `prisma migrate deploy` e sobe o
+`web/API`, `worker` e runtime de chat integrado no mesmo container. Antes disso
+ela valida Postgres, Redis e S3/MinIO, incluindo escrita de um objeto
+`.voxen/healthcheck` no bucket.
 
 Validação pós-deploy:
 
@@ -504,8 +514,8 @@ curl https://voxen.seudominio.com/health
 curl https://voxen.seudominio.com/health/deep
 ```
 
-`/health/deep` precisa retornar `ok: true`; ele valida Postgres, Redis, chat
-interno e MinIO/S3.
+`/health/deep` precisa retornar `ok: true`; ele valida Postgres, Redis e
+MinIO/S3.
 
 ### 6. Backups
 
@@ -519,9 +529,10 @@ Configure backups de:
 
 ## Easypanel Compose (alternativo)
 
-O Compose atual também funciona, porque já sobe Postgres, Redis, MinIO, web,
-chat e worker. No Easypanel, porém, prefira **Easypanel App**: o painel gerencia
-melhor porta, domínio, logs e serviços separados.
+O Compose atual também funciona, porque já sobe Postgres, Redis, MinIO,
+web/API, worker e runtime de chat integrado. No Easypanel, porém, prefira
+**Easypanel App**: o painel gerencia melhor porta, domínio, logs e serviços
+separados.
 
 Se usar Compose mesmo assim:
 
@@ -608,12 +619,10 @@ Rode via cron diário. **A master key é o mais crítico** — sem ela, os secre
 
 Endpoints de health:
 
-| Endpoint           | Service              | Propósito                                                       | Resposta                              |
-| ------------------ | -------------------- | --------------------------------------------------------------- | ------------------------------------- |
-| `GET /health`      | web (3000)           | **Liveness** — proxy/reverse-proxy. Sempre 200 se processo vivo | `{"ok":true,"service":"web"}`         |
-| `GET /health/deep` | web (3000)           | **Readiness** — checa DB + Redis + chat service + S3/MinIO      | 200 com checks ou 503 se algum falhar |
-| `GET /health`      | chat (8001, interno) | Liveness do FastAPI                                             | `{"ok":true,"service":"chat"}`        |
-| `GET /health/deep` | chat (8001, interno) | Checa DB + master key carregável                                | 200/503 com latências                 |
+| Endpoint           | Service        | Propósito                                                       | Resposta                              |
+| ------------------ | -------------- | --------------------------------------------------------------- | ------------------------------------- |
+| `GET /health`      | web (3000)     | **Liveness** — proxy/reverse-proxy. Sempre 200 se processo vivo | `{"ok":true,"service":"web"}`         |
+| `GET /health/deep` | web/API (3000) | **Readiness** — checa DB + Redis + S3/MinIO                     | 200 com checks ou 503 se algum falhar |
 
 Exemplo de resposta do `/health/deep` (web):
 
@@ -623,7 +632,6 @@ Exemplo de resposta do `/health/deep` (web):
   "checks": {
     "postgres": { "ok": true, "latencyMs": 4 },
     "redis": { "ok": true, "latencyMs": 1 },
-    "chat": { "ok": true, "latencyMs": 12 },
     "s3": { "ok": true, "latencyMs": 8 }
   }
 }
@@ -640,7 +648,7 @@ e o erro no check correspondente — perfeito pra alerta automático.
 Outras ferramentas:
 
 - `docker compose ps` — status dos containers
-- `docker compose logs -f web chat worker` — logs ao vivo
+- `docker compose logs -f web worker` — logs ao vivo
 
 ---
 
@@ -879,7 +887,7 @@ apenas um"**. Se vir esse aviso, derrube os agentes extras e mantenha só um.
 ### Troubleshooting do agente
 
 | Sintoma                               | Causa provável                                                   | Fix                                                                                                     |
-| ------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| ------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | UI fica "Desconectado" após subir     | URL/token errados, ou path `/_tunnel` bloqueado no reverse proxy | Confira `docker logs voxen-proxy-agent`; valide a URL da UI; libere upgrade de WebSocket em `/_tunnel`  |
 | Agente recusa iniciar com erro de URL | `VOXEN_TUNNEL_URL` sem `https://` (TLS obrigatório)              | Use a URL `https://` da UI; o agente normaliza `wss://`→`https://`, mas rejeita `ws://`/`http://`       |
 | Aviso âmbar "múltiplos agentes"       | Mais de um agente discando ao mesmo tempo                        | Mantenha **um só** agente rodando (single-connection); derrube os extras                                |
@@ -889,15 +897,15 @@ apenas um"**. Se vir esse aviso, derrube os agentes extras e mantenha só um.
 
 ## Troubleshooting
 
-| Sintoma                              | Causa                                 | Fix                                                                                                                                 |
-| ------------------------------------ | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `EADDRINUSE :3000`                   | Porta já ocupada                      | Mude a porta exposta no compose ou pare o processo conflitante                                                                      |
-| 502 do nginx                         | Web container ainda iniciando         | `docker compose logs web` — esperar healthcheck passar                                                                              |
-| Chat retorna 412 "Setup incompleto"  | Admin não fez onboarding              | Login como admin → `/onboarding` → cola OpenRouter key                                                                              |
-| Job fica eternamente RUNNING         | Worker sem heartbeat ou migration pendente | Confirme `prisma migrate deploy` e reinicie o worker; lease vencido volta à fila automaticamente ou vira FAILED após 3 tentativas |
-| SSE corta a cada 60s                 | nginx com `proxy_buffering on`        | Garanta `proxy_buffering off` no location (já vem no `voxen.conf.example`)                                                          |
-| `MASTER_KEY não definido`            | Environment sem master key            | Gere com `openssl rand -base64 32` e salve no `.env`/Environment                                                                    |
-| `NoSuchBucket` no `/health/deep`     | Bucket MinIO não criado               | `make minio-init` ou crie `voxen-transcripts` na console                                                                            |
-| "YouTube bloqueou o download" em VPS | IP de datacenter marcado pelo YouTube | Veja [Home-lab vs VPS](#home-lab-vs-vps). Opções: migrar pra home-lab, instalar o [Agente de proxy residencial](#agente-de-proxy-residencial), ou usar upload manual |
+| Sintoma                              | Causa                                      | Fix                                                                                                                                                                  |
+| ------------------------------------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EADDRINUSE :3000`                   | Porta já ocupada                           | Mude a porta exposta no compose ou pare o processo conflitante                                                                                                       |
+| 502 do nginx                         | Web container ainda iniciando              | `docker compose logs web` — esperar healthcheck passar                                                                                                               |
+| Chat retorna 412 "Setup incompleto"  | Admin não fez onboarding                   | Login como admin → `/onboarding` → cola OpenRouter key                                                                                                               |
+| Job fica eternamente RUNNING         | Worker sem heartbeat ou migration pendente | Confirme `prisma migrate deploy` e reinicie o worker; lease vencido volta à fila automaticamente ou vira FAILED após 3 tentativas                                    |
+| SSE corta a cada 60s                 | nginx com `proxy_buffering on`             | Garanta `proxy_buffering off` no location (já vem no `voxen.conf.example`)                                                                                           |
+| `MASTER_KEY não definido`            | Environment sem master key                 | Gere com `openssl rand -base64 32` e salve no `.env`/Environment                                                                                                     |
+| `NoSuchBucket` no `/health/deep`     | Bucket MinIO não criado                    | `make minio-init` ou crie `voxen-transcripts` na console                                                                                                             |
+| "YouTube bloqueou o download" em VPS | IP de datacenter marcado pelo YouTube      | Veja [Home-lab vs VPS](#home-lab-vs-vps). Opções: migrar pra home-lab, instalar o [Agente de proxy residencial](#agente-de-proxy-residencial), ou usar upload manual |
 
 Pra debug profundo, leia [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) e [`docs/SECURITY.md`](SECURITY.md).

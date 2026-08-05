@@ -1,43 +1,85 @@
 ---
 tipo: feat
-titulo: Voxen 0.14.1 — interface refinada e busca conectada
+titulo_en: Voxen 0.14.2 — focused knowledge workspaces and safer operations
+titulo_pt_br: Voxen 0.14.2 — espaços de conhecimento focados e operações mais seguras
 ---
 
-## Navegação focada mais integrada
+## Focused workspace and evidence flow
 
-A interface focada ganhou uma composição mais coesa: os controles da barra
-recolhida ficam centralizados, o painel de fontes passa a fazer parte do fundo
-do espaço de trabalho e a conversa se retrai suavemente quando as evidências são
-abertas. O cabeçalho flutuante acompanha essa transição sem cobrir o conteúdo.
+The focused interface now behaves as a true workspace: its collapsed rail is
+centered, the sources surface opens as part of the background workspace, and
+the conversation contracts without the floating header covering content. Shell
+spacing, mobile chat clearance, and the compact scrollbar controls were refined
+as well. Artifacts are deliberately paused in navigation while their next
+product iteration is prepared.
 
-O espaçamento nas bordas, a altura do cabeçalho e as barras de rolagem também
-foram refinados. No desktop, os controles direcionais respeitam os cantos
-arredondados; no celular, a primeira mensagem permanece visível abaixo dos
-controles. A área de Artefatos fica temporariamente fora da navegação enquanto
-seu próximo ciclo de produto é preparado.
+## Clearer personal and administrative boundaries
 
-## Conta pessoal consistente e separada da administração
+Personal profile, platform-account, and MCP pages now share the same page
+hierarchy as the rest of the product. Instance configuration remains visibly
+separate for administrators, with OIDC SSO support and stronger controls for
+accounts, roles, and user isolation.
 
-Perfil e segurança, contas de plataforma e acesso MCP agora compartilham a mesma
-navegação, hierarquia visual e largura de conteúdo das demais páginas. Isso
-reforça a separação entre escolhas particulares de cada pessoa e configurações
-globais reservadas aos administradores da instância.
+## Library retrieval informed by the knowledge graph
 
-## Busca da biblioteca apoiada pelo grafo
+Transcript search is easier to reach and can use related concepts already
+grounded in the graph in addition to traditional text fields. The additional
+signal has controlled weight, skips short queries, and remains limited to the
+current user's knowledge base.
 
-A busca das transcrições ocupa uma posição mais fácil de encontrar e passa a
-considerar conceitos relacionados já extraídos no grafo, além dos campos
-textuais tradicionais. Os sinais adicionais têm peso controlado, ignoram
-consultas curtas e continuam estritamente limitados à base do usuário atual.
+## Trustworthy chat and release information
 
-## Raciocínio do chat com Markdown
+Chat reasoning renders Markdown using the same sanitization as responses. The
+What's New feed is now bound to the environment that is actually running:
+development and production histories cannot be mixed through a URL parameter.
+New entries can carry curated English and Brazilian Portuguese text, while
+legacy entries continue to fall back safely.
 
-O bloco de raciocínio agora apresenta títulos, listas, ênfases e código em
-Markdown com a mesma sanitização aplicada às respostas. Textos estruturados
-deixam de aparecer como marcação crua sem ampliar a superfície de conteúdo HTML.
+## Easier self-hosted deployment
 
-## Publicação completa no Easypanel
+The Easypanel guide now documents the supported single-image topology: one
+combined Voxen App runs the web/API, worker, and integrated chat runtime, while
+PostgreSQL, Redis, and S3-compatible storage remain persistent services. The
+residential proxy agent is explicitly optional for VPS media extraction.
 
-Releases estáveis agora publicam também a imagem combinada que reúne web, chat e
-worker. As tags da versão e `latest` permanecem alinhadas, e uma execução
-interrompida pode ser retomada sem recriar a tag da release.
+<!-- pt-BR -->
+
+## Espaço focado e fluxo de evidências
+
+A interface focada agora se comporta como um espaço de trabalho: sua barra
+recolhida fica centralizada, o painel de fontes abre como parte do plano de
+fundo e a conversa se retrai sem que o cabeçalho flutuante cubra o conteúdo. O
+espaçamento da estrutura, a área livre do chat no celular e os controles
+compactos da barra de rolagem também foram refinados. Artefatos foram
+intencionalmente pausados na navegação enquanto seu próximo ciclo de produto é
+preparado.
+
+## Limites mais claros entre conta e administração
+
+As páginas de perfil, contas de plataforma e MCP agora compartilham a mesma
+hierarquia das demais áreas do produto. A configuração da instância permanece
+visivelmente separada para administradores, com suporte a SSO OIDC e controles
+mais fortes de contas, papéis e isolamento de usuários.
+
+## Recuperação da biblioteca informada pelo grafo
+
+A busca de transcrições ficou mais fácil de alcançar e pode usar conceitos
+relacionados já fundamentados no grafo, além dos campos textuais tradicionais.
+O sinal adicional tem peso controlado, ignora buscas curtas e continua limitado
+à base de conhecimento do usuário atual.
+
+## Chat e informações de release confiáveis
+
+O raciocínio do chat renderiza Markdown com a mesma sanitização das respostas.
+O feed de Novidades agora está ligado ao ambiente que realmente está em
+execução: históricos de desenvolvimento e produção não podem ser misturados por
+um parâmetro de URL. Novas entradas podem trazer textos curados em inglês e
+português do Brasil, enquanto entradas legadas continuam com fallback seguro.
+
+## Implantação self-hosted mais simples
+
+O guia do Easypanel agora documenta a topologia suportada de imagem única: um
+App Voxen combinado executa web/API, worker e runtime de chat integrado,
+enquanto PostgreSQL, Redis e armazenamento compatível com S3 continuam como
+serviços persistentes. O agente de proxy residencial é explicitamente opcional
+para extração de mídia em VPS.
