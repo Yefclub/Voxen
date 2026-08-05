@@ -27,6 +27,11 @@ import {
   generateAndPersistTranscriptSummary,
   TranscriptSummaryError,
 } from '../lib/transcript-summary';
+import {
+  transcriptGraphMatchSql,
+  TRANSCRIPT_GRAPH_RANK_BOOST,
+} from '../lib/transcript-graph-search';
+import type { TranscriptSearchRow as SearchRow } from '../lib/transcript-graph-search';
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
@@ -34,32 +39,6 @@ const SUMMARY_MIN_INTERVAL_SEC = 60;
 type Vars = { userId: string };
 
 export const transcriptsRoutes = new Hono<{ Variables: Vars }>();
-
-type SearchRow = {
-  id: string;
-  source: string;
-  url: string;
-  title: string;
-  channel: string | null;
-  durationSec: number;
-  language: string;
-  transcriptionMethod: string;
-  thumbnailUrl: string | null;
-  originalObjectKey: string | null;
-  originalFilename: string | null;
-  originalMimeType: string | null;
-  previewObjectKey: string | null;
-  previewMimeType: string | null;
-  costUsd: string | null;
-  folderId: string | null;
-  folderName: string | null;
-  status: string;
-  archivedAt: Date | null;
-  trashedAt: Date | null;
-  createdAt: Date;
-  snippet: string;
-  rank: number;
-};
 
 type TranscriptListFilters = {
   userId: string;
@@ -181,6 +160,9 @@ transcriptsRoutes.get('/', async (c) => {
   // Além do FTS, casamos por nome/slug de tag do conteúdo (spec 075, R6).
   const tagLike = `%${query}%`;
   const tagSlugLike = `%${slugifyTag(query)}%`;
+  const graphMatchSql = transcriptGraphMatchSql(userId, query);
+  const textRankSql = Prisma.sql`ts_rank(t."searchVector", plainto_tsquery('portuguese', ${query}))`;
+  const combinedRankSql = Prisma.sql`(${textRankSql} + CASE WHEN ${graphMatchSql} THEN ${TRANSCRIPT_GRAPH_RANK_BOOST} ELSE 0 END)`;
   const rows =
     status === 'ALL'
       ? await db.$queryRaw<SearchRow[]>`
@@ -212,7 +194,8 @@ transcriptsRoutes.get('/', async (c) => {
         plainto_tsquery('portuguese', ${query}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1, FragmentDelimiter=" … "'
       ) AS snippet,
-      ts_rank(t."searchVector", plainto_tsquery('portuguese', ${query})) AS rank
+      ${combinedRankSql} AS rank,
+      ${graphMatchSql} AS "graphMatch"
     FROM "Transcript" t
     LEFT JOIN "LibraryFolder" f ON f.id = t."folderId" AND f."userId" = t."userId"
     WHERE t."userId" = ${userId}
@@ -237,6 +220,7 @@ transcriptsRoutes.get('/', async (c) => {
       ${sqlExtra}
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR ${graphMatchSql}
         OR EXISTS (
           SELECT 1 FROM "TranscriptTag" tt
           JOIN "Tag" tg ON tg.id = tt."tagId"
@@ -277,7 +261,8 @@ transcriptsRoutes.get('/', async (c) => {
         plainto_tsquery('portuguese', ${query}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1, FragmentDelimiter=" … "'
       ) AS snippet,
-      ts_rank(t."searchVector", plainto_tsquery('portuguese', ${query})) AS rank
+      ${combinedRankSql} AS rank,
+      ${graphMatchSql} AS "graphMatch"
     FROM "Transcript" t
     LEFT JOIN "LibraryFolder" f ON f.id = t."folderId" AND f."userId" = t."userId"
     WHERE t."userId" = ${userId}
@@ -301,6 +286,7 @@ transcriptsRoutes.get('/', async (c) => {
       ${sqlExtra}
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR ${graphMatchSql}
         OR EXISTS (
           SELECT 1 FROM "TranscriptTag" tt
           JOIN "Tag" tg ON tg.id = tt."tagId"
@@ -338,6 +324,7 @@ transcriptsRoutes.get('/', async (c) => {
       ${sqlExtra}
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR ${graphMatchSql}
         OR EXISTS (
           SELECT 1 FROM "TranscriptTag" tt
           JOIN "Tag" tg ON tg.id = tt."tagId"
@@ -371,6 +358,7 @@ transcriptsRoutes.get('/', async (c) => {
       ${sqlExtra}
       AND (
         t."searchVector" @@ plainto_tsquery('portuguese', ${query})
+        OR ${graphMatchSql}
         OR EXISTS (
           SELECT 1 FROM "TranscriptTag" tt
           JOIN "Tag" tg ON tg.id = tt."tagId"

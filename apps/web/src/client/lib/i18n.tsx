@@ -381,9 +381,11 @@ const ptBRMessages = {
 
   'library.eyebrow': 'Biblioteca',
   'library.title': 'Transcrições',
-  'library.description':
-    'Busque por palavras-chave em todas as transcrições. Indexação full-text em português, ordenada por relevância.',
+  'library.description': 'Encontre conteúdos por texto, organização e relações da sua base.',
   'library.searchPlaceholder': 'Buscar nas transcrições…',
+  'library.searchTitle': 'Explore sua base de conhecimento',
+  'library.searchDescription': 'Encontre trechos, tags e conceitos conectados no seu grafo.',
+  'library.graphMatch': 'Conceito do grafo',
   'library.clearSearch': 'Limpar busca',
   'library.searchResults': '{count} {label} para “{query}”',
   'library.resultSingular': 'resultado',
@@ -439,9 +441,8 @@ const ptBRMessages = {
   'library.reorgRunning': 'Organizando…',
   'library.reorgNothing': 'Nada para organizar — todos os conteúdos ativos já têm pasta.',
   'library.reorgDone':
-    'Organização concluída: {assigned} classificados, {skipped} sem pasta, {failed} falhas.',
-  'library.reorgPartial':
-    'Lote aplicado ({assigned} classificados). Ainda restam {remaining} sem pasta — rode de novo.',
+    'Organização: {assigned} classificados, {skipped} sem pasta, {failed} falhas.',
+  'library.reorgPartial': 'Lote: {assigned} classificados; {remaining} ainda sem pasta.',
   'library.reorgError': 'Falha ao organizar a biblioteca com IA.',
   'library.retitleAction': 'Regenerar títulos',
   'library.retitleRunning': 'Regenerando…',
@@ -1769,9 +1770,11 @@ const enMessages: Record<I18nKey, string> = {
 
   'library.eyebrow': 'Library',
   'library.title': 'Transcripts',
-  'library.description':
-    'Search keywords across every transcript. Full-text indexing in Portuguese, ordered by relevance.',
+  'library.description': 'Find content through text, organization, and knowledge-base relations.',
   'library.searchPlaceholder': 'Search transcripts…',
+  'library.searchTitle': 'Explore your knowledge base',
+  'library.searchDescription': 'Find passages, tags, and concepts connected in your graph.',
+  'library.graphMatch': 'Graph concept',
   'library.clearSearch': 'Clear search',
   'library.searchResults': '{count} {label} for “{query}”',
   'library.resultSingular': 'result',
@@ -1826,8 +1829,7 @@ const enMessages: Record<I18nKey, string> = {
   'library.reorgAction': 'Organize with AI',
   'library.reorgRunning': 'Organizing…',
   'library.reorgNothing': 'Nothing to organize — all active items already have a folder.',
-  'library.reorgDone':
-    'Organization done: {assigned} assigned, {skipped} left unfoldered, {failed} failed.',
+  'library.reorgDone': 'Done: {assigned} assigned, {skipped} unfoldered, {failed} failed.',
   'library.reorgPartial':
     'Batch applied ({assigned} assigned). {remaining} still without a folder — run again.',
   'library.reorgError': 'Failed to organize the library with AI.',
