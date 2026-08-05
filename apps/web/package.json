@@ -28,7 +28,7 @@
     "@codemirror/view": "^6.43.0",
     "@gsap/react": "^2.1.2",
     "@hono/mcp": "^0.3.0",
-    "@hono/node-server": "^1.13.0",
+    "@hono/node-server": "^2.0.10",
     "@lezer/highlight": "^1.2.3",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@openrouter/ai-sdk-provider": "3.0.0",
