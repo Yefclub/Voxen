@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.1-dev.1785896005 — 2026-08-04 · Dev
+
+### 🐛 Markdown no raciocínio do chat
+
+O raciocínio exibido no chat agora interpreta listas, ênfases, títulos e código em Markdown, mantendo a apresentação compacta e as mesmas proteções usadas nas respostas.
+
 ## v0.14.1-dev.1785894389 — 2026-08-04 · Dev
 
 ### 🎨 Navegação e fontes mais integradas ao espaço de trabalho
