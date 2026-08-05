@@ -17,14 +17,16 @@ describe('desktop shell sources panel contract', () => {
 
   test('animates the chat surface and sources as background content', () => {
     const chat = source('pages/chat.tsx');
+    const panel = source('components/chat/chat-sources-panel.tsx');
 
     expect(chat).toContain("sourceCitations && 'md:pr-[22rem]'");
     expect(chat).toContain('transition-[padding]');
-    expect(chat).toContain('<AnimatePresence initial={false}>');
-    expect(chat).toContain("initial={reduceMotion ? false : { x: '100%', opacity: 0 }}");
-    expect(chat).toContain("exit={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}");
-    expect(chat).toContain('bg-[var(--color-app-bg)]');
-    expect(chat).not.toContain('w-[22rem] flex-col border-l');
+    expect(chat).toContain('<ChatSourcesPanel');
+    expect(panel).toContain('<AnimatePresence initial={false}>');
+    expect(panel).toContain("initial={reduceMotion ? false : { x: '100%', opacity: 0 }}");
+    expect(panel).toContain("exit={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}");
+    expect(panel).toContain('bg-[var(--color-app-bg)]');
+    expect(panel).not.toContain('w-[22rem] flex-col border-l');
   });
 
   test('publishes source visibility so the floating header retracts with the page', () => {
