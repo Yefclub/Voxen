@@ -1,5 +1,47 @@
 # Changelog
 
+## v0.14.2 — 2026-08-05 · Produção
+
+### Voxen 0.14.2 — focused knowledge workspaces and safer operations
+
+## Focused workspace and evidence flow
+
+The focused interface now behaves as a true workspace: its collapsed rail is
+centered, the sources surface opens as part of the background workspace, and
+the conversation contracts without the floating header covering content. Shell
+spacing, mobile chat clearance, and the compact scrollbar controls were refined
+as well. Artifacts are deliberately paused in navigation while their next
+product iteration is prepared.
+
+## Clearer personal and administrative boundaries
+
+Personal profile, platform-account, and MCP pages now share the same page
+hierarchy as the rest of the product. Instance configuration remains visibly
+separate for administrators, with OIDC SSO support and stronger controls for
+accounts, roles, and user isolation.
+
+## Library retrieval informed by the knowledge graph
+
+Transcript search is easier to reach and can use related concepts already
+grounded in the graph in addition to traditional text fields. The additional
+signal has controlled weight, skips short queries, and remains limited to the
+current user's knowledge base.
+
+## Trustworthy chat and release information
+
+Chat reasoning renders Markdown using the same sanitization as responses. The
+What's New feed is now bound to the environment that is actually running:
+development and production histories cannot be mixed through a URL parameter.
+New entries can carry curated English and Brazilian Portuguese text, while
+legacy entries continue to fall back safely.
+
+## Easier self-hosted deployment
+
+The Easypanel guide now documents the supported single-image topology: one
+combined Voxen App runs the web/API, worker, and integrated chat runtime, while
+PostgreSQL, Redis, and S3-compatible storage remain persistent services. The
+residential proxy agent is explicitly optional for VPS media extraction.
+
 ## v0.14.2-dev.1785911083 — 2026-08-05 · Dev
 
 ### 🐛 What's new now follows the active environment and language
