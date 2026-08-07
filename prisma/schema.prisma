@@ -1103,6 +1103,7 @@ model TranscriptEnrichment {
   @@index([userId, reviewState, updatedAt(sort: Desc)])
   @@index([configRevisionId])
 }
+
 // ============================================================================
 // AUTOMAÇÕES (jobs periódicos com continuidade — spec .specs/008-automacoes.md)
 // ============================================================================

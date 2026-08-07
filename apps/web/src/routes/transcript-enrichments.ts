@@ -5,7 +5,7 @@ import { deleteBrainForSource } from '../lib/brain';
 import { reindexTranscriptEnrichmentBrain } from '../lib/brain-enrichments';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
-import { getSetting } from '../lib/settings';
+import { getSettingByKey } from '../lib/settings';
 import {
   getTranscriptEnrichmentStaleReason,
   queueTranscriptResearch,
@@ -64,7 +64,9 @@ transcriptEnrichmentRoutes.get('/:id/enrichments', async (c) => {
     staleAcceptedIds.map((id) => deleteBrainForSource(userId, 'EXTERNAL_ENRICHMENT', id)),
   );
   if (staleAcceptedIds.length > 0) await invalidateGraphCache(userId);
-  const storedMode = (await getSetting('summary_research_mode').catch(() => null))?.toUpperCase();
+  const storedMode = (
+    await getSettingByKey('summary_research_mode').catch(() => null)
+  )?.toUpperCase();
   const researchMode = storedMode === 'MANUAL' || storedMode === 'AUTO' ? storedMode : 'OFF';
   const enrichments = await db.transcriptEnrichment.findMany({
     where: { userId, transcriptId },

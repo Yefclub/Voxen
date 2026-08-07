@@ -1446,12 +1446,6 @@ export async function addBrainSource(input: {
   segmentKey?: string | null;
   evidenceKey?: string | null;
   excerpt?: string | null;
-  startLine?: number | null;
-  endLine?: number | null;
-  startSec?: number | null;
-  endSec?: number | null;
-  segmentKey?: string | null;
-  evidenceKey?: string | null;
   assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
   try {

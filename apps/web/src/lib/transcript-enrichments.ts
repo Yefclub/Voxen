@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { db } from './db';
-import { getSetting } from './settings';
+import { getSettingByKey } from './settings';
 
 export class TranscriptResearchQueueError extends Error {
   constructor(
@@ -89,7 +89,7 @@ export async function queueTranscriptResearch(input: {
   trigger: 'AUTO' | 'MANUAL' | 'MCP';
   requestId?: string;
 }) {
-  const mode = (await getSetting('summary_research_mode').catch(() => null))?.toUpperCase();
+  const mode = (await getSettingByKey('summary_research_mode').catch(() => null))?.toUpperCase();
   if (
     (input.trigger === 'AUTO' && mode !== 'AUTO') ||
     (input.trigger !== 'AUTO' && mode !== 'MANUAL' && mode !== 'AUTO')

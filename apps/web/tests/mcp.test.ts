@@ -117,6 +117,8 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_search_transcripts');
     expect(names).toContain('voxen_read_transcript');
     expect(names).toContain('voxen_brain_search');
+    expect(names).toContain('voxen_list_transcript_enrichments');
+    expect(names).toContain('voxen_read_transcript_enrichment');
     const search = tools.find((t) => t.name === 'voxen_search_transcripts');
     expect(search?.annotations?.readOnlyHint).toBe(true);
   });
@@ -227,6 +229,10 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_update_note');
     expect(names).toContain('voxen_request_transcription');
     expect(names).toContain('voxen_get_job_status');
+    expect(names).toContain('voxen_request_transcript_research');
+    expect(names).toContain('voxen_review_transcript_enrichment');
+    expect(names).toContain('voxen_edit_transcript_enrichment');
+    expect(names).toContain('voxen_delete_transcript_enrichment');
     const createNote = tools.find((t) => t.name === 'voxen_create_note');
     expect(createNote?.annotations?.readOnlyHint).toBe(false);
   });
@@ -238,7 +244,9 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     };
     const readNames = (readBody.result?.tools ?? []).map((tool) => tool.name);
     expect(readNames).toContain('voxen_read_transcript');
+    expect(readNames).toContain('voxen_read_transcript_enrichment');
     expect(readNames).not.toContain('voxen_create_note');
+    expect(readNames).not.toContain('voxen_review_transcript_enrichment');
 
     const writeResponse = await call({ jsonrpc: '2.0', id: 52, method: 'tools/list' }, WRITE_TOKEN);
     const writeBody = (await writeResponse.json()) as {
@@ -246,7 +254,9 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     };
     const writeNames = (writeBody.result?.tools ?? []).map((tool) => tool.name);
     expect(writeNames).toContain('voxen_create_note');
+    expect(writeNames).toContain('voxen_review_transcript_enrichment');
     expect(writeNames).not.toContain('voxen_read_transcript');
+    expect(writeNames).not.toContain('voxen_read_transcript_enrichment');
   });
 
   it('tools/call voxen_create_note cria a nota escopada por userId', async () => {

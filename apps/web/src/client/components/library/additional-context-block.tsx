@@ -40,6 +40,15 @@ export interface TranscriptEnrichmentsResponse {
   researchMode: 'OFF' | 'MANUAL' | 'AUTO';
 }
 
+export function safeExternalCitationUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 const STATUS_KEYS: Record<TranscriptEnrichmentStatus, Parameters<TranslateFn>[0]> = {
   PENDING: 'library.additionalContextStatus.pending',
   RUNNING: 'library.additionalContextStatus.running',
@@ -250,23 +259,27 @@ export function AdditionalContextBlock({
                     <p className="text-xs font-medium text-[var(--color-app-subtle)]">
                       {t('library.additionalContextSources')}
                     </p>
-                    {item.citations.map((citation) => (
-                      <a
-                        key={citation.url}
-                        href={citation.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block rounded-lg border border-[var(--color-app-border)] px-3 py-2 transition-colors hover:bg-[var(--color-app-surface)]"
-                      >
-                        <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-accent-primary)]">
-                          {citation.title}
-                          <ExternalLink className="h-3 w-3" />
-                        </span>
-                        <span className="mt-1 line-clamp-2 block text-[11px] leading-relaxed text-[var(--color-app-muted)]">
-                          {citation.excerpt}
-                        </span>
-                      </a>
-                    ))}
+                    {item.citations.flatMap((citation, index) => {
+                      const href = safeExternalCitationUrl(citation.url);
+                      if (!href) return [];
+                      return (
+                        <a
+                          key={`${href}-${index}`}
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block rounded-lg border border-[var(--color-app-border)] px-3 py-2 transition-colors hover:bg-[var(--color-app-surface)]"
+                        >
+                          <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-accent-primary)]">
+                            {citation.title}
+                            <ExternalLink className="h-3 w-3" />
+                          </span>
+                          <span className="mt-1 line-clamp-2 block text-[11px] leading-relaxed text-[var(--color-app-muted)]">
+                            {citation.excerpt}
+                          </span>
+                        </a>
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}

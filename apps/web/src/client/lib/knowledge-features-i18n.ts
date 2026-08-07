@@ -29,21 +29,6 @@ export const ptBrKnowledgeFeatureMessages = {
   'library.additionalContextDeleteTitle': 'Excluir este contexto adicional?',
   'library.additionalContextDeleteDescription':
     'A pesquisa e seus derivados no grafo serão removidos. A transcrição e o resumo não mudam.',
-  'admin.integrations.researchPolicy.title': 'Pesquisa após o resumo',
-  'admin.integrations.researchPolicy.description':
-    'Controle quando a IA pode pesquisar contexto externo para uma transcrição já resumida.',
-  'admin.integrations.researchPolicy.off.title': 'Desativada',
-  'admin.integrations.researchPolicy.off.description':
-    'Não cria nem executa novas pesquisas de contexto.',
-  'admin.integrations.researchPolicy.manual.title': 'Somente manual',
-  'admin.integrations.researchPolicy.manual.description':
-    'Usuários e clientes MCP podem solicitar a pesquisa explicitamente.',
-  'admin.integrations.researchPolicy.auto.title': 'Automática e manual',
-  'admin.integrations.researchPolicy.auto.description':
-    'Após o resumo, a IA decide se existe uma lacuna material a pesquisar.',
-  'admin.integrations.researchPolicy.boundary':
-    'A pesquisa nunca altera o resumo. Todo contexto externo entra como sugestão citada e exige revisão.',
-  'admin.integrations.researchPolicy.saved': 'Política de pesquisa atualizada.',
 } as const;
 
 export const enKnowledgeFeatureMessages: Record<keyof typeof ptBrKnowledgeFeatureMessages, string> =
@@ -78,19 +63,4 @@ export const enKnowledgeFeatureMessages: Record<keyof typeof ptBrKnowledgeFeatur
     'library.additionalContextDeleteTitle': 'Delete this additional context?',
     'library.additionalContextDeleteDescription':
       'The research and its graph derivatives will be removed. The transcript and summary remain unchanged.',
-    'admin.integrations.researchPolicy.title': 'Post-summary research',
-    'admin.integrations.researchPolicy.description':
-      'Control when AI may research external context for an already summarized transcript.',
-    'admin.integrations.researchPolicy.off.title': 'Disabled',
-    'admin.integrations.researchPolicy.off.description':
-      'Does not create or execute new context research.',
-    'admin.integrations.researchPolicy.manual.title': 'Manual only',
-    'admin.integrations.researchPolicy.manual.description':
-      'Users and MCP clients may explicitly request research.',
-    'admin.integrations.researchPolicy.auto.title': 'Automatic and manual',
-    'admin.integrations.researchPolicy.auto.description':
-      'After the summary, AI decides whether there is a material gap to research.',
-    'admin.integrations.researchPolicy.boundary':
-      'Research never changes the summary. All external context is a cited suggestion that requires review.',
-    'admin.integrations.researchPolicy.saved': 'Research policy updated.',
   };

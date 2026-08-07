@@ -1,19 +1,35 @@
 ALTER TYPE "BrainSourceType" ADD VALUE IF NOT EXISTS 'EXTERNAL_ENRICHMENT';
 
-CREATE TYPE "TranscriptEnrichmentType" AS ENUM ('WEB_RESEARCH');
-CREATE TYPE "TranscriptEnrichmentStatus" AS ENUM (
-    'PENDING',
-    'RUNNING',
-    'NO_RESEARCH_NEEDED',
-    'READY',
-    'RETRY',
-    'FAILED',
-    'CANCELLED'
-);
-CREATE TYPE "TranscriptEnrichmentReviewState" AS ENUM ('SUGGESTED', 'ACCEPTED', 'DISMISSED');
-CREATE TYPE "TranscriptEnrichmentTrigger" AS ENUM ('AUTO', 'MANUAL', 'MCP');
+DO $$ BEGIN
+    CREATE TYPE "TranscriptEnrichmentType" AS ENUM ('WEB_RESEARCH');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+    CREATE TYPE "TranscriptEnrichmentStatus" AS ENUM (
+        'PENDING',
+        'RUNNING',
+        'NO_RESEARCH_NEEDED',
+        'READY',
+        'RETRY',
+        'FAILED',
+        'CANCELLED'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+    CREATE TYPE "TranscriptEnrichmentReviewState" AS ENUM ('SUGGESTED', 'ACCEPTED', 'DISMISSED');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+    CREATE TYPE "TranscriptEnrichmentTrigger" AS ENUM ('AUTO', 'MANUAL', 'MCP');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE "TranscriptEnrichment" (
+CREATE TABLE IF NOT EXISTS "TranscriptEnrichment" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "transcriptId" TEXT NOT NULL,
@@ -55,23 +71,47 @@ CREATE TABLE "TranscriptEnrichment" (
     CONSTRAINT "TranscriptEnrichment_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "TranscriptEnrichment_userId_transcriptId_runKey_key"
+CREATE UNIQUE INDEX IF NOT EXISTS "TranscriptEnrichment_userId_transcriptId_runKey_key"
     ON "TranscriptEnrichment"("userId", "transcriptId", "runKey");
-CREATE INDEX "TranscriptEnrichment_userId_transcriptId_createdAt_idx"
+CREATE INDEX IF NOT EXISTS "TranscriptEnrichment_userId_transcriptId_createdAt_idx"
     ON "TranscriptEnrichment"("userId", "transcriptId", "createdAt" DESC);
-CREATE INDEX "TranscriptEnrichment_status_nextAttemptAt_createdAt_idx"
+CREATE INDEX IF NOT EXISTS "TranscriptEnrichment_status_nextAttemptAt_createdAt_idx"
     ON "TranscriptEnrichment"("status", "nextAttemptAt", "createdAt");
-CREATE INDEX "TranscriptEnrichment_userId_reviewState_updatedAt_idx"
+CREATE INDEX IF NOT EXISTS "TranscriptEnrichment_userId_reviewState_updatedAt_idx"
     ON "TranscriptEnrichment"("userId", "reviewState", "updatedAt" DESC);
-CREATE INDEX "TranscriptEnrichment_configRevisionId_idx"
+CREATE INDEX IF NOT EXISTS "TranscriptEnrichment_configRevisionId_idx"
     ON "TranscriptEnrichment"("configRevisionId");
 
-ALTER TABLE "TranscriptEnrichment"
-    ADD CONSTRAINT "TranscriptEnrichment_userId_fkey"
-    FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "TranscriptEnrichment"
-    ADD CONSTRAINT "TranscriptEnrichment_transcriptId_fkey"
-    FOREIGN KEY ("transcriptId") REFERENCES "Transcript"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "TranscriptEnrichment"
-    ADD CONSTRAINT "TranscriptEnrichment_configRevisionId_fkey"
-    FOREIGN KEY ("configRevisionId") REFERENCES "ConfigRevision"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'TranscriptEnrichment_userId_fkey'
+          AND conrelid = '"TranscriptEnrichment"'::regclass
+    ) THEN
+        ALTER TABLE "TranscriptEnrichment"
+            ADD CONSTRAINT "TranscriptEnrichment_userId_fkey"
+            FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'TranscriptEnrichment_transcriptId_fkey'
+          AND conrelid = '"TranscriptEnrichment"'::regclass
+    ) THEN
+        ALTER TABLE "TranscriptEnrichment"
+            ADD CONSTRAINT "TranscriptEnrichment_transcriptId_fkey"
+            FOREIGN KEY ("transcriptId") REFERENCES "Transcript"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'TranscriptEnrichment_configRevisionId_fkey'
+          AND conrelid = '"TranscriptEnrichment"'::regclass
+    ) THEN
+        ALTER TABLE "TranscriptEnrichment"
+            ADD CONSTRAINT "TranscriptEnrichment_configRevisionId_fkey"
+            FOREIGN KEY ("configRevisionId") REFERENCES "ConfigRevision"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $$;
