@@ -53,7 +53,7 @@ test("topic and Actions updates target their dedicated endpoints", () => {
     actionsArguments(
       {
         default_workflow_permissions: "read",
-        can_approve_pull_request_reviews: false,
+        can_approve_pull_request_reviews: true,
       },
       "Yefclub/Voxen",
     ),
@@ -65,7 +65,7 @@ test("topic and Actions updates target their dedicated endpoints", () => {
       "-f",
       "default_workflow_permissions=read",
       "-F",
-      "can_approve_pull_request_reviews=false",
+      "can_approve_pull_request_reviews=true",
     ],
   );
 });
