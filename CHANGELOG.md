@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.14.5-dev.1786123967 — 2026-08-07 · Dev
+
+### ✨ Summaries can trigger bounded optional research
+
+Administrators can keep post-summary research off, allow manual requests, or
+enable selective automatic checks. The canonical summary remains
+transcript-only; the durable second stage may perform zero or bounded web
+searches and always creates a cited suggestion for review. Failures, retries,
+and cancellation never block a completed transcript. Tool-free planning is
+isolated from bounded search requests, while policy and content lifecycle
+changes cancel incompatible work across transaction-safe boundaries.
+
 ## v0.14.5-dev.1786116413 — 2026-08-07 · Dev
 
 ### ✨ External context is cited and reviewable
