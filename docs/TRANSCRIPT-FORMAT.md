@@ -1,6 +1,7 @@
 # Formato do `.md` de transcrição — Voxen
 
 Cada vídeo transcrito vira um arquivo Markdown com:
+
 1. **Frontmatter YAML** com metadata
 2. **Cabeçalho** com thumbnail e link original
 3. **Corpo** com transcrição segmentada em linhas com timestamps clicáveis
@@ -15,23 +16,23 @@ Cada vídeo transcrito vira um arquivo Markdown com:
 
 ```yaml
 ---
-id: 01J0K1A2B3C4D5E6F7G8H9J0K1                # cuid gerado pelo worker
+id: 01J0K1A2B3C4D5E6F7G8H9J0K1 # cuid gerado pelo worker
 workspace_id: <userId>
-source: youtube | instagram | tiktok | web    # web = página HTML via Trafilatura (spec 004)
-url: https://youtu.be/abc123                  # URL canonical (parseVideoUrl em web/chat, detect_source em worker)
-video_id: dQw4w9WgXcQ                          # ver "Semântica do video_id" abaixo
+source: youtube | instagram | tiktok | web # web = página HTML via Trafilatura (spec 004)
+url: https://youtu.be/abc123 # URL canônica (parseVideoUrl em web, detect_source em worker)
+video_id: dQw4w9WgXcQ # ver "Semântica do video_id" abaixo
 title: Como configurar Postgres FTS
-channel: Canal do Dev                          # YouTube channel, site name pra WEB, ou null
-author: nome do autor                          # se aplicável
-duration_sec: 738                              # 12m18s — para WEB é sempre 0
-published_at: 2026-04-20T15:30:00Z             # se disponível
-thumbnail: https://i.ytimg.com/vi/abc123/maxresdefault.jpg  # OpenGraph image pra WEB
-language: pt                                   # ISO 639-1
-model: x-ai/grok-stt-1.0                       # null se source=web ou method=subtitles
+channel: Canal do Dev # YouTube channel, site name pra WEB, ou null
+author: nome do autor # se aplicável
+duration_sec: 738 # 12m18s — para WEB é sempre 0
+published_at: 2026-04-20T15:30:00Z # se disponível
+thumbnail: https://i.ytimg.com/vi/abc123/maxresdefault.jpg # OpenGraph image pra WEB
+language: pt # ISO 639-1
+model: x-ai/grok-stt-1.0 # null se source=web ou method=subtitles
 transcription_method: api | subtitles | scrape # api=OpenRouter audio; subtitles=legendas oficiais; scrape=Trafilatura HTML
 transcribed_at: 2026-05-15T20:42:11Z
-cost_usd: 0.0042                               # custo (0 para web/subtitles)
-checksum: sha256:abc123...                     # do arquivo de áudio original (omitido para web)
+cost_usd: 0.0042 # custo (0 para web/subtitles)
+checksum: sha256:abc123... # do arquivo de áudio original (omitido para web)
 ---
 ```
 
@@ -39,12 +40,12 @@ checksum: sha256:abc123...                     # do arquivo de áudio original (
 
 O campo `video_id` muda de **formato e significado** conforme a plataforma:
 
-| source     | formato                  | exemplo                | extraído de                              |
-|------------|--------------------------|------------------------|------------------------------------------|
-| `youtube`  | 11 chars `[A-Za-z0-9_-]` | `dQw4w9WgXcQ`          | canonical `youtu.be/<id>`                |
-| `instagram`| shortcode variável       | `Abc123_XYZ`           | `instagram.com/reel/<code>/`             |
-| `tiktok`   | numeric 6-32 chars       | `7123456789012345678`  | `tiktok.com/@user/video/<id>`            |
-| `web`      | (campo vazio ou ausente) | `""`                   | sem ID semântico — usa hash da URL se precisar |
+| source      | formato                  | exemplo               | extraído de                                    |
+| ----------- | ------------------------ | --------------------- | ---------------------------------------------- |
+| `youtube`   | 11 chars `[A-Za-z0-9_-]` | `dQw4w9WgXcQ`         | canonical `youtu.be/<id>`                      |
+| `instagram` | shortcode variável       | `Abc123_XYZ`          | `instagram.com/reel/<code>/`                   |
+| `tiktok`    | numeric 6-32 chars       | `7123456789012345678` | `tiktok.com/@user/video/<id>`                  |
+| `web`       | (campo vazio ou ausente) | `""`                  | sem ID semântico — usa hash da URL se precisar |
 
 Use o `source` como **discriminador** antes de fazer parsing/dedup pelo `video_id`. Para cross-source uniqueness, prefira o `url` (que já vem canonical).
 
@@ -126,12 +127,14 @@ Componente React `<TranscriptViewer markdown={mdContent} />`:
 ## FTS — espelho no Postgres
 
 Na tabela `Transcript`:
+
 - `plainText: TEXT` — apenas o conteúdo falado (sem timestamps, sem frontmatter), concatenado com espaços
 - `searchVector: tsvector` (GIN index) — gerado por trigger SQL a partir de `plainText` com dicionário `portuguese`
 - `frontmatter: JSONB` — espelho do YAML pra queries estruturadas (filtros por source, language, etc.)
 - `mdPath: TEXT` — chave do `.md` no bucket S3 (ex: `workspaces/abc/transcripts/01J....md`)
 
 Tool `search_transcripts(workspace_id, query)`:
+
 ```sql
 SELECT
   t.id, t.title, t.url, t.thumbnail,
@@ -145,7 +148,8 @@ ORDER BY rank DESC
 LIMIT 10;
 ```
 
-Retorna snippets com `<mark>` highlights — agente Agno usa esses snippets pra decidir se vale ler o transcript completo.
+Retorna snippets com `<mark>` highlights — o agente integrado usa esses trechos
+para decidir se precisa ler a transcrição completa.
 
 ## Versionamento do formato
 

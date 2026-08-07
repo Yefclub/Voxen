@@ -27,9 +27,11 @@ Humor é bem-vindo — piadas de dev, referências de programação, memes brasi
 O usuário alterna entre dois modos — identificar qual está ativo antes de agir:
 
 ### Modo Pesquisa & Estratégia
+
 Quando o usuário quer discutir abordagens, entender trade-offs, analisar arquitetura ou pesquisar soluções. Sinais: perguntas abertas ("como fazer X?", "qual a melhor abordagem?", "pesquisa sobre Y"), pedidos de análise, comparações entre tecnologias, planejamento de features.
 
 Neste modo:
+
 - **Não pular para implementação** — o objetivo é entender, não codar
 - Pesquisar na web (WebSearch/WebFetch) quando o assunto exige conhecimento atualizado ou comparação de abordagens do mercado
 - Apresentar opções com trade-offs claros (prós, contras, complexidade, manutenção)
@@ -38,11 +40,13 @@ Neste modo:
 - Só passar para implementação quando o usuário decidir o caminho e pedir explicitamente
 
 ### Modo Implementação
+
 Quando o usuário já sabe o que quer e pede para executar. Sinais: instruções diretas ("implementa X", "corrige Y", "cria PR"), issues do GitHub, tarefas definidas.
 
 Neste modo: seguir as regras de implementação incremental, checklist pre-PR, verificação visual, etc.
 
 ### Transição entre modos
+
 É comum uma sessão começar em pesquisa e migrar para implementação após a decisão. Quando isso acontecer, confirmar o entendimento do que foi decidido antes de começar a codar.
 
 ## Antes de Começar a Trabalhar
@@ -58,20 +62,20 @@ Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecime
 **Posicionamento (importante).** Voxen **NÃO é SaaS comercial**, não é multi-tenant pago, não tem planos free/pago. É um produto pra usuários (indivíduos ou pequenos times) instalarem **no próprio servidor** e construírem sua KB interna de conteúdos. Owner do deploy controla tudo (chaves, modelos, usuários aprovados via better-auth).
 
 **Implicações na hora de propor features:**
+
 - ❌ NÃO propor: budget mensal por usuário, billing, planos, multi-tenancy, rate limiting agressivo "anti-abuso de usuário pago", quotas comerciais
 - ✅ Priorizar: DX da instalação self-hosted, docs multi-cenário (VPS/Proxmox/Easypanel), profile compose pra nginx/HTTPS, backups, paridade dev/prod, agente útil e ferramentas determinísticas
 - Critério de "pronto pra prod" = self-hosted estável pra uso interno, NÃO SaaS pronto pra cadastro público
 
 ### Stack
 
-- **Web/API**: Bun 1.2 + Hono 4 + Vite + React 18 + Tailwind v4 + shadcn/ui (tema zinc)
-- **Chat (agente)**: Python 3.13 + FastAPI + Agno (streaming SSE custom)
-- **Worker**: Python 3.13 + ARQ (Redis-backed async queue) + `yt-dlp` + `ffmpeg`
-- **Auth**: better-auth (Prisma adapter), email/senha, workflow de aprovação admin
+- **Web/API/agente**: Bun + Hono 4 + Vite + React 19 + AI SDK 7 + OpenRouter (SSE)
+- **Worker**: Python 3.13 + jobs duráveis no Postgres + `yt-dlp` + `ffmpeg`
+- **Auth**: Better Auth (Prisma), email/senha, OIDC opcional e aprovação admin
 - **DB**: Postgres 17 + Prisma 6 + FTS (`tsvector` GIN, dicionário `portuguese`)
 - **Fila/cache**: Redis 7
 - **Storage**: MinIO/S3-compatible (`S3_*`)
-- **LLM/Transcrição**: OpenRouter (chat + audio + embeddings via API unificada)
+- **LLM/Transcrição**: OpenRouter (chat, busca, documentos, visão e áudio)
 - **Infra**: Docker + Docker Compose
 - **Deploy**: Easypanel App via Dockerfile ou Docker Compose direto
 
@@ -80,9 +84,8 @@ Voxen é uma plataforma **web self-hosted single-tenant** de **base de conhecime
 ```
 voxen/
 ├── apps/
-│   ├── web/         # Bun + Hono + Vite + React (front+back)
-│   ├── chat/        # Python FastAPI + Agno
-│   └── worker/      # Python ARQ + yt-dlp + ffmpeg
+│   ├── web/         # Bun + Hono + React + agente integrado
+│   └── worker/      # Python + fila Postgres + yt-dlp + ffmpeg
 ├── packages/
 │   └── shared-types/   # tipos TS compartilhados
 ├── prisma/             # schema + migrations
@@ -99,12 +102,12 @@ voxen/
 ### Docker Compose (dev)
 
 ```bash
-make dev   # docker compose up -d --build (postgres, redis, minio, web, chat, worker)
+make dev   # docker compose up -d --build (postgres, redis, minio, web, worker)
 ```
 
 Serviços e portas (dev):
+
 - web: `http://localhost:3000`
-- chat: `http://localhost:8001` (só exposto em dev via override)
 - postgres: interno na rede `voxen-net`
 - redis: interno
 - minio: `http://localhost:9000` (S3) e `http://localhost:9001` (console)
@@ -122,7 +125,7 @@ make ps                # Status dos serviços
 
 make test              # Testes TS + Python
 make test-ts           # Bun test em apps/web
-make test-py           # pytest em apps/chat e apps/worker
+make test-py           # pytest em apps/worker
 
 make lint              # Lint completo (eslint+prettier+ruff)
 make typecheck         # tsc + mypy
@@ -145,6 +148,7 @@ Quando pedido para analisar ou auditar algo, sempre leia o código-fonte real pr
 Quebrar mudanças grandes em incrementos menores e individualmente testados. Não fazer sweeping changes de 8+ arquivos de uma vez — implementar, testar e validar cada pedaço antes de seguir pro próximo. Isso evita bugs cascateados que exigem múltiplos ciclos de correção.
 
 Para features complexas:
+
 1. Implementar a parte mais arriscada/central primeiro
 2. Testar (rodar app, verificar visualmente se for UI)
 3. Só depois estender para os demais arquivos
@@ -262,7 +266,7 @@ Avisar no chat ("ativei poll de CI em background, aviso quando voltar"). Entre d
 
 ### Env e Secrets (CRÍTICO)
 
-- **`.env` APENAS na raiz do projeto**. NUNCA em `apps/web/`, `apps/chat/`, `apps/worker/`
+- **`.env` APENAS na raiz do projeto**. NUNCA em `apps/web/` ou `apps/worker/`
 - O `.env` na raiz contém SÓ o mínimo essencial:
   - URLs de infra (`DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`)
   - Secrets de infra (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `BETTER_AUTH_SECRET`, `MASTER_KEY`)
@@ -279,11 +283,14 @@ Cada user tem seu workspace. Tudo do user (transcrições, chunks, jobs, custos)
 - **Query-time scoping**: toda query inclui `WHERE userId = :currentUser` (ou o equivalente via Prisma `where: { userId }`)
 - Em endpoints, sempre derivar `userId` da sessão (better-auth), nunca do body/query
 - Admin pode ver tudo via flag explícita no endpoint (`?scope=all`) protegida por role
-- RAG/chat: o agente Agno SÓ vê transcrições do `userId` corrente. Tool functions recebem `workspace_id` (=`userId`) e filtram
+- RAG/chat: o agente integrado SÓ vê dados do `userId` corrente. As tools
+  recebem o escopo derivado da sessão e filtram no servidor.
 
 ### Agente sem embeddings (harness/Karpathy)
 
-O chat-agente Agno NÃO usa embeddings/RAG vetorial. Em vez disso, recebe tools:
+O chat-agente integrado NÃO depende de embeddings/RAG vetorial. Em vez disso,
+recebe tools:
+
 - `list_transcripts(workspace_id)` → metadata
 - `search_transcripts(workspace_id, query)` → Postgres FTS, retorna trechos com timestamps
 - `read_transcript(id)` → markdown completo
@@ -326,6 +333,7 @@ Ao sugerir implementação manual, justificar: "Não encontrei lib adequada porq
 ### Pesquisa e Mercado
 
 Pesquisa na web é uma ferramenta central, não opcional. Usar ativamente para:
+
 - Entender como o mercado resolve problemas similares
 - Encontrar ferramentas open-source disponíveis no GitHub
 - Verificar existência de modelos de IA, tecnologias e releases que o usuário menciona
@@ -337,6 +345,7 @@ Pesquisa na web é uma ferramenta central, não opcional. Usar ativamente para:
 Projeto open source do Yef (Carlos Kalyel) hospedado em `Yefclub/Voxen`. Owner/mantenedor principal único.
 
 **Ecossistema de software**:
+
 - **Deploy**: Easypanel App via Dockerfile ou Docker Compose direto
 - **Auth**: better-auth com workflow de aprovação manual do admin (modelo restrito de adoção)
 - **Storage**: MinIO/S3-compatible (sem dependência obrigatória de cloud externa)
@@ -352,6 +361,7 @@ Decisões técnicas devem considerar: segurança self-hosted, soberania de dados
 - `.github/workflows/release.yml` — Trigger em tag `v*` no `main`. Build imagens, push pra `ghcr.io`, cria GitHub Release com changelog
 
 Branch protection em `dev` e `main`:
+
 - Require PR
 - Required status checks do CI
 - No force push
@@ -364,32 +374,32 @@ Quando o usuário fornecer múltiplas issues para implementar em paralelo, segui
 ### Fluxo Completo (4 fases)
 
 **Fase 1 — Preparação**
+
 1. Ler todas as issues via `gh issue view` — entender escopo e dependências
 2. Detectar conflitos potenciais — se duas issues tocam os mesmos arquivos, avisar ANTES de iniciar
 
-**Fase 2 — Implementação Paralela**
-3. Para cada issue, disparar um sub-agente com `isolation: "worktree"`:
-   - O agente recebe: número da issue, contexto completo do problema, arquivos relevantes
-   - O agente deve: ler a issue → atualizar/criar spec em `.specs/` se ainda não houver → implementar → escrever testes → rodar checklist pre-PR → criar PR
-   - O agente NÃO deve modificar arquivos fora do escopo da sua issue
-   - A worktree é automaticamente limpa se o agente não fizer mudanças
+**Fase 2 — Implementação Paralela** 3. Para cada issue, disparar um sub-agente com `isolation: "worktree"`:
 
-**Fase 3 — Limpeza + Aguardar CI**
-4. Limpar worktrees (ver seção abaixo)
-5. Gerar tabela resumo parcial com status das PRs
-6. Aguardar CI de todas as PRs: `gh pr checks <PR_NUMBER> --watch` para cada uma
-   - Se CI falhar em alguma PR, reportar quais falharam e por quê
-   - NÃO prosseguir para review de PRs com CI vermelho
+- O agente recebe: número da issue, contexto completo do problema, arquivos relevantes
+- O agente deve: ler a issue → atualizar/criar spec em `.specs/` se ainda não houver → implementar → escrever testes → rodar checklist pre-PR → criar PR
+- O agente NÃO deve modificar arquivos fora do escopo da sua issue
+- A worktree é automaticamente limpa se o agente não fizer mudanças
 
-**Fase 4 — Review Automatizado**
-7. Para cada PR com CI verde, disparar um sub-agente de review (em background):
-   - O agente usa a skill `review-pr` (`.claude/skills/review-pr/SKILL.md`)
-   - Analisa diff, tipagem, segurança, testes, escopo, migrations, spec alinhada
-   - Retorna relatório estruturado com veredicto: APROVADO ou MUDANÇAS NECESSÁRIAS
+**Fase 3 — Limpeza + Aguardar CI** 4. Limpar worktrees (ver seção abaixo) 5. Gerar tabela resumo parcial com status das PRs 6. Aguardar CI de todas as PRs: `gh pr checks <PR_NUMBER> --watch` para cada uma
+
+- Se CI falhar em alguma PR, reportar quais falharam e por quê
+- NÃO prosseguir para review de PRs com CI vermelho
+
+**Fase 4 — Review Automatizado** 7. Para cada PR com CI verde, disparar um sub-agente de review (em background):
+
+- O agente usa a skill `review-pr` (`.claude/skills/review-pr/SKILL.md`)
+- Analisa diff, tipagem, segurança, testes, escopo, migrations, spec alinhada
+- Retorna relatório estruturado com veredicto: APROVADO ou MUDANÇAS NECESSÁRIAS
+
 8. Após todos os reviews completarem, retornar ao Claude principal com:
 
-   | Issue | PR | CI | Review | Problemas |
-   |-------|----|----|--------|-----------|
+   | Issue | PR  | CI  | Review | Problemas |
+   | ----- | --- | --- | ------ | --------- |
 
 9. Sinalizar PRs que toquem arquivos sobrepostos para revisão manual
 10. Merge é SEMPRE decisão humana — nunca mergear automaticamente
@@ -430,18 +440,21 @@ Princípios pra rodar subagentes autônomos sem alucinar progresso (verificaçã
 Voxen segue **SDD + TDD** rigorosamente:
 
 ### Fluxo SDD
+
 1. Feature nova ou não-trivial → criar `.specs/NNN-slug.md` via skill `spec` (EARS format)
 2. Co-autorar a spec com o usuário (perguntar até estar claro)
 3. Spec aprovada → atualizar `docs/DECISIONS.md` se há decisão arquitetural
 4. Spec entra no MESMO PR da implementação (ou PR `docs/*` separado antes, se for grande)
 
 ### Fluxo TDD
+
 1. Para cada critério de aceite da spec, escrever teste primeiro (falhando)
 2. Implementar o mínimo pra fazer o teste passar
 3. Refatorar com testes verdes
 4. Repetir até todos critérios cobertos
 
 ### Quando spec NÃO é necessária
+
 - Typo, rename trivial, fix de lint
 - Bump de dependência sem mudança de API
 - Refactor interno sem mudança de comportamento
@@ -455,12 +468,14 @@ O Claude tem autonomia para tomar decisões operacionais sem perguntar. Isso exi
 ### Decisões que o Claude DEVE tomar sozinho
 
 **Início de sessão**:
+
 - `git status` + verificar branch atual
 - `gh pr list --state open` (PRs abertas)
 - Verificar se há worktrees órfãs (`git worktree list`)
 - Reportar estado em 3-4 linhas antes de perguntar o que fazer
 
 **Seleção de skill**:
+
 - "o que fizemos essa semana?" → `changelog` ou `sprint-summary`
 - "como estão as PRs?" → `ci-status`
 - "analisa o módulo X" → `audit`
@@ -472,6 +487,7 @@ O Claude tem autonomia para tomar decisões operacionais sem perguntar. Isso exi
 - Lista de issues em lote → fluxo de worktrees paralelas
 
 **Coleta de contexto**:
+
 - Ler código relevante (não responder de memória)
 - Verificar git log recente se a pergunta é sobre mudanças
 - Pesquisar na web se a pergunta envolve tecnologias/abordagens externas
@@ -489,20 +505,20 @@ O Claude tem autonomia para tomar decisões operacionais sem perguntar. Isso exi
 
 As skills ficam em `.claude/skills/`:
 
-| Skill | Quando usar |
-|-------|-------------|
-| `architect` | Discovery e scaffolding de novos módulos/projetos |
-| `audit` | Auditoria profunda de módulo ou concern |
-| `changelog` | Resumo executivo p/ gestão |
-| `ci-status` | Panorama do CI e PRs |
-| `monday` | Integração Monday.com via MCP |
-| `release` | Preparar PR de release dev→main |
-| `research` | Pesquisa estruturada com trade-offs |
-| `review-pr` | Revisão técnica de PR (pós-CI) |
-| `ship` | Branch → PR → CI → review → merge |
-| `spec` | Criar/editar spec EARS em `.specs/` |
-| `sprint-summary` | Radiografia técnica do projeto |
-| `triage` | Categorizar issues abertas |
+| Skill            | Quando usar                                       |
+| ---------------- | ------------------------------------------------- |
+| `architect`      | Discovery e scaffolding de novos módulos/projetos |
+| `audit`          | Auditoria profunda de módulo ou concern           |
+| `changelog`      | Resumo executivo p/ gestão                        |
+| `ci-status`      | Panorama do CI e PRs                              |
+| `monday`         | Integração Monday.com via MCP                     |
+| `release`        | Preparar PR de release dev→main                   |
+| `research`       | Pesquisa estruturada com trade-offs               |
+| `review-pr`      | Revisão técnica de PR (pós-CI)                    |
+| `ship`           | Branch → PR → CI → review → merge                 |
+| `spec`           | Criar/editar spec EARS em `.specs/`               |
+| `sprint-summary` | Radiografia técnica do projeto                    |
+| `triage`         | Categorizar issues abertas                        |
 
 **Como usar**: Ler o `SKILL.md` da skill relevante antes de executar.
 
@@ -518,11 +534,11 @@ Se durante execução o agente identificar problema no skill (output errado, pas
 
 ### Localização dos Arquivos de Configuração
 
-| Arquivo | Path | Escopo |
-|---------|------|--------|
-| Skills do projeto | `.claude/skills/<nome>/SKILL.md` | Projeto (todos os devs) |
-| Agentes do projeto | `.claude/agents/<nome>.md` | Projeto |
-| CLAUDE.md (regras) | `./CLAUDE.md` | Projeto |
-| Settings do projeto | `./.claude/settings.json` | Projeto |
-| Settings do usuário | `~/.claude/settings.json` | Pessoal |
-| Memórias | `~/.claude/projects/<hash>/memory/` | Pessoal |
+| Arquivo             | Path                                | Escopo                  |
+| ------------------- | ----------------------------------- | ----------------------- |
+| Skills do projeto   | `.claude/skills/<nome>/SKILL.md`    | Projeto (todos os devs) |
+| Agentes do projeto  | `.claude/agents/<nome>.md`          | Projeto                 |
+| CLAUDE.md (regras)  | `./CLAUDE.md`                       | Projeto                 |
+| Settings do projeto | `./.claude/settings.json`           | Projeto                 |
+| Settings do usuário | `~/.claude/settings.json`           | Pessoal                 |
+| Memórias            | `~/.claude/projects/<hash>/memory/` | Pessoal                 |

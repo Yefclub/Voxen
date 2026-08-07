@@ -39,12 +39,14 @@ Reescrever como **plataforma web self-hosted**, deployável em container único 
 
 ### Contexto
 
-Voxen tem 3 apps: 2 Python (chat, worker) + 1 TS (web). Turbo orquestra bem cadeias TS mas não tem suporte first-class pra Python. Avaliou-se Bazel/Pants (overkill) e scripts ad-hoc.
+Voxen combina uma aplicação TypeScript (web) e um worker Python. Turbo
+orquestra melhor cadeias exclusivamente TS; avaliou-se Bazel/Pants (overkill) e
+scripts ad-hoc.
 
 ### Decisão
 
-- **pnpm workspaces** pros pacotes TS (apps/web, packages/*)
-- **uv** independente em cada app Python (apps/chat, apps/worker)
+- **pnpm workspaces** pros pacotes TS (apps/web, packages/\*)
+- **uv** para o `apps/worker`
 - **Makefile** na raiz orquestra TODO comando (dev, test, lint, typecheck), chamando bun/pnpm/uv/docker conforme o caso
 
 ### Consequências
@@ -55,28 +57,27 @@ Voxen tem 3 apps: 2 Python (chat, worker) + 1 TS (web). Turbo orquestra bem cade
 
 ---
 
-## ADR-003 — Agno em vez de Vercel AI SDK no agente
+## ADR-003 — Serviço Python separado para o agente (substituída)
 
 **Data**: 2026-05-15
-**Status**: Aceita
+**Status**: Substituída pela integração do agente em `apps/web`
 
 ### Contexto
 
-Plataforma tem chat com tool calling. Duas opções principais:
-- **Vercel AI SDK** (TS, no Bun) — bom streaming + UI hooks
-- **Agno** (Python) — multi-agent, memory, RAG nativo
-
-Pra ter "algo robusto desde já" (palavras do owner), Agno é mais completo. Permite expandir pra multi-agent, memory persistente, etc.
+O primeiro desenho do chat adotou um agente Python em serviço separado. Isso
+exigia uma chamada HTTP interna e um protocolo de stream adicional.
 
 ### Decisão
 
-Usar **Agno** como agente principal num serviço Python (`apps/chat`). Front consome via SSE custom.
+O agente atual foi integrado ao `apps/web` com AI SDK 7 e provider OpenRouter.
+A rota Hono autenticada deriva o `userId` da sessão e executa ferramentas
+determinísticas no mesmo boundary de autorização.
 
 ### Consequências
 
-- 1 serviço Python a mais (`apps/chat`)
-- Agno não tem stream protocol compatível com AI SDK ([issue #2978](https://github.com/agno-agi/agno/issues/2978), [issue #4766](https://github.com/agno-agi/agno/issues/4766)) — cliente SSE custom no front (ver ADR-009)
-- Ganho: framework completo, robustez de longa duração
+- Um serviço e um hop interno foram removidos.
+- O web transmite texto, raciocínio, fontes e ferramentas diretamente por SSE.
+- O harness sem embeddings e o isolamento por usuário foram preservados.
 
 ---
 
@@ -88,6 +89,7 @@ Usar **Agno** como agente principal num serviço Python (`apps/chat`). Front con
 ### Contexto
 
 Como o agente acha conteúdo relevante nas transcrições? Dois caminhos:
+
 - **RAG tradicional**: chunks → embeddings → vector store (pgvector) → similarity search
 - **Harness/Karpathy**: dar tools (list, read, grep/search) ao agente e deixar ele navegar com a própria inteligência
 
@@ -95,7 +97,8 @@ Karpathy argumenta que embeddings são compressão lossy — pra agentes capazes
 
 ### Decisão
 
-Abordagem **harness**. Agno recebe tools:
+Abordagem **harness**. O agente integrado recebe tools:
+
 - `list_transcripts(workspace_id)`
 - `search_transcripts(workspace_id, query)` → Postgres FTS com `ts_headline`
 - `read_transcript(id)`, `read_transcript_section(id, from_ts, to_ts)`
@@ -105,7 +108,7 @@ Postgres FTS (`tsvector` GIN, dicionário `portuguese`) é o motor de busca. Sem
 
 ### Consequências
 
-- **Prós**: 
+- **Prós**:
   - Sem pipeline de embedding (custo zero por chunk)
   - Sem custo de re-indexar quando muda modelo
   - Respostas explicáveis (agente mostra queries que fez)
@@ -161,6 +164,7 @@ Mantém a ADR: determinístico, custo zero de indexação, sem pgvector/embeddin
 ### Contexto
 
 Workers que rodam extração de mídia + ffmpeg + transcrição precisam consumir fila. BullMQ (Node) é o canônico no ecossistema TS. Mas:
+
 - o extrator usado hoje é Python nativo
 - ffmpeg-python e bindings Python são maduros
 - Agno também é Python
@@ -262,30 +266,26 @@ criava diferença entre Compose e Easypanel e complicava backup/migração.
 
 ---
 
-## ADR-009 — Cliente SSE custom no front (sem AI SDK)
+## ADR-009 — Bridge de stream do agente separado (substituída)
 
 **Data**: 2026-05-15
-**Status**: Aceita
+**Status**: Substituída pelo agente integrado com AI SDK 7
 
 ### Contexto
 
-Agno (back) emite stream em formato próprio. Vercel AI SDK (front) espera protocolo específico de SSE. Integração nativa não existe ([vercel/ai#8098](https://github.com/vercel/ai/issues/8098), [agno-agi/agno#2978](https://github.com/agno-agi/agno/issues/2978), [agno-agi/agno#4766](https://github.com/agno-agi/agno/issues/4766)).
-
-Caminhos:
-- (a) cliente SSE custom no React (~50 linhas)
-- (b) bridge no Bun traduzindo Agno → AI SDK protocol
-- (c) trocar Agno por AI SDK (vai contra ADR-003)
+O serviço separado precisava traduzir seu stream para a linha do tempo do
+front-end.
 
 ### Decisão
 
-**(a) — cliente SSE custom no React.** Sem AI SDK. Hook próprio usa `EventSource` ou `fetch` + `ReadableStream` (pra mandar headers de auth).
+O agente passou para `apps/web`. A rota autenticada emite diretamente o
+contrato SSE da aplicação e persiste segmentos ordenados.
 
 ### Consequências
 
-- 1 dependência a menos no front
-- Mais código pra manter (~50 linhas)
-- Sem útil-mas-açúcar do `useChat` — implementamos só o que precisamos
-- Quando/se Agno suportar AI SDK protocol oficialmente, migrar é simples
+- Não existe bridge entre aplicações.
+- Reload restaura texto, raciocínio, fontes e ferramentas persistidos.
+- Raciocínio armazenado não retorna ao contexto do modelo.
 
 ---
 
@@ -333,11 +333,11 @@ ingestão” de entidades/claims.
 
 ### Alternativas
 
-| Opção | Prós | Contras |
-|-------|------|---------|
-| (a) Dependência `langextract` no worker | Grounding maduro, viz HTML | Stack Gemini/Ollama-centric; Voxen é OpenRouter-first; deps extras; path de auth paralelo |
-| (b) Reimplementar o **padrão** (schema + few-shot + excerpt obrigatório) via OpenRouter | Cabe no ADR-004/harness; 1 chave; licença limpa | Mais código nosso |
-| (c) Ignorar grounding | Rápido | Arestas/claims sem citação — piora o Brain |
+| Opção                                                                                   | Prós                                            | Contras                                                                                   |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| (a) Dependência `langextract` no worker                                                 | Grounding maduro, viz HTML                      | Stack Gemini/Ollama-centric; Voxen é OpenRouter-first; deps extras; path de auth paralelo |
+| (b) Reimplementar o **padrão** (schema + few-shot + excerpt obrigatório) via OpenRouter | Cabe no ADR-004/harness; 1 chave; licença limpa | Mais código nosso                                                                         |
+| (c) Ignorar grounding                                                                   | Rápido                                          | Arestas/claims sem citação — piora o Brain                                                |
 
 ### Decisão
 
