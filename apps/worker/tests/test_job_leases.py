@@ -366,7 +366,7 @@ async def test_enrichment_dispatcher_round_robins_research_without_starvation(
     monkeypatch.setattr(
         main.research_db,
         "claim_pending_transcript_enrichments",
-        lambda limit: claim(research_queue, limit),
+        lambda limit, policy_mode: claim(research_queue, limit),
     )
     monkeypatch.setattr(main.summary, "maybe_generate", AsyncMock())
     monkeypatch.setattr(main, "_maybe_generate_tags", AsyncMock())
@@ -392,10 +392,10 @@ async def test_enrichment_dispatcher_round_robins_research_without_starvation(
     assert summary_queue == tag_queue == research_queue == []
 
 
-async def test_research_dispatcher_fails_closed_when_policy_is_off(
+async def test_research_dispatcher_reconciles_but_claims_nothing_when_policy_is_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    claim = AsyncMock(return_value=[{"id": "must-not-run"}])
+    claim = AsyncMock(return_value=[])
     monkeypatch.setattr(main.research_db, "claim_pending_transcript_enrichments", claim)
     monkeypatch.setattr(
         main.voxen_settings,
@@ -404,7 +404,22 @@ async def test_research_dispatcher_fails_closed_when_policy_is_off(
     )
 
     assert await main._reconcile_research_once(asyncio.Semaphore(1), set()) == 0
-    claim.assert_not_awaited()
+    claim.assert_awaited_once_with(limit=0, policy_mode="OFF")
+
+
+async def test_research_dispatcher_passes_manual_policy_to_atomic_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claim = AsyncMock(return_value=[])
+    monkeypatch.setattr(main.research_db, "claim_pending_transcript_enrichments", claim)
+    monkeypatch.setattr(
+        main.voxen_settings,
+        "get_summary_research_mode",
+        AsyncMock(return_value="MANUAL"),
+    )
+
+    assert await main._reconcile_research_once(asyncio.Semaphore(1), set()) == 0
+    claim.assert_awaited_once_with(limit=2, policy_mode="MANUAL")
 
 
 async def test_job_event_survives_redis_outage_after_postgres_snapshot(

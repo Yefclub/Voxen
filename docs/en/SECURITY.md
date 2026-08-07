@@ -69,6 +69,10 @@ master key.
 - External research is untrusted and review-gated. Uncited output fails closed,
   suggested or stale output is excluded from retrieval, and rendered Markdown
   cannot enable raw HTML or unsafe URL execution.
+- Raw source content is available only to a tool-free planning request.
+  Deterministic query validation separates it from tool-enabled search turns;
+  provider price ceilings, request/result limits, strict usage proof, and a
+  wall-clock deadline fail closed before any result can enter knowledge.
 - The optional reverse proxy agent uses TLS, a high-entropy encrypted token,
   and a localhost-only SOCKS endpoint.
 

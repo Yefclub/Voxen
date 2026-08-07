@@ -71,10 +71,35 @@ async def queue_auto_transcript_enrichment(user_id: str, transcript_id: str) -> 
     return status == "INSERT 0 1"
 
 
-async def claim_pending_transcript_enrichments(limit: int = 4) -> list[dict[str, Any]]:
-    """Claim bounded research work and recover abandoned RUNNING executions."""
+async def claim_pending_transcript_enrichments(
+    limit: int = 4, *, policy_mode: str = "AUTO"
+) -> list[dict[str, Any]]:
+    """Reconcile lifecycle/policy and claim only work allowed by the current mode."""
+    if policy_mode not in {"OFF", "MANUAL", "AUTO"}:
+        policy_mode = "OFF"
+    limit = max(0, limit)
     async with connection() as conn:
         async with conn.transaction():
+            await conn.execute(
+                """
+                UPDATE "TranscriptEnrichment"
+                SET status = 'CANCELLED'::"TranscriptEnrichmentStatus",
+                    "cancelRequestedAt" = COALESCE("cancelRequestedAt", NOW()),
+                    "startedAt" = NULL, "nextAttemptAt" = NULL,
+                    "staleReason" = 'research-policy-changed', "updatedAt" = NOW()
+                WHERE type = 'WEB_RESEARCH'::"TranscriptEnrichmentType"
+                  AND status IN (
+                    'PENDING'::"TranscriptEnrichmentStatus",
+                    'RETRY'::"TranscriptEnrichmentStatus",
+                    'RUNNING'::"TranscriptEnrichmentStatus"
+                  )
+                  AND (
+                    $1 = 'OFF'
+                    OR ($1 = 'MANUAL' AND trigger = 'AUTO'::"TranscriptEnrichmentTrigger")
+                  )
+                """,
+                policy_mode,
+            )
             await conn.execute(
                 """
                 UPDATE "TranscriptEnrichment"
@@ -86,6 +111,24 @@ async def claim_pending_transcript_enrichments(limit: int = 4) -> list[dict[str,
                     'RUNNING'::"TranscriptEnrichmentStatus"
                   )
                   AND "cancelRequestedAt" IS NOT NULL
+                """
+            )
+            await conn.execute(
+                """
+                UPDATE "TranscriptEnrichment" e
+                SET status = 'CANCELLED'::"TranscriptEnrichmentStatus",
+                    "cancelRequestedAt" = COALESCE(e."cancelRequestedAt", NOW()),
+                    "startedAt" = NULL, "nextAttemptAt" = NULL,
+                    "staleReason" = 'parent-inactive', "updatedAt" = NOW()
+                FROM "Transcript" t
+                WHERE t.id = e."transcriptId" AND t."userId" = e."userId"
+                  AND e.type = 'WEB_RESEARCH'::"TranscriptEnrichmentType"
+                  AND e.status IN (
+                    'PENDING'::"TranscriptEnrichmentStatus",
+                    'RETRY'::"TranscriptEnrichmentStatus",
+                    'RUNNING'::"TranscriptEnrichmentStatus"
+                  )
+                  AND t.status <> 'ACTIVE'::"ContentStatus"
                 """
             )
             await conn.execute(
@@ -136,6 +179,14 @@ async def claim_pending_transcript_enrichments(limit: int = 4) -> list[dict[str,
                   ON t.id = e."transcriptId" AND t."userId" = e."userId"
                 WHERE e.type = 'WEB_RESEARCH'::"TranscriptEnrichmentType"
                   AND t.status = 'ACTIVE'::"ContentStatus"
+                  AND $2 <> 'OFF'
+                  AND (
+                    $2 = 'AUTO'
+                    OR e.trigger IN (
+                      'MANUAL'::"TranscriptEnrichmentTrigger",
+                      'MCP'::"TranscriptEnrichmentTrigger"
+                    )
+                  )
                   AND e.attempt < 3
                   AND e."cancelRequestedAt" IS NULL
                   AND e."sourceVersion" = t."sourceVersion"
@@ -166,6 +217,7 @@ async def claim_pending_transcript_enrichments(limit: int = 4) -> list[dict[str,
               t.title, t."plainText", t."summaryMd"
                 """,
                 limit,
+                policy_mode,
             )
     return [dict(row) for row in rows]
 

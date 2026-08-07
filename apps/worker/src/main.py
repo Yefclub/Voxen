@@ -282,8 +282,7 @@ async def _reconcile_research_once(
     max_in_flight: int = ENRICHMENT_MAX_CONCURRENCY,
 ) -> int:
     try:
-        if await voxen_settings.get_summary_research_mode() == "OFF":
-            return 0
+        policy_mode = await voxen_settings.get_summary_research_mode()
     except Exception as exc:  # noqa: BLE001 -- fail closed without starving other queues
         log.error(
             "research-policy-read-failed",
@@ -291,8 +290,9 @@ async def _reconcile_research_once(
         )
         return 0
     capacity = min(limit, max(0, max_in_flight - len(tasks)))
-    pending = (
-        await research_db.claim_pending_transcript_enrichments(limit=capacity) if capacity else []
+    pending = await research_db.claim_pending_transcript_enrichments(
+        limit=capacity if policy_mode != "OFF" else 0,
+        policy_mode=policy_mode,
     )
     for item in pending:
         _track_task(tasks, _run_research_with_sem(sem, item))

@@ -63,6 +63,10 @@ cookies ou a master key.
 - Pesquisa externa é não confiável e exige revisão. Saída sem citação falha de
   forma fechada, sugestões ou stale ficam fora da recuperação e o Markdown não
   habilita HTML cru nem URLs inseguras.
+- O conteúdo bruto da fonte aparece somente no planejamento sem ferramentas.
+  Validação determinística de consultas o separa das buscas com ferramenta;
+  tetos de preço, limites de requisições/resultados, prova estrita de uso e
+  prazo total fazem o fluxo falhar fechado antes de entrar no conhecimento.
 - O proxy residencial opcional usa TLS, token cifrado de alta entropia e SOCKS
   vinculado somente ao localhost.
 

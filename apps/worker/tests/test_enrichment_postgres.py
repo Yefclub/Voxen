@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import asyncpg
 import pytest
 
-from src import db
+from src import db, research_db
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -70,6 +70,7 @@ async def _insert_transcript(
     started_at: datetime | None = None,
     next_attempt_at: datetime | None = None,
     updated_at: datetime | None = None,
+    status: str = "ACTIVE",
 ) -> None:
     await conn.execute(
         """
@@ -79,7 +80,7 @@ async def _insert_transcript(
           "taggingStatus", "taggingAttempts", "taggingStartedAt",
           "taggingNextAttemptAt", "createdAt", "updatedAt"
         ) VALUES (
-          $1, $2, 'ACTIVE'::"ContentStatus", 'YOUTUBE'::"TranscriptSource",
+          $1, $2, $10::"ContentStatus", 'YOUTUBE'::"TranscriptSource",
           $3, $1, 10, 'pt', 'SUBTITLES'::"TranscriptionMethod", $4,
           'Conteúdo suficientemente longo para enriquecimento.', '{}'::jsonb,
           $5::"EnrichmentStatus", $6, $7, $8, NOW(),
@@ -95,6 +96,137 @@ async def _insert_transcript(
         started_at,
         next_attempt_at,
         updated_at,
+        status,
+    )
+
+
+async def _insert_research_enrichment(
+    conn: asyncpg.Connection,
+    *,
+    enrichment_id: str,
+    transcript_id: str,
+    user_id: str,
+    trigger: str,
+    status: str = "PENDING",
+) -> None:
+    await conn.execute(
+        """
+        INSERT INTO "TranscriptEnrichment" (
+          id, "userId", "transcriptId", "runKey", type, status,
+          "reviewState", trigger, title, content, citations, queries,
+          "sourceVersion", "createdAt", "updatedAt"
+        ) VALUES (
+          $1, $2, $3, $1, 'WEB_RESEARCH'::"TranscriptEnrichmentType",
+          $5::"TranscriptEnrichmentStatus",
+          'SUGGESTED'::"TranscriptEnrichmentReviewState",
+          $4::"TranscriptEnrichmentTrigger", '', '', '[]'::jsonb,
+          '[]'::jsonb, 0, NOW(), NOW()
+        )
+        """,
+        enrichment_id,
+        user_id,
+        transcript_id,
+        trigger,
+        status,
+    )
+
+
+async def test_research_claim_reconciles_policy_trigger_and_parent_lifecycle(
+    postgres: asyncpg.Connection,
+) -> None:
+    await _insert_user(postgres, "research-user")
+    for transcript_id in ("auto-parent", "manual-parent", "mcp-parent"):
+        await _insert_transcript(
+            postgres,
+            transcript_id=transcript_id,
+            user_id="research-user",
+        )
+    await _insert_transcript(
+        postgres,
+        transcript_id="archived-parent",
+        user_id="research-user",
+        status="ARCHIVED",
+    )
+    await _insert_research_enrichment(
+        postgres,
+        enrichment_id="auto-research",
+        transcript_id="auto-parent",
+        user_id="research-user",
+        trigger="AUTO",
+    )
+    await _insert_research_enrichment(
+        postgres,
+        enrichment_id="manual-research",
+        transcript_id="manual-parent",
+        user_id="research-user",
+        trigger="MANUAL",
+    )
+    await _insert_research_enrichment(
+        postgres,
+        enrichment_id="mcp-research",
+        transcript_id="mcp-parent",
+        user_id="research-user",
+        trigger="MCP",
+    )
+    await _insert_research_enrichment(
+        postgres,
+        enrichment_id="archived-research",
+        transcript_id="archived-parent",
+        user_id="research-user",
+        trigger="MANUAL",
+    )
+
+    claimed = await research_db.claim_pending_transcript_enrichments(
+        limit=10,
+        policy_mode="MANUAL",
+    )
+    assert {str(row["id"]) for row in claimed} == {"manual-research", "mcp-research"}
+
+    states = {
+        str(row["id"]): (str(row["status"]), row["staleReason"])
+        for row in await postgres.fetch(
+            """
+            SELECT id, status, "staleReason"
+            FROM "TranscriptEnrichment"
+            WHERE "userId" = 'research-user'
+            """
+        )
+    }
+    assert states["auto-research"] == ("CANCELLED", "research-policy-changed")
+    assert states["archived-research"] == ("CANCELLED", "parent-inactive")
+    assert states["manual-research"] == ("RUNNING", None)
+    assert states["mcp-research"] == ("RUNNING", None)
+
+    assert await research_db.claim_pending_transcript_enrichments(limit=0, policy_mode="OFF") == []
+    running_after_off = await postgres.fetch(
+        """
+        SELECT id, status, "staleReason", "cancelRequestedAt"
+        FROM "TranscriptEnrichment"
+        WHERE id IN ('manual-research', 'mcp-research')
+        ORDER BY id
+        """
+    )
+    assert all(row["status"] == "CANCELLED" for row in running_after_off)
+    assert all(row["staleReason"] == "research-policy-changed" for row in running_after_off)
+    assert all(row["cancelRequestedAt"] is not None for row in running_after_off)
+
+    await postgres.execute(
+        """
+        UPDATE "Transcript"
+        SET status = 'ACTIVE'::"ContentStatus", "archivedAt" = NULL,
+            "updatedAt" = NOW()
+        WHERE id = 'archived-parent'
+        """
+    )
+    assert (
+        await research_db.claim_pending_transcript_enrichments(limit=10, policy_mode="AUTO") == []
+    )
+    assert (
+        await postgres.fetchval(
+            'SELECT status FROM "TranscriptEnrichment" WHERE id = $1',
+            "archived-research",
+        )
+        == "CANCELLED"
     )
 
 

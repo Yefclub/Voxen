@@ -61,11 +61,30 @@ async def test_claim_research_performs_reconciliation_before_claim(
     conn.fetch.return_value = [{"id": "enrichment-1", "attempt": 2}]
     _patch_connection(monkeypatch, conn)
 
-    claimed = await research_db.claim_pending_transcript_enrichments(limit=3)
+    claimed = await research_db.claim_pending_transcript_enrichments(limit=3, policy_mode="MANUAL")
 
     assert claimed == [{"id": "enrichment-1", "attempt": 2}]
-    assert conn.execute.await_count == 3
-    assert conn.fetch.await_args.args[-1] == 3
+    assert conn.execute.await_count == 5
+    assert conn.fetch.await_args.args[-2:] == (3, "MANUAL")
+    executed_sql = "\n".join(call.args[0] for call in conn.execute.await_args_list)
+    claim_sql = conn.fetch.await_args.args[0]
+    assert "research-policy-changed" in executed_sql
+    assert "parent-inactive" in executed_sql
+    assert "$2 = 'AUTO'" in claim_sql
+    assert "e.trigger IN" in claim_sql
+    assert "'MANUAL'" in claim_sql
+    assert "'MCP'" in claim_sql
+
+
+async def test_off_policy_reconciles_without_claiming(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = _Connection()
+    conn.fetch.return_value = []
+    _patch_connection(monkeypatch, conn)
+
+    assert await research_db.claim_pending_transcript_enrichments(limit=99, policy_mode="OFF") == []
+
+    assert conn.fetch.await_args.args[-2:] == (99, "OFF")
+    assert "AND $2 <> 'OFF'" in conn.fetch.await_args.args[0]
 
 
 async def test_complete_research_bounds_values_and_honors_current_claim(

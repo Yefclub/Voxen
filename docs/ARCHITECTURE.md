@@ -102,10 +102,14 @@ complementa a busca textual e não substitui a recuperação de evidências.
 - Pesquisa posterior ao resumo é um enriquecimento durável separado. Ela nunca
   altera Markdown canônico ou `summaryMd`, trata fonte/web como dados não
   confiáveis e nasce `SUGGESTED` com citações URL estruturadas.
+- A pesquisa separa um planejamento sem ferramentas das buscas limitadas. A
+  aplicação valida os tópicos entre as fases, e a requisição com ferramenta
+  nunca recebe transcrição, resumo, título ou justificativa do planejador.
 - Apenas enriquecimentos atuais `READY + ACCEPTED` entram na recuperação padrão
   e no Brain, explicitamente tipados como derivados externos de menor
   autoridade. Dispensa, exclusão, expiração ou mudança de fonte remove somente
   os derivados.
 - O administrador escolhe `OFF`, `MANUAL` ou `AUTO`; `OFF` é o padrão seguro.
   Web e MCP compartilham a mesma fila durável e isolada por usuário do modo
-  automático.
+  automático. Mudanças de política e conteúdos-pai inativos cancelam trabalhos
+  incompatíveis ainda não terminados em vez de permitir nova aquisição.

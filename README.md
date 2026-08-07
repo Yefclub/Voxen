@@ -47,7 +47,9 @@ credentials, private content, or unredacted logs in a public report.
    the Brain knowledge graph.
 5. Notes can preserve verified transcript passages by line and timestamp.
    Optional post-summary research stays in a separate cited review queue and
-   enters retrieval only after explicit acceptance.
+   enters retrieval only after explicit acceptance. Tool-free planning is
+   isolated from bounded web-search turns so raw source text never accompanies
+   a search tool.
 
 ## Stack
 

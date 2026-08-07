@@ -110,12 +110,16 @@ without duplication.
 - Post-summary research is a separate durable enrichment. It never mutates
   canonical Markdown or `summaryMd`, treats source/web text as untrusted data,
   and is stored as `SUGGESTED` with structured URL citations.
+- Research separates a tool-free planning pass from bounded search passes.
+  Application validation sits between them, and the tool-enabled request never
+  receives the raw transcript, summary, title, or planner rationale.
 - Only fresh `READY + ACCEPTED` enrichments enter default retrieval and Brain,
   explicitly typed as lower-authority external derivatives. Dismissal,
   deletion, expiry, or source changes remove only their derivatives.
 - The administrator selects `OFF`, `MANUAL`, or `AUTO`; `OFF` is fail-closed.
   Web and MCP requests share the same user-scoped durable queue as automatic
-  post-summary research.
+  post-summary research. Policy changes and inactive parent content cancel
+  incompatible nonterminal work instead of allowing it to be reclaimed.
 
 ## Design Direction
 
