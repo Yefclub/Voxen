@@ -1,184 +1,84 @@
 # Segurança — Voxen
 
-Voxen é self-hosted, multi-user com adoção restrita. Este documento descreve o modelo de ameaças, decisões de segurança, e onde estão os guards.
+Voxen é self-hosted e voltada a adoção restrita. O responsável pelo deploy
+controla host, secrets, modelos, provedores de identidade e aprovação de
+usuários. Vulnerabilidades devem seguir [`../SECURITY.md`](../SECURITY.md).
 
-Para reportar vulnerabilidades, siga a política pública em [`../SECURITY.md`](../SECURITY.md).
+## Modelo de ameaças
 
-## Threat model (resumido)
+| Ameaça                 | Vetor                      | Mitigação                                      |
+| ---------------------- | -------------------------- | ---------------------------------------------- |
+| Brute force            | endpoints de login         | rate limits, hash forte e IdP opcional         |
+| SSRF                   | URL de ingestão maliciosa  | validação e allowlist antes da extração        |
+| Acesso entre usuários  | identificador forjado      | `userId` sempre derivado da sessão             |
+| Escalada de privilégio | rotas administrativas      | guards server-side por role                    |
+| Vazamento de secrets   | dump ou log                | settings cifrados e logs sem valores sensíveis |
+| Supply chain           | pacotes, Actions e imagens | lockfiles, audits, CodeQL, Trivy e gitleaks    |
 
-| Atacante | Vetor | Mitigação |
-|---|---|---|
-| Externo (internet) | Brute-force login | Rate limit no `/api/auth/*` (better-auth), senhas hash via Argon2 (default better-auth) |
-| Externo | SSRF via URL maliciosa nos jobs | Allowlist de hosts no worker antes de invocar o extrator de mídia |
-| Externo | Upload de URL que causa download grande/abusivo | (futuro) limite de duração/tamanho — owner pediu "sem limite" no MVP, mas budget por user atua de freio econômico |
-| Externo | Roubo de master key se acessar env/host | Master key em `MASTER_KEY`; nunca logar e manter backup fora do servidor |
-| Interno (user) | Acesso a transcrição de outro user | Query-time scoping por `userId` em TODA query; rotas admin protegidas por role |
-| Interno | Exfil de secrets via DB dump | Secrets em `settings.valueEnc` cifrados com master key — dump do DB sem master key não vaza |
-| Interno (admin) | Abuso de privilégio | Admin é o owner (1 pessoa); ações administrativas logadas |
-| Supply chain | Pacote npm/pip malicioso | Dependabot + audits (pnpm audit, pip-audit) + lockfile commitado |
-| Supply chain | Imagem Docker maliciosa | Trivy scan no CI em cada PR |
+## Autenticação e autorização
 
-## Princípios
+Better Auth mantém sessões em banco e cookies HTTP-only. Email/senha local está
+sempre disponível. O administrador pode configurar um provedor OIDC, restringir
+domínios e controlar aprovação automática de identidades confiáveis.
 
-### Defense in depth
+A primeira conta vira administradora. As demais contas locais começam
+pendentes. Estados: `PENDING`, `APPROVED`, `REJECTED` e `DISABLED`.
 
-Vários layers, falha de um não compromete o sistema:
-1. CORS estrito (`APP_BASE_URL` apenas)
-2. Auth obrigatório em toda rota (exceto `/health`, `/api/auth/*`)
-3. Validação de input com Zod (TS) / Pydantic (Python) em TODOS os endpoints
-4. Auth guards verificam `userId` ANTES de query no DB
-5. Queries usam scoping (`where: { userId }` sempre)
-6. Output sanitizado (escapar HTML no render de transcrição se necessário)
+Configurações da instância ficam em `/admin/*`. Perfil, sessões de contas de
+plataforma e credenciais MCP pertencem ao usuário autenticado em `/conta/*`.
 
-### Least privilege
+## Isolamento de usuários
 
-- Postgres user da aplicação (`voxen`) tem permissão apenas no DB `voxen`, sem CREATEDB/SUPERUSER
-- Redis password obrigatório
-- Access key S3/MinIO tem permissão apenas no bucket `voxen-transcripts`
+- Derivar `userId` da sessão, nunca de body ou query.
+- Filtrar transcrições, notas, jobs, grafo, custos, conversas, integrações e
+  ferramentas do agente por esse `userId`.
+- Manter visões globais do admin explícitas e protegidas.
+- Compartilhar modelos da plataforma sem compartilhar dados ou sessões de
+  contas pessoais.
 
-### Secrets management
+## Secrets
 
-- **`.env` na raiz**: APENAS infra (DB password, Redis password, MinIO/S3, Better Auth secret, App base URL, `MASTER_KEY`)
-- **Master key**: `MASTER_KEY` em todos os modos documentados, com formato
-  base64 de 32 bytes (`openssl rand -base64 32`)
-- **Secrets de app** (OpenRouter API key, SMTP, etc.): cifrados em `settings.valueEnc` via AES-256-GCM com master key
-- **NUNCA** logar secret value (logs em produção devem mascarar)
-- **NUNCA** commitar `.env` (já no `.gitignore`)
-- gitleaks no CI valida que secrets não vazaram
+Secrets de infraestrutura ficam somente no `.env` da raiz. Chaves OpenRouter,
+OIDC e outros settings de aplicação são cifrados com AES-256-GCM usando
+`MASTER_KEY`.
 
-## Auth
-
-- **better-auth** com Prisma adapter
-- Email/senha apenas (sem OAuth no MVP)
-- Senhas hash com **Argon2id** (padrão better-auth)
-- Sessões em DB (`Session` table), cookie HTTP-only + SameSite=Lax
-- Rate limit no `/api/auth/sign-in` (5 tentativas / 15 min por IP)
-- Workflow de aprovação: `status: pending | approved | rejected | disabled` na User table. Status diferente de `approved` bloqueia login
-
-## CORS
-
-- `apps/web` aceita requests apenas de `APP_BASE_URL`
-- `apps/chat` aceita requests apenas do `apps/web` (rede interna `voxen-net`); não é exposto pra fora
-
-## CSP (Content Security Policy)
-
-Header CSP estrito no `apps/web`:
-```
-default-src 'self';
-script-src 'self';
-style-src 'self' 'unsafe-inline';
-img-src 'self' https: data:;
-media-src 'self' https://*.youtube.com https://www.youtube.com;
-connect-src 'self';
-frame-src https://www.youtube.com;
-```
-(ajustar conforme features — embedded video player do YouTube precisa de `frame-src`)
-
-## SSRF prevention (worker)
-
-`apps/worker` valida URL antes de invocar o extrator de mídia:
-
-```python
-ALLOWED_HOSTS = {
-    "youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com",
-    "instagram.com", "www.instagram.com",
-    "tiktok.com", "www.tiktok.com", "vm.tiktok.com",
-}
-
-def validate_url(url: str) -> bool:
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        return False
-    return parsed.hostname.lower() in ALLOWED_HOSTS
+```bash
+openssl rand -base64 32
 ```
 
-Sem allowlist, o extrator de mídia + ffmpeg poderiam baixar de qualquer URL — vetor SSRF clássico.
+Faça backup separado da master key. Nunca registre senhas, chaves, tokens,
+cookies ou a master key.
 
-## Subprocess safety (worker)
+## Segurança de rede e conteúdo
 
-O extrator de mídia e `ffmpeg` rodam via subprocess. Regras:
-- Timeout obrigatório (extrator: 30min; ffmpeg: 30min) — `subprocess.run(..., timeout=1800)`
-- Argumentos sempre via lista (nunca `shell=True`)
-- Diretório de download isolado por job: `/tmp/voxen-jobs/<job_id>/`
-- Limpeza forçada após job (sucesso ou falha)
-- Limite de RAM no container (compose `mem_limit`)
+- O web é a única aplicação exposta.
+- Subprocessos do worker usam arrays de argumentos, timeout, diretórios
+  isolados e nunca interpolação de shell.
+- URLs remotas são validadas antes das ferramentas de mídia.
+- Credenciais S3 devem acessar somente o bucket da Voxen.
+- O proxy residencial opcional usa TLS, token cifrado de alta entropia e SOCKS
+  vinculado somente ao localhost.
 
-## Agente de proxy residencial (túnel)
+## Segurança no CI
 
-O túnel reverso que roteia o egress de download por um IP residencial (chisel,
-ver [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#egress-de-download-agente-de-proxy-residencial))
-segue defesa em profundidade:
+PRs e rotinas agendadas cobrem Dependency Review, CodeQL, Trivy, audits Python
+e pnpm, gate de migrations Prisma e gitleaks. Tokens de workflows usam leitura
+por padrão; cada job solicita apenas permissões necessárias.
 
-- **SOCKS bindado em localhost.** O SOCKS5 reverso liga **`127.0.0.1:1080`** no
-  servidor Voxen — nunca `0.0.0.0`, nunca exposto à rede. Só o worker local o
-  consome. O authfile do chisel restringe o remote do agente ao ÚNICO valor
-  esperado (`R:127.0.0.1:1080`) via regex ancorada — nunca `R:.*`.
-- **TLS obrigatório.** O agente disca por `wss://` (terminado pelo reverse proxy
-  TLS na frente do Voxen, encaminhando o upgrade em `/_tunnel`). O agente recusa
-  esquemas sem TLS; `http://`/`ws://` puro é rejeitado.
-- **Token de alta entropia, cifrado.** O token do túnel tem ≥ 32 bytes
-  aleatórios (base64url), é persistido **cifrado** no setting `proxy_agent_token`
-  (AES-256-GCM com a `MASTER_KEY`) e é exibido em texto puro **uma única vez** —
-  depois só dá pra rotacionar ou revogar. Endpoints de proxy-agent são
-  **admin-only** (role derivada da sessão, nunca do body/query).
-- **Credenciais nunca em log.** O token jamais é logado (web nem agente). A linha
-  `proxy-active` do worker mostra o proxy **mascarado** (esquema + host + porta,
-  sem userinfo/credenciais). O authfile é escrito com permissão `600`.
-- **Conexão única.** O port-bind garante um só agente; tentativa de um 2º agente
-  loga `address already in use` e é surfaceada como conflito na UI.
+### Exceção temporária de dependência
 
-## DB
+O advisory React Router `GHSA-qwww-vcr4-c8h2` afeta React Server Components
+instáveis. Voxen usa Vite com `BrowserRouter` e não usa React Server Components;
+o finding é aceito como não aplicável até existir release compatível corrigida.
+Responsável: maintainers. Revisão: 2026-09-01.
 
-- Migrations Prisma sempre com `IF [NOT] EXISTS` em comandos manuais
-- Trigger FTS:
-```sql
-CREATE OR REPLACE FUNCTION update_transcript_search_vector() RETURNS trigger AS $$
-BEGIN
-  NEW.search_vector := to_tsvector('portuguese', coalesce(NEW.plain_text, ''));
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER transcript_search_vector_update
-BEFORE INSERT OR UPDATE OF plain_text ON "Transcript"
-FOR EACH ROW EXECUTE FUNCTION update_transcript_search_vector();
-```
-- Backup: dump diário do Postgres + snapshot/export do bucket MinIO/S3 + backup do valor `MASTER_KEY`
-
-## Logs
-
-- Apps evitam logar secrets; Python usa `structlog` e o web/API mantém logs operacionais sem valores sensíveis
-- **NUNCA** logar: senhas, API keys, master key, body com secrets
-- Em produção: log retention 30 dias
-- Eventos a logar: auth (login OK/fail), aprovações de user, jobs criados/concluídos/falhados, custos por user/dia
-
-## CI Security
-
-Workflows em `.github/workflows/security.yml`:
-
-| Scanner | Cobertura |
-|---|---|
-| **Dependency Review** | Mudanças de dependências em PRs |
-| **CodeQL** | SAST TS/JS |
-| **Trivy** | Filesystem + container images (CVE em deps + binários) |
-| **Bandit** | SAST Python (subprocess, eval, etc.) |
-| **pip-audit** | CVE em deps Python (advisory enquanto houver findings conhecidos) |
-| **pnpm audit** | CVE em deps TS (advisory enquanto houver findings conhecidos) |
-| **gitleaks** | Secrets em commits/PRs |
-
-Roda em: PR, push em `dev`/`main` e schedule semanal. Dependency Review roda apenas em PR.
+Nenhum outro advisory high ou critical de produção pode ser ignorado sem
+escopo, responsável e data de revisão.
 
 ## Resposta a incidentes
 
-1. Revogar credenciais comprometidas (rotacionar `.env` e via UI rotacionar OpenRouter key)
-2. Auditar `cost_events` e `Session` por anomalias
-3. `make down && make clean` + reaplicar `.env` novo (se necessário)
-4. Restore de backup Postgres + MinIO/S3 + `MASTER_KEY`
-
-## Roadmap de segurança (não MVP)
-
-- 2FA via TOTP no better-auth
-- Rotação automática da master key
-- Logs centralizados (Loki, OpenSearch)
-- Audit log da tabela `audit_events`
-- Limite de duração de vídeo configurável (atualmente: sem limite, owner OK com isso pra MVP)
+1. Rotacionar credenciais afetadas de host, aplicação, OIDC e modelos.
+2. Revogar sessões e desabilitar contas comprometidas.
+3. Auditar eventos de autenticação, jobs, automações e custos.
+4. Restaurar backups do Postgres, storage e `MASTER_KEY` quando necessário.
+5. Publicar patch e comunicar o impacto pela política de segurança.

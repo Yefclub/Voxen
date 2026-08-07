@@ -1,248 +1,93 @@
 # Arquitetura — Voxen
 
-## Visão geral
+Voxen é uma plataforma self-hosted de conhecimento com dois serviços de
+aplicação e três serviços de infraestrutura. Docker Compose é a referência; a
+imagem combinada `voxen` é o caminho recomendado no Easypanel.
 
-Voxen é uma plataforma web self-hosted composta por **3 apps** e **3 serviços de infra**, todos rodando em containers Docker, deployáveis num único `docker-compose.yml` (dev e prod).
+## Visão do sistema
 
-```
-                                ┌──────────────────────┐
-                                │     Browser do user   │
-                                │   (React + Vite SPA)  │
-                                └──────────┬───────────┘
-                                           │ HTTPS
-                                           ▼
-                            ┌──────────────────────────────┐
-                            │           apps/web           │
-                            │   Bun + Hono + Vite + React  │
-                            │   (front + API + auth)       │
-                            └─────┬────────┬───────┬───────┘
-                                  │        │       │
-                ┌─────────────────┘        │       └─────────────┐
-                │                          │                     │
-                ▼                          ▼                     ▼
-       ┌──────────────────┐   ┌────────────────────────┐   ┌─────────────────┐
-       │    Postgres 17   │   │       apps/chat        │   │     Redis 7     │
-       │  (Prisma + FTS)  │   │  Python + FastAPI +     │   │  (wakeup,       │
-       │  Users, Sessions,│   │  Agno (streaming SSE)   │   │   sessions,     │
-       │  Transcripts,    │   │  Tools: list, search,   │   │   rate-limit)   │
-       │  Chunks, Jobs,   │   │  read, get_metadata     │   └────────┬────────┘
-       │  CostEvents,     │   └──────────┬─────────────┘            │
-       │  Settings        │              │                          │
-       └──────────────────┘              │                          │
-                ▲                        │                          ▼
-                │                        │              ┌───────────────────────┐
-                │                        │              │      apps/worker      │
-                └────────────────────────┴──────────────┤ Python asyncio +      │
-                                                        │ leases no Postgres +  │
-                                                        │   media extractor     │
-                                                        │   + ffmpeg            │
-                                                        └──────────┬────────────┘
-                                                                   │
-                                                                   ▼
-                                                    ┌──────────────────────────┐
-                                                    │       MinIO / S3         │
-                                                    │   .md transcripts +      │
-                                                    │   thumbnails             │
-                                                    └──────────────────────────┘
+```text
+Navegador
+  |
+  v
+apps/web (Bun + Hono + React + AI SDK)
+  |---- Postgres 17 (Prisma, FTS, grafo, usuários, jobs, configurações)
+  |---- Redis 7 (wakeup, realtime, cache, rate limits)
+  |---- MinIO / S3 (transcrições e mídia)
+  `---- apps/worker (Python asyncio + leases duráveis no Postgres)
 ```
 
-## Os 3 apps
+O web é a única aplicação exposta. O worker não possui porta HTTP pública.
+Redis acelera notificações, mas o Postgres continua sendo a fonte durável dos
+jobs e do estado da aplicação.
 
-### `apps/web` — Bun + Hono + React (front + API)
+## `apps/web`
 
-Único serviço exposto na borda (porta 3000). Responsabilidades:
+O serviço Bun entrega a SPA React e a API Hono. Ele concentra:
 
-- **Front-end**: SPA React (Vite build) com Tailwind v4 + shadcn/ui (zinc). Rotas:
-  - `/entrar`, `/cadastro`, `/onboarding` (primeiro user), `/pendente`
-  - `/dashboard` (lista de transcrições, biblioteca)
-  - `/chat` (chat com agente, consumindo SSE do `apps/chat`)
-  - `/transcricao/:id` (renderiza o `.md` com timestamps clicáveis)
-  - `/admin/configuracao`, `/admin/integracoes`, `/admin/autenticacao`, `/admin/usuarios`, `/admin/custos`
-- **API HTTP** (Hono routes):
-  - `/api/auth/*` — better-auth handlers (email/senha, sessões)
-  - `/api/jobs` — POST cria job de download/transcrição, GET lista jobs do user
-  - `/api/transcripts` — GET lista (filtros, FTS), GET por id
-  - `/api/settings` — GET/PUT settings do user/admin
-  - `/api/admin/users` — lista/aprova
-  - `/api/admin/costs` — painel
-- **Proxy SSE** pra `apps/chat`: rota `/api/chat/stream` faz pipe do SSE do `apps/chat` mantendo a sessão do user
+- sessões Better Auth por email/senha e SSO OIDC opcional;
+- onboarding, aprovação de usuários e controles administrativos;
+- APIs de transcrições, notas, grafo, automações, MCP e custos;
+- chat-agente integrado com AI SDK 7 e OpenRouter;
+- recuperação determinística e isolada por usuário usando FTS, relações do
+  grafo e transcrições no S3;
+- streaming SSE de texto, raciocínio, ferramentas e progresso;
+- configuração global da plataforma cifrada e integrações pessoais por usuário.
 
-### `apps/chat` — Python + FastAPI + Agno
+Configurações administrativas ficam em `/admin/*`. Perfil, contas de
+plataforma e MCP pertencentes ao usuário ficam em `/conta/*`. Toda query de
+dado pessoal deriva `userId` da sessão autenticada, nunca do request.
 
-Serviço interno (porta 8001, só na rede `voxen-net`). Responsabilidades:
+## `apps/worker`
 
-- Endpoint `/chat/stream` que recebe `{messages, workspace_id}` e retorna SSE
-- Agente Agno configurado com tools (sem embeddings):
-  - `list_transcripts(workspace_id)` → metadata
-  - `search_transcripts(workspace_id, query)` → Postgres FTS com `ts_headline`
-  - `read_transcript(id)` → Markdown completo do storage S3
-  - `read_transcript_section(id, from_sec, to_sec)` → recorte
-  - `get_metadata(id)` → frontmatter
-- Cada chamada loga `cost_events` no Postgres (modelo, tokens, custo OpenRouter)
+O worker Python reivindica jobs duráveis com `FOR UPDATE SKIP LOCKED`. Cada
+tentativa mantém um lease renovável; leases expirados são retomados ou falham
+após o limite de tentativas. Redis serve apenas para wakeup e progresso.
 
-### `apps/worker` — Python asyncio + jobs duráveis no Postgres + ffmpeg
+Fluxo principal:
 
-Worker assíncrono que faz claim dos jobs persistidos no Postgres com
-`FOR UPDATE SKIP LOCKED`. Cada tentativa recebe lease renovável; leases vencidos
-voltam atomicamente para `QUEUED` ou terminam em `FAILED` após o limite. Redis
-Pub/Sub apenas acorda o worker e transporta progresso realtime.
-
-Responsabilidades:
-
-- Job `download_and_transcribe(job_id)`:
-  1. Carrega job do DB → URL, userId
-  2. O extrator de mídia tenta legendas oficiais primeiro
-  3. Se legenda OK → pula transcrição, gera `.md` direto
-  4. Se não → baixa áudio, `ffmpeg` segmenta em chunks de ~5min com overlap
-  5. Pra cada chunk → OpenRouter `/audio/transcriptions` (modelo canônico de transcrição)
-  6. Concatena resultado com timestamps, gera `.md` com frontmatter
-  7. Upload `.md` pro MinIO/S3
-  8. Insere `transcripts` no Postgres (texto + frontmatter + `tsvector` via trigger)
-  9. Deleta vídeo + áudio local (cleanup)
-  10. Loga `cost_events`
-- Trata SSRF: valida URL antes (allowlist de hosts: youtube.com, youtu.be, instagram.com, tiktok.com, vm.tiktok.com)
-- Respeita budget mensal do user (consulta antes de enfileirar OpenRouter)
-
-### Egress de download (agente de proxy residencial)
-
-Quando o Voxen roda numa VPS, o YouTube costuma bloquear downloads de IP de
-datacenter. Pra contornar, o egress de extração de mídia pode sair por um **IP
-residencial** via um túnel reverso [chisel](https://github.com/jpillora/chisel)
-(MIT). O servidor chisel vem **embutido na imagem `voxen-app`** (iniciado pelo
-entrypoint, best-effort) e o cliente é a imagem `voxen-proxy-agent`, rodada pelo
-operador num host de casa.
-
-Caminho do egress:
-
-```
-worker --socks5h://127.0.0.1:1080--> chisel server (voxen-app)
-                                          ^ túnel TLS (wss) — proxy ws da web em /_tunnel
-                                          |
-                              voxen-proxy-agent (IP residencial) --> YouTube/IG/TikTok
-```
-
-- O agente residencial **disca de volta** ao Voxen (túnel reverso) na própria URL
-  pública no path `/_tunnel`; a web faz proxy do WebSocket pro chisel local. Não
-  há subdomínio separado nem porta de controle (8088) exposta publicamente.
-- O chisel server abre um SOCKS5 **bindado em `127.0.0.1:1080`** (nunca exposto à
-  rede) só enquanto há agente conectado. O worker usa esse SOCKS via o setting
-  `yt_dlp_proxy_urls`, gerenciado automaticamente (setado ao gerar o token,
-  limpo ao revogar) — não há config manual de proxy.
-- **Conexão única**: o port-bind garante um só agente; um 2º tentando bindar
-  loga `address already in use`, surfaceado como conflito na UI de Integrações.
-- O admin gera o token e acompanha o status ao vivo em **Integrações**; o worker
-  loga `proxy-active` (mascarado) por job que usa o proxy. Detalhes de operação
-  em [`docs/DEPLOY.md`](DEPLOY.md#agente-de-proxy-residencial); specs 058/059.
-
-## Os 3 serviços de infra
-
-### Postgres 17
-
-- Schema gerenciado por Prisma (`prisma/schema.prisma`)
-- FTS via `tsvector` GIN index em `Transcript.search_vector` (dicionário `portuguese`)
-- Trigger SQL atualiza `search_vector` quando `plain_text` muda
-- Migrations rodam automaticamente no entrypoint do `apps/web`
-
-### Redis 7
-
-- Wakeup efêmero de jobs e transporte realtime; o Postgres é a fila durável
-- Backend de rate-limit do better-auth (futuro)
-- Backend de cache de sessões (opcional)
-
-### MinIO / S3-compatible
-
-- MinIO local no Compose e MinIO externo no Easypanel
-- Bucket `voxen-transcripts` armazena `.md` e thumbnails
-- Bucket criado automaticamente no Compose via `minio-init`
-- Credenciais via `S3_*` no `.env` ou Environment do Easypanel
+1. Validar o job e a URL de origem.
+2. Preferir legendas oficiais quando disponíveis.
+3. Extrair e segmentar mídia quando houver transcrição.
+4. Enviar entradas suportadas aos modelos configurados pelo administrador.
+5. Gerar Markdown canônico e metadados derivados.
+6. Salvar artefatos no S3.
+7. Espelhar texto, autoria, origem, tags e relações no Postgres.
+8. Marcar o conteúdo pronto somente após todas as etapas obrigatórias atingirem
+   estado terminal.
 
 ## Fluxos principais
 
-### Setup inicial (primeiro user)
+### Primeira configuração
 
-```
-1. DB vazio
-2. User acessa /cadastro, preenche nome+email+senha
-3. Backend: count(users) == 0 → marca admin=true, status=approved
-4. Login → redireciona para `/onboarding` enquanto o fluxo inicial não foi concluído
-5. Admin cola apenas a OR API key; o backend valida o catálogo disponível para essa chave e salva, na mesma transação, a chave cifrada e os modelos recomendados
-6. Sistema pronto pra receber outros cadastros (pending)
-```
+1. A primeira conta se torna administradora aprovada.
+2. O administrador configura o OpenRouter no onboarding.
+3. A Voxen valida a conta e aplica os slots canônicos de modelos.
+4. Usuários seguintes herdam a configuração da plataforma, mantendo dados e
+   sessões de contas pessoais isolados.
 
-Depois do onboarding, `/admin/configuracao` mantém a mesma superfície unificada:
-o admin atualiza somente a chave da OpenRouter e a Voxen reaplica o conjunto
-canônico de modelos como uma única configuração.
+### Usuários e SSO
 
-Spec completa: `.specs/000-setup-inicial.md`.
+Contas locais começam pendentes até aprovação. O administrador também pode
+configurar um provedor OIDC, limitar domínios de email e escolher aprovação
+automática para identidades confiáveis.
 
-### Cadastro de novo user (após admin existir)
+### Chat
 
-```
-1. User acessa /cadastro
-2. Backend cria User(status=pending)
-3. User tenta login → vê /aguardando-aprovacao
-4. Admin vai em /admin/usuarios, vê pendente, aprova (+budget mensal)
-5. User refresha login → entra no /dashboard com workspace vazio
-```
+1. A mensagem do usuário autenticado é persistida.
+2. FTS e grafo sugerem contexto compacto.
+3. O agente confirma evidências com ferramentas progressivas.
+4. Fatos atuais podem usar busca web e pesquisa no X usa seu slot dedicado.
+5. URLs novas suportadas podem gerar ingestão e aguardar o resultado final.
+6. Texto, raciocínio, fontes e ferramentas são transmitidos por SSE e
+   persistidos cronologicamente.
+7. O reload restaura a linha do tempo sem reenviar raciocínio salvo ao modelo.
 
-### Job: download + transcrição
+## Dados e armazenamento
 
-```
-1. User cola URL em /dashboard, POST /api/jobs
-2. apps/web cria Job(status=queued, userId, source_url)
-3. apps/web publica `jobs:new` no Redis como wakeup best-effort; o Job já está durável no Postgres
-4. apps/worker consome:
-   - Valida URL (allowlist hosts → previne SSRF)
-   - extrator de mídia tenta legendas oficiais
-   - Se não, baixa áudio + ffmpeg chunking + OpenRouter transcribe
-   - Gera .md com frontmatter + timestamps clicáveis
-   - Upload .md pro S3 (key: workspaces/<userId>/transcripts/<id>.md)
-   - INSERT Transcript no Postgres (plain_text + frontmatter)
-   - Trigger SQL atualiza search_vector
-   - Cleanup local (deleta video/audio)
-   - Log cost_events
-   - UPDATE Job(status=done, transcriptId)
-5. apps/web mostra notificação ao user (polling em /api/jobs/:id)
-```
+- Postgres: estado relacional, sessões, FTS, grafo, leases e custos.
+- Redis: wakeups, eventos realtime, cache e rate limits.
+- S3: transcrições Markdown e artefatos de mídia.
 
-### Chat com agente
-
-```
-1. User abre /chat e envia uma pergunta
-2. apps/web persiste a mensagem e pré-busca títulos, resumos e tags relevantes via Postgres FTS
-3. O agente AI SDK recebe só essas sugestões compactas e usa tools progressivas para confirmar
-4. Para fatos atuais, usa web_search; para X, search_x com o modelo Grok configurado
-5. Para uma URL nova, request_transcription aguarda o worker e retorna brief (summary + tags + related)
-6. O agente abre outline/linhas/seções e só lê o documento completo como último recurso
-7. Texto, raciocínio e tools chegam por SSE e são persistidos como segmentos cronológicos
-8. Um reload restaura a mesma timeline; raciocínio persistido nunca volta ao contexto do modelo
-9. cost_events registra chat, pesquisa web/X, resumo e organização
-```
-
-As pastas ligadas a tags são associações virtuais N:N: `Transcript.folderId`
-continua sendo a pasta primária, mas listagem e contagem unem esse vínculo com
-`TranscriptTag -> Tag.folderId` sem duplicar conteúdos.
-
-### Painel de custos
-
-```
-1. User acessa /admin/custos (ou /custos pro próprio user)
-2. apps/web query cost_events agregado:
-   - SUM(cost_usd) GROUP BY (date, user_id, kind, model)
-3. UI mostra: total do mês, breakdown por kind, top users (admin), histórico
-4. Alerta se algum user atingiu >80% do budget
-```
-
-## Decisões arquiteturais
-
-Cada decisão grande é documentada como ADR em `docs/DECISIONS.md`. Resumo:
-
-1. **Pivô Electron → Web** — soberania, fácil compartilhar
-2. **Monorepo pnpm + Makefile** — TS+Python sem Turbo
-3. **Agno > AI SDK** — multi-agent, memória, RAG nativos no Python
-4. **Postgres FTS > pgvector** (harness/Karpathy) — agente usa tools, não vector RAG
-5. **Jobs Postgres + lease** — worker Python, fila durável e Redis apenas como wakeup (ADR-005 preserva a decisão histórica)
-6. **MinIO/S3-compatible** — padrão único para local, VPS e Easypanel
-7. **better-auth + workflow aprovação** — adoção restrita por design
-8. **Master key via env** — `MASTER_KEY` em todos os modos documentados
-9. **Cliente SSE custom no front** (sem AI SDK) — Agno não tem stream protocol compat
+Pastas baseadas em tags são relações muitos-para-muitos virtuais. O grafo
+complementa a busca textual e não substitui a recuperação de evidências.

@@ -1,6 +1,7 @@
 # Development — Voxen
 
-This guide explains how to run Voxen locally, validate changes, and contribute safely.
+This guide explains how to run Voxen locally, validate changes, and contribute
+safely.
 
 ## Requirements
 
@@ -10,7 +11,7 @@ This guide explains how to run Voxen locally, validate changes, and contribute s
 Optional for running tooling outside containers:
 
 - Bun 1.2+
-- pnpm 9+
+- Node.js 22 and pnpm 9+
 - Python 3.13 with `uv`
 
 ## Initial Setup
@@ -21,87 +22,73 @@ cd Voxen
 make dev
 ```
 
-`make dev` creates or completes `.env` when needed and starts Postgres, Redis, MinIO, web, chat, and worker. The `voxen-transcripts` bucket is created automatically.
-
-Open `http://localhost:3000`. The first registered user becomes the approved admin and enters onboarding.
+`make dev` creates or completes the root `.env` and starts Postgres, Redis,
+MinIO, web, and worker. Open `http://localhost:3000`; the first account becomes
+the administrator and enters onboarding.
 
 ## Daily Commands
 
 ```bash
-make help                  # list available targets
-make dev                   # start the full local stack
-make down                  # stop containers, keep volumes
-make restart               # restart the stack
-make logs                  # tail service logs
-make ps                    # show service status
+make help          # list available targets
+make dev           # start and build the local stack
+make down          # stop containers and keep volumes
+make update        # rebuild and recreate without removing data
+make logs          # follow service logs
+make ps            # show service status
 
-make test                  # run TypeScript and Python tests
-make test-ts               # web tests only
-make test-py               # chat and worker tests only
+make test          # scripts, web, extension, and worker tests
+make test-ts       # web tests only
+make test-py       # worker tests only
+make lint          # ESLint and Ruff
+make format-check  # Prettier and Ruff formatting checks
+make typecheck     # TypeScript and mypy
+make build         # build the Compose images
 
-make lint                  # eslint + ruff check
-make format                # prettier + ruff format
-make format-check          # formatting check only
-make typecheck             # TypeScript + mypy
-
-make migrate               # apply Prisma migrations
-make shell-db              # open psql in Postgres
-make shell-redis           # open redis-cli
-make minio-init            # recreate MinIO bucket if needed
-make master-key-show       # print MASTER_KEY; handle as a secret
-make clean                 # destructive: removes volumes and data
+make migrate       # apply Prisma migrations
+make backup        # back up Postgres, object storage, and MASTER_KEY
+make clean         # destructive: remove containers, volumes, and data
 ```
 
 ## Spec-Driven Development
 
-For non-trivial features, create or update a spec in `.specs/NNN-slug.md` before implementation. A non-trivial change is any change that touches multiple surfaces, changes API behavior, changes persistence, or affects user-visible workflows.
+Create or update `.specs/NNN-slug.md` before a non-trivial change. The spec is
+the implementation contract and should cover scope, non-goals, requirements,
+acceptance criteria, validation, and rollout notes.
 
-Specs should state:
+Use a failing test or gate to reproduce behavior before implementation when a
+deterministic test is practical. Migration changes must also pass the Prisma
+migration gate.
 
-- scope and non-goals
-- functional requirements
-- acceptance criteria
-- validation plan
-- rollout or migration notes when needed
+## Validation Expectations
 
-## Testing Expectations
+- `apps/web`: lint, typecheck, tests, and formatting checks
+- `apps/worker`: Ruff, mypy, pytest, and formatting checks
+- extension changes: extension tests and packaging
+- Docker/runtime changes: `docker compose config -q` and image builds
+- UI changes: local browser verification of affected states and responsive
+  layouts
+- public documentation: verify relative links and both language tracks
 
-Use focused validation for small changes and broaden coverage for shared behavior.
+The complete repository gate is:
 
-- `apps/web`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm format:check`
-- `apps/chat`: `ruff check`, `ruff format --check`, `pytest`
-- `apps/worker`: `ruff check`, `ruff format --check`, `pytest`
-- Docker runtime changes: `docker compose build <service>`
-- UI changes: verify affected screens locally before merging
+```bash
+make format-check
+make lint
+make typecheck
+make test
+docker compose config -q
+docker compose build
+```
 
 ## Git Workflow
 
-Branches:
-
-- `main`: protected stable release branch
+- `main`: protected stable releases
 - `dev`: protected integration branch
-- `codex/<slug>`, `feat/<slug>`, `fix/<slug>`, `docs/<slug>`: work branches created from updated `dev`
+- work branches: created from an updated `dev`
 
-Flow:
+Every change targets `dev` first. CI and an independent review must complete
+before squash merge. A release PR promotes the validated state from `dev` to
+`main`; the resulting `main` commit is then synchronized back into `dev`.
 
-1. Fetch and update `dev`.
-2. Create a small branch from `dev`.
-3. Implement the change and keep the diff reviewable.
-4. Run relevant local validations.
-5. Open a PR against `dev`.
-6. Wait for CI and security checks.
-7. Merge only after policies and reviews are satisfied.
-
-## Versioning
-
-Stable versions use SemVer tags on `main`, for example `v0.7.4`. Development builds on `dev` use generated pre-release metadata in the format `X.Y.Z-dev.<unix_epoch_seconds>`. Easypanel GitHub-source deployments derive the visible `/api/version` value from the next patch version, `DEPLOY_TIMESTAMP`, and `GIT_SHA` when `VOXEN_VERSION` is not injected.
-
-Release flow:
-
-1. Prepare the patch, minor, or major version from `dev`.
-2. Open a release PR to `main` titled exactly `vX.Y.Z`, with the matching
-   release label.
-3. After explicit owner approval, merge with
-   `gh pr merge <PR> --squash --delete-branch --subject "vX.Y.Z" --body ""`.
-4. The release workflow creates the tag and GitHub Release.
-5. Synchronize `main` back into `dev`.
+Stable release PRs are titled exactly `vX.Y.Z`. The stable squash commit also
+uses exactly that title and an empty body so release history remains clean.

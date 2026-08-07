@@ -27,7 +27,8 @@ does not require vector embeddings.
 - **MCP:** Streamable HTTP at `/mcp` for Claude Code, Codex, Cursor, and other
   compatible clients
 - **Worker:** Python asyncio, `yt-dlp`, and `ffmpeg`
-- **Authentication:** Better Auth with email/password and administrator approval
+- **Authentication:** Better Auth with email/password, optional OIDC SSO, and
+  administrator approval
 - **Database:** PostgreSQL 17, Prisma, and full-text search
 - **Queue:** durable PostgreSQL jobs with leases and heartbeats; Redis is used
   for wakeups and realtime events

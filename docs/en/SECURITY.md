@@ -1,85 +1,92 @@
 # Security — Voxen
 
-Voxen is self-hosted and intended for restricted adoption. The deployment owner controls the host, secrets, model keys, and user approvals.
+Voxen is self-hosted and intended for restricted adoption. The deployment
+owner controls the host, secrets, model keys, identity providers, and user
+approvals.
 
-Report vulnerabilities through the public policy in [`../../SECURITY.md`](../../SECURITY.md).
+Report vulnerabilities through [`../../SECURITY.md`](../../SECURITY.md).
 
 ## Threat Model
 
-| Threat | Vector | Mitigation |
-|---|---|---|
-| Brute-force login | Internet-facing auth endpoints | Auth rate limits and strong password hashing |
-| SSRF | Malicious job URLs | Worker URL allowlist before extraction |
-| Cross-user data access | Internal user requests | `userId` scoping on queries and route guards |
-| Secret exposure through DB dumps | Database backup leak | Encrypted settings with `MASTER_KEY` |
-| Supply chain compromise | npm, Python, images | Dependabot, audits, CodeQL, Trivy, gitleaks |
-| Datacenter media blocks | YouTube/VPS soft-blocks | Home-lab recommendation and optional extraction proxy |
+| Threat                  | Vector                    | Mitigation                                                                |
+| ----------------------- | ------------------------- | ------------------------------------------------------------------------- |
+| Brute-force login       | Public auth endpoints     | Rate limits, strong password hashing, optional external identity provider |
+| SSRF                    | Malicious ingestion URL   | URL validation and public-host allowlists before extraction               |
+| Cross-user access       | Forged identifiers        | Session-derived `userId` on every user-owned query and tool               |
+| Privilege escalation    | Administrative routes     | Server-side role guards; role never accepted from request input           |
+| Secret exposure         | Database or log leak      | AES-256-GCM encrypted settings and secret-safe logs                       |
+| Supply-chain compromise | Packages, actions, images | Lockfiles, dependency review, audits, CodeQL, Trivy, and gitleaks         |
 
-## Core Principles
+## Authentication and Authorization
 
-- Validate all external input with Zod or Pydantic.
-- Require authentication on application routes except health and auth endpoints.
-- Scope every user-owned query by `userId`.
-- Keep admin routes role-protected.
-- Never log passwords, API keys, tokens, or `MASTER_KEY`.
-- Keep `.env` out of git.
+Voxen uses Better Auth with database-backed, HTTP-only sessions. Local
+email/password authentication is always available. An administrator can
+optionally configure one OIDC SSO provider, restrict email domains, and control
+automatic approval for trusted identities.
 
-## Auth
+The first account in an empty instance becomes the administrator. Later local
+accounts remain pending until approved. Account states are `PENDING`,
+`APPROVED`, `REJECTED`, and `DISABLED`.
 
-Voxen uses Better Auth with email and password. Sessions are stored in the database and cookies are HTTP-only. New users are pending until approved unless they are the first account in an empty instance.
+Administrator configuration is role-protected under `/admin/*`. Personal
+profile, platform-account sessions, and MCP credentials are owned by the
+authenticated user under `/conta/*`.
 
-User status values:
+## User Isolation
 
-- `PENDING`
-- `APPROVED`
-- `REJECTED`
-- `DISABLED`
-
-Only approved users can use the application.
+- Derive `userId` from the server session, never body or query input.
+- Scope transcripts, notes, jobs, graph entities, costs, conversations,
+  integrations, and agent tools by that `userId`.
+- Keep administrator all-user views explicit and role-guarded.
+- Persist platform model configuration globally while keeping personal data
+  and third-party account sessions isolated.
 
 ## Secrets
 
-Infrastructure secrets live in the root `.env`. Application secrets, such as OpenRouter keys, are stored in the database encrypted with AES-256-GCM using `MASTER_KEY`.
-
-Generate `MASTER_KEY` with:
+Infrastructure secrets live only in the root `.env`. Runtime application
+secrets such as OpenRouter and OIDC credentials are stored encrypted with
+AES-256-GCM using `MASTER_KEY`.
 
 ```bash
 openssl rand -base64 32
 ```
 
-Losing `MASTER_KEY` means encrypted application secrets cannot be decrypted.
+Back up `MASTER_KEY` separately. Losing it makes encrypted application settings
+unrecoverable. Never log passwords, API keys, access tokens, cookies, or the
+master key.
 
-## SSRF Prevention
+## Network and Content Safety
 
-The worker validates source URLs before invoking media extraction. Only explicitly supported public media hosts should pass. This prevents the extractor and ffmpeg from becoming arbitrary network fetchers.
-
-## Subprocess Safety
-
-Media extraction and ffmpeg run as subprocesses. Safe usage requires:
-
-- no `shell=True`
-- arguments passed as arrays
-- job-specific temporary directories
-- timeouts
-- cleanup after success and failure
+- The web service is the only public application port.
+- Worker extraction uses argument arrays, timeouts, isolated temporary
+  directories, and no shell interpolation.
+- Supported remote URLs are validated before media tools run.
+- S3 credentials should be limited to the Voxen bucket.
+- The optional reverse proxy agent uses TLS, a high-entropy encrypted token,
+  and a localhost-only SOCKS endpoint.
 
 ## CI Security
 
-The security workflow covers:
+Pull requests and scheduled workflows cover dependency review, CodeQL, Trivy,
+Python and pnpm audits, Prisma migration validation, and secret scanning.
+Repository workflow tokens default to read-only; individual jobs request only
+the permissions they require.
 
-- dependency review
-- CodeQL
-- Trivy filesystem and image scan
-- Python dependency audit
-- pnpm audit
-- gitleaks
+### Time-Bound Dependency Exception
 
-Security automation should support the `dev` to `main` release flow. Auto-fixes that bypass the integration branch should stay disabled or be handled manually.
+The React Router advisory `GHSA-qwww-vcr4-c8h2` affects unstable React Server
+Components. Voxen is a Vite `BrowserRouter` SPA and does not use React Server
+Components, so the finding is accepted as non-applicable until a compatible
+patched release is available. Review owner: maintainers. Review date:
+2026-09-01.
+
+No other high or critical production advisory may be allowlisted without a
+documented scope, owner, and review date.
 
 ## Incident Response
 
-1. Rotate compromised host and application credentials.
-2. Revoke affected sessions.
-3. Inspect auth, job, and cost events for anomalies.
-4. Restore from Postgres, object storage, and `MASTER_KEY` backups when needed.
-5. Publish a patch release if code changes are required.
+1. Rotate affected host, application, OIDC, and model credentials.
+2. Revoke affected sessions and disable compromised accounts.
+3. Inspect authentication, job, automation, and cost events.
+4. Restore Postgres, object storage, and `MASTER_KEY` backups when required.
+5. Publish a patch release and disclose impact through the security policy.

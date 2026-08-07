@@ -1,6 +1,6 @@
 // ============================================================================
 // Gera resumo estruturado de Transcript via OpenRouter (direto no web).
-// Substitui o antigo proxy HTTP pro apps/chat /summarize-transcript.
+// Shared transcript-summary path for the integrated web runtime.
 // ============================================================================
 
 import { db } from './db';

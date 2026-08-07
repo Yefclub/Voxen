@@ -19,9 +19,13 @@ Consequences:
 
 The repo has TypeScript and Python apps. Turbo and similar tools fit TypeScript better than mixed TS/Python orchestration, so Voxen uses pnpm workspaces for TypeScript and `uv` per Python app, with the root Makefile as the shared command surface.
 
-## ADR-003: Agno for the Agent
+## ADR-003: Separate Python Agent (superseded)
 
-Voxen uses Agno in `apps/chat` instead of a TypeScript-only agent stack. The tradeoff is one internal Python service, but it gives the project a stronger tool-calling and agent foundation.
+The first web architecture selected a separate Python agent service. That
+decision was superseded when the agent moved into `apps/web` using AI SDK 7 and
+the OpenRouter provider. The integrated runtime removes an internal HTTP hop,
+shares authenticated `userId` scoping with the Hono API, and preserves the
+deterministic harness approach.
 
 ## ADR-004: Postgres FTS Instead of pgvector
 
@@ -58,6 +62,9 @@ Voxen is multi-user but intentionally restricted. The first user becomes the adm
 
 Application secrets stored in the database are encrypted with a master key from `MASTER_KEY`. The key must be backed up with Postgres and object storage.
 
-## ADR-009: Custom SSE Client
+## ADR-009: Separate Agent Stream Client (superseded)
 
-Agno streaming does not use the Vercel AI SDK protocol. Voxen uses a small custom SSE client in the front-end instead of adding an adapter layer too early.
+The original separate agent required a custom stream bridge. The current
+integrated agent emits the application's SSE event contract directly from the
+authenticated Hono route and persists text, reasoning, sources, and tool events
+as ordered message segments.
