@@ -534,6 +534,74 @@ describeIfDb('brain indexer', () => {
     );
   });
 
+  it('persists exact anchored-note provenance in Brain sources', async () => {
+    await signUp('brain-anchor@voxen.local', 'senha-super-segura-123', 'Brain Anchor');
+    const user = await db.user.findUniqueOrThrow({ where: { email: 'brain-anchor@voxen.local' } });
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/brain-anchor',
+        title: 'Fonte ancorada',
+        durationSec: 120,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/brain-anchor.md`,
+        plainText: 'A proveniência permanece verificável.',
+        frontmatter: {},
+        sourceVersion: 3,
+        sourceChecksum: 'checksum-3',
+      },
+    });
+    const anchorId = `anchor-${crypto.randomUUID()}`;
+    const note = await db.note.create({
+      data: {
+        userId: user.id,
+        kind: 'NOTE',
+        title: 'Nota com evidência exata',
+        content: 'Conclusão curada pelo usuário.',
+        transcriptSources: {
+          create: {
+            userId: user.id,
+            transcriptId: transcript.id,
+            anchors: {
+              create: {
+                id: anchorId,
+                userId: user.id,
+                startLine: 3,
+                endLine: 3,
+                startSec: 10,
+                endSec: 15,
+                selectedQuote: 'A proveniência permanece verificável.',
+                quoteHash: 'quote-hash',
+                sourceVersion: 3,
+                sourceChecksum: 'checksum-3',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    await reindexNoteBrain(user.id, note.id);
+
+    const evidence = await db.brainSource.findUniqueOrThrow({
+      where: { userId_evidenceKey: { userId: user.id, evidenceKey: `note-anchor:${anchorId}` } },
+    });
+    expect(evidence).toMatchObject({
+      userId: user.id,
+      sourceType: 'NOTE',
+      sourceId: note.id,
+      startLine: 3,
+      endLine: 3,
+      startSec: 10,
+      endSec: 15,
+      segmentKey: `transcript:${transcript.id}`,
+      evidenceKey: `note-anchor:${anchorId}`,
+      excerpt: 'A proveniência permanece verificável.',
+    });
+  });
+
   it('GET /api/graph backfills Brain nodes for legacy content', async () => {
     await signUp('graph-brain@voxen.local', 'senha-super-segura-123', 'Graph Brain');
     const signin = await signIn('graph-brain@voxen.local', 'senha-super-segura-123');
