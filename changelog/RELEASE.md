@@ -1,7 +1,7 @@
 ---
 tipo: feat
-titulo_en: Voxen 0.14.2 — focused knowledge workspaces and safer operations
-titulo_pt_br: Voxen 0.14.2 — espaços de conhecimento focados e operações mais seguras
+titulo_en: Voxen 0.14.3 — open-source launch readiness
+titulo_pt_br: Voxen 0.14.3 — preparação para lançamento open-source
 ---
 
 ## Focused workspace and evidence flow
