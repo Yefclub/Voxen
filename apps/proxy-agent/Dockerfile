@@ -13,7 +13,7 @@ ARG CHISEL_VERSION=1.11.5
 # ---------------------------------------------------------------------------
 # Stage 1 — baixa e verifica o binário do chisel
 # ---------------------------------------------------------------------------
-FROM alpine:3.21 AS fetch
+FROM alpine:3.24 AS fetch
 
 ARG CHISEL_VERSION
 ARG TARGETARCH
@@ -40,7 +40,7 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 # Stage 2 — runtime mínimo
 # ---------------------------------------------------------------------------
-FROM alpine:3.21
+FROM alpine:3.24
 
 ARG CHISEL_VERSION
 LABEL org.opencontainers.image.title="voxen-proxy-agent" \
