@@ -11,6 +11,10 @@ import {
 import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
 import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
 import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
+import {
+  enTranscriptAnnotationMessages,
+  ptBrTranscriptAnnotationMessages,
+} from './transcript-annotations-i18n';
 
 export type Locale = 'pt-BR' | 'en';
 
@@ -23,6 +27,7 @@ const STORAGE_KEY = 'voxen:locale';
 
 const ptBRMessages = {
   ...ptBrReleaseUpdateMessages,
+  ...ptBrTranscriptAnnotationMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -1417,6 +1422,7 @@ export type TranslateFn = (key: I18nKey, vars?: Record<string, string | number>)
 
 const enMessages: Record<I18nKey, string> = {
   ...enReleaseUpdateMessages,
+  ...enTranscriptAnnotationMessages,
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
