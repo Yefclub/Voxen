@@ -1,8 +1,8 @@
 # ============================================================================
 # Voxen — Easypanel App image
 # ============================================================================
-# Imagem única para deploy como App no Easypanel. Postgres, Redis e MinIO/S3
-# devem ser serviços externos/gerenciados pelo Easypanel e configurados por env.
+# Single Easypanel image. PostgreSQL and Redis remain external; storage defaults
+# to a mounted local volume and can opt into external S3/MinIO.
 # O docker-compose.yml continua sendo o caminho recomendado para dev/local.
 # ============================================================================
 
@@ -117,8 +117,7 @@ ENV NODE_ENV=production \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=3000 \
-    S3_REGION=us-east-1 \
-    S3_FORCE_PATH_STYLE=true \
+    STORAGE_LOCAL_PATH=/data/storage \
     DENO_DIR=/tmp/voxen-deno \
     CHISEL_PORT=8088 \
     CHISEL_AUTHFILE=/run/voxen/chisel-auth.json \
@@ -144,8 +143,8 @@ RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && npm install -g prisma@6.19.3 --omit=dev \
     && groupadd --system voxen \
     && useradd --system --gid voxen --uid 1001 --home-dir /app voxen \
-    && mkdir -p /run/voxen \
-    && chown -R voxen:voxen /run/voxen \
+    && mkdir -p /run/voxen /data/storage \
+    && chown -R voxen:voxen /run/voxen /data/storage \
     && chmod 700 /run/voxen \
     && rm -rf /var/lib/apt/lists/* \
     && (chown -R voxen:voxen /app /usr/local/lib/node_modules/prisma /usr/local/lib/node_modules/@prisma 2>/dev/null || true)

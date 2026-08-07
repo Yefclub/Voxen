@@ -18,7 +18,7 @@ cd Voxen
 make dev
 ```
 
-`make dev` cria ou completa o `.env` da raiz e inicia Postgres, Redis, MinIO,
+`make dev` cria ou completa o `.env` da raiz e inicia Postgres, Redis, o volume local,
 web e worker. Acesse `http://localhost:3000`; a primeira conta se torna admin.
 
 ## Comandos

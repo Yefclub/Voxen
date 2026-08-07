@@ -28,11 +28,15 @@ ARG VOXEN_APT_SECURITY_REFRESH=2026-08-03
 RUN apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+    && groupadd --system voxen \
+    && useradd --system --gid voxen --uid 1001 --home-dir /app voxen \
+    && mkdir -p /data/storage \
+    && chown -R voxen:voxen /app /data/storage \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/src /app/src
-COPY apps/worker/entrypoint.sh /entrypoint.sh
+COPY --from=builder --chown=voxen:voxen /app/.venv /app/.venv
+COPY --from=builder --chown=voxen:voxen /app/src /app/src
+COPY --chown=voxen:voxen apps/worker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -54,5 +58,6 @@ RUN deno --version >/dev/null \
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
   CMD python -c "import os,redis; assert redis.Redis.from_url(os.environ['REDIS_URL']).ping()" || exit 1
 
+USER voxen
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-m", "src.main"]

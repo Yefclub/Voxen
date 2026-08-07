@@ -1,5 +1,9 @@
 # Spec 137 — Matriz de regressão de isolamento entre usuários
 
+> **2026-08-07 amendment:** Every physical object shall remain under the
+> authenticated workspace key for both local and S3 drivers. Driver-neutral
+> storage failure shall preserve the same fail-closed isolation behavior.
+
 ## Contexto
 
 Cada usuário aprovado opera uma Base de conhecimento própria. O mesmo limite

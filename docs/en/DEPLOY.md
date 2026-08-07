@@ -10,7 +10,7 @@ Voxen works best on a home-lab machine such as a mini PC, NAS, Proxmox host, or 
 
 - A Linux host with Docker Engine 24+ and Docker Compose v2
 - 2 GB RAM minimum, 4 GB recommended
-- 20 GB disk minimum for database, object storage, and images
+- 20 GB disk minimum for the database, persistent storage, and images
 - A domain if exposing the service publicly
 - A complete `.env` based on `.env.example`
 
@@ -38,14 +38,8 @@ REDIS_PASSWORD=...
 BETTER_AUTH_SECRET=...
 MASTER_KEY=...
 
-MINIO_ROOT_USER=voxen
-MINIO_ROOT_PASSWORD=...
-S3_ENDPOINT=http://minio:9000
-S3_ACCESS_KEY=voxen
-S3_SECRET_KEY=...
-S3_BUCKET=voxen-transcripts
-S3_REGION=us-east-1
-S3_FORCE_PATH_STYLE=true
+STORAGE_DRIVER=local
+STORAGE_LOCAL_PATH=/data/storage
 
 # Optional yt-dlp bgutil HTTP provider for PO tokens.
 # Use only a provider you control. Empty = default yt-dlp mode.
@@ -58,7 +52,48 @@ YTDLP_BGUTIL_BASE_URL=
 openssl rand -base64 32
 ```
 
-Back up `MASTER_KEY` together with Postgres and MinIO/S3 data. If it is lost, encrypted secrets stored in the database cannot be recovered.
+Back up `MASTER_KEY` together with PostgreSQL and the selected storage backend.
+If it is lost, encrypted secrets stored in the database cannot be recovered.
+
+## Storage drivers and upgrade safety
+
+New single-host installations use the shared local volume at `/data/storage`.
+Both `web` and `worker` mount the same `storage_data` volume and the database
+continues to store provider-neutral keys, never host paths. This is the simplest
+and recommended home-lab, VPS, Compose, and Easypanel topology.
+
+S3 remains supported for external object storage or multi-host deployments.
+Copy the values from [`.env.s3.example`](../../.env.s3.example), set
+`STORAGE_DRIVER=s3`, and run `make dev-s3` when using the optional Compose
+MinIO profile. A legacy installation with non-empty `S3_*` or `GARAGE_*`
+values and no driver is inferred as S3 and emits a migration warning; partial
+S3 configuration fails instead of falling back to an empty local volume.
+
+Switching drivers does not migrate existing files. Copy and verify the storage
+keys offline before changing `STORAGE_DRIVER`. Local storage is single-host;
+use S3 for multiple application hosts or replicas.
+
+### Offline local/S3 migration
+
+Create and verify PostgreSQL, storage, and `MASTER_KEY` backups first. Keep the
+current driver configured, stop both writers, and prepare an `.env.s3` file
+containing the destination/source S3 values. For local to S3:
+
+```bash
+docker compose stop web worker
+docker run --rm --network voxen_voxen-net --env-file .env.s3 \
+  -v voxen_storage_data:/data:ro --entrypoint sh amazon/aws-cli:2 -c '
+  export AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" AWS_DEFAULT_REGION="$S3_REGION"
+  aws --endpoint-url "$S3_ENDPOINT" s3 sync /data "s3://$S3_BUCKET"
+  aws --endpoint-url "$S3_ENDPOINT" s3 sync /data "s3://$S3_BUCKET" --dryrun'
+```
+
+For S3 to the local volume, mount it read-write and reverse the final two sync
+arguments. Inspect object/file counts and total bytes, keep the source backup,
+then change `STORAGE_DRIVER` and start `web` and `worker`. Confirm several old
+transcripts and media ranges plus `GET /health/deep` before deleting the source.
+Never switch drivers while either writer is running; there is no online dual
+write or automatic rollback.
 
 `APP_BASE_URL` must match the public browser origin exactly (`https://domain`,
 without a trailing slash). If Easypanel exposes both a temporary domain and a
@@ -132,24 +167,22 @@ docker compose --profile nginx up -d --build
 ## Easypanel
 
 Easypanel is supported. The recommended topology is **one Voxen App** from the
-published combined image plus **three persistent data services** in the same
-Easypanel project: PostgreSQL, Redis, and MinIO (or another S3-compatible
-provider). Do not deploy separate `voxen-web`, `voxen-worker`, or `voxen-chat`
-services: the current Voxen image runs the web/API, worker, and integrated chat
-runtime together.
+published combined image, PostgreSQL, Redis, and one persistent App volume
+mounted at `/data/storage`. Do not deploy separate `voxen-web`, `voxen-worker`,
+or `voxen-chat` services: the combined image runs the web/API, worker, and
+integrated chat runtime together.
 
-Provision the data services first, create the `voxen-transcripts` bucket and an
-access key with read/write access, then deploy the App from a Docker image:
+Provision PostgreSQL and Redis first, attach the persistent storage volume,
+then deploy the App from a Docker image:
 
 - `ghcr.io/yefclub/voxen:dev` for integration deployments
 - `ghcr.io/yefclub/voxen:latest` for stable releases
 
 Configure port `3000` and health check path `/health`. In the App Environment,
 set `APP_BASE_URL`, `BETTER_AUTH_SECRET`, `MASTER_KEY`, `DATABASE_URL`,
-`REDIS_URL`, and the `S3_*` values for the services you provisioned. Use each
-service's internal Easypanel hostname where possible. After deployment, verify
-both `/health` and `/health/deep`; the deep health check confirms PostgreSQL,
-Redis, and S3/MinIO access.
+`REDIS_URL`, `STORAGE_DRIVER=local`, and `STORAGE_LOCAL_PATH=/data/storage`.
+After deployment, verify both `/health` and `/health/deep`; the deep health
+check confirms PostgreSQL, Redis, and read/write access to the selected storage.
 
 Stable release automation publishes the versioned combined image and advances
 `latest` from the same `vX.Y.Z` tag. The `dev` image is published only through a
@@ -180,6 +213,12 @@ make build
 make restart
 make backup
 ```
+
+`make backup` includes PostgreSQL, `MASTER_KEY`, and the active local or Compose
+MinIO volume. It fails for external S3 because provider snapshots/versioning
+must be configured and verified separately. `make restore-storage` requires an
+explicit archive and `RESTORE_CONFIRM=restore`; stop and verify the instance
+before treating a restore as complete.
 
 Do not run `make clean` in production unless you intentionally want to remove all volumes and data.
 

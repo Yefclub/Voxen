@@ -1,7 +1,7 @@
 # Architecture — Voxen
 
 Voxen is a self-hosted knowledge platform with two application services and
-three infrastructure services. Docker Compose provides the reference
+two required infrastructure services. Docker Compose provides the reference
 deployment; the combined `voxen` image is the recommended Easypanel path.
 
 ## System Overview
@@ -13,7 +13,7 @@ Browser
 apps/web (Bun + Hono + React + AI SDK)
   |---- Postgres 17 (Prisma, FTS, graph data, users, jobs, settings)
   |---- Redis 7 (wakeup, realtime, cache, rate limits)
-  |---- MinIO / S3-compatible storage (transcripts and media)
+  |---- shared local volume (default) or S3-compatible storage
   `---- apps/worker (Python asyncio + durable Postgres job leases)
 ```
 
@@ -30,7 +30,7 @@ The Bun service serves the React SPA and the Hono API. It owns:
 - transcript, note, graph, automation, MCP, and cost APIs;
 - integrated agentic chat with AI SDK 7 and OpenRouter;
 - deterministic, user-scoped retrieval over Postgres FTS, graph relations,
-  and S3 transcripts;
+  and provider-neutral transcript storage;
 - SSE streaming of text, reasoning, tool calls, and progress;
 - encrypted global platform settings and per-user account integrations.
 
@@ -53,7 +53,7 @@ Main ingestion flow:
 3. Extract and segment media when transcription is required.
 4. Send supported inputs to the administrator-configured OpenRouter models.
 5. Build the canonical Markdown transcript and derived metadata.
-6. Upload artifacts to S3-compatible storage.
+6. Write artifacts through the selected local or S3 storage driver.
 7. Mirror searchable text, authorship, source, tags, and relationships in
    Postgres.
 8. Mark the content ready only after all required stages have reached a
@@ -94,7 +94,9 @@ and choose whether trusted SSO users are approved automatically.
   leases, and cost events.
 - Redis: ephemeral wakeups, realtime events, operational cache, and rate
   limits.
-- S3-compatible storage: canonical Markdown transcripts and media artifacts.
+- Storage: canonical Markdown and media artifacts in a shared local volume by
+  default, or an explicitly selected S3-compatible backend. Logical keys are
+  identical across drivers and switching drivers does not migrate data.
 
 Tag-backed folders are virtual many-to-many memberships. A transcript keeps a
 primary folder while tag-folder relations make the same content discoverable

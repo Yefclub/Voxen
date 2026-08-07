@@ -145,12 +145,12 @@ escopados por `userId`), consumida tanto pelo agente in-app (`lib/chat/runtime.t
 quanto pelo servidor MCP (`routes/mcp.ts`).
 
 Fluxo: **buscar** (FTS `ts_headline`+`ts_rank`) → **ver estrutura** (outline do
-`.md` canônico do S3) → **ler só o trecho** (por linhas / seção / intervalo de
+`.md` canônico do storage selecionado) → **ler só o trecho** (por linhas / seção / intervalo de
 tempo) → **expandir contexto** sob demanda → **relacionar** (vizinhança no Brain +
 FTS) → **validar citações** (checagem determinística de substring normalizada,
 sem LLM). `read_transcript` (documento inteiro) fica como último recurso, caro.
 
-Fonte de estrutura/timestamps é o `.md` canônico no S3 (`Transcript.mdPath`),
+Fonte de estrutura/timestamps é o `.md` canônico no storage selecionado (`Transcript.mdPath`),
 não o `plainText` (texto corrido pra FTS). Todas as saídas têm cap de linhas/chars.
 Mantém a ADR: determinístico, custo zero de indexação, sem pgvector/embeddings.
 
@@ -189,28 +189,33 @@ Manter o worker em TS exigiria subprocess para extração de mídia e perderia i
 
 ---
 
-## ADR-006 — MinIO/S3-compatible como object storage
+## ADR-006 — Volume local padrão com S3 opcional
 
-**Data**: 2026-05-15
+**Data**: 2026-08-07
 **Status**: Aceita
 
 ### Contexto
 
-Transcrições viram `.md` que precisam ser persistidos fora do DB. Opções:
-filesystem local, MinIO, Garage S3, S3 externo.
+Transcrições, mídias e previews precisam ser persistidos fora do DB. O caso
+principal é uma instalação self-hosted em um único host; S3 ainda é necessário
+para storage externo ou múltiplos hosts.
 
 ### Decisão
 
-**S3-compatible via `S3_*`**, com **MinIO como padrão** no Compose local/VPS e
-no Easypanel. O código mantém fallback `GARAGE_*` para instalações antigas, mas
-novos deploys usam MinIO ou outro S3 compatível configurado por env.
+Novas instalações usam `STORAGE_DRIVER=local` e um volume persistente
+compartilhado em `/data/storage`. `STORAGE_DRIVER=s3` preserva MinIO, Garage e
+S3 externo. Instalações legadas sem driver, mas com qualquer `S3_*`/`GARAGE_*`
+não vazio, continuam em S3; configuração parcial falha explicitamente. O banco
+armazena as mesmas chaves relativas nos dois drivers e a troca não migra dados.
 
 ### Consequências
 
-- Self-hosted, sem dependência de cloud externa
-- API S3-compatible (`boto3`/`aiobotocore` funcionam)
-- Paridade entre local, VPS e Easypanel: mesmo bucket e mesmas variáveis `S3_*`
-- Em produção com HA real: usar MinIO gerenciado/replicado ou S3 externo
+- Instalação padrão remove MinIO, bucket e credenciais adicionais.
+- Web e worker compartilham o mesmo volume com escrita atômica e proteção
+  contra traversal/symlinks.
+- S3 mantém upload presigned e topologias multi-host.
+- Backup inclui PostgreSQL, `MASTER_KEY` e o backend selecionado.
+- Troca de driver exige cópia e verificação offline explícitas.
 
 ---
 

@@ -93,7 +93,7 @@ The `Transcript` table stores:
 - `plainText`: searchable text without timestamps or frontmatter
 - `searchVector`: generated `tsvector` for Postgres FTS
 - `frontmatter`: JSON mirror of YAML metadata
-- `mdPath`: object storage key
+- `mdPath`: provider-neutral storage key (local volume or S3)
 
 The chat agent searches the mirrored text, then reads the canonical Markdown file when it needs the full source.
 

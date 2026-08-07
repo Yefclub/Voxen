@@ -33,7 +33,7 @@
 | ffmpeg                   | extração e segmentação de áudio               |
 | httpx                    | OpenRouter e requests remotos                 |
 | Pydantic                 | schemas                                       |
-| aioboto3                 | storage S3                                    |
+| aioboto3                 | driver opcional de storage S3                |
 | structlog                | logs estruturados                             |
 | Ruff, mypy, pytest       | lint, tipos e testes                          |
 
@@ -43,7 +43,8 @@
 | ---------- | -------------------- | ------------------------------------- |
 | Postgres   | `postgres:17-alpine` | DB, FTS, grafo e fila durável         |
 | Redis      | `redis:7-alpine`     | wakeup, realtime, cache e rate limits |
-| MinIO      | `minio/minio`        | storage S3-compatible                 |
+| Volume local | volume nomeado Docker | storage padrão em um único host    |
+| MinIO      | `minio/minio`        | profile opcional S3-compatible        |
 
 O CI executa formatação, lint, tipos, testes, validação de migrations, CodeQL,
 Trivy, revisão/auditoria de dependências e gitleaks. Releases publicam a imagem

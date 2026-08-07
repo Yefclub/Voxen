@@ -33,7 +33,7 @@ import { researchArtifactsRoutes } from './routes/research-artifacts';
 import { getRedisPublisher } from './lib/redis';
 import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
-import { s3Bucket, s3Client } from './lib/s3';
+import { resolveStorageDriver, storageGet } from './lib/storage';
 import { publicAuthenticationRoutes } from './routes/public-authentication';
 
 const app = new Hono();
@@ -134,7 +134,7 @@ app.get('/health/deep', async (c) => {
     }
   };
 
-  const [postgres, redis, s3] = await Promise.all([
+  const [postgres, redis, storage] = await Promise.all([
     timed(async () => {
       await db.$queryRaw`SELECT 1`;
     }),
@@ -143,12 +143,12 @@ app.get('/health/deep', async (c) => {
       if (pong !== 'PONG') throw new Error(`Resposta inesperada: ${pong}`);
     }),
     timed(async () => {
-      const { headBucket } = await import('./lib/s3-health');
-      await headBucket();
+      const { checkStorage } = await import('./lib/storage-health');
+      await checkStorage();
     }),
   ]);
 
-  const checks = { postgres, redis, s3 };
+  const checks = { postgres, redis, storage: { ...storage, driver: resolveStorageDriver() } };
   const allOk = Object.values(checks).every((c) => c.ok);
   return c.json({ ok: allOk, checks }, allOk ? 200 : 503);
 });
@@ -222,7 +222,7 @@ app.route('/api/integrations/cookies', integrationCookieRoutes);
 // Jobs endpoints (download + transcrição — spec 002)
 app.route('/api/jobs', jobsRoutes);
 
-// Transcripts endpoints (lista + viewer .md do storage S3)
+// Transcripts endpoints (list + canonical Markdown from selected storage)
 app.route('/api/transcripts', transcriptsRoutes);
 
 // Onboarding (admin first-run) + avatar upload
@@ -255,7 +255,7 @@ app.route('/share-target', shareTargetRoutes);
 // Extensão browser — version.json (update check)
 app.route('/extension', extensionMetaRoutes);
 
-// Avatar proxy: serve imagem do storage S3 de qualquer user autenticado
+// Authenticated avatar proxy for the selected storage driver.
 app.get('/api/avatar/:userId', async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.text('', 401);
@@ -266,18 +266,11 @@ app.get('/api/avatar/:userId', async (c) => {
   });
   if (!user?.image) return c.text('', 404);
   // Tenta as 3 extensões possíveis
-  const { GetObjectCommand } = await import('@aws-sdk/client-s3');
   for (const ext of ['png', 'jpg', 'webp']) {
     try {
-      const res = await s3Client().send(
-        new GetObjectCommand({
-          Bucket: s3Bucket(),
-          Key: `workspaces/${userId}/avatar.${ext}`,
-        }),
-      );
-      const buf = Buffer.from(await res.Body!.transformToByteArray());
+      const object = await storageGet(`workspaces/${userId}/avatar.${ext}`);
       const ctype = ext === 'png' ? 'image/png' : ext === 'jpg' ? 'image/jpeg' : 'image/webp';
-      return new Response(buf, {
+      return new Response(object.body, {
         headers: { 'content-type': ctype, 'cache-control': 'private, max-age=300' },
       });
     } catch {

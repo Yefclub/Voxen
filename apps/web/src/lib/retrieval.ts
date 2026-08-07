@@ -13,17 +13,16 @@
 // ftsSearchTranscripts, findRelated) escopam TUDO por userId (isolamento de
 // workspace) e são read-only.
 //
-// Fonte de estrutura/timestamps: o `.md` canônico no S3/MinIO (Transcript.mdPath).
+// Structure/timestamps come from canonical Markdown in the selected storage driver.
 // O `Transcript.plainText` do Postgres é só texto corrido pra FTS — NÃO tem
 // timestamps nem headings, então nunca é usado como fonte de estrutura.
 // Formato do `.md`: docs/TRANSCRIPT-FORMAT.md.
 // ============================================================================
 
-import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import { fuseHybridScores } from './hybrid-search';
-import { s3Bucket, s3Client } from './s3';
+import { storageReadText } from './storage';
 
 // Caps de saída — nenhuma tool devolve o documento inteiro sem intenção explícita.
 export const MAX_READ_LINES = 200;
@@ -321,8 +320,8 @@ export function verifyClaimAgainstMd(md: string, claim: Omit<Claim, 'transcriptI
 
 /**
  * Carrega o `.md` canônico de uma transcrição do usuário (status ACTIVE) a partir
- * do S3/MinIO (Transcript.mdPath), com fallback pro plainText do Postgres em caso
- * de erro de storage. Retorna null se a transcrição não existe/não é do user.
+ * from the selected storage driver (Transcript.mdPath), with a Postgres plainText
+ * fallback on storage errors. Returns null when the transcript is absent or not owned.
  */
 export async function loadTranscriptMd(
   userId: string,
@@ -335,8 +334,7 @@ export async function loadTranscriptMd(
   if (!t) return null;
   let md: string;
   try {
-    const res = await s3Client().send(new GetObjectCommand({ Bucket: s3Bucket(), Key: t.mdPath }));
-    md = (await res.Body?.transformToString('utf-8')) ?? '';
+    md = await storageReadText(t.mdPath);
     if (!md) md = `# ${t.title}\n\n${t.plainText}`;
   } catch {
     md = `# ${t.title}\n\n${t.plainText}`;

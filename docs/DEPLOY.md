@@ -39,7 +39,7 @@ Aguarde a propagação (`dig voxen.seudominio.com` deve retornar o IP).
 - Ubuntu 22.04+ / Debian 12+ / qualquer Linux com kernel 5.x+
 - Docker Engine **24+** e Docker Compose **v2**
 - 2 GB RAM mínimo, 4 GB recomendado (worker + ffmpeg + runtime de chat)
-- 20 GB de disco (DB + MinIO + imagens)
+- 20 GB de disco (DB + storage persistente + imagens)
 - Portas 80 e 443 livres (se for usar HTTPS direto)
 
 Instalar Docker no Ubuntu/Debian:
@@ -65,24 +65,59 @@ REDIS_PASSWORD=...
 BETTER_AUTH_SECRET=...    # min 32 chars
 MASTER_KEY=...            # openssl rand -base64 32
 
-# MinIO/S3 local do compose
-MINIO_ROOT_USER=voxen
-MINIO_ROOT_PASSWORD=...
-S3_ENDPOINT=http://minio:9000
-S3_ACCESS_KEY=voxen
-S3_SECRET_KEY=<mesmo valor de MINIO_ROOT_PASSWORD, ou access key dedicada>
-S3_BUCKET=voxen-transcripts
-S3_REGION=us-east-1
-S3_FORCE_PATH_STYLE=true
+# Padrão recomendado para instalação em um único host
+STORAGE_DRIVER=local
+STORAGE_LOCAL_PATH=/data/storage
 ```
 
 > `MASTER_KEY` é a chave AES-256-GCM que cifra secrets salvos no banco. O
 > formato é o mesmo em todos os modos: `openssl rand -base64 32`. Faça backup
-> desse valor junto com Postgres e MinIO.
+> desse valor junto com Postgres e o storage selecionado.
 
-### Upload direto (presigned) — arquivos grandes atrás do Cloudflare
+### Drivers de storage e atualização segura
 
-Por padrão, o upload de arquivos passa pelo app (browser → app → S3). Atrás do
+Instalações novas em um único host usam o volume compartilhado
+`storage_data`, montado em `/data/storage` no web e no worker. O banco continua
+armazenando apenas chaves relativas e nunca paths do host. Esse é o caminho
+recomendado para home-lab, VPS, Compose e Easypanel.
+
+S3 continua disponível para object storage externo ou múltiplos hosts. Copie
+as variáveis de [`.env.s3.example`](../.env.s3.example), defina
+`STORAGE_DRIVER=s3` e use `make dev-s3` para o profile opcional do MinIO. Uma
+instalação legada sem `STORAGE_DRIVER`, mas com qualquer `S3_*`/`GARAGE_*` não
+vazio, permanece em S3 e recebe um aviso de migração; configuração S3 parcial
+falha explicitamente e nunca cai em um volume local vazio.
+
+Trocar o driver não migra arquivos. Copie e valide as mesmas chaves de storage
+offline antes de alterar a configuração. Storage local é para um único host;
+use S3 quando houver réplicas ou múltiplos hosts da aplicação.
+
+### Migração offline entre local e S3
+
+Crie e valide backups do Postgres, storage e `MASTER_KEY`. Mantenha o driver
+atual configurado, pare os dois escritores e prepare `.env.s3` com as variáveis
+S3 da origem/destino. Para copiar do volume local para S3:
+
+```bash
+docker compose stop web worker
+docker run --rm --network voxen_voxen-net --env-file .env.s3 \
+  -v voxen_storage_data:/data:ro --entrypoint sh amazon/aws-cli:2 -c '
+  export AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" AWS_DEFAULT_REGION="$S3_REGION"
+  aws --endpoint-url "$S3_ENDPOINT" s3 sync /data "s3://$S3_BUCKET"
+  aws --endpoint-url "$S3_ENDPOINT" s3 sync /data "s3://$S3_BUCKET" --dryrun'
+```
+
+Para S3 → local, monte o volume como `:/data` (leitura e escrita) e inverta os
+dois últimos argumentos do `sync`. Confira quantidade de objetos/arquivos e
+bytes totais, preserve o backup de origem, só então altere `STORAGE_DRIVER` e
+suba web/worker. Valide transcrições antigas, ranges de mídia e
+`GET /health/deep` antes de remover a origem. Nunca troque o driver com algum
+escritor ativo: não existe dual-write online nem rollback automático.
+
+### Upload direto S3 (presigned) — arquivos grandes atrás do Cloudflare
+
+No driver local, o upload passa pelo app (browser → app → volume). No driver
+S3 sem endpoint público, ele também passa pelo app. Atrás do
 Cloudflare, o corpo da requisição é cortado em ~100 MiB, inviabilizando uploads
 grandes (mídia até 500 MiB). Para contornar, o Voxen suporta **upload direto do
 browser pro S3/MinIO via presigned URL** — o corpo nunca passa pelo app nem pelo
@@ -375,7 +410,7 @@ Siga os passos da seção [Servidor + nginx do host](#servidor--nginx-do-host) a
 
 - **Docker não inicia**: confira `nesting=1` nas features do CT. Se for unprivileged, talvez precise habilitar `keyctl=1` também.
 - **ffmpeg lento**: aumente CPU/RAM do CT. Worker faz chunking + transcrição em paralelo, gosta de cores.
-- **MinIO não persiste**: cheque se o volume `minio_data` está no rootfs do CT (não em mountpoint NFS lento).
+- **Storage não persiste**: cheque se o volume `storage_data` está no rootfs do CT e montado em `/data/storage` nos dois serviços.
 
 ---
 
@@ -383,7 +418,7 @@ Siga os passos da seção [Servidor + nginx do host](#servidor--nginx-do-host) a
 
 Easypanel cuida automaticamente de HTTPS, domínio, backups e renovação. O
 caminho recomendado é **um único App via Source → Docker image**, com Postgres,
-Redis e MinIO/S3 como serviços persistentes separados no próprio painel. A
+Redis e um volume persistente do App montado em `/data/storage`. A
 imagem combinada do Voxen executa `web/API`, `worker` e o runtime de chat
 integrado no mesmo App; não crie serviços atuais separados para `voxen-web`,
 `voxen-worker` ou `voxen-chat`.
@@ -394,15 +429,10 @@ No mesmo projeto do Easypanel, crie:
 
 - **Postgres**
 - **Redis**
-- **MinIO**
 
-No MinIO:
-
-1. Abra a console do MinIO.
-2. Crie o bucket `voxen-transcripts`.
-3. Crie uma access key com permissão de leitura/escrita nesse bucket.
-4. Guarde `Access Key` e `Secret Key`; elas entram em `S3_ACCESS_KEY` e
-   `S3_SECRET_KEY`.
+No App Voxen, adicione um volume persistente no path `/data/storage`. MinIO/S3
+é opcional e só substitui esse volume quando `STORAGE_DRIVER=s3` estiver
+configurado conscientemente.
 
 ### 2. Configurar App
 
@@ -464,15 +494,11 @@ MASTER_KEY=<openssl rand -base64 32>
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB
 REDIS_URL=redis://:PASSWORD@HOST:6379/0
 
-S3_ENDPOINT=http://<host-interno-do-minio>:9000
-S3_ACCESS_KEY=<access key do MinIO>
-S3_SECRET_KEY=<secret key do MinIO>
-S3_BUCKET=voxen-transcripts
-S3_REGION=us-east-1
-S3_FORCE_PATH_STYLE=true
+STORAGE_DRIVER=local
+STORAGE_LOCAL_PATH=/data/storage
 ```
 
-Use o host interno que o Easypanel mostra para o serviço MinIO; no projeto
+Para o modo S3 opcional, use o host interno que o Easypanel mostra para o serviço MinIO; no projeto
 `taskivus`, por exemplo, normalmente fica parecido com
 `http://taskivus-minio:9000`.
 
@@ -485,7 +511,7 @@ porta informada. Esse domínio/proxy precisa aceitar a API S3 completa
 use o endpoint interno do MinIO no App.
 
 `MASTER_KEY` é a chave AES-256-GCM que cifra secrets salvos no banco. **Faça
-backup desse valor** junto com Postgres e MinIO; sem ele, API keys e settings
+backup desse valor** junto com Postgres e o storage selecionado; sem ele, API keys e settings
 cifrados ficam ilegíveis.
 
 `APP_BASE_URL` deve ser exatamente a origem pública usada no navegador
@@ -504,8 +530,8 @@ Easypanel UI → Deploy. Acompanhe os logs.
 
 No startup, a imagem roda `prisma generate`, `prisma migrate deploy` e sobe o
 `web/API`, `worker` e runtime de chat integrado no mesmo container. Antes disso
-ela valida Postgres, Redis e S3/MinIO, incluindo escrita de um objeto
-`.voxen/healthcheck` no bucket.
+ela valida Postgres, Redis e o driver de storage selecionado, incluindo uma
+escrita e leitura de diagnóstico.
 
 Validação pós-deploy:
 
@@ -514,23 +540,22 @@ curl https://voxen.seudominio.com/health
 curl https://voxen.seudominio.com/health/deep
 ```
 
-`/health/deep` precisa retornar `ok: true`; ele valida Postgres, Redis e
-MinIO/S3.
+`/health/deep` precisa retornar `ok: true`; ele valida Postgres, Redis e storage.
 
 ### 6. Backups
 
 Configure backups de:
 
 - Postgres
-- MinIO bucket `voxen-transcripts`
+- volume local `/data/storage` (ou o bucket S3 selecionado)
 - Valor do env `MASTER_KEY`
 
 ---
 
 ## Easypanel Compose (alternativo)
 
-O Compose atual também funciona, porque já sobe Postgres, Redis, MinIO,
-web/API, worker e runtime de chat integrado. No Easypanel, porém, prefira
+O Compose atual também funciona e, por padrão, sobe Postgres, Redis, o volume
+local, web/API, worker e runtime de chat integrado. No Easypanel, porém, prefira
 **Easypanel App**: o painel gerencia melhor porta, domínio, logs e serviços
 separados.
 
@@ -540,10 +565,10 @@ Se usar Compose mesmo assim:
 2. Use o repo `Yefclub/Voxen`, branch `dev` ou `main`.
 3. Use `docker-compose.yml` e não use `docker-compose.override.yml`.
 4. Defina no Environment os mesmos valores de `.env.example`, principalmente
-   `MASTER_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `MINIO_ROOT_PASSWORD` e
-   `S3_SECRET_KEY`.
+   `MASTER_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `STORAGE_DRIVER` e
+   `STORAGE_LOCAL_PATH`.
 
-### Troubleshooting S3/MinIO
+### Troubleshooting do profile S3/MinIO opcional
 
 | Sintoma                                              | Causa provável                                                                              | Fix                                                                                                   |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -607,11 +632,16 @@ docker compose exec -T postgres pg_dump -U voxen voxen | gzip > $BACKUP_DIR/db-$
 grep '^MASTER_KEY=' .env > $BACKUP_DIR/master-key-$DATE.env
 chmod 0600 $BACKUP_DIR/master-key-$DATE.env
 
-# MinIO (transcrições .md e avatars)
-docker run --rm -v voxen_minio_data:/data alpine tar czf - -C /data . > $BACKUP_DIR/minio-$DATE.tar.gz
+# Storage local (Markdown, mídia e avatars)
+docker run --rm -v voxen_storage_data:/data:ro alpine tar czf - -C /data . > $BACKUP_DIR/storage-$DATE.tar.gz
 ```
 
-Rode via cron diário. **A master key é o mais crítico** — sem ela, os secrets cifrados (OpenRouter key, modelos default) viram lixo.
+O alvo `make backup` seleciona automaticamente o volume local ou o volume
+MinIO do Compose. Para S3 externo ele falha de propósito: configure snapshots,
+versionamento ou backup no provedor e verifique a restauração separadamente.
+`make restore-storage BACKUP=... RESTORE_CONFIRM=restore` restaura somente o
+storage e é destrutivo. Rode via cron diário. **A master key é o mais crítico**
+— sem ela, os secrets cifrados (OpenRouter key, modelos default) viram lixo.
 
 ---
 
@@ -622,7 +652,7 @@ Endpoints de health:
 | Endpoint           | Service        | Propósito                                                       | Resposta                              |
 | ------------------ | -------------- | --------------------------------------------------------------- | ------------------------------------- |
 | `GET /health`      | web (3000)     | **Liveness** — proxy/reverse-proxy. Sempre 200 se processo vivo | `{"ok":true,"service":"web"}`         |
-| `GET /health/deep` | web/API (3000) | **Readiness** — checa DB + Redis + S3/MinIO                     | 200 com checks ou 503 se algum falhar |
+| `GET /health/deep` | web/API (3000) | **Readiness** — checa DB + Redis + storage                      | 200 com checks ou 503 se algum falhar |
 
 Exemplo de resposta do `/health/deep` (web):
 
@@ -632,7 +662,7 @@ Exemplo de resposta do `/health/deep` (web):
   "checks": {
     "postgres": { "ok": true, "latencyMs": 4 },
     "redis": { "ok": true, "latencyMs": 1 },
-    "s3": { "ok": true, "latencyMs": 8 }
+    "storage": { "ok": true, "driver": "local", "latencyMs": 8 }
   }
 }
 ```

@@ -61,7 +61,9 @@ master key.
 - Worker extraction uses argument arrays, timeouts, isolated temporary
   directories, and no shell interpolation.
 - Supported remote URLs are validated before media tools run.
-- S3 credentials should be limited to the Voxen bucket.
+- Local storage rejects absolute/traversal keys and symlinks, uses restrictive
+  modes, atomic writes, and is never exposed as a public static directory.
+- Optional S3 credentials should be limited to the Voxen bucket.
 - The optional reverse proxy agent uses TLS, a high-entropy encrypted token,
   and a localhost-only SOCKS endpoint.
 
@@ -88,5 +90,5 @@ documented scope, owner, and review date.
 1. Rotate affected host, application, OIDC, and model credentials.
 2. Revoke affected sessions and disable compromised accounts.
 3. Inspect authentication, job, automation, and cost events.
-4. Restore Postgres, object storage, and `MASTER_KEY` backups when required.
+4. Restore PostgreSQL, the selected storage backend, and `MASTER_KEY` backups when required.
 5. Publish a patch release and disclose impact through the security policy.
