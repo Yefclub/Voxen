@@ -6,6 +6,7 @@ import { reindexTranscriptEnrichmentBrain } from '../src/lib/brain-enrichments';
 import { searchBrainNodes } from '../src/lib/brain-search';
 import { db } from '../src/lib/db';
 import { ftsSearchTranscriptEnrichments } from '../src/lib/retrieval-enrichments';
+import { setSettings } from '../src/lib/settings';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -74,14 +75,14 @@ describeIfDb('reviewable transcript enrichments API', () => {
     await db.$disconnect();
   });
 
-  async function createTranscript() {
+  async function createTranscript(title = 'Canonical transcript') {
     const suffix = crypto.randomUUID();
     return db.transcript.create({
       data: {
         userId: ownerId,
         source: 'WEB',
         url: `https://example.com/source-${suffix}`,
-        title: 'Canonical transcript',
+        title,
         durationSec: 0,
         language: 'pt',
         transcriptionMethod: 'SCRAPE',
@@ -146,6 +147,54 @@ describeIfDb('reviewable transcript enrichments API', () => {
         )
       ).status,
     ).toBe(404);
+  });
+
+  it('enforces OFF/MANUAL policy, user isolation, idempotency, and active sources', async () => {
+    const transcript = await createTranscript();
+    const requestId = crypto.randomUUID();
+    try {
+      await setSettings({ summary_research_mode: 'OFF' });
+      const disabled = await request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(ownerCookie, 'POST', { requestId }),
+      );
+      expect(disabled.status).toBe(409);
+      expect(await db.transcriptEnrichment.count({ where: { transcriptId: transcript.id } })).toBe(
+        0,
+      );
+
+      await setSettings({ summary_research_mode: 'MANUAL' });
+      const foreign = await request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(otherCookie, 'POST', { requestId }),
+      );
+      expect(foreign.status).toBe(404);
+
+      const first = await request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(ownerCookie, 'POST', { requestId }),
+      );
+      expect(first.status).toBe(202);
+      const firstBody = (await first.json()) as { enrichment: { id: string; trigger: string } };
+      expect(firstBody.enrichment.trigger).toBe('MANUAL');
+
+      const repeated = await request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(ownerCookie, 'POST', { requestId }),
+      );
+      expect(repeated.status).toBe(202);
+      const repeatedBody = (await repeated.json()) as { enrichment: { id: string } };
+      expect(repeatedBody.enrichment.id).toBe(firstBody.enrichment.id);
+
+      await db.transcript.update({ where: { id: transcript.id }, data: { status: 'ARCHIVED' } });
+      const archived = await request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(ownerCookie, 'POST', { requestId: crypto.randomUUID() }),
+      );
+      expect(archived.status).toBe(404);
+    } finally {
+      await setSettings({ summary_research_mode: 'OFF' });
+    }
   });
 
   it('keeps suggestions out of search, then accepts, edits, dismisses, and deletes safely', async () => {
@@ -242,6 +291,33 @@ describeIfDb('reviewable transcript enrichments API', () => {
   it('withdraws accepted context while its parent is archived or trashed', async () => {
     const transcript = await createTranscript();
     const enrichment = await createReadyEnrichment(transcript.id, { reviewState: 'ACCEPTED' });
+    const pending = await db.transcriptEnrichment.create({
+      data: {
+        userId: ownerId,
+        transcriptId: transcript.id,
+        runKey: crypto.randomUUID(),
+        trigger: 'MANUAL',
+        status: 'PENDING',
+        title: '',
+        content: '',
+        sourceVersion: 1,
+        sourceChecksum: 'checksum-v1',
+      },
+    });
+    const running = await db.transcriptEnrichment.create({
+      data: {
+        userId: ownerId,
+        transcriptId: transcript.id,
+        runKey: crypto.randomUUID(),
+        trigger: 'MCP',
+        status: 'RUNNING',
+        startedAt: new Date(),
+        title: '',
+        content: '',
+        sourceVersion: 1,
+        sourceChecksum: 'checksum-v1',
+      },
+    });
     await reindexTranscriptEnrichmentBrain(ownerId, enrichment.id);
     expect(
       await db.brainNode.findFirst({
@@ -290,6 +366,20 @@ describeIfDb('reviewable transcript enrichments API', () => {
       apiInit(ownerCookie, 'PATCH', { status: 'ACTIVE' }),
     );
     expect(restored.status).toBe(200);
+    const cancelledAfterImmediateRestore = await db.transcriptEnrichment.findMany({
+      where: { id: { in: [pending.id, running.id] } },
+      select: { status: true, cancelRequestedAt: true, staleReason: true },
+      orderBy: { id: 'asc' },
+    });
+    expect(cancelledAfterImmediateRestore).toHaveLength(2);
+    expect(
+      cancelledAfterImmediateRestore.every(
+        (item) =>
+          item.status === 'CANCELLED' &&
+          item.cancelRequestedAt !== null &&
+          item.staleReason === 'parent-inactive',
+      ),
+    ).toBe(true);
     expect(
       await db.brainNode.findFirst({
         where: { userId: ownerId, sourceType: 'EXTERNAL_ENRICHMENT', sourceId: enrichment.id },
@@ -306,6 +396,66 @@ describeIfDb('reviewable transcript enrichments API', () => {
         where: { userId: ownerId, sourceType: 'EXTERNAL_ENRICHMENT', sourceId: enrichment.id },
       }),
     ).toBeNull();
+  });
+
+  it('serializes manual enqueue with archive and immediate restore', async () => {
+    const transcript = await createTranscript('Lifecycle concurrency target');
+    await setSettings({ summary_research_mode: 'MANUAL' });
+    await db.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION voxen_test_delay_manual_research_enqueue()
+      RETURNS trigger AS $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM "Transcript"
+          WHERE id = NEW."transcriptId" AND title = 'Lifecycle concurrency target'
+        ) THEN
+          PERFORM pg_sleep(0.35);
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+    await db.$executeRawUnsafe(`
+      CREATE TRIGGER voxen_test_delay_manual_research_enqueue
+      BEFORE INSERT ON "TranscriptEnrichment"
+      FOR EACH ROW EXECUTE FUNCTION voxen_test_delay_manual_research_enqueue()
+    `);
+
+    try {
+      const enqueuePromise = request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(ownerCookie, 'POST', { requestId: crypto.randomUUID() }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const archivePromise = request(
+        `/api/transcripts/${transcript.id}/lifecycle`,
+        apiInit(ownerCookie, 'PATCH', { status: 'ARCHIVED' }),
+      );
+      const [enqueued, archived] = await Promise.all([enqueuePromise, archivePromise]);
+      expect(enqueued.status).toBe(202);
+      expect(archived.status).toBe(200);
+
+      const restored = await request(
+        `/api/transcripts/${transcript.id}/lifecycle`,
+        apiInit(ownerCookie, 'PATCH', { status: 'ACTIVE' }),
+      );
+      expect(restored.status).toBe(200);
+      const enrichment = await db.transcriptEnrichment.findFirstOrThrow({
+        where: { transcriptId: transcript.id },
+        select: { status: true, cancelRequestedAt: true, staleReason: true },
+      });
+      expect(enrichment.status).toBe('CANCELLED');
+      expect(enrichment.cancelRequestedAt).not.toBeNull();
+      expect(enrichment.staleReason).toBe('parent-inactive');
+    } finally {
+      await db.$executeRawUnsafe(
+        'DROP TRIGGER IF EXISTS voxen_test_delay_manual_research_enqueue ON "TranscriptEnrichment"',
+      );
+      await db.$executeRawUnsafe(
+        'DROP FUNCTION IF EXISTS voxen_test_delay_manual_research_enqueue()',
+      );
+      await setSettings({ summary_research_mode: 'OFF' });
+    }
   });
 
   it('rejects missing or unsafe citations and refuses stale acceptance', async () => {

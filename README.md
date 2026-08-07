@@ -45,6 +45,11 @@ credentials, private content, or unredacted logs in a public report.
    links, and an AI-generated summary.
 4. It organizes the library into folders and exposes it through chat, MCP, and
    the Brain knowledge graph.
+5. Notes can preserve verified transcript passages by line and timestamp.
+   Optional post-summary research stays in a separate cited review queue and
+   enters retrieval only after explicit acceptance. Tool-free planning is
+   isolated from bounded web-search turns so raw source text never accompanies
+   a search tool.
 
 ## Stack
 

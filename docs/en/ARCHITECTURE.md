@@ -102,6 +102,29 @@ Tag-backed folders are virtual many-to-many memberships. A transcript keeps a
 primary folder while tag-folder relations make the same content discoverable
 without duplication.
 
+## Authored annotations and derived external context
+
+- A note may retain verified transcript anchors. Each anchor stores line/time
+  bounds, the selected quote, and exact source version. Source refresh marks a
+  mismatch stale instead of silently relocating it.
+- Post-summary research is a separate durable enrichment. It never mutates
+  canonical Markdown or `summaryMd`, treats source/web text as untrusted data,
+  and is stored as `SUGGESTED` with structured URL citations.
+- Research separates a tool-free planning pass from bounded search passes.
+  Application validation sits between them, and the tool-enabled request never
+  receives the raw transcript, summary, title, or planner rationale.
+- Only fresh `READY + ACCEPTED` enrichments enter default retrieval and Brain,
+  explicitly typed as lower-authority external derivatives. Dismissal,
+  deletion, expiry, or source changes remove only their derivatives.
+- The administrator selects `OFF`, `MANUAL`, or `AUTO`; `OFF` is fail-closed.
+  Web and MCP requests share the same user-scoped durable queue as automatic
+  post-summary research. Policy changes and inactive parent content cancel
+  incompatible nonterminal work instead of allowing it to be reclaimed. Queue
+  and claim read policy under the settings transaction lock; parent
+  deactivation cancels work inside the lifecycle transaction itself. Every
+  enqueue also locks the transcript row through creation, closing the race
+  between enqueue, archive, and immediate restore.
+
 ## Design Direction
 
 Voxen favors inspectable infrastructure and deterministic tools over opaque

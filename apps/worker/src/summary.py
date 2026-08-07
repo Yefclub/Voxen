@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from . import db, openrouter, voxen_settings
+from . import db, openrouter, research_db, voxen_settings
 from .cancellation import is_cancelled
 from .safe_diagnostics import error_diagnostic
 
@@ -234,6 +234,17 @@ async def maybe_generate(
                 claim_attempt=active_attempt,
             )
             return
+
+        try:
+            queued = await research_db.queue_auto_transcript_enrichment(user_id, transcript_id)
+            if queued:
+                log.info("research-enrichment-queued", transcript_id=transcript_id)
+        except Exception as e:  # noqa: BLE001 -- summary remains complete
+            log.error(
+                "research-enrichment-queue-failed",
+                transcript_id=transcript_id,
+                **error_diagnostic(e, "RESEARCH_QUEUE_FAILED"),
+            )
 
         log.info("summary-done", transcript_id=transcript_id, language=language)
     except Exception as e:  # noqa: BLE001 — resumo é melhoria, não bloqueia

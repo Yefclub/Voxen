@@ -93,3 +93,27 @@ automática para identidades confiáveis.
 
 Pastas baseadas em tags são relações muitos-para-muitos virtuais. O grafo
 complementa a busca textual e não substitui a recuperação de evidências.
+
+## Anotações autorais e contexto externo derivado
+
+- Uma nota pode preservar âncoras verificadas da transcrição com limites de
+  linha/tempo, trecho selecionado e versão exata da fonte. Atualizações marcam
+  divergências como stale sem reposicionar silenciosamente o trecho.
+- Pesquisa posterior ao resumo é um enriquecimento durável separado. Ela nunca
+  altera Markdown canônico ou `summaryMd`, trata fonte/web como dados não
+  confiáveis e nasce `SUGGESTED` com citações URL estruturadas.
+- A pesquisa separa um planejamento sem ferramentas das buscas limitadas. A
+  aplicação valida os tópicos entre as fases, e a requisição com ferramenta
+  nunca recebe transcrição, resumo, título ou justificativa do planejador.
+- Apenas enriquecimentos atuais `READY + ACCEPTED` entram na recuperação padrão
+  e no Brain, explicitamente tipados como derivados externos de menor
+  autoridade. Dispensa, exclusão, expiração ou mudança de fonte remove somente
+  os derivados.
+- O administrador escolhe `OFF`, `MANUAL` ou `AUTO`; `OFF` é o padrão seguro.
+  Web e MCP compartilham a mesma fila durável e isolada por usuário do modo
+  automático. Mudanças de política e conteúdos-pai inativos cancelam trabalhos
+  incompatíveis ainda não terminados em vez de permitir nova aquisição. Fila e
+  claim leem a política sob o mesmo lock transacional das configurações; a
+  inativação do pai cancela o trabalho na própria transação de lifecycle. Todo
+  enqueue também bloqueia a linha da transcrição até criar o trabalho, fechando
+  a corrida entre criação, arquivamento e restauração imediata.

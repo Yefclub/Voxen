@@ -49,6 +49,7 @@ import {
   TRANSCRIPT_GRAPH_RANK_BOOST,
 } from '../lib/transcript-graph-search';
 import type { TranscriptSearchRow as SearchRow } from '../lib/transcript-graph-search';
+import { cancelTranscriptEnrichmentsForInactiveParent } from '../lib/transcript-enrichments';
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
@@ -1079,15 +1080,21 @@ transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
   });
   if (!existing) return c.json({ error: 'Transcrição não encontrada.' }, 404);
 
-  const now = new Date();
-  const transcript = await db.transcript.update({
-    where: { id },
-    data: {
-      status,
-      archivedAt: status === 'ARCHIVED' ? now : null,
-      trashedAt: status === 'TRASH' ? now : null,
-    },
-    select: TRANSCRIPT_LIST_SELECT,
+  const transcript = await db.$transaction(async (tx) => {
+    const now = new Date();
+    const updated = await tx.transcript.update({
+      where: { id },
+      data: {
+        status,
+        archivedAt: status === 'ARCHIVED' ? now : null,
+        trashedAt: status === 'TRASH' ? now : null,
+      },
+      select: TRANSCRIPT_LIST_SELECT,
+    });
+    if (status !== 'ACTIVE') {
+      await cancelTranscriptEnrichmentsForInactiveParent(tx, userId, id, now);
+    }
+    return updated;
   });
   await reindexTranscriptBrain(userId, id);
   await syncTranscriptEnrichmentBrainLifecycle(userId, id, status);

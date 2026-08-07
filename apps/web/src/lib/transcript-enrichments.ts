@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import { getSettingByKey } from './settings';
 
@@ -111,6 +112,28 @@ export async function refreshTranscriptEnrichmentFreshness(input: {
   return acceptedStale.map((item) => item.id);
 }
 
+export async function cancelTranscriptEnrichmentsForInactiveParent(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  transcriptId: string,
+  now: Date,
+): Promise<void> {
+  await tx.transcriptEnrichment.updateMany({
+    where: {
+      userId,
+      transcriptId,
+      status: { in: ['PENDING', 'RETRY', 'RUNNING'] },
+    },
+    data: {
+      status: 'CANCELLED',
+      cancelRequestedAt: now,
+      startedAt: null,
+      nextAttemptAt: null,
+      staleReason: 'parent-inactive',
+    },
+  });
+}
+
 export async function queueTranscriptResearch(input: {
   userId: string;
   transcriptId: string;
@@ -127,51 +150,59 @@ export async function queueTranscriptResearch(input: {
       'A pesquisa adicional está desativada pelo administrador.',
     );
   }
-  const transcript = await db.transcript.findFirst({
-    where: { id: input.transcriptId, userId: input.userId, status: { not: 'TRASH' } },
-    select: { id: true, sourceVersion: true, sourceChecksum: true },
-  });
-  if (!transcript) {
-    throw new TranscriptResearchQueueError('NOT_FOUND', 'Transcrição não encontrada.');
-  }
-  const revision = await db.configRevision.findFirst({
-    orderBy: { number: 'desc' },
-    select: { id: true },
-  });
-  const requestId = input.trigger === 'AUTO' ? '' : (input.requestId ?? randomUUID());
-  const runKey = createHash('sha256')
-    .update(
-      [
-        input.trigger.toLowerCase(),
-        transcript.id,
-        transcript.sourceVersion,
-        transcript.sourceChecksum ?? '',
-        revision?.id ?? '',
-        requestId,
-      ].join(':'),
-    )
-    .digest('hex');
-  return db.transcriptEnrichment.upsert({
-    where: {
-      userId_transcriptId_runKey: {
+  return db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<
+      Array<{ id: string; sourceVersion: number; sourceChecksum: string | null }>
+    >(Prisma.sql`
+      SELECT t.id, t."sourceVersion", t."sourceChecksum"
+      FROM "Transcript" t
+      WHERE t.id = ${input.transcriptId} AND t."userId" = ${input.userId}
+        AND t.status = 'ACTIVE'::"ContentStatus"
+      FOR UPDATE OF t
+    `);
+    const transcript = rows[0];
+    if (!transcript) {
+      throw new TranscriptResearchQueueError('NOT_FOUND', 'Transcrição não encontrada.');
+    }
+    const revision = await tx.configRevision.findFirst({
+      orderBy: { number: 'desc' },
+      select: { id: true },
+    });
+    const requestId = input.trigger === 'AUTO' ? '' : (input.requestId ?? randomUUID());
+    const runKey = createHash('sha256')
+      .update(
+        [
+          input.trigger.toLowerCase(),
+          transcript.id,
+          transcript.sourceVersion,
+          transcript.sourceChecksum ?? '',
+          revision?.id ?? '',
+          requestId,
+        ].join(':'),
+      )
+      .digest('hex');
+    return tx.transcriptEnrichment.upsert({
+      where: {
+        userId_transcriptId_runKey: {
+          userId: input.userId,
+          transcriptId: transcript.id,
+          runKey,
+        },
+      },
+      update: {},
+      create: {
         userId: input.userId,
         transcriptId: transcript.id,
+        configRevisionId: revision?.id ?? null,
         runKey,
+        trigger: input.trigger,
+        sourceVersion: transcript.sourceVersion,
+        sourceChecksum: transcript.sourceChecksum,
+        title: '',
+        content: '',
+        status: 'PENDING',
+        reviewState: 'SUGGESTED',
       },
-    },
-    update: {},
-    create: {
-      userId: input.userId,
-      transcriptId: transcript.id,
-      configRevisionId: revision?.id ?? null,
-      runKey,
-      trigger: input.trigger,
-      sourceVersion: transcript.sourceVersion,
-      sourceChecksum: transcript.sourceChecksum,
-      title: '',
-      content: '',
-      status: 'PENDING',
-      reviewState: 'SUGGESTED',
-    },
+    });
   });
 }
