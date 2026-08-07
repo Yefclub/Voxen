@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.14.4",
+    "channel": "prod",
+    "date": "2026-08-07T06:10:45.106Z",
+    "promoted": [],
+    "title": "Voxen 0.14.4 — clearer beta expectations",
+    "body": "## Beta status made explicit\n\nThe public README now identifies Voxen as a beta under active validation. It\nsets clear expectations that bugs, integration regressions, rough edges, and\nbreaking changes can still occur, and recommends backing up instance data and\nreviewing release notes before upgrades.\n\n## Validated workflows and community feedback\n\nThe project now documents the workflows already used by the maintainer for\nsupported YouTube and TikTok links, selected public web pages, and especially\nposts from X. It also explains the practical goal of consolidating useful links\nfrom social feeds, bookmarks, and personal notes into one searchable knowledge\nlibrary. Community members are invited to share experience and product ideas\nthrough GitHub Discussions or reproducible issues without exposing private\ndata, credentials, or unredacted logs.\n\n## Operational impact\n\nThis release changes public documentation and version metadata only. It does\nnot alter application runtime behavior, database schemas, deployment topology,\nor configuration requirements.",
+    "translations": {
+      "en": {
+        "title": "Voxen 0.14.4 — clearer beta expectations",
+        "body": "## Beta status made explicit\n\nThe public README now identifies Voxen as a beta under active validation. It\nsets clear expectations that bugs, integration regressions, rough edges, and\nbreaking changes can still occur, and recommends backing up instance data and\nreviewing release notes before upgrades.\n\n## Validated workflows and community feedback\n\nThe project now documents the workflows already used by the maintainer for\nsupported YouTube and TikTok links, selected public web pages, and especially\nposts from X. It also explains the practical goal of consolidating useful links\nfrom social feeds, bookmarks, and personal notes into one searchable knowledge\nlibrary. Community members are invited to share experience and product ideas\nthrough GitHub Discussions or reproducible issues without exposing private\ndata, credentials, or unredacted logs.\n\n## Operational impact\n\nThis release changes public documentation and version metadata only. It does\nnot alter application runtime behavior, database schemas, deployment topology,\nor configuration requirements."
+      },
+      "pt-BR": {
+        "title": "Voxen 0.14.4 — expectativas mais claras para o beta",
+        "body": "## Status beta explícito\n\nO README público agora identifica a Voxen como um beta em validação ativa. Ele\ndeixa claro que ainda podem ocorrer bugs, regressões de integração, pontos de\nexperiência a amadurecer e mudanças incompatíveis, além de recomendar backup\ndos dados da instância e leitura das notas antes de atualizar.\n\n## Fluxos validados e participação da comunidade\n\nO projeto agora documenta os fluxos já utilizados pelo mantenedor com links\nsuportados do YouTube e TikTok, algumas páginas públicas e principalmente posts\ndo X. Também explica o objetivo prático de reunir em uma biblioteca pesquisável\nos links úteis que antes ficavam espalhados entre redes sociais, favoritos e\nanotações pessoais. A comunidade é convidada a compartilhar experiências e\nideias de produto pelas Discussões do GitHub ou por issues reproduzíveis, sem\nexpor dados privados, credenciais ou logs sem redação.\n\n## Impacto operacional\n\nEsta release altera somente a documentação pública e os metadados de versão.\nNão há mudanças no comportamento da aplicação, schema do banco de dados,\ntopologia de implantação ou requisitos de configuração."
+      }
+    }
+  },
+  {
     "version": "0.14.3",
     "channel": "prod",
     "date": "2026-08-07T05:09:50.360Z",
