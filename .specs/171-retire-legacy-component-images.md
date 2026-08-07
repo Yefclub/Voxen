@@ -9,8 +9,8 @@ isso cria um catálogo contraditório e induz instalações novas a uma topologi
 não suportada.
 
 A imagem combinada `voxen` e a imagem opcional `voxen-proxy-agent` permanecem
-contratos públicos. As imagens de componentes serão preservadas como histórico,
-mas deixarão de ser publicadas e serão privadas após a integração desta mudança.
+contratos públicos. Os packages de componentes e todas as suas versões
+históricas serão excluídos do GHCR após a integração desta mudança.
 
 ## Glossário
 
@@ -37,9 +37,8 @@ mas deixarão de ser publicadas e serão privadas após a integração desta mud
 
 - When a stable version tag is published, the system shall create the GitHub
   release without pushing a component image to GHCR.
-- When this change is integrated, the package administrator shall change the
-  visibility of existing component packages to private without deleting their
-  versions.
+- When this change is integrated, the package administrator shall delete the
+  existing component packages together with all historical versions.
 
 ### State-driven (durante um estado)
 
@@ -63,19 +62,19 @@ mas deixarão de ser publicadas e serão privadas após a integração desta mud
 - [ ] A release do GitHub lista somente a imagem combinada `voxen`.
 - [ ] O teste de superfície impede regressão da publicação de componentes.
 - [ ] CI continua construindo Dockerfiles de web e worker com `push: false`.
-- [ ] Após integração, os três packages legados são privados e suas versões não
-      são apagadas; `voxen` e `voxen-proxy-agent` permanecem públicos.
+- [ ] Após integração, os três packages legados e todas as versões históricas
+      foram excluídos; `voxen` e `voxen-proxy-agent` permanecem públicos.
 
 ## Fora de Escopo
 
 - Remover Dockerfiles de web ou worker usados pelo Compose e pelo CI.
-- Apagar versões históricas de packages.
 - Alterar a imagem combinada ou o proxy agent.
 
 ## Riscos / Decisões pendentes
 
-- Consumidores externos das imagens legadas perderão acesso público; por isso a
-  mudança de visibilidade ocorre somente após o workflow deixar de republicá-las.
+- A exclusão dos packages legados é destrutiva e interrompe pulls de versões
+  históricas; ela ocorre somente após o workflow deixar de republicá-las e foi
+  autorizada explicitamente pelo owner.
 
 > 2026-08-06: especificação criada a partir da autorização explícita do usuário
 > para descontinuar com segurança o catálogo público de imagens legadas.
