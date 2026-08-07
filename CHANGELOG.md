@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.3-dev.1786071600 — 2026-08-06 · Dev
+
+### 🧹 Retire legacy component images from public releases
+
+Stable releases now publish the combined Voxen image as the only public
+application image. Legacy web, worker, and chat component images are retained
+privately for history and are no longer republished.
+
 ## v0.14.2 — 2026-08-05 · Produção
 
 ### Voxen 0.14.2 — focused knowledge workspaces and safer operations

@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.3-dev.1786071600",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Retire legacy component images from public releases",
+    "body": "Stable releases now publish the combined Voxen image as the only public\napplication image. Legacy web, worker, and chat component images are retained\nprivately for history and are no longer republished.",
+    "pr": 641,
+    "author": "Kalyel",
+    "date": "2026-08-06T23:59:43-03:00",
+    "translations": {
+      "en": {
+        "title": "Retire legacy component images from public releases",
+        "body": "Stable releases now publish the combined Voxen image as the only public\napplication image. Legacy web, worker, and chat component images are retained\nprivately for history and are no longer republished."
+      },
+      "pt-BR": {
+        "title": "Retira imagens legadas de componentes das releases públicas",
+        "body": "Releases estáveis agora publicam a imagem combinada do Voxen como a única imagem\npública da aplicação. As imagens legadas de web, worker e chat são preservadas\nprivadamente para histórico e não voltam a ser publicadas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/641"
+  },
+  {
     "version": "0.14.2",
     "channel": "prod",
     "date": "2026-08-05T06:42:48.942Z",
