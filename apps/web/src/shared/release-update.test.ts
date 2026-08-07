@@ -59,5 +59,15 @@ describe('release update comparison', () => {
       releaseUrl: 'https://github.com/Yefclub/Voxen/releases/tag/v0.14.5',
       checkedAt: '2026-08-07T12:00:00.000Z',
     });
+
+    const unprefixed = buildReleaseUpdateStatus({
+      currentVersion: '0.14.4',
+      latestTag: '0.14.5',
+    });
+    expect(unprefixed).toMatchObject({
+      latestVersion: '0.14.5',
+      latestTag: '0.14.5',
+      releaseUrl: 'https://github.com/Yefclub/Voxen/releases/tag/0.14.5',
+    });
   });
 });

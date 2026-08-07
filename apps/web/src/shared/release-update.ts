@@ -62,7 +62,10 @@ export function buildReleaseUpdateStatus(input: {
   const latestVersion = parsedLatest
     ? `${parsedLatest.major}.${parsedLatest.minor}.${parsedLatest.patch}`
     : null;
-  const latestTag = latestVersion ? `v${latestVersion}` : null;
+  // Keep the exact GitHub tag for navigation. SemVer comparison accepts an
+  // optional leading `v`, but rewriting a valid `0.14.5` tag to `v0.14.5`
+  // would point at a different (and usually missing) release.
+  const latestTag = latestVersion ? latest : null;
 
   return {
     available,
