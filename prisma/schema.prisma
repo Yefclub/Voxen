@@ -987,12 +987,42 @@ model NoteTranscriptSource {
   noteId       String
   transcriptId String
   userId       String
-  createdAt    DateTime   @default(now())
-  note         Note       @relation(fields: [noteId], references: [id], onDelete: Cascade)
-  transcript   Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  createdAt    DateTime               @default(now())
+  note         Note                   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  transcript   Transcript             @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  anchors      NoteTranscriptAnchor[]
 
   @@id([noteId, transcriptId])
   @@index([userId, transcriptId])
+}
+
+enum NoteAnchorStatus {
+  VALID
+  STALE
+  UNAVAILABLE
+}
+
+model NoteTranscriptAnchor {
+  id             String               @id @default(cuid())
+  noteId         String
+  transcriptId   String
+  userId         String
+  startLine      Int?
+  endLine        Int?
+  startSec       Int?
+  endSec         Int?
+  selectedQuote  String               @db.Text
+  quoteHash      String
+  sourceVersion  Int                  @default(0)
+  sourceChecksum String?
+  status         NoteAnchorStatus     @default(VALID)
+  staleReason    String?              @db.Text
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @default(now()) @updatedAt
+  source         NoteTranscriptSource @relation(fields: [noteId, transcriptId], references: [noteId, transcriptId], onDelete: Cascade)
+
+  @@index([userId, transcriptId, status])
+  @@index([noteId, transcriptId])
 }
 
 // ============================================================================

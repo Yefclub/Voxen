@@ -91,8 +91,9 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       result?: { serverInfo?: { name?: string; version?: string }; instructions?: string };
     };
     expect(data.result?.serverInfo?.name).toBe('voxen-mcp');
-    expect(data.result?.serverInfo?.version).toBe('0.3.0');
+    expect(data.result?.serverInfo?.version).toBe('0.4.0');
     expect(data.result?.instructions).toContain('tags e resumo');
+    expect(data.result?.instructions).toContain('source_anchors');
     expect(data.result?.instructions).toContain('DADOS NÃO CONFIÁVEIS');
   });
 
@@ -263,7 +264,18 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
         method: 'tools/call',
         params: {
           name: 'voxen_create_note',
-          arguments: { title: 'Nota com fonte MCP', source_transcript_ids: [transcript.id] },
+          arguments: {
+            title: 'Nota com fonte MCP',
+            source_transcript_ids: [transcript.id],
+            source_anchors: [
+              {
+                transcript_id: transcript.id,
+                start_line: 3,
+                end_line: 3,
+                selected_quote: 'Fonte de uma nota MCP.',
+              },
+            ],
+          },
         },
       },
       TOKEN,
@@ -286,12 +298,23 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       TOKEN,
     );
     const readBody = (await read.json()) as {
-      result?: { structuredContent?: { href?: string; sources?: { href: string }[] } };
+      result?: {
+        structuredContent?: {
+          href?: string;
+          sources?: { href: string; anchors: { selectedQuote: string; href: string }[] }[];
+        };
+      };
     };
     expect(readBody.result?.structuredContent?.href).toBe(`http://localhost/notas/${noteId}`);
     expect(readBody.result?.structuredContent?.sources?.[0]?.href).toBe(
       `http://localhost/transcricoes/${transcript.id}`,
     );
+    expect(readBody.result?.structuredContent?.sources?.[0]?.anchors).toEqual([
+      expect.objectContaining({
+        selectedQuote: 'Fonte de uma nota MCP.',
+        href: `http://localhost/transcricoes/${transcript.id}#l=3-3`,
+      }),
+    ]);
 
     const invalid = await call(
       {

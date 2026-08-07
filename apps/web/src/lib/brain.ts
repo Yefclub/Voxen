@@ -7,6 +7,7 @@ import {
   releaseGraphIndexLease,
   renewGraphIndexLease,
 } from './graph-index-coordinator';
+import { validNoteAnchorSources, type NoteTranscriptSource } from './brain-note-anchors';
 
 type BrainSourceType = 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL';
 type BrainNodeType = 'CONTENT' | 'FOLDER' | 'ENTITY' | 'TOPIC' | 'CLAIM' | 'EVENT' | 'CLUSTER';
@@ -141,6 +142,7 @@ type NoteRecord = {
   title: string;
   content: string;
   updatedAt: Date;
+  transcriptSources: NoteTranscriptSource[];
 };
 
 type LibraryFolderRecord = {
@@ -573,6 +575,22 @@ export async function reindexNoteBrain(
       title: true,
       content: true,
       updatedAt: true,
+      transcriptSources: {
+        select: {
+          anchors: {
+            select: {
+              id: true,
+              transcriptId: true,
+              startLine: true,
+              endLine: true,
+              startSec: true,
+              endSec: true,
+              selectedQuote: true,
+              status: true,
+            },
+          },
+        },
+      },
     },
   });
   const note = notes.find((item) => item.id === noteId);
@@ -604,6 +622,22 @@ export async function reindexNotesBrain(
       title: true,
       content: true,
       updatedAt: true,
+      transcriptSources: {
+        select: {
+          anchors: {
+            select: {
+              id: true,
+              transcriptId: true,
+              startLine: true,
+              endLine: true,
+              startSec: true,
+              endSec: true,
+              selectedQuote: true,
+              status: true,
+            },
+          },
+        },
+      },
     },
   });
   const indexes = buildNoteIndexes(notes);
@@ -639,6 +673,16 @@ async function reindexNoteRecord(
     excerpt: note.title,
     assertLeaseOwnership,
   });
+  for (const anchorSource of validNoteAnchorSources(note.transcriptSources)) {
+    await addBrainSource({
+      userId,
+      nodeId: node.id,
+      sourceType: 'NOTE',
+      sourceId: note.id,
+      ...anchorSource,
+      assertLeaseOwnership,
+    });
+  }
 
   if (note.parentId) {
     const parent = indexes.byId.get(note.parentId);
