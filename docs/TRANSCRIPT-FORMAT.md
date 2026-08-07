@@ -19,7 +19,7 @@ Cada vídeo transcrito vira um arquivo Markdown com:
 id: 01J0K1A2B3C4D5E6F7G8H9J0K1 # cuid gerado pelo worker
 workspace_id: <userId>
 source: youtube | instagram | tiktok | web # web = página HTML via Trafilatura (spec 004)
-url: https://youtu.be/abc123 # URL canonical (parseVideoUrl em web/chat, detect_source em worker)
+url: https://youtu.be/abc123 # URL canônica (parseVideoUrl em web, detect_source em worker)
 video_id: dQw4w9WgXcQ # ver "Semântica do video_id" abaixo
 title: Como configurar Postgres FTS
 channel: Canal do Dev # YouTube channel, site name pra WEB, ou null

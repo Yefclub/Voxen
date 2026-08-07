@@ -25,9 +25,10 @@ dependências, metadados do repositório, packages de container e release estáv
 - The system shall document the current integrated TypeScript chat runtime and
   the Python worker without presenting the removed `apps/chat` service as
   active.
-- The system shall display the supplied Library and Chat screenshots near the
-  beginning of the root README using repository-owned assets and descriptive
-  alternative text.
+- The system shall display sanitized versions of the supplied Library and Chat
+  screenshots near the beginning of the root README using repository-owned
+  assets and descriptive alternative text, without personal or production
+  knowledge-base data.
 - The system shall keep all active production dependencies at patched versions
   when a compatible patched release exists.
 - The system shall keep repository contribution, support, security, issue and
@@ -70,7 +71,8 @@ dependências, metadados do repositório, packages de container e release estáv
 
 ## Critérios de Aceite
 
-- [ ] As duas imagens fornecidas estão versionadas e renderizadas no README.
+- [ ] As duas imagens fornecidas estão sanitizadas, versionadas e renderizadas
+      no README sem dados pessoais ou da base de produção.
 - [ ] README, documentação EN/PT-BR, `CLAUDE.md` e Dependabot não descrevem
       `apps/chat` como serviço ativo.
 - [ ] O contrato automatizado valida assets, links locais, runtime documentado,

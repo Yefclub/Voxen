@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, extname, resolve } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import test from "node:test";
 
 const root = resolve(import.meta.dirname, "..");
@@ -28,11 +28,13 @@ test("current public documentation does not describe the removed chat service", 
     "docs/README.md",
     "docs/SECURITY.md",
     "docs/STACK.md",
+    "docs/TRANSCRIPT-FORMAT.md",
     "docs/en/ARCHITECTURE.md",
     "docs/en/DEVELOPMENT.md",
     "docs/en/README.md",
     "docs/en/SECURITY.md",
     "docs/en/STACK.md",
+    "docs/en/TRANSCRIPT-FORMAT.md",
   ];
 
   for (const path of currentRuntimeDocs) {
@@ -161,11 +163,22 @@ test("local Markdown links resolve to versioned files", () => {
   assert.deepEqual(failures, []);
 });
 
-test("README cover assets are reasonably sized PNG files", () => {
+test("README cover assets are valid, reviewable PNG files", () => {
   for (const asset of [
     "docs/assets/voxen-library.png",
     "docs/assets/voxen-chat.png",
   ]) {
-    assert.equal(extname(asset), ".png");
+    const absolute = resolve(root, asset);
+    const bytes = readFileSync(absolute);
+    const { size } = statSync(absolute);
+
+    assert.equal(bytes.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    assert.equal(bytes.subarray(12, 16).toString("ascii"), "IHDR");
+
+    const width = bytes.readUInt32BE(16);
+    const height = bytes.readUInt32BE(20);
+    assert.ok(width >= 1200 && width <= 3000, `${asset} width is ${width}`);
+    assert.ok(height >= 700 && height <= 2000, `${asset} height is ${height}`);
+    assert.ok(size >= 50_000 && size <= 2_000_000, `${asset} size is ${size}`);
   }
 });
