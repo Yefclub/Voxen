@@ -90,7 +90,7 @@ test("known patched dependency versions are selected", () => {
   }
 });
 
-test("repository policy is versioned for an open-source squash workflow", () => {
+test("repository policy protects an automated open-source squash workflow", () => {
   const settings = JSON.parse(read(".github/repository-settings.json"));
 
   assert.equal(settings.repository.allow_squash_merge, true);
@@ -101,7 +101,7 @@ test("repository policy is versioned for an open-source squash workflow", () => 
   assert.equal(settings.repository.has_discussions, true);
   assert.deepEqual(settings.actions, {
     default_workflow_permissions: "read",
-    can_approve_pull_request_reviews: false,
+    can_approve_pull_request_reviews: true,
   });
   assert.equal(settings.topics.includes("fastapi"), false);
   for (const topic of ["mcp", "knowledge-graph", "home-lab"]) {

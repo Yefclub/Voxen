@@ -35,8 +35,9 @@ dependências, metadados do repositório, packages de container e release estáv
   release instructions mutually consistent and English-first.
 - The system shall expose only `voxen` and the optional
   `voxen-proxy-agent` packages as supported container artifacts.
-- The system shall enforce least-privilege GitHub workflow defaults and the
-  documented squash-only merge policy through versioned repository settings.
+- The system shall enforce read-only GitHub workflow defaults, permit the
+  version workflow to create its protected pull request, and keep the
+  documented squash-only merge policy in versioned repository settings.
 
 ### Event-driven
 
@@ -46,6 +47,9 @@ dependências, metadados do repositório, packages de container e release estáv
   commands for formatting, linting, type checking, tests and container builds.
 - When repository settings drift, the system shall report the exact managed
   field, topic or Actions permission that differs.
+- When a change reaches `dev`, the system shall allow the version workflow to
+  create a pull request without granting write permissions by default to other
+  workflow steps.
 
 ### State-driven
 
@@ -80,6 +84,7 @@ dependências, metadados do repositório, packages de container e release estáv
 - [ ] `pnpm audit`, `pip-audit`, CodeQL, Trivy, Bandit e gitleaks não apresentam
       vulnerabilidade explorável de severidade alta ou crítica no runtime atual.
 - [ ] Configurações versionadas e configurações reais do GitHub estão alinhadas.
+- [ ] A automação de versão consegue criar seu PR protegido a partir de `dev`.
 - [ ] `voxen-chat`, `voxen-web` e `voxen-worker` foram excluídos do GHCR.
 - [ ] `voxen` e `voxen-proxy-agent` continuam públicos e funcionais.
 - [ ] O checklist completo local e todo o CI remoto passam.
