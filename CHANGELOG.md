@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.14.3-dev.1786076197 — 2026-08-07 · Dev
+
+### 🐛 Repository topic policy converges reliably
+
+The repository policy checker now compares GitHub topics as a set, preventing
+false drift reports when the API returns the same topics in insertion order.
+
 ## v0.14.3-dev.1786075127 — 2026-08-07 · Dev
 
 ### 🔒 Open-source launch readiness

@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.3-dev.1786076197",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Repository topic policy converges reliably",
+    "body": "The repository policy checker now compares GitHub topics as a set, preventing\nfalse drift reports when the API returns the same topics in insertion order.",
+    "pr": 645,
+    "author": "Kalyel",
+    "date": "2026-08-07T01:16:25-03:00",
+    "translations": {
+      "en": {
+        "title": "Repository topic policy converges reliably",
+        "body": "The repository policy checker now compares GitHub topics as a set, preventing\nfalse drift reports when the API returns the same topics in insertion order."
+      },
+      "pt-BR": {
+        "title": "Política de tópicos do repositório converge corretamente",
+        "body": "O verificador de políticas do repositório agora compara os tópicos do GitHub\ncomo um conjunto, evitando falsos desvios quando a API retorna os mesmos\ntópicos na ordem de inserção."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/645"
+  },
+  {
     "version": "0.14.3-dev.1786075127",
     "channel": "dev",
     "type": "security",
