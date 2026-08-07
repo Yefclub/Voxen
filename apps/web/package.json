@@ -57,7 +57,7 @@
     "hono": "^4.13.0",
     "ioredis": "^5.10.1",
     "ipaddr.js": "2.4.0",
-    "motion": "^12.39.0",
+    "motion": "^12.43.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
