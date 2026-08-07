@@ -7,9 +7,34 @@ document and image analysis, agentic search, and a knowledge graph. External
 agents can access the library through **MCP**. Retrieval is evidence-first and
 does not require vector embeddings.
 
+> [!IMPORTANT]
+> **Project status: beta / active validation.** Voxen is already useful in the
+> maintainer's personal workflow, but it is not yet considered fully stable.
+> Bugs, rough edges, integration regressions, and breaking changes should be
+> expected. Back up instance data and review the release notes before upgrading.
+
 ![Voxen Library with graph-aware search, folders, tags, and multimodal ingestion](docs/assets/voxen-library.png)
 
 ![Voxen agentic chat workspace](docs/assets/voxen-chat.png)
+
+## What is already validated
+
+The maintainer currently uses Voxen to collect and process supported YouTube
+and TikTok links, selected public web pages, and especially posts from X. The
+practical goal is already being met: useful material can live in one searchable
+knowledge library instead of becoming a trail of links scattered across social
+feeds, bookmarks, and personal notes.
+
+This validation does not mean that every source or workflow is equally mature.
+External platforms can change layouts, access policies, rate limits, and
+anti-bot behavior without notice, so an integration that works today may need
+maintenance after an upstream change.
+
+Community experience is especially valuable during this phase. Share use cases,
+deployment lessons, and product ideas in [GitHub Discussions](https://github.com/Yefclub/Voxen/discussions),
+or use the [issue templates](https://github.com/Yefclub/Voxen/issues/new/choose)
+for reproducible bugs and concrete improvement proposals. Never include tokens,
+credentials, private content, or unredacted logs in a public report.
 
 ## What it does
 
