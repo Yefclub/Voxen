@@ -1,12 +1,114 @@
 # Changelog
 
+## v0.14.4 — 2026-08-07 · Produção
+
+### Voxen 0.14.4 — clearer beta expectations
+
+## Beta status made explicit
+
+The public README now identifies Voxen as a beta under active validation. It
+sets clear expectations that bugs, integration regressions, rough edges, and
+breaking changes can still occur, and recommends backing up instance data and
+reviewing release notes before upgrades.
+
+## Validated workflows and community feedback
+
+The project now documents the workflows already used by the maintainer for
+supported YouTube and TikTok links, selected public web pages, and especially
+posts from X. It also explains the practical goal of consolidating useful links
+from social feeds, bookmarks, and personal notes into one searchable knowledge
+library. Community members are invited to share experience and product ideas
+through GitHub Discussions or reproducible issues without exposing private
+data, credentials, or unredacted logs.
+
+## Operational impact
+
+This release changes public documentation and version metadata only. It does
+not alter application runtime behavior, database schemas, deployment topology,
+or configuration requirements.
+
+## v0.14.3 — 2026-08-07 · Produção
+
+### Voxen 0.14.3 — open-source launch readiness
+
+## Focused workspace and evidence flow
+
+The focused interface now behaves as a true workspace: its collapsed rail is
+centered, the sources surface opens as part of the background workspace, and
+the conversation contracts without the floating header covering content. Shell
+spacing, mobile chat clearance, and the compact scrollbar controls were refined
+as well. Artifacts are deliberately paused in navigation while their next
+product iteration is prepared.
+
+## Clearer personal and administrative boundaries
+
+Personal profile, platform-account, and MCP pages now share the same page
+hierarchy as the rest of the product. Instance configuration remains visibly
+separate for administrators, with OIDC SSO support and stronger controls for
+accounts, roles, and user isolation.
+
+## Library retrieval informed by the knowledge graph
+
+Transcript search is easier to reach and can use related concepts already
+grounded in the graph in addition to traditional text fields. The additional
+signal has controlled weight, skips short queries, and remains limited to the
+current user's knowledge base.
+
+## Trustworthy chat and release information
+
+Chat reasoning renders Markdown using the same sanitization as responses. The
+What's New feed is now bound to the environment that is actually running:
+development and production histories cannot be mixed through a URL parameter.
+New entries can carry curated English and Brazilian Portuguese text, while
+legacy entries continue to fall back safely.
+
+## Easier self-hosted deployment
+
+The Easypanel guide now documents the supported single-image topology: one
+combined Voxen App runs the web/API, worker, and integrated chat runtime, while
+PostgreSQL, Redis, and S3-compatible storage remain persistent services. The
+residential proxy agent is explicitly optional for VPS media extraction.
+
+## v0.14.3-dev.1786078906 — 2026-08-07 · Dev
+
+### 🐛 Legacy package retirement now has one deletion policy
+
+The public release contract now consistently requires deleting the obsolete
+web, worker, and chat packages together with all historical versions. The
+release history and automated readiness checks enforce the same policy.
+
+## v0.14.3-dev.1786076787 — 2026-08-07 · Dev
+
+### 🐛 Protected version automation works with read-only defaults
+
+GitHub Actions keeps read-only permissions by default while the repository
+policy now permits the version workflow to create its protected pull request.
+
+## v0.14.3-dev.1786076787 — 2026-08-07 · Dev
+
+### 🐛 Repository topic policy converges reliably
+
+The repository policy checker now compares GitHub topics as a set, preventing
+false drift reports when the API returns the same topics in insertion order.
+
+## v0.14.3-dev.1786075127 — 2026-08-07 · Dev
+
+### 🔒 Open-source launch readiness
+
+Voxen's public documentation now matches the integrated agent architecture,
+the README presents the chat and knowledge-library experience, and production
+dependencies were updated to patched releases. Repository policy is also
+versioned for read-only workflow defaults and a clean squash-only history. The
+public covers use anonymous demo data, and Dependabot monitors every supported
+container image.
+
 ## v0.14.3-dev.1786071600 — 2026-08-06 · Dev
 
 ### 🧹 Retire legacy component images from public releases
 
 Stable releases now publish the combined Voxen image as the only public
-application image. Legacy web, worker, and chat component images are retained
-privately for history and are no longer republished.
+application image. The obsolete web, worker, and chat packages are deleted from
+GHCR together with their historical versions and are no longer republished.
 
 ## v0.14.2 — 2026-08-05 · Produção
 

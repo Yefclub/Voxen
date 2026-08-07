@@ -19,6 +19,21 @@ export function repositorySettingsDiff(expected, actual) {
   return settingsDiff(expected, actual);
 }
 
+export function topicsSettingsDiff(expected, actual) {
+  const normalize = (topics) => [...new Set(topics)].sort();
+  const normalizedExpected = normalize(expected);
+  const normalizedActual = normalize(actual);
+  return JSON.stringify(normalizedExpected) === JSON.stringify(normalizedActual)
+    ? []
+    : [
+        {
+          key: "names",
+          expected: normalizedExpected,
+          actual: normalizedActual,
+        },
+      ];
+}
+
 function typedField(args, key, value) {
   args.push(typeof value === "boolean" ? "-F" : "-f", `${key}=${value}`);
 }
@@ -92,16 +107,10 @@ function allDiffs(expected, actual) {
       ...item,
       scope: "repository",
     })),
-    ...(JSON.stringify(expected.topics) === JSON.stringify(actual.topics)
-      ? []
-      : [
-          {
-            scope: "topics",
-            key: "names",
-            expected: expected.topics,
-            actual: actual.topics,
-          },
-        ]),
+    ...topicsSettingsDiff(expected.topics, actual.topics).map((item) => ({
+      ...item,
+      scope: "topics",
+    })),
     ...settingsDiff(expected.actions, actual.actions).map((item) => ({
       ...item,
       scope: "actions",

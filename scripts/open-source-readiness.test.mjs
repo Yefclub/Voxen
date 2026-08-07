@@ -57,6 +57,26 @@ test("current public documentation does not describe the removed chat service", 
   assert.match(read("docs/DECISIONS.md"), /ADR-003.*substitu/i);
 });
 
+test("legacy component package policy requires deletion everywhere", () => {
+  const retirementSpec = read(".specs/171-retire-legacy-component-images.md");
+  const releaseHistory = JSON.parse(read("releases.json"));
+  const retirementEntry = releaseHistory.find((entry) => entry.pr === 641);
+
+  assert.match(retirementSpec, /delete the\s+existing component packages/i);
+  assert.match(retirementSpec, /all historical versions/i);
+  assert.doesNotMatch(retirementSpec, /visibility.+private|without deleting/is);
+  assert.ok(retirementEntry, "release entry for PR #641 is missing");
+  assert.match(retirementEntry.body, /packages are deleted from\nGHCR/i);
+  assert.match(
+    retirementEntry.translations["pt-BR"].body,
+    /packages obsoletos.+são excluídos\ndo GHCR/is,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(retirementEntry),
+    /retained.+privately|preservadas.+privadamente/is,
+  );
+});
+
 test("known patched dependency versions are selected", () => {
   const web = JSON.parse(read("apps/web/package.json"));
   const workspace = JSON.parse(read("package.json"));
@@ -90,7 +110,7 @@ test("known patched dependency versions are selected", () => {
   }
 });
 
-test("repository policy is versioned for an open-source squash workflow", () => {
+test("repository policy protects an automated open-source squash workflow", () => {
   const settings = JSON.parse(read(".github/repository-settings.json"));
 
   assert.equal(settings.repository.allow_squash_merge, true);
@@ -101,7 +121,7 @@ test("repository policy is versioned for an open-source squash workflow", () => 
   assert.equal(settings.repository.has_discussions, true);
   assert.deepEqual(settings.actions, {
     default_workflow_permissions: "read",
-    can_approve_pull_request_reviews: false,
+    can_approve_pull_request_reviews: true,
   });
   assert.equal(settings.topics.includes("fastapi"), false);
   for (const topic of ["mcp", "knowledge-graph", "home-lab"]) {

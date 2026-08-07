@@ -5,6 +5,7 @@ import {
   actionsArguments,
   patchArguments,
   repositorySettingsDiff,
+  topicsSettingsDiff,
   topicsArguments,
 } from "./github-repository-settings.mjs";
 
@@ -52,7 +53,7 @@ test("topic and Actions updates target their dedicated endpoints", () => {
     actionsArguments(
       {
         default_workflow_permissions: "read",
-        can_approve_pull_request_reviews: false,
+        can_approve_pull_request_reviews: true,
       },
       "Yefclub/Voxen",
     ),
@@ -64,7 +65,24 @@ test("topic and Actions updates target their dedicated endpoints", () => {
       "-f",
       "default_workflow_permissions=read",
       "-F",
-      "can_approve_pull_request_reviews=false",
+      "can_approve_pull_request_reviews=true",
     ],
   );
+});
+
+test("topic drift compares the GitHub topic set without insertion order", () => {
+  assert.deepEqual(
+    topicsSettingsDiff(
+      ["ai", "bun", "knowledge-graph", "mcp"],
+      ["mcp", "ai", "knowledge-graph", "bun"],
+    ),
+    [],
+  );
+  assert.deepEqual(topicsSettingsDiff(["ai", "mcp"], ["ai", "docker"]), [
+    {
+      key: "names",
+      expected: ["ai", "mcp"],
+      actual: ["ai", "docker"],
+    },
+  ]);
 });
