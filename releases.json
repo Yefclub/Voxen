@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786104989",
+    "channel": "dev",
+    "type": "infra",
+    "title": "New self-hosted installs use a local volume by default",
+    "body": "New single-host installations no longer require MinIO. Web and worker share a\nprivate persistent volume at `/data/storage` behind the same provider-neutral\ncontract, with atomic writes, authenticated reads, media ranges, path\ncontainment, health checks, persistent-mount validation, consistent backups,\nand non-root runtime access. Legacy Garage variables and mounted credentials\nfiles remain supported by both runtimes.\nBackup topology follows the active endpoint and container, so an obsolete MinIO\nvolume cannot be mistaken for a backup of external S3.\nExisting non-empty S3 or Garage configuration remains on S3, while MinIO is an\nexplicit optional profile.",
+    "pr": 680,
+    "author": "Kalyel",
+    "date": "2026-08-07T09:16:16-03:00",
+    "translations": {
+      "en": {
+        "title": "New self-hosted installs use a local volume by default",
+        "body": "New single-host installations no longer require MinIO. Web and worker share a\nprivate persistent volume at `/data/storage` behind the same provider-neutral\ncontract, with atomic writes, authenticated reads, media ranges, path\ncontainment, health checks, persistent-mount validation, consistent backups,\nand non-root runtime access. Legacy Garage variables and mounted credentials\nfiles remain supported by both runtimes.\nBackup topology follows the active endpoint and container, so an obsolete MinIO\nvolume cannot be mistaken for a backup of external S3.\nExisting non-empty S3 or Garage configuration remains on S3, while MinIO is an\nexplicit optional profile."
+      },
+      "pt-BR": {
+        "title": "Novas instalações self-hosted usam volume local por padrão",
+        "body": "Novas instalações em um único host não exigem mais MinIO. Web e worker\ncompartilham um volume privado persistente em `/data/storage` pelo mesmo\ncontrato neutro, com escritas atômicas, leituras autenticadas, ranges de mídia,\ncontenção de path, health check, validação do volume persistente, backup\nconsistente e runtimes não-root. Variáveis Garage e arquivos de credenciais\nmontados continuam compatíveis nos dois runtimes.\nO backup segue o endpoint e o container ativos; um volume MinIO obsoleto não\npode ser confundido com backup de um S3 externo.\nConfigurações S3 ou Garage existentes continuam em S3 e o MinIO se torna um\nprofile opcional explícito."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/680"
+  },
+  {
     "version": "0.14.4",
     "channel": "prod",
     "date": "2026-08-07T06:10:45.106Z",
