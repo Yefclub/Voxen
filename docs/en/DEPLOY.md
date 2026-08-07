@@ -189,8 +189,10 @@ After deployment, verify both `/health` and `/health/deep`; the deep health
 check confirms PostgreSQL, Redis, and read/write access to the selected storage.
 
 Stable release automation publishes the versioned combined image and advances
-`latest` from the same `vX.Y.Z` tag. The `dev` image is published only through a
-manual `Easypanel Image` workflow run, avoiding a deployment on every merge.
+`latest` from the same `vX.Y.Z` tag. On `dev`, the combined image is published
+only after the automatic version pull request passes CI and merges, keeping the
+mutable tag aligned with versioned code without publishing intermediate
+commits. Manual `Easypanel Image` workflow runs remain available.
 
 The GitHub/Dockerfile source mode can work for an intentional test deployment,
 but build-time environment handling may expose secrets in build logs.
