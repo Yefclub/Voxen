@@ -1,6 +1,35 @@
 {
-  "description": "Self-hosted multimodal knowledge base with transcription, agentic search, MCP, and a knowledge graph",
-  "allow_squash_merge": true,
-  "squash_merge_commit_title": "PR_TITLE",
-  "squash_merge_commit_message": "BLANK"
+  "repository": {
+    "description": "Self-hosted AI knowledge base for transcribing, organizing, and exploring multimodal content.",
+    "has_issues": true,
+    "has_discussions": true,
+    "has_wiki": false,
+    "allow_squash_merge": true,
+    "allow_merge_commit": false,
+    "allow_rebase_merge": false,
+    "allow_auto_merge": true,
+    "delete_branch_on_merge": true,
+    "squash_merge_commit_title": "PR_TITLE",
+    "squash_merge_commit_message": "BLANK"
+  },
+  "topics": [
+    "ai",
+    "bun",
+    "docker",
+    "home-lab",
+    "hono",
+    "knowledge-base",
+    "knowledge-graph",
+    "mcp",
+    "openrouter",
+    "proxmox",
+    "python",
+    "self-hosted",
+    "transcription",
+    "typescript"
+  ],
+  "actions": {
+    "default_workflow_permissions": "read",
+    "can_approve_pull_request_reviews": true
+  }
 }

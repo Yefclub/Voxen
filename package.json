@@ -1,6 +1,6 @@
 {
   "name": "voxen",
-  "version": "0.14.2",
+  "version": "0.14.3",
   "private": true,
   "description": "Voxen — a self-hosted multimodal knowledge base with agentic search",
   "engines": {
@@ -15,12 +15,13 @@
       "vitest": "^4.1.0",
       "@smithy/types": "4.15.0",
       "@smithy/core": "3.25.1",
+      "@hono/node-server": "2.1.0",
       "shell-quote": "1.10.0",
       "js-yaml": "5.2.2",
       "@babel/core": "7.29.6",
       "fast-uri": "3.1.5",
       "ip-address": "10.3.1",
-      "postcss": "8.5.18"
+      "postcss": "8.5.26"
     },
     "patchedDependencies": {
       "reagraph@4.32.0": "patches/reagraph@4.32.0.patch"

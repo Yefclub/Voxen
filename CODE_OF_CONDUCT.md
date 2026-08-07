@@ -1,40 +1,39 @@
-# Codigo de Conduta
+# Code of Conduct
 
-O Voxen adota um codigo de conduta para manter o projeto acolhedor, objetivo e seguro para participantes, usuarios e mantenedores.
+Voxen adopts this code of conduct to keep the project welcoming, focused, and safe for contributors, users, and maintainers.
 
-Este documento e inspirado no Contributor Covenant 3.0, com adaptacoes para o contexto do Voxen.
+This document is inspired by Contributor Covenant 3.0 and adapted to the Voxen project.
 
-## Nosso compromisso
+## Our commitment
 
-Participantes devem colaborar com respeito, boa fe e foco no projeto. Discordancias tecnicas sao esperadas; ataques pessoais, assedio e constrangimento publico nao sao.
+Participants must collaborate respectfully, in good faith, and with a focus on the project. Technical disagreements are expected; personal attacks, harassment, and public humiliation are not.
 
-## Comportamentos esperados
+## Expected behavior
 
-- Usar linguagem acolhedora e profissional.
-- Respeitar diferencas de experiencia, contexto e opiniao.
-- Dar e receber feedback de forma construtiva.
-- Manter discussoes tecnicas focadas em fatos, trade-offs e impacto.
-- Aceitar decisoes dos mantenedores quando uma direcao for escolhida.
-- Avisar sobre riscos de seguranca de forma responsavel.
+- Use welcoming and professional language.
+- Respect differences in experience, context, and opinion.
+- Give and receive constructive feedback.
+- Keep technical discussions focused on facts, trade-offs, and impact.
+- Accept maintainer decisions once a direction has been selected.
+- Report security risks responsibly.
 
-## Comportamentos inaceitaveis
+## Unacceptable behavior
 
-- Assedio, intimidacao, ameacas ou perseguicao.
-- Linguagem sexualizada, discriminatoria ou humilhante.
-- Ataques pessoais, provocacoes repetidas ou comentarios depreciativos.
-- Publicar informacoes privadas de outra pessoa sem consentimento.
-- Abrir issues/PRs de ma fe, spam ou abuso automatizado.
-- Divulgar vulnerabilidades publicamente antes de dar tempo razoavel para correcao.
+- Harassment, intimidation, threats, or stalking.
+- Sexualized, discriminatory, or humiliating language.
+- Personal attacks, repeated provocation, or derogatory comments.
+- Publishing another person's private information without consent.
+- Opening issues or pull requests in bad faith, spamming, or automated abuse.
+- Publicly disclosing vulnerabilities before maintainers have had reasonable time to respond.
 
-## Aplicacao
+## Enforcement
 
-Mantenedores podem moderar comentarios, fechar discussoes, remover conteudo, bloquear participantes ou recusar contribuicoes que violem este codigo.
+Maintainers may moderate comments, close discussions, remove content, block participants, or reject contributions that violate this code.
 
-Medidas serao proporcionais ao impacto, recorrencia e intencao aparente. Quando possivel, os mantenedores vao preferir orientacao clara antes de medidas mais duras.
+Actions will be proportional to impact, recurrence, and apparent intent. When practical, maintainers will prefer clear guidance before stronger measures.
 
-## Como reportar
+## Reporting
 
-Para problemas de conduta, use os canais privados do mantenedor do projeto no GitHub. Para vulnerabilidades, siga [SECURITY.md](SECURITY.md).
+For conduct concerns, use the project maintainer's private GitHub contact channels. For vulnerabilities, follow [SECURITY.md](SECURITY.md).
 
-Relatos serao tratados com discricao. Nao use issues publicas para expor pessoas ou reportar vulnerabilidades.
-
+Reports will be handled discreetly. Do not use public issues to expose people or report vulnerabilities.

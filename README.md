@@ -7,6 +7,10 @@ document and image analysis, agentic search, and a knowledge graph. External
 agents can access the library through **MCP**. Retrieval is evidence-first and
 does not require vector embeddings.
 
+![Voxen Library with graph-aware search, folders, tags, and multimodal ingestion](docs/assets/voxen-library.png)
+
+![Voxen agentic chat workspace](docs/assets/voxen-chat.png)
+
 ## What it does
 
 1. Paste a URL or upload audio, video, image, or document files.
@@ -23,7 +27,8 @@ does not require vector embeddings.
 - **MCP:** Streamable HTTP at `/mcp` for Claude Code, Codex, Cursor, and other
   compatible clients
 - **Worker:** Python asyncio, `yt-dlp`, and `ffmpeg`
-- **Authentication:** Better Auth with email/password and administrator approval
+- **Authentication:** Better Auth with email/password, optional OIDC SSO, and
+  administrator approval
 - **Database:** PostgreSQL 17, Prisma, and full-text search
 - **Queue:** durable PostgreSQL jobs with leases and heartbeats; Redis is used
   for wakeups and realtime events
