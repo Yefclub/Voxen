@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786116413",
+    "channel": "dev",
+    "type": "feat",
+    "title": "External context is cited and reviewable",
+    "body": "Transcript pages now have a separate additional-context lifecycle for external\nresearch. Suggested results retain structured citations, model and cost\nprovenance, source freshness, and review status without changing the canonical\ntranscript or summary. Only fresh context explicitly accepted by the user can\nenter search and Brain; dismissal or deletion removes only its derivatives.",
+    "pr": 686,
+    "author": "Kalyel",
+    "date": "2026-08-07T12:26:35-03:00",
+    "translations": {
+      "en": {
+        "title": "External context is cited and reviewable",
+        "body": "Transcript pages now have a separate additional-context lifecycle for external\nresearch. Suggested results retain structured citations, model and cost\nprovenance, source freshness, and review status without changing the canonical\ntranscript or summary. Only fresh context explicitly accepted by the user can\nenter search and Brain; dismissal or deletion removes only its derivatives."
+      },
+      "pt-BR": {
+        "title": "Contexto externo passa a ser citado e revisável",
+        "body": "Páginas de transcrição agora possuem um ciclo separado de contexto adicional\npara pesquisa externa. Sugestões preservam citações estruturadas, proveniência\nde modelo e custo, frescor da fonte e revisão sem alterar transcrição ou resumo\ncanônicos. Somente contexto atual aceito explicitamente entra na busca e no\nBrain; dispensar ou excluir remove apenas seus derivados."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/686"
+  },
+  {
     "version": "0.14.5-dev.1786111854",
     "channel": "dev",
     "type": "feat",

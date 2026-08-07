@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.14.5-dev.1786116413 — 2026-08-07 · Dev
+
+### ✨ External context is cited and reviewable
+
+Transcript pages now have a separate additional-context lifecycle for external
+research. Suggested results retain structured citations, model and cost
+provenance, source freshness, and review status without changing the canonical
+transcript or summary. Only fresh context explicitly accepted by the user can
+enter search and Brain; dismissal or deletion removes only its derivatives.
+
 ## v0.14.5-dev.1786111854 — 2026-08-07 · Dev
 
 ### ✨ Notes can retain exact transcript passages
