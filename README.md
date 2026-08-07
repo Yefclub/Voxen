@@ -7,6 +7,10 @@ document and image analysis, agentic search, and a knowledge graph. External
 agents can access the library through **MCP**. Retrieval is evidence-first and
 does not require vector embeddings.
 
+![Voxen Library with graph-aware search, folders, tags, and multimodal ingestion](docs/assets/voxen-library.png)
+
+![Voxen agentic chat workspace](docs/assets/voxen-chat.png)
+
 ## What it does
 
 1. Paste a URL or upload audio, video, image, or document files.
