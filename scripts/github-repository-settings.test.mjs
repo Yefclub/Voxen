@@ -5,6 +5,7 @@ import {
   actionsArguments,
   patchArguments,
   repositorySettingsDiff,
+  topicsSettingsDiff,
   topicsArguments,
 } from "./github-repository-settings.mjs";
 
@@ -67,4 +68,21 @@ test("topic and Actions updates target their dedicated endpoints", () => {
       "can_approve_pull_request_reviews=false",
     ],
   );
+});
+
+test("topic drift compares the GitHub topic set without insertion order", () => {
+  assert.deepEqual(
+    topicsSettingsDiff(
+      ["ai", "bun", "knowledge-graph", "mcp"],
+      ["mcp", "ai", "knowledge-graph", "bun"],
+    ),
+    [],
+  );
+  assert.deepEqual(topicsSettingsDiff(["ai", "mcp"], ["ai", "docker"]), [
+    {
+      key: "names",
+      expected: ["ai", "mcp"],
+      actual: ["ai", "docker"],
+    },
+  ]);
 });
