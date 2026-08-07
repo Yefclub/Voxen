@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.14.5-dev.1786111854 — 2026-08-07 · Dev
+
+### ✨ Notes can retain exact transcript passages
+
+Text selected in a transcript can now become a note with verified line and
+timestamp anchors. Anchored notes navigate back to and highlight the original
+passage, remain available through the user-scoped API and MCP server, and keep
+their evidence separate from authored note content. A source refresh marks an
+outdated anchor stale instead of silently moving it.
+
 ## v0.14.5-dev.1786107441 — 2026-08-07 · Dev
 
 ### ✨ A newer published release is visible in navigation
