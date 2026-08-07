@@ -15,6 +15,14 @@ describe('release update comparison', () => {
       prerelease: 'dev.42',
     });
     expect(parseVoxenVersion('1.02.3')).toBeNull();
+    expect(parseVoxenVersion('1.2.3-dev..1')).toBeNull();
+    expect(parseVoxenVersion('1.2.3-01')).toBeNull();
+    expect(parseVoxenVersion('1.2.3+build.01')).toEqual({
+      major: 1,
+      minor: 2,
+      patch: 3,
+      prerelease: null,
+    });
     expect(parseVoxenVersion('latest')).toBeNull();
   });
 

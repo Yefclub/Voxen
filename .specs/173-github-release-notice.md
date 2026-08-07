@@ -53,7 +53,9 @@ updater.
 - [x] Expanded sidebar, collapsed rail, and mobile drawer use the same order.
 - [x] The action opens only the matching official GitHub release.
 - [x] External failures produce no toast, modal, or navigation instability.
-- [x] Unit, route, component, and Playwright tests cover the flow.
+- [x] Unit tests cover SemVer, URL preservation, server caching, and client
+  request coalescing; manual Playwright validation covers expanded, collapsed,
+  and mobile navigation.
 
 ## Out of scope
 

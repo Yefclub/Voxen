@@ -17,17 +17,29 @@ export interface ReleaseUpdateStatus {
   checkedAt: string;
 }
 
-const VERSION_PATTERN = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/;
+const VERSION_PATTERN =
+  /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 export function parseVoxenVersion(value: string | null | undefined): ParsedVoxenVersion | null {
   if (!value) return null;
   const match = VERSION_PATTERN.exec(value.trim());
   if (!match) return null;
+  const prerelease = match[4] ?? null;
+  if (
+    prerelease
+      ?.split('.')
+      .some(
+        (identifier) =>
+          /^\d+$/.test(identifier) && identifier.length > 1 && identifier.startsWith('0'),
+      )
+  ) {
+    return null;
+  }
   return {
     major: Number(match[1]),
     minor: Number(match[2]),
     patch: Number(match[3]),
-    prerelease: match[4] ?? null,
+    prerelease,
   };
 }
 
