@@ -66,6 +66,34 @@ def test_s3_env_takes_precedence_over_garage(monkeypatch: pytest.MonkeyPatch) ->
     assert storage.s3_access_key() == "minio-key"
 
 
+def test_s3_credentials_file_is_available_to_worker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:  # noqa: ANN001
+    for key in ("S3_ACCESS_KEY", "S3_SECRET_KEY", "GARAGE_ACCESS_KEY", "GARAGE_SECRET_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    credentials = tmp_path / "voxen.env"
+    credentials.write_text(
+        "# mounted credentials\nexport S3_ACCESS_KEY=file-access\nS3_SECRET_KEY='file-secret'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("S3_CREDS_PATH", str(credentials))
+
+    assert storage.s3_access_key() == "file-access"
+    assert storage.s3_secret_key() == "file-secret"
+
+
+def test_local_storage_rejects_application_descendant(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:  # noqa: ANN001
+    app_root = tmp_path / "app"
+    app_root.mkdir()
+    monkeypatch.chdir(app_root)
+    monkeypatch.setenv("STORAGE_LOCAL_PATH", str(app_root / "apps/web/dist/private"))
+
+    with pytest.raises(RuntimeError, match="unsafe application"):
+        storage.storage_local_path()
+
+
 def test_access_key_raises_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GARAGE_ACCESS_KEY", raising=False)
     monkeypatch.delenv("S3_ACCESS_KEY", raising=False)

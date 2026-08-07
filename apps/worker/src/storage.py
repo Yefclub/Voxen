@@ -48,7 +48,7 @@ def storage_local_path() -> Path:
         raise RuntimeError("STORAGE_LOCAL_PATH must be an absolute path")
     root = path.resolve()
     cwd = Path.cwd().resolve()
-    if root == Path(root.anchor) or root == cwd or root in cwd.parents:
+    if root == Path(root.anchor) or root == cwd or root in cwd.parents or cwd in root.parents:
         raise RuntimeError("STORAGE_LOCAL_PATH points to an unsafe application or root directory")
     return root
 
@@ -100,9 +100,38 @@ def _atomic_write(target: Path, writer: Any) -> None:
         raise
 
 
+def _credential_file_value(key: str) -> str | None:
+    path_value = os.environ.get("S3_CREDS_PATH") or os.environ.get("GARAGE_CREDS_PATH")
+    path = Path(path_value or "/creds/voxen.env")
+    try:
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line.removeprefix("export ").lstrip()
+            name, separator, value = line.partition("=")
+            if separator and name.strip() == key:
+                normalized = value.strip()
+                if (
+                    len(normalized) >= 2
+                    and normalized[0] == normalized[-1]
+                    and normalized[0] in "\"'"
+                ):
+                    normalized = normalized[1:-1]
+                return normalized or None
+    except OSError:
+        return None
+    return None
+
+
 def _env(*keys: str, default: str | None = None) -> str | None:
     for k in keys:
         v = os.environ.get(k)
+        if v:
+            return v
+    for k in keys:
+        v = _credential_file_value(k)
         if v:
             return v
     return default

@@ -82,7 +82,12 @@ export function storageLocalPath(env: NodeJS.ProcessEnv = process.env): string {
   if (!isAbsolute(value)) throw new Error('STORAGE_LOCAL_PATH must be an absolute path');
   const normalized = resolve(value);
   const cwd = resolve(process.cwd());
-  if (normalized === sep || normalized === cwd || cwd.startsWith(`${normalized}${sep}`)) {
+  if (
+    normalized === sep ||
+    normalized === cwd ||
+    cwd.startsWith(`${normalized}${sep}`) ||
+    normalized.startsWith(`${cwd}${sep}`)
+  ) {
     throw new Error('STORAGE_LOCAL_PATH points to an unsafe application or root directory');
   }
   return normalized;

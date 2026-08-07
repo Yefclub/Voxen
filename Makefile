@@ -136,30 +136,7 @@ reset-password: ## Reseta senha via CLI: make reset-password EMAIL=x@y.com PASSW
 		bun apps/web/src/scripts/reset-password.ts "$(EMAIL)"
 
 backup: ## Backs up PostgreSQL, selected storage, and MASTER_KEY into ./backups/
-	@mkdir -p backups
-	@set -eu; DATE=$$(date +%Y-%m-%d_%H%M); \
-	DRIVER=$$(sed -n 's/^STORAGE_DRIVER=//p' .env | tail -1); \
-	if [ -z "$$DRIVER" ]; then \
-		if grep -Eq '^(S3_|GARAGE_)[^=]*=.+$$' .env; then DRIVER=s3; else DRIVER=local; fi; \
-	fi; \
-	echo "→ Postgres → backups/db-$$DATE.sql.gz"; \
-	docker compose exec -T postgres pg_dump -U voxen voxen | gzip > "backups/db-$$DATE.sql.gz"; \
-	echo "→ Master key → backups/master-key-$$DATE.env"; \
-	grep '^MASTER_KEY=' .env > "backups/master-key-$$DATE.env"; \
-	chmod 0600 "backups/master-key-$$DATE.env"; \
-	if [ "$$DRIVER" = local ]; then \
-		echo "→ Local storage → backups/storage-$$DATE.tar.gz"; \
-		docker run --rm -v voxen_storage_data:/data:ro alpine tar czf - -C /data . > "backups/storage-$$DATE.tar.gz"; \
-	elif docker volume inspect voxen_minio_data >/dev/null 2>&1; then \
-		echo "→ MinIO data → backups/minio-$$DATE.tar.gz"; \
-		docker run --rm -v voxen_minio_data:/data:ro alpine tar czf - -C /data . > "backups/minio-$$DATE.tar.gz"; \
-	else \
-		echo "ERROR: external S3 is selected; run and verify your provider backup before considering this backup complete." >&2; \
-		exit 2; \
-	fi; \
-	echo ""; \
-	echo "✓ Backup completo em ./backups/ (timestamp $$DATE)"; \
-	ls -lh backups/ | tail -3
+	@bash scripts/backup.sh
 
 restore-storage: ## Restores BACKUP into the selected local/MinIO volume (destructive)
 	@if [ "$(RESTORE_CONFIRM)" != "restore" ] || [ -z "$(BACKUP)" ]; then \

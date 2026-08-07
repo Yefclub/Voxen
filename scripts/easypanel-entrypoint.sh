@@ -70,13 +70,39 @@ if not root.is_absolute() or root == pathlib.Path(root.anchor):
 root.mkdir(parents=True, exist_ok=True, mode=0o750)
 if root.is_symlink():
     raise SystemExit("[easypanel] FATAL: STORAGE_LOCAL_PATH não pode ser symlink")
+root = root.resolve()
+app_root = pathlib.Path("/app").resolve()
+if root == app_root or app_root in root.parents:
+    raise SystemExit("[easypanel] FATAL: STORAGE_LOCAL_PATH não pode ficar dentro de /app")
+
+mount_points = []
+try:
+    for line in pathlib.Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) >= 5:
+            decoded = (
+                fields[4]
+                .replace(r"\040", " ")
+                .replace(r"\011", "\t")
+                .replace(r"\012", "\n")
+                .replace(r"\134", "\\")
+            )
+            mount_points.append(pathlib.Path(decoded).resolve())
+except OSError as exc:
+    raise SystemExit(f"[easypanel] FATAL: não foi possível validar o volume persistente: {exc}") from exc
+
+if not any(point != pathlib.Path("/") and (point == root or point in root.parents) for point in mount_points):
+    raise SystemExit(
+        f"[easypanel] FATAL: {root} está no filesystem efêmero do container; "
+        "adicione um volume persistente nesse caminho"
+    )
 try:
     with tempfile.NamedTemporaryFile(prefix=".voxen-write-", dir=root, delete=True) as probe:
         probe.write(b"ok")
         probe.flush()
 except OSError as exc:
     raise SystemExit(f"[easypanel] FATAL: volume local não gravável em {root}: {exc}") from exc
-print(f"[easypanel] armazenamento local pronto em {root}; mantenha este caminho em volume persistente")
+print(f"[easypanel] armazenamento local persistente pronto em {root}")
 PY
 }
 
@@ -212,13 +238,14 @@ export PORT="${PORT:-3000}"
 export S3_REGION="${S3_REGION:-us-east-1}"
 export S3_FORCE_PATH_STYLE="${S3_FORCE_PATH_STYLE:-true}"
 
+if [[ "$STORAGE_DRIVER" = local ]]; then
+  validate_local_storage
+fi
 wait_for_url_host "Postgres" "$DATABASE_URL" 5432
 wait_for_url_host "Redis" "$REDIS_URL" 6379
 if [[ "$STORAGE_DRIVER" = s3 ]]; then
   wait_for_url_host "S3" "$S3_ENDPOINT" 9000
   validate_s3_bucket
-else
-  validate_local_storage
 fi
 
 echo "[easypanel] generating Prisma Client..."

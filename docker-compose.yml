@@ -119,8 +119,15 @@ services:
       S3_BUCKET: ${S3_BUCKET:-}
       S3_REGION: ${S3_REGION:-}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      S3_CREDS_PATH: ${S3_CREDS_PATH:-}
       # Opcional: habilita upload presigned direto pro S3 (ver docs/DEPLOY.md).
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      GARAGE_ENDPOINT: ${GARAGE_ENDPOINT:-}
+      GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY:-}
+      GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY:-}
+      GARAGE_BUCKET: ${GARAGE_BUCKET:-}
+      GARAGE_REGION: ${GARAGE_REGION:-}
+      GARAGE_CREDS_PATH: ${GARAGE_CREDS_PATH:-}
     ports:
       - '3000:3000'
     volumes:
@@ -156,6 +163,13 @@ services:
       S3_BUCKET: ${S3_BUCKET:-}
       S3_REGION: ${S3_REGION:-}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      S3_CREDS_PATH: ${S3_CREDS_PATH:-}
+      GARAGE_ENDPOINT: ${GARAGE_ENDPOINT:-}
+      GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY:-}
+      GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY:-}
+      GARAGE_BUCKET: ${GARAGE_BUCKET:-}
+      GARAGE_REGION: ${GARAGE_REGION:-}
+      GARAGE_CREDS_PATH: ${GARAGE_CREDS_PATH:-}
       YTDLP_BGUTIL_BASE_URL: ${YTDLP_BGUTIL_BASE_URL:-}
     volumes:
       - storage_data:/data/storage

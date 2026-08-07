@@ -61,6 +61,10 @@ New single-host installations use the shared local volume at `/data/storage`.
 Both `web` and `worker` mount the same `storage_data` volume and the database
 continues to store provider-neutral keys, never host paths. This is the simplest
 and recommended home-lab, VPS, Compose, and Easypanel topology.
+Production entrypoints refuse to start local mode when this path is still on the
+container's ephemeral filesystem or points inside `/app`. Attach the persistent
+volume before the first start; a merely writable directory is not accepted as
+durable storage.
 
 S3 remains supported for external object storage or multi-host deployments.
 Copy the values from [`.env.s3.example`](../../.env.s3.example), set
@@ -219,6 +223,9 @@ MinIO volume. It fails for external S3 because provider snapshots/versioning
 must be configured and verified separately. `make restore-storage` requires an
 explicit archive and `RESTORE_CONFIRM=restore`; stop and verify the instance
 before treating a restore as complete.
+For local/Compose storage, the backup pauses web and worker, resumes only the
+services that were already running, and publishes final artifacts only after the
+database dump, master key, and storage snapshot all succeed.
 
 Do not run `make clean` in production unless you intentionally want to remove all volumes and data.
 

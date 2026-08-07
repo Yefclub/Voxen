@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { mkdtemp, readdir, rm, symlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Readable } from 'node:stream';
 import {
   normalizeStorageKey,
   resolveStorageDriver,
+  storageLocalPath,
   storageDelete,
   storageDeletePrefix,
   storageGet,
@@ -47,6 +48,12 @@ describe('storage driver selection', () => {
     for (const key of ['', '../secret', '/etc/passwd', 'workspaces//file', 'a/./b', 'a\\b']) {
       expect(() => normalizeStorageKey(key)).toThrow();
     }
+  });
+
+  it('rejects local storage inside the application tree', () => {
+    expect(() =>
+      storageLocalPath({ STORAGE_LOCAL_PATH: resolve(process.cwd(), 'dist/private') }),
+    ).toThrow('unsafe application');
   });
 });
 

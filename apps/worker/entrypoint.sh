@@ -36,9 +36,28 @@ if [ "$DRIVER" = local ]; then
     echo "[worker] FATAL: unsafe local storage path: $STORAGE_LOCAL_PATH" >&2
     exit 1
   fi
+  case "$STORAGE_LOCAL_PATH" in
+    /app | /app/*) echo "[worker] FATAL: local storage cannot be inside /app" >&2; exit 1 ;;
+  esac
   mkdir -p "$STORAGE_LOCAL_PATH"
   if [ ! -d "$STORAGE_LOCAL_PATH" ] || [ ! -w "$STORAGE_LOCAL_PATH" ]; then
     echo "[worker] FATAL: local storage is not writable: $STORAGE_LOCAL_PATH" >&2
+    exit 1
+  fi
+  RESOLVED_STORAGE_PATH="$(realpath "$STORAGE_LOCAL_PATH")"
+  case "$RESOLVED_STORAGE_PATH" in
+    /app | /app/*) echo "[worker] FATAL: local storage cannot be inside /app" >&2; exit 1 ;;
+  esac
+  if ! awk -v target="$RESOLVED_STORAGE_PATH" '
+    {
+      mountpoint = $5
+      gsub(/\\040/, " ", mountpoint)
+      gsub(/\\011/, "\t", mountpoint)
+      if (mountpoint != "/" && (target == mountpoint || index(target, mountpoint "/") == 1)) found = 1
+    }
+    END { exit(found ? 0 : 1) }
+  ' /proc/self/mountinfo; then
+    echo "[worker] FATAL: $RESOLVED_STORAGE_PATH is ephemeral; attach a persistent volume" >&2
     exit 1
   fi
   export STORAGE_LOCAL_PATH

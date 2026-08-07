@@ -80,6 +80,10 @@ Instalações novas em um único host usam o volume compartilhado
 `storage_data`, montado em `/data/storage` no web e no worker. O banco continua
 armazenando apenas chaves relativas e nunca paths do host. Esse é o caminho
 recomendado para home-lab, VPS, Compose e Easypanel.
+Os entrypoints de produção recusam iniciar o driver local quando esse caminho
+continua no filesystem efêmero do container ou aponta para dentro de `/app`.
+Crie o volume persistente antes do primeiro start; um diretório apenas gravável
+não é considerado persistência válida.
 
 S3 continua disponível para object storage externo ou múltiplos hosts. Copie
 as variáveis de [`.env.s3.example`](../.env.s3.example), defina
@@ -639,6 +643,9 @@ docker run --rm -v voxen_storage_data:/data:ro alpine tar czf - -C /data . > $BA
 O alvo `make backup` seleciona automaticamente o volume local ou o volume
 MinIO do Compose. Para S3 externo ele falha de propósito: configure snapshots,
 versionamento ou backup no provedor e verifique a restauração separadamente.
+Durante o backup local, web e worker são pausados e somente os serviços que já
+estavam ativos são retomados. Artefatos finais só são publicados depois que
+`pg_dump`, master key e storage terminam com sucesso.
 `make restore-storage BACKUP=... RESTORE_CONFIRM=restore` restaura somente o
 storage e é destrutivo. Rode via cron diário. **A master key é o mais crítico**
 — sem ela, os secrets cifrados (OpenRouter key, modelos default) viram lixo.
