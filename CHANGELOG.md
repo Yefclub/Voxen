@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.14.5-dev.1786127306 — 2026-08-07 · Dev
+
+### 🐛 The dev container image now follows versioned code
+
+After each automatic development version pull request passes CI and merges,
+Voxen now publishes the combined image and waits for the registry push to
+succeed. The mutable `dev` tag, its versioned tag, and the immutable SHA tag
+therefore advance together, while `latest` remains reserved for stable
+releases. Intermediate feature commits still do not publish deployable images.
+
 ## v0.14.5-dev.1786123967 — 2026-08-07 · Dev
 
 ### ✨ Summaries can trigger bounded optional research
