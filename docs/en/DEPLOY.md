@@ -219,10 +219,14 @@ make backup
 ```
 
 `make backup` includes PostgreSQL, `MASTER_KEY`, and the active local or Compose
-MinIO volume. It fails for external S3 because provider snapshots/versioning
-must be configured and verified separately. `make restore-storage` requires an
-explicit archive and `RESTORE_CONFIRM=restore`; stop and verify the instance
-before treating a restore as complete.
+MinIO volume. Compose MinIO is selected from the configured endpoint and its
+running container, never merely from a leftover volume. Set
+`VOXEN_S3_BACKUP_MODE=compose-minio` when the internal endpoint uses an alias
+other than `minio`. It fails for external S3 even if an old MinIO volume exists,
+because provider snapshots/versioning must be configured and verified
+separately. `make restore-storage` requires an explicit archive and
+`RESTORE_CONFIRM=restore`; stop and verify the instance before treating a
+restore as complete.
 For local/Compose storage, the backup pauses web and worker, resumes only the
 services that were already running, and publishes final artifacts only after the
 database dump, master key, and storage snapshot all succeed.

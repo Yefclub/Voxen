@@ -40,24 +40,36 @@ test("all production entrypoints reject ephemeral local storage", async () => {
   }
 });
 
-async function backupFixture({ failDump = false } = {}) {
+async function backupFixture({
+  failDump = false,
+  driver = "local",
+  endpoint,
+} = {}) {
   const root = await mkdtemp(join(tmpdir(), "voxen-backup-test-"));
   const bin = join(root, "bin");
   const backups = join(root, "backups");
   const envFile = join(root, ".env");
   const logFile = join(root, "docker.log");
   await mkdir(bin);
-  await writeFile(
-    envFile,
-    "STORAGE_DRIVER=local\nPOSTGRES_USER=voxen\nPOSTGRES_DB=voxen\nMASTER_KEY=test-key\n",
-  );
+  const storageEnv = [
+    `STORAGE_DRIVER=${driver}`,
+    endpoint ? `S3_ENDPOINT=${endpoint}` : null,
+    "POSTGRES_USER=voxen",
+    "POSTGRES_DB=voxen",
+    "MASTER_KEY=test-key",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  await writeFile(envFile, `${storageEnv}\n`);
+  await writeFile(logFile, "");
   await writeFile(
     join(bin, "docker"),
     `#!/usr/bin/env bash
 set -eu
 printf '%s\\n' "$*" >> "$DOCKER_LOG"
 case "$*" in
-  'volume inspect voxen_minio_data') exit 1 ;;
+  'volume inspect voxen_minio_data') exit 0 ;;
+  'compose --profile s3 ps --status running -q minio') printf 'minio-container\\n' ;;
   'compose ps --status running --services') printf 'web\\nworker\\n' ;;
   'compose exec -T postgres pg_dump -U voxen voxen')
     if [[ "\${FAIL_DUMP:-0}" = 1 ]]; then exit 17; fi
@@ -65,6 +77,9 @@ case "$*" in
     ;;
   'compose run --rm --no-deps --entrypoint tar web czf - -C /data/storage .')
     printf 'storage-archive'
+    ;;
+  'run --rm --volumes-from minio-container:ro alpine tar czf - -C /data .')
+    printf 'minio-archive'
     ;;
 esac
 `,
@@ -119,5 +134,35 @@ test("backup cannot report success or publish archives when pg_dump fails", asyn
   assert.match(
     await readFile(fixture.logFile, "utf8"),
     /compose start web worker/,
+  );
+});
+
+test("backup snapshots the active Compose MinIO container", async () => {
+  const fixture = await backupFixture({
+    driver: "s3",
+    endpoint: "http://minio:9000",
+  });
+  assert.equal(fixture.result.status, 0, fixture.result.stderr);
+  assert.equal(
+    await readFile(join(fixture.backups, "minio-test-date.tar.gz"), "utf8"),
+    "minio-archive",
+  );
+  const log = await readFile(fixture.logFile, "utf8");
+  assert.match(log, /compose --profile s3 ps --status running -q minio/);
+  assert.match(log, /run --rm --volumes-from minio-container:ro/);
+});
+
+test("a stale MinIO volume never disguises external S3 as backed up", async () => {
+  const fixture = await backupFixture({
+    driver: "s3",
+    endpoint: "https://s3.example.com",
+  });
+  assert.equal(fixture.result.status, 2);
+  assert.match(fixture.result.stderr, /external S3 is selected/);
+  assert.doesNotMatch(fixture.result.stdout, /Backup complete/);
+  assert.deepEqual(await readdir(fixture.backups), []);
+  assert.doesNotMatch(
+    await readFile(fixture.logFile, "utf8"),
+    /volume inspect/,
   );
 });

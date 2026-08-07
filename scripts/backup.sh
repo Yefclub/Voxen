@@ -22,9 +22,36 @@ if [[ "$driver" != local && "$driver" != s3 ]]; then
   echo "ERROR: STORAGE_DRIVER must be local or s3" >&2
   exit 2
 fi
-if [[ "$driver" == s3 ]] && ! docker volume inspect voxen_minio_data >/dev/null 2>&1; then
-  echo "ERROR: external S3 is selected; configure and verify a provider backup first." >&2
-  exit 2
+s3_backup_mode=""
+minio_container_id=""
+if [[ "$driver" == s3 ]]; then
+  s3_endpoint="$(sed -n -e 's/^S3_ENDPOINT=//p' -e 's/^GARAGE_ENDPOINT=//p' "$env_file" | tail -1)"
+  s3_backup_mode="${VOXEN_S3_BACKUP_MODE:-$(sed -n 's/^VOXEN_S3_BACKUP_MODE=//p' "$env_file" | tail -1)}"
+  if [[ -z "$s3_backup_mode" ]]; then
+    case "$s3_endpoint" in
+      http://minio | http://minio:* | https://minio | https://minio:*)
+        s3_backup_mode=compose-minio
+        ;;
+      *) s3_backup_mode=external ;;
+    esac
+  fi
+  case "$s3_backup_mode" in
+    compose-minio)
+      minio_container_id="$(docker compose --profile s3 ps --status running -q minio)"
+      if [[ -z "$minio_container_id" || "$minio_container_id" == *$'\n'* ]]; then
+        echo "ERROR: the active Compose MinIO container could not be identified." >&2
+        exit 2
+      fi
+      ;;
+    external)
+      echo "ERROR: external S3 is selected; configure and verify a provider backup first." >&2
+      exit 2
+      ;;
+    *)
+      echo "ERROR: VOXEN_S3_BACKUP_MODE must be compose-minio or external." >&2
+      exit 2
+      ;;
+  esac
 fi
 
 db_final="$backup_dir/db-$backup_date.sql.gz"
@@ -80,7 +107,7 @@ if [[ "$driver" == local ]]; then
     czf - -C /data/storage . >"$storage_temp"
 else
   echo "→ MinIO data → $storage_final"
-  docker run --rm -v voxen_minio_data:/data:ro alpine \
+  docker run --rm --volumes-from "$minio_container_id:ro" alpine \
     tar czf - -C /data . >"$storage_temp"
 fi
 

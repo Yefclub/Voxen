@@ -621,28 +621,20 @@ A imagem `web` roda `prisma migrate deploy` no entrypoint — migrations são ap
 
 ## Backups
 
-Backup dos volumes Docker. Script de exemplo:
+Execute o backup consistente fornecido pelo projeto:
 
 ```bash
-#!/bin/bash
-BACKUP_DIR=/var/backups/voxen
-DATE=$(date +%Y-%m-%d_%H%M)
-mkdir -p $BACKUP_DIR
-
-# Postgres
-docker compose exec -T postgres pg_dump -U voxen voxen | gzip > $BACKUP_DIR/db-$DATE.sql.gz
-
-# Master key (NUNCA perca isso)
-grep '^MASTER_KEY=' .env > $BACKUP_DIR/master-key-$DATE.env
-chmod 0600 $BACKUP_DIR/master-key-$DATE.env
-
-# Storage local (Markdown, mídia e avatars)
-docker run --rm -v voxen_storage_data:/data:ro alpine tar czf - -C /data . > $BACKUP_DIR/storage-$DATE.tar.gz
+cd /opt/voxen
+make backup
 ```
 
 O alvo `make backup` seleciona automaticamente o volume local ou o volume
-MinIO do Compose. Para S3 externo ele falha de propósito: configure snapshots,
-versionamento ou backup no provedor e verifique a restauração separadamente.
+MinIO ativo do Compose pela configuração e pelo container em execução — a mera
+existência de um volume MinIO antigo nunca conta como backup. Para um endpoint
+interno com alias diferente de `minio`, defina
+`VOXEN_S3_BACKUP_MODE=compose-minio`; para S3 externo ele falha de propósito,
+mesmo se houver um volume residual: configure snapshots, versionamento ou backup
+no provedor e verifique a restauração separadamente.
 Durante o backup local, web e worker são pausados e somente os serviços que já
 estavam ativos são retomados. Artefatos finais só são publicados depois que
 `pg_dump`, master key e storage terminam com sucesso.
