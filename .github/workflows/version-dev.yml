@@ -52,7 +52,7 @@ jobs:
           git checkout -- . 2>/dev/null || true
           git pull --rebase origin "$TARGET_BRANCH"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
