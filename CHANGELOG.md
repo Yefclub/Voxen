@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.14.5-dev.1786107441 — 2026-08-07 · Dev
+
+### ✨ A newer published release is visible in navigation
+
+Voxen now checks the official GitHub stable release from the server and shows
+an update notice directly above What's new only when that release is newer than
+the running build. The notice identifies the installed version and whether the
+instance is running a development or production build. GitHub failures remain
+silent and never interrupt navigation.
+
 ## v0.14.5-dev.1786104989 — 2026-08-07 · Dev
 
 ### 🛠️ New self-hosted installs use a local volume by default
