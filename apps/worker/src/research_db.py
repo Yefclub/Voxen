@@ -53,9 +53,11 @@ async def queue_auto_transcript_enrichment(user_id: str, transcript_id: str) -> 
                 return False
             source = await conn.fetchrow(
                 """
-                SELECT id, "sourceVersion", "sourceChecksum"
-                FROM "Transcript"
-                WHERE id = $1 AND "userId" = $2 AND status = 'ACTIVE'::"ContentStatus"
+                SELECT t.id, t."sourceVersion", t."sourceChecksum"
+                FROM "Transcript" t
+                WHERE t.id = $1 AND t."userId" = $2
+                  AND t.status = 'ACTIVE'::"ContentStatus"
+                FOR UPDATE OF t
                 """,
                 transcript_id,
                 user_id,

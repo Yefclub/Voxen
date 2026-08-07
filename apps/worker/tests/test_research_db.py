@@ -54,6 +54,7 @@ async def test_queue_auto_research_is_idempotent_by_source_version(
     assert await research_db.queue_auto_transcript_enrichment("user-1", "transcript-1")
     assert conn.execute.await_args.args[6] == 2
     assert conn.execute.await_args.args[7] == "checksum"
+    assert "FOR UPDATE OF t" in conn.fetchrow.await_args.args[0]
 
     conn.fetchrow.return_value = None
     assert not await research_db.queue_auto_transcript_enrichment("user-1", "missing")

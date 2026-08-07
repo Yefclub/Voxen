@@ -84,6 +84,9 @@ fails closed and is never persisted as knowledge.
   unclaimable and cancels it in the same transaction as the parent lifecycle
   update. Restoring the transcript never revives that old execution; a new
   explicit or automatic request is required.
+- Every UI, MCP, or automatic enqueue locks the active transcript row through
+  creation. Lifecycle updates acquire the same row lock, so concurrent ordering
+  can only reject the enqueue or cancel the newly committed work before restore.
 - Completed suggestions and accepted context remain inspectable; rollback never
   rewrites the canonical summary. Existing items can be dismissed or deleted
   through the review lifecycle.

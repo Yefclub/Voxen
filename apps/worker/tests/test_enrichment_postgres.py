@@ -324,6 +324,107 @@ async def test_policy_transition_serializes_auto_queue_and_claim(
     }
 
 
+async def test_auto_enqueue_serializes_archive_and_immediate_restore(
+    postgres: asyncpg.Connection,
+) -> None:
+    await _set_research_policy(postgres, "AUTO")
+    await _insert_user(postgres, "lifecycle-race-user")
+    await _insert_transcript(
+        postgres,
+        transcript_id="lifecycle-race-parent",
+        user_id="lifecycle-race-user",
+    )
+    await postgres.execute(
+        """
+        CREATE OR REPLACE FUNCTION voxen_test_delay_research_enqueue()
+        RETURNS trigger AS $$
+        BEGIN
+          IF NEW."transcriptId" = 'lifecycle-race-parent' THEN
+            PERFORM pg_sleep(0.35);
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+        """
+    )
+    await postgres.execute(
+        """
+        CREATE TRIGGER voxen_test_delay_research_enqueue
+        BEFORE INSERT ON "TranscriptEnrichment"
+        FOR EACH ROW EXECUTE FUNCTION voxen_test_delay_research_enqueue()
+        """
+    )
+
+    async def archive_and_restore() -> None:
+        lifecycle = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            async with lifecycle.transaction():
+                await lifecycle.execute(
+                    """
+                    UPDATE "Transcript"
+                    SET status = 'ARCHIVED'::"ContentStatus", "archivedAt" = NOW(),
+                        "updatedAt" = NOW()
+                    WHERE id = 'lifecycle-race-parent'
+                    """
+                )
+                await lifecycle.execute(
+                    """
+                    UPDATE "TranscriptEnrichment"
+                    SET status = 'CANCELLED'::"TranscriptEnrichmentStatus",
+                        "cancelRequestedAt" = NOW(), "startedAt" = NULL,
+                        "nextAttemptAt" = NULL, "staleReason" = 'parent-inactive',
+                        "updatedAt" = NOW()
+                    WHERE "transcriptId" = 'lifecycle-race-parent'
+                      AND status IN (
+                        'PENDING'::"TranscriptEnrichmentStatus",
+                        'RETRY'::"TranscriptEnrichmentStatus",
+                        'RUNNING'::"TranscriptEnrichmentStatus"
+                      )
+                    """
+                )
+            await lifecycle.execute(
+                """
+                UPDATE "Transcript"
+                SET status = 'ACTIVE'::"ContentStatus", "archivedAt" = NULL,
+                    "updatedAt" = NOW()
+                WHERE id = 'lifecycle-race-parent'
+                """
+            )
+        finally:
+            await lifecycle.close()
+
+    try:
+        enqueue_task = asyncio.create_task(
+            research_db.queue_auto_transcript_enrichment(
+                "lifecycle-race-user", "lifecycle-race-parent"
+            )
+        )
+        await asyncio.sleep(0.05)
+        lifecycle_task = asyncio.create_task(archive_and_restore())
+        await asyncio.sleep(0.05)
+        assert not lifecycle_task.done()
+        assert await enqueue_task
+        await lifecycle_task
+    finally:
+        await postgres.execute(
+            'DROP TRIGGER IF EXISTS voxen_test_delay_research_enqueue ON "TranscriptEnrichment"'
+        )
+        await postgres.execute("DROP FUNCTION IF EXISTS voxen_test_delay_research_enqueue()")
+
+    restored = await postgres.fetchrow(
+        """
+        SELECT t.status AS parent_status, e.status, e."staleReason"
+        FROM "Transcript" t
+        JOIN "TranscriptEnrichment" e ON e."transcriptId" = t.id
+        WHERE t.id = 'lifecycle-race-parent'
+        """
+    )
+    assert restored is not None
+    assert restored["parent_status"] == "ACTIVE"
+    assert restored["status"] == "CANCELLED"
+    assert restored["staleReason"] == "parent-inactive"
+
+
 async def test_claims_only_eligible_rows_and_never_exceeds_six_attempts(
     postgres: asyncpg.Connection,
 ) -> None:

@@ -114,4 +114,6 @@ complementa a busca textual e não substitui a recuperação de evidências.
   automático. Mudanças de política e conteúdos-pai inativos cancelam trabalhos
   incompatíveis ainda não terminados em vez de permitir nova aquisição. Fila e
   claim leem a política sob o mesmo lock transacional das configurações; a
-  inativação do pai cancela o trabalho na própria transação de lifecycle.
+  inativação do pai cancela o trabalho na própria transação de lifecycle. Todo
+  enqueue também bloqueia a linha da transcrição até criar o trabalho, fechando
+  a corrida entre criação, arquivamento e restauração imediata.

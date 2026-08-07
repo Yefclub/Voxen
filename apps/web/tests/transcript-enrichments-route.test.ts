@@ -75,14 +75,14 @@ describeIfDb('reviewable transcript enrichments API', () => {
     await db.$disconnect();
   });
 
-  async function createTranscript() {
+  async function createTranscript(title = 'Canonical transcript') {
     const suffix = crypto.randomUUID();
     return db.transcript.create({
       data: {
         userId: ownerId,
         source: 'WEB',
         url: `https://example.com/source-${suffix}`,
-        title: 'Canonical transcript',
+        title,
         durationSec: 0,
         language: 'pt',
         transcriptionMethod: 'SCRAPE',
@@ -396,6 +396,66 @@ describeIfDb('reviewable transcript enrichments API', () => {
         where: { userId: ownerId, sourceType: 'EXTERNAL_ENRICHMENT', sourceId: enrichment.id },
       }),
     ).toBeNull();
+  });
+
+  it('serializes manual enqueue with archive and immediate restore', async () => {
+    const transcript = await createTranscript('Lifecycle concurrency target');
+    await setSettings({ summary_research_mode: 'MANUAL' });
+    await db.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION voxen_test_delay_manual_research_enqueue()
+      RETURNS trigger AS $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM "Transcript"
+          WHERE id = NEW."transcriptId" AND title = 'Lifecycle concurrency target'
+        ) THEN
+          PERFORM pg_sleep(0.35);
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+    await db.$executeRawUnsafe(`
+      CREATE TRIGGER voxen_test_delay_manual_research_enqueue
+      BEFORE INSERT ON "TranscriptEnrichment"
+      FOR EACH ROW EXECUTE FUNCTION voxen_test_delay_manual_research_enqueue()
+    `);
+
+    try {
+      const enqueuePromise = request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(ownerCookie, 'POST', { requestId: crypto.randomUUID() }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const archivePromise = request(
+        `/api/transcripts/${transcript.id}/lifecycle`,
+        apiInit(ownerCookie, 'PATCH', { status: 'ARCHIVED' }),
+      );
+      const [enqueued, archived] = await Promise.all([enqueuePromise, archivePromise]);
+      expect(enqueued.status).toBe(202);
+      expect(archived.status).toBe(200);
+
+      const restored = await request(
+        `/api/transcripts/${transcript.id}/lifecycle`,
+        apiInit(ownerCookie, 'PATCH', { status: 'ACTIVE' }),
+      );
+      expect(restored.status).toBe(200);
+      const enrichment = await db.transcriptEnrichment.findFirstOrThrow({
+        where: { transcriptId: transcript.id },
+        select: { status: true, cancelRequestedAt: true, staleReason: true },
+      });
+      expect(enrichment.status).toBe('CANCELLED');
+      expect(enrichment.cancelRequestedAt).not.toBeNull();
+      expect(enrichment.staleReason).toBe('parent-inactive');
+    } finally {
+      await db.$executeRawUnsafe(
+        'DROP TRIGGER IF EXISTS voxen_test_delay_manual_research_enqueue ON "TranscriptEnrichment"',
+      );
+      await db.$executeRawUnsafe(
+        'DROP FUNCTION IF EXISTS voxen_test_delay_manual_research_enqueue()',
+      );
+      await setSettings({ summary_research_mode: 'OFF' });
+    }
   });
 
   it('rejects missing or unsafe citations and refuses stale acceptance', async () => {

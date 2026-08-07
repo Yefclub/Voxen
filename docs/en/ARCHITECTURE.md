@@ -121,7 +121,9 @@ without duplication.
   post-summary research. Policy changes and inactive parent content cancel
   incompatible nonterminal work instead of allowing it to be reclaimed. Queue
   and claim read policy under the settings transaction lock; parent
-  deactivation cancels work inside the lifecycle transaction itself.
+  deactivation cancels work inside the lifecycle transaction itself. Every
+  enqueue also locks the transcript row through creation, closing the race
+  between enqueue, archive, and immediate restore.
 
 ## Design Direction
 
