@@ -1,8 +1,6 @@
 // ============================================================================
 // /admin/integracoes — config de tokens MCP e integrações
 // ============================================================================
-// Página admin pra:
-//  - rotacionar/revogar token MCP (Bearer pro endpoint /mcp)
 // ============================================================================
 
 import { useEffect, useState } from 'react';
@@ -31,6 +29,7 @@ import { api, ApiError, apiDelete, apiGet, apiPatch, apiPost } from '../lib/api'
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { ModelPickerDialog } from '../components/model-picker-dialog';
+import { ResearchPolicySection } from '../components/admin/research-policy-section';
 import { useI18n } from '../lib/i18n';
 import type { ModelPurpose, ModelPurposeStatus, OrModel } from '../lib/types';
 import { cn } from '../lib/utils';
@@ -110,6 +109,7 @@ export function AdminIntegracoesPage(): React.ReactElement {
         />
 
         <ModelsSection />
+        <ResearchPolicySection />
         <ConfigRevisionSection />
         <McpSection />
         <ProxyAgentSection />

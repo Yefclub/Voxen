@@ -6,6 +6,7 @@ import { reindexTranscriptEnrichmentBrain } from '../src/lib/brain-enrichments';
 import { searchBrainNodes } from '../src/lib/brain-search';
 import { db } from '../src/lib/db';
 import { ftsSearchTranscriptEnrichments } from '../src/lib/retrieval-enrichments';
+import { setSettings } from '../src/lib/settings';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
 const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
@@ -146,6 +147,54 @@ describeIfDb('reviewable transcript enrichments API', () => {
         )
       ).status,
     ).toBe(404);
+  });
+
+  it('enforces OFF/MANUAL policy, user isolation, idempotency, and active sources', async () => {
+    const transcript = await createTranscript();
+    const requestId = crypto.randomUUID();
+    try {
+      await setSettings({ summary_research_mode: 'OFF' });
+      const disabled = await request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(ownerCookie, 'POST', { requestId }),
+      );
+      expect(disabled.status).toBe(409);
+      expect(await db.transcriptEnrichment.count({ where: { transcriptId: transcript.id } })).toBe(
+        0,
+      );
+
+      await setSettings({ summary_research_mode: 'MANUAL' });
+      const foreign = await request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(otherCookie, 'POST', { requestId }),
+      );
+      expect(foreign.status).toBe(404);
+
+      const first = await request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(ownerCookie, 'POST', { requestId }),
+      );
+      expect(first.status).toBe(202);
+      const firstBody = (await first.json()) as { enrichment: { id: string; trigger: string } };
+      expect(firstBody.enrichment.trigger).toBe('MANUAL');
+
+      const repeated = await request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(ownerCookie, 'POST', { requestId }),
+      );
+      expect(repeated.status).toBe(202);
+      const repeatedBody = (await repeated.json()) as { enrichment: { id: string } };
+      expect(repeatedBody.enrichment.id).toBe(firstBody.enrichment.id);
+
+      await db.transcript.update({ where: { id: transcript.id }, data: { status: 'ARCHIVED' } });
+      const archived = await request(
+        `/api/transcripts/${transcript.id}/enrichments`,
+        apiInit(ownerCookie, 'POST', { requestId: crypto.randomUUID() }),
+      );
+      expect(archived.status).toBe(404);
+    } finally {
+      await setSettings({ summary_research_mode: 'OFF' });
+    }
   });
 
   it('keeps suggestions out of search, then accepts, edits, dismisses, and deletes safely', async () => {

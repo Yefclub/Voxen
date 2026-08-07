@@ -16,6 +16,16 @@ def _summary_enrichment_state(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary.db, "start_summary_enrichment", AsyncMock(return_value=1))
     monkeypatch.setattr(summary.db, "finish_summary_enrichment", AsyncMock(return_value=None))
     monkeypatch.setattr(summary.db, "complete_summary_enrichment", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_summary_research_mode",
+        AsyncMock(return_value="OFF"),
+    )
+    monkeypatch.setattr(
+        summary.research_db,
+        "queue_auto_transcript_enrichment",
+        AsyncMock(return_value=False),
+    )
 
 
 class _FakeLogger:
@@ -114,6 +124,13 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
         "get_app_language",
         AsyncMock(return_value="pt-BR"),
     )
+    monkeypatch.setattr(
+        summary.voxen_settings,
+        "get_summary_research_mode",
+        AsyncMock(return_value="AUTO"),
+    )
+    queue_research = AsyncMock(return_value=True)
+    monkeypatch.setattr(summary.research_db, "queue_auto_transcript_enrichment", queue_research)
     insert_cost = AsyncMock()
     monkeypatch.setattr(summary.db, "insert_cost_event", insert_cost)
 
@@ -144,6 +161,8 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
         await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
 
     assert ("info", "summary-done") in log.events
+    assert ("info", "research-enrichment-queued") in log.events
+    queue_research.assert_awaited_once_with("u1", "t1")
     assert seen_timeout["value"] == 42.0
     summary.db.complete_summary_enrichment.assert_awaited_once_with(  # type: ignore[attr-defined]
         "u1",

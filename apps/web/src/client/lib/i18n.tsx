@@ -11,6 +11,7 @@ import {
 import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
 import * as knowledgeFeatureMessages from './knowledge-features-i18n';
 import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
+import { enResearchPolicyMessages, ptBrResearchPolicyMessages } from './research-policy-i18n';
 import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
 import {
   enTranscriptAnnotationMessages,
@@ -27,6 +28,7 @@ const ptBRMessages = {
   ...ptBrReleaseUpdateMessages,
   ...ptBrTranscriptAnnotationMessages,
   ...knowledgeFeatureMessages.ptBrKnowledgeFeatureMessages,
+  ...ptBrResearchPolicyMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -1414,6 +1416,7 @@ const enMessages: Record<I18nKey, string> = {
   ...enReleaseUpdateMessages,
   ...enTranscriptAnnotationMessages,
   ...knowledgeFeatureMessages.enKnowledgeFeatureMessages,
+  ...enResearchPolicyMessages,
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.close': 'Close',

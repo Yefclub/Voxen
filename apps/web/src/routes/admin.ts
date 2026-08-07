@@ -23,6 +23,7 @@ import {
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
 import { storageDeletePrefix } from '../lib/storage';
 import { adminAuthenticationRoutes } from './admin-authentication';
+import { adminResearchPolicyRoutes } from './admin-research-policy';
 import { requireApprovedAdmin, type AdminVariables } from './admin-guard';
 
 export const adminRoutes = new Hono<{ Variables: AdminVariables }>();
@@ -67,6 +68,7 @@ async function assertMayRemoveApprovedAdmin(
 adminRoutes.use('*', requireApprovedAdmin);
 
 adminRoutes.route('/authentication', adminAuthenticationRoutes);
+adminRoutes.route('/research-policy', adminResearchPolicyRoutes);
 
 // GET /api/admin/usuarios — lista todos
 adminRoutes.get('/usuarios', async (c) => {

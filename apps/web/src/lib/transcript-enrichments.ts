@@ -128,7 +128,7 @@ export async function queueTranscriptResearch(input: {
     );
   }
   const transcript = await db.transcript.findFirst({
-    where: { id: input.transcriptId, userId: input.userId, status: { not: 'TRASH' } },
+    where: { id: input.transcriptId, userId: input.userId, status: 'ACTIVE' },
     select: { id: true, sourceVersion: true, sourceChecksum: true },
   });
   if (!transcript) {

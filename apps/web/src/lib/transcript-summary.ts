@@ -5,6 +5,7 @@
 
 import { db } from './db';
 import { getAppLanguage, getSettings, type AppLanguage } from './settings';
+import { queueTranscriptResearch } from './transcript-enrichments';
 
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -193,6 +194,14 @@ export async function generateAndPersistTranscriptSummary(input: {
       },
     },
   });
+
+  // A pesquisa é uma segunda etapa durável e opcional. A própria fila aplica
+  // a política OFF/MANUAL/AUTO e nunca altera o resumo canônico acima.
+  await queueTranscriptResearch({
+    userId: input.userId,
+    transcriptId: input.transcriptId,
+    trigger: 'AUTO',
+  }).catch(() => undefined);
 
   return summary;
 }

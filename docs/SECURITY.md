@@ -58,6 +58,11 @@ cookies ou a master key.
 - Storage local rejeita chaves absolutas/traversal e symlinks, usa permissões
   restritivas, escrita atômica e nunca é servido como diretório estático público.
 - Credenciais S3 opcionais devem acessar somente o bucket da Voxen.
+- Âncoras são verificadas contra a fonte canônica do usuário e preservam
+  versão/checksum; IDs pertencentes a outra pessoa permanecem ocultos.
+- Pesquisa externa é não confiável e exige revisão. Saída sem citação falha de
+  forma fechada, sugestões ou stale ficam fora da recuperação e o Markdown não
+  habilita HTML cru nem URLs inseguras.
 - O proxy residencial opcional usa TLS, token cifrado de alta entropia e SOCKS
   vinculado somente ao localhost.
 

@@ -167,6 +167,18 @@ async def get_summary_timeout_sec(default: float = 120.0) -> float:
     return value
 
 
+async def get_summary_research_mode() -> str:
+    """Return the instance research policy with a fail-closed OFF default."""
+    enc = await db.get_setting_enc("summary_research_mode")
+    if enc is None:
+        return "OFF"
+    try:
+        value = decrypt(enc, get_master_key()).strip().upper()
+    except Exception:
+        return "OFF"
+    return value if value in {"OFF", "MANUAL", "AUTO"} else "OFF"
+
+
 async def get_app_language() -> str:
     """Idioma da instância: pt-BR (default) ou en."""
     enc = await db.get_setting_enc("app_language")

@@ -54,6 +54,8 @@ export type GlobalSettingKey =
   // Opcional: timeout (segundos) da chamada de resumo via OpenRouter.
   // Default 120s. Útil pra textos muito longos ou modelos lentos.
   | 'summary_timeout_sec'
+  // Política separada da pesquisa posterior ao resumo. OFF é fail-closed.
+  | 'summary_research_mode'
   // MCP server token (formato `<userId>:<token>`). Endpoint /mcp aceita
   // Bearer <token> e mapeia pro userId. Legado: não é mais aceito pelo MCP;
   // permanece só para que o administrador possa revogá-lo explicitamente.

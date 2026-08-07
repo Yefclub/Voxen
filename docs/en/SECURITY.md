@@ -64,6 +64,11 @@ master key.
 - Local storage rejects absolute/traversal keys and symlinks, uses restrictive
   modes, atomic writes, and is never exposed as a public static directory.
 - Optional S3 credentials should be limited to the Voxen bucket.
+- Transcript anchors are verified against the current user-owned canonical
+  source and retain its version/checksum; cross-user identifiers are hidden.
+- External research is untrusted and review-gated. Uncited output fails closed,
+  suggested or stale output is excluded from retrieval, and rendered Markdown
+  cannot enable raw HTML or unsafe URL execution.
 - The optional reverse proxy agent uses TLS, a high-entropy encrypted token,
   and a localhost-only SOCKS endpoint.
 

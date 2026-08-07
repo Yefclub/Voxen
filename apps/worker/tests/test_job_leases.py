@@ -311,23 +311,100 @@ async def test_enrichment_dispatcher_advances_summary_and_tags_under_backlog(
 
     monkeypatch.setattr(main.db, "claim_pending_summary_enrichments", claim_summaries)
     monkeypatch.setattr(main.db, "claim_pending_tag_enrichments", claim_tags)
+    monkeypatch.setattr(
+        main.research_db,
+        "claim_pending_transcript_enrichments",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        main.voxen_settings,
+        "get_summary_research_mode",
+        AsyncMock(return_value="AUTO"),
+    )
     monkeypatch.setattr(main.summary, "maybe_generate", wait_for_gate)
     monkeypatch.setattr(main, "_maybe_generate_tags", wait_for_gate)
     tasks: set[asyncio.Task[None]] = set()
     sem = asyncio.Semaphore(2)
+    main._enrichment_queue_cursor = 0
 
-    assert await main._reconcile_enrichments_once(sem, tasks) == (1, 1)
+    assert await main._reconcile_enrichments_once(sem, tasks) == (1, 1, 0)
     assert len(tasks) == 2
-    assert await main._reconcile_enrichments_once(sem, tasks) == (0, 0)
+    assert await main._reconcile_enrichments_once(sem, tasks) == (0, 0, 0)
 
     gate.set()
     await asyncio.gather(*list(tasks))
     await asyncio.sleep(0)
-    assert await main._reconcile_enrichments_once(sem, tasks) == (1, 1)
+    assert await main._reconcile_enrichments_once(sem, tasks) == (1, 1, 0)
     await asyncio.gather(*list(tasks))
 
     assert summary_queue == []
     assert tag_queue == []
+
+
+async def test_enrichment_dispatcher_round_robins_research_without_starvation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    summary_queue = [{"id": "s1", "userId": "u1", "jobId": None, "summaryAttempt": 1}]
+    tag_queue = [{"id": "t1", "userId": "u1", "jobId": None}]
+    research_queue = [{"id": "r1", "userId": "u1", "attempt": 1}]
+
+    async def claim(queue: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+        batch = queue[:limit]
+        del queue[:limit]
+        return batch
+
+    monkeypatch.setattr(
+        main.db,
+        "claim_pending_summary_enrichments",
+        lambda limit: claim(summary_queue, limit),
+    )
+    monkeypatch.setattr(
+        main.db,
+        "claim_pending_tag_enrichments",
+        lambda limit: claim(tag_queue, limit),
+    )
+    monkeypatch.setattr(
+        main.research_db,
+        "claim_pending_transcript_enrichments",
+        lambda limit: claim(research_queue, limit),
+    )
+    monkeypatch.setattr(main.summary, "maybe_generate", AsyncMock())
+    monkeypatch.setattr(main, "_maybe_generate_tags", AsyncMock())
+    monkeypatch.setattr(main.research_enrichment, "process", AsyncMock())
+    monkeypatch.setattr(
+        main.voxen_settings,
+        "get_summary_research_mode",
+        AsyncMock(return_value="AUTO"),
+    )
+    tasks: set[asyncio.Task[None]] = set()
+    sem = asyncio.Semaphore(1)
+    main._enrichment_queue_cursor = 0
+
+    assert await main._reconcile_enrichments_once(sem, tasks, max_in_flight=1) == (1, 0, 0)
+    await asyncio.gather(*list(tasks))
+    await asyncio.sleep(0)
+    assert await main._reconcile_enrichments_once(sem, tasks, max_in_flight=1) == (0, 1, 0)
+    await asyncio.gather(*list(tasks))
+    await asyncio.sleep(0)
+    assert await main._reconcile_enrichments_once(sem, tasks, max_in_flight=1) == (0, 0, 1)
+    await asyncio.gather(*list(tasks))
+
+    assert summary_queue == tag_queue == research_queue == []
+
+
+async def test_research_dispatcher_fails_closed_when_policy_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claim = AsyncMock(return_value=[{"id": "must-not-run"}])
+    monkeypatch.setattr(main.research_db, "claim_pending_transcript_enrichments", claim)
+    monkeypatch.setattr(
+        main.voxen_settings,
+        "get_summary_research_mode",
+        AsyncMock(return_value="OFF"),
+    )
+
+    assert await main._reconcile_research_once(asyncio.Semaphore(1), set()) == 0
+    claim.assert_not_awaited()
 
 
 async def test_job_event_survives_redis_outage_after_postgres_snapshot(
