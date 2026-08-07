@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.14.3-dev.1786075127 — 2026-08-07 · Dev
+
+### 🔒 Open-source launch readiness
+
+Voxen's public documentation now matches the integrated agent architecture,
+the README presents the chat and knowledge-library experience, and production
+dependencies were updated to patched releases. Repository policy is also
+versioned for read-only workflow defaults and a clean squash-only history. The
+public covers use anonymous demo data, and Dependabot monitors every supported
+container image.
+
 ## v0.14.3-dev.1786071600 — 2026-08-06 · Dev
 
 ### 🧹 Retire legacy component images from public releases
