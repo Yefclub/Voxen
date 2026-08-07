@@ -450,10 +450,11 @@ Health check path: /health
 ```
 
 Ao publicar uma release estável, a automação despacha o workflow `Easypanel
-Image` para a tag `vX.Y.Z` e atualiza também `latest`. Builds de homologação em
-`dev` são publicados somente por execução manual do mesmo workflow, evitando
-deploys a cada merge. A imagem já contém `web/API`, `worker` e runtime de chat
-integrado.
+Image` para a tag `vX.Y.Z` e atualiza também `latest`. Em `dev`, a imagem é
+publicada somente depois que o PR automático de versão passa pelo CI e é
+mesclado; assim a tag `dev` acompanha o código versionado sem publicar commits
+intermediários. A execução manual do mesmo workflow continua disponível. A
+imagem já contém `web/API`, `worker` e runtime de chat integrado.
 
 Por que essa é a opção recomendada: no Source **GitHub repository**, o Easypanel
 constrói a imagem no servidor e, conforme a

@@ -288,9 +288,58 @@ jobs:
             sleep 15
           done
 
+          MERGED_SHA=$(gh pr view "$PR_URL" --json state,mergeCommit --jq \
+            'if .state == "MERGED" then (.mergeCommit.oid // empty) else empty end')
+          if [ -z "$MERGED_SHA" ]; then
+            echo "The version PR was not confirmed as merged. Refusing to publish the dev image."
+            exit 1
+          fi
+
+          # Publish only the versioned dev head. Feature merges do not trigger
+          # the image workflow directly, so the mutable tag never points at an
+          # intermediate commit with stale version metadata.
+          for attempt in $(seq 1 12); do
+            CURRENT_DEV_SHA=$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | cut -f1)
+            [ "$CURRENT_DEV_SHA" = "$MERGED_SHA" ] && break
+            if [ "$attempt" = "12" ]; then
+              echo "The remote dev head does not match the merged version PR."
+              exit 1
+            fi
+            sleep 5
+          done
+
+          BEFORE_IMAGE_RUN_IDS=$(gh run list --workflow easypanel-image.yml \
+            --branch "$TARGET_BRANCH" --event workflow_dispatch --limit 30 \
+            --json databaseId | jq '[.[].databaseId]')
+          gh workflow run easypanel-image.yml --ref "$TARGET_BRANCH"
+          IMAGE_RUN_ID=""
+          IMAGE_RUN_URL=""
+          for attempt in $(seq 1 30); do
+            IMAGE_RUNS=$(gh run list --workflow easypanel-image.yml \
+              --branch "$TARGET_BRANCH" --event workflow_dispatch --limit 30 \
+              --json databaseId,headSha,url)
+            IMAGE_RUN=$(printf '%s' "$IMAGE_RUNS" | jq -c \
+              --arg sha "$MERGED_SHA" --argjson before "$BEFORE_IMAGE_RUN_IDS" \
+              '[.[] | .databaseId as $id | select(.headSha == $sha and ($before | index($id) | not))][0] // empty')
+            if [ -n "$IMAGE_RUN" ]; then
+              IMAGE_RUN_ID=$(printf '%s' "$IMAGE_RUN" | jq -r .databaseId)
+              IMAGE_RUN_URL=$(printf '%s' "$IMAGE_RUN" | jq -r .url)
+              break
+            fi
+            if [ "$attempt" = "30" ]; then
+              echo "The dev image workflow was not registered for $MERGED_SHA."
+              exit 1
+            fi
+            sleep 2
+          done
+
+          echo "Waiting for dev image publication: $IMAGE_RUN_URL"
+          gh run watch "$IMAGE_RUN_ID" --exit-status --interval 15
+
           {
             echo "## Dev version"
             echo ""
             echo "- Version: \`$NEW_VER\`"
             echo "- PR: $PR_URL"
+            echo "- Image workflow: $IMAGE_RUN_URL"
           } >> "$GITHUB_STEP_SUMMARY"
