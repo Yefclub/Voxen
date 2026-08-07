@@ -30,8 +30,8 @@ container image.
 ### 🧹 Retire legacy component images from public releases
 
 Stable releases now publish the combined Voxen image as the only public
-application image. Legacy web, worker, and chat component images are retained
-privately for history and are no longer republished.
+application image. The obsolete web, worker, and chat packages are deleted from
+GHCR together with their historical versions and are no longer republished.
 
 ## v0.14.2 — 2026-08-05 · Produção
 
