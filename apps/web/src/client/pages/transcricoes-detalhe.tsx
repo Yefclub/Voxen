@@ -14,7 +14,6 @@ import {
   Languages,
   Loader2,
   MessageSquare,
-  NotebookPen,
   RotateCcw,
   RefreshCw,
   Sparkles,
@@ -49,6 +48,12 @@ import { cn } from '../lib/utils';
 import { buildTranscriptChatMessage, type ChatHandoffState } from '../lib/chat-handoff';
 import { stripMarkdownFrontmatter, transcriptRenderMode } from '../lib/transcript-render';
 import { TranscriptChatDock } from '../components/library/transcript-chat-dock';
+import {
+  LinkedNotesCard,
+  type LinkedNote,
+  type LinkedNoteAnchorDraft,
+  type LinkedNotesResponse,
+} from '../components/library/linked-notes-card';
 import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
 
 interface TranscriptDetail {
@@ -114,18 +119,6 @@ interface FoldersResponse {
   folders: LibraryFolder[];
 }
 
-interface LinkedNote {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface LinkedNotesResponse {
-  notes: LinkedNote[];
-}
-
 export function TranscricaoDetalhePage(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -150,6 +143,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const [creatingLinkedNote, setCreatingLinkedNote] = useState(false);
   const [linkedNoteTitle, setLinkedNoteTitle] = useState('');
   const [linkedNoteContent, setLinkedNoteContent] = useState('');
+  const [linkedNoteAnchor, setLinkedNoteAnchor] = useState<LinkedNoteAnchorDraft | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
@@ -380,9 +374,20 @@ export function TranscricaoDetalhePage(): React.ReactElement {
       await apiPost<{ note: LinkedNote }>(`/api/transcripts/${transcript.id}/notes`, {
         title,
         content: linkedNoteContent,
+        anchors: linkedNoteAnchor
+          ? [
+              {
+                transcriptId: transcript.id,
+                ...linkedNoteAnchor,
+                sourceVersion: transcript.sourceVersion,
+                sourceChecksum: transcript.sourceChecksum,
+              },
+            ]
+          : [],
       });
       setLinkedNoteTitle('');
       setLinkedNoteContent('');
+      setLinkedNoteAnchor(null);
       refreshLinkedNotes();
       toast.success(translate('library.linkedNoteCreated'));
     } catch (e) {
@@ -560,7 +565,22 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                 </Card>
               </section>
             ) : (
-              <TranscriptViewer markdown={data.markdown} />
+              <TranscriptViewer
+                markdown={data.markdown}
+                anchors={(linkedNotesData?.notes ?? []).flatMap((note) =>
+                  note.transcriptSources.flatMap((source) => source.anchors),
+                )}
+                onCreateAnnotation={(selection) => {
+                  setLinkedNoteAnchor(selection);
+                  window.setTimeout(
+                    () =>
+                      document
+                        .getElementById('linked-notes-card')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+                    0,
+                  );
+                }}
+              />
             )}
           </article>
 
@@ -666,10 +686,12 @@ export function TranscricaoDetalhePage(): React.ReactElement {
                   loading={linkedNotesLoading}
                   title={linkedNoteTitle}
                   content={linkedNoteContent}
+                  anchor={linkedNoteAnchor}
                   creating={creatingLinkedNote}
                   locale={locale}
                   onTitleChange={setLinkedNoteTitle}
                   onContentChange={setLinkedNoteContent}
+                  onAnchorChange={setLinkedNoteAnchor}
                   onCreate={() => void createLinkedNote(t)}
                   t={translate}
                 />
@@ -791,118 +813,6 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         loading={deleting}
       />
     </>
-  );
-}
-
-function LinkedNotesCard({
-  notes,
-  loading,
-  title,
-  content,
-  creating,
-  locale,
-  onTitleChange,
-  onContentChange,
-  onCreate,
-  t,
-}: {
-  notes: LinkedNote[];
-  loading: boolean;
-  title: string;
-  content: string;
-  creating: boolean;
-  locale: Locale;
-  onTitleChange: (value: string) => void;
-  onContentChange: (value: string) => void;
-  onCreate: () => void;
-  t: TranslateFn;
-}): React.ReactElement {
-  return (
-    <Card elevated>
-      <CardContent className="pt-5 pb-5 space-y-4">
-        <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-app-muted)]">
-          <NotebookPen className="h-3.5 w-3.5 text-emerald-400" />
-          {t('library.linkedNotes')}
-        </div>
-
-        <div className="space-y-2">
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => onTitleChange(e.target.value)}
-            placeholder={t('library.linkedNoteTitle')}
-            className="h-9 w-full rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 text-xs text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
-            disabled={creating}
-            maxLength={200}
-          />
-          <textarea
-            value={content}
-            onChange={(e) => onContentChange(e.target.value)}
-            placeholder={t('library.linkedNoteContent')}
-            className="min-h-24 w-full resize-y rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2 text-xs leading-relaxed text-[var(--color-app-fg)] placeholder:text-[var(--color-app-muted)] focus:border-violet-400/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15"
-            disabled={creating}
-            maxLength={200_000}
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="w-full"
-            disabled={creating || title.trim().length === 0}
-            onClick={onCreate}
-          >
-            {creating ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {t('library.linkedNoteCreating')}
-              </>
-            ) : (
-              t('library.linkedNoteCreate')
-            )}
-          </Button>
-        </div>
-
-        <div className="space-y-2">
-          {loading && (
-            <>
-              <Skeleton className="h-16 w-full rounded-lg" />
-              <Skeleton className="h-16 w-full rounded-lg" />
-            </>
-          )}
-          {!loading && notes.length === 0 && (
-            <p className="rounded-lg border border-dashed border-[var(--color-app-border)] px-3 py-4 text-center text-xs text-[var(--color-app-muted)]">
-              {t('library.linkedNotesEmpty')}
-            </p>
-          )}
-          {!loading &&
-            notes.map((note) => {
-              const preview =
-                note.content.trim().replace(/\s+/g, ' ').slice(0, 140) || t('notes.emptyContent');
-              return (
-                <div
-                  key={note.id}
-                  className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface)]/45 px-3 py-2.5"
-                >
-                  <p className="truncate text-sm font-medium text-[var(--color-app-fg)]">
-                    {note.title}
-                  </p>
-                  <p className="mt-1 line-clamp-2 break-words text-xs leading-relaxed text-[var(--color-app-muted)]">
-                    {preview}
-                  </p>
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <span className="truncate text-[10px] uppercase tracking-wider text-[var(--color-app-muted)]/80">
-                      {formatDateTime(new Date(note.updatedAt), locale)}
-                    </span>
-                    <Button asChild variant="ghost" size="sm" className="h-7 px-2">
-                      <Link to={`/notas/${note.id}`}>{t('library.openNote')}</Link>
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 

@@ -16,6 +16,7 @@ from .cancellation import CancelledException, is_cancelled
 from .openrouter import generate_content_title
 from .pipeline import PermanentError, _maybe_assign_folder  # noqa: PLC2701
 from .safe_diagnostics import error_diagnostic
+from .source_freshness import mark_reviewable_derivatives_stale
 
 log = structlog.get_logger(__name__)
 
@@ -341,7 +342,9 @@ async def _persist_locked(
             await conn.execute(
                 'DELETE FROM "TranscriptTag" WHERE "transcriptId" = $1', transcript_id
             )
-            await _mark_transcript_citations_stale(conn, transcript_id)
+            await mark_reviewable_derivatives_stale(
+                conn, user_id, transcript_id, next_version, checksum
+            )
         else:
             await conn.execute(
                 """
@@ -465,27 +468,6 @@ def _json_object(value: Any) -> dict[str, Any]:  # noqa: ANN401
         except ValueError:
             return {}
     return {}
-
-
-async def _mark_transcript_citations_stale(conn: Any, transcript_id: str) -> None:  # noqa: ANN401
-    """Conserva citações históricas, mas retira o selo de versão atual."""
-    await conn.execute(
-        """
-        UPDATE "ChatMessage"
-        SET citations = (
-          SELECT jsonb_agg(
-            CASE WHEN citation->>'sourceId' = $1
-              THEN citation || '{"stale": true, "verified": false}'::jsonb
-              ELSE citation
-            END
-          )
-          FROM jsonb_array_elements(citations) AS citation
-        )
-        WHERE jsonb_typeof(citations) = 'array'
-          AND citations @> jsonb_build_array(jsonb_build_object('sourceId', $1))
-        """,
-        transcript_id,
-    )
 
 
 async def _maybe_generate_title(

@@ -11,6 +11,10 @@ import {
 import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
 import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
 import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
+import {
+  enTranscriptAnnotationMessages,
+  ptBrTranscriptAnnotationMessages,
+} from './transcript-annotations-i18n';
 
 export type Locale = 'pt-BR' | 'en';
 
@@ -23,6 +27,7 @@ const STORAGE_KEY = 'voxen:locale';
 
 const ptBRMessages = {
   ...ptBrReleaseUpdateMessages,
+  ...ptBrTranscriptAnnotationMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -546,16 +551,6 @@ const ptBRMessages = {
   'library.openOriginalUpload': 'Abrir arquivo enviado',
   'library.audioUpload': 'Áudio enviado',
   'library.viewImage': 'Ampliar imagem',
-  'library.linkedNotes': 'Notas vinculadas',
-  'library.linkedNotesEmpty': 'Nenhuma nota vinculada a este conteúdo.',
-  'library.linkedNoteTitle': 'Título da nota',
-  'library.linkedNoteContent': 'Conteúdo em markdown',
-  'library.linkedNoteCreate': 'Adicionar nota',
-  'library.linkedNoteCreating': 'Salvando…',
-  'library.linkedNoteCreated': 'Nota vinculada criada.',
-  'library.linkedNoteError': 'Falha ao criar nota vinculada.',
-  'library.openNote': 'Abrir nota',
-
   'dashboard.welcome': 'Bem-vindo de volta',
   'dashboard.fallbackName': 'Olá',
   'dashboard.newContent': 'Novo conteúdo',
@@ -1417,6 +1412,7 @@ export type TranslateFn = (key: I18nKey, vars?: Record<string, string | number>)
 
 const enMessages: Record<I18nKey, string> = {
   ...enReleaseUpdateMessages,
+  ...enTranscriptAnnotationMessages,
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
@@ -1932,16 +1928,6 @@ const enMessages: Record<I18nKey, string> = {
   'library.openOriginalUpload': 'Open uploaded file',
   'library.audioUpload': 'Uploaded audio',
   'library.viewImage': 'Expand image',
-  'library.linkedNotes': 'Linked notes',
-  'library.linkedNotesEmpty': 'No notes linked to this content.',
-  'library.linkedNoteTitle': 'Note title',
-  'library.linkedNoteContent': 'Markdown content',
-  'library.linkedNoteCreate': 'Add note',
-  'library.linkedNoteCreating': 'Saving…',
-  'library.linkedNoteCreated': 'Linked note created.',
-  'library.linkedNoteError': 'Failed to create linked note.',
-  'library.openNote': 'Open note',
-
   'dashboard.welcome': 'Welcome back',
   'dashboard.fallbackName': 'Hello',
   'dashboard.newContent': 'New content',

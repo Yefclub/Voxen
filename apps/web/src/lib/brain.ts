@@ -7,6 +7,12 @@ import {
   releaseGraphIndexLease,
   renewGraphIndexLease,
 } from './graph-index-coordinator';
+import {
+  buildNoteIndexes,
+  noteBrainSelect,
+  validNoteAnchorSources,
+  type NoteBrainRecord,
+} from './brain-note-anchors';
 
 type BrainSourceType = 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL';
 type BrainNodeType = 'CONTENT' | 'FOLDER' | 'ENTITY' | 'TOPIC' | 'CLAIM' | 'EVENT' | 'CLUSTER';
@@ -132,15 +138,6 @@ type BrainEdgeInput = {
   excerpt?: string | null;
   beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
   assertLeaseOwnership?: BrainReindexGuard;
-};
-
-type NoteRecord = {
-  id: string;
-  parentId: string | null;
-  kind: 'NOTE' | 'FOLDER';
-  title: string;
-  content: string;
-  updatedAt: Date;
 };
 
 type LibraryFolderRecord = {
@@ -566,14 +563,7 @@ export async function reindexNoteBrain(
   }
   const notes = await db.note.findMany({
     where: { userId },
-    select: {
-      id: true,
-      parentId: true,
-      kind: true,
-      title: true,
-      content: true,
-      updatedAt: true,
-    },
+    select: noteBrainSelect,
   });
   const note = notes.find((item) => item.id === noteId);
   if (!note) {
@@ -597,14 +587,7 @@ export async function reindexNotesBrain(
   }
   const notes = await db.note.findMany({
     where: { userId },
-    select: {
-      id: true,
-      parentId: true,
-      kind: true,
-      title: true,
-      content: true,
-      updatedAt: true,
-    },
+    select: noteBrainSelect,
   });
   const indexes = buildNoteIndexes(notes);
   for (const note of notes) {
@@ -620,8 +603,8 @@ export async function reindexNotesBrain(
 
 async function reindexNoteRecord(
   userId: string,
-  note: NoteRecord,
-  indexes: { byId: Map<string, NoteRecord>; byTitle: Map<string, NoteRecord> },
+  note: NoteBrainRecord,
+  indexes: { byId: Map<string, NoteBrainRecord>; byTitle: Map<string, NoteBrainRecord> },
   assertLeaseOwnership?: BrainReindexGuard,
 ): Promise<void> {
   await assertLeaseOwnership?.();
@@ -639,6 +622,16 @@ async function reindexNoteRecord(
     excerpt: note.title,
     assertLeaseOwnership,
   });
+  for (const anchorSource of validNoteAnchorSources(note.transcriptSources)) {
+    await addBrainSource({
+      userId,
+      nodeId: node.id,
+      sourceType: 'NOTE',
+      sourceId: note.id,
+      ...anchorSource,
+      assertLeaseOwnership,
+    });
+  }
 
   if (note.parentId) {
     const parent = indexes.byId.get(note.parentId);
@@ -868,7 +861,7 @@ async function upsertLibraryFolderNode(
 
 async function upsertNoteNode(
   userId: string,
-  note: NoteRecord,
+  note: NoteBrainRecord,
   options: { resetCompletion?: boolean } = {},
 ) {
   return upsertBrainNode({
@@ -1502,6 +1495,13 @@ async function addBrainSource(input: {
   edgeId?: string;
   sourceType: BrainSourceType;
   sourceId: string;
+  chunkId?: string | null;
+  startLine?: number | null;
+  endLine?: number | null;
+  startSec?: number | null;
+  endSec?: number | null;
+  segmentKey?: string | null;
+  evidenceKey?: string | null;
   excerpt?: string | null;
   assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
@@ -1531,6 +1531,13 @@ async function addBrainSource(input: {
         edgeId: input.edgeId ?? null,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
+        chunkId: input.chunkId ?? null,
+        startLine: input.startLine ?? null,
+        endLine: input.endLine ?? null,
+        startSec: input.startSec ?? null,
+        endSec: input.endSec ?? null,
+        segmentKey: input.segmentKey ?? null,
+        evidenceKey: input.evidenceKey ?? null,
         excerpt: input.excerpt ? truncate(input.excerpt, EVIDENCE_LIMIT) : null,
       },
     });
@@ -1548,16 +1555,6 @@ async function addBrainSource(input: {
     }
     throw err;
   }
-}
-
-function buildNoteIndexes(notes: NoteRecord[]): {
-  byId: Map<string, NoteRecord>;
-  byTitle: Map<string, NoteRecord>;
-} {
-  return {
-    byId: new Map(notes.map((note) => [note.id, note])),
-    byTitle: new Map(notes.map((note) => [note.title.trim().toLowerCase(), note])),
-  };
 }
 
 function parseWikiLinks(markdown: string): string[] {

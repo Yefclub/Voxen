@@ -19,6 +19,12 @@ import { notifyNewJob, publishJobEvent } from '../lib/job-events';
 import { rateLimit } from '../lib/rate-limit';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
 import {
+  NoteAnchorInputSchema,
+  NoteAnchorValidationError,
+  noteSourceCreateData,
+  validateNoteAnchors,
+} from '../lib/note-anchors';
+import {
   storageDelete,
   storageGet,
   storageHead,
@@ -824,6 +830,7 @@ transcriptsRoutes.post('/:id/refresh-thumbnail', async (c) => {
 const LinkedNoteBody = z.object({
   title: z.string().min(1).max(200),
   content: z.string().max(200_000).default(''),
+  anchors: z.array(NoteAnchorInputSchema).max(20).default([]),
 });
 
 transcriptsRoutes.get('/:id/notes', async (c) => {
@@ -851,6 +858,26 @@ transcriptsRoutes.get('/:id/notes', async (c) => {
       content: true,
       updatedAt: true,
       createdAt: true,
+      transcriptSources: {
+        where: { transcriptId: id, userId },
+        select: {
+          anchors: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              startLine: true,
+              endLine: true,
+              startSec: true,
+              endSec: true,
+              selectedQuote: true,
+              sourceVersion: true,
+              sourceChecksum: true,
+              status: true,
+              staleReason: true,
+            },
+          },
+        },
+      },
     },
     take: 20,
   });
@@ -869,6 +896,17 @@ transcriptsRoutes.post('/:id/notes', async (c) => {
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
 
+  if (parsed.data.anchors.some((anchor) => anchor.transcriptId !== id)) {
+    return c.json({ error: 'A âncora precisa pertencer a esta transcrição.' }, 400);
+  }
+  let anchors;
+  try {
+    anchors = await validateNoteAnchors(userId, parsed.data.anchors);
+  } catch (error) {
+    if (error instanceof NoteAnchorValidationError) return c.json({ error: error.message }, 400);
+    throw error;
+  }
+
   const note = await db.note.create({
     data: {
       userId,
@@ -877,7 +915,7 @@ transcriptsRoutes.post('/:id/notes', async (c) => {
       content: parsed.data.content,
       sourceType: 'TRANSCRIPT',
       sourceId: id,
-      transcriptSources: { create: { transcriptId: id, userId } },
+      transcriptSources: { create: noteSourceCreateData(userId, [id], anchors) },
     },
     select: {
       id: true,
@@ -885,6 +923,24 @@ transcriptsRoutes.post('/:id/notes', async (c) => {
       content: true,
       updatedAt: true,
       createdAt: true,
+      transcriptSources: {
+        select: {
+          anchors: {
+            select: {
+              id: true,
+              startLine: true,
+              endLine: true,
+              startSec: true,
+              endSec: true,
+              selectedQuote: true,
+              sourceVersion: true,
+              sourceChecksum: true,
+              status: true,
+              staleReason: true,
+            },
+          },
+        },
+      },
     },
   });
   await reindexNoteBrain(userId, note.id);

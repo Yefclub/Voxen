@@ -16,6 +16,12 @@ import { auth } from '../lib/auth';
 import { deleteBrainForSources, reindexNotesBrain } from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
+import {
+  NoteAnchorInputSchema,
+  NoteAnchorValidationError,
+  noteSourceCreateData,
+  validateNoteAnchors,
+} from '../lib/note-anchors';
 
 type Vars = { userId: string };
 
@@ -108,6 +114,21 @@ notesRoutes.get('/:id', async (c) => {
         select: {
           transcriptId: true,
           transcript: { select: { title: true, url: true } },
+          anchors: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              startLine: true,
+              endLine: true,
+              startSec: true,
+              endSec: true,
+              selectedQuote: true,
+              sourceVersion: true,
+              sourceChecksum: true,
+              status: true,
+              staleReason: true,
+            },
+          },
         },
       },
     },
@@ -121,6 +142,7 @@ const CreateBody = z.object({
   sourceType: z.enum(['TRANSCRIPT']).optional(),
   sourceId: z.string().optional(),
   sourceTranscriptIds: z.array(z.string().min(1)).max(50).optional(),
+  sourceAnchors: z.array(NoteAnchorInputSchema).max(100).optional(),
   kind: z.enum(['NOTE', 'FOLDER']).default('NOTE'),
   title: z.string().min(1).max(200),
   content: z.string().max(200_000).optional(),
@@ -130,7 +152,16 @@ notesRoutes.post('/', async (c) => {
   const userId = c.get('userId');
   const parsed = CreateBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: 'Payload inválido.' }, 400);
-  const { parentId, sourceType, sourceId, sourceTranscriptIds, kind, title, content } = parsed.data;
+  const {
+    parentId,
+    sourceType,
+    sourceId,
+    sourceTranscriptIds,
+    sourceAnchors,
+    kind,
+    title,
+    content,
+  } = parsed.data;
 
   // Validar parentId — só permite filhar de pasta do mesmo user
   if (parentId) {
@@ -155,6 +186,7 @@ notesRoutes.post('/', async (c) => {
   const requestedSourceIds = [
     ...(sourceTranscriptIds ?? []),
     ...(sourceType === 'TRANSCRIPT' && sourceId ? [sourceId] : []),
+    ...(sourceAnchors ?? []).map((anchor) => anchor.transcriptId),
   ];
   if (requestedSourceIds.length > 0 && kind !== 'NOTE') {
     return c.json({ error: 'Só notas podem ser vinculadas a conteúdo.' }, 400);
@@ -162,6 +194,13 @@ notesRoutes.post('/', async (c) => {
   const transcriptIds = await resolveTranscriptSourceIds(userId, requestedSourceIds);
   if (transcriptIds === null)
     return c.json({ error: 'Transcrição vinculada não encontrada.' }, 400);
+  let anchors;
+  try {
+    anchors = await validateNoteAnchors(userId, sourceAnchors ?? []);
+  } catch (error) {
+    if (error instanceof NoteAnchorValidationError) return c.json({ error: error.message }, 400);
+    throw error;
+  }
 
   const note = await db.note.create({
     data: {
@@ -175,7 +214,7 @@ notesRoutes.post('/', async (c) => {
       ...(transcriptIds.length > 0
         ? {
             transcriptSources: {
-              create: transcriptIds.map((transcriptId) => ({ transcriptId, userId })),
+              create: noteSourceCreateData(userId, transcriptIds, anchors),
             },
           }
         : {}),
@@ -200,6 +239,7 @@ const PatchBody = z.object({
   title: z.string().min(1).max(200).optional(),
   content: z.string().max(200_000).optional(),
   sourceTranscriptIds: z.array(z.string().min(1)).max(50).optional(),
+  sourceAnchors: z.array(NoteAnchorInputSchema).max(100).optional(),
 });
 
 notesRoutes.patch('/:id', async (c) => {
@@ -207,13 +247,18 @@ notesRoutes.patch('/:id', async (c) => {
   const id = c.req.param('id');
   const existing = await db.note.findFirst({
     where: { id, userId },
-    select: { id: true, kind: true, parentId: true },
+    select: {
+      id: true,
+      kind: true,
+      parentId: true,
+      transcriptSources: { select: { transcriptId: true } },
+    },
   });
   if (!existing) return c.json({ error: 'Nota não encontrada.' }, 404);
 
   const parsed = PatchBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: 'Payload inválido.' }, 400);
-  const { parentId, title, content, sourceTranscriptIds } = parsed.data;
+  const { parentId, title, content, sourceTranscriptIds, sourceAnchors } = parsed.data;
 
   // Mover: validar destino. parentId=null → root.
   if (parentId !== undefined && parentId !== existing.parentId) {
@@ -239,14 +284,26 @@ notesRoutes.patch('/:id', async (c) => {
     }
   }
 
-  const transcriptIds =
-    sourceTranscriptIds === undefined
-      ? undefined
-      : await resolveTranscriptSourceIds(userId, sourceTranscriptIds);
+  const replaceSources = sourceTranscriptIds !== undefined || sourceAnchors !== undefined;
+  const preservedSourceIds = existing.transcriptSources.map((source) => source.transcriptId);
+  const requestedTranscriptIds = [
+    ...(sourceTranscriptIds ?? (sourceAnchors !== undefined ? preservedSourceIds : [])),
+    ...(sourceAnchors ?? []).map((anchor) => anchor.transcriptId),
+  ];
+  const transcriptIds = !replaceSources
+    ? undefined
+    : await resolveTranscriptSourceIds(userId, requestedTranscriptIds);
   if (transcriptIds === null)
     return c.json({ error: 'Transcrição vinculada não encontrada.' }, 400);
   if (transcriptIds !== undefined && existing.kind !== 'NOTE') {
     return c.json({ error: 'Só notas podem ser vinculadas a conteúdo.' }, 400);
+  }
+  let anchors;
+  try {
+    anchors = await validateNoteAnchors(userId, sourceAnchors ?? []);
+  } catch (error) {
+    if (error instanceof NoteAnchorValidationError) return c.json({ error: error.message }, 400);
+    throw error;
   }
 
   const note = await db.note.update({
@@ -259,12 +316,23 @@ notesRoutes.patch('/:id', async (c) => {
         ? {
             sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
             sourceId: transcriptIds[0] ?? null,
-            transcriptSources: {
-              deleteMany: {},
-              ...(transcriptIds.length > 0
-                ? { create: transcriptIds.map((transcriptId) => ({ transcriptId, userId })) }
-                : {}),
-            },
+            transcriptSources:
+              sourceAnchors !== undefined
+                ? {
+                    deleteMany: {},
+                    ...(transcriptIds.length > 0
+                      ? { create: noteSourceCreateData(userId, transcriptIds, anchors) }
+                      : {}),
+                  }
+                : {
+                    deleteMany:
+                      transcriptIds.length > 0 ? { transcriptId: { notIn: transcriptIds } } : {},
+                    upsert: transcriptIds.map((transcriptId) => ({
+                      where: { noteId_transcriptId: { noteId: id, transcriptId } },
+                      update: {},
+                      create: { transcriptId, userId },
+                    })),
+                  },
           }
         : {}),
     },

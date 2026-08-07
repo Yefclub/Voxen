@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, ExternalLink } from '@/components/ui/icons';
+import { Check, Copy, ExternalLink, NotebookPen } from '@/components/ui/icons';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 import { useI18n } from '../../lib/i18n';
-import { resolveTranscriptCitationAnchor } from '../../lib/transcript-citation-anchor';
+import { resolveTranscriptCitationRange } from '../../lib/transcript-citation-anchor';
 
 /**
  * Texto contínuo da transcrição. Cada segmento é um <a> clicável (abre o vídeo
@@ -17,17 +17,71 @@ interface Segment {
   line: number;
 }
 
-export function TranscriptViewer({ markdown }: { markdown: string }): React.ReactElement {
+export interface TranscriptAnchorSelection {
+  startLine: number;
+  endLine: number;
+  startSec: number;
+  endSec: number;
+  selectedQuote: string;
+}
+
+export interface TranscriptViewerAnchor {
+  id: string;
+  startLine: number | null;
+  endLine: number | null;
+  startSec: number | null;
+  endSec: number | null;
+  selectedQuote: string;
+  status: 'VALID' | 'STALE' | 'UNAVAILABLE';
+}
+
+export function transcriptAnchorHash(anchor: TranscriptViewerAnchor): string {
+  if (anchor.startLine !== null) {
+    return `#l=${anchor.startLine}-${anchor.endLine ?? anchor.startLine}`;
+  }
+  return `#t=${anchor.startSec ?? 0}-${anchor.endSec ?? anchor.startSec ?? 0}`;
+}
+
+export function groupTranscriptAnchorsByLine(
+  segments: Array<Pick<Segment, 'line' | 'startSec'>>,
+  anchors: TranscriptViewerAnchor[],
+): Map<number, TranscriptViewerAnchor[]> {
+  const grouped = new Map<number, TranscriptViewerAnchor[]>();
+  for (const noteAnchor of anchors) {
+    const range = resolveTranscriptCitationRange(segments, transcriptAnchorHash(noteAnchor));
+    if (!range) continue;
+    const existing = grouped.get(range.startLine) ?? [];
+    existing.push(noteAnchor);
+    grouped.set(range.startLine, existing);
+  }
+  return grouped;
+}
+
+export function TranscriptViewer({
+  markdown,
+  anchors = [],
+  onCreateAnnotation,
+}: {
+  markdown: string;
+  anchors?: TranscriptViewerAnchor[];
+  onCreateAnnotation?: (selection: TranscriptAnchorSelection) => void;
+}): React.ReactElement {
   const { t } = useI18n();
   const segments = useMemo(() => parseSegments(markdown), [markdown]);
   const [anchor, setAnchor] = useState(() => window.location.hash);
-  const citationAnchor = useMemo(
-    () => resolveTranscriptCitationAnchor(segments, anchor),
+  const citationRange = useMemo(
+    () => resolveTranscriptCitationRange(segments, anchor),
     [anchor, segments],
+  );
+  const anchorMarkers = useMemo(
+    () => groupTranscriptAnchorsByLine(segments, anchors),
+    [anchors, segments],
   );
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const plainText = useMemo(() => segments.map((s) => s.text).join(' '), [segments]);
+  const articleRef = useRef<HTMLElement | null>(null);
+  const [selection, setSelection] = useState<TranscriptAnchorSelection | null>(null);
 
   useEffect(() => {
     return () => {
@@ -43,10 +97,12 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
   }, []);
 
   useEffect(() => {
-    if (citationAnchor !== null) {
-      document.getElementById(`citation-l-${citationAnchor}`)?.scrollIntoView({ block: 'center' });
+    if (citationRange !== null) {
+      document
+        .getElementById(`citation-l-${citationRange.startLine}`)
+        ?.scrollIntoView({ block: 'center' });
     }
-  }, [citationAnchor]);
+  }, [citationRange]);
 
   async function copy(): Promise<void> {
     try {
@@ -59,32 +115,87 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
     }
   }
 
+  function captureSelection(): void {
+    if (!onCreateAnnotation || !articleRef.current) return;
+    const selected = window.getSelection();
+    const quote = selected?.toString().trim() ?? '';
+    if (!selected || selected.rangeCount === 0 || !quote) {
+      setSelection(null);
+      return;
+    }
+    const range = selected.getRangeAt(0);
+    if (!articleRef.current.contains(range.commonAncestorContainer)) return;
+    const startElement = closestSegment(range.startContainer);
+    const endElement = closestSegment(range.endContainer);
+    if (!startElement || !endElement) return;
+    const startLine = Number(startElement.dataset.transcriptLine);
+    const endLine = Number(endElement.dataset.transcriptLine);
+    const startSec = Number(startElement.dataset.transcriptSec);
+    const endSec = Number(endElement.dataset.transcriptSec);
+    if (![startLine, endLine, startSec, endSec].every(Number.isFinite)) return;
+    setSelection({
+      startLine: Math.min(startLine, endLine),
+      endLine: Math.max(startLine, endLine),
+      startSec: Math.min(startSec, endSec),
+      endSec: Math.max(startSec, endSec),
+      selectedQuote: quote.slice(0, 20_000),
+    });
+  }
+
   return (
     <TooltipProvider delayDuration={120} skipDelayDuration={300}>
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-subtle)]">
           {t('transcript.title')}
         </h2>
-        <button
-          type="button"
-          onClick={() => void copy()}
-          className="flex items-center gap-1.5 text-[11px] text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors px-2.5 py-1.5 rounded-md border border-[var(--color-app-border)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface)]"
-        >
-          {copied ? (
-            <>
-              <Check className="h-3 w-3 text-emerald-400" /> {t('common.copied')}
-            </>
-          ) : (
-            <>
-              <Copy className="h-3 w-3" /> {t('transcript.copyAll')}
-            </>
+        <div className="flex items-center gap-2">
+          {selection && onCreateAnnotation && (
+            <button
+              type="button"
+              onClick={() => onCreateAnnotation(selection)}
+              className="flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] text-emerald-300 transition-colors hover:bg-emerald-500/15"
+            >
+              <NotebookPen className="h-3 w-3" />
+              {t('transcript.annotateSelection')}
+            </button>
           )}
-        </button>
+          <button
+            type="button"
+            onClick={() => void copy()}
+            className="flex items-center gap-1.5 text-[11px] text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)] transition-colors px-2.5 py-1.5 rounded-md border border-[var(--color-app-border)] hover:border-[var(--color-app-border-strong)] hover:bg-[var(--color-app-surface)]"
+          >
+            {copied ? (
+              <>
+                <Check className="h-3 w-3 text-emerald-400" /> {t('common.copied')}
+              </>
+            ) : (
+              <>
+                <Copy className="h-3 w-3" /> {t('transcript.copyAll')}
+              </>
+            )}
+          </button>
+        </div>
       </div>
-      <article className="prose-voxen">
+      <article
+        ref={articleRef}
+        className="prose-voxen"
+        onMouseUp={captureSelection}
+        onKeyUp={captureSelection}
+      >
         <p className="leading-[1.85] text-[15.5px] text-[var(--color-app-subtle)] text-pretty break-words">
           {segments.map((seg, i) => (
-            <SegmentSpan key={i} seg={seg} highlighted={citationAnchor === seg.line} />
+            <SegmentSpan
+              key={i}
+              seg={seg}
+              highlighted={
+                citationRange !== null &&
+                seg.line >= citationRange.startLine &&
+                seg.line <= citationRange.endLine
+              }
+              anchors={anchorMarkers.get(seg.line) ?? []}
+              openLabel={t('library.annotationOpen')}
+              staleLabel={t('library.annotationStale')}
+            />
           ))}
         </p>
       </article>
@@ -95,13 +206,21 @@ export function TranscriptViewer({ markdown }: { markdown: string }): React.Reac
 function SegmentSpan({
   seg,
   highlighted,
+  anchors,
+  openLabel,
+  staleLabel,
 }: {
   seg: Segment;
   highlighted: boolean;
+  anchors: TranscriptViewerAnchor[];
+  openLabel: string;
+  staleLabel: string;
 }): React.ReactElement {
   const content = (
     <span
       id={`citation-l-${seg.line}`}
+      data-transcript-line={seg.line}
+      data-transcript-sec={seg.startSec}
       className={`rounded-sm transition-colors duration-150 hover:bg-violet-500/[0.14] hover:text-[var(--color-app-fg)] focus:outline-none focus-visible:bg-violet-500/[0.18] focus-visible:text-[var(--color-app-fg)]${highlighted ? ' bg-emerald-500/20 text-[var(--color-app-fg)]' : ''}`}
     >
       {seg.text}
@@ -144,8 +263,32 @@ function SegmentSpan({
           )}
         </TooltipContent>
       </Tooltip>{' '}
+      {anchors.map((noteAnchor) => {
+        const current = noteAnchor.status === 'VALID';
+        const label = `${openLabel}: ${noteAnchor.selectedQuote}${current ? '' : ` (${staleLabel})`}`;
+        return (
+          <a
+            key={noteAnchor.id}
+            href={transcriptAnchorHash(noteAnchor)}
+            aria-label={label}
+            title={label}
+            className={`mx-0.5 inline-flex h-5 w-5 translate-y-0.5 items-center justify-center rounded-full border align-baseline transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60 ${
+              current
+                ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+            }`}
+          >
+            <NotebookPen className="h-3 w-3" />
+          </a>
+        );
+      })}{' '}
     </>
   );
+}
+
+function closestSegment(node: Node): HTMLElement | null {
+  const element = node instanceof HTMLElement ? node : node.parentElement;
+  return element?.closest<HTMLElement>('[data-transcript-line]') ?? null;
 }
 
 function formatTimestamp(seconds: number): string {

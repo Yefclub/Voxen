@@ -20,11 +20,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPTransport } from '@hono/mcp';
 import { db } from '../lib/db';
 import { deserializeMcpScopes, hashMcpToken, type McpScope } from '../lib/mcp-tokens';
-import { createAutoJobForUser } from './jobs';
-import { getTranscriptBrief } from '../lib/agent-content';
-import { reindexNotesBrain } from '../lib/brain';
 import { searchBrainNodes } from '../lib/brain-search';
-import { invalidateGraphCache } from '../lib/graph-cache';
 import {
   expandContextFromMd,
   findRelated,
@@ -37,6 +33,7 @@ import {
   searchKnowledgeBase,
   verifyClaimAgainstMd,
 } from '../lib/retrieval';
+import { registerWriteTools } from './mcp-write-tools';
 
 export const mcpRoutes = new Hono();
 
@@ -72,6 +69,7 @@ const VOXEN_INSTRUCTIONS = [
   '',
   'Fluxo de escrita:',
   '- voxen_create_note / voxen_update_note: salvar ou editar informação na KB.',
+  '  Use source_anchors para preservar a passagem exata por linha e/ou timestamp.',
   '- voxen_request_transcription(url) enfileira um job; acompanhe com',
   '  voxen_get_job_status(job_id) até DONE. Use o brief retornado (resumo, tags e relacionados)',
   '  e só então outline/trechos específicos; documento completo continua sendo último recurso.',
@@ -88,17 +86,6 @@ const VOXEN_INSTRUCTIONS = [
 // explicitamente pra o cliente não tratar como perigoso. As write tools
 // (voxen_create_note/update_note/request_transcription) têm annotations próprias.
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
-const TRANSCRIPT_BRIEF_SCHEMA = z.object({
-  transcriptId: z.string(),
-  title: z.string(),
-  url: z.string(),
-  summary: z.string().nullable(),
-  tags: z.array(z.string()),
-  related: z.array(
-    z.object({ id: z.string(), title: z.string(), kind: z.string(), reason: z.string() }),
-  ),
-  nextStep: z.string(),
-});
 
 // ----------------------------------------------------------------------------
 // HTTP entrypoint
@@ -210,7 +197,7 @@ function buildVoxenMcpServer(
   publicOrigin: string,
 ): McpServer {
   const server = new McpServer(
-    { name: 'voxen-mcp', version: '0.3.0' },
+    { name: 'voxen-mcp', version: '0.4.0' },
     { instructions: VOXEN_INSTRUCTIONS },
   );
   if (scopes.includes('READ')) {
@@ -220,238 +207,6 @@ function buildVoxenMcpServer(
   }
   if (scopes.includes('WRITE')) registerWriteTools(server, userId);
   return server;
-}
-
-function registerWriteTools(server: McpServer, userId: string): void {
-  server.registerTool(
-    'voxen_create_note',
-    {
-      title: 'Criar nota',
-      description:
-        'Cria uma nota (markdown) na KB do usuário. Use para salvar/ingerir informação que ' +
-        'o usuário pediu para guardar. Retorna o id da nota criada.',
-      inputSchema: {
-        title: z.string().min(1).max(200).describe('Título da nota.'),
-        content: z.string().max(200_000).optional().describe('Conteúdo markdown.'),
-        source_transcript_ids: z
-          .array(z.string().min(1))
-          .max(50)
-          .optional()
-          .describe('IDs de transcrições da própria Base de conhecimento que sustentam a nota.'),
-      },
-      outputSchema: { id: z.string(), title: z.string() },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        openWorldHint: false,
-        title: 'Criar nota',
-      },
-    },
-    async (args) => {
-      const title = args.title.trim();
-      if (!title) return fail('Título obrigatório.');
-      const transcriptIds = await resolveMcpTranscriptSourceIds(
-        userId,
-        args.source_transcript_ids ?? [],
-      );
-      if (transcriptIds === null)
-        return fail('Uma ou mais transcrições de origem não existem na sua Base de conhecimento.');
-      const note = await db.note.create({
-        data: {
-          userId,
-          kind: 'NOTE',
-          title,
-          content: args.content ?? '',
-          sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
-          sourceId: transcriptIds[0] ?? null,
-          ...(transcriptIds.length > 0
-            ? {
-                transcriptSources: {
-                  create: transcriptIds.map((transcriptId) => ({ transcriptId, userId })),
-                },
-              }
-            : {}),
-        },
-        select: { id: true, title: true },
-      });
-      await reindexNotesBrain(userId).catch(() => {});
-      await invalidateGraphCache(userId).catch(() => {});
-      return ok({ id: note.id, title: note.title });
-    },
-  );
-
-  server.registerTool(
-    'voxen_update_note',
-    {
-      title: 'Editar nota',
-      description:
-        'Atualiza título e/ou conteúdo de uma nota existente (pelo note_id). Sobrescreve o ' +
-        'conteúdo informado. Só edita notas (kind=NOTE) do próprio usuário.',
-      inputSchema: {
-        note_id: z.string().min(1).describe('ID da nota a editar.'),
-        title: z.string().min(1).max(200).optional().describe('Novo título.'),
-        content: z.string().max(200_000).optional().describe('Novo conteúdo markdown.'),
-        source_transcript_ids: z
-          .array(z.string().min(1))
-          .max(50)
-          .optional()
-          .describe('Substitui as transcrições de origem da nota; array vazio remove os vínculos.'),
-      },
-      outputSchema: { id: z.string(), title: z.string() },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-        openWorldHint: false,
-        title: 'Editar nota',
-      },
-    },
-    async (args) => {
-      if (
-        args.title === undefined &&
-        args.content === undefined &&
-        args.source_transcript_ids === undefined
-      ) {
-        return fail('Nada para atualizar: informe title, content e/ou source_transcript_ids.');
-      }
-      if (args.title !== undefined && !args.title.trim()) {
-        return fail('Título não pode ser vazio.');
-      }
-      const existing = await db.note.findFirst({
-        where: { id: args.note_id, userId, kind: 'NOTE' },
-        select: { id: true },
-      });
-      if (!existing) return fail('Nota não encontrada (ou não é editável).');
-      const transcriptIds =
-        args.source_transcript_ids === undefined
-          ? undefined
-          : await resolveMcpTranscriptSourceIds(userId, args.source_transcript_ids);
-      if (transcriptIds === null)
-        return fail('Uma ou mais transcrições de origem não existem na sua Base de conhecimento.');
-      const note = await db.note.update({
-        where: { id: existing.id },
-        data: {
-          ...(args.title !== undefined ? { title: args.title.trim() } : {}),
-          ...(args.content !== undefined ? { content: args.content } : {}),
-          ...(transcriptIds !== undefined
-            ? {
-                sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
-                sourceId: transcriptIds[0] ?? null,
-                transcriptSources: {
-                  deleteMany: {},
-                  ...(transcriptIds.length > 0
-                    ? { create: transcriptIds.map((transcriptId) => ({ transcriptId, userId })) }
-                    : {}),
-                },
-              }
-            : {}),
-        },
-        select: { id: true, title: true },
-      });
-      await reindexNotesBrain(userId).catch(() => {});
-      await invalidateGraphCache(userId).catch(() => {});
-      return ok({ id: note.id, title: note.title });
-    },
-  );
-
-  server.registerTool(
-    'voxen_request_transcription',
-    {
-      title: 'Solicitar transcrição',
-      description:
-        'Enfileira a transcrição/indexação de uma URL (vídeo YouTube/Instagram/TikTok/X ou ' +
-        'página web). Retorna um job_id; acompanhe com voxen_get_job_status(job_id) até ' +
-        'status=DONE para receber um brief com resumo, tags e relacionados. Se a URL já foi ' +
-        'transcrita, devolve o brief imediatamente. Leia o documento completo só como último recurso.',
-      inputSchema: {
-        url: z.string().min(1).max(2048).describe('URL do vídeo ou página a transcrever/indexar.'),
-      },
-      outputSchema: {
-        outcome: z.string(),
-        jobId: z.string().nullable(),
-        transcriptId: z.string().nullable(),
-        message: z.string(),
-        brief: TRANSCRIPT_BRIEF_SCHEMA.nullable(),
-      },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        openWorldHint: true,
-        title: 'Solicitar transcrição',
-      },
-    },
-    async (args) => {
-      const result = await createAutoJobForUser(userId, args.url);
-      switch (result.outcome) {
-        case 'created':
-          return ok({
-            outcome: 'created',
-            jobId: result.jobId,
-            transcriptId: null,
-            message: 'Job enfileirado. Use voxen_get_job_status(job_id) até status=DONE.',
-            brief: null,
-          });
-        case 'existing_transcript':
-          return ok({
-            outcome: 'existing_transcript',
-            jobId: null,
-            transcriptId: result.transcriptId,
-            message: 'URL já transcrita. Use o brief e leia trechos só se necessário.',
-            brief: await getTranscriptBrief(userId, result.transcriptId),
-          });
-        case 'inflight':
-          return ok({
-            outcome: 'inflight',
-            jobId: result.jobId ?? null,
-            transcriptId: null,
-            message: 'URL já está sendo processada. Acompanhe com voxen_get_job_status.',
-            brief: null,
-          });
-        default:
-          return fail(result.error);
-      }
-    },
-  );
-
-  server.registerTool(
-    'voxen_get_job_status',
-    {
-      title: 'Status de um job',
-      description:
-        'Consulta o status de um job de transcrição/indexação: QUEUED, RUNNING, DONE, FAILED ' +
-        'ou CANCELLED. Quando DONE, retorna transcript_id e um brief read-only com resumo, tags e ' +
-        'relacionados já armazenados; quando FAILED, retorna o erro.',
-      inputSchema: {
-        job_id: z.string().min(1).describe('ID do job retornado por request_transcription.'),
-      },
-      outputSchema: {
-        id: z.string(),
-        status: z.string(),
-        transcriptId: z.string().nullable(),
-        error: z.string().nullable(),
-        brief: TRANSCRIPT_BRIEF_SCHEMA.nullable(),
-      },
-      annotations: { ...READ_ONLY, title: 'Status de um job' },
-    },
-    async (args) => {
-      const job = await db.job.findFirst({
-        where: { id: args.job_id.trim(), userId },
-        select: { id: true, status: true, transcriptId: true, errorMsg: true },
-      });
-      if (!job) return fail('Job não encontrado.');
-      const brief =
-        (job.status === 'DONE' || job.status === 'COMPLETED_WITH_WARNINGS') && job.transcriptId
-          ? await getTranscriptBrief(userId, job.transcriptId, { enrichMissing: false })
-          : null;
-      return ok({
-        id: job.id,
-        status: job.status,
-        transcriptId: job.transcriptId ?? null,
-        error: job.errorMsg ?? null,
-        brief,
-      });
-    },
-  );
 }
 
 function registerTranscriptTools(server: McpServer, userId: string, publicOrigin: string): void {
@@ -942,6 +697,11 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
           .optional()
           .describe('Itens por página (padrão 30).'),
         cursor: z.string().optional().describe('Cursor opaco da página seguinte (next_cursor).'),
+        transcript_id: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('Retorna somente notas vinculadas a esta transcrição do usuário.'),
       },
       outputSchema: {
         notes: z.array(
@@ -951,6 +711,20 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
             kind: z.string(),
             title: z.string(),
             updatedAt: z.string(),
+            href: z.string(),
+            anchors: z.array(
+              z.object({
+                id: z.string(),
+                transcriptId: z.string(),
+                startLine: z.number().nullable(),
+                endLine: z.number().nullable(),
+                startSec: z.number().nullable(),
+                endSec: z.number().nullable(),
+                selectedQuote: z.string(),
+                status: z.string(),
+                href: z.string(),
+              }),
+            ),
           }),
         ),
         nextCursor: z.string().nullable(),
@@ -960,13 +734,59 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
       const limit = bounded(args.limit, 30, 1, 100);
       const offset = decodeCursor(args.cursor);
       const rows = await db.note.findMany({
-        where: { userId },
+        where: {
+          userId,
+          ...(args.transcript_id
+            ? { transcriptSources: { some: { transcriptId: args.transcript_id, userId } } }
+            : {}),
+        },
         orderBy: { updatedAt: 'desc' },
         skip: offset,
         take: limit,
-        select: { id: true, parentId: true, kind: true, title: true, updatedAt: true },
+        select: {
+          id: true,
+          parentId: true,
+          kind: true,
+          title: true,
+          updatedAt: true,
+          transcriptSources: {
+            where: args.transcript_id ? { transcriptId: args.transcript_id, userId } : { userId },
+            select: {
+              transcriptId: true,
+              anchors: {
+                orderBy: { createdAt: 'asc' },
+                select: {
+                  id: true,
+                  startLine: true,
+                  endLine: true,
+                  startSec: true,
+                  endSec: true,
+                  selectedQuote: true,
+                  status: true,
+                },
+              },
+            },
+          },
+        },
       });
-      const notes = rows.map((n) => ({ ...n, updatedAt: n.updatedAt.toISOString() }));
+      const notes = rows.map((note) => ({
+        id: note.id,
+        parentId: note.parentId,
+        kind: note.kind,
+        title: note.title,
+        updatedAt: note.updatedAt.toISOString(),
+        href: toMcpContentUrl(publicOrigin, `/notas/${note.id}`),
+        anchors: note.transcriptSources.flatMap((source) =>
+          source.anchors.map((anchor) => ({
+            ...anchor,
+            transcriptId: source.transcriptId,
+            href: toMcpContentUrl(
+              publicOrigin,
+              `/transcricoes/${source.transcriptId}${anchor.startLine ? `#l=${anchor.startLine}-${anchor.endLine ?? anchor.startLine}` : anchor.startSec !== null ? `#t=${anchor.startSec}-${anchor.endSec ?? anchor.startSec}` : ''}`,
+            ),
+          })),
+        ),
+      }));
       return ok({
         notes,
         nextCursor: rows.length === limit ? encodeCursor(offset + limit) : null,
@@ -987,7 +807,27 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
         kind: z.string(),
         href: z.string(),
         sources: z.array(
-          z.object({ id: z.string(), title: z.string(), href: z.string(), url: z.string() }),
+          z.object({
+            id: z.string(),
+            title: z.string(),
+            href: z.string(),
+            url: z.string(),
+            anchors: z.array(
+              z.object({
+                id: z.string(),
+                startLine: z.number().nullable(),
+                endLine: z.number().nullable(),
+                startSec: z.number().nullable(),
+                endSec: z.number().nullable(),
+                selectedQuote: z.string(),
+                sourceVersion: z.number(),
+                sourceChecksum: z.string().nullable(),
+                status: z.string(),
+                staleReason: z.string().nullable(),
+                href: z.string(),
+              }),
+            ),
+          }),
         ),
       },
       annotations: { ...READ_ONLY, title: 'Ler nota' },
@@ -1005,6 +845,21 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
             select: {
               transcriptId: true,
               transcript: { select: { title: true, url: true } },
+              anchors: {
+                orderBy: { createdAt: 'asc' },
+                select: {
+                  id: true,
+                  startLine: true,
+                  endLine: true,
+                  startSec: true,
+                  endSec: true,
+                  selectedQuote: true,
+                  sourceVersion: true,
+                  sourceChecksum: true,
+                  status: true,
+                  staleReason: true,
+                },
+              },
             },
           },
         },
@@ -1021,6 +876,13 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
           title: source.transcript.title,
           href: toMcpContentUrl(publicOrigin, `/transcricoes/${source.transcriptId}`),
           url: source.transcript.url,
+          anchors: source.anchors.map((anchor) => ({
+            ...anchor,
+            href: toMcpContentUrl(
+              publicOrigin,
+              `/transcricoes/${source.transcriptId}${anchor.startLine ? `#l=${anchor.startLine}-${anchor.endLine ?? anchor.startLine}` : anchor.startSec !== null ? `#t=${anchor.startSec}-${anchor.endSec ?? anchor.startSec}` : ''}`,
+            ),
+          })),
         })),
       });
     },
@@ -1448,21 +1310,6 @@ function bounded(value: number | undefined, fallback: number, min: number, max: 
   const parsed = Number(value ?? fallback);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(min, Math.min(Math.trunc(parsed), max));
-}
-
-async function resolveMcpTranscriptSourceIds(
-  userId: string,
-  sourceIds: readonly string[],
-): Promise<string[] | null> {
-  const normalized = sourceIds.map((id) => id.trim());
-  if (normalized.some((id) => !id)) return null;
-  const ids = [...new Set(normalized)];
-  if (ids.length === 0) return [];
-  const transcripts = await db.transcript.findMany({
-    where: { id: { in: ids }, userId, status: { not: 'TRASH' } },
-    select: { id: true },
-  });
-  return transcripts.length === ids.length ? ids : null;
 }
 
 function decodeCursor(cursor: string | undefined): number {
