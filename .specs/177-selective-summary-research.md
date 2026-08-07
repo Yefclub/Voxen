@@ -77,9 +77,13 @@ fails closed and is never persisted as knowledge.
   running work, and prevents the worker from claiming research.
 - Switching from `AUTO` to `MANUAL` cancels automatic work that has not reached
   a terminal state while preserving explicit user/MCP requests.
+- Automatic enqueue and worker claim read the current policy while holding the
+  same PostgreSQL transaction advisory lock used by settings writes. A stale
+  application snapshot therefore cannot cross a completed policy transition.
 - Archiving or trashing a transcript makes every nonterminal enrichment
-  unclaimable and cancelled. Restoring the transcript never revives that old
-  execution; a new explicit or automatic request is required.
+  unclaimable and cancels it in the same transaction as the parent lifecycle
+  update. Restoring the transcript never revives that old execution; a new
+  explicit or automatic request is required.
 - Completed suggestions and accepted context remain inspectable; rollback never
   rewrites the canonical summary. Existing items can be dismissed or deleted
   through the review lifecycle.

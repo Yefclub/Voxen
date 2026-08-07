@@ -291,6 +291,33 @@ describeIfDb('reviewable transcript enrichments API', () => {
   it('withdraws accepted context while its parent is archived or trashed', async () => {
     const transcript = await createTranscript();
     const enrichment = await createReadyEnrichment(transcript.id, { reviewState: 'ACCEPTED' });
+    const pending = await db.transcriptEnrichment.create({
+      data: {
+        userId: ownerId,
+        transcriptId: transcript.id,
+        runKey: crypto.randomUUID(),
+        trigger: 'MANUAL',
+        status: 'PENDING',
+        title: '',
+        content: '',
+        sourceVersion: 1,
+        sourceChecksum: 'checksum-v1',
+      },
+    });
+    const running = await db.transcriptEnrichment.create({
+      data: {
+        userId: ownerId,
+        transcriptId: transcript.id,
+        runKey: crypto.randomUUID(),
+        trigger: 'MCP',
+        status: 'RUNNING',
+        startedAt: new Date(),
+        title: '',
+        content: '',
+        sourceVersion: 1,
+        sourceChecksum: 'checksum-v1',
+      },
+    });
     await reindexTranscriptEnrichmentBrain(ownerId, enrichment.id);
     expect(
       await db.brainNode.findFirst({
@@ -339,6 +366,20 @@ describeIfDb('reviewable transcript enrichments API', () => {
       apiInit(ownerCookie, 'PATCH', { status: 'ACTIVE' }),
     );
     expect(restored.status).toBe(200);
+    const cancelledAfterImmediateRestore = await db.transcriptEnrichment.findMany({
+      where: { id: { in: [pending.id, running.id] } },
+      select: { status: true, cancelRequestedAt: true, staleReason: true },
+      orderBy: { id: 'asc' },
+    });
+    expect(cancelledAfterImmediateRestore).toHaveLength(2);
+    expect(
+      cancelledAfterImmediateRestore.every(
+        (item) =>
+          item.status === 'CANCELLED' &&
+          item.cancelRequestedAt !== null &&
+          item.staleReason === 'parent-inactive',
+      ),
+    ).toBe(true);
     expect(
       await db.brainNode.findFirst({
         where: { userId: ownerId, sourceType: 'EXTERNAL_ENRICHMENT', sourceId: enrichment.id },

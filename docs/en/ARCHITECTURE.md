@@ -119,7 +119,9 @@ without duplication.
 - The administrator selects `OFF`, `MANUAL`, or `AUTO`; `OFF` is fail-closed.
   Web and MCP requests share the same user-scoped durable queue as automatic
   post-summary research. Policy changes and inactive parent content cancel
-  incompatible nonterminal work instead of allowing it to be reclaimed.
+  incompatible nonterminal work instead of allowing it to be reclaimed. Queue
+  and claim read policy under the settings transaction lock; parent
+  deactivation cancels work inside the lifecycle transaction itself.
 
 ## Design Direction
 

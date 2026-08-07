@@ -29,7 +29,6 @@ from . import (
     research_db,
     research_enrichment,
     summary,
-    voxen_settings,
     ytdl,
 )
 from .cancellation import cancel_subscriber
@@ -282,18 +281,14 @@ async def _reconcile_research_once(
     max_in_flight: int = ENRICHMENT_MAX_CONCURRENCY,
 ) -> int:
     try:
-        policy_mode = await voxen_settings.get_summary_research_mode()
+        capacity = min(limit, max(0, max_in_flight - len(tasks)))
+        pending = await research_db.claim_pending_transcript_enrichments(limit=capacity)
     except Exception as exc:  # noqa: BLE001 -- fail closed without starving other queues
         log.error(
-            "research-policy-read-failed",
-            **error_diagnostic(exc, "RESEARCH_POLICY_READ_FAILED"),
+            "research-claim-failed",
+            **error_diagnostic(exc, "RESEARCH_CLAIM_FAILED"),
         )
         return 0
-    capacity = min(limit, max(0, max_in_flight - len(tasks)))
-    pending = await research_db.claim_pending_transcript_enrichments(
-        limit=capacity if policy_mode != "OFF" else 0,
-        policy_mode=policy_mode,
-    )
     for item in pending:
         _track_task(tasks, _run_research_with_sem(sem, item))
     return len(pending)

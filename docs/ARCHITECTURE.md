@@ -112,4 +112,6 @@ complementa a busca textual e não substitui a recuperação de evidências.
 - O administrador escolhe `OFF`, `MANUAL` ou `AUTO`; `OFF` é o padrão seguro.
   Web e MCP compartilham a mesma fila durável e isolada por usuário do modo
   automático. Mudanças de política e conteúdos-pai inativos cancelam trabalhos
-  incompatíveis ainda não terminados em vez de permitir nova aquisição.
+  incompatíveis ainda não terminados em vez de permitir nova aquisição. Fila e
+  claim leem a política sob o mesmo lock transacional das configurações; a
+  inativação do pai cancela o trabalho na própria transação de lifecycle.

@@ -316,11 +316,6 @@ async def test_enrichment_dispatcher_advances_summary_and_tags_under_backlog(
         "claim_pending_transcript_enrichments",
         AsyncMock(return_value=[]),
     )
-    monkeypatch.setattr(
-        main.voxen_settings,
-        "get_summary_research_mode",
-        AsyncMock(return_value="AUTO"),
-    )
     monkeypatch.setattr(main.summary, "maybe_generate", wait_for_gate)
     monkeypatch.setattr(main, "_maybe_generate_tags", wait_for_gate)
     tasks: set[asyncio.Task[None]] = set()
@@ -366,16 +361,11 @@ async def test_enrichment_dispatcher_round_robins_research_without_starvation(
     monkeypatch.setattr(
         main.research_db,
         "claim_pending_transcript_enrichments",
-        lambda limit, policy_mode: claim(research_queue, limit),
+        lambda limit: claim(research_queue, limit),
     )
     monkeypatch.setattr(main.summary, "maybe_generate", AsyncMock())
     monkeypatch.setattr(main, "_maybe_generate_tags", AsyncMock())
     monkeypatch.setattr(main.research_enrichment, "process", AsyncMock())
-    monkeypatch.setattr(
-        main.voxen_settings,
-        "get_summary_research_mode",
-        AsyncMock(return_value="AUTO"),
-    )
     tasks: set[asyncio.Task[None]] = set()
     sem = asyncio.Semaphore(1)
     main._enrichment_queue_cursor = 0
@@ -392,34 +382,24 @@ async def test_enrichment_dispatcher_round_robins_research_without_starvation(
     assert summary_queue == tag_queue == research_queue == []
 
 
-async def test_research_dispatcher_reconciles_but_claims_nothing_when_policy_is_off(
+async def test_research_dispatcher_uses_atomic_policy_claim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     claim = AsyncMock(return_value=[])
     monkeypatch.setattr(main.research_db, "claim_pending_transcript_enrichments", claim)
-    monkeypatch.setattr(
-        main.voxen_settings,
-        "get_summary_research_mode",
-        AsyncMock(return_value="OFF"),
-    )
 
     assert await main._reconcile_research_once(asyncio.Semaphore(1), set()) == 0
-    claim.assert_awaited_once_with(limit=0, policy_mode="OFF")
+    claim.assert_awaited_once_with(limit=2)
 
 
-async def test_research_dispatcher_passes_manual_policy_to_atomic_claim(
+async def test_research_dispatcher_fails_closed_when_atomic_claim_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    claim = AsyncMock(return_value=[])
+    claim = AsyncMock(side_effect=RuntimeError("policy unavailable"))
     monkeypatch.setattr(main.research_db, "claim_pending_transcript_enrichments", claim)
-    monkeypatch.setattr(
-        main.voxen_settings,
-        "get_summary_research_mode",
-        AsyncMock(return_value="MANUAL"),
-    )
 
     assert await main._reconcile_research_once(asyncio.Semaphore(1), set()) == 0
-    claim.assert_awaited_once_with(limit=2, policy_mode="MANUAL")
+    claim.assert_awaited_once_with(limit=2)
 
 
 async def test_job_event_survives_redis_outage_after_postgres_snapshot(

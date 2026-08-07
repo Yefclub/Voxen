@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import type { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import { getSettingByKey } from './settings';
 
@@ -109,6 +110,28 @@ export async function refreshTranscriptEnrichmentFreshness(input: {
     select: { id: true },
   });
   return acceptedStale.map((item) => item.id);
+}
+
+export async function cancelTranscriptEnrichmentsForInactiveParent(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  transcriptId: string,
+  now: Date,
+): Promise<void> {
+  await tx.transcriptEnrichment.updateMany({
+    where: {
+      userId,
+      transcriptId,
+      status: { in: ['PENDING', 'RETRY', 'RUNNING'] },
+    },
+    data: {
+      status: 'CANCELLED',
+      cancelRequestedAt: now,
+      startedAt: null,
+      nextAttemptAt: null,
+      staleReason: 'parent-inactive',
+    },
+  });
 }
 
 export async function queueTranscriptResearch(input: {

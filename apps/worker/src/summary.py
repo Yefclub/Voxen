@@ -236,10 +236,9 @@ async def maybe_generate(
             return
 
         try:
-            if await voxen_settings.get_summary_research_mode() == "AUTO":
-                queued = await research_db.queue_auto_transcript_enrichment(user_id, transcript_id)
-                if queued:
-                    log.info("research-enrichment-queued", transcript_id=transcript_id)
+            queued = await research_db.queue_auto_transcript_enrichment(user_id, transcript_id)
+            if queued:
+                log.info("research-enrichment-queued", transcript_id=transcript_id)
         except Exception as e:  # noqa: BLE001 -- summary remains complete
             log.error(
                 "research-enrichment-queue-failed",

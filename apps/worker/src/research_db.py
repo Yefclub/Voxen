@@ -5,6 +5,36 @@ from decimal import Decimal
 from typing import Any
 
 from .db import connection, generate_cuid
+from .voxen_crypto import decrypt
+from .voxen_settings import get_master_key
+
+_GLOBAL_SETTINGS_LOCK = "voxen:global-settings"
+
+
+async def _lock_and_get_summary_research_mode(conn: Any) -> str:
+    """Read policy under the same transaction lock used by settings writes."""
+    await conn.execute(
+        "SELECT pg_advisory_xact_lock(hashtext($1))",
+        _GLOBAL_SETTINGS_LOCK,
+    )
+    encrypted = await conn.fetchval(
+        """
+        SELECT "valueEnc"
+        FROM "Setting"
+        WHERE scope = 'GLOBAL'::"SettingScope"
+          AND "userId" IS NULL
+          AND key = 'summary_research_mode'
+        ORDER BY "updatedAt" DESC, id DESC
+        LIMIT 1
+        """
+    )
+    if encrypted is None:
+        return "OFF"
+    try:
+        value = decrypt(str(encrypted), get_master_key()).strip().upper()
+    except Exception:
+        return "OFF"
+    return value if value in {"OFF", "MANUAL", "AUTO"} else "OFF"
 
 
 def _truncate(value: str | None, limit: int) -> str | None:
@@ -18,68 +48,68 @@ async def queue_auto_transcript_enrichment(user_id: str, transcript_id: str) -> 
     import hashlib
 
     async with connection() as conn:
-        source = await conn.fetchrow(
-            """
-            SELECT id, "sourceVersion", "sourceChecksum"
-            FROM "Transcript"
-            WHERE id = $1 AND "userId" = $2 AND status = 'ACTIVE'::"ContentStatus"
-            """,
-            transcript_id,
-            user_id,
-        )
-        if source is None:
-            return False
-        revision_id = await conn.fetchval(
-            'SELECT id FROM "ConfigRevision" ORDER BY number DESC LIMIT 1'
-        )
-        run_key = hashlib.sha256(
-            ":".join(
-                (
-                    "auto",
-                    transcript_id,
-                    str(source["sourceVersion"]),
-                    str(source["sourceChecksum"] or ""),
-                    str(revision_id or ""),
-                )
-            ).encode()
-        ).hexdigest()
-        status: str = await conn.execute(
-            """
-            INSERT INTO "TranscriptEnrichment" (
-                id, "userId", "transcriptId", "configRevisionId", "runKey",
-                type, status, "reviewState", trigger, title, content,
-                citations, queries, "sourceVersion", "sourceChecksum",
-                "createdAt", "updatedAt"
-            ) VALUES (
-                $1, $2, $3, $4, $5,
-                'WEB_RESEARCH'::"TranscriptEnrichmentType",
-                'PENDING'::"TranscriptEnrichmentStatus",
-                'SUGGESTED'::"TranscriptEnrichmentReviewState",
-                'AUTO'::"TranscriptEnrichmentTrigger", '', '',
-                '[]'::jsonb, '[]'::jsonb, $6, $7, NOW(), NOW()
+        async with conn.transaction():
+            if await _lock_and_get_summary_research_mode(conn) != "AUTO":
+                return False
+            source = await conn.fetchrow(
+                """
+                SELECT id, "sourceVersion", "sourceChecksum"
+                FROM "Transcript"
+                WHERE id = $1 AND "userId" = $2 AND status = 'ACTIVE'::"ContentStatus"
+                """,
+                transcript_id,
+                user_id,
             )
-            ON CONFLICT ("userId", "transcriptId", "runKey") DO NOTHING
-            """,
-            generate_cuid(),
-            user_id,
-            transcript_id,
-            revision_id,
-            run_key,
-            source["sourceVersion"],
-            source["sourceChecksum"],
-        )
+            if source is None:
+                return False
+            revision_id = await conn.fetchval(
+                'SELECT id FROM "ConfigRevision" ORDER BY number DESC LIMIT 1'
+            )
+            run_key = hashlib.sha256(
+                ":".join(
+                    (
+                        "auto",
+                        transcript_id,
+                        str(source["sourceVersion"]),
+                        str(source["sourceChecksum"] or ""),
+                        str(revision_id or ""),
+                    )
+                ).encode()
+            ).hexdigest()
+            status: str = await conn.execute(
+                """
+                INSERT INTO "TranscriptEnrichment" (
+                    id, "userId", "transcriptId", "configRevisionId", "runKey",
+                    type, status, "reviewState", trigger, title, content,
+                    citations, queries, "sourceVersion", "sourceChecksum",
+                    "createdAt", "updatedAt"
+                ) VALUES (
+                    $1, $2, $3, $4, $5,
+                    'WEB_RESEARCH'::"TranscriptEnrichmentType",
+                    'PENDING'::"TranscriptEnrichmentStatus",
+                    'SUGGESTED'::"TranscriptEnrichmentReviewState",
+                    'AUTO'::"TranscriptEnrichmentTrigger", '', '',
+                    '[]'::jsonb, '[]'::jsonb, $6, $7, NOW(), NOW()
+                )
+                ON CONFLICT ("userId", "transcriptId", "runKey") DO NOTHING
+                """,
+                generate_cuid(),
+                user_id,
+                transcript_id,
+                revision_id,
+                run_key,
+                source["sourceVersion"],
+                source["sourceChecksum"],
+            )
     return status == "INSERT 0 1"
 
 
-async def claim_pending_transcript_enrichments(
-    limit: int = 4, *, policy_mode: str = "AUTO"
-) -> list[dict[str, Any]]:
+async def claim_pending_transcript_enrichments(limit: int = 4) -> list[dict[str, Any]]:
     """Reconcile lifecycle/policy and claim only work allowed by the current mode."""
-    if policy_mode not in {"OFF", "MANUAL", "AUTO"}:
-        policy_mode = "OFF"
     limit = max(0, limit)
     async with connection() as conn:
         async with conn.transaction():
+            policy_mode = await _lock_and_get_summary_research_mode(conn)
             await conn.execute(
                 """
                 UPDATE "TranscriptEnrichment"

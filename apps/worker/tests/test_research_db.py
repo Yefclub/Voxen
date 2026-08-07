@@ -45,6 +45,11 @@ async def test_queue_auto_research_is_idempotent_by_source_version(
     conn.fetchval.return_value = "revision-1"
     conn.execute.return_value = "INSERT 0 1"
     _patch_connection(monkeypatch, conn)
+    monkeypatch.setattr(
+        research_db,
+        "_lock_and_get_summary_research_mode",
+        AsyncMock(return_value="AUTO"),
+    )
 
     assert await research_db.queue_auto_transcript_enrichment("user-1", "transcript-1")
     assert conn.execute.await_args.args[6] == 2
@@ -60,8 +65,13 @@ async def test_claim_research_performs_reconciliation_before_claim(
     conn = _Connection()
     conn.fetch.return_value = [{"id": "enrichment-1", "attempt": 2}]
     _patch_connection(monkeypatch, conn)
+    monkeypatch.setattr(
+        research_db,
+        "_lock_and_get_summary_research_mode",
+        AsyncMock(return_value="MANUAL"),
+    )
 
-    claimed = await research_db.claim_pending_transcript_enrichments(limit=3, policy_mode="MANUAL")
+    claimed = await research_db.claim_pending_transcript_enrichments(limit=3)
 
     assert claimed == [{"id": "enrichment-1", "attempt": 2}]
     assert conn.execute.await_count == 5
@@ -80,8 +90,13 @@ async def test_off_policy_reconciles_without_claiming(monkeypatch: pytest.Monkey
     conn = _Connection()
     conn.fetch.return_value = []
     _patch_connection(monkeypatch, conn)
+    monkeypatch.setattr(
+        research_db,
+        "_lock_and_get_summary_research_mode",
+        AsyncMock(return_value="OFF"),
+    )
 
-    assert await research_db.claim_pending_transcript_enrichments(limit=99, policy_mode="OFF") == []
+    assert await research_db.claim_pending_transcript_enrichments(limit=99) == []
 
     assert conn.fetch.await_args.args[-2:] == (99, "OFF")
     assert "AND $2 <> 'OFF'" in conn.fetch.await_args.args[0]

@@ -124,11 +124,6 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
         "get_app_language",
         AsyncMock(return_value="pt-BR"),
     )
-    monkeypatch.setattr(
-        summary.voxen_settings,
-        "get_summary_research_mode",
-        AsyncMock(return_value="AUTO"),
-    )
     queue_research = AsyncMock(return_value=True)
     monkeypatch.setattr(summary.research_db, "queue_auto_transcript_enrichment", queue_research)
     insert_cost = AsyncMock()
