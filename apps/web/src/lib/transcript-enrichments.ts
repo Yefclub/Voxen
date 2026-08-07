@@ -24,6 +24,34 @@ type TranscriptFreshnessInput = {
   sourceChecksum: string | null;
 };
 
+export type NormalizedTranscriptEnrichmentCitation = {
+  url: string;
+  title: string;
+  excerpt: string;
+};
+
+export function normalizeTranscriptEnrichmentCitations(
+  value: unknown,
+): NormalizedTranscriptEnrichmentCitation[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== 'object') return [];
+    const citation = candidate as Record<string, unknown>;
+    const url = typeof citation.url === 'string' ? citation.url : '';
+    const title = typeof citation.title === 'string' ? citation.title : '';
+    const excerpt = typeof citation.excerpt === 'string' ? citation.excerpt : '';
+    try {
+      const parsed = new URL(url);
+      if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || !title || !excerpt) {
+        return [];
+      }
+      return [{ url, title, excerpt }];
+    } catch {
+      return [];
+    }
+  });
+}
+
 export function getTranscriptEnrichmentStaleReason(
   enrichment: EnrichmentFreshnessInput,
   transcript: TranscriptFreshnessInput,

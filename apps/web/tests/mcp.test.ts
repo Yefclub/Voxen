@@ -157,8 +157,8 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(data.result?.structuredContent?.nextCursor).toBe(null);
   });
 
-  it('voxen_search_knowledge reúne nota e transcrição do workspace', async () => {
-    await db.transcript.create({
+  it('voxen_search_knowledge reúne toda a base e valida contexto externo aceito', async () => {
+    const transcript = await db.transcript.create({
       data: {
         userId,
         source: 'WEB',
@@ -170,6 +170,20 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
         mdPath: `workspaces/${userId}/transcripts/mcp-buzz.md`,
         plainText: 'O Buzz tem um repositório oficial.',
         frontmatter: {},
+      },
+    });
+    await db.transcriptEnrichment.create({
+      data: {
+        userId,
+        transcriptId: transcript.id,
+        runKey: `mcp-search-${Date.now()}`,
+        trigger: 'MANUAL',
+        status: 'READY',
+        reviewState: 'ACCEPTED',
+        title: 'Contexto externo revisado sobre Buzz',
+        content: 'O repositório Buzz mantém documentação oficial revisada.',
+        sourceVersion: transcript.sourceVersion,
+        sourceChecksum: transcript.sourceChecksum,
       },
     });
     await db.note.create({
@@ -196,7 +210,7 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     };
     const results = data.result?.structuredContent?.results ?? [];
     expect(results.map((result) => result.sourceType)).toEqual(
-      expect.arrayContaining(['note', 'transcript']),
+      expect.arrayContaining(['note', 'transcript', 'external_enrichment']),
     );
     expect(results.find((result) => result.sourceType === 'note')?.href).toMatch(
       /^http:\/\/localhost\/notas\//u,

@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
 import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '../lib/brain';
+import { reindexTranscriptEnrichmentBrain } from '../lib/brain-enrichments';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { notifyNewJob, publishJobEvent } from '../lib/job-events';
@@ -1089,6 +1090,23 @@ transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
     select: TRANSCRIPT_LIST_SELECT,
   });
   await reindexTranscriptBrain(userId, id);
+  const enrichmentIds = await db.transcriptEnrichment.findMany({
+    where: { userId, transcriptId: id },
+    select: { id: true },
+  });
+  if (status === 'ACTIVE') {
+    for (const enrichment of enrichmentIds) {
+      await reindexTranscriptEnrichmentBrain(userId, enrichment.id);
+    }
+  } else if (enrichmentIds.length > 0) {
+    await db.brainNode.deleteMany({
+      where: {
+        userId,
+        sourceType: 'EXTERNAL_ENRICHMENT',
+        sourceId: { in: enrichmentIds.map((item) => item.id) },
+      },
+    });
+  }
   await invalidateGraphCache(userId);
   return c.json({ transcript });
 });

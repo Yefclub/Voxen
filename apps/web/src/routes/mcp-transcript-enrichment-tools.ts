@@ -7,6 +7,7 @@ import { reindexTranscriptEnrichmentBrain } from '../lib/brain-enrichments';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import {
   getTranscriptEnrichmentStaleReason,
+  normalizeTranscriptEnrichmentCitations,
   queueTranscriptResearch,
   refreshTranscriptEnrichmentFreshness,
   TranscriptResearchQueueError,
@@ -173,7 +174,7 @@ export function registerTranscriptEnrichmentWriteTools(server: McpServer, userId
           }
           return fail('O contexto está desatualizado.');
         }
-        if (normalizeEnrichmentCitations(existing.citations).length === 0) {
+        if (normalizeTranscriptEnrichmentCitations(existing.citations).length === 0) {
           return fail('O contexto não possui citações utilizáveis.');
         }
         const updated = await db.transcriptEnrichment.update({
@@ -270,7 +271,7 @@ function serializeTranscriptEnrichment(
     trigger: item.trigger,
     title: item.title,
     content: item.content,
-    citations: normalizeEnrichmentCitations(item.citations),
+    citations: normalizeTranscriptEnrichmentCitations(item.citations),
     queries: Array.isArray(item.queries)
       ? item.queries.filter((query): query is string => typeof query === 'string').slice(0, 5)
       : [],
@@ -288,28 +289,4 @@ function serializeTranscriptEnrichment(
       `/transcricoes/${item.transcriptId}#additional-context-${item.id}`,
     ),
   };
-}
-
-function normalizeEnrichmentCitations(value: unknown): Array<{
-  url: string;
-  title: string;
-  excerpt: string;
-}> {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((candidate) => {
-    if (!candidate || typeof candidate !== 'object') return [];
-    const citation = candidate as Record<string, unknown>;
-    const url = typeof citation.url === 'string' ? citation.url : '';
-    const title = typeof citation.title === 'string' ? citation.title : '';
-    const excerpt = typeof citation.excerpt === 'string' ? citation.excerpt : '';
-    try {
-      const parsed = new URL(url);
-      if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || !title || !excerpt) {
-        return [];
-      }
-      return [{ url, title, excerpt }];
-    } catch {
-      return [];
-    }
-  });
 }

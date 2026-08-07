@@ -222,10 +222,10 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
     {
       title: 'Buscar na Base de conhecimento',
       description:
-        'Busca full-text na Base de conhecimento inteira do usuário: notas curadas e ' +
-        'transcrições. Use como primeiro passo para perguntas temáticas ou factuais. Retorna ' +
-        'trechos, tipo da fonte e link de citação; uma nota só recebe preferência quando sua ' +
-        'relevância é comparável à de uma transcrição.',
+        'Busca full-text na Base de conhecimento inteira do usuário: notas curadas, ' +
+        'transcrições e contexto externo revisado e aceito. Use como primeiro passo para ' +
+        'perguntas temáticas ou factuais. Retorna trechos, tipo da fonte e link de citação; ' +
+        'uma nota só recebe preferência quando sua relevância é comparável à de uma transcrição.',
       inputSchema: {
         query: z.string().min(1).describe('Termos de busca em português (palavras-chave do tema).'),
         limit: z.number().int().min(1).max(25).optional().describe('Máx. resultados (padrão 8).'),
@@ -234,7 +234,7 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
         results: z.array(
           z.object({
             id: z.string(),
-            sourceType: z.enum(['transcript', 'note']),
+            sourceType: z.enum(['transcript', 'note', 'external_enrichment']),
             title: z.string(),
             snippet: z.string(),
             rank: z.number(),

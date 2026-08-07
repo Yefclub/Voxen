@@ -32,6 +32,7 @@ export async function reindexTranscriptEnrichmentBrain(
       reviewState: 'ACCEPTED',
       staleReason: null,
       OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+      transcript: { status: 'ACTIVE' },
     },
     select: {
       id: true,
@@ -92,6 +93,26 @@ export async function reindexTranscriptEnrichmentBrain(
       assertLeaseOwnership,
     });
   }
+
+  // Source refresh can invalidate an enrichment in the worker while this pass
+  // is materializing it. Revalidate after every write so a late reindex cannot
+  // resurrect stale or parent-inactive evidence.
+  await assertLeaseOwnership();
+  const remainsCurrent = await db.transcriptEnrichment.findFirst({
+    where: {
+      id: enrichment.id,
+      userId,
+      status: 'READY',
+      reviewState: 'ACCEPTED',
+      staleReason: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+      transcript: { status: 'ACTIVE' },
+    },
+    select: { id: true },
+  });
+  if (!remainsCurrent) {
+    await deleteBrainForSource(userId, 'EXTERNAL_ENRICHMENT', enrichment.id, assertLeaseOwnership);
+  }
 }
 
 export async function reindexTranscriptEnrichmentsBrain(
@@ -111,6 +132,7 @@ export async function reindexTranscriptEnrichmentsBrain(
       reviewState: 'ACCEPTED',
       staleReason: null,
       OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+      transcript: { status: 'ACTIVE' },
     },
     select: { id: true },
     orderBy: { createdAt: 'asc' },

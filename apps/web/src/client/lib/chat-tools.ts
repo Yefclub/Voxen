@@ -33,6 +33,7 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   read_transcript_section: 'read',
   read_transcript_summary: 'read',
   read_note: 'read',
+  read_external_enrichment: 'read',
   get_metadata: 'read',
   verify_citations: 'read',
   // notas (efeito colateral proposto)

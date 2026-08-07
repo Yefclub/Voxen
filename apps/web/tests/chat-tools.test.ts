@@ -82,6 +82,7 @@ describe('buildTools (agente in-app)', () => {
       'related',
       'verify_citations',
       'read_transcript',
+      'read_external_enrichment',
     ]) {
       expect(names).toContain(name);
     }
@@ -428,6 +429,110 @@ describeIfDb('get_job_status (com DB)', () => {
     };
     expect(result.error).toBe('Job não encontrado.');
     expect(result.status).toBeUndefined();
+  });
+});
+
+describeIfDb('read_external_enrichment (com DB)', () => {
+  let ownerId = '';
+  let otherId = '';
+  let acceptedId = '';
+  let suggestedId = '';
+
+  beforeAll(async () => {
+    const suffix = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const [owner, other] = await Promise.all([
+      db.user.create({
+        data: {
+          email: `chat-enrichment-owner-${suffix}@voxen.local`,
+          name: 'Chat Enrichment Owner',
+          status: 'APPROVED',
+        },
+      }),
+      db.user.create({
+        data: {
+          email: `chat-enrichment-other-${suffix}@voxen.local`,
+          name: 'Chat Enrichment Other',
+          status: 'APPROVED',
+        },
+      }),
+    ]);
+    ownerId = owner.id;
+    otherId = other.id;
+    const transcript = await db.transcript.create({
+      data: {
+        userId: ownerId,
+        source: 'WEB',
+        url: `https://example.com/chat-enrichment-${suffix}`,
+        title: 'Active source',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${ownerId}/transcripts/chat-enrichment-${suffix}.md`,
+        plainText: 'Canonical source.',
+        frontmatter: {},
+      },
+    });
+    const [accepted, suggested] = await Promise.all([
+      db.transcriptEnrichment.create({
+        data: {
+          userId: ownerId,
+          transcriptId: transcript.id,
+          runKey: `accepted-${suffix}`,
+          trigger: 'MANUAL',
+          status: 'READY',
+          reviewState: 'ACCEPTED',
+          title: 'Reviewed context',
+          content: 'Cited external finding.',
+          citations: [
+            { url: 'https://example.org/evidence', title: 'Evidence', excerpt: 'Finding.' },
+            { url: 'javascript:alert(1)', title: 'Unsafe', excerpt: 'Blocked.' },
+          ],
+        },
+      }),
+      db.transcriptEnrichment.create({
+        data: {
+          userId: ownerId,
+          transcriptId: transcript.id,
+          runKey: `suggested-${suffix}`,
+          trigger: 'MANUAL',
+          status: 'READY',
+          reviewState: 'SUGGESTED',
+          title: 'Unreviewed context',
+          content: 'Must stay unavailable to the agent.',
+        },
+      }),
+    ]);
+    acceptedId = accepted.id;
+    suggestedId = suggested.id;
+  });
+
+  afterAll(async () => {
+    await db.user.deleteMany({ where: { id: { in: [ownerId, otherId] } } });
+  });
+
+  it('returns only accepted current owner context with safe URL provenance', async () => {
+    const ownerTools = buildTools(ownerId);
+    const accepted = (await runTool(ownerTools.read_external_enrichment, {
+      enrichmentId: acceptedId,
+    })) as {
+      content?: string;
+      citations?: Array<{ url: string; title: string; excerpt: string }>;
+      error?: string;
+    };
+    expect(accepted.content).toBe('Cited external finding.');
+    expect(accepted.citations).toEqual([
+      { url: 'https://example.org/evidence', title: 'Evidence', excerpt: 'Finding.' },
+    ]);
+
+    const suggested = (await runTool(ownerTools.read_external_enrichment, {
+      enrichmentId: suggestedId,
+    })) as { error?: string };
+    expect(suggested.error).toBe('Contexto externo não encontrado ou indisponível.');
+
+    const foreign = (await runTool(buildTools(otherId).read_external_enrichment, {
+      enrichmentId: acceptedId,
+    })) as { error?: string };
+    expect(foreign.error).toBe('Contexto externo não encontrado ou indisponível.');
   });
 });
 

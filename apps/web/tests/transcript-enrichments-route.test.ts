@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { Prisma } from '../prisma-generated/client';
 import app from '../src/index';
 import { brainNodeKey } from '../src/lib/brain';
+import { reindexTranscriptEnrichmentBrain } from '../src/lib/brain-enrichments';
+import { searchBrainNodes } from '../src/lib/brain-search';
 import { db } from '../src/lib/db';
 import { ftsSearchTranscriptEnrichments } from '../src/lib/retrieval-enrichments';
 
@@ -235,6 +237,75 @@ describeIfDb('reviewable transcript enrichments API', () => {
     expect(canonical.plainText).toBe('Canonical source text that must stay unchanged.');
     expect(canonical.summaryMd).toBe('Canonical summary that must stay unchanged.');
     expect(await db.note.count({ where: { userId: ownerId } })).toBe(notesBefore);
+  });
+
+  it('withdraws accepted context while its parent is archived or trashed', async () => {
+    const transcript = await createTranscript();
+    const enrichment = await createReadyEnrichment(transcript.id, { reviewState: 'ACCEPTED' });
+    await reindexTranscriptEnrichmentBrain(ownerId, enrichment.id);
+    expect(
+      await db.brainNode.findFirst({
+        where: { userId: ownerId, sourceType: 'EXTERNAL_ENRICHMENT', sourceId: enrichment.id },
+      }),
+    ).not.toBeNull();
+
+    const archived = await request(
+      `/api/transcripts/${transcript.id}/lifecycle`,
+      apiInit(ownerCookie, 'PATCH', { status: 'ARCHIVED' }),
+    );
+    expect(archived.status).toBe(200);
+    expect(
+      await db.brainNode.findFirst({
+        where: { userId: ownerId, sourceType: 'EXTERNAL_ENRICHMENT', sourceId: enrichment.id },
+      }),
+    ).toBeNull();
+    expect(await ftsSearchTranscriptEnrichments(ownerId, 'Grounded external finding', 10)).toEqual(
+      [],
+    );
+
+    // Simulate a stale node left by a concurrent materialization. The search
+    // boundary still revalidates the enrichment and its parent before exposure.
+    await db.brainNode.create({
+      data: {
+        userId: ownerId,
+        key: brainNodeKey('EXTERNAL_ENRICHMENT', enrichment.id),
+        type: 'CONTENT',
+        label: 'Grounded external finding',
+        sourceType: 'EXTERNAL_ENRICHMENT',
+        sourceId: enrichment.id,
+      },
+    });
+    expect(
+      (await searchBrainNodes(ownerId, 'Grounded external finding', 10)).map((node) => node.id),
+    ).not.toContain(
+      (
+        await db.brainNode.findFirstOrThrow({
+          where: { userId: ownerId, sourceType: 'EXTERNAL_ENRICHMENT', sourceId: enrichment.id },
+        })
+      ).id,
+    );
+
+    const restored = await request(
+      `/api/transcripts/${transcript.id}/lifecycle`,
+      apiInit(ownerCookie, 'PATCH', { status: 'ACTIVE' }),
+    );
+    expect(restored.status).toBe(200);
+    expect(
+      await db.brainNode.findFirst({
+        where: { userId: ownerId, sourceType: 'EXTERNAL_ENRICHMENT', sourceId: enrichment.id },
+      }),
+    ).not.toBeNull();
+
+    const trashed = await request(
+      `/api/transcripts/${transcript.id}/lifecycle`,
+      apiInit(ownerCookie, 'PATCH', { status: 'TRASH' }),
+    );
+    expect(trashed.status).toBe(200);
+    expect(
+      await db.brainNode.findFirst({
+        where: { userId: ownerId, sourceType: 'EXTERNAL_ENRICHMENT', sourceId: enrichment.id },
+      }),
+    ).toBeNull();
   });
 
   it('rejects missing or unsafe citations and refuses stale acceptance', async () => {

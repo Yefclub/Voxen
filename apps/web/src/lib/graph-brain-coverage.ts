@@ -20,6 +20,7 @@ export async function readBrainCoverage(userId: string): Promise<BrainCoverage> 
           reviewState: 'ACCEPTED',
           staleReason: null,
           OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+          transcript: { status: 'ACTIVE' },
         },
       }),
       db.brainNode.count({
@@ -58,6 +59,9 @@ async function countStaleBrainSourceNodes(userId: string): Promise<number> {
       ON n."sourceType" = 'EXTERNAL_ENRICHMENT'::"BrainSourceType"
      AND enrichment.id = n."sourceId"
      AND enrichment."userId" = n."userId"
+    LEFT JOIN "Transcript" enrichment_parent
+      ON enrichment_parent.id = enrichment."transcriptId"
+     AND enrichment_parent."userId" = enrichment."userId"
     WHERE n."userId" = ${userId}
       AND n."sourceType"::text IN ('TRANSCRIPT', 'NOTE', 'FOLDER', 'EXTERNAL_ENRICHMENT')
       AND (
@@ -68,6 +72,8 @@ async function countStaleBrainSourceNodes(userId: string): Promise<number> {
           n."sourceType" = 'EXTERNAL_ENRICHMENT'::"BrainSourceType"
           AND (
             enrichment.id IS NULL
+            OR enrichment_parent.id IS NULL
+            OR enrichment_parent.status <> 'ACTIVE'::"ContentStatus"
             OR enrichment.status <> 'READY'::"TranscriptEnrichmentStatus"
             OR enrichment."reviewState" <> 'ACCEPTED'::"TranscriptEnrichmentReviewState"
             OR enrichment."staleReason" IS NOT NULL

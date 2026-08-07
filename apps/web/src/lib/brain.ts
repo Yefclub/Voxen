@@ -244,9 +244,14 @@ export async function deleteOrphanedBrainSourceNodes(
         OR (
           n."sourceType" = 'EXTERNAL_ENRICHMENT'::"BrainSourceType"
           AND NOT EXISTS (
-            SELECT 1 FROM "TranscriptEnrichment" enrichment
+            SELECT 1
+            FROM "TranscriptEnrichment" enrichment
+            JOIN "Transcript" enrichment_parent
+              ON enrichment_parent.id = enrichment."transcriptId"
+             AND enrichment_parent."userId" = enrichment."userId"
             WHERE enrichment.id = n."sourceId"
               AND enrichment."userId" = n."userId"
+              AND enrichment_parent.status = 'ACTIVE'::"ContentStatus"
               AND enrichment.status = 'READY'::"TranscriptEnrichmentStatus"
               AND enrichment."reviewState" = 'ACCEPTED'::"TranscriptEnrichmentReviewState"
               AND enrichment."staleReason" IS NULL
