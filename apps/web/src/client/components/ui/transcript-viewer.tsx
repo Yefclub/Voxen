@@ -25,11 +25,45 @@ export interface TranscriptAnchorSelection {
   selectedQuote: string;
 }
 
+export interface TranscriptViewerAnchor {
+  id: string;
+  startLine: number | null;
+  endLine: number | null;
+  startSec: number | null;
+  endSec: number | null;
+  selectedQuote: string;
+  status: 'VALID' | 'STALE' | 'UNAVAILABLE';
+}
+
+export function transcriptAnchorHash(anchor: TranscriptViewerAnchor): string {
+  if (anchor.startLine !== null) {
+    return `#l=${anchor.startLine}-${anchor.endLine ?? anchor.startLine}`;
+  }
+  return `#t=${anchor.startSec ?? 0}-${anchor.endSec ?? anchor.startSec ?? 0}`;
+}
+
+export function groupTranscriptAnchorsByLine(
+  segments: Array<Pick<Segment, 'line' | 'startSec'>>,
+  anchors: TranscriptViewerAnchor[],
+): Map<number, TranscriptViewerAnchor[]> {
+  const grouped = new Map<number, TranscriptViewerAnchor[]>();
+  for (const noteAnchor of anchors) {
+    const range = resolveTranscriptCitationRange(segments, transcriptAnchorHash(noteAnchor));
+    if (!range) continue;
+    const existing = grouped.get(range.startLine) ?? [];
+    existing.push(noteAnchor);
+    grouped.set(range.startLine, existing);
+  }
+  return grouped;
+}
+
 export function TranscriptViewer({
   markdown,
+  anchors = [],
   onCreateAnnotation,
 }: {
   markdown: string;
+  anchors?: TranscriptViewerAnchor[];
   onCreateAnnotation?: (selection: TranscriptAnchorSelection) => void;
 }): React.ReactElement {
   const { t } = useI18n();
@@ -38,6 +72,10 @@ export function TranscriptViewer({
   const citationRange = useMemo(
     () => resolveTranscriptCitationRange(segments, anchor),
     [anchor, segments],
+  );
+  const anchorMarkers = useMemo(
+    () => groupTranscriptAnchorsByLine(segments, anchors),
+    [anchors, segments],
   );
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -154,6 +192,9 @@ export function TranscriptViewer({
                 seg.line >= citationRange.startLine &&
                 seg.line <= citationRange.endLine
               }
+              anchors={anchorMarkers.get(seg.line) ?? []}
+              openLabel={t('library.annotationOpen')}
+              staleLabel={t('library.annotationStale')}
             />
           ))}
         </p>
@@ -165,9 +206,15 @@ export function TranscriptViewer({
 function SegmentSpan({
   seg,
   highlighted,
+  anchors,
+  openLabel,
+  staleLabel,
 }: {
   seg: Segment;
   highlighted: boolean;
+  anchors: TranscriptViewerAnchor[];
+  openLabel: string;
+  staleLabel: string;
 }): React.ReactElement {
   const content = (
     <span
@@ -216,6 +263,25 @@ function SegmentSpan({
           )}
         </TooltipContent>
       </Tooltip>{' '}
+      {anchors.map((noteAnchor) => {
+        const current = noteAnchor.status === 'VALID';
+        const label = `${openLabel}: ${noteAnchor.selectedQuote}${current ? '' : ` (${staleLabel})`}`;
+        return (
+          <a
+            key={noteAnchor.id}
+            href={transcriptAnchorHash(noteAnchor)}
+            aria-label={label}
+            title={label}
+            className={`mx-0.5 inline-flex h-5 w-5 translate-y-0.5 items-center justify-center rounded-full border align-baseline transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60 ${
+              current
+                ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+            }`}
+          >
+            <NotebookPen className="h-3 w-3" />
+          </a>
+        );
+      })}{' '}
     </>
   );
 }

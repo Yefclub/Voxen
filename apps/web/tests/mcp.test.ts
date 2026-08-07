@@ -56,6 +56,8 @@ const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
 
 describeIfDb('MCP Streamable HTTP (com DB)', () => {
   const TOKEN = 'test-mcp-token-' + 'z'.repeat(24);
+  const READ_TOKEN = 'test-mcp-read-' + 'r'.repeat(24);
+  const WRITE_TOKEN = 'test-mcp-write-' + 'w'.repeat(24);
   let userId = '';
 
   beforeAll(async () => {
@@ -65,6 +67,12 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     userId = user.id;
     await db.mcpToken.create({
       data: { userId, tokenHash: hashMcpToken(TOKEN), label: 'Teste MCP', scopes: 'READ,WRITE' },
+    });
+    await db.mcpToken.createMany({
+      data: [
+        { userId, tokenHash: hashMcpToken(READ_TOKEN), label: 'Read MCP', scopes: 'READ' },
+        { userId, tokenHash: hashMcpToken(WRITE_TOKEN), label: 'Write MCP', scopes: 'WRITE' },
+      ],
     });
   });
 
@@ -221,6 +229,24 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_get_job_status');
     const createNote = tools.find((t) => t.name === 'voxen_create_note');
     expect(createNote?.annotations?.readOnlyHint).toBe(false);
+  });
+
+  it('expõe somente as tools autorizadas por tokens READ ou WRITE', async () => {
+    const readResponse = await call({ jsonrpc: '2.0', id: 51, method: 'tools/list' }, READ_TOKEN);
+    const readBody = (await readResponse.json()) as {
+      result?: { tools?: { name: string }[] };
+    };
+    const readNames = (readBody.result?.tools ?? []).map((tool) => tool.name);
+    expect(readNames).toContain('voxen_read_transcript');
+    expect(readNames).not.toContain('voxen_create_note');
+
+    const writeResponse = await call({ jsonrpc: '2.0', id: 52, method: 'tools/list' }, WRITE_TOKEN);
+    const writeBody = (await writeResponse.json()) as {
+      result?: { tools?: { name: string }[] };
+    };
+    const writeNames = (writeBody.result?.tools ?? []).map((tool) => tool.name);
+    expect(writeNames).toContain('voxen_create_note');
+    expect(writeNames).not.toContain('voxen_read_transcript');
   });
 
   it('tools/call voxen_create_note cria a nota escopada por userId', async () => {

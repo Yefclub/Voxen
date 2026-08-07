@@ -567,6 +567,9 @@ export function TranscricaoDetalhePage(): React.ReactElement {
             ) : (
               <TranscriptViewer
                 markdown={data.markdown}
+                anchors={(linkedNotesData?.notes ?? []).flatMap((note) =>
+                  note.transcriptSources.flatMap((source) => source.anchors),
+                )}
                 onCreateAnnotation={(selection) => {
                   setLinkedNoteAnchor(selection);
                   window.setTimeout(

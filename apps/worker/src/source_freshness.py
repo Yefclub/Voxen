@@ -16,7 +16,7 @@ async def mark_reviewable_derivatives_stale(
         UPDATE "ChatMessage"
         SET citations = (
           SELECT jsonb_agg(
-            CASE WHEN citation->>'sourceId' = $1
+            CASE WHEN citation->>'sourceId' = $1::text
               THEN citation || '{"stale": true, "verified": false}'::jsonb
               ELSE citation
             END
@@ -24,7 +24,7 @@ async def mark_reviewable_derivatives_stale(
           FROM jsonb_array_elements(citations) AS citation
         )
         WHERE jsonb_typeof(citations) = 'array'
-          AND citations @> jsonb_build_array(jsonb_build_object('sourceId', $1))
+          AND citations @> jsonb_build_array(jsonb_build_object('sourceId', $1::text))
         """,
         transcript_id,
     )

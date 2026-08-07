@@ -1495,6 +1495,13 @@ async function addBrainSource(input: {
   edgeId?: string;
   sourceType: BrainSourceType;
   sourceId: string;
+  chunkId?: string | null;
+  startLine?: number | null;
+  endLine?: number | null;
+  startSec?: number | null;
+  endSec?: number | null;
+  segmentKey?: string | null;
+  evidenceKey?: string | null;
   excerpt?: string | null;
   assertLeaseOwnership?: BrainReindexGuard;
 }): Promise<void> {
@@ -1524,6 +1531,13 @@ async function addBrainSource(input: {
         edgeId: input.edgeId ?? null,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
+        chunkId: input.chunkId ?? null,
+        startLine: input.startLine ?? null,
+        endLine: input.endLine ?? null,
+        startSec: input.startSec ?? null,
+        endSec: input.endSec ?? null,
+        segmentKey: input.segmentKey ?? null,
+        evidenceKey: input.evidenceKey ?? null,
         excerpt: input.excerpt ? truncate(input.excerpt, EVIDENCE_LIMIT) : null,
       },
     });
