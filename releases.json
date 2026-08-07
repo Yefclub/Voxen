@@ -1,5 +1,25 @@
 [
   {
+    "version": "0.14.3-dev.1786078906",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Legacy package retirement now has one deletion policy",
+    "body": "The public release contract now consistently requires deleting the obsolete\nweb, worker, and chat packages together with all historical versions. The\nrelease history and automated readiness checks enforce the same policy.",
+    "pr": null,
+    "author": "Kalyel",
+    "date": "2026-08-07T02:01:30-03:00",
+    "translations": {
+      "en": {
+        "title": "Legacy package retirement now has one deletion policy",
+        "body": "The public release contract now consistently requires deleting the obsolete\nweb, worker, and chat packages together with all historical versions. The\nrelease history and automated readiness checks enforce the same policy."
+      },
+      "pt-BR": {
+        "title": "Descontinuação de packages legados agora tem uma única política de exclusão",
+        "body": "O contrato público de release agora exige de forma consistente a exclusão dos\npackages obsoletos de web, worker e chat junto com todas as versões históricas.\nO histórico de releases e os checks automatizados de prontidão aplicam a mesma\npolítica."
+      }
+    }
+  },
+  {
     "version": "0.14.3-dev.1786076787",
     "channel": "dev",
     "type": "fix",

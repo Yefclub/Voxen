@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.3-dev.1786078906 — 2026-08-07 · Dev
+
+### 🐛 Legacy package retirement now has one deletion policy
+
+The public release contract now consistently requires deleting the obsolete
+web, worker, and chat packages together with all historical versions. The
+release history and automated readiness checks enforce the same policy.
+
 ## v0.14.3-dev.1786076787 — 2026-08-07 · Dev
 
 ### 🐛 Protected version automation works with read-only defaults
