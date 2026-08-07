@@ -9,25 +9,24 @@ import {
   type ReactNode,
 } from 'react';
 import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
+import * as knowledgeFeatureMessages from './knowledge-features-i18n';
 import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
 import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
 import {
   enTranscriptAnnotationMessages,
   ptBrTranscriptAnnotationMessages,
 } from './transcript-annotations-i18n';
-
 export type Locale = 'pt-BR' | 'en';
-
 export const LOCALES: Record<Locale, { nativeName: string; shortName: string }> = {
   'pt-BR': { nativeName: 'Português (Brasil)', shortName: 'PT-BR' },
   en: { nativeName: 'English', shortName: 'EN' },
 };
-
 const STORAGE_KEY = 'voxen:locale';
 
 const ptBRMessages = {
   ...ptBrReleaseUpdateMessages,
   ...ptBrTranscriptAnnotationMessages,
+  ...knowledgeFeatureMessages.ptBrKnowledgeFeatureMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -1413,6 +1412,7 @@ export type TranslateFn = (key: I18nKey, vars?: Record<string, string | number>)
 const enMessages: Record<I18nKey, string> = {
   ...enReleaseUpdateMessages,
   ...enTranscriptAnnotationMessages,
+  ...knowledgeFeatureMessages.enKnowledgeFeatureMessages,
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.close': 'Close',

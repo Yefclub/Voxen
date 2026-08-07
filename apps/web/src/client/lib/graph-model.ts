@@ -27,6 +27,7 @@ export type GraphEdgeKind =
   | 'next_to';
 
 export type GraphEvidence = 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS';
+type CoreGraphSourceType = 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL';
 
 export interface GraphNode {
   id: string;
@@ -35,11 +36,14 @@ export interface GraphNode {
   description: string | null;
   type: GraphNodeType;
   source?: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB' | 'UPLOAD';
-  sourceType: 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL' | null;
+  sourceType: CoreGraphSourceType | 'EXTERNAL_ENRICHMENT' | null;
   sourceId: string | null;
+  transcriptId?: string;
   weight: number;
   updatedAt: string;
 }
+
+export { nodePath } from './graph-node-path';
 
 export interface GraphEdge {
   id: string;
@@ -616,13 +620,6 @@ export function buildGraphLayout(
     })
     .filter((edge): edge is GraphLayoutEdge => edge !== null);
   return { nodes: layoutNodes, edges: layoutEdges, viewBox };
-}
-
-export function nodePath(node: GraphNode): string | null {
-  if (!node.sourceId) return null;
-  if (node.sourceType === 'TRANSCRIPT') return `/transcricoes/${node.sourceId}`;
-  if (node.sourceType === 'NOTE') return `/notas/${node.sourceId}`;
-  return null;
 }
 
 export function resolveGraphViewBox(

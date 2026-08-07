@@ -68,6 +68,7 @@ model User {
   jobs                  Job[]
   sourceContentVersions SourceContentVersion[]
   researchArtifacts     ResearchArtifact[]
+  transcriptEnrichments TranscriptEnrichment[]
   costEvents            CostEvent[]
   conversations         Conversation[]
   chatApprovals         ChatApproval[]
@@ -219,19 +220,20 @@ model McpToken {
 // nunca são copiados para ConfigRevisionChange; o flag isSecret permite
 // auditar a mudança sem reexpor credenciais.
 model ConfigRevision {
-  id                String                 @id @default(cuid())
-  number            Int                    @unique
+  id                    String                 @id @default(cuid())
+  number                Int                    @unique
   // A baseline criada na migração descreve um estado já existente, não um
   // estado restaurável. Ela fica no histórico, mas nunca pode ser rollback.
-  isBaseline        Boolean                @default(false)
-  actorUserId       String?
-  reason            String?                @db.VarChar(500)
-  createdAt         DateTime               @default(now())
-  actor             User?                  @relation("ConfigRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  changes           ConfigRevisionChange[]
-  jobs              Job[]
-  chatTurns         ChatTurn[]
-  researchArtifacts ResearchArtifact[]
+  isBaseline            Boolean                @default(false)
+  actorUserId           String?
+  reason                String?                @db.VarChar(500)
+  createdAt             DateTime               @default(now())
+  actor                 User?                  @relation("ConfigRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  changes               ConfigRevisionChange[]
+  jobs                  Job[]
+  chatTurns             ChatTurn[]
+  researchArtifacts     ResearchArtifact[]
+  transcriptEnrichments TranscriptEnrichment[]
 
   @@index([createdAt(sort: Desc)])
   @@index([actorUserId, createdAt(sort: Desc)])
@@ -323,72 +325,73 @@ enum SourceRefreshStatus {
 }
 
 model Transcript {
-  id                   String                   @id @default(cuid())
-  userId               String // == workspace_id
-  folderId             String?
-  status               ContentStatus            @default(ACTIVE)
-  source               TranscriptSource
-  url                  String
-  title                String
-  channel              String?
-  author               String?
-  durationSec          Int
-  publishedAt          DateTime?
-  thumbnailUrl         String?
-  originalObjectKey    String?
-  originalFilename     String?
-  originalMimeType     String?
-  previewObjectKey     String?
-  previewMimeType      String?
-  language             String // ISO 639-1
-  transcriptionMethod  TranscriptionMethod
-  model                String? // null se SUBTITLES
-  costUsd              Decimal?                 @db.Decimal(10, 4)
+  id                    String                   @id @default(cuid())
+  userId                String // == workspace_id
+  folderId              String?
+  status                ContentStatus            @default(ACTIVE)
+  source                TranscriptSource
+  url                   String
+  title                 String
+  channel               String?
+  author                String?
+  durationSec           Int
+  publishedAt           DateTime?
+  thumbnailUrl          String?
+  originalObjectKey     String?
+  originalFilename      String?
+  originalMimeType      String?
+  previewObjectKey      String?
+  previewMimeType       String?
+  language              String // ISO 639-1
+  transcriptionMethod   TranscriptionMethod
+  model                 String? // null se SUBTITLES
+  costUsd               Decimal?                 @db.Decimal(10, 4)
   // .md no Garage (key relative ao bucket)
-  mdPath               String
+  mdPath                String
   // Texto puro pra FTS (sem timestamps, sem frontmatter)
-  plainText            String                   @db.Text
+  plainText             String                   @db.Text
   // Resumo gerado pela IA em markdown (pode ser null se ainda não gerado)
-  summaryMd            String?                  @db.Text
-  summaryStatus        EnrichmentStatus         @default(PENDING)
-  summaryAttempts      Int                      @default(0)
-  summaryStartedAt     DateTime?
-  summaryNextAttemptAt DateTime?
-  summaryError         String?
-  taggingStatus        EnrichmentStatus         @default(PENDING)
-  taggingAttempts      Int                      @default(0)
-  taggingStartedAt     DateTime?
-  taggingNextAttemptAt DateTime?
-  taggingError         String?
+  summaryMd             String?                  @db.Text
+  summaryStatus         EnrichmentStatus         @default(PENDING)
+  summaryAttempts       Int                      @default(0)
+  summaryStartedAt      DateTime?
+  summaryNextAttemptAt  DateTime?
+  summaryError          String?
+  taggingStatus         EnrichmentStatus         @default(PENDING)
+  taggingAttempts       Int                      @default(0)
+  taggingStartedAt      DateTime?
+  taggingNextAttemptAt  DateTime?
+  taggingError          String?
   // Frontmatter como JSONB pra filtros estruturados
-  frontmatter          Json
+  frontmatter           Json
   // tsvector gerenciado por trigger SQL (ver migration). Não declarável em Prisma; usar Unsupported.
-  searchVector         Unsupported("tsvector")?
-  checksum             String? // sha256 do áudio original
+  searchVector          Unsupported("tsvector")?
+  checksum              String? // sha256 do áudio original
   // Proveniência versionada para fontes WEB. sourceVersion=0 identifica
   // conteúdo legado ainda sem snapshot; a primeira atualização o preserva.
-  sourceChecksum       String?
-  sourceVersion        Int                      @default(0)
-  sourceCollectedAt    DateTime?
-  sourceMetadata       Json                     @default("{}")
-  sourceRefreshStatus  SourceRefreshStatus      @default(CURRENT)
-  sourceRefreshError   String?                  @db.Text
-  formatVersion        Int                      @default(1)
-  archivedAt           DateTime?
-  trashedAt            DateTime?
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
+  sourceChecksum        String?
+  sourceVersion         Int                      @default(0)
+  sourceCollectedAt     DateTime?
+  sourceMetadata        Json                     @default("{}")
+  sourceRefreshStatus   SourceRefreshStatus      @default(CURRENT)
+  sourceRefreshError    String?                  @db.Text
+  formatVersion         Int                      @default(1)
+  archivedAt            DateTime?
+  trashedAt             DateTime?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
   // Relations
-  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder               LibraryFolder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  chunks               Chunk[]
-  job                  Job?
-  sourceRefreshJobs    Job[]                    @relation("SourceRefreshJobs")
-  sourceVersions       SourceContentVersion[]
-  conversations        Conversation[]
-  tags                 TranscriptTag[]
-  noteSources          NoteTranscriptSource[]
-  brainCompilation     BrainCompilation?
+  user                  User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder                LibraryFolder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  chunks                Chunk[]
+  job                   Job?
+  sourceRefreshJobs     Job[]                    @relation("SourceRefreshJobs")
+  sourceVersions        SourceContentVersion[]
+  conversations         Conversation[]
+  tags                  TranscriptTag[]
+  noteSources           NoteTranscriptSource[]
+  transcriptEnrichments TranscriptEnrichment[]
+  brainCompilation      BrainCompilation?
   // Índice GIN no tsvector criado via SQL na migration
 
   @@index([userId, createdAt(sort: Desc)])
@@ -497,6 +500,7 @@ enum BrainSourceType {
   JOB
   CHAT
   MANUAL
+  EXTERNAL_ENRICHMENT
 }
 
 enum BrainNodeType {
@@ -1025,6 +1029,80 @@ model NoteTranscriptAnchor {
   @@index([noteId, transcriptId])
 }
 
+enum TranscriptEnrichmentType {
+  WEB_RESEARCH
+}
+
+enum TranscriptEnrichmentStatus {
+  PENDING
+  RUNNING
+  NO_RESEARCH_NEEDED
+  READY
+  RETRY
+  FAILED
+  CANCELLED
+}
+
+enum TranscriptEnrichmentReviewState {
+  SUGGESTED
+  ACCEPTED
+  DISMISSED
+}
+
+enum TranscriptEnrichmentTrigger {
+  AUTO
+  MANUAL
+  MCP
+}
+
+model TranscriptEnrichment {
+  id                String                          @id @default(cuid())
+  userId            String
+  transcriptId      String
+  configRevisionId  String?
+  runKey            String
+  type              TranscriptEnrichmentType        @default(WEB_RESEARCH)
+  status            TranscriptEnrichmentStatus      @default(PENDING)
+  reviewState       TranscriptEnrichmentReviewState @default(SUGGESTED)
+  trigger           TranscriptEnrichmentTrigger
+  title             String                          @default("")
+  content           String                          @default("") @db.Text
+  citations         Json                            @default("[]")
+  queries           Json                            @default("[]")
+  rationale         String?                         @db.Text
+  noResearchReason  String?                         @db.Text
+  sourceVersion     Int                             @default(0)
+  sourceChecksum    String?
+  model             String?
+  costUsd           Decimal?                        @db.Decimal(10, 6)
+  tokensIn          Int                             @default(0)
+  tokensOut         Int                             @default(0)
+  searchCallCount   Int                             @default(0)
+  searchResultCount Int                             @default(0)
+  attempt           Int                             @default(0)
+  nextAttemptAt     DateTime?
+  startedAt         DateTime?
+  generatedAt       DateTime?
+  checkedAt         DateTime?
+  expiresAt         DateTime?
+  acceptedAt        DateTime?
+  dismissedAt       DateTime?
+  editedAt          DateTime?
+  cancelRequestedAt DateTime?
+  staleReason       String?                         @db.Text
+  lastError         String?                         @db.Text
+  createdAt         DateTime                        @default(now())
+  updatedAt         DateTime                        @default(now()) @updatedAt
+  user              User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript        Transcript                      @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  configRevision    ConfigRevision?                 @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, transcriptId, runKey])
+  @@index([userId, transcriptId, createdAt(sort: Desc)])
+  @@index([status, nextAttemptAt, createdAt])
+  @@index([userId, reviewState, updatedAt(sort: Desc)])
+  @@index([configRevisionId])
+}
 // ============================================================================
 // AUTOMAÇÕES (jobs periódicos com continuidade — spec .specs/008-automacoes.md)
 // ============================================================================
