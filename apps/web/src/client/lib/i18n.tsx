@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
+import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
 import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
 
 export type Locale = 'pt-BR' | 'en';
@@ -21,6 +22,7 @@ export const LOCALES: Record<Locale, { nativeName: string; shortName: string }> 
 const STORAGE_KEY = 'voxen:locale';
 
 const ptBRMessages = {
+  ...ptBrReleaseUpdateMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -52,8 +54,6 @@ const ptBRMessages = {
   'shell.admin': 'Admin',
   'shell.contextTitle': 'Contexto: {tokens} / {limit} tokens',
   'shell.contextSummary': 'Ver resumo da última compactação',
-  'shell.versionOpenChangelog': 'Clique para ver as novidades',
-  'shell.nav.changelog': 'Novidades',
   'novidades.back': 'Início',
   'novidades.eyebrow': 'Changelog',
   'novidades.title': 'Novidades',
@@ -1416,6 +1416,7 @@ export type I18nKey = keyof typeof ptBRMessages;
 export type TranslateFn = (key: I18nKey, vars?: Record<string, string | number>) => string;
 
 const enMessages: Record<I18nKey, string> = {
+  ...enReleaseUpdateMessages,
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
@@ -1447,8 +1448,6 @@ const enMessages: Record<I18nKey, string> = {
   'shell.admin': 'Admin',
   'shell.contextTitle': 'Context: {tokens} / {limit} tokens',
   'shell.contextSummary': 'View last compaction summary',
-  'shell.versionOpenChangelog': 'Click to view release notes',
-  'shell.nav.changelog': 'News',
   'novidades.back': 'Home',
   'novidades.eyebrow': 'Changelog',
   'novidades.title': "What's new",

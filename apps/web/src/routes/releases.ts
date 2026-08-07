@@ -18,6 +18,7 @@ import {
   type ReleaseFeedEntry,
 } from '../shared/release-feed';
 import { resolveVersionEnvironment } from '../shared/version-environment';
+import { getGitHubReleaseUpdate } from '../lib/github-release';
 
 type Vars = { userId: string };
 
@@ -79,6 +80,12 @@ export function createReleasesRoutes(appVersion: string): Hono<{ Variables: Vars
       ),
       environment,
     });
+  });
+
+  releasesRoutes.get('/latest', async (c) => {
+    const status = await getGitHubReleaseUpdate(appVersion);
+    c.header('Cache-Control', 'private, max-age=300');
+    return c.json(status);
   });
 
   return releasesRoutes;
