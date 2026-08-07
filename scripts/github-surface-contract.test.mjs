@@ -104,3 +104,15 @@ test("stable publication dispatches and tags the combined Easypanel image", () =
     /automaticamente quando há push\s+em `dev`, `main` ou tag/,
   );
 });
+
+test("stable releases do not republish legacy component images", () => {
+  const release = read(".github/workflows/release.yml");
+
+  assert.match(
+    release,
+    /ghcr\.io\/\$\{\{ github\.repository_owner \}\}\/voxen:\$\{\{ github\.ref_name \}\}/,
+  );
+  assert.doesNotMatch(release, /voxen-(?:web|worker|chat)/);
+  assert.doesNotMatch(release, /docker\/build-push-action/);
+  assert.doesNotMatch(release, /packages: write/);
+});

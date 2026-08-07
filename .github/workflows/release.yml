@@ -9,63 +9,11 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
-  build-and-push:
-    name: Build & push images
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        app: [web, worker]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Meta
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/voxen-${{ matrix.app }}
-          tags: |
-            type=raw,value=${{ github.ref_name }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=sha-
-            type=raw,value=latest
-      - name: Inject version, SHA, and timestamp build arguments
-        id: bargs
-        run: |
-          REF=${GITHUB_REF#refs/tags/v}
-          {
-            echo "version=$REF"
-            echo "sha=${GITHUB_SHA:0:7}"
-            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: apps/${{ matrix.app }}/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Use one cache scope per app. The default `type=gha` scope is the
-          # literal `buildkit`, which lets web and worker overwrite each other.
-          cache-from: type=gha,scope=${{ matrix.app }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
-          build-args: |
-            VOXEN_VERSION=${{ steps.bargs.outputs.version }}
-            VOXEN_GIT_SHA=${{ steps.bargs.outputs.sha }}
-            VOXEN_BUILT_AT=${{ steps.bargs.outputs.built_at }}
-
   github-release:
     name: GitHub Release
     runs-on: ubuntu-latest
-    needs: build-and-push
     steps:
       - uses: actions/checkout@v6
         with:
@@ -94,5 +42,4 @@ jobs:
 
             ## Images
 
-            - `ghcr.io/${{ github.repository_owner }}/voxen-web:${{ github.ref_name }}`
-            - `ghcr.io/${{ github.repository_owner }}/voxen-worker:${{ github.ref_name }}`
+            - `ghcr.io/${{ github.repository_owner }}/voxen:${{ github.ref_name }}`
