@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@animateicons/react": "^0.3.5",
-    "@aws-sdk/client-s3": "^3.1050.0",
+    "@aws-sdk/client-s3": "^3.1102.0",
     "@aws-sdk/s3-request-presigner": "^3.1050.0",
     "@better-auth/sso": "1.6.25",
     "@codemirror/lang-markdown": "^6.5.0",
