@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.14.5-dev.1786104989 — 2026-08-07 · Dev
+
+### 🛠️ New self-hosted installs use a local volume by default
+
+New single-host installations no longer require MinIO. Web and worker share a
+private persistent volume at `/data/storage` behind the same provider-neutral
+contract, with atomic writes, authenticated reads, media ranges, path
+containment, health checks, persistent-mount validation, consistent backups,
+and non-root runtime access. Legacy Garage variables and mounted credentials
+files remain supported by both runtimes.
+Backup topology follows the active endpoint and container, so an obsolete MinIO
+volume cannot be mistaken for a backup of external S3.
+Existing non-empty S3 or Garage configuration remains on S3, while MinIO is an
+explicit optional profile.
+
 ## v0.14.4 — 2026-08-07 · Produção
 
 ### Voxen 0.14.4 — clearer beta expectations
