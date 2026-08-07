@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786111854",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Notes can retain exact transcript passages",
+    "body": "Text selected in a transcript can now become a note with verified line and\ntimestamp anchors. Anchored notes navigate back to and highlight the original\npassage, remain available through the user-scoped API and MCP server, and keep\ntheir evidence separate from authored note content. A source refresh marks an\noutdated anchor stale instead of silently moving it.",
+    "pr": 684,
+    "author": "Kalyel",
+    "date": "2026-08-07T11:10:42-03:00",
+    "translations": {
+      "en": {
+        "title": "Notes can retain exact transcript passages",
+        "body": "Text selected in a transcript can now become a note with verified line and\ntimestamp anchors. Anchored notes navigate back to and highlight the original\npassage, remain available through the user-scoped API and MCP server, and keep\ntheir evidence separate from authored note content. A source refresh marks an\noutdated anchor stale instead of silently moving it."
+      },
+      "pt-BR": {
+        "title": "Notas podem preservar passagens exatas da transcrição",
+        "body": "Um texto selecionado na transcrição agora pode se tornar uma nota com linhas e\ntimestamps verificados. Notas ancoradas voltam e destacam a passagem original,\nficam disponíveis pela API e MCP isolados por usuário e mantêm a evidência\nseparada do texto autoral. Uma atualização da fonte marca a âncora desatualizada\ncomo stale em vez de movê-la silenciosamente."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/684"
+  },
+  {
     "version": "0.14.5-dev.1786107441",
     "channel": "dev",
     "type": "feat",
