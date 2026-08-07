@@ -6,22 +6,22 @@ updates:
     schedule:
       interval: weekly
       day: monday
-      time: '04:00'
-      timezone: 'America/Sao_Paulo'
+      time: "04:00"
+      timezone: "America/Sao_Paulo"
     open-pull-requests-limit: 5
     groups:
       tooling:
         patterns:
-          - 'eslint*'
-          - 'prettier*'
-          - 'typescript*'
-          - '@types/*'
-          - 'vite*'
-          - 'vitest*'
+          - "eslint*"
+          - "prettier*"
+          - "typescript*"
+          - "@types/*"
+          - "vite*"
+          - "vitest*"
       react:
         patterns:
-          - 'react*'
-          - '@vitejs/plugin-react*'
+          - "react*"
+          - "@vitejs/plugin-react*"
 
   - package-ecosystem: npm
     directory: /apps/web
@@ -30,20 +30,6 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
-
-  - package-ecosystem: pip
-    directory: /apps/chat
-    target-branch: dev
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    groups:
-      tooling:
-        patterns:
-          - 'ruff*'
-          - 'mypy*'
-          - 'pytest*'
 
   - package-ecosystem: pip
     directory: /apps/worker
@@ -55,13 +41,6 @@ updates:
 
   - package-ecosystem: docker
     directory: /apps/web
-    target-branch: dev
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 3
-
-  - package-ecosystem: docker
-    directory: /apps/chat
     target-branch: dev
     schedule:
       interval: weekly

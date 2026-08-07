@@ -5,7 +5,7 @@
 #  - the release PR already contains a stable X.Y.Z package version;
 #  - this workflow never commits to main or dev;
 #  - when vX.Y.Z does not exist, it creates the tag;
-#  - it dispatches both the component release and the combined Easypanel image.
+#  - it dispatches the GitHub release and the combined Easypanel image.
 # ============================================================================
 
 name: Publish stable release
