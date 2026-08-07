@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786123967",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Summaries can trigger bounded optional research",
+    "body": "Administrators can keep post-summary research off, allow manual requests, or\nenable selective automatic checks. The canonical summary remains\ntranscript-only; the durable second stage may perform zero or bounded web\nsearches and always creates a cited suggestion for review. Failures, retries,\nand cancellation never block a completed transcript. Tool-free planning is\nisolated from bounded search requests, while policy and content lifecycle\nchanges cancel incompatible work across transaction-safe boundaries.",
+    "pr": 688,
+    "author": "Kalyel",
+    "date": "2026-08-07T14:32:32-03:00",
+    "translations": {
+      "en": {
+        "title": "Summaries can trigger bounded optional research",
+        "body": "Administrators can keep post-summary research off, allow manual requests, or\nenable selective automatic checks. The canonical summary remains\ntranscript-only; the durable second stage may perform zero or bounded web\nsearches and always creates a cited suggestion for review. Failures, retries,\nand cancellation never block a completed transcript. Tool-free planning is\nisolated from bounded search requests, while policy and content lifecycle\nchanges cancel incompatible work across transaction-safe boundaries."
+      },
+      "pt-BR": {
+        "title": "Resumos podem disparar pesquisa opcional limitada",
+        "body": "Administradores podem manter a pesquisa posterior ao resumo desligada,\npermitir pedidos manuais ou habilitar verificações automáticas seletivas. O\nresumo canônico continua baseado apenas na transcrição; a segunda etapa durável\npode fazer zero ou buscas web limitadas e sempre cria uma sugestão citada para\nrevisão. Falhas, retentativas e cancelamento nunca bloqueiam uma transcrição\nconcluída. O planejamento sem ferramentas fica isolado das buscas limitadas, e\nmudanças de política ou ciclo de vida cancelam trabalhos incompatíveis em\nfronteiras transacionais seguras."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/688"
+  },
+  {
     "version": "0.14.5-dev.1786116413",
     "channel": "dev",
     "type": "feat",
