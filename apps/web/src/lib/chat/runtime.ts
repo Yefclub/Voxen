@@ -24,7 +24,6 @@ import {
   type KnowledgeSearchResult,
 } from '../retrieval';
 import { getAppTimezone, getSettings } from '../settings';
-import { normalizeTranscriptEnrichmentCitations } from '../transcript-enrichments';
 import { researchWeb } from '../web-research';
 import { buildAgentClockInstructions, buildInstanceClock } from '../app-timezone';
 import type { ChatStatusCode } from '../../shared/chat-status';
@@ -41,6 +40,7 @@ import {
   resolveAppendParent,
 } from './message-versions';
 import { parseMessageAttachments } from './message-attachments';
+import { createReadExternalEnrichmentTool } from './external-enrichment-tool';
 import { parseTemporalBounds } from './temporal-bounds';
 import {
   HITL_ACTION_CREATE_NOTE,
@@ -605,46 +605,7 @@ export function buildTools(
         };
       },
     }),
-    read_external_enrichment: tool({
-      description:
-        'Lê o conteúdo completo e as citações URL de um contexto externo revisado encontrado ' +
-        'por search_knowledge. Só devolve itens aceitos, atuais e ligados a uma transcrição ativa.',
-      inputSchema: z.object({ enrichmentId: z.string().min(1) }),
-      execute: async ({ enrichmentId }) => {
-        const enrichment = await db.transcriptEnrichment.findFirst({
-          where: {
-            id: enrichmentId,
-            userId,
-            status: 'READY',
-            reviewState: 'ACCEPTED',
-            staleReason: null,
-            OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
-            transcript: { status: 'ACTIVE' },
-          },
-          select: {
-            id: true,
-            transcriptId: true,
-            title: true,
-            content: true,
-            citations: true,
-            generatedAt: true,
-            checkedAt: true,
-          },
-        });
-        if (!enrichment) return { error: 'Contexto externo não encontrado ou indisponível.' };
-        return {
-          id: enrichment.id,
-          transcriptId: enrichment.transcriptId,
-          title: enrichment.title,
-          content: enrichment.content,
-          citations: normalizeTranscriptEnrichmentCitations(enrichment.citations),
-          authority: 'external-derived' as const,
-          generatedAt: enrichment.generatedAt?.toISOString() ?? null,
-          checkedAt: enrichment.checkedAt?.toISOString() ?? null,
-          href: `/transcricoes/${enrichment.transcriptId}#additional-context-${enrichment.id}`,
-        };
-      },
-    }),
+    read_external_enrichment: createReadExternalEnrichmentTool(userId),
     web_search: tool({
       description:
         'Pesquisa a web atual usando o modelo configurado e devolve síntese com citações URL. ' +

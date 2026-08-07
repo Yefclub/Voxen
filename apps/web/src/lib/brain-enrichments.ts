@@ -151,3 +151,29 @@ export async function reindexTranscriptEnrichmentsBrain(
     }
   }
 }
+
+export async function syncTranscriptEnrichmentBrainLifecycle(
+  userId: string,
+  transcriptId: string,
+  status: 'ACTIVE' | 'ARCHIVED' | 'TRASH',
+): Promise<void> {
+  const enrichments = await db.transcriptEnrichment.findMany({
+    where: { userId, transcriptId },
+    select: { id: true },
+  });
+  if (status === 'ACTIVE') {
+    for (const enrichment of enrichments) {
+      await reindexTranscriptEnrichmentBrain(userId, enrichment.id);
+    }
+    return;
+  }
+  if (enrichments.length > 0) {
+    await db.brainNode.deleteMany({
+      where: {
+        userId,
+        sourceType: 'EXTERNAL_ENRICHMENT',
+        sourceId: { in: enrichments.map((item) => item.id) },
+      },
+    });
+  }
+}
