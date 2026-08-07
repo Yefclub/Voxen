@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786107441",
+    "channel": "dev",
+    "type": "feat",
+    "title": "A newer published release is visible in navigation",
+    "body": "Voxen now checks the official GitHub stable release from the server and shows\nan update notice directly above What's new only when that release is newer than\nthe running build. The notice identifies the installed version and whether the\ninstance is running a development or production build. GitHub failures remain\nsilent and never interrupt navigation.",
+    "pr": 682,
+    "author": "Kalyel",
+    "date": "2026-08-07T09:57:10-03:00",
+    "translations": {
+      "en": {
+        "title": "A newer published release is visible in navigation",
+        "body": "Voxen now checks the official GitHub stable release from the server and shows\nan update notice directly above What's new only when that release is newer than\nthe running build. The notice identifies the installed version and whether the\ninstance is running a development or production build. GitHub failures remain\nsilent and never interrupt navigation."
+      },
+      "pt-BR": {
+        "title": "Uma nova release publicada aparece na navegação",
+        "body": "A Voxen agora consulta no servidor a release estável oficial do GitHub e mostra\num aviso de atualização logo acima de Novidades somente quando ela é posterior\nao build em execução. O aviso identifica a versão instalada e se a instância\nestá em desenvolvimento ou produção. Falhas do GitHub permanecem silenciosas e\nnunca interrompem a navegação."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/682"
+  },
+  {
     "version": "0.14.5-dev.1786104989",
     "channel": "dev",
     "type": "infra",
