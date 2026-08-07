@@ -14,12 +14,13 @@
 import { Hono } from 'hono';
 import { auth } from '../lib/auth';
 import {
-  BRAIN_INDEX_VERSION,
   deleteOrphanedBrainSourceNodes,
   reindexLibraryFoldersBrain,
   reindexNotesBrain,
   reindexTranscriptsBrain,
 } from '../lib/brain';
+import { reindexTranscriptEnrichmentsBrain } from '../lib/brain-enrichments';
+import { readBrainCoverage } from '../lib/graph-brain-coverage';
 import { db } from '../lib/db';
 import { graphCacheKey, graphInvalidationChannel, invalidateGraphCache } from '../lib/graph-cache';
 import {
@@ -87,8 +88,17 @@ interface GraphNode {
     | 'cluster'
     | 'content';
   source?: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB' | 'UPLOAD';
-  sourceType: 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL' | null;
+  sourceType:
+    | 'TRANSCRIPT'
+    | 'NOTE'
+    | 'FOLDER'
+    | 'JOB'
+    | 'CHAT'
+    | 'MANUAL'
+    | 'EXTERNAL_ENRICHMENT'
+    | null;
   sourceId: string | null;
+  transcriptId?: string;
   weight: number;
   updatedAt: string;
 }
@@ -278,6 +288,7 @@ graphRoutes.get('/', async (c) => {
     source: graphSource(node),
     sourceType: node.sourceType,
     sourceId: node.sourceId,
+    transcriptId: graphTranscriptId(node),
     weight: 1 + Math.min(degree.get(node.id) ?? 0, 8),
     updatedAt: node.updatedAt.toISOString(),
   }));
@@ -340,12 +351,6 @@ graphRoutes.get('/', async (c) => {
 // Sem Redis não há mutação do Brain nem fallback local de exclusão.
 const brainReindexInFlight = new Set<string>();
 const localGraphIndexStatus = new Map<string, GraphIndexStatus>();
-
-interface BrainCoverage {
-  expectedSourceNodes: number;
-  indexedSourceNodes: number;
-  staleSourceNodes: number;
-}
 
 async function currentGraphIndexStatus(userId: string): Promise<GraphIndexStatus> {
   try {
@@ -518,6 +523,8 @@ async function scheduleBrainReindex(
       await assertLeaseOwnership();
       await reindexTranscriptsBrain(userId, undefined, assertLeaseOwnership);
       await assertLeaseOwnership();
+      await reindexTranscriptEnrichmentsBrain(userId, assertLeaseOwnership);
+      await assertLeaseOwnership();
 
       const coverage = await readBrainCoverage(userId);
       if (shouldScheduleGraphReindex({ force: false, ...coverage })) {
@@ -600,77 +607,6 @@ export async function reconcileGraphUsers(): Promise<void> {
   } finally {
     graphUsersReconciliationInFlight = false;
   }
-}
-
-async function readBrainCoverage(userId: string): Promise<BrainCoverage> {
-  const [transcripts, notes, folders, brainNodes, staleSourceNodes] = await Promise.all([
-    db.transcript.count({ where: { userId, status: 'ACTIVE' } }),
-    db.note.count({ where: { userId } }),
-    db.libraryFolder.count({ where: { userId } }),
-    db.brainNode.count({
-      where: {
-        userId,
-        status: 'ACTIVE',
-        sourceType: { in: ['TRANSCRIPT', 'NOTE', 'FOLDER'] },
-      },
-    }),
-    countStaleBrainSourceNodes(userId),
-  ]);
-  return {
-    expectedSourceNodes: transcripts + notes + folders,
-    indexedSourceNodes: brainNodes,
-    staleSourceNodes,
-  };
-}
-
-async function countStaleBrainSourceNodes(userId: string): Promise<number> {
-  const rows = await db.$queryRaw<Array<{ count: number | bigint }>>`
-    SELECT count(*)::int AS count
-    FROM "BrainNode" n
-    LEFT JOIN "Transcript" t
-      ON n."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
-     AND t.id = n."sourceId"
-     AND t."userId" = n."userId"
-    LEFT JOIN "Note" note
-      ON n."sourceType" = 'NOTE'::"BrainSourceType"
-     AND note.id = n."sourceId"
-     AND note."userId" = n."userId"
-    LEFT JOIN "LibraryFolder" folder
-      ON n."sourceType" = 'FOLDER'::"BrainSourceType"
-     AND folder.id = n."sourceId"
-     AND folder."userId" = n."userId"
-    WHERE n."userId" = ${userId}
-      AND n."sourceType"::text IN ('TRANSCRIPT', 'NOTE', 'FOLDER')
-      AND (
-        (n."sourceType" = 'TRANSCRIPT'::"BrainSourceType" AND t.id IS NULL)
-        OR (n."sourceType" = 'NOTE'::"BrainSourceType" AND note.id IS NULL)
-        OR (n."sourceType" = 'FOLDER'::"BrainSourceType" AND folder.id IS NULL)
-        OR (
-          n.status = 'ACTIVE'::"ContentStatus"
-          AND (
-            coalesce(n.metadata->>'brainIndexVersion', '0') <>
-              ${String(BRAIN_INDEX_VERSION)}
-            OR (
-              n."sourceType" = 'TRANSCRIPT'::"BrainSourceType"
-              AND coalesce(n.metadata->>'updatedAt', '') <>
-                  to_char(t."updatedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
-            )
-            OR (
-              n."sourceType" = 'NOTE'::"BrainSourceType"
-              AND coalesce(n.metadata->>'updatedAt', '') <>
-                  to_char(note."updatedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
-            )
-            OR (
-              n."sourceType" = 'FOLDER'::"BrainSourceType"
-              AND coalesce(n.metadata->>'updatedAt', '') <>
-                  to_char(folder."updatedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
-            )
-          )
-        )
-      )
-  `;
-  const count = rows[0]?.count ?? 0;
-  return typeof count === 'bigint' ? Number(count) : count;
 }
 
 function evidenceTag(method: string, kind: string): 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS' {
@@ -825,4 +761,15 @@ function graphSource(node: { sourceType: string | null; metadata: unknown }): Gr
     return source;
   }
   return undefined;
+}
+
+function graphTranscriptId(node: {
+  sourceType: string | null;
+  metadata: unknown;
+}): string | undefined {
+  if (node.sourceType !== 'EXTERNAL_ENRICHMENT') return undefined;
+  if (!node.metadata || typeof node.metadata !== 'object' || !('transcriptId' in node.metadata)) {
+    return undefined;
+  }
+  return typeof node.metadata.transcriptId === 'string' ? node.metadata.transcriptId : undefined;
 }

@@ -9,25 +9,24 @@ import {
   type ReactNode,
 } from 'react';
 import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
+import * as knowledgeFeatureMessages from './knowledge-features-i18n';
 import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
 import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
 import {
   enTranscriptAnnotationMessages,
   ptBrTranscriptAnnotationMessages,
 } from './transcript-annotations-i18n';
-
 export type Locale = 'pt-BR' | 'en';
-
 export const LOCALES: Record<Locale, { nativeName: string; shortName: string }> = {
   'pt-BR': { nativeName: 'Português (Brasil)', shortName: 'PT-BR' },
   en: { nativeName: 'English', shortName: 'EN' },
 };
-
 const STORAGE_KEY = 'voxen:locale';
 
 const ptBRMessages = {
   ...ptBrReleaseUpdateMessages,
   ...ptBrTranscriptAnnotationMessages,
+  ...knowledgeFeatureMessages.ptBrKnowledgeFeatureMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -678,6 +677,7 @@ const ptBRMessages = {
   'tools.read_transcript': 'Leitura de transcrição',
   'tools.read_transcript_section': 'Trecho de transcrição',
   'tools.read_transcript_summary': 'Resumo de transcrição',
+  'tools.read_external_enrichment': 'Leitura de contexto externo',
   'tools.get_metadata': 'Metadados do conteúdo',
   'tools.list_notes': 'Listagem de notas',
   'tools.read_note': 'Leitura de nota',
@@ -1413,6 +1413,7 @@ export type TranslateFn = (key: I18nKey, vars?: Record<string, string | number>)
 const enMessages: Record<I18nKey, string> = {
   ...enReleaseUpdateMessages,
   ...enTranscriptAnnotationMessages,
+  ...knowledgeFeatureMessages.enKnowledgeFeatureMessages,
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
@@ -2055,6 +2056,7 @@ const enMessages: Record<I18nKey, string> = {
   'tools.read_transcript': 'Transcript read',
   'tools.read_transcript_section': 'Transcript section',
   'tools.read_transcript_summary': 'Transcript summary',
+  'tools.read_external_enrichment': 'External context read',
   'tools.get_metadata': 'Content metadata',
   'tools.list_notes': 'Notes listing',
   'tools.read_note': 'Note read',

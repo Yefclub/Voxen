@@ -18,6 +18,7 @@ describe('toolFamily', () => {
     expect(toolFamily('read_lines')).toBe('read');
     expect(toolFamily('outline_transcript')).toBe('read');
     expect(toolFamily('verify_citations')).toBe('read');
+    expect(toolFamily('read_external_enrichment')).toBe('read');
   });
   it('mapeia brain e notas', () => {
     expect(toolFamily('brain_search')).toBe('brain');
@@ -44,6 +45,7 @@ describe('prettifyToolName / hasToolLabel', () => {
   it('hasToolLabel reconhece nomes conhecidos', () => {
     expect(hasToolLabel('search_transcripts')).toBe(true);
     expect(hasToolLabel('search_knowledge')).toBe(true);
+    expect(hasToolLabel('read_external_enrichment')).toBe(true);
     expect(hasToolLabel('mystery_tool')).toBe(false);
   });
   it('hasToolLabel reconhece as tools de ingestão de URL', () => {

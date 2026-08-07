@@ -1,6 +1,6 @@
 import { db } from './db';
 
-type BrainSearchDb = Pick<typeof db, 'brainNode'>;
+type BrainSearchDb = Pick<typeof db, 'brainNode' | 'transcriptEnrichment'>;
 
 export async function searchBrainNodes(
   userId: string,
@@ -8,7 +8,8 @@ export async function searchBrainNodes(
   limit: number,
   client: BrainSearchDb = db,
 ) {
-  return client.brainNode.findMany({
+  const take = Math.max(1, Math.min(120, limit * 4));
+  const candidates = await client.brainNode.findMany({
     where: {
       userId,
       status: 'ACTIVE',
@@ -19,7 +20,7 @@ export async function searchBrainNodes(
       ],
     },
     orderBy: { updatedAt: 'desc' },
-    take: limit,
+    take,
     select: {
       id: true,
       key: true,
@@ -34,4 +35,28 @@ export async function searchBrainNodes(
       updatedAt: true,
     },
   });
+  const enrichmentIds = candidates.flatMap((node) =>
+    node.sourceType === 'EXTERNAL_ENRICHMENT' && node.sourceId ? [node.sourceId] : [],
+  );
+  if (enrichmentIds.length === 0) return candidates.slice(0, limit);
+  const currentEnrichments = await client.transcriptEnrichment.findMany({
+    where: {
+      id: { in: enrichmentIds },
+      userId,
+      status: 'READY',
+      reviewState: 'ACCEPTED',
+      staleReason: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+      transcript: { status: 'ACTIVE' },
+    },
+    select: { id: true },
+  });
+  const currentIds = new Set(currentEnrichments.map((item) => item.id));
+  return candidates
+    .filter(
+      (node) =>
+        node.sourceType !== 'EXTERNAL_ENRICHMENT' ||
+        (node.sourceId !== null && currentIds.has(node.sourceId)),
+    )
+    .slice(0, limit);
 }

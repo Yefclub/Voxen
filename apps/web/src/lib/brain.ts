@@ -1,12 +1,6 @@
 import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
-import {
-  GRAPH_INDEX_HEARTBEAT_MS,
-  GRAPH_INDEX_LEASE_TTL_MS,
-  acquireGraphIndexLease,
-  releaseGraphIndexLease,
-  renewGraphIndexLease,
-} from './graph-index-coordinator';
+import { runWithBrainIndexLease, type BrainReindexGuard } from './brain-index-lease';
 import {
   buildNoteIndexes,
   noteBrainSelect,
@@ -14,7 +8,8 @@ import {
   type NoteBrainRecord,
 } from './brain-note-anchors';
 
-type BrainSourceType = 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL';
+type CoreBrainSourceType = 'TRANSCRIPT' | 'NOTE' | 'FOLDER' | 'JOB' | 'CHAT' | 'MANUAL';
+export type BrainSourceType = CoreBrainSourceType | 'EXTERNAL_ENRICHMENT';
 type BrainNodeType = 'CONTENT' | 'FOLDER' | 'ENTITY' | 'TOPIC' | 'CLAIM' | 'EVENT' | 'CLUSTER';
 type BrainEdgeKind =
   | 'BELONGS_TO'
@@ -59,70 +54,6 @@ export type BrainReindexOptions = {
   beforeEdgeWrite?: (edge: BrainEdgeWriteCheckpoint) => void | Promise<void>;
   assertLeaseOwnership?: BrainReindexGuard;
 };
-
-export type BrainReindexGuard = () => Promise<void>;
-
-class BrainIndexLeaseLostError extends Error {
-  constructor() {
-    super('Brain index lease lost');
-  }
-}
-
-async function runWithBrainIndexLease(
-  userId: string,
-  operation: (assertLeaseOwnership: BrainReindexGuard) => Promise<void>,
-): Promise<boolean> {
-  const owner = `web-direct:${crypto.randomUUID()}`;
-  try {
-    if (!(await acquireGraphIndexLease(userId, owner))) return false;
-  } catch {
-    return false;
-  }
-
-  let leaseLost = false;
-  let leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
-  const renewLease = async (): Promise<void> => {
-    if (leaseLost) throw new BrainIndexLeaseLostError();
-    try {
-      if (!(await renewGraphIndexLease(userId, owner))) {
-        leaseLost = true;
-        throw new BrainIndexLeaseLostError();
-      }
-      leaseExpiresAt = Date.now() + GRAPH_INDEX_LEASE_TTL_MS;
-    } catch (err) {
-      if (err instanceof BrainIndexLeaseLostError) throw err;
-      if (Date.now() >= leaseExpiresAt) {
-        leaseLost = true;
-        throw new BrainIndexLeaseLostError();
-      }
-    }
-  };
-  const assertLeaseOwnership = async (): Promise<void> => {
-    if (leaseLost || Date.now() >= leaseExpiresAt) {
-      leaseLost = true;
-      throw new BrainIndexLeaseLostError();
-    }
-    if (Date.now() >= leaseExpiresAt - GRAPH_INDEX_HEARTBEAT_MS) {
-      await renewLease();
-    }
-  };
-  const heartbeat = setInterval(() => {
-    void renewLease().catch(() => {
-      // O guard entre fases interrompe a materialização e mantém o marker ausente.
-    });
-  }, GRAPH_INDEX_HEARTBEAT_MS);
-  try {
-    await assertLeaseOwnership();
-    await operation(assertLeaseOwnership);
-    return true;
-  } catch (err) {
-    if (err instanceof BrainIndexLeaseLostError) return false;
-    throw err;
-  } finally {
-    clearInterval(heartbeat);
-    await releaseGraphIndexLease(userId, owner).catch(() => false);
-  }
-}
 
 type BrainEdgeInput = {
   userId: string;
@@ -179,7 +110,7 @@ type SemanticProfile = {
 export const BRAIN_INDEX_VERSION = 3;
 export const BRAIN_TOPIC_INDEX_VERSION = 1;
 
-const DESCRIPTION_LIMIT = 800;
+export const DESCRIPTION_LIMIT = 800;
 const EVIDENCE_LIMIT = 600;
 const TOPIC_LIMIT = 10;
 const ENTITY_LIMIT = 8;
@@ -308,6 +239,23 @@ export async function deleteOrphanedBrainSourceNodes(
           AND NOT EXISTS (
             SELECT 1 FROM "LibraryFolder" folder
             WHERE folder.id = n."sourceId" AND folder."userId" = n."userId"
+          )
+        )
+        OR (
+          n."sourceType" = 'EXTERNAL_ENRICHMENT'::"BrainSourceType"
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "TranscriptEnrichment" enrichment
+            JOIN "Transcript" enrichment_parent
+              ON enrichment_parent.id = enrichment."transcriptId"
+             AND enrichment_parent."userId" = enrichment."userId"
+            WHERE enrichment.id = n."sourceId"
+              AND enrichment."userId" = n."userId"
+              AND enrichment_parent.status = 'ACTIVE'::"ContentStatus"
+              AND enrichment.status = 'READY'::"TranscriptEnrichmentStatus"
+              AND enrichment."reviewState" = 'ACCEPTED'::"TranscriptEnrichmentReviewState"
+              AND enrichment."staleReason" IS NULL
+              AND (enrichment."expiresAt" IS NULL OR enrichment."expiresAt" >= NOW())
           )
         )
       )
@@ -747,7 +695,7 @@ async function removeSourceEvidence(
  * Limpa só evidências/arestas recriáveis por heurística no reprocesso do Brain.
  * Preserva llm-grounded (custa crédito) e manual/wikilink.
  */
-async function removeRefreshableSourceEvidence(
+export async function removeRefreshableSourceEvidence(
   userId: string,
   sourceType: BrainSourceType,
   sourceId: string,
@@ -798,7 +746,7 @@ async function removeRefreshableSourceEvidence(
   }
 }
 
-async function deleteAutomaticContentEdgesForSource(
+export async function deleteAutomaticContentEdgesForSource(
   userId: string,
   sourceType: BrainSourceType,
   sourceId: string,
@@ -1330,7 +1278,7 @@ function canonicalEdge(left: string, right: string): [string, string] {
   return left.localeCompare(right) <= 0 ? [left, right] : [right, left];
 }
 
-async function upsertBrainNode(input: BrainNodeInput) {
+export async function upsertBrainNode(input: BrainNodeInput) {
   const metadataMode = input.metadataMode ?? 'replace';
   const metadata = input.metadata ?? {};
   const upsertArgs = {
@@ -1409,7 +1357,7 @@ async function finalizeBrainNodeIndex(
   }
 }
 
-async function upsertBrainEdge(input: BrainEdgeInput) {
+export async function upsertBrainEdge(input: BrainEdgeInput) {
   // Até 2 tentativas: corrida com orphan cleanup / reindex paralelo pode apagar
   // nó ou aresta entre o upsert e o BrainSource.
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -1489,7 +1437,7 @@ async function upsertBrainEdge(input: BrainEdgeInput) {
   throw new Error(`Brain edge materialization failed: ${input.fromNodeId} -> ${input.toNodeId}`);
 }
 
-async function addBrainSource(input: {
+export async function addBrainSource(input: {
   userId: string;
   nodeId?: string;
   edgeId?: string;
@@ -1910,7 +1858,7 @@ function topicExcerpt(text: string, slug: string): string | null {
   return truncate(text, EVIDENCE_LIMIT);
 }
 
-function truncate(value: string | null | undefined, limit: number): string | null {
+export function truncate(value: string | null | undefined, limit: number): string | null {
   const normalized = value?.replace(/\s+/g, ' ').trim();
   if (!normalized) return null;
   return normalized.length > limit ? `${normalized.slice(0, limit - 3)}...` : normalized;

@@ -323,7 +323,11 @@ describe('graph index Redis coordinator', () => {
     expect(brainSource).toContain(
       'catch (err) {\n      await assertLeaseOwnership?.();\n      // Reindex de um item',
     );
-    expect(brainSource).toContain(
+    const brainLeaseSource = readFileSync(
+      new URL('../src/lib/brain-index-lease.ts', import.meta.url),
+      'utf8',
+    ).replaceAll('\r\n', '\n');
+    expect(brainLeaseSource).toContain(
       'if (!(await acquireGraphIndexLease(userId, owner))) return false;',
     );
   });

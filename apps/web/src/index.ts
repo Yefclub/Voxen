@@ -30,6 +30,7 @@ import { shareTargetRoutes } from './routes/share-target';
 import { chatRoutes } from './routes/chat';
 import { extensionMetaRoutes } from './routes/extension-meta';
 import { researchArtifactsRoutes } from './routes/research-artifacts';
+import { transcriptEnrichmentRoutes } from './routes/transcript-enrichments';
 import { getRedisPublisher } from './lib/redis';
 import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
@@ -224,6 +225,7 @@ app.route('/api/jobs', jobsRoutes);
 
 // Transcripts endpoints (list + canonical Markdown from selected storage)
 app.route('/api/transcripts', transcriptsRoutes);
+app.route('/api/transcripts', transcriptEnrichmentRoutes);
 
 // Onboarding (admin first-run) + avatar upload
 app.route('/api/onboarding', onboardingRoutes);

@@ -1,4 +1,3 @@
-// ============================================================================
 // retrieval.ts — Harness de recuperação progressiva (FTS + semântica opt-in)
 // ============================================================================
 // Lógica compartilhada entre o agente in-app (lib/chat/runtime.ts) e o servidor
@@ -23,6 +22,7 @@ import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import { fuseHybridScores } from './hybrid-search';
 import { storageReadText } from './storage';
+import { ftsSearchTranscriptEnrichments } from './retrieval-enrichments';
 
 // Caps de saída — nenhuma tool devolve o documento inteiro sem intenção explícita.
 export const MAX_READ_LINES = 200;
@@ -356,7 +356,7 @@ export type FtsResult = {
 };
 
 export type KnowledgeSearchResult = FtsResult & {
-  sourceType: 'transcript' | 'note';
+  sourceType: 'transcript' | 'note' | 'external_enrichment';
   href: string;
 };
 
@@ -526,9 +526,10 @@ export async function searchKnowledgeBase(
   limit = 8,
 ): Promise<KnowledgeSearchResult[]> {
   const take = clampInt(limit, 8, 1, 25);
-  const [transcripts, notes] = await Promise.all([
+  const [transcripts, notes, enrichments] = await Promise.all([
     ftsSearchTranscripts(userId, query, take),
     ftsSearchNotes(userId, query, take),
+    ftsSearchTranscriptEnrichments(userId, query, take),
   ]);
   return mergeKnowledgeResults(
     [
@@ -538,6 +539,7 @@ export async function searchKnowledgeBase(
         href: `/transcricoes/${item.id}`,
       })),
       ...notes,
+      ...enrichments,
     ],
     take,
   );

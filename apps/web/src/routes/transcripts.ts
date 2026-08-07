@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
 import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '../lib/brain';
+import { syncTranscriptEnrichmentBrainLifecycle } from '../lib/brain-enrichments';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { notifyNewJob, publishJobEvent } from '../lib/job-events';
@@ -1089,6 +1090,7 @@ transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
     select: TRANSCRIPT_LIST_SELECT,
   });
   await reindexTranscriptBrain(userId, id);
+  await syncTranscriptEnrichmentBrainLifecycle(userId, id, status);
   await invalidateGraphCache(userId);
   return c.json({ transcript });
 });

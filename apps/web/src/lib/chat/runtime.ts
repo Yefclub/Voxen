@@ -5,6 +5,7 @@ import type { Prisma } from '../../../prisma-generated/client';
 import { createAutoJobForUser } from '../../routes/jobs';
 import { getTranscriptBrief, waitForTranscriptJob } from '../agent-content';
 import { reindexNotesBrain } from '../brain';
+import { searchBrainNodes } from '../brain-search';
 import { db } from '../db';
 import { invalidateGraphCache } from '../graph-cache';
 import {
@@ -39,6 +40,7 @@ import {
   resolveAppendParent,
 } from './message-versions';
 import { parseMessageAttachments } from './message-attachments';
+import { createReadExternalEnrichmentTool } from './external-enrichment-tool';
 import { parseTemporalBounds } from './temporal-bounds';
 import {
   HITL_ACTION_CREATE_NOTE,
@@ -93,7 +95,9 @@ const AGENT_INSTRUCTIONS = [
   '   clara, use os últimos 7 dias a partir de now_utc. Depois outline/read dos itens',
   '   relevantes e resuma com citações — NÃO diga que só busca por termo.',
   '2. Para tópicos/termos/entidades, busque primeiro com search_knowledge — ele consulta',
-  '   toda a Base de conhecimento (notas e transcrições) e retorna trechos curtos + fonte.',
+  '   toda a Base de conhecimento (notas, transcrições e contexto externo revisado) e retorna',
+  '   trechos curtos + fonte. Quando sourceType for external_enrichment, abra o item com',
+  '   read_external_enrichment para recuperar o conteúdo e suas citações URL.',
   '   Use search_transcripts, search_notes ou brain_search apenas para aprofundar uma fonte.',
   '3. Antes de abrir conteúdo, veja a ESTRUTURA com outline_transcript (seções, linhas, tempos).',
   '4. Leia só trechos específicos: read_lines (intervalo de linhas), read_section (seção),',
@@ -586,9 +590,10 @@ export function buildTools(
     }),
     search_knowledge: tool({
       description:
-        'Busca na Base de conhecimento inteira (notas curadas e transcrições). Use como ' +
-        'primeiro passo para perguntas factuais ou temáticas. Retorna trechos curtos, tipo da ' +
-        'fonte e link de citação; notas só recebem prioridade quando sua relevância é comparável.',
+        'Busca na Base de conhecimento inteira (notas curadas, transcrições e contexto externo ' +
+        'revisado e aceito). Use como primeiro passo para perguntas factuais ou temáticas. ' +
+        'Retorna trechos curtos, tipo da fonte e link de citação; abra resultados ' +
+        'external_enrichment com read_external_enrichment antes de usá-los.',
       inputSchema: z.object({
         query: z.string().min(1).max(300),
         limit: z.number().int().min(1).max(25).optional(),
@@ -600,6 +605,7 @@ export function buildTools(
         };
       },
     }),
+    read_external_enrichment: createReadExternalEnrichmentTool(userId),
     web_search: tool({
       description:
         'Pesquisa a web atual usando o modelo configurado e devolve síntese com citações URL. ' +
@@ -948,28 +954,7 @@ export function buildTools(
       description: 'Busca entidades, tópicos e evidências no Brain do workspace atual.',
       inputSchema: z.object({ query: z.string().min(1).max(300) }),
       execute: async ({ query }) => {
-        const rows = await db.brainNode.findMany({
-          where: {
-            userId,
-            status: 'ACTIVE',
-            OR: [
-              { label: { contains: query, mode: 'insensitive' } },
-              { description: { contains: query, mode: 'insensitive' } },
-            ],
-          },
-          orderBy: { updatedAt: 'desc' },
-          take: 12,
-          select: {
-            id: true,
-            key: true,
-            type: true,
-            label: true,
-            description: true,
-            sourceType: true,
-            sourceId: true,
-          },
-        });
-        return rows;
+        return searchBrainNodes(userId, query, 12);
       },
     }),
     propose_create_note: tool({

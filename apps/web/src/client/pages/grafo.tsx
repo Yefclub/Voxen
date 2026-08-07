@@ -47,7 +47,6 @@ import {
   graphDescriptionText,
   edgePath,
   filterGraphData,
-  nodePath,
   resolveGraphPalette,
   resolveGraphViewBox,
   resolveNodeRadiusBounds,
@@ -62,6 +61,7 @@ import {
   type SigmaGraphModel,
   type SigmaNodeAttributes,
 } from '../lib/graph-model';
+import { nodePath } from '../lib/graph-node-path';
 import { graphIndexState, isGraphIndexDeferred } from '../lib/graph-loading';
 import {
   DEFAULT_GRAPH_MODE,

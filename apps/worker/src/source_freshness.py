@@ -59,3 +59,34 @@ async def mark_reviewable_derivatives_stale(
         user_id,
         transcript_id,
     )
+    await conn.execute(
+        """
+        UPDATE "TranscriptEnrichment"
+        SET "staleReason" = 'source-version-changed',
+            "updatedAt" = NOW()
+        WHERE "userId" = $1
+          AND "transcriptId" = $2
+          AND "staleReason" IS NULL
+          AND ("sourceVersion" <> $3 OR "sourceChecksum" IS DISTINCT FROM $4)
+        """,
+        user_id,
+        transcript_id,
+        source_version,
+        source_checksum,
+    )
+    await conn.execute(
+        """
+        DELETE FROM "BrainNode"
+        WHERE "userId" = $1
+          AND "sourceType" = 'EXTERNAL_ENRICHMENT'::"BrainSourceType"
+          AND "sourceId" IN (
+            SELECT id
+            FROM "TranscriptEnrichment"
+            WHERE "userId" = $1
+              AND "transcriptId" = $2
+              AND "staleReason" IS NOT NULL
+          )
+        """,
+        user_id,
+        transcript_id,
+    )

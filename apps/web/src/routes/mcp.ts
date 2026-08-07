@@ -33,6 +33,11 @@ import {
   searchKnowledgeBase,
   verifyClaimAgainstMd,
 } from '../lib/retrieval';
+import { bounded, fail, ok, READ_ONLY, toMcpContentUrl } from './mcp-tool-helpers';
+import {
+  registerTranscriptEnrichmentTools,
+  registerTranscriptEnrichmentWriteTools,
+} from './mcp-transcript-enrichment-tools';
 import { registerWriteTools } from './mcp-write-tools';
 
 export const mcpRoutes = new Hono();
@@ -73,6 +78,10 @@ const VOXEN_INSTRUCTIONS = [
   '- voxen_request_transcription(url) enfileira um job; acompanhe com',
   '  voxen_get_job_status(job_id) até DONE. Use o brief retornado (resumo, tags e relacionados)',
   '  e só então outline/trechos específicos; documento completo continua sendo último recurso.',
+  '- Contexto adicional de pesquisa é externo e revisável: liste/leia com',
+  '  voxen_list_transcript_enrichments / voxen_read_transcript_enrichment. Com WRITE,',
+  '  solicite pesquisa e aceite somente sugestões citadas e atuais; nunca trate SUGGESTED',
+  '  como evidência canônica nem misture esse conteúdo ao resumo da transcrição.',
   '',
   'Regras de resposta: sintetize, compare fontes, explicite contradições e diferencie evidência',
   'de inferência. Use href para tornar a citação da nota navegável quando o cliente suportar links.',
@@ -85,8 +94,6 @@ const VOXEN_INSTRUCTIONS = [
 // próprio usuário). Os defaults do MCP assumem o pior caso, então declaramos
 // explicitamente pra o cliente não tratar como perigoso. As write tools
 // (voxen_create_note/update_note/request_transcription) têm annotations próprias.
-const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
-
 // ----------------------------------------------------------------------------
 // HTTP entrypoint
 // ----------------------------------------------------------------------------
@@ -146,10 +153,6 @@ function resolveMcpPublicOrigin(c: Context): string {
   return new URL(c.req.url).origin;
 }
 
-function toMcpContentUrl(publicOrigin: string, href: string): string {
-  return new URL(href, publicOrigin).toString();
-}
-
 // Bearer token -> identidade imutável do dono. O token legado global não é
 // aceito: o admin o revoga explicitamente pela tela de integrações.
 async function authenticateMcp(c: Context): Promise<{ userId: string; scopes: McpScope[] } | null> {
@@ -203,9 +206,13 @@ function buildVoxenMcpServer(
   if (scopes.includes('READ')) {
     registerTranscriptTools(server, userId, publicOrigin);
     registerNoteTools(server, userId, publicOrigin);
+    registerTranscriptEnrichmentTools(server, userId, publicOrigin);
     registerBrainTools(server, userId);
   }
-  if (scopes.includes('WRITE')) registerWriteTools(server, userId);
+  if (scopes.includes('WRITE')) {
+    registerWriteTools(server, userId);
+    registerTranscriptEnrichmentWriteTools(server, userId);
+  }
   return server;
 }
 
@@ -215,10 +222,10 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
     {
       title: 'Buscar na Base de conhecimento',
       description:
-        'Busca full-text na Base de conhecimento inteira do usuário: notas curadas e ' +
-        'transcrições. Use como primeiro passo para perguntas temáticas ou factuais. Retorna ' +
-        'trechos, tipo da fonte e link de citação; uma nota só recebe preferência quando sua ' +
-        'relevância é comparável à de uma transcrição.',
+        'Busca full-text na Base de conhecimento inteira do usuário: notas curadas, ' +
+        'transcrições e contexto externo revisado e aceito. Use como primeiro passo para ' +
+        'perguntas temáticas ou factuais. Retorna trechos, tipo da fonte e link de citação; ' +
+        'uma nota só recebe preferência quando sua relevância é comparável à de uma transcrição.',
       inputSchema: {
         query: z.string().min(1).describe('Termos de busca em português (palavras-chave do tema).'),
         limit: z.number().int().min(1).max(25).optional().describe('Máx. resultados (padrão 8).'),
@@ -227,7 +234,7 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
         results: z.array(
           z.object({
             id: z.string(),
-            sourceType: z.enum(['transcript', 'note']),
+            sourceType: z.enum(['transcript', 'note', 'external_enrichment']),
             title: z.string(),
             snippet: z.string(),
             rank: z.number(),
@@ -1289,28 +1296,6 @@ const BRAIN_NODE_SELECT = {
   metadata: true,
   updatedAt: true,
 } as const;
-
-// Resultado de sucesso: bloco de texto (JSON serializado, compat) + structuredContent.
-function ok(data: Record<string, unknown>): {
-  content: { type: 'text'; text: string }[];
-  structuredContent: Record<string, unknown>;
-} {
-  return {
-    content: [{ type: 'text', text: JSON.stringify(data) }],
-    structuredContent: data,
-  };
-}
-
-// Erro de tool (não de protocolo): isError=true para o modelo ver e se auto-corrigir.
-function fail(message: string): { content: { type: 'text'; text: string }[]; isError: true } {
-  return { content: [{ type: 'text', text: message }], isError: true };
-}
-
-function bounded(value: number | undefined, fallback: number, min: number, max: number): number {
-  const parsed = Number(value ?? fallback);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(min, Math.min(Math.trunc(parsed), max));
-}
 
 function decodeCursor(cursor: string | undefined): number {
   if (!cursor) return 0;

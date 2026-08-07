@@ -28,7 +28,7 @@ import { Badge } from '../components/ui/badge';
 import { FetchError } from '../components/ui/fetch-error';
 import { Skeleton } from '../components/ui/skeleton';
 import { useFetch } from '../lib/hooks';
-import { apiPost, ApiError } from '../lib/api';
+import { apiDelete, apiPatch, apiPost, ApiError } from '../lib/api';
 import { formatDateTime, formatDuration, formatUsd } from '../lib/format';
 import { PageShell } from '../components/ui/page-shell';
 import { TranscriptViewer } from '../components/ui/transcript-viewer';
@@ -54,6 +54,10 @@ import {
   type LinkedNoteAnchorDraft,
   type LinkedNotesResponse,
 } from '../components/library/linked-notes-card';
+import {
+  AdditionalContextBlock,
+  type TranscriptEnrichmentsResponse,
+} from '../components/library/additional-context-block';
 import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
 
 interface TranscriptDetail {
@@ -133,6 +137,13 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   } = useFetch<LinkedNotesResponse>(
     id && data?.transcript.status !== 'TRASH' ? `/api/transcripts/${id}/notes` : null,
   );
+  const {
+    data: enrichmentsData,
+    loading: enrichmentsLoading,
+    refresh: refreshEnrichments,
+  } = useFetch<TranscriptEnrichmentsResponse>(
+    id && data?.transcript.status !== 'TRASH' ? `/api/transcripts/${id}/enrichments` : null,
+  );
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
   const [generating, setGenerating] = useState(false);
@@ -154,6 +165,57 @@ export function TranscricaoDetalhePage(): React.ReactElement {
     const timer = window.setInterval(() => void refresh(), 7_500);
     return () => window.clearInterval(timer);
   }, [data?.transcript.sourceRefreshStatus, refresh]);
+
+  useEffect(() => {
+    const active = enrichmentsData?.enrichments.some((item) =>
+      ['PENDING', 'RUNNING', 'RETRY'].includes(item.status),
+    );
+    if (!active) return;
+    const timer = window.setInterval(() => void refreshEnrichments(), 5_000);
+    return () => window.clearInterval(timer);
+  }, [enrichmentsData?.enrichments, refreshEnrichments]);
+
+  async function queueResearch(): Promise<void> {
+    if (!id) return;
+    try {
+      await apiPost(`/api/transcripts/${id}/enrichments`, {});
+      toast.success(translate('library.additionalContextQueued'));
+      await refreshEnrichments();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : translate('library.additionalContextError'),
+      );
+    }
+  }
+
+  async function updateEnrichment(
+    enrichmentId: string,
+    body: Record<string, unknown>,
+  ): Promise<void> {
+    if (!id) return;
+    try {
+      await apiPatch(`/api/transcripts/${id}/enrichments/${enrichmentId}`, body);
+      await refreshEnrichments();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : translate('library.additionalContextError'),
+      );
+      throw error;
+    }
+  }
+
+  async function deleteEnrichment(enrichmentId: string): Promise<void> {
+    if (!id) return;
+    try {
+      await apiDelete(`/api/transcripts/${id}/enrichments/${enrichmentId}`);
+      await refreshEnrichments();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : translate('library.additionalContextError'),
+      );
+      throw error;
+    }
+  }
 
   async function refreshSource(): Promise<void> {
     if (!id || refreshingSource) return;
@@ -551,6 +613,16 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               summary={t.summaryMd}
               generating={generating}
               onGenerate={() => void generateSummary(false)}
+              t={translate}
+            />
+            <AdditionalContextBlock
+              enrichments={enrichmentsData?.enrichments ?? []}
+              researchMode={enrichmentsData?.researchMode ?? 'OFF'}
+              loading={enrichmentsLoading}
+              locale={locale}
+              onQueue={() => void queueResearch()}
+              onUpdate={updateEnrichment}
+              onDelete={deleteEnrichment}
               t={translate}
             />
             {renderMode === 'markdown' ? (

@@ -22,7 +22,7 @@ async def test_marks_only_outdated_valid_anchors_for_the_owner() -> None:
 
     await mark_reviewable_derivatives_stale(conn, "user-1", "transcript-1", 4, "checksum-4")
 
-    assert len(conn.calls) == 3
+    assert len(conn.calls) == 5
     anchor_query, anchor_args = conn.calls[1]
     assert 'UPDATE "NoteTranscriptAnchor"' in anchor_query
     assert '"userId" = $1' in anchor_query
@@ -40,6 +40,16 @@ async def test_marks_only_outdated_valid_anchors_for_the_owner() -> None:
     assert '"transcriptId" = $2' in evidence_query
     assert evidence_args == ("user-1", "transcript-1")
 
+    enrichment_query, enrichment_args = conn.calls[3]
+    assert 'UPDATE "TranscriptEnrichment"' in enrichment_query
+    assert "\"staleReason\" = 'source-version-changed'" in enrichment_query
+    assert enrichment_args == ("user-1", "transcript-1", 4, "checksum-4")
+
+    enrichment_brain_query, enrichment_brain_args = conn.calls[4]
+    assert 'DELETE FROM "BrainNode"' in enrichment_brain_query
+    assert "'EXTERNAL_ENRICHMENT'" in enrichment_brain_query
+    assert enrichment_brain_args == ("user-1", "transcript-1")
+
 
 @pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -53,6 +63,8 @@ async def test_stale_anchor_withdraws_only_its_brain_evidence() -> None:
     note_id = f"anchor-note-{suffix}"
     anchor_id = f"anchor-{suffix}"
     brain_node_id = f"anchor-node-{suffix}"
+    enrichment_id = f"enrichment-{suffix}"
+    enrichment_brain_node_id = f"enrichment-node-{suffix}"
     conn = await asyncpg.connect(os.environ["DATABASE_URL"])
     try:
         await conn.execute(
@@ -138,6 +150,39 @@ async def test_stale_anchor_withdraws_only_its_brain_evidence() -> None:
             f"transcript:{transcript_id}",
             f"note-anchor:{anchor_id}",
         )
+        await conn.execute(
+            """
+            INSERT INTO "TranscriptEnrichment" (
+              id, "userId", "transcriptId", "runKey", trigger, status, "reviewState",
+              title, content, citations, queries, "sourceVersion", "sourceChecksum",
+              "createdAt", "updatedAt"
+            ) VALUES (
+              $1, $2, $3, $4, 'MANUAL', 'READY', 'ACCEPTED',
+              'External context', 'Cited external claim',
+              '[{"url":"https://example.test/source","title":"Source","excerpt":"Evidence"}]'::jsonb,
+              '["query"]'::jsonb, 1, 'checksum-1', NOW(), NOW()
+            )
+            """,
+            enrichment_id,
+            user_id,
+            transcript_id,
+            f"run-{suffix}",
+        )
+        await conn.execute(
+            """
+            INSERT INTO "BrainNode" (
+              id, "userId", key, type, label, status, metadata,
+              "sourceType", "sourceId", "createdAt", "updatedAt"
+            ) VALUES (
+              $1, $2, $3, 'CONTENT', 'External context', 'ACTIVE', '{}'::jsonb,
+              'EXTERNAL_ENRICHMENT', $4, NOW(), NOW()
+            )
+            """,
+            enrichment_brain_node_id,
+            user_id,
+            f"EXTERNAL_ENRICHMENT:{enrichment_id}",
+            enrichment_id,
+        )
 
         await mark_reviewable_derivatives_stale(conn, user_id, transcript_id, 2, "checksum-2")
 
@@ -149,8 +194,16 @@ async def test_stale_anchor_withdraws_only_its_brain_evidence() -> None:
             user_id,
             f"note-anchor:{anchor_id}",
         )
+        enrichment_stale_reason = await conn.fetchval(
+            'SELECT "staleReason" FROM "TranscriptEnrichment" WHERE id = $1', enrichment_id
+        )
+        enrichment_brain_count = await conn.fetchval(
+            'SELECT COUNT(*) FROM "BrainNode" WHERE id = $1', enrichment_brain_node_id
+        )
         assert status == "STALE"
         assert evidence_count == 0
+        assert enrichment_stale_reason == "source-version-changed"
+        assert enrichment_brain_count == 0
         assert await conn.fetchval('SELECT COUNT(*) FROM "Note" WHERE id = $1', note_id) == 1
         assert (
             await conn.fetchval('SELECT COUNT(*) FROM "Transcript" WHERE id = $1', transcript_id)
