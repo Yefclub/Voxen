@@ -1,5 +1,47 @@
 [
   {
+    "version": "0.14.3-dev.1786076787",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Protected version automation works with read-only defaults",
+    "body": "GitHub Actions keeps read-only permissions by default while the repository\npolicy now permits the version workflow to create its protected pull request.",
+    "pr": 647,
+    "author": "Kalyel",
+    "date": "2026-08-07T01:26:13-03:00",
+    "translations": {
+      "en": {
+        "title": "Protected version automation works with read-only defaults",
+        "body": "GitHub Actions keeps read-only permissions by default while the repository\npolicy now permits the version workflow to create its protected pull request."
+      },
+      "pt-BR": {
+        "title": "Automação protegida de versão funciona com padrões somente leitura",
+        "body": "O GitHub Actions mantém permissões somente leitura por padrão, enquanto a\npolítica do repositório permite que o fluxo de versão crie seu pull request\nprotegido."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/647"
+  },
+  {
+    "version": "0.14.3-dev.1786076787",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Repository topic policy converges reliably",
+    "body": "The repository policy checker now compares GitHub topics as a set, preventing\nfalse drift reports when the API returns the same topics in insertion order.",
+    "pr": 645,
+    "author": "Kalyel",
+    "date": "2026-08-07T01:16:25-03:00",
+    "translations": {
+      "en": {
+        "title": "Repository topic policy converges reliably",
+        "body": "The repository policy checker now compares GitHub topics as a set, preventing\nfalse drift reports when the API returns the same topics in insertion order."
+      },
+      "pt-BR": {
+        "title": "Política de tópicos do repositório converge corretamente",
+        "body": "O verificador de políticas do repositório agora compara os tópicos do GitHub\ncomo um conjunto, evitando falsos desvios quando a API retorna os mesmos\ntópicos na ordem de inserção."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/645"
+  },
+  {
     "version": "0.14.3-dev.1786075127",
     "channel": "dev",
     "type": "security",
