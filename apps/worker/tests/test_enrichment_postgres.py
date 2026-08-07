@@ -17,6 +17,13 @@ pytestmark = pytest.mark.skipif(
     reason="PostgreSQL integration test requires DATABASE_URL",
 )
 
+_TEST_MASTER_KEY = b"0123456789abcdef0123456789abcdef"
+
+
+@pytest.fixture(autouse=True)
+def research_master_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(voxen_settings, "_master_key_cache", _TEST_MASTER_KEY)
+
 
 @pytest.fixture
 async def postgres() -> AsyncIterator[asyncpg.Connection]:
@@ -62,7 +69,7 @@ async def _insert_user(conn: asyncpg.Connection, user_id: str) -> None:
 
 
 async def _set_research_policy(conn: asyncpg.Connection, mode: str) -> None:
-    encrypted = encrypt(mode, voxen_settings.get_master_key())
+    encrypted = encrypt(mode, _TEST_MASTER_KEY)
     await conn.execute(
         """
         DELETE FROM "Setting"
