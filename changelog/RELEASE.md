@@ -1,85 +1,53 @@
 ---
 tipo: feat
-titulo_en: Voxen 0.14.3 — open-source launch readiness
-titulo_pt_br: Voxen 0.14.3 — preparação para lançamento open-source
+titulo_en: Voxen 0.14.4 — clearer beta expectations
+titulo_pt_br: Voxen 0.14.4 — expectativas mais claras para o beta
 ---
 
-## Focused workspace and evidence flow
+## Beta status made explicit
 
-The focused interface now behaves as a true workspace: its collapsed rail is
-centered, the sources surface opens as part of the background workspace, and
-the conversation contracts without the floating header covering content. Shell
-spacing, mobile chat clearance, and the compact scrollbar controls were refined
-as well. Artifacts are deliberately paused in navigation while their next
-product iteration is prepared.
+The public README now identifies Voxen as a beta under active validation. It
+sets clear expectations that bugs, integration regressions, rough edges, and
+breaking changes can still occur, and recommends backing up instance data and
+reviewing release notes before upgrades.
 
-## Clearer personal and administrative boundaries
+## Validated workflows and community feedback
 
-Personal profile, platform-account, and MCP pages now share the same page
-hierarchy as the rest of the product. Instance configuration remains visibly
-separate for administrators, with OIDC SSO support and stronger controls for
-accounts, roles, and user isolation.
+The project now documents the workflows already used by the maintainer for
+supported YouTube and TikTok links, selected public web pages, and especially
+posts from X. It also explains the practical goal of consolidating useful links
+from social feeds, bookmarks, and personal notes into one searchable knowledge
+library. Community members are invited to share experience and product ideas
+through GitHub Discussions or reproducible issues without exposing private
+data, credentials, or unredacted logs.
 
-## Library retrieval informed by the knowledge graph
+## Operational impact
 
-Transcript search is easier to reach and can use related concepts already
-grounded in the graph in addition to traditional text fields. The additional
-signal has controlled weight, skips short queries, and remains limited to the
-current user's knowledge base.
-
-## Trustworthy chat and release information
-
-Chat reasoning renders Markdown using the same sanitization as responses. The
-What's New feed is now bound to the environment that is actually running:
-development and production histories cannot be mixed through a URL parameter.
-New entries can carry curated English and Brazilian Portuguese text, while
-legacy entries continue to fall back safely.
-
-## Easier self-hosted deployment
-
-The Easypanel guide now documents the supported single-image topology: one
-combined Voxen App runs the web/API, worker, and integrated chat runtime, while
-PostgreSQL, Redis, and S3-compatible storage remain persistent services. The
-residential proxy agent is explicitly optional for VPS media extraction.
+This release changes public documentation and version metadata only. It does
+not alter application runtime behavior, database schemas, deployment topology,
+or configuration requirements.
 
 <!-- pt-BR -->
 
-## Espaço focado e fluxo de evidências
+## Status beta explícito
 
-A interface focada agora se comporta como um espaço de trabalho: sua barra
-recolhida fica centralizada, o painel de fontes abre como parte do plano de
-fundo e a conversa se retrai sem que o cabeçalho flutuante cubra o conteúdo. O
-espaçamento da estrutura, a área livre do chat no celular e os controles
-compactos da barra de rolagem também foram refinados. Artefatos foram
-intencionalmente pausados na navegação enquanto seu próximo ciclo de produto é
-preparado.
+O README público agora identifica a Voxen como um beta em validação ativa. Ele
+deixa claro que ainda podem ocorrer bugs, regressões de integração, pontos de
+experiência a amadurecer e mudanças incompatíveis, além de recomendar backup
+dos dados da instância e leitura das notas antes de atualizar.
 
-## Limites mais claros entre conta e administração
+## Fluxos validados e participação da comunidade
 
-As páginas de perfil, contas de plataforma e MCP agora compartilham a mesma
-hierarquia das demais áreas do produto. A configuração da instância permanece
-visivelmente separada para administradores, com suporte a SSO OIDC e controles
-mais fortes de contas, papéis e isolamento de usuários.
+O projeto agora documenta os fluxos já utilizados pelo mantenedor com links
+suportados do YouTube e TikTok, algumas páginas públicas e principalmente posts
+do X. Também explica o objetivo prático de reunir em uma biblioteca pesquisável
+os links úteis que antes ficavam espalhados entre redes sociais, favoritos e
+anotações pessoais. A comunidade é convidada a compartilhar experiências e
+ideias de produto pelas Discussões do GitHub ou por issues reproduzíveis, sem
+expor dados privados, credenciais ou logs sem redação.
 
-## Recuperação da biblioteca informada pelo grafo
+## Impacto operacional
 
-A busca de transcrições ficou mais fácil de alcançar e pode usar conceitos
-relacionados já fundamentados no grafo, além dos campos textuais tradicionais.
-O sinal adicional tem peso controlado, ignora buscas curtas e continua limitado
-à base de conhecimento do usuário atual.
-
-## Chat e informações de release confiáveis
-
-O raciocínio do chat renderiza Markdown com a mesma sanitização das respostas.
-O feed de Novidades agora está ligado ao ambiente que realmente está em
-execução: históricos de desenvolvimento e produção não podem ser misturados por
-um parâmetro de URL. Novas entradas podem trazer textos curados em inglês e
-português do Brasil, enquanto entradas legadas continuam com fallback seguro.
-
-## Implantação self-hosted mais simples
-
-O guia do Easypanel agora documenta a topologia suportada de imagem única: um
-App Voxen combinado executa web/API, worker e runtime de chat integrado,
-enquanto PostgreSQL, Redis e armazenamento compatível com S3 continuam como
-serviços persistentes. O agente de proxy residencial é explicitamente opcional
-para extração de mídia em VPS.
+Esta release altera somente a documentação pública e os metadados de versão.
+Não há mudanças no comportamento da aplicação, schema do banco de dados,
+topologia de implantação ou requisitos de configuração.
