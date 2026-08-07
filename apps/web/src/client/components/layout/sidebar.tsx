@@ -44,7 +44,7 @@ import { NotesTree } from '../notes/notes-tree';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { useInterfaceMode } from '../../lib/interface-mode-provider';
 import { toast } from '../../lib/toast';
-
+import { SidebarReleaseUpdateButton } from './sidebar-release-update';
 export interface NavItem {
   to: string;
   labelKey: I18nKey;
@@ -174,8 +174,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
   const { interfaceMode } = useInterfaceMode();
   const focusInterface = interfaceMode === 'focus';
 
-  // A deixa dos ícones da nav é um contador, não um booleano de montagem: só
-  // uma MUDANÇA de sinal dispara. Assim o primeiro carregamento não pontua
+  // A deixa dos ícones da nav é um contador: só uma MUDANÇA de sinal dispara.
   // (aí quem pontua é o cabeçalho da página), a troca de estado pontua uma
   // única vez, e o painel que está saindo de cena — que o `AnimatePresence`
   // rerenderiza com as props congeladas da última vez em que esteve presente —
@@ -225,6 +224,7 @@ export function Sidebar({ user }: { user: MeUser }): React.ReactElement | null {
             <SidebarHeader focusInterface={focusInterface} onCollapse={() => setCollapsed(true)} />
             <SidebarModeBody user={user} hideHome cueSignal={cueSignal} />
             <SidebarInterfaceModeButton />
+            <SidebarReleaseUpdateButton />
             <SidebarChangelogButton />
             <SidebarSignOut />
           </motion.aside>
@@ -331,6 +331,7 @@ function SidebarRail({
         <div className="mt-auto flex w-full flex-col items-center gap-1">
           <div className="my-1 h-px w-6 bg-[var(--color-app-border)]" />
           <SidebarInterfaceModeButton variant="rail" iconRef={registerIcon('interface-mode')} />
+          <SidebarReleaseUpdateButton variant="rail" iconRef={registerIcon('release-update')} />
           <SidebarChangelogButton variant="rail" iconRef={registerIcon('changelog')} />
           <SidebarSignOut variant="rail" iconRef={registerIcon('sign-out')} />
         </div>
