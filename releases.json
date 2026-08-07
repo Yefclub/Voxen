@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.3-dev.1786075127",
+    "channel": "dev",
+    "type": "security",
+    "title": "Open-source launch readiness",
+    "body": "Voxen's public documentation now matches the integrated agent architecture,\nthe README presents the chat and knowledge-library experience, and production\ndependencies were updated to patched releases. Repository policy is also\nversioned for read-only workflow defaults and a clean squash-only history. The\npublic covers use anonymous demo data, and Dependabot monitors every supported\ncontainer image.",
+    "pr": 643,
+    "author": "Kalyel",
+    "date": "2026-08-07T00:58:36-03:00",
+    "translations": {
+      "en": {
+        "title": "Open-source launch readiness",
+        "body": "Voxen's public documentation now matches the integrated agent architecture,\nthe README presents the chat and knowledge-library experience, and production\ndependencies were updated to patched releases. Repository policy is also\nversioned for read-only workflow defaults and a clean squash-only history. The\npublic covers use anonymous demo data, and Dependabot monitors every supported\ncontainer image."
+      },
+      "pt-BR": {
+        "title": "Preparação para lançamento open-source",
+        "body": "A documentação pública da Voxen agora corresponde à arquitetura com agente\nintegrado, o README apresenta as experiências de chat e biblioteca de\nconhecimento, e dependências de produção foram atualizadas para versões\ncorrigidas. A política do repositório também passa a ser versionada com\npermissões de workflow somente leitura por padrão e histórico limpo por squash.\nAs capas públicas usam dados demonstrativos anônimos, e o Dependabot monitora\ntodas as imagens de container suportadas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/643"
+  },
+  {
     "version": "0.14.3-dev.1786071600",
     "channel": "dev",
     "type": "chore",
