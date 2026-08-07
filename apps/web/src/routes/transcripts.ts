@@ -5,11 +5,10 @@
 //   GET  /api/transcripts          — lista (paginada)
 //   GET  /api/transcripts/:id      — metadata + plainText + markdown content
 //
-// .md content é lido do storage S3. Em prod, considerar cache; MVP busca direto.
+// Canonical Markdown is read from the selected private storage driver.
 // ============================================================================
 
 import { Hono } from 'hono';
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { z } from 'zod';
 import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
@@ -19,8 +18,19 @@ import { invalidateGraphCache } from '../lib/graph-cache';
 import { notifyNewJob, publishJobEvent } from '../lib/job-events';
 import { rateLimit } from '../lib/rate-limit';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
-import { deleteS3Object, s3Bucket, s3Client } from '../lib/s3';
+import {
+  storageDelete,
+  storageGet,
+  storageHead,
+  storagePut,
+  storageReadText,
+} from '../lib/storage';
 import { isSetupComplete } from '../lib/settings';
+import {
+  buildOriginalResponseInit,
+  inlineSafeMime,
+  parseSingleByteRange,
+} from '../lib/transcript-media-range';
 import { generateTagsForContent, slugifyTag } from '../lib/tags-generate';
 import { applyTagsToTranscript, type AppliedTag } from '../lib/tags';
 import {
@@ -506,16 +516,10 @@ transcriptsRoutes.get('/:id', async (c) => {
   const baseCost = transcript.costUsd ? parseFloat(transcript.costUsd.toString()) : 0;
   const totalCostUsd = (baseCost + summarySum).toFixed(6);
 
-  // Busca o .md no S3 com fallback pro plainText em caso de erro
+  // Read canonical Markdown from the selected storage with a DB fallback.
   const markdown = await (async (): Promise<string> => {
     try {
-      const res = await s3Client().send(
-        new GetObjectCommand({
-          Bucket: s3Bucket(),
-          Key: transcript.mdPath,
-        }),
-      );
-      return (await res.Body?.transformToString('utf-8')) ?? '';
+      return await storageReadText(transcript.mdPath);
     } catch (err) {
       console.error(
         '[transcripts] erro ao baixar .md',
@@ -630,35 +634,40 @@ transcriptsRoutes.get('/:id/original', async (c) => {
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
   if (!transcript.originalObjectKey)
     return c.json({ error: 'Arquivo original não disponível.' }, 404);
-  // Range: o player de vídeo/áudio (e o Safari/iOS obrigatoriamente) precisa de
-  // 206 + Accept-Ranges pra fazer seek. Repassamos o header pro S3/MinIO, que
-  // fatia os bytes, e relayamos Content-Range/Content-Length da resposta dele.
+  // Range: media players (especially Safari/iOS) require 206 + Accept-Ranges.
+  // Both drivers stream only the requested byte range.
   // Só single-range: multi-range (vírgula) viraria multipart/byteranges, que não
   // sabemos relayar — nesse caso servimos o arquivo inteiro (200).
   const rawRange = c.req.header('range');
   const rangeHeader = rawRange && !rawRange.includes(',') ? rawRange : undefined;
   try {
-    const res = await s3Client().send(
-      new GetObjectCommand({
-        Bucket: s3Bucket(),
-        Key: transcript.originalObjectKey,
-        ...(rangeHeader ? { Range: rangeHeader } : {}),
-      }),
-    );
+    const head = await storageHead(transcript.originalObjectKey);
+    const range = rangeHeader ? parseSingleByteRange(rangeHeader, head.contentLength) : null;
+    if (rangeHeader && !range) {
+      return new Response(JSON.stringify({ error: 'Range solicitado inválido.' }), {
+        status: 416,
+        headers: {
+          'content-type': 'application/json; charset=UTF-8',
+          'accept-ranges': 'bytes',
+          'content-range': `bytes */${head.contentLength}`,
+        },
+      });
+    }
+    const object = await storageGet(transcript.originalObjectKey, range ?? undefined);
     const filename = safeDownloadFilename(transcript.originalFilename || `${id}.bin`);
     const init = buildOriginalResponseInit({
       rangeHeader,
-      s3ContentType: res.ContentType,
-      s3ContentLength: res.ContentLength,
-      s3ContentRange: res.ContentRange,
+      storageContentType: object.contentType ?? undefined,
+      storageContentLength: object.contentLength,
+      storageContentRange: object.contentRange ?? undefined,
       fallbackMime: transcript.originalMimeType,
       filename,
     });
-    return new Response(await s3BodyToResponseBody(res.Body), init);
+    return new Response(object.body, init);
   } catch (err) {
     const httpStatus = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata
       ?.httpStatusCode;
-    if (httpStatus === 416) {
+    if (httpStatus === 416 || (err as { code?: string }).code === 'ERANGE') {
       return c.json({ error: 'Range solicitado inválido.' }, 416);
     }
     console.error(
@@ -725,13 +734,8 @@ transcriptsRoutes.get('/:id/preview', async (c) => {
         : null;
   if (objectKey && mimeType) {
     try {
-      const res = await s3Client().send(
-        new GetObjectCommand({
-          Bucket: s3Bucket(),
-          Key: objectKey,
-        }),
-      );
-      return new Response(await s3BodyToResponseBody(res.Body), {
+      const object = await storageGet(objectKey);
+      return new Response(object.body, {
         headers: {
           'content-type': mimeType,
           'cache-control': 'private, max-age=300',
@@ -1058,14 +1062,14 @@ transcriptsRoutes.delete('/:id', async (c) => {
     await Promise.all(
       [transcript.mdPath, transcript.previewObjectKey, transcript.originalObjectKey]
         .filter((key): key is string => Boolean(key))
-        .map((key) => deleteS3Object(key)),
+        .map((key) => storageDelete(key)),
     );
   } catch (err) {
     console.error(
-      '[transcripts] erro ao apagar objetos no S3',
+      '[transcripts] failed to delete stored objects',
       safeErrorDiagnostic('TRANSCRIPT_OBJECT_DELETE_FAILED', err),
     );
-    return c.json({ error: 'Falha ao apagar arquivos no armazenamento S3.' }, 502);
+    return c.json({ error: 'Falha ao apagar arquivos no armazenamento.' }, 502);
   }
 
   await db.transcript.delete({ where: { id } });
@@ -1180,61 +1184,6 @@ function mapSearchRow(row: SearchRow): SearchRow & { folder: { id: string; name:
     ...row,
     folder: row.folderId && row.folderName ? { id: row.folderId, name: row.folderName } : null,
   };
-}
-
-async function s3BodyToResponseBody(body: unknown): Promise<BodyInit> {
-  const maybeBody = body as {
-    transformToWebStream?: () => ReadableStream<Uint8Array>;
-    transformToByteArray?: () => Promise<Uint8Array>;
-  } | null;
-  if (maybeBody?.transformToWebStream) return maybeBody.transformToWebStream();
-  if (maybeBody?.transformToByteArray) {
-    const bytes = await maybeBody.transformToByteArray();
-    const copy = new Uint8Array(bytes.byteLength);
-    copy.set(bytes);
-    return copy.buffer;
-  }
-  return new ArrayBuffer(0);
-}
-
-// Monta status + headers da resposta de `/:id/original`. Puro (sem I/O) para ser
-// testável: decide 206 (Range satisfeito pelo S3) vs 200, e relaya os headers de
-// range. `accept-ranges: bytes` sempre presente para o player saber que dá seek.
-export function buildOriginalResponseInit(opts: {
-  rangeHeader?: string;
-  s3ContentType?: string;
-  s3ContentLength?: number;
-  s3ContentRange?: string;
-  fallbackMime: string | null;
-  filename: string;
-}): { status: number; headers: Record<string, string> } {
-  const contentType = opts.fallbackMime || opts.s3ContentType || 'application/octet-stream';
-  // Conteúdo é upload do usuário (NÃO confiável): só mídia segura vai `inline` no
-  // contexto same-origin da app; o resto (text/html, image/svg+xml, pdf...) vira
-  // `attachment` (download), evitando XSS armazenado. `nosniff` impede o browser
-  // de reinterpretar o MIME e executar como HTML.
-  const headers: Record<string, string> = {
-    'content-type': contentType,
-    'cache-control': 'private, max-age=300',
-    'content-disposition': `${inlineSafeMime(contentType) ? 'inline' : 'attachment'}; filename="${opts.filename}"`,
-    'accept-ranges': 'bytes',
-    'x-content-type-options': 'nosniff',
-  };
-  if (opts.s3ContentLength != null) headers['content-length'] = String(opts.s3ContentLength);
-  if (opts.rangeHeader && opts.s3ContentRange) {
-    headers['content-range'] = opts.s3ContentRange;
-    return { status: 206, headers };
-  }
-  return { status: 200, headers };
-}
-
-// Tipos servidos `inline` (renderizados no browser same-origin). Restrito a mídia
-// que o player usa; text/html, image/svg+xml e pdf ficam de fora (vão como
-// attachment) porque podem executar script no contexto da aplicação.
-function inlineSafeMime(contentType: string): boolean {
-  const ct = contentType.toLowerCase().split(';')[0]?.trim() ?? '';
-  if (ct.startsWith('video/') || ct.startsWith('audio/')) return true;
-  return ct === 'image/png' || ct === 'image/jpeg' || ct === 'image/webp' || ct === 'image/gif';
 }
 
 function safeDownloadFilename(value: string): string {
@@ -1352,14 +1301,7 @@ async function tryMirrorRemoteThumbnail(opts: {
 
     const { ext, mime } = mimeFromContentType(res.headers.get('content-type'), opts.remoteUrl);
     const key = `workspaces/${opts.userId}/transcripts/${opts.transcriptId}/thumbnail.${ext}`;
-    await s3Client().send(
-      new PutObjectCommand({
-        Bucket: s3Bucket(),
-        Key: key,
-        Body: buf,
-        ContentType: mime,
-      }),
-    );
+    await storagePut({ key, body: buf, contentType: mime });
     await db.transcript.update({
       where: { id: opts.transcriptId },
       data: {

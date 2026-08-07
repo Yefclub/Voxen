@@ -55,7 +55,9 @@ cookies ou a master key.
 - Subprocessos do worker usam arrays de argumentos, timeout, diretórios
   isolados e nunca interpolação de shell.
 - URLs remotas são validadas antes das ferramentas de mídia.
-- Credenciais S3 devem acessar somente o bucket da Voxen.
+- Storage local rejeita chaves absolutas/traversal e symlinks, usa permissões
+  restritivas, escrita atômica e nunca é servido como diretório estático público.
+- Credenciais S3 opcionais devem acessar somente o bucket da Voxen.
 - O proxy residencial opcional usa TLS, token cifrado de alta entropia e SOCKS
   vinculado somente ao localhost.
 

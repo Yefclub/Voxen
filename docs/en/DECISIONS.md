@@ -50,9 +50,14 @@ originally selected, but it was never used by the runtime. The current worker
 uses durable Postgres `Job` rows, `FOR UPDATE SKIP LOCKED`, and renewable leases.
 Redis Pub/Sub is only an ephemeral wakeup and realtime transport.
 
-## ADR-006: S3-Compatible Object Storage
+## ADR-006: Local-Volume Default with Optional S3
 
-Transcripts are Markdown files stored outside the database. Voxen uses S3-compatible storage with MinIO as the default local and Compose option. This keeps local, VPS, and Easypanel deployments aligned.
+Canonical Markdown and media remain outside PostgreSQL behind provider-neutral
+storage keys. New single-host installs use one shared persistent volume mounted
+at `/data/storage`; S3-compatible storage is an explicit option for external or
+multi-host deployments. Existing non-empty `S3_*`/`GARAGE_*` configuration is
+inferred as S3 when no driver was previously recorded, so an upgrade cannot
+silently expose an empty local library. Driver changes never migrate data.
 
 ## ADR-007: Better Auth with Admin Approval
 

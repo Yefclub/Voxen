@@ -2,8 +2,8 @@
 # Voxen — docker compose (dev e prod usam o mesmo arquivo, com overrides)
 # ============================================================================
 # Pré-requisito: docker + docker compose. Nada mais.
-# Sobe: postgres + redis + minio + web + worker
-# Bucket MinIO é criado automaticamente; secrets vêm do .env da raiz.
+# Default: postgres + redis + web + worker with a shared local storage volume.
+# Optional MinIO: STORAGE_DRIVER=s3 docker compose --profile s3 up -d
 # ============================================================================
 
 name: voxen
@@ -43,6 +43,7 @@ services:
       retries: 10
 
   minio:
+    profiles: [s3]
     image: minio/minio:latest
     restart: unless-stopped
     environment:
@@ -63,6 +64,7 @@ services:
       retries: 10
 
   minio-init:
+    profiles: [s3]
     image: minio/mc:latest
     depends_on:
       minio:
@@ -101,8 +103,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
     environment:
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
       NODE_ENV: ${NODE_ENV:-development}
@@ -110,16 +110,28 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-dev_change_me_in_prod}@redis:6379/0
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev_change_me_in_prod_must_be_at_least_32_chars_long_yes}
       MASTER_KEY: ${MASTER_KEY:-dm94ZW5fZGV2X21hc3Rlcl9rZXlfMzJfYnl0ZXMhISE=}
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-voxen}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-voxen_dev_minio_password}
-      S3_BUCKET: ${S3_BUCKET:-voxen-transcripts}
-      S3_REGION: ${S3_REGION:-us-east-1}
-      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      # Empty preserves legacy inference: any existing S3/Garage setting selects S3.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-}
+      STORAGE_LOCAL_PATH: ${STORAGE_LOCAL_PATH:-/data/storage}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      S3_CREDS_PATH: ${S3_CREDS_PATH:-}
       # Opcional: habilita upload presigned direto pro S3 (ver docs/DEPLOY.md).
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      GARAGE_ENDPOINT: ${GARAGE_ENDPOINT:-}
+      GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY:-}
+      GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY:-}
+      GARAGE_BUCKET: ${GARAGE_BUCKET:-}
+      GARAGE_REGION: ${GARAGE_REGION:-}
+      GARAGE_CREDS_PATH: ${GARAGE_CREDS_PATH:-}
     ports:
       - '3000:3000'
+    volumes:
+      - storage_data:/data/storage
     networks:
       - voxen-net
     healthcheck:
@@ -139,19 +151,28 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-voxen}:${POSTGRES_PASSWORD:-dev_change_me_in_prod}@postgres:5432/${POSTGRES_DB:-voxen}
       REDIS_URL: redis://:${REDIS_PASSWORD:-dev_change_me_in_prod}@redis:6379/0
       MASTER_KEY: ${MASTER_KEY:-dm94ZW5fZGV2X21hc3Rlcl9rZXlfMzJfYnl0ZXMhISE=}
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-voxen}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-voxen_dev_minio_password}
-      S3_BUCKET: ${S3_BUCKET:-voxen-transcripts}
-      S3_REGION: ${S3_REGION:-us-east-1}
-      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-}
+      STORAGE_LOCAL_PATH: ${STORAGE_LOCAL_PATH:-/data/storage}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      S3_CREDS_PATH: ${S3_CREDS_PATH:-}
+      GARAGE_ENDPOINT: ${GARAGE_ENDPOINT:-}
+      GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY:-}
+      GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY:-}
+      GARAGE_BUCKET: ${GARAGE_BUCKET:-}
+      GARAGE_REGION: ${GARAGE_REGION:-}
+      GARAGE_CREDS_PATH: ${GARAGE_CREDS_PATH:-}
       YTDLP_BGUTIL_BASE_URL: ${YTDLP_BGUTIL_BASE_URL:-}
+    volumes:
+      - storage_data:/data/storage
     networks:
       - voxen-net
 
@@ -192,3 +213,4 @@ volumes:
   pgdata:
   redisdata:
   minio_data:
+  storage_data:

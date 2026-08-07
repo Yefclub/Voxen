@@ -28,9 +28,7 @@ import {
   uploadSourceUrl,
   type UploadKind,
 } from '../lib/media-upload';
-import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { deleteS3Object, presignClient, presignEnabled, s3Bucket, s3Client } from '../lib/s3';
+import { storageCreateDirectUpload, storageDelete, storageHead } from '../lib/storage';
 import { rateLimit } from '../lib/rate-limit';
 import { createSubscriber } from '../lib/redis';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
@@ -43,6 +41,7 @@ import {
   userChannel,
   type JobEvent,
 } from '../lib/job-events';
+import { registerDirectUploadRoute } from './jobs-direct-upload';
 
 type JobsVariables = {
   userId: string;
@@ -212,6 +211,7 @@ jobsRoutes.use('*', async (c, next) => {
   c.set('userId', session.user.id);
   return next();
 });
+registerDirectUploadRoute(jobsRoutes);
 
 const PostBody = z.object({
   url: z.string().min(1).max(2048),
@@ -619,15 +619,10 @@ const ConfirmBody = z.object({
   contentType: z.string().min(1).max(255),
 });
 
-// POST /api/jobs/upload/presign — gera presigned PUT URL pra upload direto pro S3.
-// Aditivo: se S3_PUBLIC_ENDPOINT não estiver setado, retorna { enabled: false }
-// e o front cai no fluxo de upload via app (/api/jobs/upload).
+// POST /api/jobs/upload/presign — prepares the best upload transport. Public
+// S3 gets a presigned URL; local/private S3 gets a same-origin streaming PUT.
 jobsRoutes.post('/upload/presign', async (c) => {
   const userId = c.get('userId');
-
-  if (!presignEnabled()) {
-    return c.json({ enabled: false }, 200);
-  }
 
   if (!(await isSetupComplete())) {
     return c.json(
@@ -678,11 +673,12 @@ jobsRoutes.post('/upload/presign', async (c) => {
 
   let url: string;
   try {
-    url = await getSignedUrl(
-      presignClient(),
-      new PutObjectCommand({ Bucket: s3Bucket(), Key: key, ContentType: contentType }),
-      { expiresIn: PRESIGN_EXPIRES_SEC },
-    );
+    url =
+      (await storageCreateDirectUpload({
+        key,
+        contentType,
+        expiresIn: PRESIGN_EXPIRES_SEC,
+      })) ?? `/api/jobs/upload/direct/${uploadId}?filename=${encodeURIComponent(filename)}`;
   } catch (err) {
     console.error('[jobs] presign failed', {
       upload_id: uploadId,
@@ -746,8 +742,8 @@ jobsRoutes.post('/upload/confirm', async (c) => {
 
   let contentLength: number;
   try {
-    const head = await s3Client().send(new HeadObjectCommand({ Bucket: s3Bucket(), Key: key }));
-    contentLength = head.ContentLength ?? 0;
+    const head = await storageHead(key);
+    contentLength = head.contentLength;
   } catch (err) {
     const name = err instanceof Error ? err.name : '';
     if (name === 'NotFound' || name === 'NoSuchKey') {
@@ -758,16 +754,16 @@ jobsRoutes.post('/upload/confirm', async (c) => {
       content_kind: kind,
       ...safeErrorDiagnostic('UPLOAD_HEAD_FAILED', err),
     });
-    return c.json({ error: 'Falha ao validar upload no armazenamento S3.' }, 502);
+    return c.json({ error: 'Falha ao validar upload no armazenamento.' }, 502);
   }
 
   if (contentLength <= 0) {
-    await deleteS3Object(key).catch(() => undefined);
+    await storageDelete(key).catch(() => undefined);
     return c.json({ error: 'Arquivo vazio.' }, 400);
   }
   // Tamanho REAL do objeto (não confiar no size informado no presign).
   if (contentLength > maxBytesForKind(kind)) {
-    await deleteS3Object(key).catch(() => undefined);
+    await storageDelete(key).catch(() => undefined);
     return c.json({ error: tooLargeMessageForKind(kind) }, 413);
   }
 

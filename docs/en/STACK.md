@@ -37,7 +37,7 @@ upgrade policy.
 | ffmpeg                     | Audio extraction and segmentation             |
 | httpx                      | OpenRouter and remote requests                |
 | Pydantic                   | Schemas and validation                        |
-| aioboto3                   | S3-compatible storage                         |
+| aioboto3                   | Optional S3-compatible storage driver         |
 | structlog                  | Structured logs                               |
 | Ruff, mypy, pytest         | Lint, type checks, and tests                  |
 
@@ -47,7 +47,8 @@ upgrade policy.
 | --------- | -------------------- | ------------------------------------------------ |
 | Postgres  | `postgres:17-alpine` | Primary database, FTS, graph state, durable jobs |
 | Redis     | `redis:7-alpine`     | Wakeups, realtime events, cache, rate limits     |
-| MinIO     | `minio/minio`        | S3-compatible object storage                     |
+| Local volume | Docker named volume | Default single-host transcript/media storage  |
+| MinIO     | `minio/minio`        | Optional S3-compatible object storage profile    |
 
 Production may use compatible managed Postgres, Redis, or S3 services. The
 application remains self-hosted and does not require a managed Voxen service.

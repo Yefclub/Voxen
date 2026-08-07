@@ -10,7 +10,7 @@ Cada vídeo transcrito vira um arquivo Markdown com:
 
 - **Arquivo canônico**: `s3://voxen-transcripts/workspaces/<userId>/transcripts/<transcriptId>.md`
 - **Texto puro + frontmatter espelhado** em Postgres `Transcript` table — base do Postgres FTS pra busca rápida
-- Quando user acessa `/transcricao/:id` → o web busca o `.md` no storage S3/MinIO e renderiza com `react-markdown` ou similar
+- Quando user acessa `/transcricao/:id` → o web busca o `.md` pelo driver de storage selecionado e renderiza com `react-markdown` ou similar
 
 ## Schema do frontmatter
 
@@ -131,7 +131,7 @@ Na tabela `Transcript`:
 - `plainText: TEXT` — apenas o conteúdo falado (sem timestamps, sem frontmatter), concatenado com espaços
 - `searchVector: tsvector` (GIN index) — gerado por trigger SQL a partir de `plainText` com dicionário `portuguese`
 - `frontmatter: JSONB` — espelho do YAML pra queries estruturadas (filtros por source, language, etc.)
-- `mdPath: TEXT` — chave do `.md` no bucket S3 (ex: `workspaces/abc/transcripts/01J....md`)
+- `mdPath: TEXT` — chave relativa e independente do driver (ex: `workspaces/abc/transcripts/01J....md`)
 
 Tool `search_transcripts(workspace_id, query)`:
 

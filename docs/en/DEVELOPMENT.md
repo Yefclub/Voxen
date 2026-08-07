@@ -23,7 +23,7 @@ make dev
 ```
 
 `make dev` creates or completes the root `.env` and starts Postgres, Redis,
-MinIO, web, and worker. Open `http://localhost:3000`; the first account becomes
+the shared local storage volume, web, and worker. Open `http://localhost:3000`; the first account becomes
 the administrator and enters onboarding.
 
 ## Daily Commands
@@ -45,7 +45,8 @@ make typecheck     # TypeScript and mypy
 make build         # build the Compose images
 
 make migrate       # apply Prisma migrations
-make backup        # back up Postgres, object storage, and MASTER_KEY
+make backup        # back up Postgres, selected storage, and MASTER_KEY
+make dev-s3        # opt-in MinIO/S3 profile
 make clean         # destructive: remove containers, volumes, and data
 ```
 

@@ -20,6 +20,7 @@ ARG DEPLOY_TIMESTAMP
 ENV VOXEN_VERSION=${VOXEN_VERSION:-}
 ENV VOXEN_GIT_SHA=${VOXEN_GIT_SHA:-}
 ENV VOXEN_BUILT_AT=${VOXEN_BUILT_AT:-}
+ENV STORAGE_LOCAL_PATH=/data/storage
 ENV GIT_SHA=${GIT_SHA:-}
 ENV DEPLOY_TIMESTAMP=${DEPLOY_TIMESTAMP:-}
 
@@ -78,6 +79,8 @@ RUN apk upgrade --no-cache && \
     apk add --no-cache nodejs npm wget && \
     npm install -g prisma@6.19.3 --omit=dev && \
     addgroup -S voxen && adduser -S -G voxen -u 1001 voxen && \
+    mkdir -p /data/storage && \
+    chown -R voxen:voxen /data/storage && \
     # Prisma 6 precisa escrever no diretório de instalação pra baixar engines
     # em runtime — dá chown pra voxen senão `prisma generate` falha.
     chown -R voxen:voxen /usr/local/lib/node_modules/prisma /usr/local/lib/node_modules/@prisma 2>/dev/null || true

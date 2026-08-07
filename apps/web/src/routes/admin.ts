@@ -21,7 +21,7 @@ import {
   toMcpTokenMetadata,
 } from '../lib/mcp-tokens';
 import { deriveTunnelUrl, probeAgentConnected, readConflictFlag } from '../lib/proxy-agent-tunnel';
-import { deleteS3Prefix } from '../lib/s3';
+import { storageDeletePrefix } from '../lib/storage';
 import { adminAuthenticationRoutes } from './admin-authentication';
 import { requireApprovedAdmin, type AdminVariables } from './admin-guard';
 
@@ -225,9 +225,9 @@ adminRoutes.delete('/usuarios/:id', async (c) => {
       await assertMayRemoveApprovedAdmin(tx, target);
       return { id: target.id, email: target.email };
     });
-    // S3 é I/O de rede; não mantemos uma transação PostgreSQL aberta durante
+    // Storage is I/O; do not keep a PostgreSQL transaction open during
     // a limpeza. Revalidamos o estado protegido logo antes da exclusão local.
-    await deleteS3Prefix(`workspaces/${target.id}/`);
+    await storageDeletePrefix(`workspaces/${target.id}/`);
     await withAdminRosterLock(async (tx) => {
       const current = await tx.user.findUnique({ where: { id: target.id } });
       if (!current) throw new AdminUserActionError('Usuário não encontrado.', 404);

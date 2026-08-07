@@ -1,5 +1,10 @@
 # 009 — Easypanel App via Dockerfile
 
+> **2026-08-07 amendment (supersedes mandatory MinIO/S3 requirements below):**
+> The combined App shall require PostgreSQL, Redis, and one persistent volume
+> mounted at `/data/storage` by default. MinIO/S3 remains an explicit optional
+> backend and startup shall validate only the selected storage driver.
+
 ## Objetivo
 
 Permitir deploy no Easypanel como um único serviço App construído por `Dockerfile`,

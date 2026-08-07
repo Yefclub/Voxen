@@ -41,10 +41,85 @@ require_env DATABASE_URL
 require_env REDIS_URL
 require_env BETTER_AUTH_SECRET
 require_env MASTER_KEY
-require_env S3_ENDPOINT
-require_env S3_ACCESS_KEY
-require_env S3_SECRET_KEY
-require_env S3_BUCKET
+
+resolve_storage_driver() {
+  if [[ -n "${STORAGE_DRIVER:-}" ]]; then
+    case "${STORAGE_DRIVER,,}" in
+      local | s3) STORAGE_DRIVER="${STORAGE_DRIVER,,}" ;;
+      *) echo "[easypanel] FATAL: STORAGE_DRIVER deve ser local ou s3" >&2; exit 1 ;;
+    esac
+  elif env | grep -Eq '^(S3_|GARAGE_)[^=]*=.+$'; then
+    STORAGE_DRIVER=s3
+    echo "[easypanel] AVISO: configuração S3 legada detectada; defina STORAGE_DRIVER=s3 explicitamente"
+  else
+    STORAGE_DRIVER=local
+  fi
+  export STORAGE_DRIVER
+}
+
+validate_local_storage() {
+  export STORAGE_LOCAL_PATH="${STORAGE_LOCAL_PATH:-/data/storage}"
+  python - <<'PY'
+import os
+import pathlib
+import tempfile
+
+root = pathlib.Path(os.environ["STORAGE_LOCAL_PATH"])
+if not root.is_absolute() or root == pathlib.Path(root.anchor):
+    raise SystemExit("[easypanel] FATAL: STORAGE_LOCAL_PATH deve ser absoluto e não pode ser a raiz")
+root.mkdir(parents=True, exist_ok=True, mode=0o750)
+if root.is_symlink():
+    raise SystemExit("[easypanel] FATAL: STORAGE_LOCAL_PATH não pode ser symlink")
+root = root.resolve()
+app_root = pathlib.Path("/app").resolve()
+if root == app_root or app_root in root.parents:
+    raise SystemExit("[easypanel] FATAL: STORAGE_LOCAL_PATH não pode ficar dentro de /app")
+
+mount_points = []
+try:
+    for line in pathlib.Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) >= 5:
+            decoded = (
+                fields[4]
+                .replace(r"\040", " ")
+                .replace(r"\011", "\t")
+                .replace(r"\012", "\n")
+                .replace(r"\134", "\\")
+            )
+            mount_points.append(pathlib.Path(decoded).resolve())
+except OSError as exc:
+    raise SystemExit(f"[easypanel] FATAL: não foi possível validar o volume persistente: {exc}") from exc
+
+if not any(point != pathlib.Path("/") and (point == root or point in root.parents) for point in mount_points):
+    raise SystemExit(
+        f"[easypanel] FATAL: {root} está no filesystem efêmero do container; "
+        "adicione um volume persistente nesse caminho"
+    )
+try:
+    with tempfile.NamedTemporaryFile(prefix=".voxen-write-", dir=root, delete=True) as probe:
+        probe.write(b"ok")
+        probe.flush()
+except OSError as exc:
+    raise SystemExit(f"[easypanel] FATAL: volume local não gravável em {root}: {exc}") from exc
+print(f"[easypanel] armazenamento local persistente pronto em {root}")
+PY
+}
+
+resolve_storage_driver
+if [[ "$STORAGE_DRIVER" = s3 ]]; then
+  export S3_ENDPOINT="${S3_ENDPOINT:-${GARAGE_ENDPOINT:-}}"
+  export S3_ACCESS_KEY="${S3_ACCESS_KEY:-${GARAGE_ACCESS_KEY:-}}"
+  export S3_SECRET_KEY="${S3_SECRET_KEY:-${GARAGE_SECRET_KEY:-}}"
+  export S3_BUCKET="${S3_BUCKET:-${GARAGE_BUCKET:-}}"
+  require_env S3_ENDPOINT
+  require_env S3_BUCKET
+  creds_file="${S3_CREDS_PATH:-${GARAGE_CREDS_PATH:-/creds/voxen.env}}"
+  if [[ -z "$S3_ACCESS_KEY" || -z "$S3_SECRET_KEY" ]] && [[ ! -r "$creds_file" ]]; then
+    echo "[easypanel] FATAL: S3 credentials are incomplete and no readable credentials file exists" >&2
+    exit 1
+  fi
+fi
 
 wait_for_url_host() {
   local name="$1"
@@ -163,10 +238,15 @@ export PORT="${PORT:-3000}"
 export S3_REGION="${S3_REGION:-us-east-1}"
 export S3_FORCE_PATH_STYLE="${S3_FORCE_PATH_STYLE:-true}"
 
+if [[ "$STORAGE_DRIVER" = local ]]; then
+  validate_local_storage
+fi
 wait_for_url_host "Postgres" "$DATABASE_URL" 5432
 wait_for_url_host "Redis" "$REDIS_URL" 6379
-wait_for_url_host "S3" "$S3_ENDPOINT" 9000
-validate_s3_bucket
+if [[ "$STORAGE_DRIVER" = s3 ]]; then
+  wait_for_url_host "S3" "$S3_ENDPOINT" 9000
+  validate_s3_bucket
+fi
 
 echo "[easypanel] generating Prisma Client..."
 prisma generate --schema=/app/prisma/schema.prisma

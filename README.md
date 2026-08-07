@@ -57,7 +57,7 @@ credentials, private content, or unredacted logs in a public report.
 - **Database:** PostgreSQL 17, Prisma, and full-text search
 - **Queue:** durable PostgreSQL jobs with leases and heartbeats; Redis is used
   for wakeups and realtime events
-- **Storage:** MinIO or another S3-compatible service
+- **Storage:** shared local volume by default; optional MinIO/S3-compatible driver
 - **Models:** OpenRouter, configured centrally by an administrator
 
 ## Local quick start
@@ -75,8 +75,10 @@ enters onboarding. Add an OpenRouter key; Voxen validates it and applies the
 canonical model configuration for the instance.
 
 `make dev` creates or completes `.env` when necessary and starts PostgreSQL,
-Redis, MinIO, the web app, and the worker. The MinIO console is available at
-`http://localhost:9001`.
+Redis, the web app, and the worker. Canonical Markdown and media use the shared
+`storage_data` volume; MinIO is no longer required for a new single-host install.
+Use `make dev-s3` with [`.env.s3.example`](.env.s3.example) only when you
+deliberately want MinIO or another S3-compatible backend.
 
 ## Production deployment
 
@@ -96,9 +98,10 @@ ghcr.io/yefclub/voxen:latest
 Repository/Dockerfile source mode makes environment values available during
 the build and can expose secrets through build arguments or logs. Prefer image
 deployment so application secrets are supplied only at runtime. Provision
-PostgreSQL, Redis, and MinIO/S3 as separate persistent services; the residential
-proxy agent is optional and only needed when a VPS must extract media through a
-home-network IP.
+PostgreSQL and Redis, and mount a persistent volume at `/data/storage` in the
+Voxen App. MinIO/S3 is an optional advanced topology for external or multi-host
+storage; the residential proxy agent is optional and only needed when a VPS
+must extract media through a home-network IP.
 
 A minimal Docker Compose deployment starts with:
 
@@ -116,7 +119,7 @@ Migrations are applied automatically by the web container through
 
 ## Operations
 
-Safe update commands preserve the PostgreSQL, Redis, and MinIO volumes:
+Safe update commands preserve the PostgreSQL, Redis, and selected storage volumes:
 
 ```bash
 make update

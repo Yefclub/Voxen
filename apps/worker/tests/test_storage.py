@@ -1,4 +1,4 @@
-"""Testes do helper de upload pro storage S3 (sem rede)."""
+"""Storage contract tests for local and S3 drivers."""
 
 from __future__ import annotations
 
@@ -66,6 +66,34 @@ def test_s3_env_takes_precedence_over_garage(monkeypatch: pytest.MonkeyPatch) ->
     assert storage.s3_access_key() == "minio-key"
 
 
+def test_s3_credentials_file_is_available_to_worker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:  # noqa: ANN001
+    for key in ("S3_ACCESS_KEY", "S3_SECRET_KEY", "GARAGE_ACCESS_KEY", "GARAGE_SECRET_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    credentials = tmp_path / "voxen.env"
+    credentials.write_text(
+        "# mounted credentials\nexport S3_ACCESS_KEY=file-access\nS3_SECRET_KEY='file-secret'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("S3_CREDS_PATH", str(credentials))
+
+    assert storage.s3_access_key() == "file-access"
+    assert storage.s3_secret_key() == "file-secret"
+
+
+def test_local_storage_rejects_application_descendant(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:  # noqa: ANN001
+    app_root = tmp_path / "app"
+    app_root.mkdir()
+    monkeypatch.chdir(app_root)
+    monkeypatch.setenv("STORAGE_LOCAL_PATH", str(app_root / "apps/web/dist/private"))
+
+    with pytest.raises(RuntimeError, match="unsafe application"):
+        storage.storage_local_path()
+
+
 def test_access_key_raises_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GARAGE_ACCESS_KEY", raising=False)
     monkeypatch.delenv("S3_ACCESS_KEY", raising=False)
@@ -96,7 +124,7 @@ async def test_put_file_calls_s3_put_object_with_expected_args(tmp_path) -> None
     preview = tmp_path / "preview.jpg"
     preview.write_bytes(b"jpeg")
     fake_client = MagicMock()
-    fake_client.put_object = AsyncMock(return_value={})
+    fake_client.upload_file = AsyncMock(return_value={})
     fake_ctx = MagicMock()
     fake_ctx.__aenter__ = AsyncMock(return_value=fake_client)
     fake_ctx.__aexit__ = AsyncMock(return_value=False)
@@ -109,9 +137,42 @@ async def test_put_file_calls_s3_put_object_with_expected_args(tmp_path) -> None
             content_type="image/jpeg",
         )
 
-    fake_client.put_object.assert_awaited_once()
-    kwargs = fake_client.put_object.await_args.kwargs
-    assert kwargs["Bucket"] == "voxen-test-bucket"
-    assert kwargs["Key"] == "workspaces/u1/uploads/up1/preview.jpg"
-    assert kwargs["Body"] == b"jpeg"
-    assert kwargs["ContentType"] == "image/jpeg"
+    fake_client.upload_file.assert_awaited_once_with(
+        str(preview),
+        "voxen-test-bucket",
+        "workspaces/u1/uploads/up1/preview.jpg",
+        ExtraArgs={"ContentType": "image/jpeg"},
+    )
+
+
+async def test_local_driver_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:  # noqa: ANN001
+    root = tmp_path / "storage"
+    monkeypatch.setenv("STORAGE_DRIVER", "local")
+    monkeypatch.setenv("STORAGE_LOCAL_PATH", str(root))
+
+    await storage.put_markdown(key="workspaces/u1/transcripts/t1.md", content="# complete")
+    assert await storage.get_markdown(key="workspaces/u1/transcripts/t1.md") == "# complete"
+
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"0123456789")
+    await storage.put_file(key="workspaces/u1/uploads/a/source.bin", path=source)
+    downloaded = tmp_path / "downloaded.bin"
+    await storage.download_to_file(key="workspaces/u1/uploads/a/source.bin", dest=downloaded)
+    assert downloaded.read_bytes() == b"0123456789"
+
+
+async def test_local_driver_rejects_traversal_and_symlinks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:  # noqa: ANN001
+    root = tmp_path / "storage"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    (root / "workspaces").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setenv("STORAGE_DRIVER", "local")
+    monkeypatch.setenv("STORAGE_LOCAL_PATH", str(root))
+
+    with pytest.raises(RuntimeError, match="Symbolic links"):
+        await storage.put_markdown(key="workspaces/u1/transcripts/t1.md", content="blocked")
+    with pytest.raises(RuntimeError, match="Invalid storage key"):
+        await storage.put_markdown(key="../outside.md", content="blocked")
