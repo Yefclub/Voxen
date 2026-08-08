@@ -54,8 +54,8 @@ credentials, private content, or unredacted logs in a public report.
 ## Stack
 
 - **Web/API:** Bun, Hono, Vite, React, Tailwind CSS v4, and shadcn/ui
-- **MCP:** Streamable HTTP at `/mcp` for Claude Code, Codex, Cursor, and other
-  compatible clients
+- **MCP:** user-scoped Streamable HTTP at `/mcp`; see the
+  [client setup and compatibility guide](docs/en/MCP.md)
 - **Worker:** Python asyncio, `yt-dlp`, and `ffmpeg`
 - **Authentication:** Better Auth with email/password, optional OIDC SSO, and
   administrator approval
@@ -148,19 +148,20 @@ make reset-password EMAIL=user@example.com PASSWORD='a-new-strong-password'
 The [documentation index](docs/README.md) links the English and Portuguese
 documentation tracks.
 
-| Document                                          | Topic                                                 |
-| ------------------------------------------------- | ----------------------------------------------------- |
-| [Development](docs/en/DEVELOPMENT.md)             | Local environment, tests, SDD/TDD, and workflow       |
-| [Deployment](docs/en/DEPLOY.md)                   | Home lab, VPS, Proxmox, nginx, Compose, and Easypanel |
-| [Architecture](docs/en/ARCHITECTURE.md)           | Components, flows, and architectural decisions        |
-| [Stack](docs/en/STACK.md)                         | Runtime and dependency choices                        |
-| [Decisions](docs/en/DECISIONS.md)                 | Architecture Decision Records                         |
-| [Security](docs/en/SECURITY.md)                   | Threat model and technical controls                   |
-| [Transcript format](docs/en/TRANSCRIPT-FORMAT.md) | Canonical Markdown schema                             |
-| [Contributing](CONTRIBUTING.md)                   | Contribution requirements                             |
-| [Security policy](SECURITY.md)                    | Private vulnerability reporting                       |
-| [Support](SUPPORT.md)                             | Where to ask for help                                 |
-| [Changelog](CHANGELOG.md)                         | Release and development history                       |
+| Document                                          | Topic                                                  |
+| ------------------------------------------------- | ------------------------------------------------------ |
+| [Development](docs/en/DEVELOPMENT.md)             | Local environment, tests, SDD/TDD, and workflow        |
+| [Deployment](docs/en/DEPLOY.md)                   | Home lab, VPS, Proxmox, nginx, Compose, and Easypanel  |
+| [Architecture](docs/en/ARCHITECTURE.md)           | Components, flows, and architectural decisions         |
+| [Stack](docs/en/STACK.md)                         | Runtime and dependency choices                         |
+| [Decisions](docs/en/DECISIONS.md)                 | Architecture Decision Records                          |
+| [Security](docs/en/SECURITY.md)                   | Threat model and technical controls                    |
+| [MCP clients](docs/en/MCP.md)                     | Client setup, compatibility, security, troubleshooting |
+| [Transcript format](docs/en/TRANSCRIPT-FORMAT.md) | Canonical Markdown schema                              |
+| [Contributing](CONTRIBUTING.md)                   | Contribution requirements                              |
+| [Security policy](SECURITY.md)                    | Private vulnerability reporting                        |
+| [Support](SUPPORT.md)                             | Where to ask for help                                  |
+| [Changelog](CHANGELOG.md)                         | Release and development history                        |
 
 ## Branch and release workflow
 

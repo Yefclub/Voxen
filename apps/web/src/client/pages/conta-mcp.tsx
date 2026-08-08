@@ -15,6 +15,7 @@ import { ApiError, apiDelete, apiGet, apiPost } from '../lib/api';
 import { useI18n } from '../lib/i18n';
 import { nextLocalDateTimeInputMin } from '../lib/local-datetime';
 import { AccountPageNav } from '../components/account/account-page-nav';
+import { McpClientSetup } from '../components/account/mcp-client-setup';
 
 interface PersonalMcpToken {
   id: string;
@@ -121,6 +122,13 @@ export function ContaMcpPage(): React.ReactElement {
       />
 
       <AccountPageNav />
+
+      <McpClientSetup
+        locale={locale}
+        endpoint={endpoint}
+        visibleToken={secret}
+        onCopyError={() => toast.error(t('admin.integrations.copyError'))}
+      />
 
       {secret && (
         <Card elevated className="border-emerald-500/30 bg-emerald-500/[0.045]">

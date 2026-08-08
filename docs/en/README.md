@@ -30,6 +30,7 @@ the account and applies the canonical models automatically.
 | [`STACK.md`](STACK.md)                         | Runtime, libraries, infrastructure images, CI tooling, and upgrade policy             |
 | [`DECISIONS.md`](DECISIONS.md)                 | Architecture Decision Records                                                         |
 | [`SECURITY.md`](SECURITY.md)                   | Threat model, auth, secrets, SSRF prevention, CI security, and incident response      |
+| [`MCP.md`](MCP.md)                             | MCP client setup, compatibility, security, and troubleshooting                        |
 | [`TRANSCRIPT-FORMAT.md`](TRANSCRIPT-FORMAT.md) | Canonical Markdown transcript format                                                  |
 
 ## Core Workflow
