@@ -137,9 +137,9 @@ export function McpClientSetup({
               }
               className={
                 setup.status === 'supported'
-                  ? 'text-emerald-700 dark:text-emerald-300'
+                  ? 'text-[var(--color-app-success-fg)]'
                   : setup.status === 'unsupported'
-                    ? 'text-amber-700 dark:text-amber-300'
+                    ? 'text-[var(--color-app-warning-fg)]'
                     : undefined
               }
             >
@@ -179,7 +179,7 @@ export function McpClientSetup({
           </div>
         </div>
 
-        <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-300/90">
+        <p className="text-xs leading-relaxed text-[var(--color-app-warning-fg)]">
           {locale === 'en'
             ? 'Tokens are shown once, must never be placed in URLs, and can be revoked without affecting your Voxen login.'
             : 'Tokens aparecem uma vez, nunca devem ir em URLs e podem ser revogados sem afetar seu login no Voxen.'}

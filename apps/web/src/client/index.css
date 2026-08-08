@@ -24,6 +24,8 @@
   --color-app-fg: #f2f2f3;
   --color-app-muted: #8a8a92;
   --color-app-subtle: #b4b4bb;
+  --color-app-success-fg: #6ee7b7;
+  --color-app-warning-fg: #fcd34d;
 
   --color-accent-emerald: oklch(73% 0.16 159);
   --color-accent-emerald-soft: oklch(73% 0.16 159 / 0.18);
@@ -71,6 +73,8 @@
   --color-app-fg: #f2f2f3;
   --color-app-muted: #8a8a92;
   --color-app-subtle: #b4b4bb;
+  --color-app-success-fg: #6ee7b7;
+  --color-app-warning-fg: #fcd34d;
   --color-accent-primary: #8b7cf6;
   --color-accent-primary-soft: rgba(139, 124, 246, 0.13);
   --color-app-inverted: #f2f2f3;
@@ -100,6 +104,8 @@
   --color-app-fg: #ececec;
   --color-app-muted: #8e8e8e;
   --color-app-subtle: #b4b4b4;
+  --color-app-success-fg: #6ee7b7;
+  --color-app-warning-fg: #fcd34d;
   --color-accent-primary: #19c37d;
   --color-accent-primary-soft: rgba(25, 195, 125, 0.1);
   --color-app-inverted: #ececec;
@@ -129,6 +135,8 @@
   --color-app-fg: oklch(98.5% 0 0);
   --color-app-muted: oklch(68% 0.008 250);
   --color-app-subtle: oklch(78% 0.005 250);
+  --color-app-success-fg: #6ee7b7;
+  --color-app-warning-fg: #fcd34d;
   --color-accent-primary: oklch(73% 0.16 159);
   --color-accent-primary-soft: oklch(73% 0.16 159 / 0.18);
   --color-app-inverted: oklch(98.5% 0 0);
@@ -154,6 +162,8 @@
   --color-app-fg: #18181b;
   --color-app-muted: #71717a;
   --color-app-subtle: #52525b;
+  --color-app-success-fg: #047857;
+  --color-app-warning-fg: #92400e;
   --color-accent-primary: #0f9f6e;
   --color-accent-primary-soft: rgba(15, 159, 110, 0.12);
   --color-app-inverted: #18181b;
