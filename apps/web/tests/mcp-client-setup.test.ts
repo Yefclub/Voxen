@@ -97,7 +97,9 @@ describe('MCP documentation contract', () => {
     ).text();
 
     expect(card).toContain('data-testid="mcp-client-configuration"');
-    expect(card).toContain('bg-[var(--color-app-bg)]');
+    expect(card).toContain('bg-[var(--color-app-bg-elevated)]');
+    expect(card).not.toContain('bg-[var(--color-app-bg)] p-4');
+    expect(card).toContain('data-horizontal-scroll="true"');
     expect(card).not.toContain('bg-[var(--color-app-subtle)]');
   });
 });

@@ -100,12 +100,18 @@ export function McpClientSetup({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2" role="group" aria-label="MCP clients">
+        <div
+          data-horizontal-scroll="true"
+          className="flex touch-pan-x gap-2 overflow-x-auto pb-1"
+          role="group"
+          aria-label="MCP clients"
+        >
           {setups.map((candidate) => (
             <Button
               key={candidate.id}
               type="button"
               size="sm"
+              className="shrink-0"
               variant={candidate.id === setup.id ? 'secondary' : 'ghost'}
               aria-pressed={candidate.id === setup.id}
               onClick={() => setSelected(candidate.id)}
@@ -117,7 +123,7 @@ export function McpClientSetup({
 
         <div
           data-testid="mcp-client-configuration"
-          className="space-y-3 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] p-4"
+          className="space-y-3 rounded-xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] p-4"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium text-[var(--color-app-fg)]">{setup.label}</p>
