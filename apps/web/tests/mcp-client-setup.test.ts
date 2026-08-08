@@ -90,4 +90,14 @@ describe('MCP documentation contract', () => {
     expect(card).toContain("setup.status === 'unsupported'");
     expect(card).toContain('target="_blank"');
   });
+
+  it('uses a semantic surface instead of a text color for the configuration panel', async () => {
+    const card = await Bun.file(
+      new URL('../src/client/components/account/mcp-client-setup.tsx', import.meta.url),
+    ).text();
+
+    expect(card).toContain('data-testid="mcp-client-configuration"');
+    expect(card).toContain('bg-[var(--color-app-bg)]');
+    expect(card).not.toContain('bg-[var(--color-app-subtle)]');
+  });
 });
