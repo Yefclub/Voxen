@@ -84,7 +84,6 @@ describe('MCP documentation contract', () => {
     const card = await Bun.file(
       new URL('../src/client/components/account/mcp-client-setup.tsx', import.meta.url),
     ).text();
-    const theme = await Bun.file(new URL('../src/client/index.css', import.meta.url)).text();
 
     expect(page).toContain('<McpClientSetup');
     expect(page).toContain('visibleToken={secret}');
@@ -96,6 +95,7 @@ describe('MCP documentation contract', () => {
     const card = await Bun.file(
       new URL('../src/client/components/account/mcp-client-setup.tsx', import.meta.url),
     ).text();
+    const theme = await Bun.file(new URL('../src/client/index.css', import.meta.url)).text();
 
     expect(card).toContain('data-testid="mcp-client-configuration"');
     expect(card).toContain('bg-[var(--color-app-bg-elevated)]');
