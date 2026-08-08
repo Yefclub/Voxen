@@ -67,9 +67,12 @@ describe('Mermaid transcript flow contract', () => {
   });
 
   it('wires a lazy strict renderer, transcript UI, and read tools', async () => {
-    const [markdown, page, mcp, chat, schema, migration, pkg] = await Promise.all([
+    const [markdown, page, blocks, mcp, chat, schema, migration, pkg] = await Promise.all([
       Bun.file(new URL('../src/client/components/ui/markdown.tsx', import.meta.url)).text(),
       Bun.file(new URL('../src/client/pages/transcricoes-detalhe.tsx', import.meta.url)).text(),
+      Bun.file(
+        new URL('../src/client/components/library/transcript-derived-content.tsx', import.meta.url),
+      ).text(),
       Bun.file(new URL('../src/routes/mcp.ts', import.meta.url)).text(),
       Bun.file(new URL('../src/lib/chat/runtime.ts', import.meta.url)).text(),
       Bun.file(new URL('../../../prisma/schema.prisma', import.meta.url)).text(),
@@ -89,7 +92,8 @@ describe('Mermaid transcript flow contract', () => {
     expect(markdown).toContain('script, foreignObject, iframe, image, a, object, embed');
     expect(markdown).toContain('touch-pan-x touch-pan-y');
     expect(page).toContain('/flow`');
-    expect(page).toContain('<FlowBlock');
+    expect(page).toContain('<TranscriptFlowBlock');
+    expect(blocks).toContain('\\`\\`\\`mermaid');
     expect(mcp).toContain('flowchart: t.flowchartMd ?? null');
     expect(chat).toContain('flowchart: transcript.flowchartMd');
     expect(schema).toContain('flowchartMd');

@@ -1,12 +1,5 @@
-// ============================================================================
 // Voxen — Transcripts routes
-// ============================================================================
-// Endpoints (sempre escopados por userId):
-//   GET  /api/transcripts          — lista (paginada)
-//   GET  /api/transcripts/:id      — metadata + plainText + markdown content
-//
-// Canonical Markdown is read from the selected private storage driver.
-// ============================================================================
+// All endpoints are scoped by userId; canonical Markdown uses the configured private storage.
 
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -45,7 +38,7 @@ import {
   generateAndPersistTranscriptSummary,
   TranscriptSummaryError,
 } from '../lib/transcript-summary';
-import { generateAndPersistTranscriptFlow, TranscriptFlowError } from '../lib/transcript-flow';
+import { generateTranscriptFlowRoute } from './transcript-flow-route';
 import {
   transcriptGraphMatchSql,
   TRANSCRIPT_GRAPH_RANK_BOOST,
@@ -55,7 +48,6 @@ import { cancelTranscriptEnrichmentsForInactiveParent } from '../lib/transcript-
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
-const FLOW_MIN_INTERVAL_SEC = 60;
 
 type Vars = { userId: string };
 
@@ -1213,62 +1205,7 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
   }
 });
 
-// POST /api/transcripts/:id/flow — generates a derived Mermaid visualization.
-// The flow is persisted separately and never changes the canonical summary or text.
-transcriptsRoutes.post('/:id/flow', async (c) => {
-  const userId = c.get('userId');
-  const id = c.req.param('id');
-  const body = (await c.req.json().catch(() => ({}))) as { force?: boolean };
-  const force = body.force === true;
-
-  const transcript = await db.transcript.findFirst({
-    where: { id, userId, status: { not: 'TRASH' } },
-    select: {
-      id: true,
-      title: true,
-      plainText: true,
-      summaryMd: true,
-      flowchartMd: true,
-    },
-  });
-  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
-  if (!transcript.plainText.trim()) {
-    return c.json({ error: 'Transcrição sem texto para gerar um fluxo.' }, 422);
-  }
-  if (transcript.flowchartMd && !force) {
-    return c.json(
-      { error: 'Fluxo já existe. Use { "force": true } para regenerar.', existing: true },
-      409,
-    );
-  }
-  const rl = await rateLimit(`voxen:rl:flow:${userId}:${id}`, 1, FLOW_MIN_INTERVAL_SEC);
-  if (!rl.allowed) {
-    return c.json(
-      { error: `Aguarde ${rl.resetIn}s antes de regenerar este fluxo.`, retryAfter: rl.resetIn },
-      429,
-    );
-  }
-
-  try {
-    const flowchartMd = await generateAndPersistTranscriptFlow({
-      userId,
-      transcriptId: transcript.id,
-      title: transcript.title,
-      summaryMd: transcript.summaryMd,
-      plainText: transcript.plainText,
-    });
-    return c.json({ flowchartMd });
-  } catch (error) {
-    if (error instanceof TranscriptFlowError) {
-      return c.json({ error: error.message }, error.status as 400);
-    }
-    console.error(
-      '[transcripts] flow generation failed',
-      safeErrorDiagnostic('TRANSCRIPT_FLOW_FAILED', error),
-    );
-    return c.json({ error: 'Falha ao gerar fluxo.' }, 502);
-  }
-});
+transcriptsRoutes.post('/:id/flow', generateTranscriptFlowRoute);
 
 function normalizeStatus(value: string | undefined): 'ACTIVE' | 'ARCHIVED' | 'TRASH' | 'ALL' {
   if (value === 'archived') return 'ARCHIVED';
