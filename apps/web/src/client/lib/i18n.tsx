@@ -956,6 +956,8 @@ const ptBRMessages = {
   'admin.integrations.models.reset': 'Voltar ao padrão',
   'admin.integrations.models.resetSuccess': 'Finalidade restaurada para o modelo padrão.',
   'admin.integrations.models.changeSuccess': 'Modelo atualizado.',
+  'admin.integrations.models.changeFallback': 'Trocar fallback',
+  'admin.integrations.models.clearFallback': 'Desativar fallback',
   'admin.integrations.models.loadError': 'Não foi possível carregar a configuração de modelos.',
   'admin.integrations.models.catalogUnavailable':
     'Catálogo da OpenRouter indisponível agora. Os overrides já salvos continuam ativos — tente novamente mais tarde.',
@@ -2335,6 +2337,8 @@ const enMessages: Record<I18nKey, string> = {
   'admin.integrations.models.reset': 'Reset to default',
   'admin.integrations.models.resetSuccess': 'Purpose restored to the default model.',
   'admin.integrations.models.changeSuccess': 'Model updated.',
+  'admin.integrations.models.changeFallback': 'Change fallback',
+  'admin.integrations.models.clearFallback': 'Disable fallback',
   'admin.integrations.models.loadError': 'Could not load the model configuration.',
   'admin.integrations.models.catalogUnavailable':
     'OpenRouter catalog unavailable right now. Saved overrides remain active — try again later.',

@@ -8,14 +8,15 @@ qualquer regressão futura no `_TRANSIENT_EXC` deixa retry virar no-op.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 
 import botocore.exceptions
 import pytest
 import yt_dlp.utils
 
 from src import ytdl
-from src.pipeline import PermanentError, TransientError, _retry_transient
+from src.openrouter import OpenrouterTransientError
+from src.pipeline import PermanentError, TransientError, _retry_transient, _retry_transient_or
 
 
 async def test_retry_succeeds_on_third_attempt() -> None:
@@ -114,6 +115,31 @@ async def test_retry_rate_limit_retries_then_permanent() -> None:
     with pytest.raises(PermanentError, match="rate limit|limitou requisições"):
         await _retry_transient(fn, tries=3, base_delay=0)
     assert attempts == 3, "429 deve esgotar retries antes de PermanentError"
+
+
+async def test_openrouter_retry_honors_retry_after_and_fails_with_public_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = 0
+    sleep = AsyncMock()
+    monkeypatch.setattr("src.pipeline.asyncio.sleep", sleep)
+
+    async def fn() -> None:
+        nonlocal attempts
+        attempts += 1
+        raise OpenrouterTransientError(
+            "OpenRouter rate limited",
+            status_code=429,
+            retry_after=7,
+        )
+
+    with pytest.raises(PermanentError) as raised:
+        await _retry_transient_or(fn, tries=3, base_delay=1)
+
+    assert attempts == 3
+    assert raised.value.code == "OPENROUTER_RATE_LIMITED"
+    assert "limite temporário" in raised.value.public_message
+    assert sleep.await_args_list == [call(7), call(7)]
 
 
 async def test_runtime_options_without_proxy_returns_base_opts(

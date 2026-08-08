@@ -50,6 +50,8 @@ export async function researchWeb(
     'default_web_search_model',
     'default_chat_model',
     'default_x_analysis_model',
+    'fallback_web_search_model',
+    'fallback_x_analysis_model',
     'default_grok_model',
     'default_x_model',
     'x_analysis_model',
@@ -63,6 +65,8 @@ export async function researchWeb(
     settings.default_x_model ??
     settings.x_analysis_model;
   const model = selectResearchModel(scope, { web: webModel, chat: chatModel, x: xModel });
+  const fallbackModel =
+    scope === 'x' ? settings.fallback_x_analysis_model : settings.fallback_web_search_model;
   if (!apiKey) throw new Error('Chave OpenRouter não configurada.');
   if (!model) {
     throw new Error(
@@ -76,7 +80,10 @@ export async function researchWeb(
   const response = await fetch(OPENROUTER_CHAT_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(buildWebResearchPayload(model, query, scope)),
+    body: JSON.stringify({
+      ...buildWebResearchPayload(model, query, scope),
+      ...(fallbackModel && fallbackModel !== model ? { models: [fallbackModel] } : {}),
+    }),
     signal: abortSignal
       ? AbortSignal.any([abortSignal, AbortSignal.timeout(90_000)])
       : AbortSignal.timeout(90_000),

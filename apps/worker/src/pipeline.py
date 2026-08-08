@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import tempfile
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -51,40 +50,20 @@ from .openrouter import (
     generate_content_title,
     transcribe_audio,
 )
+from .pipeline_errors import (
+    GENERIC_JOB_FAILURE_MESSAGE,
+    PermanentError,
+    TransientError,
+)
+from .pipeline_observability import (
+    log_openrouter_route,
+    source_kind_for_log,
+)
 from .safe_diagnostics import error_diagnostic as _error_diagnostic
 from .transcript_md import Segment, TranscriptDoc, render_markdown, render_plain_text
 
 logger = structlog.get_logger(__name__)
-
-GENERIC_JOB_FAILURE_MESSAGE = (
-    "Não foi possível concluir este processamento. Tente novamente; "
-    "se o problema continuar, verifique a configuração e os serviços da instância."
-)
-
-
-class PermanentError(Exception):
-    """Erro não retentável com mensagem pública opt-in e código interno seguro."""
-
-    def __init__(
-        self,
-        detail: str = "",
-        *,
-        code: str = "PERMANENT_FAILURE",
-        public_message: str | None = None,
-    ) -> None:
-        super().__init__(detail or public_message or GENERIC_JOB_FAILURE_MESSAGE)
-        self.code = code if re.fullmatch(r"[A-Z][A-Z0-9_]{1,63}", code) else "PERMANENT_FAILURE"
-        self.public_message = public_message or GENERIC_JOB_FAILURE_MESSAGE
-
-    @classmethod
-    def public(cls, code: str, message: str) -> PermanentError:
-        """Cria falha explicitamente segura para Job.errorMsg e SSE."""
-        return cls(message, code=code, public_message=message)
-
-
-class TransientError(Exception):
-    """Erro retentável (rede, 5xx)."""
-
+__all__ = ["PermanentError", "TransientError"]
 
 # Exceptions externas tratadas como transientes pelo `_retry_transient`.
 # yt-dlp e botocore herdam direto de `Exception`, NÃO de OSError/RuntimeError —
@@ -98,17 +77,6 @@ _TRANSIENT_EXC: tuple[type[BaseException], ...] = (
     botocore.exceptions.BotoCoreError,
     botocore.exceptions.ClientError,
 )
-
-
-def _source_kind_for_log(source_url: str, job_type: str) -> str:
-    detected = video_url.detect_source(source_url)
-    if detected:
-        return detected
-    if source_url.lower().startswith("upload://"):
-        return "UPLOAD"
-    if job_type == "SCRAPE_WEB":
-        return "WEB"
-    return "UNKNOWN"
 
 
 JOB_HEARTBEAT_INTERVAL_SEC = 20
@@ -156,7 +124,7 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
         job_id=job_id,
         user_id=user_id,
         type=job_type,
-        source_kind=_source_kind_for_log(source_url, job_type),
+        source_kind=source_kind_for_log(source_url, job_type),
     )
     log.info("job-claimed")
 
@@ -706,10 +674,12 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
                 image_path=image_path,
                 api_key=api_key,
                 model=model,
+                fallback_model=config.fallback_model,
                 prompt=prompt,
             )
 
         result = await _retry_transient_or(_do_call, tries=3)
+        log_openrouter_route(log, "vision", model, result.model)
         if not result.text:
             raise PermanentError.public(
                 "IMAGE_ANALYSIS_EMPTY",
@@ -718,7 +688,7 @@ async def _run_image_pipeline(*, job_id: str, user_id: str, source_url: str, log
         await db.insert_cost_event(
             user_id=user_id,
             kind="CHAT",
-            model=model,
+            model=result.model,
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             cost_usd=result.cost_usd,
@@ -814,9 +784,11 @@ async def _run_document_pipeline(
             filename=ref.filename,
             api_key=api_key,
             model=model,
+            fallback_model=config.fallback_model,
             user_id=user_id,
             job_id=job_id,
         )
+        log_openrouter_route(log, "document", model, result.model)
 
         if not result.text:
             raise PermanentError.public(
@@ -827,7 +799,7 @@ async def _run_document_pipeline(
         await db.insert_cost_event(
             user_id=user_id,
             kind="DOCUMENT",
-            model=model,
+            model=result.model,
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             cost_usd=result.cost_usd,
@@ -864,7 +836,7 @@ async def _run_document_pipeline(
             source_url=source_url,
             segments=(Segment(start_sec=0.0, text=result.text),),
             method="DOCUMENT",
-            model=model,
+            model=result.model,
             cost_usd=result.cost_usd,
             language="pt",
             source_override="UPLOAD",
@@ -888,6 +860,7 @@ async def _analyze_document_file(
     filename: str,
     api_key: str,
     model: str,
+    fallback_model: str | None = None,
     user_id: str,
     job_id: str,
 ) -> tuple[Any, str]:
@@ -900,6 +873,7 @@ async def _analyze_document_file(
                 pdf_path=document_path,
                 api_key=api_key,
                 model=model,
+                fallback_model=fallback_model,
             )
 
         return await _retry_transient_or(_do_mistral_pdf, tries=2), "openrouter-mistral-ocr"
@@ -922,6 +896,7 @@ async def _analyze_document_file(
             filename=filename,
             api_key=api_key,
             model=model,
+            fallback_model=fallback_model,
         )
 
     return await _retry_transient_or(_do_text_doc, tries=3), "markitdown"
@@ -965,9 +940,15 @@ async def _run_x_analysis_pipeline(
     await events.publish_job_event(user_id, job_id, "analyzing_x", percent=30)
 
     async def _do_call() -> Any:
-        return await analyze_x_url(url=source_url, api_key=api_key, model=model)
+        return await analyze_x_url(
+            url=source_url,
+            api_key=api_key,
+            model=model,
+            fallback_model=config.fallback_model,
+        )
 
     result = await _retry_transient_or(_do_call, tries=3)
+    log_openrouter_route(log, "x_analysis", model, result.model)
     if not result.text:
         raise PermanentError.public(
             "X_ANALYSIS_EMPTY",
@@ -977,7 +958,7 @@ async def _run_x_analysis_pipeline(
     await db.insert_cost_event(
         user_id=user_id,
         kind="X_SEARCH",
-        model=model,
+        model=result.model,
         tokens_in=result.tokens_in,
         tokens_out=result.tokens_out,
         cost_usd=result.cost_usd,
@@ -1201,8 +1182,10 @@ async def _maybe_grounded_brain_extract(
                             content=segment["text"],
                             api_key=config.api_key,
                             model=config.model,
+                            fallback_model=config.fallback_model,
                             language=language,
                         )
+                        log_openrouter_route(log, "brain_extract", config.model, result.model)
                         await db.insert_cost_event(
                             user_id=user_id,
                             kind="CHAT",
@@ -1394,10 +1377,12 @@ async def _maybe_generate_tags(
                 existing_tags=existing_tags,
                 api_key=api_key,
                 model=model,
+                fallback_model=config.fallback_model,
                 language=language,
             ),
             tries=2,
         )
+        log_openrouter_route(log, "tags", model, result.model)
         await db.insert_cost_event(
             user_id=user_id,
             kind="CHAT",
@@ -1507,6 +1492,7 @@ async def _transcribe_via_api(
     total_chunks = len(chunks)
     all_segments: list[Segment] = []
     total_cost = Decimal("0")
+    selected_model = model
 
     for i, chunk in enumerate(chunks):
         _check_cancel(job_id)
@@ -1520,13 +1506,20 @@ async def _transcribe_via_api(
         chunk_path = chunk.path
 
         async def _do_call(path: Path = chunk_path) -> Any:
-            return await _call_or(path, api_key, model)
+            return await transcribe_audio(
+                audio_path=path,
+                api_key=api_key,
+                model=model,
+                fallback_model=config.fallback_model,
+            )
 
         result = await _retry_transient_or(_do_call, tries=3)
+        selected_model = result.model
+        log_openrouter_route(log, "transcription", model, result.model)
         await db.insert_cost_event(
             user_id=user_id,
             kind="TRANSCRIBE",
-            model=model,
+            model=result.model,
             cost_usd=result.cost_usd,
             job_id=job_id,
             meta={"chunk_index": i, "duration_sec": chunk.duration_sec},
@@ -1539,7 +1532,7 @@ async def _transcribe_via_api(
             all_segments.append(Segment(start_sec=float(chunk.start_sec), text=result.text))
         log.info("chunk-done", index=i, chars=len(result.text), cost=str(result.cost_usd))
 
-    return tuple(all_segments), model, total_cost
+    return tuple(all_segments), selected_model, total_cost
 
 
 async def _maybe_assign_folder(
@@ -1571,10 +1564,12 @@ async def _maybe_assign_folder(
                 existing_folders=existing,
                 api_key=api_key,
                 model=model,
+                fallback_model=config.fallback_model,
                 language=language,
             ),
             tries=2,
         )
+        log_openrouter_route(log, "folder", model, result.model)
         await db.insert_cost_event(
             user_id=user_id,
             kind="CHAT",
@@ -1629,10 +1624,12 @@ async def _maybe_generate_title(
                 fallback_title=fallback_title,
                 api_key=api_key,
                 model=model,
+                fallback_model=config.fallback_model,
                 language=language,
             ),
             tries=2,
         )
+        log_openrouter_route(log, "title", model, result.model)
         await db.insert_cost_event(
             user_id=user_id,
             kind="CHAT",
@@ -1651,10 +1648,6 @@ async def _maybe_generate_title(
             **_error_diagnostic(e, "TITLE_GENERATION_FAILED"),
         )
         return None
-
-
-async def _call_or(audio_path: Path, api_key: str, model: str) -> Any:  # noqa: ANN401 — TranscriptionResult
-    return await transcribe_audio(audio_path=audio_path, api_key=api_key, model=model)
 
 
 async def _persist(
@@ -1926,7 +1919,7 @@ async def _retry_transient_or[T](
     fn: Callable[[], Awaitable[T]], *, tries: int = 3, base_delay: float = 1.0
 ) -> T:
     """Retry específico OpenRouter: auth = permanente; transient = backoff."""
-    last_exc: Exception | None = None
+    last_exc: OpenrouterTransientError | None = None
     for attempt in range(tries):
         try:
             return await fn()
@@ -1938,7 +1931,14 @@ async def _retry_transient_or[T](
         except OpenrouterTransientError as e:
             last_exc = e
             if attempt < tries - 1:
-                await asyncio.sleep(base_delay * (2**attempt))
+                delay = e.retry_after or base_delay * (2**attempt)
+                await asyncio.sleep(delay)
             continue
     assert last_exc is not None
+    if last_exc.status_code == 429:
+        raise PermanentError.public(
+            "OPENROUTER_RATE_LIMITED",
+            "O provedor da OpenRouter atingiu um limite temporário. "
+            "Tente novamente em instantes ou selecione outro modelo fallback.",
+        ) from last_exc
     raise last_exc

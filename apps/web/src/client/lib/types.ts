@@ -65,6 +65,7 @@ export interface ModelPurposeStatus {
   canonical: string;
   override: string | null;
   effective: string;
+  fallback: string | null;
 }
 
 export type JobStatus =

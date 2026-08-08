@@ -21,6 +21,7 @@ async def test_openrouter_key_and_model_are_decrypted_from_one_snapshot(
         return_value={
             "openrouter_api_key": encrypt("sk-test", KEY),
             "default_chat_model": encrypt("x-ai/grok-4.5", KEY),
+            "fallback_chat_model": encrypt("openai/gpt-5-mini", KEY),
         }
     )
     monkeypatch.setattr(voxen_settings.db, "get_settings_enc", read)
@@ -33,12 +34,14 @@ async def test_openrouter_key_and_model_are_decrypted_from_one_snapshot(
     assert config == voxen_settings.OpenRouterModelConfig(
         api_key="sk-test",
         model="x-ai/grok-4.5",
+        fallback_model="openai/gpt-5-mini",
     )
     read.assert_awaited_once_with(
         (
             "openrouter_api_key",
             "default_chat_model",
             "legacy_chat_model",
+            "fallback_chat_model",
         )
     )
 

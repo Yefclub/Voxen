@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,7 @@ import httpx
 import pytest
 
 from src.openrouter import (
+    OpenrouterTransientError,
     _resolve_folder_decision,
     _resolve_title_decision,
     analyze_document_text,
@@ -18,6 +20,17 @@ from src.openrouter import (
     generate_content_title,
     transcribe_audio,
 )
+from src.openrouter_transport import retry_after_seconds
+
+
+def test_retry_after_accepts_bounded_seconds_and_http_date() -> None:
+    now = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
+
+    assert retry_after_seconds("7", now=now) == 7
+    assert retry_after_seconds("Sat, 08 Aug 2026 12:00:30 GMT", now=now) == 30
+    assert retry_after_seconds("61", now=now) is None
+    assert retry_after_seconds("Sat, 08 Aug 2026 12:02:00 GMT", now=now) is None
+    assert retry_after_seconds("invalid", now=now) is None
 
 
 class CaptureClient:
@@ -319,6 +332,105 @@ async def test_transcribe_audio_uses_openrouter_json_base64_payload(tmp_path: Pa
         },
         "response_format": "json",
     }
+
+
+class RateLimitedClient:
+    async def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+    ) -> httpx.Response:
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "7"},
+            text='{"error":{"message":"Provider returned 429","token":"secret"}}',
+        )
+
+
+async def test_openrouter_429_is_transient_and_keeps_bounded_retry_hint(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "image.png"
+    image_path.write_bytes(b"fake-image")
+
+    with pytest.raises(OpenrouterTransientError) as raised:
+        await analyze_image(
+            image_path=image_path,
+            api_key="sk-test",
+            model="openai/gpt-5-vision",
+            prompt="Descreva.",
+            client=RateLimitedClient(),  # type: ignore[arg-type]
+        )
+
+    assert raised.value.status_code == 429
+    assert raised.value.retry_after == 7
+    assert "Provider returned" not in str(raised.value)
+    assert "secret" not in str(raised.value)
+
+
+class AudioFallbackClient:
+    def __init__(self) -> None:
+        self.models: list[str] = []
+
+    async def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+    ) -> httpx.Response:
+        self.models.append(str(json["model"]))
+        if len(self.models) == 1:
+            return httpx.Response(429, headers={"Retry-After": "1"})
+        return httpx.Response(
+            200,
+            json={
+                "text": "Fallback funcionou",
+                "model": json["model"],
+                "usage": {"cost": "0.003"},
+            },
+        )
+
+
+async def test_transcription_uses_fallback_after_transient_primary_failure(
+    tmp_path: Path,
+) -> None:
+    audio_path = tmp_path / "chunk.ogg"
+    audio_path.write_bytes(b"fake-audio")
+    client = AudioFallbackClient()
+
+    result = await transcribe_audio(
+        audio_path=audio_path,
+        api_key="sk-test",
+        model="x-ai/grok-stt-1.0",
+        fallback_model="openai/gpt-4o-mini-transcribe",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert client.models == ["x-ai/grok-stt-1.0", "openai/gpt-4o-mini-transcribe"]
+    assert result.model == "openai/gpt-4o-mini-transcribe"
+    assert result.text == "Fallback funcionou"
+
+
+async def test_chat_completion_sends_ordered_model_fallback(tmp_path: Path) -> None:
+    image_path = tmp_path / "image.png"
+    image_path.write_bytes(b"fake-image")
+    client = CaptureClient()
+
+    await analyze_image(
+        image_path=image_path,
+        api_key="sk-test",
+        model="openai/gpt-5-vision",
+        fallback_model="x-ai/grok-4.5",
+        prompt="Descreva.",
+        client=client,  # type: ignore[arg-type]
+    )
+
+    assert client.payload is not None
+    assert client.payload["model"] == "openai/gpt-5-vision"
+    assert client.payload["models"] == ["x-ai/grok-4.5"]
 
 
 class ExternalErrorClient:

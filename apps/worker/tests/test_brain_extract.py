@@ -181,7 +181,7 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
     monkeypatch.setattr(
         pipeline.voxen_settings,
         "get_openrouter_model_config",
-        AsyncMock(return_value=SimpleNamespace(api_key="key", model="model")),
+        AsyncMock(return_value=SimpleNamespace(api_key="key", model="model", fallback_model=None)),
     )
     monkeypatch.setattr(
         pipeline.voxen_settings,
@@ -256,5 +256,5 @@ async def test_grounded_extraction_does_not_propagate_upstream_body() -> None:
             client=_ExternalErrorClient(),  # type: ignore[arg-type]
         )
 
-    assert str(raised.value) == "OpenRouter 502"
+    assert str(raised.value) == "OpenRouter temporariamente indisponível (HTTP 502)."
     assert "body-secret" not in str(raised.value)

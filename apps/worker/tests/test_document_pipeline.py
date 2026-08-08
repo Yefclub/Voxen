@@ -82,6 +82,7 @@ async def test_pdf_uses_mistral_ocr_without_markitdown(
         pdf_path=pdf_path,
         api_key="sk-test",
         model="x-ai/grok-4.5",
+        fallback_model=None,
     )
     convert.assert_not_awaited()
     analyze_text.assert_not_awaited()
@@ -189,6 +190,7 @@ async def test_non_pdf_pipeline_converts_with_markitdown_then_uses_openrouter(
         filename="manual.docx",
         api_key="sk-test",
         model="x-ai/grok-4.5",
+        fallback_model=None,
     )
     analyze_pdf.assert_not_awaited()
     cost_call = pipeline.db.insert_cost_event.await_args.kwargs

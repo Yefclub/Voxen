@@ -16,6 +16,17 @@ _master_key_cache: bytes | None = None
 class OpenRouterModelConfig:
     api_key: str | None
     model: str | None
+    fallback_model: str | None = None
+
+
+_FALLBACK_BY_MODEL_KEY = {
+    "default_chat_model": "fallback_chat_model",
+    "default_transcription_model": "fallback_transcription_model",
+    "default_web_search_model": "fallback_web_search_model",
+    "default_vision_model": "fallback_vision_model",
+    "default_document_model": "fallback_document_model",
+    "default_x_analysis_model": "fallback_x_analysis_model",
+}
 
 
 def get_master_key() -> bytes:
@@ -92,7 +103,16 @@ async def get_openrouter_model_config(
     model_keys: tuple[str, ...],
 ) -> OpenRouterModelConfig:
     """Lê chave e modelo no mesmo snapshot para não cruzar commits de setup."""
-    settings = await db.get_settings_enc(("openrouter_api_key", *model_keys))
+    fallback_key = next(
+        (_FALLBACK_BY_MODEL_KEY[key] for key in model_keys if key in _FALLBACK_BY_MODEL_KEY),
+        None,
+    )
+    read_keys = (
+        "openrouter_api_key",
+        *model_keys,
+        *((fallback_key,) if fallback_key else ()),
+    )
+    settings = await db.get_settings_enc(read_keys)
     key_enc = settings.get("openrouter_api_key")
     api_key = decrypt(key_enc, get_master_key()) if key_enc is not None else None
     model: str | None = None
@@ -101,7 +121,15 @@ async def get_openrouter_model_config(
         if model_enc is not None:
             model = decrypt(model_enc, get_master_key())
             break
-    return OpenRouterModelConfig(api_key=api_key, model=model)
+    fallback_enc = settings.get(fallback_key) if fallback_key else None
+    fallback_model = decrypt(fallback_enc, get_master_key()) if fallback_enc is not None else None
+    if fallback_model == model:
+        fallback_model = None
+    return OpenRouterModelConfig(
+        api_key=api_key,
+        model=model,
+        fallback_model=fallback_model,
+    )
 
 
 async def get_first_setting(keys: tuple[str, ...]) -> str | None:

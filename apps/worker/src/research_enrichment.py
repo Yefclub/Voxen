@@ -92,6 +92,7 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
                         summary=str(item.get("summaryMd") or ""),
                         transcript=str(item.get("plainText") or ""),
                     ),
+                    fallback_model=config.fallback_model,
                 )
                 plan_usage = parse_provider_usage(plan_data, require_search=False)
                 if plan_usage.search_calls != 0:
@@ -108,6 +109,7 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
                         client,
                         config.api_key,
                         build_research_payload(model=config.model, query=query),
+                        fallback_model=config.fallback_model,
                     )
                     search_usage = parse_provider_usage(search_data, require_search=True)
                     if search_usage.search_calls != 1:
@@ -237,8 +239,13 @@ async def process(item: dict[str, Any], log: Any) -> None:  # noqa: ANN401
 
 
 async def _post_completion(
-    client: httpx.AsyncClient, api_key: str, payload: dict[str, Any]
+    client: httpx.AsyncClient,
+    api_key: str,
+    payload: dict[str, Any],
+    fallback_model: str | None = None,
 ) -> dict[str, Any]:
+    if fallback_model and fallback_model != payload.get("model"):
+        payload = {**payload, "models": [fallback_model]}
     response = await client.post(
         f"{openrouter.OR_BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {api_key}"},
@@ -247,7 +254,7 @@ async def _post_completion(
     if response.status_code in {401, 403}:
         raise ResearchOutputError("RESEARCH_AUTH_ERROR")
     if response.status_code == 429 or response.status_code >= 500:
-        raise openrouter.OpenrouterTransientError("RESEARCH_UPSTREAM_UNAVAILABLE")
+        openrouter._raise_for_openrouter_status(response)  # noqa: SLF001
     if not response.is_success:
         raise ResearchOutputError("RESEARCH_UPSTREAM_REJECTED")
     try:

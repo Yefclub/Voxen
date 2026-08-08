@@ -23,7 +23,7 @@ import {
   verifyClaimAgainstMd,
   type KnowledgeSearchResult,
 } from '../retrieval';
-import { getAppTimezone, getSettings } from '../settings';
+import { getAppTimezone } from '../settings';
 import { researchWeb } from '../web-research';
 import { buildAgentClockInstructions, buildInstanceClock } from '../app-timezone';
 import type { ChatStatusCode } from '../../shared/chat-status';
@@ -63,6 +63,12 @@ import {
   isToolErrorOutput,
 } from './tool-outcomes';
 import { citationsFromToolEvents } from './citations';
+import {
+  getChatModelConfig as getModelConfig,
+  normalizeOpenRouterError as normalizeError,
+  routedChatModel,
+  type ChatModelConfig,
+} from './model-routing';
 
 const KEEP_RECENT = 6;
 const DEFAULT_CONTEXT_LIMIT = 32_000;
@@ -362,21 +368,6 @@ function toModelMessages(messages: ActiveMessage[]): ModelMessage[] {
     role: message.role === 'USER' ? 'user' : message.role === 'ASSISTANT' ? 'assistant' : 'system',
     content: message.content,
   }));
-}
-
-function normalizeError(error: unknown): string {
-  if (error instanceof Error) return error.message.slice(0, 500);
-  return 'Falha inesperada ao gerar a resposta.';
-}
-
-async function getModelConfig(): Promise<{ apiKey: string; model: string }> {
-  const settings = await getSettings(['openrouter_api_key', 'default_chat_model'] as const);
-  const apiKey = settings.openrouter_api_key;
-  const model = settings.default_chat_model;
-  if (!apiKey || !model) {
-    throw new Error('Conclua a configuração da OpenRouter em Configurações.');
-  }
-  return { apiKey, model };
 }
 
 function closeReasoning(segments: StoredMessageSegment[], now = Date.now()): void {
@@ -1436,7 +1427,7 @@ export async function approveChatAction(
 
 async function maybeCompact(
   conversationId: string,
-  modelConfig: { apiKey: string; model: string },
+  modelConfig: ChatModelConfig,
   emitStatus?: (label: string) => void,
 ): Promise<{ before: number; after: number } | null> {
   const ownerId = crypto.randomUUID();
@@ -1492,8 +1483,8 @@ async function maybeCompact(
     if (compacted.length === 0) return null;
     emitStatus?.('Organizando a memória da conversa…');
     const provider = createOpenRouter({ apiKey: modelConfig.apiKey });
-    const { text, usage } = await generateText({
-      model: provider(modelConfig.model),
+    const { text, usage, response } = await generateText({
+      model: routedChatModel(provider, modelConfig),
       // AI SDK 7: top-level system instructions use `instructions` (not `system`).
       instructions:
         'Resuma o histórico para memória de agente. Preserve fatos confirmados, decisões, preferências, tarefas abertas, fontes e contradições. Não revele nem invente cadeia de raciocínio.',
@@ -1501,6 +1492,15 @@ async function maybeCompact(
       timeout: { totalMs: 60_000 },
     });
     if (!text.trim()) return null;
+    const selectedModel = response.modelId || modelConfig.model;
+    if (selectedModel !== modelConfig.model) {
+      logChatTiming({
+        event: 'openrouter-model-fallback-used',
+        purpose: 'chat_compaction',
+        primaryModel: modelConfig.model,
+        selectedModel,
+      });
+    }
     const now = new Date();
     const lastCompactedId = compacted[compacted.length - 1]?.id ?? null;
     await db.$transaction(async (tx) => {
@@ -1538,7 +1538,7 @@ async function maybeCompact(
         data: {
           userId: conversation.userId,
           kind: 'CHAT',
-          model: modelConfig.model,
+          model: selectedModel,
           tokensIn: usage.inputTokens ?? 0,
           tokensOut: usage.outputTokens ?? 0,
           costUsd: 0,
@@ -1624,7 +1624,7 @@ export async function streamAssistantReply(options: {
       data: { updatedAt: new Date(), activeLeafId: userMessage.id },
     });
   }
-  let modelConfig: { apiKey: string; model: string };
+  let modelConfig: ChatModelConfig;
   try {
     modelConfig = await getModelConfig();
   } catch {
@@ -1712,7 +1712,7 @@ export async function streamAssistantReply(options: {
     : historyMessages;
 
   const result = streamText({
-    model: provider(modelConfig.model),
+    model: routedChatModel(provider, modelConfig),
     instructions: AGENT_INSTRUCTIONS + clock + suggestions + buildUrlIntentInstructions(urlIntent),
     // AI SDK 7 rejects role:system inside `messages` unless opted in. Our
     // SYSTEM rows (compaction summaries, HITL responses) are server-authored
@@ -1903,6 +1903,16 @@ export async function streamAssistantReply(options: {
     inputTokens: 0,
     outputTokens: 0,
   }));
+  const responseMetadata = await Promise.resolve(result.response).catch(() => null);
+  const selectedModel = responseMetadata?.modelId || modelConfig.model;
+  if (selectedModel !== modelConfig.model) {
+    logChatTiming({
+      event: 'openrouter-model-fallback-used',
+      purpose: 'chat',
+      primaryModel: modelConfig.model,
+      selectedModel,
+    });
+  }
   closeReasoning(segments);
   // Never persist `running` — a crashed/aborted stream would otherwise leave
   // the Thinking UI stuck on "Pensando…" forever after reload.
@@ -1950,7 +1960,7 @@ export async function streamAssistantReply(options: {
     data: {
       userId,
       kind: 'CHAT',
-      model: modelConfig.model,
+      model: selectedModel,
       tokensIn: usage.inputTokens ?? 0,
       tokensOut: usage.outputTokens ?? 0,
       costUsd: 0,

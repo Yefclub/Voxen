@@ -10,27 +10,28 @@ from pathlib import Path
 
 import httpx
 
-OR_BASE_URL = "https://openrouter.ai/api/v1"
+from .openrouter_transport import (
+    OR_BASE_URL,
+    OpenrouterAuthError,
+    OpenrouterTransientError,
+    TranscriptionResult,
+    transcribe_audio,
+)
+from .openrouter_transport import (
+    payload_with_fallback as _payload_with_fallback,
+)
+from .openrouter_transport import (
+    raise_for_openrouter_status as _raise_for_openrouter_status,
+)
 
-
-class OpenrouterAuthError(Exception):
-    """401/403 da OpenRouter — admin precisa revalidar a key."""
-
-
-class OpenrouterTransientError(Exception):
-    """5xx / timeout / network — retry vale a pena."""
-
-
-def _unexpected_response_error(status_code: int) -> RuntimeError:
-    """Cria erro acionável sem propagar o corpo não confiável do provedor."""
-    return RuntimeError(f"OpenRouter retornou uma resposta inesperada (HTTP {status_code}).")
-
-
-@dataclass(frozen=True)
-class TranscriptionResult:
-    text: str
-    cost_usd: Decimal
-    model: str
+__all__ = [
+    "OR_BASE_URL",
+    "OpenrouterAuthError",
+    "OpenrouterTransientError",
+    "TranscriptionResult",
+    "_raise_for_openrouter_status",
+    "transcribe_audio",
+]
 
 
 @dataclass(frozen=True)
@@ -80,67 +81,12 @@ class FolderClassificationResult:
     tokens_out: int
 
 
-async def transcribe_audio(
-    *,
-    audio_path: Path,
-    api_key: str,
-    model: str,
-    client: httpx.AsyncClient | None = None,
-) -> TranscriptionResult:
-    """Envia áudio para a API remota `/audio/transcriptions` da OpenRouter.
-
-    Joga `OpenrouterAuthError` em 401/403 (permanente), `OpenrouterTransientError`
-    em 5xx/timeout/rede (retry vale a pena), outros erros viram `RuntimeError`.
-    """
-    owns_client = client is None
-    if client is None:
-        client = httpx.AsyncClient(timeout=180.0)
-    try:
-        audio_format = audio_path.suffix.lower().lstrip(".") or "ogg"
-        if audio_format == "oga":
-            audio_format = "ogg"
-        payload = {
-            "model": model,
-            "input_audio": {
-                "data": base64.b64encode(audio_path.read_bytes()).decode("ascii"),
-                "format": audio_format,
-            },
-            "response_format": "json",
-        }
-        try:
-            res = await client.post(
-                f"{OR_BASE_URL}/audio/transcriptions",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json=payload,
-            )
-        except (httpx.TimeoutException, httpx.NetworkError, httpx.ProtocolError) as e:
-            raise OpenrouterTransientError(f"Rede/timeout: {e}") from e
-        if res.status_code in (401, 403):
-            raise OpenrouterAuthError(f"OpenRouter rejeitou a key (HTTP {res.status_code})")
-        if 500 <= res.status_code < 600:
-            raise OpenrouterTransientError(f"OpenRouter {res.status_code}")
-        if not res.is_success:
-            raise _unexpected_response_error(res.status_code)
-        body = res.json()
-        text = body.get("text", "")
-        # OpenRouter ecoa custo em headers `x-ratelimit-...` ou no corpo `usage`.
-        usage = body.get("usage", {})
-        cost_str = usage.get("cost") or usage.get("total_cost") or "0"
-        try:
-            cost = Decimal(str(cost_str))
-        except (ValueError, ArithmeticError):
-            cost = Decimal("0")
-        return TranscriptionResult(text=text, cost_usd=cost, model=model)
-    finally:
-        if owns_client:
-            await client.aclose()
-
-
 async def analyze_image(
     *,
     image_path: Path,
     api_key: str,
     model: str,
+    fallback_model: str | None = None,
     prompt: str,
     client: httpx.AsyncClient | None = None,
 ) -> VisionAnalysisResult:
@@ -154,27 +100,30 @@ async def analyze_image(
         client = httpx.AsyncClient(timeout=120.0)
     try:
         data_url = f"data:{mime};base64,{base64.b64encode(image_path.read_bytes()).decode('ascii')}"
-        payload = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "Você analisa imagens para uma base de conhecimento pessoal. "
-                        "Responda em português do Brasil, com descrição objetiva, "
-                        "texto visível/OCR quando houver e pontos relevantes para busca futura."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": data_url}},
-                    ],
-                },
-            ],
-            "usage": {"include": True},
-        }
+        payload = _payload_with_fallback(
+            {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Você analisa imagens para uma base de conhecimento pessoal. "
+                            "Responda em português do Brasil, com descrição objetiva, "
+                            "texto visível/OCR quando houver e pontos relevantes para busca futura."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": data_url}},
+                        ],
+                    },
+                ],
+                "usage": {"include": True},
+            },
+            fallback_model,
+        )
         try:
             res = await client.post(
                 f"{OR_BASE_URL}/chat/completions",
@@ -184,12 +133,7 @@ async def analyze_image(
         except (httpx.TimeoutException, httpx.NetworkError) as e:
             raise OpenrouterTransientError(f"Rede/timeout: {e}") from e
 
-        if res.status_code in (401, 403):
-            raise OpenrouterAuthError(f"OpenRouter rejeitou a key (HTTP {res.status_code})")
-        if 500 <= res.status_code < 600:
-            raise OpenrouterTransientError(f"OpenRouter {res.status_code}")
-        if not res.is_success:
-            raise _unexpected_response_error(res.status_code)
+        _raise_for_openrouter_status(res)
 
         body = res.json()
         choices = body.get("choices") or []
@@ -213,7 +157,7 @@ async def analyze_image(
         return VisionAnalysisResult(
             text=text.strip(),
             cost_usd=cost,
-            model=model,
+            model=str(body.get("model") or model),
             tokens_in=int(usage.get("prompt_tokens") or 0),
             tokens_out=int(usage.get("completion_tokens") or 0),
         )
@@ -228,6 +172,7 @@ async def analyze_document_text(
     filename: str,
     api_key: str,
     model: str,
+    fallback_model: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> DocumentAnalysisResult:
     """Analisa Markdown extraído localmente de um documento."""
@@ -245,7 +190,11 @@ async def analyze_document_text(
     )
     payload = _document_payload(model=model, user_content=prompt)
     return await _chat_completion_document(
-        payload=payload, api_key=api_key, model=model, client=client
+        payload=payload,
+        api_key=api_key,
+        model=model,
+        fallback_model=fallback_model,
+        client=client,
     )
 
 
@@ -254,6 +203,7 @@ async def analyze_pdf_native(
     pdf_path: Path,
     api_key: str,
     model: str,
+    fallback_model: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> DocumentAnalysisResult:
     """Analisa PDF pela OpenRouter usando o parser especializado Mistral OCR."""
@@ -287,7 +237,11 @@ async def analyze_pdf_native(
         ],
     )
     return await _chat_completion_document(
-        payload=payload, api_key=api_key, model=model, client=client
+        payload=payload,
+        api_key=api_key,
+        model=model,
+        fallback_model=fallback_model,
+        client=client,
     )
 
 
@@ -296,6 +250,7 @@ async def analyze_x_url(
     url: str,
     api_key: str,
     model: str,
+    fallback_model: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> XAnalysisResult:
     """Analisa post/thread do X usando Grok via OpenRouter com busca nativa."""
@@ -331,7 +286,11 @@ async def analyze_x_url(
         "usage": {"include": True},
     }
     result = await _chat_completion_document(
-        payload=payload, api_key=api_key, model=model, client=client
+        payload=payload,
+        api_key=api_key,
+        model=model,
+        fallback_model=fallback_model,
+        client=client,
     )
     return XAnalysisResult(
         text=result.text,
@@ -349,6 +308,7 @@ async def generate_content_title(
     fallback_title: str,
     api_key: str,
     model: str,
+    fallback_model: str | None = None,
     language: str = "pt-BR",
     client: httpx.AsyncClient | None = None,
 ) -> TitleGenerationResult:
@@ -422,7 +382,11 @@ async def generate_content_title(
         "usage": {"include": True},
     }
     result = await _chat_completion_document(
-        payload=payload, api_key=api_key, model=model, client=client
+        payload=payload,
+        api_key=api_key,
+        model=model,
+        fallback_model=fallback_model,
+        client=client,
     )
     title = _resolve_title_decision(result.text, candidate or fallback_title)
     return TitleGenerationResult(
@@ -543,6 +507,7 @@ async def classify_content_folder(
     existing_folders: list[str],
     api_key: str,
     model: str,
+    fallback_model: str | None = None,
     language: str = "pt-BR",
     client: httpx.AsyncClient | None = None,
 ) -> FolderClassificationResult:
@@ -597,7 +562,11 @@ async def classify_content_folder(
     # Preferimos JSON no prompt (não response_format) — alguns modelos na
     # OpenRouter rejeitam response_format e falhariam a classificação inteira.
     result = await _chat_completion_document(
-        payload=payload, api_key=api_key, model=model, client=client
+        payload=payload,
+        api_key=api_key,
+        model=model,
+        fallback_model=fallback_model,
+        client=client,
     )
     folder_name = _resolve_folder_decision(result.text, existing_folders)
     return FolderClassificationResult(
@@ -847,6 +816,7 @@ async def _chat_completion_document(
     payload: dict[str, object],
     api_key: str,
     model: str,
+    fallback_model: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> DocumentAnalysisResult:
     owns_client = client is None
@@ -857,17 +827,12 @@ async def _chat_completion_document(
             res = await client.post(
                 f"{OR_BASE_URL}/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}"},
-                json=payload,
+                json=_payload_with_fallback(payload, fallback_model),
             )
         except (httpx.TimeoutException, httpx.NetworkError) as e:
             raise OpenrouterTransientError(f"Rede/timeout: {e}") from e
 
-        if res.status_code in (401, 403):
-            raise OpenrouterAuthError(f"OpenRouter rejeitou a key (HTTP {res.status_code})")
-        if 500 <= res.status_code < 600:
-            raise OpenrouterTransientError(f"OpenRouter {res.status_code}")
-        if not res.is_success:
-            raise _unexpected_response_error(res.status_code)
+        _raise_for_openrouter_status(res)
 
         body = res.json()
         choices = body.get("choices") or []
@@ -891,7 +856,7 @@ async def _chat_completion_document(
         return DocumentAnalysisResult(
             text=text.strip(),
             cost_usd=cost,
-            model=model,
+            model=str(body.get("model") or model),
             tokens_in=int(usage.get("prompt_tokens") or 0),
             tokens_out=int(usage.get("completion_tokens") or 0),
         )

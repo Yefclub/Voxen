@@ -147,7 +147,11 @@ def _install_process_mocks(
     monkeypatch.setattr(
         research_enrichment.voxen_settings,
         "get_openrouter_model_config",
-        AsyncMock(return_value=SimpleNamespace(api_key="sk-test", model="example/model")),
+        AsyncMock(
+            return_value=SimpleNamespace(
+                api_key="sk-test", model="example/model", fallback_model=None
+            )
+        ),
     )
     insert_cost = AsyncMock()
     complete = AsyncMock(return_value=True)
@@ -403,7 +407,7 @@ async def test_process_fails_closed_without_config(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(
         research_enrichment.voxen_settings,
         "get_openrouter_model_config",
-        AsyncMock(return_value=SimpleNamespace(api_key=None, model=None)),
+        AsyncMock(return_value=SimpleNamespace(api_key=None, model=None, fallback_model=None)),
     )
     fail = AsyncMock()
     monkeypatch.setattr(research_enrichment.research_db, "fail_transcript_enrichment", fail)
@@ -424,7 +428,7 @@ async def test_process_fails_closed_without_config(monkeypatch: pytest.MonkeyPat
     [
         (SimpleNamespace(status_code=401, is_success=False, json=lambda: {}), False, None),
         (
-            SimpleNamespace(status_code=429, is_success=False, json=lambda: {}),
+            SimpleNamespace(status_code=429, is_success=False, headers={}, json=lambda: {}),
             True,
             "research-enrichment-transient-failure",
         ),
