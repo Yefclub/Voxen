@@ -18,6 +18,7 @@ documentation currently has two tracks:
 | [`en/STACK.md`](en/STACK.md)                         | Runtimes, libraries, images, and upgrade policy       |
 | [`en/DECISIONS.md`](en/DECISIONS.md)                 | Architecture Decision Records                         |
 | [`en/SECURITY.md`](en/SECURITY.md)                   | Threat model, guards, secrets, and incident response  |
+| [`en/MCP.md`](en/MCP.md)                             | MCP clients, compatibility, security, troubleshooting |
 | [`en/TRANSCRIPT-FORMAT.md`](en/TRANSCRIPT-FORMAT.md) | Markdown transcript schema                            |
 
 ## Português (Brasil)
@@ -30,4 +31,5 @@ documentation currently has two tracks:
 | [`STACK.md`](STACK.md)                         | Runtimes, bibliotecas, imagens e política de upgrade     |
 | [`DECISIONS.md`](DECISIONS.md)                 | Registro histórico de decisões arquiteturais             |
 | [`SECURITY.md`](SECURITY.md)                   | Threat model, guards, secrets e resposta a incidentes    |
+| [`MCP.md`](MCP.md)                             | Clientes MCP, compatibilidade, segurança e diagnóstico   |
 | [`TRANSCRIPT-FORMAT.md`](TRANSCRIPT-FORMAT.md) | Schema Markdown de transcrições                          |
