@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786179760",
+    "channel": "dev",
+    "type": "chore",
+    "title": "Complete MCP client setup guidance",
+    "body": "The MCP account page now provides copyable connection details for Codex,\nClaude Code, OpenAI, Anthropic, Cursor, and MCP Inspector. Equivalent English\nand Brazilian Portuguese guides document compatibility, token safety, public\nHTTPS requirements, and actionable troubleshooting. Grok Web is clearly marked\nas requiring the upcoming OAuth delivery instead of accepting personal tokens.",
+    "pr": 698,
+    "author": "Kalyel",
+    "date": "2026-08-08T06:02:21-03:00",
+    "translations": {
+      "en": {
+        "title": "Complete MCP client setup guidance",
+        "body": "The MCP account page now provides copyable connection details for Codex,\nClaude Code, OpenAI, Anthropic, Cursor, and MCP Inspector. Equivalent English\nand Brazilian Portuguese guides document compatibility, token safety, public\nHTTPS requirements, and actionable troubleshooting. Grok Web is clearly marked\nas requiring the upcoming OAuth delivery instead of accepting personal tokens."
+      },
+      "pt-BR": {
+        "title": "Guia completo para configurar clientes MCP",
+        "body": "A página de conta MCP agora fornece dados copiáveis para Codex, Claude Code,\nOpenAI, Anthropic, Cursor e MCP Inspector. Guias equivalentes em inglês e\nportuguês documentam compatibilidade, segurança do token, HTTPS público e\ndiagnóstico acionável. O Grok Web fica claramente marcado como dependente da\npróxima entrega OAuth, sem induzir o uso incorreto de tokens pessoais."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/698"
+  },
+  {
     "version": "0.14.5-dev.1786178078",
     "channel": "dev",
     "type": "fix",

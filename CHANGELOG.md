@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.14.5-dev.1786179760 — 2026-08-08 · Dev
+
+### 🧹 Complete MCP client setup guidance
+
+The MCP account page now provides copyable connection details for Codex,
+Claude Code, OpenAI, Anthropic, Cursor, and MCP Inspector. Equivalent English
+and Brazilian Portuguese guides document compatibility, token safety, public
+HTTPS requirements, and actionable troubleshooting. Grok Web is clearly marked
+as requiring the upcoming OAuth delivery instead of accepting personal tokens.
+
 ## v0.14.5-dev.1786178078 — 2026-08-08 · Dev
 
 ### 🐛 Resilient OpenRouter model fallbacks
