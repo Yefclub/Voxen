@@ -27,9 +27,15 @@ interface MarkdownProps {
   children: string;
   className?: string;
   citations?: readonly ChatCitation[];
+  onCitationOpen?: (citation: ChatCitation) => void;
 }
 
-const ChatCitationContext = createContext<readonly ChatCitation[]>([]);
+type ChatCitationContextValue = {
+  citations: readonly ChatCitation[];
+  onCitationOpen?: (citation: ChatCitation) => void;
+};
+
+const ChatCitationContext = createContext<ChatCitationContextValue>({ citations: [] });
 
 // Bloco de código fenced (```...```). O Streamdown só roteia fences para `code`
 // (inline vai para `inlineCode`), então aqui sempre renderizamos o bloco rico.
@@ -109,19 +115,31 @@ function InlineCode({
 function InlineCitation({
   citation,
   children,
+  onOpen,
 }: {
   citation: ChatCitation;
   children: React.ReactNode;
+  onOpen?: (citation: ChatCitation) => void;
 }) {
+  const className =
+    'mx-0.5 inline-flex -translate-y-px items-center rounded-full bg-[var(--color-app-surface)] px-1.5 py-0.5 text-[10px] font-medium leading-none text-[var(--color-app-muted)] no-underline transition-colors hover:bg-[var(--color-accent-primary)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]';
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <a
-          href={citation.href}
-          className="mx-0.5 inline-flex -translate-y-px items-center rounded-full bg-[var(--color-app-surface)] px-1.5 py-0.5 text-[10px] font-medium leading-none text-[var(--color-app-muted)] no-underline transition-colors hover:bg-[var(--color-accent-primary)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
-        >
-          {children}
-        </a>
+        {onOpen ? (
+          <button
+            type="button"
+            className={className}
+            onClick={() => onOpen(citation)}
+            aria-label={citation.title}
+          >
+            {children}
+          </button>
+        ) : (
+          <a href={citation.href} className={className}>
+            {children}
+          </a>
+        )}
       </TooltipTrigger>
       <TooltipContent className="w-80 p-3" side="bottom" align="start">
         <p className="truncate text-xs font-medium text-[var(--color-app-fg)]">{citation.title}</p>
@@ -137,9 +155,14 @@ function Anchor({
   href,
   children,
 }: React.ComponentPropsWithoutRef<'a'> & ExtraProps): React.ReactElement {
-  const citations = useContext(ChatCitationContext);
+  const { citations, onCitationOpen } = useContext(ChatCitationContext);
   const citation = citationFromInlineHref(href, citations);
-  if (citation) return <InlineCitation citation={citation}>{children}</InlineCitation>;
+  if (citation)
+    return (
+      <InlineCitation citation={citation} onOpen={onCitationOpen}>
+        {children}
+      </InlineCitation>
+    );
   return (
     <a
       href={href}
@@ -200,8 +223,13 @@ export const Markdown = memo(function Markdown({
   children,
   className,
   citations = [],
+  onCitationOpen,
 }: MarkdownProps): React.ReactElement {
   const content = useMemo(() => renderInlineCitations(children, citations), [children, citations]);
+  const citationContext = useMemo(
+    () => ({ citations, onCitationOpen }),
+    [citations, onCitationOpen],
+  );
   return (
     <div
       className={cn(
@@ -231,7 +259,7 @@ export const Markdown = memo(function Markdown({
       )}
     >
       <TooltipProvider delayDuration={120} skipDelayDuration={300} disableHoverableContent>
-        <ChatCitationContext.Provider value={citations}>
+        <ChatCitationContext.Provider value={citationContext}>
           <Streamdown parseIncompleteMarkdown controls={false} components={structuralComponents}>
             {content}
           </Streamdown>

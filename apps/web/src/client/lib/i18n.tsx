@@ -9,6 +9,10 @@ import {
   type ReactNode,
 } from 'react';
 import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
+import {
+  enChatReferenceCanvasMessages,
+  ptBrChatReferenceCanvasMessages,
+} from './chat-reference-canvas-i18n';
 import * as knowledgeFeatureMessages from './knowledge-features-i18n';
 import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
 import { enResearchPolicyMessages, ptBrResearchPolicyMessages } from './research-policy-i18n';
@@ -29,6 +33,7 @@ const ptBRMessages = {
   ...ptBrTranscriptAnnotationMessages,
   ...knowledgeFeatureMessages.ptBrKnowledgeFeatureMessages,
   ...ptBrResearchPolicyMessages,
+  ...ptBrChatReferenceCanvasMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -1419,6 +1424,7 @@ const enMessages: Record<I18nKey, string> = {
   ...enTranscriptAnnotationMessages,
   ...knowledgeFeatureMessages.enKnowledgeFeatureMessages,
   ...enResearchPolicyMessages,
+  ...enChatReferenceCanvasMessages,
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
