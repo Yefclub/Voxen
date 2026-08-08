@@ -145,43 +145,79 @@ END $$;
 
 DO $$
 DECLARE
-  expected_columns TEXT[] := ARRAY[
-    'id', 'userId', 'sourceUrl', 'canonicalUrl', 'title', 'channel', 'author',
-    'durationSec', 'thumbnailUrl', 'objectKey', 'filename', 'mimeType', 'byteSize',
-    'status', 'errorMsg', 'transcriptId', 'createdAt', 'updatedAt', 'readyAt',
-    'processedAt'
-  ];
-  missing_columns TEXT[];
+  invalid_columns TEXT[];
+  invalid_constraints TEXT[];
+  invalid_indexes TEXT[];
 BEGIN
-  SELECT ARRAY_AGG(column_name ORDER BY column_name)
-    INTO missing_columns
-  FROM UNNEST(expected_columns) AS expected(column_name)
-  WHERE NOT EXISTS (
-    SELECT 1
-    FROM information_schema.columns actual
-    WHERE actual.table_schema = current_schema()
-      AND actual.table_name = 'SavedMedia'
-      AND actual.column_name = expected.column_name
-  );
+  WITH expected(
+    column_name,
+    udt_name,
+    is_nullable,
+    column_default,
+    datetime_precision
+  ) AS (
+    VALUES
+      ('id', 'text', 'NO', NULL::TEXT, NULL::INTEGER),
+      ('userId', 'text', 'NO', NULL, NULL),
+      ('sourceUrl', 'text', 'NO', NULL, NULL),
+      ('canonicalUrl', 'text', 'NO', NULL, NULL),
+      ('title', 'text', 'YES', NULL, NULL),
+      ('channel', 'text', 'YES', NULL, NULL),
+      ('author', 'text', 'YES', NULL, NULL),
+      ('durationSec', 'int4', 'YES', NULL, NULL),
+      ('thumbnailUrl', 'text', 'YES', NULL, NULL),
+      ('objectKey', 'text', 'YES', NULL, NULL),
+      ('filename', 'text', 'YES', NULL, NULL),
+      ('mimeType', 'text', 'YES', NULL, NULL),
+      ('byteSize', 'int8', 'YES', NULL, NULL),
+      ('status', 'SavedMediaStatus', 'NO', '''QUEUED''::"SavedMediaStatus"', NULL),
+      ('errorMsg', 'text', 'YES', NULL, NULL),
+      ('transcriptId', 'text', 'YES', NULL, NULL),
+      ('createdAt', 'timestamp', 'NO', 'CURRENT_TIMESTAMP', 3),
+      ('updatedAt', 'timestamp', 'NO', 'CURRENT_TIMESTAMP', 3),
+      ('readyAt', 'timestamp', 'YES', NULL, 3),
+      ('processedAt', 'timestamp', 'YES', NULL, 3)
+  )
+  SELECT ARRAY_AGG(expected.column_name ORDER BY expected.column_name)
+    INTO invalid_columns
+  FROM expected
+  LEFT JOIN information_schema.columns actual
+    ON actual.table_schema = current_schema()
+   AND actual.table_name = 'SavedMedia'
+   AND actual.column_name = expected.column_name
+  WHERE actual.column_name IS NULL
+     OR actual.udt_name IS DISTINCT FROM expected.udt_name
+     OR actual.is_nullable IS DISTINCT FROM expected.is_nullable
+     OR actual.column_default IS DISTINCT FROM expected.column_default
+     OR actual.datetime_precision IS DISTINCT FROM expected.datetime_precision;
 
-  IF COALESCE(cardinality(missing_columns), 0) > 0 THEN
-    RAISE EXCEPTION 'SavedMedia repair is incomplete; missing columns: %', missing_columns;
+  IF COALESCE(cardinality(invalid_columns), 0) > 0 THEN
+    RAISE EXCEPTION
+      'SavedMedia repair found missing or incompatible columns: %',
+      invalid_columns;
   END IF;
 
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = current_schema()
-      AND table_name = 'Job'
-      AND column_name = 'savedMediaId'
+    SELECT 1
+    FROM information_schema.columns actual
+    WHERE actual.table_schema = current_schema()
+      AND actual.table_name = 'Job'
+      AND actual.column_name = 'savedMediaId'
+      AND actual.udt_name = 'text'
+      AND actual.is_nullable = 'YES'
+      AND actual.column_default IS NULL
   ) THEN
-    RAISE EXCEPTION 'SavedMedia repair is incomplete; Job.savedMediaId is missing';
+    RAISE EXCEPTION
+      'SavedMedia repair found a missing or incompatible Job.savedMediaId column';
   END IF;
 
   IF NOT EXISTS (
     SELECT 1
     FROM pg_enum value
     JOIN pg_type type ON type.oid = value.enumtypid
+    JOIN pg_namespace namespace ON namespace.oid = type.typnamespace
     WHERE type.typname = 'JobType'
+      AND namespace.nspname = current_schema()
       AND value.enumlabel = 'DOWNLOAD_MEDIA'
   ) THEN
     RAISE EXCEPTION 'SavedMedia repair is incomplete; DOWNLOAD_MEDIA job type is missing';
@@ -191,7 +227,9 @@ BEGIN
     SELECT COUNT(*)
     FROM pg_enum value
     JOIN pg_type type ON type.oid = value.enumtypid
+    JOIN pg_namespace namespace ON namespace.oid = type.typnamespace
     WHERE type.typname = 'SavedMediaStatus'
+      AND namespace.nspname = current_schema()
       AND value.enumlabel = ANY(ARRAY[
         'QUEUED', 'DOWNLOADING', 'READY', 'PROCESSING', 'PROCESSED', 'DELETING', 'FAILED'
       ])
@@ -199,29 +237,103 @@ BEGIN
     RAISE EXCEPTION 'SavedMedia repair is incomplete; enum values are missing';
   END IF;
 
-  IF (
-    SELECT COUNT(*)
-    FROM pg_constraint
-    WHERE (conname = 'SavedMedia_pkey' AND conrelid = '"SavedMedia"'::regclass)
-       OR (conname = 'SavedMedia_userId_fkey' AND conrelid = '"SavedMedia"'::regclass)
-       OR (conname = 'SavedMedia_transcriptId_fkey' AND conrelid = '"SavedMedia"'::regclass)
-       OR (conname = 'Job_savedMediaId_fkey' AND conrelid = '"Job"'::regclass)
-  ) <> 4 THEN
-    RAISE EXCEPTION 'SavedMedia repair is incomplete; constraints are missing';
+  WITH expected(constraint_name, relation, definition) AS (
+    VALUES
+      (
+        'SavedMedia_pkey',
+        '"SavedMedia"'::regclass,
+        'PRIMARY KEY (id)'
+      ),
+      (
+        'SavedMedia_userId_fkey',
+        '"SavedMedia"'::regclass,
+        'FOREIGN KEY ("userId") REFERENCES "User"(id) ON UPDATE CASCADE ON DELETE CASCADE'
+      ),
+      (
+        'SavedMedia_transcriptId_fkey',
+        '"SavedMedia"'::regclass,
+        'FOREIGN KEY ("transcriptId") REFERENCES "Transcript"(id) ON UPDATE CASCADE ON DELETE SET NULL'
+      ),
+      (
+        'Job_savedMediaId_fkey',
+        '"Job"'::regclass,
+        'FOREIGN KEY ("savedMediaId") REFERENCES "SavedMedia"(id) ON UPDATE CASCADE ON DELETE SET NULL'
+      )
+  )
+  SELECT ARRAY_AGG(expected.constraint_name ORDER BY expected.constraint_name)
+    INTO invalid_constraints
+  FROM expected
+  LEFT JOIN pg_constraint actual
+    ON actual.conname = expected.constraint_name
+   AND actual.conrelid = expected.relation
+  WHERE actual.oid IS NULL
+     OR pg_get_constraintdef(actual.oid) IS DISTINCT FROM expected.definition;
+
+  IF COALESCE(cardinality(invalid_constraints), 0) > 0 THEN
+    RAISE EXCEPTION
+      'SavedMedia repair found missing or incompatible constraints: %',
+      invalid_constraints;
   END IF;
 
-  IF (
-    SELECT COUNT(*)
-    FROM pg_indexes
-    WHERE schemaname = current_schema()
-      AND indexname = ANY(ARRAY[
+  WITH expected(index_name, relation, definition) AS (
+    VALUES
+      (
         'SavedMedia_transcriptId_key',
+        '"SavedMedia"'::regclass,
+        format(
+          'CREATE UNIQUE INDEX "SavedMedia_transcriptId_key" ON %I."SavedMedia" USING btree ("transcriptId")',
+          current_schema()
+        )
+      ),
+      (
         'SavedMedia_userId_canonicalUrl_key',
+        '"SavedMedia"'::regclass,
+        format(
+          'CREATE UNIQUE INDEX "SavedMedia_userId_canonicalUrl_key" ON %I."SavedMedia" USING btree ("userId", "canonicalUrl")',
+          current_schema()
+        )
+      ),
+      (
         'SavedMedia_userId_createdAt_idx',
+        '"SavedMedia"'::regclass,
+        format(
+          'CREATE INDEX "SavedMedia_userId_createdAt_idx" ON %I."SavedMedia" USING btree ("userId", "createdAt" DESC)',
+          current_schema()
+        )
+      ),
+      (
         'SavedMedia_userId_status_createdAt_idx',
-        'Job_userId_savedMediaId_status_idx'
-      ])
-  ) <> 5 THEN
-    RAISE EXCEPTION 'SavedMedia repair is incomplete; indexes are missing';
+        '"SavedMedia"'::regclass,
+        format(
+          'CREATE INDEX "SavedMedia_userId_status_createdAt_idx" ON %I."SavedMedia" USING btree ("userId", status, "createdAt" DESC)',
+          current_schema()
+        )
+      ),
+      (
+        'Job_userId_savedMediaId_status_idx',
+        '"Job"'::regclass,
+        format(
+          'CREATE INDEX "Job_userId_savedMediaId_status_idx" ON %I."Job" USING btree ("userId", "savedMediaId", status)',
+          current_schema()
+        )
+      )
+  )
+  SELECT ARRAY_AGG(expected.index_name ORDER BY expected.index_name)
+    INTO invalid_indexes
+  FROM expected
+  LEFT JOIN LATERAL (
+    SELECT catalog.indexrelid AS oid
+    FROM pg_index catalog
+    JOIN pg_class indexed ON indexed.oid = catalog.indexrelid
+    WHERE catalog.indrelid = expected.relation
+      AND indexed.relname = expected.index_name
+  ) actual ON TRUE
+  WHERE actual.oid IS NULL
+     OR pg_get_indexdef(actual.oid) IS DISTINCT FROM expected.definition;
+
+  IF COALESCE(cardinality(invalid_indexes), 0) > 0 THEN
+    RAISE EXCEPTION
+      'SavedMedia repair found missing or incompatible indexes: %',
+      invalid_indexes;
   END IF;
 END $$;
