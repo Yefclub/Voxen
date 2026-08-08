@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786178078",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Resilient OpenRouter model fallbacks",
+    "body": "OpenRouter rate limits are now treated as temporary failures with bounded retry\ndelays and a clear, actionable message. Administrators can configure one\ncompatible fallback for every AI model purpose, while initial setup suggests\nsafe alternatives automatically. Runtime usage and costs identify the model\nthat actually answered.",
+    "pr": 695,
+    "author": "Kalyel",
+    "date": "2026-08-08T05:34:27-03:00",
+    "translations": {
+      "en": {
+        "title": "Resilient OpenRouter model fallbacks",
+        "body": "OpenRouter rate limits are now treated as temporary failures with bounded retry\ndelays and a clear, actionable message. Administrators can configure one\ncompatible fallback for every AI model purpose, while initial setup suggests\nsafe alternatives automatically. Runtime usage and costs identify the model\nthat actually answered."
+      },
+      "pt-BR": {
+        "title": "Fallbacks resilientes de modelos OpenRouter",
+        "body": "Os limites temporários da OpenRouter agora recebem novas tentativas com espera\ncontrolada e uma mensagem clara e acionável. Administradores podem configurar\num fallback compatível para cada finalidade de modelo de IA, enquanto a\nconfiguração inicial sugere alternativas seguras automaticamente. O uso e os\ncustos em runtime identificam o modelo que realmente respondeu."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/695"
+  },
+  {
     "version": "0.14.5-dev.1786127306",
     "channel": "dev",
     "type": "fix",
