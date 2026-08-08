@@ -4,7 +4,7 @@ import {
   MAX_MERMAID_FLOW_NODES,
   validateMermaidFlow,
 } from '../src/shared/mermaid-flow';
-import { buildTranscriptFlowPrompt } from '../src/lib/transcript-flow';
+import { buildTranscriptFlowPrompt, hasValidMermaidSyntax } from '../src/lib/transcript-flow';
 
 describe('Mermaid transcript flow contract', () => {
   it('accepts and normalizes a bounded flowchart fence', () => {
@@ -83,6 +83,14 @@ describe('Mermaid transcript flow contract', () => {
     });
   });
 
+  it.each([
+    ['reserved end token', 'flowchart TD\nend'],
+    ['incomplete subgraph', 'flowchart TD\nsubgraph'],
+    ['invalid nested square shape', 'flowchart TD\nA[foo[bar]]'],
+  ])('uses an isolated official parser before persistence: %s', async (_label, source) => {
+    expect(await hasValidMermaidSyntax(source)).toBe(false);
+  });
+
   it('rejects diagrams above the node bound', () => {
     const nodes = Array.from(
       { length: MAX_MERMAID_FLOW_NODES + 1 },
@@ -123,6 +131,7 @@ describe('Mermaid transcript flow contract', () => {
     ]);
 
     expect(pkg.dependencies.mermaid).toBe('11.16.1');
+    expect(pkg.dependencies.dompurify).toBe('3.4.13');
     expect(markdown).toContain("await import('mermaid')");
     expect(markdown).toContain("securityLevel: 'strict'");
     expect(markdown).toContain('validateMermaidFlow(source)');

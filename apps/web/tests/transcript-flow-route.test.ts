@@ -172,7 +172,7 @@ describeIfDb('transcript Mermaid flow API', () => {
         frontmatter: {},
       },
     });
-    mockOpenRouter('flowchart TD\nN1[unterminated');
+    mockOpenRouter('flowchart TD\nN1[foo[bar]]');
     expect((await postFlow(malformedTranscript.id, ownerCookie, true)).status).toBe(502);
     expect(
       (await db.transcript.findUniqueOrThrow({ where: { id: malformedTranscript.id } }))

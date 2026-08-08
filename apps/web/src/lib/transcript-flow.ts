@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { db } from './db';
 import { getAppLanguage, getSettings, type AppLanguage } from './settings';
 import { validateMermaidFlow } from '../shared/mermaid-flow';
@@ -31,6 +33,37 @@ Rules:
 - Use only square, round, or curly node shapes and the -->, -.->, ==>, or ~~~ edge forms. Write edge labels as -->|Label|.
 - Do not use click, callback, call, href, URLs, HTML, images, icons, init directives, scripts, or external resources.
 - Do not wrap the result in prose. A Mermaid code fence is accepted but not required.`;
+}
+
+export async function hasValidMermaidSyntax(code: string): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+    let output = '';
+    const finish = (valid: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      parser.kill();
+      resolve(valid);
+    };
+    const parser = spawn(
+      process.execPath,
+      [fileURLToPath(new URL('./mermaid-parse-process.ts', import.meta.url))],
+      {
+        env: { NODE_ENV: 'production' },
+        stdio: ['pipe', 'pipe', 'ignore'],
+      },
+    );
+    const timeout = setTimeout(() => finish(false), 5_000);
+    parser.on('error', () => finish(false));
+    parser.stdout.on('data', (chunk: Buffer) => {
+      output += chunk.toString('utf8');
+      if (output.length > 16) finish(false);
+    });
+    parser.on('close', (exitCode) => finish(exitCode === 0 && output === 'valid'));
+    parser.stdin.on('error', () => finish(false));
+    parser.stdin.end(code);
+  });
 }
 
 export async function generateAndPersistTranscriptFlow(input: {
@@ -124,6 +157,17 @@ export async function generateAndPersistTranscriptFlow(input: {
       usage: data.usage,
       language,
       reason: validation.error,
+    });
+    throw new TranscriptFlowError('O modelo retornou um fluxo inválido ou inseguro.', 502);
+  }
+  if (!(await hasValidMermaidSyntax(validation.code))) {
+    await recordRejectedFlowCost({
+      userId: input.userId,
+      transcriptId: input.transcriptId,
+      model: data.model ?? model,
+      usage: data.usage,
+      language,
+      reason: 'MERMAID_FLOW_SYNTAX_INVALID',
     });
     throw new TranscriptFlowError('O modelo retornou um fluxo inválido ou inseguro.', 502);
   }
