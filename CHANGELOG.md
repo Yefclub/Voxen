@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.5-dev.1786211865 — 2026-08-08 · Dev
+
+### 🐛 Correct MCP client setup contrast across themes
+
+The selected MCP client configuration now uses a theme-safe nested surface and a horizontally scrollable client selector on narrow screens.
+
 ## v0.14.5-dev.1786209842 — 2026-08-08 · Dev
 
 ### ✨ Batch URL ingestion across the app, chat, and MCP
