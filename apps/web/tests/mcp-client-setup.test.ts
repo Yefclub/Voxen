@@ -100,6 +100,10 @@ describe('MCP documentation contract', () => {
     expect(card).toContain('bg-[var(--color-app-bg-elevated)]');
     expect(card).not.toContain('bg-[var(--color-app-bg)] p-4');
     expect(card).toContain('data-horizontal-scroll="true"');
+    expect(card).toContain('touch-pan-x touch-pan-y');
+    expect(card).toContain('text-emerald-700 dark:text-emerald-300');
+    expect(card).toContain('text-amber-700 dark:text-amber-300');
+    expect(card).toContain('text-amber-700 dark:text-amber-300/90');
     expect(card).not.toContain('bg-[var(--color-app-subtle)]');
   });
 });

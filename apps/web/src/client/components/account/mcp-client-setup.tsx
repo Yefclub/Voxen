@@ -102,7 +102,7 @@ export function McpClientSetup({
 
         <div
           data-horizontal-scroll="true"
-          className="flex touch-pan-x gap-2 overflow-x-auto pb-1"
+          className="flex touch-pan-x touch-pan-y gap-2 overflow-x-auto pb-1"
           role="group"
           aria-label="MCP clients"
         >
@@ -134,6 +134,13 @@ export function McpClientSetup({
                   : setup.status === 'unsupported'
                     ? 'warning'
                     : 'outline'
+              }
+              className={
+                setup.status === 'supported'
+                  ? 'text-emerald-700 dark:text-emerald-300'
+                  : setup.status === 'unsupported'
+                    ? 'text-amber-700 dark:text-amber-300'
+                    : undefined
               }
             >
               {statusLabel}
@@ -172,7 +179,7 @@ export function McpClientSetup({
           </div>
         </div>
 
-        <p className="text-xs leading-relaxed text-amber-300/90">
+        <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-300/90">
           {locale === 'en'
             ? 'Tokens are shown once, must never be placed in URLs, and can be revoked without affecting your Voxen login.'
             : 'Tokens aparecem uma vez, nunca devem ir em URLs e podem ser revogados sem afetar seu login no Voxen.'}
