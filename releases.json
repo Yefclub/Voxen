@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786218603",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Reviewable Mermaid flows for transcripts",
+    "body": "- Generate or regenerate a visual flow from a transcript without changing its canonical text or summary.\n- Render validated Mermaid flowcharts in the transcript view and Markdown responses with a safe source fallback.\n- Include the derived flow in full transcript reads from the integrated chat and MCP.",
+    "pr": 712,
+    "author": "Kalyel",
+    "date": "2026-08-08T16:49:53-03:00",
+    "translations": {
+      "en": {
+        "title": "Reviewable Mermaid flows for transcripts",
+        "body": "- Generate or regenerate a visual flow from a transcript without changing its canonical text or summary.\n- Render validated Mermaid flowcharts in the transcript view and Markdown responses with a safe source fallback.\n- Include the derived flow in full transcript reads from the integrated chat and MCP."
+      },
+      "pt-BR": {
+        "title": "Fluxos Mermaid revisáveis para transcrições",
+        "body": "- Gere ou regenere um fluxo visual de uma transcrição sem alterar seu texto canônico ou resumo.\n- Renderize fluxogramas Mermaid validados na transcrição e em respostas Markdown, com fallback seguro para o código.\n- Inclua o fluxo derivado nas leituras completas de transcrição pelo chat integrado e MCP."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/712"
+  },
+  {
     "version": "0.14.5-dev.1786211865",
     "channel": "dev",
     "type": "fix",

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.5-dev.1786218603 — 2026-08-08 · Dev
+
+### ✨ Reviewable Mermaid flows for transcripts
+
+- Generate or regenerate a visual flow from a transcript without changing its canonical text or summary.
+- Render validated Mermaid flowcharts in the transcript view and Markdown responses with a safe source fallback.
+- Include the derived flow in full transcript reads from the integrated chat and MCP.
+
 ## v0.14.5-dev.1786211865 — 2026-08-08 · Dev
 
 ### 🐛 Correct MCP client setup contrast across themes
