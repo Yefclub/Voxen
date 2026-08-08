@@ -9,6 +9,10 @@ import {
   type ReactNode,
 } from 'react';
 import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
+import {
+  enChatReferenceCanvasMessages,
+  ptBrChatReferenceCanvasMessages,
+} from './chat-reference-canvas-i18n';
 import * as knowledgeFeatureMessages from './knowledge-features-i18n';
 import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
 import { enResearchPolicyMessages, ptBrResearchPolicyMessages } from './research-policy-i18n';
@@ -29,6 +33,7 @@ const ptBRMessages = {
   ...ptBrTranscriptAnnotationMessages,
   ...knowledgeFeatureMessages.ptBrKnowledgeFeatureMessages,
   ...ptBrResearchPolicyMessages,
+  ...ptBrChatReferenceCanvasMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -638,11 +643,6 @@ const ptBRMessages = {
   'chat.sourcesOne': '1 fonte',
   'chat.sourcesMany': '{count} fontes',
   'chat.sourcesDescription': '{count} evidências desta resposta.',
-  'chat.sourceBack': 'Voltar para as fontes',
-  'chat.sourceContent': 'Conteúdo da referência',
-  'chat.sourceOpenFull': 'Abrir fonte completa',
-  'chat.sourceLoading': 'Carregando conteúdo…',
-  'chat.sourceLoadError': 'Não foi possível carregar esta referência.',
   'chat.toolsUsedOne': '1 ferramenta',
   'chat.toolsUsedMany': '{count} ferramentas',
   'chat.attachmentsLabel': 'Anexos desta mensagem',
@@ -1424,6 +1424,7 @@ const enMessages: Record<I18nKey, string> = {
   ...enTranscriptAnnotationMessages,
   ...knowledgeFeatureMessages.enKnowledgeFeatureMessages,
   ...enResearchPolicyMessages,
+  ...enChatReferenceCanvasMessages,
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
@@ -2025,11 +2026,6 @@ const enMessages: Record<I18nKey, string> = {
   'chat.sourcesOne': '1 source',
   'chat.sourcesMany': '{count} sources',
   'chat.sourcesDescription': '{count} pieces of evidence in this response.',
-  'chat.sourceBack': 'Back to sources',
-  'chat.sourceContent': 'Reference content',
-  'chat.sourceOpenFull': 'Open full source',
-  'chat.sourceLoading': 'Loading content…',
-  'chat.sourceLoadError': 'This reference could not be loaded.',
   'chat.toolsUsedOne': '1 tool',
   'chat.toolsUsedMany': '{count} tools',
   'chat.attachmentsLabel': 'Attachments in this message',
