@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786209842",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Batch URL ingestion across the app, chat, and MCP",
+    "body": "Voxen now accepts up to 20 links at once. Each link receives its own queue job and visible result,\nso invalid, duplicate, existing, and newly queued sources can be handled independently.",
+    "pr": 708,
+    "author": "Kalyel",
+    "date": "2026-08-08T14:23:47-03:00",
+    "translations": {
+      "en": {
+        "title": "Batch URL ingestion across the app, chat, and MCP",
+        "body": "Voxen now accepts up to 20 links at once. Each link receives its own queue job and visible result,\nso invalid, duplicate, existing, and newly queued sources can be handled independently."
+      },
+      "pt-BR": {
+        "title": "Ingestão de URLs em lote no app, chat e MCP",
+        "body": "A Voxen agora aceita até 20 links de uma só vez. Cada link recebe seu próprio job na fila e um\nresultado visível, permitindo tratar de forma independente fontes inválidas, duplicadas, já\nexistentes e recém-enfileiradas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/708"
+  },
+  {
     "version": "0.14.5-dev.1786207296",
     "channel": "dev",
     "type": "feat",
