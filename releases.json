@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786224946",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Research gaps with the original source and a visible trail",
+    "body": "When selective research detects missing or inconsistent context, Voxen can now consult a\nsanitized reference to the original source before performing up to two complementary public\nsearches. Planning, source consultation, research, synthesis, retries, failures, cancellation,\nand completion remain visible in the originating queue item without reopening a completed job.\nExternal evidence stays separate from the canonical summary as reviewable additional context.",
+    "pr": 714,
+    "author": "Kalyel",
+    "date": "2026-08-08T18:35:27-03:00",
+    "translations": {
+      "en": {
+        "title": "Research gaps with the original source and a visible trail",
+        "body": "When selective research detects missing or inconsistent context, Voxen can now consult a\nsanitized reference to the original source before performing up to two complementary public\nsearches. Planning, source consultation, research, synthesis, retries, failures, cancellation,\nand completion remain visible in the originating queue item without reopening a completed job.\nExternal evidence stays separate from the canonical summary as reviewable additional context."
+      },
+      "pt-BR": {
+        "title": "Pesquise lacunas com a fonte original e uma trilha visível",
+        "body": "Quando a pesquisa seletiva detectar contexto ausente ou inconsistente, a Voxen agora pode\nconsultar uma referência sanitizada da fonte original antes de realizar até duas pesquisas\npúblicas complementares. Planejamento, consulta da fonte, pesquisa, síntese, novas tentativas,\nfalhas, cancelamento e conclusão permanecem visíveis no item de origem da fila sem reabrir um job\nconcluído. As evidências externas continuam separadas do resumo canônico como contexto adicional\nrevisável."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/714"
+  },
+  {
     "version": "0.14.5-dev.1786218603",
     "channel": "dev",
     "type": "feat",
