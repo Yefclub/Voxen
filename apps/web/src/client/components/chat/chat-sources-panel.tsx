@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, ExternalLink, FileText, LoaderCircle, X } from '@/components/ui/icons';
 import type { ChatCitation } from '../../../shared/chat-citations';
 import { countCitationSources } from '../../lib/chat-citation-summary';
+import { citationCanvasKey, citationCanvasState } from '../../lib/chat-reference-canvas';
 import { useFetch } from '../../lib/hooks';
 import { useI18n, type TranslateFn } from '../../lib/i18n';
 import { stripMarkdownFrontmatter } from '../../lib/transcript-render';
@@ -109,19 +110,30 @@ function CitationCanvas({
   citation,
   onBack,
   onClose,
+  mobile = false,
 }: {
   citation: ChatCitation;
   onBack: () => void;
   onClose: () => void;
+  mobile?: boolean;
 }): React.ReactElement {
   const { t } = useI18n();
+  const location = citationLocation(citation, t);
+  const state = citationCanvasState(citation);
+  const verified = state === 'verified';
+  const stateLabel =
+    state === 'stale'
+      ? t('chat.citationStale')
+      : verified
+        ? t('chat.citationVerified')
+        : t('chat.citationUnverified');
   const { data, loading, error } = useFetch<ReferenceContentResponse>(
     `/api/transcripts/${encodeURIComponent(citation.sourceId)}`,
   );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-start gap-2 px-5 pb-4 pt-5">
+      <header className={cn('flex shrink-0 items-start gap-2 px-5 pb-4 pt-5', mobile && 'pr-12')}>
         <button
           type="button"
           onClick={onBack}
@@ -134,15 +146,35 @@ function CitationCanvas({
           <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
             {t('chat.sourceContent')}
           </p>
-          <h2 className="mt-1 line-clamp-2 font-display text-base font-semibold text-[var(--color-app-fg)]">
-            {citation.title}
-          </h2>
+          {mobile ? (
+            <SheetTitle className="mt-1 line-clamp-2 font-display text-base font-semibold text-[var(--color-app-fg)]">
+              {citation.title}
+            </SheetTitle>
+          ) : (
+            <h2 className="mt-1 line-clamp-2 font-display text-base font-semibold text-[var(--color-app-fg)]">
+              {citation.title}
+            </h2>
+          )}
+          {mobile ? (
+            <SheetDescription
+              className={cn('mt-1.5 text-xs', verified ? 'text-emerald-400' : 'text-amber-300')}
+            >
+              {[stateLabel, location].filter(Boolean).join(' · ')}
+            </SheetDescription>
+          ) : (
+            <p className={cn('mt-1.5 text-xs', verified ? 'text-emerald-400' : 'text-amber-300')}>
+              {[stateLabel, location].filter(Boolean).join(' · ')}
+            </p>
+          )}
         </div>
         <a
           href={citation.href}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-0.5 rounded-md p-1 text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+          className={cn(
+            'mt-0.5 rounded-md p-1 text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]',
+            mobile && 'mr-1',
+          )}
           aria-label={t('chat.sourceOpenFull')}
           title={t('chat.sourceOpenFull')}
         >
@@ -158,7 +190,14 @@ function CitationCanvas({
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
-        <blockquote className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 text-sm leading-relaxed text-[var(--color-app-subtle)]">
+        <blockquote
+          className={cn(
+            'rounded-xl border p-3 text-sm leading-relaxed text-[var(--color-app-subtle)]',
+            verified
+              ? 'border-emerald-500/25 bg-emerald-500/5'
+              : 'border-amber-500/30 bg-amber-500/5',
+          )}
+        >
           “{citation.quote}”
         </blockquote>
         {loading && !data && (
@@ -212,7 +251,12 @@ export function ChatSourcesPanel({
             className="absolute inset-y-0 right-0 hidden w-[22rem] flex-col bg-[var(--color-app-bg)] md:flex"
           >
             {selectedCitation ? (
-              <CitationCanvas citation={selectedCitation} onBack={onBack} onClose={onClose} />
+              <CitationCanvas
+                key={citationCanvasKey(selectedCitation)}
+                citation={selectedCitation}
+                onBack={onBack}
+                onClose={onClose}
+              />
             ) : (
               <>
                 <header className="flex shrink-0 items-start justify-between gap-3 px-5 pb-4 pt-5">
@@ -245,7 +289,13 @@ export function ChatSourcesPanel({
           {citations && (
             <>
               {selectedCitation ? (
-                <CitationCanvas citation={selectedCitation} onBack={onBack} onClose={onClose} />
+                <CitationCanvas
+                  key={citationCanvasKey(selectedCitation)}
+                  citation={selectedCitation}
+                  onBack={onBack}
+                  onClose={onClose}
+                  mobile
+                />
               ) : (
                 <>
                   <header className="shrink-0 border-b border-[var(--color-app-border)] px-5 py-5 pr-12">
