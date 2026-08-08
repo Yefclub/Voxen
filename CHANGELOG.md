@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.5-dev.1786200221 — 2026-08-08 · Dev
+
+### ✨ Chat references open inside Voxen
+
+Verified citations now open their source content in the existing side panel, preserving the conversation and offering an explicit action for the full transcript page.
+
 ## v0.14.5-dev.1786191801 — 2026-08-08 · Dev
 
 ### 🐛 MCP client configuration now follows the active theme
