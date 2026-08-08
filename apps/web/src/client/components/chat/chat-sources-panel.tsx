@@ -1,10 +1,18 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { FileText, X } from '@/components/ui/icons';
+import { ArrowLeft, ExternalLink, FileText, LoaderCircle, X } from '@/components/ui/icons';
 import type { ChatCitation } from '../../../shared/chat-citations';
 import { countCitationSources } from '../../lib/chat-citation-summary';
+import { useFetch } from '../../lib/hooks';
 import { useI18n, type TranslateFn } from '../../lib/i18n';
+import { stripMarkdownFrontmatter } from '../../lib/transcript-render';
 import { cn } from '../../lib/utils';
+import { Markdown } from '../ui/markdown';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../ui/sheet';
+
+type ReferenceContentResponse = {
+  transcript: { id: string; title: string };
+  markdown: string;
+};
 
 function citationLocation(citation: ChatCitation, t: TranslateFn): string | null {
   if (citation.fromSec !== null) {
@@ -46,7 +54,13 @@ export function CitationSourcesButton({
   );
 }
 
-function CitationSourceList({ citations }: { citations: ChatCitation[] }): React.ReactElement {
+function CitationSourceList({
+  citations,
+  onSelect,
+}: {
+  citations: ChatCitation[];
+  onSelect: (citation: ChatCitation) => void;
+}): React.ReactElement {
   const { t } = useI18n();
   return (
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
@@ -54,11 +68,12 @@ function CitationSourceList({ citations }: { citations: ChatCitation[] }): React
         const location = citationLocation(citation, t);
         const verified = citation.verified && citation.kind === 'EVIDENCE' && !citation.stale;
         return (
-          <a
+          <button
+            type="button"
             key={`${citation.sourceId}-${index}`}
-            href={citation.href}
+            onClick={() => onSelect(citation)}
             className={cn(
-              'block rounded-xl border p-3.5 transition-colors hover:bg-[var(--color-app-surface)]',
+              'block w-full rounded-xl border p-3.5 text-left transition-colors hover:bg-[var(--color-app-surface)]',
               verified ? 'border-emerald-500/30' : 'border-amber-500/35',
             )}
           >
@@ -83,22 +98,103 @@ function CitationSourceList({ citations }: { citations: ChatCitation[] }): React
             <blockquote className="mt-2 text-sm leading-relaxed text-[var(--color-app-subtle)]">
               “{citation.quote}”
             </blockquote>
-          </a>
+          </button>
         );
       })}
     </div>
   );
 }
 
+function CitationCanvas({
+  citation,
+  onBack,
+  onClose,
+}: {
+  citation: ChatCitation;
+  onBack: () => void;
+  onClose: () => void;
+}): React.ReactElement {
+  const { t } = useI18n();
+  const { data, loading, error } = useFetch<ReferenceContentResponse>(
+    `/api/transcripts/${encodeURIComponent(citation.sourceId)}`,
+  );
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex shrink-0 items-start gap-2 px-5 pb-4 pt-5">
+        <button
+          type="button"
+          onClick={onBack}
+          className="mt-0.5 rounded-md p-1 text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+          aria-label={t('chat.sourceBack')}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--color-app-muted)]">
+            {t('chat.sourceContent')}
+          </p>
+          <h2 className="mt-1 line-clamp-2 font-display text-base font-semibold text-[var(--color-app-fg)]">
+            {citation.title}
+          </h2>
+        </div>
+        <a
+          href={citation.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-0.5 rounded-md p-1 text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+          aria-label={t('chat.sourceOpenFull')}
+          title={t('chat.sourceOpenFull')}
+        >
+          <ExternalLink className="h-4 w-4" />
+        </a>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-0.5 hidden rounded-md p-1 text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)] md:block"
+          aria-label={t('common.close')}
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
+        <blockquote className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 text-sm leading-relaxed text-[var(--color-app-subtle)]">
+          “{citation.quote}”
+        </blockquote>
+        {loading && !data && (
+          <div className="flex items-center gap-2 py-8 text-sm text-[var(--color-app-muted)]">
+            <LoaderCircle className="h-4 w-4 animate-spin" />
+            {t('chat.sourceLoading')}
+          </div>
+        )}
+        {error && !data && (
+          <p className="py-8 text-sm text-[var(--color-accent-amber)]">
+            {t('chat.sourceLoadError')}
+          </p>
+        )}
+        {data && (
+          <Markdown className="mt-5 text-sm">{stripMarkdownFrontmatter(data.markdown)}</Markdown>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ChatSourcesPanel({
   citations,
+  selectedCitation,
   isMobile,
   reduceMotion,
+  onSelect,
+  onBack,
   onClose,
 }: {
   citations: ChatCitation[] | null;
+  selectedCitation: ChatCitation | null;
   isMobile: boolean;
   reduceMotion: boolean;
+  onSelect: (citation: ChatCitation) => void;
+  onBack: () => void;
   onClose: () => void;
 }): React.ReactElement {
   const { t } = useI18n();
@@ -115,25 +211,31 @@ export function ChatSourcesPanel({
             }
             className="absolute inset-y-0 right-0 hidden w-[22rem] flex-col bg-[var(--color-app-bg)] md:flex"
           >
-            <header className="flex shrink-0 items-start justify-between gap-3 px-5 pb-4 pt-5">
-              <div className="min-w-0">
-                <h2 className="font-display text-lg font-semibold text-[var(--color-app-fg)]">
-                  {t('chat.sources')}
-                </h2>
-                <p className="mt-1 text-sm text-[var(--color-app-muted)]">
-                  {t('chat.sourcesDescription', { count: citations.length })}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md p-1 text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
-                aria-label={t('common.close')}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </header>
-            <CitationSourceList citations={citations} />
+            {selectedCitation ? (
+              <CitationCanvas citation={selectedCitation} onBack={onBack} onClose={onClose} />
+            ) : (
+              <>
+                <header className="flex shrink-0 items-start justify-between gap-3 px-5 pb-4 pt-5">
+                  <div className="min-w-0">
+                    <h2 className="font-display text-lg font-semibold text-[var(--color-app-fg)]">
+                      {t('chat.sources')}
+                    </h2>
+                    <p className="mt-1 text-sm text-[var(--color-app-muted)]">
+                      {t('chat.sourcesDescription', { count: citations.length })}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-md p-1 text-[var(--color-app-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
+                    aria-label={t('common.close')}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </header>
+                <CitationSourceList citations={citations} onSelect={onSelect} />
+              </>
+            )}
           </motion.aside>
         )}
       </AnimatePresence>
@@ -142,15 +244,21 @@ export function ChatSourcesPanel({
         <SheetContent className="md:hidden">
           {citations && (
             <>
-              <header className="shrink-0 border-b border-[var(--color-app-border)] px-5 py-5 pr-12">
-                <SheetTitle className="font-display text-lg font-semibold">
-                  {t('chat.sources')}
-                </SheetTitle>
-                <SheetDescription className="mt-1 text-sm text-[var(--color-app-muted)]">
-                  {t('chat.sourcesDescription', { count: citations.length })}
-                </SheetDescription>
-              </header>
-              <CitationSourceList citations={citations} />
+              {selectedCitation ? (
+                <CitationCanvas citation={selectedCitation} onBack={onBack} onClose={onClose} />
+              ) : (
+                <>
+                  <header className="shrink-0 border-b border-[var(--color-app-border)] px-5 py-5 pr-12">
+                    <SheetTitle className="font-display text-lg font-semibold">
+                      {t('chat.sources')}
+                    </SheetTitle>
+                    <SheetDescription className="mt-1 text-sm text-[var(--color-app-muted)]">
+                      {t('chat.sourcesDescription', { count: citations.length })}
+                    </SheetDescription>
+                  </header>
+                  <CitationSourceList citations={citations} onSelect={onSelect} />
+                </>
+              )}
             </>
           )}
         </SheetContent>

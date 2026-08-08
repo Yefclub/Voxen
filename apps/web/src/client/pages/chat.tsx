@@ -788,6 +788,7 @@ export function ChatPage(): React.ReactElement {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [sourceCitations, setSourceCitations] = useState<ChatCitation[] | null>(null);
+  const [selectedSourceCitation, setSelectedSourceCitation] = useState<ChatCitation | null>(null);
   const [approvingHitl, setApprovingHitl] = useState<ReadonlySet<string>>(new Set());
   // Versionamento (spec 127): qual mensagem está aberta para edição e se uma
   // troca de trilha está em voo. Só o id vive aqui — o rascunho pertence ao
@@ -1915,6 +1916,10 @@ export function ChatPage(): React.ReactElement {
                           <div className="text-[15px] leading-relaxed text-[var(--color-app-fg)]">
                             <Markdown
                               citations={message.citations}
+                              onCitationOpen={(citation) => {
+                                setSourceCitations(message.citations ?? []);
+                                setSelectedSourceCitation(citation);
+                              }}
                               className="chat-response-markdown [&_p]:max-w-3xl [&_ul]:max-w-3xl [&_ol]:max-w-3xl [&_blockquote]:max-w-3xl"
                             >
                               {message.content}
@@ -1925,7 +1930,10 @@ export function ChatPage(): React.ReactElement {
                               <MessageCopyButton text={message.content} layout="row" />
                               <CitationSourcesButton
                                 citations={message.citations ?? []}
-                                onOpen={() => setSourceCitations(message.citations ?? [])}
+                                onOpen={() => {
+                                  setSourceCitations(message.citations ?? []);
+                                  setSelectedSourceCitation(null);
+                                }}
                               />
                             </div>
                           )}
@@ -1996,9 +2004,15 @@ export function ChatPage(): React.ReactElement {
 
       <ChatSourcesPanel
         citations={sourceCitations}
+        selectedCitation={selectedSourceCitation}
         isMobile={isMobile}
         reduceMotion={reduceMotion === true}
-        onClose={() => setSourceCitations(null)}
+        onSelect={setSelectedSourceCitation}
+        onBack={() => setSelectedSourceCitation(null)}
+        onClose={() => {
+          setSourceCitations(null);
+          setSelectedSourceCitation(null);
+        }}
       />
     </div>
   );
