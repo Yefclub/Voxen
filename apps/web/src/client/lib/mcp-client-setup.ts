@@ -19,7 +19,7 @@ export type McpClientSetup = {
 
 const TOKEN_PLACEHOLDER = 'YOUR_VOXEN_MCP_TOKEN';
 
-function setupsEn(endpoint: string, token: string): McpClientSetup[] {
+function setupsEn(endpoint: string): McpClientSetup[] {
   return [
     {
       id: 'codex',
@@ -32,36 +32,45 @@ function setupsEn(endpoint: string, token: string): McpClientSetup[] {
       id: 'claude',
       label: 'Claude Code',
       status: 'supported',
-      summary: 'Remote HTTP with an explicit Bearer header.',
-      config: `claude mcp add --scope user --transport http voxen ${endpoint} --header "Authorization: Bearer ${token}"`,
+      summary: 'Set VOXEN_MCP_TOKEN in the environment, then add this to .mcp.json.',
+      config: `{
+  "mcpServers": {
+    "voxen": {
+      "type": "http",
+      "url": "${endpoint}",
+      "headers": {
+        "Authorization": "Bearer \${VOXEN_MCP_TOKEN}"
+      }
+    }
+  }
+}`,
     },
     {
       id: 'openai',
       label: 'OpenAI API',
       status: 'supported',
-      summary: 'Keep this configuration and token on your application server.',
-      config: JSON.stringify(
-        {
-          type: 'mcp',
-          server_label: 'voxen',
-          server_url: endpoint,
-          headers: { Authorization: `Bearer ${token}` },
-          require_approval: 'always',
-        },
-        null,
-        2,
-      ),
+      summary: 'Build this object on your application server from an environment secret.',
+      config: `{
+  type: "mcp",
+  server_label: "voxen",
+  server_url: "${endpoint}",
+  headers: {
+    Authorization: \`Bearer \${process.env.VOXEN_MCP_TOKEN}\`
+  },
+  require_approval: "always"
+}`,
     },
     {
       id: 'anthropic',
       label: 'Anthropic API',
       status: 'supported',
-      summary: 'Add this object to the server-side mcp_servers array.',
-      config: JSON.stringify(
-        { type: 'url', url: endpoint, name: 'voxen', authorization_token: token },
-        null,
-        2,
-      ),
+      summary: 'Build this object inside the server-side mcp_servers array.',
+      config: `{
+  type: "url",
+  url: "${endpoint}",
+  name: "voxen",
+  authorization_token: process.env.VOXEN_MCP_TOKEN
+}`,
     },
     {
       id: 'cursor',
@@ -69,14 +78,14 @@ function setupsEn(endpoint: string, token: string): McpClientSetup[] {
       status: 'conditional',
       summary:
         'Custom Authorization headers vary by Cursor version. Use a secret header only when your installed version explicitly supports it; otherwise wait for Voxen OAuth.',
-      config: `Endpoint: ${endpoint}\nAuthorization: Bearer ${token}`,
+      config: `Endpoint: ${endpoint}\nAuthorization: Bearer ${TOKEN_PLACEHOLDER}`,
     },
     {
       id: 'inspector',
       label: 'MCP Inspector',
       status: 'supported',
       summary: 'Select Streamable HTTP and add the Authorization request header.',
-      config: `URL: ${endpoint}\nAuthorization: Bearer ${token}`,
+      config: `URL: ${endpoint}\nAuthorization: Bearer ${TOKEN_PLACEHOLDER}`,
     },
     {
       id: 'grok',
@@ -89,8 +98,8 @@ function setupsEn(endpoint: string, token: string): McpClientSetup[] {
   ];
 }
 
-function setupsPtBr(endpoint: string, token: string): McpClientSetup[] {
-  const setups = setupsEn(endpoint, token);
+function setupsPtBr(endpoint: string): McpClientSetup[] {
+  const setups = setupsEn(endpoint);
   const translated: Record<McpClientId, Pick<McpClientSetup, 'summary' | 'config'>> = {
     codex: {
       summary: 'Defina VOXEN_MCP_TOKEN no ambiente e adicione ao config.toml.',
@@ -126,13 +135,8 @@ function setupsPtBr(endpoint: string, token: string): McpClientSetup[] {
   return setups.map((setup) => ({ ...setup, ...translated[setup.id] }));
 }
 
-export function mcpClientSetups(
-  locale: Locale,
-  endpoint: string,
-  visibleToken: string | null,
-): McpClientSetup[] {
-  const token = visibleToken || TOKEN_PLACEHOLDER;
-  return locale === 'en' ? setupsEn(endpoint, token) : setupsPtBr(endpoint, token);
+export function mcpClientSetups(locale: Locale, endpoint: string): McpClientSetup[] {
+  return locale === 'en' ? setupsEn(endpoint) : setupsPtBr(endpoint);
 }
 
 export function mcpTokenPlaceholder(): string {

@@ -25,10 +25,7 @@ export function McpClientSetup({
   const copiedLabel = locale === 'en' ? 'Copied' : 'Copiado';
   const [selected, setSelected] = useState<McpClientId>('codex');
   const [copied, setCopied] = useState<'endpoint' | 'config' | null>(null);
-  const setups = useMemo(
-    () => mcpClientSetups(locale, endpoint, visibleToken),
-    [endpoint, locale, visibleToken],
-  );
+  const setups = useMemo(() => mcpClientSetups(locale, endpoint), [endpoint, locale]);
   const setup = setups.find((candidate) => candidate.id === selected) ?? setups[0]!;
   const docsUrl =
     locale === 'en'
@@ -99,15 +96,14 @@ export function McpClientSetup({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2" role="tablist" aria-label="MCP clients">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="MCP clients">
           {setups.map((candidate) => (
             <Button
               key={candidate.id}
               type="button"
-              role="tab"
               size="sm"
               variant={candidate.id === setup.id ? 'secondary' : 'ghost'}
-              aria-selected={candidate.id === setup.id}
+              aria-pressed={candidate.id === setup.id}
               onClick={() => setSelected(candidate.id)}
             >
               {candidate.label}
@@ -134,13 +130,17 @@ export function McpClientSetup({
           <Textarea readOnly value={setup.config} rows={6} className="font-mono text-xs" />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11px] text-[var(--color-app-muted)]">
-              {visibleToken
+              {setup.status === 'unsupported'
                 ? locale === 'en'
-                  ? 'This one-time example contains the token currently visible above.'
-                  : 'Este exemplo único contém o token que está visível acima.'
-                : locale === 'en'
-                  ? 'Replace YOUR_VOXEN_MCP_TOKEN with a newly created token.'
-                  : 'Troque YOUR_VOXEN_MCP_TOKEN por um token recém-criado.'}
+                  ? 'OAuth is required; no personal token is included in this configuration.'
+                  : 'OAuth é obrigatório; nenhum token pessoal aparece nesta configuração.'
+                : visibleToken
+                  ? locale === 'en'
+                    ? 'Your token remains in the credential card; examples use an environment variable or placeholder to avoid persisting it accidentally.'
+                    : 'Seu token continua no cartão de credencial; os exemplos usam variável de ambiente ou placeholder para evitar persistência acidental.'
+                  : locale === 'en'
+                    ? 'Set VOXEN_MCP_TOKEN or replace the placeholder with a newly created token.'
+                    : 'Defina VOXEN_MCP_TOKEN ou troque o placeholder por um token recém-criado.'}
             </p>
             <Button
               type="button"

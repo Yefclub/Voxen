@@ -67,14 +67,9 @@ token pessoal acima.
 
 ## Claude Code
 
-```bash
-claude mcp add --scope user --transport http voxen \
-  https://SEU-HOST-VOXEN/mcp \
-  --header "Authorization: Bearer SEU_TOKEN_MCP_VOXEN"
-```
-
-Para manter o segredo fora de uma configuração compartilhável, defina
-`VOXEN_MCP_TOKEN` e use em `.mcp.json`:
+O Claude Code aceita servidor HTTP remoto com header de autorização. Para não
+gravar o segredo no histórico do shell nem em arquivos compartilhados, defina
+`VOXEN_MCP_TOKEN` no ambiente e use em `.mcp.json`:
 
 ```json
 {
@@ -153,7 +148,7 @@ Envie o token no header Authorization em cada request. Smoke test mínimo:
 
 ```bash
 curl --fail-with-body https://SEU-HOST-VOXEN/mcp \
-  -H 'Authorization: Bearer SEU_TOKEN_MCP_VOXEN' \
+  -H "Authorization: Bearer $VOXEN_MCP_TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"voxen-smoke-test","version":"1.0.0"}}}'
@@ -173,13 +168,14 @@ Authorization nos controles de autenticação/headers. Nunca use query parameter
 ### `403 Forbidden`
 
 - Um `Origin` de browser diferente de `APP_BASE_URL` é recusado.
-- Token somente leitura não pode chamar tools de escrita.
 - O proxy deve preservar scheme/host públicos; `APP_BASE_URL` deve ser a URL
   externa canônica.
 
 ### Tools ausentes ou escrita recusada
 
 - `READ` expõe busca/leitura; `WRITE` expõe mutações.
+- Uma tool de escrita não é registrada para token somente leitura; o cliente
+  normalmente informa que ela está indisponível ou não foi encontrada, não 403.
 - Crie token substituto com ambos apenas se precisar escrever.
 - Reconecte após trocar credenciais; clientes podem manter a lista em cache.
 

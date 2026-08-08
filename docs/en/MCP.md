@@ -69,16 +69,8 @@ path; it is not required for the personal-token configuration above.
 ## Claude Code
 
 Claude Code supports a remote HTTP server with an explicit authorization
-header:
-
-```bash
-claude mcp add --scope user --transport http voxen \
-  https://YOUR-VOXEN-HOST/mcp \
-  --header "Authorization: Bearer YOUR_VOXEN_MCP_TOKEN"
-```
-
-For a shareable configuration that keeps the secret outside the file, set
-`VOXEN_MCP_TOKEN` and use this entry in `.mcp.json`:
+header. Keep the secret out of shell history and shared files: set
+`VOXEN_MCP_TOKEN` in the environment and use this entry in `.mcp.json`:
 
 ```json
 {
@@ -162,7 +154,7 @@ header on every request. A minimal initialize request is:
 
 ```bash
 curl --fail-with-body https://YOUR-VOXEN-HOST/mcp \
-  -H 'Authorization: Bearer YOUR_VOXEN_MCP_TOKEN' \
+  -H "Authorization: Bearer $VOXEN_MCP_TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"voxen-smoke-test","version":"1.0.0"}}}'
@@ -184,13 +176,14 @@ request-header controls. Do not paste the token into a URL query parameter.
 ### `403 Forbidden`
 
 - A browser `Origin` that differs from `APP_BASE_URL` is rejected.
-- A read-only token cannot call write tools.
 - Confirm that the reverse proxy preserves the public scheme and host and that
   `APP_BASE_URL` is the canonical externally reachable URL.
 
 ### Missing tools or write failures
 
 - `READ` exposes search/read tools; `WRITE` exposes mutation tools.
+- A write tool is not registered for a read-only token, so clients normally
+  report it as unavailable or not found rather than returning HTTP 403.
 - Create a replacement token with both scopes only when writes are required.
 - Reconnect the client after changing credentials; tool lists may be cached.
 

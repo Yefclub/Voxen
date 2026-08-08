@@ -5,8 +5,8 @@ const ENDPOINT = 'https://voxen.example/mcp';
 
 describe('MCP client setup', () => {
   it('keeps English and PT-BR client coverage and support status aligned', () => {
-    const en = mcpClientSetups('en', ENDPOINT, null);
-    const ptBr = mcpClientSetups('pt-BR', ENDPOINT, null);
+    const en = mcpClientSetups('en', ENDPOINT);
+    const ptBr = mcpClientSetups('pt-BR', ENDPOINT);
 
     expect(ptBr.map(({ id, status }) => ({ id, status }))).toEqual(
       en.map(({ id, status }) => ({ id, status })),
@@ -22,25 +22,17 @@ describe('MCP client setup', () => {
     ]);
   });
 
-  it('uses an explicit placeholder until a one-time token is visible', () => {
+  it('never persists a visible one-time token in generated configurations', () => {
     const placeholder = mcpTokenPlaceholder();
-    const withoutSecret = mcpClientSetups('en', ENDPOINT, null);
-    const withSecret = mcpClientSetups('en', ENDPOINT, 'one-time-test-token');
+    const setups = mcpClientSetups('en', ENDPOINT);
 
-    expect(
-      withoutSecret
-        .filter((setup) => setup.id !== 'codex')
-        .every((setup) => setup.config.includes(placeholder) || setup.status === 'unsupported'),
-    ).toBe(true);
-    expect(withSecret.find((setup) => setup.id === 'claude')?.config).toContain(
-      'one-time-test-token',
-    );
+    expect(setups.some((setup) => setup.config.includes(placeholder))).toBe(true);
+    expect(setups.every((setup) => !setup.config.includes('one-time-test-token'))).toBe(true);
+    expect(setups.find((setup) => setup.id === 'claude')?.config).toContain('VOXEN_MCP_TOKEN');
   });
 
   it('does not present a personal token as Grok OAuth credentials', () => {
-    const grok = mcpClientSetups('pt-BR', ENDPOINT, 'one-time-test-token').find(
-      (setup) => setup.id === 'grok',
-    );
+    const grok = mcpClientSetups('pt-BR', ENDPOINT).find((setup) => setup.id === 'grok');
 
     expect(grok?.status).toBe('unsupported');
     expect(grok?.config).not.toContain('one-time-test-token');
