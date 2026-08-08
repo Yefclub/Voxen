@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.14.5-dev.1786224946 — 2026-08-08 · Dev
+
+### ✨ Research gaps with the original source and a visible trail
+
+When selective research detects missing or inconsistent context, Voxen can now consult a
+sanitized reference to the original source before performing up to two complementary public
+searches. Planning, source consultation, research, synthesis, retries, failures, cancellation,
+and completion remain visible in the originating queue item without reopening a completed job.
+External evidence stays separate from the canonical summary as reviewable additional context.
+
 ## v0.14.5-dev.1786218603 — 2026-08-08 · Dev
 
 ### ✨ Reviewable Mermaid flows for transcripts
