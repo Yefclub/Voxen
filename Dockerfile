@@ -161,7 +161,8 @@ COPY --from=worker-builder --chown=voxen:voxen /app/apps/worker/.venv ./apps/wor
 COPY --from=worker-builder --chown=voxen:voxen /app/apps/worker/src ./apps/worker/src
 
 COPY --chown=voxen:voxen scripts/easypanel-entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY --chown=voxen:voxen scripts/prisma-migrate-deploy.sh /prisma-migrate-deploy.sh
+RUN chmod +x /entrypoint.sh /prisma-migrate-deploy.sh
 
 # Mantem a imagem unica alinhada ao worker do Compose: yt-dlp atual precisa de
 # EJS + runtime JS para alguns fluxos do YouTube.
