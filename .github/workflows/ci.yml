@@ -207,13 +207,13 @@ jobs:
         run: git fetch --no-tags origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
       - name: Download web coverage
         if: ${{ always() }}
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: web-coverage
           path: quality-gate/input/web
       - name: Download worker coverage
         if: ${{ always() }}
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: worker-coverage
           path: quality-gate/input/worker
