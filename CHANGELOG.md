@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.14.5-dev.1786209842 — 2026-08-08 · Dev
+
+### ✨ Batch URL ingestion across the app, chat, and MCP
+
+Voxen now accepts up to 20 links at once. Each link receives its own queue job and visible result,
+so invalid, duplicate, existing, and newly queued sources can be handled independently.
+
 ## v0.14.5-dev.1786207296 — 2026-08-08 · Dev
 
 ### ✨ Save private media before adding it to the knowledge base
