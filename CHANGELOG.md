@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.14.5-dev.1786187187 — 2026-08-08 · Dev
+
+### ✨ MCP clients can connect through OAuth 2.1
+
+Voxen now provides standards-based OAuth discovery, Authorization Code with
+PKCE, rotating refresh tokens, revocation, consent, and read/write scopes for
+remote MCP clients. Administrators can enable the capability and pre-register
+public or confidential clients, while each user controls their own grants.
+Existing personal MCP tokens continue to work unchanged.
+
 ## v0.14.5-dev.1786179760 — 2026-08-08 · Dev
 
 ### 🧹 Complete MCP client setup guidance
