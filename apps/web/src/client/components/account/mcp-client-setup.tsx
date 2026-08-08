@@ -100,12 +100,18 @@ export function McpClientSetup({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2" role="group" aria-label="MCP clients">
+        <div
+          data-horizontal-scroll="true"
+          className="flex touch-pan-x touch-pan-y gap-2 overflow-x-auto pb-1"
+          role="group"
+          aria-label="MCP clients"
+        >
           {setups.map((candidate) => (
             <Button
               key={candidate.id}
               type="button"
               size="sm"
+              className="shrink-0"
               variant={candidate.id === setup.id ? 'secondary' : 'ghost'}
               aria-pressed={candidate.id === setup.id}
               onClick={() => setSelected(candidate.id)}
@@ -117,7 +123,7 @@ export function McpClientSetup({
 
         <div
           data-testid="mcp-client-configuration"
-          className="space-y-3 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] p-4"
+          className="space-y-3 rounded-xl border border-[var(--color-app-border-strong)] bg-[var(--color-app-bg-elevated)] p-4"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium text-[var(--color-app-fg)]">{setup.label}</p>
@@ -128,6 +134,13 @@ export function McpClientSetup({
                   : setup.status === 'unsupported'
                     ? 'warning'
                     : 'outline'
+              }
+              className={
+                setup.status === 'supported'
+                  ? 'text-[var(--color-app-success-fg)]'
+                  : setup.status === 'unsupported'
+                    ? 'text-[var(--color-app-warning-fg)]'
+                    : undefined
               }
             >
               {statusLabel}
@@ -166,7 +179,7 @@ export function McpClientSetup({
           </div>
         </div>
 
-        <p className="text-xs leading-relaxed text-amber-300/90">
+        <p className="text-xs leading-relaxed text-[var(--color-app-warning-fg)]">
           {locale === 'en'
             ? 'Tokens are shown once, must never be placed in URLs, and can be revoked without affecting your Voxen login.'
             : 'Tokens aparecem uma vez, nunca devem ir em URLs e podem ser revogados sem afetar seu login no Voxen.'}

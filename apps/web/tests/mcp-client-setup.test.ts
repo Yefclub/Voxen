@@ -95,9 +95,19 @@ describe('MCP documentation contract', () => {
     const card = await Bun.file(
       new URL('../src/client/components/account/mcp-client-setup.tsx', import.meta.url),
     ).text();
+    const theme = await Bun.file(new URL('../src/client/index.css', import.meta.url)).text();
 
     expect(card).toContain('data-testid="mcp-client-configuration"');
-    expect(card).toContain('bg-[var(--color-app-bg)]');
+    expect(card).toContain('bg-[var(--color-app-bg-elevated)]');
+    expect(card).not.toContain('bg-[var(--color-app-bg)] p-4');
+    expect(card).toContain('data-horizontal-scroll="true"');
+    expect(card).toContain('touch-pan-x touch-pan-y');
+    expect(card).toContain('text-[var(--color-app-success-fg)]');
+    expect(card).toContain('text-[var(--color-app-warning-fg)]');
+    expect(card).not.toContain('dark:text-');
+    expect(theme).toContain("[data-theme='light']");
+    expect(theme).toContain('--color-app-success-fg: #047857');
+    expect(theme).toContain('--color-app-warning-fg: #92400e');
     expect(card).not.toContain('bg-[var(--color-app-subtle)]');
   });
 });
