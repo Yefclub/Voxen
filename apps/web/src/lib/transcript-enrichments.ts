@@ -125,10 +125,7 @@ export async function cancelTranscriptEnrichmentsForInactiveParent(
       status: { in: ['PENDING', 'RETRY', 'RUNNING'] },
     },
     data: {
-      status: 'CANCELLED',
       cancelRequestedAt: now,
-      startedAt: null,
-      nextAttemptAt: null,
       staleReason: 'parent-inactive',
     },
   });

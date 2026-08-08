@@ -281,6 +281,9 @@ async def _reconcile_research_once(
     max_in_flight: int = ENRICHMENT_MAX_CONCURRENCY,
 ) -> int:
     try:
+        transitions = await research_db.reconcile_transcript_enrichment_lifecycle()
+        for transition in transitions:
+            await research_enrichment.publish_stage(transition, str(transition["stage"]), log)
         capacity = min(limit, max(0, max_in_flight - len(tasks)))
         pending = await research_db.claim_pending_transcript_enrichments(limit=capacity)
     except Exception as exc:  # noqa: BLE001 -- fail closed without starving other queues

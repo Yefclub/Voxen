@@ -101,10 +101,70 @@ fails closed and is never persisted as knowledge.
 - [x] Cost events distinguish inference, search, result count, and trigger.
 - [x] UI, web API, and MCP expose state and regeneration with correct scopes.
 - [x] Tests cover zero/multiple decisions, bounds, injection, retry, and
-  isolation.
+      isolation.
 
 ## Out of scope
 
 - Enabling research by default for existing installations.
 - Merging external context into the summary.
 - Giving write tools to the research model.
+
+## Extensão 2026-08-08 — Fonte original e trilha operacional
+
+### Ubiquitous
+
+- The system shall manter o resumo canônico separado de qualquer contexto externo
+  pesquisado.
+- The system shall enviar ao planejador somente uma referência pública canônica da
+  fonte original, sem credenciais, fragmentos, parâmetros não permitidos ou endereços
+  locais e privados.
+- The system shall limitar a consulta da fonte original e as pesquisas adicionais pelos
+  mesmos limites de chamadas, resultados, duração e custo da pesquisa seletiva.
+
+### Event-driven
+
+- When o planejador detectar contexto material incompleto ou incoerente, the system
+  shall permitir que ele solicite a consulta da fonte original validada e até duas
+  pesquisas públicas complementares.
+- When uma etapa de pesquisa iniciar, mudar ou terminar, the system shall persistir a
+  etapa sanitizada no histórico do job de origem e publicá-la para atualização em tempo
+  real.
+- When a pesquisa produzir evidências citadas válidas, the system shall salvar o
+  resultado somente como contexto adicional revisável.
+
+### State-driven
+
+- While a pesquisa ocorrer depois da conclusão da ingestão, the system shall manter o
+  percentual operacional do job em 100% e shall não reabrir nem regredir seu estado
+  terminal.
+- While não existir um job de origem, the system shall concluir o enriquecimento sem
+  fabricar uma trilha ou associá-la a outro usuário.
+
+### Unwanted behavior
+
+- If a URL de origem for local, privada, ambígua ou contiver credenciais, then the
+  system shall omiti-la de todos os prompts e chamadas de ferramenta.
+- If a pesquisa falhar, entrar em nova tentativa ou for cancelada, then the system
+  shall registrar apenas o estado operacional sanitizado, sem URL, consulta, conteúdo
+  privado ou erro bruto do provedor.
+- If uma execução obsoleta tentar concluir, then the system shall descartar o resultado
+  e shall não publicar uma etapa de sucesso.
+
+### Critérios de aceitação da extensão
+
+- [x] O planejador recebe a referência pública canônica separada do conteúdo não
+      confiável.
+- [x] URLs privadas, locais, com credenciais ou parâmetros sensíveis nunca chegam ao
+      provedor nem aos eventos.
+- [x] A consulta opcional da fonte original e no máximo duas pesquisas complementares
+      respeitam o teto total de três chamadas.
+- [x] Planejamento, consulta da fonte, pesquisa, organização, dispensa, sucesso,
+      tentativa, falha e cancelamento possuem rótulos PT-BR e EN.
+- [x] Eventos posteriores ao fim da ingestão permanecem persistidos com 100% sem alterar
+      o status terminal do job.
+- [x] Pesquisa sem job de origem continua funcional e isolada.
+- [x] Testes cobrem fonte segura, fonte rejeitada, ordem da trilha, zero pesquisa,
+      sucesso, nova tentativa, falha, cancelamento e descarte obsoleto.
+
+> 2026-08-08: extensão aprovada para consultar a fonte original quando houver lacunas e
+> tornar todas as etapas adicionais visíveis na fila.
