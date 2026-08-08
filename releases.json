@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786191801",
+    "channel": "dev",
+    "type": "fix",
+    "title": "MCP client configuration now follows the active theme",
+    "body": "The client configuration panel on **Account → MCP Access** now uses the application surface palette. The panel remains readable in dark, light, and alternate interface themes instead of rendering a light text color as its background.",
+    "pr": 702,
+    "author": "Kalyel",
+    "date": "2026-08-08T09:22:57-03:00",
+    "translations": {
+      "en": {
+        "title": "MCP client configuration now follows the active theme",
+        "body": "The client configuration panel on **Account → MCP Access** now uses the application surface palette. The panel remains readable in dark, light, and alternate interface themes instead of rendering a light text color as its background."
+      },
+      "pt-BR": {
+        "title": "Configuração de clientes MCP agora acompanha o tema ativo",
+        "body": "O painel de configuração de clientes em **Conta → Acesso MCP** agora usa a paleta de superfícies da aplicação. O painel permanece legível nos temas escuro, claro e nas interfaces alternativas, sem aplicar uma cor clara de texto como fundo."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/702"
+  },
+  {
     "version": "0.14.5-dev.1786187187",
     "channel": "dev",
     "type": "feat",
