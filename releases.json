@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786187187",
+    "channel": "dev",
+    "type": "feat",
+    "title": "MCP clients can connect through OAuth 2.1",
+    "body": "Voxen now provides standards-based OAuth discovery, Authorization Code with\nPKCE, rotating refresh tokens, revocation, consent, and read/write scopes for\nremote MCP clients. Administrators can enable the capability and pre-register\npublic or confidential clients, while each user controls their own grants.\nExisting personal MCP tokens continue to work unchanged.",
+    "pr": 700,
+    "author": "Kalyel",
+    "date": "2026-08-08T08:06:14-03:00",
+    "translations": {
+      "en": {
+        "title": "MCP clients can connect through OAuth 2.1",
+        "body": "Voxen now provides standards-based OAuth discovery, Authorization Code with\nPKCE, rotating refresh tokens, revocation, consent, and read/write scopes for\nremote MCP clients. Administrators can enable the capability and pre-register\npublic or confidential clients, while each user controls their own grants.\nExisting personal MCP tokens continue to work unchanged."
+      },
+      "pt-BR": {
+        "title": "Clientes MCP podem conectar por OAuth 2.1",
+        "body": "O Voxen agora fornece descoberta OAuth padronizada, Authorization Code com\nPKCE, refresh tokens rotativos, revogação, consentimento e escopos de leitura e\nescrita para clientes MCP remotos. Administradores podem habilitar o recurso e\npré-registrar clientes públicos ou confidenciais, enquanto cada usuário\ncontrola seus próprios acessos. Os tokens pessoais MCP continuam funcionando\nsem alterações."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/700"
+  },
+  {
     "version": "0.14.5-dev.1786179760",
     "channel": "dev",
     "type": "chore",
