@@ -656,6 +656,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               flowchart={t.flowchartMd}
               generating={generatingFlow}
               onGenerate={() => void generateFlow(false)}
+              readOnly={!canUseContextualActions}
               t={translate}
             />
             <AdditionalContextBlock

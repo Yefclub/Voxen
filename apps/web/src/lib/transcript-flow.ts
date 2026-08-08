@@ -28,6 +28,7 @@ Rules:
 - Represent the most useful sequence, decision path, or relationship map in 4 to 16 explicit nodes.
 - Preserve uncertainty; do not invent facts or add external knowledge.
 - Use explicit node IDs such as N1, N2, and readable text labels.
+- Use only square, round, or curly node shapes and the -->, -.->, ==>, or ~~~ edge forms. Write edge labels as -->|Label|.
 - Do not use click, callback, call, href, URLs, HTML, images, icons, init directives, scripts, or external resources.
 - Do not wrap the result in prose. A Mermaid code fence is accepted but not required.`;
 }
@@ -116,9 +117,16 @@ export async function generateAndPersistTranscriptFlow(input: {
   };
   const validation = validateMermaidFlow(data.choices?.[0]?.message?.content ?? '');
   if (!validation.ok) {
+    await recordRejectedFlowCost({
+      userId: input.userId,
+      transcriptId: input.transcriptId,
+      model: data.model ?? model,
+      usage: data.usage,
+      language,
+      reason: validation.error,
+    });
     throw new TranscriptFlowError('O modelo retornou um fluxo inválido ou inseguro.', 502);
   }
-
   await db.$transaction(async (tx) => {
     const update = await tx.transcript.updateMany({
       where: { id: input.transcriptId, userId: input.userId, status: { not: 'TRASH' } },
@@ -144,4 +152,31 @@ export async function generateAndPersistTranscriptFlow(input: {
     });
   });
   return validation.code;
+}
+
+async function recordRejectedFlowCost(input: {
+  userId: string;
+  transcriptId: string;
+  model: string;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number | string };
+  language: AppLanguage;
+  reason: string;
+}): Promise<void> {
+  await db.costEvent.create({
+    data: {
+      userId: input.userId,
+      kind: 'CHAT',
+      model: input.model,
+      tokensIn: Number(input.usage?.prompt_tokens ?? 0) || 0,
+      tokensOut: Number(input.usage?.completion_tokens ?? 0) || 0,
+      costUsd: input.usage?.cost == null ? '0' : String(input.usage.cost),
+      meta: {
+        source: 'transcript_flowchart',
+        transcript_id: input.transcriptId,
+        language: input.language,
+        accepted: false,
+        rejection_reason: input.reason,
+      },
+    },
+  });
 }

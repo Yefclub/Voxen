@@ -28,6 +28,18 @@ describe('Mermaid transcript flow contract', () => {
     expect(validateMermaidFlow(source)).toEqual({ ok: false, error: 'MERMAID_FLOW_UNSAFE' });
   });
 
+  it.each([
+    ['scheme-relative URL', 'style A fill:url(//attacker.test/pixel)'],
+    ['relative URL', 'classDef leak fill:url(/pixel)'],
+    ['comment-obfuscated URL', 'linkStyle 0 stroke:url/**/(//attacker.test/pixel)'],
+    ['escaped URL', 'style A fill:u\\72l(//attacker.test/pixel)'],
+  ])('rejects style directives before rendering: %s', (_label, directive) => {
+    expect(validateMermaidFlow(`flowchart TD\nA[Test] --> B[Done]\n${directive}`)).toEqual({
+      ok: false,
+      error: 'MERMAID_FLOW_UNSAFE',
+    });
+  });
+
   it('allows local SVG fragment references and rejects external CSS URLs', () => {
     expect(hasUnsafeMermaidCssUrl('stroke:url(#flow-gradient)')).toBe(false);
     expect(hasUnsafeMermaidCssUrl('fill: url("#node.marker")')).toBe(false);
@@ -43,6 +55,31 @@ describe('Mermaid transcript flow contract', () => {
     expect(validateMermaidFlow('flowchart TD')).toEqual({
       ok: false,
       error: 'MERMAID_FLOW_NODES_MISSING',
+    });
+  });
+
+  it.each([
+    ['unterminated node', 'flowchart TD\nN1[unterminated'],
+    ['mismatched node', 'flowchart TD\nN1[wrong)'],
+    ['unterminated edge label', 'flowchart TD\nN1[Start] -->|yes N2[Done]'],
+    ['unknown statement', 'flowchart TD\nN1[Start] random N2[Done]'],
+    ['unsupported source directive', 'flowchart TD\nsubgraph Internal\nN1[Start]\nend'],
+  ])('rejects malformed safe-subset syntax: %s', (_label, source) => {
+    expect(validateMermaidFlow(source)).toEqual({
+      ok: false,
+      error: 'MERMAID_FLOW_SYNTAX_INVALID',
+    });
+  });
+
+  it('accepts bounded decisions, labelled edges, and safe statement separators', () => {
+    expect(
+      validateMermaidFlow(
+        "flowchart LR\nN1[User's input]; N1 --> N2{Valid?}\nN2 -->|Yes| N3[Store]\nN2 -.-> N4[Review]",
+      ),
+    ).toEqual({
+      ok: true,
+      code: "flowchart LR\nN1[User's input]; N1 --> N2{Valid?}\nN2 -->|Yes| N3[Store]\nN2 -.-> N4[Review]",
+      nodeCount: 4,
     });
   });
 
@@ -93,6 +130,7 @@ describe('Mermaid transcript flow contract', () => {
     expect(markdown).toContain('touch-pan-x touch-pan-y');
     expect(page).toContain('/flow`');
     expect(page).toContain('<TranscriptFlowBlock');
+    expect(page).toContain('readOnly={!canUseContextualActions}');
     expect(blocks).toContain('\\`\\`\\`mermaid');
     expect(mcp).toContain('flowchart: t.flowchartMd ?? null');
     expect(chat).toContain('flowchart: transcript.flowchartMd');

@@ -148,5 +148,43 @@ describeIfDb('transcript Mermaid flow API', () => {
     expect(
       (await db.transcript.findUniqueOrThrow({ where: { id: transcript.id } })).flowchartMd,
     ).toBe('flowchart TD\nN1[Anterior] --> N2[Seguro]');
+    const rejectedCost = await db.costEvent.findFirstOrThrow({
+      where: {
+        userId: owner.id,
+        meta: { path: ['rejection_reason'], equals: 'MERMAID_FLOW_UNSAFE' },
+      },
+      orderBy: { ts: 'desc' },
+    });
+    expect(rejectedCost.costUsd.toString()).toBe('0.0012');
+
+    const malformedTranscript = await db.transcript.create({
+      data: {
+        userId: owner.id,
+        source: 'WEB',
+        url: 'https://example.com/malformed-flow',
+        title: 'Malformed flow test',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${owner.id}/transcripts/malformed-flow.md`,
+        plainText: 'Outro conteúdo canônico que deve permanecer isolado.',
+        flowchartMd: 'flowchart TD\nN1[Anterior] --> N2[Seguro]',
+        frontmatter: {},
+      },
+    });
+    mockOpenRouter('flowchart TD\nN1[unterminated');
+    expect((await postFlow(malformedTranscript.id, ownerCookie, true)).status).toBe(502);
+    expect(
+      (await db.transcript.findUniqueOrThrow({ where: { id: malformedTranscript.id } }))
+        .flowchartMd,
+    ).toBe('flowchart TD\nN1[Anterior] --> N2[Seguro]');
+    expect(
+      await db.costEvent.count({
+        where: {
+          userId: owner.id,
+          meta: { path: ['rejection_reason'], equals: 'MERMAID_FLOW_SYNTAX_INVALID' },
+        },
+      }),
+    ).toBe(1);
   });
 });

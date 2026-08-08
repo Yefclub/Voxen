@@ -148,13 +148,15 @@ export function TranscriptFlowBlock({
   flowchart,
   generating,
   onGenerate,
+  readOnly = false,
   t,
 }: {
   flowchart: string | null;
   generating: boolean;
   onGenerate: () => void;
+  readOnly?: boolean;
   t: TranslateFn;
-}): React.ReactElement {
+}): React.ReactElement | null {
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -177,6 +179,7 @@ export function TranscriptFlowBlock({
     }
   }
 
+  if (!flowchart && readOnly) return null;
   if (!flowchart) {
     return (
       <Card elevated className="overflow-hidden border-[var(--color-app-border)]/80">
@@ -226,34 +229,36 @@ export function TranscriptFlowBlock({
             {t('library.flow')}
           </h2>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Button
-            type="button"
-            onClick={() => void copyFlow()}
-            variant="ghost"
-            size="sm"
-            className="h-8"
-            aria-label={t('library.copyFlow')}
-            title={t('library.copyFlow')}
-          >
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            <span className="text-xs">{copied ? t('common.copied') : t('common.copy')}</span>
-          </Button>
-          <Button
-            type="button"
-            onClick={onGenerate}
-            disabled={generating}
-            variant="ghost"
-            size="sm"
-          >
-            {generating ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Workflow className="h-3.5 w-3.5" />
-            )}
-            {t('library.regenerateFlow')}
-          </Button>
-        </div>
+        {!readOnly && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              type="button"
+              onClick={() => void copyFlow()}
+              variant="ghost"
+              size="sm"
+              className="h-8"
+              aria-label={t('library.copyFlow')}
+              title={t('library.copyFlow')}
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              <span className="text-xs">{copied ? t('common.copied') : t('common.copy')}</span>
+            </Button>
+            <Button
+              type="button"
+              onClick={onGenerate}
+              disabled={generating}
+              variant="ghost"
+              size="sm"
+            >
+              {generating ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Workflow className="h-3.5 w-3.5" />
+              )}
+              {t('library.regenerateFlow')}
+            </Button>
+          </div>
+        )}
       </div>
       <Card elevated className="overflow-hidden border-[var(--color-app-border)]/80">
         <CardContent className="px-4 py-3 sm:px-5">
