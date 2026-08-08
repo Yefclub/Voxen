@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.14.5-dev.1786178078 — 2026-08-08 · Dev
+
+### 🐛 Resilient OpenRouter model fallbacks
+
+OpenRouter rate limits are now treated as temporary failures with bounded retry
+delays and a clear, actionable message. Administrators can configure one
+compatible fallback for every AI model purpose, while initial setup suggests
+safe alternatives automatically. Runtime usage and costs identify the model
+that actually answered.
+
 ## v0.14.5-dev.1786127306 — 2026-08-07 · Dev
 
 ### 🐛 The dev container image now follows versioned code
