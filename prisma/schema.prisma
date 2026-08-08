@@ -502,6 +502,8 @@ model Transcript {
   plainText             String                   @db.Text
   // Resumo gerado pela IA em markdown (pode ser null se ainda não gerado)
   summaryMd             String?                  @db.Text
+  // Validated derived Mermaid flow; it never replaces the canonical source.
+  flowchartMd           String?                  @db.Text
   summaryStatus         EnrichmentStatus         @default(PENDING)
   summaryAttempts       Int                      @default(0)
   summaryStartedAt      DateTime?

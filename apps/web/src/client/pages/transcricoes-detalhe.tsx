@@ -20,6 +20,7 @@ import {
   Tags,
   Trash2,
   Wand2,
+  Workflow,
 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
@@ -89,6 +90,7 @@ interface TranscriptDetail {
   mdPath: string;
   plainText: string;
   summaryMd: string | null;
+  flowchartMd: string | null;
   frontmatter: unknown;
   sourceChecksum: string | null;
   sourceVersion: number;
@@ -147,6 +149,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
   const [generating, setGenerating] = useState(false);
+  const [generatingFlow, setGeneratingFlow] = useState(false);
   const [organizing, setOrganizing] = useState(false);
   const [taggingLoading, setTaggingLoading] = useState(false);
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
@@ -156,6 +159,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const [linkedNoteContent, setLinkedNoteContent] = useState('');
   const [linkedNoteAnchor, setLinkedNoteAnchor] = useState<LinkedNoteAnchorDraft | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  const [confirmFlowRegen, setConfirmFlowRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
   const [refreshingSource, setRefreshingSource] = useState(false);
@@ -264,6 +268,39 @@ export function TranscricaoDetalhePage(): React.ReactElement {
       });
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function generateFlow(force: boolean): Promise<void> {
+    if (!id || generatingFlow) return;
+    setGeneratingFlow(true);
+    try {
+      const res = await fetch(`/api/transcripts/${id}/flow`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        existing?: boolean;
+      };
+      if (res.status === 409 && body.existing) {
+        setConfirmFlowRegen(true);
+        return;
+      }
+      if (!res.ok) {
+        toast.error(body.error ?? translate('library.flowError'));
+        return;
+      }
+      toast.success(
+        force ? translate('library.flowRegenerated') : translate('library.flowGenerated'),
+      );
+      await refresh();
+    } catch {
+      toast.error(translate('library.flowError'));
+    } finally {
+      setGeneratingFlow(false);
     }
   }
 
@@ -615,6 +652,12 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               onGenerate={() => void generateSummary(false)}
               t={translate}
             />
+            <FlowBlock
+              flowchart={t.flowchartMd}
+              generating={generatingFlow}
+              onGenerate={() => void generateFlow(false)}
+              t={translate}
+            />
             <AdditionalContextBlock
               enrichments={enrichmentsData?.enrichments ?? []}
               researchMode={enrichmentsData?.researchMode ?? 'OFF'}
@@ -872,6 +915,16 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         cancelLabel={translate('common.cancel')}
         onConfirm={() => generateSummary(true)}
         loading={generating}
+      />
+      <ConfirmDialog
+        open={confirmFlowRegen}
+        onOpenChange={setConfirmFlowRegen}
+        title={translate('library.regenerateFlowTitle')}
+        description={translate('library.regenerateFlowDescription')}
+        confirmLabel={translate('library.regenerateFlow')}
+        cancelLabel={translate('common.cancel')}
+        onConfirm={() => generateFlow(true)}
+        loading={generatingFlow}
       />
       <ConfirmDialog
         open={confirmDelete}
@@ -1148,6 +1201,126 @@ function SummaryBlock({
       >
         <CardContent className="px-5 py-5 sm:px-6">
           <Markdown>{summary}</Markdown>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+function FlowBlock({
+  flowchart,
+  generating,
+  onGenerate,
+  t,
+}: {
+  flowchart: string | null;
+  generating: boolean;
+  onGenerate: () => void;
+  t: TranslateFn;
+}): React.ReactElement {
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
+
+  async function copyFlow(): Promise<void> {
+    if (!flowchart?.trim()) return;
+    try {
+      await navigator.clipboard.writeText(flowchart);
+      setCopied(true);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1_500);
+      toast.success(t('library.flowCopied'));
+    } catch {
+      toast.error(t('library.flowCopyError'));
+    }
+  }
+
+  if (!flowchart) {
+    return (
+      <Card elevated className="overflow-hidden border-[var(--color-app-border)]/80">
+        <CardContent className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:px-6">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--color-app-border-strong)] bg-[var(--color-accent-primary-soft)]">
+            <Workflow className="h-4 w-4 text-[var(--color-accent-primary)]" />
+          </div>
+          <div className="min-w-0 flex-1 space-y-1">
+            <h2 className="font-display text-base font-semibold text-[var(--color-app-fg)]">
+              {t('library.flow')}
+            </h2>
+            <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
+              {t('library.flowDescription')}
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={onGenerate}
+            disabled={generating}
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+          >
+            {generating ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('library.generatingFlow')}
+              </>
+            ) : (
+              <>
+                <Workflow className="h-3.5 w-3.5" /> {t('library.generateFlow')}
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-[var(--color-accent-primary-soft)]">
+            <Workflow className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
+          </div>
+          <h2 className="font-display text-base font-semibold text-[var(--color-app-fg)] sm:text-lg">
+            {t('library.flow')}
+          </h2>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            type="button"
+            onClick={() => void copyFlow()}
+            variant="ghost"
+            size="sm"
+            className="h-8"
+            aria-label={t('library.copyFlow')}
+            title={t('library.copyFlow')}
+          >
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            <span className="text-xs">{copied ? t('common.copied') : t('common.copy')}</span>
+          </Button>
+          <Button
+            type="button"
+            onClick={onGenerate}
+            disabled={generating}
+            variant="ghost"
+            size="sm"
+          >
+            {generating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Workflow className="h-3.5 w-3.5" />
+            )}
+            {t('library.regenerateFlow')}
+          </Button>
+        </div>
+      </div>
+      <Card elevated className="overflow-hidden border-[var(--color-app-border)]/80">
+        <CardContent className="px-4 py-3 sm:px-5">
+          <Markdown>{`\`\`\`mermaid\n${flowchart}\n\`\`\``}</Markdown>
         </CardContent>
       </Card>
     </section>

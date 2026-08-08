@@ -527,6 +527,21 @@ const ptBRMessages = {
   'library.copySummary': 'Copiar resumo',
   'library.summaryCopied': 'Resumo copiado.',
   'library.summaryCopyError': 'Não foi possível copiar o resumo.',
+  'library.flow': 'Fluxo visual',
+  'library.flowDescription':
+    'Crie uma representação Mermaid revisável a partir da transcrição e do resumo.',
+  'library.generateFlow': 'Gerar fluxo',
+  'library.generatingFlow': 'Gerando fluxo…',
+  'library.regenerateFlow': 'Regenerar fluxo',
+  'library.flowGenerated': 'Fluxo gerado.',
+  'library.flowRegenerated': 'Fluxo regenerado.',
+  'library.flowError': 'Falha ao gerar fluxo.',
+  'library.copyFlow': 'Copiar código do fluxo',
+  'library.flowCopied': 'Código do fluxo copiado.',
+  'library.flowCopyError': 'Não foi possível copiar o fluxo.',
+  'library.regenerateFlowTitle': 'Regenerar fluxo?',
+  'library.regenerateFlowDescription':
+    'Isso consumirá tokens da OpenRouter e substituirá apenas o fluxo visual atual.',
   'library.chatBarHint': 'Pergunte sobre este conteúdo — envia direto para o chat.',
   'library.chatBarPlaceholder': 'Pergunte algo sobre este conteúdo…',
   'library.chatBarContext': 'Perguntando sobre: {title}',
@@ -779,6 +794,9 @@ const ptBRMessages = {
   'notes.saveError': 'Falha ao salvar.',
 
   'markdown.code': 'código',
+  'markdown.diagramLoading': 'Renderizando diagrama…',
+  'markdown.diagramUnavailable': 'Diagrama indisponível; exibindo o código seguro.',
+  'markdown.diagramLabel': 'Diagrama Mermaid',
   'transcript.title': 'Transcrição',
   'transcript.copyAll': 'Copiar tudo',
 
@@ -1910,6 +1928,21 @@ const enMessages: Record<I18nKey, string> = {
   'library.copySummary': 'Copy summary',
   'library.summaryCopied': 'Summary copied.',
   'library.summaryCopyError': 'Could not copy the summary.',
+  'library.flow': 'Visual flow',
+  'library.flowDescription':
+    'Create a reviewable Mermaid representation from the transcript and summary.',
+  'library.generateFlow': 'Generate flow',
+  'library.generatingFlow': 'Generating flow…',
+  'library.regenerateFlow': 'Regenerate flow',
+  'library.flowGenerated': 'Flow generated.',
+  'library.flowRegenerated': 'Flow regenerated.',
+  'library.flowError': 'Failed to generate flow.',
+  'library.copyFlow': 'Copy flow source',
+  'library.flowCopied': 'Flow source copied.',
+  'library.flowCopyError': 'Could not copy the flow.',
+  'library.regenerateFlowTitle': 'Regenerate flow?',
+  'library.regenerateFlowDescription':
+    'This will consume OpenRouter tokens and replace only the current visual flow.',
   'library.chatBarHint': 'Ask about this content — sends you straight to chat.',
   'library.chatBarPlaceholder': 'Ask something about this content…',
   'library.chatBarContext': 'Asking about: {title}',
@@ -2163,6 +2196,9 @@ const enMessages: Record<I18nKey, string> = {
   'notes.saveError': 'Failed to save.',
 
   'markdown.code': 'code',
+  'markdown.diagramLoading': 'Rendering diagram…',
+  'markdown.diagramUnavailable': 'Diagram unavailable; showing the safe source.',
+  'markdown.diagramLabel': 'Mermaid diagram',
   'transcript.title': 'Transcript',
   'transcript.copyAll': 'Copy all',
 

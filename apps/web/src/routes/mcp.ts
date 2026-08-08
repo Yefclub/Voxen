@@ -480,6 +480,7 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
         title: z.string(),
         text: z.string(),
         summary: z.string().nullable(),
+        flowchart: z.string().nullable(),
         tags: z.array(z.string()),
       },
       annotations: { ...READ_ONLY, title: 'Ler transcrição (completa)' },
@@ -492,6 +493,7 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
           title: true,
           plainText: true,
           summaryMd: true,
+          flowchartMd: true,
           tags: { select: { tag: { select: { name: true } } } },
         },
       });
@@ -501,6 +503,7 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
         title: t.title,
         text: t.plainText,
         summary: t.summaryMd ?? null,
+        flowchart: t.flowchartMd ?? null,
         tags: t.tags.map((item) => item.tag.name),
       });
     },
