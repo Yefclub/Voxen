@@ -190,6 +190,9 @@ registerDirectUploadRoute(jobsRoutes);
 const PostBody = z.object({
   url: z.string().min(1).max(2048),
 });
+const BatchPostBody = z.object({
+  urls: z.array(z.string().min(1).max(2048)).min(1).max(20),
+});
 
 export type AutoJobKind = 'video' | 'web' | 'x';
 
@@ -215,6 +218,14 @@ export type AutoJobResult =
     }
   | { outcome: 'invalid'; error: string }
   | { outcome: 'setup_incomplete'; error: string };
+
+export type BatchAutoJobResult = AutoJobResult | { outcome: 'error'; error: string };
+
+export type BatchAutoJobItem = {
+  index: number;
+  input: string;
+  result: BatchAutoJobResult;
+};
 
 export type UploadJobResult =
   | {
@@ -336,6 +347,26 @@ export async function createAutoJobForUser(userId: string, rawUrl: string): Prom
     sourceUrl: webJob.sourceUrl,
     kind: 'web',
   };
+}
+
+export async function createAutoJobsForUser(
+  userId: string,
+  urls: readonly string[],
+): Promise<BatchAutoJobItem[]> {
+  const items: BatchAutoJobItem[] = [];
+  for (const [index, input] of urls.entries()) {
+    try {
+      items.push({ index, input, result: await createAutoJobForUser(userId, input) });
+    } catch (error) {
+      console.error('[jobs] batch item failed', safeErrorDiagnostic('BATCH_ITEM_FAILED', error));
+      items.push({
+        index,
+        input,
+        result: { outcome: 'error', error: 'Não foi possível enfileirar este conteúdo.' },
+      });
+    }
+  }
+  return items;
 }
 
 function jobTypeForKind(
@@ -538,6 +569,13 @@ jobsRoutes.post('/auto', async (c) => {
     return c.json({ error: 'Payload inválido.' }, 400);
   }
   return autoJobResponse(c, await createAutoJobForUser(userId, parsed.data.url));
+});
+
+jobsRoutes.post('/batch', async (c) => {
+  const userId = c.get('userId');
+  const parsed = BatchPostBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Informe entre 1 e 20 URLs válidas.' }, 400);
+  return c.json({ items: await createAutoJobsForUser(userId, parsed.data.urls) });
 });
 
 // POST /api/jobs/upload — envia áudio/vídeo/imagem/documento para S3 e agenda processamento.

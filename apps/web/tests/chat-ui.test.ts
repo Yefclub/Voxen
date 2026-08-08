@@ -31,6 +31,7 @@ describe('toolFamily', () => {
   });
   it('mapeia ingestão de URL (request_transcription/get_job_status)', () => {
     expect(toolFamily('request_transcription')).toBe('transcript');
+    expect(toolFamily('request_transcriptions')).toBe('transcript');
     expect(toolFamily('get_job_status')).toBe('transcript');
   });
   it('desconhecido cai em other', () => {
@@ -50,6 +51,7 @@ describe('prettifyToolName / hasToolLabel', () => {
   });
   it('hasToolLabel reconhece as tools de ingestão de URL', () => {
     expect(hasToolLabel('request_transcription')).toBe(true);
+    expect(hasToolLabel('request_transcriptions')).toBe(true);
     expect(hasToolLabel('get_job_status')).toBe(true);
   });
 });

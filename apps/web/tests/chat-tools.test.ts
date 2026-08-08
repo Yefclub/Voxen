@@ -23,6 +23,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { buildLibrarySuggestionsInstructions, buildTools } from '../src/lib/chat/runtime';
+import { classifyUrlIntent } from '../src/lib/chat/url-intent';
 import { db } from '../src/lib/db';
 import { deleteSetting, setSetting } from '../src/lib/settings';
 
@@ -101,7 +102,7 @@ describe('buildTools (agente in-app)', () => {
   });
 
   it('expõe as ferramentas de ingestão de URL', () => {
-    for (const name of ['request_transcription', 'get_job_status']) {
+    for (const name of ['request_transcription', 'request_transcriptions', 'get_job_status']) {
       expect(names).toContain(name);
     }
   });
@@ -120,6 +121,36 @@ describe('buildTools (agente in-app)', () => {
       expect(t.inputSchema).toBeDefined();
       expect(typeof t.execute).toBe('function');
     }
+  });
+
+  it('rejeita duplicação ou reordenação criada pelo modelo no lote do turno', async () => {
+    const urlA = 'https://example.com/a';
+    const urlB = 'https://example.com/b';
+    const urlIntent = classifyUrlIntent(`Transcreva ${urlA} e ${urlB}`);
+    const guardedTools = buildTools('user-test', { urlIntent });
+
+    await expect(
+      runTool(guardedTools.request_transcriptions, { urls: [urlA, urlA] }),
+    ).resolves.toMatchObject({
+      outcome: 'error',
+    });
+    await expect(
+      runTool(guardedTools.request_transcriptions, { urls: [urlB, urlA] }),
+    ).resolves.toMatchObject({
+      outcome: 'error',
+    });
+  });
+
+  it('rejeita a ferramenta singular quando o turno contém várias URLs', async () => {
+    const urlA = 'https://example.com/a';
+    const urlB = 'https://example.com/b';
+    const urlIntent = classifyUrlIntent(`Transcreva ${urlA} e ${urlB}`);
+    const guardedTools = buildTools('user-test', { urlIntent });
+
+    await expect(runTool(guardedTools.request_transcription, { url: urlA })).resolves.toEqual({
+      outcome: 'error',
+      error: 'A URL solicitada não corresponde às URLs compartilhadas neste turno.',
+    });
   });
 });
 
@@ -192,6 +223,25 @@ describeIfDb('request_transcription (com DB)', () => {
     expect(result.summary).toBe('Resumo pronto.');
     expect(result.tags).toEqual([]);
     expect(result.nextStep).toContain('read_transcript');
+  });
+
+  it('request_transcriptions cria jobs independentes sem aguardar o lote inteiro', async () => {
+    const tools = buildTools(userId);
+    const result = (await runTool(tools.request_transcriptions, {
+      urls: [
+        'https://www.youtube.com/watch?v=chatBatch01',
+        'inválida',
+        'https://youtu.be/chatBatch01',
+      ],
+    })) as {
+      total: number;
+      created: number;
+      items: Array<{ outcome: string; jobId: string | null }>;
+    };
+    expect(result.total).toBe(3);
+    expect(result.created).toBe(1);
+    expect(result.items.map((item) => item.outcome)).toEqual(['created', 'invalid', 'inflight']);
+    expect(result.items[2]?.jobId).toBe(result.items[0]?.jobId);
   });
 
   it('outcome existing_transcript aponta a transcrição existente (não duplica job)', async () => {

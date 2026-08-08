@@ -10,7 +10,7 @@ import {
   validateNoteAnchors,
   type NoteAnchorInput,
 } from '../lib/note-anchors';
-import { createAutoJobForUser } from './jobs';
+import { createAutoJobForUser, createAutoJobsForUser } from './jobs';
 import { fail, ok } from './mcp-tool-helpers';
 
 const TRANSCRIPT_BRIEF_SCHEMA = z.object({
@@ -288,6 +288,58 @@ export function registerWriteTools(server: McpServer, userId: string): void {
         default:
           return fail(result.error);
       }
+    },
+  );
+
+  server.registerTool(
+    'voxen_request_transcriptions',
+    {
+      title: 'Solicitar várias transcrições',
+      description:
+        'Enfileira de 1 a 20 URLs de uma só vez. Cada entrada tem resultado e job independentes; ' +
+        'uma URL inválida ou já existente não desfaz as demais.',
+      inputSchema: {
+        urls: z
+          .array(z.string().min(1).max(2048))
+          .min(1)
+          .max(20)
+          .describe('URLs de vídeos, posts ou páginas a transcrever/indexar.'),
+      },
+      outputSchema: {
+        total: z.number(),
+        created: z.number(),
+        items: z.array(
+          z.object({
+            index: z.number(),
+            url: z.string(),
+            outcome: z.string(),
+            jobId: z.string().nullable(),
+            transcriptId: z.string().nullable(),
+            error: z.string().nullable(),
+          }),
+        ),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: true,
+        title: 'Solicitar várias transcrições',
+      },
+    },
+    async (args) => {
+      const items = await createAutoJobsForUser(userId, args.urls);
+      return ok({
+        total: items.length,
+        created: items.filter((item) => item.result.outcome === 'created').length,
+        items: items.map((item) => ({
+          index: item.index,
+          url: item.input,
+          outcome: item.result.outcome,
+          jobId: 'jobId' in item.result ? (item.result.jobId ?? null) : null,
+          transcriptId: 'transcriptId' in item.result ? (item.result.transcriptId ?? null) : null,
+          error: 'error' in item.result ? item.result.error : null,
+        })),
+      });
     },
   );
 

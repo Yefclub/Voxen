@@ -57,6 +57,7 @@ import {
   isSharedUrl,
   type UrlIntent,
 } from './url-intent';
+import { buildBatchTranscriptionTool } from './batch-ingestion-tool';
 import {
   healStaleRunningInSegments,
   healStaleRunningTools,
@@ -124,9 +125,10 @@ const AGENT_INSTRUCTIONS = [
   'que não possui internet: se uma ferramenta não estiver configurada, informe qual modelo falta.',
   '',
   'Para uma URL compartilhada, siga a política específica do turno. Com intenção explícita de',
-  'transcrever, resumir, analisar, salvar ou organizar o conteúdo, use request_transcription(url)',
-  'para a própria URL — nunca substitua o conteúdo por web_search ou search_x. Sem uma ação',
-  'explícita, pergunte o que o usuário quer fazer com o link antes de agir.',
+  'transcrever, resumir, analisar, salvar ou organizar um conteúdo, use request_transcription(url).',
+  'Quando houver várias URLs, use request_transcriptions(urls) uma única vez; cada conteúdo terá',
+  'seu próprio job e resultado. Nunca substitua essas URLs por web_search ou search_x.',
+  'Sem uma ação explícita, pergunte o que o usuário quer fazer com o link antes de agir.',
   '',
   'Quando propor criar uma nota (propose_create_note), a interface pode pedir confirmação e',
   'pausar o turno. Se o usuário já liberou essa ação, a nota é criada sem pausa. Não tente',
@@ -822,7 +824,7 @@ export function buildTools(
         if (options.urlIntent?.kind === 'explicit-ingest' && !isSharedUrl(options.urlIntent, url)) {
           return {
             outcome: 'error' as const,
-            error: 'A URL solicitada não corresponde à URL compartilhada neste turno.',
+            error: 'A URL solicitada não corresponde às URLs compartilhadas neste turno.',
           };
         }
         const toolSignal = execution.abortSignal ?? options.abortSignal;
@@ -871,6 +873,7 @@ export function buildTools(
         }
       },
     }),
+    request_transcriptions: buildBatchTranscriptionTool(userId, options),
     get_job_status: tool({
       description:
         'Compatibilidade para consultar explicitamente um job. request_transcription já aguarda ' +
@@ -1724,13 +1727,15 @@ export async function streamAssistantReply(options: {
       emitStatus: (label) => emit({ type: 'status', label }),
       urlIntent,
     }),
-    // A intenção explícita de processar o link não depende da obediência ao
-    // prompt: só o primeiro passo precisa chamar a ingestão. Depois do brief,
-    // os passos seguintes voltam a `auto` para que o modelo possa responder.
+    // A intenção explícita força a ingestão no primeiro passo; depois o modelo responde.
     prepareStep: ({ stepNumber }) => ({
       toolChoice:
         urlIntent.kind === 'explicit-ingest' && stepNumber === 0
-          ? { type: 'tool', toolName: 'request_transcription' }
+          ? {
+              type: 'tool',
+              toolName:
+                urlIntent.urls.length > 1 ? 'request_transcriptions' : 'request_transcription',
+            }
           : 'auto',
     }),
     // Spec 090 pause; spec 132 always-allow → approved (execute cria a nota).

@@ -54,6 +54,7 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   // transcrição
   transcribe_video: 'transcript',
   request_transcription: 'transcript',
+  request_transcriptions: 'transcript',
   get_job_status: 'transcript',
 };
 

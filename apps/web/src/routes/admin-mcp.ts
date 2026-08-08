@@ -273,6 +273,7 @@ adminMcpRoutes.post('/prompt', async (c) => {
     'Ferramentas de escrita:',
     '- voxen_create_note / voxen_update_note: cria e edita notas na KB.',
     '- voxen_request_transcription(url): enfileira transcrição/indexação de uma URL.',
+    '- voxen_request_transcriptions(urls): enfileira até 20 URLs com resultados independentes.',
     '- voxen_get_job_status(job_id): acompanha até DONE e então retorna um brief com resumo, tags e relacionados.',
     '',
     'Regras de uso saudável:',
