@@ -115,7 +115,10 @@ export function McpClientSetup({
           ))}
         </div>
 
-        <div className="space-y-3 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-subtle)] p-4">
+        <div
+          data-testid="mcp-client-configuration"
+          className="space-y-3 rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] p-4"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium text-[var(--color-app-fg)]">{setup.label}</p>
             <Badge
