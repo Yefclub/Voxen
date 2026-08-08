@@ -20,6 +20,7 @@ export type McpClientSetup = {
 const TOKEN_PLACEHOLDER = 'YOUR_VOXEN_MCP_TOKEN';
 
 function setupsEn(endpoint: string): McpClientSetup[] {
+  const origin = new URL(endpoint).origin;
   return [
     {
       id: 'codex',
@@ -90,10 +91,15 @@ function setupsEn(endpoint: string): McpClientSetup[] {
     {
       id: 'grok',
       label: 'Grok Web',
-      status: 'unsupported',
+      status: 'conditional',
       summary:
-        'Not supported yet: Grok Web requires OAuth. A personal Voxen token is not an OAuth client ID or client secret.',
-      config: 'Do not paste a Voxen personal token into the Grok OAuth form.',
+        'OAuth 2.1 is available when enabled by the admin; public Grok Web validation is still pending. Never use a personal token as OAuth credentials.',
+      config: `Server URL: ${endpoint}
+Authorization endpoint: ${origin}/api/auth/oauth2/authorize
+Token endpoint: ${origin}/api/auth/oauth2/token
+Scopes: mcp:read offline_access
+Token authentication: none (PKCE S256)
+Client secret: leave empty for a registered public client`,
     },
   ];
 }
@@ -128,8 +134,8 @@ function setupsPtBr(endpoint: string): McpClientSetup[] {
     },
     grok: {
       summary:
-        'Ainda não suportado: o Grok Web exige OAuth. Token pessoal não é client ID nem client secret.',
-      config: 'Não cole um token pessoal do Voxen no formulário OAuth do Grok.',
+        'OAuth 2.1 está disponível quando o admin habilita; a validação pública no Grok Web ainda está pendente. Nunca use token pessoal como credencial OAuth.',
+      config: setups[6]!.config,
     },
   };
   return setups.map((setup) => ({ ...setup, ...translated[setup.id] }));

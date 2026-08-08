@@ -12,7 +12,7 @@ uses Streamable HTTP and every credential is bound to exactly one Voxen user.
 | -------------- | ------------------------------------------ |
 | Endpoint       | `https://YOUR-VOXEN-HOST/mcp`              |
 | Transport      | Streamable HTTP                            |
-| Authentication | `Authorization: Bearer VOXEN_MCP_TOKEN`    |
+| Authentication | Personal Bearer token or OAuth 2.1 + PKCE  |
 | Read scope     | Search and read the owner's knowledge base |
 | Write scope    | Create/update notes and request ingestion  |
 
@@ -24,21 +24,25 @@ or client-secret field. Revoking it does not sign you out of Voxen.
 Use a read-only token first. Enable write access only for a client that needs to
 modify your knowledge base and whose approval behavior you understand.
 
+Instance administrators can optionally enable OAuth 2.1 in **Administration →
+Integrations → MCP Server**. OAuth access is still bound to the Voxen user who
+approves the consent screen; it never inherits administrator access.
+
 ## Compatibility matrix
 
 “Documented” means the client vendor documents the required transport/auth
 surface. It does not mean that every released client version has been manually
 tested against Voxen.
 
-| Client                    | Streamable HTTP | Personal Bearer token | OAuth discovery  | Current Voxen status                      |
-| ------------------------- | :-------------: | :-------------------: | :--------------: | ----------------------------------------- |
-| Codex CLI/app/IDE         |       Yes       |          Yes          |       Yes        | Static-token setup documented             |
-| Claude Code               |       Yes       |          Yes          |       Yes        | Static-token setup documented             |
-| OpenAI Responses API      |       Yes       |   Header supported    |   App-managed    | Server-side setup documented              |
-| Anthropic Messages API    |       Yes       |  Authorization token  |   App-managed    | Server-side setup documented              |
-| Cursor                    |       Yes       | Version-dependent UI  |       Yes        | Use OAuth after Voxen OAuth validation    |
-| MCP Inspector/generic SDK |       Yes       |          Yes          | Client-dependent | Protocol smoke-test path                  |
-| Grok Web custom connector |       Yes       |      Not exposed      |     Required     | **Not supported until Voxen OAuth ships** |
+| Client                    | Streamable HTTP | Personal Bearer token | OAuth discovery  | Current Voxen status                          |
+| ------------------------- | :-------------: | :-------------------: | :--------------: | --------------------------------------------- |
+| Codex CLI/app/IDE         |       Yes       |          Yes          |       Yes        | Token and OAuth paths documented              |
+| Claude Code               |       Yes       |          Yes          |       Yes        | Static-token setup documented                 |
+| OpenAI Responses API      |       Yes       |   Header supported    |   App-managed    | Server-side setup documented                  |
+| Anthropic Messages API    |       Yes       |  Authorization token  |   App-managed    | Server-side setup documented                  |
+| Cursor                    |       Yes       | Version-dependent UI  |       Yes        | OAuth protocol path available                 |
+| MCP Inspector/generic SDK |       Yes       |          Yes          | Client-dependent | Protocol smoke-test path                      |
+| Grok Web custom connector |       Yes       |      Not exposed      |     Required     | Protocol ready; manual Web validation pending |
 
 The canonical record of manually tested client versions will live in this
 matrix. Do not infer manual validation from a configuration example.
@@ -62,9 +66,10 @@ bearer_token_env_var = "VOXEN_MCP_TOKEN"
 default_tools_approval_mode = "writes"
 ```
 
-Restart the Codex surface, then inspect the server with `/mcp`. When Voxen
-OAuth is enabled in a later release, `codex mcp login voxen` will be the OAuth
-path; it is not required for the personal-token configuration above.
+Restart the Codex surface, then inspect the server with `/mcp`. If the instance
+administrator enabled OAuth, omit the Bearer-token setting and use
+`codex mcp login voxen`; the browser will ask the Voxen user to sign in and
+approve the requested scopes.
 
 ## Claude Code
 
@@ -134,8 +139,48 @@ surface has changed between versions, so Voxen does not publish a token-bearing
 explicitly supports a secret Authorization header for remote MCP, use the
 endpoint and Bearer value above. Never append the token to the URL.
 
-Otherwise wait for Voxen OAuth support and connect through Cursor's normal OAuth
-flow. Record the Cursor version and result when reporting compatibility.
+Otherwise use Cursor's normal OAuth flow after the instance administrator
+enables OAuth. Record the Cursor version and result when reporting compatibility.
+
+## OAuth 2.1 discovery and manual clients
+
+OAuth is disabled by default. Once enabled, point discovery-capable clients at
+the normal `https://YOUR-VOXEN-HOST/mcp` URL. Voxen publishes:
+
+- Protected-resource metadata: `/.well-known/oauth-protected-resource/mcp`
+- Authorization-server metadata: `/.well-known/oauth-authorization-server/api/auth`
+- Authorization endpoint: `/api/auth/oauth2/authorize`
+- Token endpoint: `/api/auth/oauth2/token`
+- Dynamic client registration: `/api/auth/oauth2/register`
+
+Public clients use Authorization Code + PKCE `S256`; the token endpoint auth
+method is `none`. Use `mcp:read` by default, add `mcp:write` only when required,
+and request `offline_access` for refresh tokens. Access tokens last five
+minutes; refresh tokens rotate on every use. Users can revoke a grant under
+**Your account → MCP access**. RFC 7009 revocation also invalidates an access
+token immediately; Voxen stores only its short-lived random signed identifier.
+For confidential clients, RFC 7662 JWT access-token introspection applies the
+same live user, grant, client, and individual-token revocation policy as the
+MCP endpoint while preserving opaque refresh-token introspection.
+
+If a client requires a manually created client ID, first obtain the client's
+exact callback URI and ask an administrator to use **Administration →
+Integrations → MCP → Pre-register an OAuth client**. That screen can create a
+public PKCE client or a confidential client, and shows a confidential secret
+only once. Never guess a redirect URI.
+
+Public clients can also use dynamic registration directly:
+
+```bash
+export VOXEN_URL='https://YOUR-VOXEN-HOST'
+export CLIENT_REDIRECT_URI='https://EXACT-CALLBACK-SHOWN-BY-THE-CLIENT'
+curl --fail-with-body "$VOXEN_URL/api/auth/oauth2/register" \
+  -H 'Content-Type: application/json' \
+  --data "{\"client_name\":\"My MCP client\",\"redirect_uris\":[\"$CLIENT_REDIRECT_URI\"],\"token_endpoint_auth_method\":\"none\",\"grant_types\":[\"authorization_code\",\"refresh_token\"],\"response_types\":[\"code\"],\"scope\":\"mcp:read offline_access\"}"
+```
+
+Keep the returned `client_id`; a public PKCE client has no client secret. Voxen
+requires exact redirect matching and accepts HTTP only for loopback callbacks.
 
 ## Grok Web
 
@@ -143,9 +188,14 @@ Grok Web custom connectors require a public HTTPS endpoint and an OAuth flow.
 The OAuth form shown by Grok asks for OAuth application credentials and
 authorization/token endpoints. A Voxen personal token cannot fill those fields.
 
-Current status: **unsupported**. Do not paste `vxn_mcp_...` into the client ID or
-client-secret fields. OAuth 2.1 interoperability is tracked in
-[issue #679](https://github.com/Yefclub/Voxen/issues/679).
+Voxen now exposes the standards-based OAuth flow required by hosted clients,
+but Grok Web remains marked **manual validation pending** until a public dev
+deployment completes sign-in, consent, token exchange, and a real tool call.
+Do not paste `vxn_mcp_...` into client ID or client-secret fields. If Grok shows
+a manual OAuth form, use a registered public client ID, leave the secret empty,
+select PKCE/`none`, and use the endpoints and scopes listed above. If the UI does
+not expose its exact callback URI, do not guess it; use automatic discovery or
+report that Grok version in [issue #679](https://github.com/Yefclub/Voxen/issues/679).
 
 ## MCP Inspector and generic clients
 
@@ -172,12 +222,16 @@ request-header controls. Do not paste the token into a URL query parameter.
 - Create a new token if the secret was lost; existing secrets cannot be shown.
 - Check whether the token expired or was revoked.
 - Confirm the owning Voxen account is still approved and enabled.
+- OAuth clients should inspect the `WWW-Authenticate` `resource_metadata` URL,
+  then restart authorization if the grant or client was revoked.
 
 ### `403 Forbidden`
 
 - A browser `Origin` that differs from `APP_BASE_URL` is rejected.
 - Confirm that the reverse proxy preserves the public scheme and host and that
   `APP_BASE_URL` is the canonical externally reachable URL.
+- An OAuth token that lacks `mcp:write` receives `insufficient_scope` when it
+  directly calls a write tool.
 
 ### Missing tools or write failures
 
@@ -192,7 +246,8 @@ request-header controls. Do not paste the token into a URL query parameter.
 - Hosted clients need a publicly reachable HTTPS URL with a valid certificate.
 - `localhost`, private addresses, and self-signed certificates are not usable by
   hosted Grok/OpenAI/Anthropic services.
-- A tunnel exposes the endpoint but does not add OAuth support.
+- A tunnel exposes the endpoint but must preserve the canonical
+  `APP_BASE_URL`; changing the public URL requires a new OAuth registration.
 
 ### Discovery or transport errors
 
@@ -200,8 +255,8 @@ request-header controls. Do not paste the token into a URL query parameter.
 - Allow `POST` and the `Authorization`, `Content-Type`, `Accept`, and MCP headers
   through the reverse proxy/WAF.
 - Test `/health`, then the curl initialize request above.
-- Until OAuth delivery is complete, OAuth-only clients will fail discovery even
-  when a personal token works in header-capable clients.
+- Confirm OAuth is enabled by the instance administrator; discovery remains
+  descriptive while authorization and token issuance fail closed when disabled.
 
 ## Security checklist
 

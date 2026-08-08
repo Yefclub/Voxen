@@ -32,9 +32,27 @@ interface PersonalMcpStatus {
   allowCreate: boolean;
 }
 
+interface OAuthGrant {
+  id: string;
+  clientId: string;
+  clientName: string;
+  clientUri: string | null;
+  disabled: boolean;
+  redirectHosts: string[];
+  scopes: string[];
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+interface OAuthGrantStatus {
+  enabled: boolean;
+  grants: OAuthGrant[];
+}
+
 export function ContaMcpPage(): React.ReactElement {
   const { t, locale } = useI18n();
   const [status, setStatus] = useState<PersonalMcpStatus | null>(null);
+  const [oauthStatus, setOAuthStatus] = useState<OAuthGrantStatus | null>(null);
   const [label, setLabel] = useState('');
   const [writeAccess, setWriteAccess] = useState(false);
   const [expiresAt, setExpiresAt] = useState('');
@@ -42,15 +60,32 @@ export function ContaMcpPage(): React.ReactElement {
   const [secret, setSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<PersonalMcpToken | null>(null);
+  const [oauthRevokeTarget, setOAuthRevokeTarget] = useState<OAuthGrant | null>(null);
   const endpoint = useMemo(() => `${window.location.origin}/mcp`, []);
   const minExpiry = useMemo(() => nextLocalDateTimeInputMin(new Date()), []);
 
   async function refresh(): Promise<void> {
     try {
-      setStatus(await apiGet<PersonalMcpStatus>('/api/mcp/tokens'));
+      const [personal, oauth] = await Promise.all([
+        apiGet<PersonalMcpStatus>('/api/mcp/tokens'),
+        apiGet<OAuthGrantStatus>('/api/mcp/oauth'),
+      ]);
+      setStatus(personal);
+      setOAuthStatus(oauth);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : t('common.error'));
       setStatus({ tokens: [], allowCreate: false });
+      setOAuthStatus({ enabled: false, grants: [] });
+    }
+  }
+
+  async function revokeOAuthGrant(grant: OAuthGrant): Promise<void> {
+    try {
+      await apiDelete(`/api/mcp/oauth/grants/${grant.id}`);
+      toast.success(locale === 'en' ? 'OAuth access revoked.' : 'Acesso OAuth revogado.');
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : t('common.error'));
     }
   }
 
@@ -285,6 +320,68 @@ export function ContaMcpPage(): React.ReactElement {
         </CardContent>
       </Card>
 
+      <Card elevated>
+        <CardHeader>
+          <CardTitle className="font-display">
+            {locale === 'en' ? 'Connected OAuth clients' : 'Clientes OAuth conectados'}
+          </CardTitle>
+          <CardDescription>
+            {locale === 'en'
+              ? 'Applications authorized through OAuth 2.1. Revocation is immediate and does not affect personal tokens.'
+              : 'Aplicações autorizadas por OAuth 2.1. A revogação é imediata e não afeta tokens pessoais.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {oauthStatus === null ? (
+            <div className="flex justify-center py-6">
+              <Spinner />
+            </div>
+          ) : !oauthStatus.enabled ? (
+            <p className="py-3 text-sm text-[var(--color-app-muted)]">
+              {locale === 'en'
+                ? 'OAuth MCP is disabled by the instance administrator.'
+                : 'O OAuth MCP está desativado pelo administrador da instância.'}
+            </p>
+          ) : oauthStatus.grants.length === 0 ? (
+            <p className="py-3 text-sm text-[var(--color-app-muted)]">
+              {locale === 'en'
+                ? 'No application has OAuth access to your workspace.'
+                : 'Nenhuma aplicação possui acesso OAuth ao seu workspace.'}
+            </p>
+          ) : (
+            oauthStatus.grants.map((grant) => (
+              <div
+                key={grant.id}
+                className="flex items-center gap-3 rounded-lg border border-[var(--color-app-border)] px-4 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-sm font-medium text-[var(--color-app-fg)]">
+                      {grant.clientName}
+                    </p>
+                    <Badge variant={grant.disabled ? 'outline' : 'success'}>
+                      {grant.scopes.join(' + ')}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 truncate text-[11px] text-[var(--color-app-muted)]">
+                    {grant.redirectHosts.join(', ') || grant.clientId}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setOAuthRevokeTarget(grant)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {locale === 'en' ? 'Revoke' : 'Revogar'}
+                </Button>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
       <ConfirmDialog
         open={revokeTarget !== null}
         onOpenChange={(open) => !open && setRevokeTarget(null)}
@@ -296,6 +393,23 @@ export function ContaMcpPage(): React.ReactElement {
           const target = revokeTarget;
           setRevokeTarget(null);
           if (target) await revokeToken(target);
+        }}
+      />
+      <ConfirmDialog
+        open={oauthRevokeTarget !== null}
+        onOpenChange={(open) => !open && setOAuthRevokeTarget(null)}
+        title={locale === 'en' ? 'Revoke OAuth access?' : 'Revogar acesso OAuth?'}
+        description={
+          locale === 'en'
+            ? 'The client will lose access immediately and must request authorization again.'
+            : 'O cliente perderá o acesso imediatamente e precisará solicitar nova autorização.'
+        }
+        confirmLabel={locale === 'en' ? 'Revoke' : 'Revogar'}
+        variant="destructive"
+        onConfirm={async () => {
+          const target = oauthRevokeTarget;
+          setOAuthRevokeTarget(null);
+          if (target) await revokeOAuthGrant(target);
         }}
       />
     </PageShell>

@@ -46,6 +46,31 @@ export async function rateLimit(
   return rateLimitWithRedis(getRedisPublisher(), key, limit, windowSec);
 }
 
+/**
+ * Rate limit for endpoints where losing the abuse-control store must stop the
+ * request. A successful Redis INCR can never return count zero, so that value
+ * also identifies an aborted MULTI/EXEC that the general limiter treats as an
+ * availability-preserving fail-open result.
+ */
+export async function rateLimitRequired(
+  key: string,
+  limit: number,
+  windowSec: number,
+): Promise<RateLimitResult> {
+  return rateLimitRequiredWithRedis(getRedisPublisher(), key, limit, windowSec);
+}
+
+export async function rateLimitRequiredWithRedis(
+  redis: RateLimitRedis,
+  key: string,
+  limit: number,
+  windowSec: number,
+): Promise<RateLimitResult> {
+  const result = await rateLimitWithRedis(redis, key, limit, windowSec);
+  if (result.count < 1) throw new Error('Rate-limit store unavailable');
+  return result;
+}
+
 export async function rateLimitWithRedis(
   redis: RateLimitRedis,
   key: string,

@@ -1,9 +1,22 @@
 import { describe, expect, it } from 'bun:test';
+import { mcpOAuthSsoCallback } from '../src/client/lib/mcp-oauth-login';
 import { mcpClientSetups, mcpTokenPlaceholder } from '../src/client/lib/mcp-client-setup';
 
 const ENDPOINT = 'https://voxen.example/mcp';
 
 describe('MCP client setup', () => {
+  it('preserves exactly one signed resource when SSO resumes OAuth', () => {
+    const query = new URLSearchParams({
+      client_id: 'client',
+      resource: 'https://voxen.example/mcp',
+      sig: 'signed',
+    }).toString();
+    const callback = mcpOAuthSsoCallback(query);
+    const resumed = new URL(callback ?? '', 'https://voxen.example');
+    expect(resumed.pathname).toBe('/api/auth/oauth2/authorize');
+    expect(resumed.searchParams.getAll('resource')).toEqual(['https://voxen.example/mcp']);
+    expect(resumed.searchParams.get('sig')).toBe('signed');
+  });
   it('keeps English and PT-BR client coverage and support status aligned', () => {
     const en = mcpClientSetups('en', ENDPOINT);
     const ptBr = mcpClientSetups('pt-BR', ENDPOINT);
@@ -34,9 +47,10 @@ describe('MCP client setup', () => {
   it('does not present a personal token as Grok OAuth credentials', () => {
     const grok = mcpClientSetups('pt-BR', ENDPOINT).find((setup) => setup.id === 'grok');
 
-    expect(grok?.status).toBe('unsupported');
+    expect(grok?.status).toBe('conditional');
     expect(grok?.config).not.toContain('one-time-test-token');
     expect(grok?.summary).toContain('OAuth');
+    expect(grok?.config).toContain('/api/auth/oauth2/authorize');
   });
 });
 

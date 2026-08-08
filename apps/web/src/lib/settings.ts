@@ -68,6 +68,8 @@ export type GlobalSettingKey =
   | 'mcp_api_token'
   /** Permite usuários aprovados emitirem seus próprios tokens MCP. */
   | 'mcp_user_tokens_enabled'
+  /** OAuth 2.1 do MCP é opt-in e permanece fail-closed até ativação administrativa. */
+  | 'mcp_oauth_enabled'
   // Token de conexão do agente de proxy residencial (chisel). Cifrado em DB.
   // O agente residencial usa este token pra autenticar o túnel reverso.
   // Apenas 1 token por instância no MVP. Ver spec 058.

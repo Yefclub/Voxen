@@ -36,6 +36,8 @@ import { clientIp } from './lib/client-ip';
 import { rateLimit } from './lib/rate-limit';
 import { resolveStorageDriver, storageGet } from './lib/storage';
 import { publicAuthenticationRoutes } from './routes/public-authentication';
+import { mcpOAuthDiscoveryRoutes } from './routes/mcp-oauth';
+import { mcpOAuthAccountRoutes } from './routes/mcp-oauth-account';
 
 const app = new Hono();
 
@@ -154,6 +156,7 @@ app.get('/health/deep', async (c) => {
   return c.json({ ok: allOk, checks }, allOk ? 200 : 503);
 });
 
+app.route('/', mcpOAuthDiscoveryRoutes);
 app.route('/', publicAuthenticationRoutes);
 
 // Capabilities: features opcionais que o admin pode habilitar/desabilitar.
@@ -246,6 +249,7 @@ app.route('/api/automations', automationsRoutes);
 // MCP server (auth via Bearer token; SEM cookie de sessão — IAs externas)
 app.route('/mcp', mcpRoutes);
 app.route('/api/mcp/tokens', mcpTokenRoutes);
+app.route('/api/mcp/oauth', mcpOAuthAccountRoutes);
 // Graph view (visualização Obsidian-like da KB)
 app.route('/api/graph', graphRoutes);
 // Changelog / release notes (releases.json)

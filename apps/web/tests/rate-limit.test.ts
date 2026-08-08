@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
-import { rateLimit, rateLimitWithRedis } from '../src/lib/rate-limit';
+import { rateLimit, rateLimitRequiredWithRedis, rateLimitWithRedis } from '../src/lib/rate-limit';
 import { closeRedis, getRedisPublisher } from '../src/lib/redis';
 
 const DB_AVAILABLE = !!process.env.DATABASE_URL;
@@ -85,5 +85,19 @@ describe('rateLimitWithRedis', () => {
 
     const result = await rateLimitWithRedis(redis, 'voxen:test:abort', 3, 60);
     expect(result).toEqual({ allowed: true, count: 0, limit: 3, resetIn: 60 });
+  });
+
+  it('falha fechada para endpoints que criam estado durável', async () => {
+    const pipeline = {
+      incr: () => pipeline,
+      expire: () => pipeline,
+      ttl: () => pipeline,
+      exec: async () => null,
+    };
+    const redis = { multi: () => pipeline };
+
+    await expect(
+      rateLimitRequiredWithRedis(redis, 'voxen:test:required-abort', 3, 60),
+    ).rejects.toThrow('Rate-limit store unavailable');
   });
 });

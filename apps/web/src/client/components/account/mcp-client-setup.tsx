@@ -48,9 +48,13 @@ export function McpClientSetup({
         ? 'Supported with token'
         : 'Suportado com token'
       : setup.status === 'conditional'
-        ? locale === 'en'
-          ? 'Version-dependent'
-          : 'Depende da versão'
+        ? setup.id === 'grok'
+          ? locale === 'en'
+            ? 'Validation pending'
+            : 'Validação pendente'
+          : locale === 'en'
+            ? 'Version-dependent'
+            : 'Depende da versão'
         : locale === 'en'
           ? 'OAuth required'
           : 'Exige OAuth';
@@ -130,17 +134,21 @@ export function McpClientSetup({
           <Textarea readOnly value={setup.config} rows={6} className="font-mono text-xs" />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11px] text-[var(--color-app-muted)]">
-              {setup.status === 'unsupported'
+              {setup.id === 'grok'
                 ? locale === 'en'
-                  ? 'OAuth is required; no personal token is included in this configuration.'
-                  : 'OAuth é obrigatório; nenhum token pessoal aparece nesta configuração.'
-                : visibleToken
+                  ? 'OAuth must be enabled by the administrator. Do not paste a personal token into Grok.'
+                  : 'O administrador precisa habilitar OAuth. Não cole token pessoal no Grok.'
+                : setup.status === 'unsupported'
                   ? locale === 'en'
-                    ? 'Your token remains in the credential card; examples use an environment variable or placeholder to avoid persisting it accidentally.'
-                    : 'Seu token continua no cartão de credencial; os exemplos usam variável de ambiente ou placeholder para evitar persistência acidental.'
-                  : locale === 'en'
-                    ? 'Set VOXEN_MCP_TOKEN or replace the placeholder with a newly created token.'
-                    : 'Defina VOXEN_MCP_TOKEN ou troque o placeholder por um token recém-criado.'}
+                    ? 'OAuth is required; no personal token is included in this configuration.'
+                    : 'OAuth é obrigatório; nenhum token pessoal aparece nesta configuração.'
+                  : visibleToken
+                    ? locale === 'en'
+                      ? 'Your token remains in the credential card; examples use an environment variable or placeholder to avoid persisting it accidentally.'
+                      : 'Seu token continua no cartão de credencial; os exemplos usam variável de ambiente ou placeholder para evitar persistência acidental.'
+                    : locale === 'en'
+                      ? 'Set VOXEN_MCP_TOKEN or replace the placeholder with a newly created token.'
+                      : 'Defina VOXEN_MCP_TOKEN ou troque o placeholder por um token recém-criado.'}
             </p>
             <Button
               type="button"

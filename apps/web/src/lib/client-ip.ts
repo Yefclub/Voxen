@@ -9,6 +9,7 @@
 // Cloudflare pode trazer IPs intermediários e bagunçar o scoping.
 
 import type { Context } from 'hono';
+import { getConnInfo } from 'hono/bun';
 
 export function clientIp(c: Context): string {
   const cf = c.req.header('cf-connecting-ip')?.trim();
@@ -21,4 +22,18 @@ export function clientIp(c: Context): string {
   if (real) return real;
 
   return 'unknown';
+}
+
+/**
+ * Returns the TCP peer observed by Bun without trusting caller-controlled
+ * forwarding headers. Use this for unauthenticated endpoints that create
+ * durable state. Tests and non-Bun adapters intentionally collapse to one
+ * bounded `unknown` bucket.
+ */
+export function connectionPeerIp(c: Context): string {
+  try {
+    return getConnInfo(c).remote.address?.trim() || 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }

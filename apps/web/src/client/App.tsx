@@ -62,6 +62,9 @@ const ContaPlataformasPage = lazy(() =>
 const ContaMcpPage = lazy(() =>
   import('./pages/conta-mcp').then(({ ContaMcpPage }) => ({ default: ContaMcpPage })),
 );
+const OAuthConsentPage = lazy(() =>
+  import('./pages/oauth-consent').then(({ OAuthConsentPage }) => ({ default: OAuthConsentPage })),
+);
 const FilaPage = lazy(() => import('./pages/fila').then(({ FilaPage }) => ({ default: FilaPage })));
 const JobDetalhePage = lazy(() =>
   import('./pages/jobs-detalhe').then(({ JobDetalhePage }) => ({ default: JobDetalhePage })),
@@ -203,6 +206,7 @@ function AppRoutes(): React.ReactElement {
         <Route path="/conta" element={<ContaPage />} />
         <Route path="/conta/plataformas" element={<ContaPlataformasPage />} />
         <Route path="/conta/mcp" element={<ContaMcpPage />} />
+        <Route path="/oauth/consent" element={<OAuthConsentPage />} />
         <Route path="/fila" element={<FilaPage />} />
         <Route path="/jobs" element={<JobsIndexRedirect />} />
         <Route path="/jobs/:id" element={<JobDetalhePage />} />
