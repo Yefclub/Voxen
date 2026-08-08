@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786211865",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Correct MCP client setup contrast across themes",
+    "body": "The selected MCP client configuration now uses a theme-safe nested surface and a horizontally scrollable client selector on narrow screens.",
+    "pr": 710,
+    "author": "Kalyel",
+    "date": "2026-08-08T14:57:32-03:00",
+    "translations": {
+      "en": {
+        "title": "Correct MCP client setup contrast across themes",
+        "body": "The selected MCP client configuration now uses a theme-safe nested surface and a horizontally scrollable client selector on narrow screens."
+      },
+      "pt-BR": {
+        "title": "Corrige o contraste da configuração de clientes MCP em todos os temas",
+        "body": "A configuração do cliente MCP selecionado agora usa uma superfície interna segura para todos os temas e um seletor de clientes com rolagem horizontal em telas estreitas."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/710"
+  },
+  {
     "version": "0.14.5-dev.1786209842",
     "channel": "dev",
     "type": "feat",
