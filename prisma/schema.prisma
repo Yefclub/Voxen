@@ -85,6 +85,10 @@ model User {
   automationRuns        AutomationRun[]
   tags                  Tag[]
   mcpTokens             McpToken[]
+  oauthClients          OauthClient[]
+  oauthRefreshTokens    OauthRefreshToken[]
+  oauthAccessTokens     OauthAccessToken[]
+  oauthConsents         OauthConsent[]
   configRevisions       ConfigRevision[]       @relation("ConfigRevisionActor")
 
   @@index([status])
@@ -106,15 +110,17 @@ model TelegramLink {
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  userId    String
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                 String              @id @default(cuid())
+  token              String              @unique
+  userId             String
+  expiresAt          DateTime
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauthRefreshTokens OauthRefreshToken[]
+  oauthAccessTokens  OauthAccessToken[]
 
   @@index([userId])
   @@index([token])
@@ -214,6 +220,149 @@ model McpToken {
 
   @@index([userId, revokedAt])
   @@index([expiresAt])
+}
+
+// OAuth 2.1 provider state for remote MCP clients. Better Auth addresses these
+// Prisma delegates as oauthClient/oauthRefreshToken/oauthAccessToken/oauthConsent.
+model Jwks {
+  id         String    @id @default(cuid())
+  publicKey  String    @db.Text
+  privateKey String    @db.Text
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+}
+
+model OauthClient {
+  id                      String              @id @default(cuid())
+  clientId                String              @unique
+  clientSecret            String?
+  disabled                Boolean?            @default(false)
+  skipConsent             Boolean?
+  enableEndSession        Boolean?
+  subjectType             String?
+  scopes                  String[]            @default([])
+  userId                  String?
+  createdAt               DateTime?           @default(now())
+  updatedAt               DateTime?           @updatedAt
+  name                    String?
+  uri                     String?
+  icon                    String?
+  contacts                String[]            @default([])
+  tos                     String?
+  policy                  String?
+  softwareId              String?
+  softwareVersion         String?
+  softwareStatement       String?
+  redirectUris            String[]            @default([])
+  postLogoutRedirectUris  String[]            @default([])
+  tokenEndpointAuthMethod String?
+  grantTypes              String[]            @default([])
+  responseTypes           String[]            @default([])
+  public                  Boolean?
+  type                    String?
+  requirePKCE             Boolean?            @default(true)
+  referenceId             String?
+  metadata                Json?
+  user                    User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauthRefreshTokens      OauthRefreshToken[]
+  oauthAccessTokens       OauthAccessToken[]
+  oauthConsents           OauthConsent[]
+
+  @@index([userId])
+  @@index([disabled])
+}
+
+model OauthRefreshToken {
+  id                String             @id @default(cuid())
+  token             String             @unique
+  clientId          String
+  sessionId         String?
+  userId            String
+  referenceId       String?
+  expiresAt         DateTime?
+  createdAt         DateTime?          @default(now())
+  revoked           DateTime?
+  authTime          DateTime?
+  scopes            String[]           @default([])
+  oauthClient       OauthClient        @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  session           Session?           @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauthAccessTokens OauthAccessToken[]
+
+  @@index([clientId])
+  @@index([sessionId])
+  @@index([userId])
+}
+
+model OauthAccessToken {
+  id                String             @id @default(cuid())
+  token             String?            @unique
+  clientId          String
+  sessionId         String?
+  userId            String?
+  referenceId       String?
+  refreshId         String?
+  expiresAt         DateTime?
+  createdAt         DateTime?          @default(now())
+  scopes            String[]           @default([])
+  oauthClient       OauthClient        @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  session           Session?           @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  user              User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauthRefreshToken OauthRefreshToken? @relation(fields: [refreshId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([refreshId])
+}
+
+model OauthConsent {
+  id          String      @id @default(cuid())
+  clientId    String
+  userId      String?
+  referenceId String?
+  scopes      String[]    @default([])
+  createdAt   DateTime?   @default(now())
+  updatedAt   DateTime?   @updatedAt
+  oauthClient OauthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  user        User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, userId])
+  @@index([clientId])
+  @@index([userId])
+}
+
+// Eventos sanitizados de autorização. Não há FKs de propósito: exclusão de
+// usuário ou cliente não apaga o histórico operacional da instância.
+model McpOauthAuditEvent {
+  id           String   @id @default(cuid())
+  event        String
+  outcome      String
+  actorUserId  String?
+  targetUserId String?
+  clientId     String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([event, createdAt])
+  @@index([clientId, createdAt])
+  @@index([targetUserId, createdAt])
+}
+
+// Short-lived denylist for revoked OAuth JWTs. Only the random signed `jti` is
+// persisted, and rows stop affecting access when the JWT expires. There are
+// intentionally no FKs: deleting a user/client must never restore a token.
+model McpOauthRevokedAccessToken {
+  id        String   @id @default(cuid())
+  tokenId   String   @unique
+  clientId  String
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@index([clientId, revokedAt])
+  @@index([userId, revokedAt])
 }
 
 // Histórico imutável das mudanças atômicas da configuração global. Segredos

@@ -31,6 +31,7 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { ModelPickerDialog } from '../components/model-picker-dialog';
 import { ResearchPolicySection } from '../components/admin/research-policy-section';
 import { AdminModelPurposeRow } from '../components/admin/model-purpose-row';
+import { McpOAuthAdminSection } from '../components/admin/mcp-oauth-admin-section';
 import { useI18n } from '../lib/i18n';
 import type { ModelPurpose, ModelPurposeStatus, OrModel } from '../lib/types';
 
@@ -64,6 +65,7 @@ interface McpAdminStatus {
   userId: string | null;
   tokenPreview: string | null;
   allowUserTokens: boolean;
+  oauthEnabled: boolean;
   legacyTokenConfigured: boolean;
   tokens: {
     id: string;
@@ -71,6 +73,17 @@ interface McpAdminStatus {
     scopes: string[];
     revokedAt: string | null;
     user: { email: string; name: string };
+  }[];
+  oauthClients: {
+    clientId: string;
+    name: string | null;
+    uri: string | null;
+    public: boolean | null;
+    disabled: boolean | null;
+    requirePKCE: boolean | null;
+    scopes: string[];
+    redirectHosts: string[];
+    consentCount: number;
   }[];
 }
 
@@ -513,8 +526,10 @@ function McpSection(): React.ReactElement {
         userId: null,
         tokenPreview: null,
         allowUserTokens: false,
+        oauthEnabled: false,
         legacyTokenConfigured: false,
         tokens: [],
+        oauthClients: [],
       });
     }
   }
@@ -674,6 +689,12 @@ function McpSection(): React.ReactElement {
               </div>
             )}
           </div>
+
+          <McpOAuthAdminSection
+            enabled={status.oauthEnabled}
+            clients={status.oauthClients}
+            onChanged={refresh}
+          />
 
           {status.tokens.length > 0 && (
             <div className="rounded-lg border border-[var(--color-app-border)] divide-y divide-[var(--color-app-border)]">

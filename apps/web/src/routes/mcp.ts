@@ -39,6 +39,11 @@ import {
   registerTranscriptEnrichmentWriteTools,
 } from './mcp-transcript-enrichment-tools';
 import { registerWriteTools } from './mcp-write-tools';
+import {
+  authenticateMcpOAuthToken,
+  mcpBearerChallenge,
+  writeMcpOAuthAudit,
+} from '../lib/mcp-oauth';
 
 export const mcpRoutes = new Hono();
 
@@ -104,10 +109,38 @@ mcpRoutes.all('/', async (c) => {
   }
   const identity = await authenticateMcp(c);
   if (!identity) {
+    const supplied = (c.req.header('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+    if (supplied.split('.').length === 3) {
+      await writeMcpOAuthAudit({
+        event: 'resource_rejection',
+        outcome: 'denied',
+        metadata: { reason: 'invalid_token', path: '/mcp' },
+      });
+    }
+    c.header('WWW-Authenticate', mcpBearerChallenge({ error: 'invalid_token' }));
     return c.json(
       { error: 'Auth obrigatória ou inválida. Envie Authorization: Bearer <token>.' },
       401,
     );
+  }
+  if (
+    identity.credentialClass === 'oauth' &&
+    !identity.scopes.includes('WRITE') &&
+    (await requestsWriteTool(c))
+  ) {
+    c.header(
+      'WWW-Authenticate',
+      mcpBearerChallenge({ error: 'insufficient_scope', scope: 'mcp:write' }),
+    );
+    await writeMcpOAuthAudit({
+      event: 'resource_rejection',
+      outcome: 'denied',
+      actorUserId: identity.userId,
+      targetUserId: identity.userId,
+      clientId: identity.clientId,
+      metadata: { reason: 'insufficient_scope', path: '/mcp' },
+    });
+    return c.json({ error: 'Escopo mcp:write obrigatório para esta operação.' }, 403);
   }
   const server = buildVoxenMcpServer(identity.userId, identity.scopes, resolveMcpPublicOrigin(c));
   // enableJsonResponse: responde application/json em vez de abrir um stream SSE
@@ -155,8 +188,47 @@ function resolveMcpPublicOrigin(c: Context): string {
 
 // Bearer token -> identidade imutável do dono. O token legado global não é
 // aceito: o admin o revoga explicitamente pela tela de integrações.
-async function authenticateMcp(c: Context): Promise<{ userId: string; scopes: McpScope[] } | null> {
-  const token = (c.req.header('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+type McpIdentity = {
+  userId: string;
+  scopes: McpScope[];
+  credentialClass: 'personal' | 'oauth';
+  clientId?: string;
+};
+
+const WRITE_TOOL_NAMES = new Set([
+  'voxen_create_note',
+  'voxen_update_note',
+  'voxen_request_transcription',
+  'voxen_get_job_status',
+  'voxen_request_transcript_research',
+  'voxen_review_transcript_enrichment',
+  'voxen_edit_transcript_enrichment',
+  'voxen_delete_transcript_enrichment',
+]);
+
+async function requestsWriteTool(c: Context): Promise<boolean> {
+  if (c.req.method !== 'POST') return false;
+  try {
+    const payload: unknown = await c.req.raw.clone().json();
+    const requests = Array.isArray(payload) ? payload : [payload];
+    return requests.some((request) => {
+      if (!request || typeof request !== 'object') return false;
+      const value = request as { method?: unknown; params?: { name?: unknown } };
+      return (
+        value.method === 'tools/call' &&
+        typeof value.params?.name === 'string' &&
+        WRITE_TOOL_NAMES.has(value.params.name)
+      );
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function authenticateMcp(c: Context): Promise<McpIdentity | null> {
+  const authorization = c.req.header('Authorization') ?? '';
+  const match = /^Bearer\s+([^\s]+)\s*$/i.exec(authorization);
+  const token = match?.[1] ?? '';
   if (!token) return null;
   const now = new Date();
   const row = await db.mcpToken
@@ -173,21 +245,31 @@ async function authenticateMcp(c: Context): Promise<{ userId: string; scopes: Mc
     })
     .catch(() => null);
   if (
-    !row ||
-    row.revokedAt ||
-    (row.expiresAt && row.expiresAt <= now) ||
-    row.user.status !== 'APPROVED'
+    row &&
+    !row.revokedAt &&
+    (!row.expiresAt || row.expiresAt > now) &&
+    row.user.status === 'APPROVED'
   ) {
-    return null;
+    const scopes = deserializeMcpScopes(row.scopes);
+    if (scopes.length > 0) {
+      // Não há informação sensível no timestamp; falha de telemetria não bloqueia
+      // uma conexão MCP válida.
+      await db.mcpToken
+        .update({ where: { id: row.id }, data: { lastUsedAt: now } })
+        .catch(() => undefined);
+      return { userId: row.userId, scopes, credentialClass: 'personal' };
+    }
   }
-  const scopes = deserializeMcpScopes(row.scopes);
-  if (scopes.length === 0) return null;
-  // Não há informação sensível no timestamp; falha de telemetria não bloqueia
-  // uma conexão MCP válida.
-  await db.mcpToken
-    .update({ where: { id: row.id }, data: { lastUsedAt: now } })
-    .catch(() => undefined);
-  return { userId: row.userId, scopes };
+
+  const oauth = await authenticateMcpOAuthToken(token);
+  return oauth
+    ? {
+        userId: oauth.userId,
+        scopes: oauth.scopes,
+        credentialClass: 'oauth',
+        clientId: oauth.clientId,
+      }
+    : null;
 }
 
 // ----------------------------------------------------------------------------
