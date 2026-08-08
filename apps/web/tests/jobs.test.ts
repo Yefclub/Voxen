@@ -156,6 +156,52 @@ describeIfDb('jobs API', () => {
     expect(job!.status).toBe('QUEUED');
   });
 
+  it('POST /api/jobs/batch preserva ordem e resultados independentes', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    await completeSetup();
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/jobs/batch', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ urls: [VALID_URL, 'não-é-url', CANONICAL] }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: Array<{
+        index: number;
+        input: string;
+        result: { outcome: string; jobId?: string; sourceUrl?: string };
+      }>;
+    };
+    expect(body.items.map((item) => item.index)).toEqual([0, 1, 2]);
+    expect(body.items.map((item) => item.result.outcome)).toEqual([
+      'created',
+      'invalid',
+      'inflight',
+    ]);
+    expect(body.items[0]?.result.sourceUrl).toBe(CANONICAL);
+    expect(body.items[2]?.result.jobId).toBe(body.items[0]?.result.jobId);
+    expect(await db.job.count()).toBe(1);
+  });
+
+  it('POST /api/jobs/batch limita cada operação a 20 entradas', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const res = await app.fetch(
+      new Request('http://localhost/api/jobs/batch', {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ urls: Array.from({ length: 21 }, () => VALID_URL) }),
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(await db.job.count()).toBe(0);
+  });
+
   it('POST /api/jobs com link do X e modelo Grok configurado → cria ANALYZE_X', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import app from '../src/index';
 import { db } from '../src/lib/db';
 import { hashMcpToken } from '../src/lib/mcp-tokens';
+import { deleteSetting, setSetting } from '../src/lib/settings';
 
 async function call(body: unknown, token = ''): Promise<Response> {
   return app.fetch(
@@ -242,6 +243,7 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_create_note');
     expect(names).toContain('voxen_update_note');
     expect(names).toContain('voxen_request_transcription');
+    expect(names).toContain('voxen_request_transcriptions');
     expect(names).toContain('voxen_get_job_status');
     expect(names).toContain('voxen_request_transcript_research');
     expect(names).toContain('voxen_review_transcript_enrichment');
@@ -249,6 +251,47 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_delete_transcript_enrichment');
     const createNote = tools.find((t) => t.name === 'voxen_create_note');
     expect(createNote?.annotations?.readOnlyHint).toBe(false);
+  });
+
+  it('voxen_request_transcriptions devolve um resultado independente por URL', async () => {
+    await setSetting('openrouter_api_key', 'sk-or-v1-' + 'm'.repeat(40));
+    try {
+      const res = await call(
+        {
+          jsonrpc: '2.0',
+          id: 53,
+          method: 'tools/call',
+          params: {
+            name: 'voxen_request_transcriptions',
+            arguments: {
+              urls: [
+                'https://www.youtube.com/watch?v=mcpBatch001',
+                'inválida',
+                'https://youtu.be/mcpBatch001',
+              ],
+            },
+          },
+        },
+        WRITE_TOKEN,
+      );
+      const body = (await res.json()) as {
+        result?: {
+          structuredContent?: {
+            total: number;
+            created: number;
+            items: Array<{ outcome: string; jobId: string | null }>;
+          };
+        };
+      };
+      const batch = body.result?.structuredContent;
+      expect(batch?.total).toBe(3);
+      expect(batch?.created).toBe(1);
+      expect(batch?.items.map((item) => item.outcome)).toEqual(['created', 'invalid', 'inflight']);
+      expect(batch?.items[2]?.jobId).toBe(batch?.items[0]?.jobId);
+    } finally {
+      await db.job.deleteMany({ where: { userId, sourceUrl: 'https://youtu.be/mcpBatch001' } });
+      await deleteSetting('openrouter_api_key').catch(() => {});
+    }
   });
 
   it('expõe somente as tools autorizadas por tokens READ ou WRITE', async () => {

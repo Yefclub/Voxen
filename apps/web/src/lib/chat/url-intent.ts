@@ -37,15 +37,26 @@ export function classifyUrlIntent(content: string): UrlIntent {
 export function isSharedUrl(intent: UrlIntent, value: string): boolean {
   if (intent.kind === 'none') return false;
   const normalized = normalizeUrl(value);
-  return normalized !== null && intent.urls.includes(normalized);
+  return intent.urls.length === 1 && normalized === intent.urls[0];
+}
+
+/**
+ * Requires tool arguments to preserve the complete URL list from the current
+ * user turn. This prevents a model-generated duplicate from silently replacing
+ * another URL and keeps result indexes aligned with the input.
+ */
+export function matchesUrlList(intent: UrlIntent, values: string[]): boolean {
+  if (intent.kind === 'none' || values.length !== intent.urls.length) return false;
+  return values.every((value, index) => normalizeUrl(value) === intent.urls[index]);
 }
 
 export function buildUrlIntentInstructions(intent: UrlIntent): string {
   if (intent.kind === 'explicit-ingest') {
+    const tool = intent.urls.length > 1 ? 'request_transcriptions' : 'request_transcription';
     return [
       '',
-      'POLÍTICA DE URL DESTE TURNO: o usuário compartilhou uma URL com intenção explícita de conteúdo.',
-      'Use request_transcription somente para a URL compartilhada antes de responder. Não use web_search',
+      'POLÍTICA DE URL DESTE TURNO: o usuário compartilhou URL(s) com intenção explícita de conteúdo.',
+      `Use ${tool} exatamente para todas as URLs compartilhadas antes de responder. Não use web_search`,
       'nem search_x como substituto para esse conteúdo.',
     ].join('\n');
   }
@@ -53,7 +64,7 @@ export function buildUrlIntentInstructions(intent: UrlIntent): string {
     return [
       '',
       'POLÍTICA DE URL DESTE TURNO: o usuário enviou uma URL sem ação explícita.',
-      'Não use web_search, search_x nem request_transcription. Pergunte, em uma única frase, o que ele',
+      'Não use web_search, search_x, request_transcription nem request_transcriptions. Pergunte, em uma única frase, o que ele',
       'quer fazer com o link: transcrever, resumir, analisar ou salvar.',
     ].join('\n');
   }
