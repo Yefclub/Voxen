@@ -432,6 +432,107 @@ describeIfDb('jobs API', () => {
     expect(retry.type).toBe('SCRAPE_WEB');
   });
 
+  it('serializa retry de mídia e recusa jobs históricos ou sem relação', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const media = await db.savedMedia.create({
+      data: {
+        userId: admin.id,
+        sourceUrl: CANONICAL,
+        canonicalUrl: CANONICAL,
+        status: 'FAILED',
+      },
+    });
+    const failed = await db.job.create({
+      data: {
+        userId: admin.id,
+        type: 'DOWNLOAD_MEDIA',
+        status: 'FAILED',
+        sourceUrl: CANONICAL,
+        savedMediaId: media.id,
+      },
+    });
+    await db.transcript.create({
+      data: {
+        userId: admin.id,
+        source: 'YOUTUBE',
+        url: CANONICAL,
+        title: 'Existing knowledge item',
+        durationSec: 1,
+        language: 'pt',
+        transcriptionMethod: 'SUBTITLES',
+        mdPath: `workspaces/${admin.id}/transcripts/existing.md`,
+        plainText: 'Existing transcript',
+        frontmatter: {},
+      },
+    });
+
+    const retryResponse = await app.fetch(
+      new Request(`http://localhost/api/jobs/${failed.id}/retry`, {
+        method: 'POST',
+        headers: { cookie },
+      }),
+    );
+    expect(retryResponse.status).toBe(201);
+    const retry = (await retryResponse.json()) as { jobId: string };
+    expect(await db.savedMedia.findUniqueOrThrow({ where: { id: media.id } })).toMatchObject({
+      status: 'QUEUED',
+    });
+    expect(await db.job.findUniqueOrThrow({ where: { id: retry.jobId } })).toMatchObject({
+      type: 'DOWNLOAD_MEDIA',
+      savedMediaId: media.id,
+    });
+
+    await db.job.update({ where: { id: retry.jobId }, data: { status: 'DONE' } });
+    await db.savedMedia.update({ where: { id: media.id }, data: { status: 'READY' } });
+    const historicalRetry = await app.fetch(
+      new Request(`http://localhost/api/jobs/${failed.id}/retry`, {
+        method: 'POST',
+        headers: { cookie },
+      }),
+    );
+    expect(historicalRetry.status).toBe(409);
+    expect(await db.job.count({ where: { savedMediaId: media.id } })).toBe(2);
+
+    await db.savedMedia.delete({ where: { id: media.id } });
+    const missingMediaRetry = await app.fetch(
+      new Request(`http://localhost/api/jobs/${failed.id}/retry`, {
+        method: 'POST',
+        headers: { cookie },
+      }),
+    );
+    expect(missingMediaRetry.status).toBe(409);
+  });
+
+  it('preserva retry de upload comum sem relação com SavedMedia', async () => {
+    await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
+    const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));
+    const admin = await db.user.findUniqueOrThrow({ where: { email: 'admin@voxen.local' } });
+    const failed = await db.job.create({
+      data: {
+        userId: admin.id,
+        type: 'UPLOAD_AND_TRANSCRIBE',
+        status: 'FAILED',
+        sourceUrl: 'upload://11111111-1111-4111-8111-111111111111/video.mp4',
+      },
+    });
+
+    const response = await app.fetch(
+      new Request(`http://localhost/api/jobs/${failed.id}/retry`, {
+        method: 'POST',
+        headers: { cookie },
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { jobId: string };
+    expect(await db.job.findUniqueOrThrow({ where: { id: body.jobId } })).toMatchObject({
+      type: 'UPLOAD_AND_TRANSCRIBE',
+      savedMediaId: null,
+    });
+  });
+
   it('POST /api/jobs/:id/enrichment-retry reaproveita a transcrição e retoma só pendências', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const cookie = extractCookie(await signIn('admin@voxen.local', 'senha-super-segura-123'));

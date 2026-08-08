@@ -166,7 +166,7 @@ async def claim_job(job_id: str, worker_id: str) -> dict[str, Any] | None:
             row = await conn.fetchrow(
                 """
                 SELECT id, "userId", "sourceUrl", status, type, "refreshTranscriptId",
-                       "transcriptId", attempt, "progressStage"
+                       "savedMediaId", "transcriptId", attempt, "progressStage"
                 FROM "Job"
                 WHERE id = $1 AND status = 'QUEUED'
                 FOR UPDATE SKIP LOCKED
@@ -268,7 +268,8 @@ async def recover_expired_jobs(
         async with conn.transaction():
             rows = await conn.fetch(
                 """
-                SELECT id, "userId", attempt, "transcriptId", "refreshTranscriptId"
+                SELECT id, "userId", type, attempt, "transcriptId", "refreshTranscriptId",
+                       "savedMediaId"
                 FROM "Job"
                 WHERE status = 'RUNNING'
                   AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" < $1)
@@ -315,6 +316,25 @@ async def recover_expired_jobs(
                         now,
                         WORKER_INTERRUPTED_MESSAGE,
                     )
+                    if row.get("savedMediaId") is not None and row["type"] in {
+                        "DOWNLOAD_MEDIA",
+                        "UPLOAD_AND_TRANSCRIBE",
+                    }:
+                        media_status = "FAILED" if row["type"] == "DOWNLOAD_MEDIA" else "READY"
+                        await conn.execute(
+                            """
+                            UPDATE "SavedMedia"
+                            SET status = $2::"SavedMediaStatus",
+                                "errorMsg" = $3, "updatedAt" = $4
+                            WHERE id = $1 AND "userId" = $5 AND "transcriptId" IS NULL
+                              AND status IN ('QUEUED', 'DOWNLOADING', 'PROCESSING')
+                            """,
+                            row["savedMediaId"],
+                            media_status,
+                            WORKER_INTERRUPTED_MESSAGE,
+                            now,
+                            row["userId"],
+                        )
                     action = "failed"
                 recovered.append({**dict(row), "action": action})
     return recovered
@@ -573,29 +593,9 @@ async def link_job_transcript_in_connection(
     job_id: str,
     transcript_id: str,
 ) -> None:
-    token = _job_token(job_id)
-    if token:
-        row = await conn.fetchrow(
-            """
-            UPDATE "Job" SET "transcriptId" = $2
-            WHERE id = $1 AND status = 'RUNNING'
-              AND "workerId" = $3 AND attempt = $4
-              AND "leaseExpiresAt" >= NOW()
-            RETURNING id
-            """,
-            job_id,
-            transcript_id,
-            token.worker_id,
-            token.attempt,
-        )
-        if row is None:
-            raise JobLeaseLostError("job transcript link rejected by lease fence")
-    else:
-        await conn.execute(
-            'UPDATE "Job" SET "transcriptId" = $2 WHERE id = $1',
-            job_id,
-            transcript_id,
-        )
+    from . import saved_media_db
+
+    await saved_media_db.link_job_transcript_in_connection(conn, job_id, transcript_id)
 
 
 async def link_job_transcript(job_id: str, transcript_id: str) -> None:

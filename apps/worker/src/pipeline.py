@@ -21,9 +21,11 @@ from . import (
     db,
     document_ingest,
     events,
+    saved_media,
     storage,
     summary,
     tags,
+    transcript_metadata,
     uploaded_media,
     video_url,
     voxen_settings,
@@ -120,6 +122,7 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
     source_url: str = claimed["sourceUrl"]
     job_type: str = claimed["type"]
     refresh_transcript_id: str | None = claimed.get("refreshTranscriptId")
+    saved_media_id: str | None = claimed.get("savedMediaId")
     log = logger.bind(
         job_id=job_id,
         user_id=user_id,
@@ -127,7 +130,6 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
         source_kind=source_kind_for_log(source_url, job_type),
     )
     log.info("job-claimed")
-
     # Checkpoint canônico: se morreu após vincular o conteúdo, retomamos apenas
     # os enriquecimentos; o job não é concluído até a etapa final de fato.
     existing_transcript_id: str | None = claimed.get("transcriptId")
@@ -140,7 +142,6 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
             log=log,
         )
         return
-
     # Já cancelado antes mesmo de começar (DB já está CANCELLED via endpoint).
     if is_cancelled(job_id):
         log.info("job-cancelled-before-start")
@@ -151,9 +152,21 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
         return
 
     await events.publish_job_event(user_id, job_id, "running", percent=0)
-
     try:
-        if job_type == "SCRAPE_WEB":
+        if job_type == "DOWNLOAD_MEDIA":
+            if not saved_media_id:
+                raise PermanentError.public(
+                    "SAVED_MEDIA_MISSING", "Registro de mídia não encontrado."
+                )
+            await saved_media.run_download(
+                job_id=job_id,
+                user_id=user_id,
+                media_id=saved_media_id,
+                log=log,
+                retry_transient=_retry_transient,
+                check_cancel=_check_cancel,
+            )
+        elif job_type == "SCRAPE_WEB":
             from . import scrape_pipeline
 
             await scrape_pipeline.run(
@@ -165,7 +178,11 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
             )
         elif job_type == "UPLOAD_AND_TRANSCRIBE":
             await _run_upload_pipeline(
-                job_id=job_id, user_id=user_id, source_url=source_url, log=log
+                job_id=job_id,
+                user_id=user_id,
+                source_url=source_url,
+                saved_media_id=saved_media_id,
+                log=log,
             )
         elif job_type == "UPLOAD_AND_ANALYZE_IMAGE":
             await _run_image_pipeline(
@@ -194,14 +211,20 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
         raise
     except PermanentError as e:
         log.warning("job-failed-permanent", **_error_diagnostic(e, e.code))
-        await db.mark_job_failed(job_id, e.public_message)
+        if saved_media_id:
+            await saved_media.fail_job(job_id, user_id, saved_media_id, e.public_message)
+        else:
+            await db.mark_job_failed(job_id, e.public_message)
         if refresh_transcript_id:
             await db.mark_source_refresh_failed(user_id, refresh_transcript_id, e.public_message)
         await events.publish_job_event(user_id, job_id, "failed", error_msg=e.public_message)
     except Exception as e:  # noqa: BLE001 — propaga genérico p/ FAILED
         diagnostic = _error_diagnostic(e, "UNEXPECTED_JOB_FAILURE")
         log.error("job-failed-unexpected", **diagnostic)
-        await db.mark_job_failed(job_id, GENERIC_JOB_FAILURE_MESSAGE)
+        if saved_media_id:
+            await saved_media.fail_job(job_id, user_id, saved_media_id, GENERIC_JOB_FAILURE_MESSAGE)
+        else:
+            await db.mark_job_failed(job_id, GENERIC_JOB_FAILURE_MESSAGE)
         if refresh_transcript_id:
             await db.mark_source_refresh_failed(
                 user_id, refresh_transcript_id, GENERIC_JOB_FAILURE_MESSAGE
@@ -497,10 +520,19 @@ async def _run_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any)
     log.info("job-done", transcript_id=new_transcript_id)
 
 
-async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, log: Any) -> None:  # noqa: ANN401
+async def _run_upload_pipeline(
+    *,
+    job_id: str,
+    user_id: str,
+    source_url: str,
+    log: Any,  # noqa: ANN401
+    saved_media_id: str | None = None,
+) -> None:
     ref = uploaded_media.parse_upload_source_url(source_url)
     if ref is None:
         raise PermanentError.public("UPLOAD_INVALID", "Upload inválido ou corrompido.")
+
+    saved_media_record = await saved_media.resolve_upload(user_id, saved_media_id, ref)
 
     _check_cancel(job_id)
     await events.publish_job_event(user_id, job_id, "preparing_upload", percent=5)
@@ -543,17 +575,7 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
                 "Envie uma mídia com faixa de áudio reproduzível.",
             ) from e
 
-        probe_info = ytdl.VideoProbe(
-            video_id=ref.upload_id,
-            title=Path(ref.filename).stem or ref.filename,
-            channel="Upload local",
-            duration_sec=duration_sec,
-            published_at=None,
-            thumbnail_url=None,
-            language_hint=None,
-            available_subtitles={},
-            automatic_captions={},
-        )
+        probe_info = saved_media.upload_probe(ref, duration_sec, saved_media_record)
         preview_object_key: str | None = None
         preview_mime_type: str | None = None
         if uploaded_media.is_video_mime(original_mime_type):
@@ -608,13 +630,13 @@ async def _run_upload_pipeline(*, job_id: str, user_id: str, source_url: str, lo
             user_id=user_id,
             job_id=job_id,
             probe_info=probe_info,
-            source_url=source_url,
+            source_url=saved_media.original_source(saved_media_record, source_url),
             segments=segments,
             method="API",
             model=model,
             cost_usd=cost_total,
             language="auto",
-            source_override="UPLOAD",
+            source_override=None if saved_media_record else "UPLOAD",
             title_override=generated_title,
             original_object_key=key,
             original_filename=ref.filename,
@@ -1737,7 +1759,7 @@ async def _persist(
     plain_text = render_plain_text(doc)
     md_key = storage.transcript_key(user_id, transcript_id)
 
-    frontmatter_json = _frontmatter_json(
+    frontmatter_json = transcript_metadata.frontmatter_json(
         doc,
         original_object_key=original_object_key,
         original_filename=original_filename,
@@ -1828,34 +1850,6 @@ async def _persist(
         log=assign_log,
     )
     return transcript_id
-
-
-def _frontmatter_json(
-    doc: TranscriptDoc,
-    *,
-    original_object_key: str | None = None,
-    original_filename: str | None = None,
-    original_mime_type: str | None = None,
-    preview_object_key: str | None = None,
-    preview_mime_type: str | None = None,
-) -> str:
-    import json
-
-    from .transcript_md import build_frontmatter
-
-    frontmatter = build_frontmatter(doc)
-    if original_object_key:
-        frontmatter["original"] = {
-            "objectKey": original_object_key,
-            "filename": original_filename,
-            "mimeType": original_mime_type,
-        }
-    if preview_object_key:
-        frontmatter["preview"] = {
-            "objectKey": preview_object_key,
-            "mimeType": preview_mime_type,
-        }
-    return json.dumps(frontmatter, default=str)
 
 
 # ============================================================================

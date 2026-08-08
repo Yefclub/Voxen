@@ -65,6 +65,7 @@ model User {
   sessions              Session[]
   accounts              Account[]
   transcripts           Transcript[]
+  savedMedia            SavedMedia[]
   jobs                  Job[]
   sourceContentVersions SourceContentVersion[]
   researchArtifacts     ResearchArtifact[]
@@ -541,6 +542,7 @@ model Transcript {
   noteSources           NoteTranscriptSource[]
   transcriptEnrichments TranscriptEnrichment[]
   brainCompilation      BrainCompilation?
+  savedMedia            SavedMedia?
   // Índice GIN no tsvector criado via SQL na migration
 
   @@index([userId, createdAt(sort: Desc)])
@@ -800,12 +802,53 @@ model BrainCompilationSegment {
 // ============================================================================
 
 enum JobType {
+  DOWNLOAD_MEDIA
   DOWNLOAD_AND_TRANSCRIBE
   SCRAPE_WEB
   UPLOAD_AND_TRANSCRIBE
   UPLOAD_AND_ANALYZE_IMAGE
   UPLOAD_AND_ANALYZE_DOCUMENT
   ANALYZE_X
+}
+
+enum SavedMediaStatus {
+  QUEUED
+  DOWNLOADING
+  READY
+  PROCESSING
+  PROCESSED
+  DELETING
+  FAILED
+}
+
+model SavedMedia {
+  id           String           @id @default(uuid())
+  userId       String
+  sourceUrl    String
+  canonicalUrl String
+  title        String?
+  channel      String?
+  author       String?
+  durationSec  Int?
+  thumbnailUrl String?
+  objectKey    String?
+  filename     String?
+  mimeType     String?
+  byteSize     BigInt?
+  status       SavedMediaStatus @default(QUEUED)
+  errorMsg     String?
+  transcriptId String?          @unique
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @default(now()) @updatedAt
+  readyAt      DateTime?
+  processedAt  DateTime?
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript   Transcript?      @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
+  jobs         Job[]
+
+  @@unique([userId, canonicalUrl])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, status, createdAt(sort: Desc)])
 }
 
 enum JobStatus {
@@ -827,6 +870,7 @@ model Job {
   // Quando preenchido, SCRAPE_WEB atualiza este conteúdo existente em vez de
   // criar um novo Transcript. O resultado continua em transcriptId.
   refreshTranscriptId String?
+  savedMediaId        String?
   configRevisionId    String?
   errorMsg            String?
   progressStage       String?
@@ -842,6 +886,7 @@ model Job {
   user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcript          Transcript?        @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
   refreshTranscript   Transcript?        @relation("SourceRefreshJobs", fields: [refreshTranscriptId], references: [id], onDelete: SetNull)
+  savedMedia          SavedMedia?        @relation(fields: [savedMediaId], references: [id], onDelete: SetNull)
   configRevision      ConfigRevision?    @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
   progressEvents      JobProgressEvent[]
 
@@ -851,6 +896,7 @@ model Job {
   @@index([status, leaseExpiresAt])
   @@index([configRevisionId])
   @@index([userId, refreshTranscriptId, status])
+  @@index([userId, savedMediaId, status])
 }
 
 model JobProgressEvent {

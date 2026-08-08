@@ -234,6 +234,18 @@ async def put_file(
         )
 
 
+async def delete_object(*, key: str, bucket: str | None = None) -> None:
+    """Delete one exact object without accepting prefixes or paths outside storage."""
+    normalized = _normalize_key(key)
+    if storage_driver() == "local":
+        target = _local_target(normalized)
+        await asyncio.to_thread(target.unlink, missing_ok=True)
+        return
+    session = s3_session()
+    async with session.client(**s3_client_kwargs()) as s3:
+        await s3.delete_object(Bucket=bucket or s3_bucket(), Key=normalized)
+
+
 def _copy_file(path: Path, output: Any) -> None:
     with path.open("rb") as source:
         shutil.copyfileobj(source, output, length=1024 * 1024)
