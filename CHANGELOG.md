@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.5-dev.1786191801 — 2026-08-08 · Dev
+
+### 🐛 MCP client configuration now follows the active theme
+
+The client configuration panel on **Account → MCP Access** now uses the application surface palette. The panel remains readable in dark, light, and alternate interface themes instead of rendering a light text color as its background.
+
 ## v0.14.5-dev.1786187187 — 2026-08-08 · Dev
 
 ### ✨ MCP clients can connect through OAuth 2.1
