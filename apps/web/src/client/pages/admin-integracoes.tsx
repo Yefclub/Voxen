@@ -30,9 +30,9 @@ import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { ModelPickerDialog } from '../components/model-picker-dialog';
 import { ResearchPolicySection } from '../components/admin/research-policy-section';
+import { AdminModelPurposeRow } from '../components/admin/model-purpose-row';
 import { useI18n } from '../lib/i18n';
 import type { ModelPurpose, ModelPurposeStatus, OrModel } from '../lib/types';
-import { cn } from '../lib/utils';
 
 // Path do proxy de WebSocket do túnel na web do Voxen. Deve casar com o default
 // do backend (PROXY_TUNNEL_PATH). Usado só como fallback de EXIBIÇÃO quando o
@@ -309,11 +309,13 @@ function ModelsSection(): React.ReactElement {
   const { t } = useI18n();
   const [status, setStatus] = useState<ModelsStatusResponse | null>(null);
   const [dialogPurpose, setDialogPurpose] = useState<ModelPurpose | null>(null);
+  const [dialogKind, setDialogKind] = useState<'primary' | 'fallback'>('primary');
   const [catalog, setCatalog] = useState<OrModel[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [resettingPurpose, setResettingPurpose] = useState<ModelPurpose | null>(null);
+  const [clearingFallback, setClearingFallback] = useState<ModelPurpose | null>(null);
 
   useEffect(() => {
     void refresh();
@@ -328,8 +330,9 @@ function ModelsSection(): React.ReactElement {
     }
   }
 
-  function openDialog(purpose: ModelPurpose): void {
+  function openDialog(purpose: ModelPurpose, kind: 'primary' | 'fallback'): void {
     setDialogPurpose(purpose);
+    setDialogKind(kind);
     setCatalog([]);
     setCatalogError(null);
     setCatalogLoading(true);
@@ -347,9 +350,11 @@ function ModelsSection(): React.ReactElement {
     if (!dialogPurpose) return;
     setSaving(true);
     try {
-      const updated = await apiPatch<ModelPurposeStatus>(`/api/admin/models/${dialogPurpose}`, {
-        modelId,
-      });
+      const suffix = dialogKind === 'fallback' ? '/fallback' : '';
+      const updated = await apiPatch<ModelPurposeStatus>(
+        `/api/admin/models/${dialogPurpose}${suffix}`,
+        { modelId },
+      );
       setStatus((prev) =>
         prev
           ? {
@@ -364,6 +369,26 @@ function ModelsSection(): React.ReactElement {
       toast.error(err instanceof ApiError ? err.message : t('common.error'));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function clearFallback(purpose: ModelPurpose): Promise<void> {
+    setClearingFallback(purpose);
+    try {
+      const updated = await apiDelete<ModelPurposeStatus>(`/api/admin/models/${purpose}/fallback`);
+      setStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              purposes: prev.purposes.map((p) => (p.purpose === updated.purpose ? updated : p)),
+            }
+          : prev,
+      );
+      toast.success(t('admin.integrations.models.changeSuccess'));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t('common.error'));
+    } finally {
+      setClearingFallback(null);
     }
   }
 
@@ -418,12 +443,16 @@ function ModelsSection(): React.ReactElement {
           )}
 
           {status.purposes.map((p) => (
-            <ModelPurposeRow
+            <AdminModelPurposeRow
               key={p.purpose}
               status={p}
+              label={t(PURPOSE_LABEL_KEYS[p.purpose])}
               disabled={!status.hasApiKey}
               resetting={resettingPurpose === p.purpose}
-              onChange={() => openDialog(p.purpose)}
+              clearingFallback={clearingFallback === p.purpose}
+              onChange={() => openDialog(p.purpose, 'primary')}
+              onChangeFallback={() => openDialog(p.purpose, 'fallback')}
+              onClearFallback={() => void clearFallback(p.purpose)}
               onReset={() => void resetPurpose(p.purpose)}
             />
           ))}
@@ -436,76 +465,24 @@ function ModelsSection(): React.ReactElement {
           onOpenChange={(next) => {
             if (!next) setDialogPurpose(null);
           }}
-          title={t(PURPOSE_LABEL_KEYS[dialogStatus.purpose])}
-          models={catalog}
+          title={
+            dialogKind === 'fallback'
+              ? `Fallback — ${t(PURPOSE_LABEL_KEYS[dialogStatus.purpose])}`
+              : t(PURPOSE_LABEL_KEYS[dialogStatus.purpose])
+          }
+          models={
+            dialogKind === 'fallback'
+              ? catalog.filter((model) => model.id !== dialogStatus.effective)
+              : catalog
+          }
           loading={catalogLoading}
           error={catalogError}
-          value={dialogStatus.effective}
+          value={dialogKind === 'fallback' ? (dialogStatus.fallback ?? '') : dialogStatus.effective}
           saving={saving}
           onSelect={(modelId) => void selectModel(modelId)}
         />
       )}
     </motion.div>
-  );
-}
-
-function ModelPurposeRow({
-  status,
-  disabled,
-  resetting,
-  onChange,
-  onReset,
-}: {
-  status: ModelPurposeStatus;
-  disabled: boolean;
-  resetting: boolean;
-  onChange: () => void;
-  onReset: () => void;
-}): React.ReactElement {
-  const { t } = useI18n();
-  const hasOverride = status.override !== null;
-
-  return (
-    <div className="rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/40 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-medium text-[var(--color-app-fg)]">
-            {t(PURPOSE_LABEL_KEYS[status.purpose])}
-          </p>
-          <span
-            className={cn(
-              'rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide',
-              hasOverride
-                ? 'bg-violet-500/15 text-violet-300'
-                : 'bg-[var(--color-app-surface)] text-[var(--color-app-muted)]',
-            )}
-          >
-            {hasOverride
-              ? t('admin.integrations.models.overrideBadge')
-              : t('admin.integrations.models.canonicalBadge')}
-          </span>
-        </div>
-        <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--color-app-fg)]">
-          {status.effective}
-        </p>
-        <p className="text-[11px] text-[var(--color-app-muted)]">
-          {hasOverride
-            ? t('admin.integrations.models.canonicalHint', { model: status.canonical })
-            : t('admin.integrations.models.usingCanonical')}
-        </p>
-      </div>
-      <div className="flex shrink-0 gap-2">
-        <Button variant="outline" size="sm" onClick={onChange} disabled={disabled}>
-          {t('admin.integrations.models.change')}
-        </Button>
-        {hasOverride && (
-          <Button variant="ghost" size="sm" onClick={onReset} disabled={disabled || resetting}>
-            {resetting ? <Spinner /> : <RotateCcw className="h-3.5 w-3.5" />}
-            {t('admin.integrations.models.reset')}
-          </Button>
-        )}
-      </div>
-    </div>
   );
 }
 

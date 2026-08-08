@@ -74,6 +74,7 @@ export async function generateAndPersistTranscriptSummary(input: {
   const settings = await getSettings([
     'openrouter_api_key',
     'default_chat_model',
+    'fallback_chat_model',
     'summary_timeout_sec',
   ] as const);
   const apiKey = settings.openrouter_api_key;
@@ -117,6 +118,9 @@ export async function generateAndPersistTranscriptSummary(input: {
       },
       body: JSON.stringify({
         model,
+        ...(settings.fallback_chat_model && settings.fallback_chat_model !== model
+          ? { models: [settings.fallback_chat_model] }
+          : {}),
         messages: [
           { role: 'system', content: prompt },
           {
@@ -159,9 +163,11 @@ export async function generateAndPersistTranscriptSummary(input: {
   }
 
   const data = (await res.json()) as {
+    model?: string;
     choices?: Array<{ message?: { content?: string } }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number | string };
   };
+  const selectedModel = data.model ?? model;
   const summary = (data.choices?.[0]?.message?.content ?? '').trim();
   if (!summary) {
     throw new TranscriptSummaryError('Modelo retornou resumo vazio.', 502);
@@ -183,7 +189,7 @@ export async function generateAndPersistTranscriptSummary(input: {
     data: {
       userId: input.userId,
       kind: 'CHAT',
-      model,
+      model: selectedModel,
       tokensIn,
       tokensOut,
       costUsd,

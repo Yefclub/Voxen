@@ -494,6 +494,7 @@ async def _maybe_generate_title(
             fallback_title=fallback_title,
             api_key=api_key,
             model=model,
+            fallback_model=config.fallback_model,
             language=language,
         )
         await db.insert_cost_event(

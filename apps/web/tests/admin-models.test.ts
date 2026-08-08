@@ -90,6 +90,11 @@ const CATALOG = [
     name: 'GPT-5 mini',
     architecture: { input_modalities: ['text'], output_modalities: ['text'] },
   },
+  {
+    id: 'openai/gpt-4o-mini-transcribe',
+    name: 'GPT-4o mini Transcribe',
+    architecture: { output_modalities: ['transcription'] },
+  },
 ];
 
 type FetchMock = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -194,6 +199,47 @@ describeIfDb('/api/admin/models', () => {
     };
     const visionEntry = listBody.purposes.find((p) => p.purpose === 'default_vision_model');
     expect(visionEntry?.override).toBe('openai/gpt-5-vision');
+  });
+
+  it('PATCH /fallback persiste uma alternativa distinta e DELETE limpa somente ela', async () => {
+    const { cookie } = await setupAdmin();
+    installCatalogMock();
+
+    const setRes = await app.fetch(
+      new Request('http://localhost/api/admin/models/default_chat_model/fallback', {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ modelId: 'openai/gpt-5-mini' }),
+      }),
+    );
+    expect(setRes.status).toBe(200);
+    expect(await getSetting('fallback_chat_model')).toBe('openai/gpt-5-mini');
+
+    const clearRes = await app.fetch(
+      new Request('http://localhost/api/admin/models/default_chat_model/fallback', {
+        method: 'DELETE',
+        headers: { cookie },
+      }),
+    );
+    expect(clearRes.status).toBe(200);
+    expect(await getSetting('fallback_chat_model')).toBeNull();
+    expect(await getSetting('default_chat_model')).toBe('deepseek/deepseek-v4-flash-0731');
+  });
+
+  it('PATCH /fallback rejeita repetir o modelo primário', async () => {
+    const { cookie } = await setupAdmin();
+    installCatalogMock();
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/admin/models/default_chat_model/fallback', {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ modelId: 'deepseek/deepseek-v4-flash-0731' }),
+      }),
+    );
+
+    expect(res.status).toBe(422);
+    expect(await getSetting('fallback_chat_model')).toBeNull();
   });
 
   it('DELETE remove o override e volta ao modelo canônico', async () => {
@@ -307,7 +353,10 @@ describeIfDb('/api/admin/models', () => {
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { models: Array<{ id: string }> };
-    expect(body.models.map((m) => m.id)).toEqual(['x-ai/grok-stt-1.0']);
+    expect(body.models.map((m) => m.id)).toEqual([
+      'x-ai/grok-stt-1.0',
+      'openai/gpt-4o-mini-transcribe',
+    ]);
   });
 
   it('trocar a chave (POST /api/setup) não apaga overrides já persistidos', async () => {

@@ -34,6 +34,12 @@ export type GlobalSettingKey =
   | 'default_document_model'
   // Modelo Grok/xAI dedicado a análise de posts e threads do X via OpenRouter.
   | 'default_x_analysis_model'
+  | 'fallback_chat_model'
+  | 'fallback_transcription_model'
+  | 'fallback_web_search_model'
+  | 'fallback_vision_model'
+  | 'fallback_document_model'
+  | 'fallback_x_analysis_model'
   // Proxy opcional usado pelo extrator de mídia. Em deploys home-lab (IP
   // residencial) normalmente desnecessário; em VPS pode ajudar quando o
   // YouTube bloqueia downloads de datacenter (proxy residencial controlado

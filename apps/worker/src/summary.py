@@ -143,6 +143,8 @@ async def maybe_generate(
             # usage.include=true. Sem isso o painel mostra $0,00 mesmo gastando.
             "usage": {"include": True},
         }
+        if config.fallback_model and config.fallback_model != model:
+            payload["models"] = [config.fallback_model]
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             try:
@@ -172,6 +174,14 @@ async def maybe_generate(
             return
 
         data = res.json()
+        selected_model = str(data.get("model") or model)
+        if selected_model != model:
+            log.warning(
+                "openrouter-model-fallback-used",
+                purpose="summary",
+                primary_model=model,
+                selected_model=selected_model,
+            )
         summary = (
             ((data.get("choices") or [{}])[0].get("message", {}) or {}).get("content") or ""
         ).strip()
@@ -209,7 +219,7 @@ async def maybe_generate(
             await db.insert_cost_event(
                 user_id=user_id,
                 kind="CHAT",
-                model=model,
+                model=selected_model,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cost_usd=cost_usd,

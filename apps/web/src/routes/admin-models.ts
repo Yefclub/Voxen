@@ -21,13 +21,17 @@ import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import {
   canonicalModelForPurpose,
+  fallbackSettingForPurpose,
+  isFallbackCompatible,
   isModelCompatibleWithPurpose,
   isModelPurpose,
   MODEL_PURPOSES,
+  MODEL_FALLBACK_SETTINGS,
+  suggestFallbackForPurpose,
   type ModelPurpose,
 } from '../lib/model-defaults';
 import { listUserModels, OpenrouterError, type OrModel } from '../lib/openrouter';
-import { getSetting, getSettings, setSetting } from '../lib/settings';
+import { getSetting, getSettings, setSetting, setSettings } from '../lib/settings';
 
 type Vars = { adminUserId: string };
 
@@ -55,15 +59,22 @@ interface PurposeStatus {
   canonical: string;
   override: string | null;
   effective: string;
+  fallback: string | null;
 }
 
 async function buildPurposeStatuses(): Promise<PurposeStatus[]> {
-  const stored = await getSettings(MODEL_PURPOSES);
+  const stored = await getSettings([...MODEL_PURPOSES, ...MODEL_FALLBACK_SETTINGS]);
   return MODEL_PURPOSES.map((purpose) => {
     const canonical = canonicalModelForPurpose(purpose);
     const value = stored[purpose];
     const override = value && value !== canonical ? value : null;
-    return { purpose, canonical, override, effective: value ?? canonical };
+    return {
+      purpose,
+      canonical,
+      override,
+      effective: value ?? canonical,
+      fallback: stored[fallbackSettingForPurpose(purpose)] ?? null,
+    };
   });
 }
 
@@ -148,10 +159,24 @@ adminModelsRoutes.patch('/:purpose', async (c) => {
     return c.json({ error: `O modelo "${modelId}" não é compatível com esta finalidade.` }, 422);
   }
 
-  await setSetting(purposeParam, modelId, { actorUserId: c.get('adminUserId') });
+  const fallbackSetting = fallbackSettingForPurpose(purposeParam);
+  const currentFallback = await getSetting(fallbackSetting);
+  const nextFallback = isFallbackCompatible(purposeParam, modelId, currentFallback, models)
+    ? currentFallback
+    : suggestFallbackForPurpose(purposeParam, modelId, models);
+  await setSettings(
+    { [purposeParam]: modelId, [fallbackSetting]: nextFallback },
+    { actorUserId: c.get('adminUserId') },
+  );
   const canonical = canonicalModelForPurpose(purposeParam);
   const override = modelId !== canonical ? modelId : null;
-  return c.json({ purpose: purposeParam, canonical, override, effective: modelId });
+  return c.json({
+    purpose: purposeParam,
+    canonical,
+    override,
+    effective: modelId,
+    fallback: nextFallback,
+  });
 });
 
 // DELETE /:purpose — reverte para o modelo canônico (grava o valor canônico
@@ -162,6 +187,91 @@ adminModelsRoutes.delete('/:purpose', async (c) => {
     return c.json({ error: 'Finalidade de modelo desconhecida.' }, 400);
   }
   const canonical = canonicalModelForPurpose(purposeParam);
-  await setSetting(purposeParam, canonical, { actorUserId: c.get('adminUserId') });
-  return c.json({ purpose: purposeParam, canonical, override: null, effective: canonical });
+  const fallbackSetting = fallbackSettingForPurpose(purposeParam);
+  const currentFallback = await getSetting(fallbackSetting);
+  const nextFallback = currentFallback === canonical ? null : currentFallback;
+  await setSettings(
+    { [purposeParam]: canonical, [fallbackSetting]: nextFallback },
+    { actorUserId: c.get('adminUserId') },
+  );
+  return c.json({
+    purpose: purposeParam,
+    canonical,
+    override: null,
+    effective: canonical,
+    fallback: nextFallback,
+  });
+});
+
+// PATCH /:purpose/fallback — configura uma alternativa compatível e distinta.
+adminModelsRoutes.patch('/:purpose/fallback', async (c) => {
+  const purposeParam = c.req.param('purpose');
+  if (!isModelPurpose(purposeParam)) {
+    return c.json({ error: 'Finalidade de modelo desconhecida.' }, 400);
+  }
+  const parsed = PatchBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Informe "modelId".' }, 400);
+  const { modelId } = parsed.data;
+  const [apiKey, primary] = await Promise.all([
+    getSetting('openrouter_api_key').catch(() => null),
+    getSetting(purposeParam),
+  ]);
+  if (!apiKey) {
+    return c.json({ error: 'Configure a chave da OpenRouter antes de escolher modelos.' }, 409);
+  }
+  const effectivePrimary = primary ?? canonicalModelForPurpose(purposeParam);
+  if (modelId === effectivePrimary) {
+    return c.json({ error: 'O fallback deve ser diferente do modelo primário.' }, 422);
+  }
+  let models: OrModel[];
+  try {
+    models = await listUserModels(apiKey);
+  } catch (err) {
+    if (err instanceof OpenrouterError) {
+      return c.json(
+        { error: 'Catálogo da OpenRouter indisponível agora. Tente novamente em instantes.' },
+        502,
+      );
+    }
+    throw err;
+  }
+  const model = models.find((candidate) => candidate.id === modelId);
+  if (!model) {
+    return c.json({ error: 'Modelo não encontrado no catálogo disponível para esta chave.' }, 404);
+  }
+  if (!isModelCompatibleWithPurpose(purposeParam, model)) {
+    return c.json({ error: `O modelo "${modelId}" não é compatível com esta finalidade.` }, 422);
+  }
+  await setSetting(fallbackSettingForPurpose(purposeParam), modelId, {
+    actorUserId: c.get('adminUserId'),
+  });
+  const canonical = canonicalModelForPurpose(purposeParam);
+  return c.json({
+    purpose: purposeParam,
+    canonical,
+    override: effectivePrimary === canonical ? null : effectivePrimary,
+    effective: effectivePrimary,
+    fallback: modelId,
+  });
+});
+
+// DELETE /:purpose/fallback — desativa apenas a rota alternativa.
+adminModelsRoutes.delete('/:purpose/fallback', async (c) => {
+  const purposeParam = c.req.param('purpose');
+  if (!isModelPurpose(purposeParam)) {
+    return c.json({ error: 'Finalidade de modelo desconhecida.' }, 400);
+  }
+  const effective = (await getSetting(purposeParam)) ?? canonicalModelForPurpose(purposeParam);
+  await setSettings(
+    { [fallbackSettingForPurpose(purposeParam)]: null },
+    { actorUserId: c.get('adminUserId') },
+  );
+  const canonical = canonicalModelForPurpose(purposeParam);
+  return c.json({
+    purpose: purposeParam,
+    canonical,
+    override: effective === canonical ? null : effective,
+    effective,
+    fallback: null,
+  });
 });

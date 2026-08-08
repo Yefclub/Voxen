@@ -285,7 +285,11 @@ export async function generateTagsForContent(input: {
   existingTags: string[];
   abortSignal?: AbortSignal;
 }): Promise<TagsGenerationResult> {
-  const settings = await getSettings(['openrouter_api_key', 'default_chat_model'] as const);
+  const settings = await getSettings([
+    'openrouter_api_key',
+    'default_chat_model',
+    'fallback_chat_model',
+  ] as const);
   const apiKey = settings.openrouter_api_key;
   const model = settings.default_chat_model;
   if (!apiKey || !model) {
@@ -305,7 +309,12 @@ export async function generateTagsForContent(input: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(buildTagsRequestBody(model, system, user)),
+    body: JSON.stringify({
+      ...buildTagsRequestBody(model, system, user),
+      ...(settings.fallback_chat_model && settings.fallback_chat_model !== model
+        ? { models: [settings.fallback_chat_model] }
+        : {}),
+    }),
     signal: input.abortSignal
       ? AbortSignal.any([input.abortSignal, AbortSignal.timeout(60_000)])
       : AbortSignal.timeout(60_000),

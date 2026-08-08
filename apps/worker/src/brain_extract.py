@@ -331,6 +331,7 @@ async def extract_grounded_concepts(
     content: str,
     api_key: str,
     model: str,
+    fallback_model: str | None = None,
     language: str = "pt-BR",
     client: httpx.AsyncClient | None = None,
 ) -> GroundedExtractionResult:
@@ -383,6 +384,8 @@ async def extract_grounded_concepts(
         "temperature": 0.1,
         "response_format": {"type": "json_object"},
     }
+    if fallback_model and fallback_model != model:
+        payload["models"] = [fallback_model]
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -394,16 +397,7 @@ async def extract_grounded_concepts(
     http = client or httpx.AsyncClient(timeout=90.0)
     try:
         res = await http.post(f"{OR_BASE_URL}/chat/completions", headers=headers, json=payload)
-        if res.status_code in (401, 403):
-            raise openrouter.OpenrouterAuthError(
-                f"OpenRouter rejeitou a chave (HTTP {res.status_code})."
-            )
-        if res.status_code >= 500:
-            raise openrouter.OpenrouterTransientError(f"OpenRouter {res.status_code}")
-        if not res.is_success:
-            raise RuntimeError(
-                f"OpenRouter retornou uma resposta inesperada (HTTP {res.status_code})."
-            )
+        openrouter._raise_for_openrouter_status(res)  # noqa: SLF001
         data: dict[str, Any] = res.json()
     finally:
         if owns_client:
@@ -426,7 +420,7 @@ async def extract_grounded_concepts(
         items=items,
         relations=relations,
         cost_usd=cost,
-        model=model,
+        model=str(data.get("model") or model),
         tokens_in=tokens_in,
         tokens_out=tokens_out,
     )

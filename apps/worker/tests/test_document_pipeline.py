@@ -82,6 +82,7 @@ async def test_pdf_uses_mistral_ocr_without_markitdown(
         pdf_path=pdf_path,
         api_key="sk-test",
         model="x-ai/grok-4.5",
+        fallback_model=None,
     )
     convert.assert_not_awaited()
     analyze_text.assert_not_awaited()
@@ -189,6 +190,7 @@ async def test_non_pdf_pipeline_converts_with_markitdown_then_uses_openrouter(
         filename="manual.docx",
         api_key="sk-test",
         model="x-ai/grok-4.5",
+        fallback_model=None,
     )
     analyze_pdf.assert_not_awaited()
     cost_call = pipeline.db.insert_cost_event.await_args.kwargs
@@ -220,7 +222,7 @@ async def test_image_pipeline_uses_openrouter_vision(
     result = VisionAnalysisResult(
         text="Uma interface com dados relevantes.",
         cost_usd=Decimal("0.002"),
-        model="x-ai/grok-4.5",
+        model="openai/gpt-5.6-luna",
         tokens_in=20,
         tokens_out=8,
     )
@@ -233,6 +235,7 @@ async def test_image_pipeline_uses_openrouter_vision(
             return_value=pipeline.voxen_settings.OpenRouterModelConfig(
                 api_key="sk-test",
                 model="x-ai/grok-4.5",
+                fallback_model="openai/gpt-5.6-luna",
             )
         ),
     )
@@ -253,10 +256,12 @@ async def test_image_pipeline_uses_openrouter_vision(
     assert analyze_call["image_path"].name == "captura.png"
     assert analyze_call["api_key"] == "sk-test"
     assert analyze_call["model"] == "x-ai/grok-4.5"
+    assert analyze_call["fallback_model"] == "openai/gpt-5.6-luna"
     assert "Analise esta imagem" in analyze_call["prompt"]
     cost_call = pipeline.db.insert_cost_event.await_args.kwargs
     assert cost_call["meta"] == {"source": "image_upload"}
     assert "captura.png" not in repr(cost_call["meta"])
     persist_call = pipeline._persist.await_args.kwargs
     assert persist_call["method"] == "VISION"
+    assert persist_call["model"] == "openai/gpt-5.6-luna"
     assert persist_call["source_override"] == "UPLOAD"
