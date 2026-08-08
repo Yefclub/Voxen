@@ -7,8 +7,8 @@
 // STREAMING: o Streamdown quebra o markdown em blocos memoizados — durante o
 // streaming SSE do agente, só o bloco que mudou re-renderiza, então tabelas e
 // blocos de código já completos não piscam/reflow. parseIncompleteMarkdown
-// estabiliza sintaxe parcial (fences/links ainda abertos). Mermaid/KaTeX/Shiki
-// são plugins opt-in e ficam DESLIGADOS (não passamos `plugins`) — bundle leve.
+// stabilizes partial syntax (open fences/links). Mermaid is loaded on demand
+// only for complete, validated fences; KaTeX/Shiki remain disabled.
 //
 // ESTILO: o Streamdown traz componentes default com classes shadcn (border-border,
 // bg-background) que não existem no design system do Voxen. Para garantir ZERO
@@ -16,11 +16,14 @@
 // deixamos o tema zinc ser governado pelos seletores descendentes do wrapper.
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Streamdown, type Components, type ExtraProps } from 'streamdown';
-import { Check, Copy } from '@/components/ui/icons';
+import { Check, Copy, Loader2, Workflow } from '@/components/ui/icons';
 import type { ChatCitation } from '../../../shared/chat-citations';
+import { hasUnsafeMermaidCssUrl, validateMermaidFlow } from '../../../shared/mermaid-flow';
 import { citationFromInlineHref, renderInlineCitations } from '../../lib/chat-inline-citations';
 import { cn } from '../../lib/utils';
 import { useI18n } from '../../lib/i18n';
+import { useTheme } from '../../lib/theme-provider';
+import { isDarkTheme, type AppTheme } from '../../lib/theme';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 
 interface MarkdownProps {
@@ -36,6 +39,125 @@ type ChatCitationContextValue = {
 };
 
 const ChatCitationContext = createContext<ChatCitationContextValue>({ citations: [] });
+let mermaidRenderQueue: Promise<void> = Promise.resolve();
+let mermaidRenderSequence = 0;
+
+function renderMermaid(code: string, theme: AppTheme): Promise<string> {
+  const task = mermaidRenderQueue.then(async () => {
+    const { default: mermaid } = await import('mermaid');
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      suppressErrorRendering: true,
+      theme: isDarkTheme(theme) ? 'dark' : 'default',
+      htmlLabels: false,
+      flowchart: { htmlLabels: false, useMaxWidth: true },
+    });
+    mermaidRenderSequence += 1;
+    const rendered = await mermaid.render(`voxen-mermaid-${mermaidRenderSequence}`, code);
+    return rendered.svg;
+  });
+  mermaidRenderQueue = task.then(
+    () => undefined,
+    () => undefined,
+  );
+  return task;
+}
+
+function assertSafeMermaidSvg(svg: string): string {
+  const documentNode = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  const root = documentNode.documentElement;
+  if (root.nodeName.toLowerCase() !== 'svg' || documentNode.querySelector('parsererror')) {
+    throw new Error('MERMAID_SVG_INVALID');
+  }
+  if (documentNode.querySelector('script, foreignObject, iframe, image, a, object, embed')) {
+    throw new Error('MERMAID_SVG_ACTIVE_CONTENT');
+  }
+  for (const element of Array.from(documentNode.querySelectorAll('*'))) {
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim();
+      if (name.startsWith('on') || name === 'src') throw new Error('MERMAID_SVG_ACTIVE_CONTENT');
+      if ((name === 'href' || name === 'xlink:href') && !value.startsWith('#')) {
+        throw new Error('MERMAID_SVG_EXTERNAL_REFERENCE');
+      }
+      if (name === 'style' && hasUnsafeMermaidCssUrl(value)) {
+        throw new Error('MERMAID_SVG_EXTERNAL_REFERENCE');
+      }
+    }
+    if (
+      element.nodeName.toLowerCase() === 'style' &&
+      (/@import/i.test(element.textContent ?? '') ||
+        hasUnsafeMermaidCssUrl(element.textContent ?? ''))
+    ) {
+      throw new Error('MERMAID_SVG_EXTERNAL_REFERENCE');
+    }
+  }
+  return svg;
+}
+
+function MermaidDiagram({ source, fallback }: { source: string; fallback: React.ReactNode }) {
+  const validation = useMemo(() => validateMermaidFlow(source), [source]);
+  const { theme } = useTheme();
+  const { t } = useI18n();
+  const [svg, setSvg] = useState<string | null>(null);
+  const [failed, setFailed] = useState(!validation.ok);
+
+  useEffect(() => {
+    if (!validation.ok) {
+      setFailed(true);
+      setSvg(null);
+      return;
+    }
+    let active = true;
+    setFailed(false);
+    setSvg(null);
+    void renderMermaid(validation.code, theme)
+      .then(assertSafeMermaidSvg)
+      .then((nextSvg) => {
+        if (active) setSvg(nextSvg);
+      })
+      .catch((error: unknown) => {
+        const errorCode =
+          error instanceof Error && /^MERMAID_[A-Z_]+$/.test(error.message)
+            ? error.message
+            : 'MERMAID_RENDER_FAILED';
+        console.warn('[markdown] Mermaid render unavailable', { error_code: errorCode });
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [theme, validation]);
+
+  if (failed) {
+    return (
+      <div className="space-y-2">
+        <p className="flex items-center gap-2 text-xs text-[var(--color-app-warning-fg)]">
+          <Workflow className="h-3.5 w-3.5" /> {t('markdown.diagramUnavailable')}
+        </p>
+        {fallback}
+      </div>
+    );
+  }
+  if (!svg) {
+    return (
+      <div className="my-3 flex min-h-40 items-center justify-center rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] text-xs text-[var(--color-app-muted)]">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('markdown.diagramLoading')}
+      </div>
+    );
+  }
+  return (
+    <div
+      data-horizontal-scroll="true"
+      data-drawer-gesture-ignore
+      className="mermaid-canvas my-3 touch-pan-x touch-pan-y overflow-x-auto rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] p-3 [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:min-w-[520px] [&_svg]:max-w-full"
+      role="img"
+      aria-label={t('markdown.diagramLabel')}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
 
 // Bloco de código fenced (```...```). O Streamdown só roteia fences para `code`
 // (inline vai para `inlineCode`), então aqui sempre renderizamos o bloco rico.
@@ -66,7 +188,7 @@ function CodeBlock({
     }
   }
 
-  return (
+  const codeFrame = (
     <div className="group relative my-3 overflow-hidden rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]">
       <div className="flex items-center justify-between px-3.5 py-1.5 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)]">
         <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-app-muted)] font-mono">
@@ -98,6 +220,10 @@ function CodeBlock({
       </pre>
     </div>
   );
+  if (lang?.toLowerCase() === 'mermaid') {
+    return <MermaidDiagram source={raw} fallback={codeFrame} />;
+  }
+  return codeFrame;
 }
 
 // Código inline (`código`). Quiet — same weight as body text (spec 091).

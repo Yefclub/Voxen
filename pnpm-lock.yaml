@@ -140,6 +140,9 @@ importers:
       date-fns:
         specifier: ^4.2.1
         version: 4.2.1
+      dompurify:
+        specifier: 3.4.13
+        version: 3.4.13
       graphology:
         specifier: ^0.26.0
         version: 0.26.0(graphology-types@0.24.8)
@@ -158,6 +161,9 @@ importers:
       jose:
         specifier: 6.2.3
         version: 6.2.3
+      mermaid:
+        specifier: 11.16.1
+        version: 11.16.1
       motion:
         specifier: ^12.43.0
         version: 12.43.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)

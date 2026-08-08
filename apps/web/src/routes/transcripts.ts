@@ -1,12 +1,5 @@
-// ============================================================================
 // Voxen — Transcripts routes
-// ============================================================================
-// Endpoints (sempre escopados por userId):
-//   GET  /api/transcripts          — lista (paginada)
-//   GET  /api/transcripts/:id      — metadata + plainText + markdown content
-//
-// Canonical Markdown is read from the selected private storage driver.
-// ============================================================================
+// All endpoints are scoped by userId; canonical Markdown uses the configured private storage.
 
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -45,6 +38,7 @@ import {
   generateAndPersistTranscriptSummary,
   TranscriptSummaryError,
 } from '../lib/transcript-summary';
+import { generateTranscriptFlowRoute } from './transcript-flow-route';
 import {
   transcriptGraphMatchSql,
   TRANSCRIPT_GRAPH_RANK_BOOST,
@@ -492,6 +486,7 @@ transcriptsRoutes.get('/:id', async (c) => {
       mdPath: true,
       plainText: true,
       summaryMd: true,
+      flowchartMd: true,
       taggingStatus: true,
       taggingAttempts: true,
       taggingNextAttemptAt: true,
@@ -1209,6 +1204,8 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
     return c.json({ error: 'Falha ao gerar resumo.' }, 502);
   }
 });
+
+transcriptsRoutes.post('/:id/flow', generateTranscriptFlowRoute);
 
 function normalizeStatus(value: string | undefined): 'ACTIVE' | 'ARCHIVED' | 'TRASH' | 'ALL' {
   if (value === 'archived') return 'ARCHIVED';

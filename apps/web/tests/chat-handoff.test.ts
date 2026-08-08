@@ -32,9 +32,13 @@ describe('chat handoff wiring', () => {
       join(import.meta.dir, '../src/client/pages/transcricoes-detalhe.tsx'),
       'utf8',
     );
+    const derivedContent = readFileSync(
+      join(import.meta.dir, '../src/client/components/library/transcript-derived-content.tsx'),
+      'utf8',
+    );
     expect(page).toContain('TranscriptChatDock');
-    expect(page).toContain('copySummary');
+    expect(derivedContent).toContain('copySummary');
     expect(page).toContain('buildTranscriptChatMessage');
-    expect(page).toContain('library.copySummary');
+    expect(derivedContent).toContain('library.copySummary');
   });
 });

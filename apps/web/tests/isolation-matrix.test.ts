@@ -257,6 +257,12 @@ describeIfDb('matriz de isolamento entre usuários (spec 137)', () => {
       }),
     );
     await expectSafeNotFound(
+      await call(`/api/transcripts/${transcriptAId}/flow`, {
+        ...withCookie(ownerBCookie, {}),
+        method: 'POST',
+      }),
+    );
+    await expectSafeNotFound(
       await call(`/api/transcripts/${transcriptAId}`, {
         ...withCookie(ownerBCookie),
         method: 'DELETE',

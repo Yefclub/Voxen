@@ -1,12 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Archive,
   Calendar,
-  Check,
   Clock,
-  Copy,
   ExternalLink,
   FileText,
   Folder,
@@ -19,7 +17,6 @@ import {
   Sparkles,
   Tags,
   Trash2,
-  Wand2,
 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
 import { Button } from '../components/ui/button';
@@ -58,6 +55,10 @@ import {
   AdditionalContextBlock,
   type TranscriptEnrichmentsResponse,
 } from '../components/library/additional-context-block';
+import {
+  TranscriptFlowBlock,
+  TranscriptSummaryBlock,
+} from '../components/library/transcript-derived-content';
 import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
 
 interface TranscriptDetail {
@@ -89,6 +90,7 @@ interface TranscriptDetail {
   mdPath: string;
   plainText: string;
   summaryMd: string | null;
+  flowchartMd: string | null;
   frontmatter: unknown;
   sourceChecksum: string | null;
   sourceVersion: number;
@@ -147,6 +149,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const { data: foldersData, refresh: refreshFolders } =
     useFetch<FoldersResponse>('/api/library/folders');
   const [generating, setGenerating] = useState(false);
+  const [generatingFlow, setGeneratingFlow] = useState(false);
   const [organizing, setOrganizing] = useState(false);
   const [taggingLoading, setTaggingLoading] = useState(false);
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
@@ -156,6 +159,7 @@ export function TranscricaoDetalhePage(): React.ReactElement {
   const [linkedNoteContent, setLinkedNoteContent] = useState('');
   const [linkedNoteAnchor, setLinkedNoteAnchor] = useState<LinkedNoteAnchorDraft | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  const [confirmFlowRegen, setConfirmFlowRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
   const [refreshingSource, setRefreshingSource] = useState(false);
@@ -264,6 +268,39 @@ export function TranscricaoDetalhePage(): React.ReactElement {
       });
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function generateFlow(force: boolean): Promise<void> {
+    if (!id || generatingFlow) return;
+    setGeneratingFlow(true);
+    try {
+      const res = await fetch(`/api/transcripts/${id}/flow`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        existing?: boolean;
+      };
+      if (res.status === 409 && body.existing) {
+        setConfirmFlowRegen(true);
+        return;
+      }
+      if (!res.ok) {
+        toast.error(body.error ?? translate('library.flowError'));
+        return;
+      }
+      toast.success(
+        force ? translate('library.flowRegenerated') : translate('library.flowGenerated'),
+      );
+      await refresh();
+    } catch {
+      toast.error(translate('library.flowError'));
+    } finally {
+      setGeneratingFlow(false);
     }
   }
 
@@ -609,10 +646,17 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-8">
           {/* Coluna principal: resumo + transcrição */}
           <article className="min-w-0 space-y-7 sm:space-y-8">
-            <SummaryBlock
+            <TranscriptSummaryBlock
               summary={t.summaryMd}
               generating={generating}
               onGenerate={() => void generateSummary(false)}
+              t={translate}
+            />
+            <TranscriptFlowBlock
+              flowchart={t.flowchartMd}
+              generating={generatingFlow}
+              onGenerate={() => void generateFlow(false)}
+              readOnly={!canUseContextualActions}
               t={translate}
             />
             <AdditionalContextBlock
@@ -874,6 +918,16 @@ export function TranscricaoDetalhePage(): React.ReactElement {
         loading={generating}
       />
       <ConfirmDialog
+        open={confirmFlowRegen}
+        onOpenChange={setConfirmFlowRegen}
+        title={translate('library.regenerateFlowTitle')}
+        description={translate('library.regenerateFlowDescription')}
+        confirmLabel={translate('library.regenerateFlow')}
+        cancelLabel={translate('common.cancel')}
+        onConfirm={() => generateFlow(true)}
+        loading={generatingFlow}
+      />
+      <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title={translate('library.deleteTitle')}
@@ -1014,143 +1068,6 @@ function TagsControl({
         </div>
       )}
     </div>
-  );
-}
-
-function SummaryBlock({
-  summary,
-  generating,
-  onGenerate,
-  t,
-}: {
-  summary: string | null;
-  generating: boolean;
-  onGenerate: () => void;
-  t: TranslateFn;
-}): React.ReactElement {
-  const [copied, setCopied] = useState(false);
-  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (copyTimer.current) clearTimeout(copyTimer.current);
-    };
-  }, []);
-
-  async function copySummary(): Promise<void> {
-    if (!summary?.trim()) return;
-    try {
-      await navigator.clipboard.writeText(summary);
-      setCopied(true);
-      if (copyTimer.current) clearTimeout(copyTimer.current);
-      copyTimer.current = setTimeout(() => setCopied(false), 1500);
-      toast.success(t('library.summaryCopied'));
-    } catch {
-      toast.error(t('library.summaryCopyError'));
-    }
-  }
-
-  if (!summary) {
-    return (
-      <Card elevated className="overflow-hidden border-[var(--color-app-border)]/80">
-        <CardContent className="space-y-4 px-5 py-7 sm:px-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/15">
-              <Wand2 className="h-4 w-4 text-violet-300" />
-            </div>
-            <div className="flex-1 space-y-1">
-              <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-app-fg)]">
-                {t('library.summary')}
-              </h2>
-              <p className="text-sm leading-relaxed text-[var(--color-app-muted)]">
-                {t('library.summaryDescription')}
-              </p>
-            </div>
-            <Button
-              onClick={onGenerate}
-              disabled={generating}
-              variant="primary"
-              size="sm"
-              className="w-full sm:w-auto"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {t('library.generating')}
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-3.5 w-3.5" />
-                  {t('library.generateSummary')}
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-  return (
-    <section className="group/summary space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-app-border-strong)] bg-gradient-to-br from-violet-500/20 to-emerald-500/15">
-            <Wand2 className="h-3.5 w-3.5 text-violet-300" />
-          </div>
-          <h2 className="font-display text-base font-semibold tracking-tight text-[var(--color-app-fg)] sm:text-lg">
-            {t('library.summary')}
-          </h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Button
-            type="button"
-            onClick={() => void copySummary()}
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 text-[var(--color-app-muted)] hover:text-[var(--color-app-fg)]"
-            aria-label={t('library.copySummary')}
-            title={t('library.copySummary')}
-          >
-            {copied ? (
-              <Check className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
-            <span className="text-xs">{copied ? t('common.copied') : t('common.copy')}</span>
-          </Button>
-          <Button
-            onClick={onGenerate}
-            disabled={generating}
-            variant="ghost"
-            size="sm"
-            className="h-8"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin" />
-                {t('library.regenerating')}
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-3 w-3" />
-                {t('library.regenerateSummary')}
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-      <Card
-        elevated
-        className={cn(
-          'border-[var(--color-app-border)]/80 transition-colors',
-          'hover:border-[var(--color-app-border-strong)]',
-        )}
-      >
-        <CardContent className="px-5 py-5 sm:px-6">
-          <Markdown>{summary}</Markdown>
-        </CardContent>
-      </Card>
-    </section>
   );
 }
 
