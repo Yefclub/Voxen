@@ -28,19 +28,8 @@ adminResearchPolicyRoutes.patch('/', async (c) => {
 async function cancelExcludedResearch(mode: 'OFF' | 'MANUAL'): Promise<void> {
   const triggerFilter = mode === 'MANUAL' ? { trigger: 'AUTO' as const } : {};
   const now = new Date();
-  await db.$transaction([
-    db.transcriptEnrichment.updateMany({
-      where: { ...triggerFilter, status: { in: ['PENDING', 'RETRY'] } },
-      data: {
-        status: 'CANCELLED',
-        cancelRequestedAt: now,
-        startedAt: null,
-        nextAttemptAt: null,
-      },
-    }),
-    db.transcriptEnrichment.updateMany({
-      where: { ...triggerFilter, status: 'RUNNING' },
-      data: { cancelRequestedAt: now },
-    }),
-  ]);
+  await db.transcriptEnrichment.updateMany({
+    where: { ...triggerFilter, status: { in: ['PENDING', 'RETRY', 'RUNNING'] } },
+    data: { cancelRequestedAt: now },
+  });
 }

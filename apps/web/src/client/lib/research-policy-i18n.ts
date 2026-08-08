@@ -13,6 +13,15 @@ export const ptBrResearchPolicyMessages = {
   'admin.integrations.researchPolicy.boundary':
     'O resultado sempre nasce como sugestão citada para revisão e nunca altera o resumo canônico.',
   'admin.integrations.researchPolicy.saved': 'Política de pesquisa atualizada.',
+  'job.stage.researchPlanning': 'Avaliando lacunas do conteúdo',
+  'job.stage.researchSourceLookup': 'Consultando a fonte original',
+  'job.stage.researchSearching': 'Pesquisando contexto adicional',
+  'job.stage.researchSynthesizing': 'Organizando evidências encontradas',
+  'job.stage.researchNotNeeded': 'Pesquisa adicional não necessária',
+  'job.stage.researchReady': 'Contexto adicional pronto para revisão',
+  'job.stage.researchRetry': 'Pesquisa aguardando nova tentativa',
+  'job.stage.researchFailed': 'Pesquisa adicional falhou',
+  'job.stage.researchCancelled': 'Pesquisa adicional cancelada',
 } as const;
 
 export const enResearchPolicyMessages: Record<keyof typeof ptBrResearchPolicyMessages, string> = {
@@ -30,4 +39,13 @@ export const enResearchPolicyMessages: Record<keyof typeof ptBrResearchPolicyMes
   'admin.integrations.researchPolicy.boundary':
     'Every result starts as a cited suggestion for review and never changes the canonical summary.',
   'admin.integrations.researchPolicy.saved': 'Research policy updated.',
+  'job.stage.researchPlanning': 'Evaluating content gaps',
+  'job.stage.researchSourceLookup': 'Consulting the original source',
+  'job.stage.researchSearching': 'Researching additional context',
+  'job.stage.researchSynthesizing': 'Organizing found evidence',
+  'job.stage.researchNotNeeded': 'Additional research not needed',
+  'job.stage.researchReady': 'Additional context ready for review',
+  'job.stage.researchRetry': 'Research waiting for another attempt',
+  'job.stage.researchFailed': 'Additional research failed',
+  'job.stage.researchCancelled': 'Additional research cancelled',
 };

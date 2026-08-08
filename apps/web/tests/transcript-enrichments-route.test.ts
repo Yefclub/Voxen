@@ -375,7 +375,7 @@ describeIfDb('reviewable transcript enrichments API', () => {
     expect(
       cancelledAfterImmediateRestore.every(
         (item) =>
-          item.status === 'CANCELLED' &&
+          (item.status === 'PENDING' || item.status === 'RUNNING') &&
           item.cancelRequestedAt !== null &&
           item.staleReason === 'parent-inactive',
       ),
@@ -444,7 +444,7 @@ describeIfDb('reviewable transcript enrichments API', () => {
         where: { transcriptId: transcript.id },
         select: { status: true, cancelRequestedAt: true, staleReason: true },
       });
-      expect(enrichment.status).toBe('CANCELLED');
+      expect(enrichment.status).toBe('PENDING');
       expect(enrichment.cancelRequestedAt).not.toBeNull();
       expect(enrichment.staleReason).toBe('parent-inactive');
     } finally {

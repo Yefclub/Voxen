@@ -117,8 +117,9 @@ describeIfDb('admin transcript research policy', () => {
 
     expect((await setMode('MANUAL')).status).toBe(200);
     expect(
-      (await db.transcriptEnrichment.findUniqueOrThrow({ where: { id: autoPending.id } })).status,
-    ).toBe('CANCELLED');
+      (await db.transcriptEnrichment.findUniqueOrThrow({ where: { id: autoPending.id } }))
+        .cancelRequestedAt,
+    ).not.toBeNull();
     expect(
       (await db.transcriptEnrichment.findUniqueOrThrow({ where: { id: autoRunning.id } }))
         .cancelRequestedAt,
@@ -129,8 +130,9 @@ describeIfDb('admin transcript research policy', () => {
 
     expect((await setMode('OFF')).status).toBe(200);
     expect(
-      (await db.transcriptEnrichment.findUniqueOrThrow({ where: { id: manualPending.id } })).status,
-    ).toBe('CANCELLED');
+      (await db.transcriptEnrichment.findUniqueOrThrow({ where: { id: manualPending.id } }))
+        .cancelRequestedAt,
+    ).not.toBeNull();
     const read = await request('/api/admin/research-policy', apiInit(adminCookie));
     expect(read.status).toBe(200);
     expect(await read.json()).toEqual({ mode: 'OFF' });

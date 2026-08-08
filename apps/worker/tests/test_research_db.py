@@ -60,11 +60,11 @@ async def test_queue_auto_research_is_idempotent_by_source_version(
     assert not await research_db.queue_auto_transcript_enrichment("user-1", "missing")
 
 
-async def test_claim_research_performs_reconciliation_before_claim(
+async def test_research_reconciles_lifecycle_before_terminal_parent_claim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = _Connection()
-    conn.fetch.return_value = [{"id": "enrichment-1", "attempt": 2}]
+    conn.fetch.side_effect = [[], [{"id": "enrichment-1", "attempt": 2}]]
     _patch_connection(monkeypatch, conn)
     monkeypatch.setattr(
         research_db,
@@ -72,24 +72,31 @@ async def test_claim_research_performs_reconciliation_before_claim(
         AsyncMock(return_value="MANUAL"),
     )
 
+    transitions = await research_db.reconcile_transcript_enrichment_lifecycle()
     claimed = await research_db.claim_pending_transcript_enrichments(limit=3)
 
+    assert transitions == []
     assert claimed == [{"id": "enrichment-1", "attempt": 2}]
-    assert conn.execute.await_count == 5
     assert conn.fetch.await_args.args[-2:] == (3, "MANUAL")
-    executed_sql = "\n".join(call.args[0] for call in conn.execute.await_args_list)
+    lifecycle_sql = "\n".join(call.args[0] for call in conn.fetch.await_args_list[:-1])
     claim_sql = conn.fetch.await_args.args[0]
-    assert "research-policy-changed" in executed_sql
-    assert "parent-inactive" in executed_sql
+    assert "research-policy-changed" in lifecycle_sql
+    assert "parent-inactive" in lifecycle_sql
+    assert "research_failed" in lifecycle_sql
+    assert "RESEARCH_ATTEMPTS_EXHAUSTED" in lifecycle_sql
     assert "$2 = 'AUTO'" in claim_sql
+    assert "parent_job.status IN" in claim_sql
     assert "e.trigger IN" in claim_sql
     assert "'MANUAL'" in claim_sql
     assert "'MCP'" in claim_sql
+    assert 't.url AS "sourceUrl"' in claim_sql
+    assert 'j.id AS "jobId"' in claim_sql
+    assert 'j."userId" = t."userId"' in claim_sql
 
 
 async def test_off_policy_reconciles_without_claiming(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = _Connection()
-    conn.fetch.return_value = []
+    conn.fetch.side_effect = [[], []]
     _patch_connection(monkeypatch, conn)
     monkeypatch.setattr(
         research_db,
@@ -97,6 +104,7 @@ async def test_off_policy_reconciles_without_claiming(monkeypatch: pytest.Monkey
         AsyncMock(return_value="OFF"),
     )
 
+    assert await research_db.reconcile_transcript_enrichment_lifecycle() == []
     assert await research_db.claim_pending_transcript_enrichments(limit=99) == []
 
     assert conn.fetch.await_args.args[-2:] == (99, "OFF")

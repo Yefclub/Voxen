@@ -359,6 +359,11 @@ async def test_enrichment_dispatcher_advances_summary_and_tags_under_backlog(
         "claim_pending_transcript_enrichments",
         AsyncMock(return_value=[]),
     )
+    monkeypatch.setattr(
+        main.research_db,
+        "reconcile_transcript_enrichment_lifecycle",
+        AsyncMock(return_value=[]),
+    )
     monkeypatch.setattr(main.summary, "maybe_generate", wait_for_gate)
     monkeypatch.setattr(main, "_maybe_generate_tags", wait_for_gate)
     tasks: set[asyncio.Task[None]] = set()
@@ -406,6 +411,11 @@ async def test_enrichment_dispatcher_round_robins_research_without_starvation(
         "claim_pending_transcript_enrichments",
         lambda limit: claim(research_queue, limit),
     )
+    monkeypatch.setattr(
+        main.research_db,
+        "reconcile_transcript_enrichment_lifecycle",
+        AsyncMock(return_value=[]),
+    )
     monkeypatch.setattr(main.summary, "maybe_generate", AsyncMock())
     monkeypatch.setattr(main, "_maybe_generate_tags", AsyncMock())
     monkeypatch.setattr(main.research_enrichment, "process", AsyncMock())
@@ -429,10 +439,26 @@ async def test_research_dispatcher_uses_atomic_policy_claim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     claim = AsyncMock(return_value=[])
+    reconcile = AsyncMock(
+        return_value=[
+            {
+                "id": "research-1",
+                "userId": "user-1",
+                "transcriptId": "transcript-1",
+                "jobId": "job-1",
+                "stage": "research_cancelled",
+            }
+        ]
+    )
+    publish = AsyncMock()
     monkeypatch.setattr(main.research_db, "claim_pending_transcript_enrichments", claim)
+    monkeypatch.setattr(main.research_db, "reconcile_transcript_enrichment_lifecycle", reconcile)
+    monkeypatch.setattr(main.research_enrichment, "publish_stage", publish)
 
     assert await main._reconcile_research_once(asyncio.Semaphore(1), set()) == 0
     claim.assert_awaited_once_with(limit=2)
+    publish.assert_awaited_once()
+    assert publish.await_args.args[1] == "research_cancelled"
 
 
 async def test_research_dispatcher_fails_closed_when_atomic_claim_fails(
@@ -440,6 +466,11 @@ async def test_research_dispatcher_fails_closed_when_atomic_claim_fails(
 ) -> None:
     claim = AsyncMock(side_effect=RuntimeError("policy unavailable"))
     monkeypatch.setattr(main.research_db, "claim_pending_transcript_enrichments", claim)
+    monkeypatch.setattr(
+        main.research_db,
+        "reconcile_transcript_enrichment_lifecycle",
+        AsyncMock(return_value=[]),
+    )
 
     assert await main._reconcile_research_once(asyncio.Semaphore(1), set()) == 0
     claim.assert_awaited_once_with(limit=2)

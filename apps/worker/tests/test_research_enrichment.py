@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from decimal import Decimal
 from types import SimpleNamespace
@@ -15,6 +16,8 @@ from src.research_contract import (
     ResearchOutputError,
     build_research_payload,
     build_research_plan_payload,
+    build_source_research_payload,
+    canonical_public_source_reference,
     parse_provider_usage,
     parse_research_plan,
     parse_search_response,
@@ -80,6 +83,7 @@ def _plan_data(
     queries: list[str] | None = None,
     cost: str = "0.002",
     usage: dict[str, object] | None = None,
+    source_lookup: bool = False,
 ) -> dict[str, object]:
     payload = (
         {
@@ -93,7 +97,8 @@ def _plan_data(
             "decision": "research",
             "rationale": "Material missing source",
             "title": "Additional researched context",
-            "queries": queries or ["public paper title"],
+            "queries": ["public paper title"] if queries is None else queries,
+            "source_lookup": source_lookup,
         }
     )
     return {
@@ -110,6 +115,7 @@ def _search_data(
     search_calls: int = 1,
     usage: dict[str, object] | None = None,
     cited: bool = True,
+    citation_count: int = 1,
 ) -> dict[str, object]:
     message: dict[str, object] = {
         "content": json.dumps(
@@ -117,16 +123,20 @@ def _search_data(
         )
     }
     if cited:
-        message["annotations"] = [
-            {
-                "type": "url_citation",
-                "url_citation": {
-                    "url": f"https://example.com/{suffix}",
-                    "title": f"Source {suffix}",
-                    "content": f"Supporting excerpt {suffix}",
-                },
-            }
-        ]
+        annotations: list[dict[str, object]] = []
+        for index in range(citation_count):
+            citation_suffix = suffix if citation_count == 1 else f"{suffix}-{index}"
+            annotations.append(
+                {
+                    "type": "url_citation",
+                    "url_citation": {
+                        "url": f"https://example.com/{citation_suffix}",
+                        "title": f"Source {citation_suffix}",
+                        "content": f"Supporting excerpt {citation_suffix}",
+                    },
+                }
+            )
+        message["annotations"] = annotations
     return {
         "model": "provider/research-model",
         "choices": [{"message": message}],
@@ -159,6 +169,11 @@ def _install_process_mocks(
     monkeypatch.setattr(research_enrichment.db, "insert_cost_event", insert_cost)
     monkeypatch.setattr(research_enrichment.research_db, "complete_transcript_enrichment", complete)
     monkeypatch.setattr(research_enrichment.research_db, "fail_transcript_enrichment", fail)
+    monkeypatch.setattr(
+        research_enrichment,
+        "_validated_source_reference",
+        AsyncMock(side_effect=lambda value: canonical_public_source_reference(value)),
+    )
     return insert_cost, complete, fail
 
 
@@ -196,6 +211,66 @@ def test_payload_separates_untrusted_planning_from_the_only_web_tool() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (
+            "https://www.youtube.com/watch?v=v1wZwxY3CMg&t=30s&token=secret",
+            "https://www.youtube.com/watch?v=v1wZwxY3CMg",
+        ),
+        (
+            "https://twitter.com/voxen/status/123456?utm_source=private#fragment",
+            "https://x.com/voxen/status/123456",
+        ),
+        (
+            "https://docs.example.org/public/page?token=secret",
+            "https://docs.example.org/public/page",
+        ),
+        ("http://127.0.0.1:3000/admin", ""),
+        ("https://127.1/admin", ""),
+        ("https://0177.0.0.1/admin", ""),
+        ("https://0x7f.0.0.1/admin", ""),
+        ("http://metadata.google.internal/compute", ""),
+        ("https://127.0.0.1.nip.io/admin", ""),
+        ("https://localtest.me/private", ""),
+        ("https://app.localtest.me/private", ""),
+        ("https://user:secret@example.org/private", ""),
+        ("https://example.org/abcdefghijklmnopqrstuvwxyz0123456789abcdef", "https://example.org/"),
+    ],
+)
+def test_source_reference_is_canonical_and_private_data_is_removed(
+    value: str, expected: str
+) -> None:
+    assert canonical_public_source_reference(value) == expected
+
+
+def test_source_lookup_payload_accepts_only_a_canonical_public_reference() -> None:
+    payload = build_source_research_payload(
+        model="example/model",
+        source_reference="https://youtu.be/v1wZwxY3CMg?t=30&token=secret",
+    )
+    serialized = json.dumps(payload)
+    assert "https://www.youtube.com/watch?v=v1wZwxY3CMg" in serialized
+    assert "token=secret" not in serialized
+    assert payload["max_tool_calls"] == 1
+    with pytest.raises(ResearchOutputError, match="RESEARCH_SOURCE_REFERENCE_INVALID"):
+        build_source_research_payload(
+            model="example/model", source_reference="http://localhost:3000/private"
+        )
+
+
+async def test_source_reference_rejects_dns_that_resolves_to_a_private_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def reject_private(_url: str) -> set[str]:
+        raise research_enrichment.scraper.FetchBlockedError("private")
+
+    monkeypatch.setattr(research_enrichment.scraper, "_assert_public_host", reject_private)
+    assert (
+        await research_enrichment._validated_source_reference("https://public.example/page") == ""
+    )
+
+
 def test_plan_accepts_no_research_and_bounds_public_queries() -> None:
     no_research = parse_research_plan(_plan_data(decision="no_research"), transcript="source")
     assert no_research.decision == "no_research"
@@ -206,6 +281,23 @@ def test_plan_accepts_no_research_and_bounds_public_queries() -> None:
         _plan_data(queries=["Public paper title", "Author name 2026"]), transcript="source"
     )
     assert plan.queries == ["Public paper title", "Author name 2026"]
+
+    source_only = parse_research_plan(
+        _plan_data(queries=[], source_lookup=True),
+        transcript="source",
+        has_source_reference=True,
+    )
+    assert source_only.inspect_source is True
+    assert source_only.queries == []
+
+
+def test_plan_cannot_request_source_lookup_without_an_application_reference() -> None:
+    with pytest.raises(ResearchOutputError, match="RESEARCH_QUERIES_MISSING"):
+        parse_research_plan(
+            _plan_data(queries=[], source_lookup=True),
+            transcript="source",
+            has_source_reference=False,
+        )
 
 
 @pytest.mark.parametrize(
@@ -245,6 +337,7 @@ def test_search_response_requires_and_normalizes_url_citations() -> None:
     ]
     with pytest.raises(ResearchOutputError, match="RESEARCH_CITATIONS_MISSING"):
         parse_search_response(_search_data(cited=False))
+    assert len(parse_search_response(_search_data(citation_count=12)).citations) == 4
 
 
 @pytest.mark.parametrize(
@@ -326,6 +419,32 @@ async def test_process_accepts_no_search_or_two_application_owned_searches(
     fail.assert_not_awaited()
 
 
+async def test_process_caps_citations_across_source_and_topic_searches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, complete, fail = _install_process_mocks(monkeypatch)
+    _Client.responses = [
+        _response(
+            _plan_data(
+                queries=["first public topic", "second public topic"],
+                source_lookup=True,
+            )
+        ),
+        _response(_search_data(suffix="source", citation_count=12)),
+        _response(_search_data(suffix="one", citation_count=12)),
+        _response(_search_data(suffix="two", citation_count=12)),
+    ]
+
+    await research_enrichment.process(
+        _item(sourceUrl="https://example.org/source"),
+        _Log(),
+    )
+
+    assert len(complete.await_args.kwargs["citations"]) == 12
+    assert complete.await_args.kwargs["search_result_count"] == 12
+    fail.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     ("plan", "search", "expected_error"),
     [
@@ -362,6 +481,11 @@ async def test_process_records_known_cost_but_rejects_unproven_or_over_budget_re
     assert fail.await_args.kwargs["retry"] is False
     assert fail.await_args.kwargs["error"] == expected_error
     insert_cost.assert_awaited_once()
+    if expected_error == "RESEARCH_SEARCH_LIMIT_EXCEEDED":
+        meta = insert_cost.await_args.kwargs["meta"]
+        assert meta["provider_call_count"] == 2
+        assert meta["search_call_count"] == 2
+        assert meta["provider_cost_usd"] == "0.014"
 
 
 async def test_process_rejects_planner_tool_usage_and_conservative_search_cost(
@@ -375,9 +499,13 @@ async def test_process_rejects_planner_tool_usage_and_conservative_search_cost(
 
     complete.assert_not_awaited()
     assert fail.await_args.kwargs["error"] == "RESEARCH_UNEXPECTED_PLANNER_TOOL_USE"
-    insert_cost.assert_not_awaited()
+    insert_cost.assert_awaited_once()
+    assert insert_cost.await_args.kwargs["meta"]["provider_call_count"] == 1
+    assert insert_cost.await_args.kwargs["meta"]["search_call_count"] == 1
+    assert insert_cost.await_args.kwargs["meta"]["provider_cost_usd"] == "0.01"
 
     fail.reset_mock()
+    insert_cost.reset_mock()
     _Client.responses = [
         _response(_plan_data(cost="0.490")),
         _response(_search_data(cost="0.006")),
@@ -388,6 +516,31 @@ async def test_process_rejects_planner_tool_usage_and_conservative_search_cost(
     complete.assert_not_awaited()
     assert fail.await_args.kwargs["error"] == "RESEARCH_COST_LIMIT_EXCEEDED"
     assert insert_cost.await_args.kwargs["meta"]["conservative_budget_cost_usd"] == "0.501"
+
+
+async def test_process_bounds_source_dns_validation_by_the_total_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    insert_cost, complete, fail = _install_process_mocks(monkeypatch)
+
+    async def blocked_source_validation(_value: object) -> str:
+        await asyncio.Event().wait()
+        return ""
+
+    monkeypatch.setattr(research_enrichment, "TOTAL_TIMEOUT_SEC", 0.01)
+    monkeypatch.setattr(
+        research_enrichment,
+        "_validated_source_reference",
+        blocked_source_validation,
+    )
+
+    await research_enrichment.process(_item(), _Log())
+
+    complete.assert_not_awaited()
+    insert_cost.assert_not_awaited()
+    fail.assert_awaited_once()
+    assert fail.await_args.kwargs["retry"] is True
+    assert fail.await_args.kwargs["error"] == "RESEARCH_UPSTREAM_UNAVAILABLE"
 
 
 async def test_process_never_exposes_raw_source_to_tool_enabled_request(
@@ -401,6 +554,74 @@ async def test_process_never_exposes_raw_source_to_tool_enabled_request(
 
     assert secret in json.dumps(_Client.requests[0])
     assert secret not in json.dumps(_Client.requests[1:])
+
+
+async def test_process_consults_canonical_source_and_persists_sanitized_job_trail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    insert_cost, complete, fail = _install_process_mocks(monkeypatch)
+    publish = AsyncMock()
+    monkeypatch.setattr(research_enrichment.events, "publish_job_event", publish)
+    _Client.responses = [
+        _response(_plan_data(queries=[], source_lookup=True)),
+        _response(_search_data(suffix="source")),
+    ]
+
+    await research_enrichment.process(
+        _item(
+            jobId="job-1",
+            sourceUrl="https://www.youtube.com/watch?v=v1wZwxY3CMg&t=30s&token=secret",
+        ),
+        _Log(),
+    )
+
+    assert [call.args[2] for call in publish.await_args_list] == [
+        "research_planning",
+        "research_source_lookup",
+        "research_synthesizing",
+        "research_ready",
+    ]
+    assert all(call.kwargs["percent"] == 100 for call in publish.await_args_list)
+    requests = json.dumps(_Client.requests)
+    assert "https://www.youtube.com/watch?v=v1wZwxY3CMg" in requests
+    assert "token=secret" not in requests
+    assert complete.await_args.kwargs["search_call_count"] == 1
+    assert insert_cost.await_args.kwargs["meta"]["source_lookup_count"] == 1
+    fail.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("db_status", "expected_stage"),
+    [
+        ("RETRY", "research_retry"),
+        ("FAILED", "research_failed"),
+        ("CANCELLED", "research_cancelled"),
+    ],
+)
+async def test_failure_publishes_only_sanitized_terminal_stage(
+    monkeypatch: pytest.MonkeyPatch,
+    db_status: str,
+    expected_stage: str,
+) -> None:
+    _, _, fail = _install_process_mocks(monkeypatch)
+    fail.return_value = db_status
+    publish = AsyncMock()
+    monkeypatch.setattr(research_enrichment.events, "publish_job_event", publish)
+    monkeypatch.setattr(
+        research_enrichment,
+        "_post_completion",
+        AsyncMock(side_effect=TimeoutError("raw provider secret and URL")),
+    )
+
+    await research_enrichment.process(
+        _item(jobId="job-1", sourceUrl="https://example.org/page?secret=value"), _Log()
+    )
+
+    assert [call.args[2] for call in publish.await_args_list] == [
+        "research_planning",
+        expected_stage,
+    ]
+    assert "secret" not in repr(publish.await_args_list)
 
 
 async def test_process_fails_closed_without_config(monkeypatch: pytest.MonkeyPatch) -> None:

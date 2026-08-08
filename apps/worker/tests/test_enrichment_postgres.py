@@ -167,7 +167,7 @@ async def test_research_claim_reconciles_policy_trigger_and_parent_lifecycle(
 ) -> None:
     await _set_research_policy(postgres, "MANUAL")
     await _insert_user(postgres, "research-user")
-    for transcript_id in ("auto-parent", "manual-parent", "mcp-parent"):
+    for transcript_id in ("auto-parent", "manual-parent", "mcp-parent", "running-parent"):
         await _insert_transcript(
             postgres,
             transcript_id=transcript_id,
@@ -193,6 +193,18 @@ async def test_research_claim_reconciles_policy_trigger_and_parent_lifecycle(
         user_id="research-user",
         trigger="MANUAL",
     )
+    await postgres.execute(
+        """
+        INSERT INTO "Job" (
+          id, "userId", type, status, "sourceUrl", "transcriptId",
+          "queuedAt", "finishedAt"
+        ) VALUES (
+          'manual-job', 'research-user', 'DOWNLOAD_AND_TRANSCRIBE'::"JobType",
+          'DONE'::"JobStatus", 'https://example.test/manual-parent',
+          'manual-parent', NOW(), NOW()
+        )
+        """
+    )
     await _insert_research_enrichment(
         postgres,
         enrichment_id="mcp-research",
@@ -202,14 +214,44 @@ async def test_research_claim_reconciles_policy_trigger_and_parent_lifecycle(
     )
     await _insert_research_enrichment(
         postgres,
+        enrichment_id="running-parent-research",
+        transcript_id="running-parent",
+        user_id="research-user",
+        trigger="MANUAL",
+    )
+    await postgres.execute(
+        """
+        INSERT INTO "Job" (
+          id, "userId", type, status, "sourceUrl", "transcriptId", "queuedAt"
+        ) VALUES (
+          'running-parent-job', 'research-user', 'DOWNLOAD_AND_TRANSCRIBE'::"JobType",
+          'RUNNING'::"JobStatus", 'https://example.test/running-parent',
+          'running-parent', NOW()
+        )
+        """
+    )
+    await _insert_research_enrichment(
+        postgres,
         enrichment_id="archived-research",
         transcript_id="archived-parent",
         user_id="research-user",
         trigger="MANUAL",
     )
 
+    transitions = await research_db.reconcile_transcript_enrichment_lifecycle()
+    assert {str(row["id"]) for row in transitions} == {
+        "auto-research",
+        "archived-research",
+    }
+    assert all(row["stage"] == "research_cancelled" for row in transitions)
+
     claimed = await research_db.claim_pending_transcript_enrichments(limit=10)
     assert {str(row["id"]) for row in claimed} == {"manual-research", "mcp-research"}
+    claimed_by_id = {str(row["id"]): row for row in claimed}
+    assert claimed_by_id["manual-research"]["jobId"] == "manual-job"
+    assert claimed_by_id["manual-research"]["sourceUrl"] == ("https://example.test/manual-parent")
+    assert claimed_by_id["mcp-research"]["jobId"] is None
+    assert "running-parent-research" not in claimed_by_id
 
     states = {
         str(row["id"]): (str(row["status"]), row["staleReason"])
@@ -225,14 +267,32 @@ async def test_research_claim_reconciles_policy_trigger_and_parent_lifecycle(
     assert states["archived-research"] == ("CANCELLED", "parent-inactive")
     assert states["manual-research"] == ("RUNNING", None)
     assert states["mcp-research"] == ("RUNNING", None)
+    assert states["running-parent-research"] == ("PENDING", None)
+
+    await postgres.execute(
+        """
+        UPDATE "Job"
+        SET status = 'DONE'::"JobStatus", "finishedAt" = NOW()
+        WHERE id = 'running-parent-job'
+        """
+    )
+    after_parent_done = await research_db.claim_pending_transcript_enrichments(limit=10)
+    assert [str(row["id"]) for row in after_parent_done] == ["running-parent-research"]
+    assert after_parent_done[0]["jobId"] == "running-parent-job"
 
     await _set_research_policy(postgres, "OFF")
+    off_transitions = await research_db.reconcile_transcript_enrichment_lifecycle()
+    assert {str(row["id"]) for row in off_transitions} == {
+        "manual-research",
+        "mcp-research",
+        "running-parent-research",
+    }
     assert await research_db.claim_pending_transcript_enrichments(limit=10) == []
     running_after_off = await postgres.fetch(
         """
         SELECT id, status, "staleReason", "cancelRequestedAt"
         FROM "TranscriptEnrichment"
-        WHERE id IN ('manual-research', 'mcp-research')
+        WHERE id IN ('manual-research', 'mcp-research', 'running-parent-research')
         ORDER BY id
         """
     )
@@ -309,6 +369,8 @@ async def test_policy_transition_serializes_auto_queue_and_claim(
         await transition.close()
 
     assert {str(row["id"]) for row in claimed} == {"policy-race-manual"}
+    transitions = await research_db.reconcile_transcript_enrichment_lifecycle()
+    assert [str(row["id"]) for row in transitions] == ["policy-race-auto"]
     states = {
         str(row["id"]): str(row["status"])
         for row in await postgres.fetch(

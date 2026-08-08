@@ -106,102 +106,99 @@ async def queue_auto_transcript_enrichment(user_id: str, transcript_id: str) -> 
     return status == "INSERT 0 1"
 
 
+async def reconcile_transcript_enrichment_lifecycle() -> list[dict[str, Any]]:
+    """Apply terminal lifecycle transitions and return their sanitized job associations."""
+    async with connection() as conn:
+        async with conn.transaction():
+            policy_mode = await _lock_and_get_summary_research_mode(conn)
+            rows = await conn.fetch(
+                """
+                WITH eligible AS (
+                  SELECT e.id,
+                    CASE
+                      WHEN $1 = 'OFF'
+                        OR ($1 = 'MANUAL'
+                          AND e.trigger = 'AUTO'::"TranscriptEnrichmentTrigger")
+                        THEN 'policy'
+                      WHEN e."cancelRequestedAt" IS NOT NULL THEN 'cancel'
+                      WHEN t.status <> 'ACTIVE'::"ContentStatus" THEN 'parent'
+                      WHEN e."sourceVersion" <> t."sourceVersion"
+                        OR e."sourceChecksum" IS DISTINCT FROM t."sourceChecksum"
+                        THEN 'source'
+                      WHEN e.attempt >= 3 AND (
+                        e.status IN (
+                          'PENDING'::"TranscriptEnrichmentStatus",
+                          'RETRY'::"TranscriptEnrichmentStatus"
+                        ) OR (
+                          e.status = 'RUNNING'::"TranscriptEnrichmentStatus"
+                          AND e."startedAt" < NOW() - INTERVAL '10 minutes'
+                        )
+                      ) THEN 'failed'
+                      ELSE NULL
+                    END AS transition
+                  FROM "TranscriptEnrichment" e
+                  JOIN "Transcript" t
+                    ON t.id = e."transcriptId" AND t."userId" = e."userId"
+                  WHERE e.type = 'WEB_RESEARCH'::"TranscriptEnrichmentType"
+                    AND e.status IN (
+                      'PENDING'::"TranscriptEnrichmentStatus",
+                      'RETRY'::"TranscriptEnrichmentStatus",
+                      'RUNNING'::"TranscriptEnrichmentStatus"
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM "Job" active_parent
+                      WHERE active_parent."transcriptId" = e."transcriptId"
+                        AND active_parent."userId" = e."userId"
+                        AND active_parent.status NOT IN (
+                          'DONE'::"JobStatus", 'COMPLETED_WITH_WARNINGS'::"JobStatus",
+                          'FAILED'::"JobStatus", 'CANCELLED'::"JobStatus"
+                        )
+                    )
+                  FOR UPDATE OF e
+                ), candidates AS (
+                  SELECT id, transition FROM eligible WHERE transition IS NOT NULL
+                ), changed AS (
+                  UPDATE "TranscriptEnrichment" e
+                  SET status = CASE WHEN candidates.transition = 'failed'
+                        THEN 'FAILED'::"TranscriptEnrichmentStatus"
+                        ELSE 'CANCELLED'::"TranscriptEnrichmentStatus" END,
+                      "cancelRequestedAt" = CASE
+                        WHEN candidates.transition IN ('policy', 'parent')
+                        THEN COALESCE(e."cancelRequestedAt", NOW())
+                        ELSE e."cancelRequestedAt" END,
+                      "startedAt" = NULL, "nextAttemptAt" = NULL,
+                      "staleReason" = CASE candidates.transition
+                        WHEN 'policy' THEN 'research-policy-changed'
+                        WHEN 'parent' THEN 'parent-inactive'
+                        WHEN 'source' THEN 'source-version-changed'
+                        ELSE e."staleReason" END,
+                      "lastError" = CASE WHEN candidates.transition = 'failed'
+                        THEN COALESCE(e."lastError", 'RESEARCH_ATTEMPTS_EXHAUSTED')
+                        ELSE e."lastError" END,
+                      "updatedAt" = NOW()
+                  FROM candidates
+                  WHERE e.id = candidates.id
+                  RETURNING e.id, e."userId", e."transcriptId",
+                    CASE WHEN candidates.transition = 'failed'
+                      THEN 'research_failed' ELSE 'research_cancelled' END AS stage
+                )
+                SELECT changed.*, parent_job.id AS "jobId"
+                FROM changed
+                LEFT JOIN "Job" parent_job
+                  ON parent_job."transcriptId" = changed."transcriptId"
+                 AND parent_job."userId" = changed."userId"
+                """,
+                policy_mode,
+            )
+    return [dict(row) for row in rows]
+
+
 async def claim_pending_transcript_enrichments(limit: int = 4) -> list[dict[str, Any]]:
-    """Reconcile lifecycle/policy and claim only work allowed by the current mode."""
+    """Claim work allowed by the current policy after lifecycle reconciliation."""
     limit = max(0, limit)
     async with connection() as conn:
         async with conn.transaction():
             policy_mode = await _lock_and_get_summary_research_mode(conn)
-            await conn.execute(
-                """
-                UPDATE "TranscriptEnrichment"
-                SET status = 'CANCELLED'::"TranscriptEnrichmentStatus",
-                    "cancelRequestedAt" = COALESCE("cancelRequestedAt", NOW()),
-                    "startedAt" = NULL, "nextAttemptAt" = NULL,
-                    "staleReason" = 'research-policy-changed', "updatedAt" = NOW()
-                WHERE type = 'WEB_RESEARCH'::"TranscriptEnrichmentType"
-                  AND status IN (
-                    'PENDING'::"TranscriptEnrichmentStatus",
-                    'RETRY'::"TranscriptEnrichmentStatus",
-                    'RUNNING'::"TranscriptEnrichmentStatus"
-                  )
-                  AND (
-                    $1 = 'OFF'
-                    OR ($1 = 'MANUAL' AND trigger = 'AUTO'::"TranscriptEnrichmentTrigger")
-                  )
-                """,
-                policy_mode,
-            )
-            await conn.execute(
-                """
-                UPDATE "TranscriptEnrichment"
-                SET status = 'CANCELLED'::"TranscriptEnrichmentStatus",
-                    "startedAt" = NULL, "nextAttemptAt" = NULL, "updatedAt" = NOW()
-                WHERE status IN (
-                    'PENDING'::"TranscriptEnrichmentStatus",
-                    'RETRY'::"TranscriptEnrichmentStatus",
-                    'RUNNING'::"TranscriptEnrichmentStatus"
-                  )
-                  AND "cancelRequestedAt" IS NOT NULL
-                """
-            )
-            await conn.execute(
-                """
-                UPDATE "TranscriptEnrichment" e
-                SET status = 'CANCELLED'::"TranscriptEnrichmentStatus",
-                    "cancelRequestedAt" = COALESCE(e."cancelRequestedAt", NOW()),
-                    "startedAt" = NULL, "nextAttemptAt" = NULL,
-                    "staleReason" = 'parent-inactive', "updatedAt" = NOW()
-                FROM "Transcript" t
-                WHERE t.id = e."transcriptId" AND t."userId" = e."userId"
-                  AND e.type = 'WEB_RESEARCH'::"TranscriptEnrichmentType"
-                  AND e.status IN (
-                    'PENDING'::"TranscriptEnrichmentStatus",
-                    'RETRY'::"TranscriptEnrichmentStatus",
-                    'RUNNING'::"TranscriptEnrichmentStatus"
-                  )
-                  AND t.status <> 'ACTIVE'::"ContentStatus"
-                """
-            )
-            await conn.execute(
-                """
-                UPDATE "TranscriptEnrichment" e
-                SET status = 'CANCELLED'::"TranscriptEnrichmentStatus",
-                    "startedAt" = NULL, "nextAttemptAt" = NULL,
-                    "staleReason" = 'source-version-changed', "updatedAt" = NOW()
-                FROM "Transcript" t
-                WHERE t.id = e."transcriptId" AND t."userId" = e."userId"
-                  AND e.status IN (
-                    'PENDING'::"TranscriptEnrichmentStatus",
-                    'RETRY'::"TranscriptEnrichmentStatus",
-                    'RUNNING'::"TranscriptEnrichmentStatus"
-                  )
-                  AND (
-                    e."sourceVersion" <> t."sourceVersion"
-                    OR e."sourceChecksum" IS DISTINCT FROM t."sourceChecksum"
-                  )
-                """
-            )
-            await conn.execute(
-                """
-                UPDATE "TranscriptEnrichment"
-                SET status = 'FAILED'::"TranscriptEnrichmentStatus",
-                    "startedAt" = NULL, "nextAttemptAt" = NULL,
-                    "lastError" = COALESCE("lastError", 'RESEARCH_ATTEMPTS_EXHAUSTED'),
-                    "updatedAt" = NOW()
-                WHERE attempt >= 3
-                  AND "cancelRequestedAt" IS NULL
-                  AND (
-                    status IN (
-                      'PENDING'::"TranscriptEnrichmentStatus",
-                      'RETRY'::"TranscriptEnrichmentStatus"
-                    ) OR (
-                      status = 'RUNNING'::"TranscriptEnrichmentStatus"
-                      AND "startedAt" < NOW() - INTERVAL '10 minutes'
-                    )
-                  )
-                """
-            )
             rows = await conn.fetch(
                 """
                 WITH candidates AS (
@@ -209,8 +206,20 @@ async def claim_pending_transcript_enrichments(limit: int = 4) -> list[dict[str,
                 FROM "TranscriptEnrichment" e
                 JOIN "Transcript" t
                   ON t.id = e."transcriptId" AND t."userId" = e."userId"
+                LEFT JOIN "Job" parent_job
+                  ON parent_job."transcriptId" = e."transcriptId"
+                 AND parent_job."userId" = e."userId"
                 WHERE e.type = 'WEB_RESEARCH'::"TranscriptEnrichmentType"
                   AND t.status = 'ACTIVE'::"ContentStatus"
+                  AND (
+                    parent_job.id IS NULL
+                    OR parent_job.status IN (
+                      'DONE'::"JobStatus",
+                      'COMPLETED_WITH_WARNINGS'::"JobStatus",
+                      'FAILED'::"JobStatus",
+                      'CANCELLED'::"JobStatus"
+                    )
+                  )
                   AND $2 <> 'OFF'
                   AND (
                     $2 = 'AUTO'
@@ -242,11 +251,14 @@ async def claim_pending_transcript_enrichments(limit: int = 4) -> list[dict[str,
                 attempt = e.attempt + 1, "startedAt" = NOW(),
                 "nextAttemptAt" = NULL, "lastError" = NULL, "updatedAt" = NOW()
             FROM candidates, "Transcript" t
+            LEFT JOIN "Job" j
+              ON j."transcriptId" = t.id AND j."userId" = t."userId"
             WHERE e.id = candidates.id
               AND t.id = e."transcriptId" AND t."userId" = e."userId"
             RETURNING e.id, e."userId", e."transcriptId", e.trigger,
               e.attempt, e."sourceVersion", e."sourceChecksum", e."configRevisionId",
-              t.title, t."plainText", t."summaryMd"
+              t.title, t.url AS "sourceUrl", t."plainText", t."summaryMd",
+              j.id AS "jobId"
                 """,
                 limit,
                 policy_mode,
@@ -324,7 +336,7 @@ async def fail_transcript_enrichment(
     attempt: int,
     retry: bool,
     error: str,
-) -> bool:
+) -> str | None:
     async with connection() as conn:
         row = await conn.fetchrow(
             """
@@ -345,7 +357,7 @@ async def fail_transcript_enrichment(
                 "lastError" = $5, "updatedAt" = NOW()
             WHERE id = $1 AND "userId" = $2 AND attempt = $3
               AND status = 'RUNNING'::"TranscriptEnrichmentStatus"
-            RETURNING id
+            RETURNING status::text AS status
             """,
             enrichment_id,
             user_id,
@@ -353,4 +365,4 @@ async def fail_transcript_enrichment(
             retry,
             error[:500],
         )
-    return row is not None
+    return str(row["status"]) if row is not None else None
