@@ -276,6 +276,7 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
             return_value=pipeline.voxen_settings.OpenRouterModelConfig(
                 api_key="sk-test",
                 model="x-ai/grok-4.5",
+                fallback_model="x-ai/grok-4.1-fast",
             )
         ),
     )
@@ -286,7 +287,7 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
             return_value=SimpleNamespace(
                 text="Conteúdo público analisado.",
                 cost_usd=Decimal("0.002"),
-                model="x-ai/grok-4.5",
+                model="x-ai/grok-4.1-fast",
                 tokens_in=20,
                 tokens_out=8,
             )
@@ -314,6 +315,7 @@ async def test_x_analysis_cost_metadata_does_not_include_source_hostname_or_url(
 
     cost_meta = pipeline.db.insert_cost_event.await_args.kwargs["meta"]
     assert cost_meta == {"source": "x_analysis"}
+    assert pipeline._persist.await_args.kwargs["model"] == "x-ai/grok-4.1-fast"
     telemetry = repr((cost_meta, logger.entries))
     assert "x.com" not in telemetry
     assert "cliente_acme" not in telemetry

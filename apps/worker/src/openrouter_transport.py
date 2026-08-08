@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -130,6 +131,8 @@ async def transcribe_audio(
                 last_transient = exc
                 if candidate == candidates[-1]:
                     raise
+                if exc.retry_after is not None:
+                    await asyncio.sleep(exc.retry_after)
         if response is None or not response.is_success:
             assert last_transient is not None
             raise last_transient

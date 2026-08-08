@@ -15,7 +15,22 @@ export function normalizeOpenRouterError(error: unknown): string {
   if (status === 429 || /(?:provider returned 429|rate.?limit|http\s*429)/i.test(error.message)) {
     return 'O provedor atingiu um limite temporário. Tente novamente em instantes.';
   }
-  return error.message.slice(0, 500);
+  if (status === 401 || status === 403) {
+    return 'A OpenRouter recusou a autenticação. Peça ao administrador para revisar a configuração.';
+  }
+  if (status === 402) {
+    return 'A conta da OpenRouter não possui créditos suficientes para gerar esta resposta.';
+  }
+  if (status === 408 || (typeof status === 'number' && status >= 500)) {
+    return 'O provedor está temporariamente indisponível. Tente novamente em instantes.';
+  }
+  if (status === 400 || (typeof status === 'number' && status >= 400)) {
+    return 'A OpenRouter recusou a solicitação. Peça ao administrador para revisar o modelo configurado.';
+  }
+  if (error.message === 'Conclua a configuração da OpenRouter em Configurações.') {
+    return error.message;
+  }
+  return 'Falha inesperada ao gerar a resposta.';
 }
 
 export async function getChatModelConfig(): Promise<ChatModelConfig> {

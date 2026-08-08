@@ -4,6 +4,7 @@ import base64
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -396,10 +397,13 @@ class AudioFallbackClient:
 
 async def test_transcription_uses_fallback_after_transient_primary_failure(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     audio_path = tmp_path / "chunk.ogg"
     audio_path.write_bytes(b"fake-audio")
     client = AudioFallbackClient()
+    sleep = AsyncMock(return_value=None)
+    monkeypatch.setattr("src.openrouter_transport.asyncio.sleep", sleep)
 
     result = await transcribe_audio(
         audio_path=audio_path,
@@ -412,6 +416,7 @@ async def test_transcription_uses_fallback_after_transient_primary_failure(
     assert client.models == ["x-ai/grok-stt-1.0", "openai/gpt-4o-mini-transcribe"]
     assert result.model == "openai/gpt-4o-mini-transcribe"
     assert result.text == "Fallback funcionou"
+    sleep.assert_awaited_once_with(1)
 
 
 async def test_chat_completion_sends_ordered_model_fallback(tmp_path: Path) -> None:
