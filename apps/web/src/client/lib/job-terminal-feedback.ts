@@ -45,6 +45,7 @@ export interface BuildJobNotificationArgs {
   stage: Exclude<TerminalJobStage, 'cancelled'>;
   jobId: string;
   transcriptId?: string | null;
+  savedMediaReady?: boolean;
   errorMsg?: string | null;
   /** Localized strings from i18n. */
   labels: {
@@ -52,6 +53,8 @@ export interface BuildJobNotificationArgs {
     readyBody: string;
     failedTitle: string;
     failedBody: string;
+    mediaReadyTitle?: string;
+    mediaReadyBody?: string;
   };
   iconUrl?: string;
 }
@@ -61,12 +64,21 @@ export function buildJobSystemNotification(
 ): SystemNotificationContent {
   const icon = args.iconUrl ?? '/voxen-192.png';
   if (args.stage === 'done' || args.stage === 'completed_with_warnings') {
+    const isSavedMedia = args.savedMediaReady === true;
     return {
-      title: args.labels.readyTitle,
-      body: args.labels.readyBody,
+      title: isSavedMedia
+        ? (args.labels.mediaReadyTitle ?? args.labels.readyTitle)
+        : args.labels.readyTitle,
+      body: isSavedMedia
+        ? (args.labels.mediaReadyBody ?? args.labels.readyBody)
+        : args.labels.readyBody,
       icon,
       tag: `voxen-job-${args.jobId}-${args.stage}`,
-      url: args.transcriptId ? `/transcricoes/${args.transcriptId}` : `/jobs/${args.jobId}`,
+      url: args.transcriptId
+        ? `/transcricoes/${args.transcriptId}`
+        : isSavedMedia
+          ? '/downloads'
+          : `/jobs/${args.jobId}`,
     };
   }
   return {

@@ -77,6 +77,9 @@ const TranscricaoDetalhePage = lazy(() =>
     default: TranscricaoDetalhePage,
   })),
 );
+const SavedMediaPage = lazy(() =>
+  import('./pages/saved-media').then(({ SavedMediaPage }) => ({ default: SavedMediaPage })),
+);
 const NotasPage = lazy(() =>
   import('./pages/notas').then(({ NotasPage }) => ({ default: NotasPage })),
 );
@@ -212,6 +215,7 @@ function AppRoutes(): React.ReactElement {
         <Route path="/jobs/:id" element={<JobDetalhePage />} />
         <Route path="/transcricoes" element={<TranscricoesPage />} />
         <Route path="/transcricoes/:id" element={<TranscricaoDetalhePage />} />
+        <Route path="/downloads" element={<SavedMediaPage />} />
         <Route path="/notas" element={<NotasPage />} />
         <Route path="/notas/:id" element={<NotasPage />} />
         <Route path="/automacoes" element={<AutomacoesPage />} />

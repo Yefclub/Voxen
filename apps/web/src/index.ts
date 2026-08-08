@@ -17,6 +17,7 @@ import { jobsRoutes } from './routes/jobs';
 import { libraryRoutes } from './routes/library';
 import { setupRoutes } from './routes/setup';
 import { transcriptsRoutes } from './routes/transcripts';
+import { savedMediaRoutes } from './routes/saved-media';
 import { onboardingRoutes } from './routes/onboarding';
 import { accountRoutes } from './routes/account';
 import { costRoutes } from './routes/cost';
@@ -228,6 +229,7 @@ app.route('/api/jobs', jobsRoutes);
 
 // Transcripts endpoints (list + canonical Markdown from selected storage)
 app.route('/api/transcripts', transcriptsRoutes);
+app.route('/api/saved-media', savedMediaRoutes);
 app.route('/api/transcripts', transcriptEnrichmentRoutes);
 
 // Onboarding (admin first-run) + avatar upload

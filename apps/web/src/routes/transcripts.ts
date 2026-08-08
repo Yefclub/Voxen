@@ -19,6 +19,7 @@ import { invalidateGraphCache } from '../lib/graph-cache';
 import { notifyNewJob, publishJobEvent } from '../lib/job-events';
 import { rateLimit } from '../lib/rate-limit';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
+import * as savedMediaLifecycle from '../lib/saved-media-lifecycle';
 import {
   NoteAnchorInputSchema,
   NoteAnchorValidationError,
@@ -1116,6 +1117,9 @@ transcriptsRoutes.delete('/:id', async (c) => {
       title: true,
       originalObjectKey: true,
       previewObjectKey: true,
+      savedMedia: {
+        select: { id: true, objectKey: true },
+      },
     },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
@@ -1125,7 +1129,8 @@ transcriptsRoutes.delete('/:id', async (c) => {
 
   try {
     await Promise.all(
-      [transcript.mdPath, transcript.previewObjectKey, transcript.originalObjectKey]
+      savedMediaLifecycle
+        .transcriptPurgeStorageKeys(transcript)
         .filter((key): key is string => Boolean(key))
         .map((key) => storageDelete(key)),
     );
@@ -1137,7 +1142,7 @@ transcriptsRoutes.delete('/:id', async (c) => {
     return c.json({ error: 'Falha ao apagar arquivos no armazenamento.' }, 502);
   }
 
-  await db.transcript.delete({ where: { id } });
+  await savedMediaLifecycle.deleteTranscriptAndRestoreSavedMedia(id, transcript.savedMedia);
   await deleteBrainForSource(userId, 'TRANSCRIPT', id);
   await invalidateGraphCache(userId);
   return c.json({ ok: true, deletedId: id });

@@ -32,6 +32,8 @@ import { storageCreateDirectUpload, storageDelete, storageHead } from '../lib/st
 import { rateLimit } from '../lib/rate-limit';
 import { createSubscriber } from '../lib/redis';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
+import { createQueuedJob, retryQueuedJobForUser } from '../lib/job-queue';
+import { cancelActiveSavedMediaJob } from '../lib/saved-media-lifecycle';
 import {
   isTerminalStage,
   jobChannel,
@@ -62,34 +64,6 @@ type SseConnection = {
   isClosed(): boolean;
   onClose(fn: () => void | Promise<void>): void;
 };
-
-type QueuedJobType =
-  | 'DOWNLOAD_AND_TRANSCRIBE'
-  | 'SCRAPE_WEB'
-  | 'UPLOAD_AND_TRANSCRIBE'
-  | 'UPLOAD_AND_ANALYZE_IMAGE'
-  | 'UPLOAD_AND_ANALYZE_DOCUMENT'
-  | 'ANALYZE_X';
-
-async function createQueuedJob(
-  userId: string,
-  type: QueuedJobType,
-  sourceUrl: string,
-): Promise<{ id: string; status: string; sourceUrl: string }> {
-  return db.$transaction(async (tx) => {
-    // Compartilha o lock da publicação de settings: a revisão lida e o job
-    // nascem no mesmo corte lógico da configuração global.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('voxen:global-settings'))`;
-    const revision = await tx.configRevision.findFirst({
-      orderBy: { number: 'desc' },
-      select: { id: true },
-    });
-    return tx.job.create({
-      data: { userId, type, status: 'QUEUED', sourceUrl, configRevisionId: revision?.id },
-      select: { id: true, status: true, sourceUrl: true },
-    });
-  });
-}
 
 const SSE_HEARTBEAT_MS = 10_000;
 const SSE_RETRY_MS = 5_000;
@@ -882,6 +856,9 @@ jobsRoutes.get('/', async (c) => {
             durationSec: true,
           },
         },
+        savedMedia: {
+          select: { id: true, title: true, thumbnailUrl: true, durationSec: true },
+        },
       },
     }),
   ]);
@@ -900,10 +877,11 @@ jobsRoutes.get('/', async (c) => {
       queuedAt: job.queuedAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
-      title: job.transcript?.title ?? null,
-      thumbnailUrl: job.transcript?.thumbnailUrl ?? null,
+      title: job.transcript?.title ?? job.savedMedia?.title ?? null,
+      thumbnailUrl: job.transcript?.thumbnailUrl ?? job.savedMedia?.thumbnailUrl ?? null,
       transcriptSource: job.transcript?.source ?? null,
-      durationSec: job.transcript?.durationSec ?? null,
+      durationSec: job.transcript?.durationSec ?? job.savedMedia?.durationSec ?? null,
+      savedMediaId: job.savedMedia?.id ?? null,
     })),
     page,
     limit,
@@ -938,6 +916,9 @@ jobsRoutes.get('/:id', async (c) => {
           source: true,
           thumbnailUrl: true,
         },
+      },
+      savedMedia: {
+        select: { id: true, title: true, thumbnailUrl: true },
       },
       progressEvents: {
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -974,10 +955,11 @@ jobsRoutes.get('/:id', async (c) => {
       queuedAt: job.queuedAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
-      title: job.transcript?.title ?? null,
+      title: job.transcript?.title ?? job.savedMedia?.title ?? null,
       summary,
       transcriptSource: job.transcript?.source ?? null,
-      thumbnailUrl: job.transcript?.thumbnailUrl ?? null,
+      thumbnailUrl: job.transcript?.thumbnailUrl ?? job.savedMedia?.thumbnailUrl ?? null,
+      savedMediaId: job.savedMedia?.id ?? null,
       events: [...job.progressEvents].reverse().map((event) => ({
         id: event.id,
         jobId: job.id,
@@ -995,57 +977,26 @@ jobsRoutes.get('/:id', async (c) => {
 jobsRoutes.post('/:id/retry', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const original = await db.job.findFirst({
-    where: { id, userId },
-    select: { id: true, status: true, sourceUrl: true, type: true },
-  });
-  if (!original) {
-    return c.json({ error: 'Job não encontrado.' }, 404);
-  }
-  if (original.status !== 'FAILED' && original.status !== 'CANCELLED') {
+  const result = await retryQueuedJobForUser(userId, id);
+  if (result.outcome === 'missing') return c.json({ error: 'Job não encontrado.' }, 404);
+  if (result.outcome === 'invalid_state') {
     return c.json({ error: 'Só é possível retentar jobs que falharam ou foram cancelados.' }, 400);
   }
-
-  // Se já existe Transcript com esta URL pro user, não vale retentar
-  const existingTranscript = await db.transcript.findFirst({
-    where: { userId, url: original.sourceUrl, status: { not: 'TRASH' } },
-    select: { id: true },
-  });
-  if (existingTranscript) {
+  if (result.outcome === 'existing_transcript') {
     return c.json(
-      {
-        error: 'Você já transcreveu esta URL.',
-        transcriptId: existingTranscript.id,
-      },
+      { error: 'Você já transcreveu esta URL.', transcriptId: result.transcriptId },
       409,
     );
   }
-
-  // Cria novo job (partial unique index permite porque o original é FAILED)
-  let newJob: { id: string; status: string; sourceUrl: string };
-  try {
-    newJob = await createQueuedJob(userId, original.type, original.sourceUrl);
-  } catch (err) {
-    // Race: outro retry já criou um job ativo. Devolve o que existe.
-    if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'P2002') {
-      const active = await db.job.findFirst({
-        where: {
-          userId,
-          sourceUrl: original.sourceUrl,
-          status: { in: ['QUEUED', 'RUNNING'] },
-        },
-        select: { id: true, status: true, sourceUrl: true },
-      });
-      if (active) {
-        return c.json(
-          { jobId: active.id, status: active.status, sourceUrl: active.sourceUrl },
-          200,
-        );
-      }
-      return c.json({ error: 'Esta URL já está sendo processada.' }, 409);
-    }
-    throw err;
+  if (result.outcome === 'media_unavailable') {
+    return c.json({ error: 'A mídia não está disponível neste estado para nova tentativa.' }, 409);
   }
+  if (result.outcome === 'inflight') {
+    return result.jobId
+      ? c.json({ jobId: result.jobId, status: result.status, sourceUrl: result.sourceUrl }, 200)
+      : c.json({ error: 'Esta URL já está sendo processada.' }, 409);
+  }
+  const newJob = { id: result.jobId, status: result.status, sourceUrl: result.sourceUrl };
 
   await notifyNewJob(newJob.id).catch((err) => {
     console.error('[jobs] notifyNewJob failed', safeErrorDiagnostic('JOB_NOTIFY_FAILED', err));
@@ -1117,7 +1068,7 @@ jobsRoutes.post('/:id/cancel', async (c) => {
   const id = c.req.param('id');
   const job = await db.job.findFirst({
     where: { id, userId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, type: true, savedMediaId: true },
   });
   if (!job) {
     return c.json({ error: 'Job não encontrado.' }, 404);
@@ -1125,14 +1076,10 @@ jobsRoutes.post('/:id/cancel', async (c) => {
   if (job.status !== 'QUEUED' && job.status !== 'RUNNING') {
     return c.json({ error: 'Só é possível cancelar jobs ativos.' }, 400);
   }
-  await db.job.update({
-    where: { id },
-    data: {
-      status: 'CANCELLED',
-      errorMsg: 'Cancelado pelo usuário.',
-      finishedAt: new Date(),
-    },
-  });
+  const cancelled = await cancelActiveSavedMediaJob(userId, job);
+  if (!cancelled) {
+    return c.json({ error: 'Só é possível cancelar jobs ativos.' }, 400);
+  }
   await requestCancel(id).catch(() => undefined);
   await publishJobEvent(userId, {
     jobId: id,

@@ -110,6 +110,38 @@ describe('buildJobSystemNotification', () => {
       url: '/jobs/job-2',
     });
   });
+
+  test('download concluído aponta para a biblioteca de mídia', () => {
+    expect(
+      buildJobSystemNotification({
+        stage: 'done',
+        jobId: 'job-media',
+        savedMediaReady: true,
+        labels: {
+          ...labels,
+          mediaReadyTitle: 'Mídia salva.',
+          mediaReadyBody: 'Disponível em Downloads.',
+        },
+      }),
+    ).toMatchObject({
+      title: 'Mídia salva.',
+      body: 'Disponível em Downloads.',
+      url: '/downloads',
+    });
+  });
+
+  test('outro job sem transcrição continua apontando para seus detalhes', () => {
+    expect(
+      buildJobSystemNotification({
+        stage: 'done',
+        jobId: 'job-maintenance',
+        labels,
+      }),
+    ).toMatchObject({
+      title: 'Transcrição pronta.',
+      url: '/jobs/job-maintenance',
+    });
+  });
 });
 
 describe('shouldAutoOpenTranscript', () => {

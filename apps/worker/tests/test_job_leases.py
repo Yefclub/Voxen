@@ -97,6 +97,49 @@ async def test_reaper_requeues_before_limit_and_fails_at_limit(
     assert db.WORKER_INTERRUPTED_MESSAGE in repr(conn.executed)
 
 
+async def test_reaper_restores_saved_media_when_attempts_are_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _RecoveryConnection(
+        [
+            {
+                "id": "download",
+                "userId": "u1",
+                "type": "DOWNLOAD_MEDIA",
+                "attempt": 3,
+                "transcriptId": None,
+                "savedMediaId": "media-download",
+            },
+            {
+                "id": "process",
+                "userId": "u1",
+                "type": "UPLOAD_AND_TRANSCRIBE",
+                "attempt": 3,
+                "transcriptId": None,
+                "savedMediaId": "media-process",
+            },
+        ]
+    )
+
+    @asynccontextmanager
+    async def fake_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", fake_connection)
+
+    result = await db.recover_expired_jobs(max_attempts=3)
+
+    assert [item["action"] for item in result] == ["failed", "failed"]
+    media_updates = [
+        (query, args) for query, args in conn.executed if 'UPDATE "SavedMedia"' in query
+    ]
+    assert [args[:2] for _, args in media_updates] == [
+        ("media-download", "FAILED"),
+        ("media-process", "READY"),
+    ]
+    assert all(args[4] == "u1" for _, args in media_updates)
+
+
 async def test_checkpoint_gets_only_one_bounded_extra_attempt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

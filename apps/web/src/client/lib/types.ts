@@ -76,6 +76,7 @@ export type JobStatus =
   | 'FAILED'
   | 'CANCELLED';
 export type JobType =
+  | 'DOWNLOAD_MEDIA'
   | 'DOWNLOAD_AND_TRANSCRIBE'
   | 'SCRAPE_WEB'
   | 'UPLOAD_AND_TRANSCRIBE'
@@ -90,6 +91,7 @@ export interface JobSummary {
   sourceUrl: string;
   errorMsg: string | null;
   transcriptId: string | null;
+  savedMediaId?: string | null;
   progressStage?: string | null;
   progressPercent?: number | null;
   progressedAt?: string | null;

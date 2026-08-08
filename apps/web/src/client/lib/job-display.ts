@@ -33,6 +33,10 @@ export function stageLabel(stage: string, t?: TranslateFn, jobType?: JobType): s
     queued: t?.('job.stage.queued') ?? 'Na fila',
     running: t?.('job.stage.running') ?? 'Iniciando',
     downloading: t?.('job.stage.downloading') ?? 'Baixando vídeo',
+    probing_media: t?.('job.stage.probingMedia') ?? 'Lendo dados da mídia',
+    downloading_media: t?.('job.stage.downloadingMedia') ?? 'Baixando mídia',
+    storing_media: t?.('job.stage.storingMedia') ?? 'Salvando mídia',
+    media_ready: t?.('job.stage.mediaReady') ?? 'Mídia pronta',
     preparing_upload: t?.('job.stage.preparingUpload') ?? 'Preparando arquivo',
     analyzing_image: t?.('job.stage.analyzingImage') ?? 'Analisando imagem',
     analyzing_x: t?.('job.stage.analyzingX') ?? 'Analisando X',
@@ -105,6 +109,7 @@ function humanizeStage(stage: string): string {
 
 export function jobTypeLabel(type: JobType | undefined, t?: TranslateFn): string {
   const map: Record<JobType, string> = {
+    DOWNLOAD_MEDIA: t?.('job.type.download') ?? 'Download de mídia',
     DOWNLOAD_AND_TRANSCRIBE: t?.('job.type.video') ?? 'Vídeo',
     SCRAPE_WEB: t?.('job.type.web') ?? 'Página web',
     UPLOAD_AND_TRANSCRIBE: t?.('job.type.upload') ?? 'Arquivo de mídia',

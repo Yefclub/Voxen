@@ -13,7 +13,7 @@ import {
   enChatReferenceCanvasMessages,
   ptBrChatReferenceCanvasMessages,
 } from './chat-reference-canvas-i18n';
-import * as knowledgeFeatureMessages from './knowledge-features-i18n';
+import * as featureMessages from './feature-messages';
 import { enReleaseUpdateMessages, ptBrReleaseUpdateMessages } from './release-update-i18n';
 import { enResearchPolicyMessages, ptBrResearchPolicyMessages } from './research-policy-i18n';
 import { enSsoMessages, ptBrSsoMessages } from './sso-i18n';
@@ -31,7 +31,7 @@ const STORAGE_KEY = 'voxen:locale';
 const ptBRMessages = {
   ...ptBrReleaseUpdateMessages,
   ...ptBrTranscriptAnnotationMessages,
-  ...knowledgeFeatureMessages.ptBrKnowledgeFeatureMessages,
+  ...featureMessages.ptBrFeatureMessages,
   ...ptBrResearchPolicyMessages,
   ...ptBrChatReferenceCanvasMessages,
   'common.back': 'Voltar',
@@ -1422,7 +1422,7 @@ export type TranslateFn = (key: I18nKey, vars?: Record<string, string | number>)
 const enMessages: Record<I18nKey, string> = {
   ...enReleaseUpdateMessages,
   ...enTranscriptAnnotationMessages,
-  ...knowledgeFeatureMessages.enKnowledgeFeatureMessages,
+  ...featureMessages.enFeatureMessages,
   ...enResearchPolicyMessages,
   ...enChatReferenceCanvasMessages,
   'common.back': 'Back',

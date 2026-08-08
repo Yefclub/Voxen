@@ -12,6 +12,7 @@ import {
 
 interface JobEvent {
   jobId: string;
+  type: string;
   stage: string;
   percent?: number;
   transcriptId?: string;
@@ -21,6 +22,7 @@ interface JobEvent {
 
 interface JobListItem {
   id: string;
+  type: string;
   status: string;
   transcriptId?: string | null;
   errorMsg?: string | null;
@@ -86,6 +88,7 @@ export function useJobsWatcher(enabled: boolean, onNavigate: (path: string) => v
         await notifyTerminalJob(
           {
             jobId: job.id,
+            type: job.type,
             stage,
             transcriptId: job.transcriptId ?? undefined,
             errorMsg: job.errorMsg ?? undefined,
@@ -151,12 +154,15 @@ async function notifyTerminalJob(
       stage: evt.stage,
       jobId: evt.jobId,
       transcriptId: evt.transcriptId,
+      savedMediaReady: evt.type === 'DOWNLOAD_MEDIA',
       errorMsg: evt.errorMsg,
       labels: {
         readyTitle: t('job.toast.ready'),
         readyBody: t('job.toast.readyDescription'),
         failedTitle: t('job.toast.failed'),
         failedBody: t('job.toast.failedDescription'),
+        mediaReadyTitle: t('savedMedia.toastReady'),
+        mediaReadyBody: t('savedMedia.toastReadyDescription'),
       },
     });
     const shown = await showSystemNotification(content);
@@ -166,14 +172,25 @@ async function notifyTerminalJob(
   }
 
   if (evt.stage === 'done') {
-    toast.success(t('job.toast.ready'), {
-      description: t('job.toast.readyDescription'),
+    const savedMediaReady = evt.type === 'DOWNLOAD_MEDIA';
+    toast.success(t(savedMediaReady ? 'savedMedia.toastReady' : 'job.toast.ready'), {
+      description: t(
+        savedMediaReady ? 'savedMedia.toastReadyDescription' : 'job.toast.readyDescription',
+      ),
       action: evt.transcriptId
         ? {
             label: t('common.open'),
             onClick: () => onNavigate(`/transcricoes/${evt.transcriptId}`),
           }
-        : undefined,
+        : savedMediaReady
+          ? {
+              label: t('common.open'),
+              onClick: () => onNavigate('/downloads'),
+            }
+          : {
+              label: t('job.toast.view'),
+              onClick: () => onNavigate(`/jobs/${evt.jobId}`),
+            },
     });
     return;
   }
