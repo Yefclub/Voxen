@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.5-dev.1786207296 — 2026-08-08 · Dev
+
+### ✨ Save private media before adding it to the knowledge base
+
+The new Downloads page stores supported YouTube, Instagram, TikTok, and X videos in the configured local volume or S3-compatible storage without exposing them to Graph, chat, AI retrieval, or MCP. Each user gets an isolated library, authenticated range downloads, durable queue progress, bounded files, safe retries, and an explicit action to process a saved file through Voxen later without downloading the source again. Permanently deleting the linked transcript keeps the saved media available for future processing.
+
 ## v0.14.5-dev.1786200221 — 2026-08-08 · Dev
 
 ### ✨ Chat references open inside Voxen
