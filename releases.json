@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786233786",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Recover interrupted saved-media migrations during startup",
+    "body": "Voxen now detects the known interrupted saved-media migration, repairs and validates its\ndatabase objects idempotently, and resumes pending Prisma migrations. Unrecognized migration\nfailures continue to stop startup for explicit operator review.",
+    "pr": 716,
+    "author": "Kalyel",
+    "date": "2026-08-08T21:02:56-03:00",
+    "translations": {
+      "en": {
+        "title": "Recover interrupted saved-media migrations during startup",
+        "body": "Voxen now detects the known interrupted saved-media migration, repairs and validates its\ndatabase objects idempotently, and resumes pending Prisma migrations. Unrecognized migration\nfailures continue to stop startup for explicit operator review."
+      },
+      "pt-BR": {
+        "title": "Recupere migrations interrompidas da biblioteca de mídia na inicialização",
+        "body": "A Voxen agora detecta a migration conhecida e interrompida da biblioteca de mídia, repara e\nvalida seus objetos no banco de forma idempotente e retoma as migrations pendentes do Prisma.\nFalhas de migrations não reconhecidas continuam interrompendo a inicialização para revisão\nexplícita do operador."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/716"
+  },
+  {
     "version": "0.14.5-dev.1786224946",
     "channel": "dev",
     "type": "feat",

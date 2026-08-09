@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.5-dev.1786233786 — 2026-08-08 · Dev
+
+### 🐛 Recover interrupted saved-media migrations during startup
+
+Voxen now detects the known interrupted saved-media migration, repairs and validates its
+database objects idempotently, and resumes pending Prisma migrations. Unrecognized migration
+failures continue to stop startup for explicit operator review.
+
 ## v0.14.5-dev.1786224946 — 2026-08-08 · Dev
 
 ### ✨ Research gaps with the original source and a visible trail
