@@ -252,7 +252,7 @@ echo "[easypanel] generating Prisma Client..."
 prisma generate --schema=/app/prisma/schema.prisma
 
 echo "[easypanel] applying migrations..."
-prisma migrate deploy --schema=/app/prisma/schema.prisma
+/prisma-migrate-deploy.sh /app/prisma/schema.prisma
 
 # ---------------------------------------------------------------------------
 # chisel — servidor de túnel reverso (opcional, dirigido por token).

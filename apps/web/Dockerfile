@@ -94,7 +94,8 @@ COPY --from=build-front --chown=voxen:voxen /app/apps/web/dist ./apps/web/dist
 # Changelog manifesto (página Novidades) — gerado pelo pipeline version-dev.
 COPY --chown=voxen:voxen releases.json ./releases.json
 COPY --chown=voxen:voxen apps/web/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY --chown=voxen:voxen scripts/prisma-migrate-deploy.sh /prisma-migrate-deploy.sh
+RUN chmod +x /entrypoint.sh /prisma-migrate-deploy.sh
 
 USER voxen
 EXPOSE 3000

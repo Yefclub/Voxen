@@ -67,6 +67,10 @@ retrieval, Graph, chat, or MCP until the user explicitly processes it.
 ## Acceptance criteria
 
 - [x] A new `/downloads` page lists only the current user's saved media.
+- [x] A deployment that contains the known failed or partially applied saved-media
+      migration repairs only that migration, validates the expected database objects,
+      records it as applied, and resumes the remaining Prisma migrations.
+- [x] Unknown failed migrations remain fail-closed and require operator intervention.
 - [x] Supported URLs can be queued without entering the knowledge base.
 - [x] Volume and S3 drivers both persist and stream the saved object.
 - [x] The queue exposes durable download stages and terminal failures.
