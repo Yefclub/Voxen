@@ -9,6 +9,7 @@ import asyncpg
 import pytest
 
 from src import db, knowledge_deletion
+from src.graph_index_lease import GraphIndexLease
 from src.job_lease import JobLeaseToken, activate_job_lease
 
 pytestmark = pytest.mark.skipif(
@@ -24,7 +25,29 @@ async def _reset_db_pool_between_event_loops() -> None:
     await db.close_pool()
 
 
-async def test_worker_deletes_only_owned_note_and_graph_evidence() -> None:
+class _InMemoryLeaseRedis:
+    async def set(
+        self,
+        name: str,
+        value: str,
+        *,
+        px: int,
+        nx: bool,
+    ) -> object:
+        return True
+
+    async def eval(
+        self,
+        script: str,
+        numkeys: int,
+        *keys_and_args: str | int,
+    ) -> object:
+        return 1
+
+
+async def test_worker_deletes_only_owned_note_and_graph_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     assert os.environ.get("DATABASE_URL")
     conn = await asyncpg.connect(os.environ["DATABASE_URL"])
     suffix = uuid.uuid4().hex
@@ -35,6 +58,19 @@ async def test_worker_deletes_only_owned_note_and_graph_evidence() -> None:
     owner_node = f"delete-owner-node-{suffix}"
     foreign_node = f"delete-foreign-node-{suffix}"
     now = datetime.now(UTC).replace(tzinfo=None)
+
+    async def acquire_test_graph_lease(user_id: str) -> GraphIndexLease:
+        return GraphIndexLease(
+            key=f"test:graph-lease:{user_id}",
+            owner="postgres-integration-test",
+            redis=_InMemoryLeaseRedis(),
+        )
+
+    monkeypatch.setattr(
+        knowledge_deletion,
+        "acquire_graph_index_lease",
+        acquire_test_graph_lease,
+    )
     try:
         await conn.executemany(
             """
