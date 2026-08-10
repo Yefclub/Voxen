@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
+import { enMermaidCanvasMessages, ptBrMermaidCanvasMessages } from './mermaid-canvas-i18n';
 import { enNoteVersioningMessages, ptBrNoteVersioningMessages } from './note-versioning-i18n';
 import {
   enChatReferenceCanvasMessages,
@@ -38,6 +39,7 @@ const ptBRMessages = {
   ...ptBrChatReferenceCanvasMessages,
   ...ptBrTranscriptFlowMessages,
   ...ptBrNoteVersioningMessages,
+  ...ptBrMermaidCanvasMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -1416,6 +1418,7 @@ export type I18nKey = keyof typeof ptBRMessages;
 export type TranslateFn = (key: I18nKey, vars?: Record<string, string | number>) => string;
 
 const enMessages: Record<I18nKey, string> = {
+  ...enMermaidCanvasMessages,
   ...enNoteVersioningMessages,
   ...enReleaseUpdateMessages,
   ...enTranscriptAnnotationMessages,
