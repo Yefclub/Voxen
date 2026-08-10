@@ -232,7 +232,7 @@ export function JobDetalhePage(): React.ReactElement {
                 </span>
               </div>
               <h1 className="truncate font-mono text-[15px] font-medium tracking-tight text-[var(--color-app-fg)]">
-                {displayJobSource(job.sourceUrl)}
+                {job.title?.trim() || displayJobSource(job.sourceUrl)}
               </h1>
             </div>
             <Badge variant={variant} className="text-xs">
@@ -312,6 +312,7 @@ export function JobDetalhePage(): React.ReactElement {
                   size="sm"
                   onClick={() => setConfirmCancelOpen(true)}
                   disabled={cancelling}
+                  hidden={job.type === 'DELETE_KNOWLEDGE' && job.status !== 'QUEUED'}
                 >
                   {cancelling ? <Spinner /> : <X className="h-3.5 w-3.5" />}
                   {t('jobDetail.cancel')}
@@ -330,7 +331,6 @@ export function JobDetalhePage(): React.ReactElement {
             </div>
           )}
 
-          {/* Estado de sucesso */}
           {job.status === 'DONE' && job.transcriptId && (
             <motion.div
               initial={reduceMotion ? false : { opacity: 0, y: 6 }}

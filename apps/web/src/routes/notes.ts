@@ -13,9 +13,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { auth } from '../lib/auth';
-import { deleteBrainForSources, reindexNotesBrain } from '../lib/brain';
 import { db } from '../lib/db';
-import { invalidateGraphCache } from '../lib/graph-cache';
+import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
 import {
   NoteAnchorInputSchema,
   NoteAnchorValidationError,
@@ -405,17 +404,21 @@ notesRoutes.patch('/:id', async (c) => {
 notesRoutes.delete('/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const existing = await db.note.findFirst({
-    where: { id, userId },
-    select: { id: true },
-  });
-  if (!existing) return c.json({ error: 'Nota não encontrada.' }, 404);
-  const noteIds = [id, ...(await getDescendantIds(id))];
-  await db.note.delete({ where: { id } });
-  await deleteBrainForSources(userId, 'NOTE', noteIds);
-  await reindexNotesBrain(userId);
-  await invalidateGraphCache(userId);
-  return c.json({ ok: true });
+  try {
+    const result = await enqueueKnowledgeDeletion({ userId, type: 'NOTE', id });
+    return c.json(
+      {
+        ok: true,
+        queued: true,
+        jobId: result.job.id,
+        target: result.target,
+        reused: !result.created,
+      },
+      202,
+    );
+  } catch (error) {
+    return knowledgeDeletionHttpError(error) ?? Promise.reject(error);
+  }
 });
 
 // Helper: coleta IDs dos descendentes (BFS) pra prevenir ciclo na move.

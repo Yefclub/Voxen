@@ -1,6 +1,10 @@
 import type { Prisma } from '../../../prisma-generated/client';
 
-type ApprovalResource = { id: string; kind: 'note' | 'transcript' } | null;
+type ApprovalResource =
+  | { id: string; kind: 'note' }
+  | { id: string; kind: 'transcript' }
+  | { id: string; kind: 'knowledge'; jobId: string }
+  | null;
 
 function toolMatchesApproval(tool: Record<string, unknown>, approvalId: string): boolean {
   if (!tool.output || typeof tool.output !== 'object') return false;
@@ -19,7 +23,9 @@ function resolvedOutput(
     ...(resource
       ? resource.kind === 'note'
         ? { noteId: resource.id }
-        : { transcriptId: resource.id }
+        : resource.kind === 'transcript'
+          ? { transcriptId: resource.id }
+          : { targetId: resource.id, deletionJobId: resource.jobId }
       : { dismissed: true }),
   };
 }

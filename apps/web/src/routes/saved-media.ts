@@ -3,10 +3,11 @@ import { z } from 'zod';
 import { auth } from '../lib/auth';
 import { db } from '../lib/db';
 import { notifyNewJob, publishJobEvent } from '../lib/job-events';
+import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
 import { uploadSourceUrl } from '../lib/media-upload';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
 import { isSetupComplete } from '../lib/settings';
-import { storageDelete, storageGet, storageHead } from '../lib/storage';
+import { storageGet, storageHead } from '../lib/storage';
 import { buildOriginalResponseInit, parseSingleByteRange } from '../lib/transcript-media-range';
 import { parseVideoUrl } from '../lib/video-url';
 
@@ -315,45 +316,19 @@ savedMediaRoutes.get('/:id/content', async (c) => {
 savedMediaRoutes.delete('/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const prepared = await db.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT id FROM "SavedMedia" WHERE id = ${id} AND "userId" = ${userId} FOR UPDATE`;
-    const media = await tx.savedMedia.findFirst({
-      where: { id, userId },
-      select: { id: true, status: true, objectKey: true, transcriptId: true },
-    });
-    if (!media) return { outcome: 'missing' as const };
-    if (media.transcriptId || media.status === 'PROCESSED') {
-      return { outcome: 'processed' as const };
-    }
-    if (['QUEUED', 'DOWNLOADING', 'PROCESSING'].includes(media.status)) {
-      return { outcome: 'active' as const };
-    }
-    await tx.savedMedia.update({
-      where: { id: media.id },
-      data: { status: 'DELETING', errorMsg: null },
-    });
-    return { outcome: 'prepared' as const, objectKey: media.objectKey };
-  });
-  if (prepared.outcome === 'missing') return c.json({ error: 'Mídia não encontrada.' }, 404);
-  if (prepared.outcome === 'processed') {
-    return c.json({ error: 'A mídia processada permanece vinculada ao conteúdo.' }, 409);
-  }
-  if (prepared.outcome === 'active') {
-    return c.json({ error: 'Aguarde ou cancele o processamento antes de apagar.' }, 409);
-  }
   try {
-    if (prepared.objectKey) await storageDelete(prepared.objectKey);
-  } catch (error) {
-    console.error(
-      '[saved-media] object cleanup failed',
-      safeErrorDiagnostic('SAVED_MEDIA_OBJECT_CLEANUP_FAILED', error),
+    const result = await enqueueKnowledgeDeletion({ userId, type: 'SAVED_MEDIA', id });
+    return c.json(
+      {
+        ok: true,
+        queued: true,
+        jobId: result.job.id,
+        target: result.target,
+        reused: !result.created,
+      },
+      202,
     );
-    await db.savedMedia.updateMany({
-      where: { id, userId, status: 'DELETING' },
-      data: { status: 'FAILED', errorMsg: 'Falha ao apagar o arquivo. Tente novamente.' },
-    });
-    return c.json({ error: 'Falha ao apagar o arquivo. Tente novamente.' }, 502);
+  } catch (error) {
+    return knowledgeDeletionHttpError(error) ?? Promise.reject(error);
   }
-  await db.savedMedia.deleteMany({ where: { id, userId, status: 'DELETING' } });
-  return c.json({ ok: true });
 });

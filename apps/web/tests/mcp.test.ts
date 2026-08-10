@@ -258,6 +258,7 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(names).toContain('voxen_review_transcript_enrichment');
     expect(names).toContain('voxen_edit_transcript_enrichment');
     expect(names).toContain('voxen_delete_transcript_enrichment');
+    expect(names).toContain('voxen_delete_knowledge');
     const createNote = tools.find((t) => t.name === 'voxen_create_note');
     expect(createNote?.annotations?.readOnlyHint).toBe(false);
   });
@@ -326,9 +327,147 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(writeNames).toContain('voxen_review_transcript_enrichment');
     expect(writeNames).toContain('voxen_patch_transcript');
     expect(writeNames).toContain('voxen_restore_transcript_correction');
+    expect(writeNames).toContain('voxen_delete_knowledge');
     expect(writeNames).not.toContain('voxen_read_transcript');
     expect(writeNames).not.toContain('voxen_read_transcript_enrichment');
     expect(writeNames).not.toContain('voxen_search_transcript_content');
+  });
+
+  it('voxen_delete_knowledge exige confirmação exata e apenas enfileira a exclusão', async () => {
+    const otherUser = await db.user.create({
+      data: {
+        email: `mcp-delete-isolation-${Date.now()}@voxen.local`,
+        name: 'Other workspace',
+        status: 'APPROVED',
+      },
+    });
+    const note = await db.note.create({
+      data: {
+        userId,
+        kind: 'NOTE',
+        title: 'Delete me through MCP',
+        content: 'This row must remain until the worker claims the deletion job.',
+      },
+    });
+    const foreignNote = await db.note.create({
+      data: {
+        userId: otherUser.id,
+        kind: 'NOTE',
+        title: 'Foreign note',
+        content: 'Must never be visible or deletable through another workspace token.',
+      },
+    });
+    try {
+      const foreignAttempt = await call(
+        {
+          jsonrpc: '2.0',
+          id: 53,
+          method: 'tools/call',
+          params: {
+            name: 'voxen_delete_knowledge',
+            arguments: {
+              target_type: 'NOTE',
+              target_id: foreignNote.id,
+              expected_title: foreignNote.title,
+              confirm: true,
+            },
+          },
+        },
+        WRITE_TOKEN,
+      );
+      const foreignBody = (await foreignAttempt.json()) as {
+        result?: { isError?: boolean };
+      };
+      expect(foreignBody.result?.isError).toBe(true);
+      expect(await db.job.count({ where: { userId, deletionTargetId: foreignNote.id } })).toBe(0);
+
+      const staleConfirmation = await call(
+        {
+          jsonrpc: '2.0',
+          id: 54,
+          method: 'tools/call',
+          params: {
+            name: 'voxen_delete_knowledge',
+            arguments: {
+              target_type: 'NOTE',
+              target_id: note.id,
+              expected_title: 'Wrong title',
+              confirm: true,
+            },
+          },
+        },
+        WRITE_TOKEN,
+      );
+      const staleBody = (await staleConfirmation.json()) as {
+        result?: { isError?: boolean };
+      };
+      expect(staleBody.result?.isError).toBe(true);
+      expect(await db.job.count({ where: { userId, deletionTargetId: note.id } })).toBe(0);
+
+      const accepted = await call(
+        {
+          jsonrpc: '2.0',
+          id: 55,
+          method: 'tools/call',
+          params: {
+            name: 'voxen_delete_knowledge',
+            arguments: {
+              target_type: 'NOTE',
+              target_id: note.id,
+              expected_title: note.title,
+              confirm: true,
+            },
+          },
+        },
+        WRITE_TOKEN,
+      );
+      const acceptedBody = (await accepted.json()) as {
+        result?: {
+          structuredContent?: { jobId?: string; status?: string; reused?: boolean };
+        };
+      };
+      const deletion = acceptedBody.result?.structuredContent;
+      expect(deletion).toMatchObject({ status: 'QUEUED', reused: false });
+      expect(await db.note.findFirst({ where: { id: note.id, userId } })).not.toBeNull();
+      const job = await db.job.findFirstOrThrow({
+        where: { id: deletion?.jobId, userId },
+      });
+      expect(job).toMatchObject({
+        type: 'DELETE_KNOWLEDGE',
+        deletionTargetType: 'NOTE',
+        deletionTargetId: note.id,
+        deletionTargetTitle: note.title,
+      });
+
+      const duplicate = await call(
+        {
+          jsonrpc: '2.0',
+          id: 56,
+          method: 'tools/call',
+          params: {
+            name: 'voxen_delete_knowledge',
+            arguments: {
+              target_type: 'NOTE',
+              target_id: note.id,
+              expected_title: note.title,
+              confirm: true,
+            },
+          },
+        },
+        WRITE_TOKEN,
+      );
+      const duplicateBody = (await duplicate.json()) as {
+        result?: { structuredContent?: { jobId?: string; reused?: boolean } };
+      };
+      expect(duplicateBody.result?.structuredContent).toMatchObject({
+        jobId: job.id,
+        reused: true,
+      });
+    } finally {
+      await db.job.deleteMany({ where: { userId, deletionTargetId: note.id } });
+      await db.note.deleteMany({ where: { id: note.id, userId } });
+      await db.user.delete({ where: { id: otherUser.id } });
+    }
   });
 
   it('tools/call voxen_create_note cria a nota escopada por userId', async () => {

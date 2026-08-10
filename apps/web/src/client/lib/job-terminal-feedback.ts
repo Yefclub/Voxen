@@ -46,6 +46,7 @@ export interface BuildJobNotificationArgs {
   jobId: string;
   transcriptId?: string | null;
   savedMediaReady?: boolean;
+  deletionReady?: boolean;
   errorMsg?: string | null;
   /** Localized strings from i18n. */
   labels: {
@@ -55,6 +56,8 @@ export interface BuildJobNotificationArgs {
     failedBody: string;
     mediaReadyTitle?: string;
     mediaReadyBody?: string;
+    deletionReadyTitle?: string;
+    deletionReadyBody?: string;
   };
   iconUrl?: string;
 }
@@ -65,20 +68,27 @@ export function buildJobSystemNotification(
   const icon = args.iconUrl ?? '/voxen-192.png';
   if (args.stage === 'done' || args.stage === 'completed_with_warnings') {
     const isSavedMedia = args.savedMediaReady === true;
+    const isDeletion = args.deletionReady === true;
     return {
-      title: isSavedMedia
-        ? (args.labels.mediaReadyTitle ?? args.labels.readyTitle)
-        : args.labels.readyTitle,
-      body: isSavedMedia
-        ? (args.labels.mediaReadyBody ?? args.labels.readyBody)
-        : args.labels.readyBody,
+      title: isDeletion
+        ? (args.labels.deletionReadyTitle ?? args.labels.readyTitle)
+        : isSavedMedia
+          ? (args.labels.mediaReadyTitle ?? args.labels.readyTitle)
+          : args.labels.readyTitle,
+      body: isDeletion
+        ? (args.labels.deletionReadyBody ?? args.labels.readyBody)
+        : isSavedMedia
+          ? (args.labels.mediaReadyBody ?? args.labels.readyBody)
+          : args.labels.readyBody,
       icon,
       tag: `voxen-job-${args.jobId}-${args.stage}`,
-      url: args.transcriptId
-        ? `/transcricoes/${args.transcriptId}`
-        : isSavedMedia
-          ? '/downloads'
-          : `/jobs/${args.jobId}`,
+      url: isDeletion
+        ? `/jobs/${args.jobId}`
+        : args.transcriptId
+          ? `/transcricoes/${args.transcriptId}`
+          : isSavedMedia
+            ? '/downloads'
+            : `/jobs/${args.jobId}`,
     };
   }
   return {

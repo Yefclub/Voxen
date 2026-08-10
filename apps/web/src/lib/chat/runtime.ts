@@ -7,10 +7,8 @@ import { getTranscriptBrief, waitForTranscriptJob } from '../agent-content';
 import { searchBrainNodes } from '../brain-search';
 import { db } from '../db';
 import { noteContentChecksum } from '../note-revisions';
-import { syncNoteGraph } from '../note-versioning';
 import {
   loadTranscriptCorrectionHead,
-  syncTranscriptCorrectionGraph,
   type TranscriptCorrectionHead,
 } from '../transcript-correction-versioning';
 import {
@@ -48,7 +46,6 @@ import { parseMessageAttachments } from './message-attachments';
 import { createReadExternalEnrichmentTool } from './external-enrichment-tool';
 import { parseTemporalBounds } from './temporal-bounds';
 import {
-  applyApprovedNoteMutation,
   createProposePatchNoteTool,
   createSearchNoteContentTool,
   createVersionedChatNote,
@@ -58,7 +55,13 @@ import {
 } from './note-editing';
 import { prepareChatApprovalInput } from './note-approval-preview';
 import {
+  createListDeletableKnowledgeTool,
+  createProposeKnowledgeDeletionTool,
+} from './knowledge-deletion';
+import { applyApprovedChatMutation, publishApprovedMutationSideEffects } from './approved-mutation';
+import {
   HITL_ACTION_CREATE_NOTE,
+  HITL_ACTION_DELETE_KNOWLEDGE,
   HITL_ACTION_PATCH_NOTE,
   HITL_ACTION_PATCH_TRANSCRIPT,
   buildHitlResumePrompt,
@@ -67,7 +70,6 @@ import {
   shouldResumeAfterApprove,
 } from './hitl-policy';
 import {
-  applyApprovedTranscriptMutation,
   createProposePatchTranscriptTool,
   createSearchTranscriptContentTool,
   normalizeTranscriptApprovalError,
@@ -165,6 +167,10 @@ const AGENT_INSTRUCTIONS = [
   'propose_patch_transcript com a identidade completa da revisão e da fonte retornada.',
   'A interface sempre pedirá confirmação. Preserve timestamps e estrutura Markdown, altere',
   'somente o trecho necessário e nunca trate a correção como modificação da fonte original.',
+  'Para excluir qualquer conteúdo, localize o alvo exato com list_deletable_knowledge e leia',
+  'a fonte quando houver uma ferramenta de leitura; então use',
+  'propose_delete_knowledge. A interface sempre pedirá confirmação; nunca use exclusão para',
+  'resolver uma edição e nunca afirme que a limpeza terminou enquanto o job ainda estiver na fila.',
   '',
   'Comunicação com o usuário (OBRIGATÓRIO — a resposta final é produto, não log de API):',
   '- NUNCA mencione nomes de ferramentas, parâmetros, IDs internos (transcriptId, approvalId)',
@@ -995,6 +1001,8 @@ export function buildTools(
     }),
     propose_patch_note: createProposePatchNoteTool(),
     propose_patch_transcript: createProposePatchTranscriptTool(),
+    list_deletable_knowledge: createListDeletableKnowledgeTool(userId),
+    propose_delete_knowledge: createProposeKnowledgeDeletionTool(),
     propose_create_note: tool({
       description:
         'Propõe criar uma nota. Sem always-allow do usuário a interface pede confirmação; ' +
@@ -1252,6 +1260,8 @@ export type ApproveChatActionResult = {
   /** Conteúdo sintético do turno de resume (spec 132). */
   resumePrompt: string;
   shouldResume: boolean;
+  deletionJobId?: string;
+  deletionJobCreated?: boolean;
 };
 
 export { ChatApprovalMutationError } from './approval-error';
@@ -1295,24 +1305,8 @@ export async function approveChatAction(
       if (!approvedPayload || approvedPayload.action !== approval.action) {
         throw new Error('Confirmação inválida.');
       }
-      const mutation =
-        approvedPayload.action === HITL_ACTION_PATCH_TRANSCRIPT
-          ? preparedTranscriptHead
-            ? await applyApprovedTranscriptMutation(
-                tx,
-                userId,
-                approvedPayload,
-                preparedTranscriptHead,
-              )
-            : (() => {
-                throw new Error('A prévia da correção não está disponível.');
-              })()
-          : await applyApprovedNoteMutation(tx, userId, approvedPayload);
-      const resource =
-        'resource' in mutation
-          ? { ...mutation.resource, kind: 'transcript' as const }
-          : { ...mutation.note, kind: 'note' as const };
-      const { outcomeMessage, systemMessage } = mutation;
+      const { resource, outcomeMessage, systemMessage, resultFields } =
+        await applyApprovedChatMutation(tx, userId, approvedPayload, preparedTranscriptHead);
       const assistantMessages = await findAssistantMessagesWithApproval(
         tx,
         approval.conversationId,
@@ -1372,7 +1366,7 @@ export async function approveChatAction(
       });
       return {
         message: outcomeMessage,
-        ...(resource.kind === 'note' ? { noteId: resource.id } : { transcriptId: resource.id }),
+        ...resultFields,
         conversationId: approval.conversationId,
         action: approval.action,
         title: resource.title,
@@ -1390,8 +1384,7 @@ export async function approveChatAction(
   if (options.alwaysAllow && result.action === HITL_ACTION_CREATE_NOTE) {
     await grantAlwaysAllowAction(userId, result.action).catch(() => undefined);
   }
-  if (result.noteId) await syncNoteGraph(userId, result.noteId);
-  if (result.transcriptId) await syncTranscriptCorrectionGraph(userId, result.transcriptId);
+  await publishApprovedMutationSideEffects(userId, result);
   return result;
 }
 
@@ -1710,6 +1703,8 @@ export async function streamAssistantReply(options: {
       propose_create_note: resolveProposeCreateNoteApproval(alwaysAllowCreateNote),
       propose_patch_note: 'user-approval',
       propose_patch_transcript: 'user-approval',
+      list_deletable_knowledge: 'approved',
+      propose_delete_knowledge: 'user-approval',
     },
     stopWhen: stepCountIs(12),
     abortSignal,
@@ -1784,7 +1779,9 @@ export async function streamAssistantReply(options: {
               ? HITL_ACTION_PATCH_NOTE
               : toolName === 'propose_patch_transcript'
                 ? HITL_ACTION_PATCH_TRANSCRIPT
-                : toolName;
+                : toolName === 'propose_delete_knowledge'
+                  ? HITL_ACTION_DELETE_KNOWLEDGE
+                  : toolName;
         const { trustedInput, patchPreview } = await prepareChatApprovalInput(
           userId,
           action,

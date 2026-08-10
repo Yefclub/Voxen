@@ -1,5 +1,6 @@
 import type { JobStatus, JobType } from './types';
 import type { TranslateFn } from './i18n';
+import { displayJobSource } from './source-detect';
 
 type BadgeVariant = 'default' | 'outline' | 'success' | 'warning' | 'danger' | 'muted';
 
@@ -50,6 +51,9 @@ export function stageLabel(stage: string, t?: TranslateFn, jobType?: JobType): s
     summarizing: t?.('job.stage.summarizing') ?? 'Gerando resumo',
     tagging: t?.('job.stage.tagging') ?? 'Gerando tags',
     indexing_brain: t?.('job.stage.indexingBrain') ?? 'Conectando ao Brain',
+    deleting_content: t?.('job.stage.deletingContent') ?? 'Removendo conteúdo',
+    deleting_storage: t?.('job.stage.deletingStorage') ?? 'Removendo arquivos',
+    updating_graph: t?.('job.stage.updatingGraph') ?? 'Atualizando grafo',
     research_planning: t?.('job.stage.researchPlanning') ?? 'Avaliando lacunas do conteúdo',
     research_source_lookup: t?.('job.stage.researchSourceLookup') ?? 'Consultando a fonte original',
     research_searching: t?.('job.stage.researchSearching') ?? 'Pesquisando contexto adicional',
@@ -126,6 +130,16 @@ export function jobTypeLabel(type: JobType | undefined, t?: TranslateFn): string
     UPLOAD_AND_ANALYZE_IMAGE: t?.('job.type.image') ?? 'Imagem',
     UPLOAD_AND_ANALYZE_DOCUMENT: t?.('job.type.document') ?? 'Documento',
     ANALYZE_X: t?.('job.type.x') ?? 'Publicação no X',
+    DELETE_KNOWLEDGE: t?.('job.type.deleteKnowledge') ?? 'Exclusão da base',
   };
   return type ? map[type] : (t?.('job.type.content') ?? 'Conteúdo');
+}
+
+export function jobSourceLabel(
+  job: { type?: JobType; sourceUrl: string },
+  t?: TranslateFn,
+): string {
+  return job.type === 'DELETE_KNOWLEDGE'
+    ? jobTypeLabel(job.type, t)
+    : displayJobSource(job.sourceUrl);
 }

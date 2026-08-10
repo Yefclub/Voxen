@@ -18,6 +18,7 @@ export function HitlConfirmBar({
       {pending.map((item) => {
         const busy = approving.has(item.approvalId);
         const isPatch = item.action === 'patch_note' || item.action === 'patch_transcript';
+        const isDelete = item.action === 'delete_knowledge';
         const operationLabel = item.patchPreview
           ? {
               replace: t('chat.hitlPatchOperation.replace'),
@@ -35,24 +36,28 @@ export function HitlConfirmBar({
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-[var(--color-app-fg)]">
-                  {isPatch && item.title
-                    ? item.action === 'patch_transcript'
-                      ? t('chat.hitlProposeTranscriptPatch', { title: item.title })
-                      : t('chat.hitlProposePatch', { title: item.title })
-                    : item.title
-                      ? t('chat.hitlProposeNote', { title: item.title })
-                      : t('chat.confirmationTitle')}
+                  {isDelete && item.title
+                    ? t('chat.hitlProposeDelete', { title: item.title })
+                    : isPatch && item.title
+                      ? item.action === 'patch_transcript'
+                        ? t('chat.hitlProposeTranscriptPatch', { title: item.title })
+                        : t('chat.hitlProposePatch', { title: item.title })
+                      : item.title
+                        ? t('chat.hitlProposeNote', { title: item.title })
+                        : t('chat.confirmationTitle')}
                 </p>
                 <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
-                  {isPatch
-                    ? item.action === 'patch_transcript'
-                      ? t('chat.hitlTranscriptPatchHint')
-                      : t('chat.hitlPatchHint')
-                    : t('chat.hitlConfirmHint')}
+                  {isDelete
+                    ? t('chat.hitlDeleteHint')
+                    : isPatch
+                      ? item.action === 'patch_transcript'
+                        ? t('chat.hitlTranscriptPatchHint')
+                        : t('chat.hitlPatchHint')
+                      : t('chat.hitlConfirmHint')}
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                {!isPatch ? (
+                {!isPatch && !isDelete ? (
                   <button
                     type="button"
                     onClick={() => onApprove(item.approvalId, { alwaysAllow: true })}
@@ -66,14 +71,16 @@ export function HitlConfirmBar({
                   type="button"
                   onClick={() => onApprove(item.approvalId)}
                   disabled={busy || (isPatch && !item.patchPreview)}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90 disabled:cursor-wait disabled:opacity-60 ${
+                    isDelete ? 'bg-rose-400' : 'bg-[var(--color-accent-amber)]'
+                  }`}
                 >
                   {busy ? (
                     <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                   ) : (
                     <Check className="h-3.5 w-3.5" />
                   )}{' '}
-                  {t('chat.confirm')}
+                  {isDelete ? t('chat.hitlDeleteConfirm') : t('chat.confirm')}
                 </button>
               </div>
             </div>

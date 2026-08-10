@@ -67,7 +67,16 @@ export async function retryQueuedJobForUser(
       await tx.$queryRaw`SELECT id FROM "Job" WHERE id = ${jobId} AND "userId" = ${userId} FOR UPDATE`;
       const original = await tx.job.findFirst({
         where: { id: jobId, userId },
-        select: { id: true, status: true, sourceUrl: true, type: true, savedMediaId: true },
+        select: {
+          id: true,
+          status: true,
+          sourceUrl: true,
+          type: true,
+          savedMediaId: true,
+          deletionTargetType: true,
+          deletionTargetId: true,
+          deletionTargetTitle: true,
+        },
       });
       if (!original) return { outcome: 'missing' as const };
       if (!['FAILED', 'CANCELLED'].includes(original.status)) {
@@ -96,7 +105,26 @@ export async function retryQueuedJobForUser(
         return { outcome: 'media_unavailable' as const };
       }
 
-      if (original.type !== 'DOWNLOAD_MEDIA') {
+      let deletionMediaStatus: 'READY' | 'FAILED' | 'DELETING' | undefined;
+      if (
+        original.type === 'DELETE_KNOWLEDGE' &&
+        original.deletionTargetType === 'SAVED_MEDIA' &&
+        original.deletionTargetId
+      ) {
+        await tx.$queryRaw`SELECT id FROM "SavedMedia" WHERE id = ${original.deletionTargetId} AND "userId" = ${userId} FOR UPDATE`;
+        const media = await tx.savedMedia.findFirst({
+          where: { id: original.deletionTargetId, userId },
+          select: { status: true, transcriptId: true },
+        });
+        if (media) {
+          if (media.transcriptId || !['READY', 'FAILED', 'DELETING'].includes(media.status)) {
+            return { outcome: 'media_unavailable' as const };
+          }
+          deletionMediaStatus = media.status as 'READY' | 'FAILED' | 'DELETING';
+        }
+      }
+
+      if (original.type !== 'DOWNLOAD_MEDIA' && original.type !== 'DELETE_KNOWLEDGE') {
         const existing = await tx.transcript.findFirst({
           where: { userId, url: original.sourceUrl, status: { not: 'TRASH' } },
           select: { id: true },
@@ -117,6 +145,9 @@ export async function retryQueuedJobForUser(
           sourceUrl: original.sourceUrl,
           configRevisionId: revision?.id,
           savedMediaId: original.savedMediaId,
+          deletionTargetType: original.deletionTargetType,
+          deletionTargetId: original.deletionTargetId,
+          deletionTargetTitle: original.deletionTargetTitle,
         },
         select: { id: true, status: true, sourceUrl: true },
       });
@@ -129,6 +160,23 @@ export async function retryQueuedJobForUser(
             status: expectedMediaStatus,
           },
           data: { status: mediaStatus, errorMsg: null },
+        });
+        if (updated.count !== 1) throw new SavedMediaRetryRace();
+      }
+      if (
+        original.type === 'DELETE_KNOWLEDGE' &&
+        original.deletionTargetType === 'SAVED_MEDIA' &&
+        original.deletionTargetId &&
+        deletionMediaStatus
+      ) {
+        const updated = await tx.savedMedia.updateMany({
+          where: {
+            id: original.deletionTargetId,
+            userId,
+            transcriptId: null,
+            status: deletionMediaStatus,
+          },
+          data: { status: 'DELETING', errorMsg: null },
         });
         if (updated.count !== 1) throw new SavedMediaRetryRace();
       }
@@ -148,7 +196,13 @@ export async function retryQueuedJobForUser(
     ) {
       const original = await db.job.findFirst({
         where: { id: jobId, userId },
-        select: { sourceUrl: true, type: true, savedMediaId: true },
+        select: {
+          sourceUrl: true,
+          type: true,
+          savedMediaId: true,
+          deletionTargetType: true,
+          deletionTargetId: true,
+        },
       });
       if (!original) return { outcome: 'inflight' };
       const active = await db.job.findFirst({
@@ -157,6 +211,8 @@ export async function retryQueuedJobForUser(
           sourceUrl: original.sourceUrl,
           type: original.type,
           savedMediaId: original.savedMediaId,
+          deletionTargetType: original.deletionTargetType,
+          deletionTargetId: original.deletionTargetId,
           status: { in: ['QUEUED', 'RUNNING'] },
         },
         select: { id: true, status: true, sourceUrl: true },

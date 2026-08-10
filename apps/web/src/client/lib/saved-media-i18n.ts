@@ -26,7 +26,7 @@ export const ptBrSavedMediaMessages = {
   'savedMedia.deleteTitle': 'Apagar mídia salva?',
   'savedMedia.deleteDescription':
     'O arquivo será removido do seu armazenamento. Esta ação não pode ser desfeita.',
-  'savedMedia.deleted': 'Mídia apagada.',
+  'savedMedia.deleted': 'Exclusão adicionada à fila.',
   'savedMedia.processQueued': 'Transcrição adicionada à fila.',
   'savedMedia.source': 'Abrir fonte original',
   'savedMedia.status.QUEUED': 'Na fila',
@@ -74,7 +74,7 @@ export const enSavedMediaMessages = {
   'savedMedia.deleteTitle': 'Delete saved media?',
   'savedMedia.deleteDescription':
     'The file will be removed from your storage. This action cannot be undone.',
-  'savedMedia.deleted': 'Media deleted.',
+  'savedMedia.deleted': 'Deletion added to the queue.',
   'savedMedia.processQueued': 'Transcription added to the queue.',
   'savedMedia.source': 'Open original source',
   'savedMedia.status.QUEUED': 'Queued',

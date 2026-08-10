@@ -10,6 +10,10 @@ import {
 } from 'react';
 import { enGraphIndexMessages, ptBrGraphIndexMessages } from './graph-index-i18n';
 import { enMermaidCanvasMessages, ptBrMermaidCanvasMessages } from './mermaid-canvas-i18n';
+import {
+  enKnowledgeDeletionMessages,
+  ptBrKnowledgeDeletionMessages,
+} from './knowledge-deletion-i18n';
 import { enNoteVersioningMessages, ptBrNoteVersioningMessages } from './note-versioning-i18n';
 import {
   enChatReferenceCanvasMessages,
@@ -40,6 +44,7 @@ const ptBRMessages = {
   ...ptBrTranscriptFlowMessages,
   ...ptBrNoteVersioningMessages,
   ...ptBrMermaidCanvasMessages,
+  ...ptBrKnowledgeDeletionMessages,
   'common.back': 'Voltar',
   'common.cancel': 'Cancelar',
   'common.close': 'Fechar',
@@ -499,7 +504,7 @@ const ptBRMessages = {
   'library.clearFolders': 'Apagar pastas',
   'library.clearFoldersConfirm':
     'Apagar TODAS as pastas? Os conteúdos permanecem na biblioteca (sem pasta), liberando o Organizar com IA.',
-  'library.clearFoldersDone': '{deleted} pastas removidas · {items} conteúdos liberados.',
+  'library.clearFoldersDone': 'Limpeza de pastas adicionada à fila.',
   'library.clearFoldersError': 'Falha ao apagar as pastas.',
   'library.loadMore': 'Carregar mais',
   'library.statusArchived': 'Arquivado',
@@ -518,7 +523,7 @@ const ptBRMessages = {
   'library.deleteTitle': 'Apagar definitivamente?',
   'library.deleteDescription':
     'O arquivo no armazenamento e a transcrição serão apagados. Esta ação não pode ser desfeita.',
-  'library.deleted': 'Conteúdo apagado definitivamente.',
+  'library.deleted': 'Exclusão adicionada à fila.',
   'library.deleteError': 'Falha ao apagar conteúdo.',
   'library.chatBarHint': 'Pergunte sobre este conteúdo — envia direto para o chat.',
   'library.chatBarPlaceholder': 'Pergunte algo sobre este conteúdo…',
@@ -757,7 +762,7 @@ const ptBRMessages = {
   'notes.createdNote': 'Nota criada.',
   'notes.createError': 'Erro ao criar.',
   'notes.deleteError': 'Falha ao apagar.',
-  'notes.deleted': 'Apagado.',
+  'notes.deleted': 'Exclusão adicionada à fila.',
   'notes.emptyTree': 'Sem notas ainda.',
   'notes.useButtonAbove': 'Use o botão acima.',
   'notes.deleteFolderTitle': 'Apagar pasta?',
@@ -1423,6 +1428,7 @@ const enMessages: Record<I18nKey, string> = {
   ...enReleaseUpdateMessages,
   ...enTranscriptAnnotationMessages,
   ...featureMessages.enFeatureMessages,
+  ...enKnowledgeDeletionMessages,
   ...enResearchPolicyMessages,
   ...enChatReferenceCanvasMessages,
   ...enTranscriptFlowMessages,
@@ -1877,7 +1883,7 @@ const enMessages: Record<I18nKey, string> = {
   'library.clearFolders': 'Delete folders',
   'library.clearFoldersConfirm':
     'Delete ALL folders? Content stays in the library (unfoldered), so Organize with AI can run again.',
-  'library.clearFoldersDone': '{deleted} folders removed · {items} items unfoldered.',
+  'library.clearFoldersDone': 'Folder cleanup added to the queue.',
   'library.clearFoldersError': 'Failed to delete folders.',
   'library.loadMore': 'Load more',
   'library.statusArchived': 'Archived',
@@ -1896,7 +1902,7 @@ const enMessages: Record<I18nKey, string> = {
   'library.deleteTitle': 'Delete permanently?',
   'library.deleteDescription':
     'The stored file and transcript will be deleted. This action cannot be undone.',
-  'library.deleted': 'Content permanently deleted.',
+  'library.deleted': 'Deletion added to the queue.',
   'library.deleteError': 'Failed to delete content.',
   'library.chatBarHint': 'Ask about this content — sends you straight to chat.',
   'library.chatBarPlaceholder': 'Ask something about this content…',
@@ -2135,7 +2141,7 @@ const enMessages: Record<I18nKey, string> = {
   'notes.createdNote': 'Note created.',
   'notes.createError': 'Error creating.',
   'notes.deleteError': 'Failed to delete.',
-  'notes.deleted': 'Deleted.',
+  'notes.deleted': 'Deletion added to the queue.',
   'notes.emptyTree': 'No notes yet.',
   'notes.useButtonAbove': 'Use the button above.',
   'notes.deleteFolderTitle': 'Delete folder?',

@@ -6,11 +6,13 @@
 export const HITL_ACTION_CREATE_NOTE = 'create_note' as const;
 export const HITL_ACTION_PATCH_NOTE = 'patch_note' as const;
 export const HITL_ACTION_PATCH_TRANSCRIPT = 'patch_transcript' as const;
+export const HITL_ACTION_DELETE_KNOWLEDGE = 'delete_knowledge' as const;
 
 export type HitlWriteAction =
   | typeof HITL_ACTION_CREATE_NOTE
   | typeof HITL_ACTION_PATCH_NOTE
-  | typeof HITL_ACTION_PATCH_TRANSCRIPT;
+  | typeof HITL_ACTION_PATCH_TRANSCRIPT
+  | typeof HITL_ACTION_DELETE_KNOWLEDGE;
 type HitlAlwaysAllowAction = typeof HITL_ACTION_CREATE_NOTE;
 
 /** Setting USER-scoped: JSON array de ações liberadas. */
@@ -20,7 +22,8 @@ export function isHitlWriteAction(value: string): value is HitlWriteAction {
   return (
     value === HITL_ACTION_CREATE_NOTE ||
     value === HITL_ACTION_PATCH_NOTE ||
-    value === HITL_ACTION_PATCH_TRANSCRIPT
+    value === HITL_ACTION_PATCH_TRANSCRIPT ||
+    value === HITL_ACTION_DELETE_KNOWLEDGE
   );
 }
 
@@ -65,7 +68,11 @@ export function shouldRequireHitlApproval(args: {
   alwaysAllowed: ReadonlySet<string>;
 }): boolean {
   if (!isHitlWriteAction(args.action)) return false;
-  if (args.action === HITL_ACTION_PATCH_NOTE || args.action === HITL_ACTION_PATCH_TRANSCRIPT)
+  if (
+    args.action === HITL_ACTION_PATCH_NOTE ||
+    args.action === HITL_ACTION_PATCH_TRANSCRIPT ||
+    args.action === HITL_ACTION_DELETE_KNOWLEDGE
+  )
     return true;
   return !args.alwaysAllowed.has(args.action);
 }
@@ -111,6 +118,15 @@ export function buildHitlResumePrompt(args: {
       `A nova revisão de “${title}” foi criada com sucesso sem alterar a fonte original.`,
       'Continue o plano anterior: confirme de forma natural o trecho corrigido e prossiga com o que ainda faltava.',
       'Não proponha a mesma correção de novo. Não mencione IDs internos nem nomes de ferramentas.',
+    ].join(' ');
+  }
+  if (args.action === HITL_ACTION_DELETE_KNOWLEDGE) {
+    const title = args.title?.trim() || 'sem título';
+    return [
+      'O usuário confirmou a exclusão permanente na interface.',
+      `A exclusão de “${title}” foi adicionada à fila de processamento.`,
+      'Continue o plano anterior sem afirmar que a limpeza já terminou.',
+      'Não proponha a mesma exclusão de novo. Não mencione IDs internos nem nomes de ferramentas.',
     ].join(' ');
   }
   return [

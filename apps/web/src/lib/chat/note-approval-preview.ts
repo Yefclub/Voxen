@@ -1,7 +1,12 @@
 import { db } from '../db';
 import { applyNotePatch, noteContentChecksum } from '../note-revisions';
 import { NoteRevisionConflictError } from '../note-versioning';
-import { HITL_ACTION_PATCH_NOTE, HITL_ACTION_PATCH_TRANSCRIPT } from './hitl-policy';
+import {
+  HITL_ACTION_DELETE_KNOWLEDGE,
+  HITL_ACTION_PATCH_NOTE,
+  HITL_ACTION_PATCH_TRANSCRIPT,
+} from './hitl-policy';
+import { prepareChatKnowledgeDeletionApproval } from './knowledge-deletion';
 import {
   chatPatchApprovalProof,
   extractPatchProposal,
@@ -74,6 +79,9 @@ export async function prepareChatApprovalInput(
   trustedInput: Record<string, unknown>;
   patchPreview?: ChatPatchApprovalPreview | ChatTranscriptPatchApprovalPreview;
 }> {
+  if (action === HITL_ACTION_DELETE_KNOWLEDGE) {
+    return { trustedInput: await prepareChatKnowledgeDeletionApproval(userId, input) };
+  }
   if (action === HITL_ACTION_PATCH_TRANSCRIPT) {
     const candidate = extractTranscriptPatchProposal({ ...input, action });
     if (!candidate) throw new Error('Proposta de correção de transcrição inválida.');

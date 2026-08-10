@@ -43,6 +43,22 @@ function setNotes(next: NoteListItem[]): void {
   listeners.forEach((l) => l(next));
 }
 
+/** Removes a queued note/folder deletion from every mounted tree immediately. */
+export function withoutNoteSubtree(items: readonly NoteListItem[], rootId: string): NoteListItem[] {
+  const removed = new Set([rootId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const item of items) {
+      if (item.parentId && removed.has(item.parentId) && !removed.has(item.id)) {
+        removed.add(item.id);
+        changed = true;
+      }
+    }
+  }
+  return items.filter((item) => !removed.has(item.id));
+}
+
 async function fetchNotes(): Promise<NotesLoadResult | null> {
   try {
     const res = await fetch('/api/notes', { credentials: 'include' });
@@ -160,7 +176,7 @@ export function useNotes(): State {
           credentials: 'include',
         });
         if (!res.ok) throw new Error(t('notes.deleteError'));
-        await refresh();
+        setNotes(withoutNoteSubtree(cache ?? notes, id));
         toast.success(t('notes.deleted'));
         return true;
       } catch (err) {
@@ -168,7 +184,7 @@ export function useNotes(): State {
         return false;
       }
     },
-    [refresh, t],
+    [notes, t],
   );
 
   return { notes, loading, refresh, create, remove };

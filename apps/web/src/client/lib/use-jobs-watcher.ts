@@ -155,6 +155,7 @@ async function notifyTerminalJob(
       jobId: evt.jobId,
       transcriptId: evt.transcriptId,
       savedMediaReady: evt.type === 'DOWNLOAD_MEDIA',
+      deletionReady: evt.type === 'DELETE_KNOWLEDGE',
       errorMsg: evt.errorMsg,
       labels: {
         readyTitle: t('job.toast.ready'),
@@ -163,6 +164,8 @@ async function notifyTerminalJob(
         failedBody: t('job.toast.failedDescription'),
         mediaReadyTitle: t('savedMedia.toastReady'),
         mediaReadyBody: t('savedMedia.toastReadyDescription'),
+        deletionReadyTitle: t('job.toast.deletionReady'),
+        deletionReadyBody: t('job.toast.deletionReadyDescription'),
       },
     });
     const shown = await showSystemNotification(content);
@@ -173,25 +176,39 @@ async function notifyTerminalJob(
 
   if (evt.stage === 'done') {
     const savedMediaReady = evt.type === 'DOWNLOAD_MEDIA';
-    toast.success(t(savedMediaReady ? 'savedMedia.toastReady' : 'job.toast.ready'), {
-      description: t(
-        savedMediaReady ? 'savedMedia.toastReadyDescription' : 'job.toast.readyDescription',
+    const deletionReady = evt.type === 'DELETE_KNOWLEDGE';
+    toast.success(
+      t(
+        deletionReady
+          ? 'job.toast.deletionReady'
+          : savedMediaReady
+            ? 'savedMedia.toastReady'
+            : 'job.toast.ready',
       ),
-      action: evt.transcriptId
-        ? {
-            label: t('common.open'),
-            onClick: () => onNavigate(`/transcricoes/${evt.transcriptId}`),
-          }
-        : savedMediaReady
+      {
+        description: t(
+          deletionReady
+            ? 'job.toast.deletionReadyDescription'
+            : savedMediaReady
+              ? 'savedMedia.toastReadyDescription'
+              : 'job.toast.readyDescription',
+        ),
+        action: evt.transcriptId
           ? {
               label: t('common.open'),
-              onClick: () => onNavigate('/downloads'),
+              onClick: () => onNavigate(`/transcricoes/${evt.transcriptId}`),
             }
-          : {
-              label: t('job.toast.view'),
-              onClick: () => onNavigate(`/jobs/${evt.jobId}`),
-            },
-    });
+          : savedMediaReady
+            ? {
+                label: t('common.open'),
+                onClick: () => onNavigate('/downloads'),
+              }
+            : {
+                label: t('job.toast.view'),
+                onClick: () => onNavigate(`/jobs/${evt.jobId}`),
+              },
+      },
+    );
     return;
   }
   if (evt.stage === 'failed') {

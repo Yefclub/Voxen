@@ -142,6 +142,25 @@ describe('buildJobSystemNotification', () => {
       url: '/jobs/job-maintenance',
     });
   });
+
+  test('exclusão concluída usa mensagem própria e aponta para a auditoria do job', () => {
+    expect(
+      buildJobSystemNotification({
+        stage: 'done',
+        jobId: 'job-delete',
+        deletionReady: true,
+        labels: {
+          ...labels,
+          deletionReadyTitle: 'Conteúdo removido.',
+          deletionReadyBody: 'A base e o grafo foram atualizados.',
+        },
+      }),
+    ).toMatchObject({
+      title: 'Conteúdo removido.',
+      body: 'A base e o grafo foram atualizados.',
+      url: '/jobs/job-delete',
+    });
+  });
 });
 
 describe('shouldAutoOpenTranscript', () => {

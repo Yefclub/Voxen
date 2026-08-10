@@ -276,6 +276,82 @@ describeIfDb('chat de sessão única', () => {
     await expect(approveChatAction(user.id, approvalId)).rejects.toThrow();
   });
 
+  it('aprova exclusão destrutiva apenas enfileirando o conteúdo validado', async () => {
+    const user = await db.user.create({
+      data: {
+        email: 'chat-test-delete-approval@voxen.local',
+        name: 'Delete approval',
+        status: 'APPROVED',
+      },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const note = await db.note.create({
+      data: { userId: user.id, kind: 'NOTE', title: 'Apagar com segurança', content: 'corpo' },
+    });
+    const approvalId = crypto.randomUUID();
+    const message = await db.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: '',
+        tools: [
+          {
+            id: 'tool-delete',
+            name: 'propose_delete_knowledge',
+            state: 'approval-required',
+            output: {
+              approvalRequired: true,
+              approvalId,
+              action: 'delete_knowledge',
+              targetType: 'NOTE',
+              targetId: note.id,
+              title: note.title,
+            },
+          },
+        ],
+      },
+    });
+    await db.chatApproval.create({
+      data: {
+        id: approvalId,
+        userId: user.id,
+        conversationId: conversation.id,
+        providerApprovalId: approvalId,
+        action: 'delete_knowledge',
+        payload: {
+          action: 'delete_knowledge',
+          targetType: 'NOTE',
+          targetId: note.id,
+          title: note.title,
+        },
+      },
+    });
+
+    const result = await approveChatAction(user.id, approvalId, { alwaysAllow: true });
+
+    expect(result.deletionJobId).toBeTruthy();
+    expect(result.deletionJobCreated).toBe(true);
+    expect(result.noteId).toBeUndefined();
+    expect(await db.note.findUnique({ where: { id: note.id } })).not.toBeNull();
+    expect(await db.job.findUniqueOrThrow({ where: { id: result.deletionJobId! } })).toMatchObject({
+      userId: user.id,
+      type: 'DELETE_KNOWLEDGE',
+      status: 'QUEUED',
+      deletionTargetType: 'NOTE',
+      deletionTargetId: note.id,
+    });
+    const resolved = await db.chatMessage.findUniqueOrThrow({ where: { id: message.id } });
+    const tools = resolved.tools as Array<{
+      state: string;
+      output: { approved?: boolean; dismissed?: boolean; deletionJobId?: string };
+    }>;
+    expect(tools[0]).toMatchObject({
+      state: 'completed',
+      output: { approved: true, deletionJobId: result.deletionJobId },
+    });
+    expect(tools[0]?.output.dismissed).toBeUndefined();
+  });
+
   it('aprova edição cirúrgica versionada sem conceder always-allow', async () => {
     const user = await db.user.create({
       data: { email: 'chat-test-patch@voxen.local', name: 'Patch', status: 'APPROVED' },
