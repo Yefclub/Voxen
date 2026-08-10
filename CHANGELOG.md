@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.5-dev.1786329638 — 2026-08-09 · Dev
+
+### ✨ Explore the complete knowledge graph from the server
+
+Graph search now covers every active node owned by the current user instead of only the
+rendered snapshot. Selecting a result loads a bounded one- or two-hop neighborhood, while
+the default view reports complete candidate totals and prioritizes representative content.
+
 ## v0.14.5-dev.1786324652 — 2026-08-09 · Dev
 
 ### 🐛 Semantic graph indexing now recovers automatically

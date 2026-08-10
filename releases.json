@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786329638",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Explore the complete knowledge graph from the server",
+    "body": "Graph search now covers every active node owned by the current user instead of only the\nrendered snapshot. Selecting a result loads a bounded one- or two-hop neighborhood, while\nthe default view reports complete candidate totals and prioritizes representative content.",
+    "pr": 720,
+    "author": "Kalyel",
+    "date": "2026-08-09T23:40:25-03:00",
+    "translations": {
+      "en": {
+        "title": "Explore the complete knowledge graph from the server",
+        "body": "Graph search now covers every active node owned by the current user instead of only the\nrendered snapshot. Selecting a result loads a bounded one- or two-hop neighborhood, while\nthe default view reports complete candidate totals and prioritizes representative content."
+      },
+      "pt-BR": {
+        "title": "Explore todo o grafo de conhecimento pelo servidor",
+        "body": "A pesquisa do grafo agora cobre todos os nós ativos do usuário atual, em vez de somente o\nrecorte renderizado. Selecionar um resultado carrega uma vizinhança limitada de um ou dois\nsaltos, enquanto a visão padrão informa os totais completos e prioriza conteúdos\nrepresentativos."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/720"
+  },
+  {
     "version": "0.14.5-dev.1786324652",
     "channel": "dev",
     "type": "fix",
