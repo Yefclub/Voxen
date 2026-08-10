@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.5-dev.1786354871 — 2026-08-10 · Dev
+
+### 🎨 Explore Mermaid diagrams with an interactive canvas
+
+Mermaid diagrams in chat responses, notes, and transcript content now open in an interactive
+canvas. You can zoom from 50% to 300%, drag to inspect large flows, reset the view, and expand the
+diagram into a focused near-full-screen workspace. Mouse, touch, wheel, and keyboard controls are
+supported without weakening Voxen's strict SVG sanitization.
+
 ## v0.14.5-dev.1786352459 — 2026-08-10 · Dev
 
 ### ✨ Correct transcripts without changing original evidence
