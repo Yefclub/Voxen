@@ -80,6 +80,7 @@ import {
 } from '../lib/chat-versions';
 import { MessageEditForm, UserMessageActions } from '../components/chat/message-versioning';
 import { ChatSourcesPanel, CitationSourcesButton } from '../components/chat/chat-sources-panel';
+import { HitlConfirmBar } from '../components/chat/hitl-confirm-bar';
 import { parseChatCitations, type ChatCitation } from '../../shared/chat-citations';
 import { claimPendingId, reconcileChatStart, sameActiveTurn } from '../lib/chat-reconciliation';
 import {
@@ -492,66 +493,6 @@ function MessageAttachments({
         );
       })}
     </ul>
-  );
-}
-
-function HitlConfirmBar({
-  pending,
-  approving,
-  onApprove,
-}: {
-  pending: PendingHitl[];
-  approving: ReadonlySet<string>;
-  onApprove: (id: string, options?: { alwaysAllow?: boolean }) => void;
-}): React.ReactElement | null {
-  const { t } = useI18n();
-  if (pending.length === 0) return null;
-  return (
-    <div className="mb-2 flex flex-col gap-2" role="region" aria-label={t('chat.hitlRegion')}>
-      {pending.map((item) => {
-        const busy = approving.has(item.approvalId);
-        return (
-          <div
-            key={item.approvalId}
-            className="flex flex-col gap-2 rounded-xl border border-[var(--color-accent-amber)]/30 bg-[var(--color-accent-amber)]/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-          >
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-[var(--color-app-fg)]">
-                {item.title
-                  ? t('chat.hitlProposeNote', { title: item.title })
-                  : t('chat.confirmationTitle')}
-              </p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
-                {t('chat.hitlConfirmHint')}
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => onApprove(item.approvalId, { alwaysAllow: true })}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-accent-amber)]/40 bg-transparent px-2.5 py-1.5 text-xs font-medium text-[var(--color-app-fg)] hover:bg-[var(--color-accent-amber)]/15 disabled:cursor-wait disabled:opacity-60"
-              >
-                {t('chat.hitlAlwaysAllow')}
-              </button>
-              <button
-                type="button"
-                onClick={() => onApprove(item.approvalId)}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
-              >
-                {busy ? (
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Check className="h-3.5 w-3.5" />
-                )}{' '}
-                {t('chat.confirm')}
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 

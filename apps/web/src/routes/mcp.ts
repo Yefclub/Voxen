@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPTransport } from '@hono/mcp';
 import { db } from '../lib/db';
+import { noteContentChecksum } from '../lib/note-revisions';
 import { deserializeMcpScopes, hashMcpToken, type McpScope } from '../lib/mcp-tokens';
 import { searchBrainNodes } from '../lib/brain-search';
 import {
@@ -39,6 +40,7 @@ import {
   registerTranscriptEnrichmentWriteTools,
 } from './mcp-transcript-enrichment-tools';
 import { registerWriteTools } from './mcp-write-tools';
+import { registerMcpNoteRevisionReadTools } from './mcp-note-revision-read-tools';
 import {
   authenticateMcpOAuthToken,
   mcpBearerChallenge,
@@ -78,7 +80,10 @@ const VOXEN_INSTRUCTIONS = [
   '   se não houver evidência suficiente, diga isso — não invente.',
   '',
   'Fluxo de escrita:',
-  '- voxen_create_note / voxen_update_note: salvar ou editar informação na KB.',
+  '- voxen_create_note salva informação; voxen_read_note devolve revision/checksum.',
+  '  Para editar, localize a passagem com voxen_search_note_content, pré-visualize com',
+  '  voxen_patch_note e aplique somente com a mesma expected_revision. voxen_update_note',
+  '  continua disponível para substituição completa, também com controle de revisão.',
   '  Use source_anchors para preservar a passagem exata por linha e/ou timestamp.',
   '- voxen_request_transcription(url) enfileira um job; voxen_request_transcriptions(urls)',
   '  aceita até 20 links e devolve um resultado independente para cada entrada. Acompanhe com',
@@ -199,6 +204,8 @@ type McpIdentity = {
 const WRITE_TOOL_NAMES = new Set([
   'voxen_create_note',
   'voxen_update_note',
+  'voxen_patch_note',
+  'voxen_restore_note_revision',
   'voxen_request_transcription',
   'voxen_request_transcriptions',
   'voxen_get_job_status',
@@ -749,7 +756,13 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
       },
       outputSchema: {
         results: z.array(
-          z.object({ id: z.string(), title: z.string(), snippet: z.string(), rank: z.number() }),
+          z.object({
+            id: z.string(),
+            title: z.string(),
+            snippet: z.string(),
+            rank: z.number(),
+            revision: z.number(),
+          }),
         ),
       },
       annotations: { ...READ_ONLY, title: 'Buscar nas notas' },
@@ -758,9 +771,9 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
       const query = args.query.trim();
       if (!query) return fail('Parâmetro query vazio.');
       const limit = bounded(args.limit, 8, 1, 25);
-      type Row = { id: string; title: string; snippet: string; rank: number };
+      type Row = { id: string; title: string; snippet: string; rank: number; revision: number };
       const rows = await db.$queryRaw<Row[]>`
-        SELECT id, title,
+        SELECT id, title, revision,
           ts_headline('portuguese', coalesce(content, ''), plainto_tsquery('portuguese', ${query}),
             'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
           ts_rank("searchVector", plainto_tsquery('portuguese', ${query})) AS rank
@@ -899,6 +912,8 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
         title: z.string(),
         content: z.string().nullable(),
         kind: z.string(),
+        revision: z.number(),
+        checksum: z.string(),
         href: z.string(),
         sources: z.array(
           z.object({
@@ -934,6 +949,7 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
           title: true,
           content: true,
           kind: true,
+          revision: true,
           transcriptSources: {
             orderBy: { createdAt: 'asc' },
             select: {
@@ -964,6 +980,8 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
         title: note.title,
         content: note.content,
         kind: note.kind,
+        revision: note.revision,
+        checksum: noteContentChecksum(note.title, note.content),
         href: toMcpContentUrl(publicOrigin, `/notas/${note.id}`),
         sources: note.transcriptSources.map((source) => ({
           id: source.transcriptId,
@@ -981,6 +999,8 @@ function registerNoteTools(server: McpServer, userId: string, publicOrigin: stri
       });
     },
   );
+
+  registerMcpNoteRevisionReadTools(server, userId);
 }
 
 function registerBrainTools(server: McpServer, userId: string): void {

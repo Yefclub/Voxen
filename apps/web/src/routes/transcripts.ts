@@ -5,7 +5,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
-import { deleteBrainForSource, reindexNoteBrain, reindexTranscriptBrain } from '../lib/brain';
+import { deleteBrainForSource, reindexTranscriptBrain } from '../lib/brain';
 import { syncTranscriptEnrichmentBrainLifecycle } from '../lib/brain-enrichments';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
@@ -19,6 +19,7 @@ import {
   noteSourceCreateData,
   validateNoteAnchors,
 } from '../lib/note-anchors';
+import { recordInitialNoteRevision, syncNoteGraph } from '../lib/note-versioning';
 import {
   storageDelete,
   storageGet,
@@ -831,6 +832,19 @@ const LinkedNoteBody = z.object({
   anchors: z.array(NoteAnchorInputSchema).max(20).default([]),
 });
 
+const LINKED_NOTE_ANCHOR_SELECT = {
+  id: true,
+  startLine: true,
+  endLine: true,
+  startSec: true,
+  endSec: true,
+  selectedQuote: true,
+  sourceVersion: true,
+  sourceChecksum: true,
+  status: true,
+  staleReason: true,
+} as const;
+
 transcriptsRoutes.get('/:id/notes', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
@@ -861,18 +875,7 @@ transcriptsRoutes.get('/:id/notes', async (c) => {
         select: {
           anchors: {
             orderBy: { createdAt: 'asc' },
-            select: {
-              id: true,
-              startLine: true,
-              endLine: true,
-              startSec: true,
-              endSec: true,
-              selectedQuote: true,
-              sourceVersion: true,
-              sourceChecksum: true,
-              status: true,
-              staleReason: true,
-            },
+            select: LINKED_NOTE_ANCHOR_SELECT,
           },
         },
       },
@@ -905,45 +908,40 @@ transcriptsRoutes.post('/:id/notes', async (c) => {
     throw error;
   }
 
-  const note = await db.note.create({
-    data: {
-      userId,
-      kind: 'NOTE',
-      title: parsed.data.title.trim(),
-      content: parsed.data.content,
-      sourceType: 'TRANSCRIPT',
-      sourceId: id,
-      transcriptSources: { create: noteSourceCreateData(userId, [id], anchors) },
-    },
-    select: {
-      id: true,
-      title: true,
-      content: true,
-      updatedAt: true,
-      createdAt: true,
-      transcriptSources: {
-        select: {
-          anchors: {
-            select: {
-              id: true,
-              startLine: true,
-              endLine: true,
-              startSec: true,
-              endSec: true,
-              selectedQuote: true,
-              sourceVersion: true,
-              sourceChecksum: true,
-              status: true,
-              staleReason: true,
+  const note = await db.$transaction(async (tx) => {
+    const created = await tx.note.create({
+      data: {
+        userId,
+        kind: 'NOTE',
+        title: parsed.data.title.trim(),
+        content: parsed.data.content,
+        sourceType: 'TRANSCRIPT',
+        sourceId: id,
+        transcriptSources: { create: noteSourceCreateData(userId, [id], anchors) },
+      },
+    });
+    await recordInitialNoteRevision(tx, created, 'USER', 'Created from transcript annotation');
+    return tx.note.findUniqueOrThrow({
+      where: { id: created.id },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        revision: true,
+        updatedAt: true,
+        createdAt: true,
+        transcriptSources: {
+          select: {
+            anchors: {
+              select: LINKED_NOTE_ANCHOR_SELECT,
             },
           },
         },
       },
-    },
+    });
   });
-  await reindexNoteBrain(userId, note.id);
-  await invalidateGraphCache(userId);
-  return c.json({ note }, 201);
+  const graphSync = await syncNoteGraph(userId, note.id);
+  return c.json({ note, graphSync }, 201);
 });
 
 const OrganizationBody = z.object({

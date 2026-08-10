@@ -2,28 +2,24 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { db } from '../lib/db';
 import { getTranscriptBrief } from '../lib/agent-content';
-import { reindexNotesBrain } from '../lib/brain';
-import { invalidateGraphCache } from '../lib/graph-cache';
 import {
   NoteAnchorValidationError,
   noteSourceCreateData,
   validateNoteAnchors,
   type NoteAnchorInput,
 } from '../lib/note-anchors';
+import { noteContentChecksum } from '../lib/note-revisions';
+import {
+  NoteRevisionConflictError,
+  commitNoteVersion,
+  recordInitialNoteRevision,
+  syncNoteGraph,
+} from '../lib/note-versioning';
 import { createAutoJobForUser, createAutoJobsForUser } from './jobs';
 import { fail, ok } from './mcp-tool-helpers';
-
-const TRANSCRIPT_BRIEF_SCHEMA = z.object({
-  transcriptId: z.string(),
-  title: z.string(),
-  url: z.string(),
-  summary: z.string().nullable(),
-  tags: z.array(z.string()),
-  related: z.array(
-    z.object({ id: z.string(), title: z.string(), kind: z.string(), reason: z.string() }),
-  ),
-  nextStep: z.string(),
-});
+import { registerMcpNoteRevisionWriteTools } from './mcp-note-revision-write-tools';
+import { TRANSCRIPT_BRIEF_SCHEMA } from './mcp-transcription-schemas';
+import { noteWriteFailure } from './mcp-note-write-errors';
 
 const MCP_NOTE_ANCHOR_SCHEMA = z.object({
   transcript_id: z.string().min(1),
@@ -52,6 +48,7 @@ function toNoteAnchorInputs(
 }
 
 export function registerWriteTools(server: McpServer, userId: string): void {
+  registerMcpNoteRevisionWriteTools(server, userId);
   server.registerTool(
     'voxen_create_note',
     {
@@ -73,7 +70,13 @@ export function registerWriteTools(server: McpServer, userId: string): void {
           .optional()
           .describe('Passagens verificadas por linhas e/ou timestamps que sustentam a nota.'),
       },
-      outputSchema: { id: z.string(), title: z.string() },
+      outputSchema: {
+        id: z.string(),
+        title: z.string(),
+        revision: z.number(),
+        checksum: z.string(),
+        graphSync: z.string(),
+      },
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -99,27 +102,35 @@ export function registerWriteTools(server: McpServer, userId: string): void {
         if (error instanceof NoteAnchorValidationError) return fail(error.message);
         throw error;
       }
-      const note = await db.note.create({
-        data: {
-          userId,
-          kind: 'NOTE',
-          title,
-          content: args.content ?? '',
-          sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
-          sourceId: transcriptIds[0] ?? null,
-          ...(transcriptIds.length > 0
-            ? {
-                transcriptSources: {
-                  create: noteSourceCreateData(userId, transcriptIds, anchors),
-                },
-              }
-            : {}),
-        },
-        select: { id: true, title: true },
+      const note = await db.$transaction(async (tx) => {
+        const created = await tx.note.create({
+          data: {
+            userId,
+            kind: 'NOTE',
+            title,
+            content: args.content ?? '',
+            sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
+            sourceId: transcriptIds[0] ?? null,
+            ...(transcriptIds.length > 0
+              ? {
+                  transcriptSources: {
+                    create: noteSourceCreateData(userId, transcriptIds, anchors),
+                  },
+                }
+              : {}),
+          },
+        });
+        await recordInitialNoteRevision(tx, created, 'MCP');
+        return created;
       });
-      await reindexNotesBrain(userId).catch(() => {});
-      await invalidateGraphCache(userId).catch(() => {});
-      return ok({ id: note.id, title: note.title });
+      const graphSync = await syncNoteGraph(userId, note.id);
+      return ok({
+        id: note.id,
+        title: note.title,
+        revision: note.revision,
+        checksum: noteContentChecksum(note.title, note.content),
+        graphSync,
+      });
     },
   );
 
@@ -128,10 +139,16 @@ export function registerWriteTools(server: McpServer, userId: string): void {
     {
       title: 'Editar nota',
       description:
-        'Atualiza título e/ou conteúdo de uma nota existente (pelo note_id). Sobrescreve o ' +
-        'conteúdo informado. Só edita notas (kind=NOTE) do próprio usuário.',
+        'Atualiza título, conteúdo e/ou fontes de uma nota existente. Requer expected_revision ' +
+        'obtida por voxen_read_note para impedir sobrescrita concorrente. Para mudanças pontuais, ' +
+        'prefira voxen_patch_note.',
       inputSchema: {
         note_id: z.string().min(1).describe('ID da nota a editar.'),
+        expected_revision: z
+          .number()
+          .int()
+          .min(1)
+          .describe('Revisão retornada pela última leitura da nota.'),
         title: z.string().min(1).max(200).optional().describe('Novo título.'),
         content: z.string().max(200_000).optional().describe('Novo conteúdo markdown.'),
         source_transcript_ids: z
@@ -145,7 +162,13 @@ export function registerWriteTools(server: McpServer, userId: string): void {
           .optional()
           .describe('Substitui as passagens ancoradas e preserva os demais IDs informados.'),
       },
-      outputSchema: { id: z.string(), title: z.string() },
+      outputSchema: {
+        id: z.string(),
+        title: z.string(),
+        revision: z.number(),
+        checksum: z.string(),
+        graphSync: z.string(),
+      },
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
@@ -168,9 +191,23 @@ export function registerWriteTools(server: McpServer, userId: string): void {
       if (args.title !== undefined && !args.title.trim()) return fail('Título não pode ser vazio.');
       const existing = await db.note.findFirst({
         where: { id: args.note_id, userId, kind: 'NOTE' },
-        select: { id: true, transcriptSources: { select: { transcriptId: true } } },
+        select: {
+          id: true,
+          revision: true,
+          title: true,
+          content: true,
+          transcriptSources: { select: { transcriptId: true } },
+        },
       });
       if (!existing) return fail('Nota não encontrada (ou não é editável).');
+      if (existing.revision !== args.expected_revision) {
+        return noteWriteFailure(
+          new NoteRevisionConflictError(
+            existing.revision,
+            noteContentChecksum(existing.title, existing.content),
+          ),
+        ) as ReturnType<typeof fail>;
+      }
       const anchorInputs = toNoteAnchorInputs(args.source_anchors);
       const replaceSources =
         args.source_transcript_ids !== undefined || args.source_anchors !== undefined;
@@ -193,42 +230,69 @@ export function registerWriteTools(server: McpServer, userId: string): void {
         if (error instanceof NoteAnchorValidationError) return fail(error.message);
         throw error;
       }
-      const note = await db.note.update({
-        where: { id: existing.id },
-        data: {
-          ...(args.title !== undefined ? { title: args.title.trim() } : {}),
-          ...(args.content !== undefined ? { content: args.content } : {}),
+      try {
+        const note = await commitNoteVersion({
+          userId,
+          noteId: existing.id,
+          expectedRevision: args.expected_revision,
+          actor: 'MCP',
+          changeSummary: 'Full note update through MCP',
+          changes: {
+            ...(args.title !== undefined ? { title: args.title.trim() } : {}),
+            ...(args.content !== undefined ? { content: args.content } : {}),
+            ...(transcriptIds !== undefined
+              ? {
+                  sourceType: transcriptIds.length > 0 ? ('TRANSCRIPT' as const) : null,
+                  sourceId: transcriptIds[0] ?? null,
+                }
+              : {}),
+          },
           ...(transcriptIds !== undefined
             ? {
-                sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
-                sourceId: transcriptIds[0] ?? null,
-                transcriptSources:
-                  args.source_anchors !== undefined
-                    ? {
-                        deleteMany: {},
-                        ...(transcriptIds.length > 0
-                          ? { create: noteSourceCreateData(userId, transcriptIds, anchors) }
-                          : {}),
-                      }
-                    : {
-                        deleteMany:
-                          transcriptIds.length > 0
-                            ? { transcriptId: { notIn: transcriptIds } }
-                            : {},
-                        upsert: transcriptIds.map((transcriptId) => ({
-                          where: { noteId_transcriptId: { noteId: existing.id, transcriptId } },
-                          update: {},
-                          create: { transcriptId, userId },
-                        })),
-                      },
+                mutateRelations: async (tx) => {
+                  await tx.note.update({
+                    where: { id: existing.id },
+                    data: {
+                      transcriptSources:
+                        args.source_anchors !== undefined
+                          ? {
+                              deleteMany: {},
+                              ...(transcriptIds.length > 0
+                                ? { create: noteSourceCreateData(userId, transcriptIds, anchors) }
+                                : {}),
+                            }
+                          : {
+                              deleteMany:
+                                transcriptIds.length > 0
+                                  ? { transcriptId: { notIn: transcriptIds } }
+                                  : {},
+                              upsert: transcriptIds.map((transcriptId) => ({
+                                where: {
+                                  noteId_transcriptId: { noteId: existing.id, transcriptId },
+                                },
+                                update: {},
+                                create: { transcriptId, userId },
+                              })),
+                            },
+                    },
+                  });
+                },
               }
             : {}),
-        },
-        select: { id: true, title: true },
-      });
-      await reindexNotesBrain(userId).catch(() => {});
-      await invalidateGraphCache(userId).catch(() => {});
-      return ok({ id: note.id, title: note.title });
+        });
+        const graphSync = await syncNoteGraph(userId, note.id);
+        return ok({
+          id: note.id,
+          title: note.title,
+          revision: note.revision,
+          checksum: note.checksum,
+          graphSync,
+        });
+      } catch (error) {
+        const failure = noteWriteFailure(error);
+        if (failure) return failure;
+        throw error;
+      }
     },
   );
 

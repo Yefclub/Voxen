@@ -25,6 +25,28 @@ Comece com somente leitura. Habilite escrita apenas para um cliente que
 realmente precise modificar sua base e cujo comportamento de aprovação você
 conheça.
 
+## Fluxo seguro para editar notas
+
+As leituras de nota retornam uma `revision` monotônica e um `checksum` opaco.
+Sempre que possível, o agente deve alterar somente o trecho necessário:
+
+1. Use `voxen_search_notes` para encontrar a nota e
+   `voxen_search_note_content` para localizar o trecho exato e sua ocorrência.
+2. Chame `voxen_patch_note` com `preview_only: true`, a `expected_revision`
+   observada e uma operação `replace`, `insert_before`, `insert_after`,
+   `prepend` ou `append`.
+3. Revise a prévia limitada. Aplique repetindo a chamada com
+   `preview_only: false` somente se a revisão continuar atual.
+4. Consulte o histórico imutável com `voxen_list_note_revisions` e
+   `voxen_read_note_revision`. `voxen_restore_note_revision` cria uma nova
+   revisão atual; nunca reescreve o histórico.
+
+`voxen_update_note` continua disponível para compatibilidade e substituições
+completas intencionais, mas também exige `expected_revision`. Um conflito exige
+reler a nota e propor uma nova mudança; o agente nunca deve repetir cegamente.
+Credenciais somente leitura não descobrem nem executam patch, restauração,
+criação, atualização completa ou ingestão.
+
 O administrador pode habilitar OAuth 2.1 em **Administração → Integrações → MCP
 Server**. O acesso OAuth continua vinculado ao usuário Voxen que aprova o
 consentimento; ele nunca herda acesso administrativo.

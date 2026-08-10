@@ -78,6 +78,57 @@ describe('pendingHitlFromTools', () => {
         toolName: 'propose_create_note',
         title: 'Minha nota',
         action: 'create_note',
+        patchPreview: null,
+      },
+    ]);
+  });
+
+  it('preserva somente a prévia estruturada e limitada da edição cirúrgica', () => {
+    expect(
+      pendingHitlFromTools([
+        {
+          name: 'propose_patch_note',
+          state: 'approval-required',
+          output: {
+            approvalRequired: true,
+            approvalId: 'patch-1',
+            action: 'patch_note',
+            title: 'Nota validada',
+            previewProof: 'a'.repeat(64),
+            patchPreview: {
+              operationKind: 'replace',
+              occurrence: 2,
+              changeSummary: 'Corrigir valor',
+              target: 'valor antigo',
+              replacement: 'valor novo',
+              line: 7,
+              context: 'contexto com valor novo',
+              truncatedTarget: false,
+              truncatedReplacement: false,
+              truncatedContext: false,
+              ignored: 'não deve atravessar a fronteira da UI',
+            },
+          },
+        },
+      ]),
+    ).toEqual([
+      {
+        approvalId: 'patch-1',
+        toolName: 'propose_patch_note',
+        title: 'Nota validada',
+        action: 'patch_note',
+        patchPreview: {
+          operationKind: 'replace',
+          occurrence: 2,
+          changeSummary: 'Corrigir valor',
+          target: 'valor antigo',
+          replacement: 'valor novo',
+          line: 7,
+          context: 'contexto com valor novo',
+          truncatedTarget: false,
+          truncatedReplacement: false,
+          truncatedContext: false,
+        },
       },
     ]);
   });

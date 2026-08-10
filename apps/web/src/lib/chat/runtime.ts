@@ -4,10 +4,10 @@ import { z } from 'zod';
 import type { Prisma } from '../../../prisma-generated/client';
 import { createAutoJobForUser } from '../../routes/jobs';
 import { getTranscriptBrief, waitForTranscriptJob } from '../agent-content';
-import { reindexNotesBrain } from '../brain';
 import { searchBrainNodes } from '../brain-search';
 import { db } from '../db';
-import { invalidateGraphCache } from '../graph-cache';
+import { noteContentChecksum } from '../note-revisions';
+import { syncNoteGraph } from '../note-versioning';
 import {
   expandContextFromMd,
   findRelated,
@@ -43,7 +43,18 @@ import { parseMessageAttachments } from './message-attachments';
 import { createReadExternalEnrichmentTool } from './external-enrichment-tool';
 import { parseTemporalBounds } from './temporal-bounds';
 import {
+  applyApprovedNoteMutation,
+  createProposePatchNoteTool,
+  createSearchNoteContentTool,
+  createVersionedChatNote,
+  extractApprovalPayload,
+  normalizeApprovalMutationError,
+  recoverApprovalPayloadFromMessages,
+} from './note-editing';
+import { prepareChatApprovalInput } from './note-approval-preview';
+import {
   HITL_ACTION_CREATE_NOTE,
+  HITL_ACTION_PATCH_NOTE,
   buildHitlResumePrompt,
   resolveProposeCreateNoteApproval,
   shouldInjectTurnContentAsUserMessage,
@@ -133,6 +144,10 @@ const AGENT_INSTRUCTIONS = [
   'criar a nota por outro caminho nem repita a ferramenta no mesmo turno após a proposta.',
   'Depois de uma confirmação (mensagem do sistema de nota criada), continue o plano sem',
   're-propor a mesma nota.',
+  'Para editar uma nota, leia a revisão atual, localize o trecho com search_note_content e',
+  'use propose_patch_note com uma operação exata. A interface sempre pedirá confirmação.',
+  'Nunca substitua a nota inteira quando uma edição cirúrgica for suficiente e nunca tente',
+  'contornar um conflito de revisão: releia a nota e explique a mudança ao usuário.',
   '',
   'Comunicação com o usuário (OBRIGATÓRIO — a resposta final é produto, não log de API):',
   '- NUNCA mencione nomes de ferramentas, parâmetros, IDs internos (transcriptId, approvalId)',
@@ -919,6 +934,7 @@ export function buildTools(
             id: true,
             title: true,
             content: true,
+            revision: true,
             transcriptSources: {
               orderBy: { createdAt: 'asc' },
               select: {
@@ -933,6 +949,8 @@ export function buildTools(
               id: note.id,
               title: note.title,
               content: note.content,
+              revision: note.revision,
+              checksum: noteContentChecksum(note.title, note.content),
               href: `/notas/${note.id}`,
               sources: note.transcriptSources.map((source) => ({
                 id: source.transcriptId,
@@ -944,6 +962,7 @@ export function buildTools(
           : { error: 'Nota não encontrada.' };
       },
     }),
+    search_note_content: createSearchNoteContentTool(userId),
     brain_search: tool({
       description: 'Busca entidades, tópicos e evidências no Brain do workspace atual.',
       inputSchema: z.object({ query: z.string().min(1).max(300) }),
@@ -951,6 +970,7 @@ export function buildTools(
         return searchBrainNodes(userId, query, 12);
       },
     }),
+    propose_patch_note: createProposePatchNoteTool(),
     propose_create_note: tool({
       description:
         'Propõe criar uma nota. Sem always-allow do usuário a interface pede confirmação; ' +
@@ -971,11 +991,7 @@ export function buildTools(
             contentLength: content.length,
           };
         }
-        const note = await db.note.create({
-          data: { userId, kind: 'NOTE', title, content },
-        });
-        void reindexNotesBrain(userId).catch(() => undefined);
-        void invalidateGraphCache(userId).catch(() => undefined);
+        const note = await createVersionedChatNote(userId, title, content);
         return {
           ok: true,
           noteId: note.id,
@@ -1013,19 +1029,6 @@ function collectApprovalIdsFromJson(value: unknown, into: Set<string>): void {
   }
 }
 
-function extractCreateNotePayload(output: Record<string, unknown>): {
-  action: string;
-  title: string;
-  content: string;
-} | null {
-  const action = typeof output.action === 'string' ? output.action : 'create_note';
-  if (action !== 'create_note') return null;
-  const title = typeof output.title === 'string' ? output.title.trim() : '';
-  const content = typeof output.content === 'string' ? output.content : '';
-  if (!title) return null;
-  return { action, title, content };
-}
-
 async function findAssistantMessagesWithApproval(
   tx: DbTx,
   conversationId: string,
@@ -1043,32 +1046,6 @@ async function findAssistantMessagesWithApproval(
       )
     ORDER BY "createdAt" DESC, id DESC
   `;
-}
-
-function recoverCreateNotePayloadFromMessages(
-  messages: Array<{ tools: Prisma.JsonValue; segments: Prisma.JsonValue }>,
-  approvalId: string,
-): { action: string; title: string; content: string } | null {
-  for (const message of messages) {
-    const bags = [message.tools, message.segments];
-    for (const bag of bags) {
-      if (!Array.isArray(bag)) continue;
-      for (const raw of bag) {
-        if (!raw || typeof raw !== 'object') continue;
-        const item = raw as Record<string, unknown>;
-        const tools = item.type === 'tool-group' && Array.isArray(item.tools) ? item.tools : [item];
-        for (const toolRaw of tools) {
-          if (!toolRaw || typeof toolRaw !== 'object') continue;
-          const tool = toolRaw as Record<string, unknown>;
-          if (!toolMatchesApproval(tool, approvalId)) continue;
-          const output = tool.output as Record<string, unknown>;
-          const payload = extractCreateNotePayload(output);
-          if (payload) return payload;
-        }
-      }
-    }
-  }
-  return null;
 }
 
 /** Marks matching tools/segments as completed after HITL approval (spec 090). */
@@ -1219,7 +1196,7 @@ async function reconcileStaleHitl(
         collectApprovalIdsFromJson(message.segments, ids);
         return ids.has(approvalId);
       });
-      const payload = recoverCreateNotePayloadFromMessages(matched, approvalId);
+      const payload = recoverApprovalPayloadFromMessages(matched, approvalId);
       if (!payload) {
         await clearApprovalGhostInConversation(tx, conversationId, approvalId);
         continue;
@@ -1282,7 +1259,7 @@ async function ensurePendingApproval(
   if (!conversation) throw new Error('Confirmação não encontrada ou já utilizada.');
 
   const matched = await findAssistantMessagesWithApproval(tx, conversation.id, approvalId);
-  const recovered = recoverCreateNotePayloadFromMessages(matched, approvalId);
+  const recovered = recoverApprovalPayloadFromMessages(matched, approvalId);
   if (!recovered) {
     await clearApprovalGhostInConversation(tx, conversation.id, approvalId);
     throw new Error('Confirmação não encontrada ou já utilizada.');
@@ -1330,101 +1307,113 @@ export type ApproveChatActionResult = {
   shouldResume: boolean;
 };
 
+export { ChatApprovalMutationError } from './note-editing';
+
 export async function approveChatAction(
   userId: string,
   approvalId: string,
   options: { alwaysAllow?: boolean } = {},
 ): Promise<ApproveChatActionResult> {
-  const result = await db.$transaction(async (tx) => {
-    const now = new Date();
-    const approval = await ensurePendingApproval(tx, userId, approvalId);
-    const consumed = await tx.chatApproval.updateMany({
-      where: { id: approval.id, userId, status: 'PENDING' },
-      data: { status: 'APPROVED', decidedAt: now },
-    });
-    if (consumed.count !== 1) throw new Error('Confirmação já utilizada.');
-    const payload =
-      approval.payload && typeof approval.payload === 'object'
-        ? (approval.payload as Record<string, unknown>)
-        : {};
-    if (approval.action !== 'create_note') throw new Error('Ação de confirmação não suportada.');
-    const title = typeof payload.title === 'string' ? payload.title : '';
-    const content = typeof payload.content === 'string' ? payload.content : '';
-    if (!title) throw new Error('Confirmação inválida.');
-    const note = await tx.note.create({ data: { userId, kind: 'NOTE', title, content } });
-    const assistantMessages = await findAssistantMessagesWithApproval(
-      tx,
-      approval.conversationId,
-      approvalId,
-    );
-    for (const message of assistantMessages) {
-      const resolved = resolveApprovalInMessageJson(
-        message.tools,
-        message.segments,
-        approvalId,
-        note.id,
-      );
-      if (resolved.tools === undefined && resolved.segments === undefined) continue;
-      await tx.chatMessage.update({
-        where: { id: message.id },
-        data: {
-          ...(resolved.tools !== undefined ? { tools: resolved.tools } : {}),
-          ...(resolved.segments !== undefined ? { segments: resolved.segments } : {}),
-        },
+  let result: ApproveChatActionResult;
+  try {
+    result = await db.$transaction(async (tx) => {
+      const now = new Date();
+      const approval = await ensurePendingApproval(tx, userId, approvalId);
+      const consumed = await tx.chatApproval.updateMany({
+        where: { id: approval.id, userId, status: 'PENDING' },
+        data: { status: 'APPROVED', decidedAt: now },
       });
-      break;
-    }
-    // A confirmação vira mensagem NA trilha ativa (spec 127). Criada sem
-    // antecessor, ela ficaria fora de toda caminhada — invisível para o
-    // modelo — e ainda faria a conversa parecer não encadeada, apagando os
-    // indicadores de versão de todos os pontos de ramificação.
-    const conversation = await tx.conversation.findUnique({
-      where: { id: approval.conversationId },
-      select: { activeLeafId: true, messagesLinearized: true },
-    });
-    const { trail } = await loadConversationTrail(
-      approval.conversationId,
-      {
-        activeLeafId: conversation?.activeLeafId,
-        linearized: conversation?.messagesLinearized,
-      },
-      (query) => tx.chatMessage.findMany(query) as unknown as Promise<TrailNodeRow[]>,
-    );
-    const hitlMessage = await tx.chatMessage.create({
-      data: {
+      if (consumed.count !== 1) throw new Error('Confirmação já utilizada.');
+      const payload =
+        approval.payload && typeof approval.payload === 'object'
+          ? (approval.payload as Record<string, unknown>)
+          : {};
+      const approvedPayload = extractApprovalPayload({ ...payload, action: approval.action });
+      if (!approvedPayload || approvedPayload.action !== approval.action) {
+        throw new Error('Confirmação inválida.');
+      }
+      const { note, outcomeMessage, systemMessage } = await applyApprovedNoteMutation(
+        tx,
+        userId,
+        approvedPayload,
+      );
+      const assistantMessages = await findAssistantMessagesWithApproval(
+        tx,
+        approval.conversationId,
+        approvalId,
+      );
+      for (const message of assistantMessages) {
+        const resolved = resolveApprovalInMessageJson(
+          message.tools,
+          message.segments,
+          approvalId,
+          note.id,
+        );
+        if (resolved.tools === undefined && resolved.segments === undefined) continue;
+        await tx.chatMessage.update({
+          where: { id: message.id },
+          data: {
+            ...(resolved.tools !== undefined ? { tools: resolved.tools } : {}),
+            ...(resolved.segments !== undefined ? { segments: resolved.segments } : {}),
+          },
+        });
+        break;
+      }
+      // A confirmação vira mensagem NA trilha ativa (spec 127). Criada sem
+      // antecessor, ela ficaria fora de toda caminhada — invisível para o
+      // modelo — e ainda faria a conversa parecer não encadeada, apagando os
+      // indicadores de versão de todos os pontos de ramificação.
+      const conversation = await tx.conversation.findUnique({
+        where: { id: approval.conversationId },
+        select: { activeLeafId: true, messagesLinearized: true },
+      });
+      const { trail } = await loadConversationTrail(
+        approval.conversationId,
+        {
+          activeLeafId: conversation?.activeLeafId,
+          linearized: conversation?.messagesLinearized,
+        },
+        (query) => tx.chatMessage.findMany(query) as unknown as Promise<TrailNodeRow[]>,
+      );
+      const hitlMessage = await tx.chatMessage.create({
+        data: {
+          conversationId: approval.conversationId,
+          role: 'SYSTEM',
+          kind: 'HITL_RESPONSE',
+          content: systemMessage,
+          parentId: resolveAppendParent(trail),
+        },
+        select: { id: true },
+      });
+      await tx.conversation.update({
+        where: { id: approval.conversationId },
+        data: { activeLeafId: hitlMessage.id },
+      });
+      const resumePrompt = buildHitlResumePrompt({
+        action: approval.action,
+        title: note.title,
+        noteId: note.id,
+      });
+      return {
+        message: outcomeMessage,
+        noteId: note.id,
         conversationId: approval.conversationId,
-        role: 'SYSTEM',
-        kind: 'HITL_RESPONSE',
-        content: `Nota “${note.title}” criada após confirmação do usuário.`,
-        parentId: resolveAppendParent(trail),
-      },
-      select: { id: true },
+        action: approval.action,
+        title: note.title,
+        hitlMessageId: hitlMessage.id,
+        resumePrompt,
+        shouldResume: shouldResumeAfterApprove({ approved: true, action: approval.action }),
+      };
     });
-    await tx.conversation.update({
-      where: { id: approval.conversationId },
-      data: { activeLeafId: hitlMessage.id },
-    });
-    const resumePrompt = buildHitlResumePrompt({
-      action: approval.action,
-      title: note.title,
-      noteId: note.id,
-    });
-    return {
-      message: `Nota “${note.title}” criada.`,
-      noteId: note.id,
-      conversationId: approval.conversationId,
-      action: approval.action,
-      title: note.title,
-      hitlMessageId: hitlMessage.id,
-      resumePrompt,
-      shouldResume: shouldResumeAfterApprove({ approved: true, action: approval.action }),
-    };
-  });
-  if (options.alwaysAllow) {
+  } catch (error) {
+    const normalized = normalizeApprovalMutationError(error);
+    if (normalized) throw normalized;
+    throw error;
+  }
+  if (options.alwaysAllow && result.action === HITL_ACTION_CREATE_NOTE) {
     await grantAlwaysAllowAction(userId, result.action).catch(() => undefined);
   }
-  await reindexNotesBrain(userId).catch(() => undefined);
-  await invalidateGraphCache(userId).catch(() => undefined);
+  if (result.noteId) await syncNoteGraph(userId, result.noteId);
   return result;
 }
 
@@ -1741,6 +1730,7 @@ export async function streamAssistantReply(options: {
     // Spec 090 pause; spec 132 always-allow → approved (execute cria a nota).
     toolApproval: {
       propose_create_note: resolveProposeCreateNoteApproval(alwaysAllowCreateNote),
+      propose_patch_note: 'user-approval',
     },
     stopWhen: stepCountIs(12),
     abortSignal,
@@ -1808,13 +1798,23 @@ export async function streamAssistantReply(options: {
         const input = toolCall?.input ?? toolCall?.args;
         const inputRecord =
           input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-        const action = toolName === 'propose_create_note' ? 'create_note' : toolName;
+        const action =
+          toolName === 'propose_create_note'
+            ? HITL_ACTION_CREATE_NOTE
+            : toolName === 'propose_patch_note'
+              ? HITL_ACTION_PATCH_NOTE
+              : toolName;
+        const { trustedInput, patchPreview } = await prepareChatApprovalInput(
+          userId,
+          action,
+          inputRecord,
+        );
         const output = {
+          ...trustedInput,
           approvalRequired: true,
           approvalId,
           action,
-          title: typeof inputRecord.title === 'string' ? inputRecord.title : undefined,
-          content: typeof inputRecord.content === 'string' ? inputRecord.content : undefined,
+          ...(patchPreview ? { patchPreview } : {}),
         };
         const current = tools.find((event) => event.id === toolCallId);
         const event: StoredToolEvent = {
@@ -1832,7 +1832,7 @@ export async function streamAssistantReply(options: {
             providerApprovalId: approvalId,
             action,
             payload: {
-              ...inputRecord,
+              ...trustedInput,
               approvalId,
               action,
               approvalRequired: true,

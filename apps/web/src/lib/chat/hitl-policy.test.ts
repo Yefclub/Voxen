@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   HITL_ACTION_CREATE_NOTE,
+  HITL_ACTION_PATCH_NOTE,
   buildHitlResumePrompt,
   parseAlwaysAllowActions,
   resolveProposeCreateNoteApproval,
@@ -24,6 +25,7 @@ describe('always-allow preferences', () => {
     const next = withAlwaysAllowAction(new Set(), HITL_ACTION_CREATE_NOTE);
     expect(next.has(HITL_ACTION_CREATE_NOTE)).toBe(true);
     expect(serializeAlwaysAllowActions(next)).toBe('["create_note"]');
+    expect(withAlwaysAllowAction(next, HITL_ACTION_PATCH_NOTE)).toEqual(next);
   });
 });
 
@@ -53,6 +55,15 @@ describe('gating HITL', () => {
     expect(resolveProposeCreateNoteApproval(false)).toBe('user-approval');
     expect(resolveProposeCreateNoteApproval(true)).toBe('approved');
   });
+
+  test('edição de nota sempre exige confirmação e nunca herda always-allow', () => {
+    expect(
+      shouldRequireHitlApproval({
+        action: HITL_ACTION_PATCH_NOTE,
+        alwaysAllowed: new Set([HITL_ACTION_CREATE_NOTE]),
+      }),
+    ).toBe(true);
+  });
 });
 
 describe('resume após approve', () => {
@@ -64,6 +75,13 @@ describe('resume após approve', () => {
       false,
     );
     expect(shouldResumeAfterApprove({ approved: true, action: 'other' })).toBe(false);
+    expect(shouldResumeAfterApprove({ approved: true, action: HITL_ACTION_PATCH_NOTE })).toBe(true);
+  });
+
+  test('prompt de resume distingue uma edição confirmada', () => {
+    const prompt = buildHitlResumePrompt({ action: HITL_ACTION_PATCH_NOTE, title: 'Ideias' });
+    expect(prompt).toContain('edição cirúrgica');
+    expect(prompt).toContain('Ideias');
   });
 
   test('prompt de resume cita a nota e pede continuidade sem re-propor', () => {

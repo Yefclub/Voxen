@@ -22,6 +22,15 @@ import {
   noteSourceCreateData,
   validateNoteAnchors,
 } from '../lib/note-anchors';
+import { noteContentChecksum } from '../lib/note-revisions';
+import {
+  NoteNotFoundError,
+  NoteRevisionConflictError,
+  commitNoteVersion,
+  recordInitialNoteRevision,
+  syncNoteGraph,
+} from '../lib/note-versioning';
+import { noteVersionRoutes } from './note-version-routes';
 
 type Vars = { userId: string };
 
@@ -54,6 +63,7 @@ notesRoutes.get('/', async (c) => {
       sourceId: true,
       kind: true,
       title: true,
+      revision: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -72,10 +82,11 @@ notesRoutes.get('/search', async (c) => {
     snippet: string;
     rank: number;
     parentId: string | null;
+    revision: number;
   };
   const rows = await db.$queryRaw<Row[]>`
     SELECT
-      id, title, "parentId",
+      id, title, "parentId", revision,
       ts_headline(
         'portuguese',
         coalesce("content", ''),
@@ -93,6 +104,26 @@ notesRoutes.get('/search', async (c) => {
   return c.json({ results: rows, query });
 });
 
+function noteMutationError(error: unknown): Response | null {
+  if (error instanceof NoteRevisionConflictError) {
+    return Response.json(
+      {
+        error: 'A nota foi alterada desde a última leitura.',
+        code: 'REVISION_CONFLICT',
+        currentRevision: error.currentRevision,
+        currentChecksum: error.currentChecksum,
+      },
+      { status: 409 },
+    );
+  }
+  if (error instanceof NoteNotFoundError) {
+    return Response.json({ error: 'Nota não encontrada.' }, { status: 404 });
+  }
+  return null;
+}
+
+notesRoutes.route('/', noteVersionRoutes);
+
 // GET /api/notes/:id
 notesRoutes.get('/:id', async (c) => {
   const userId = c.get('userId');
@@ -107,6 +138,7 @@ notesRoutes.get('/:id', async (c) => {
       kind: true,
       title: true,
       content: true,
+      revision: true,
       createdAt: true,
       updatedAt: true,
       transcriptSources: {
@@ -134,7 +166,7 @@ notesRoutes.get('/:id', async (c) => {
     },
   });
   if (!note) return c.json({ error: 'Nota não encontrada.' }, 404);
-  return c.json({ note });
+  return c.json({ note: { ...note, checksum: noteContentChecksum(note.title, note.content) } });
 });
 
 const CreateBody = z.object({
@@ -202,45 +234,49 @@ notesRoutes.post('/', async (c) => {
     throw error;
   }
 
-  const note = await db.note.create({
-    data: {
-      userId,
-      parentId: parentId ?? null,
-      sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
-      sourceId: transcriptIds[0] ?? null,
-      kind,
-      title: title.trim(),
-      content: kind === 'NOTE' ? (content ?? '') : '',
-      ...(transcriptIds.length > 0
-        ? {
-            transcriptSources: {
-              create: noteSourceCreateData(userId, transcriptIds, anchors),
-            },
-          }
-        : {}),
-    },
-    select: {
-      id: true,
-      parentId: true,
-      sourceType: true,
-      sourceId: true,
-      kind: true,
-      title: true,
-      updatedAt: true,
-    },
+  const note = await db.$transaction(async (tx) => {
+    const created = await tx.note.create({
+      data: {
+        userId,
+        parentId: parentId ?? null,
+        sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
+        sourceId: transcriptIds[0] ?? null,
+        kind,
+        title: title.trim(),
+        content: kind === 'NOTE' ? (content ?? '') : '',
+        ...(transcriptIds.length > 0
+          ? {
+              transcriptSources: {
+                create: noteSourceCreateData(userId, transcriptIds, anchors),
+              },
+            }
+          : {}),
+      },
+    });
+    await recordInitialNoteRevision(tx, created, 'USER');
+    return created;
   });
-  await reindexNotesBrain(userId);
-  await invalidateGraphCache(userId);
-  return c.json({ note }, 201);
+  const graphSync = await syncNoteGraph(userId, note.id);
+  return c.json({ note, graphSync }, 201);
 });
 
-const PatchBody = z.object({
-  parentId: z.string().nullable().optional(),
-  title: z.string().min(1).max(200).optional(),
-  content: z.string().max(200_000).optional(),
-  sourceTranscriptIds: z.array(z.string().min(1)).max(50).optional(),
-  sourceAnchors: z.array(NoteAnchorInputSchema).max(100).optional(),
-});
+const PatchBody = z
+  .object({
+    expectedRevision: z.number().int().min(1),
+    parentId: z.string().nullable().optional(),
+    title: z.string().min(1).max(200).optional(),
+    content: z.string().max(200_000).optional(),
+    sourceTranscriptIds: z.array(z.string().min(1)).max(50).optional(),
+    sourceAnchors: z.array(NoteAnchorInputSchema).max(100).optional(),
+  })
+  .refine(
+    (value) =>
+      value.parentId !== undefined ||
+      value.title !== undefined ||
+      value.content !== undefined ||
+      value.sourceTranscriptIds !== undefined ||
+      value.sourceAnchors !== undefined,
+  );
 
 notesRoutes.patch('/:id', async (c) => {
   const userId = c.get('userId');
@@ -251,6 +287,7 @@ notesRoutes.patch('/:id', async (c) => {
       id: true,
       kind: true,
       parentId: true,
+      revision: true,
       transcriptSources: { select: { transcriptId: true } },
     },
   });
@@ -258,7 +295,8 @@ notesRoutes.patch('/:id', async (c) => {
 
   const parsed = PatchBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: 'Payload inválido.' }, 400);
-  const { parentId, title, content, sourceTranscriptIds, sourceAnchors } = parsed.data;
+  const { expectedRevision, parentId, title, content, sourceTranscriptIds, sourceAnchors } =
+    parsed.data;
 
   // Mover: validar destino. parentId=null → root.
   if (parentId !== undefined && parentId !== existing.parentId) {
@@ -306,50 +344,62 @@ notesRoutes.patch('/:id', async (c) => {
     throw error;
   }
 
-  const note = await db.note.update({
-    where: { id },
-    data: {
-      ...(parentId !== undefined ? { parentId } : {}),
-      ...(title !== undefined ? { title: title.trim() } : {}),
-      ...(content !== undefined && existing.kind === 'NOTE' ? { content } : {}),
+  try {
+    const note = await commitNoteVersion({
+      userId,
+      noteId: id,
+      expectedRevision,
+      actor: 'USER',
+      changeSummary: 'Edit note',
+      changes: {
+        ...(parentId !== undefined ? { parentId } : {}),
+        ...(title !== undefined ? { title: title.trim() } : {}),
+        ...(content !== undefined && existing.kind === 'NOTE' ? { content } : {}),
+        ...(transcriptIds !== undefined
+          ? {
+              sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
+              sourceId: transcriptIds[0] ?? null,
+            }
+          : {}),
+      },
       ...(transcriptIds !== undefined
         ? {
-            sourceType: transcriptIds.length > 0 ? 'TRANSCRIPT' : null,
-            sourceId: transcriptIds[0] ?? null,
-            transcriptSources:
-              sourceAnchors !== undefined
-                ? {
-                    deleteMany: {},
-                    ...(transcriptIds.length > 0
-                      ? { create: noteSourceCreateData(userId, transcriptIds, anchors) }
-                      : {}),
-                  }
-                : {
-                    deleteMany:
-                      transcriptIds.length > 0 ? { transcriptId: { notIn: transcriptIds } } : {},
-                    upsert: transcriptIds.map((transcriptId) => ({
-                      where: { noteId_transcriptId: { noteId: id, transcriptId } },
-                      update: {},
-                      create: { transcriptId, userId },
-                    })),
-                  },
+            mutateRelations: async (tx) => {
+              await tx.note.update({
+                where: { id },
+                data: {
+                  transcriptSources:
+                    sourceAnchors !== undefined
+                      ? {
+                          deleteMany: {},
+                          ...(transcriptIds.length > 0
+                            ? { create: noteSourceCreateData(userId, transcriptIds, anchors) }
+                            : {}),
+                        }
+                      : {
+                          deleteMany:
+                            transcriptIds.length > 0
+                              ? { transcriptId: { notIn: transcriptIds } }
+                              : {},
+                          upsert: transcriptIds.map((transcriptId) => ({
+                            where: { noteId_transcriptId: { noteId: id, transcriptId } },
+                            update: {},
+                            create: { transcriptId, userId },
+                          })),
+                        },
+                },
+              });
+            },
           }
         : {}),
-    },
-    select: {
-      id: true,
-      parentId: true,
-      sourceType: true,
-      sourceId: true,
-      kind: true,
-      title: true,
-      content: true,
-      updatedAt: true,
-    },
-  });
-  await reindexNotesBrain(userId);
-  await invalidateGraphCache(userId);
-  return c.json({ note });
+    });
+    const graphSync = await syncNoteGraph(userId, id);
+    return c.json({ note, graphSync });
+  } catch (error) {
+    const response = noteMutationError(error);
+    if (response) return response;
+    throw error;
+  }
 });
 
 notesRoutes.delete('/:id', async (c) => {
