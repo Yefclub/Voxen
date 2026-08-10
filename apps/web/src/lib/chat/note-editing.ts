@@ -1,4 +1,5 @@
 import { tool } from 'ai';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { Prisma } from '../../../prisma-generated/client';
 import { db } from '../db';
@@ -28,16 +29,73 @@ const chatNotePatchOperationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.enum(['prepend', 'append']), text: z.string().min(1).max(20_000) }),
 ]);
 
+export type ChatPatchApprovalPreview = {
+  operationKind: NotePatchOperation['kind'];
+  occurrence: number | null;
+  changeSummary: string;
+  target: string;
+  replacement: string;
+  line: number;
+  context: string;
+  resultingChecksum: string;
+  truncatedTarget: boolean;
+  truncatedReplacement: boolean;
+  truncatedContext: boolean;
+};
+
+export type ChatPatchProposal = {
+  action: typeof HITL_ACTION_PATCH_NOTE;
+  noteId: string;
+  noteTitle: string;
+  expectedRevision: number;
+  operation: NotePatchOperation;
+  changeSummary: string;
+};
+
 export type ChatApprovalPayload =
   | { action: typeof HITL_ACTION_CREATE_NOTE; title: string; content: string }
-  | {
-      action: typeof HITL_ACTION_PATCH_NOTE;
-      noteId: string;
-      noteTitle: string;
-      expectedRevision: number;
-      operation: NotePatchOperation;
-      changeSummary: string;
-    };
+  | (ChatPatchProposal & {
+      patchPreview: ChatPatchApprovalPreview;
+      previewProof: string;
+    });
+
+const chatPatchApprovalPreviewSchema = z.object({
+  operationKind: z.enum(['replace', 'insert_before', 'insert_after', 'prepend', 'append']),
+  occurrence: z.number().int().min(1).nullable(),
+  changeSummary: z.string().min(1).max(300),
+  target: z.string().max(501),
+  replacement: z.string().max(501),
+  line: z.number().int().min(1),
+  context: z.string().max(701),
+  resultingChecksum: z.string().regex(/^[a-f0-9]{64}$/),
+  truncatedTarget: z.boolean(),
+  truncatedReplacement: z.boolean(),
+  truncatedContext: z.boolean(),
+});
+
+export function chatPatchApprovalProof(
+  payload: ChatPatchProposal,
+  canonicalTitle: string,
+  resultingChecksum: string,
+): string {
+  return createHash('sha256')
+    .update(payload.noteId)
+    .update('\0')
+    .update(String(payload.expectedRevision))
+    .update('\0')
+    .update(canonicalTitle)
+    .update('\0')
+    .update(JSON.stringify(payload.operation))
+    .update('\0')
+    .update(resultingChecksum)
+    .digest('hex');
+}
+
+export function extractPatchProposal(output: Record<string, unknown>): ChatPatchProposal | null {
+  const action = typeof output.action === 'string' ? output.action : HITL_ACTION_CREATE_NOTE;
+  if (action !== HITL_ACTION_PATCH_NOTE) return null;
+  return parsePatchProposal(output);
+}
 
 export function extractApprovalPayload(
   output: Record<string, unknown>,
@@ -48,7 +106,18 @@ export function extractApprovalPayload(
     const content = typeof output.content === 'string' ? output.content : '';
     return title ? { action, title, content } : null;
   }
-  if (action !== HITL_ACTION_PATCH_NOTE) return null;
+  const proposal = extractPatchProposal(output);
+  if (!proposal) return null;
+  const patchPreview = chatPatchApprovalPreviewSchema.safeParse(output.patchPreview);
+  const previewProof =
+    typeof output.previewProof === 'string' && /^[a-f0-9]{64}$/.test(output.previewProof)
+      ? output.previewProof
+      : '';
+  if (!patchPreview.success || !previewProof) return null;
+  return { ...proposal, patchPreview: patchPreview.data, previewProof };
+}
+
+function parsePatchProposal(output: Record<string, unknown>): ChatPatchProposal | null {
   const noteId = typeof output.noteId === 'string' ? output.noteId.trim() : '';
   const noteTitle =
     typeof output.noteTitle === 'string'
@@ -71,7 +140,7 @@ export function extractApprovalPayload(
     return null;
   }
   return {
-    action,
+    action: HITL_ACTION_PATCH_NOTE,
     noteId,
     noteTitle,
     expectedRevision,
@@ -199,6 +268,17 @@ export async function applyApprovedNoteMutation(
     );
   }
   const patched = applyNotePatch(current.content, payload.operation);
+  const resultingChecksum = noteContentChecksum(current.title, patched.content);
+  const expectedProof = chatPatchApprovalProof(payload, current.title, resultingChecksum);
+  if (
+    payload.previewProof !== expectedProof ||
+    payload.patchPreview.resultingChecksum !== resultingChecksum
+  ) {
+    throw new ChatApprovalMutationError(
+      'INVALID_PREVIEW',
+      'A prévia validada desta edição não corresponde mais à proposta.',
+    );
+  }
   const note = await commitNoteVersionInTransaction(tx, {
     userId,
     noteId: payload.noteId,
