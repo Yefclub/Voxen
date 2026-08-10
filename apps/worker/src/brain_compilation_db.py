@@ -225,6 +225,20 @@ async def mark_compilation_skipped(*, user_id: str, compilation_id: str) -> None
             await refresh_compilation(conn, compilation_id, user_id)
 
 
+async def mark_transcript_compilation_skipped(*, user_id: str, transcript_id: str) -> None:
+    """Complete durable placeholder work when content is too short to segment."""
+    from . import db
+
+    async with db.connection() as conn:
+        row = await conn.fetchrow(
+            'SELECT id FROM "BrainCompilation" WHERE "userId" = $1 AND "transcriptId" = $2',
+            user_id,
+            transcript_id,
+        )
+    if row is not None:
+        await mark_compilation_skipped(user_id=user_id, compilation_id=str(row["id"]))
+
+
 async def mark_segment_failed(
     *,
     user_id: str,

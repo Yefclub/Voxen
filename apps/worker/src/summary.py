@@ -71,22 +71,26 @@ async def maybe_generate(
     log: Any,  # noqa: ANN401
     already_claimed: bool = False,
     claim_attempt: int | None = None,
+    correction_revision: int | None = None,
 ) -> None:
     if already_claimed:
-        if claim_attempt is None:
-            raise ValueError("claim_attempt is required for a claimed summary")
+        if claim_attempt is None or correction_revision is None:
+            raise ValueError("claim_attempt and correction_revision are required")
         active_attempt = claim_attempt
+        active_revision = correction_revision
     else:
-        started_attempt = await db.start_summary_enrichment(user_id, transcript_id)
-        if started_attempt is None:
+        claim = await db.start_summary_enrichment(user_id, transcript_id)
+        if claim is None:
             return
-        active_attempt = started_attempt
+        active_attempt = int(claim["summaryAttempt"])
+        active_revision = int(claim["correctionRevision"])
 
     async def finish(status: str, error: str | None = None) -> None:
         await db.finish_summary_enrichment(
             user_id,
             transcript_id,
             claim_attempt=active_attempt,
+            correction_revision=active_revision,
             status=status,
             error=error,
         )
@@ -100,9 +104,13 @@ async def maybe_generate(
         async with db.connection() as conn:
             row = await conn.fetchrow(
                 """SELECT title, "plainText", "correctedPlainText", "correctionState"
-                   FROM "Transcript" WHERE id = $1 AND "userId" = $2""",
+                   FROM "Transcript" WHERE id = $1 AND "userId" = $2
+                     AND "summaryStatus" = 'RUNNING'::"EnrichmentStatus"
+                     AND "summaryAttempts" = $3 AND "correctionRevision" = $4""",
                 transcript_id,
                 user_id,
+                active_attempt,
+                active_revision,
             )
         effective_text = (
             row["correctedPlainText"]
@@ -213,6 +221,7 @@ async def maybe_generate(
                 user_id,
                 transcript_id,
                 claim_attempt=active_attempt,
+                correction_revision=active_revision,
                 summary_md=summary,
             )
         except Exception as e:  # noqa: BLE001

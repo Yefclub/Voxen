@@ -1736,7 +1736,7 @@ async def list_transcript_tag_names(user_id: str, transcript_id: str) -> list[st
     return [str(row["name"]) for row in rows if row["name"]]
 
 
-async def start_summary_enrichment(user_id: str, transcript_id: str) -> int | None:
+async def start_summary_enrichment(user_id: str, transcript_id: str) -> dict[str, int] | None:
     async with connection() as conn:
         row = await conn.fetchrow(
             """
@@ -1752,12 +1752,12 @@ async def start_summary_enrichment(user_id: str, transcript_id: str) -> int | No
               AND (
                 "summaryNextAttemptAt" IS NULL OR "summaryNextAttemptAt" <= NOW()
               )
-            RETURNING "summaryAttempts"
+            RETURNING "summaryAttempts" AS "summaryAttempt", "correctionRevision"
             """,
             user_id,
             transcript_id,
         )
-    return int(row["summaryAttempts"]) if row is not None else None
+    return dict(row) if row is not None else None
 
 
 async def claim_pending_summary_enrichments(limit: int = 10) -> list[dict[str, Any]]:
@@ -1806,7 +1806,8 @@ async def claim_pending_summary_enrichments(limit: int = 10) -> list[dict[str, A
                 "summaryStartedAt" = NOW(), "summaryError" = NULL
             FROM candidates
             WHERE t.id = candidates.id
-            RETURNING t.id, t."userId", t."summaryAttempts" AS "summaryAttempt", (
+            RETURNING t.id, t."userId", t."summaryAttempts" AS "summaryAttempt",
+              t."correctionRevision", (
               SELECT j.id FROM "Job" j WHERE j."transcriptId" = t.id LIMIT 1
             ) AS "jobId"
             """,
@@ -1820,6 +1821,7 @@ async def finish_summary_enrichment(
     transcript_id: str,
     *,
     claim_attempt: int,
+    correction_revision: int,
     status: str,
     error: str | None = None,
 ) -> bool:
@@ -1843,6 +1845,7 @@ async def finish_summary_enrichment(
             WHERE "userId" = $1 AND id = $2
               AND "summaryStatus" = 'RUNNING'::"EnrichmentStatus"
               AND "summaryAttempts" = $5
+              AND "correctionRevision" = $6
             RETURNING id
             """,
             user_id,
@@ -1850,6 +1853,7 @@ async def finish_summary_enrichment(
             status,
             (error or "")[:500] or None,
             claim_attempt,
+            correction_revision,
         )
     return row is not None
 
@@ -1859,6 +1863,7 @@ async def complete_summary_enrichment(
     transcript_id: str,
     *,
     claim_attempt: int,
+    correction_revision: int,
     summary_md: str,
 ) -> bool:
     """Persiste o resumo somente se esta geração ainda possui o claim."""
@@ -1873,12 +1878,14 @@ async def complete_summary_enrichment(
             WHERE id = $1 AND "userId" = $2
               AND "summaryStatus" = 'RUNNING'::"EnrichmentStatus"
               AND "summaryAttempts" = $3
+              AND "correctionRevision" = $5
             RETURNING id
             """,
             transcript_id,
             user_id,
             claim_attempt,
             summary_md,
+            correction_revision,
         )
     return row is not None
 

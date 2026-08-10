@@ -159,6 +159,26 @@ class _Lease:
         return True
 
 
+async def test_short_corrected_content_completes_durable_placeholder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        brain_compilation.db,
+        "get_transcript_title_content_md_path",
+        AsyncMock(return_value=("Título", "curto", None)),
+    )
+    skipped = AsyncMock()
+    monkeypatch.setattr(brain_compilation_db, "mark_transcript_compilation_skipped", skipped)
+
+    await brain_compilation.extract_grounded_brain(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+    )
+
+    skipped.assert_awaited_once_with(user_id="user-1", transcript_id="transcript-1")
+
+
 async def test_segment_failure_keeps_following_segment_and_records_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

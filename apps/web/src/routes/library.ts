@@ -1,15 +1,3 @@
-// ============================================================================
-// /api/library — organização da biblioteca (pastas compartilhadas)
-// ============================================================================
-// Endpoints sempre escopados por userId:
-//   GET    /api/library/folders
-//   POST   /api/library/folders
-//   POST   /api/library/folders/clear — apaga todas as pastas (conteúdos ficam)
-//   PATCH  /api/library/folders/:id
-//   DELETE /api/library/folders/:id
-//   POST   /api/library/reorganize — classifica com IA só o que não tem pasta
-// ============================================================================
-
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { Prisma } from '../../prisma-generated/client';
@@ -25,6 +13,7 @@ import { classifyFolderForContent } from '../lib/folder-classify';
 import { generateTitleForContent } from '../lib/title-generate';
 import { generateTagsForContent } from '../lib/tags-generate';
 import { applyTagsToTranscript } from '../lib/tags';
+import { effectiveTranscriptPlainText } from '../lib/transcript-content';
 import { isSetupComplete } from '../lib/settings';
 
 type Vars = { userId: string };
@@ -504,7 +493,16 @@ libraryRoutes.post('/generate-tags', async (c) => {
     where: { userId, status: 'ACTIVE', tags: { none: {} } },
     orderBy: { createdAt: 'desc' },
     take: limit,
-    select: { id: true, title: true, plainText: true, summaryMd: true, folderId: true },
+    select: {
+      id: true,
+      title: true,
+      plainText: true,
+      correctedPlainText: true,
+      correctionState: true,
+      correctionRevision: true,
+      summaryMd: true,
+      folderId: true,
+    },
   });
 
   const existingTagNames = new Set(
@@ -519,7 +517,7 @@ libraryRoutes.post('/generate-tags', async (c) => {
 
   for (const item of batch) {
     try {
-      const content = ((item.summaryMd ?? '') || (item.plainText ?? '')).trim();
+      const content = ((item.summaryMd ?? '') || effectiveTranscriptPlainText(item)).trim();
       if (content.length < 40 && item.title.trim().length < 3) {
         skipped += 1;
         continue;
@@ -550,7 +548,7 @@ libraryRoutes.post('/generate-tags', async (c) => {
       }
       const applied = await applyTagsToTranscript(
         userId,
-        { id: item.id, folderId: item.folderId },
+        { id: item.id, folderId: item.folderId, correctionRevision: item.correctionRevision },
         result.tags,
       );
       for (const t of applied) existingTagNames.add(t.name);

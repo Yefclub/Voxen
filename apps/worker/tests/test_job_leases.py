@@ -286,6 +286,7 @@ async def test_summary_enrichment_is_reclaimed_independently_from_job(
                     "userId": "u1",
                     "jobId": "j1",
                     "summaryAttempt": 2,
+                    "correctionRevision": 3,
                 }
             ]
         ),
@@ -303,6 +304,7 @@ async def test_summary_enrichment_is_reclaimed_independently_from_job(
         log=main.log,
         already_claimed=True,
         claim_attempt=2,
+        correction_revision=3,
     )
 
 
@@ -329,8 +331,20 @@ async def test_enrichment_dispatcher_advances_summary_and_tags_under_backlog(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     summary_queue = [
-        {"id": "s1", "userId": "u1", "jobId": None, "summaryAttempt": 1},
-        {"id": "s2", "userId": "u1", "jobId": None, "summaryAttempt": 1},
+        {
+            "id": "s1",
+            "userId": "u1",
+            "jobId": None,
+            "summaryAttempt": 1,
+            "correctionRevision": 0,
+        },
+        {
+            "id": "s2",
+            "userId": "u1",
+            "jobId": None,
+            "summaryAttempt": 1,
+            "correctionRevision": 0,
+        },
     ]
     tag_queue = [
         {"id": "t1", "userId": "u1", "jobId": None, "taggingAttempt": 1, "correctionRevision": 0},
@@ -392,7 +406,15 @@ async def test_enrichment_dispatcher_advances_summary_and_tags_under_backlog(
 async def test_enrichment_dispatcher_round_robins_research_without_starvation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    summary_queue = [{"id": "s1", "userId": "u1", "jobId": None, "summaryAttempt": 1}]
+    summary_queue = [
+        {
+            "id": "s1",
+            "userId": "u1",
+            "jobId": None,
+            "summaryAttempt": 1,
+            "correctionRevision": 0,
+        }
+    ]
     tag_queue = [
         {"id": "t1", "userId": "u1", "jobId": None, "taggingAttempt": 1, "correctionRevision": 0}
     ]

@@ -266,7 +266,7 @@ export async function commitTranscriptCorrectionInTransaction(
       changeSummary: input.changeSummary.trim().slice(0, 500) || null,
     },
   });
-  await deferGroundedCompilation(tx, input.userId, current.id);
+  await deferGroundedCompilation(tx, input.userId, current.id, revision, checksum);
   return {
     transcriptId: current.id,
     revision,
@@ -293,6 +293,8 @@ async function deferGroundedCompilation(
   tx: Prisma.TransactionClient,
   userId: string,
   transcriptId: string,
+  revision: number,
+  checksum: string,
 ): Promise<void> {
   await tx.$executeRaw`
     DELETE FROM "BrainSource" source
@@ -333,9 +335,53 @@ async function deferGroundedCompilation(
       AND compilation."userId" = ${userId}
       AND compilation."transcriptId" = ${transcriptId}
   `;
-  await tx.brainCompilation.updateMany({
-    where: { userId, transcriptId },
-    data: { status: 'PENDING', lastError: null },
+  const compilation = await tx.brainCompilation.upsert({
+    where: { transcriptId },
+    update: {
+      contentHash: `correction-pending:${revision}:${checksum}`,
+      status: 'PENDING',
+      completedSegments: 0,
+      lastError: null,
+    },
+    create: {
+      userId,
+      transcriptId,
+      contentHash: `correction-pending:${revision}:${checksum}`,
+      status: 'PENDING',
+      totalSegments: 1,
+      completedSegments: 0,
+    },
+  });
+  await tx.brainCompilationSegment.upsert({
+    where: {
+      compilationId_segmentKey: {
+        compilationId: compilation.id,
+        segmentKey: `correction:${revision}`,
+      },
+    },
+    update: {
+      status: 'PENDING',
+      attempts: 0,
+      error: null,
+      claimedBy: null,
+      claimedAt: null,
+      leaseExpiresAt: null,
+      nextAttemptAt: null,
+    },
+    create: {
+      compilationId: compilation.id,
+      segmentKey: `correction:${revision}`,
+      status: 'PENDING',
+      startLine: 1,
+      endLine: 1,
+    },
+  });
+  const totalSegments = await tx.brainCompilationSegment.count({
+    where: { compilationId: compilation.id },
+  });
+  await tx.brainCompilation.update({
+    where: { id: compilation.id },
+    data: { totalSegments },
   });
 }
 

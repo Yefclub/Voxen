@@ -967,9 +967,6 @@ transcriptsRoutes.patch('/:id/organization', async (c) => {
   return c.json({ transcript });
 });
 
-// POST /api/transcripts/:id/generate-tags — gera tags via IA para UM conteúdo
-// (spec 075). Re-gera e faz merge (dedup por slug); nunca duplica. Throttle
-// 1/min por transcript pra não queimar tokens em cliques repetidos.
 transcriptsRoutes.post('/:id/generate-tags', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
@@ -995,6 +992,7 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
       correctionState: true,
       summaryMd: true,
       folderId: true,
+      correctionRevision: true,
     },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
@@ -1046,10 +1044,13 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
 
   const applied = await applyTagsToTranscript(
     userId,
-    { id: transcript.id, folderId: transcript.folderId },
+    {
+      id: transcript.id,
+      folderId: transcript.folderId,
+      correctionRevision: transcript.correctionRevision,
+    },
     result.tags,
   );
-  // Devolve TODAS as tags do conteúdo (merge acumulado), não só as novas.
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
   return c.json({ tags, generated: applied.length });
 });
@@ -1147,8 +1148,6 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { force?: boolean };
   const force = body.force === true;
 
-  // Throttle ANTES do DB — clique repetido (loop UI) bloqueia em Redis sem
-  // tocar Postgres. SELECT é cheap mas em volume isso multiplica.
   const rl = await rateLimit(`voxen:rl:summary:${id}`, 1, SUMMARY_MIN_INTERVAL_SEC);
   if (!rl.allowed) {
     return c.json(
@@ -1169,6 +1168,7 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
       correctedPlainText: true,
       correctionState: true,
       summaryMd: true,
+      correctionRevision: true,
     },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
@@ -1177,7 +1177,6 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
     return c.json({ error: 'Transcrição sem texto para resumir.' }, 422);
   }
 
-  // Já tem resumo → exige force=true (confirmação explícita do user)
   if (transcript.summaryMd && !force) {
     return c.json(
       {
@@ -1194,6 +1193,7 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
       transcriptId: transcript.id,
       title: transcript.title,
       plainText: effectivePlainText,
+      correctionRevision: transcript.correctionRevision,
     });
     return c.json({ summaryMd });
   } catch (err) {

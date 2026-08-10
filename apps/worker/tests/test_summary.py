@@ -13,7 +13,11 @@ from src import summary
 
 @pytest.fixture(autouse=True)
 def _summary_enrichment_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(summary.db, "start_summary_enrichment", AsyncMock(return_value=1))
+    monkeypatch.setattr(
+        summary.db,
+        "start_summary_enrichment",
+        AsyncMock(return_value={"summaryAttempt": 1, "correctionRevision": 0}),
+    )
     monkeypatch.setattr(summary.db, "finish_summary_enrichment", AsyncMock(return_value=None))
     monkeypatch.setattr(summary.db, "complete_summary_enrichment", AsyncMock(return_value=True))
     monkeypatch.setattr(
@@ -135,7 +139,7 @@ async def test_summary_fetch_is_scoped_to_the_transcript_owner(
     await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
 
     conn.fetchrow.assert_awaited_once()
-    assert conn.fetchrow.await_args.args[-2:] == ("t1", "u1")
+    assert conn.fetchrow.await_args.args[1:3] == ("t1", "u1")
     assert ("warning", "summary-skipped-missing-config") in log.events
 
 
@@ -204,6 +208,7 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
         "u1",
         "t1",
         claim_attempt=1,
+        correction_revision=0,
         summary_md="## Em poucas linhas\nfoo",
     )
     insert_cost.assert_awaited()

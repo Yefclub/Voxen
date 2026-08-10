@@ -121,12 +121,25 @@ async def test_stale_summary_claim_cannot_overwrite_new_generation() -> None:
             user_id,
             transcript_id,
             claim_attempt=1,
+            correction_revision=0,
             summary_md="stale",
+        )
+        await conn.execute(
+            'UPDATE "Transcript" SET "correctionRevision" = 1 WHERE id = $1',
+            transcript_id,
+        )
+        assert not await db.complete_summary_enrichment(
+            user_id,
+            transcript_id,
+            claim_attempt=2,
+            correction_revision=0,
+            summary_md="stale-revision",
         )
         assert await db.complete_summary_enrichment(
             user_id,
             transcript_id,
             claim_attempt=2,
+            correction_revision=1,
             summary_md="current",
         )
         row = await conn.fetchrow(

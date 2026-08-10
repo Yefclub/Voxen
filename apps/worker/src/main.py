@@ -246,6 +246,7 @@ async def _run_summary_with_sem(sem: asyncio.Semaphore, item: dict[str, Any]) ->
                 log=log,
                 already_claimed=True,
                 claim_attempt=int(item["summaryAttempt"]),
+                correction_revision=int(item["correctionRevision"]),
             )
         except asyncio.CancelledError:
             raise

@@ -93,33 +93,46 @@ async function ensureTagWithFolder(
  */
 export async function applyTagsToTranscript(
   userId: string,
-  transcript: { id: string; folderId: string | null },
+  transcript: { id: string; folderId: string | null; correctionRevision?: number },
   tagNames: string[],
 ): Promise<AppliedTag[]> {
-  const applied: AppliedTag[] = [];
+  const prepared: Array<{ tag: AppliedTag; folderId: string }> = [];
   const newFolderIds: string[] = [];
-  let firstFolderId: string | null = null;
 
   for (const name of tagNames) {
     const { tag, folderId, folderCreated } = await ensureTagWithFolder(userId, name);
-    if (firstFolderId === null) firstFolderId = folderId;
     if (folderCreated) newFolderIds.push(folderId);
-    await db.transcriptTag.createMany({
-      data: [{ transcriptId: transcript.id, tagId: tag.id }],
-      skipDuplicates: true,
-    });
-    applied.push(tag);
+    prepared.push({ tag, folderId });
   }
 
-  // R-FOLDER: seta a pasta só quando ainda não há uma (não move conteúdo já
-  // organizado). updateMany com guarda folderId null evita corrida.
-  const targetFolderId = pickFolderId(transcript.folderId, firstFolderId);
-  if (targetFolderId && transcript.folderId === null) {
-    await db.transcript.updateMany({
-      where: { id: transcript.id, userId, folderId: null },
-      data: { folderId: targetFolderId },
+  const applied = await db.$transaction(async (tx) => {
+    const rows =
+      transcript.correctionRevision === undefined
+        ? await tx.$queryRaw<Array<{ folderId: string | null }>>`
+            SELECT "folderId" FROM "Transcript"
+            WHERE id = ${transcript.id} AND "userId" = ${userId}
+            FOR UPDATE
+          `
+        : await tx.$queryRaw<Array<{ folderId: string | null }>>`
+            SELECT "folderId" FROM "Transcript"
+            WHERE id = ${transcript.id} AND "userId" = ${userId}
+              AND "correctionRevision" = ${transcript.correctionRevision}
+            FOR UPDATE
+          `;
+    if (!rows[0]) return [];
+    await tx.transcriptTag.createMany({
+      data: prepared.map(({ tag }) => ({ transcriptId: transcript.id, tagId: tag.id })),
+      skipDuplicates: true,
     });
-  }
+    const targetFolderId = pickFolderId(rows[0].folderId, prepared[0]?.folderId ?? null);
+    if (targetFolderId && rows[0].folderId === null) {
+      await tx.transcript.update({
+        where: { id: transcript.id },
+        data: { folderId: targetFolderId },
+      });
+    }
+    return prepared.map(({ tag }) => tag);
+  });
 
   // Reindex Brain best-effort: pastas novas + transcript atualizado.
   if (newFolderIds.length > 0) {

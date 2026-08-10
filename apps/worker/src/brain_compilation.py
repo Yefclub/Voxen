@@ -43,9 +43,15 @@ async def extract_grounded_brain(
                     **error_diagnostic(exc, "BRAIN_MARKDOWN_UNAVAILABLE"),
                 )
         if len((content or "").strip()) < 80:
+            await brain_compilation_db.mark_transcript_compilation_skipped(
+                user_id=user_id, transcript_id=transcript_id
+            )
             return
         segments = brain_extract.segment_content(content)
         if not segments:
+            await brain_compilation_db.mark_transcript_compilation_skipped(
+                user_id=user_id, transcript_id=transcript_id
+            )
             return
         segment_payload: list[dict[str, Any]] = [
             {

@@ -72,6 +72,7 @@ export async function generateAndPersistTranscriptFlow(input: {
   title: string;
   summaryMd: string | null;
   plainText: string;
+  correctionRevision: number;
   abortSignal?: AbortSignal;
 }): Promise<string> {
   const settings = await getSettings([
@@ -173,10 +174,17 @@ export async function generateAndPersistTranscriptFlow(input: {
   }
   await db.$transaction(async (tx) => {
     const update = await tx.transcript.updateMany({
-      where: { id: input.transcriptId, userId: input.userId, status: { not: 'TRASH' } },
+      where: {
+        id: input.transcriptId,
+        userId: input.userId,
+        status: { not: 'TRASH' },
+        correctionRevision: input.correctionRevision,
+      },
       data: { flowchartMd: validation.code },
     });
-    if (update.count !== 1) throw new TranscriptFlowError('Transcrição não encontrada.', 404);
+    if (update.count !== 1) {
+      throw new TranscriptFlowError('O conteúdo mudou durante a geração. Gere novamente.', 409);
+    }
 
     await tx.costEvent.create({
       data: {

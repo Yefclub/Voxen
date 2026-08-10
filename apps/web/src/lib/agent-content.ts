@@ -3,6 +3,7 @@ import { findRelated } from './retrieval';
 import { generateTagsForContent } from './tags-generate';
 import { applyTagsToTranscript } from './tags';
 import { generateAndPersistTranscriptSummary } from './transcript-summary';
+import { effectiveTranscriptPlainText } from './transcript-content';
 
 export type TranscriptBrief = {
   transcriptId: string;
@@ -26,21 +27,26 @@ export async function getTranscriptBrief(
       title: true,
       url: true,
       plainText: true,
+      correctedPlainText: true,
+      correctionState: true,
+      correctionRevision: true,
       summaryMd: true,
       folderId: true,
       tags: { select: { tag: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
     },
   });
   if (!transcript) throw new Error('Transcrição não encontrada.');
+  const effectivePlainText = effectiveTranscriptPlainText(transcript);
 
   let summary = transcript.summaryMd;
-  if (options.enrichMissing !== false && !summary && transcript.plainText.trim()) {
+  if (options.enrichMissing !== false && !summary && effectivePlainText.trim()) {
     try {
       summary = await generateAndPersistTranscriptSummary({
         userId,
         transcriptId: transcript.id,
         title: transcript.title,
-        plainText: transcript.plainText,
+        plainText: effectivePlainText,
+        correctionRevision: transcript.correctionRevision,
         abortSignal: options.abortSignal,
       });
     } catch (error) {
@@ -50,7 +56,7 @@ export async function getTranscriptBrief(
   }
 
   let tags = transcript.tags.map((item) => item.tag.name);
-  if (options.enrichMissing !== false && tags.length === 0 && transcript.plainText.trim()) {
+  if (options.enrichMissing !== false && tags.length === 0 && effectivePlainText.trim()) {
     const existingTags = (
       await db.tag.findMany({ where: { userId }, select: { name: true }, orderBy: { name: 'asc' } })
     ).map((item) => item.name);
@@ -58,7 +64,7 @@ export async function getTranscriptBrief(
     try {
       generated = await generateTagsForContent({
         title: transcript.title,
-        content: summary || transcript.plainText,
+        content: summary || effectivePlainText,
         existingTags,
         abortSignal: options.abortSignal,
       });
@@ -68,7 +74,11 @@ export async function getTranscriptBrief(
     if (generated?.tags.length) {
       const applied = await applyTagsToTranscript(
         userId,
-        { id: transcript.id, folderId: transcript.folderId },
+        {
+          id: transcript.id,
+          folderId: transcript.folderId,
+          correctionRevision: transcript.correctionRevision,
+        },
         generated.tags,
       );
       tags = applied.map((item) => item.name);

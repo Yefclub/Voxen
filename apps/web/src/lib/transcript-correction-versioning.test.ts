@@ -12,6 +12,7 @@ import {
   transcriptCorrectionChecksum,
   transcriptMarkdownToPlainText,
 } from './transcript-corrections';
+import { applyTagsToTranscript } from './tags';
 
 const describeIfDb = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -339,8 +340,19 @@ describeIfDb('versioned transcript correction commits', () => {
         },
       ],
     });
-    await db.brainCompilation.create({
-      data: {
+    await db.brainCompilation.upsert({
+      where: { transcriptId },
+      update: {
+        contentHash: 'old-content',
+        status: 'COMPLETED',
+        totalSegments: 1,
+        completedSegments: 1,
+        segments: {
+          deleteMany: {},
+          create: { segmentKey: 'old', startLine: 1, endLine: 3, status: 'COMPLETED' },
+        },
+      },
+      create: {
         userId,
         transcriptId,
         contentHash: 'old-content',
@@ -390,5 +402,63 @@ describeIfDb('versioned transcript correction commits', () => {
     expect(await db.brainCompilation.findUnique({ where: { transcriptId } })).toMatchObject({
       status: 'PENDING',
     });
+  });
+
+  test('creates durable semantic work when no compilation existed yet', async () => {
+    const suffix = crypto.randomUUID();
+    const markdown = '# New source\n\nOriginal knowledge for a later semantic compilation.';
+    const plainText = transcriptMarkdownToPlainText(markdown);
+    const transcript = await db.transcript.create({
+      data: {
+        userId,
+        source: 'WEB',
+        url: `https://example.test/${suffix}`,
+        title: 'Previously uncompiled source',
+        durationSec: 0,
+        language: 'en',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `tests/${suffix}.md`,
+        plainText,
+        frontmatter: {},
+      },
+    });
+    const operation = { kind: 'append' as const, text: '\nAdditional verified knowledge.' };
+    const corrected = applyTranscriptPatch(markdown, operation).content;
+    await commitTranscriptCorrection({
+      userId,
+      transcriptId: transcript.id,
+      expectedRevision: 0,
+      expectedSourceVersion: 0,
+      expectedSourceChecksum: null,
+      expectedBaseChecksum: transcriptCorrectionChecksum(markdown, plainText),
+      expectedResultChecksum: transcriptCorrectionChecksum(
+        corrected,
+        transcriptMarkdownToPlainText(corrected),
+      ),
+      baseMarkdown: markdown,
+      operation,
+      actor: 'USER',
+      changeSummary: 'Schedule first compilation',
+    });
+
+    const compilation = await db.brainCompilation.findUniqueOrThrow({
+      where: { transcriptId: transcript.id },
+      include: { segments: true },
+    });
+    expect(compilation.status).toBe('PENDING');
+    expect(compilation.contentHash).toStartWith('correction-pending:1:');
+    expect(compilation.segments).toHaveLength(1);
+    expect(compilation.segments[0]).toMatchObject({
+      segmentKey: 'correction:1',
+      status: 'PENDING',
+    });
+    expect(
+      await applyTagsToTranscript(
+        userId,
+        { id: transcript.id, folderId: null, correctionRevision: 0 },
+        ['Stale generated tag'],
+      ),
+    ).toEqual([]);
+    expect(await db.transcriptTag.count({ where: { transcriptId: transcript.id } })).toBe(0);
   });
 });
