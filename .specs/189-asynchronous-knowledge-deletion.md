@@ -105,8 +105,12 @@ steps can be retried without corrupting the knowledge graph.
       deletion endpoints return 202 with a job identifier and never perform
       storage or graph cleanup inline.
 - [x] Duplicate active deletion requests reuse one user-scoped job.
+- [x] Transcript hard deletion is rejected unless the transcript is already and
+      still in trash, for browser, internal chat, MCP, and worker execution.
 - [x] The worker deletes each supported target idempotently, publishes durable
       stages, respects lease fencing, and invalidates the graph cache.
+- [x] Transcript deletion serializes against source refresh, and recursive folder
+      deletion rejects cross-workspace descendants before any cascade.
 - [x] Internal chat can propose every supported knowledge deletion only through a
       server-validated, non-always-allow HITL approval.
 - [x] MCP exposes one destructive write-scoped deletion tool with exact-title

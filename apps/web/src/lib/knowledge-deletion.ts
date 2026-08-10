@@ -109,12 +109,24 @@ export async function enqueueKnowledgeDeletionInTransaction(
     type: KnowledgeDeletionTargetType;
     id: string;
     expectedTitle?: string;
-    requireTranscriptTrash?: boolean;
     allowAllLibraryFolders?: boolean;
   },
 ): Promise<{ job: KnowledgeDeletionJob; target: KnowledgeDeletionTarget; created: boolean }> {
   const lockKey = `voxen:delete:${args.userId}:${args.type}:${args.id}`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+  if (args.type === 'TRANSCRIPT') {
+    const transcript = await tx.transcript.findFirst({
+      where: { id: args.id, userId: args.userId },
+      select: { status: true },
+    });
+    if (!transcript) throw new KnowledgeDeletionNotFoundError('Conteúdo não encontrado.');
+    if (transcript.status !== 'TRASH') {
+      throw new KnowledgeDeletionConflictError(
+        'Mova para a lixeira antes de apagar definitivamente.',
+      );
+    }
+  }
 
   const active = await tx.job.findFirst({
     where: {
@@ -160,25 +172,8 @@ export async function enqueueKnowledgeDeletionInTransaction(
       'O título atual não corresponde à confirmação. Leia o conteúdo novamente antes de apagar.',
     );
   }
-  if (args.requireTranscriptTrash && args.type === 'TRANSCRIPT') {
-    const trashed = await tx.transcript.findFirst({
-      where: { id: args.id, userId: args.userId, status: 'TRASH' },
-      select: { id: true },
-    });
-    if (!trashed) {
-      throw new KnowledgeDeletionConflictError(
-        'Mova para a lixeira antes de apagar definitivamente.',
-      );
-    }
-  }
-
   const now = new Date();
-  if (args.type === 'TRANSCRIPT') {
-    await tx.transcript.updateMany({
-      where: { id: args.id, userId: args.userId },
-      data: { status: 'TRASH', archivedAt: null, trashedAt: now },
-    });
-  } else if (args.type === 'SAVED_MEDIA') {
+  if (args.type === 'SAVED_MEDIA') {
     const updated = await tx.savedMedia.updateMany({
       where: { id: args.id, userId: args.userId },
       data: { status: 'DELETING', errorMsg: null },
@@ -219,7 +214,6 @@ export async function enqueueKnowledgeDeletion(args: {
   type: KnowledgeDeletionTargetType;
   id: string;
   expectedTitle?: string;
-  requireTranscriptTrash?: boolean;
   allowAllLibraryFolders?: boolean;
 }): Promise<{ job: KnowledgeDeletionJob; target: KnowledgeDeletionTarget; created: boolean }> {
   const result = await db.$transaction((tx) => enqueueKnowledgeDeletionInTransaction(tx, args));

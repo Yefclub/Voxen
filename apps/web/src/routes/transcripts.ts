@@ -1099,7 +1099,6 @@ transcriptsRoutes.delete('/:id', async (c) => {
       userId,
       type: 'TRANSCRIPT',
       id,
-      requireTranscriptTrash: true,
     });
     return c.json(
       {

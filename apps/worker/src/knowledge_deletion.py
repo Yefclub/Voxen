@@ -125,96 +125,94 @@ async def _delete_storage_keys(keys: Iterable[str | None]) -> None:
 
 async def _delete_transcript(job_id: str, user_id: str, target_id: str) -> None:
     async with db.connection() as conn:
-        transcript = await conn.fetchrow(
-            """
-            SELECT transcript.id, transcript."mdPath", transcript."originalObjectKey",
-                   transcript."previewObjectKey", media.id AS "savedMediaId",
-                   media."objectKey" AS "savedMediaObjectKey"
-            FROM "Transcript" transcript
-            LEFT JOIN "SavedMedia" media ON media."transcriptId" = transcript.id
-            WHERE transcript.id = $1 AND transcript."userId" = $2
-            """,
-            target_id,
-            user_id,
-        )
-        versions = await conn.fetch(
-            """
-            SELECT "mdPath" FROM "SourceContentVersion"
-            WHERE "transcriptId" = $1 AND "userId" = $2
-            """,
-            target_id,
-            user_id,
-        )
-    if transcript:
-        saved_key = transcript["savedMediaObjectKey"]
-        await _delete_storage_keys(
-            [
-                transcript["mdPath"],
-                transcript["previewObjectKey"],
-                (
-                    None
-                    if transcript["originalObjectKey"] == saved_key
-                    else transcript["originalObjectKey"]
-                ),
-                *(row["mdPath"] for row in versions),
-            ]
-        )
-
-    lease = await _acquire_graph_lease(user_id)
-    try:
-        async with lease.heartbeat(), db.connection() as conn, conn.transaction():
-            await db.assert_job_lease_in_connection(conn, job_id=job_id, user_id=user_id)
-            await _assert_graph_lease(lease)
-            locked = await conn.fetchrow(
-                """
-                SELECT transcript.id, media.id AS "savedMediaId",
-                       media."objectKey" AS "savedMediaObjectKey"
-                FROM "Transcript" transcript
-                LEFT JOIN "SavedMedia" media ON media."transcriptId" = transcript.id
-                WHERE transcript.id = $1 AND transcript."userId" = $2
-                FOR UPDATE OF transcript
-                """,
-                target_id,
-                user_id,
-            )
-            if locked and locked["savedMediaId"]:
-                if locked["savedMediaObjectKey"]:
-                    await conn.execute(
+        refresh_lock_key = f"voxen:source-refresh:{target_id}"
+        await conn.execute("SELECT pg_advisory_lock(hashtext($1))", refresh_lock_key)
+        try:
+            lease = await _acquire_graph_lease(user_id)
+            try:
+                async with lease.heartbeat(), conn.transaction():
+                    await db.assert_job_lease_in_connection(conn, job_id=job_id, user_id=user_id)
+                    await _assert_graph_lease(lease)
+                    locked = await conn.fetchrow(
                         """
-                        UPDATE "SavedMedia"
-                        SET status = 'READY'::"SavedMediaStatus", "transcriptId" = NULL,
-                            "processedAt" = NULL, "errorMsg" = NULL, "updatedAt" = NOW()
-                        WHERE id = $1 AND "userId" = $2
+                        SELECT transcript.id, transcript.status, transcript."mdPath",
+                               transcript."originalObjectKey", transcript."previewObjectKey",
+                               media.id AS "savedMediaId",
+                               media."objectKey" AS "savedMediaObjectKey"
+                        FROM "Transcript" transcript
+                        LEFT JOIN "SavedMedia" media ON media."transcriptId" = transcript.id
+                        WHERE transcript.id = $1 AND transcript."userId" = $2
+                        FOR UPDATE OF transcript
                         """,
-                        locked["savedMediaId"],
+                        target_id,
                         user_id,
                     )
-                else:
-                    await conn.execute(
+                    if locked and str(locked["status"]) != "TRASH":
+                        raise RuntimeError(
+                            "transcript must remain in trash until deletion completes"
+                        )
+                    versions = await conn.fetch(
                         """
-                        UPDATE "SavedMedia"
-                        SET status = 'FAILED'::"SavedMediaStatus", "transcriptId" = NULL,
-                            "processedAt" = NULL,
-                            "errorMsg" = 'O arquivo original não está mais disponível.',
-                            "updatedAt" = NOW()
-                        WHERE id = $1 AND "userId" = $2
+                        SELECT "mdPath" FROM "SourceContentVersion"
+                        WHERE "transcriptId" = $1 AND "userId" = $2
                         """,
-                        locked["savedMediaId"],
+                        target_id,
                         user_id,
                     )
-            await _delete_graph_sources(
-                conn,
-                user_id=user_id,
-                source_type="TRANSCRIPT",
-                source_ids=[target_id],
-            )
-            await conn.execute(
-                'DELETE FROM "Transcript" WHERE id = $1 AND "userId" = $2',
-                target_id,
-                user_id,
-            )
-    finally:
-        await lease.release()
+                    if locked:
+                        saved_key = locked["savedMediaObjectKey"]
+                        await _delete_storage_keys(
+                            [
+                                locked["mdPath"],
+                                locked["previewObjectKey"],
+                                (
+                                    None
+                                    if locked["originalObjectKey"] == saved_key
+                                    else locked["originalObjectKey"]
+                                ),
+                                *(row["mdPath"] for row in versions),
+                            ]
+                        )
+                    if locked and locked["savedMediaId"]:
+                        if locked["savedMediaObjectKey"]:
+                            await conn.execute(
+                                """
+                                UPDATE "SavedMedia"
+                                SET status = 'READY'::"SavedMediaStatus", "transcriptId" = NULL,
+                                    "processedAt" = NULL, "errorMsg" = NULL, "updatedAt" = NOW()
+                                WHERE id = $1 AND "userId" = $2
+                                """,
+                                locked["savedMediaId"],
+                                user_id,
+                            )
+                        else:
+                            await conn.execute(
+                                """
+                                UPDATE "SavedMedia"
+                                SET status = 'FAILED'::"SavedMediaStatus", "transcriptId" = NULL,
+                                    "processedAt" = NULL,
+                                    "errorMsg" = 'O arquivo original não está mais disponível.',
+                                    "updatedAt" = NOW()
+                                WHERE id = $1 AND "userId" = $2
+                                """,
+                                locked["savedMediaId"],
+                                user_id,
+                            )
+                    await _delete_graph_sources(
+                        conn,
+                        user_id=user_id,
+                        source_type="TRANSCRIPT",
+                        source_ids=[target_id],
+                    )
+                    await conn.execute(
+                        'DELETE FROM "Transcript" WHERE id = $1 AND "userId" = $2',
+                        target_id,
+                        user_id,
+                    )
+            finally:
+                await lease.release()
+        finally:
+            await conn.execute("SELECT pg_advisory_unlock(hashtext($1))", refresh_lock_key)
 
 
 async def _owned_tree_ids(conn: Any, table: str, user_id: str, root_id: str) -> list[str]:
@@ -247,6 +245,25 @@ async def _owned_tree_ids(conn: Any, table: str, user_id: str, root_id: str) -> 
         return []
     if any(str(row["userId"]) != user_id for row in rows):
         raise RuntimeError("cross-workspace tree relation rejected")
+    return [str(row["id"]) for row in rows]
+
+
+async def _owned_library_forest_ids(conn: Any, user_id: str) -> list[str]:
+    rows = await conn.fetch(
+        """
+        WITH RECURSIVE tree AS (
+          SELECT id, "userId" FROM "LibraryFolder" WHERE "userId" = $1
+          UNION
+          SELECT child.id, child."userId"
+          FROM "LibraryFolder" child
+          JOIN tree parent ON child."parentId" = parent.id
+        )
+        SELECT id, "userId" FROM tree
+        """,
+        user_id,
+    )
+    if any(str(row["userId"]) != user_id for row in rows):
+        raise RuntimeError("cross-workspace folder relation rejected")
     return [str(row["id"]) for row in rows]
 
 
@@ -299,10 +316,7 @@ async def _delete_library_folders(job_id: str, user_id: str, target_id: str) -> 
             await db.assert_job_lease_in_connection(conn, job_id=job_id, user_id=user_id)
             await _assert_graph_lease(lease)
             if target_id == "*":
-                rows = await conn.fetch(
-                    'SELECT id FROM "LibraryFolder" WHERE "userId" = $1', user_id
-                )
-                ids = [str(row["id"]) for row in rows]
+                ids = await _owned_library_forest_ids(conn, user_id)
                 transcript_rows = await conn.fetch(
                     'SELECT id FROM "Transcript" WHERE "userId" = $1 '
                     'AND "folderId" = ANY($2::text[])',

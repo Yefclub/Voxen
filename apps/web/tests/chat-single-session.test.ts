@@ -352,6 +352,96 @@ describeIfDb('chat de sessão única', () => {
     expect(tools[0]?.output.dismissed).toBeUndefined();
   });
 
+  it('recusa hard-delete de transcrição ativa e aceita após mover para a lixeira', async () => {
+    const user = await db.user.create({
+      data: {
+        email: 'chat-test-transcript-delete-trash@voxen.local',
+        name: 'Transcript delete approval',
+        status: 'APPROVED',
+      },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const transcript = await db.transcript.create({
+      data: {
+        userId: user.id,
+        source: 'WEB',
+        url: 'https://example.com/chat-delete-trash',
+        title: 'Excluir somente depois da lixeira',
+        durationSec: 0,
+        language: 'pt',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${user.id}/transcripts/delete-trash.md`,
+        plainText: 'conteúdo',
+        frontmatter: {},
+      },
+    });
+    const approvalId = crypto.randomUUID();
+    await db.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: '',
+        tools: [
+          {
+            id: 'tool-delete-transcript',
+            name: 'propose_delete_knowledge',
+            state: 'approval-required',
+            output: {
+              approvalRequired: true,
+              approvalId,
+              action: 'delete_knowledge',
+              targetType: 'TRANSCRIPT',
+              targetId: transcript.id,
+              title: transcript.title,
+            },
+          },
+        ],
+      },
+    });
+    await db.chatApproval.create({
+      data: {
+        id: approvalId,
+        userId: user.id,
+        conversationId: conversation.id,
+        providerApprovalId: approvalId,
+        action: 'delete_knowledge',
+        payload: {
+          action: 'delete_knowledge',
+          targetType: 'TRANSCRIPT',
+          targetId: transcript.id,
+          title: transcript.title,
+        },
+      },
+    });
+
+    await expect(approveChatAction(user.id, approvalId)).rejects.toThrow(
+      'Mova para a lixeira antes de apagar definitivamente.',
+    );
+    expect(
+      await db.job.count({ where: { userId: user.id, deletionTargetId: transcript.id } }),
+    ).toBe(0);
+    expect(await db.chatApproval.findUnique({ where: { id: approvalId } })).toMatchObject({
+      status: 'PENDING',
+      decidedAt: null,
+    });
+
+    await db.transcript.update({
+      where: { id: transcript.id },
+      data: { status: 'TRASH', trashedAt: new Date() },
+    });
+    const result = await approveChatAction(user.id, approvalId);
+    expect(result.deletionJobCreated).toBe(true);
+    expect(await db.job.findUniqueOrThrow({ where: { id: result.deletionJobId! } })).toMatchObject({
+      userId: user.id,
+      status: 'QUEUED',
+      deletionTargetType: 'TRANSCRIPT',
+      deletionTargetId: transcript.id,
+    });
+    expect(await db.transcript.findUniqueOrThrow({ where: { id: transcript.id } })).toMatchObject({
+      status: 'TRASH',
+    });
+  });
+
   it('aprova edição cirúrgica versionada sem conceder always-allow', async () => {
     const user = await db.user.create({
       data: { email: 'chat-test-patch@voxen.local', name: 'Patch', status: 'APPROVED' },

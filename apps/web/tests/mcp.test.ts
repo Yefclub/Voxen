@@ -349,6 +349,20 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
         content: 'This row must remain until the worker claims the deletion job.',
       },
     });
+    const transcript = await db.transcript.create({
+      data: {
+        userId,
+        source: 'WEB',
+        url: `https://example.com/mcp-delete-${Date.now()}`,
+        title: 'Transcript deletion requires trash',
+        durationSec: 0,
+        language: 'en',
+        transcriptionMethod: 'SCRAPE',
+        mdPath: `workspaces/${userId}/transcripts/mcp-delete.md`,
+        plainText: 'This active transcript must not be hard-deleted.',
+        frontmatter: {},
+      },
+    });
     const foreignNote = await db.note.create({
       data: {
         userId: otherUser.id,
@@ -404,10 +418,68 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       expect(staleBody.result?.isError).toBe(true);
       expect(await db.job.count({ where: { userId, deletionTargetId: note.id } })).toBe(0);
 
-      const accepted = await call(
+      const activeTranscriptAttempt = await call(
         {
           jsonrpc: '2.0',
           id: 55,
+          method: 'tools/call',
+          params: {
+            name: 'voxen_delete_knowledge',
+            arguments: {
+              target_type: 'TRANSCRIPT',
+              target_id: transcript.id,
+              expected_title: transcript.title,
+              confirm: true,
+            },
+          },
+        },
+        WRITE_TOKEN,
+      );
+      const activeTranscriptBody = (await activeTranscriptAttempt.json()) as {
+        result?: { isError?: boolean };
+      };
+      expect(activeTranscriptBody.result?.isError).toBe(true);
+      expect(await db.job.count({ where: { userId, deletionTargetId: transcript.id } })).toBe(0);
+      expect(await db.transcript.findUnique({ where: { id: transcript.id } })).toMatchObject({
+        status: 'ACTIVE',
+      });
+
+      await db.transcript.update({
+        where: { id: transcript.id },
+        data: { status: 'TRASH', trashedAt: new Date() },
+      });
+      const trashedTranscriptAttempt = await call(
+        {
+          jsonrpc: '2.0',
+          id: 56,
+          method: 'tools/call',
+          params: {
+            name: 'voxen_delete_knowledge',
+            arguments: {
+              target_type: 'TRANSCRIPT',
+              target_id: transcript.id,
+              expected_title: transcript.title,
+              confirm: true,
+            },
+          },
+        },
+        WRITE_TOKEN,
+      );
+      const trashedTranscriptBody = (await trashedTranscriptAttempt.json()) as {
+        result?: { structuredContent?: { status?: string; targetType?: string } };
+      };
+      expect(trashedTranscriptBody.result?.structuredContent).toMatchObject({
+        status: 'QUEUED',
+        targetType: 'TRANSCRIPT',
+      });
+      expect(await db.transcript.findUnique({ where: { id: transcript.id } })).toMatchObject({
+        status: 'TRASH',
+      });
+
+      const accepted = await call(
+        {
+          jsonrpc: '2.0',
+          id: 57,
           method: 'tools/call',
           params: {
             name: 'voxen_delete_knowledge',
@@ -442,7 +514,7 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       const duplicate = await call(
         {
           jsonrpc: '2.0',
-          id: 56,
+          id: 58,
           method: 'tools/call',
           params: {
             name: 'voxen_delete_knowledge',
@@ -464,8 +536,11 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
         reused: true,
       });
     } finally {
-      await db.job.deleteMany({ where: { userId, deletionTargetId: note.id } });
+      await db.job.deleteMany({
+        where: { userId, deletionTargetId: { in: [note.id, transcript.id] } },
+      });
       await db.note.deleteMany({ where: { id: note.id, userId } });
+      await db.transcript.deleteMany({ where: { id: transcript.id, userId } });
       await db.user.delete({ where: { id: otherUser.id } });
     }
   });
