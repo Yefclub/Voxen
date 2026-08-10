@@ -1071,6 +1071,7 @@ async def _enrich_persisted_transcript(
             user_id=user_id,
             transcript_id=transcript_id,
             log=log,
+            refresh_embedding=False,
         )
         await events.publish_graph_invalidation(user_id)
         await _maybe_store_embedding(
@@ -1139,7 +1140,7 @@ async def _maybe_store_embedding(
         row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
         if not row:
             return
-        title, content, _folder = row
+        title, content, _folder, correction_revision = row
         config = await voxen_settings.get_openrouter_model_config(("embedding_model",))
         if not config.api_key:
             return
@@ -1157,6 +1158,7 @@ async def _maybe_store_embedding(
             transcript_id=transcript_id,
             model=model,
             vector=vector,
+            correction_revision=correction_revision,
         )
         log.info(
             "embedding-stored" if ok else "embedding-store-skipped",
@@ -1179,6 +1181,8 @@ async def _maybe_generate_tags(
     transcript_id: str,
     log: Any,  # noqa: ANN401
     already_claimed: bool = False,
+    claim_attempt: int | None = None,
+    correction_revision: int | None = None,
 ) -> None:
     """Gera e persiste tags se o conteúdo ainda não tiver nenhuma (auto-ingest)."""
     if not already_claimed:
@@ -1194,19 +1198,41 @@ async def _maybe_generate_tags(
         if not claimed:
             log.info("tags-skipped-not-claimed", transcript_id=transcript_id)
             return
+        claim_attempt = int(claimed["taggingAttempt"])
+        correction_revision = int(claimed["correctionRevision"])
+    if claim_attempt is None or correction_revision is None:
+        log.warning("tags-skipped-missing-claim-fence", transcript_id=transcript_id)
+        return
     try:
-        row = await db.get_transcript_title_summary_folder(user_id, transcript_id)
+        row = await db.get_transcript_title_summary_folder(
+            user_id,
+            transcript_id,
+            claim_attempt=claim_attempt,
+            correction_revision=correction_revision,
+        )
         if not row:
             await _finish_tag_enrichment_safely(
-                user_id=user_id, transcript_id=transcript_id, status="SKIPPED", error=None, log=log
+                user_id=user_id,
+                transcript_id=transcript_id,
+                status="SKIPPED",
+                error=None,
+                claim_attempt=claim_attempt,
+                correction_revision=correction_revision,
+                log=log,
             )
             return
-        title, content, folder_id = row
+        title, content, folder_id, _content_revision = row
         clean = content.strip()
         if len(clean) < 40 and len(title.strip()) < 3:
             log.info("tags-skipped-short", transcript_id=transcript_id)
             await _finish_tag_enrichment_safely(
-                user_id=user_id, transcript_id=transcript_id, status="SKIPPED", error=None, log=log
+                user_id=user_id,
+                transcript_id=transcript_id,
+                status="SKIPPED",
+                error=None,
+                claim_attempt=claim_attempt,
+                correction_revision=correction_revision,
+                log=log,
             )
             return
         # Só auto-preenche quando ainda não há tags (lote/manual re-gera na UI).
@@ -1218,7 +1244,13 @@ async def _maybe_generate_tags(
                 count=len(existing_on_tx),
             )
             await _finish_tag_enrichment_safely(
-                user_id=user_id, transcript_id=transcript_id, status="COMPLETE", error=None, log=log
+                user_id=user_id,
+                transcript_id=transcript_id,
+                status="COMPLETE",
+                error=None,
+                claim_attempt=claim_attempt,
+                correction_revision=correction_revision,
+                log=log,
             )
             return
         config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
@@ -1229,6 +1261,8 @@ async def _maybe_generate_tags(
                 transcript_id=transcript_id,
                 status="RETRY",
                 error="Configuração OpenRouter ausente.",
+                claim_attempt=claim_attempt,
+                correction_revision=correction_revision,
                 log=log,
             )
             return
@@ -1266,6 +1300,8 @@ async def _maybe_generate_tags(
                 transcript_id=transcript_id,
                 status="RETRY",
                 error="O modelo não retornou tags válidas.",
+                claim_attempt=claim_attempt,
+                correction_revision=correction_revision,
                 log=log,
             )
             return
@@ -1274,6 +1310,8 @@ async def _maybe_generate_tags(
             transcript_id=transcript_id,
             tag_names=result.tags,
             current_folder_id=folder_id,
+            claim_attempt=claim_attempt,
+            correction_revision=correction_revision,
         )
         log.info(
             "tags-assigned",
@@ -1285,6 +1323,8 @@ async def _maybe_generate_tags(
             transcript_id=transcript_id,
             status="COMPLETE" if applied else "RETRY",
             error=None if applied else "Nenhuma tag pôde ser persistida.",
+            claim_attempt=claim_attempt,
+            correction_revision=correction_revision,
             log=log,
         )
     except Exception as e:  # noqa: BLE001 — tags são enriquecimento best-effort
@@ -1293,6 +1333,8 @@ async def _maybe_generate_tags(
             transcript_id=transcript_id,
             status="RETRY",
             error="Falha temporária ao gerar tags.",
+            claim_attempt=claim_attempt,
+            correction_revision=correction_revision,
             log=log,
         )
         log.warning(
@@ -1308,10 +1350,19 @@ async def _finish_tag_enrichment_safely(
     transcript_id: str,
     status: str,
     error: str | None,
+    claim_attempt: int,
+    correction_revision: int,
     log: Any,  # noqa: ANN401
 ) -> None:
     try:
-        await db.finish_tag_enrichment(user_id, transcript_id, status=status, error=error)
+        await db.finish_tag_enrichment(
+            user_id,
+            transcript_id,
+            status=status,
+            error=error,
+            claim_attempt=claim_attempt,
+            correction_revision=correction_revision,
+        )
     except Exception as e:  # noqa: BLE001
         log.warning(
             "tags-status-finish-failed",

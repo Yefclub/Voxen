@@ -19,6 +19,7 @@ import {
   applyTranscriptPatch,
   searchWithinTranscript,
   transcriptCorrectionChecksum,
+  TranscriptCorrectionInvariantError,
   transcriptMarkdownToPlainText,
 } from '../lib/transcript-corrections';
 import { db } from '../lib/db';
@@ -317,6 +318,8 @@ function correctionFailure(c: Context<{ Variables: Vars }>, error: unknown): Res
     );
   if (error instanceof TranscriptCorrectionPreviewMismatchError)
     return c.json({ error: error.message, code: 'PREVIEW_MISMATCH' }, 409);
+  if (error instanceof TranscriptCorrectionInvariantError)
+    return c.json({ error: error.message, code: error.code }, 422);
   if (error instanceof NotePatchError)
     return c.json({ error: error.message, code: error.code, matchCount: error.matchCount }, 422);
   throw error;

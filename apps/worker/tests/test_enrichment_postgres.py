@@ -579,6 +579,8 @@ async def test_claims_only_eligible_rows_and_never_exceeds_six_attempts(
         "stale-five",
         status="RETRY",
         error="sexta tentativa falhou",
+        claim_attempt=6,
+        correction_revision=0,
     )
     exhausted = await postgres.fetchrow(
         """
@@ -615,11 +617,13 @@ async def test_tag_operations_enforce_workspace_ownership(
 
     assert await db.list_transcript_tag_names("user-1", "transcript-2") == []
     assert await db.get_transcript_title_summary_folder("user-1", "transcript-2") is None
-    assert await db.start_tag_enrichment("user-1", "transcript-2") is False
+    assert await db.start_tag_enrichment("user-1", "transcript-2") is None
     await db.finish_tag_enrichment(
         "user-1",
         "transcript-2",
         status="COMPLETE",
+        claim_attempt=1,
+        correction_revision=0,
     )
     assert (
         await db.apply_tags_to_transcript(
@@ -627,6 +631,8 @@ async def test_tag_operations_enforce_workspace_ownership(
             transcript_id="transcript-2",
             tag_names=["Não deve existir"],
             current_folder_id=None,
+            claim_attempt=1,
+            correction_revision=0,
         )
         == []
     )
@@ -664,11 +670,15 @@ async def test_tag_operations_enforce_workspace_ownership(
         == 0
     )
 
+    claim = await db.start_tag_enrichment("user-1", "transcript-1")
+    assert claim is not None
     applied = await db.apply_tags_to_transcript(
         user_id="user-1",
         transcript_id="transcript-1",
         tag_names=["Permitida"],
         current_folder_id=None,
+        claim_attempt=int(claim["taggingAttempt"]),
+        correction_revision=int(claim["correctionRevision"]),
     )
     assert applied == ["Permitida"]
     assert await db.list_transcript_tag_names("user-1", "transcript-1") == ["Permitida"]
@@ -686,7 +696,7 @@ async def test_inline_and_reconciler_share_one_atomic_tag_claim(
     )
 
     reconciler_owns_row = any(str(row["id"]) == "race" for row in reconciler_claims)
-    assert int(inline_claimed) + int(reconciler_owns_row) == 1
+    assert int(bool(inline_claimed)) + int(reconciler_owns_row) == 1
     state = await postgres.fetchrow(
         """
         SELECT "taggingStatus", "taggingAttempts"
@@ -696,6 +706,50 @@ async def test_inline_and_reconciler_share_one_atomic_tag_claim(
     )
     assert state["taggingStatus"] == "RUNNING"
     assert state["taggingAttempts"] == 1
+
+
+async def test_tag_claim_cannot_write_after_a_transcript_correction(
+    postgres: asyncpg.Connection,
+) -> None:
+    await _insert_user(postgres, "user-1")
+    await _insert_transcript(postgres, transcript_id="corrected", user_id="user-1")
+    claim = await db.start_tag_enrichment("user-1", "corrected")
+    assert claim == {"taggingAttempt": 1, "correctionRevision": 0}
+    await postgres.execute(
+        """
+        UPDATE "Transcript"
+        SET "correctionRevision" = 1,
+            "taggingStatus" = 'PENDING'::"EnrichmentStatus",
+            "taggingAttempts" = 0
+        WHERE id = 'corrected'
+        """
+    )
+
+    assert (
+        await db.apply_tags_to_transcript(
+            user_id="user-1",
+            transcript_id="corrected",
+            tag_names=["Obsoleta"],
+            current_folder_id=None,
+            claim_attempt=1,
+            correction_revision=0,
+        )
+        == []
+    )
+    await db.finish_tag_enrichment(
+        "user-1",
+        "corrected",
+        status="COMPLETE",
+        claim_attempt=1,
+        correction_revision=0,
+    )
+    state = await postgres.fetchrow(
+        'SELECT "taggingStatus", "correctionRevision" FROM "Transcript" WHERE id = $1',
+        "corrected",
+    )
+    assert state["taggingStatus"] == "PENDING"
+    assert state["correctionRevision"] == 1
+    assert await db.list_transcript_tag_names("user-1", "corrected") == []
 
 
 async def test_changed_transcript_is_delivered_to_brain_reindexer(

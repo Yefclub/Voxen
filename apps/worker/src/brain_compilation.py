@@ -20,6 +20,7 @@ async def extract_grounded_brain(
     transcript_id: str,
     log: Any,  # noqa: ANN401
     worker_id: str | None = None,
+    refresh_embedding: bool = False,
 ) -> None:
     """Compile grounded entities and claims without failing content ingestion."""
     try:
@@ -27,6 +28,10 @@ async def extract_grounded_brain(
         if not row:
             return
         title, fallback_content, md_path = row
+        if refresh_embedding:
+            from .pipeline import _maybe_store_embedding
+
+            await _maybe_store_embedding(user_id=user_id, transcript_id=transcript_id, log=log)
         content = fallback_content
         if md_path:
             try:
@@ -208,6 +213,7 @@ async def _run_with_sem(
                 transcript_id=item["transcriptId"],
                 log=log,
                 worker_id=f"{worker_id}:brain:{item['transcriptId']}",
+                refresh_embedding=True,
             )
         except asyncio.CancelledError:
             raise

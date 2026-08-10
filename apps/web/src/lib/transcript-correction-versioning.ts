@@ -7,6 +7,7 @@ import { reindexTranscriptBrain } from './brain';
 import { runWithBrainIndexLease } from './brain-index-lease';
 import { db } from './db';
 import { invalidateGraphCache } from './graph-cache';
+import { noteAnchorMatchesMarkdown } from './note-anchors';
 import { storageReadText } from './storage';
 import {
   applyTranscriptPatch,
@@ -246,6 +247,8 @@ export async function commitTranscriptCorrectionInTransaction(
       sourceChecksum: head.sourceChecksum,
     });
   }
+  await tx.transcriptTag.deleteMany({ where: { transcriptId: current.id } });
+  await invalidateChangedNoteAnchors(tx, input.userId, current.id, markdown);
   await tx.transcriptCorrectionRevision.create({
     data: {
       userId: input.userId,
@@ -292,6 +295,35 @@ async function deferGroundedCompilation(
   transcriptId: string,
 ): Promise<void> {
   await tx.$executeRaw`
+    DELETE FROM "BrainSource" source
+    USING "BrainEdge" edge
+    WHERE source."edgeId" = edge.id
+      AND source."userId" = ${userId}
+      AND source."sourceId" = ${transcriptId}
+      AND edge.method LIKE 'llm-grounded%'
+  `;
+  await tx.$executeRaw`
+    DELETE FROM "BrainEdge" edge
+    WHERE edge."userId" = ${userId}
+      AND edge.method LIKE 'llm-grounded%'
+      AND NOT EXISTS (SELECT 1 FROM "BrainSource" source WHERE source."edgeId" = edge.id)
+  `;
+  await tx.$executeRaw`
+    DELETE FROM "BrainNode" node
+    WHERE node."userId" = ${userId}
+      AND node.metadata->>'method' = 'llm-grounded'
+      AND node."sourceType" IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM "BrainEdge" edge
+        WHERE edge."fromNodeId" = node.id OR edge."toNodeId" = node.id
+      )
+  `;
+  await tx.$executeRaw`
+    UPDATE "BrainNode"
+    SET metadata = COALESCE(metadata, '{}'::jsonb) - 'embedding', "updatedAt" = NOW()
+    WHERE "userId" = ${userId} AND key = ${`TRANSCRIPT:${transcriptId}`}
+  `;
+  await tx.$executeRaw`
     UPDATE "BrainCompilationSegment" segment
     SET status = 'PENDING'::"BrainCompilationStatus", attempts = 0,
         "claimedBy" = NULL, "claimedAt" = NULL, "leaseExpiresAt" = NULL,
@@ -325,5 +357,43 @@ export async function syncTranscriptCorrectionGraph(
     });
   }
   await invalidateGraphCache(userId).catch(() => undefined);
-  return ready ? 'READY' : 'PENDING';
+  const semanticPending = await db.brainCompilation.findFirst({
+    where: {
+      userId,
+      transcriptId,
+      status: { in: ['PENDING', 'RUNNING', 'RETRY', 'PARTIAL'] },
+    },
+    select: { id: true },
+  });
+  return ready && !semanticPending ? 'READY' : 'PENDING';
+}
+
+async function invalidateChangedNoteAnchors(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  transcriptId: string,
+  markdown: string,
+): Promise<void> {
+  const anchors = await tx.noteTranscriptAnchor.findMany({
+    where: { userId, transcriptId, status: 'VALID' },
+    select: {
+      id: true,
+      selectedQuote: true,
+      startLine: true,
+      endLine: true,
+      startSec: true,
+      endSec: true,
+    },
+  });
+  const staleIds = anchors
+    .filter((anchor) => !noteAnchorMatchesMarkdown(anchor, markdown))
+    .map((anchor) => anchor.id);
+  if (!staleIds.length) return;
+  await tx.noteTranscriptAnchor.updateMany({
+    where: { id: { in: staleIds }, userId, transcriptId, status: 'VALID' },
+    data: { status: 'STALE', staleReason: 'transcript-correction-changed' },
+  });
+  await tx.brainSource.deleteMany({
+    where: { userId, evidenceKey: { in: staleIds.map((id) => `note-anchor:${id}`) } },
+  });
 }

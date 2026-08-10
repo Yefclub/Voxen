@@ -1589,6 +1589,7 @@ async def store_content_embedding(
     transcript_id: str,
     model: str,
     vector: list[float],
+    correction_revision: int,
 ) -> bool:
     """Persiste embedding no metadata do nó CONTENT (opt-in, sem pgvector)."""
     if not vector:
@@ -1602,6 +1603,7 @@ async def store_content_embedding(
             "dims": len(vector),
             "vector": vector,
             "updatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "correctionRevision": correction_revision,
         }
     }
     try:
@@ -1618,10 +1620,17 @@ async def store_content_embedding(
                         "updatedAt" = NOW()
                     WHERE "userId" = $1
                       AND key = $2
+                      AND EXISTS (
+                        SELECT 1 FROM "Transcript" transcript
+                        WHERE transcript.id = $4 AND transcript."userId" = $1
+                          AND transcript."correctionRevision" = $5
+                      )
                     """,
                     user_id,
                     f"TRANSCRIPT:{transcript_id}",
                     json.dumps(payload),
+                    transcript_id,
+                    correction_revision,
                 )
             return str(result) == "UPDATE 1"
     finally:
@@ -1874,183 +1883,6 @@ async def complete_summary_enrichment(
     return row is not None
 
 
-async def start_tag_enrichment(user_id: str, transcript_id: str) -> bool:
-    """Tenta reservar atomicamente o enriquecimento inline deste conteúdo."""
-    async with connection() as conn:
-        row = await conn.fetchrow(
-            """
-            UPDATE "Transcript"
-            SET "taggingStatus" = 'RUNNING'::"EnrichmentStatus",
-                "taggingAttempts" = "taggingAttempts" + 1,
-                "taggingStartedAt" = NOW(),
-                "taggingError" = NULL
-            WHERE "userId" = $1
-              AND id = $2
-              AND "taggingAttempts" < 6
-              AND "taggingStatus" IN (
-                'PENDING'::"EnrichmentStatus",
-                'RETRY'::"EnrichmentStatus"
-              )
-              AND (
-                "taggingNextAttemptAt" IS NULL
-                OR "taggingNextAttemptAt" <= NOW()
-              )
-              AND NOT EXISTS (
-                SELECT 1
-                FROM "TranscriptTag" tt
-                WHERE tt."transcriptId" = "Transcript".id
-              )
-            RETURNING id
-            """,
-            user_id,
-            transcript_id,
-        )
-    return row is not None
-
-
-async def claim_pending_tag_enrichments(limit: int = 10) -> list[dict[str, Any]]:
-    """Reserva conteúdos sem tags para retry/backfill sem duplicar processamento."""
-    async with connection() as conn:
-        rows = await conn.fetch(
-            """
-            WITH exhausted AS (
-                UPDATE "Transcript"
-                SET "taggingStatus" = 'SKIPPED'::"EnrichmentStatus",
-                    "taggingStartedAt" = NULL,
-                    "taggingNextAttemptAt" = NULL,
-                    "taggingError" = COALESCE(
-                      "taggingError",
-                      'Limite de 6 tentativas de tags atingido.'
-                    )
-                WHERE "taggingAttempts" >= 6
-                  AND (
-                    "taggingStatus" IN (
-                      'PENDING'::"EnrichmentStatus",
-                      'RETRY'::"EnrichmentStatus"
-                    )
-                    OR (
-                      "taggingStatus" = 'RUNNING'::"EnrichmentStatus"
-                      AND "taggingStartedAt" < NOW() - INTERVAL '15 minutes'
-                    )
-                  )
-                RETURNING id
-            ),
-            candidates AS (
-                SELECT t.id
-                FROM "Transcript" t
-                WHERE t.status = 'ACTIVE'::"ContentStatus"
-                  AND t."taggingAttempts" < 6
-                  AND NOT EXISTS (
-                    SELECT 1
-                    FROM "TranscriptTag" tt
-                    WHERE tt."transcriptId" = t.id
-                  )
-                  AND (
-                    t."taggingStatus" IN (
-                      'PENDING'::"EnrichmentStatus",
-                      'RETRY'::"EnrichmentStatus"
-                    )
-                    OR (
-                      t."taggingStatus" = 'RUNNING'::"EnrichmentStatus"
-                      AND t."taggingStartedAt" < NOW() - INTERVAL '15 minutes'
-                    )
-                  )
-                  AND (
-                    t."taggingNextAttemptAt" IS NULL
-                    OR t."taggingNextAttemptAt" <= NOW()
-                  )
-                ORDER BY t."createdAt" ASC
-                FOR UPDATE SKIP LOCKED
-                LIMIT $1
-            )
-            UPDATE "Transcript" t
-            SET "taggingStatus" = 'RUNNING'::"EnrichmentStatus",
-                "taggingAttempts" = t."taggingAttempts" + 1,
-                "taggingStartedAt" = NOW(),
-                "taggingError" = NULL
-            FROM candidates
-            WHERE t.id = candidates.id
-            RETURNING
-              t.id,
-              t."userId",
-              (
-                SELECT j.id
-                FROM "Job" j
-                WHERE j."transcriptId" = t.id
-                LIMIT 1
-              ) AS "jobId"
-            """,
-            limit,
-        )
-    return [dict(row) for row in rows]
-
-
-async def finish_tag_enrichment(
-    user_id: str,
-    transcript_id: str,
-    *,
-    status: str,
-    error: str | None = None,
-) -> None:
-    async with connection() as conn:
-        await conn.execute(
-            """
-            UPDATE "Transcript"
-            SET "taggingStatus" = CASE
-                  WHEN $3::text = 'RETRY' AND "taggingAttempts" >= 6
-                  THEN 'SKIPPED'::"EnrichmentStatus"
-                  ELSE $3::"EnrichmentStatus"
-                END,
-                "taggingStartedAt" = NULL,
-                "taggingNextAttemptAt" = CASE
-                  WHEN $3::text = 'RETRY' AND "taggingAttempts" < 6
-                  THEN NOW() + (
-                    LEAST(3600, 60 * POWER(2, LEAST("taggingAttempts", 6))) * INTERVAL '1 second'
-                  )
-                  ELSE NULL
-                END,
-                "taggingError" = $4
-            WHERE "userId" = $1
-              AND id = $2
-            """,
-            user_id,
-            transcript_id,
-            status,
-            (error or "")[:500] or None,
-        )
-
-
-async def get_transcript_title_summary_folder(
-    user_id: str,
-    transcript_id: str,
-) -> tuple[str, str, str | None] | None:
-    """title, content (summaryMd ou plainText), folderId — para enriquecimentos."""
-    async with connection() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT title, "plainText", "correctedPlainText", "correctionState",
-                   "summaryMd", "folderId"
-            FROM "Transcript"
-            WHERE "userId" = $1 AND id = $2
-            """,
-            user_id,
-            transcript_id,
-        )
-    if not row:
-        return None
-    title = str(row["title"] or "")
-    summary = (row["summaryMd"] or "").strip()
-    plain = (
-        row["correctedPlainText"]
-        if row["correctionState"] == "ACTIVE" and row["correctedPlainText"]
-        else row["plainText"]
-    )
-    plain = (plain or "").strip()
-    content = summary or plain
-    folder_id = row["folderId"]
-    return title, content, (str(folder_id) if folder_id else None)
-
-
 async def get_transcript_title_content_md_path(
     user_id: str,
     transcript_id: str,
@@ -2083,6 +1915,8 @@ async def apply_tags_to_transcript(
     transcript_id: str,
     tag_names: list[str],
     current_folder_id: str | None,
+    claim_attempt: int,
+    correction_revision: int,
 ) -> list[str]:
     """
     Cria/reutiliza Tag + pasta, liga TranscriptTag, seta folderId só se vazio
@@ -2093,17 +1927,20 @@ async def apply_tags_to_transcript(
     applied: list[str] = []
     first_folder_id: str | None = None
 
-    async with connection() as conn:
-        owns_transcript = await conn.fetchval(
+    async with connection() as conn, conn.transaction():
+        owns_transcript = await conn.fetchrow(
             """
-            SELECT EXISTS (
-              SELECT 1
-              FROM "Transcript"
-              WHERE "userId" = $1 AND id = $2
-            )
+            SELECT id FROM "Transcript"
+            WHERE "userId" = $1 AND id = $2
+              AND "taggingStatus" = 'RUNNING'::"EnrichmentStatus"
+              AND "taggingAttempts" = $3
+              AND "correctionRevision" = $4
+            FOR UPDATE
             """,
             user_id,
             transcript_id,
+            claim_attempt,
+            correction_revision,
         )
         if not owns_transcript:
             return []
@@ -2521,3 +2358,11 @@ def _truncate(value: str | None, limit: int) -> str | None:
 def truncate_text(value: str | None, limit: int) -> str | None:
     """Bound diagnostic text before persisting it."""
     return _truncate(value, limit)
+
+
+from . import tag_enrichment_db as _tag_enrichment_db  # noqa: E402
+
+start_tag_enrichment = _tag_enrichment_db.start_tag_enrichment
+claim_pending_tag_enrichments = _tag_enrichment_db.claim_pending_tag_enrichments
+finish_tag_enrichment = _tag_enrichment_db.finish_tag_enrichment
+get_transcript_title_summary_folder = _tag_enrichment_db.get_transcript_title_summary_folder

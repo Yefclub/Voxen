@@ -210,6 +210,8 @@ async def _run_tag_with_sem(sem: asyncio.Semaphore, item: dict[str, Any]) -> Non
                 transcript_id=item["id"],
                 log=log,
                 already_claimed=True,
+                claim_attempt=int(item["taggingAttempt"]),
+                correction_revision=int(item["correctionRevision"]),
             )
         except asyncio.CancelledError:
             raise

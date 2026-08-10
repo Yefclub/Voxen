@@ -11,8 +11,20 @@ from src import main
 async def test_reconcile_tags_processes_claimed_batch(monkeypatch: pytest.MonkeyPatch) -> None:
     claim = AsyncMock(
         return_value=[
-            {"id": "transcript-1", "userId": "user-1", "jobId": "job-1"},
-            {"id": "transcript-2", "userId": "user-2", "jobId": None},
+            {
+                "id": "transcript-1",
+                "userId": "user-1",
+                "jobId": "job-1",
+                "taggingAttempt": 1,
+                "correctionRevision": 2,
+            },
+            {
+                "id": "transcript-2",
+                "userId": "user-2",
+                "jobId": None,
+                "taggingAttempt": 3,
+                "correctionRevision": 4,
+            },
         ]
     )
     generate = AsyncMock(return_value=None)
@@ -32,6 +44,8 @@ async def test_reconcile_tags_processes_claimed_batch(monkeypatch: pytest.Monkey
         transcript_id="transcript-1",
         log=main.log,
         already_claimed=True,
+        claim_attempt=1,
+        correction_revision=2,
     )
     generate.assert_any_await(
         user_id="user-2",
@@ -39,4 +53,6 @@ async def test_reconcile_tags_processes_claimed_batch(monkeypatch: pytest.Monkey
         transcript_id="transcript-2",
         log=main.log,
         already_claimed=True,
+        claim_attempt=3,
+        correction_revision=4,
     )

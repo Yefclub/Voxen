@@ -687,6 +687,7 @@ async def test_worker_embedding_skips_db_when_lease_is_occupied_or_redis_unavail
             transcript_id="transcript-1",
             model="text-embedding-3-small",
             vector=[0.1, 0.2],
+            correction_revision=0,
         )
         is False
     )
@@ -712,6 +713,7 @@ async def test_worker_embedding_writes_only_while_it_owns_the_lease(
             transcript_id="transcript-1",
             model="text-embedding-3-small",
             vector=[0.1, 0.2],
+            correction_revision=2,
         )
         is True
     )
@@ -722,6 +724,7 @@ async def test_worker_embedding_writes_only_while_it_owns_the_lease(
     assert 'UPDATE "BrainNode"' in query
     assert args[0] == "user-1"
     assert args[1] == "TRANSCRIPT:transcript-1"
+    assert args[4] == 2
 
 
 async def test_worker_embedding_stops_before_write_when_local_lease_is_lost(
@@ -744,6 +747,7 @@ async def test_worker_embedding_stops_before_write_when_local_lease_is_lost(
             transcript_id="transcript-1",
             model="text-embedding-3-small",
             vector=[0.1, 0.2],
+            correction_revision=0,
         )
         is False
     )
@@ -770,6 +774,7 @@ async def test_worker_embedding_releases_lease_when_content_node_is_missing(
             transcript_id="missing-transcript",
             model="text-embedding-3-small",
             vector=[0.1, 0.2],
+            correction_revision=0,
         )
         is False
     )

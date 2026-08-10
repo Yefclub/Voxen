@@ -10,11 +10,71 @@ import {
 export const TRANSCRIPT_CORRECTION_MAX_LENGTH = 2_000_000;
 export type TranscriptPatchOperation = NotePatchOperation;
 
+export type TranscriptCorrectionInvariantCode =
+  | 'EMPTY_CONTENT'
+  | 'FRONTMATTER_CHANGED'
+  | 'TIMESTAMPS_CHANGED';
+
+export class TranscriptCorrectionInvariantError extends Error {
+  constructor(
+    readonly code: TranscriptCorrectionInvariantCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'TranscriptCorrectionInvariantError';
+  }
+}
+
 export function applyTranscriptPatch(
   markdown: string,
   operation: TranscriptPatchOperation,
 ): AppliedNotePatch {
-  return applyTextPatch(markdown, operation, { maxLength: TRANSCRIPT_CORRECTION_MAX_LENGTH });
+  const applied = applyTextPatch(markdown, operation, {
+    maxLength: TRANSCRIPT_CORRECTION_MAX_LENGTH,
+  });
+  assertTranscriptCorrectionInvariants(markdown, applied.content);
+  return applied;
+}
+
+export function assertTranscriptCorrectionInvariants(
+  previousMarkdown: string,
+  nextMarkdown: string,
+): void {
+  if (frontmatterBlock(previousMarkdown) !== frontmatterBlock(nextMarkdown)) {
+    throw new TranscriptCorrectionInvariantError(
+      'FRONTMATTER_CHANGED',
+      'Correções não podem alterar o frontmatter canônico.',
+    );
+  }
+  const previousTimestamps = timestampMarkers(previousMarkdown);
+  const nextTimestamps = timestampMarkers(nextMarkdown);
+  let nextIndex = 0;
+  for (const marker of previousTimestamps) {
+    nextIndex = nextTimestamps.indexOf(marker, nextIndex);
+    if (nextIndex < 0) {
+      throw new TranscriptCorrectionInvariantError(
+        'TIMESTAMPS_CHANGED',
+        'Correções devem preservar os marcadores de tempo existentes.',
+      );
+    }
+    nextIndex += 1;
+  }
+  if (!transcriptMarkdownToPlainText(nextMarkdown).trim()) {
+    throw new TranscriptCorrectionInvariantError(
+      'EMPTY_CONTENT',
+      'A correção precisa manter conteúdo textual pesquisável.',
+    );
+  }
+}
+
+function frontmatterBlock(markdown: string): string | null {
+  return markdown.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)?.[0] ?? null;
+}
+
+function timestampMarkers(markdown: string): string[] {
+  return [...markdown.matchAll(/^\s*(\[(?:\d{1,2}:)?\d{1,2}:\d{2}(?:[.,]\d{1,3})?\])/gm)].map(
+    (match) => match[1]!,
+  );
 }
 
 export function searchWithinTranscript(

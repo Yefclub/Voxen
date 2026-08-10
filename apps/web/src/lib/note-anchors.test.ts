@@ -108,4 +108,35 @@ describe('note anchor input', () => {
       ),
     ).rejects.toThrow('source version changed');
   });
+
+  it('validates new anchors against the active corrected Markdown', async () => {
+    const [anchor] = await validateNoteAnchors(
+      'u1',
+      [
+        {
+          transcriptId: 't1',
+          startLine: 3,
+          endLine: 3,
+          selectedQuote: 'corrected passage',
+        },
+      ],
+      {
+        findTranscripts: async () => [
+          {
+            id: 't1',
+            title: 'Transcript',
+            mdPath: 'canonical.md',
+            plainText: 'canonical passage',
+            durationSec: 60,
+            sourceVersion: 1,
+            sourceChecksum: 'checksum',
+            correctedMarkdown: '# Transcript\n\ncorrected passage',
+            correctionState: 'ACTIVE',
+          },
+        ],
+        readText: async () => '# Transcript\n\ncanonical passage',
+      },
+    );
+    expect(anchor?.selectedQuote).toBe('corrected passage');
+  });
 });

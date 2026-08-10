@@ -208,6 +208,8 @@ const WRITE_TOOL_NAMES = new Set([
   'voxen_update_note',
   'voxen_patch_note',
   'voxen_restore_note_revision',
+  'voxen_patch_transcript',
+  'voxen_restore_transcript_correction',
   'voxen_request_transcription',
   'voxen_request_transcriptions',
   'voxen_get_job_status',

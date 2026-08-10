@@ -230,4 +230,165 @@ describeIfDb('versioned transcript correction commits', () => {
       canonicalPlainText,
     );
   });
+
+  test('invalidates only derived state and anchors no longer supported by a correction', async () => {
+    const head = await loadTranscriptCorrectionHead(userId, transcriptId);
+    const note = await db.note.create({ data: { userId, title: 'Anchored evidence' } });
+    await db.noteTranscriptSource.create({ data: { userId, noteId: note.id, transcriptId } });
+    const [stableAnchor, changedAnchor] = await Promise.all([
+      db.noteTranscriptAnchor.create({
+        data: {
+          userId,
+          noteId: note.id,
+          transcriptId,
+          startLine: 1,
+          endLine: 1,
+          selectedQuote: 'Transcript',
+          quoteHash: 'stable',
+        },
+      }),
+      db.noteTranscriptAnchor.create({
+        data: {
+          userId,
+          noteId: note.id,
+          transcriptId,
+          startLine: 3,
+          endLine: 3,
+          selectedQuote: 'wrong word',
+          quoteHash: 'changed',
+        },
+      }),
+    ]);
+    await db.brainSource.createMany({
+      data: [stableAnchor, changedAnchor].map((anchor) => ({
+        userId,
+        sourceType: 'NOTE',
+        sourceId: note.id,
+        evidenceKey: `note-anchor:${anchor.id}`,
+      })),
+    });
+    const tag = await db.tag.create({
+      data: { userId, name: 'Stale generated tag', slug: `stale-${crypto.randomUUID()}` },
+    });
+    await db.transcriptTag.create({ data: { transcriptId, tagId: tag.id } });
+    const [contentNode, conceptNode, manualNode] = await Promise.all([
+      db.brainNode.create({
+        data: {
+          userId,
+          key: `TRANSCRIPT:${transcriptId}`,
+          type: 'CONTENT',
+          label: 'Immutable source',
+          sourceType: 'TRANSCRIPT',
+          sourceId: transcriptId,
+          metadata: { embedding: { vector: [0.1], correctionRevision: head.correctionRevision } },
+        },
+      }),
+      db.brainNode.create({
+        data: {
+          userId,
+          key: `ENTITY:${crypto.randomUUID()}`,
+          type: 'ENTITY',
+          label: 'Derived concept',
+          metadata: { method: 'llm-grounded' },
+        },
+      }),
+      db.brainNode.create({
+        data: {
+          userId,
+          key: `ENTITY:${crypto.randomUUID()}`,
+          type: 'ENTITY',
+          label: 'Manual concept',
+        },
+      }),
+    ]);
+    const [groundedEdge, manualEdge] = await Promise.all([
+      db.brainEdge.create({
+        data: {
+          userId,
+          fromNodeId: contentNode.id,
+          toNodeId: conceptNode.id,
+          kind: 'MENTIONS',
+          method: 'llm-grounded',
+        },
+      }),
+      db.brainEdge.create({
+        data: {
+          userId,
+          fromNodeId: contentNode.id,
+          toNodeId: manualNode.id,
+          kind: 'RELATED_TO',
+          method: 'manual',
+        },
+      }),
+    ]);
+    await db.brainSource.createMany({
+      data: [
+        {
+          userId,
+          edgeId: groundedEdge.id,
+          sourceType: 'TRANSCRIPT',
+          sourceId: transcriptId,
+          evidenceKey: `grounded:${crypto.randomUUID()}`,
+        },
+        {
+          userId,
+          edgeId: manualEdge.id,
+          sourceType: 'MANUAL',
+          sourceId: transcriptId,
+          evidenceKey: `manual:${crypto.randomUUID()}`,
+        },
+      ],
+    });
+    await db.brainCompilation.create({
+      data: {
+        userId,
+        transcriptId,
+        contentHash: 'old-content',
+        status: 'COMPLETED',
+        totalSegments: 1,
+        completedSegments: 1,
+        segments: {
+          create: { segmentKey: 'old', startLine: 1, endLine: 3, status: 'COMPLETED' },
+        },
+      },
+    });
+
+    const operation = { kind: 'replace' as const, target: 'wrong word', text: 'verified edit' };
+    const markdown = applyTranscriptPatch(head.markdown, operation).content;
+    await commitTranscriptCorrection({
+      userId,
+      transcriptId,
+      expectedRevision: head.correctionRevision,
+      expectedSourceVersion: head.sourceVersion,
+      expectedSourceChecksum: head.sourceChecksum,
+      expectedBaseChecksum: head.checksum,
+      expectedResultChecksum: transcriptCorrectionChecksum(
+        markdown,
+        transcriptMarkdownToPlainText(markdown),
+      ),
+      baseMarkdown: head.markdown,
+      operation,
+      actor: 'USER',
+      changeSummary: 'Verify derived invalidation',
+    });
+
+    expect(
+      (await db.noteTranscriptAnchor.findUnique({ where: { id: stableAnchor.id } }))?.status,
+    ).toBe('VALID');
+    expect(
+      await db.noteTranscriptAnchor.findUnique({ where: { id: changedAnchor.id } }),
+    ).toMatchObject({ status: 'STALE', staleReason: 'transcript-correction-changed' });
+    expect(await db.transcriptTag.count({ where: { transcriptId } })).toBe(0);
+    expect(await db.brainEdge.findUnique({ where: { id: groundedEdge.id } })).toBeNull();
+    expect(await db.brainNode.findUnique({ where: { id: conceptNode.id } })).toBeNull();
+    expect(await db.brainEdge.findUnique({ where: { id: manualEdge.id } })).not.toBeNull();
+    expect(await db.brainSource.count({ where: { edgeId: manualEdge.id } })).toBe(1);
+    const refreshedContent = await db.brainNode.findUniqueOrThrow({
+      where: { id: contentNode.id },
+    });
+    expect(refreshedContent.metadata).not.toHaveProperty('embedding');
+    expect(await db.brainCompilation.findUnique({ where: { transcriptId } })).toMatchObject({
+      status: 'PENDING',
+    });
+  });
 });

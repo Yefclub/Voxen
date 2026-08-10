@@ -333,8 +333,8 @@ async def test_enrichment_dispatcher_advances_summary_and_tags_under_backlog(
         {"id": "s2", "userId": "u1", "jobId": None, "summaryAttempt": 1},
     ]
     tag_queue = [
-        {"id": "t1", "userId": "u1", "jobId": None},
-        {"id": "t2", "userId": "u1", "jobId": None},
+        {"id": "t1", "userId": "u1", "jobId": None, "taggingAttempt": 1, "correctionRevision": 0},
+        {"id": "t2", "userId": "u1", "jobId": None, "taggingAttempt": 1, "correctionRevision": 0},
     ]
 
     async def claim_summaries(limit: int) -> list[dict[str, Any]]:
@@ -393,7 +393,9 @@ async def test_enrichment_dispatcher_round_robins_research_without_starvation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     summary_queue = [{"id": "s1", "userId": "u1", "jobId": None, "summaryAttempt": 1}]
-    tag_queue = [{"id": "t1", "userId": "u1", "jobId": None}]
+    tag_queue = [
+        {"id": "t1", "userId": "u1", "jobId": None, "taggingAttempt": 1, "correctionRevision": 0}
+    ]
     research_queue = [{"id": "r1", "userId": "u1", "attempt": 1}]
     brain_queue = [{"userId": "u1", "transcriptId": "b1"}]
 

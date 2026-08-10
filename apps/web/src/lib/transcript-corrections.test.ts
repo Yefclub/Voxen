@@ -3,11 +3,40 @@ import {
   applyTranscriptPatch,
   effectiveTranscriptContent,
   searchWithinTranscript,
+  TranscriptCorrectionInvariantError,
   transcriptCorrectionChecksum,
   transcriptMarkdownToPlainText,
 } from './transcript-corrections';
 
 describe('transcript correction content', () => {
+  test('preserves canonical frontmatter and existing timestamps', () => {
+    const markdown = '---\ntitle: Source\n---\n# Transcript\n\n[00:01] original';
+    expect(() =>
+      applyTranscriptPatch(markdown, {
+        kind: 'replace',
+        target: 'title: Source',
+        text: 'title: Edit',
+      }),
+    ).toThrow(TranscriptCorrectionInvariantError);
+    expect(() =>
+      applyTranscriptPatch(markdown, { kind: 'replace', target: '[00:01]', text: '[00:02]' }),
+    ).toThrow(TranscriptCorrectionInvariantError);
+    expect(
+      applyTranscriptPatch(markdown, { kind: 'append', text: '\n[00:02] additional context' })
+        .content,
+    ).toContain('[00:02] additional context');
+  });
+
+  test('rejects corrections without searchable textual content', () => {
+    expect(() =>
+      applyTranscriptPatch('# Transcript\n\ncontent', {
+        kind: 'replace',
+        target: '# Transcript\n\ncontent',
+        text: '   ',
+      }),
+    ).toThrow(TranscriptCorrectionInvariantError);
+  });
+
   test('patches one exact timestamped passage without changing surrounding evidence', () => {
     const markdown = '[00:00:01] Alpha\n[00:00:03] wrong word\n[00:00:08] Omega';
     const patched = applyTranscriptPatch(markdown, {
