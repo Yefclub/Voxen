@@ -364,7 +364,11 @@ async def test_enrichment_dispatcher_advances_summary_and_tags_under_backlog(
         "reconcile_transcript_enrichment_lifecycle",
         AsyncMock(return_value=[]),
     )
-    monkeypatch.setattr(main.db, "list_due_grounded_compilations", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        main.brain_compilation.brain_compilation_db,
+        "list_due_compilations",
+        AsyncMock(return_value=[]),
+    )
     monkeypatch.setattr(main.summary, "maybe_generate", wait_for_gate)
     monkeypatch.setattr(main, "_maybe_generate_tags", wait_for_gate)
     tasks: set[asyncio.Task[None]] = set()
@@ -419,14 +423,14 @@ async def test_enrichment_dispatcher_round_robins_research_without_starvation(
         AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(
-        main.db,
-        "list_due_grounded_compilations",
+        main.brain_compilation.brain_compilation_db,
+        "list_due_compilations",
         lambda limit: claim(brain_queue, limit),
     )
     monkeypatch.setattr(main.summary, "maybe_generate", AsyncMock())
     monkeypatch.setattr(main, "_maybe_generate_tags", AsyncMock())
     monkeypatch.setattr(main.research_enrichment, "process", AsyncMock())
-    monkeypatch.setattr(main, "_maybe_grounded_brain_extract", AsyncMock())
+    monkeypatch.setattr(main.brain_compilation, "extract_grounded_brain", AsyncMock())
     tasks: set[asyncio.Task[None]] = set()
     sem = asyncio.Semaphore(1)
     main._enrichment_queue_cursor = 0

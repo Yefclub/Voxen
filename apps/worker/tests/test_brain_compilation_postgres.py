@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 import asyncpg
 import pytest
 
-from src import db
+from src import brain_compilation_db, db
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -84,7 +84,7 @@ async def test_semantic_claim_is_exclusive_recovers_and_stops_at_attempt_limit()
         )
 
         assert (
-            await db.claim_grounded_brain_segments(
+            await brain_compilation_db.claim_segments(
                 user_id=f"foreign-{suffix}",
                 compilation_id=compilation_id,
                 segment_keys=[segment_key],
@@ -95,14 +95,14 @@ async def test_semantic_claim_is_exclusive_recovers_and_stops_at_attempt_limit()
         )
 
         first_claims = await asyncio.gather(
-            db.claim_grounded_brain_segments(
+            brain_compilation_db.claim_segments(
                 user_id=user_id,
                 compilation_id=compilation_id,
                 segment_keys=[segment_key],
                 worker_id="worker-a",
                 limit=1,
             ),
-            db.claim_grounded_brain_segments(
+            brain_compilation_db.claim_segments(
                 user_id=user_id,
                 compilation_id=compilation_id,
                 segment_keys=[segment_key],
@@ -118,14 +118,14 @@ async def test_semantic_claim_is_exclusive_recovers_and_stops_at_attempt_limit()
             now - timedelta(seconds=1),
         )
         recovered_claims = await asyncio.gather(
-            db.claim_grounded_brain_segments(
+            brain_compilation_db.claim_segments(
                 user_id=user_id,
                 compilation_id=compilation_id,
                 segment_keys=[segment_key],
                 worker_id="worker-c",
                 limit=1,
             ),
-            db.claim_grounded_brain_segments(
+            brain_compilation_db.claim_segments(
                 user_id=user_id,
                 compilation_id=compilation_id,
                 segment_keys=[segment_key],
@@ -140,21 +140,21 @@ async def test_semantic_claim_is_exclusive_recovers_and_stops_at_attempt_limit()
         owner = await conn.fetchval(
             'SELECT "claimedBy" FROM "BrainCompilationSegment" WHERE id = $1', segment_id
         )
-        for attempt in range(2, db.GROUNDED_SEGMENT_MAX_ATTEMPTS + 1):
-            await db.mark_grounded_segment_failed(
+        for attempt in range(2, brain_compilation_db.GROUNDED_SEGMENT_MAX_ATTEMPTS + 1):
+            await brain_compilation_db.mark_segment_failed(
                 compilation_id=compilation_id,
                 segment_key=segment_key,
                 error="PROVIDER_UNAVAILABLE",
                 worker_id=owner,
             )
-            if attempt == db.GROUNDED_SEGMENT_MAX_ATTEMPTS:
+            if attempt == brain_compilation_db.GROUNDED_SEGMENT_MAX_ATTEMPTS:
                 break
             await conn.execute(
                 'UPDATE "BrainCompilationSegment" SET "nextAttemptAt" = $2 WHERE id = $1',
                 segment_id,
                 now - timedelta(seconds=1),
             )
-            claim = await db.claim_grounded_brain_segments(
+            claim = await brain_compilation_db.claim_segments(
                 user_id=user_id,
                 compilation_id=compilation_id,
                 segment_keys=[segment_key],
@@ -172,11 +172,11 @@ async def test_semantic_claim_is_exclusive_recovers_and_stops_at_attempt_limit()
         assert terminal is not None
         assert dict(terminal) == {
             "status": "FAILED",
-            "attempts": db.GROUNDED_SEGMENT_MAX_ATTEMPTS,
+            "attempts": brain_compilation_db.GROUNDED_SEGMENT_MAX_ATTEMPTS,
             "nextAttemptAt": None,
         }
         assert (
-            await db.claim_grounded_brain_segments(
+            await brain_compilation_db.claim_segments(
                 user_id=user_id,
                 compilation_id=compilation_id,
                 segment_keys=[segment_key],

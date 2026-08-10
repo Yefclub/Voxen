@@ -10,7 +10,7 @@ from typing import Any, cast
 import asyncpg
 import pytest
 
-from src import db
+from src import brain_compilation_db, db
 
 
 class _FakeLease:
@@ -613,7 +613,7 @@ async def test_grounded_segment_claim_is_atomic_due_and_bounded(monkeypatch: Any
 
     monkeypatch.setattr(db, "connection", claim_connection)
 
-    rows = await db.claim_grounded_brain_segments(
+    rows = await brain_compilation_db.claim_segments(
         user_id="user-1",
         compilation_id="compilation-1",
         segment_keys=["segment-1", "segment-2"],
@@ -645,7 +645,7 @@ async def test_due_grounded_reconciliation_includes_legacy_and_expired_work(
 
     monkeypatch.setattr(db, "connection", due_connection)
 
-    await db.list_due_grounded_compilations(limit=9)
+    await brain_compilation_db.list_due_compilations(limit=9)
 
     assert "'PENDING'" in conn.query
     assert "'RETRY'" in conn.query
@@ -653,7 +653,7 @@ async def test_due_grounded_reconciliation_includes_legacy_and_expired_work(
     assert "'RUNNING'" in conn.query
     assert '"leaseExpiresAt" < NOW()' in conn.query
     assert "attempts <" in conn.query
-    assert conn.args == (9, db.GROUNDED_SEGMENT_MAX_ATTEMPTS)
+    assert conn.args == (9, brain_compilation_db.GROUNDED_SEGMENT_MAX_ATTEMPTS)
 
 
 class _EmbeddingConnection:

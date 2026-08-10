@@ -24,18 +24,20 @@ import structlog
 
 from . import (
     automation,
+    brain_compilation,
     db,
     events,
-    research_db,
-    research_enrichment,
+    research_reconciliation,
     summary,
     ytdl,
 )
 from .cancellation import cancel_subscriber
-from .pipeline import _maybe_generate_tags, _maybe_grounded_brain_extract, process_job
+from .pipeline import _maybe_generate_tags, process_job
 from .safe_diagnostics import error_diagnostic
 
 log = structlog.get_logger(__name__)
+research_db = research_reconciliation.research_db
+research_enrichment = research_reconciliation.research_enrichment
 
 MAX_CONCURRENCY = 2
 RECONCILIATION_INTERVAL_SEC = 60
@@ -266,43 +268,6 @@ async def _reconcile_summaries_once(
     return len(pending)
 
 
-async def _run_research_with_sem(sem: asyncio.Semaphore, item: dict[str, Any]) -> None:
-    async with sem:
-        try:
-            await research_enrichment.process(item, log)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            log.error(
-                "research-reconciliation-task-failed",
-                enrichment_id=item["id"],
-                **error_diagnostic(exc, "RESEARCH_RECONCILIATION_FAILED"),
-            )
-
-
-async def _run_grounded_brain_with_sem(
-    sem: asyncio.Semaphore,
-    item: dict[str, Any],
-    worker_id: str,
-) -> None:
-    async with sem:
-        try:
-            await _maybe_grounded_brain_extract(
-                user_id=item["userId"],
-                transcript_id=item["transcriptId"],
-                log=log,
-                worker_id=f"{worker_id}:brain:{item['transcriptId']}",
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            log.error(
-                "brain-compilation-reconciliation-task-failed",
-                transcript_id=item["transcriptId"],
-                **error_diagnostic(exc, "BRAIN_COMPILATION_RECONCILIATION_FAILED"),
-            )
-
-
 async def _reconcile_grounded_brain_once(
     sem: asyncio.Semaphore,
     tasks: set[asyncio.Task[None]],
@@ -310,34 +275,18 @@ async def _reconcile_grounded_brain_once(
     limit: int = 4,
     max_in_flight: int = ENRICHMENT_MAX_CONCURRENCY,
 ) -> int:
-    capacity = min(limit, max(0, max_in_flight - len(tasks)))
-    pending = await db.list_due_grounded_compilations(limit=capacity) if capacity else []
-    for item in pending:
-        _track_task(tasks, _run_grounded_brain_with_sem(sem, item, worker_id))
-    return len(pending)
+    return await brain_compilation.dispatch_due(
+        sem,
+        tasks,
+        worker_id=worker_id,
+        track_task=_track_task,
+        log=log,
+        limit=limit,
+        max_in_flight=max_in_flight,
+    )
 
 
-async def _reconcile_research_once(
-    sem: asyncio.Semaphore,
-    tasks: set[asyncio.Task[None]],
-    limit: int = 4,
-    max_in_flight: int = ENRICHMENT_MAX_CONCURRENCY,
-) -> int:
-    try:
-        transitions = await research_db.reconcile_transcript_enrichment_lifecycle()
-        for transition in transitions:
-            await research_enrichment.publish_stage(transition, str(transition["stage"]), log)
-        capacity = min(limit, max(0, max_in_flight - len(tasks)))
-        pending = await research_db.claim_pending_transcript_enrichments(limit=capacity)
-    except Exception as exc:  # noqa: BLE001 -- fail closed without starving other queues
-        log.error(
-            "research-claim-failed",
-            **error_diagnostic(exc, "RESEARCH_CLAIM_FAILED"),
-        )
-        return 0
-    for item in pending:
-        _track_task(tasks, _run_research_with_sem(sem, item))
-    return len(pending)
+_reconcile_research_once = research_reconciliation.reconcile_once
 
 
 async def _reconcile_enrichments_once(

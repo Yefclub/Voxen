@@ -5,11 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import tempfile
-import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -34,8 +32,8 @@ from . import (
 )
 from .audio_chunking import AudioChunk, split_audio
 from .audio_probe import AudioValidationError, validate_audio_for_transcription
+from .brain_compilation import extract_grounded_brain as _maybe_grounded_brain_extract
 from .cancellation import CancelledException, clear_cancelled, is_cancelled
-from .graph_index_lease import acquire_graph_index_lease
 from .job_lease import (
     JobLease,
     JobLeaseLostError,
@@ -1124,185 +1122,6 @@ async def _complete_persisted_job(
     await events.publish_job_event(
         user_id, job_id, "done", percent=100, transcript_id=transcript_id
     )
-
-
-async def _maybe_grounded_brain_extract(
-    *,
-    user_id: str,
-    transcript_id: str,
-    log: Any,  # noqa: ANN401
-    worker_id: str | None = None,
-) -> None:
-    """Compila entidades/claims por segmentos, sem derrubar a ingestão."""
-    try:
-        from . import brain_extract
-
-        row = await db.get_transcript_title_content_md_path(user_id, transcript_id)
-        if not row:
-            return
-        title, fallback_content, md_path = row
-        content = fallback_content
-        if md_path:
-            try:
-                content = await storage.get_markdown(key=md_path)
-            except Exception as e:  # noqa: BLE001 — fallback sem localização temporal
-                log.warning(
-                    "brain-extract-markdown-unavailable",
-                    transcript_id=transcript_id,
-                    **_error_diagnostic(e, "BRAIN_MARKDOWN_UNAVAILABLE"),
-                )
-        if len((content or "").strip()) < 80:
-            return
-        segments = brain_extract.segment_content(content)
-        if not segments:
-            return
-        segment_payload: list[dict[str, Any]] = [
-            {
-                "key": segment.key,
-                "text": segment.text,
-                "start_line": segment.start_line,
-                "end_line": segment.end_line,
-                "start_sec": segment.start_sec,
-                "end_sec": segment.end_sec,
-            }
-            for segment in segments
-        ]
-        content_hash = sha256(
-            f"v{brain_extract.BRAIN_GROUNDED_EXTRACT_VERSION}\0{title}\0{content}".encode()
-        ).hexdigest()
-        compilation_id, pending_rows = await db.prepare_grounded_brain_compilation(
-            user_id=user_id,
-            transcript_id=transcript_id,
-            content_hash=content_hash,
-            segments=segment_payload,
-        )
-        due_keys = {str(row["segmentKey"]) for row in pending_rows}
-        if not due_keys:
-            log.info("brain-extract-already-complete", transcript_id=transcript_id)
-            return
-        config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
-        if not config.api_key or not config.model:
-            await db.mark_grounded_compilation_skipped(compilation_id)
-            log.info("brain-extract-skipped-missing-config", transcript_id=transcript_id)
-            return
-        claim_owner = f"{worker_id or 'brain'}:{uuid.uuid4()}"
-        language = await voxen_settings.get_app_language()
-        claimed_any = False
-        total_items = 0
-        total_edges = 0
-        for segment in segment_payload:
-            if segment["key"] not in due_keys:
-                continue
-            claimed_rows = await db.claim_grounded_brain_segments(
-                user_id=user_id,
-                compilation_id=compilation_id,
-                segment_keys=[segment["key"]],
-                worker_id=claim_owner,
-                limit=1,
-            )
-            if not claimed_rows:
-                continue
-            claimed_any = True
-            lease = None
-            try:
-                # Network-bound extraction intentionally runs without the graph write lease.
-                result = await brain_extract.extract_grounded_concepts(
-                    title=title,
-                    content=segment["text"],
-                    api_key=config.api_key,
-                    model=config.model,
-                    fallback_model=config.fallback_model,
-                    language=language,
-                )
-                log_openrouter_route(log, "brain_extract", config.model, result.model)
-                await db.insert_cost_event(
-                    user_id=user_id,
-                    kind="CHAT",
-                    model=result.model,
-                    tokens_in=result.tokens_in,
-                    tokens_out=result.tokens_out,
-                    cost_usd=result.cost_usd,
-                    meta={
-                        "source": "brain_grounded_extract",
-                        "transcript_id": transcript_id,
-                        "segment_key": segment["key"],
-                    },
-                )
-                payload = [
-                    {
-                        "kind": item.kind,
-                        "label": item.label,
-                        "excerpt": item.excerpt,
-                        "confidence": item.confidence,
-                        "slug": brain_extract.slugify_label(item.label),
-                    }
-                    for item in result.items
-                ]
-                relations = [
-                    {
-                        "subject_slug": brain_extract.slugify_label(relation.subject),
-                        "predicate": relation.predicate,
-                        "object_slug": brain_extract.slugify_label(relation.object),
-                        "kind": relation.kind,
-                        "excerpt": relation.excerpt,
-                        "confidence": relation.confidence,
-                    }
-                    for relation in result.relations
-                ]
-                lease = await acquire_graph_index_lease(user_id)
-                if lease is None:
-                    await db.mark_grounded_segment_failed(
-                        compilation_id=compilation_id,
-                        segment_key=segment["key"],
-                        error="GRAPH_WRITE_LEASE_UNAVAILABLE",
-                        worker_id=claim_owner,
-                    )
-                    log.info("brain-extract-deferred-lease", transcript_id=transcript_id)
-                    continue
-                async with lease.heartbeat():
-                    total_edges += await db.upsert_grounded_brain_items(
-                        user_id=user_id,
-                        transcript_id=transcript_id,
-                        compilation_id=compilation_id,
-                        segment=segment,
-                        items=payload,
-                        relations=relations,
-                        lease=lease,
-                        worker_id=claim_owner,
-                        content_hash=content_hash,
-                    )
-                    total_items += len(payload)
-            except Exception as e:  # noqa: BLE001 — um segmento não invalida os demais
-                await db.mark_grounded_segment_failed(
-                    compilation_id=compilation_id,
-                    segment_key=segment["key"],
-                    error=type(e).__name__,
-                    worker_id=claim_owner,
-                )
-                log.warning(
-                    "brain-extract-segment-failed",
-                    transcript_id=transcript_id,
-                    segment_key=segment["key"],
-                    **_error_diagnostic(e, "BRAIN_EXTRACTION_SEGMENT_FAILED"),
-                )
-            finally:
-                if lease is not None:
-                    await lease.release()
-        if not claimed_any:
-            log.info("brain-extract-already-claimed", transcript_id=transcript_id)
-            return
-        log.info(
-            "brain-extract-done",
-            transcript_id=transcript_id,
-            items=total_items,
-            edges=total_edges,
-        )
-    except Exception as e:  # noqa: BLE001 — best-effort
-        log.warning(
-            "brain-extract-failed",
-            transcript_id=transcript_id,
-            **_error_diagnostic(e, "BRAIN_EXTRACTION_FAILED"),
-        )
 
 
 async def _maybe_store_embedding(
