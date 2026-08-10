@@ -17,6 +17,7 @@ export function HitlConfirmBar({
     <div className="mb-2 flex flex-col gap-2" role="region" aria-label={t('chat.hitlRegion')}>
       {pending.map((item) => {
         const busy = approving.has(item.approvalId);
+        const isPatch = item.action === 'patch_note' || item.action === 'patch_transcript';
         const operationLabel = item.patchPreview
           ? {
               replace: t('chat.hitlPatchOperation.replace'),
@@ -34,20 +35,24 @@ export function HitlConfirmBar({
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-[var(--color-app-fg)]">
-                  {item.action === 'patch_note' && item.title
-                    ? t('chat.hitlProposePatch', { title: item.title })
+                  {isPatch && item.title
+                    ? item.action === 'patch_transcript'
+                      ? t('chat.hitlProposeTranscriptPatch', { title: item.title })
+                      : t('chat.hitlProposePatch', { title: item.title })
                     : item.title
                       ? t('chat.hitlProposeNote', { title: item.title })
                       : t('chat.confirmationTitle')}
                 </p>
                 <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
-                  {item.action === 'patch_note'
-                    ? t('chat.hitlPatchHint')
+                  {isPatch
+                    ? item.action === 'patch_transcript'
+                      ? t('chat.hitlTranscriptPatchHint')
+                      : t('chat.hitlPatchHint')
                     : t('chat.hitlConfirmHint')}
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                {item.action !== 'patch_note' ? (
+                {!isPatch ? (
                   <button
                     type="button"
                     onClick={() => onApprove(item.approvalId, { alwaysAllow: true })}
@@ -60,7 +65,7 @@ export function HitlConfirmBar({
                 <button
                   type="button"
                   onClick={() => onApprove(item.approvalId)}
-                  disabled={busy || (item.action === 'patch_note' && !item.patchPreview)}
+                  disabled={busy || (isPatch && !item.patchPreview)}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent-amber)] px-3 py-1.5 text-xs font-semibold text-[var(--color-app-bg)] hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
                 >
                   {busy ? (
@@ -72,7 +77,7 @@ export function HitlConfirmBar({
                 </button>
               </div>
             </div>
-            {item.action === 'patch_note' && item.patchPreview ? (
+            {isPatch && item.patchPreview ? (
               <div className="grid gap-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-bg)]/70 p-2.5 text-[11px] sm:grid-cols-2">
                 <p className="sm:col-span-2 text-[var(--color-app-muted)]">
                   <span className="font-semibold text-[var(--color-app-fg)]">
@@ -112,7 +117,7 @@ export function HitlConfirmBar({
                   </pre>
                 </div>
               </div>
-            ) : item.action === 'patch_note' ? (
+            ) : isPatch ? (
               <p className="text-[11px] font-medium text-rose-300">
                 {t('chat.hitlPatchPreviewUnavailable')}
               </p>

@@ -3,6 +3,10 @@ import app from '../src/index';
 import { db } from '../src/lib/db';
 import { hashMcpToken } from '../src/lib/mcp-tokens';
 import { deleteSetting, setSetting } from '../src/lib/settings';
+import {
+  transcriptCorrectionChecksum,
+  transcriptMarkdownToPlainText,
+} from '../src/lib/transcript-corrections';
 
 async function call(body: unknown, token = ''): Promise<Response> {
   return app.fetch(
@@ -307,8 +311,11 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     const readNames = (readBody.result?.tools ?? []).map((tool) => tool.name);
     expect(readNames).toContain('voxen_read_transcript');
     expect(readNames).toContain('voxen_read_transcript_enrichment');
+    expect(readNames).toContain('voxen_search_transcript_content');
+    expect(readNames).toContain('voxen_list_transcript_corrections');
     expect(readNames).not.toContain('voxen_create_note');
     expect(readNames).not.toContain('voxen_review_transcript_enrichment');
+    expect(readNames).not.toContain('voxen_patch_transcript');
 
     const writeResponse = await call({ jsonrpc: '2.0', id: 52, method: 'tools/list' }, WRITE_TOKEN);
     const writeBody = (await writeResponse.json()) as {
@@ -317,8 +324,11 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     const writeNames = (writeBody.result?.tools ?? []).map((tool) => tool.name);
     expect(writeNames).toContain('voxen_create_note');
     expect(writeNames).toContain('voxen_review_transcript_enrichment');
+    expect(writeNames).toContain('voxen_patch_transcript');
+    expect(writeNames).toContain('voxen_restore_transcript_correction');
     expect(writeNames).not.toContain('voxen_read_transcript');
     expect(writeNames).not.toContain('voxen_read_transcript_enrichment');
+    expect(writeNames).not.toContain('voxen_search_transcript_content');
   });
 
   it('tools/call voxen_create_note cria a nota escopada por userId', async () => {
@@ -637,5 +647,138 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
       revision: 3,
       restoredFromRevision: 1,
     });
+  });
+
+  it('corrige uma transcrição por revisão sem sobrescrever a evidência canônica', async () => {
+    const canonicalPlainText = 'wrong phrase in canonical evidence';
+    const baseMarkdown = '# Transcript\n\n[00:00:01] wrong phrase in canonical evidence';
+    const basePlainText = transcriptMarkdownToPlainText(baseMarkdown);
+    const baseChecksum = transcriptCorrectionChecksum(baseMarkdown, basePlainText);
+    const transcript = await db.transcript.create({
+      data: {
+        userId,
+        source: 'YOUTUBE',
+        url: `https://example.com/mcp-correction-${Date.now()}`,
+        title: 'Transcript correction MCP',
+        durationSec: 3,
+        language: 'en',
+        transcriptionMethod: 'SUBTITLES',
+        mdPath: `workspaces/${userId}/transcripts/mcp-correction.md`,
+        plainText: canonicalPlainText,
+        frontmatter: {},
+        correctionRevision: 1,
+        correctedMarkdown: baseMarkdown,
+        correctedPlainText: basePlainText,
+        correctedChecksum: baseChecksum,
+        correctionSourceVersion: 0,
+        correctionSourceChecksum: null,
+        correctionRevisions: {
+          create: {
+            userId,
+            revision: 1,
+            sourceVersion: 0,
+            sourceChecksum: null,
+            markdown: baseMarkdown,
+            plainText: basePlainText,
+            checksum: baseChecksum,
+            actor: 'USER',
+            changeSummary: 'Initial reviewed correction',
+          },
+        },
+      },
+    });
+
+    const search = await call(
+      {
+        jsonrpc: '2.0',
+        id: 80,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_search_transcript_content',
+          arguments: { transcript_id: transcript.id, query: 'wrong phrase' },
+        },
+      },
+      TOKEN,
+    );
+    const searched = (await search.json()) as {
+      result?: {
+        structuredContent?: {
+          revision?: number;
+          checksum?: string;
+          sourceVersion?: number;
+          sourceChecksum?: string | null;
+          matches?: Array<{ line: number }>;
+        };
+      };
+    };
+    expect(searched.result?.structuredContent).toMatchObject({
+      revision: 1,
+      checksum: baseChecksum,
+      sourceVersion: 0,
+      sourceChecksum: null,
+      matches: [{ line: 3 }],
+    });
+
+    const operation = { kind: 'replace', target: 'wrong phrase', text: 'correct phrase' };
+    const preview = await call(
+      {
+        jsonrpc: '2.0',
+        id: 81,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_patch_transcript',
+          arguments: {
+            transcript_id: transcript.id,
+            expected_revision: 1,
+            expected_source_version: 0,
+            expected_source_checksum: null,
+            expected_checksum: baseChecksum,
+            operation,
+            preview_only: true,
+          },
+        },
+      },
+      TOKEN,
+    );
+    const previewed = (await preview.json()) as {
+      result?: { structuredContent?: { applied?: boolean; resultChecksum?: string } };
+    };
+    const resultChecksum = previewed.result?.structuredContent?.resultChecksum;
+    expect(previewed.result?.structuredContent?.applied).toBe(false);
+    expect(resultChecksum).toMatch(/^[a-f0-9]{64}$/);
+
+    const apply = await call(
+      {
+        jsonrpc: '2.0',
+        id: 82,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_patch_transcript',
+          arguments: {
+            transcript_id: transcript.id,
+            expected_revision: 1,
+            expected_source_version: 0,
+            expected_source_checksum: null,
+            expected_checksum: baseChecksum,
+            expected_result_checksum: resultChecksum,
+            operation,
+            preview_only: false,
+          },
+        },
+      },
+      TOKEN,
+    );
+    const applied = (await apply.json()) as {
+      result?: {
+        structuredContent?: { applied?: boolean; correction?: { revision?: number } };
+      };
+    };
+    expect(applied.result?.structuredContent).toMatchObject({
+      applied: true,
+      correction: { revision: 2 },
+    });
+    const stored = await db.transcript.findUniqueOrThrow({ where: { id: transcript.id } });
+    expect(stored.plainText).toBe(canonicalPlainText);
+    expect(stored.correctedPlainText).toContain('correct phrase');
   });
 });

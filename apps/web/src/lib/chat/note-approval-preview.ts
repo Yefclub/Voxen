@@ -1,7 +1,7 @@
 import { db } from '../db';
 import { applyNotePatch, noteContentChecksum } from '../note-revisions';
 import { NoteRevisionConflictError } from '../note-versioning';
-import { HITL_ACTION_PATCH_NOTE } from './hitl-policy';
+import { HITL_ACTION_PATCH_NOTE, HITL_ACTION_PATCH_TRANSCRIPT } from './hitl-policy';
 import {
   chatPatchApprovalProof,
   extractPatchProposal,
@@ -9,6 +9,11 @@ import {
   type ChatPatchApprovalPreview,
   type ChatPatchProposal,
 } from './note-editing';
+import {
+  extractTranscriptPatchProposal,
+  prepareChatTranscriptPatchApproval,
+  type ChatTranscriptPatchApprovalPreview,
+} from './transcript-editing';
 
 type PatchApprovalPayload = Extract<ChatApprovalPayload, { action: typeof HITL_ACTION_PATCH_NOTE }>;
 
@@ -67,8 +72,17 @@ export async function prepareChatApprovalInput(
   input: Record<string, unknown>,
 ): Promise<{
   trustedInput: Record<string, unknown>;
-  patchPreview?: ChatPatchApprovalPreview;
+  patchPreview?: ChatPatchApprovalPreview | ChatTranscriptPatchApprovalPreview;
 }> {
+  if (action === HITL_ACTION_PATCH_TRANSCRIPT) {
+    const candidate = extractTranscriptPatchProposal({ ...input, action });
+    if (!candidate) throw new Error('Proposta de correção de transcrição inválida.');
+    const prepared = await prepareChatTranscriptPatchApproval(userId, candidate);
+    return {
+      trustedInput: { ...prepared.payload, title: prepared.payload.transcriptTitle },
+      patchPreview: prepared.preview,
+    };
+  }
   if (action !== HITL_ACTION_PATCH_NOTE) return { trustedInput: input };
   const candidate = extractPatchProposal({ ...input, action });
   if (!candidate) {

@@ -44,54 +44,55 @@ enum UserRole {
 }
 
 model User {
-  id                    String                 @id @default(cuid())
-  email                 String                 @unique
-  emailVerified         Boolean                @default(false)
-  name                  String
-  image                 String?
+  id                            String                         @id @default(cuid())
+  email                         String                         @unique
+  emailVerified                 Boolean                        @default(false)
+  name                          String
+  image                         String?
   // Voxen-specific
-  status                UserStatus             @default(PENDING)
-  role                  UserRole               @default(USER)
+  status                        UserStatus                     @default(PENDING)
+  role                          UserRole                       @default(USER)
   // UI theme: linear (default) | zinc | emerald | light
-  theme                 String                 @default("linear")
+  theme                         String                         @default("linear")
   // Desktop shell preference: classic (default) | focus
-  interfaceMode         String                 @default("classic")
-  monthlyBudgetUsd      Decimal?               @db.Decimal(10, 4) // null = sem limite
-  approvedAt            DateTime?
-  approvedBy            String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  interfaceMode                 String                         @default("classic")
+  monthlyBudgetUsd              Decimal?                       @db.Decimal(10, 4) // null = sem limite
+  approvedAt                    DateTime?
+  approvedBy                    String?
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
   // Relations
-  sessions              Session[]
-  accounts              Account[]
-  transcripts           Transcript[]
-  savedMedia            SavedMedia[]
-  jobs                  Job[]
-  sourceContentVersions SourceContentVersion[]
-  researchArtifacts     ResearchArtifact[]
-  transcriptEnrichments TranscriptEnrichment[]
-  costEvents            CostEvent[]
-  conversations         Conversation[]
-  chatApprovals         ChatApproval[]
-  chatTurns             ChatTurn[]
-  chatStreamLease       ChatStreamLease?
-  notes                 Note[]
-  noteRevisions         NoteRevision[]
-  libraryFolders        LibraryFolder[]
-  brainNodes            BrainNode[]
-  brainEdges            BrainEdge[]
-  brainSources          BrainSource[]
-  brainCompilations     BrainCompilation[]
-  telegramLink          TelegramLink?
-  automations           Automation[]
-  automationRuns        AutomationRun[]
-  tags                  Tag[]
-  mcpTokens             McpToken[]
-  oauthClients          OauthClient[]
-  oauthRefreshTokens    OauthRefreshToken[]
-  oauthAccessTokens     OauthAccessToken[]
-  oauthConsents         OauthConsent[]
-  configRevisions       ConfigRevision[]       @relation("ConfigRevisionActor")
+  sessions                      Session[]
+  accounts                      Account[]
+  transcripts                   Transcript[]
+  savedMedia                    SavedMedia[]
+  jobs                          Job[]
+  sourceContentVersions         SourceContentVersion[]
+  researchArtifacts             ResearchArtifact[]
+  transcriptEnrichments         TranscriptEnrichment[]
+  transcriptCorrectionRevisions TranscriptCorrectionRevision[]
+  costEvents                    CostEvent[]
+  conversations                 Conversation[]
+  chatApprovals                 ChatApproval[]
+  chatTurns                     ChatTurn[]
+  chatStreamLease               ChatStreamLease?
+  notes                         Note[]
+  noteRevisions                 NoteRevision[]
+  libraryFolders                LibraryFolder[]
+  brainNodes                    BrainNode[]
+  brainEdges                    BrainEdge[]
+  brainSources                  BrainSource[]
+  brainCompilations             BrainCompilation[]
+  telegramLink                  TelegramLink?
+  automations                   Automation[]
+  automationRuns                AutomationRun[]
+  tags                          Tag[]
+  mcpTokens                     McpToken[]
+  oauthClients                  OauthClient[]
+  oauthRefreshTokens            OauthRefreshToken[]
+  oauthAccessTokens             OauthAccessToken[]
+  oauthConsents                 OauthConsent[]
+  configRevisions               ConfigRevision[]               @relation("ConfigRevisionActor")
 
   @@index([status])
   @@index([role])
@@ -475,77 +476,100 @@ enum SourceRefreshStatus {
   FAILED
 }
 
+enum TranscriptCorrectionState {
+  ACTIVE
+  STALE
+}
+
+enum TranscriptCorrectionActor {
+  USER
+  MCP
+  CHAT
+  RESTORE
+  SYSTEM
+}
+
 model Transcript {
-  id                    String                   @id @default(cuid())
-  userId                String // == workspace_id
-  folderId              String?
-  status                ContentStatus            @default(ACTIVE)
-  source                TranscriptSource
-  url                   String
-  title                 String
-  channel               String?
-  author                String?
-  durationSec           Int
-  publishedAt           DateTime?
-  thumbnailUrl          String?
-  originalObjectKey     String?
-  originalFilename      String?
-  originalMimeType      String?
-  previewObjectKey      String?
-  previewMimeType       String?
-  language              String // ISO 639-1
-  transcriptionMethod   TranscriptionMethod
-  model                 String? // null se SUBTITLES
-  costUsd               Decimal?                 @db.Decimal(10, 4)
+  id                       String                         @id @default(cuid())
+  userId                   String // == workspace_id
+  folderId                 String?
+  status                   ContentStatus                  @default(ACTIVE)
+  source                   TranscriptSource
+  url                      String
+  title                    String
+  channel                  String?
+  author                   String?
+  durationSec              Int
+  publishedAt              DateTime?
+  thumbnailUrl             String?
+  originalObjectKey        String?
+  originalFilename         String?
+  originalMimeType         String?
+  previewObjectKey         String?
+  previewMimeType          String?
+  language                 String // ISO 639-1
+  transcriptionMethod      TranscriptionMethod
+  model                    String? // null se SUBTITLES
+  costUsd                  Decimal?                       @db.Decimal(10, 4)
   // .md no Garage (key relative ao bucket)
-  mdPath                String
+  mdPath                   String
   // Texto puro pra FTS (sem timestamps, sem frontmatter)
-  plainText             String                   @db.Text
+  plainText                String                         @db.Text
   // Resumo gerado pela IA em markdown (pode ser null se ainda não gerado)
-  summaryMd             String?                  @db.Text
+  summaryMd                String?                        @db.Text
   // Validated derived Mermaid flow; it never replaces the canonical source.
-  flowchartMd           String?                  @db.Text
-  summaryStatus         EnrichmentStatus         @default(PENDING)
-  summaryAttempts       Int                      @default(0)
-  summaryStartedAt      DateTime?
-  summaryNextAttemptAt  DateTime?
-  summaryError          String?
-  taggingStatus         EnrichmentStatus         @default(PENDING)
-  taggingAttempts       Int                      @default(0)
-  taggingStartedAt      DateTime?
-  taggingNextAttemptAt  DateTime?
-  taggingError          String?
+  flowchartMd              String?                        @db.Text
+  summaryStatus            EnrichmentStatus               @default(PENDING)
+  summaryAttempts          Int                            @default(0)
+  summaryStartedAt         DateTime?
+  summaryNextAttemptAt     DateTime?
+  summaryError             String?
+  taggingStatus            EnrichmentStatus               @default(PENDING)
+  taggingAttempts          Int                            @default(0)
+  taggingStartedAt         DateTime?
+  taggingNextAttemptAt     DateTime?
+  taggingError             String?
   // Frontmatter como JSONB pra filtros estruturados
-  frontmatter           Json
+  frontmatter              Json
   // tsvector gerenciado por trigger SQL (ver migration). Não declarável em Prisma; usar Unsupported.
-  searchVector          Unsupported("tsvector")?
-  checksum              String? // sha256 do áudio original
+  searchVector             Unsupported("tsvector")?
+  checksum                 String? // sha256 do áudio original
   // Proveniência versionada para fontes WEB. sourceVersion=0 identifica
   // conteúdo legado ainda sem snapshot; a primeira atualização o preserva.
-  sourceChecksum        String?
-  sourceVersion         Int                      @default(0)
-  sourceCollectedAt     DateTime?
-  sourceMetadata        Json                     @default("{}")
-  sourceRefreshStatus   SourceRefreshStatus      @default(CURRENT)
-  sourceRefreshError    String?                  @db.Text
-  formatVersion         Int                      @default(1)
-  archivedAt            DateTime?
-  trashedAt             DateTime?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
+  sourceChecksum           String?
+  sourceVersion            Int                            @default(0)
+  sourceCollectedAt        DateTime?
+  sourceMetadata           Json                           @default("{}")
+  sourceRefreshStatus      SourceRefreshStatus            @default(CURRENT)
+  sourceRefreshError       String?                        @db.Text
+  // Materialized correction overlay. Canonical mdPath/plainText stay untouched.
+  correctionRevision       Int                            @default(0)
+  correctedMarkdown        String?                        @db.Text
+  correctedPlainText       String?                        @db.Text
+  correctedChecksum        String?
+  correctionSourceVersion  Int?
+  correctionSourceChecksum String?
+  correctionState          TranscriptCorrectionState      @default(ACTIVE)
+  correctionStaleReason    String?                        @db.Text
+  formatVersion            Int                            @default(1)
+  archivedAt               DateTime?
+  trashedAt                DateTime?
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
   // Relations
-  user                  User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder                LibraryFolder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  chunks                Chunk[]
-  job                   Job?
-  sourceRefreshJobs     Job[]                    @relation("SourceRefreshJobs")
-  sourceVersions        SourceContentVersion[]
-  conversations         Conversation[]
-  tags                  TranscriptTag[]
-  noteSources           NoteTranscriptSource[]
-  transcriptEnrichments TranscriptEnrichment[]
-  brainCompilation      BrainCompilation?
-  savedMedia            SavedMedia?
+  user                     User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder                   LibraryFolder?                 @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  chunks                   Chunk[]
+  job                      Job?
+  sourceRefreshJobs        Job[]                          @relation("SourceRefreshJobs")
+  sourceVersions           SourceContentVersion[]
+  conversations            Conversation[]
+  tags                     TranscriptTag[]
+  noteSources              NoteTranscriptSource[]
+  transcriptEnrichments    TranscriptEnrichment[]
+  correctionRevisions      TranscriptCorrectionRevision[]
+  brainCompilation         BrainCompilation?
+  savedMedia               SavedMedia?
   // Índice GIN no tsvector criado via SQL na migration
 
   @@index([userId, createdAt(sort: Desc)])
@@ -556,6 +580,27 @@ model Transcript {
   @@index([summaryStatus, summaryNextAttemptAt])
   @@index([taggingStatus, taggingNextAttemptAt])
   @@index([userId, sourceRefreshStatus])
+}
+
+model TranscriptCorrectionRevision {
+  id             String                    @id @default(cuid())
+  userId         String
+  transcriptId   String
+  revision       Int
+  sourceVersion  Int
+  sourceChecksum String?
+  markdown       String                    @db.Text
+  plainText      String                    @db.Text
+  checksum       String
+  actor          TranscriptCorrectionActor
+  operation      Json?
+  changeSummary  String?                   @db.Text
+  createdAt      DateTime                  @default(now())
+  user           User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript     Transcript                @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  @@unique([transcriptId, revision])
+  @@index([userId, transcriptId, createdAt(sort: Desc)])
 }
 
 // Snapshot imutável de cada versão aceita de uma fonte externa. mdPath aponta

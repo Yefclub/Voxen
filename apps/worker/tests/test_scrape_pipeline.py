@@ -228,6 +228,9 @@ async def test_changed_refresh_versions_and_invalidates_only_affected_artifacts(
     statements = "\n".join(str(call.args[0]) for call in first_conn.execute.await_args_list)
     assert 'INSERT INTO "SourceContentVersion"' in statements
     assert '"sourceVersion" = $16' in statements
+    assert '"correctionState" = CASE' in statements
+    assert "'STALE'::\"TranscriptCorrectionState\"" in statements
+    assert "'source-version-changed'" in statements
     assert 'DELETE FROM "TranscriptTag"' in statements
     assert 'UPDATE "ChatMessage"' in statements
     assert "pg_advisory_lock" in first_conn.execute.await_args_list[0].args[0]

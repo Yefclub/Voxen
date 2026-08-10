@@ -329,9 +329,20 @@ export async function loadTranscriptMd(
 ): Promise<{ id: string; title: string; url: string; md: string } | null> {
   const t = await db.transcript.findFirst({
     where: { id: transcriptId, userId, status: 'ACTIVE' },
-    select: { id: true, title: true, url: true, mdPath: true, plainText: true },
+    select: {
+      id: true,
+      title: true,
+      url: true,
+      mdPath: true,
+      plainText: true,
+      correctedMarkdown: true,
+      correctedPlainText: true,
+      correctionState: true,
+    },
   });
   if (!t) return null;
+  if (t.correctionState === 'ACTIVE' && t.correctedMarkdown)
+    return { id: t.id, title: t.title, url: t.url, md: t.correctedMarkdown };
   let md: string;
   try {
     md = await storageReadText(t.mdPath);
@@ -412,7 +423,7 @@ export async function queryTranscriptFts(
   const take = clampInt(limit, 8, 1, 25);
   return client.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
-      ts_headline('portuguese', concat_ws(E'\n\n', t.title, t."plainText"), websearch_to_tsquery('portuguese', ${q}),
+      ts_headline('portuguese', concat_ws(E'\n\n', t.title, CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END), websearch_to_tsquery('portuguese', ${q}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
       ts_rank(t."searchVector", websearch_to_tsquery('portuguese', ${q})) AS rank,
       LEFT(t."summaryMd", 800) AS summary,
@@ -579,7 +590,7 @@ async function loadSemanticTranscriptRows(
   if (ids.length === 0) return [];
   const rows = await db.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
-      LEFT(COALESCE(NULLIF(t."summaryMd", ''), t."plainText"), 800) AS snippet,
+      LEFT(COALESCE(NULLIF(t."summaryMd", ''), CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END), 800) AS snippet,
       0::float AS rank,
       LEFT(t."summaryMd", 800) AS summary,
       folder.name AS folder,

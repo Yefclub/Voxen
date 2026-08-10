@@ -294,6 +294,9 @@ export async function reindexTranscriptBrain(
       transcriptionMethod: true,
       thumbnailUrl: true,
       plainText: true,
+      correctedPlainText: true,
+      correctionRevision: true,
+      correctionState: true,
       summaryMd: true,
       createdAt: true,
       updatedAt: true,
@@ -305,13 +308,17 @@ export async function reindexTranscriptBrain(
     return;
   }
 
+  const effectivePlainText =
+    transcript.correctionState === 'ACTIVE' && transcript.correctedPlainText
+      ? transcript.correctedPlainText
+      : transcript.plainText;
   await options.assertLeaseOwnership?.();
   const contentNode = await upsertBrainNode({
     userId,
     key: brainNodeKey('TRANSCRIPT', transcript.id),
     type: 'CONTENT',
     label: transcript.title,
-    description: truncate(transcript.summaryMd || transcript.plainText, DESCRIPTION_LIMIT),
+    description: truncate(transcript.summaryMd || effectivePlainText, DESCRIPTION_LIMIT),
     status: transcript.status,
     metadata: {
       source: transcript.source,
@@ -324,6 +331,8 @@ export async function reindexTranscriptBrain(
       folderId: transcript.folderId,
       createdAt: transcript.createdAt.toISOString(),
       updatedAt: transcript.updatedAt.toISOString(),
+      correctionRevision: transcript.correctionRevision,
+      correctionState: transcript.correctionState,
     },
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
@@ -372,7 +381,7 @@ export async function reindexTranscriptBrain(
     sourceType: 'TRANSCRIPT',
     sourceId: transcript.id,
     status: transcript.status,
-    text: `${transcript.title}\n${transcript.channel ?? ''}\n${transcript.author ?? ''}\n${transcript.summaryMd || transcript.plainText}`,
+    text: `${transcript.title}\n${transcript.channel ?? ''}\n${transcript.author ?? ''}\n${transcript.summaryMd || effectivePlainText}`,
     beforeEdgeWrite: options.beforeEdgeWrite,
     assertLeaseOwnership: options.assertLeaseOwnership,
   });

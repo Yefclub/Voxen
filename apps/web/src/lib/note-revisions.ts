@@ -77,19 +77,24 @@ function exactTargetOffsets(content: string, target: string): number[] {
   return offsets;
 }
 
-function validateResult(content: string, previous: string): void {
+function validateResult(content: string, previous: string, maxLength: number): void {
   if (content === previous) {
     throw new NotePatchError('NO_CHANGE', 'Patch does not change the note content.');
   }
-  if (content.length > NOTE_CONTENT_MAX_LENGTH) {
+  if (content.length > maxLength) {
     throw new NotePatchError(
       'CONTENT_TOO_LARGE',
-      `Patched content exceeds the maximum size of ${NOTE_CONTENT_MAX_LENGTH} characters.`,
+      `Patched content exceeds the maximum size of ${maxLength} characters.`,
     );
   }
 }
 
-export function applyNotePatch(content: string, operation: NotePatchOperation): AppliedNotePatch {
+export function applyTextPatch(
+  content: string,
+  operation: NotePatchOperation,
+  options: { maxLength?: number } = {},
+): AppliedNotePatch {
+  const maxLength = options.maxLength ?? NOTE_CONTENT_MAX_LENGTH;
   if (!operation.text) {
     throw new NotePatchError('EMPTY_PATCH', 'Patch text cannot be empty.');
   }
@@ -97,7 +102,7 @@ export function applyNotePatch(content: string, operation: NotePatchOperation): 
   if (operation.kind === 'prepend' || operation.kind === 'append') {
     const start = operation.kind === 'prepend' ? 0 : content.length;
     const next = operation.kind === 'prepend' ? operation.text + content : content + operation.text;
-    validateResult(next, content);
+    validateResult(next, content, maxLength);
     return {
       content: next,
       matchCount: 0,
@@ -137,7 +142,7 @@ export function applyNotePatch(content: string, operation: NotePatchOperation): 
   const end = operation.kind === 'replace' ? targetEnd : start;
   const before = operation.kind === 'replace' ? operation.target : '';
   const next = content.slice(0, start) + operation.text + content.slice(end);
-  validateResult(next, content);
+  validateResult(next, content, maxLength);
   return {
     content: next,
     matchCount: offsets.length,
@@ -149,11 +154,15 @@ export function applyNotePatch(content: string, operation: NotePatchOperation): 
   };
 }
 
+export function applyNotePatch(content: string, operation: NotePatchOperation): AppliedNotePatch {
+  return applyTextPatch(content, operation, { maxLength: NOTE_CONTENT_MAX_LENGTH });
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function searchWithinNote(
+export function searchWithinText(
   content: string,
   query: string,
   options: { limit?: number; contextChars?: number } = {},
@@ -186,6 +195,14 @@ export function searchWithinNote(
     if (match[0].length === 0) matcher.lastIndex += 1;
   }
   return matches;
+}
+
+export function searchWithinNote(
+  content: string,
+  query: string,
+  options: { limit?: number; contextChars?: number } = {},
+): NoteContentMatch[] {
+  return searchWithinText(content, query, options);
 }
 
 export function noteContentChecksum(title: string, content: string): string {

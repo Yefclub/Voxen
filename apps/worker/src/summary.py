@@ -99,10 +99,19 @@ async def maybe_generate(
     try:
         async with db.connection() as conn:
             row = await conn.fetchrow(
-                'SELECT title, "plainText" FROM "Transcript" WHERE id = $1',
+                """SELECT title, "plainText", "correctedPlainText", "correctionState"
+                   FROM "Transcript" WHERE id = $1 AND "userId" = $2""",
                 transcript_id,
+                user_id,
             )
-        if not row or not row["plainText"]:
+        effective_text = (
+            row["correctedPlainText"]
+            if row and row["correctionState"] == "ACTIVE" and row["correctedPlainText"]
+            else row["plainText"]
+            if row
+            else None
+        )
+        if not row or not effective_text:
             log.info("summary-skipped-empty-text")
             await finish("SKIPPED", "SUMMARY_EMPTY_TEXT")
             return
@@ -115,7 +124,7 @@ async def maybe_generate(
         api_key = config.api_key
         model = config.model
 
-        text = str(row["plainText"]).strip()
+        text = str(effective_text).strip()
         if not text:
             log.info("summary-skipped-empty-text")
             await finish("SKIPPED", "SUMMARY_EMPTY_TEXT")

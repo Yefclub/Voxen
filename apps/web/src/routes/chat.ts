@@ -319,6 +319,7 @@ chatRoutes.post('/approve', async (c) => {
       return c.json({
         message: approved.message,
         noteId: approved.noteId,
+        transcriptId: approved.transcriptId,
         resume: false,
       });
     }
@@ -337,6 +338,7 @@ chatRoutes.post('/approve', async (c) => {
         return c.json({
           message: approved.message,
           noteId: approved.noteId,
+          transcriptId: approved.transcriptId,
           resume: false,
           resumeDeferred: true,
         });
@@ -351,6 +353,7 @@ chatRoutes.post('/approve', async (c) => {
       return c.json({
         message: approved.message,
         noteId: approved.noteId,
+        transcriptId: approved.transcriptId,
         resume: true,
         turnId: turn.id,
         userMessageId: turn.userMessageId,

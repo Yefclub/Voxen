@@ -787,7 +787,8 @@ async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> boo
                 row = await conn.fetchrow(
                     """
                     SELECT source, url, title, channel, author, language, "transcriptionMethod",
-                           "thumbnailUrl", "plainText", "summaryMd", status
+                           "thumbnailUrl", "plainText", "correctedPlainText",
+                           "correctionState", "summaryMd", status
                     FROM "Transcript"
                     WHERE id = $1 AND "userId" = $2
                     """,
@@ -824,7 +825,12 @@ async def reindex_transcript_brain_node(user_id: str, transcript_id: str) -> boo
                     language=row["language"],
                     transcription_method=row["transcriptionMethod"],
                     thumbnail_url=row["thumbnailUrl"],
-                    plain_text=row["summaryMd"] or row["plainText"],
+                    plain_text=row["summaryMd"]
+                    or (
+                        row["correctedPlainText"]
+                        if row["correctionState"] == "ACTIVE" and row["correctedPlainText"]
+                        else row["plainText"]
+                    ),
                     status=row["status"],
                 )
     finally:
@@ -2022,7 +2028,8 @@ async def get_transcript_title_summary_folder(
     async with connection() as conn:
         row = await conn.fetchrow(
             """
-            SELECT title, "plainText", "summaryMd", "folderId"
+            SELECT title, "plainText", "correctedPlainText", "correctionState",
+                   "summaryMd", "folderId"
             FROM "Transcript"
             WHERE "userId" = $1 AND id = $2
             """,
@@ -2033,7 +2040,12 @@ async def get_transcript_title_summary_folder(
         return None
     title = str(row["title"] or "")
     summary = (row["summaryMd"] or "").strip()
-    plain = (row["plainText"] or "").strip()
+    plain = (
+        row["correctedPlainText"]
+        if row["correctionState"] == "ACTIVE" and row["correctedPlainText"]
+        else row["plainText"]
+    )
+    plain = (plain or "").strip()
     content = summary or plain
     folder_id = row["folderId"]
     return title, content, (str(folder_id) if folder_id else None)
@@ -2047,7 +2059,8 @@ async def get_transcript_title_content_md_path(
     async with connection() as conn:
         row = await conn.fetchrow(
             """
-            SELECT title, "plainText", "summaryMd", "mdPath"
+            SELECT title, "plainText", "correctedMarkdown", "correctedPlainText",
+                   "correctionState", "summaryMd", "mdPath"
             FROM "Transcript"
             WHERE "userId" = $1 AND id = $2
             """,
@@ -2057,6 +2070,8 @@ async def get_transcript_title_content_md_path(
     if not row:
         return None
     title = str(row["title"] or "")
+    if row["correctionState"] == "ACTIVE" and row["correctedMarkdown"]:
+        return title, str(row["correctedMarkdown"]), None
     content = (row["summaryMd"] or row["plainText"] or "").strip()
     md_path = row["mdPath"]
     return title, content, (str(md_path) if md_path else None)

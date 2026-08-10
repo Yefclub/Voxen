@@ -46,6 +46,7 @@ import {
 } from '../lib/transcript-graph-search';
 import type { TranscriptSearchRow as SearchRow } from '../lib/transcript-graph-search';
 import { cancelTranscriptEnrichmentsForInactiveParent } from '../lib/transcript-enrichments';
+import { registerTranscriptCorrectionRoutes } from './transcript-corrections';
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
@@ -132,6 +133,8 @@ transcriptsRoutes.use('*', async (c, next) => {
   return next();
 });
 
+registerTranscriptCorrectionRoutes(transcriptsRoutes);
+
 transcriptsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const query = (c.req.query('q') ?? '').trim();
@@ -204,7 +207,7 @@ transcriptsRoutes.get('/', async (c) => {
       t."createdAt",
       ts_headline(
         'portuguese',
-        t."plainText",
+        CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END,
         plainto_tsquery('portuguese', ${query}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1, FragmentDelimiter=" … "'
       ) AS snippet,
@@ -271,7 +274,7 @@ transcriptsRoutes.get('/', async (c) => {
       t."createdAt",
       ts_headline(
         'portuguese',
-        t."plainText",
+        CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END,
         plainto_tsquery('portuguese', ${query}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1, FragmentDelimiter=" … "'
       ) AS snippet,
@@ -499,6 +502,14 @@ transcriptsRoutes.get('/:id', async (c) => {
       sourceMetadata: true,
       sourceRefreshStatus: true,
       sourceRefreshError: true,
+      correctionRevision: true,
+      correctedMarkdown: true,
+      correctedPlainText: true,
+      correctedChecksum: true,
+      correctionSourceVersion: true,
+      correctionSourceChecksum: true,
+      correctionState: true,
+      correctionStaleReason: true,
       archivedAt: true,
       trashedAt: true,
       createdAt: true,
@@ -522,7 +533,7 @@ transcriptsRoutes.get('/:id', async (c) => {
   const totalCostUsd = (baseCost + summarySum).toFixed(6);
 
   // Read canonical Markdown from the selected storage with a DB fallback.
-  const markdown = await (async (): Promise<string> => {
+  const canonicalMarkdown = await (async (): Promise<string> => {
     try {
       return await storageReadText(transcript.mdPath);
     } catch (err) {
@@ -534,6 +545,10 @@ transcriptsRoutes.get('/:id', async (c) => {
     }
   })();
 
+  const markdown =
+    transcript.correctionState === 'ACTIVE' && transcript.correctedMarkdown
+      ? transcript.correctedMarkdown
+      : canonicalMarkdown;
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
   const sourceVersions =
     transcript.source === 'WEB'
@@ -544,7 +559,11 @@ transcriptsRoutes.get('/:id', async (c) => {
           select: { version: true, checksum: true, collectedAt: true, metadata: true },
         })
       : [];
-  return c.json({ transcript: { ...transcript, totalCostUsd, tags, sourceVersions }, markdown });
+  return c.json({
+    transcript: { ...transcript, totalCostUsd, tags, sourceVersions },
+    markdown,
+    canonicalMarkdown: transcript.correctionRevision > 0 ? canonicalMarkdown : null,
+  });
 });
 
 // POST /api/transcripts/:id/refresh — consulta novamente uma fonte WEB sem
@@ -999,11 +1018,23 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
 
   const transcript = await db.transcript.findFirst({
     where: { id, userId },
-    select: { id: true, title: true, plainText: true, summaryMd: true, folderId: true },
+    select: {
+      id: true,
+      title: true,
+      plainText: true,
+      correctedPlainText: true,
+      correctionState: true,
+      summaryMd: true,
+      folderId: true,
+    },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
 
-  const content = ((transcript.summaryMd ?? '') || (transcript.plainText ?? '')).trim();
+  const effectivePlainText =
+    transcript.correctionState === 'ACTIVE' && transcript.correctedPlainText
+      ? transcript.correctedPlainText
+      : transcript.plainText;
+  const content = ((transcript.summaryMd ?? '') || effectivePlainText).trim();
   if (content.length < 40 && transcript.title.trim().length < 3) {
     return c.json({ error: 'Conteúdo curto demais para gerar tags.' }, 422);
   }
@@ -1165,10 +1196,21 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
 
   const transcript = await db.transcript.findFirst({
     where: { id, userId, status: { not: 'TRASH' } },
-    select: { id: true, title: true, plainText: true, summaryMd: true },
+    select: {
+      id: true,
+      title: true,
+      plainText: true,
+      correctedPlainText: true,
+      correctionState: true,
+      summaryMd: true,
+    },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
-  if (!transcript.plainText?.trim()) {
+  const effectivePlainText =
+    transcript.correctionState === 'ACTIVE' && transcript.correctedPlainText
+      ? transcript.correctedPlainText
+      : transcript.plainText;
+  if (!effectivePlainText.trim()) {
     return c.json({ error: 'Transcrição sem texto para resumir.' }, 422);
   }
 
@@ -1188,7 +1230,7 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
       userId,
       transcriptId: transcript.id,
       title: transcript.title,
-      plainText: transcript.plainText,
+      plainText: effectivePlainText,
     });
     return c.json({ summaryMd });
   } catch (err) {
