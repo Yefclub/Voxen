@@ -1,31 +1,30 @@
 import {
   useEffect,
+  useReducer,
   useRef,
-  useState,
   type Dispatch,
   type PointerEvent,
   type ReactElement,
   type ReactNode,
-  type SetStateAction,
 } from 'react';
 import { Maximize2, RotateCcw, ZoomIn, ZoomOut } from '@/components/ui/icons';
 import { useI18n } from '../../lib/i18n';
+import {
+  bindMermaidWheelZoom,
+  initialMermaidCanvasState,
+  MERMAID_MAX_SCALE,
+  MERMAID_MIN_SCALE,
+  MERMAID_SCALE_STEP,
+  mermaidCanvasReducer,
+  type MermaidCanvasAction,
+  type MermaidViewport,
+} from '../../lib/mermaid-canvas-state';
 import { cn } from '../../lib/utils';
 import { Dialog, DialogContent, DialogTitle } from './dialog';
-
-const MIN_SCALE = 0.5;
-const MAX_SCALE = 3;
-const SCALE_STEP = 0.25;
 
 interface MermaidCanvasProps {
   label: string;
   sanitizedSvg: string;
-}
-
-interface Viewport {
-  scale: number;
-  x: number;
-  y: number;
 }
 
 interface DragOrigin {
@@ -33,10 +32,6 @@ interface DragOrigin {
   pointerY: number;
   viewportX: number;
   viewportY: number;
-}
-
-function clampScale(scale: number): number {
-  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
 }
 
 function CanvasButton({
@@ -70,26 +65,35 @@ function DiagramViewport({
   sanitizedSvg,
   viewport,
   dragging,
-  setDragging,
-  setViewport,
+  dispatch,
   onExpand,
 }: MermaidCanvasProps & {
   expanded: boolean;
-  viewport: Viewport;
+  viewport: MermaidViewport;
   dragging: boolean;
-  setDragging: (dragging: boolean) => void;
-  setViewport: Dispatch<SetStateAction<Viewport>>;
+  dispatch: Dispatch<MermaidCanvasAction>;
   onExpand?: () => void;
 }): ReactElement {
   const { t } = useI18n();
   const dragOrigin = useRef<DragOrigin | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    return bindMermaidWheelZoom(canvas, (delta) => dispatch({ type: 'zoom', delta }));
+  }, [dispatch]);
+
+  useEffect(() => {
+    return () => dispatch({ type: 'set-dragging', dragging: false });
+  }, [dispatch]);
 
   function reset(): void {
-    setViewport({ scale: 1, x: 0, y: 0 });
+    dispatch({ type: 'reset-viewport' });
   }
 
   function zoom(delta: number): void {
-    setViewport((current) => ({ ...current, scale: clampScale(current.scale + delta) }));
+    dispatch({ type: 'zoom', delta });
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>): void {
@@ -101,17 +105,17 @@ function DiagramViewport({
       viewportX: viewport.x,
       viewportY: viewport.y,
     };
-    setDragging(true);
+    dispatch({ type: 'set-dragging', dragging: true });
   }
 
   function handlePointerMove(event: PointerEvent<HTMLDivElement>): void {
     const origin = dragOrigin.current;
     if (!origin) return;
-    setViewport((current) => ({
-      ...current,
+    dispatch({
+      type: 'pan',
       x: origin.viewportX + event.clientX - origin.pointerX,
       y: origin.viewportY + event.clientY - origin.pointerY,
-    }));
+    });
   }
 
   function stopDragging(event: PointerEvent<HTMLDivElement>): void {
@@ -119,7 +123,7 @@ function DiagramViewport({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     dragOrigin.current = null;
-    setDragging(false);
+    dispatch({ type: 'set-dragging', dragging: false });
   }
 
   return (
@@ -139,8 +143,8 @@ function DiagramViewport({
       >
         <CanvasButton
           label={t('markdown.diagramZoomOut')}
-          disabled={viewport.scale <= MIN_SCALE}
-          onClick={() => zoom(-SCALE_STEP)}
+          disabled={viewport.scale <= MERMAID_MIN_SCALE}
+          onClick={() => zoom(-MERMAID_SCALE_STEP)}
         >
           <ZoomOut className="h-4 w-4" />
         </CanvasButton>
@@ -152,8 +156,8 @@ function DiagramViewport({
         </span>
         <CanvasButton
           label={t('markdown.diagramZoomIn')}
-          disabled={viewport.scale >= MAX_SCALE}
-          onClick={() => zoom(SCALE_STEP)}
+          disabled={viewport.scale >= MERMAID_MAX_SCALE}
+          onClick={() => zoom(MERMAID_SCALE_STEP)}
         >
           <ZoomIn className="h-4 w-4" />
         </CanvasButton>
@@ -167,6 +171,7 @@ function DiagramViewport({
         ) : null}
       </div>
       <div
+        ref={canvasRef}
         data-horizontal-scroll="true"
         data-drawer-gesture-ignore
         tabIndex={0}
@@ -177,17 +182,13 @@ function DiagramViewport({
         onPointerMove={handlePointerMove}
         onPointerUp={stopDragging}
         onPointerCancel={stopDragging}
+        onLostPointerCapture={stopDragging}
         onKeyDown={(event) => {
           if (!['+', '=', '-', '0'].includes(event.key)) return;
           event.preventDefault();
-          if (event.key === '+' || event.key === '=') zoom(SCALE_STEP);
-          else if (event.key === '-') zoom(-SCALE_STEP);
+          if (event.key === '+' || event.key === '=') zoom(MERMAID_SCALE_STEP);
+          else if (event.key === '-') zoom(-MERMAID_SCALE_STEP);
           else reset();
-        }}
-        onWheel={(event) => {
-          if (!event.ctrlKey && !event.metaKey) return;
-          event.preventDefault();
-          zoom(event.deltaY < 0 ? SCALE_STEP : -SCALE_STEP);
         }}
         className={cn(
           'flex h-full w-full touch-none select-none items-center justify-center overflow-hidden p-12 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400',
@@ -210,13 +211,10 @@ function DiagramViewport({
 
 export function MermaidCanvas({ label, sanitizedSvg }: MermaidCanvasProps): ReactElement {
   const { t } = useI18n();
-  const [expanded, setExpanded] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const [viewport, setViewport] = useState<Viewport>({ scale: 1, x: 0, y: 0 });
+  const [state, dispatch] = useReducer(mermaidCanvasReducer, initialMermaidCanvasState);
 
   useEffect(() => {
-    setViewport({ scale: 1, x: 0, y: 0 });
-    setDragging(false);
+    dispatch({ type: 'content-changed' });
   }, [sanitizedSvg]);
 
   return (
@@ -225,23 +223,24 @@ export function MermaidCanvas({ label, sanitizedSvg }: MermaidCanvasProps): Reac
         label={label}
         sanitizedSvg={sanitizedSvg}
         expanded={false}
-        viewport={viewport}
-        dragging={dragging}
-        setDragging={setDragging}
-        setViewport={setViewport}
-        onExpand={() => setExpanded(true)}
+        viewport={state.viewport}
+        dragging={state.dragging}
+        dispatch={dispatch}
+        onExpand={() => dispatch({ type: 'set-expanded', expanded: true })}
       />
-      <Dialog open={expanded} onOpenChange={setExpanded}>
+      <Dialog
+        open={state.expanded}
+        onOpenChange={(expanded) => dispatch({ type: 'set-expanded', expanded })}
+      >
         <DialogContent className="h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none gap-0 overflow-hidden p-0">
           <DialogTitle className="sr-only">{t('markdown.diagramExpandedTitle')}</DialogTitle>
           <DiagramViewport
             label={label}
             sanitizedSvg={sanitizedSvg}
             expanded
-            viewport={viewport}
-            dragging={dragging}
-            setDragging={setDragging}
-            setViewport={setViewport}
+            viewport={state.viewport}
+            dragging={state.dragging}
+            dispatch={dispatch}
           />
         </DialogContent>
       </Dialog>
