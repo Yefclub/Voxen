@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.14.5-dev.1786352459 — 2026-08-10 · Dev
+
+### ✨ Correct transcripts without changing original evidence
+
+Transcript details now include a reviewable correction layer for exact replacements and
+insertions. Every accepted change creates an immutable revision, keeps the captured source
+untouched, detects concurrent edits, and can be inspected, restored, or reset from the web
+interface. Search, summaries, chat retrieval, and grounded graph compilation consume the active
+correction while preserving source provenance.
+
+The integrated assistant can propose a bounded correction preview that always requires explicit
+approval. MCP clients with write scope receive the same revision-aware correction and restore
+operations; read-only tokens can search and inspect correction history without gaining mutation
+access.
+
 ## v0.14.5-dev.1786341311 — 2026-08-10 · Dev
 
 ### ✨ Safe, versioned note editing

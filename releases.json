@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786352459",
+    "channel": "dev",
+    "type": "feat",
+    "title": "Correct transcripts without changing original evidence",
+    "body": "Transcript details now include a reviewable correction layer for exact replacements and\ninsertions. Every accepted change creates an immutable revision, keeps the captured source\nuntouched, detects concurrent edits, and can be inspected, restored, or reset from the web\ninterface. Search, summaries, chat retrieval, and grounded graph compilation consume the active\ncorrection while preserving source provenance.\n\nThe integrated assistant can propose a bounded correction preview that always requires explicit\napproval. MCP clients with write scope receive the same revision-aware correction and restore\noperations; read-only tokens can search and inspect correction history without gaining mutation\naccess.",
+    "pr": 724,
+    "author": "Kalyel",
+    "date": "2026-08-10T06:00:40-03:00",
+    "translations": {
+      "en": {
+        "title": "Correct transcripts without changing original evidence",
+        "body": "Transcript details now include a reviewable correction layer for exact replacements and\ninsertions. Every accepted change creates an immutable revision, keeps the captured source\nuntouched, detects concurrent edits, and can be inspected, restored, or reset from the web\ninterface. Search, summaries, chat retrieval, and grounded graph compilation consume the active\ncorrection while preserving source provenance.\n\nThe integrated assistant can propose a bounded correction preview that always requires explicit\napproval. MCP clients with write scope receive the same revision-aware correction and restore\noperations; read-only tokens can search and inspect correction history without gaining mutation\naccess."
+      },
+      "pt-BR": {
+        "title": "Corrija transcrições sem alterar a evidência original",
+        "body": "Os detalhes da transcrição agora incluem uma camada revisável de correções para substituições e\ninserções exatas. Cada alteração aceita cria uma revisão imutável, mantém intacta a fonte capturada,\ndetecta edições concorrentes e pode ser inspecionada, restaurada ou redefinida pela interface web.\nBusca, resumos, recuperação pelo chat e compilação fundamentada do grafo usam a correção ativa sem\nperder a proveniência da fonte.\n\nA assistente integrada pode propor uma prévia limitada da correção, sempre sujeita à aprovação\nexplícita. Clientes MCP com escopo de escrita recebem as mesmas operações conscientes de revisão;\ntokens somente de leitura podem pesquisar e inspecionar o histórico sem obter permissão de mutação."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/724"
+  },
+  {
     "version": "0.14.5-dev.1786341311",
     "channel": "dev",
     "type": "feat",
