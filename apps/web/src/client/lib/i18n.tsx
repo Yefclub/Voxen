@@ -1227,6 +1227,7 @@ const ptBRMessages = {
   'graph.buildingDescription':
     'O primeiro mapa aparecerá automaticamente assim que as fontes forem indexadas.',
   'graph.clearSearch': 'Limpar busca',
+  'graph.clearFocus': 'Mostrar grafo completo',
   'graph.closeExplorer': 'Fechar exploração',
   'graph.closeInspector': 'Fechar detalhes',
   'graph.connectionsLabel': 'Conexões',
@@ -1247,6 +1248,7 @@ const ptBRMessages = {
   'graph.createNote': 'Criar nota',
   'graph.addContent': 'Ver biblioteca',
   'graph.searchPlaceholder': 'Filtrar por título, tipo, fonte ou descrição…',
+  'graph.serverSearchPlaceholder': 'Pesquisar em todo o grafo…',
   'graph.refresh': 'Atualizar',
   'graph.controlsHint':
     'Arraste para mover · scroll para zoom · clique seleciona · duplo-clique abre a fonte',
@@ -2598,6 +2600,7 @@ const enMessages: Record<I18nKey, string> = {
   'graph.buildingDescription':
     'The first map will appear automatically as soon as your sources are indexed.',
   'graph.clearSearch': 'Clear search',
+  'graph.clearFocus': 'Show full graph',
   'graph.closeExplorer': 'Close explorer',
   'graph.closeInspector': 'Close details',
   'graph.connectionsLabel': 'Connections',
@@ -2617,6 +2620,7 @@ const enMessages: Record<I18nKey, string> = {
   'graph.createNote': 'Create note',
   'graph.addContent': 'Open library',
   'graph.searchPlaceholder': 'Filter by title, type, source, or description…',
+  'graph.serverSearchPlaceholder': 'Search the entire graph…',
   'graph.refresh': 'Refresh',
   'graph.controlsHint': 'Drag to pan · scroll to zoom · click to select · double-click to open',
   'graph.controlsHint3d':

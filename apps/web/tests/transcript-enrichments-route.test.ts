@@ -488,4 +488,38 @@ describeIfDb('reviewable transcript enrichments API', () => {
       (await db.transcriptEnrichment.findUniqueOrThrow({ where: { id: stale.id } })).staleReason,
     ).toBe('source-version-changed');
   });
+
+  it('tops up graph search after a full page of obsolete enrichment nodes', async () => {
+    const query = `search-top-up-${crypto.randomUUID()}`;
+    const validId = `valid-${crypto.randomUUID()}`;
+    const older = new Date('2026-01-01T00:00:00.000Z');
+    const newer = new Date('2026-01-02T00:00:00.000Z');
+    await db.brainNode.create({
+      data: {
+        id: validId,
+        userId: ownerId,
+        key: `ENTITY:${query}:valid`,
+        type: 'ENTITY',
+        label: `${query} valid result`,
+        createdAt: older,
+        updatedAt: older,
+      },
+    });
+    await db.brainNode.createMany({
+      data: Array.from({ length: 40 }, (_, index) => ({
+        id: `obsolete-${index}-${crypto.randomUUID()}`,
+        userId: ownerId,
+        key: `CONTENT:${query}:obsolete:${index}`,
+        type: 'CONTENT' as const,
+        label: `${query} obsolete enrichment ${index}`,
+        sourceType: 'EXTERNAL_ENRICHMENT' as const,
+        sourceId: `missing-enrichment-${index}-${crypto.randomUUID()}`,
+        createdAt: newer,
+        updatedAt: newer,
+      })),
+    });
+
+    const results = await searchBrainNodes(ownerId, query, 10);
+    expect(results.map((node) => node.id)).toEqual([validId]);
+  });
 });
