@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from src import brain_extract, openrouter, pipeline
+from src import brain_compilation, brain_compilation_db, brain_extract, openrouter
 from src.brain_extract import (
     ExtractionSegment,
     GroundedExtractionResult,
@@ -165,7 +165,7 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
     first = ExtractionSegment("first", "primeira seção", 1, 1, None, None)
     second = ExtractionSegment("second", "segunda seção grounded", 2, 2, 15, 15)
     monkeypatch.setattr(
-        pipeline.db,
+        brain_compilation.db,
         "get_transcript_title_content_md_path",
         AsyncMock(return_value=("Título", "fallback suficiente " * 8, None)),
     )
@@ -174,26 +174,30 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
         return_value=("compilation-1", [{"segmentKey": "first"}, {"segmentKey": "second"}])
     )
     monkeypatch.setattr(
-        pipeline.db,
+        brain_compilation.db,
         "prepare_grounded_brain_compilation",
         prepared,
     )
+    claim = AsyncMock(return_value=[{"segmentKey": "first"}, {"segmentKey": "second"}])
+    monkeypatch.setattr(brain_compilation_db, "claim_segments", claim)
     monkeypatch.setattr(
-        pipeline.voxen_settings,
+        brain_compilation.voxen_settings,
         "get_openrouter_model_config",
         AsyncMock(return_value=SimpleNamespace(api_key="key", model="model", fallback_model=None)),
     )
     monkeypatch.setattr(
-        pipeline.voxen_settings,
+        brain_compilation.voxen_settings,
         "get_app_language",
         AsyncMock(return_value="pt-BR"),
     )
-    monkeypatch.setattr(pipeline, "acquire_graph_index_lease", AsyncMock(return_value=_Lease()))
-    monkeypatch.setattr(pipeline.db, "insert_cost_event", AsyncMock())
+    monkeypatch.setattr(
+        brain_compilation, "acquire_graph_index_lease", AsyncMock(return_value=_Lease())
+    )
+    monkeypatch.setattr(brain_compilation.db, "insert_cost_event", AsyncMock())
     upsert = AsyncMock(return_value=1)
     failed = AsyncMock()
-    monkeypatch.setattr(pipeline.db, "upsert_grounded_brain_items", upsert)
-    monkeypatch.setattr(pipeline.db, "mark_grounded_segment_failed", failed)
+    monkeypatch.setattr(brain_compilation.db, "upsert_grounded_brain_items", upsert)
+    monkeypatch.setattr(brain_compilation_db, "mark_segment_failed", failed)
 
     async def extract(**kwargs: Any) -> GroundedExtractionResult:
         if kwargs["content"] == "primeira seção":
@@ -204,15 +208,18 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
 
     monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract)
 
-    await pipeline._maybe_grounded_brain_extract(
+    await brain_compilation.extract_grounded_brain(
         user_id="user-1",
         transcript_id="transcript-1",
         log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+        worker_id="worker-test",
     )
 
-    failed.assert_awaited_once_with(
-        compilation_id="compilation-1", segment_key="first", error="RuntimeError"
-    )
+    failed.assert_awaited_once()
+    assert failed.await_args.kwargs["compilation_id"] == "compilation-1"
+    assert failed.await_args.kwargs["segment_key"] == "first"
+    assert failed.await_args.kwargs["error"] == "RuntimeError"
+    assert failed.await_args.kwargs["worker_id"].startswith("worker-test:")
     upsert.assert_awaited_once()
     assert upsert.await_args.kwargs["segment"]["key"] == "second"
 
@@ -223,13 +230,81 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
 
     monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract_retry)
     prepared.return_value = ("compilation-1", [{"segmentKey": "first"}])
-    await pipeline._maybe_grounded_brain_extract(
+    claim.return_value = [{"segmentKey": "first"}]
+    await brain_compilation.extract_grounded_brain(
         user_id="user-1",
         transcript_id="transcript-1",
         log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+        worker_id="worker-test",
     )
     assert upsert.await_count == 2
     assert upsert.await_args.kwargs["segment"]["key"] == "first"
+
+
+async def test_grounded_model_runs_before_short_write_lease_and_contention_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    segment = ExtractionSegment("only", "conteúdo grounded suficiente", 1, 1, None, None)
+    events: list[str] = []
+    monkeypatch.setattr(
+        brain_compilation.db,
+        "get_transcript_title_content_md_path",
+        AsyncMock(return_value=("Título", "fallback suficiente " * 8, None)),
+    )
+    monkeypatch.setattr(brain_extract, "segment_content", lambda _: [segment])
+    monkeypatch.setattr(
+        brain_compilation.db,
+        "prepare_grounded_brain_compilation",
+        AsyncMock(return_value=("compilation-1", [{"segmentKey": "only"}])),
+    )
+    monkeypatch.setattr(
+        brain_compilation_db,
+        "claim_segments",
+        AsyncMock(return_value=[{"segmentKey": "only"}]),
+    )
+    monkeypatch.setattr(
+        brain_compilation.voxen_settings,
+        "get_openrouter_model_config",
+        AsyncMock(return_value=SimpleNamespace(api_key="key", model="model", fallback_model=None)),
+    )
+    monkeypatch.setattr(
+        brain_compilation.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
+    monkeypatch.setattr(brain_compilation.db, "insert_cost_event", AsyncMock())
+    retry = AsyncMock()
+    monkeypatch.setattr(brain_compilation_db, "mark_segment_failed", retry)
+    upsert = AsyncMock()
+    monkeypatch.setattr(brain_compilation.db, "upsert_grounded_brain_items", upsert)
+
+    async def extract(**_kwargs: Any) -> GroundedExtractionResult:
+        events.append("model")
+        return GroundedExtractionResult(
+            items=[], relations=[], cost_usd=Decimal("0"), model="model", tokens_in=10, tokens_out=2
+        )
+
+    async def acquire(_user_id: str) -> None:
+        events.append("lease")
+        return None
+
+    monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract)
+    monkeypatch.setattr(brain_compilation, "acquire_graph_index_lease", acquire)
+
+    await brain_compilation.extract_grounded_brain(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+        worker_id="worker-test",
+    )
+
+    assert events == ["model", "lease"]
+    upsert.assert_not_awaited()
+    retry.assert_awaited_once()
+    assert retry.await_args.kwargs["compilation_id"] == "compilation-1"
+    assert retry.await_args.kwargs["segment_key"] == "only"
+    assert retry.await_args.kwargs["error"] == "GRAPH_WRITE_LEASE_UNAVAILABLE"
+    assert retry.await_args.kwargs["worker_id"].startswith("worker-test:")
 
 
 class _ExternalErrorClient:

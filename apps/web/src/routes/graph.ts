@@ -52,7 +52,7 @@ import {
   selectGraphSlice,
 } from '../lib/graph-slice';
 import { createSubscriber, getRedisPublisher } from '../lib/redis';
-import type { GraphIndexStatus } from '../shared/graph-index';
+import { graphIndexCoverage, type GraphIndexStatus } from '../shared/graph-index';
 
 type Vars = { userId: string };
 
@@ -143,9 +143,10 @@ const CACHE_TTL_SEC = 60;
 graphRoutes.get('/status', async (c) => {
   const userId = c.get('userId');
   const force = c.req.query('force') === '1';
-  return c.json(
-    force ? await ensureBrainCoverage(userId, true) : await currentGraphIndexStatus(userId),
-  );
+  const status = force
+    ? await ensureBrainCoverage(userId, true)
+    : await currentGraphIndexStatus(userId);
+  return c.json(await withFreshGraphCoverage(userId, status));
 });
 
 graphRoutes.get('/events', async (c) => {
@@ -351,6 +352,14 @@ graphRoutes.get('/', async (c) => {
 // Sem Redis não há mutação do Brain nem fallback local de exclusão.
 const brainReindexInFlight = new Set<string>();
 const localGraphIndexStatus = new Map<string, GraphIndexStatus>();
+
+async function withFreshGraphCoverage(
+  userId: string,
+  status: GraphIndexStatus,
+): Promise<GraphIndexStatus> {
+  const coverage = await readBrainCoverage(userId);
+  return { ...status, coverage: graphIndexCoverage(coverage) };
+}
 
 async function currentGraphIndexStatus(userId: string): Promise<GraphIndexStatus> {
   try {

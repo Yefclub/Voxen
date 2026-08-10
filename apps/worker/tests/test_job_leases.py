@@ -364,20 +364,25 @@ async def test_enrichment_dispatcher_advances_summary_and_tags_under_backlog(
         "reconcile_transcript_enrichment_lifecycle",
         AsyncMock(return_value=[]),
     )
+    monkeypatch.setattr(
+        main.brain_compilation.brain_compilation_db,
+        "list_due_compilations",
+        AsyncMock(return_value=[]),
+    )
     monkeypatch.setattr(main.summary, "maybe_generate", wait_for_gate)
     monkeypatch.setattr(main, "_maybe_generate_tags", wait_for_gate)
     tasks: set[asyncio.Task[None]] = set()
     sem = asyncio.Semaphore(2)
     main._enrichment_queue_cursor = 0
 
-    assert await main._reconcile_enrichments_once(sem, tasks) == (1, 1, 0)
+    assert await main._reconcile_enrichments_once(sem, tasks) == (1, 1, 0, 0)
     assert len(tasks) == 2
-    assert await main._reconcile_enrichments_once(sem, tasks) == (0, 0, 0)
+    assert await main._reconcile_enrichments_once(sem, tasks) == (0, 0, 0, 0)
 
     gate.set()
     await asyncio.gather(*list(tasks))
     await asyncio.sleep(0)
-    assert await main._reconcile_enrichments_once(sem, tasks) == (1, 1, 0)
+    assert await main._reconcile_enrichments_once(sem, tasks) == (1, 1, 0, 0)
     await asyncio.gather(*list(tasks))
 
     assert summary_queue == []
@@ -390,6 +395,7 @@ async def test_enrichment_dispatcher_round_robins_research_without_starvation(
     summary_queue = [{"id": "s1", "userId": "u1", "jobId": None, "summaryAttempt": 1}]
     tag_queue = [{"id": "t1", "userId": "u1", "jobId": None}]
     research_queue = [{"id": "r1", "userId": "u1", "attempt": 1}]
+    brain_queue = [{"userId": "u1", "transcriptId": "b1"}]
 
     async def claim(queue: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
         batch = queue[:limit]
@@ -416,23 +422,32 @@ async def test_enrichment_dispatcher_round_robins_research_without_starvation(
         "reconcile_transcript_enrichment_lifecycle",
         AsyncMock(return_value=[]),
     )
+    monkeypatch.setattr(
+        main.brain_compilation.brain_compilation_db,
+        "list_due_compilations",
+        lambda limit: claim(brain_queue, limit),
+    )
     monkeypatch.setattr(main.summary, "maybe_generate", AsyncMock())
     monkeypatch.setattr(main, "_maybe_generate_tags", AsyncMock())
     monkeypatch.setattr(main.research_enrichment, "process", AsyncMock())
+    monkeypatch.setattr(main.brain_compilation, "extract_grounded_brain", AsyncMock())
     tasks: set[asyncio.Task[None]] = set()
     sem = asyncio.Semaphore(1)
     main._enrichment_queue_cursor = 0
 
-    assert await main._reconcile_enrichments_once(sem, tasks, max_in_flight=1) == (1, 0, 0)
+    assert await main._reconcile_enrichments_once(sem, tasks, max_in_flight=1) == (1, 0, 0, 0)
     await asyncio.gather(*list(tasks))
     await asyncio.sleep(0)
-    assert await main._reconcile_enrichments_once(sem, tasks, max_in_flight=1) == (0, 1, 0)
+    assert await main._reconcile_enrichments_once(sem, tasks, max_in_flight=1) == (0, 1, 0, 0)
     await asyncio.gather(*list(tasks))
     await asyncio.sleep(0)
-    assert await main._reconcile_enrichments_once(sem, tasks, max_in_flight=1) == (0, 0, 1)
+    assert await main._reconcile_enrichments_once(sem, tasks, max_in_flight=1) == (0, 0, 1, 0)
+    await asyncio.gather(*list(tasks))
+    await asyncio.sleep(0)
+    assert await main._reconcile_enrichments_once(sem, tasks, max_in_flight=1) == (0, 0, 0, 1)
     await asyncio.gather(*list(tasks))
 
-    assert summary_queue == tag_queue == research_queue == []
+    assert summary_queue == tag_queue == research_queue == brain_queue == []
 
 
 async def test_research_dispatcher_uses_atomic_policy_claim(

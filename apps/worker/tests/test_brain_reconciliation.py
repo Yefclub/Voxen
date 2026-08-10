@@ -10,7 +10,7 @@ from typing import Any, cast
 import asyncpg
 import pytest
 
-from src import db
+from src import brain_compilation_db, db
 
 
 class _FakeLease:
@@ -344,6 +344,8 @@ class _RelationConnection:
 
     async def fetchrow(self, query: str, *args: object) -> dict[str, object]:
         self.fetchrow_calls.append((query, args))
+        if "SELECT segment.id" in query:
+            return {"id": "segment-claim"}
         if 'SELECT id FROM "BrainNode"' in query:
             return {"id": "content-node"}
         if 'COUNT(DISTINCT source."sourceId")' in query:
@@ -356,6 +358,54 @@ class _RelationConnection:
     async def execute(self, query: str, *args: object) -> str:
         self.execute_calls.append((query, args))
         return "OK"
+
+
+class _RejectedClaimConnection:
+    def __init__(self) -> None:
+        self.transaction_state = _SegmentTransaction()
+        self.fetchrow_calls: list[tuple[str, tuple[object, ...]]] = []
+        self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def transaction(self) -> _SegmentTransaction:
+        return self.transaction_state
+
+    async def fetchrow(self, query: str, *args: object) -> None:
+        self.fetchrow_calls.append((query, args))
+        return None
+
+    async def execute(self, query: str, *args: object) -> str:
+        self.execute_calls.append((query, args))
+        return "OK"
+
+
+async def test_stale_compilation_hash_cannot_persist_grounded_evidence(
+    monkeypatch: Any,
+) -> None:
+    conn = _RejectedClaimConnection()
+
+    @asynccontextmanager
+    async def rejected_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", rejected_connection)
+
+    with pytest.raises(db.GroundedCompilationClaimLostError):
+        await db.upsert_grounded_brain_items(
+            user_id="user-1",
+            transcript_id="transcript-1",
+            compilation_id="compilation-1",
+            segment={"key": "segment-1", "start_line": 1, "end_line": 2},
+            items=[{"slug": "claim-a", "label": "A", "kind": "claim", "excerpt": "A"}],
+            relations=[],
+            lease=_FakeLease(),
+            worker_id="worker-1",
+            content_hash="stale-hash",
+        )
+
+    claim_query, claim_args = conn.fetchrow_calls[0]
+    assert 'compilation."contentHash" = $4' in claim_query
+    assert claim_args[3] == "stale-hash"
+    assert conn.execute_calls == []
 
 
 async def test_contradiction_requires_two_independent_grounded_sources(
@@ -391,6 +441,8 @@ async def test_contradiction_requires_two_independent_grounded_sources(
             }
         ],
         lease=_FakeLease(),
+        worker_id="worker-1",
+        content_hash="content-hash",
     )
 
     support_query, support_args = next(
@@ -439,6 +491,8 @@ async def test_contradiction_materializes_when_each_claim_has_distinct_source(
             }
         ],
         lease=_FakeLease(),
+        worker_id="worker-1",
+        content_hash="content-hash",
     )
 
     assert any(
@@ -468,6 +522,8 @@ async def test_grounded_segment_rolls_back_when_lease_is_lost(monkeypatch: Any) 
             items=[],
             relations=[],
             lease=lease,
+            worker_id="worker-1",
+            content_hash="content-hash",
         )
 
     assert conn.transaction_state.rolled_back is True
@@ -532,6 +588,72 @@ async def test_reconciliation_detects_transcript_updates_after_index(
     assert 'n."updatedAt" < t."updatedAt"' in conn.query
     assert "COALESCE(n.metadata->>'topicIndexVersion', '') <> $1" in conn.query
     assert conn.args == (str(db.BRAIN_TOPIC_INDEX_VERSION), 7)
+
+
+class _GroundedClaimConnection:
+    def __init__(self) -> None:
+        self.query = ""
+        self.args: tuple[object, ...] = ()
+
+    async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+        self.query = query
+        self.args = args
+        return [{"segmentKey": "segment-1", "attempts": 1}]
+
+    async def execute(self, _query: str, *_args: object) -> str:
+        return "UPDATE 1"
+
+
+async def test_grounded_segment_claim_is_atomic_due_and_bounded(monkeypatch: Any) -> None:
+    conn = _GroundedClaimConnection()
+
+    @asynccontextmanager
+    async def claim_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", claim_connection)
+
+    rows = await brain_compilation_db.claim_segments(
+        user_id="user-1",
+        compilation_id="compilation-1",
+        segment_keys=["segment-1", "segment-2"],
+        worker_id="worker-1",
+        limit=2,
+    )
+
+    assert rows == [{"segmentKey": "segment-1", "attempts": 1}]
+    assert "FOR UPDATE SKIP LOCKED" in conn.query
+    assert "attempts <" in conn.query
+    assert "'RUNNING'" in conn.query
+    assert '"leaseExpiresAt"' in conn.query
+    assert conn.args[:4] == (
+        "compilation-1",
+        "user-1",
+        ["segment-1", "segment-2"],
+        "worker-1",
+    )
+
+
+async def test_due_grounded_reconciliation_includes_legacy_and_expired_work(
+    monkeypatch: Any,
+) -> None:
+    conn = _GroundedClaimConnection()
+
+    @asynccontextmanager
+    async def due_connection() -> AsyncIterator[asyncpg.Connection]:
+        yield cast(asyncpg.Connection, conn)
+
+    monkeypatch.setattr(db, "connection", due_connection)
+
+    await brain_compilation_db.list_due_compilations(limit=9)
+
+    assert "'PENDING'" in conn.query
+    assert "'RETRY'" in conn.query
+    assert "'FAILED'" in conn.query
+    assert "'RUNNING'" in conn.query
+    assert '"leaseExpiresAt" < NOW()' in conn.query
+    assert "attempts <" in conn.query
+    assert conn.args == (9, brain_compilation_db.GROUNDED_SEGMENT_MAX_ATTEMPTS)
 
 
 class _EmbeddingConnection:

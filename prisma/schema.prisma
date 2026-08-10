@@ -680,6 +680,8 @@ enum BrainEdgeKind {
 
 enum BrainCompilationStatus {
   PENDING
+  RUNNING
+  RETRY
   PARTIAL
   COMPLETED
   FAILED
@@ -780,23 +782,29 @@ model BrainCompilation {
 }
 
 model BrainCompilationSegment {
-  id            String                 @id @default(cuid())
-  compilationId String
-  segmentKey    String
-  status        BrainCompilationStatus @default(PENDING)
-  startLine     Int
-  endLine       Int
-  startSec      Int?
-  endSec        Int?
-  itemCount     Int                    @default(0)
-  attempts      Int                    @default(0)
-  error         String?                @db.Text
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @default(now()) @updatedAt
-  compilation   BrainCompilation       @relation(fields: [compilationId], references: [id], onDelete: Cascade)
+  id             String                 @id @default(cuid())
+  compilationId  String
+  segmentKey     String
+  status         BrainCompilationStatus @default(PENDING)
+  startLine      Int
+  endLine        Int
+  startSec       Int?
+  endSec         Int?
+  itemCount      Int                    @default(0)
+  attempts       Int                    @default(0)
+  error          String?                @db.Text
+  claimedBy      String?
+  claimedAt      DateTime?
+  leaseExpiresAt DateTime?
+  nextAttemptAt  DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @default(now()) @updatedAt
+  compilation    BrainCompilation       @relation(fields: [compilationId], references: [id], onDelete: Cascade)
 
   @@unique([compilationId, segmentKey])
   @@index([compilationId, status])
+  @@index([status, nextAttemptAt])
+  @@index([leaseExpiresAt])
 }
 
 // ============================================================================
