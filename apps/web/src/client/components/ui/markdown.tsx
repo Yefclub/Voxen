@@ -25,6 +25,7 @@ import { useI18n } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme-provider';
 import { isDarkTheme, type AppTheme } from '../../lib/theme';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
+import { MermaidCanvas } from './mermaid-canvas';
 
 interface MarkdownProps {
   children: string;
@@ -147,16 +148,7 @@ function MermaidDiagram({ source, fallback }: { source: string; fallback: React.
       </div>
     );
   }
-  return (
-    <div
-      data-horizontal-scroll="true"
-      data-drawer-gesture-ignore
-      className="mermaid-canvas my-3 touch-pan-x touch-pan-y overflow-x-auto rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)] p-3 [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:min-w-[520px] [&_svg]:max-w-full"
-      role="img"
-      aria-label={t('markdown.diagramLabel')}
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
-  );
+  return <MermaidCanvas label={t('markdown.diagramLabel')} sanitizedSvg={svg} />;
 }
 
 // Bloco de código fenced (```...```). O Streamdown só roteia fences para `code`
