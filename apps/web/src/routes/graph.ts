@@ -21,6 +21,13 @@ import {
 } from '../lib/brain';
 import { reindexTranscriptEnrichmentsBrain } from '../lib/brain-enrichments';
 import { readBrainCoverage } from '../lib/graph-brain-coverage';
+import {
+  type GraphReadEdge,
+  type GraphReadNode,
+  readGraphSlice,
+  toGraphReadNode,
+} from '../lib/graph-read-model';
+import { searchBrainNodes } from '../lib/brain-search';
 import { db } from '../lib/db';
 import { graphCacheKey, graphInvalidationChannel, invalidateGraphCache } from '../lib/graph-cache';
 import {
@@ -44,13 +51,7 @@ import {
   createGraphIndexFailureStatus,
   reportGraphIndexRunFailure,
 } from '../lib/graph-index-run-error';
-import {
-  FULL_EDGE_LIMIT,
-  FULL_NODE_LIMIT,
-  parseGraphHops,
-  parseGraphView,
-  selectGraphSlice,
-} from '../lib/graph-slice';
+import { parseGraphHops, parseGraphView } from '../lib/graph-slice';
 import { createSubscriber, getRedisPublisher } from '../lib/redis';
 import { graphIndexCoverage, type GraphIndexStatus } from '../shared/graph-index';
 
@@ -72,56 +73,8 @@ graphRoutes.use('*', async (c, next) => {
   return next();
 });
 
-interface GraphNode {
-  id: string;
-  key: string;
-  label: string;
-  description: string | null;
-  type:
-    | 'transcript'
-    | 'note'
-    | 'folder'
-    | 'entity'
-    | 'topic'
-    | 'claim'
-    | 'event'
-    | 'cluster'
-    | 'content';
-  source?: 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | 'X' | 'WEB' | 'UPLOAD';
-  sourceType:
-    | 'TRANSCRIPT'
-    | 'NOTE'
-    | 'FOLDER'
-    | 'JOB'
-    | 'CHAT'
-    | 'MANUAL'
-    | 'EXTERNAL_ENRICHMENT'
-    | null;
-  sourceId: string | null;
-  transcriptId?: string;
-  weight: number;
-  updatedAt: string;
-}
-
-interface GraphEdge {
-  id: string;
-  from: string;
-  to: string;
-  kind:
-    | 'belongs_to'
-    | 'links_to'
-    | 'mentions'
-    | 'supports'
-    | 'contradicts'
-    | 'same_as'
-    | 'part_of'
-    | 'related_to'
-    | 'next_to';
-  method: string;
-  confidence: string;
-  /** EXTRACTED = evidência explícita; INFERRED = heurística/keyword. */
-  evidence: 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS';
-}
+type GraphNode = GraphReadNode;
+type GraphEdge = GraphReadEdge;
 
 interface GraphHub {
   id: string;
@@ -136,8 +89,6 @@ interface GraphInsights {
   edgeEvidence: { extracted: number; inferred: number; ambiguous: number };
 }
 
-const NODE_LIMIT = FULL_NODE_LIMIT;
-const EDGE_LIMIT = FULL_EDGE_LIMIT;
 const CACHE_TTL_SEC = 60;
 
 graphRoutes.get('/status', async (c) => {
@@ -207,6 +158,18 @@ graphRoutes.get('/events', async (c) => {
   });
 });
 
+graphRoutes.get('/search', async (c) => {
+  const userId = c.get('userId');
+  const query = (c.req.query('q') ?? '').trim().slice(0, 160);
+  if (query.length < 2) return c.json({ query, results: [] });
+  const requestedLimit = Number(c.req.query('limit') ?? 12);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(30, Math.max(1, Math.trunc(requestedLimit)))
+    : 12;
+  const results = await searchBrainNodes(userId, query, limit);
+  return c.json({ query, results: results.map((node) => toGraphReadNode(node)) });
+});
+
 graphRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const force = c.req.query('force') === '1';
@@ -232,80 +195,8 @@ graphRoutes.get('/', async (c) => {
     ? await ensureBrainCoverage(userId, true)
     : await currentGraphIndexStatus(userId);
 
-  // Busca o universo completo permitido pelos caps defensivos; `map` só existe
-  // para URLs legadas e a UI sempre pede a visão completa.
-  const rawNodes = await db.brainNode.findMany({
-    where: { userId, status: 'ACTIVE' },
-    orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
-    take: NODE_LIMIT,
-    select: {
-      id: true,
-      key: true,
-      type: true,
-      label: true,
-      description: true,
-      sourceType: true,
-      sourceId: true,
-      metadata: true,
-      updatedAt: true,
-    },
-  });
-  const nodeIds = new Set(rawNodes.map((node) => node.id));
-  const rawEdges = (
-    await db.brainEdge.findMany({
-      where: {
-        userId,
-        status: 'ACTIVE',
-        fromNodeId: { in: [...nodeIds] },
-        toNodeId: { in: [...nodeIds] },
-        from: { status: 'ACTIVE' },
-        to: { status: 'ACTIVE' },
-      },
-      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
-      take: EDGE_LIMIT,
-      select: {
-        id: true,
-        fromNodeId: true,
-        toNodeId: true,
-        kind: true,
-        method: true,
-        confidence: true,
-      },
-    })
-  ).filter((edge) => nodeIds.has(edge.fromNodeId) && nodeIds.has(edge.toNodeId));
-
-  const degree = new Map<string, number>();
-  for (const edge of rawEdges) {
-    degree.set(edge.fromNodeId, (degree.get(edge.fromNodeId) ?? 0) + 1);
-    degree.set(edge.toNodeId, (degree.get(edge.toNodeId) ?? 0) + 1);
-  }
-
-  const allNodes = rawNodes.map<GraphNode>((node) => ({
-    id: node.id,
-    key: node.key,
-    label: node.label.slice(0, 120),
-    description: node.description,
-    type: graphNodeType(node),
-    source: graphSource(node),
-    sourceType: node.sourceType,
-    sourceId: node.sourceId,
-    transcriptId: graphTranscriptId(node),
-    weight: 1 + Math.min(degree.get(node.id) ?? 0, 8),
-    updatedAt: node.updatedAt.toISOString(),
-  }));
-  const allEdges = rawEdges.map<GraphEdge>((edge) => ({
-    id: edge.id,
-    from: edge.fromNodeId,
-    to: edge.toNodeId,
-    kind: edge.kind.toLowerCase() as GraphEdge['kind'],
-    method: edge.method,
-    confidence: edge.confidence.toString(),
-    evidence: evidenceTag(edge.method, edge.kind),
-  }));
-
-  const sliced = selectGraphSlice({
-    nodes: allNodes,
-    edges: allEdges,
+  const sliced = await readGraphSlice({
+    userId,
     view,
     focusId,
     hops,
@@ -325,8 +216,8 @@ graphRoutes.get('/', async (c) => {
     edges: sliced.edges,
     totalNodes: sliced.nodes.length,
     totalEdges: sliced.edges.length,
-    candidateNodes: allNodes.length,
-    candidateEdges: allEdges.length,
+    candidateNodes: sliced.candidateNodes,
+    candidateEdges: sliced.candidateEdges,
     view: sliced.view,
     truncated: sliced.truncated,
     focusId,
@@ -618,33 +509,6 @@ export async function reconcileGraphUsers(): Promise<void> {
   }
 }
 
-function evidenceTag(method: string, kind: string): 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS' {
-  const m = method.toLowerCase();
-  if (
-    m.includes('wikilink') ||
-    m.includes('folder') ||
-    m.includes('explicit') ||
-    m === 'user' ||
-    kind === 'BELONGS_TO' ||
-    kind === 'LINKS_TO'
-  ) {
-    return 'EXTRACTED';
-  }
-  if (
-    m.includes('keyword') ||
-    m.includes('shared') ||
-    m.includes('semantic') ||
-    m.includes('timeline') ||
-    m.includes('community')
-  ) {
-    return 'INFERRED';
-  }
-  if (m.includes('llm-grounded') || m.includes('grounded')) {
-    return 'EXTRACTED';
-  }
-  return 'AMBIGUOUS';
-}
-
 function buildInsights(
   nodes: GraphNode[],
   edges: GraphEdge[],
@@ -721,64 +585,4 @@ function buildInsights(
   }
 
   return { hubs, communities, edgeEvidence };
-}
-
-function graphNodeType(node: {
-  type: string;
-  sourceType: string | null;
-  metadata: unknown;
-}): GraphNode['type'] {
-  if (node.sourceType === 'TRANSCRIPT') return 'transcript';
-  if (node.sourceType === 'FOLDER') return 'folder';
-  if (node.sourceType === 'NOTE') {
-    const metadata = node.metadata && typeof node.metadata === 'object' ? node.metadata : {};
-    if ('kind' in metadata && metadata.kind === 'FOLDER') return 'folder';
-    return 'note';
-  }
-  switch (node.type) {
-    case 'ENTITY':
-      return 'entity';
-    case 'TOPIC':
-      return 'topic';
-    case 'CLAIM':
-      return 'claim';
-    case 'EVENT':
-      return 'event';
-    case 'CLUSTER':
-      return 'cluster';
-    case 'FOLDER':
-      return 'folder';
-    default:
-      return 'content';
-  }
-}
-
-function graphSource(node: { sourceType: string | null; metadata: unknown }): GraphNode['source'] {
-  if (node.sourceType !== 'TRANSCRIPT') return undefined;
-  if (!node.metadata || typeof node.metadata !== 'object' || !('source' in node.metadata)) {
-    return undefined;
-  }
-  const source = node.metadata.source;
-  if (
-    source === 'YOUTUBE' ||
-    source === 'INSTAGRAM' ||
-    source === 'TIKTOK' ||
-    source === 'X' ||
-    source === 'WEB' ||
-    source === 'UPLOAD'
-  ) {
-    return source;
-  }
-  return undefined;
-}
-
-function graphTranscriptId(node: {
-  sourceType: string | null;
-  metadata: unknown;
-}): string | undefined {
-  if (node.sourceType !== 'EXTERNAL_ENRICHMENT') return undefined;
-  if (!node.metadata || typeof node.metadata !== 'object' || !('transcriptId' in node.metadata)) {
-    return undefined;
-  }
-  return typeof node.metadata.transcriptId === 'string' ? node.metadata.transcriptId : undefined;
 }

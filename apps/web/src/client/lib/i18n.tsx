@@ -1247,6 +1247,7 @@ const ptBRMessages = {
   'graph.createNote': 'Criar nota',
   'graph.addContent': 'Ver biblioteca',
   'graph.searchPlaceholder': 'Filtrar por título, tipo, fonte ou descrição…',
+  'graph.serverSearchPlaceholder': 'Pesquisar em todo o grafo…',
   'graph.refresh': 'Atualizar',
   'graph.controlsHint':
     'Arraste para mover · scroll para zoom · clique seleciona · duplo-clique abre a fonte',
@@ -2617,6 +2618,7 @@ const enMessages: Record<I18nKey, string> = {
   'graph.createNote': 'Create note',
   'graph.addContent': 'Open library',
   'graph.searchPlaceholder': 'Filter by title, type, source, or description…',
+  'graph.serverSearchPlaceholder': 'Search the entire graph…',
   'graph.refresh': 'Refresh',
   'graph.controlsHint': 'Drag to pan · scroll to zoom · click to select · double-click to open',
   'graph.controlsHint3d':

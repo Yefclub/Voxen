@@ -27,13 +27,13 @@ import {
   Network,
   PanelLeft,
   RefreshCw,
-  Search,
   Square,
   X,
   ZoomIn,
   ZoomOut,
 } from '@/components/ui/icons';
 import { AnimatedPage } from '../components/motion/animated-page';
+import { GraphServerSearch } from '../components/graph-server-search';
 import { GraphIndexDeferredState, GraphIndexStatusBadge } from '../components/graph-index-feedback';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
@@ -205,6 +205,7 @@ export function GrafoPage(): React.ReactElement {
   const [reprocessOpen, setReprocessOpen] = useState(false);
   const [search, setSearch] = useState('');
   const deferredSearch = useDebouncedValue(search, 140);
+  const [focusedGraphId, setFocusedGraphId] = useState<string | null>(null);
   const [activeTypes, setActiveTypes] = useState<Set<GraphNodeType>>(
     () => new Set(ALL_GRAPH_NODE_TYPES),
   );
@@ -218,13 +219,27 @@ export function GrafoPage(): React.ReactElement {
   const graphPath = useMemo(() => {
     const params = new URLSearchParams();
     params.set('view', 'full');
+    if (focusedGraphId) {
+      params.set('focus', focusedGraphId);
+      params.set('hops', '2');
+    }
     if (graphRequest.tick > 0) {
       params.set(graphRequest.force ? 'force' : 'refresh', '1');
       params.set('t', String(graphRequest.tick));
     }
     return `/api/graph?${params.toString()}`;
-  }, [graphRequest.force, graphRequest.tick]);
+  }, [focusedGraphId, graphRequest.force, graphRequest.tick]);
   const { data, loading, error } = useFetch<GraphResp>(graphPath);
+  const graphSearchPath = useMemo(() => {
+    const query = deferredSearch.trim();
+    return query.length >= 2 ? `/api/graph/search?q=${encodeURIComponent(query)}&limit=12` : null;
+  }, [deferredSearch]);
+  const { data: serverSearch, loading: searchLoading } = useFetch<{
+    query: string;
+    results: GraphNode[];
+  }>(graphSearchPath);
+  const serverSearchResults =
+    serverSearch?.query === deferredSearch.trim() ? serverSearch.results : [];
   const {
     data: polledIndexStatus,
     error: statusError,
@@ -295,6 +310,12 @@ export function GrafoPage(): React.ReactElement {
     setSelectedId(id);
     if (id) setExplorerOpen(false);
   }, []);
+  const selectSearchResult = useCallback((node: GraphNode) => {
+    setFocusedGraphId(node.id);
+    setSelectedId(node.id);
+    setSearch('');
+    setExplorerOpen(false);
+  }, []);
   const toggleType = useCallback((type: GraphNodeType) => {
     setActiveTypes((current) => {
       const next = new Set(current);
@@ -306,6 +327,8 @@ export function GrafoPage(): React.ReactElement {
   const resetFilters = useCallback(() => {
     setActiveTypes(new Set(ALL_GRAPH_NODE_TYPES));
     setSearch('');
+    setFocusedGraphId(null);
+    setSelectedId(null);
   }, []);
   const fallbackTo2d = useCallback(() => setMode('2d'), []);
   const hasGraph = Boolean(model && model.layout.nodes.length > 0);
@@ -313,7 +336,7 @@ export function GrafoPage(): React.ReactElement {
   return (
     <AnimatedPage className="h-full">
       <div className="flex h-full min-h-0 flex-col bg-[var(--color-app-bg)] text-[var(--color-app-fg)]">
-        <header className="shrink-0 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+4.75rem)] md:px-4 md:pt-4 md:pr-36">
+        <header className="relative z-50 shrink-0 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+4.75rem)] md:px-4 md:pt-4 md:pr-36">
           <div className="rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-bg-elevated)]/92 p-3 shadow-sm backdrop-blur-xl md:p-3.5">
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -357,26 +380,19 @@ export function GrafoPage(): React.ReactElement {
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2.5">
-              <label className="relative min-w-[190px] flex-1">
-                <span className="sr-only">{t('graph.searchPlaceholder')}</span>
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-app-muted)]" />
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder={t('graph.searchPlaceholder')}
-                  className="h-10 w-full rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-bg)] pl-9 pr-9 text-sm text-[var(--color-app-fg)] outline-none transition focus:border-[var(--color-accent-violet)]/55 focus:ring-2 focus:ring-[var(--color-accent-violet-soft)]"
-                />
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() => setSearch('')}
-                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--color-app-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-fg)]"
-                    aria-label={t('graph.clearSearch')}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </label>
+              <GraphServerSearch
+                query={search}
+                results={serverSearchResults}
+                loading={searchLoading}
+                focusedId={focusedGraphId}
+                translate={t}
+                onQueryChange={setSearch}
+                onSelect={selectSearchResult}
+                onClearFocus={() => {
+                  setFocusedGraphId(null);
+                  setSelectedId(null);
+                }}
+              />
               <Button
                 variant="outline"
                 size="default"

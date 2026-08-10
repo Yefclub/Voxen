@@ -203,4 +203,20 @@ describe('graph loading lifecycle contract', () => {
     expect(pageSource).toContain("translate('graph.relationConfidence'");
     expect(pageSource).toContain("translate('graph.relationEvidence'");
   });
+
+  test('uses server-side search to focus nodes outside the rendered snapshot', () => {
+    const pageSource = readFileSync(
+      new URL('../src/client/pages/grafo.tsx', import.meta.url),
+      'utf8',
+    );
+    const searchSource = readFileSync(
+      new URL('../src/client/components/graph-server-search.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(pageSource).toContain('/api/graph/search?q=');
+    expect(pageSource).toContain("params.set('focus', focusedGraphId)");
+    expect(pageSource).toContain('onSelect={selectSearchResult}');
+    expect(searchSource).toContain('data-testid="graph-clear-server-focus"');
+  });
 });

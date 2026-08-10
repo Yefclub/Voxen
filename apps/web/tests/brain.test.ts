@@ -58,6 +58,9 @@ function extractCookie(res: Response): string {
 
 interface GraphTestResponse {
   indexing: boolean;
+  candidateNodes?: number;
+  candidateEdges?: number;
+  truncated?: boolean;
   nodes: Array<{
     id: string;
     key: string;
@@ -657,6 +660,115 @@ describeIfDb('brain indexer', () => {
       where: { userId_key: { userId: user.id, key: `TRANSCRIPT:${transcript.id}` } },
     });
     expect(persisted).not.toBeNull();
+  });
+
+  it('searches and focuses owned nodes beyond the representative snapshot cap', async () => {
+    await signUp('graph-scale@voxen.local', 'senha-super-segura-123', 'Graph Scale');
+    const signin = await signIn('graph-scale@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const owner = await db.user.findUniqueOrThrow({ where: { email: 'graph-scale@voxen.local' } });
+    const foreign = await db.user.create({
+      data: {
+        email: 'graph-scale-foreign@voxen.local',
+        name: 'Foreign Graph Scale',
+        status: 'APPROVED',
+      },
+    });
+    const oldDate = new Date('2025-01-01T00:00:00.000Z');
+    const newDate = new Date('2026-01-01T00:00:00.000Z');
+    const targetId = `graph-target-${owner.id}`;
+    const neighborId = `graph-neighbor-${owner.id}`;
+    await db.brainNode.createMany({
+      data: [
+        {
+          id: targetId,
+          userId: owner.id,
+          key: 'ENTITY:surgical-old-target',
+          type: 'ENTITY',
+          label: 'Surgical old target',
+          updatedAt: oldDate,
+          createdAt: oldDate,
+        },
+        {
+          id: neighborId,
+          userId: owner.id,
+          key: 'ENTITY:surgical-neighbor',
+          type: 'ENTITY',
+          label: 'Surgical neighbor',
+          updatedAt: oldDate,
+          createdAt: oldDate,
+        },
+        ...Array.from({ length: 500 }, (_, index) => ({
+          id: `graph-recent-${owner.id}-${index}`,
+          userId: owner.id,
+          key: `ENTITY:recent-${index}`,
+          type: 'ENTITY' as const,
+          label: `Recent concept ${index}`,
+          updatedAt: newDate,
+          createdAt: newDate,
+        })),
+        {
+          id: `graph-foreign-${foreign.id}`,
+          userId: foreign.id,
+          key: 'ENTITY:surgical-foreign-secret',
+          type: 'ENTITY',
+          label: 'Surgical foreign secret',
+          updatedAt: newDate,
+          createdAt: newDate,
+        },
+      ],
+    });
+    await db.brainEdge.create({
+      data: {
+        userId: owner.id,
+        fromNodeId: targetId,
+        toNodeId: neighborId,
+        kind: 'RELATED_TO',
+        method: 'manual',
+      },
+    });
+
+    const snapshotResponse = await app.fetch(
+      new Request('http://localhost/api/graph?view=full&refresh=1', { headers: { cookie } }),
+    );
+    const snapshot = (await snapshotResponse.json()) as GraphTestResponse;
+    expect(snapshot.candidateNodes).toBe(502);
+    expect(snapshot.candidateEdges).toBe(1);
+    expect(snapshot.truncated).toBe(true);
+    expect(snapshot.nodes.some((node) => node.id === targetId)).toBe(false);
+
+    const searchResponse = await app.fetch(
+      new Request('http://localhost/api/graph/search?q=surgical-old-target', {
+        headers: { cookie },
+      }),
+    );
+    const search = (await searchResponse.json()) as { results: Array<{ id: string }> };
+    expect(search.results).toContainEqual(expect.objectContaining({ id: targetId }));
+    const foreignSearch = await app.fetch(
+      new Request('http://localhost/api/graph/search?q=surgical-foreign-secret', {
+        headers: { cookie },
+      }),
+    );
+    expect((await foreignSearch.json()) as { query: string; results: unknown[] }).toEqual({
+      query: 'surgical-foreign-secret',
+      results: [],
+    });
+
+    const focusResponse = await app.fetch(
+      new Request(`http://localhost/api/graph?view=full&focus=${targetId}&hops=1&refresh=1`, {
+        headers: { cookie },
+      }),
+    );
+    const focused = (await focusResponse.json()) as GraphTestResponse;
+    expect(focused.nodes.map((node) => node.id)).toEqual(
+      expect.arrayContaining([targetId, neighborId]),
+    );
+    const foreignFocus = await app.fetch(
+      new Request(`http://localhost/api/graph?view=full&focus=graph-foreign-${foreign.id}`, {
+        headers: { cookie },
+      }),
+    );
+    expect(((await foreignFocus.json()) as GraphTestResponse).nodes).toEqual([]);
   });
 
   it('connects active contents through shared concepts', async () => {
