@@ -20,13 +20,7 @@ import {
   validateNoteAnchors,
 } from '../lib/note-anchors';
 import { recordInitialNoteRevision, syncNoteGraph } from '../lib/note-versioning';
-import {
-  storageDelete,
-  storageGet,
-  storageHead,
-  storagePut,
-  storageReadText,
-} from '../lib/storage';
+import { storageDelete, storageGet, storageHead, storagePut } from '../lib/storage';
 import { isSetupComplete } from '../lib/settings';
 import {
   buildOriginalResponseInit,
@@ -47,6 +41,12 @@ import {
 import type { TranscriptSearchRow as SearchRow } from '../lib/transcript-graph-search';
 import { cancelTranscriptEnrichmentsForInactiveParent } from '../lib/transcript-enrichments';
 import { registerTranscriptCorrectionRoutes } from './transcript-corrections';
+import {
+  effectiveTranscriptPlainText,
+  loadTranscriptSourceVersions,
+  resolveTranscriptMarkdownViews,
+  TRANSCRIPT_CORRECTION_DETAIL_SELECT,
+} from '../lib/transcript-content';
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
@@ -502,14 +502,7 @@ transcriptsRoutes.get('/:id', async (c) => {
       sourceMetadata: true,
       sourceRefreshStatus: true,
       sourceRefreshError: true,
-      correctionRevision: true,
-      correctedMarkdown: true,
-      correctedPlainText: true,
-      correctedChecksum: true,
-      correctionSourceVersion: true,
-      correctionSourceChecksum: true,
-      correctionState: true,
-      correctionStaleReason: true,
+      ...TRANSCRIPT_CORRECTION_DETAIL_SELECT,
       archivedAt: true,
       trashedAt: true,
       createdAt: true,
@@ -532,37 +525,13 @@ transcriptsRoutes.get('/:id', async (c) => {
   const baseCost = transcript.costUsd ? parseFloat(transcript.costUsd.toString()) : 0;
   const totalCostUsd = (baseCost + summarySum).toFixed(6);
 
-  // Read canonical Markdown from the selected storage with a DB fallback.
-  const canonicalMarkdown = await (async (): Promise<string> => {
-    try {
-      return await storageReadText(transcript.mdPath);
-    } catch (err) {
-      console.error(
-        '[transcripts] erro ao baixar .md',
-        safeErrorDiagnostic('TRANSCRIPT_MARKDOWN_READ_FAILED', err),
-      );
-      return `# ${transcript.title}\n\n${transcript.plainText}`;
-    }
-  })();
-
-  const markdown =
-    transcript.correctionState === 'ACTIVE' && transcript.correctedMarkdown
-      ? transcript.correctedMarkdown
-      : canonicalMarkdown;
+  const { markdown, canonicalMarkdown } = await resolveTranscriptMarkdownViews(transcript);
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
-  const sourceVersions =
-    transcript.source === 'WEB'
-      ? await db.sourceContentVersion.findMany({
-          where: { userId, transcriptId: transcript.id },
-          orderBy: { version: 'desc' },
-          take: 12,
-          select: { version: true, checksum: true, collectedAt: true, metadata: true },
-        })
-      : [];
+  const sourceVersions = await loadTranscriptSourceVersions(userId, transcript);
   return c.json({
     transcript: { ...transcript, totalCostUsd, tags, sourceVersions },
     markdown,
-    canonicalMarkdown: transcript.correctionRevision > 0 ? canonicalMarkdown : null,
+    canonicalMarkdown,
   });
 });
 
@@ -1030,10 +999,7 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
 
-  const effectivePlainText =
-    transcript.correctionState === 'ACTIVE' && transcript.correctedPlainText
-      ? transcript.correctedPlainText
-      : transcript.plainText;
+  const effectivePlainText = effectiveTranscriptPlainText(transcript);
   const content = ((transcript.summaryMd ?? '') || effectivePlainText).trim();
   if (content.length < 40 && transcript.title.trim().length < 3) {
     return c.json({ error: 'Conteúdo curto demais para gerar tags.' }, 422);
@@ -1206,10 +1172,7 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
     },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
-  const effectivePlainText =
-    transcript.correctionState === 'ACTIVE' && transcript.correctedPlainText
-      ? transcript.correctedPlainText
-      : transcript.plainText;
+  const effectivePlainText = effectiveTranscriptPlainText(transcript);
   if (!effectivePlainText.trim()) {
     return c.json({ error: 'Transcrição sem texto para resumir.' }, 422);
   }

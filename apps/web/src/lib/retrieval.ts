@@ -21,8 +21,8 @@
 import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import { fuseHybridScores } from './hybrid-search';
-import { storageReadText } from './storage';
 import { ftsSearchTranscriptEnrichments } from './retrieval-enrichments';
+export { loadEffectiveTranscriptMarkdown as loadTranscriptMd } from './transcript-content';
 
 // Caps de saída — nenhuma tool devolve o documento inteiro sem intenção explícita.
 export const MAX_READ_LINES = 200;
@@ -323,36 +323,6 @@ export function verifyClaimAgainstMd(md: string, claim: Omit<Claim, 'transcriptI
  * from the selected storage driver (Transcript.mdPath), with a Postgres plainText
  * fallback on storage errors. Returns null when the transcript is absent or not owned.
  */
-export async function loadTranscriptMd(
-  userId: string,
-  transcriptId: string,
-): Promise<{ id: string; title: string; url: string; md: string } | null> {
-  const t = await db.transcript.findFirst({
-    where: { id: transcriptId, userId, status: 'ACTIVE' },
-    select: {
-      id: true,
-      title: true,
-      url: true,
-      mdPath: true,
-      plainText: true,
-      correctedMarkdown: true,
-      correctedPlainText: true,
-      correctionState: true,
-    },
-  });
-  if (!t) return null;
-  if (t.correctionState === 'ACTIVE' && t.correctedMarkdown)
-    return { id: t.id, title: t.title, url: t.url, md: t.correctedMarkdown };
-  let md: string;
-  try {
-    md = await storageReadText(t.mdPath);
-    if (!md) md = `# ${t.title}\n\n${t.plainText}`;
-  } catch {
-    md = `# ${t.title}\n\n${t.plainText}`;
-  }
-  return { id: t.id, title: t.title, url: t.url, md };
-}
-
 export type FtsResult = {
   id: string;
   title: string;

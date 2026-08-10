@@ -74,6 +74,7 @@ import {
 } from './transcript-editing';
 import { grantAlwaysAllowAction, loadAlwaysAllowActions } from './hitl-preferences';
 import { isProviderObservedEvent } from './stream-timing';
+import { resolveApprovalInMessageJson } from './approval-message-resolution';
 import {
   buildUrlIntentInstructions,
   classifyUrlIntent,
@@ -1028,12 +1029,6 @@ export function buildTools(
 
 type DbTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
-function toolMatchesApproval(tool: Record<string, unknown>, approvalId: string): boolean {
-  if (!tool.output || typeof tool.output !== 'object') return false;
-  const output = tool.output as Record<string, unknown>;
-  return output.approvalRequired === true && output.approvalId === approvalId;
-}
-
 function collectApprovalIdsFromJson(value: unknown, into: Set<string>): void {
   if (!Array.isArray(value)) return;
   for (const raw of value) {
@@ -1069,86 +1064,6 @@ async function findAssistantMessagesWithApproval(
       )
     ORDER BY "createdAt" DESC, id DESC
   `;
-}
-
-/** Marks matching tools/segments as completed after HITL approval (spec 090). */
-function resolveApprovalInMessageJson(
-  tools: unknown,
-  segments: unknown,
-  approvalId: string,
-  resource: { id: string; kind: 'note' | 'transcript' } | null,
-): { tools: Prisma.InputJsonValue | undefined; segments: Prisma.InputJsonValue | undefined } {
-  let nextTools: unknown = tools;
-  let toolsChanged = false;
-  if (Array.isArray(tools)) {
-    nextTools = tools.map((raw) => {
-      if (!raw || typeof raw !== 'object') return raw;
-      const tool = raw as Record<string, unknown>;
-      if (!toolMatchesApproval(tool, approvalId)) return raw;
-      toolsChanged = true;
-      const prev =
-        tool.output && typeof tool.output === 'object'
-          ? (tool.output as Record<string, unknown>)
-          : {};
-      return {
-        ...tool,
-        state: 'completed',
-        output: {
-          ...prev,
-          approvalRequired: false,
-          approved: resource != null,
-          ...(resource
-            ? resource.kind === 'note'
-              ? { noteId: resource.id }
-              : { transcriptId: resource.id }
-            : { dismissed: true }),
-        },
-      };
-    });
-  }
-
-  let nextSegments: unknown = segments;
-  let segmentsChanged = false;
-  if (Array.isArray(segments)) {
-    nextSegments = segments.map((raw) => {
-      if (!raw || typeof raw !== 'object') return raw;
-      const segment = raw as Record<string, unknown>;
-      if (segment.type !== 'tool-group' || !Array.isArray(segment.tools)) return raw;
-      let groupChanged = false;
-      const groupTools = segment.tools.map((toolRaw) => {
-        if (!toolRaw || typeof toolRaw !== 'object') return toolRaw;
-        const tool = toolRaw as Record<string, unknown>;
-        if (!toolMatchesApproval(tool, approvalId)) return toolRaw;
-        groupChanged = true;
-        const prev =
-          tool.output && typeof tool.output === 'object'
-            ? (tool.output as Record<string, unknown>)
-            : {};
-        return {
-          ...tool,
-          state: 'completed',
-          output: {
-            ...prev,
-            approvalRequired: false,
-            approved: resource != null,
-            ...(resource
-              ? resource.kind === 'note'
-                ? { noteId: resource.id }
-                : { transcriptId: resource.id }
-              : { dismissed: true }),
-          },
-        };
-      });
-      if (!groupChanged) return raw;
-      segmentsChanged = true;
-      return { ...segment, tools: groupTools };
-    });
-  }
-
-  return {
-    tools: toolsChanged ? (nextTools as Prisma.InputJsonValue) : undefined,
-    segments: segmentsChanged ? (nextSegments as Prisma.InputJsonValue) : undefined,
-  };
 }
 
 async function clearApprovalGhostInConversation(
