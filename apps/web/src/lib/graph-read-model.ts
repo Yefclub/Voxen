@@ -208,6 +208,7 @@ async function readFocusedRecords(
       where: {
         userId,
         status: 'ACTIVE',
+        ...(edges.size > 0 ? { id: { notIn: [...edges.keys()] } } : {}),
         OR: [{ fromNodeId: { in: frontier } }, { toNodeId: { in: frontier } }],
         from: { status: 'ACTIVE', userId },
         to: { status: 'ACTIVE', userId },

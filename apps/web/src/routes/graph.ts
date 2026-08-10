@@ -175,7 +175,7 @@ graphRoutes.get('/', async (c) => {
   const force = c.req.query('force') === '1';
   const refresh = c.req.query('refresh') === '1';
   const view = parseGraphView(c.req.query('view'));
-  const focusId = c.req.query('focus')?.trim() || null;
+  const focusId = c.req.query('focus')?.trim().slice(0, 160) || null;
   const hops = parseGraphHops(c.req.query('hops'));
 
   // Cache em Redis 60s — chave por view/focus para não misturar recortes.

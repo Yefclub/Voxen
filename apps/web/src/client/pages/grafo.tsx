@@ -298,7 +298,6 @@ export function GrafoPage(): React.ReactElement {
     () => filtered?.nodes.find((node) => node.id === selectedId) ?? null,
     [filtered, selectedId],
   );
-
   const openNode = useCallback(
     (node: GraphNode) => {
       const path = nodePath(node);
@@ -311,6 +310,7 @@ export function GrafoPage(): React.ReactElement {
     if (id) setExplorerOpen(false);
   }, []);
   const selectSearchResult = useCallback((node: GraphNode) => {
+    setActiveTypes((current) => new Set(current).add(node.type));
     setFocusedGraphId(node.id);
     setSelectedId(node.id);
     setSearch('');

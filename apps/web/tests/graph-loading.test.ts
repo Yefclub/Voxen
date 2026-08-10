@@ -217,6 +217,8 @@ describe('graph loading lifecycle contract', () => {
     expect(pageSource).toContain('/api/graph/search?q=');
     expect(pageSource).toContain("params.set('focus', focusedGraphId)");
     expect(pageSource).toContain('onSelect={selectSearchResult}');
+    expect(pageSource).toContain('new Set(current).add(node.type)');
     expect(searchSource).toContain('data-testid="graph-clear-server-focus"');
+    expect(searchSource).toContain("translate('graph.clearFocus')");
   });
 });

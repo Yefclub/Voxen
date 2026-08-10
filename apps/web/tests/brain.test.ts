@@ -771,6 +771,82 @@ describeIfDb('brain indexer', () => {
     expect(((await foreignFocus.json()) as GraphTestResponse).nodes).toEqual([]);
   });
 
+  it('preserves a real second hop after a dense first-hop relation set', async () => {
+    await signUp('graph-two-hop@voxen.local', 'senha-super-segura-123', 'Graph Two Hop');
+    const signin = await signIn('graph-two-hop@voxen.local', 'senha-super-segura-123');
+    const cookie = extractCookie(signin);
+    const owner = await db.user.findUniqueOrThrow({
+      where: { email: 'graph-two-hop@voxen.local' },
+    });
+    const focusId = `graph-two-hop-focus-${owner.id}`;
+    const neighborId = `graph-two-hop-neighbor-${owner.id}`;
+    const targetId = `graph-two-hop-target-${owner.id}`;
+    const newer = new Date('2026-01-02T00:00:00.000Z');
+    const older = new Date('2026-01-01T00:00:00.000Z');
+    await db.brainNode.createMany({
+      data: [
+        {
+          id: focusId,
+          userId: owner.id,
+          key: 'ENTITY:two-hop-focus',
+          type: 'ENTITY',
+          label: 'Focus',
+        },
+        {
+          id: neighborId,
+          userId: owner.id,
+          key: 'ENTITY:two-hop-neighbor',
+          type: 'ENTITY',
+          label: 'Neighbor',
+        },
+        {
+          id: targetId,
+          userId: owner.id,
+          key: 'ENTITY:two-hop-target',
+          type: 'ENTITY',
+          label: 'Target',
+        },
+      ],
+    });
+    await db.brainEdge.createMany({
+      data: Array.from({ length: 1_499 }, (_, index) => ({
+        userId: owner.id,
+        fromNodeId: focusId,
+        toNodeId: neighborId,
+        kind: 'RELATED_TO' as const,
+        method: `dense-first-hop-${index}`,
+        createdAt: newer,
+        updatedAt: newer,
+      })),
+    });
+    await db.brainEdge.create({
+      data: {
+        userId: owner.id,
+        fromNodeId: neighborId,
+        toNodeId: targetId,
+        kind: 'RELATED_TO',
+        method: 'real-second-hop',
+        createdAt: older,
+        updatedAt: older,
+      },
+    });
+
+    const response = await app.fetch(
+      new Request(`http://localhost/api/graph?view=full&focus=${focusId}&hops=2&refresh=1`, {
+        headers: { cookie },
+      }),
+    );
+    const focused = (await response.json()) as GraphTestResponse;
+    expect(focused.nodes).toContainEqual(expect.objectContaining({ id: targetId }));
+    expect(focused.edges).toContainEqual(
+      expect.objectContaining({
+        from: neighborId,
+        to: targetId,
+        method: 'real-second-hop',
+      }),
+    );
+  });
+
   it('connects active contents through shared concepts', async () => {
     await signUp('shared-brain@voxen.local', 'senha-super-segura-123', 'Shared Brain');
     const signin = await signIn('shared-brain@voxen.local', 'senha-super-segura-123');

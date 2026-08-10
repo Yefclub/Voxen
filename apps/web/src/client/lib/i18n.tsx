@@ -1227,6 +1227,7 @@ const ptBRMessages = {
   'graph.buildingDescription':
     'O primeiro mapa aparecerá automaticamente assim que as fontes forem indexadas.',
   'graph.clearSearch': 'Limpar busca',
+  'graph.clearFocus': 'Mostrar grafo completo',
   'graph.closeExplorer': 'Fechar exploração',
   'graph.closeInspector': 'Fechar detalhes',
   'graph.connectionsLabel': 'Conexões',
@@ -2599,6 +2600,7 @@ const enMessages: Record<I18nKey, string> = {
   'graph.buildingDescription':
     'The first map will appear automatically as soon as your sources are indexed.',
   'graph.clearSearch': 'Clear search',
+  'graph.clearFocus': 'Show full graph',
   'graph.closeExplorer': 'Close explorer',
   'graph.closeInspector': 'Close details',
   'graph.connectionsLabel': 'Connections',

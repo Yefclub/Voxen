@@ -81,10 +81,10 @@ export function GraphServerSearch({
           size="default"
           data-testid="graph-clear-server-focus"
           onClick={onClearFocus}
-          title={translate('graph.clearSearch')}
+          title={translate('graph.clearFocus')}
         >
           <X className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">{translate('graph.focusCore')}</span>
+          <span className="hidden sm:inline">{translate('graph.clearFocus')}</span>
         </Button>
       )}
     </>
