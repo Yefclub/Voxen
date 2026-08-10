@@ -213,7 +213,8 @@ async def test_changed_refresh_versions_and_invalidates_only_affected_artifacts(
         "resolve_thumbnail_for_persist",
         AsyncMock(return_value=(None, None, None)),
     )
-    monkeypatch.setattr(scrape_pipeline.db, "upsert_transcript_brain_node", AsyncMock())
+    brain_upsert = AsyncMock(return_value=False)
+    monkeypatch.setattr(scrape_pipeline.db, "upsert_transcript_brain_node", brain_upsert)
 
     persisted = await scrape_pipeline._persist(
         user_id="user1",
@@ -233,6 +234,10 @@ async def test_changed_refresh_versions_and_invalidates_only_affected_artifacts(
     assert "'source-version-changed'" in statements
     assert 'DELETE FROM "TranscriptTag"' in statements
     assert 'UPDATE "ChatMessage"' in statements
+    assert "- 'topicIndexVersion' - 'brainIndexVersion'" in statements
+    assert 'INSERT INTO "BrainCompilation"' in statements
+    assert 'INSERT INTO "BrainCompilationSegment"' in statements
+    brain_upsert.assert_awaited_once()
     assert "pg_advisory_lock" in first_conn.execute.await_args_list[0].args[0]
     assert "pg_advisory_unlock" in first_conn.execute.await_args_list[-1].args[0]
 

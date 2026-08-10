@@ -9,7 +9,7 @@ import { db } from './db';
 import type { Prisma } from '../../prisma-generated/client';
 import { reindexLibraryFolderBrain, reindexTranscriptsBrain } from './brain';
 import { invalidateGraphCache } from './graph-cache';
-import { pickFolderId, slugifyTag } from './tags-generate';
+import { orderUniqueTagNames, pickFolderId, slugifyTag } from './tags-generate';
 
 export interface AppliedTag {
   id: string;
@@ -43,7 +43,6 @@ async function ensureTagWithFolder(
   name: string,
 ): Promise<{ tag: AppliedTag; folderId: string; folderCreated: boolean }> {
   const slug = slugifyTag(name);
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${slug}`}))`;
   const existing = await tx.tag.findUnique({
     where: { userId_slug: { userId, slug } },
     select: { id: true, name: true, slug: true, folderId: true },
@@ -100,9 +99,13 @@ export async function applyTagsToTranscript(
       FOR UPDATE
     `;
     if (!rows[0]) return { applied: [] as AppliedTag[], newFolderIds: [] as string[] };
+    const orderedTagNames = orderUniqueTagNames(tagNames);
+    for (const { slug } of orderedTagNames) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${slug}`}))`;
+    }
     const prepared: Array<{ tag: AppliedTag; folderId: string }> = [];
     const newFolderIds: string[] = [];
-    for (const name of tagNames) {
+    for (const { name } of orderedTagNames) {
       const { tag, folderId, folderCreated } = await ensureTagWithFolder(tx, userId, name);
       if (folderCreated) newFolderIds.push(folderId);
       prepared.push({ tag, folderId });

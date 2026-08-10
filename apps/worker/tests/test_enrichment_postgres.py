@@ -10,6 +10,7 @@ import asyncpg
 import pytest
 
 from src import db, research_db, voxen_settings
+from src.source_freshness import mark_reviewable_derivatives_stale
 from src.voxen_crypto import encrypt
 
 pytestmark = pytest.mark.skipif(
@@ -810,3 +811,47 @@ async def test_changed_transcript_is_delivered_to_brain_reindexer(
     reindex.reset_mock()
     assert await db.reindex_missing_transcript_brain_nodes(limit=10) == 0
     reindex.assert_not_awaited()
+
+
+async def test_source_refresh_marker_is_durable_until_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+    postgres: asyncpg.Connection,
+) -> None:
+    await _insert_user(postgres, "refresh-user")
+    await _insert_transcript(
+        postgres,
+        transcript_id="refresh-transcript",
+        user_id="refresh-user",
+        updated_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    await postgres.execute(
+        """
+        INSERT INTO "BrainNode" (
+          id, "userId", key, type, label, description, status, metadata,
+          "sourceType", "sourceId", "createdAt", "updatedAt"
+        ) VALUES (
+          'refresh-node', 'refresh-user', 'TRANSCRIPT:refresh-transcript',
+          'CONTENT'::"BrainNodeType", 'Old title', 'Old content',
+          'ACTIVE'::"ContentStatus",
+          '{"brainIndexVersion":3,"topicIndexVersion":1,"embedding":[0.1]}'::jsonb,
+          'TRANSCRIPT'::"BrainSourceType", 'refresh-transcript', NOW(), NOW()
+        )
+        """
+    )
+
+    async with postgres.transaction():
+        await mark_reviewable_derivatives_stale(
+            postgres, "refresh-user", "refresh-transcript", 2, "checksum-2"
+        )
+
+    metadata = await postgres.fetchval(
+        'SELECT metadata FROM "BrainNode" WHERE id = $1', "refresh-node"
+    )
+    assert "brainIndexVersion" not in metadata
+    assert "topicIndexVersion" not in metadata
+    assert "embedding" not in metadata
+
+    reindex = AsyncMock(return_value=True)
+    monkeypatch.setattr(db, "reindex_transcript_brain_node", reindex)
+    assert await db.reindex_missing_transcript_brain_nodes(limit=10) == 1
+    reindex.assert_awaited_once_with("refresh-user", "refresh-transcript")

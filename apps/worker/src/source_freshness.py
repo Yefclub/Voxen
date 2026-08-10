@@ -49,7 +49,9 @@ async def _defer_grounded_compilation(
     await conn.execute(
         """
         UPDATE "BrainNode"
-        SET metadata = COALESCE(metadata, '{}'::jsonb) - 'embedding', "updatedAt" = NOW()
+        SET metadata = COALESCE(metadata, '{}'::jsonb)
+              - 'embedding' - 'topicIndexVersion' - 'brainIndexVersion',
+            "updatedAt" = NOW()
         WHERE "userId" = $1 AND key = $2
         """,
         user_id,

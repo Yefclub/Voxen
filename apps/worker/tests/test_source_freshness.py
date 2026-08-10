@@ -55,6 +55,10 @@ async def test_marks_only_outdated_valid_anchors_for_the_owner() -> None:
     assert "llm-grounded%" in grounded_source_query
     assert grounded_source_args == ("user-1", "transcript-1")
 
+    brain_marker_query, brain_marker_args = conn.calls[8]
+    assert "- 'topicIndexVersion' - 'brainIndexVersion'" in brain_marker_query
+    assert brain_marker_args == ("user-1", "TRANSCRIPT:transcript-1")
+
     compilation_query, compilation_args = conn.calls[10]
     assert 'INSERT INTO "BrainCompilation"' in compilation_query
     assert 'INSERT INTO "BrainCompilationSegment"' in compilation_query

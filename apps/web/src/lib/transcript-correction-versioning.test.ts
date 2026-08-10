@@ -493,4 +493,46 @@ describeIfDb('versioned transcript correction commits', () => {
       }),
     ).toBe(0);
   });
+
+  test('concurrent transcripts acquire shared tag locks in one deterministic order', async () => {
+    const suffix = crypto.randomUUID();
+    const transcripts = await Promise.all(
+      ['a', 'b'].map((key) =>
+        db.transcript.create({
+          data: {
+            userId,
+            source: 'WEB',
+            url: `https://example.test/tag-lock-${suffix}-${key}`,
+            title: `Tag lock ${key}`,
+            durationSec: 0,
+            language: 'en',
+            transcriptionMethod: 'SCRAPE',
+            mdPath: `tests/tag-lock-${suffix}-${key}.md`,
+            plainText: 'Concurrent tagging contract',
+            frontmatter: {},
+          },
+        }),
+      ),
+    );
+    const identity = (id: string) => ({
+      id,
+      folderId: null,
+      correctionRevision: 0,
+      sourceVersion: 0,
+      sourceChecksum: null,
+    });
+    const alpha = `Alpha ${suffix}`;
+    const beta = `Beta ${suffix}`;
+    const [firstTranscript, secondTranscript] = transcripts;
+    if (!firstTranscript || !secondTranscript) throw new Error('TAG_LOCK_TEST_SETUP_FAILED');
+
+    const [forward, reverse] = await Promise.all([
+      applyTagsToTranscript(userId, identity(firstTranscript.id), [alpha, beta]),
+      applyTagsToTranscript(userId, identity(secondTranscript.id), [beta, alpha]),
+    ]);
+
+    expect(forward.map(({ slug }) => slug)).toEqual(reverse.map(({ slug }) => slug));
+    expect(await db.transcriptTag.count({ where: { transcriptId: firstTranscript.id } })).toBe(2);
+    expect(await db.transcriptTag.count({ where: { transcriptId: secondTranscript.id } })).toBe(2);
+  });
 });
