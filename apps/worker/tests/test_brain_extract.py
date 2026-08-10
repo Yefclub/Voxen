@@ -178,6 +178,8 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
         "prepare_grounded_brain_compilation",
         prepared,
     )
+    claim = AsyncMock(return_value=[{"segmentKey": "first"}, {"segmentKey": "second"}])
+    monkeypatch.setattr(pipeline.db, "claim_grounded_brain_segments", claim)
     monkeypatch.setattr(
         pipeline.voxen_settings,
         "get_openrouter_model_config",
@@ -208,11 +210,14 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
         user_id="user-1",
         transcript_id="transcript-1",
         log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+        worker_id="worker-test",
     )
 
-    failed.assert_awaited_once_with(
-        compilation_id="compilation-1", segment_key="first", error="RuntimeError"
-    )
+    failed.assert_awaited_once()
+    assert failed.await_args.kwargs["compilation_id"] == "compilation-1"
+    assert failed.await_args.kwargs["segment_key"] == "first"
+    assert failed.await_args.kwargs["error"] == "RuntimeError"
+    assert failed.await_args.kwargs["worker_id"].startswith("worker-test:")
     upsert.assert_awaited_once()
     assert upsert.await_args.kwargs["segment"]["key"] == "second"
 
@@ -223,13 +228,81 @@ async def test_segment_failure_keeps_following_segment_and_records_retry(
 
     monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract_retry)
     prepared.return_value = ("compilation-1", [{"segmentKey": "first"}])
+    claim.return_value = [{"segmentKey": "first"}]
     await pipeline._maybe_grounded_brain_extract(
         user_id="user-1",
         transcript_id="transcript-1",
         log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+        worker_id="worker-test",
     )
     assert upsert.await_count == 2
     assert upsert.await_args.kwargs["segment"]["key"] == "first"
+
+
+async def test_grounded_model_runs_before_short_write_lease_and_contention_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    segment = ExtractionSegment("only", "conteúdo grounded suficiente", 1, 1, None, None)
+    events: list[str] = []
+    monkeypatch.setattr(
+        pipeline.db,
+        "get_transcript_title_content_md_path",
+        AsyncMock(return_value=("Título", "fallback suficiente " * 8, None)),
+    )
+    monkeypatch.setattr(brain_extract, "segment_content", lambda _: [segment])
+    monkeypatch.setattr(
+        pipeline.db,
+        "prepare_grounded_brain_compilation",
+        AsyncMock(return_value=("compilation-1", [{"segmentKey": "only"}])),
+    )
+    monkeypatch.setattr(
+        pipeline.db,
+        "claim_grounded_brain_segments",
+        AsyncMock(return_value=[{"segmentKey": "only"}]),
+    )
+    monkeypatch.setattr(
+        pipeline.voxen_settings,
+        "get_openrouter_model_config",
+        AsyncMock(return_value=SimpleNamespace(api_key="key", model="model", fallback_model=None)),
+    )
+    monkeypatch.setattr(
+        pipeline.voxen_settings,
+        "get_app_language",
+        AsyncMock(return_value="pt-BR"),
+    )
+    monkeypatch.setattr(pipeline.db, "insert_cost_event", AsyncMock())
+    retry = AsyncMock()
+    monkeypatch.setattr(pipeline.db, "mark_grounded_segment_failed", retry)
+    upsert = AsyncMock()
+    monkeypatch.setattr(pipeline.db, "upsert_grounded_brain_items", upsert)
+
+    async def extract(**_kwargs: Any) -> GroundedExtractionResult:
+        events.append("model")
+        return GroundedExtractionResult(
+            items=[], relations=[], cost_usd=Decimal("0"), model="model", tokens_in=10, tokens_out=2
+        )
+
+    async def acquire(_user_id: str) -> None:
+        events.append("lease")
+        return None
+
+    monkeypatch.setattr(brain_extract, "extract_grounded_concepts", extract)
+    monkeypatch.setattr(pipeline, "acquire_graph_index_lease", acquire)
+
+    await pipeline._maybe_grounded_brain_extract(
+        user_id="user-1",
+        transcript_id="transcript-1",
+        log=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
+        worker_id="worker-test",
+    )
+
+    assert events == ["model", "lease"]
+    upsert.assert_not_awaited()
+    retry.assert_awaited_once()
+    assert retry.await_args.kwargs["compilation_id"] == "compilation-1"
+    assert retry.await_args.kwargs["segment_key"] == "only"
+    assert retry.await_args.kwargs["error"] == "GRAPH_WRITE_LEASE_UNAVAILABLE"
+    assert retry.await_args.kwargs["worker_id"].startswith("worker-test:")
 
 
 class _ExternalErrorClient:

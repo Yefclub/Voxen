@@ -1,5 +1,38 @@
 import { describe, expect, test } from 'bun:test';
 import { isGraphSnapshotIndexing, shouldScheduleGraphReindex } from '../src/lib/graph-index-state';
+import { graphIndexCoverage } from '../src/shared/graph-index';
+
+describe('graph index coverage', () => {
+  test('keeps structural source coverage separate from semantic compilation progress', () => {
+    expect(
+      graphIndexCoverage({
+        expectedSourceNodes: 20,
+        indexedSourceNodes: 20,
+        staleSourceNodes: 0,
+        semantic: {
+          total: 24,
+          pending: 2,
+          running: 1,
+          retrying: 3,
+          completed: 16,
+          failed: 1,
+          skipped: 1,
+        },
+      }),
+    ).toEqual({
+      source: { expected: 20, indexed: 20, stale: 0 },
+      semantic: {
+        total: 24,
+        pending: 2,
+        running: 1,
+        retrying: 3,
+        completed: 16,
+        failed: 1,
+        skipped: 1,
+      },
+    });
+  });
+});
 
 describe('shouldScheduleGraphReindex', () => {
   test('does nothing when indexed coverage is current', () => {

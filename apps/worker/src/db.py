@@ -26,11 +26,18 @@ class GroundedCompilationLeaseLostError(RuntimeError):
     """Força rollback quando o lease expira durante a escrita de um segmento."""
 
 
+class GroundedCompilationClaimLostError(RuntimeError):
+    """Rejects stale or foreign semantic work before any graph mutation."""
+
+
 _pool: asyncpg.Pool | None = None
 
 TOPIC_LIMIT = 8
 TOPIC_MIN_LEN = 4
 BRAIN_TOPIC_INDEX_VERSION = 1
+GROUNDED_SEGMENT_MAX_ATTEMPTS = 6
+GROUNDED_SEGMENT_CLAIM_TTL_SEC = 15 * 60
+GROUNDED_SEGMENT_MAX_RETRY_SEC = 30 * 60
 JOB_LEASE_TTL_SEC = 90
 JOB_MAX_ATTEMPTS = 3
 JOB_CHECKPOINT_EXTRA_ATTEMPTS = 1
@@ -1201,27 +1208,174 @@ async def prepare_grounded_brain_compilation(
                 """
                 SELECT "segmentKey", status, "startLine", "endLine", "startSec", "endSec"
                 FROM "BrainCompilationSegment"
-                WHERE "compilationId" = $1 AND status IN (
-                    'PENDING'::"BrainCompilationStatus", 'FAILED'::"BrainCompilationStatus"
-                )
+                WHERE "compilationId" = $1
+                  AND attempts < $2
+                  AND (
+                    status = 'PENDING'::"BrainCompilationStatus"
+                    OR status = 'FAILED'::"BrainCompilationStatus"
+                    OR (
+                      status = 'RETRY'::"BrainCompilationStatus"
+                      AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= NOW())
+                    )
+                    OR (
+                      status = 'RUNNING'::"BrainCompilationStatus"
+                      AND "leaseExpiresAt" < NOW()
+                    )
+                  )
                 ORDER BY "startLine", "endLine", "segmentKey"
                 """,
                 compilation_id,
+                GROUNDED_SEGMENT_MAX_ATTEMPTS,
             )
     return compilation_id, [dict(row) for row in rows]
 
 
-async def mark_grounded_compilation_skipped(compilation_id: str) -> None:
+async def claim_grounded_brain_segments(
+    *,
+    user_id: str,
+    compilation_id: str,
+    segment_keys: list[str],
+    worker_id: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Claims due segments once across horizontally scaled workers."""
+    keys = list(dict.fromkeys(key for key in segment_keys if key))
+    if not keys or limit <= 0:
+        return []
     async with connection() as conn:
-        await conn.execute(
+        rows = await conn.fetch(
             """
-            UPDATE "BrainCompilation"
-            SET status = 'SKIPPED'::"BrainCompilationStatus", "lastError" = NULL,
+            WITH exhausted AS (
+              UPDATE "BrainCompilationSegment" segment
+              SET status = 'FAILED'::"BrainCompilationStatus",
+                  "claimedBy" = NULL, "claimedAt" = NULL, "leaseExpiresAt" = NULL,
+                  "nextAttemptAt" = NULL,
+                  error = COALESCE(error, 'ATTEMPT_LIMIT_REACHED'),
+                  "updatedAt" = NOW()
+              WHERE segment."compilationId" = $1
+                AND EXISTS (
+                  SELECT 1 FROM "BrainCompilation" compilation
+                  WHERE compilation.id = segment."compilationId"
+                    AND compilation."userId" = $2
+                )
+                AND segment.attempts >= $6
+                AND segment.status <> 'COMPLETED'::"BrainCompilationStatus"
+                AND segment.status <> 'SKIPPED'::"BrainCompilationStatus"
+              RETURNING id
+            ), candidates AS (
+              SELECT segment.id
+              FROM "BrainCompilationSegment" segment
+              JOIN "BrainCompilation" compilation
+                ON compilation.id = segment."compilationId"
+               AND compilation."userId" = $2
+              WHERE segment."compilationId" = $1
+                AND segment."segmentKey" = ANY($3::text[])
+                AND segment.attempts < $6
+                AND (
+                  segment.status = 'PENDING'::"BrainCompilationStatus"
+                  OR segment.status = 'FAILED'::"BrainCompilationStatus"
+                  OR (
+                    segment.status = 'RETRY'::"BrainCompilationStatus"
+                    AND (segment."nextAttemptAt" IS NULL OR segment."nextAttemptAt" <= NOW())
+                  )
+                  OR (
+                    segment.status = 'RUNNING'::"BrainCompilationStatus"
+                    AND segment."leaseExpiresAt" < NOW()
+                  )
+                )
+              ORDER BY segment."startLine", segment."endLine", segment."segmentKey"
+              FOR UPDATE SKIP LOCKED
+              LIMIT $5
+            )
+            UPDATE "BrainCompilationSegment" segment
+            SET status = 'RUNNING'::"BrainCompilationStatus",
+                attempts = segment.attempts + 1,
+                "claimedBy" = $4,
+                "claimedAt" = NOW(),
+                "leaseExpiresAt" = NOW() + make_interval(secs => $7),
+                "nextAttemptAt" = NULL,
+                error = NULL,
                 "updatedAt" = NOW()
-            WHERE id = $1
+            FROM candidates
+            WHERE segment.id = candidates.id
+            RETURNING segment."segmentKey", segment.attempts,
+                      segment."startLine", segment."endLine",
+                      segment."startSec", segment."endSec"
             """,
             compilation_id,
+            user_id,
+            keys,
+            worker_id,
+            min(limit, len(keys)),
+            GROUNDED_SEGMENT_MAX_ATTEMPTS,
+            GROUNDED_SEGMENT_CLAIM_TTL_SEC,
         )
+        await _refresh_grounded_compilation(conn, compilation_id)
+    return [dict(row) for row in rows]
+
+
+async def list_due_grounded_compilations(limit: int = 10) -> list[dict[str, Any]]:
+    """Finds durable semantic work; the per-segment claim remains authoritative."""
+    if limit <= 0:
+        return []
+    async with connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT compilation."userId", compilation."transcriptId",
+                   MIN(segment."nextAttemptAt") AS "nextAttemptAt"
+            FROM "BrainCompilation" compilation
+            JOIN "Transcript" transcript
+              ON transcript.id = compilation."transcriptId"
+             AND transcript."userId" = compilation."userId"
+             AND transcript.status = 'ACTIVE'::"ContentStatus"
+            JOIN "BrainCompilationSegment" segment
+              ON segment."compilationId" = compilation.id
+            WHERE segment.attempts < $2
+              AND (
+                segment.status = 'PENDING'::"BrainCompilationStatus"
+                OR segment.status = 'FAILED'::"BrainCompilationStatus"
+                OR (
+                  segment.status = 'RETRY'::"BrainCompilationStatus"
+                  AND (segment."nextAttemptAt" IS NULL OR segment."nextAttemptAt" <= NOW())
+                )
+                OR (
+                  segment.status = 'RUNNING'::"BrainCompilationStatus"
+                  AND segment."leaseExpiresAt" < NOW()
+                )
+              )
+            GROUP BY compilation.id
+            ORDER BY MIN(COALESCE(segment."nextAttemptAt", segment."updatedAt")) ASC
+            LIMIT $1
+            """,
+            limit,
+            GROUNDED_SEGMENT_MAX_ATTEMPTS,
+        )
+    return [dict(row) for row in rows]
+
+
+async def mark_grounded_compilation_skipped(compilation_id: str) -> None:
+    async with connection() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                UPDATE "BrainCompilationSegment"
+                SET status = 'SKIPPED'::"BrainCompilationStatus",
+                    "claimedBy" = NULL, "claimedAt" = NULL, "leaseExpiresAt" = NULL,
+                    "nextAttemptAt" = NULL, error = NULL, "updatedAt" = NOW()
+                WHERE "compilationId" = $1
+                  AND status <> 'COMPLETED'::"BrainCompilationStatus"
+                """,
+                compilation_id,
+            )
+            await conn.execute(
+                """
+                UPDATE "BrainCompilation"
+                SET status = 'SKIPPED'::"BrainCompilationStatus", "lastError" = NULL,
+                    "updatedAt" = NOW()
+                WHERE id = $1
+                """,
+                compilation_id,
+            )
 
 
 async def mark_grounded_segment_failed(
@@ -1229,19 +1383,36 @@ async def mark_grounded_segment_failed(
     compilation_id: str,
     segment_key: str,
     error: str,
+    worker_id: str | None = None,
 ) -> None:
+    """Schedules retry, becoming terminal only after the bounded attempt limit."""
     async with connection() as conn:
         async with conn.transaction():
             await conn.execute(
                 """
                 UPDATE "BrainCompilationSegment"
-                SET status = 'FAILED'::"BrainCompilationStatus", attempts = attempts + 1,
-                    error = $3, "updatedAt" = NOW()
+                SET status = CASE
+                      WHEN attempts >= $5 THEN 'FAILED'::"BrainCompilationStatus"
+                      ELSE 'RETRY'::"BrainCompilationStatus"
+                    END,
+                    error = $3,
+                    "nextAttemptAt" = CASE
+                      WHEN attempts >= $5 THEN NULL
+                      ELSE NOW() + make_interval(
+                        secs => LEAST($6, (POWER(2, GREATEST(attempts - 1, 0)) * 60)::integer)
+                      )
+                    END,
+                    "claimedBy" = NULL, "claimedAt" = NULL, "leaseExpiresAt" = NULL,
+                    "updatedAt" = NOW()
                 WHERE "compilationId" = $1 AND "segmentKey" = $2
+                  AND ($4::text IS NULL OR "claimedBy" = $4)
                 """,
                 compilation_id,
                 segment_key,
                 _truncate(error, 500),
+                worker_id,
+                GROUNDED_SEGMENT_MAX_ATTEMPTS,
+                GROUNDED_SEGMENT_MAX_RETRY_SEC,
             )
             await _refresh_grounded_compilation(conn, compilation_id)
 
@@ -1258,8 +1429,10 @@ async def _refresh_grounded_compilation(
             status = CASE
                 WHEN counts.total = 0 THEN 'PENDING'::"BrainCompilationStatus"
                 WHEN counts.completed = counts.total THEN 'COMPLETED'::"BrainCompilationStatus"
+                WHEN counts.running > 0 THEN 'RUNNING'::"BrainCompilationStatus"
                 WHEN counts.completed > 0 THEN 'PARTIAL'::"BrainCompilationStatus"
                 WHEN counts.failed = counts.total THEN 'FAILED'::"BrainCompilationStatus"
+                WHEN counts.retrying > 0 THEN 'RETRY'::"BrainCompilationStatus"
                 ELSE 'PENDING'::"BrainCompilationStatus"
             END,
             "lastError" = CASE
@@ -1275,8 +1448,16 @@ async def _refresh_grounded_compilation(
                    COUNT(*) FILTER (
                        WHERE status = 'FAILED'::"BrainCompilationStatus"
                    )::integer AS failed,
+                   COUNT(*) FILTER (
+                       WHERE status = 'RUNNING'::"BrainCompilationStatus"
+                   )::integer AS running,
+                   COUNT(*) FILTER (
+                       WHERE status = 'RETRY'::"BrainCompilationStatus"
+                   )::integer AS retrying,
                    MAX(error) FILTER (
-                       WHERE status = 'FAILED'::"BrainCompilationStatus"
+                       WHERE status IN (
+                         'FAILED'::"BrainCompilationStatus", 'RETRY'::"BrainCompilationStatus"
+                       )
                    ) AS last_error
             FROM "BrainCompilationSegment"
             WHERE "compilationId" = $1
@@ -1349,11 +1530,38 @@ async def upsert_grounded_brain_items(
     items: list[dict[str, Any]],
     relations: list[dict[str, Any]],
     lease: GraphIndexLease,
+    worker_id: str,
+    content_hash: str,
 ) -> int:
     """Materializa um segmento atomicamente e marca sua cobertura concluída."""
     created = 0
     async with connection() as conn:
         async with conn.transaction():
+            claim = await conn.fetchrow(
+                """
+                SELECT segment.id
+                FROM "BrainCompilation" compilation
+                JOIN "BrainCompilationSegment" segment
+                  ON segment."compilationId" = compilation.id
+                WHERE compilation.id = $1
+                  AND compilation."userId" = $2
+                  AND compilation."transcriptId" = $3
+                  AND compilation."contentHash" = $4
+                  AND segment."segmentKey" = $5
+                  AND segment.status = 'RUNNING'::"BrainCompilationStatus"
+                  AND segment."claimedBy" = $6
+                  AND segment."leaseExpiresAt" > NOW()
+                FOR UPDATE OF segment
+                """,
+                compilation_id,
+                user_id,
+                transcript_id,
+                content_hash,
+                segment["key"],
+                worker_id,
+            )
+            if not claim:
+                raise GroundedCompilationClaimLostError("semantic segment claim is no longer valid")
             content = await conn.fetchrow(
                 """
                 SELECT id FROM "BrainNode"
@@ -1554,13 +1762,18 @@ async def upsert_grounded_brain_items(
             await conn.execute(
                 """
                 UPDATE "BrainCompilationSegment"
-                SET status = 'COMPLETED'::"BrainCompilationStatus", attempts = attempts + 1,
-                    "itemCount" = $3, error = NULL, "updatedAt" = NOW()
+                SET status = 'COMPLETED'::"BrainCompilationStatus",
+                    "itemCount" = $3, error = NULL,
+                    "claimedBy" = NULL, "claimedAt" = NULL, "leaseExpiresAt" = NULL,
+                    "nextAttemptAt" = NULL, "updatedAt" = NOW()
                 WHERE "compilationId" = $1 AND "segmentKey" = $2
+                  AND status = 'RUNNING'::"BrainCompilationStatus"
+                  AND "claimedBy" = $4
                 """,
                 compilation_id,
                 segment["key"],
                 created,
+                worker_id,
             )
             _require_grounded_compilation_lease(lease)
             await _refresh_grounded_compilation(conn, compilation_id)

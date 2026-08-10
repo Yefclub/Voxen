@@ -1,14 +1,16 @@
 import { BRAIN_INDEX_VERSION } from './brain';
 import { db } from './db';
+import type { GraphIndexCoverage } from '../shared/graph-index';
 
 export interface BrainCoverage {
   expectedSourceNodes: number;
   indexedSourceNodes: number;
   staleSourceNodes: number;
+  semantic: GraphIndexCoverage['semantic'];
 }
 
 export async function readBrainCoverage(userId: string): Promise<BrainCoverage> {
-  const [transcripts, notes, folders, enrichments, brainNodes, staleSourceNodes] =
+  const [transcripts, notes, folders, enrichments, brainNodes, staleSourceNodes, semantic] =
     await Promise.all([
       db.transcript.count({ where: { userId, status: 'ACTIVE' } }),
       db.note.count({ where: { userId } }),
@@ -31,12 +33,60 @@ export async function readBrainCoverage(userId: string): Promise<BrainCoverage> 
         },
       }),
       countStaleBrainSourceNodes(userId),
+      readSemanticCoverage(userId),
     ]);
   return {
     expectedSourceNodes: transcripts + notes + folders + enrichments,
     indexedSourceNodes: brainNodes,
     staleSourceNodes,
+    semantic,
   };
+}
+
+async function readSemanticCoverage(userId: string): Promise<GraphIndexCoverage['semantic']> {
+  const rows = await db.$queryRaw<
+    Array<{
+      total: number | bigint;
+      pending: number | bigint;
+      running: number | bigint;
+      retrying: number | bigint;
+      completed: number | bigint;
+      failed: number | bigint;
+      skipped: number | bigint;
+    }>
+  >`
+    SELECT
+      count(*)::int AS total,
+      count(*) FILTER (WHERE segment.status::text = 'PENDING')::int AS pending,
+      count(*) FILTER (WHERE segment.status::text = 'RUNNING')::int AS running,
+      count(*) FILTER (WHERE segment.status::text = 'RETRY')::int AS retrying,
+      count(*) FILTER (WHERE segment.status::text = 'COMPLETED')::int AS completed,
+      count(*) FILTER (WHERE segment.status::text = 'FAILED')::int AS failed,
+      count(*) FILTER (WHERE segment.status::text = 'SKIPPED')::int AS skipped
+    FROM "BrainCompilationSegment" segment
+    JOIN "BrainCompilation" compilation
+      ON compilation.id = segment."compilationId"
+     AND compilation."userId" = ${userId}
+    JOIN "Transcript" transcript
+      ON transcript.id = compilation."transcriptId"
+     AND transcript."userId" = compilation."userId"
+     AND transcript.status = 'ACTIVE'::"ContentStatus"
+  `;
+  const row = rows[0];
+  return {
+    total: numeric(row?.total),
+    pending: numeric(row?.pending),
+    running: numeric(row?.running),
+    retrying: numeric(row?.retrying),
+    completed: numeric(row?.completed),
+    failed: numeric(row?.failed),
+    skipped: numeric(row?.skipped),
+  };
+}
+
+function numeric(value: number | bigint | undefined): number {
+  if (value === undefined) return 0;
+  return typeof value === 'bigint' ? Number(value) : value;
 }
 
 async function countStaleBrainSourceNodes(userId: string): Promise<number> {

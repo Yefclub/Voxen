@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import tempfile
+import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -1130,6 +1131,7 @@ async def _maybe_grounded_brain_extract(
     user_id: str,
     transcript_id: str,
     log: Any,  # noqa: ANN401
+    worker_id: str | None = None,
 ) -> None:
     """Compila entidades/claims por segmentos, sem derrubar a ingestão."""
     try:
@@ -1174,8 +1176,8 @@ async def _maybe_grounded_brain_extract(
             content_hash=content_hash,
             segments=segment_payload,
         )
-        pending_keys = {str(row["segmentKey"]) for row in pending_rows}
-        if not pending_keys:
+        due_keys = {str(row["segmentKey"]) for row in pending_rows}
+        if not due_keys:
             log.info("brain-extract-already-complete", transcript_id=transcript_id)
             return
         config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
@@ -1183,89 +1185,112 @@ async def _maybe_grounded_brain_extract(
             await db.mark_grounded_compilation_skipped(compilation_id)
             log.info("brain-extract-skipped-missing-config", transcript_id=transcript_id)
             return
-        lease = await acquire_graph_index_lease(user_id)
-        if lease is None:
-            log.info("brain-extract-deferred-lease", transcript_id=transcript_id)
-            return
+        claim_owner = f"{worker_id or 'brain'}:{uuid.uuid4()}"
         language = await voxen_settings.get_app_language()
+        claimed_any = False
         total_items = 0
         total_edges = 0
-        try:
-            async with lease.heartbeat():
-                for segment in segment_payload:
-                    if segment["key"] not in pending_keys:
-                        continue
-                    if not lease.locally_owned():
-                        log.info("brain-extract-interrupted-lease", transcript_id=transcript_id)
-                        return
-                    try:
-                        result = await brain_extract.extract_grounded_concepts(
-                            title=title,
-                            content=segment["text"],
-                            api_key=config.api_key,
-                            model=config.model,
-                            fallback_model=config.fallback_model,
-                            language=language,
-                        )
-                        log_openrouter_route(log, "brain_extract", config.model, result.model)
-                        await db.insert_cost_event(
-                            user_id=user_id,
-                            kind="CHAT",
-                            model=result.model,
-                            tokens_in=result.tokens_in,
-                            tokens_out=result.tokens_out,
-                            cost_usd=result.cost_usd,
-                            meta={
-                                "source": "brain_grounded_extract",
-                                "transcript_id": transcript_id,
-                                "segment_key": segment["key"],
-                            },
-                        )
-                        payload = [
-                            {
-                                "kind": item.kind,
-                                "label": item.label,
-                                "excerpt": item.excerpt,
-                                "confidence": item.confidence,
-                                "slug": brain_extract.slugify_label(item.label),
-                            }
-                            for item in result.items
-                        ]
-                        relations = [
-                            {
-                                "subject_slug": brain_extract.slugify_label(relation.subject),
-                                "predicate": relation.predicate,
-                                "object_slug": brain_extract.slugify_label(relation.object),
-                                "kind": relation.kind,
-                                "excerpt": relation.excerpt,
-                                "confidence": relation.confidence,
-                            }
-                            for relation in result.relations
-                        ]
-                        total_items += len(payload)
-                        total_edges += await db.upsert_grounded_brain_items(
-                            user_id=user_id,
-                            transcript_id=transcript_id,
-                            compilation_id=compilation_id,
-                            segment=segment,
-                            items=payload,
-                            relations=relations,
-                            lease=lease,
-                        )
-                    except Exception as e:  # noqa: BLE001 — um segmento não invalida os demais
-                        await db.mark_grounded_segment_failed(
-                            compilation_id=compilation_id,
-                            segment_key=segment["key"],
-                            error=type(e).__name__,
-                        )
-                        log.warning(
-                            "brain-extract-segment-failed",
-                            transcript_id=transcript_id,
-                            segment_key=segment["key"],
-                            **_error_diagnostic(e, "BRAIN_EXTRACTION_SEGMENT_FAILED"),
-                        )
-        finally:
-            await lease.release()
+        for segment in segment_payload:
+            if segment["key"] not in due_keys:
+                continue
+            claimed_rows = await db.claim_grounded_brain_segments(
+                user_id=user_id,
+                compilation_id=compilation_id,
+                segment_keys=[segment["key"]],
+                worker_id=claim_owner,
+                limit=1,
+            )
+            if not claimed_rows:
+                continue
+            claimed_any = True
+            lease = None
+            try:
+                # Network-bound extraction intentionally runs without the graph write lease.
+                result = await brain_extract.extract_grounded_concepts(
+                    title=title,
+                    content=segment["text"],
+                    api_key=config.api_key,
+                    model=config.model,
+                    fallback_model=config.fallback_model,
+                    language=language,
+                )
+                log_openrouter_route(log, "brain_extract", config.model, result.model)
+                await db.insert_cost_event(
+                    user_id=user_id,
+                    kind="CHAT",
+                    model=result.model,
+                    tokens_in=result.tokens_in,
+                    tokens_out=result.tokens_out,
+                    cost_usd=result.cost_usd,
+                    meta={
+                        "source": "brain_grounded_extract",
+                        "transcript_id": transcript_id,
+                        "segment_key": segment["key"],
+                    },
+                )
+                payload = [
+                    {
+                        "kind": item.kind,
+                        "label": item.label,
+                        "excerpt": item.excerpt,
+                        "confidence": item.confidence,
+                        "slug": brain_extract.slugify_label(item.label),
+                    }
+                    for item in result.items
+                ]
+                relations = [
+                    {
+                        "subject_slug": brain_extract.slugify_label(relation.subject),
+                        "predicate": relation.predicate,
+                        "object_slug": brain_extract.slugify_label(relation.object),
+                        "kind": relation.kind,
+                        "excerpt": relation.excerpt,
+                        "confidence": relation.confidence,
+                    }
+                    for relation in result.relations
+                ]
+                lease = await acquire_graph_index_lease(user_id)
+                if lease is None:
+                    await db.mark_grounded_segment_failed(
+                        compilation_id=compilation_id,
+                        segment_key=segment["key"],
+                        error="GRAPH_WRITE_LEASE_UNAVAILABLE",
+                        worker_id=claim_owner,
+                    )
+                    log.info("brain-extract-deferred-lease", transcript_id=transcript_id)
+                    continue
+                async with lease.heartbeat():
+                    total_edges += await db.upsert_grounded_brain_items(
+                        user_id=user_id,
+                        transcript_id=transcript_id,
+                        compilation_id=compilation_id,
+                        segment=segment,
+                        items=payload,
+                        relations=relations,
+                        lease=lease,
+                        worker_id=claim_owner,
+                        content_hash=content_hash,
+                    )
+                    total_items += len(payload)
+            except Exception as e:  # noqa: BLE001 — um segmento não invalida os demais
+                await db.mark_grounded_segment_failed(
+                    compilation_id=compilation_id,
+                    segment_key=segment["key"],
+                    error=type(e).__name__,
+                    worker_id=claim_owner,
+                )
+                log.warning(
+                    "brain-extract-segment-failed",
+                    transcript_id=transcript_id,
+                    segment_key=segment["key"],
+                    **_error_diagnostic(e, "BRAIN_EXTRACTION_SEGMENT_FAILED"),
+                )
+            finally:
+                if lease is not None:
+                    await lease.release()
+        if not claimed_any:
+            log.info("brain-extract-already-claimed", transcript_id=transcript_id)
+            return
         log.info(
             "brain-extract-done",
             transcript_id=transcript_id,

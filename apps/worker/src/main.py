@@ -32,7 +32,7 @@ from . import (
     ytdl,
 )
 from .cancellation import cancel_subscriber
-from .pipeline import _maybe_generate_tags, process_job
+from .pipeline import _maybe_generate_tags, _maybe_grounded_brain_extract, process_job
 from .safe_diagnostics import error_diagnostic
 
 log = structlog.get_logger(__name__)
@@ -135,6 +135,7 @@ async def _enrichment_reconciliation_loop(
     sem: asyncio.Semaphore,
     stop: asyncio.Event,
     tasks: set[asyncio.Task[None]],
+    worker_id: str = "reconciliation-worker",
 ) -> None:
     """Reconcilia melhorias em loop independente do reaper de jobs."""
     while not stop.is_set():
@@ -148,15 +149,20 @@ async def _enrichment_reconciliation_loop(
                 **error_diagnostic(exc, "BRAIN_RECONCILIATION_FAILED"),
             )
         try:
-            pending_summaries, pending_tags, pending_research = await _reconcile_enrichments_once(
-                sem, tasks
-            )
+            (
+                pending_summaries,
+                pending_tags,
+                pending_research,
+                pending_brain,
+            ) = await _reconcile_enrichments_once(sem, tasks, worker_id=worker_id)
             if pending_summaries:
                 log.info("summary-reconciliation-dispatched", count=pending_summaries)
             if pending_tags:
                 log.info("tag-reconciliation-dispatched", count=pending_tags)
             if pending_research:
                 log.info("research-reconciliation-dispatched", count=pending_research)
+            if pending_brain:
+                log.info("brain-compilation-reconciliation-dispatched", count=pending_brain)
         except Exception as exc:  # noqa: BLE001
             log.error(
                 "enrichment-reconciliation-failed",
@@ -274,6 +280,43 @@ async def _run_research_with_sem(sem: asyncio.Semaphore, item: dict[str, Any]) -
             )
 
 
+async def _run_grounded_brain_with_sem(
+    sem: asyncio.Semaphore,
+    item: dict[str, Any],
+    worker_id: str,
+) -> None:
+    async with sem:
+        try:
+            await _maybe_grounded_brain_extract(
+                user_id=item["userId"],
+                transcript_id=item["transcriptId"],
+                log=log,
+                worker_id=f"{worker_id}:brain:{item['transcriptId']}",
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "brain-compilation-reconciliation-task-failed",
+                transcript_id=item["transcriptId"],
+                **error_diagnostic(exc, "BRAIN_COMPILATION_RECONCILIATION_FAILED"),
+            )
+
+
+async def _reconcile_grounded_brain_once(
+    sem: asyncio.Semaphore,
+    tasks: set[asyncio.Task[None]],
+    worker_id: str,
+    limit: int = 4,
+    max_in_flight: int = ENRICHMENT_MAX_CONCURRENCY,
+) -> int:
+    capacity = min(limit, max(0, max_in_flight - len(tasks)))
+    pending = await db.list_due_grounded_compilations(limit=capacity) if capacity else []
+    for item in pending:
+        _track_task(tasks, _run_grounded_brain_with_sem(sem, item, worker_id))
+    return len(pending)
+
+
 async def _reconcile_research_once(
     sem: asyncio.Semaphore,
     tasks: set[asyncio.Task[None]],
@@ -302,21 +345,22 @@ async def _reconcile_enrichments_once(
     tasks: set[asyncio.Task[None]],
     *,
     max_in_flight: int = ENRICHMENT_MAX_CONCURRENCY,
-) -> tuple[int, int, int]:
+    worker_id: str = "reconciliation-worker",
+) -> tuple[int, int, int, int]:
     """Round-robin durable enrichment queues without starving research."""
     global _enrichment_queue_cursor
     if len(tasks) >= max_in_flight:
-        return 0, 0, 0
+        return 0, 0, 0, 0
 
-    counts = [0, 0, 0]
+    counts = [0, 0, 0, 0]
     start = _enrichment_queue_cursor
-    _enrichment_queue_cursor = (_enrichment_queue_cursor + 1) % 3
+    _enrichment_queue_cursor = (_enrichment_queue_cursor + 1) % 4
     while len(tasks) < max_in_flight:
         dispatched = 0
-        for offset in range(3):
+        for offset in range(4):
             if len(tasks) >= max_in_flight:
                 break
-            queue = (start + offset) % 3
+            queue = (start + offset) % 4
             if queue == 0:
                 claimed = await _reconcile_summaries_once(
                     sem, tasks, limit=1, max_in_flight=max_in_flight
@@ -325,15 +369,23 @@ async def _reconcile_enrichments_once(
                 claimed = await _reconcile_tags_once(
                     sem, tasks, limit=1, max_in_flight=max_in_flight
                 )
-            else:
+            elif queue == 2:
                 claimed = await _reconcile_research_once(
                     sem, tasks, limit=1, max_in_flight=max_in_flight
+                )
+            else:
+                claimed = await _reconcile_grounded_brain_once(
+                    sem,
+                    tasks,
+                    worker_id,
+                    limit=1,
+                    max_in_flight=max_in_flight,
                 )
             counts[queue] += claimed
             dispatched += claimed
         if dispatched == 0:
             break
-    return counts[0], counts[1], counts[2]
+    return counts[0], counts[1], counts[2], counts[3]
 
 
 async def _process_automation_run(sem: asyncio.Semaphore, run_id: str) -> None:
@@ -452,7 +504,7 @@ async def amain() -> None:
             supervisor.create_task(_subscriber_loop(sem, stop, worker_id, job_tasks))
             supervisor.create_task(_reconciliation_loop(sem, stop, worker_id, job_tasks))
             supervisor.create_task(
-                _enrichment_reconciliation_loop(enrichment_sem, stop, enrichment_tasks)
+                _enrichment_reconciliation_loop(enrichment_sem, stop, enrichment_tasks, worker_id)
             )
             supervisor.create_task(cancel_subscriber(stop))
             supervisor.create_task(_automation_subscriber_loop(automation_sem, stop))
