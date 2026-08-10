@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.5-dev.1786324652 — 2026-08-09 · Dev
+
+### 🐛 Semantic graph indexing now recovers automatically
+
+Semantic graph extraction now resumes after temporary worker, provider, or graph-lock
+interruptions instead of leaving transcript concepts and relationships pending indefinitely.
+Graph status also distinguishes source-node coverage from semantic segment progress, making
+pending, retrying, completed, skipped, and terminal work observable.
+
 ## v0.14.5-dev.1786233786 — 2026-08-08 · Dev
 
 ### 🐛 Recover interrupted saved-media migrations during startup

@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786324652",
+    "channel": "dev",
+    "type": "fix",
+    "title": "Semantic graph indexing now recovers automatically",
+    "body": "Semantic graph extraction now resumes after temporary worker, provider, or graph-lock\ninterruptions instead of leaving transcript concepts and relationships pending indefinitely.\nGraph status also distinguishes source-node coverage from semantic segment progress, making\npending, retrying, completed, skipped, and terminal work observable.",
+    "pr": 718,
+    "author": "Kalyel",
+    "date": "2026-08-09T22:17:18-03:00",
+    "translations": {
+      "en": {
+        "title": "Semantic graph indexing now recovers automatically",
+        "body": "Semantic graph extraction now resumes after temporary worker, provider, or graph-lock\ninterruptions instead of leaving transcript concepts and relationships pending indefinitely.\nGraph status also distinguishes source-node coverage from semantic segment progress, making\npending, retrying, completed, skipped, and terminal work observable."
+      },
+      "pt-BR": {
+        "title": "A indexação semântica do grafo agora se recupera automaticamente",
+        "body": "A extração semântica do grafo agora é retomada após interrupções temporárias do worker, do\nprovedor ou do bloqueio de escrita, evitando que conceitos e relações das transcrições fiquem\npendentes indefinidamente. O status do grafo também separa a cobertura dos conteúdos da\nevolução dos segmentos semânticos, tornando visíveis os trabalhos pendentes, em nova tentativa,\nconcluídos, ignorados e encerrados com falha."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/718"
+  },
+  {
     "version": "0.14.5-dev.1786233786",
     "channel": "dev",
     "type": "fix",
