@@ -76,6 +76,7 @@ model User {
   chatTurns             ChatTurn[]
   chatStreamLease       ChatStreamLease?
   notes                 Note[]
+  noteRevisions         NoteRevision[]
   libraryFolders        LibraryFolder[]
   brainNodes            BrainNode[]
   brainEdges            BrainEdge[]
@@ -1165,6 +1166,14 @@ enum NoteKind {
   FOLDER
 }
 
+enum NoteRevisionActor {
+  USER
+  MCP
+  CHAT
+  RESTORE
+  SYSTEM
+}
+
 model Note {
   id                String                   @id @default(cuid())
   userId            String
@@ -1175,6 +1184,7 @@ model Note {
   title             String
   // Conteúdo markdown. FOLDER ignora este campo.
   content           String                   @default("") @db.Text
+  revision          Int                      @default(1)
   // tsvector mantido por trigger SQL (sync com title+content).
   searchVector      Unsupported("tsvector")?
   createdAt         DateTime                 @default(now())
@@ -1183,10 +1193,29 @@ model Note {
   parent            Note?                    @relation("NoteTree", fields: [parentId], references: [id], onDelete: Cascade)
   children          Note[]                   @relation("NoteTree")
   transcriptSources NoteTranscriptSource[]
+  revisions         NoteRevision[]
 
   @@index([userId, parentId])
   @@index([userId, sourceType, sourceId])
   @@index([userId, updatedAt(sort: Desc)])
+}
+
+model NoteRevision {
+  id            String            @id @default(cuid())
+  userId        String
+  noteId        String
+  revision      Int
+  title         String
+  content       String            @db.Text
+  checksum      String
+  actor         NoteRevisionActor
+  changeSummary String?           @db.Text
+  createdAt     DateTime          @default(now())
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note          Note              @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@unique([noteId, revision])
+  @@index([userId, noteId, createdAt(sort: Desc)])
 }
 
 // Fontes explícitas de uma nota. A coluna Note.sourceType/sourceId permanece

@@ -242,6 +242,11 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     const names = tools.map((t) => t.name);
     expect(names).toContain('voxen_create_note');
     expect(names).toContain('voxen_update_note');
+    expect(names).toContain('voxen_patch_note');
+    expect(names).toContain('voxen_restore_note_revision');
+    expect(names).toContain('voxen_search_note_content');
+    expect(names).toContain('voxen_list_note_revisions');
+    expect(names).toContain('voxen_read_note_revision');
     expect(names).toContain('voxen_request_transcription');
     expect(names).toContain('voxen_request_transcriptions');
     expect(names).toContain('voxen_get_job_status');
@@ -450,5 +455,139 @@ describeIfDb('MCP Streamable HTTP (com DB)', () => {
     expect(data.result?.isError).toBe(true);
     const unchanged = await db.note.findUnique({ where: { id: otherNote.id } });
     expect(unchanged?.content).toBe('segredo');
+  });
+
+  it('faz busca cirúrgica, preview, edição versionada, conflito e restore', async () => {
+    const create = await call(
+      {
+        jsonrpc: '2.0',
+        id: 70,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_create_note',
+          arguments: { title: 'Versionada MCP', content: 'Alpha\nTarget\nOmega' },
+        },
+      },
+      TOKEN,
+    );
+    const created = (await create.json()) as {
+      result?: { structuredContent?: { id?: string; revision?: number } };
+    };
+    const noteId = created.result?.structuredContent?.id;
+    expect(typeof noteId).toBe('string');
+    expect(created.result?.structuredContent?.revision).toBe(1);
+
+    const search = await call(
+      {
+        jsonrpc: '2.0',
+        id: 71,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_search_note_content',
+          arguments: { note_id: noteId, query: 'target' },
+        },
+      },
+      TOKEN,
+    );
+    const searched = (await search.json()) as {
+      result?: { structuredContent?: { revision?: number; matches?: Array<{ line: number }> } };
+    };
+    expect(searched.result?.structuredContent?.revision).toBe(1);
+    expect(searched.result?.structuredContent?.matches?.[0]?.line).toBe(2);
+
+    const operation = { kind: 'replace', target: 'Target', text: 'Revised' };
+    const preview = await call(
+      {
+        jsonrpc: '2.0',
+        id: 72,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_patch_note',
+          arguments: { note_id: noteId, expected_revision: 1, operation, preview_only: true },
+        },
+      },
+      TOKEN,
+    );
+    const previewed = (await preview.json()) as {
+      result?: { structuredContent?: { applied?: boolean; revision?: number } };
+    };
+    expect(previewed.result?.structuredContent).toMatchObject({ applied: false, revision: 1 });
+    expect((await db.note.findUniqueOrThrow({ where: { id: noteId! } })).revision).toBe(1);
+
+    const apply = await call(
+      {
+        jsonrpc: '2.0',
+        id: 73,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_patch_note',
+          arguments: { note_id: noteId, expected_revision: 1, operation, preview_only: false },
+        },
+      },
+      TOKEN,
+    );
+    const applied = (await apply.json()) as {
+      result?: { structuredContent?: { applied?: boolean; revision?: number } };
+    };
+    expect(applied.result?.structuredContent).toMatchObject({ applied: true, revision: 2 });
+
+    const stale = await call(
+      {
+        jsonrpc: '2.0',
+        id: 74,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_patch_note',
+          arguments: {
+            note_id: noteId,
+            expected_revision: 1,
+            operation: { kind: 'append', text: ' stale' },
+            preview_only: false,
+          },
+        },
+      },
+      TOKEN,
+    );
+    const staleBody = (await stale.json()) as {
+      result?: { isError?: boolean; content?: Array<{ text?: string }> };
+    };
+    expect(staleBody.result?.isError).toBe(true);
+    expect(staleBody.result?.content?.[0]?.text).toContain('REVISION_CONFLICT');
+
+    const history = await call(
+      {
+        jsonrpc: '2.0',
+        id: 75,
+        method: 'tools/call',
+        params: { name: 'voxen_list_note_revisions', arguments: { note_id: noteId } },
+      },
+      TOKEN,
+    );
+    const revisions = (await history.json()) as {
+      result?: { structuredContent?: { revisions?: Array<{ revision: number }> } };
+    };
+    expect(revisions.result?.structuredContent?.revisions?.map((item) => item.revision)).toEqual([
+      2, 1,
+    ]);
+
+    const restore = await call(
+      {
+        jsonrpc: '2.0',
+        id: 76,
+        method: 'tools/call',
+        params: {
+          name: 'voxen_restore_note_revision',
+          arguments: { note_id: noteId, revision: 1, expected_revision: 2 },
+        },
+      },
+      TOKEN,
+    );
+    const restored = (await restore.json()) as {
+      result?: { structuredContent?: { revision?: number; restoredFromRevision?: number } };
+    };
+    expect(restored.result?.structuredContent).toMatchObject({
+      revision: 3,
+      restoredFromRevision: 1,
+    });
   });
 });

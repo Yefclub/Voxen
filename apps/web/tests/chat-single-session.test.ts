@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import {
   acquireChatStreamSlot,
   approveChatAction,
+  ChatApprovalMutationError,
   clearConversation,
   getOrCreateConversation,
   getChatSnapshot,
@@ -19,9 +20,11 @@ import {
 import { loadAlwaysAllowActions } from '../src/lib/chat/hitl-preferences';
 import {
   HITL_ACTION_CREATE_NOTE,
+  HITL_ACTION_PATCH_NOTE,
   resolveProposeCreateNoteApproval,
   shouldRequireHitlApproval,
 } from '../src/lib/chat/hitl-policy';
+import { commitNoteVersion, recordInitialNoteRevision } from '../src/lib/note-versioning';
 
 const describeIfDb = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -270,6 +273,143 @@ describeIfDb('chat de sessão única', () => {
     expect(resumeAssistant?.parentId).toBe(result.hitlMessageId);
 
     await expect(approveChatAction(user.id, approvalId)).rejects.toThrow();
+  });
+
+  it('aprova edição cirúrgica versionada sem conceder always-allow', async () => {
+    const user = await db.user.create({
+      data: { email: 'chat-test-patch@voxen.local', name: 'Patch', status: 'APPROVED' },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const note = await db.$transaction(async (tx) => {
+      const created = await tx.note.create({
+        data: {
+          userId: user.id,
+          kind: 'NOTE',
+          title: 'Nota cirúrgica',
+          content: 'Antes Target Depois',
+        },
+      });
+      await recordInitialNoteRevision(tx, created, 'USER');
+      return created;
+    });
+    const approvalId = `patch-approval:${crypto.randomUUID()}`;
+    const payload = {
+      action: HITL_ACTION_PATCH_NOTE,
+      noteId: note.id,
+      noteTitle: note.title,
+      expectedRevision: 1,
+      operation: { kind: 'replace', target: 'Target', text: 'Revisado' },
+      changeSummary: 'Corrigir o trecho central',
+    };
+    await db.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: '',
+        tools: [
+          {
+            id: 'tool-patch',
+            name: 'propose_patch_note',
+            state: 'approval-required',
+            output: { ...payload, approvalRequired: true, approvalId, title: note.title },
+          },
+        ],
+      },
+    });
+    await db.chatApproval.create({
+      data: {
+        userId: user.id,
+        conversationId: conversation.id,
+        providerApprovalId: approvalId,
+        action: HITL_ACTION_PATCH_NOTE,
+        payload,
+        expiresAt: null,
+      },
+    });
+
+    const result = await approveChatAction(user.id, approvalId, { alwaysAllow: true });
+    expect(result.action).toBe(HITL_ACTION_PATCH_NOTE);
+    expect(result.message).toContain('atualizada');
+    expect(result.resumePrompt).toContain('edição cirúrgica');
+    const stored = await db.note.findUniqueOrThrow({ where: { id: note.id } });
+    expect(stored).toMatchObject({ revision: 2, content: 'Antes Revisado Depois' });
+    expect(
+      await db.noteRevision.findMany({ where: { noteId: note.id }, orderBy: { revision: 'asc' } }),
+    ).toHaveLength(2);
+    expect((await loadAlwaysAllowActions(user.id)).has(HITL_ACTION_CREATE_NOTE)).toBe(false);
+  });
+
+  it('mantém aprovação pendente quando outra revisão vence antes da confirmação', async () => {
+    const user = await db.user.create({
+      data: { email: 'chat-test-patch-conflict@voxen.local', name: 'Conflict', status: 'APPROVED' },
+    });
+    const conversation = await getOrCreateConversation(user.id);
+    const note = await db.$transaction(async (tx) => {
+      const created = await tx.note.create({
+        data: { userId: user.id, kind: 'NOTE', title: 'Concorrente', content: 'Target' },
+      });
+      await recordInitialNoteRevision(tx, created, 'USER');
+      return created;
+    });
+    const approvalId = `patch-conflict:${crypto.randomUUID()}`;
+    const payload = {
+      action: HITL_ACTION_PATCH_NOTE,
+      noteId: note.id,
+      noteTitle: note.title,
+      expectedRevision: 1,
+      operation: { kind: 'replace', target: 'Target', text: 'Chat' },
+      changeSummary: 'Editar via chat',
+    };
+    await db.chatMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'ASSISTANT',
+        content: '',
+        tools: [
+          {
+            id: 'tool-conflict',
+            name: 'propose_patch_note',
+            state: 'approval-required',
+            output: { ...payload, approvalRequired: true, approvalId, title: note.title },
+          },
+        ],
+      },
+    });
+    await db.chatApproval.create({
+      data: {
+        userId: user.id,
+        conversationId: conversation.id,
+        providerApprovalId: approvalId,
+        action: HITL_ACTION_PATCH_NOTE,
+        payload,
+        expiresAt: null,
+      },
+    });
+    await commitNoteVersion({
+      userId: user.id,
+      noteId: note.id,
+      expectedRevision: 1,
+      actor: 'USER',
+      changeSummary: 'Edit in another surface',
+      changes: { content: 'Newer version' },
+    });
+
+    try {
+      await approveChatAction(user.id, approvalId);
+      throw new Error('Expected revision conflict');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ChatApprovalMutationError);
+      expect(error).toMatchObject({ code: 'REVISION_CONFLICT', currentRevision: 2 });
+    }
+    expect(
+      await db.chatApproval.findUniqueOrThrow({
+        where: { userId_providerApprovalId: { userId: user.id, providerApprovalId: approvalId } },
+      }),
+    ).toMatchObject({ status: 'PENDING' });
+    expect(await db.note.findUniqueOrThrow({ where: { id: note.id } })).toMatchObject({
+      revision: 2,
+      content: 'Newer version',
+    });
   });
 
   it('always-allow grava preferência e desliga o pause de create_note', async () => {

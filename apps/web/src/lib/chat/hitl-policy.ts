@@ -4,25 +4,29 @@
  */
 
 export const HITL_ACTION_CREATE_NOTE = 'create_note' as const;
+export const HITL_ACTION_PATCH_NOTE = 'patch_note' as const;
 
-export type HitlWriteAction = typeof HITL_ACTION_CREATE_NOTE;
+export type HitlWriteAction = typeof HITL_ACTION_CREATE_NOTE | typeof HITL_ACTION_PATCH_NOTE;
+type HitlAlwaysAllowAction = typeof HITL_ACTION_CREATE_NOTE;
 
 /** Setting USER-scoped: JSON array de ações liberadas. */
 export const HITL_ALWAYS_ALLOW_SETTING_KEY = 'hitl_always_allow';
 
 export function isHitlWriteAction(value: string): value is HitlWriteAction {
-  return value === HITL_ACTION_CREATE_NOTE;
+  return value === HITL_ACTION_CREATE_NOTE || value === HITL_ACTION_PATCH_NOTE;
 }
 
 /** Parse JSON de preferências; entradas desconhecidas são ignoradas. */
-export function parseAlwaysAllowActions(raw: string | null | undefined): Set<HitlWriteAction> {
+export function parseAlwaysAllowActions(
+  raw: string | null | undefined,
+): Set<HitlAlwaysAllowAction> {
   if (!raw?.trim()) return new Set();
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return new Set();
-    const out = new Set<HitlWriteAction>();
+    const out = new Set<HitlAlwaysAllowAction>();
     for (const item of parsed) {
-      if (typeof item === 'string' && isHitlWriteAction(item)) out.add(item);
+      if (item === HITL_ACTION_CREATE_NOTE) out.add(item);
     }
     return out;
   } catch {
@@ -31,16 +35,16 @@ export function parseAlwaysAllowActions(raw: string | null | undefined): Set<Hit
 }
 
 export function serializeAlwaysAllowActions(actions: ReadonlySet<string>): string {
-  const list = [...actions].filter(isHitlWriteAction).sort();
+  const list = [...actions].filter((action) => action === HITL_ACTION_CREATE_NOTE).sort();
   return JSON.stringify(list);
 }
 
 export function withAlwaysAllowAction(
   current: ReadonlySet<string>,
   action: string,
-): Set<HitlWriteAction> {
+): Set<HitlAlwaysAllowAction> {
   const next = parseAlwaysAllowActions(serializeAlwaysAllowActions(current));
-  if (isHitlWriteAction(action)) next.add(action);
+  if (action === HITL_ACTION_CREATE_NOTE) next.add(action);
   return next;
 }
 
@@ -53,6 +57,7 @@ export function shouldRequireHitlApproval(args: {
   alwaysAllowed: ReadonlySet<string>;
 }): boolean {
   if (!isHitlWriteAction(args.action)) return false;
+  if (args.action === HITL_ACTION_PATCH_NOTE) return true;
   return !args.alwaysAllowed.has(args.action);
 }
 
@@ -79,6 +84,15 @@ export function buildHitlResumePrompt(args: {
       `A nota “${title}” foi criada com sucesso.`,
       'Continue o plano anterior: confirme de forma natural o que foi feito e prossiga com o que ainda faltava.',
       'Não proponha criar a mesma nota de novo. Não mencione IDs internos nem nomes de ferramentas.',
+    ].join(' ');
+  }
+  if (args.action === HITL_ACTION_PATCH_NOTE) {
+    const title = args.title?.trim() || 'sem título';
+    return [
+      'O usuário confirmou a edição cirúrgica da nota na interface.',
+      `A nova revisão de “${title}” foi criada com sucesso.`,
+      'Continue o plano anterior: confirme de forma natural o trecho atualizado e prossiga com o que ainda faltava.',
+      'Não proponha a mesma edição de novo. Não mencione IDs internos nem nomes de ferramentas.',
     ].join(' ');
   }
   return [

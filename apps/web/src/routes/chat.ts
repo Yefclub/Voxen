@@ -5,6 +5,7 @@ import { db } from '../lib/db';
 import { rateLimit } from '../lib/rate-limit';
 import {
   approveChatAction,
+  ChatApprovalMutationError,
   clearConversation,
   getChatSnapshot,
   type ChatStreamEvent,
@@ -358,6 +359,17 @@ chatRoutes.post('/approve', async (c) => {
     }
     return streamTurnResponse(turn, requestStartedAt);
   } catch (error) {
+    if (error instanceof ChatApprovalMutationError) {
+      return c.json(
+        {
+          error: error.message,
+          code: error.code,
+          currentRevision: error.currentRevision,
+          currentChecksum: error.currentChecksum,
+        },
+        error.code === 'REVISION_CONFLICT' ? 409 : 400,
+      );
+    }
     return c.json(
       { error: error instanceof Error ? error.message : 'Não foi possível confirmar.' },
       400,

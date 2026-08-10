@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
+  Clock,
   Eye,
   EyeOff,
   FileText,
@@ -16,6 +17,7 @@ import {
   Library,
   Loader2,
   Plus,
+  RefreshCw,
   Save,
 } from '@/components/ui/icons';
 import { toast } from '@/lib/toast';
@@ -30,6 +32,7 @@ import { useFetch } from '../lib/hooks';
 import { useNotes } from '../lib/use-notes';
 import { PageHeader, PageShell } from '../components/ui/page-shell';
 import { useI18n } from '../lib/i18n';
+import { NoteHistoryDialog } from '../components/notes/note-history-dialog';
 
 interface NoteFull {
   id: string;
@@ -37,12 +40,19 @@ interface NoteFull {
   kind: 'NOTE' | 'FOLDER';
   title: string;
   content: string;
+  revision: number;
+  checksum: string;
   createdAt: string;
   updatedAt: string;
 }
 
 interface GetResp {
   note: NoteFull;
+}
+
+interface RevisionConflict {
+  currentRevision: number;
+  currentChecksum: string;
 }
 
 export function NotasPage(): React.ReactElement {
@@ -193,17 +203,21 @@ function NoteEditor({
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [revision, setRevision] = useState(1);
+  const [conflict, setConflict] = useState<RevisionConflict | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   // O componente recebe key=noteId: toda nota recém-aberta começa em Preview.
   const [previewMode, setPreviewMode] = useState(true);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // AbortController do PATCH em voo: garante que dois saves concorrentes
-  // (debounce + onBlur, ou save manual) não compitam — o anterior é abortado e
-  // o último vence de forma determinística.
-  const inFlight = useRef<AbortController | null>(null);
-  // `dirty` muda a cada tecla; sem uma ref o `save` debounced fecharia sobre um
-  // valor stale. Mantém o estado mais recente acessível sem recriar o callback.
+  const inFlight = useRef(false);
+  const queuedSave = useRef(false);
+  const editSequence = useRef(0);
+  const revisionRef = useRef(1);
+  const draftRef = useRef({ title: '', content: '' });
+  const saveRef = useRef<() => Promise<void>>(async () => undefined);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+  draftRef.current = { title, content };
 
   useEffect(() => {
     // Só re-hidrata do servidor quando NÃO há edição pendente — senão um refetch
@@ -211,6 +225,9 @@ function NoteEditor({
     if (data?.note && !dirtyRef.current) {
       setTitle(data.note.title);
       setContent(data.note.content);
+      setRevision(data.note.revision);
+      revisionRef.current = data.note.revision;
+      setConflict(null);
       setDirty(false);
     }
   }, [data?.note]);
@@ -221,36 +238,60 @@ function NoteEditor({
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
-    if (!dirtyRef.current) return;
-    // Aborta o PATCH anterior (se houver) pra o último request vencer.
-    inFlight.current?.abort();
-    const controller = new AbortController();
-    inFlight.current = controller;
+    if (!dirtyRef.current || conflict) return;
+    if (inFlight.current) {
+      queuedSave.current = true;
+      return;
+    }
+    inFlight.current = true;
+    queuedSave.current = false;
+    const savedSequence = editSequence.current;
+    const draft = draftRef.current;
+    const expectedRevision = revisionRef.current;
     setSaving(true);
     try {
       const res = await fetch(`/api/notes/${noteId}`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content }),
-        signal: controller.signal,
+        body: JSON.stringify({
+          expectedRevision,
+          title: draft.title,
+          content: draft.content,
+        }),
       });
+      if (res.status === 409) {
+        const body = (await res.json()) as Partial<RevisionConflict>;
+        setConflict({
+          currentRevision: body.currentRevision ?? expectedRevision + 1,
+          currentChecksum: body.currentChecksum ?? '',
+        });
+        toast.error(t('notes.conflictError'));
+        return;
+      }
       if (!res.ok) throw new Error(t('notes.saveError'));
-      // Só limpa o dirty se este ainda é o save mais recente — senão um save
-      // posterior (com edições novas) já assumiu e não devemos marcá-lo salvo.
-      if (inFlight.current === controller) setDirty(false);
+      const body = (await res.json()) as { note: NoteFull };
+      revisionRef.current = body.note.revision;
+      setRevision(body.note.revision);
+      if (editSequence.current === savedSequence) {
+        dirtyRef.current = false;
+        setDirty(false);
+      } else {
+        queuedSave.current = true;
+      }
       onSaved();
     } catch (err) {
-      // Abort = substituído por save mais recente; silencioso.
-      if (err instanceof DOMException && err.name === 'AbortError') return;
       toast.error(err instanceof Error ? err.message : t('common.error'));
     } finally {
-      if (inFlight.current === controller) {
-        inFlight.current = null;
-        setSaving(false);
+      inFlight.current = false;
+      setSaving(false);
+      if (queuedSave.current && !conflict) {
+        queuedSave.current = false;
+        saveTimer.current = setTimeout(() => void saveRef.current(), 100);
       }
     }
-  }, [noteId, title, content, onSaved, t]);
+  }, [conflict, noteId, onSaved, t]);
+  saveRef.current = save;
 
   useEffect(() => {
     if (!dirty) return;
@@ -261,13 +302,26 @@ function NoteEditor({
     };
   }, [dirty, save]);
 
-  // Cleanup no unmount: cancela timer e aborta PATCH em voo.
+  // Cleanup no unmount: cancela o debounce. A request já enviada pode terminar
+  // no servidor e continua protegida por expectedRevision.
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      inFlight.current?.abort();
     };
   }, []);
+
+  const markEdited = useCallback((): void => {
+    editSequence.current += 1;
+    dirtyRef.current = true;
+    setDirty(true);
+  }, []);
+
+  const reloadAfterConflict = useCallback(async (): Promise<void> => {
+    dirtyRef.current = false;
+    setDirty(false);
+    setConflict(null);
+    await refresh();
+  }, [refresh]);
 
   if (!loading && error) {
     return (
@@ -309,7 +363,7 @@ function NoteEditor({
               value={title}
               onChange={(e) => {
                 setTitle(e.target.value);
-                setDirty(true);
+                markEdited();
               }}
               onBlur={() => void save()}
               placeholder={t('notes.untitled')}
@@ -318,7 +372,9 @@ function NoteEditor({
           )}
           <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0">
             <span className="mr-auto shrink-0 text-[11px] uppercase tracking-wider tabular-nums sm:mr-1">
-              {saving ? (
+              {conflict ? (
+                <span className="text-rose-300">{t('notes.conflict')}</span>
+              ) : saving ? (
                 <span className="inline-flex items-center gap-1.5 text-[var(--color-app-muted)]">
                   <Loader2 className="h-3 w-3 animate-spin" /> {t('common.saving')}
                 </span>
@@ -328,6 +384,18 @@ function NoteEditor({
                 <span className="text-emerald-300">{t('common.saved')}</span>
               )}
             </span>
+            <span className="shrink-0 rounded-md border border-[var(--color-app-border)] px-2 py-1 text-[10px] font-medium tabular-nums text-[var(--color-app-muted)]">
+              {t('notes.revisionLabel', { revision })}
+            </span>
+            <Button
+              className="shrink-0"
+              size="sm"
+              variant="ghost"
+              onClick={() => setHistoryOpen(true)}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              {t('notes.history')}
+            </Button>
             <Button
               className="shrink-0"
               size="sm"
@@ -351,13 +419,32 @@ function NoteEditor({
               size="sm"
               variant="outline"
               onClick={() => void save()}
-              disabled={!dirty || saving}
+              disabled={!dirty || saving || conflict !== null}
             >
               <Save className="h-3.5 w-3.5" />
               {t('common.save')}
             </Button>
           </div>
         </div>
+
+        {conflict ? (
+          <div
+            className="flex flex-col gap-3 border-b border-rose-400/25 bg-rose-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+            role="alert"
+            data-note-revision-conflict
+          >
+            <div>
+              <p className="text-sm font-medium text-rose-100">{t('notes.conflictTitle')}</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-[var(--color-app-muted)]">
+                {t('notes.conflictDescription', { revision: conflict.currentRevision })}
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => void reloadAfterConflict()}>
+              <RefreshCw className="h-3.5 w-3.5" />
+              {t('notes.loadLatest')}
+            </Button>
+          </div>
+        ) : null}
 
         <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
           {previewMode ? (
@@ -374,7 +461,7 @@ function NoteEditor({
                 value={content}
                 onChange={(v) => {
                   setContent(v);
-                  setDirty(true);
+                  markEdited();
                 }}
                 placeholder={t('notes.editorPlaceholder')}
               />
@@ -382,6 +469,24 @@ function NoteEditor({
           )}
         </div>
       </Card>
+
+      <NoteHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        noteId={noteId}
+        currentRevision={revision}
+        dirty={dirty}
+        onConflict={setConflict}
+        onRestored={(restored) => {
+          setTitle(restored.title);
+          setContent(restored.content);
+          setRevision(restored.revision);
+          revisionRef.current = restored.revision;
+          dirtyRef.current = false;
+          setDirty(false);
+          onSaved();
+        }}
+      />
     </motion.div>
   );
 }

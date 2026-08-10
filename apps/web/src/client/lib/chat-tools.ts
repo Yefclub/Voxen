@@ -21,6 +21,7 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   search_transcripts: 'search',
   search_knowledge: 'search',
   search_notes: 'search',
+  search_note_content: 'search',
   list_transcripts: 'search',
   list_notes: 'search',
   // leitura / recuperação progressiva
@@ -38,6 +39,7 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   verify_citations: 'read',
   // notas (efeito colateral proposto)
   propose_create_note: 'notes',
+  propose_patch_note: 'notes',
   create_note: 'notes',
   edit_note: 'notes',
   delete_note: 'notes',

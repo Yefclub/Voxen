@@ -24,6 +24,28 @@ or client-secret field. Revoking it does not sign you out of Voxen.
 Use a read-only token first. Enable write access only for a client that needs to
 modify your knowledge base and whose approval behavior you understand.
 
+## Safe note editing workflow
+
+Note reads return a monotonic `revision` and an opaque `checksum`. Agents should
+make bounded changes instead of replacing an entire note whenever possible:
+
+1. Use `voxen_search_notes` to find the note, then
+   `voxen_search_note_content` to locate the exact passage and its occurrence.
+2. Call `voxen_patch_note` with `preview_only: true`, the observed
+   `expected_revision`, and a `replace`, `insert_before`, `insert_after`,
+   `prepend`, or `append` operation.
+3. Review the bounded preview. Apply by repeating the same call with
+   `preview_only: false` only if the revision is still current.
+4. Inspect immutable history with `voxen_list_note_revisions` and
+   `voxen_read_note_revision`. `voxen_restore_note_revision` creates a new head;
+   it never rewrites history.
+
+`voxen_update_note` remains available for compatibility and intentional full
+replacements, but it also requires `expected_revision`. A conflict means the
+agent must read the current note again and propose a new change; it must never
+retry blindly. Read-only credentials cannot discover or execute patch, restore,
+create, full-update, or ingestion tools.
+
 Instance administrators can optionally enable OAuth 2.1 in **Administration →
 Integrations → MCP Server**. OAuth access is still bound to the Voxen user who
 approves the consent screen; it never inherits administrator access.

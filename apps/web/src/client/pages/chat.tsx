@@ -517,23 +517,27 @@ function HitlConfirmBar({
           >
             <div className="min-w-0">
               <p className="text-xs font-medium text-[var(--color-app-fg)]">
-                {item.title
-                  ? t('chat.hitlProposeNote', { title: item.title })
-                  : t('chat.confirmationTitle')}
+                {item.action === 'patch_note' && item.title
+                  ? t('chat.hitlProposePatch', { title: item.title })
+                  : item.title
+                    ? t('chat.hitlProposeNote', { title: item.title })
+                    : t('chat.confirmationTitle')}
               </p>
               <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
-                {t('chat.hitlConfirmHint')}
+                {item.action === 'patch_note' ? t('chat.hitlPatchHint') : t('chat.hitlConfirmHint')}
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => onApprove(item.approvalId, { alwaysAllow: true })}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-accent-amber)]/40 bg-transparent px-2.5 py-1.5 text-xs font-medium text-[var(--color-app-fg)] hover:bg-[var(--color-accent-amber)]/15 disabled:cursor-wait disabled:opacity-60"
-              >
-                {t('chat.hitlAlwaysAllow')}
-              </button>
+              {item.action !== 'patch_note' ? (
+                <button
+                  type="button"
+                  onClick={() => onApprove(item.approvalId, { alwaysAllow: true })}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-accent-amber)]/40 bg-transparent px-2.5 py-1.5 text-xs font-medium text-[var(--color-app-fg)] hover:bg-[var(--color-accent-amber)]/15 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {t('chat.hitlAlwaysAllow')}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => onApprove(item.approvalId)}

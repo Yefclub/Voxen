@@ -17,6 +17,7 @@ export interface NoteListItem {
   parentId: string | null;
   kind: 'NOTE' | 'FOLDER';
   title: string;
+  revision: number;
   createdAt: string;
   updatedAt: string;
 }
