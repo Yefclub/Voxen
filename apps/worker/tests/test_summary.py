@@ -47,6 +47,12 @@ class _FakeLogger:
 
 
 def _patch_db_fetch(monkeypatch: pytest.MonkeyPatch, row: dict[str, object] | None) -> MagicMock:
+    if row is not None:
+        row = {
+            "correctedPlainText": None,
+            "correctionState": "ACTIVE",
+            **row,
+        }
     fake_conn = MagicMock()
     fake_conn.fetchrow = AsyncMock(return_value=row)
     fake_conn.execute = AsyncMock()
@@ -110,9 +116,40 @@ async def test_skip_when_missing_config(monkeypatch: pytest.MonkeyPatch) -> None
     assert ("warning", "summary-skipped-missing-config") in log.events
 
 
+async def test_summary_fetch_is_scoped_to_the_transcript_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
+    conn = _patch_db_fetch(
+        monkeypatch,
+        {
+            "title": "T",
+            "plainText": "canonical text",
+            "correctedPlainText": "corrected text",
+            "correctionState": "ACTIVE",
+        },
+    )
+    _patch_model_config(monkeypatch, api_key=None, model="openai/gpt-4o-mini")
+
+    log = _FakeLogger()
+    await summary.maybe_generate(user_id="u1", transcript_id="t1", job_id="j1", log=log)
+
+    conn.fetchrow.assert_awaited_once()
+    assert conn.fetchrow.await_args.args[-2:] == ("t1", "u1")
+    assert ("warning", "summary-skipped-missing-config") in log.events
+
+
 async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(summary, "is_cancelled", lambda _: False)
-    _patch_db_fetch(monkeypatch, {"title": "T", "plainText": "lorem ipsum"})
+    _patch_db_fetch(
+        monkeypatch,
+        {
+            "title": "T",
+            "plainText": "canonical text",
+            "correctedPlainText": "corrected text",
+            "correctionState": "ACTIVE",
+        },
+    )
     _patch_model_config(monkeypatch, api_key="sk-test", model="openai/gpt-4o-mini")
     monkeypatch.setattr(
         summary.voxen_settings,
@@ -138,8 +175,10 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
         }
     )
     seen_timeout: dict[str, object] = {}
+    seen_payload: dict[str, object] = {}
 
     async def fake_post(self: httpx.AsyncClient, *args: object, **kw: object) -> object:
+        seen_payload.update(kw.get("json", {}))
         return fake_response
 
     original_init = httpx.AsyncClient.__init__
@@ -157,6 +196,8 @@ async def test_logs_done_on_200_with_summary(monkeypatch: pytest.MonkeyPatch) ->
 
     assert ("info", "summary-done") in log.events
     assert ("info", "research-enrichment-queued") in log.events
+    assert "corrected text" in repr(seen_payload["messages"])
+    assert "canonical text" not in repr(seen_payload["messages"])
     queue_research.assert_awaited_once_with("u1", "t1")
     assert seen_timeout["value"] == 42.0
     summary.db.complete_summary_enrichment.assert_awaited_once_with(  # type: ignore[attr-defined]
