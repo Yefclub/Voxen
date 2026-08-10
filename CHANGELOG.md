@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.5-dev.1786341311 — 2026-08-10 · Dev
+
+### ✨ Safe, versioned note editing
+
+Notes now keep immutable revision history across the web interface, chat, and MCP. Voxen can locate and change an exact passage without replacing the entire document, detects concurrent edits before they overwrite newer work, preserves the local draft during a conflict, and lets users inspect or restore an earlier revision. Graph links and transcript evidence remain connected while only the edited note is refreshed.
+
+Chat confirmations show a server-validated, bounded before/after preview, and paginated history keeps every revision accessible even after long editing sessions.
+
 ## v0.14.5-dev.1786329638 — 2026-08-09 · Dev
 
 ### ✨ Explore the complete knowledge graph from the server
