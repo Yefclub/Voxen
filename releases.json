@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.14.5-dev.1786354871",
+    "channel": "dev",
+    "type": "ui",
+    "title": "Explore Mermaid diagrams with an interactive canvas",
+    "body": "Mermaid diagrams in chat responses, notes, and transcript content now open in an interactive\ncanvas. You can zoom from 50% to 300%, drag to inspect large flows, reset the view, and expand the\ndiagram into a focused near-full-screen workspace. Mouse, touch, wheel, and keyboard controls are\nsupported without weakening Voxen's strict SVG sanitization.",
+    "pr": 731,
+    "author": "Kalyel",
+    "date": "2026-08-10T06:40:57-03:00",
+    "translations": {
+      "en": {
+        "title": "Explore Mermaid diagrams with an interactive canvas",
+        "body": "Mermaid diagrams in chat responses, notes, and transcript content now open in an interactive\ncanvas. You can zoom from 50% to 300%, drag to inspect large flows, reset the view, and expand the\ndiagram into a focused near-full-screen workspace. Mouse, touch, wheel, and keyboard controls are\nsupported without weakening Voxen's strict SVG sanitization."
+      },
+      "pt-BR": {
+        "title": "Explore diagramas Mermaid em um canvas interativo",
+        "body": "Diagramas Mermaid em respostas do chat, notas e conteúdos de transcrição agora são exibidos em um\ncanvas interativo. É possível aplicar zoom de 50% a 300%, arrastar para explorar fluxos grandes,\nrestaurar a visualização e expandir o diagrama em uma área focada quase em tela cheia. Há suporte a\nmouse, toque, roda e teclado sem enfraquecer a sanitização estrita de SVG da Voxen."
+      }
+    },
+    "prUrl": "https://github.com/Yefclub/Voxen/pull/731"
+  },
+  {
     "version": "0.14.5-dev.1786352459",
     "channel": "dev",
     "type": "feat",
