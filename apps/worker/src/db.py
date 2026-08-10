@@ -1201,7 +1201,7 @@ async def prepare_grounded_brain_compilation(
                     segment.get("start_sec"),
                     segment.get("end_sec"),
                 )
-            await brain_compilation_db.refresh_compilation(conn, compilation_id)
+            await brain_compilation_db.refresh_compilation(conn, compilation_id, user_id)
             rows = await conn.fetch(
                 """
                 SELECT "segmentKey", status, "startLine", "endLine", "startSec", "endSec"
@@ -1536,7 +1536,7 @@ async def upsert_grounded_brain_items(
                 worker_id,
             )
             _require_grounded_compilation_lease(lease)
-            await brain_compilation_db.refresh_compilation(conn, compilation_id)
+            await brain_compilation_db.refresh_compilation(conn, compilation_id, user_id)
             _require_grounded_compilation_lease(lease)
     return created
 

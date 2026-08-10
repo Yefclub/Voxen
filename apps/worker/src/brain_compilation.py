@@ -68,7 +68,9 @@ async def extract_grounded_brain(
             return
         config = await voxen_settings.get_openrouter_model_config(("default_chat_model",))
         if not config.api_key or not config.model:
-            await brain_compilation_db.mark_compilation_skipped(compilation_id)
+            await brain_compilation_db.mark_compilation_skipped(
+                user_id=user_id, compilation_id=compilation_id
+            )
             log.info("brain-extract-skipped-missing-config", transcript_id=transcript_id)
             return
         claim_owner = f"{worker_id or 'brain'}:{uuid.uuid4()}"
@@ -138,6 +140,7 @@ async def extract_grounded_brain(
                 lease = await acquire_graph_index_lease(user_id)
                 if lease is None:
                     await brain_compilation_db.mark_segment_failed(
+                        user_id=user_id,
                         compilation_id=compilation_id,
                         segment_key=segment["key"],
                         error="GRAPH_WRITE_LEASE_UNAVAILABLE",
@@ -160,6 +163,7 @@ async def extract_grounded_brain(
                     total_items += len(payload)
             except Exception as exc:  # noqa: BLE001 -- one segment cannot invalidate others
                 await brain_compilation_db.mark_segment_failed(
+                    user_id=user_id,
                     compilation_id=compilation_id,
                     segment_key=segment["key"],
                     error=type(exc).__name__,

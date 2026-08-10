@@ -96,6 +96,8 @@ evidence after the canonical source changes.
       permanent pending segment.
 - [x] Tests prove that stale content hashes cannot persist graph evidence.
 - [x] Tests prove that the six-attempt limit becomes terminal and does not loop.
+- [x] Tests prove that missing model configuration cannot clear a live claim or
+      mutate another user's compilation.
 - [x] The reconciliation loop resumes legacy pending compilations automatically.
 - [x] Graph status reports source and semantic coverage independently.
 - [x] Existing source materialization, grounded evidence isolation, and lease

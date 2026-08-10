@@ -112,6 +112,25 @@ async def test_semantic_claim_is_exclusive_recovers_and_stops_at_attempt_limit()
         )
         assert sum(len(batch) for batch in first_claims) == 1
 
+        live_claim = await conn.fetchrow(
+            'SELECT status, "claimedBy", "leaseExpiresAt" '
+            'FROM "BrainCompilationSegment" WHERE id = $1',
+            segment_id,
+        )
+        assert live_claim is not None
+        await brain_compilation_db.mark_compilation_skipped(
+            user_id=f"foreign-{suffix}", compilation_id=compilation_id
+        )
+        await brain_compilation_db.mark_compilation_skipped(
+            user_id=user_id, compilation_id=compilation_id
+        )
+        preserved_claim = await conn.fetchrow(
+            'SELECT status, "claimedBy", "leaseExpiresAt" '
+            'FROM "BrainCompilationSegment" WHERE id = $1',
+            segment_id,
+        )
+        assert preserved_claim == live_claim
+
         await conn.execute(
             'UPDATE "BrainCompilationSegment" SET "leaseExpiresAt" = $2 WHERE id = $1',
             segment_id,
@@ -142,6 +161,7 @@ async def test_semantic_claim_is_exclusive_recovers_and_stops_at_attempt_limit()
         )
         for attempt in range(2, brain_compilation_db.GROUNDED_SEGMENT_MAX_ATTEMPTS + 1):
             await brain_compilation_db.mark_segment_failed(
+                user_id=user_id,
                 compilation_id=compilation_id,
                 segment_key=segment_key,
                 error="PROVIDER_UNAVAILABLE",

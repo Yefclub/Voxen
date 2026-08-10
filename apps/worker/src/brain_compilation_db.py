@@ -9,7 +9,9 @@ GROUNDED_SEGMENT_CLAIM_TTL_SEC = 15 * 60
 GROUNDED_SEGMENT_MAX_RETRY_SEC = 30 * 60
 
 
-async def refresh_compilation(conn: Any, compilation_id: str) -> None:  # noqa: ANN401
+async def refresh_compilation(  # noqa: ANN401
+    conn: Any, compilation_id: str, user_id: str
+) -> None:
     """Aggregate segment state into its compilation within the caller transaction."""
     await conn.execute(
         """
@@ -21,7 +23,9 @@ async def refresh_compilation(conn: Any, compilation_id: str) -> None:  # noqa: 
                 WHEN counts.completed = counts.total THEN 'COMPLETED'::"BrainCompilationStatus"
                 WHEN counts.running > 0 THEN 'RUNNING'::"BrainCompilationStatus"
                 WHEN counts.completed > 0 THEN 'PARTIAL'::"BrainCompilationStatus"
-                WHEN counts.failed = counts.total THEN 'FAILED'::"BrainCompilationStatus"
+                WHEN counts.skipped = counts.total THEN 'SKIPPED'::"BrainCompilationStatus"
+                WHEN counts.failed + counts.skipped = counts.total
+                    THEN 'FAILED'::"BrainCompilationStatus"
                 WHEN counts.retrying > 0 THEN 'RETRY'::"BrainCompilationStatus"
                 ELSE 'PENDING'::"BrainCompilationStatus"
             END,
@@ -41,6 +45,9 @@ async def refresh_compilation(conn: Any, compilation_id: str) -> None:  # noqa: 
                    COUNT(*) FILTER (
                        WHERE status = 'RETRY'::"BrainCompilationStatus"
                    )::integer AS retrying,
+                   COUNT(*) FILTER (
+                       WHERE status = 'SKIPPED'::"BrainCompilationStatus"
+                   )::integer AS skipped,
                    MAX(error) FILTER (
                        WHERE status IN (
                          'FAILED'::"BrainCompilationStatus", 'RETRY'::"BrainCompilationStatus"
@@ -49,9 +56,10 @@ async def refresh_compilation(conn: Any, compilation_id: str) -> None:  # noqa: 
             FROM "BrainCompilationSegment"
             WHERE "compilationId" = $1
         ) counts
-        WHERE compilation.id = $1
+        WHERE compilation.id = $1 AND compilation."userId" = $2
         """,
         compilation_id,
+        user_id,
     )
 
 
@@ -137,7 +145,7 @@ async def claim_segments(
             GROUNDED_SEGMENT_MAX_ATTEMPTS,
             GROUNDED_SEGMENT_CLAIM_TTL_SEC,
         )
-        await refresh_compilation(conn, compilation_id)
+        await refresh_compilation(conn, compilation_id, user_id)
     return [dict(row) for row in rows]
 
 
@@ -182,35 +190,44 @@ async def list_due_compilations(limit: int = 10) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-async def mark_compilation_skipped(compilation_id: str) -> None:
+async def mark_compilation_skipped(*, user_id: str, compilation_id: str) -> None:
     from . import db
 
     async with db.connection() as conn:
         async with conn.transaction():
             await conn.execute(
                 """
-                UPDATE "BrainCompilationSegment"
+                UPDATE "BrainCompilationSegment" segment
                 SET status = 'SKIPPED'::"BrainCompilationStatus",
                     "claimedBy" = NULL, "claimedAt" = NULL, "leaseExpiresAt" = NULL,
                     "nextAttemptAt" = NULL, error = NULL, "updatedAt" = NOW()
-                WHERE "compilationId" = $1
-                  AND status <> 'COMPLETED'::"BrainCompilationStatus"
+                WHERE segment."compilationId" = $1
+                  AND EXISTS (
+                    SELECT 1 FROM "BrainCompilation" compilation
+                    WHERE compilation.id = segment."compilationId"
+                      AND compilation."userId" = $2
+                  )
+                  AND (
+                    segment.status IN (
+                      'PENDING'::"BrainCompilationStatus",
+                      'RETRY'::"BrainCompilationStatus",
+                      'FAILED'::"BrainCompilationStatus"
+                    )
+                    OR (
+                      segment.status = 'RUNNING'::"BrainCompilationStatus"
+                      AND segment."leaseExpiresAt" < NOW()
+                    )
+                  )
                 """,
                 compilation_id,
+                user_id,
             )
-            await conn.execute(
-                """
-                UPDATE "BrainCompilation"
-                SET status = 'SKIPPED'::"BrainCompilationStatus", "lastError" = NULL,
-                    "updatedAt" = NOW()
-                WHERE id = $1
-                """,
-                compilation_id,
-            )
+            await refresh_compilation(conn, compilation_id, user_id)
 
 
 async def mark_segment_failed(
     *,
+    user_id: str,
     compilation_id: str,
     segment_key: str,
     error: str,
@@ -223,7 +240,7 @@ async def mark_segment_failed(
         async with conn.transaction():
             await conn.execute(
                 """
-                UPDATE "BrainCompilationSegment"
+                UPDATE "BrainCompilationSegment" segment
                 SET status = CASE
                       WHEN attempts >= $5 THEN 'FAILED'::"BrainCompilationStatus"
                       ELSE 'RETRY'::"BrainCompilationStatus"
@@ -237,8 +254,13 @@ async def mark_segment_failed(
                     END,
                     "claimedBy" = NULL, "claimedAt" = NULL, "leaseExpiresAt" = NULL,
                     "updatedAt" = NOW()
-                WHERE "compilationId" = $1 AND "segmentKey" = $2
-                  AND ($4::text IS NULL OR "claimedBy" = $4)
+                WHERE segment."compilationId" = $1 AND segment."segmentKey" = $2
+                  AND EXISTS (
+                    SELECT 1 FROM "BrainCompilation" compilation
+                    WHERE compilation.id = segment."compilationId"
+                      AND compilation."userId" = $7
+                  )
+                  AND ($4::text IS NULL OR segment."claimedBy" = $4)
                 """,
                 compilation_id,
                 segment_key,
@@ -246,5 +268,6 @@ async def mark_segment_failed(
                 worker_id,
                 GROUNDED_SEGMENT_MAX_ATTEMPTS,
                 GROUNDED_SEGMENT_MAX_RETRY_SEC,
+                user_id,
             )
-            await refresh_compilation(conn, compilation_id)
+            await refresh_compilation(conn, compilation_id, user_id)
