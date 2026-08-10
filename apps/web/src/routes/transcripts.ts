@@ -1,6 +1,3 @@
-// Voxen — Transcripts routes
-// All endpoints are scoped by userId; canonical Markdown uses the configured private storage.
-
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { Prisma } from '../../prisma-generated/client';
@@ -20,13 +17,7 @@ import {
   validateNoteAnchors,
 } from '../lib/note-anchors';
 import { recordInitialNoteRevision, syncNoteGraph } from '../lib/note-versioning';
-import {
-  storageDelete,
-  storageGet,
-  storageHead,
-  storagePut,
-  storageReadText,
-} from '../lib/storage';
+import { storageDelete, storageGet, storageHead, storagePut } from '../lib/storage';
 import { isSetupComplete } from '../lib/settings';
 import {
   buildOriginalResponseInit,
@@ -46,6 +37,13 @@ import {
 } from '../lib/transcript-graph-search';
 import type { TranscriptSearchRow as SearchRow } from '../lib/transcript-graph-search';
 import { cancelTranscriptEnrichmentsForInactiveParent } from '../lib/transcript-enrichments';
+import { registerTranscriptCorrectionRoutes } from './transcript-corrections';
+import {
+  effectiveTranscriptPlainText,
+  loadTranscriptSourceVersions,
+  resolveTranscriptMarkdownViews,
+  TRANSCRIPT_CORRECTION_DETAIL_SELECT,
+} from '../lib/transcript-content';
 
 // Anti-loop de UI: 1 regeneração de summary por minuto por transcript.
 const SUMMARY_MIN_INTERVAL_SEC = 60;
@@ -132,6 +130,8 @@ transcriptsRoutes.use('*', async (c, next) => {
   return next();
 });
 
+registerTranscriptCorrectionRoutes(transcriptsRoutes);
+
 transcriptsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const query = (c.req.query('q') ?? '').trim();
@@ -204,7 +204,7 @@ transcriptsRoutes.get('/', async (c) => {
       t."createdAt",
       ts_headline(
         'portuguese',
-        t."plainText",
+        CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END,
         plainto_tsquery('portuguese', ${query}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1, FragmentDelimiter=" … "'
       ) AS snippet,
@@ -271,7 +271,7 @@ transcriptsRoutes.get('/', async (c) => {
       t."createdAt",
       ts_headline(
         'portuguese',
-        t."plainText",
+        CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END,
         plainto_tsquery('portuguese', ${query}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1, FragmentDelimiter=" … "'
       ) AS snippet,
@@ -418,8 +418,6 @@ const TRANSCRIPT_LIST_SELECT = {
   createdAt: true,
 } as const;
 
-// Carrega as tags (id/name/slug) de um conjunto de transcripts, escopadas por
-// userId, e devolve um mapa transcriptId -> tags (ordenadas por nome).
 async function loadTagsForTranscripts(
   userId: string,
   transcriptIds: string[],
@@ -444,7 +442,6 @@ async function loadTagsForTranscripts(
   return map;
 }
 
-// Anexa `tags` a cada item de uma lista de transcripts (in-place funcional).
 async function withTags<T extends { id: string }>(
   userId: string,
   items: T[],
@@ -499,6 +496,7 @@ transcriptsRoutes.get('/:id', async (c) => {
       sourceMetadata: true,
       sourceRefreshStatus: true,
       sourceRefreshError: true,
+      ...TRANSCRIPT_CORRECTION_DETAIL_SELECT,
       archivedAt: true,
       trashedAt: true,
       createdAt: true,
@@ -521,34 +519,16 @@ transcriptsRoutes.get('/:id', async (c) => {
   const baseCost = transcript.costUsd ? parseFloat(transcript.costUsd.toString()) : 0;
   const totalCostUsd = (baseCost + summarySum).toFixed(6);
 
-  // Read canonical Markdown from the selected storage with a DB fallback.
-  const markdown = await (async (): Promise<string> => {
-    try {
-      return await storageReadText(transcript.mdPath);
-    } catch (err) {
-      console.error(
-        '[transcripts] erro ao baixar .md',
-        safeErrorDiagnostic('TRANSCRIPT_MARKDOWN_READ_FAILED', err),
-      );
-      return `# ${transcript.title}\n\n${transcript.plainText}`;
-    }
-  })();
-
+  const { markdown, canonicalMarkdown } = await resolveTranscriptMarkdownViews(transcript);
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
-  const sourceVersions =
-    transcript.source === 'WEB'
-      ? await db.sourceContentVersion.findMany({
-          where: { userId, transcriptId: transcript.id },
-          orderBy: { version: 'desc' },
-          take: 12,
-          select: { version: true, checksum: true, collectedAt: true, metadata: true },
-        })
-      : [];
-  return c.json({ transcript: { ...transcript, totalCostUsd, tags, sourceVersions }, markdown });
+  const sourceVersions = await loadTranscriptSourceVersions(userId, transcript);
+  return c.json({
+    transcript: { ...transcript, totalCostUsd, tags, sourceVersions },
+    markdown,
+    canonicalMarkdown,
+  });
 });
 
-// POST /api/transcripts/:id/refresh — consulta novamente uma fonte WEB sem
-// duplicar sua identidade. O worker compara checksum e só reprocessa se mudou.
 transcriptsRoutes.post('/:id/refresh', async (c) => {
   const userId = c.get('userId');
   const transcriptId = c.req.param('id');
@@ -979,9 +959,6 @@ transcriptsRoutes.patch('/:id/organization', async (c) => {
   return c.json({ transcript });
 });
 
-// POST /api/transcripts/:id/generate-tags — gera tags via IA para UM conteúdo
-// (spec 075). Re-gera e faz merge (dedup por slug); nunca duplica. Throttle
-// 1/min por transcript pra não queimar tokens em cliques repetidos.
 transcriptsRoutes.post('/:id/generate-tags', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
@@ -999,11 +976,23 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
 
   const transcript = await db.transcript.findFirst({
     where: { id, userId },
-    select: { id: true, title: true, plainText: true, summaryMd: true, folderId: true },
+    select: {
+      id: true,
+      title: true,
+      plainText: true,
+      correctedPlainText: true,
+      correctionState: true,
+      summaryMd: true,
+      folderId: true,
+      correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
+    },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
 
-  const content = ((transcript.summaryMd ?? '') || (transcript.plainText ?? '')).trim();
+  const effectivePlainText = effectiveTranscriptPlainText(transcript);
+  const content = ((transcript.summaryMd ?? '') || effectivePlainText).trim();
   if (content.length < 40 && transcript.title.trim().length < 3) {
     return c.json({ error: 'Conteúdo curto demais para gerar tags.' }, 422);
   }
@@ -1049,10 +1038,15 @@ transcriptsRoutes.post('/:id/generate-tags', async (c) => {
 
   const applied = await applyTagsToTranscript(
     userId,
-    { id: transcript.id, folderId: transcript.folderId },
+    {
+      id: transcript.id,
+      folderId: transcript.folderId,
+      correctionRevision: transcript.correctionRevision,
+      sourceVersion: transcript.sourceVersion,
+      sourceChecksum: transcript.sourceChecksum,
+    },
     result.tags,
   );
-  // Devolve TODAS as tags do conteúdo (merge acumulado), não só as novas.
   const tags = (await loadTagsForTranscripts(userId, [transcript.id])).get(transcript.id) ?? [];
   return c.json({ tags, generated: applied.length });
 });
@@ -1096,7 +1090,6 @@ transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
   return c.json({ transcript });
 });
 
-// DELETE /api/transcripts/:id — purge definitivo.
 // Por segurança, exige que a transcrição esteja na lixeira antes do hard delete.
 transcriptsRoutes.delete('/:id', async (c) => {
   const userId = c.get('userId');
@@ -1150,8 +1143,6 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { force?: boolean };
   const force = body.force === true;
 
-  // Throttle ANTES do DB — clique repetido (loop UI) bloqueia em Redis sem
-  // tocar Postgres. SELECT é cheap mas em volume isso multiplica.
   const rl = await rateLimit(`voxen:rl:summary:${id}`, 1, SUMMARY_MIN_INTERVAL_SEC);
   if (!rl.allowed) {
     return c.json(
@@ -1165,14 +1156,24 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
 
   const transcript = await db.transcript.findFirst({
     where: { id, userId, status: { not: 'TRASH' } },
-    select: { id: true, title: true, plainText: true, summaryMd: true },
+    select: {
+      id: true,
+      title: true,
+      plainText: true,
+      correctedPlainText: true,
+      correctionState: true,
+      summaryMd: true,
+      correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
+    },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
-  if (!transcript.plainText?.trim()) {
+  const effectivePlainText = effectiveTranscriptPlainText(transcript);
+  if (!effectivePlainText.trim()) {
     return c.json({ error: 'Transcrição sem texto para resumir.' }, 422);
   }
 
-  // Já tem resumo → exige force=true (confirmação explícita do user)
   if (transcript.summaryMd && !force) {
     return c.json(
       {
@@ -1188,7 +1189,10 @@ transcriptsRoutes.post('/:id/summary', async (c) => {
       userId,
       transcriptId: transcript.id,
       title: transcript.title,
-      plainText: transcript.plainText,
+      plainText: effectivePlainText,
+      correctionRevision: transcript.correctionRevision,
+      sourceVersion: transcript.sourceVersion,
+      sourceChecksum: transcript.sourceChecksum,
     });
     return c.json({ summaryMd });
   } catch (err) {

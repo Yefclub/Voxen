@@ -79,6 +79,20 @@ export function slugifyTag(name: string): string {
     .slice(0, 60);
 }
 
+export function orderUniqueTagNames(tagNames: string[]): Array<{ name: string; slug: string }> {
+  const bySlug = new Map<string, string>();
+  for (const rawName of tagNames) {
+    const name = rawName.trim();
+    const slug = slugifyTag(name);
+    if (!slug) continue;
+    const current = bySlug.get(slug);
+    if (current === undefined || name < current) bySlug.set(slug, name);
+  }
+  return [...bySlug.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, 'en'))
+    .map(([slug, name]) => ({ name, slug }));
+}
+
 // Limpa um candidato bruto para um nome curto e apresentável, ou retorna null.
 function cleanTagName(raw: string): string | null {
   let name = (raw || '')

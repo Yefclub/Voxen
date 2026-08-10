@@ -307,7 +307,8 @@ async def _persist_locked(
                     "publishedAt" = $7, "thumbnailUrl" = $8, language = $9,
                     "mdPath" = $10, "plainText" = $11, frontmatter = $12::jsonb,
                     "previewObjectKey" = $13, "previewMimeType" = $14,
-                    "summaryMd" = NULL, "taggingStatus" = 'PENDING'::"EnrichmentStatus",
+                    "summaryMd" = NULL, "flowchartMd" = NULL,
+                    "taggingStatus" = 'PENDING'::"EnrichmentStatus",
                     "summaryStatus" = 'PENDING'::"EnrichmentStatus",
                     "summaryAttempts" = 0, "summaryStartedAt" = NULL,
                     "summaryNextAttemptAt" = NULL, "summaryError" = NULL,
@@ -316,7 +317,18 @@ async def _persist_locked(
                     "sourceChecksum" = $15, "sourceVersion" = $16,
                     "sourceCollectedAt" = NOW(), "sourceMetadata" = $17::jsonb,
                     "sourceRefreshStatus" = 'CURRENT'::"SourceRefreshStatus",
-                    "sourceRefreshError" = NULL, "updatedAt" = NOW()
+                    "sourceRefreshError" = NULL,
+                    "correctionState" = CASE
+                      WHEN "correctionRevision" > 0
+                      THEN 'STALE'::"TranscriptCorrectionState"
+                      ELSE "correctionState"
+                    END,
+                    "correctionStaleReason" = CASE
+                      WHEN "correctionRevision" > 0
+                      THEN 'source-version-changed'
+                      ELSE NULL
+                    END,
+                    "updatedAt" = NOW()
                 WHERE id = $1 AND "userId" = $2
                 """,
                 transcript_id,

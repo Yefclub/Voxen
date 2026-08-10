@@ -9,6 +9,11 @@ import { db } from '../db';
 import { noteContentChecksum } from '../note-revisions';
 import { syncNoteGraph } from '../note-versioning';
 import {
+  loadTranscriptCorrectionHead,
+  syncTranscriptCorrectionGraph,
+  type TranscriptCorrectionHead,
+} from '../transcript-correction-versioning';
+import {
   expandContextFromMd,
   findRelated,
   ftsSearchNotes,
@@ -55,13 +60,21 @@ import { prepareChatApprovalInput } from './note-approval-preview';
 import {
   HITL_ACTION_CREATE_NOTE,
   HITL_ACTION_PATCH_NOTE,
+  HITL_ACTION_PATCH_TRANSCRIPT,
   buildHitlResumePrompt,
   resolveProposeCreateNoteApproval,
   shouldInjectTurnContentAsUserMessage,
   shouldResumeAfterApprove,
 } from './hitl-policy';
+import {
+  applyApprovedTranscriptMutation,
+  createProposePatchTranscriptTool,
+  createSearchTranscriptContentTool,
+  normalizeTranscriptApprovalError,
+} from './transcript-editing';
 import { grantAlwaysAllowAction, loadAlwaysAllowActions } from './hitl-preferences';
 import { isProviderObservedEvent } from './stream-timing';
+import { resolveApprovalInMessageJson } from './approval-message-resolution';
 import {
   buildUrlIntentInstructions,
   classifyUrlIntent,
@@ -148,6 +161,10 @@ const AGENT_INSTRUCTIONS = [
   'use propose_patch_note com uma operação exata. A interface sempre pedirá confirmação.',
   'Nunca substitua a nota inteira quando uma edição cirúrgica for suficiente e nunca tente',
   'contornar um conflito de revisão: releia a nota e explique a mudança ao usuário.',
+  'Para corrigir uma transcrição, localize o trecho com search_transcript_content e use',
+  'propose_patch_transcript com a identidade completa da revisão e da fonte retornada.',
+  'A interface sempre pedirá confirmação. Preserve timestamps e estrutura Markdown, altere',
+  'somente o trecho necessário e nunca trate a correção como modificação da fonte original.',
   '',
   'Comunicação com o usuário (OBRIGATÓRIO — a resposta final é produto, não log de API):',
   '- NUNCA mencione nomes de ferramentas, parâmetros, IDs internos (transcriptId, approvalId)',
@@ -800,6 +817,8 @@ export function buildTools(
             title: true,
             url: true,
             plainText: true,
+            correctedPlainText: true,
+            correctionState: true,
             summaryMd: true,
             flowchartMd: true,
             createdAt: true,
@@ -817,7 +836,10 @@ export function buildTools(
           folder: transcript.folder?.name ?? null,
           createdAt: transcript.createdAt.toISOString(),
           tags: transcript.tags.map((item) => item.tag.name),
-          content: transcript.plainText.slice(0, 20_000),
+          content: (transcript.correctionState === 'ACTIVE' && transcript.correctedPlainText
+            ? transcript.correctedPlainText
+            : transcript.plainText
+          ).slice(0, 20_000),
         };
       },
     }),
@@ -963,6 +985,7 @@ export function buildTools(
       },
     }),
     search_note_content: createSearchNoteContentTool(userId),
+    search_transcript_content: createSearchTranscriptContentTool(userId),
     brain_search: tool({
       description: 'Busca entidades, tópicos e evidências no Brain do workspace atual.',
       inputSchema: z.object({ query: z.string().min(1).max(300) }),
@@ -971,6 +994,7 @@ export function buildTools(
       },
     }),
     propose_patch_note: createProposePatchNoteTool(),
+    propose_patch_transcript: createProposePatchTranscriptTool(),
     propose_create_note: tool({
       description:
         'Propõe criar uma nota. Sem always-allow do usuário a interface pede confirmação; ' +
@@ -1004,12 +1028,6 @@ export function buildTools(
 }
 
 type DbTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
-
-function toolMatchesApproval(tool: Record<string, unknown>, approvalId: string): boolean {
-  if (!tool.output || typeof tool.output !== 'object') return false;
-  const output = tool.output as Record<string, unknown>;
-  return output.approvalRequired === true && output.approvalId === approvalId;
-}
 
 function collectApprovalIdsFromJson(value: unknown, into: Set<string>): void {
   if (!Array.isArray(value)) return;
@@ -1046,78 +1064,6 @@ async function findAssistantMessagesWithApproval(
       )
     ORDER BY "createdAt" DESC, id DESC
   `;
-}
-
-/** Marks matching tools/segments as completed after HITL approval (spec 090). */
-function resolveApprovalInMessageJson(
-  tools: unknown,
-  segments: unknown,
-  approvalId: string,
-  noteId: string | null,
-): { tools: Prisma.InputJsonValue | undefined; segments: Prisma.InputJsonValue | undefined } {
-  let nextTools: unknown = tools;
-  let toolsChanged = false;
-  if (Array.isArray(tools)) {
-    nextTools = tools.map((raw) => {
-      if (!raw || typeof raw !== 'object') return raw;
-      const tool = raw as Record<string, unknown>;
-      if (!toolMatchesApproval(tool, approvalId)) return raw;
-      toolsChanged = true;
-      const prev =
-        tool.output && typeof tool.output === 'object'
-          ? (tool.output as Record<string, unknown>)
-          : {};
-      return {
-        ...tool,
-        state: 'completed',
-        output: {
-          ...prev,
-          approvalRequired: false,
-          approved: noteId != null,
-          ...(noteId != null ? { noteId } : { dismissed: true }),
-        },
-      };
-    });
-  }
-
-  let nextSegments: unknown = segments;
-  let segmentsChanged = false;
-  if (Array.isArray(segments)) {
-    nextSegments = segments.map((raw) => {
-      if (!raw || typeof raw !== 'object') return raw;
-      const segment = raw as Record<string, unknown>;
-      if (segment.type !== 'tool-group' || !Array.isArray(segment.tools)) return raw;
-      let groupChanged = false;
-      const groupTools = segment.tools.map((toolRaw) => {
-        if (!toolRaw || typeof toolRaw !== 'object') return toolRaw;
-        const tool = toolRaw as Record<string, unknown>;
-        if (!toolMatchesApproval(tool, approvalId)) return toolRaw;
-        groupChanged = true;
-        const prev =
-          tool.output && typeof tool.output === 'object'
-            ? (tool.output as Record<string, unknown>)
-            : {};
-        return {
-          ...tool,
-          state: 'completed',
-          output: {
-            ...prev,
-            approvalRequired: false,
-            approved: noteId != null,
-            ...(noteId != null ? { noteId } : { dismissed: true }),
-          },
-        };
-      });
-      if (!groupChanged) return raw;
-      segmentsChanged = true;
-      return { ...segment, tools: groupTools };
-    });
-  }
-
-  return {
-    tools: toolsChanged ? (nextTools as Prisma.InputJsonValue) : undefined,
-    segments: segmentsChanged ? (nextSegments as Prisma.InputJsonValue) : undefined,
-  };
 }
 
 async function clearApprovalGhostInConversation(
@@ -1298,6 +1244,7 @@ async function ensurePendingApproval(
 export type ApproveChatActionResult = {
   message: string;
   noteId?: string;
+  transcriptId?: string;
   conversationId: string;
   action: string;
   title?: string;
@@ -1307,7 +1254,7 @@ export type ApproveChatActionResult = {
   shouldResume: boolean;
 };
 
-export { ChatApprovalMutationError } from './note-editing';
+export { ChatApprovalMutationError } from './approval-error';
 
 export async function approveChatAction(
   userId: string,
@@ -1315,6 +1262,22 @@ export async function approveChatAction(
   options: { alwaysAllow?: boolean } = {},
 ): Promise<ApproveChatActionResult> {
   let result: ApproveChatActionResult;
+  let preparedTranscriptHead: TranscriptCorrectionHead | null = null;
+  const pendingCandidate = await db.chatApproval.findFirst({
+    where: { providerApprovalId: approvalId, userId, status: 'PENDING' },
+    select: { action: true, payload: true },
+  });
+  if (pendingCandidate?.action === HITL_ACTION_PATCH_TRANSCRIPT) {
+    const raw =
+      pendingCandidate.payload && typeof pendingCandidate.payload === 'object'
+        ? (pendingCandidate.payload as Record<string, unknown>)
+        : {};
+    const candidate = extractApprovalPayload({ ...raw, action: pendingCandidate.action });
+    if (!candidate || candidate.action !== HITL_ACTION_PATCH_TRANSCRIPT) {
+      throw new Error('Confirmação inválida.');
+    }
+    preparedTranscriptHead = await loadTranscriptCorrectionHead(userId, candidate.transcriptId);
+  }
   try {
     result = await db.$transaction(async (tx) => {
       const now = new Date();
@@ -1332,11 +1295,24 @@ export async function approveChatAction(
       if (!approvedPayload || approvedPayload.action !== approval.action) {
         throw new Error('Confirmação inválida.');
       }
-      const { note, outcomeMessage, systemMessage } = await applyApprovedNoteMutation(
-        tx,
-        userId,
-        approvedPayload,
-      );
+      const mutation =
+        approvedPayload.action === HITL_ACTION_PATCH_TRANSCRIPT
+          ? preparedTranscriptHead
+            ? await applyApprovedTranscriptMutation(
+                tx,
+                userId,
+                approvedPayload,
+                preparedTranscriptHead,
+              )
+            : (() => {
+                throw new Error('A prévia da correção não está disponível.');
+              })()
+          : await applyApprovedNoteMutation(tx, userId, approvedPayload);
+      const resource =
+        'resource' in mutation
+          ? { ...mutation.resource, kind: 'transcript' as const }
+          : { ...mutation.note, kind: 'note' as const };
+      const { outcomeMessage, systemMessage } = mutation;
       const assistantMessages = await findAssistantMessagesWithApproval(
         tx,
         approval.conversationId,
@@ -1347,7 +1323,7 @@ export async function approveChatAction(
           message.tools,
           message.segments,
           approvalId,
-          note.id,
+          resource,
         );
         if (resolved.tools === undefined && resolved.segments === undefined) continue;
         await tx.chatMessage.update({
@@ -1391,22 +1367,23 @@ export async function approveChatAction(
       });
       const resumePrompt = buildHitlResumePrompt({
         action: approval.action,
-        title: note.title,
-        noteId: note.id,
+        title: resource.title,
+        noteId: resource.kind === 'note' ? resource.id : null,
       });
       return {
         message: outcomeMessage,
-        noteId: note.id,
+        ...(resource.kind === 'note' ? { noteId: resource.id } : { transcriptId: resource.id }),
         conversationId: approval.conversationId,
         action: approval.action,
-        title: note.title,
+        title: resource.title,
         hitlMessageId: hitlMessage.id,
         resumePrompt,
         shouldResume: shouldResumeAfterApprove({ approved: true, action: approval.action }),
       };
     });
   } catch (error) {
-    const normalized = normalizeApprovalMutationError(error);
+    const normalized =
+      normalizeApprovalMutationError(error) ?? normalizeTranscriptApprovalError(error);
     if (normalized) throw normalized;
     throw error;
   }
@@ -1414,6 +1391,7 @@ export async function approveChatAction(
     await grantAlwaysAllowAction(userId, result.action).catch(() => undefined);
   }
   if (result.noteId) await syncNoteGraph(userId, result.noteId);
+  if (result.transcriptId) await syncTranscriptCorrectionGraph(userId, result.transcriptId);
   return result;
 }
 
@@ -1731,6 +1709,7 @@ export async function streamAssistantReply(options: {
     toolApproval: {
       propose_create_note: resolveProposeCreateNoteApproval(alwaysAllowCreateNote),
       propose_patch_note: 'user-approval',
+      propose_patch_transcript: 'user-approval',
     },
     stopWhen: stepCountIs(12),
     abortSignal,
@@ -1803,7 +1782,9 @@ export async function streamAssistantReply(options: {
             ? HITL_ACTION_CREATE_NOTE
             : toolName === 'propose_patch_note'
               ? HITL_ACTION_PATCH_NOTE
-              : toolName;
+              : toolName === 'propose_patch_transcript'
+                ? HITL_ACTION_PATCH_TRANSCRIPT
+                : toolName;
         const { trustedInput, patchPreview } = await prepareChatApprovalInput(
           userId,
           action,

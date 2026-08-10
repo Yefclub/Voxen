@@ -21,8 +21,8 @@
 import { Prisma } from '../../prisma-generated/client';
 import { db } from './db';
 import { fuseHybridScores } from './hybrid-search';
-import { storageReadText } from './storage';
 import { ftsSearchTranscriptEnrichments } from './retrieval-enrichments';
+export { loadEffectiveTranscriptMarkdown as loadTranscriptMd } from './transcript-content';
 
 // Caps de saída — nenhuma tool devolve o documento inteiro sem intenção explícita.
 export const MAX_READ_LINES = 200;
@@ -323,25 +323,6 @@ export function verifyClaimAgainstMd(md: string, claim: Omit<Claim, 'transcriptI
  * from the selected storage driver (Transcript.mdPath), with a Postgres plainText
  * fallback on storage errors. Returns null when the transcript is absent or not owned.
  */
-export async function loadTranscriptMd(
-  userId: string,
-  transcriptId: string,
-): Promise<{ id: string; title: string; url: string; md: string } | null> {
-  const t = await db.transcript.findFirst({
-    where: { id: transcriptId, userId, status: 'ACTIVE' },
-    select: { id: true, title: true, url: true, mdPath: true, plainText: true },
-  });
-  if (!t) return null;
-  let md: string;
-  try {
-    md = await storageReadText(t.mdPath);
-    if (!md) md = `# ${t.title}\n\n${t.plainText}`;
-  } catch {
-    md = `# ${t.title}\n\n${t.plainText}`;
-  }
-  return { id: t.id, title: t.title, url: t.url, md };
-}
-
 export type FtsResult = {
   id: string;
   title: string;
@@ -412,7 +393,7 @@ export async function queryTranscriptFts(
   const take = clampInt(limit, 8, 1, 25);
   return client.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
-      ts_headline('portuguese', concat_ws(E'\n\n', t.title, t."plainText"), websearch_to_tsquery('portuguese', ${q}),
+      ts_headline('portuguese', concat_ws(E'\n\n', t.title, CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END), websearch_to_tsquery('portuguese', ${q}),
         'StartSel=«, StopSel=», MaxWords=22, MinWords=8, MaxFragments=1') AS snippet,
       ts_rank(t."searchVector", websearch_to_tsquery('portuguese', ${q})) AS rank,
       LEFT(t."summaryMd", 800) AS summary,
@@ -579,7 +560,7 @@ async function loadSemanticTranscriptRows(
   if (ids.length === 0) return [];
   const rows = await db.$queryRaw<FtsResult[]>`
     SELECT t.id, t.title,
-      LEFT(COALESCE(NULLIF(t."summaryMd", ''), t."plainText"), 800) AS snippet,
+      LEFT(COALESCE(NULLIF(t."summaryMd", ''), CASE WHEN t."correctionState" = 'ACTIVE'::"TranscriptCorrectionState" THEN coalesce(t."correctedPlainText", t."plainText") ELSE t."plainText" END), 800) AS snippet,
       0::float AS rank,
       LEFT(t."summaryMd", 800) AS summary,
       folder.name AS folder,

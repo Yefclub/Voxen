@@ -17,7 +17,16 @@ import {
   recordInitialNoteRevision,
   syncNoteGraph,
 } from '../note-versioning';
-import { HITL_ACTION_CREATE_NOTE, HITL_ACTION_PATCH_NOTE } from './hitl-policy';
+import {
+  HITL_ACTION_CREATE_NOTE,
+  HITL_ACTION_PATCH_NOTE,
+  HITL_ACTION_PATCH_TRANSCRIPT,
+} from './hitl-policy';
+import {
+  extractTranscriptApprovalPayload,
+  type ChatTranscriptPatchApprovalPayload,
+} from './transcript-editing';
+import { ChatApprovalMutationError } from './approval-error';
 
 const chatNotePatchOperationSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -52,12 +61,13 @@ export type ChatPatchProposal = {
   changeSummary: string;
 };
 
-export type ChatApprovalPayload =
+export type ChatNoteApprovalPayload =
   | { action: typeof HITL_ACTION_CREATE_NOTE; title: string; content: string }
   | (ChatPatchProposal & {
       patchPreview: ChatPatchApprovalPreview;
       previewProof: string;
     });
+export type ChatApprovalPayload = ChatNoteApprovalPayload | ChatTranscriptPatchApprovalPayload;
 
 const chatPatchApprovalPreviewSchema = z.object({
   operationKind: z.enum(['replace', 'insert_before', 'insert_after', 'prepend', 'append']),
@@ -106,6 +116,7 @@ export function extractApprovalPayload(
     const content = typeof output.content === 'string' ? output.content : '';
     return title ? { action, title, content } : null;
   }
+  if (action === HITL_ACTION_PATCH_TRANSCRIPT) return extractTranscriptApprovalPayload(output);
   const proposal = extractPatchProposal(output);
   if (!proposal) return null;
   const patchPreview = chatPatchApprovalPreviewSchema.safeParse(output.patchPreview);
@@ -239,7 +250,7 @@ export async function createVersionedChatNote(
 export async function applyApprovedNoteMutation(
   tx: Prisma.TransactionClient,
   userId: string,
-  payload: ChatApprovalPayload,
+  payload: ChatNoteApprovalPayload,
 ): Promise<{
   note: { id: string; title: string };
   outcomeMessage: string;
@@ -292,24 +303,6 @@ export async function applyApprovedNoteMutation(
     outcomeMessage: `Nota “${note.title}” atualizada.`,
     systemMessage: `Nota “${note.title}” atualizada em nova revisão após confirmação do usuário.`,
   };
-}
-
-export class ChatApprovalMutationError extends Error {
-  readonly code: string;
-  readonly currentRevision?: number;
-  readonly currentChecksum?: string;
-
-  constructor(
-    code: string,
-    message: string,
-    details: { currentRevision?: number; currentChecksum?: string } = {},
-  ) {
-    super(message);
-    this.name = 'ChatApprovalMutationError';
-    this.code = code;
-    this.currentRevision = details.currentRevision;
-    this.currentChecksum = details.currentChecksum;
-  }
 }
 
 export function normalizeApprovalMutationError(error: unknown): ChatApprovalMutationError | null {

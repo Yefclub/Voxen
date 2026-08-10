@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   HITL_ACTION_CREATE_NOTE,
   HITL_ACTION_PATCH_NOTE,
+  HITL_ACTION_PATCH_TRANSCRIPT,
   buildHitlResumePrompt,
   parseAlwaysAllowActions,
   resolveProposeCreateNoteApproval,
@@ -63,6 +64,12 @@ describe('gating HITL', () => {
         alwaysAllowed: new Set([HITL_ACTION_CREATE_NOTE]),
       }),
     ).toBe(true);
+    expect(
+      shouldRequireHitlApproval({
+        action: HITL_ACTION_PATCH_TRANSCRIPT,
+        alwaysAllowed: new Set([HITL_ACTION_CREATE_NOTE]),
+      }),
+    ).toBe(true);
   });
 });
 
@@ -76,6 +83,19 @@ describe('resume após approve', () => {
     );
     expect(shouldResumeAfterApprove({ approved: true, action: 'other' })).toBe(false);
     expect(shouldResumeAfterApprove({ approved: true, action: HITL_ACTION_PATCH_NOTE })).toBe(true);
+    expect(shouldResumeAfterApprove({ approved: true, action: HITL_ACTION_PATCH_TRANSCRIPT })).toBe(
+      true,
+    );
+  });
+
+  test('prompt de resume distingue uma correção de transcrição', () => {
+    const prompt = buildHitlResumePrompt({
+      action: HITL_ACTION_PATCH_TRANSCRIPT,
+      title: 'Entrevista',
+    });
+    expect(prompt).toContain('correção cirúrgica');
+    expect(prompt).toContain('fonte original');
+    expect(prompt).toContain('Entrevista');
   });
 
   test('prompt de resume distingue uma edição confirmada', () => {

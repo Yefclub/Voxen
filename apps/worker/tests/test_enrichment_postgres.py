@@ -10,6 +10,7 @@ import asyncpg
 import pytest
 
 from src import db, research_db, voxen_settings
+from src.source_freshness import mark_reviewable_derivatives_stale
 from src.voxen_crypto import encrypt
 
 pytestmark = pytest.mark.skipif(
@@ -579,6 +580,10 @@ async def test_claims_only_eligible_rows_and_never_exceeds_six_attempts(
         "stale-five",
         status="RETRY",
         error="sexta tentativa falhou",
+        claim_attempt=6,
+        correction_revision=0,
+        source_version=0,
+        source_checksum=None,
     )
     exhausted = await postgres.fetchrow(
         """
@@ -615,11 +620,15 @@ async def test_tag_operations_enforce_workspace_ownership(
 
     assert await db.list_transcript_tag_names("user-1", "transcript-2") == []
     assert await db.get_transcript_title_summary_folder("user-1", "transcript-2") is None
-    assert await db.start_tag_enrichment("user-1", "transcript-2") is False
+    assert await db.start_tag_enrichment("user-1", "transcript-2") is None
     await db.finish_tag_enrichment(
         "user-1",
         "transcript-2",
         status="COMPLETE",
+        claim_attempt=1,
+        correction_revision=0,
+        source_version=0,
+        source_checksum=None,
     )
     assert (
         await db.apply_tags_to_transcript(
@@ -627,6 +636,10 @@ async def test_tag_operations_enforce_workspace_ownership(
             transcript_id="transcript-2",
             tag_names=["Não deve existir"],
             current_folder_id=None,
+            claim_attempt=1,
+            correction_revision=0,
+            source_version=0,
+            source_checksum=None,
         )
         == []
     )
@@ -664,11 +677,17 @@ async def test_tag_operations_enforce_workspace_ownership(
         == 0
     )
 
+    claim = await db.start_tag_enrichment("user-1", "transcript-1")
+    assert claim is not None
     applied = await db.apply_tags_to_transcript(
         user_id="user-1",
         transcript_id="transcript-1",
         tag_names=["Permitida"],
         current_folder_id=None,
+        claim_attempt=int(claim["taggingAttempt"]),
+        correction_revision=int(claim["correctionRevision"]),
+        source_version=int(claim["sourceVersion"]),
+        source_checksum=(str(claim["sourceChecksum"]) if claim["sourceChecksum"] else None),
     )
     assert applied == ["Permitida"]
     assert await db.list_transcript_tag_names("user-1", "transcript-1") == ["Permitida"]
@@ -686,7 +705,7 @@ async def test_inline_and_reconciler_share_one_atomic_tag_claim(
     )
 
     reconciler_owns_row = any(str(row["id"]) == "race" for row in reconciler_claims)
-    assert int(inline_claimed) + int(reconciler_owns_row) == 1
+    assert int(bool(inline_claimed)) + int(reconciler_owns_row) == 1
     state = await postgres.fetchrow(
         """
         SELECT "taggingStatus", "taggingAttempts"
@@ -696,6 +715,59 @@ async def test_inline_and_reconciler_share_one_atomic_tag_claim(
     )
     assert state["taggingStatus"] == "RUNNING"
     assert state["taggingAttempts"] == 1
+
+
+async def test_tag_claim_cannot_write_after_a_transcript_correction(
+    postgres: asyncpg.Connection,
+) -> None:
+    await _insert_user(postgres, "user-1")
+    await _insert_transcript(postgres, transcript_id="corrected", user_id="user-1")
+    claim = await db.start_tag_enrichment("user-1", "corrected")
+    assert claim == {
+        "taggingAttempt": 1,
+        "correctionRevision": 0,
+        "sourceVersion": 0,
+        "sourceChecksum": None,
+    }
+    await postgres.execute(
+        """
+        UPDATE "Transcript"
+        SET "correctionRevision" = 1,
+            "taggingStatus" = 'PENDING'::"EnrichmentStatus",
+            "taggingAttempts" = 0
+        WHERE id = 'corrected'
+        """
+    )
+
+    assert (
+        await db.apply_tags_to_transcript(
+            user_id="user-1",
+            transcript_id="corrected",
+            tag_names=["Obsoleta"],
+            current_folder_id=None,
+            claim_attempt=1,
+            correction_revision=0,
+            source_version=0,
+            source_checksum=None,
+        )
+        == []
+    )
+    await db.finish_tag_enrichment(
+        "user-1",
+        "corrected",
+        status="COMPLETE",
+        claim_attempt=1,
+        correction_revision=0,
+        source_version=0,
+        source_checksum=None,
+    )
+    state = await postgres.fetchrow(
+        'SELECT "taggingStatus", "correctionRevision" FROM "Transcript" WHERE id = $1',
+        "corrected",
+    )
+    assert state["taggingStatus"] == "PENDING"
+    assert state["correctionRevision"] == 1
+    assert await db.list_transcript_tag_names("user-1", "corrected") == []
 
 
 async def test_changed_transcript_is_delivered_to_brain_reindexer(
@@ -739,3 +811,47 @@ async def test_changed_transcript_is_delivered_to_brain_reindexer(
     reindex.reset_mock()
     assert await db.reindex_missing_transcript_brain_nodes(limit=10) == 0
     reindex.assert_not_awaited()
+
+
+async def test_source_refresh_marker_is_durable_until_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+    postgres: asyncpg.Connection,
+) -> None:
+    await _insert_user(postgres, "refresh-user")
+    await _insert_transcript(
+        postgres,
+        transcript_id="refresh-transcript",
+        user_id="refresh-user",
+        updated_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    await postgres.execute(
+        """
+        INSERT INTO "BrainNode" (
+          id, "userId", key, type, label, description, status, metadata,
+          "sourceType", "sourceId", "createdAt", "updatedAt"
+        ) VALUES (
+          'refresh-node', 'refresh-user', 'TRANSCRIPT:refresh-transcript',
+          'CONTENT'::"BrainNodeType", 'Old title', 'Old content',
+          'ACTIVE'::"ContentStatus",
+          '{"brainIndexVersion":3,"topicIndexVersion":1,"embedding":[0.1]}'::jsonb,
+          'TRANSCRIPT'::"BrainSourceType", 'refresh-transcript', NOW(), NOW()
+        )
+        """
+    )
+
+    async with postgres.transaction():
+        await mark_reviewable_derivatives_stale(
+            postgres, "refresh-user", "refresh-transcript", 2, "checksum-2"
+        )
+
+    metadata = await postgres.fetchval(
+        'SELECT metadata FROM "BrainNode" WHERE id = $1', "refresh-node"
+    )
+    assert "brainIndexVersion" not in metadata
+    assert "topicIndexVersion" not in metadata
+    assert "embedding" not in metadata
+
+    reindex = AsyncMock(return_value=True)
+    monkeypatch.setattr(db, "reindex_transcript_brain_node", reindex)
+    assert await db.reindex_missing_transcript_brain_nodes(limit=10) == 1
+    reindex.assert_awaited_once_with("refresh-user", "refresh-transcript")

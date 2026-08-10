@@ -69,6 +69,9 @@ export async function generateAndPersistTranscriptSummary(input: {
   transcriptId: string;
   title: string;
   plainText: string;
+  correctionRevision: number;
+  sourceVersion: number;
+  sourceChecksum: string | null;
   abortSignal?: AbortSignal;
 }): Promise<string> {
   const settings = await getSettings([
@@ -180,25 +183,35 @@ export async function generateAndPersistTranscriptSummary(input: {
     costUsd = String(data.usage.cost);
   }
 
-  await db.transcript.updateMany({
-    where: { id: input.transcriptId, userId: input.userId },
-    data: { summaryMd: summary },
-  });
-
-  await db.costEvent.create({
-    data: {
-      userId: input.userId,
-      kind: 'CHAT',
-      model: selectedModel,
-      tokensIn,
-      tokensOut,
-      costUsd,
-      meta: {
-        source: 'transcript_summary',
-        transcript_id: input.transcriptId,
-        language,
+  await db.$transaction(async (tx) => {
+    const update = await tx.transcript.updateMany({
+      where: {
+        id: input.transcriptId,
+        userId: input.userId,
+        correctionRevision: input.correctionRevision,
+        sourceVersion: input.sourceVersion,
+        sourceChecksum: input.sourceChecksum,
       },
-    },
+      data: { summaryMd: summary },
+    });
+    if (update.count !== 1) {
+      throw new TranscriptSummaryError('O conteúdo mudou durante a geração. Gere novamente.', 409);
+    }
+    await tx.costEvent.create({
+      data: {
+        userId: input.userId,
+        kind: 'CHAT',
+        model: selectedModel,
+        tokensIn,
+        tokensOut,
+        costUsd,
+        meta: {
+          source: 'transcript_summary',
+          transcript_id: input.transcriptId,
+          language,
+        },
+      },
+    });
   });
 
   // A pesquisa é uma segunda etapa durável e opcional. A própria fila aplica

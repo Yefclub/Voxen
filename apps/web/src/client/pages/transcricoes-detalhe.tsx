@@ -60,6 +60,7 @@ import {
   TranscriptSummaryBlock,
 } from '../components/library/transcript-derived-content';
 import { isExternalSourceUrl, sourceDisplayLine } from '../lib/source-url';
+import { TranscriptCorrectionsCard } from '../components/library/transcript-corrections-card';
 
 interface TranscriptDetail {
   id: string;
@@ -98,6 +99,12 @@ interface TranscriptDetail {
   sourceMetadata: unknown;
   sourceRefreshStatus: 'CURRENT' | 'CHECKING' | 'FAILED';
   sourceRefreshError: string | null;
+  correctionRevision: number;
+  correctedChecksum: string | null;
+  correctionSourceVersion: number | null;
+  correctionSourceChecksum: string | null;
+  correctionState: 'ACTIVE' | 'STALE';
+  correctionStaleReason: string | null;
   sourceVersions: Array<{
     version: number;
     checksum: string;
@@ -112,6 +119,7 @@ interface TranscriptDetail {
 interface ResponseBody {
   transcript: TranscriptDetail;
   markdown: string;
+  canonicalMarkdown: string | null;
 }
 
 interface LibraryFolder {
@@ -668,6 +676,16 @@ export function TranscricaoDetalhePage(): React.ReactElement {
               onUpdate={updateEnrichment}
               onDelete={deleteEnrichment}
               t={translate}
+            />
+            <TranscriptCorrectionsCard
+              transcriptId={t.id}
+              revision={t.correctionRevision}
+              state={t.correctionState}
+              staleReason={t.correctionStaleReason}
+              readOnly={!canUseContextualActions}
+              locale={locale}
+              canonicalMarkdown={data.canonicalMarkdown}
+              onUpdated={refresh}
             />
             {renderMode === 'markdown' ? (
               <section className="space-y-3">

@@ -2,9 +2,23 @@ import { describe, expect, test } from 'bun:test';
 import {
   buildTagsRequestBody,
   pickFolderId,
+  orderUniqueTagNames,
   resolveTagsDecision,
   slugifyTag,
 } from '../src/lib/tags-generate';
+
+describe('orderUniqueTagNames', () => {
+  test('deduplicates by slug and orders advisory locks deterministically', () => {
+    expect(orderUniqueTagNames(['Zeta', 'Árvore', 'zeta', 'Beta', '---'])).toEqual([
+      { name: 'Árvore', slug: 'arvore' },
+      { name: 'Beta', slug: 'beta' },
+      { name: 'Zeta', slug: 'zeta' },
+    ]);
+    expect(orderUniqueTagNames(['Beta', 'Zeta', 'Árvore'])).toEqual(
+      orderUniqueTagNames(['Árvore', 'Zeta', 'Beta']),
+    );
+  });
+});
 
 describe('slugifyTag', () => {
   test('lowercases and strips accents', () => {

@@ -20,6 +20,7 @@ import { fail, ok } from './mcp-tool-helpers';
 import { registerMcpNoteRevisionWriteTools } from './mcp-note-revision-write-tools';
 import { TRANSCRIPT_BRIEF_SCHEMA } from './mcp-transcription-schemas';
 import { noteWriteFailure } from './mcp-note-write-errors';
+import { registerMcpTranscriptCorrectionWriteTools } from './mcp-transcript-correction-tools';
 
 const MCP_NOTE_ANCHOR_SCHEMA = z.object({
   transcript_id: z.string().min(1),
@@ -49,6 +50,7 @@ function toNoteAnchorInputs(
 
 export function registerWriteTools(server: McpServer, userId: string): void {
   registerMcpNoteRevisionWriteTools(server, userId);
+  registerMcpTranscriptCorrectionWriteTools(server, userId);
   server.registerTool(
     'voxen_create_note',
     {

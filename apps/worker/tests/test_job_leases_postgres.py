@@ -84,7 +84,7 @@ async def test_multiworker_claim_and_expired_restart_recovery() -> None:
         await conn.close()
 
 
-async def test_stale_summary_claim_cannot_overwrite_new_generation() -> None:
+async def test_stale_summary_claim_cannot_overwrite_new_content_identity() -> None:
     assert os.environ.get("DATABASE_URL")
     conn = await asyncpg.connect(os.environ["DATABASE_URL"])
     suffix = uuid.uuid4().hex
@@ -121,12 +121,45 @@ async def test_stale_summary_claim_cannot_overwrite_new_generation() -> None:
             user_id,
             transcript_id,
             claim_attempt=1,
+            correction_revision=0,
+            source_version=0,
+            source_checksum=None,
             summary_md="stale",
+        )
+        await conn.execute(
+            'UPDATE "Transcript" SET "sourceVersion" = 1, "sourceChecksum" = $2 WHERE id = $1',
+            transcript_id,
+            "source-1",
+        )
+        assert not await db.complete_summary_enrichment(
+            user_id,
+            transcript_id,
+            claim_attempt=2,
+            correction_revision=0,
+            source_version=0,
+            source_checksum=None,
+            summary_md="stale-source",
+        )
+        await conn.execute(
+            'UPDATE "Transcript" SET "correctionRevision" = 1 WHERE id = $1',
+            transcript_id,
+        )
+        assert not await db.complete_summary_enrichment(
+            user_id,
+            transcript_id,
+            claim_attempt=2,
+            correction_revision=0,
+            source_version=1,
+            source_checksum="source-1",
+            summary_md="stale-revision",
         )
         assert await db.complete_summary_enrichment(
             user_id,
             transcript_id,
             claim_attempt=2,
+            correction_revision=1,
+            source_version=1,
+            source_checksum="source-1",
             summary_md="current",
         )
         row = await conn.fetchrow(

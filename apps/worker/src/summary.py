@@ -71,22 +71,34 @@ async def maybe_generate(
     log: Any,  # noqa: ANN401
     already_claimed: bool = False,
     claim_attempt: int | None = None,
+    correction_revision: int | None = None,
+    source_version: int | None = None,
+    source_checksum: str | None = None,
 ) -> None:
     if already_claimed:
-        if claim_attempt is None:
-            raise ValueError("claim_attempt is required for a claimed summary")
+        if claim_attempt is None or correction_revision is None or source_version is None:
+            raise ValueError("complete content identity is required")
         active_attempt = claim_attempt
+        active_revision = correction_revision
+        active_source_version = source_version
+        active_source_checksum = source_checksum
     else:
-        started_attempt = await db.start_summary_enrichment(user_id, transcript_id)
-        if started_attempt is None:
+        claim = await db.start_summary_enrichment(user_id, transcript_id)
+        if claim is None:
             return
-        active_attempt = started_attempt
+        active_attempt = int(claim["summaryAttempt"])
+        active_revision = int(claim["correctionRevision"])
+        active_source_version = int(claim["sourceVersion"])
+        active_source_checksum = str(claim["sourceChecksum"]) if claim["sourceChecksum"] else None
 
     async def finish(status: str, error: str | None = None) -> None:
         await db.finish_summary_enrichment(
             user_id,
             transcript_id,
             claim_attempt=active_attempt,
+            correction_revision=active_revision,
+            source_version=active_source_version,
+            source_checksum=active_source_checksum,
             status=status,
             error=error,
         )
@@ -99,10 +111,27 @@ async def maybe_generate(
     try:
         async with db.connection() as conn:
             row = await conn.fetchrow(
-                'SELECT title, "plainText" FROM "Transcript" WHERE id = $1',
+                """SELECT title, "plainText", "correctedPlainText", "correctionState"
+                   FROM "Transcript" WHERE id = $1 AND "userId" = $2
+                     AND "summaryStatus" = 'RUNNING'::"EnrichmentStatus"
+                     AND "summaryAttempts" = $3 AND "correctionRevision" = $4
+                     AND "sourceVersion" = $5
+                     AND "sourceChecksum" IS NOT DISTINCT FROM $6""",
                 transcript_id,
+                user_id,
+                active_attempt,
+                active_revision,
+                active_source_version,
+                active_source_checksum,
             )
-        if not row or not row["plainText"]:
+        effective_text = (
+            row["correctedPlainText"]
+            if row and row["correctionState"] == "ACTIVE" and row["correctedPlainText"]
+            else row["plainText"]
+            if row
+            else None
+        )
+        if not row or not effective_text:
             log.info("summary-skipped-empty-text")
             await finish("SKIPPED", "SUMMARY_EMPTY_TEXT")
             return
@@ -115,7 +144,7 @@ async def maybe_generate(
         api_key = config.api_key
         model = config.model
 
-        text = str(row["plainText"]).strip()
+        text = str(effective_text).strip()
         if not text:
             log.info("summary-skipped-empty-text")
             await finish("SKIPPED", "SUMMARY_EMPTY_TEXT")
@@ -204,6 +233,9 @@ async def maybe_generate(
                 user_id,
                 transcript_id,
                 claim_attempt=active_attempt,
+                correction_revision=active_revision,
+                source_version=active_source_version,
+                source_checksum=active_source_checksum,
                 summary_md=summary,
             )
         except Exception as e:  # noqa: BLE001

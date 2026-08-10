@@ -22,6 +22,7 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   search_knowledge: 'search',
   search_notes: 'search',
   search_note_content: 'search',
+  search_transcript_content: 'search',
   list_transcripts: 'search',
   list_notes: 'search',
   // leitura / recuperação progressiva
@@ -40,6 +41,7 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   // notas (efeito colateral proposto)
   propose_create_note: 'notes',
   propose_patch_note: 'notes',
+  propose_patch_transcript: 'transcript',
   create_note: 'notes',
   edit_note: 'notes',
   delete_note: 'notes',
@@ -166,7 +168,10 @@ export function pendingHitlFromTools(
       toolName: tool.name,
       title: typeof output.title === 'string' ? output.title : null,
       action,
-      patchPreview: action === 'patch_note' && !previewProofValid ? null : patchPreview,
+      patchPreview:
+        (action === 'patch_note' || action === 'patch_transcript') && !previewProofValid
+          ? null
+          : patchPreview,
     });
   }
   return pending;

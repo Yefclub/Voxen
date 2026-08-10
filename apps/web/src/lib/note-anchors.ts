@@ -63,6 +63,8 @@ interface AnchorTranscript {
   durationSec: number;
   sourceVersion: number;
   sourceChecksum: string | null;
+  correctedMarkdown?: string | null;
+  correctionState?: string;
 }
 
 interface NoteAnchorDependencies {
@@ -94,6 +96,8 @@ export async function validateNoteAnchors(
           durationSec: true,
           sourceVersion: true,
           sourceChecksum: true,
+          correctedMarkdown: true,
+          correctionState: true,
         },
       });
   if (transcripts.length !== ids.length) {
@@ -120,9 +124,12 @@ export async function validateNoteAnchors(
     }
     let md = markdown.get(transcript.id);
     if (!md) {
-      md = await (dependencies.readText ?? storageReadText)(transcript.mdPath).catch(
-        () => `# ${transcript.title}\n\n${transcript.plainText}`,
-      );
+      md =
+        transcript.correctionState === 'ACTIVE' && typeof transcript.correctedMarkdown === 'string'
+          ? transcript.correctedMarkdown
+          : await (dependencies.readText ?? storageReadText)(transcript.mdPath).catch(
+              () => `# ${transcript.title}\n\n${transcript.plainText}`,
+            );
       markdown.set(transcript.id, md);
     }
     const lineCount = md.split('\n').length;
@@ -136,14 +143,7 @@ export async function validateNoteAnchors(
     ) {
       throw new NoteAnchorValidationError('The time range is outside the transcript.');
     }
-    const verdict = verifyClaimAgainstMd(md, {
-      quote: anchor.selectedQuote,
-      fromLine: anchor.startLine,
-      toLine: anchor.endLine,
-      fromSec: anchor.startSec,
-      toSec: anchor.endSec,
-    });
-    if (!verdict.supported) {
+    if (!noteAnchorMatchesMarkdown(anchor, md)) {
       throw new NoteAnchorValidationError(
         'The selected quote does not match the referenced passage.',
       );
@@ -163,6 +163,25 @@ export async function validateNoteAnchors(
     });
   }
   return result;
+}
+
+export function noteAnchorMatchesMarkdown(
+  anchor: {
+    selectedQuote: string;
+    startLine?: number | null;
+    endLine?: number | null;
+    startSec?: number | null;
+    endSec?: number | null;
+  },
+  markdown: string,
+): boolean {
+  return verifyClaimAgainstMd(markdown, {
+    quote: anchor.selectedQuote,
+    fromLine: anchor.startLine ?? undefined,
+    toLine: anchor.endLine ?? undefined,
+    fromSec: anchor.startSec ?? undefined,
+    toSec: anchor.endSec ?? undefined,
+  }).supported;
 }
 
 export function noteSourceCreateData(

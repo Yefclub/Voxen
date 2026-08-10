@@ -41,6 +41,8 @@ import {
 } from './mcp-transcript-enrichment-tools';
 import { registerWriteTools } from './mcp-write-tools';
 import { registerMcpNoteRevisionReadTools } from './mcp-note-revision-read-tools';
+import { registerMcpTranscriptCorrectionReadTools } from './mcp-transcript-correction-tools';
+import { loadTranscriptCorrectionHead } from '../lib/transcript-correction-versioning';
 import {
   authenticateMcpOAuthToken,
   mcpBearerChallenge,
@@ -206,6 +208,8 @@ const WRITE_TOOL_NAMES = new Set([
   'voxen_update_note',
   'voxen_patch_note',
   'voxen_restore_note_revision',
+  'voxen_patch_transcript',
+  'voxen_restore_transcript_correction',
   'voxen_request_transcription',
   'voxen_request_transcriptions',
   'voxen_get_job_status',
@@ -488,6 +492,12 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
         text: z.string(),
         summary: z.string().nullable(),
         flowchart: z.string().nullable(),
+        correctionRevision: z.number(),
+        correctionChecksum: z.string(),
+        correctionState: z.string(),
+        correctionStaleReason: z.string().nullable(),
+        sourceVersion: z.number(),
+        sourceChecksum: z.string().nullable(),
         tags: z.array(z.string()),
       },
       annotations: { ...READ_ONLY, title: 'Ler transcrição (completa)' },
@@ -501,22 +511,32 @@ function registerTranscriptTools(server: McpServer, userId: string, publicOrigin
           plainText: true,
           summaryMd: true,
           flowchartMd: true,
+          sourceVersion: true,
+          sourceChecksum: true,
           tags: { select: { tag: { select: { name: true } } } },
         },
       });
       if (!t) return fail('Transcrição não encontrada (ou fora do escopo do token).');
+      const head = await loadTranscriptCorrectionHead(userId, t.id);
       return ok({
         id: t.id,
         title: t.title,
-        text: t.plainText,
+        text: head.plainText,
         summary: t.summaryMd ?? null,
         flowchart: t.flowchartMd ?? null,
+        correctionRevision: head.correctionRevision,
+        correctionChecksum: head.checksum,
+        correctionState: head.correctionState,
+        correctionStaleReason: head.correctionStaleReason,
+        sourceVersion: t.sourceVersion,
+        sourceChecksum: t.sourceChecksum,
         tags: t.tags.map((item) => item.tag.name),
       });
     },
   );
 
   registerProgressiveTools(server, userId);
+  registerMcpTranscriptCorrectionReadTools(server, userId);
 }
 
 // Ferramentas de recuperação PROGRESSIVA sobre o `.md` canônico (S3): estrutura,

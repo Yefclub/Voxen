@@ -19,12 +19,21 @@ export async function generateTranscriptFlowRoute(c: TranscriptRouteContext): Pr
       id: true,
       title: true,
       plainText: true,
+      correctedPlainText: true,
+      correctionState: true,
       summaryMd: true,
       flowchartMd: true,
+      correctionRevision: true,
+      sourceVersion: true,
+      sourceChecksum: true,
     },
   });
   if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
-  if (!transcript.plainText.trim()) {
+  const effectivePlainText =
+    transcript.correctionState === 'ACTIVE' && transcript.correctedPlainText
+      ? transcript.correctedPlainText
+      : transcript.plainText;
+  if (!effectivePlainText.trim()) {
     return c.json({ error: 'Transcrição sem texto para gerar um fluxo.' }, 422);
   }
   if (transcript.flowchartMd && !force) {
@@ -47,7 +56,10 @@ export async function generateTranscriptFlowRoute(c: TranscriptRouteContext): Pr
       transcriptId: transcript.id,
       title: transcript.title,
       summaryMd: transcript.summaryMd,
-      plainText: transcript.plainText,
+      plainText: effectivePlainText,
+      correctionRevision: transcript.correctionRevision,
+      sourceVersion: transcript.sourceVersion,
+      sourceChecksum: transcript.sourceChecksum,
     });
     return c.json({ flowchartMd });
   } catch (error) {

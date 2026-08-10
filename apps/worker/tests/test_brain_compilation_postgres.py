@@ -208,3 +208,103 @@ async def test_semantic_claim_is_exclusive_recovers_and_stops_at_attempt_limit()
     finally:
         await conn.execute('DELETE FROM "User" WHERE id = $1', user_id)
         await conn.close()
+
+
+async def test_source_refresh_rejects_stale_prepare_and_short_content_completion() -> None:
+    assert os.environ.get("DATABASE_URL")
+    conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+    suffix = uuid.uuid4().hex
+    user_id = f"brain-refresh-user-{suffix}"
+    transcript_id = f"brain-refresh-transcript-{suffix}"
+    compilation_id = f"brain-refresh-compilation-{suffix}"
+    now = datetime.now(UTC).replace(tzinfo=None)
+    try:
+        await conn.execute(
+            """
+            INSERT INTO "User" (id, email, name, status, role, "createdAt", "updatedAt")
+            VALUES ($1, $2, 'Brain Refresh Test', 'APPROVED', 'USER', $3, $3)
+            """,
+            user_id,
+            f"brain-refresh-{suffix}@example.test",
+            now,
+        )
+        await conn.execute(
+            """
+            INSERT INTO "Transcript" (
+              id, "userId", source, url, title, "durationSec", language,
+              "transcriptionMethod", "mdPath", "plainText", frontmatter,
+              "sourceVersion", "createdAt", "updatedAt"
+            ) VALUES (
+              $1, $2, 'WEB', 'https://example.test/refresh', 'Refresh', 0, 'pt',
+              'SCRAPE', 'refresh.md', 'old content', '{}'::jsonb, 0, $3, $3
+            )
+            """,
+            transcript_id,
+            user_id,
+            now,
+        )
+        await conn.execute(
+            """
+            INSERT INTO "BrainCompilation" (
+              id, "userId", "transcriptId", "contentHash", status,
+              "totalSegments", "completedSegments", "createdAt", "updatedAt"
+            ) VALUES ($1, $2, $3, 'old-placeholder', 'PENDING', 1, 0, $4, $4)
+            """,
+            compilation_id,
+            user_id,
+            transcript_id,
+            now,
+        )
+        await conn.execute(
+            """
+            INSERT INTO "BrainCompilationSegment" (
+              id, "compilationId", "segmentKey", status, "startLine", "endLine",
+              attempts, "createdAt", "updatedAt"
+            ) VALUES ($1, $2, 'old-placeholder', 'PENDING', 1, 1, 0, $3, $3)
+            """,
+            f"brain-refresh-segment-{suffix}",
+            compilation_id,
+            now,
+        )
+        await conn.execute(
+            """
+            UPDATE "Transcript"
+            SET "sourceVersion" = 1, "sourceChecksum" = 'new-source'
+            WHERE id = $1
+            """,
+            transcript_id,
+        )
+
+        assert not await brain_compilation_db.mark_transcript_compilation_skipped(
+            user_id=user_id,
+            transcript_id=transcript_id,
+            correction_revision=0,
+            source_version=0,
+            source_checksum=None,
+        )
+        assert (
+            await conn.fetchval(
+                'SELECT status FROM "BrainCompilationSegment" WHERE "compilationId" = $1',
+                compilation_id,
+            )
+            == "PENDING"
+        )
+        with pytest.raises(db.GroundedCompilationClaimLostError):
+            await db.prepare_grounded_brain_compilation(
+                user_id=user_id,
+                transcript_id=transcript_id,
+                content_hash="stale-content",
+                segments=[],
+                correction_revision=0,
+                source_version=0,
+                source_checksum=None,
+            )
+        assert (
+            await conn.fetchval(
+                'SELECT "contentHash" FROM "BrainCompilation" WHERE id = $1', compilation_id
+            )
+            == "old-placeholder"
+        )
+    finally:
+        await conn.execute('DELETE FROM "User" WHERE id = $1', user_id)
+        await conn.close()
