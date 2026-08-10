@@ -48,7 +48,7 @@ describeIfDb('saved media library API', () => {
     delete process.env.S3_DELETE_DISABLED;
   });
 
-  it('keeps download, processing, purge recovery, and listing isolated by user', async () => {
+  it('keeps download, processing, queued deletion, and listing isolated by user', async () => {
     await signUp(OWNER_EMAIL, 'Saved Media Owner');
     await signUp(FOREIGN_EMAIL, 'Saved Media Foreign');
     const ownerCookie = await signIn(OWNER_EMAIL);
@@ -146,14 +146,29 @@ describeIfDb('saved media library API', () => {
         headers: { cookie: ownerCookie },
       }),
     );
-    expect(purgeResponse.status).toBe(200);
+    expect(purgeResponse.status).toBe(202);
+    const purge = (await purgeResponse.json()) as { jobId: string; queued: boolean };
+    expect(purge.queued).toBe(true);
+    expect(await db.job.findUniqueOrThrow({ where: { id: purge.jobId } })).toMatchObject({
+      userId: owner.id,
+      type: 'DELETE_KNOWLEDGE',
+      status: 'QUEUED',
+      deletionTargetType: 'TRANSCRIPT',
+      deletionTargetId: transcript.id,
+    });
     expect(await db.savedMedia.findUniqueOrThrow({ where: { id: created.itemId } })).toMatchObject({
-      status: 'READY',
-      transcriptId: null,
+      status: 'PROCESSED',
+      transcriptId: transcript.id,
       objectKey,
     });
 
-    process.env.S3_DELETE_DISABLED = 'false';
+    // Simulate the already-covered worker outcome so this route test can
+    // exercise an independent saved-media deletion request.
+    await db.transcript.delete({ where: { id: transcript.id } });
+    await db.savedMedia.update({
+      where: { id: created.itemId },
+      data: { status: 'READY', transcriptId: null, processedAt: null },
+    });
     await db.savedMedia.update({
       where: { id: created.itemId },
       data: { objectKey: '../unsafe-object-key' },
@@ -164,12 +179,19 @@ describeIfDb('saved media library API', () => {
         headers: { cookie: ownerCookie },
       }),
     );
-    expect(failedDelete.status).toBe(502);
+    expect(failedDelete.status).toBe(202);
+    const unsafeDelete = (await failedDelete.json()) as { jobId: string };
     expect(await db.savedMedia.findUniqueOrThrow({ where: { id: created.itemId } })).toMatchObject({
-      status: 'FAILED',
+      status: 'DELETING',
       objectKey: '../unsafe-object-key',
     });
-    process.env.S3_DELETE_DISABLED = 'true';
+    const cancelUnsafe = await app.fetch(
+      new Request(`http://localhost/api/jobs/${unsafeDelete.jobId}/cancel`, {
+        method: 'POST',
+        headers: { cookie: ownerCookie },
+      }),
+    );
+    expect(cancelUnsafe.status).toBe(200);
     await db.savedMedia.update({
       where: { id: created.itemId },
       data: { objectKey },
@@ -182,10 +204,22 @@ describeIfDb('saved media library API', () => {
         headers: { cookie: ownerCookie },
       }),
     );
-    expect(deleteResponse.status).toBe(200);
-    expect(await db.savedMedia.findUnique({ where: { id: created.itemId } })).toBeNull();
+    expect(deleteResponse.status).toBe(202);
+    const deleteBody = (await deleteResponse.json()) as { jobId: string; queued: boolean };
+    expect(deleteBody.queued).toBe(true);
+    expect(await db.savedMedia.findUnique({ where: { id: created.itemId } })).toMatchObject({
+      status: 'DELETING',
+      objectKey,
+    });
+    expect(await db.job.findUniqueOrThrow({ where: { id: deleteBody.jobId } })).toMatchObject({
+      userId: owner.id,
+      type: 'DELETE_KNOWLEDGE',
+      status: 'QUEUED',
+      deletionTargetType: 'SAVED_MEDIA',
+      deletionTargetId: created.itemId,
+    });
     expect(await db.job.findUniqueOrThrow({ where: { id: processed.jobId } })).toMatchObject({
-      savedMediaId: null,
+      savedMediaId: created.itemId,
     });
   });
 });

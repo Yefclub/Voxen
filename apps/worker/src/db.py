@@ -171,7 +171,8 @@ async def claim_job(job_id: str, worker_id: str) -> dict[str, Any] | None:
             row = await conn.fetchrow(
                 """
                 SELECT id, "userId", "sourceUrl", status, type, "refreshTranscriptId",
-                       "savedMediaId", "transcriptId", attempt, "progressStage"
+                       "savedMediaId", "transcriptId", attempt, "progressStage",
+                       "deletionTargetType", "deletionTargetId", "deletionTargetTitle"
                 FROM "Job"
                 WHERE id = $1 AND status = 'QUEUED'
                 FOR UPDATE SKIP LOCKED
@@ -274,7 +275,7 @@ async def recover_expired_jobs(
             rows = await conn.fetch(
                 """
                 SELECT id, "userId", type, attempt, "transcriptId", "refreshTranscriptId",
-                       "savedMediaId"
+                       "savedMediaId", "deletionTargetType", "deletionTargetId"
                 FROM "Job"
                 WHERE status = 'RUNNING'
                   AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" < $1)
@@ -339,6 +340,24 @@ async def recover_expired_jobs(
                             WORKER_INTERRUPTED_MESSAGE,
                             now,
                             row["userId"],
+                        )
+                    if (
+                        row.get("type") == "DELETE_KNOWLEDGE"
+                        and row.get("deletionTargetType") == "SAVED_MEDIA"
+                    ):
+                        await conn.execute(
+                            """
+                            UPDATE "SavedMedia"
+                            SET status = 'FAILED'::"SavedMediaStatus",
+                                "errorMsg" = $3, "updatedAt" = $4
+                            WHERE id = $1 AND "userId" = $2
+                              AND "transcriptId" IS NULL
+                              AND status = 'DELETING'::"SavedMediaStatus"
+                            """,
+                            row["deletionTargetId"],
+                            row["userId"],
+                            WORKER_INTERRUPTED_MESSAGE,
+                            now,
                         )
                     action = "failed"
                 recovered.append({**dict(row), "action": action})
@@ -2335,6 +2354,54 @@ async def mark_job_failed(job_id: str, error_msg: str) -> None:
                 job_id,
                 error_msg[:1000],
                 _utcnow_naive(),
+            )
+
+
+async def fail_knowledge_deletion(
+    job_id: str,
+    user_id: str,
+    target_type: str | None,
+    target_id: str | None,
+    error_msg: str,
+) -> None:
+    """Fail a deletion under its job lease and release saved media from DELETING."""
+    token = _job_token(job_id)
+    if token is None:
+        raise JobLeaseLostError("knowledge deletion failure has no active lease")
+    now = _utcnow_naive()
+    async with connection() as conn, conn.transaction():
+        row = await conn.fetchrow(
+            """
+            UPDATE "Job"
+            SET status = 'FAILED', "errorMsg" = $2, "finishedAt" = $3,
+                "heartbeatAt" = NULL, "leaseExpiresAt" = NULL
+            WHERE id = $1 AND "userId" = $4 AND type = 'DELETE_KNOWLEDGE'::"JobType"
+              AND status = 'RUNNING' AND "workerId" = $5 AND attempt = $6
+              AND "leaseExpiresAt" >= $3
+            RETURNING id
+            """,
+            job_id,
+            error_msg[:1000],
+            now,
+            user_id,
+            token.worker_id,
+            token.attempt,
+        )
+        if row is None:
+            raise JobLeaseLostError("knowledge deletion failure rejected by lease fence")
+        if target_type == "SAVED_MEDIA" and target_id:
+            await conn.execute(
+                """
+                UPDATE "SavedMedia"
+                SET status = 'FAILED'::"SavedMediaStatus", "errorMsg" = $3,
+                    "updatedAt" = $4
+                WHERE id = $1 AND "userId" = $2 AND "transcriptId" IS NULL
+                  AND status = 'DELETING'::"SavedMediaStatus"
+                """,
+                target_id,
+                user_id,
+                error_msg[:1000],
+                now,
             )
 
 

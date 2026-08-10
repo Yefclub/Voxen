@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { createLatestOnlyRevalidator, createSharedLoader } from '../src/client/lib/use-notes';
+import {
+  createLatestOnlyRevalidator,
+  createSharedLoader,
+  withoutNoteSubtree,
+} from '../src/client/lib/use-notes';
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
@@ -82,5 +86,30 @@ describe('createSharedLoader', () => {
     expect(first).toBe(second);
     resolveRequest?.('ok');
     await expect(first).resolves.toBe('ok');
+  });
+});
+
+describe('withoutNoteSubtree', () => {
+  test('optimistically hides a queued folder deletion and all descendants', () => {
+    const now = new Date().toISOString();
+    const item = (id: string, parentId: string | null, kind: 'NOTE' | 'FOLDER') => ({
+      id,
+      parentId,
+      kind,
+      title: id,
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const notes = [
+      item('folder-a', null, 'FOLDER'),
+      item('note-a', 'folder-a', 'NOTE'),
+      item('folder-b', 'folder-a', 'FOLDER'),
+      item('note-b', 'folder-b', 'NOTE'),
+      item('keep', null, 'NOTE'),
+    ];
+
+    expect(withoutNoteSubtree(notes, 'folder-a').map((entry) => entry.id)).toEqual(['keep']);
+    expect(notes).toHaveLength(5);
   });
 });

@@ -2,13 +2,10 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
-import {
-  deleteBrainForSources,
-  reindexLibraryFolderBrain,
-  reindexTranscriptsBrain,
-} from '../lib/brain';
+import { reindexLibraryFolderBrain, reindexTranscriptsBrain } from '../lib/brain';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
+import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
 import { classifyFolderForContent } from '../lib/folder-classify';
 import { generateTitleForContent } from '../lib/title-generate';
 import { generateTagsForContent } from '../lib/tags-generate';
@@ -569,8 +566,6 @@ libraryRoutes.post('/generate-tags', async (c) => {
   return c.json({ processed: batch.length, tagged, skipped, failed, remaining, pendingTotal });
 });
 
-// Brain cleanup é best-effort e NÃO bloqueia a resposta (evita 502 por timeout
-// quando há dezenas de pastas/conteúdos e reindex síncrono estoura o proxy).
 libraryRoutes.post('/folders/clear', async (c) => {
   const userId = c.get('userId');
   const folders = await db.libraryFolder.findMany({
@@ -584,43 +579,47 @@ libraryRoutes.post('/folders/clear', async (c) => {
   const affectedCount = await db.transcript.count({
     where: { userId, folderId: { in: folderIds } },
   });
-  await db.libraryFolder.deleteMany({ where: { userId } });
-  // folderId já vai null (onDelete SetNull). Nós FOLDER do brain + arestas
-  // em cascata; não reindexa todos os transcripts síncrono.
-  void deleteBrainForSources(userId, 'FOLDER', folderIds)
-    .then(() => invalidateGraphCache(userId))
-    .catch((err) => {
-      console.warn('[library] clear folders brain cleanup failed', { userId, err });
+  try {
+    const result = await enqueueKnowledgeDeletion({
+      userId,
+      type: 'LIBRARY_FOLDER',
+      id: '*',
+      allowAllLibraryFolders: true,
     });
-  return c.json({
-    ok: true,
-    deleted: folderIds.length,
-    affectedTranscripts: affectedCount,
-  });
+    return c.json(
+      {
+        ok: true,
+        queued: true,
+        jobId: result.job.id,
+        reused: !result.created,
+        deleted: folderIds.length,
+        affectedTranscripts: affectedCount,
+      },
+      202,
+    );
+  } catch (error) {
+    return knowledgeDeletionHttpError(error) ?? Promise.reject(error);
+  }
 });
 
 libraryRoutes.delete('/folders/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const existing = await db.libraryFolder.findFirst({
-    where: { id, userId },
-    select: { id: true },
-  });
-  if (!existing) return c.json({ error: 'Pasta não encontrada.' }, 404);
-
-  const folderIds = [id, ...(await getDescendantIds(userId, id))];
-  const affectedTranscripts = await db.transcript.findMany({
-    where: { userId, folderId: { in: folderIds } },
-    select: { id: true },
-  });
-  await db.libraryFolder.delete({ where: { id } });
-  await deleteBrainForSources(userId, 'FOLDER', folderIds);
-  await reindexTranscriptsBrain(
-    userId,
-    affectedTranscripts.map((item) => item.id),
-  );
-  await invalidateGraphCache(userId);
-  return c.json({ ok: true });
+  try {
+    const result = await enqueueKnowledgeDeletion({ userId, type: 'LIBRARY_FOLDER', id });
+    return c.json(
+      {
+        ok: true,
+        queued: true,
+        jobId: result.job.id,
+        target: result.target,
+        reused: !result.created,
+      },
+      202,
+    );
+  } catch (error) {
+    return knowledgeDeletionHttpError(error) ?? Promise.reject(error);
+  }
 });
 
 async function getDescendantIds(userId: string, rootId: string): Promise<Set<string>> {

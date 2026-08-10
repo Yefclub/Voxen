@@ -82,7 +82,15 @@ export type JobType =
   | 'UPLOAD_AND_TRANSCRIBE'
   | 'UPLOAD_AND_ANALYZE_IMAGE'
   | 'UPLOAD_AND_ANALYZE_DOCUMENT'
-  | 'ANALYZE_X';
+  | 'ANALYZE_X'
+  | 'DELETE_KNOWLEDGE';
+
+export type KnowledgeDeletionTargetType =
+  | 'TRANSCRIPT'
+  | 'NOTE'
+  | 'SAVED_MEDIA'
+  | 'LIBRARY_FOLDER'
+  | 'TRANSCRIPT_ENRICHMENT';
 
 export interface JobSummary {
   id: string;
@@ -92,6 +100,9 @@ export interface JobSummary {
   errorMsg: string | null;
   transcriptId: string | null;
   savedMediaId?: string | null;
+  deletionTargetType?: KnowledgeDeletionTargetType | null;
+  deletionTargetId?: string | null;
+  deletionTargetTitle?: string | null;
   progressStage?: string | null;
   progressPercent?: number | null;
   progressedAt?: string | null;

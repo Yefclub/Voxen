@@ -2,14 +2,14 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { Prisma } from '../../prisma-generated/client';
 import { auth } from '../lib/auth';
-import { deleteBrainForSource, reindexTranscriptBrain } from '../lib/brain';
+import { reindexTranscriptBrain } from '../lib/brain';
 import { syncTranscriptEnrichmentBrainLifecycle } from '../lib/brain-enrichments';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import { notifyNewJob, publishJobEvent } from '../lib/job-events';
 import { rateLimit } from '../lib/rate-limit';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
-import * as savedMediaLifecycle from '../lib/saved-media-lifecycle';
+import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
 import {
   NoteAnchorInputSchema,
   NoteAnchorValidationError,
@@ -17,7 +17,7 @@ import {
   validateNoteAnchors,
 } from '../lib/note-anchors';
 import { recordInitialNoteRevision, syncNoteGraph } from '../lib/note-versioning';
-import { storageDelete, storageGet, storageHead, storagePut } from '../lib/storage';
+import { storageGet, storageHead, storagePut } from '../lib/storage';
 import { isSetupComplete } from '../lib/settings';
 import {
   buildOriginalResponseInit,
@@ -1094,44 +1094,25 @@ transcriptsRoutes.patch('/:id/lifecycle', async (c) => {
 transcriptsRoutes.delete('/:id', async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const transcript = await db.transcript.findFirst({
-    where: { id, userId },
-    select: {
-      id: true,
-      status: true,
-      mdPath: true,
-      title: true,
-      originalObjectKey: true,
-      previewObjectKey: true,
-      savedMedia: {
-        select: { id: true, objectKey: true },
-      },
-    },
-  });
-  if (!transcript) return c.json({ error: 'Transcrição não encontrada.' }, 404);
-  if (transcript.status !== 'TRASH') {
-    return c.json({ error: 'Mova para a lixeira antes de apagar definitivamente.' }, 409);
-  }
-
   try {
-    await Promise.all(
-      savedMediaLifecycle
-        .transcriptPurgeStorageKeys(transcript)
-        .filter((key): key is string => Boolean(key))
-        .map((key) => storageDelete(key)),
+    const result = await enqueueKnowledgeDeletion({
+      userId,
+      type: 'TRANSCRIPT',
+      id,
+    });
+    return c.json(
+      {
+        ok: true,
+        queued: true,
+        jobId: result.job.id,
+        target: result.target,
+        reused: !result.created,
+      },
+      202,
     );
-  } catch (err) {
-    console.error(
-      '[transcripts] failed to delete stored objects',
-      safeErrorDiagnostic('TRANSCRIPT_OBJECT_DELETE_FAILED', err),
-    );
-    return c.json({ error: 'Falha ao apagar arquivos no armazenamento.' }, 502);
+  } catch (error) {
+    return knowledgeDeletionHttpError(error) ?? Promise.reject(error);
   }
-
-  await savedMediaLifecycle.deleteTranscriptAndRestoreSavedMedia(id, transcript.savedMedia);
-  await deleteBrainForSource(userId, 'TRANSCRIPT', id);
-  await invalidateGraphCache(userId);
-  return c.json({ ok: true, deletedId: id });
 });
 
 // POST /api/transcripts/:id/summary — gerar / regenerar resumo via OpenRouter.

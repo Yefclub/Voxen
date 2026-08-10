@@ -197,7 +197,7 @@ describeIfDb('reviewable transcript enrichments API', () => {
     }
   });
 
-  it('keeps suggestions out of search, then accepts, edits, dismisses, and deletes safely', async () => {
+  it('keeps suggestions out of search, then accepts, edits, dismisses, and queues deletion safely', async () => {
     const transcript = await createTranscript();
     const transcriptNode = await db.brainNode.create({
       data: {
@@ -280,8 +280,19 @@ describeIfDb('reviewable transcript enrichments API', () => {
       `/api/transcripts/${transcript.id}/enrichments/${enrichment.id}`,
       apiInit(ownerCookie, 'DELETE'),
     );
-    expect(deletedResponse.status).toBe(200);
-    expect(await db.transcriptEnrichment.findUnique({ where: { id: enrichment.id } })).toBeNull();
+    expect(deletedResponse.status).toBe(202);
+    const deletion = (await deletedResponse.json()) as { jobId: string; queued: boolean };
+    expect(deletion.queued).toBe(true);
+    expect(
+      await db.transcriptEnrichment.findUnique({ where: { id: enrichment.id } }),
+    ).not.toBeNull();
+    expect(await db.job.findUniqueOrThrow({ where: { id: deletion.jobId } })).toMatchObject({
+      userId: ownerId,
+      type: 'DELETE_KNOWLEDGE',
+      status: 'QUEUED',
+      deletionTargetType: 'TRANSCRIPT_ENRICHMENT',
+      deletionTargetId: enrichment.id,
+    });
     const canonical = await db.transcript.findUniqueOrThrow({ where: { id: transcript.id } });
     expect(canonical.plainText).toBe('Canonical source text that must stay unchanged.');
     expect(canonical.summaryMd).toBe('Canonical summary that must stay unchanged.');

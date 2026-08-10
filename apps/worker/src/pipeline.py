@@ -122,6 +122,8 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
     job_type: str = claimed["type"]
     refresh_transcript_id: str | None = claimed.get("refreshTranscriptId")
     saved_media_id: str | None = claimed.get("savedMediaId")
+    deletion_target_type: str | None = claimed.get("deletionTargetType")
+    deletion_target_id: str | None = claimed.get("deletionTargetId")
     log = logger.bind(
         job_id=job_id,
         user_id=user_id,
@@ -164,6 +166,21 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
                 log=log,
                 retry_transient=_retry_transient,
                 check_cancel=_check_cancel,
+            )
+        elif job_type == "DELETE_KNOWLEDGE":
+            from . import knowledge_deletion
+
+            if not deletion_target_type or not deletion_target_id:
+                raise PermanentError.public(
+                    "KNOWLEDGE_DELETION_TARGET_MISSING",
+                    "O destino da exclusão não foi encontrado.",
+                )
+            await knowledge_deletion.run(
+                job_id=job_id,
+                user_id=user_id,
+                target_type=str(deletion_target_type),
+                target_id=str(deletion_target_id),
+                log=log,
             )
         elif job_type == "SCRAPE_WEB":
             from . import scrape_pipeline
@@ -210,7 +227,15 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
         raise
     except PermanentError as e:
         log.warning("job-failed-permanent", **_error_diagnostic(e, e.code))
-        if saved_media_id:
+        if job_type == "DELETE_KNOWLEDGE":
+            await db.fail_knowledge_deletion(
+                job_id,
+                user_id,
+                deletion_target_type,
+                deletion_target_id,
+                e.public_message,
+            )
+        elif saved_media_id:
             await saved_media.fail_job(job_id, user_id, saved_media_id, e.public_message)
         else:
             await db.mark_job_failed(job_id, e.public_message)
@@ -220,7 +245,15 @@ async def _process_claimed_job(job_id: str, claimed: dict[str, Any]) -> None:
     except Exception as e:  # noqa: BLE001 — propaga genérico p/ FAILED
         diagnostic = _error_diagnostic(e, "UNEXPECTED_JOB_FAILURE")
         log.error("job-failed-unexpected", **diagnostic)
-        if saved_media_id:
+        if job_type == "DELETE_KNOWLEDGE":
+            await db.fail_knowledge_deletion(
+                job_id,
+                user_id,
+                deletion_target_type,
+                deletion_target_id,
+                GENERIC_JOB_FAILURE_MESSAGE,
+            )
+        elif saved_media_id:
             await saved_media.fail_job(job_id, user_id, saved_media_id, GENERIC_JOB_FAILURE_MESSAGE)
         else:
             await db.mark_job_failed(job_id, GENERIC_JOB_FAILURE_MESSAGE)

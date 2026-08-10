@@ -25,6 +25,7 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   search_transcript_content: 'search',
   list_transcripts: 'search',
   list_notes: 'search',
+  list_deletable_knowledge: 'search',
   // leitura / recuperação progressiva
   outline_transcript: 'read',
   read_lines: 'read',
@@ -42,6 +43,7 @@ const FAMILY_BY_NAME: Record<string, ToolFamily> = {
   propose_create_note: 'notes',
   propose_patch_note: 'notes',
   propose_patch_transcript: 'transcript',
+  propose_delete_knowledge: 'notes',
   create_note: 'notes',
   edit_note: 'notes',
   delete_note: 'notes',

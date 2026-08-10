@@ -8,7 +8,6 @@
 //   GET  /api/jobs/:id/events   — SSE com eventos do canal Redis
 //
 // Guards: session + status=APPROVED. Setup incompleto → 412.
-// Outro user pedindo job alheio → 404 (não 403 — não vaza existência).
 // ============================================================================
 
 import { Hono, type Context } from 'hono';
@@ -33,6 +32,7 @@ import { rateLimit } from '../lib/rate-limit';
 import { createSubscriber } from '../lib/redis';
 import { safeErrorDiagnostic } from '../lib/safe-diagnostics';
 import { createQueuedJob, retryQueuedJobForUser } from '../lib/job-queue';
+import { knowledgeDeletionCancellationResponse } from '../lib/knowledge-deletion-cancellation';
 import { cancelActiveSavedMediaJob } from '../lib/saved-media-lifecycle';
 import {
   isTerminalStage,
@@ -886,6 +886,9 @@ jobsRoutes.get('/', async (c) => {
         queuedAt: true,
         startedAt: true,
         finishedAt: true,
+        deletionTargetType: true,
+        deletionTargetId: true,
+        deletionTargetTitle: true,
         transcript: {
           select: {
             title: true,
@@ -915,7 +918,9 @@ jobsRoutes.get('/', async (c) => {
       queuedAt: job.queuedAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
-      title: job.transcript?.title ?? job.savedMedia?.title ?? null,
+      title: job.transcript?.title ?? job.savedMedia?.title ?? job.deletionTargetTitle ?? null,
+      deletionTargetType: job.deletionTargetType,
+      deletionTargetId: job.deletionTargetId,
       thumbnailUrl: job.transcript?.thumbnailUrl ?? job.savedMedia?.thumbnailUrl ?? null,
       transcriptSource: job.transcript?.source ?? null,
       durationSec: job.transcript?.durationSec ?? job.savedMedia?.durationSec ?? null,
@@ -946,6 +951,9 @@ jobsRoutes.get('/:id', async (c) => {
       queuedAt: true,
       startedAt: true,
       finishedAt: true,
+      deletionTargetType: true,
+      deletionTargetId: true,
+      deletionTargetTitle: true,
       transcript: {
         select: {
           id: true,
@@ -993,7 +1001,9 @@ jobsRoutes.get('/:id', async (c) => {
       queuedAt: job.queuedAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
-      title: job.transcript?.title ?? job.savedMedia?.title ?? null,
+      title: job.transcript?.title ?? job.savedMedia?.title ?? job.deletionTargetTitle ?? null,
+      deletionTargetType: job.deletionTargetType,
+      deletionTargetId: job.deletionTargetId,
       summary,
       transcriptSource: job.transcript?.source ?? null,
       thumbnailUrl: job.transcript?.thumbnailUrl ?? job.savedMedia?.thumbnailUrl ?? null,
@@ -1106,7 +1116,14 @@ jobsRoutes.post('/:id/cancel', async (c) => {
   const id = c.req.param('id');
   const job = await db.job.findFirst({
     where: { id, userId },
-    select: { id: true, status: true, type: true, savedMediaId: true },
+    select: {
+      id: true,
+      status: true,
+      type: true,
+      savedMediaId: true,
+      deletionTargetType: true,
+      deletionTargetId: true,
+    },
   });
   if (!job) {
     return c.json({ error: 'Job não encontrado.' }, 404);
@@ -1114,6 +1131,8 @@ jobsRoutes.post('/:id/cancel', async (c) => {
   if (job.status !== 'QUEUED' && job.status !== 'RUNNING') {
     return c.json({ error: 'Só é possível cancelar jobs ativos.' }, 400);
   }
+  const deletionResponse = await knowledgeDeletionCancellationResponse(userId, job);
+  if (deletionResponse) return deletionResponse;
   const cancelled = await cancelActiveSavedMediaJob(userId, job);
   if (!cancelled) {
     return c.json({ error: 'Só é possível cancelar jobs ativos.' }, 400);

@@ -6,6 +6,11 @@ import { deleteBrainForSource } from '../lib/brain';
 import { reindexTranscriptEnrichmentBrain } from '../lib/brain-enrichments';
 import { invalidateGraphCache } from '../lib/graph-cache';
 import {
+  enqueueKnowledgeDeletion,
+  KnowledgeDeletionConflictError,
+  KnowledgeDeletionNotFoundError,
+} from '../lib/knowledge-deletion';
+import {
   getTranscriptEnrichmentStaleReason,
   normalizeTranscriptEnrichmentCitations,
   queueTranscriptResearch,
@@ -234,26 +239,47 @@ export function registerTranscriptEnrichmentWriteTools(server: McpServer, userId
     'voxen_delete_transcript_enrichment',
     {
       title: 'Excluir contexto adicional',
-      description: 'Exclui permanentemente uma pesquisa e somente seus derivados de busca e Brain.',
-      inputSchema: { enrichment_id: z.string().min(1) },
+      description:
+        'Enfileira a exclusão permanente de uma pesquisa e de seus derivados no grafo. ' +
+        'Leia o contexto imediatamente antes e confirme o título exato.',
+      inputSchema: {
+        enrichment_id: z.string().min(1),
+        expected_title: z.string().trim().min(1).max(300),
+        confirm: z.literal(true),
+      },
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
-        idempotentHint: false,
+        idempotentHint: true,
         openWorldHint: false,
         title: 'Excluir contexto adicional',
       },
     },
     async (args) => {
-      const existing = await db.transcriptEnrichment.findFirst({
-        where: { id: args.enrichment_id, userId },
-        select: { id: true },
-      });
-      if (!existing) return fail('Contexto adicional não encontrado.');
-      await deleteBrainForSource(userId, 'EXTERNAL_ENRICHMENT', existing.id);
-      await db.transcriptEnrichment.delete({ where: { id: existing.id } });
-      await invalidateGraphCache(userId);
-      return ok({ id: existing.id, deleted: true });
+      try {
+        const result = await enqueueKnowledgeDeletion({
+          userId,
+          type: 'TRANSCRIPT_ENRICHMENT',
+          id: args.enrichment_id,
+          expectedTitle: args.expected_title,
+        });
+        return ok({
+          id: result.target.id,
+          title: result.target.title,
+          jobId: result.job.id,
+          status: result.job.status,
+          queued: true,
+          reused: !result.created,
+        });
+      } catch (error) {
+        if (
+          error instanceof KnowledgeDeletionConflictError ||
+          error instanceof KnowledgeDeletionNotFoundError
+        ) {
+          return fail(error.message);
+        }
+        throw error;
+      }
     },
   );
 }

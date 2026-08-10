@@ -865,6 +865,15 @@ enum JobType {
   UPLOAD_AND_ANALYZE_IMAGE
   UPLOAD_AND_ANALYZE_DOCUMENT
   ANALYZE_X
+  DELETE_KNOWLEDGE
+}
+
+enum KnowledgeDeletionTargetType {
+  TRANSCRIPT
+  NOTE
+  SAVED_MEDIA
+  LIBRARY_FOLDER
+  TRANSCRIPT_ENRICHMENT
 }
 
 enum SavedMediaStatus {
@@ -917,33 +926,36 @@ enum JobStatus {
 }
 
 model Job {
-  id                  String             @id @default(cuid())
+  id                  String                       @id @default(cuid())
   userId              String
   type                JobType
-  status              JobStatus          @default(QUEUED)
+  status              JobStatus                    @default(QUEUED)
   sourceUrl           String
-  transcriptId        String?            @unique
+  transcriptId        String?                      @unique
   // Quando preenchido, SCRAPE_WEB atualiza este conteúdo existente em vez de
   // criar um novo Transcript. O resultado continua em transcriptId.
   refreshTranscriptId String?
   savedMediaId        String?
+  deletionTargetType  KnowledgeDeletionTargetType?
+  deletionTargetId    String?
+  deletionTargetTitle String?
   configRevisionId    String?
   errorMsg            String?
   progressStage       String?
   progressPercent     Int?
   progressedAt        DateTime?
   workerId            String?
-  attempt             Int                @default(0)
+  attempt             Int                          @default(0)
   heartbeatAt         DateTime?
   leaseExpiresAt      DateTime?
-  queuedAt            DateTime           @default(now())
+  queuedAt            DateTime                     @default(now())
   startedAt           DateTime?
   finishedAt          DateTime?
-  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcript          Transcript?        @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
-  refreshTranscript   Transcript?        @relation("SourceRefreshJobs", fields: [refreshTranscriptId], references: [id], onDelete: SetNull)
-  savedMedia          SavedMedia?        @relation(fields: [savedMediaId], references: [id], onDelete: SetNull)
-  configRevision      ConfigRevision?    @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
+  user                User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript          Transcript?                  @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
+  refreshTranscript   Transcript?                  @relation("SourceRefreshJobs", fields: [refreshTranscriptId], references: [id], onDelete: SetNull)
+  savedMedia          SavedMedia?                  @relation(fields: [savedMediaId], references: [id], onDelete: SetNull)
+  configRevision      ConfigRevision?              @relation(fields: [configRevisionId], references: [id], onDelete: SetNull)
   progressEvents      JobProgressEvent[]
 
   @@index([userId, queuedAt(sort: Desc)])
@@ -953,6 +965,7 @@ model Job {
   @@index([configRevisionId])
   @@index([userId, refreshTranscriptId, status])
   @@index([userId, savedMediaId, status])
+  @@index([userId, deletionTargetType, deletionTargetId, status])
 }
 
 model JobProgressEvent {

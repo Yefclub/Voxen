@@ -21,6 +21,7 @@ import { registerMcpNoteRevisionWriteTools } from './mcp-note-revision-write-too
 import { TRANSCRIPT_BRIEF_SCHEMA } from './mcp-transcription-schemas';
 import { noteWriteFailure } from './mcp-note-write-errors';
 import { registerMcpTranscriptCorrectionWriteTools } from './mcp-transcript-correction-tools';
+import { registerMcpKnowledgeDeletionTool } from './mcp-knowledge-deletion-tool';
 
 const MCP_NOTE_ANCHOR_SCHEMA = z.object({
   transcript_id: z.string().min(1),
@@ -297,6 +298,8 @@ export function registerWriteTools(server: McpServer, userId: string): void {
       }
     },
   );
+
+  registerMcpKnowledgeDeletionTool(server, userId);
 
   server.registerTool(
     'voxen_request_transcription',

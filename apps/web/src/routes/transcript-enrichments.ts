@@ -5,6 +5,7 @@ import { deleteBrainForSource } from '../lib/brain';
 import { reindexTranscriptEnrichmentBrain } from '../lib/brain-enrichments';
 import { db } from '../lib/db';
 import { invalidateGraphCache } from '../lib/graph-cache';
+import { enqueueKnowledgeDeletion, knowledgeDeletionHttpError } from '../lib/knowledge-deletion';
 import { getSettingByKey } from '../lib/settings';
 import {
   getTranscriptEnrichmentStaleReason,
@@ -213,8 +214,23 @@ transcriptEnrichmentRoutes.delete('/:transcriptId/enrichments/:enrichmentId', as
     select: { id: true },
   });
   if (!existing) return c.json({ error: 'Contexto adicional não encontrado.' }, 404);
-  await deleteBrainForSource(userId, 'EXTERNAL_ENRICHMENT', existing.id);
-  await db.transcriptEnrichment.delete({ where: { id: existing.id } });
-  await invalidateGraphCache(userId);
-  return c.json({ ok: true });
+  try {
+    const result = await enqueueKnowledgeDeletion({
+      userId,
+      type: 'TRANSCRIPT_ENRICHMENT',
+      id: existing.id,
+    });
+    return c.json(
+      {
+        ok: true,
+        queued: true,
+        jobId: result.job.id,
+        target: result.target,
+        reused: !result.created,
+      },
+      202,
+    );
+  } catch (error) {
+    return knowledgeDeletionHttpError(error) ?? Promise.reject(error);
+  }
 });

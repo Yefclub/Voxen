@@ -95,6 +95,9 @@ const VOXEN_INSTRUCTIONS = [
   '  voxen_list_transcript_enrichments / voxen_read_transcript_enrichment. Com WRITE,',
   '  solicite pesquisa e aceite somente sugestões citadas e atuais; nunca trate SUGGESTED',
   '  como evidência canônica nem misture esse conteúdo ao resumo da transcrição.',
+  '- Para excluir conteúdo, leia o alvo novamente e use voxen_delete_knowledge somente com',
+  '  target_id, expected_title exato e confirm=true. A exclusão é irreversível e assíncrona;',
+  '  acompanhe o job retornado até DONE.',
   '',
   'Regras de resposta: sintetize, compare fontes, explicite contradições e diferencie evidência',
   'de inferência. Use href para tornar a citação da nota navegável quando o cliente suportar links.',
@@ -217,6 +220,7 @@ const WRITE_TOOL_NAMES = new Set([
   'voxen_review_transcript_enrichment',
   'voxen_edit_transcript_enrichment',
   'voxen_delete_transcript_enrichment',
+  'voxen_delete_knowledge',
 ]);
 
 async function requestsWriteTool(c: Context): Promise<boolean> {

@@ -19,6 +19,7 @@ import {
 } from '../note-versioning';
 import {
   HITL_ACTION_CREATE_NOTE,
+  HITL_ACTION_DELETE_KNOWLEDGE,
   HITL_ACTION_PATCH_NOTE,
   HITL_ACTION_PATCH_TRANSCRIPT,
 } from './hitl-policy';
@@ -27,6 +28,10 @@ import {
   type ChatTranscriptPatchApprovalPayload,
 } from './transcript-editing';
 import { ChatApprovalMutationError } from './approval-error';
+import {
+  extractKnowledgeDeletionPayload,
+  type ChatKnowledgeDeletionApprovalPayload,
+} from './knowledge-deletion';
 
 const chatNotePatchOperationSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -67,7 +72,10 @@ export type ChatNoteApprovalPayload =
       patchPreview: ChatPatchApprovalPreview;
       previewProof: string;
     });
-export type ChatApprovalPayload = ChatNoteApprovalPayload | ChatTranscriptPatchApprovalPayload;
+export type ChatApprovalPayload =
+  | ChatNoteApprovalPayload
+  | ChatTranscriptPatchApprovalPayload
+  | ChatKnowledgeDeletionApprovalPayload;
 
 const chatPatchApprovalPreviewSchema = z.object({
   operationKind: z.enum(['replace', 'insert_before', 'insert_after', 'prepend', 'append']),
@@ -115,6 +123,9 @@ export function extractApprovalPayload(
     const title = typeof output.title === 'string' ? output.title.trim() : '';
     const content = typeof output.content === 'string' ? output.content : '';
     return title ? { action, title, content } : null;
+  }
+  if (action === HITL_ACTION_DELETE_KNOWLEDGE) {
+    return extractKnowledgeDeletionPayload({ ...output, action });
   }
   if (action === HITL_ACTION_PATCH_TRANSCRIPT) return extractTranscriptApprovalPayload(output);
   const proposal = extractPatchProposal(output);

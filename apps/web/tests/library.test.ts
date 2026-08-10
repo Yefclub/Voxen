@@ -571,7 +571,7 @@ describeIfDb('library organization API', () => {
     expect(foreignPreview.status).toBe(404);
   });
 
-  it('requires trash before hard delete and purges transcript records', async () => {
+  it('requires trash before hard delete and queues the purge without blocking', async () => {
     await signUp('admin@voxen.local', 'senha-super-segura-123', 'Admin');
     const signin = await signIn('admin@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
@@ -624,10 +624,25 @@ describeIfDb('library organization API', () => {
         headers: { cookie },
       }),
     );
-    expect(hardDelete.status).toBe(200);
-    expect(await db.transcript.findUnique({ where: { id: transcript.id } })).toBeNull();
+    expect(hardDelete.status).toBe(202);
+    const hardDeleteBody = (await hardDelete.json()) as { jobId: string; queued: boolean };
+    expect(hardDeleteBody.queued).toBe(true);
+    const queuedDeletion = await db.job.findUniqueOrThrow({
+      where: { id: hardDeleteBody.jobId },
+    });
+    expect(queuedDeletion).toMatchObject({
+      userId: user.id,
+      type: 'DELETE_KNOWLEDGE',
+      status: 'QUEUED',
+      deletionTargetType: 'TRANSCRIPT',
+      deletionTargetId: transcript.id,
+      deletionTargetTitle: transcript.title,
+    });
+    expect(await db.transcript.findUnique({ where: { id: transcript.id } })).toMatchObject({
+      status: 'TRASH',
+    });
     const retainedJob = await db.job.findUniqueOrThrow({ where: { id: job.id } });
-    expect(retainedJob.transcriptId).toBeNull();
+    expect(retainedJob.transcriptId).toBe(transcript.id);
   });
 
   it('creates and lists notes linked to a transcript', async () => {
@@ -721,7 +736,7 @@ describeIfDb('library organization API', () => {
     expect(stored).toBe(0);
   });
 
-  it('clears all folders and unfolders transcripts', async () => {
+  it('queues clearing all folders without mutating the request path', async () => {
     await signUp('clear-folders@voxen.local', 'senha-super-segura-123', 'Clear Folders');
     const signin = await signIn('clear-folders@voxen.local', 'senha-super-segura-123');
     const cookie = extractCookie(signin);
@@ -751,13 +766,26 @@ describeIfDb('library organization API', () => {
         headers: { cookie },
       }),
     );
-    expect(clear.status).toBe(200);
-    const clearBody = (await clear.json()) as { deleted: number; affectedTranscripts: number };
+    expect(clear.status).toBe(202);
+    const clearBody = (await clear.json()) as {
+      jobId: string;
+      queued: boolean;
+      deleted: number;
+      affectedTranscripts: number;
+    };
+    expect(clearBody.queued).toBe(true);
     expect(clearBody.deleted).toBe(1);
     expect(clearBody.affectedTranscripts).toBe(1);
-    expect(await db.libraryFolder.count({ where: { userId: user.id } })).toBe(0);
+    expect(await db.libraryFolder.count({ where: { userId: user.id } })).toBe(1);
     const refreshed = await db.transcript.findUniqueOrThrow({ where: { id: transcript.id } });
-    expect(refreshed.folderId).toBeNull();
+    expect(refreshed.folderId).toBe(folder.id);
+    expect(await db.job.findUniqueOrThrow({ where: { id: clearBody.jobId } })).toMatchObject({
+      userId: user.id,
+      type: 'DELETE_KNOWLEDGE',
+      status: 'QUEUED',
+      deletionTargetType: 'LIBRARY_FOLDER',
+      deletionTargetId: '*',
+    });
   });
 
   it('paginates transcript list with limit/offset', async () => {

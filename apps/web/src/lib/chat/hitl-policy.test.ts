@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   HITL_ACTION_CREATE_NOTE,
+  HITL_ACTION_DELETE_KNOWLEDGE,
   HITL_ACTION_PATCH_NOTE,
   HITL_ACTION_PATCH_TRANSCRIPT,
   buildHitlResumePrompt,
@@ -70,6 +71,13 @@ describe('gating HITL', () => {
         alwaysAllowed: new Set([HITL_ACTION_CREATE_NOTE]),
       }),
     ).toBe(true);
+    expect(
+      shouldRequireHitlApproval({
+        action: HITL_ACTION_DELETE_KNOWLEDGE,
+        alwaysAllowed: new Set([HITL_ACTION_CREATE_NOTE]),
+      }),
+    ).toBe(true);
+    expect(withAlwaysAllowAction(new Set(), HITL_ACTION_DELETE_KNOWLEDGE)).toEqual(new Set());
   });
 });
 
@@ -84,6 +92,9 @@ describe('resume após approve', () => {
     expect(shouldResumeAfterApprove({ approved: true, action: 'other' })).toBe(false);
     expect(shouldResumeAfterApprove({ approved: true, action: HITL_ACTION_PATCH_NOTE })).toBe(true);
     expect(shouldResumeAfterApprove({ approved: true, action: HITL_ACTION_PATCH_TRANSCRIPT })).toBe(
+      true,
+    );
+    expect(shouldResumeAfterApprove({ approved: true, action: HITL_ACTION_DELETE_KNOWLEDGE })).toBe(
       true,
     );
   });
@@ -102,6 +113,16 @@ describe('resume após approve', () => {
     const prompt = buildHitlResumePrompt({ action: HITL_ACTION_PATCH_NOTE, title: 'Ideias' });
     expect(prompt).toContain('edição cirúrgica');
     expect(prompt).toContain('Ideias');
+  });
+
+  test('prompt de exclusão informa que o trabalho continua na fila', () => {
+    const prompt = buildHitlResumePrompt({
+      action: HITL_ACTION_DELETE_KNOWLEDGE,
+      title: 'Conteúdo antigo',
+    });
+    expect(prompt).toContain('Conteúdo antigo');
+    expect(prompt).toContain('fila');
+    expect(prompt).toContain('sem afirmar que a limpeza já terminou');
   });
 
   test('prompt de resume cita a nota e pede continuidade sem re-propor', () => {
